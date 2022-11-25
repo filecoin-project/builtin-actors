@@ -1,52 +1,40 @@
-use {crate::interpreter::stack::Stack, crate::interpreter::U256};
+use {crate::interpreter::U256};
 
 #[inline]
-pub fn byte(stack: &mut Stack) {
-    let i = stack.pop();
-    let x = stack.get_mut(0);
-
+pub fn byte(i: U256, x: U256) -> U256 {
     if i >= 32 {
-        *x = U256::ZERO;
+        U256::ZERO
     } else {
-        *x = U256::from_u64(x.byte(31 - i.low_u64() as usize) as u64);
+        U256::from_u64(x.byte(31 - i.low_u64() as usize) as u64)
     }
 }
 
 #[inline]
-pub fn shl(stack: &mut Stack) {
-    let shift = stack.pop();
-    let value = stack.get_mut(0);
-
+pub fn shl(shift: U256, value: U256) -> U256 {
     if value.is_zero() || shift >= 256 {
-        *value = U256::ZERO;
+        U256::ZERO
     } else {
-        *value <<= shift
-    };
+        value << shift
+    }
 }
 
 #[inline]
-pub fn shr(stack: &mut Stack) {
-    let shift = stack.pop();
-    let value = stack.get_mut(0);
-
+pub fn shr(shift: U256, value: U256) -> U256 {
     if value.is_zero() || shift >= 256 {
-        *value = U256::ZERO;
+        U256::ZERO
     } else {
-        *value >>= shift
-    };
+        value >> shift
+    }
 }
 
 #[inline]
-pub fn sar(stack: &mut Stack) {
-    let shift = stack.pop();
-    let mut value = stack.pop();
-
+pub fn sar(shift: U256, mut value: U256) -> U256 {
     let negative = value.i256_is_negative();
     if negative {
         value = value.i256_neg();
     }
 
-    stack.push(if value.is_zero() || shift >= 256 {
+    if value.is_zero() || shift >= 256 {
         if negative {
             // value is < 0, pushing U256::MAX (== -1)
             U256::MAX
@@ -64,7 +52,7 @@ pub fn sar(stack: &mut Stack) {
         } else {
             value >> shift
         }
-    });
+    }
 }
 
 #[cfg(test)]

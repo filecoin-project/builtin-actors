@@ -4,13 +4,10 @@ use fvm_shared::address::Address as FilecoinAddress;
 
 use super::address::EthAddress;
 use {
-    super::instructions::*,
+    super::instructions,
     super::opcode::OpCode,
-    super::opcode::StackSpec,
     super::StatusCode,
     crate::interpreter::instructions::call::CallKind,
-    crate::interpreter::instructions::log::*,
-    crate::interpreter::instructions::stack::*,
     crate::interpreter::memory::Memory,
     crate::interpreter::stack::Stack,
     crate::interpreter::{Bytecode, Output, System},
@@ -51,7 +48,7 @@ impl ExecutionState {
 
 pub struct Machine<'r, 'a, RT: Runtime + 'a> {
     system: &'r mut System<'a, RT>,
-    runtime: &'r mut ExecutionState,
+    state: &'r mut ExecutionState,
     bytecode: &'r Bytecode,
     pc: usize,
     reverted: bool,
@@ -65,6 +62,20 @@ enum ControlFlow {
 
 type Instruction<M> = fn(*mut M) -> Result<ControlFlow, StatusCode>;
 
+macro_rules! def_opcodes {
+    ($($op:ident: $body:tt)*) => {
+        def_ins_raw! {
+            UNDEFINED(_m) {
+                Err(StatusCode::UndefinedInstruction)
+            }
+        }
+        $(def_ins! { $op $body })*
+        def_jmptable! {
+            $($op)*
+        }
+    }
+}
+
 macro_rules! def_jmptable {
     ($($op:ident)*) => {
         const fn jmptable() -> [Instruction<Machine<'r, 'a, RT>>; 256] {
@@ -75,7 +86,17 @@ macro_rules! def_jmptable {
     }
 }
 
-macro_rules! def_ins1 {
+macro_rules! def_ins {
+    ($ins:ident {"primop"}) => {
+        def_ins_primop! { $ins }
+    };
+
+    ($ins:ident {($arg:ident) $body:block}) => {
+        def_ins_raw! { $ins ($arg) $body }
+    };
+}
+
+macro_rules! def_ins_raw {
     ($ins:ident ($arg:ident) $body:block) => {
         #[allow(non_snake_case)]
         fn $ins(p: *mut Self) -> Result<ControlFlow, StatusCode> {
@@ -86,43 +107,24 @@ macro_rules! def_ins1 {
     };
 }
 
-macro_rules! def_ins {
-    ($($op:ident  ($arg:ident) $body:block)*) => {
-        def_ins1! {
-            UNDEFINED(_m) {
-                Err(StatusCode::UndefinedInstruction)
+macro_rules! def_ins_primop {
+    ($ins:ident) => {
+        def_ins_raw!{
+            $ins (m) {
+                instructions::$ins(&mut m.state.stack)?;
+                Ok(ControlFlow::Continue)
             }
-        }
-        $(def_ins1! { $op ($arg) { check_stack!($op, $arg); $body } })*
-        def_jmptable! {
-            $($op)*
         }
     }
-}
-
-macro_rules! check_stack {
-    ($op:ident, $arg:ident) => {{
-        const SPEC: StackSpec = OpCode::$op.spec();
-        if SPEC.required > 0 {
-            if !$arg.runtime.stack.require(SPEC.required as usize) {
-                return Err(StatusCode::StackUnderflow);
-            }
-        }
-        if SPEC.changed > 0 {
-            if !$arg.runtime.stack.ensure(SPEC.changed as usize) {
-                return Err(StatusCode::StackOverflow);
-            }
-        }
-    }};
 }
 
 impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
     pub fn new(
         system: &'r mut System<'a, RT>,
-        runtime: &'r mut ExecutionState,
+        state: &'r mut ExecutionState,
         bytecode: &'r Bytecode,
     ) -> Self {
-        Machine { system, runtime, bytecode, pc: 0, reverted: false }
+        Machine { system, state, bytecode, pc: 0, reverted: false }
     }
 
     pub fn execute(&mut self) -> Result<(), StatusCode> {
@@ -150,724 +152,625 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         Self::JMPTABLE[op as usize](self)
     }
 
-    def_ins! {
-        STOP(m) {
+    def_opcodes! {
+        STOP: {(_m) {
             Ok(ControlFlow::Exit)
-        }
+        }}
 
-        ADD(m) {
-            arithmetic::add(&mut m.runtime.stack);
+        ADD: {"primop"}
+        MUL: {"primop"}
+        SUB: {"primop"}
+        DIV: {"primop"}
+        SDIV: {"primop"}
+        MOD: {"primop"}
+        SMOD: {"primop"}
+        ADDMOD: {"primop"}
+        MULMOD: {"primop"}
+        EXP: {"primop"}
+        SIGNEXTEND: {"primop"}
+        LT: {"primop"}
+        GT: {"primop"}
+        SLT: {"primop"}
+        SGT: {"primop"}
+        EQ: {"primop"}
+        ISZERO: {"primop"}
+        AND: {"primop"}
+        OR: {"primop"}
+        XOR: {"primop"}
+        NOT: {"primop"}
+        BYTE: {"primop"}
+        SHL: {"primop"}
+        SHR: {"primop"}
+        SAR: {"primop"}
+
+        KECCAK256: {(m) {
+            instructions::hash::keccak256(m.system, m.state)?;
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        MUL(m) {
-            arithmetic::mul(&mut m.runtime.stack);
+        ADDRESS: {(m) {
+            instructions::context::address(m.state, m.system);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        SUB(m) {
-            arithmetic::sub(&mut m.runtime.stack);
+        BALANCE: {(m) {
+            instructions::state::balance(m.state, m.system)?;
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        DIV(m) {
-            arithmetic::div(&mut m.runtime.stack);
+        ORIGIN: {(m) {
+            instructions::context::origin(m.state, m.system);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        SDIV(m) {
-            arithmetic::sdiv(&mut m.runtime.stack);
+        CALLER: {(m) {
+            instructions::context::caller(m.state, m.system);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        MOD(m) {
-            arithmetic::modulo(&mut m.runtime.stack);
+        CALLVALUE: {(m) {
+            instructions::context::call_value(m.state, m.system);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        SMOD(m) {
-            arithmetic::smod(&mut m.runtime.stack);
+        CALLDATALOAD: {(m) {
+            instructions::call::calldataload(m.state);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        ADDMOD(m) {
-            arithmetic::addmod(&mut m.runtime.stack);
+        CALLDATASIZE: {(m) {
+            instructions::call::calldatasize(m.state);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        MULMOD(m) {
-            arithmetic::mulmod(&mut m.runtime.stack);
+        CALLDATACOPY: {(m) {
+            instructions::call::calldatacopy(m.state)?;
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        EXP(m) {
-            arithmetic::exp(&mut m.runtime.stack);
+        CODESIZE: {(m) {
+            instructions::call::codesize(&mut m.state.stack, m.bytecode.as_ref());
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        SIGNEXTEND(m) {
-            arithmetic::signextend(&mut m.runtime.stack);
+        CODECOPY: {(m) {
+            instructions::call::codecopy(m.state, m.bytecode.as_ref())?;
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        LT(m) {
-            boolean::lt(&mut m.runtime.stack);
+        GASPRICE: {(m) {
+            instructions::context::gas_price(m.state, m.system);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        GT(m) {
-            boolean::gt(&mut m.runtime.stack);
+        EXTCODESIZE: {(m) {
+            instructions::ext::extcodesize(m.state, m.system)?;
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        SLT(m) {
-            boolean::slt(&mut m.runtime.stack);
+        EXTCODECOPY: {(m) {
+            instructions::ext::extcodecopy(m.state, m.system)?;
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        SGT(m) {
-            boolean::sgt(&mut m.runtime.stack);
+        RETURNDATASIZE: {(m) {
+            instructions::control::returndatasize(m.state);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        EQ(m) {
-            boolean::eq(&mut m.runtime.stack);
+        RETURNDATACOPY: {(m) {
+            instructions::control::returndatacopy(m.state)?;
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        ISZERO(m) {
-            boolean::iszero(&mut m.runtime.stack);
+        EXTCODEHASH: {(m) {
+            instructions::ext::extcodehash(m.state, m.system)?;
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        AND(m) {
-            boolean::and(&mut m.runtime.stack);
+        BLOCKHASH: {(m) {
+            instructions::context::blockhash(m.state, m.system);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        OR(m) {
-            boolean::or(&mut m.runtime.stack);
+        COINBASE: {(m) {
+            instructions::context::coinbase(m.state, m.system);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        XOR(m) {
-            boolean::xor(&mut m.runtime.stack);
+        TIMESTAMP: {(m) {
+            instructions::context::timestamp(m.state, m.system);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        NOT(m) {
-            boolean::not(&mut m.runtime.stack);
+        NUMBER: {(m) {
+            instructions::context::block_number(m.state, m.system);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        BYTE(m) {
-            bitwise::byte(&mut m.runtime.stack);
+        DIFFICULTY: {(m) {
+            instructions::context::difficulty(m.state, m.system);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        SHL(m) {
-            bitwise::shl(&mut m.runtime.stack);
+        GASLIMIT: {(m) {
+            instructions::context::gas_limit(m.state, m.system);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        SHR(m) {
-            bitwise::shr(&mut m.runtime.stack);
+        CHAINID: {(m) {
+            instructions::context::chain_id(m.state, m.system);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        SAR(m) {
-            bitwise::sar(&mut m.runtime.stack);
+        SELFBALANCE: {(m) {
+            instructions::state::selfbalance(m.state, m.system);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        KECCAK256(m) {
-            hash::keccak256(m.system, m.runtime)?;
+        BASEFEE: {(m) {
+            instructions::context::base_fee(m.state, m.system);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        ADDRESS(m) {
-            context::address(m.runtime, m.system);
+        POP: {(m) {
+            instructions::stack::pop(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        BALANCE(m) {
-            state::balance(m.runtime, m.system)?;
+        MLOAD: {(m) {
+            instructions::memory::mload(m.state)?;
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        ORIGIN(m) {
-            context::origin(m.runtime, m.system);
+        MSTORE: {(m) {
+            instructions::memory::mstore(m.state)?;
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        CALLER(m) {
-            context::caller(m.runtime, m.system);
+        MSTORE8: {(m) {
+            instructions::memory::mstore8(m.state)?;
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        CALLVALUE(m) {
-            context::call_value(m.runtime, m.system);
+        SLOAD: {(m) {
+            instructions::storage::sload(m.state, m.system)?;
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        CALLDATALOAD(m) {
-            call::calldataload(m.runtime);
+        SSTORE: {(m) {
+            instructions::storage::sstore(m.state, m.system)?;
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        CALLDATASIZE(m) {
-            call::calldatasize(m.runtime);
-            Ok(ControlFlow::Continue)
-        }
-
-        CALLDATACOPY(m) {
-            call::calldatacopy(m.runtime)?;
-            Ok(ControlFlow::Continue)
-        }
-
-        CODESIZE(m) {
-            call::codesize(&mut m.runtime.stack, m.bytecode.as_ref());
-            Ok(ControlFlow::Continue)
-        }
-
-        CODECOPY(m) {
-            call::codecopy(m.runtime, m.bytecode.as_ref())?;
-            Ok(ControlFlow::Continue)
-        }
-
-        GASPRICE(m) {
-            context::gas_price(m.runtime, m.system);
-            Ok(ControlFlow::Continue)
-        }
-
-        EXTCODESIZE(m) {
-            ext::extcodesize(m.runtime, m.system)?;
-            Ok(ControlFlow::Continue)
-        }
-
-        EXTCODECOPY(m) {
-            ext::extcodecopy(m.runtime, m.system)?;
-            Ok(ControlFlow::Continue)
-        }
-
-        RETURNDATASIZE(m) {
-            control::returndatasize(m.runtime);
-            Ok(ControlFlow::Continue)
-        }
-
-        RETURNDATACOPY(m) {
-            control::returndatacopy(m.runtime)?;
-            Ok(ControlFlow::Continue)
-        }
-
-        EXTCODEHASH(m) {
-            ext::extcodehash(m.runtime, m.system)?;
-            Ok(ControlFlow::Continue)
-        }
-
-        BLOCKHASH(m) {
-            context::blockhash(m.runtime, m.system);
-            Ok(ControlFlow::Continue)
-        }
-
-        COINBASE(m) {
-            context::coinbase(m.runtime, m.system);
-            Ok(ControlFlow::Continue)
-        }
-
-        TIMESTAMP(m) {
-            context::timestamp(m.runtime, m.system);
-            Ok(ControlFlow::Continue)
-        }
-
-        NUMBER(m) {
-            context::block_number(m.runtime, m.system);
-            Ok(ControlFlow::Continue)
-        }
-
-        DIFFICULTY(m) {
-            context::difficulty(m.runtime, m.system);
-            Ok(ControlFlow::Continue)
-        }
-
-        GASLIMIT(m) {
-            context::gas_limit(m.runtime, m.system);
-            Ok(ControlFlow::Continue)
-        }
-
-        CHAINID(m) {
-            context::chain_id(m.runtime, m.system);
-            Ok(ControlFlow::Continue)
-        }
-
-        SELFBALANCE(m) {
-            state::selfbalance(m.runtime, m.system);
-            Ok(ControlFlow::Continue)
-        }
-
-        BASEFEE(m) {
-            context::base_fee(m.runtime, m.system);
-            Ok(ControlFlow::Continue)
-        }
-
-        POP(m) {
-            stack::pop(&mut m.runtime.stack);
-            Ok(ControlFlow::Continue)
-        }
-
-        MLOAD(m) {
-            memory::mload(m.runtime)?;
-            Ok(ControlFlow::Continue)
-        }
-
-        MSTORE(m) {
-            memory::mstore(m.runtime)?;
-            Ok(ControlFlow::Continue)
-        }
-
-        MSTORE8(m) {
-            memory::mstore8(m.runtime)?;
-            Ok(ControlFlow::Continue)
-        }
-
-        SLOAD(m) {
-            storage::sload(m.runtime, m.system)?;
-            Ok(ControlFlow::Continue)
-        }
-
-        SSTORE(m) {
-            storage::sstore(m.runtime, m.system)?;
-            Ok(ControlFlow::Continue)
-        }
-
-        JUMP(m) {
-            m.pc = control::jump(&mut m.runtime.stack, m.bytecode)?;
+        JUMP: {(m) {
+            m.pc = instructions::control::jump(&mut m.state.stack, m.bytecode)?;
             Ok(ControlFlow::Jump)
-        }
+        }}
 
-        JUMPI(m) {
-            if let Some(dest) = control::jumpi(&mut m.runtime.stack, m.bytecode)? {
+        JUMPI: {(m) {
+            if let Some(dest) = instructions::control::jumpi(&mut m.state.stack, m.bytecode)? {
                 m.pc = dest;
                 Ok(ControlFlow::Jump)
             } else {
                 Ok(ControlFlow::Continue)
             }
-        }
+        }}
 
-        PC(m) {
-            control::pc(&mut m.runtime.stack, m.pc);
+        PC: {(m) {
+            instructions::control::pc(&mut m.state.stack, m.pc);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        MSIZE(m) {
-            memory::msize(m.runtime);
+        MSIZE: {(m) {
+            instructions::memory::msize(m.state);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        GAS(m) {
-            context::gas(m.runtime, m.system);
+        GAS: {(m) {
+            instructions::context::gas(m.state, m.system);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        JUMPDEST(m) {
+        JUMPDEST: {(_m) {
             // marker opcode for valid jumps addresses
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH1(m) {
-            m.pc += push::<1>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH1: {(m) {
+            m.pc += instructions::stack::push::<1>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH2(m) {
-            m.pc += push::<2>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH2: {(m) {
+            m.pc += instructions::stack::push::<2>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH3(m) {
-            m.pc += push::<3>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH3: {(m) {
+            m.pc += instructions::stack::push::<3>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH4(m) {
-            m.pc += push::<4>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH4: {(m) {
+            m.pc += instructions::stack::push::<4>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH5(m) {
-            m.pc += push::<5>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH5: {(m) {
+            m.pc += instructions::stack::push::<5>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH6(m) {
-            m.pc += push::<6>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH6: {(m) {
+            m.pc += instructions::stack::push::<6>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH7(m) {
-            m.pc += push::<7>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH7: {(m) {
+            m.pc += instructions::stack::push::<7>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH8(m) {
-            m.pc += push::<8>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH8: {(m) {
+            m.pc += instructions::stack::push::<8>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH9(m) {
-            m.pc += push::<9>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH9: {(m) {
+            m.pc += instructions::stack::push::<9>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH10(m) {
-            m.pc += push::<10>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH10: {(m) {
+            m.pc += instructions::stack::push::<10>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH11(m) {
-            m.pc += push::<11>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH11: {(m) {
+            m.pc += instructions::stack::push::<11>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH12(m) {
-            m.pc += push::<12>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH12: {(m) {
+            m.pc += instructions::stack::push::<12>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH13(m) {
-            m.pc += push::<13>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH13: {(m) {
+            m.pc += instructions::stack::push::<13>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH14(m) {
-            m.pc += push::<14>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH14: {(m) {
+            m.pc += instructions::stack::push::<14>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH15(m) {
-            m.pc += push::<15>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH15: {(m) {
+            m.pc += instructions::stack::push::<15>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH16(m) {
-            m.pc += push::<16>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH16: {(m) {
+            m.pc += instructions::stack::push::<16>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH17(m) {
-            m.pc += push::<17>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH17: {(m) {
+            m.pc += instructions::stack::push::<17>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH18(m) {
-            m.pc += push::<18>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH18: {(m) {
+            m.pc += instructions::stack::push::<18>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH19(m) {
-            m.pc += push::<19>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH19: {(m) {
+            m.pc += instructions::stack::push::<19>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH20(m) {
-            m.pc += push::<20>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH20: {(m) {
+            m.pc += instructions::stack::push::<20>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH21(m) {
-            m.pc += push::<21>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH21: {(m) {
+            m.pc += instructions::stack::push::<21>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH22(m) {
-            m.pc += push::<22>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH22: {(m) {
+            m.pc += instructions::stack::push::<22>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH23(m) {
-            m.pc += push::<23>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH23: {(m) {
+            m.pc += instructions::stack::push::<23>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH24(m) {
-            m.pc += push::<24>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH24: {(m) {
+            m.pc += instructions::stack::push::<24>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH25(m) {
-            m.pc += push::<25>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH25: {(m) {
+            m.pc += instructions::stack::push::<25>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH26(m) {
-            m.pc += push::<26>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH26: {(m) {
+            m.pc += instructions::stack::push::<26>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH27(m) {
-            m.pc += push::<27>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH27: {(m) {
+            m.pc += instructions::stack::push::<27>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH28(m) {
-            m.pc += push::<28>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH28: {(m) {
+            m.pc += instructions::stack::push::<28>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH29(m) {
-            m.pc += push::<29>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH29: {(m) {
+            m.pc += instructions::stack::push::<29>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH30(m) {
-            m.pc += push::<30>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH30: {(m) {
+            m.pc += instructions::stack::push::<30>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH31(m) {
-            m.pc += push::<31>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH31: {(m) {
+            m.pc += instructions::stack::push::<31>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        PUSH32(m) {
-            m.pc += push::<32>(&mut m.runtime.stack, &m.bytecode[m.pc + 1..]);
+        PUSH32: {(m) {
+            m.pc += instructions::stack::push::<32>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        DUP1(m) {
-            dup::<1>(&mut m.runtime.stack);
+        DUP1: {(m) {
+            instructions::stack::dup::<1>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        DUP2(m) {
-            dup::<2>(&mut m.runtime.stack);
+        DUP2: {(m) {
+            instructions::stack::dup::<2>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        DUP3(m) {
-            dup::<3>(&mut m.runtime.stack);
+        DUP3: {(m) {
+            instructions::stack::dup::<3>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        DUP4(m) {
-            dup::<4>(&mut m.runtime.stack);
+        DUP4: {(m) {
+            instructions::stack::dup::<4>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        DUP5(m) {
-            dup::<5>(&mut m.runtime.stack);
+        DUP5: {(m) {
+            instructions::stack::dup::<5>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        DUP6(m) {
-            dup::<6>(&mut m.runtime.stack);
+        DUP6: {(m) {
+            instructions::stack::dup::<6>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        DUP7(m) {
-            dup::<7>(&mut m.runtime.stack);
+        DUP7: {(m) {
+            instructions::stack::dup::<7>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        DUP8(m) {
-            dup::<8>(&mut m.runtime.stack);
+        DUP8: {(m) {
+            instructions::stack::dup::<8>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        DUP9(m) {
-            dup::<9>(&mut m.runtime.stack);
+        DUP9: {(m) {
+            instructions::stack::dup::<9>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        DUP10(m) {
-            dup::<10>(&mut m.runtime.stack);
+        DUP10: {(m) {
+            instructions::stack::dup::<10>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        DUP11(m) {
-            dup::<11>(&mut m.runtime.stack);
+        DUP11: {(m) {
+            instructions::stack::dup::<11>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        DUP12(m) {
-            dup::<12>(&mut m.runtime.stack);
+        DUP12: {(m) {
+            instructions::stack::dup::<12>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        DUP13(m) {
-            dup::<13>(&mut m.runtime.stack);
+        DUP13: {(m) {
+            instructions::stack::dup::<13>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        DUP14(m) {
-            dup::<14>(&mut m.runtime.stack);
+        DUP14: {(m) {
+            instructions::stack::dup::<14>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        DUP15(m) {
-            dup::<15>(&mut m.runtime.stack);
+        DUP15: {(m) {
+            instructions::stack::dup::<15>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        DUP16(m) {
-            dup::<16>(&mut m.runtime.stack);
+        DUP16: {(m) {
+            instructions::stack::dup::<16>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        SWAP1(m) {
-            swap::<1>(&mut m.runtime.stack);
+        SWAP1: {(m) {
+            instructions::stack::swap::<1>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        SWAP2(m) {
-            swap::<2>(&mut m.runtime.stack);
+        SWAP2: {(m) {
+            instructions::stack::swap::<2>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        SWAP3(m) {
-            swap::<3>(&mut m.runtime.stack);
+        SWAP3: {(m) {
+            instructions::stack::swap::<3>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        SWAP4(m) {
-            swap::<4>(&mut m.runtime.stack);
+        SWAP4: {(m) {
+            instructions::stack::swap::<4>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        SWAP5(m) {
-            swap::<5>(&mut m.runtime.stack);
+        SWAP5: {(m) {
+            instructions::stack::swap::<5>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        SWAP6(m) {
-            swap::<6>(&mut m.runtime.stack);
+        SWAP6: {(m) {
+            instructions::stack::swap::<6>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        SWAP7(m) {
-            swap::<7>(&mut m.runtime.stack);
+        SWAP7: {(m) {
+            instructions::stack::swap::<7>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        SWAP8(m) {
-            swap::<8>(&mut m.runtime.stack);
+        SWAP8: {(m) {
+            instructions::stack::swap::<8>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        SWAP9(m) {
-            swap::<9>(&mut m.runtime.stack);
+        SWAP9: {(m) {
+            instructions::stack::swap::<9>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        SWAP10(m) {
-            swap::<10>(&mut m.runtime.stack);
+        SWAP10: {(m) {
+            instructions::stack::swap::<10>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        SWAP11(m) {
-            swap::<11>(&mut m.runtime.stack);
+        SWAP11: {(m) {
+            instructions::stack::swap::<11>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        SWAP12(m) {
-            swap::<12>(&mut m.runtime.stack);
+        SWAP12: {(m) {
+            instructions::stack::swap::<12>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        SWAP13(m) {
-            swap::<13>(&mut m.runtime.stack);
+        SWAP13: {(m) {
+            instructions::stack::swap::<13>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        SWAP14(m) {
-            swap::<14>(&mut m.runtime.stack);
+        SWAP14: {(m) {
+            instructions::stack::swap::<14>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        SWAP15(m) {
-            swap::<15>(&mut m.runtime.stack);
+        SWAP15: {(m) {
+            instructions::stack::swap::<15>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        SWAP16(m) {
-            swap::<16>(&mut m.runtime.stack);
+        SWAP16: {(m) {
+            instructions::stack::swap::<16>(&mut m.state.stack);
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        LOG0(m) {
-            log(m.runtime, m.system, 0)?;
+        LOG0: {(m) {
+            instructions::log::log(m.state, m.system, 0)?;
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        LOG1(m) {
-            log(m.runtime, m.system, 1)?;
+        LOG1: {(m) {
+            instructions::log::log(m.state, m.system, 1)?;
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        LOG2(m) {
-            log(m.runtime, m.system, 2)?;
+        LOG2: {(m) {
+            instructions::log::log(m.state, m.system, 2)?;
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        LOG3(m) {
-            log(m.runtime, m.system, 3)?;
+        LOG3: {(m) {
+            instructions::log::log(m.state, m.system, 3)?;
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        LOG4(m) {
-            log(m.runtime, m.system, 4)?;
+        LOG4: {(m) {
+            instructions::log::log(m.state, m.system, 4)?;
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        CREATE(m) {
-            lifecycle::create(m.runtime, m.system)?;
+        CREATE: {(m) {
+            instructions::lifecycle::create(m.state, m.system)?;
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        CALL(m) {
-            call::call(m.runtime, m.system, CallKind::Call)?;
+        CALL: {(m) {
+            instructions::call::call(m.state, m.system, CallKind::Call)?;
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        CALLCODE(m) {
-            call::call(m.runtime, m.system, CallKind::CallCode)?;
+        CALLCODE: {(m) {
+            instructions::call::call(m.state, m.system, CallKind::CallCode)?;
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        RETURN(m) {
-            control::ret(m.runtime)?;
+        RETURN: {(m) {
+            instructions::control::ret(m.state)?;
             Ok(ControlFlow::Exit)
-        }
+        }}
 
-        DELEGATECALL(m) {
-            call::call(m.runtime, m.system, CallKind::DelegateCall)?;
+        DELEGATECALL: {(m) {
+            instructions::call::call(m.state, m.system, CallKind::DelegateCall)?;
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        CREATE2(m) {
-            lifecycle::create2(m.runtime, m.system)?;
+        CREATE2: {(m) {
+            instructions::lifecycle::create2(m.state, m.system)?;
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        STATICCALL(m) {
-            call::call(m.runtime, m.system, CallKind::StaticCall)?;
+        STATICCALL: {(m) {
+            instructions::call::call(m.state, m.system, CallKind::StaticCall)?;
             Ok(ControlFlow::Continue)
-        }
+        }}
 
-        REVERT(m) {
-            control::ret(m.runtime)?;
+        REVERT: {(m) {
+            instructions::control::ret(m.state)?;
             m.reverted = true;
             Ok(ControlFlow::Exit)
-        }
+        }}
 
-        INVALID(m) {
+        INVALID: {(_m) {
             Err(StatusCode::InvalidInstruction)
-        }
+        }}
 
-        SELFDESTRUCT(m) {
-            lifecycle::selfdestruct(m.runtime, m.system)?;
+        SELFDESTRUCT: {(m) {
+            instructions::lifecycle::selfdestruct(m.state, m.system)?;
             Ok(ControlFlow::Exit) // selfdestruct halts the current context
-        }
+        }}
     }
 
     const JMPTABLE: [Instruction<Machine<'r, 'a, RT>>; 256] = Machine::<'r, 'a, RT>::jmptable();
@@ -883,7 +786,7 @@ pub fn execute(
     Ok(Output {
         reverted: m.reverted,
         status_code: StatusCode::Success,
-        output_data: m.runtime.output_data.clone(),
-        selfdestroyed: m.runtime.selfdestroyed,
+        output_data: m.state.output_data.clone(),
+        selfdestroyed: m.state.selfdestroyed,
     })
 }

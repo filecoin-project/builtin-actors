@@ -1,116 +1,88 @@
-//! ## Implementer's notes
-//!
-//! All operations are done with overflowing math
-//! TODO (simple?) add, mul, sub div
-//!
-//! ### Non-critical TODOs
-//! Many operations can simply mutate the last value on stack instead of pop/push.
-
-use {crate::interpreter::stack::Stack, crate::interpreter::uints::*, crate::interpreter::U256};
+use {crate::interpreter::uints::*, crate::interpreter::U256};
 
 #[inline]
-pub fn add(stack: &mut Stack) {
-    let a = stack.pop();
-    let b = stack.pop();
-    stack.push(a.overflowing_add(b).0);
+pub fn add(a: U256, b: U256) -> U256 {
+    a.overflowing_add(b).0
 }
 
 #[inline]
-pub fn mul(stack: &mut Stack) {
-    let a = stack.pop();
-    let b = stack.pop();
-    stack.push(a.overflowing_mul(b).0);
+pub fn mul(a: U256, b: U256) -> U256 {
+    a.overflowing_mul(b).0
 }
 
 #[inline]
-pub fn sub(stack: &mut Stack) {
-    let a = stack.pop();
-    let b = stack.pop();
-    stack.push(a.overflowing_sub(b).0);
+pub fn sub(a: U256, b: U256) -> U256 {
+    a.overflowing_sub(b).0
 }
 
 #[inline]
-pub fn div(stack: &mut Stack) {
-    let a = stack.pop();
-    let b = stack.get_mut(0);
+pub fn div(a: U256, b: U256) -> U256 {
     // TODO shortcut optimizations from go's lib (our doesn't)
     // https://github.com/holiman/uint256/blob/6f8ccba90ce6cba9727ad5aa26bb925a25b50d29/uint256.go#L544
     if !b.is_zero() {
-        *b = a / *b
+        a / b
+    } else {
+        b
     }
 }
 
 #[inline]
-pub fn sdiv(stack: &mut Stack) {
-    let a = stack.pop();
-    let b = stack.pop();
-    let v = i256_div(a, b);
-    stack.push(v);
+pub fn sdiv(a: U256, b: U256) -> U256 {
+    i256_div(a, b)
 }
 
 #[inline]
-pub fn modulo(stack: &mut Stack) {
-    let a = stack.pop();
-    let b = stack.get_mut(0);
+pub fn modulo(a: U256, b: U256) -> U256 {
     if !b.is_zero() {
-        *b = a % *b;
+        a % b
+    } else {
+        b
     }
 }
 
 #[inline]
-pub fn smod(stack: &mut Stack) {
-    let a = stack.pop();
-    let b = stack.get_mut(0);
-
-    *b = i256_mod(a, *b);
+pub fn smod(a: U256, b: U256) -> U256 {
+    i256_mod(a, b)
 }
 
 #[inline]
-pub fn addmod(stack: &mut Stack) {
-    let a = stack.pop();
-    let b = stack.pop();
-    let c = stack.get_mut(0);
-
+pub fn addmod(a: U256, b: U256, c: U256) -> U256 {
     if !c.is_zero() {
         let al: U512 = a.into();
         let bl: U512 = b.into();
-        let cl: U512 = (*c).into();
+        let cl: U512 = c.into();
 
-        *c = (al + bl % cl).low_u256();
+        (al + bl % cl).low_u256()
+    } else {
+        c
     }
 }
 
 #[inline]
-pub fn mulmod(stack: &mut Stack) {
-    let a = stack.pop();
-    let b = stack.pop();
-    let c = stack.get_mut(0);
-
+pub fn mulmod(a: U256, b: U256, c: U256) -> U256 {
     if !c.is_zero() {
         let al: U512 = a.into();
         let bl: U512 = b.into();
-        let cl: U512 = (*c).into();
-        *c = (al * bl % cl).low_u256();
+        let cl: U512 = c.into();
+        (al * bl % cl).low_u256()
+    } else {
+        c
     }
 }
 
 #[inline]
-pub fn signextend(stack: &mut Stack) {
-    let a = stack.pop();
-    let b = stack.get_mut(0);
-
+pub fn signextend(a: U256, b: U256) -> U256 {
     if a < 32 {
         let bit_index = 8 * a.low_u32() + 7;
         let mask = U256::MAX >> (U256::BITS - bit_index);
-        *b = if b.bit(bit_index as usize) { *b | !mask } else { *b & mask }
+        if b.bit(bit_index as usize) { b | !mask } else { b & mask }
+    } else {
+        b
     }
 }
 
 #[inline]
-pub fn exp(stack: &mut Stack) {
-    let mut base = stack.pop();
-    let power = stack.pop();
-
+pub fn exp(mut base: U256, power: U256) -> U256 {
     let mut v = U256::ONE;
 
     // First, compute the number of remaining significant bits.
@@ -129,7 +101,7 @@ pub fn exp(stack: &mut Stack) {
         remaining_bits = remaining_bits.saturating_sub(u64::BITS);
     }
 
-    stack.push(v);
+    v
 }
 
 #[cfg(test)]
