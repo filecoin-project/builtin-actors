@@ -45,6 +45,19 @@ macro_rules! def_stackop {
     }
 }
 
+// pushops: push stuff on the stack given input bytecode; the kind of thing that makes you want
+// to cry because it really is a stack op.
+macro_rules! def_push {
+    ($op:ident => $impl:path) => {
+        #[allow(non_snake_case)]
+        pub fn $op(sk: &mut Stack, code: &[u8]) -> Result<usize, StatusCode> {
+            check_stack!($op, sk);
+            let off = $impl(sk, code);
+            Ok(off)
+        }
+    }
+}
+
 // auxiliary macros
 macro_rules! check_stack {
     ($op:ident, $sk:ident) => {{
@@ -147,3 +160,38 @@ def_stackop!{ SWAP13 => stack::swap::<13> }
 def_stackop!{ SWAP14 => stack::swap::<14> }
 def_stackop!{ SWAP15 => stack::swap::<15> }
 def_stackop!{ SWAP16 => stack::swap::<16> }
+// pop
+def_stackop!{ POP => stack::pop }
+// push
+def_push!{ PUSH1 => stack::push::<1> }
+def_push!{ PUSH2 => stack::push::<2> }
+def_push!{ PUSH3 => stack::push::<3> }
+def_push!{ PUSH4 => stack::push::<4> }
+def_push!{ PUSH5 => stack::push::<5> }
+def_push!{ PUSH6 => stack::push::<6> }
+def_push!{ PUSH7 => stack::push::<7> }
+def_push!{ PUSH8 => stack::push::<8> }
+def_push!{ PUSH9 => stack::push::<9> }
+def_push!{ PUSH10 => stack::push::<10> }
+def_push!{ PUSH11 => stack::push::<11> }
+def_push!{ PUSH12 => stack::push::<12> }
+def_push!{ PUSH13 => stack::push::<13> }
+def_push!{ PUSH14 => stack::push::<14> }
+def_push!{ PUSH15 => stack::push::<15> }
+def_push!{ PUSH16 => stack::push::<16> }
+def_push!{ PUSH17 => stack::push::<17> }
+def_push!{ PUSH18 => stack::push::<18> }
+def_push!{ PUSH19 => stack::push::<19> }
+def_push!{ PUSH20 => stack::push::<20> }
+def_push!{ PUSH21 => stack::push::<21> }
+def_push!{ PUSH22 => stack::push::<22> }
+def_push!{ PUSH23 => stack::push::<23> }
+def_push!{ PUSH24 => stack::push::<24> }
+def_push!{ PUSH25 => stack::push::<25> }
+def_push!{ PUSH26 => stack::push::<26> }
+def_push!{ PUSH27 => stack::push::<27> }
+def_push!{ PUSH28 => stack::push::<28> }
+def_push!{ PUSH29 => stack::push::<29> }
+def_push!{ PUSH30 => stack::push::<30> }
+def_push!{ PUSH31 => stack::push::<31> }
+def_push!{ PUSH32 => stack::push::<32> }

@@ -91,6 +91,10 @@ macro_rules! def_ins {
         def_ins_primitive! { $ins }
     };
 
+    ($ins:ident {"push"}) => {
+        def_ins_push! { $ins }
+    };
+
     ($ins:ident {($arg:ident) $body:block}) => {
         def_ins_raw! { $ins ($arg) $body }
     };
@@ -112,6 +116,17 @@ macro_rules! def_ins_primitive {
         def_ins_raw!{
             $ins (m) {
                 instructions::$ins(&mut m.state.stack)?;
+                Ok(ControlFlow::Continue)
+            }
+        }
+    }
+}
+
+macro_rules! def_ins_push {
+    ($ins:ident) => {
+        def_ins_raw!{
+            $ins (m) {
+                m.pc += instructions::$ins(&mut m.state.stack, &m.bytecode[m.pc + 1..])?;
                 Ok(ControlFlow::Continue)
             }
         }
@@ -313,10 +328,7 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
             Ok(ControlFlow::Continue)
         }}
 
-        POP: {(m) {
-            instructions::stack::pop(&mut m.state.stack);
-            Ok(ControlFlow::Continue)
-        }}
+        POP: {"primitive"}
 
         MLOAD: {(m) {
             instructions::memory::mload(m.state)?;
@@ -377,165 +389,38 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
             Ok(ControlFlow::Continue)
         }}
 
-        PUSH1: {(m) {
-            m.pc += instructions::stack::push::<1>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH2: {(m) {
-            m.pc += instructions::stack::push::<2>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH3: {(m) {
-            m.pc += instructions::stack::push::<3>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH4: {(m) {
-            m.pc += instructions::stack::push::<4>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH5: {(m) {
-            m.pc += instructions::stack::push::<5>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH6: {(m) {
-            m.pc += instructions::stack::push::<6>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH7: {(m) {
-            m.pc += instructions::stack::push::<7>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH8: {(m) {
-            m.pc += instructions::stack::push::<8>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH9: {(m) {
-            m.pc += instructions::stack::push::<9>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH10: {(m) {
-            m.pc += instructions::stack::push::<10>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH11: {(m) {
-            m.pc += instructions::stack::push::<11>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH12: {(m) {
-            m.pc += instructions::stack::push::<12>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH13: {(m) {
-            m.pc += instructions::stack::push::<13>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH14: {(m) {
-            m.pc += instructions::stack::push::<14>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH15: {(m) {
-            m.pc += instructions::stack::push::<15>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH16: {(m) {
-            m.pc += instructions::stack::push::<16>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH17: {(m) {
-            m.pc += instructions::stack::push::<17>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH18: {(m) {
-            m.pc += instructions::stack::push::<18>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH19: {(m) {
-            m.pc += instructions::stack::push::<19>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH20: {(m) {
-            m.pc += instructions::stack::push::<20>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH21: {(m) {
-            m.pc += instructions::stack::push::<21>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH22: {(m) {
-            m.pc += instructions::stack::push::<22>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH23: {(m) {
-            m.pc += instructions::stack::push::<23>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH24: {(m) {
-            m.pc += instructions::stack::push::<24>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH25: {(m) {
-            m.pc += instructions::stack::push::<25>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH26: {(m) {
-            m.pc += instructions::stack::push::<26>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH27: {(m) {
-            m.pc += instructions::stack::push::<27>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH28: {(m) {
-            m.pc += instructions::stack::push::<28>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH29: {(m) {
-            m.pc += instructions::stack::push::<29>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH30: {(m) {
-            m.pc += instructions::stack::push::<30>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH31: {(m) {
-            m.pc += instructions::stack::push::<31>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
-
-        PUSH32: {(m) {
-            m.pc += instructions::stack::push::<32>(&mut m.state.stack, &m.bytecode[m.pc + 1..]);
-            Ok(ControlFlow::Continue)
-        }}
+        PUSH1: {"push"}
+        PUSH2: {"push"}
+        PUSH3: {"push"}
+        PUSH4: {"push"}
+        PUSH5: {"push"}
+        PUSH6: {"push"}
+        PUSH7: {"push"}
+        PUSH8: {"push"}
+        PUSH9: {"push"}
+        PUSH10: {"push"}
+        PUSH11: {"push"}
+        PUSH12: {"push"}
+        PUSH13: {"push"}
+        PUSH14: {"push"}
+        PUSH15: {"push"}
+        PUSH16: {"push"}
+        PUSH17: {"push"}
+        PUSH18: {"push"}
+        PUSH19: {"push"}
+        PUSH20: {"push"}
+        PUSH21: {"push"}
+        PUSH22: {"push"}
+        PUSH23: {"push"}
+        PUSH24: {"push"}
+        PUSH25: {"push"}
+        PUSH26: {"push"}
+        PUSH27: {"push"}
+        PUSH28: {"push"}
+        PUSH29: {"push"}
+        PUSH30: {"push"}
+        PUSH31: {"push"}
+        PUSH32: {"push"}
 
         DUP1: {"primitive"}
         DUP2: {"primitive"}
