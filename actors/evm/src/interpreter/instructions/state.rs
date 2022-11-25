@@ -26,8 +26,8 @@ pub fn balance(
 }
 
 #[inline]
-pub fn selfbalance(state: &mut ExecutionState, system: &System<impl Runtime>) {
+pub fn selfbalance(_state: &mut ExecutionState, system: &System<impl Runtime>)  -> Result<U256, StatusCode> {
     // Returns native FIL balance of the receiver. Value precision is identical to Ethereum, so
     // no conversion needed (atto, 1e18).
-    state.stack.push(U256::from(&system.rt.current_balance()))
+    Ok(U256::from(&system.rt.current_balance()))
 }

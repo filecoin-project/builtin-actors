@@ -1,33 +1,28 @@
 use {
-    crate::interpreter::{ExecutionState, StatusCode, System},
+    crate::interpreter::{ExecutionState, StatusCode, System, U256},
     fil_actors_runtime::runtime::Runtime,
 };
 
 #[inline]
 pub fn sload(
-    state: &mut ExecutionState,
+    _state: &mut ExecutionState,
     system: &mut System<impl Runtime>,
-) -> Result<(), StatusCode> {
-    // where?
-    let location = state.stack.pop();
-
+    location: U256,
+) -> Result<U256, StatusCode> {
     // get from storage and place on stack
-    state.stack.push(system.get_storage(location)?);
-    Ok(())
+    system.get_storage(location)
 }
 
 #[inline]
 pub fn sstore(
-    state: &mut ExecutionState,
+    _state: &mut ExecutionState,
     system: &mut System<impl Runtime>,
+    key: U256,
+    value: U256,
 ) -> Result<(), StatusCode> {
     if system.readonly {
         return Err(StatusCode::StaticModeViolation);
     }
 
-    let key = state.stack.pop();
-    let value = state.stack.pop();
-
-    system.set_storage(key, value)?;
-    Ok(())
+    system.set_storage(key, value)
 }

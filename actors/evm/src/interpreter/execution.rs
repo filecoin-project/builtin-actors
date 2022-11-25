@@ -189,6 +189,7 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
 
     def_opcodes! {
         STOP: {=> Ok(ControlFlow::Exit)}
+
         ADD: {primop}
         MUL: {primop}
         SUB: {primop}
@@ -241,78 +242,21 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         RETURNDATASIZE: {std}
         RETURNDATACOPY: {std}
         EXTCODEHASH: {std}
-
-        BLOCKHASH: {(m) => {
-            instructions::context::blockhash(m.state, m.system);
-            Ok(ControlFlow::Continue)
-        }}
-
-        COINBASE: {(m) => {
-            instructions::context::coinbase(m.state, m.system);
-            Ok(ControlFlow::Continue)
-        }}
-
-        TIMESTAMP: {(m) => {
-            instructions::context::timestamp(m.state, m.system);
-            Ok(ControlFlow::Continue)
-        }}
-
-        NUMBER: {(m) => {
-            instructions::context::block_number(m.state, m.system);
-            Ok(ControlFlow::Continue)
-        }}
-
-        DIFFICULTY: {(m) => {
-            instructions::context::difficulty(m.state, m.system);
-            Ok(ControlFlow::Continue)
-        }}
-
-        GASLIMIT: {(m) => {
-            instructions::context::gas_limit(m.state, m.system);
-            Ok(ControlFlow::Continue)
-        }}
-
-        CHAINID: {(m) => {
-            instructions::context::chain_id(m.state, m.system);
-            Ok(ControlFlow::Continue)
-        }}
-
-        SELFBALANCE: {(m) => {
-            instructions::state::selfbalance(m.state, m.system);
-            Ok(ControlFlow::Continue)
-        }}
-
-        BASEFEE: {(m) => {
-            instructions::context::base_fee(m.state, m.system);
-            Ok(ControlFlow::Continue)
-        }}
-
+        BLOCKHASH: {std}
+        COINBASE: {std}
+        TIMESTAMP: {std}
+        NUMBER: {std}
+        DIFFICULTY: {std}
+        GASLIMIT: {std}
+        CHAINID: {std}
+        BASEFEE: {std}
+        SELFBALANCE: {std}
         POP: {primop}
-
-        MLOAD: {(m) => {
-            instructions::memory::mload(m.state)?;
-            Ok(ControlFlow::Continue)
-        }}
-
-        MSTORE: {(m) => {
-            instructions::memory::mstore(m.state)?;
-            Ok(ControlFlow::Continue)
-        }}
-
-        MSTORE8: {(m) => {
-            instructions::memory::mstore8(m.state)?;
-            Ok(ControlFlow::Continue)
-        }}
-
-        SLOAD: {(m) => {
-            instructions::storage::sload(m.state, m.system)?;
-            Ok(ControlFlow::Continue)
-        }}
-
-        SSTORE: {(m) => {
-            instructions::storage::sstore(m.state, m.system)?;
-            Ok(ControlFlow::Continue)
-        }}
+        MLOAD: {std}
+        MSTORE: {std}
+        MSTORE8: {std}
+        SLOAD: {std}
+        SSTORE: {std}
 
         JUMP: {(m) => {
             m.pc = instructions::control::jump(&mut m.state.stack, m.bytecode)?;
@@ -333,15 +277,8 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
             Ok(ControlFlow::Continue)
         }}
 
-        MSIZE: {(m) => {
-            instructions::memory::msize(m.state);
-            Ok(ControlFlow::Continue)
-        }}
-
-        GAS: {(m) => {
-            instructions::context::gas(m.state, m.system);
-            Ok(ControlFlow::Continue)
-        }}
+        MSIZE: {std}
+        GAS: {std}
 
         JUMPDEST: {=> Ok(ControlFlow::Continue)} // noop marker opcode for valid jumps addresses
 
@@ -412,30 +349,11 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         SWAP15: {primop}
         SWAP16: {primop}
 
-        LOG0: {(m) => {
-            instructions::log::log(m.state, m.system, 0)?;
-            Ok(ControlFlow::Continue)
-        }}
-
-        LOG1: {(m) => {
-            instructions::log::log(m.state, m.system, 1)?;
-            Ok(ControlFlow::Continue)
-        }}
-
-        LOG2: {(m) => {
-            instructions::log::log(m.state, m.system, 2)?;
-            Ok(ControlFlow::Continue)
-        }}
-
-        LOG3: {(m) => {
-            instructions::log::log(m.state, m.system, 3)?;
-            Ok(ControlFlow::Continue)
-        }}
-
-        LOG4: {(m) => {
-            instructions::log::log(m.state, m.system, 4)?;
-            Ok(ControlFlow::Continue)
-        }}
+        LOG0: {std}
+        LOG1: {std}
+        LOG2: {std}
+        LOG3: {std}
+        LOG4: {std}
 
         CREATE: {(m) => {
             instructions::lifecycle::create(m.state, m.system)?;

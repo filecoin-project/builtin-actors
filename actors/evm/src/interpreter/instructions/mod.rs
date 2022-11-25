@@ -65,7 +65,7 @@ macro_rules! def_push {
 macro_rules! def_stdfun {
     ($op:ident ($($arg:ident),*) => $impl:path) => {
         #[allow(non_snake_case)]
-        pub fn $op(state: &mut ExecutionState, system: &System<impl Runtime>) -> Result<(), StatusCode> {
+        pub fn $op(state: &mut ExecutionState, system: &mut System<impl Runtime>) -> Result<(), StatusCode> {
             check_arity!($op, ($($arg),*));
             check_stack!($op, state.stack);
             $(let $arg = state.stack.pop();)*
@@ -80,7 +80,7 @@ macro_rules! def_stdfun {
 macro_rules! def_stdproc {
     ($op:ident ($($arg:ident),*) => $impl:path) => {
         #[allow(non_snake_case)]
-        pub fn $op(state: &mut ExecutionState, system: &System<impl Runtime>) -> Result<(), StatusCode> {
+        pub fn $op(state: &mut ExecutionState, system: &mut System<impl Runtime>) -> Result<(), StatusCode> {
             check_arity!($op, ($($arg),*));
             check_stack!($op, state.stack);
             $(let $arg = state.stack.pop();)*
@@ -89,6 +89,21 @@ macro_rules! def_stdproc {
         }
     }
 }
+
+// stdproc: some kind of stdproc...
+macro_rules! def_stdlog {
+    ($op:ident ($ntopics:literal, ($($topic:ident),*))) => {
+        #[allow(non_snake_case)]
+        pub fn $op(state: &mut ExecutionState, system: &System<impl Runtime>) -> Result<(), StatusCode> {
+            check_stack!($op, state.stack);
+            let a = state.stack.pop();
+            let b = state.stack.pop();
+            $(let $topic = state.stack.pop();)*
+            log::log(state, system, $ntopics, a, b, &[$($topic),*])
+        }
+    }
+}
+
 
 // auxiliary macros
 macro_rules! check_stack {
@@ -245,5 +260,24 @@ def_stdproc!{ EXTCODECOPY(a, b, c, d) => ext::extcodecopy }
 def_stdfun!{ EXTCODEHASH(a) => ext::extcodehash }
 def_stdfun!{ RETURNDATASIZE() => control::returndatasize }
 def_stdproc!{ RETURNDATACOPY(a, b, c) => control::returndatacopy }
-// CODESIZE
-// COPDECOPY
+def_stdfun!{ BLOCKHASH(a) => context::blockhash }
+def_stdfun!{ COINBASE() => context::coinbase }
+def_stdfun!{ TIMESTAMP() => context::timestamp }
+def_stdfun!{ NUMBER() => context::block_number }
+def_stdfun!{ DIFFICULTY() => context::difficulty }
+def_stdfun!{ GASLIMIT() => context::gas_limit }
+def_stdfun!{ CHAINID() => context::chain_id }
+def_stdfun!{ BASEFEE() => context::base_fee }
+def_stdfun!{ SELFBALANCE() => state::selfbalance }
+def_stdfun!{ MLOAD(a) => memory::mload }
+def_stdproc!{ MSTORE(a, b) => memory::mstore }
+def_stdproc!{ MSTORE8(a, b) => memory::mstore8 }
+def_stdfun!{ SLOAD(a) => storage::sload }
+def_stdproc!{ SSTORE(a, b) => storage::sstore }
+def_stdfun!{ MSIZE() => memory::msize }
+def_stdfun!{ GAS() => context::gas }
+def_stdlog!{ LOG0(0, ()) }
+def_stdlog!{ LOG1(1, (topic1)) }
+def_stdlog!{ LOG2(2, (topic1, topic2)) }
+def_stdlog!{ LOG3(3, (topic1, topic2, topic3)) }
+def_stdlog!{ LOG4(4, (topic1, topic2, topic3, topic4)) }
