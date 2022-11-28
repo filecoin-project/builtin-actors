@@ -4249,7 +4249,7 @@ fn resolve_control_address(rt: &impl Runtime, raw: Address) -> Result<Address, A
 
     let owner_code = rt
         .get_actor_code_cid(&resolved)
-        .ok_or_else(|| actor_error!(illegal_argument, "no code for address: {}", resolved))?;
+        .ok_or_else(|| actor_error!(illegal_argument, "no code for control address: {}", resolved))?;
 
     let is_principal = rt
         .resolve_builtin_actor_type(&owner_code)
@@ -4277,7 +4277,7 @@ fn resolve_worker_address(rt: &mut impl Runtime, raw: Address) -> Result<Address
 
     let worker_code = rt
         .get_actor_code_cid(&resolved)
-        .ok_or_else(|| actor_error!(illegal_argument, "no code for address: {}", resolved))?;
+        .ok_or_else(|| actor_error!(illegal_argument, "no code for worker address: {}", resolved))?;
     if rt.resolve_builtin_actor_type(&worker_code) != Some(Type::Account) {
         return Err(actor_error!(
             illegal_argument,
