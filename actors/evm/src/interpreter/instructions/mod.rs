@@ -186,38 +186,15 @@ macro_rules! check_arity {
             const SPEC: StackSpec = OpCode::$op.spec();
             // the error message is super ugly, but this static asserts we got the
             // arity of the primop right.
-            const _: [();(arg_count!($($arg),*)) - SPEC.required as usize] = [];
+            const _: [();(arg_count!($($arg)*)) - SPEC.required as usize] = [];
         }
         checkargs();
     }}
 }
 
 macro_rules! arg_count {
-    () => {
-        0
-    };
-    ($arg:ident) => {
-        1
-    };
-    ($arg:ident, $arg2:ident) => {
-        2
-    };
-    ($arg:ident, $arg2:ident, $arg3:ident) => {
-        3
-    };
-    ($arg:ident, $arg2:ident, $arg3:ident, $arg4:ident) => {
-        4
-    };
-    ($arg:ident, $arg2:ident, $arg3:ident, $arg4:ident, $arg5:ident) => {
-        5
-    };
-    ($arg:ident, $arg2:ident, $arg3:ident, $arg4:ident, $arg5:ident, $arg6:ident) => {
-        6
-    };
-    ($arg:ident, $arg2:ident, $arg3:ident, $arg4:ident, $arg5:ident, $arg6:ident, $arg7:ident) => {
-        7
-    }; // can't use this coz we need a literal number
-       //($arg: ident, $($rest:ident),*) => { 1 + arg_count!($($rest),*) };
+    () => { 0 };
+    ($arg:ident $($rest:ident)*) => { 1 + arg_count!($($rest)*) };
 }
 
 // IMPLEMENTATION
