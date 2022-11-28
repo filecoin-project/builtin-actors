@@ -14,7 +14,7 @@ use num_traits::{ToPrimitive, Zero};
 
 use fil_actor_verifreg::testing::check_state_invariants;
 use fil_actor_verifreg::{
-    ext, Actor as VerifregActor, AddVerifierClientParams, AddVerifierParams, Allocation,
+    ext, Actor as VerifregActor, AddVerifiedClientParams, AddVerifierParams, Allocation,
     AllocationID, AllocationRequest, AllocationRequests, AllocationsResponse, Claim,
     ClaimAllocationsParams, ClaimAllocationsReturn, ClaimExtensionRequest, ClaimID, DataCap,
     ExtendClaimTermsParams, ExtendClaimTermsReturn, GetClaimsParams, GetClaimsReturn, Method,
@@ -187,7 +187,7 @@ impl Harness {
             ExitCode::OK,
         );
 
-        let params = AddVerifierClientParams { address: *client, allowance: allowance.clone() };
+        let params = AddVerifiedClientParams { address: *client, allowance: allowance.clone() };
         let ret = rt.call::<VerifregActor>(
             Method::AddVerifiedClient as MethodNum,
             &RawBytes::serialize(params).unwrap(),
