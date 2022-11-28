@@ -21,9 +21,9 @@ pub fn extcodesize(
     // TODO (M2.2) we're fetching the entire block here just to get its size. We should instead use
     //  the ipld::block_stat syscall, but the Runtime nor the Blockstore expose it.
     //  Tracked in https://github.com/filecoin-project/ref-fvm/issues/867
-    let len = match get_evm_bytecode_cid(system.rt, addr)? {
+    let len = match get_evm_bytecode_cid(system.rt, addr) {
         // evm cid
-        Ok(cid) =>
+        Ok(Ok(cid)) =>
         // TODO this is part of account abstraction hack where EOAs are Embryos
         {
             if cid == system.rt.get_code_cid_for_type(Type::Embryo) {
@@ -33,7 +33,7 @@ pub fn extcodesize(
             }
         }
         // native cid
-        Err(cid) => {
+        Ok(Err(cid)) => {
             if cid == system.rt.get_code_cid_for_type(Type::Account) {
                 // system account has no code (and we want solidity isContract to return false)
                 Ok(0)
@@ -44,6 +44,16 @@ pub fn extcodesize(
                 Ok(1)
             }
         }
+        // non-existent address
+        Err(StatusCode::InvalidArgument(msg)) => {
+            // REMOVEME: kinda sketchy
+            if msg == "EVM EXT opcode failed to resolve address" {
+                Ok(0)
+            } else {
+                Err(StatusCode::InvalidArgument(msg))
+            }
+        }
+        Err(e) => Err(e),
     }?;
 
     Ok(len.into())
@@ -54,15 +64,13 @@ pub fn extcodehash(
     system: &System<impl Runtime>,
     addr: U256,
 ) -> Result<U256, StatusCode> {
-    let cid = get_evm_bytecode_cid(system.rt, addr)?;
-    let digest = if let Ok(cid) = cid {
-        cid.hash().digest()
-    } else {
-        // REMOVEME: instead we could return the hash of the actor, but this may be confusing for EVM contracts
-        return Err(StatusCode::InvalidArgument(
-            "cannot invoke EXTCODEHASH for non-EVM actor".to_string(),
-        ));
-    };
+    let addr = state.stack.pop();
+    let cid = get_evm_bytecode_cid(system.rt, addr)?.map_err(|_| {
+        StatusCode::InvalidArgument("cannot invoke EXTCODEHASH for non-EVM actor".to_string())
+    })?;
+
+    let digest = cid.hash().digest();
+
     // Take the first 32 bytes of the Multihash
     let digest_len = digest.len().min(32);
     Ok(digest[..digest_len].into())
@@ -83,7 +91,7 @@ pub fn extcodecopy(
         cid.map(|evm_cid| get_evm_bytecode(system.rt, &evm_cid))
             // calling EXTCODECOPY on native actors results with a single byte 0xFE which solidtiy uses for its `assert`/`throw` methods
             // and in general invalid EVM bytecode
-            .unwrap_or(Ok(vec![0xFE]))
+            .unwrap_or_else(|_| Ok(vec![0xFE]))
     })??;
 
     copy_to_memory(&mut state.memory, dest_offset, size, data_offset, bytecode.as_slice(), true)
@@ -94,7 +102,7 @@ pub fn get_evm_bytecode_cid(rt: &impl Runtime, addr: U256) -> Result<Result<Cid,
     let addr: EthAddress = addr.into();
     let addr: Address = addr.try_into()?;
     let actor_id = rt.resolve_address(&addr).ok_or_else(|| {
-        StatusCode::InvalidArgument("failed to resolve address".to_string())
+        StatusCode::InvalidArgument("EVM EXT opcode failed to resolve address".to_string())
         // TODO better error code
     })?;
 
