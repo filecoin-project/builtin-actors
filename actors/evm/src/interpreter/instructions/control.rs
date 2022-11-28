@@ -1,14 +1,18 @@
 use {
-    super::memory::get_memory_region, crate::interpreter::output::StatusCode,
-    crate::interpreter::stack::Stack, crate::interpreter::Bytecode,
-    crate::interpreter::ExecutionState, crate::interpreter::U256,
+    super::memory::get_memory_region,
+    crate::interpreter::output::StatusCode,
+    crate::interpreter::Bytecode,
+    crate::interpreter::{ExecutionState, System, U256},
+    fil_actors_runtime::runtime::Runtime,
 };
 
 #[inline]
-pub fn ret(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    let offset = state.stack.pop();
-    let size = state.stack.pop();
-
+pub fn output(
+    state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+    offset: U256,
+    size: U256,
+) -> Result<(), StatusCode> {
     if let Some(region) = super::memory::get_memory_region(&mut state.memory, offset, size)
         .map_err(|_| StatusCode::InvalidMemoryAccess)?
     {
@@ -20,16 +24,21 @@ pub fn ret(state: &mut ExecutionState) -> Result<(), StatusCode> {
 }
 
 #[inline]
-pub fn returndatasize(state: &mut ExecutionState) {
-    state.stack.push(U256::from(state.return_data.len()));
+pub fn returndatasize(
+    state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+) -> Result<U256, StatusCode> {
+    Ok(U256::from(state.return_data.len()))
 }
 
 #[inline]
-pub fn returndatacopy(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    let mem_index = state.stack.pop();
-    let input_index = state.stack.pop();
-    let size = state.stack.pop();
-
+pub fn returndatacopy(
+    state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+    mem_index: U256,
+    input_index: U256,
+    size: U256,
+) -> Result<(), StatusCode> {
     let region = get_memory_region(&mut state.memory, mem_index, size)
         .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
@@ -51,29 +60,23 @@ pub fn returndatacopy(state: &mut ExecutionState) -> Result<(), StatusCode> {
 }
 
 #[inline]
-pub fn pc(stack: &mut Stack, pc: usize) {
-    stack.push(U256::from(pc))
-}
-
-#[inline]
-pub fn jump(stack: &mut Stack, bytecode: &Bytecode) -> Result<usize, StatusCode> {
-    let dst = stack.pop().as_usize();
+pub fn jump(bytecode: &Bytecode, dest: U256) -> Result<Option<usize>, StatusCode> {
+    let dst = dest.as_usize();
     if !bytecode.valid_jump_destination(dst) {
         return Err(StatusCode::BadJumpDestination);
     }
-    Ok(dst)
+    Ok(Some(dst))
 }
 
 #[inline]
-pub fn jumpi(stack: &mut Stack, bytecode: &Bytecode) -> Result<Option<usize>, StatusCode> {
-    if *stack.get(1) != U256::zero() {
-        let ret = Ok(Some(jump(stack, bytecode)?));
-        stack.pop();
-        ret
+pub fn jumpi(bytecode: &Bytecode, dest: U256, test: U256) -> Result<Option<usize>, StatusCode> {
+    if !test.is_zero() {
+        let dst = dest.as_usize();
+        if !bytecode.valid_jump_destination(dst) {
+            return Err(StatusCode::BadJumpDestination);
+        }
+        Ok(Some(dst))
     } else {
-        stack.pop();
-        stack.pop();
-
         Ok(None)
     }
 }

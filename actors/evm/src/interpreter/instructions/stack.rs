@@ -1,7 +1,8 @@
+#![allow(clippy::missing_safety_doc)]
 use {crate::interpreter::stack::Stack, crate::interpreter::U256};
 
 #[inline]
-pub(crate) fn push<const LEN: usize>(stack: &mut Stack, code: &[u8]) -> usize {
+pub(crate) unsafe fn push<const LEN: usize>(stack: &mut Stack, code: &[u8]) -> usize {
     let pushval = &code[..LEN];
     stack.push(match pushval.len() {
         0 => U256::zero(),
@@ -16,16 +17,16 @@ pub(crate) fn push<const LEN: usize>(stack: &mut Stack, code: &[u8]) -> usize {
 }
 
 #[inline]
-pub(crate) fn dup<const HEIGHT: usize>(stack: &mut Stack) {
+pub(crate) unsafe fn dup<const HEIGHT: usize>(stack: &mut Stack) {
     stack.push(*stack.get(HEIGHT - 1));
 }
 
 #[inline]
-pub(crate) fn swap<const HEIGHT: usize>(stack: &mut Stack) {
+pub(crate) unsafe fn swap<const HEIGHT: usize>(stack: &mut Stack) {
     stack.swap_top(HEIGHT);
 }
 
 #[inline]
-pub(crate) fn pop(stack: &mut Stack) {
+pub(crate) unsafe fn pop(stack: &mut Stack) {
     stack.pop();
 }

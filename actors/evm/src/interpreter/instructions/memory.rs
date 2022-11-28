@@ -2,7 +2,8 @@
 
 use {
     crate::interpreter::memory::Memory,
-    crate::interpreter::{ExecutionState, StatusCode, U256},
+    crate::interpreter::{ExecutionState, StatusCode, System, U256},
+    fil_actors_runtime::runtime::Runtime,
     std::num::NonZeroUsize,
 };
 
@@ -106,25 +107,27 @@ pub fn copy_to_memory(
 }
 
 #[inline]
-pub fn mload(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    let index = state.stack.pop();
-
+pub fn mload(
+    state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+    index: U256,
+) -> Result<U256, StatusCode> {
     let region =
         get_memory_region_u64(&mut state.memory, index, NonZeroUsize::new(WORD_SIZE).unwrap())
             .map_err(|_| StatusCode::InvalidMemoryAccess)?;
     let value =
         U256::from_big_endian(&state.memory[region.offset..region.offset + region.size.get()]);
 
-    state.stack.push(value);
-
-    Ok(())
+    Ok(value)
 }
 
 #[inline]
-pub fn mstore(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    let index = state.stack.pop();
-    let value = state.stack.pop();
-
+pub fn mstore(
+    state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+    index: U256,
+    value: U256,
+) -> Result<(), StatusCode> {
     let region =
         get_memory_region_u64(&mut state.memory, index, NonZeroUsize::new(WORD_SIZE).unwrap())
             .map_err(|_| StatusCode::InvalidMemoryAccess)?;
@@ -137,23 +140,27 @@ pub fn mstore(state: &mut ExecutionState) -> Result<(), StatusCode> {
 }
 
 #[inline]
-pub fn mstore8(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    let index = state.stack.pop();
-    let value = state.stack.pop();
-
+pub fn mstore8(
+    state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+    index: U256,
+    value: U256,
+) -> Result<(), StatusCode> {
     let region = get_memory_region_u64(&mut state.memory, index, NonZeroUsize::new(1).unwrap())
         .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
     let value = (value.low_u32() & 0xff) as u8;
-
     state.memory[region.offset] = value;
 
     Ok(())
 }
 
 #[inline]
-pub fn msize(state: &mut ExecutionState) {
-    state.stack.push(u64::try_from(state.memory.len()).unwrap().into());
+pub fn msize(
+    state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+) -> Result<U256, StatusCode> {
+    Ok(u64::try_from(state.memory.len()).unwrap().into())
 }
 
 #[cfg(test)]

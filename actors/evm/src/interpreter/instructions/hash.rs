@@ -6,12 +6,11 @@ use {
 };
 
 pub fn keccak256(
-    system: &System<impl Runtime>,
     state: &mut ExecutionState,
-) -> Result<(), StatusCode> {
-    let index = state.stack.pop();
-    let size = state.stack.pop();
-
+    system: &System<impl Runtime>,
+    index: U256,
+    size: U256,
+) -> Result<U256, StatusCode> {
     let region = get_memory_region(&mut state.memory, index, size) //
         .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
@@ -24,7 +23,5 @@ pub fn keccak256(
         },
     );
 
-    state.stack.push(U256::from_big_endian(&buf[..size]));
-
-    Ok(())
+    Ok(U256::from_big_endian(&buf[..size]))
 }

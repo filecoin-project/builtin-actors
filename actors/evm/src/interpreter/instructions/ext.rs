@@ -14,10 +14,10 @@ use {
 
 #[inline]
 pub fn extcodesize(
-    state: &mut ExecutionState,
+    _state: &mut ExecutionState,
     system: &System<impl Runtime>,
-) -> Result<(), StatusCode> {
-    let addr = state.stack.pop();
+    addr: U256,
+) -> Result<U256, StatusCode> {
     // TODO we're fetching the entire block here just to get its size. We should instead use
     //  the ipld::block_stat syscall, but the Runtime nor the Blockstore expose it.
     //  Tracked in https://github.com/filecoin-project/ref-fvm/issues/867
@@ -25,30 +25,29 @@ pub fn extcodesize(
         .and_then(|cid| get_evm_bytecode(system.rt, &cid))
         .map(|bytecode| bytecode.len())?;
 
-    state.stack.push(len.into());
-    Ok(())
+    Ok(len.into())
 }
 
 pub fn extcodehash(
-    state: &mut ExecutionState,
+    _state: &mut ExecutionState,
     system: &System<impl Runtime>,
-) -> Result<(), StatusCode> {
-    let addr = state.stack.pop();
+    addr: U256,
+) -> Result<U256, StatusCode> {
     let cid = get_evm_bytecode_cid(system.rt, addr)?;
     let digest = cid.hash().digest();
     // Take the first 32 bytes of the Multihash
     let digest_len = digest.len().min(32);
-    state.stack.push(digest[..digest_len].into());
-    Ok(())
+    Ok(digest[..digest_len].into())
 }
 
 pub fn extcodecopy(
     state: &mut ExecutionState,
     system: &System<impl Runtime>,
+    addr: U256,
+    dest_offset: U256,
+    data_offset: U256,
+    size: U256,
 ) -> Result<(), StatusCode> {
-    let ExecutionState { stack, .. } = state;
-    let (addr, dest_offset, data_offset, size) =
-        (stack.pop(), stack.pop(), stack.pop(), stack.pop());
     let bytecode =
         get_evm_bytecode_cid(system.rt, addr).and_then(|cid| get_evm_bytecode(system.rt, &cid))?;
 

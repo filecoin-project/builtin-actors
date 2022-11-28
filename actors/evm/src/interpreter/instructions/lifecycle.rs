@@ -5,7 +5,6 @@ use fvm_shared::MethodNum;
 use fvm_shared::{address::Address, econ::TokenAmount};
 use serde_tuple::{Deserialize_tuple, Serialize_tuple};
 
-use crate::interpreter::stack::Stack;
 use crate::interpreter::{address::EthAddress, U256};
 
 use super::memory::{get_memory_region, MemoryRegion};
@@ -42,15 +41,15 @@ pub struct EamReturn {
 pub fn create(
     state: &mut ExecutionState,
     system: &mut System<impl Runtime>,
-) -> Result<(), StatusCode> {
+    value: U256,
+    offset: U256,
+    size: U256,
+) -> Result<U256, StatusCode> {
     if system.readonly {
         return Err(StatusCode::StaticModeViolation);
     }
 
-    let ExecutionState { stack, memory, .. } = state;
-
-    let value = stack.pop();
-    let (offset, size) = (stack.pop(), stack.pop());
+    let ExecutionState { stack: _, memory, .. } = state;
 
     let value = TokenAmount::from(&value);
     let input_region =
@@ -66,25 +65,24 @@ pub fn create(
 
     let nonce = system.increment_nonce();
     let params = CreateParams { code: input_data.to_vec(), nonce };
-    create_init(stack, system, RawBytes::serialize(&params)?, CREATE_METHOD_NUM, value)
+    create_init(system, RawBytes::serialize(&params)?, CREATE_METHOD_NUM, value)
 }
 
 pub fn create2(
     state: &mut ExecutionState,
     system: &mut System<impl Runtime>,
-) -> Result<(), StatusCode> {
+    endowment: U256,
+    offset: U256,
+    size: U256,
+    salt: U256,
+) -> Result<U256, StatusCode> {
     if system.readonly {
         return Err(StatusCode::StaticModeViolation);
     }
 
-    let ExecutionState { stack, memory, .. } = state;
+    let ExecutionState { stack: _, memory, .. } = state;
 
     // see `create()` overall TODOs
-
-    let endowment = stack.pop();
-    let (offset, size) = (stack.pop(), stack.pop());
-    let salt = stack.pop();
-
     let endowment = TokenAmount::from(&endowment);
     let input_region =
         get_memory_region(memory, offset, size).map_err(|_| StatusCode::InvalidMemoryAccess)?;
@@ -102,17 +100,17 @@ pub fn create2(
     let params = Create2Params { code: input_data.to_vec(), salt };
 
     system.increment_nonce();
-    create_init(stack, system, RawBytes::serialize(&params)?, CREATE2_METHOD_NUM, endowment)
+    create_init(system, RawBytes::serialize(&params)?, CREATE2_METHOD_NUM, endowment)
 }
 
 /// call into Ethereum Address Manager to make the new account
+#[inline]
 fn create_init(
-    stack: &mut Stack,
     system: &mut System<impl Runtime>,
     params: RawBytes,
     method: MethodNum,
     value: TokenAmount,
-) -> Result<(), StatusCode> {
+) -> Result<U256, StatusCode> {
     // send bytecode & params to EAM to generate the address and contract
     let ret = system.send(&EAM_ACTOR_ADDR, method, params, value);
 
@@ -135,27 +133,25 @@ fn create_init(
     // TODO Exit with revert if sys out of gas when subcall gas limits are introduced
     // https://github.com/filecoin-project/ref-fvm/issues/966
 
-    let word = match ret {
+    Ok(match ret {
         Ok(eam_ret) => {
             let ret: EamReturn = eam_ret.deserialize()?;
             ret.eth_address.as_evm_word()
         }
         Err(_) => U256::zero(),
-    };
-
-    stack.push(word);
-    Ok(())
+    })
 }
 
 #[inline]
 pub fn selfdestruct(
     state: &mut ExecutionState,
     system: &mut System<impl Runtime>,
+    beneficiary: U256,
 ) -> Result<(), StatusCode> {
     if system.readonly {
         return Err(StatusCode::StaticModeViolation);
     }
-    let beneficiary_addr: EthAddress = state.stack.pop().into();
+    let beneficiary_addr: EthAddress = beneficiary.into();
     // TODO: how do we handle errors here? Just ignore them?
     state.selfdestroyed = beneficiary_addr.try_into().ok();
     Ok(())
