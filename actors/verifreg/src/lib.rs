@@ -61,7 +61,9 @@ pub enum Method {
     ExtendClaimTerms = 11,
     RemoveExpiredClaims = 12,
     // Method numbers derived from FRC-0042 standards
+    AddVerifiedClientExported = frc42_dispatch::method_hash!("AddVerifiedClient"),
     RemoveExpiredAllocationsExported = frc42_dispatch::method_hash!("RemoveExpiredAllocations"),
+    GetClaimsExported = frc42_dispatch::method_hash!("GetClaims"),
     ExtendClaimTermsExported = frc42_dispatch::method_hash!("ExtendClaimTerms"),
     RemoveExpiredClaimsExported = frc42_dispatch::method_hash!("RemoveExpiredClaims"),
     UniversalReceiverHook = frc42_dispatch::method_hash!("Receive"),
@@ -1085,7 +1087,7 @@ impl ActorCode for Actor {
                 Self::remove_verifier(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::AddVerifiedClient) => {
+            Some(Method::AddVerifiedClient) | Some(Method::AddVerifiedClientExported) => {
                 Self::add_verified_client(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
@@ -1107,7 +1109,7 @@ impl ActorCode for Actor {
                 let res = Self::extend_claim_terms(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
-            Some(Method::GetClaims) => {
+            Some(Method::GetClaims) | Some(Method::GetClaimsExported) => {
                 let res = Self::get_claims(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
