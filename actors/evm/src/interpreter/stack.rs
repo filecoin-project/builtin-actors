@@ -79,9 +79,7 @@ impl Stack {
     pub unsafe fn swap_top(&mut self, i: usize) {
         let top = self.d - 1;
         let pos = self.d - i - 1;
-        let tmp = *self.sk.get_unchecked(top);
-        *self.sk.get_unchecked_mut(top) = *self.sk.get_unchecked(pos);
-        *self.sk.get_unchecked_mut(pos) = tmp;
+        self.sk.swap_unchecked(top, pos)
     }
 }
 
