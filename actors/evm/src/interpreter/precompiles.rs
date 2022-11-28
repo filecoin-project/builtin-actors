@@ -447,7 +447,7 @@ pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8], ctx: PrecompileContext) ->
         let bytes = read_right_pad(start, send_data_size + address_size);
 
         let input_data = &bytes[..send_data_size];
-        let address = &bytes[send_data_size..send_data_size+address_size];
+        let address = &bytes[send_data_size..send_data_size + address_size];
         let address = Address::from_bytes(address).map_err(|_| PrecompileError::InvalidInput)?;
 
         // TODO passing underlying gas into send when implemented in FVM
