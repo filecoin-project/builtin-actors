@@ -99,6 +99,7 @@ fn proposed_must_be_valid() {
     for nominee in nominees {
         let result = h.change_owner_address(&mut rt, nominee);
         expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
+        rt.reset();
     }
 
     h.check_state(&rt);
