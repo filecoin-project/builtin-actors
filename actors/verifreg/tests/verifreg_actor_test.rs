@@ -246,7 +246,7 @@ mod clients {
     use fvm_shared::{MethodNum, METHOD_SEND};
     use num_traits::Zero;
 
-    use fil_actor_verifreg::{Actor as VerifregActor, AddVerifierClientParams, DataCap, Method};
+    use fil_actor_verifreg::{Actor as VerifregActor, AddVerifiedClientParams, DataCap, Method};
     use fil_actors_runtime::test_utils::*;
     use harness::*;
     use util::*;
@@ -373,7 +373,7 @@ mod clients {
         let caller = Address::new_id(209);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, caller);
         rt.expect_validate_caller_any();
-        let params = AddVerifierClientParams { address: *CLIENT, allowance: allowance_client };
+        let params = AddVerifiedClientParams { address: *CLIENT, allowance: allowance_client };
         expect_abort(
             ExitCode::USR_NOT_FOUND,
             rt.call::<VerifregActor>(

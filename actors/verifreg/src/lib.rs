@@ -145,7 +145,7 @@ impl Actor {
 
     pub fn add_verified_client(
         rt: &mut impl Runtime,
-        params: AddVerifierClientParams,
+        params: AddVerifiedClientParams,
     ) -> Result<(), ActorError> {
         // The caller will be verified by checking table below
         rt.validate_immediate_caller_accept_any()?;
