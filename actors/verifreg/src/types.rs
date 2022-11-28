@@ -30,7 +30,7 @@ impl Cbor for VerifierParams {}
 
 pub type AddVerifierParams = VerifierParams;
 
-pub type AddVerifierClientParams = VerifierParams;
+pub type AddVerifiedClientParams = VerifierParams;
 
 /// DataCap is an integer number of bytes.
 /// We can introduce policy changes and replace this in the future.

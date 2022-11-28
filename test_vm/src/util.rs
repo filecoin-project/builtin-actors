@@ -42,7 +42,7 @@ use fil_actor_power::{
 };
 use fil_actor_reward::Method as RewardMethod;
 use fil_actor_verifreg::{
-    AddVerifierClientParams, AllocationID, ClaimID, ClaimTerm, ExtendClaimTermsParams,
+    AddVerifiedClientParams, AllocationID, ClaimID, ClaimTerm, ExtendClaimTermsParams,
     GetClaimsParams, Method as VerifregMethod, RemoveExpiredAllocationsParams, VerifierParams,
 };
 use fil_actors_runtime::cbor::deserialize;
@@ -875,7 +875,7 @@ pub fn verifreg_add_verifier(v: &VM, verifier: Address, data_cap: StoragePower) 
 
 pub fn verifreg_add_client(v: &VM, verifier: Address, client: Address, allowance: StoragePower) {
     let add_client_params =
-        AddVerifierClientParams { address: client, allowance: allowance.clone() };
+        AddVerifiedClientParams { address: client, allowance: allowance.clone() };
     apply_ok(
         v,
         verifier,

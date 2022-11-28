@@ -15,7 +15,7 @@ use fil_actor_datacap::{
 };
 use fil_actor_verifreg::ext::datacap::TOKEN_PRECISION;
 use fil_actor_verifreg::{
-    AddVerifierClientParams, DataCap, RemoveDataCapParams, RemoveDataCapRequest,
+    AddVerifiedClientParams, DataCap, RemoveDataCapParams, RemoveDataCapRequest,
     RemoveDataCapReturn, SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP,
 };
 use fil_actor_verifreg::{AddrPairKey, Method as VerifregMethod};
@@ -47,7 +47,7 @@ fn remove_datacap_simple_successful_path() {
 
     // register the verified client
     let add_verified_client_params =
-        AddVerifierClientParams { address: verified_client, allowance: verifier_allowance.clone() };
+        AddVerifiedClientParams { address: verified_client, allowance: verifier_allowance.clone() };
     let mint_params = MintParams {
         to: verified_client,
         amount: TokenAmount::from_whole(verifier_allowance.to_i64().unwrap()),

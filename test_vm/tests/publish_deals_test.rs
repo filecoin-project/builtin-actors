@@ -11,7 +11,7 @@ use fil_actor_miner::Method as MinerMethod;
 use fil_actor_power::Method as PowerMethod;
 use fil_actor_reward::Method as RewardMethod;
 
-use fil_actor_verifreg::{AddVerifierClientParams, Method as VerifregMethod};
+use fil_actor_verifreg::{AddVerifiedClientParams, Method as VerifregMethod};
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
@@ -74,7 +74,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Addrs, ChainEpoch) {
 
     // setup verified client
     verifreg_add_verifier(&v, verifier, StoragePower::from((32_u64 << 40) as u128));
-    let add_client_params = AddVerifierClientParams {
+    let add_client_params = AddVerifiedClientParams {
         address: verified_client,
         allowance: StoragePower::from((1_u64 << 32) as u64),
     };
