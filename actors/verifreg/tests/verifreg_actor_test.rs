@@ -238,9 +238,14 @@ mod clients {
     use fvm_shared::{MethodNum, METHOD_SEND};
     use num_traits::Zero;
 
-    use fil_actor_verifreg::{Actor as VerifregActor, AddVerifierClientParams, DataCap, Method};
+    use fil_actor_verifreg::{
+        ext, Actor as VerifregActor, AddVerifiedClientParams, DataCap, Method,
+    };
     use fil_actors_runtime::test_utils::*;
+    use fil_actors_runtime::{DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR};
+
     use harness::*;
+    use num_traits::ToPrimitive;
     use util::*;
 
     use crate::*;
@@ -363,7 +368,7 @@ mod clients {
         let caller = Address::new_id(209);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, caller);
         rt.expect_validate_caller_any();
-        let params = AddVerifierClientParams { address: *CLIENT, allowance: allowance_client };
+        let params = AddVerifiedClientParams { address: *CLIENT, allowance: allowance_client };
         expect_abort(
             ExitCode::USR_NOT_FOUND,
             rt.call::<VerifregActor>(
@@ -371,6 +376,59 @@ mod clients {
                 &RawBytes::serialize(params).unwrap(),
             ),
         );
+        h.check_state(&rt);
+    }
+
+    #[test]
+    fn add_verified_client_restricted_correctly() {
+        let (h, mut rt) = new_harness();
+        let allowance_verifier = verifier_allowance(&rt);
+        let allowance_client = client_allowance(&rt);
+        h.add_verifier(&mut rt, &VERIFIER, &allowance_verifier).unwrap();
+
+        let params =
+            AddVerifiedClientParams { address: *CLIENT, allowance: allowance_client.clone() };
+
+        // set caller to not-builtin
+        rt.set_caller(make_identity_cid(b"1234"), *VERIFIER);
+
+        // cannot call the unexported method num
+        expect_abort_contains_message(
+            ExitCode::USR_FORBIDDEN,
+            "must be built-in",
+            rt.call::<VerifregActor>(
+                Method::AddVerifiedClient as MethodNum,
+                &RawBytes::serialize(params.clone()).unwrap(),
+            ),
+        );
+
+        rt.verify();
+
+        // can call the exported method num
+
+        let mint_params = ext::datacap::MintParams {
+            to: *CLIENT,
+            amount: TokenAmount::from_whole(allowance_client.to_i64().unwrap()),
+            operators: vec![STORAGE_MARKET_ACTOR_ADDR],
+        };
+        rt.expect_send(
+            DATACAP_TOKEN_ACTOR_ADDR,
+            ext::datacap::Method::Mint as MethodNum,
+            RawBytes::serialize(&mint_params).unwrap(),
+            TokenAmount::zero(),
+            RawBytes::default(),
+            ExitCode::OK,
+        );
+
+        rt.expect_validate_caller_any();
+        rt.call::<VerifregActor>(
+            Method::AddVerifiedClientExported as MethodNum,
+            &RawBytes::serialize(params).unwrap(),
+        )
+        .unwrap();
+
+        rt.verify();
+
         h.check_state(&rt);
     }
 
@@ -432,7 +490,8 @@ mod allocs_claims {
     use std::str::FromStr;
 
     use fil_actor_verifreg::{
-        Actor, AllocationID, ClaimTerm, DataCap, ExtendClaimTermsParams, Method, State,
+        Actor, AllocationID, ClaimTerm, DataCap, ExtendClaimTermsParams, GetClaimsParams,
+        GetClaimsReturn, Method, State,
     };
     use fil_actor_verifreg::{Claim, ExtendClaimTermsReturn};
     use fil_actors_runtime::cbor::serialize;
@@ -896,7 +955,7 @@ mod allocs_claims {
     }
 
     #[test]
-    fn extend_claims_restricted_correctly() {
+    fn claims_restricted_correctly() {
         let (h, mut rt) = new_harness();
         let size = MINIMUM_VERIFIED_ALLOCATION_SIZE as u64;
         let sector = 0;
@@ -908,7 +967,8 @@ mod allocs_claims {
 
         let id1 = h.create_claim(&mut rt, &claim1).unwrap();
 
-        // Extend claim terms and verify return value.
+        // First, let's extend some claims
+
         let params = ExtendClaimTermsParams {
             terms: vec![ClaimTerm { provider: PROVIDER1, claim_id: id1, term_max: max_term + 1 }],
         };
@@ -916,7 +976,7 @@ mod allocs_claims {
         // set caller to not-builtin
         rt.set_caller(make_identity_cid(b"1234"), Address::new_id(CLIENT1));
 
-        // cannot call the unexported method num
+        // cannot call the unexported extend method num
         expect_abort_contains_message(
             ExitCode::USR_FORBIDDEN,
             "must be built-in",
@@ -939,8 +999,38 @@ mod allocs_claims {
 
         assert_eq!(ret.codes(), vec![ExitCode::OK]);
 
-        // Verify state directly.
-        assert_claim(&rt, PROVIDER1, id1, &Claim { term_max: max_term + 1, ..claim1 });
+        // Now let's Get those Claims, and check them
+
+        let params = GetClaimsParams { claim_ids: vec![id1], provider: PROVIDER1 };
+
+        // cannot call the unexported extend method num
+        expect_abort_contains_message(
+            ExitCode::USR_FORBIDDEN,
+            "must be built-in",
+            rt.call::<Actor>(
+                Method::GetClaims as MethodNum,
+                &serialize(&params, "get claims params").unwrap(),
+            ),
+        );
+
+        rt.verify();
+
+        // can call the exported method num
+        rt.expect_validate_caller_any();
+        let ret: GetClaimsReturn = rt
+            .call::<Actor>(
+                Method::GetClaimsExported as MethodNum,
+                &serialize(&params, "get claims params").unwrap(),
+            )
+            .unwrap()
+            .deserialize()
+            .expect("failed to deserialize get claims return");
+
+        rt.verify();
+
+        assert_eq!(ret.batch_info.codes(), vec![ExitCode::OK]);
+        assert_eq!(ret.claims, vec![Claim { term_max: max_term + 1, ..claim1 }]);
+
         h.check_state(&rt);
     }
 }
