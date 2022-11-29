@@ -265,12 +265,10 @@ pub fn call_generic<RT: Runtime>(
                     let code = crate::interpreter::instructions::ext::get_evm_bytecode_cid(
                         system.rt, dst,
                     )?
-                    .unwrap_evm(
-                        StatusCode::InvalidArgument(format!(
-                            "DELEGATECALL cannot call native actor {}",
-                            dst
-                        ))
-                    )?;
+                    .unwrap_evm(StatusCode::InvalidArgument(format!(
+                        "DELEGATECALL cannot call native actor {}",
+                        dst
+                    )))?;
 
                     // and then invoke self with delegate; readonly context is sticky
                     let params = DelegateCallParams {

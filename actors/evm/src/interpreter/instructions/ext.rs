@@ -63,9 +63,9 @@ pub fn extcodehash(
     addr: U256,
 ) -> Result<U256, StatusCode> {
     let addr = state.stack.pop();
-    let cid = get_evm_bytecode_cid(system.rt, addr)?.unwrap_evm(
-        StatusCode::InvalidArgument("cannot invoke EXTCODEHASH for non-EVM actor".to_string())
-    )?;
+    let cid = get_evm_bytecode_cid(system.rt, addr)?.unwrap_evm(StatusCode::InvalidArgument(
+        "cannot invoke EXTCODEHASH for non-EVM actor".to_string(),
+    ))?;
 
     let digest = cid.hash().digest();
 
@@ -86,7 +86,8 @@ pub fn extcodecopy(
 
     // TODO err trying to copy native code
     let bytecode = get_evm_bytecode_cid(system.rt, addr).map(|cid| {
-        cid.unwrap_evm(()).map(|evm_cid| get_evm_bytecode(system.rt, &evm_cid))
+        cid.unwrap_evm(())
+            .map(|evm_cid| get_evm_bytecode(system.rt, &evm_cid))
             // calling EXTCODECOPY on native actors results with a single byte 0xFE which solidtiy uses for its `assert`/`throw` methods
             // and in general invalid EVM bytecode
             .unwrap_or_else(|_| Ok(vec![0xFE]))
@@ -123,18 +124,16 @@ pub fn get_evm_bytecode_cid(rt: &impl Runtime, addr: U256) -> Result<CodeCid, St
     let evm_cid = rt.get_code_cid_for_type(Type::EVM);
     let target_cid = rt.get_actor_code_cid(&actor_id);
 
-    match target_cid {
-        Some(cid) => {
-            if cid != evm_cid {
-                return Ok(CodeCid::Native(cid));
-            }
+    if let Some(cid) = target_cid {
+        if cid != evm_cid {
+            return Ok(CodeCid::Native(cid));
         }
-        None => (),
     }
 
-    let cid = CodeCid::EVM(rt
-        .send(&addr, crate::Method::GetBytecode as u64, Default::default(), TokenAmount::zero())?
-        .deserialize()?);
+    let cid = CodeCid::EVM(
+        rt.send(&addr, crate::Method::GetBytecode as u64, Default::default(), TokenAmount::zero())?
+            .deserialize()?,
+    );
     Ok(cid)
 }
 
