@@ -50,22 +50,19 @@ pub struct Machine<'r, 'a, RT: Runtime + 'a> {
     pub state: &'r mut ExecutionState,
     pub bytecode: &'r Bytecode,
     pub pc: usize,
-    pub reverted: bool,
+
+    // control flow
+    reverted: bool,
+    exit: Option<StatusCode>,
 }
 
-enum ControlFlow {
-    Continue,
-    Jump,
-    Exit,
-}
-
-type Instruction<M> = fn(*mut M) -> Result<ControlFlow, StatusCode>;
+type Instruction<M> = fn(*mut M);
 
 macro_rules! def_opcodes {
     ($($op:ident: $body:tt)*) => {
         def_ins_raw! {
-            UNDEFINED(_m) {
-                Err(StatusCode::UndefinedInstruction)
+            UNDEFINED(m) {
+                m.exit = Some(StatusCode::UndefinedInstruction);
             }
         }
         $(def_ins! { $op $body })*
@@ -91,7 +88,7 @@ macro_rules! def_ins {
     };
 
     ($ins:ident {=> $expr:expr}) => {
-        def_ins_raw! { $ins (_m) { $expr } }
+        def_ins_raw! { $ins (m) { m.exit = Some($expr); } }
     };
 
     ($ins:ident {($arg:ident) => $body:block}) => {
@@ -102,7 +99,7 @@ macro_rules! def_ins {
 macro_rules! def_ins_raw {
     ($ins:ident ($arg:ident) $body:block) => {
         #[allow(non_snake_case)]
-        fn $ins(p: *mut Self) -> Result<ControlFlow, StatusCode> {
+        fn $ins(p: *mut Self) {
             // SAFETY: macro ensures that mut pointer is taken directly from a mutable borrow, used once, then goes out of scope immediately after
             let $arg: &mut Self = unsafe { p.as_mut().unwrap() };
             $body
@@ -114,8 +111,14 @@ macro_rules! def_ins_intrinsic {
     ($ins:ident) => {
         def_ins_raw! {
             $ins (m) {
-                instructions::$ins(m)?;
-                Ok(ControlFlow::Continue)
+                match instructions::$ins(m) {
+                    Ok(_) => {
+                        m.pc += 1;
+                    },
+                    Err(err) => {
+                        m.exit = Some(err);
+                    }
+                }
             }
         }
     };
@@ -127,7 +130,7 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         state: &'r mut ExecutionState,
         bytecode: &'r Bytecode,
     ) -> Self {
-        Machine { system, state, bytecode, pc: 0, reverted: false }
+        Machine { system, state, bytecode, pc: 0, reverted: false, exit: None }
     }
 
     pub fn execute(&mut self) -> Result<(), StatusCode> {
@@ -136,27 +139,30 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
                 break;
             }
 
-            match self.step()? {
-                ControlFlow::Continue => {
-                    self.pc += 1;
-                }
-                ControlFlow::Jump => {}
-                ControlFlow::Exit => {
-                    break;
-                }
-            };
+            self.step();
+
+            if self.exit.is_some() {
+                break;
+            }
         }
 
-        Ok(())
+        match &self.exit {
+            None => Ok(()),
+            Some(StatusCode::Success) => Ok(()),
+            Some(err) => Err(err.clone()),
+        }
     }
 
-    fn step(&mut self) -> Result<ControlFlow, StatusCode> {
-        let op = OpCode::try_from(self.bytecode[self.pc])?;
-        Self::JMPTABLE[op as usize](self)
+    fn step(&mut self) {
+        let op = OpCode::try_from(self.bytecode[self.pc]);
+        match op {
+            Ok(op) => Self::JMPTABLE[op as usize](self),
+            Err(err) => self.exit = Some(err),
+        }
     }
 
     def_opcodes! {
-        STOP: {=> Ok(ControlFlow::Exit)}
+        STOP: {=> StatusCode::Success}
 
         // primops
         ADD: {intrinsic}
@@ -311,49 +317,68 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         STATICCALL: {intrinsic}
 
         // control flow magic
-        JUMPDEST: {=> Ok(ControlFlow::Continue)} // noop marker opcode for valid jumps addresses
+        // noop marker opcode for valid jumps addresses
+        JUMPDEST: {(m) => { m.pc += 1; } }
 
         JUMP: {(m) => {
-            if let Some(dest) = instructions::JUMP(m)? {
-                m.pc = dest;
-                Ok(ControlFlow::Jump)
-            } else {
-                // cant happen, unless it's a cosmic ray
-                Err(StatusCode::Failure)
+            match instructions::JUMP(m) {
+                Ok(res) => {
+                    if let Some(dest) = res {
+                        m.pc = dest;
+                    } else {
+                        // cant happen, unless it's a cosmic ray
+                        m.exit = Some(StatusCode::Failure)
+                    }
+                },
+                Err(err) => { m.exit = Some(err) }
             }
         }}
 
         JUMPI: {(m) => {
-            if let Some(dest) = instructions::JUMPI(m)? {
-                m.pc = dest;
-                Ok(ControlFlow::Jump)
-            } else {
-                Ok(ControlFlow::Continue)
+            match instructions::JUMPI(m) {
+                Ok(res) => {
+                    if let Some(dest) = res {
+                        m.pc = dest;
+                    } else {
+                        m.pc += 1;
+                    }
+                },
+                Err(err) => { m.exit = Some(err) }
             }
         }}
 
         PC: {(m) => {
-            instructions::PC(m)?;
-            Ok(ControlFlow::Continue)
+            match instructions::PC(m) {
+                Ok(_) => { m.pc += 1; },
+                Err(err) => { m.exit = Some(err) }
+            }
         }}
 
         RETURN: {(m) => {
-            instructions::RETURN(m)?;
-            Ok(ControlFlow::Exit)
+            match instructions::RETURN(m) {
+                Ok(_) => { m.exit = Some(StatusCode::Success); },
+                Err(err) => { m.exit = Some(err); }
+            }
         }}
 
         REVERT: {(m) => {
-            instructions::REVERT(m)?;
-            m.reverted = true;
-            Ok(ControlFlow::Exit)
+            match instructions::REVERT(m) {
+                Ok(_) => {
+                    m.reverted = true;
+                    m.exit = Some(StatusCode::Success);
+                },
+                Err(err) => { m.exit = Some(err); }
+            }
         }}
 
         SELFDESTRUCT: {(m) => {
-            instructions::SELFDESTRUCT(m)?;
-            Ok(ControlFlow::Exit) // selfdestruct halts the current context
+            match instructions::SELFDESTRUCT(m) {
+                Ok(_) => { m.exit = Some(StatusCode::Success); },
+                Err(err) => { m.exit = Some(err) }
+            }
         }}
 
-        INVALID: {=> Err(StatusCode::InvalidInstruction)}
+        INVALID: {=> StatusCode::InvalidInstruction}
     }
 
     const JMPTABLE: [Instruction<Machine<'r, 'a, RT>>; 256] = Machine::<'r, 'a, RT>::jmptable();
