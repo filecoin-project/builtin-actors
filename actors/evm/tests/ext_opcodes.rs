@@ -39,7 +39,7 @@ fn test_extcodesize() {
     let target = FILAddress::new_id(0x88);
     rt.actor_code_cids.insert(target, *EVM_ACTOR_CODE_ID);
 
-    // a random CID
+    // a fake CID
     let bytecode_cid = Cid::try_from("baeaikaia").unwrap();
     let other_bytecode = vec![0x01, 0x02, 0x03, 0x04];
     rt.store.put_keyed(&bytecode_cid, other_bytecode.as_slice()).unwrap();

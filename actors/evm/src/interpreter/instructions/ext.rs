@@ -22,8 +22,7 @@ pub fn extcodesize(
     //  the ipld::block_stat syscall, but the Runtime nor the Blockstore expose it.
     //  Tracked in https://github.com/filecoin-project/ref-fvm/issues/867
     let len = match get_evm_bytecode_cid(system.rt, addr) {
-        // evm cid
-        Ok(Ok(cid)) =>
+        Ok(CodeCid::EVM(cid)) =>
         // TODO this is part of account abstraction hack where EOAs are Embryos
         {
             if cid == system.rt.get_code_cid_for_type(Type::Embryo) {
@@ -32,8 +31,7 @@ pub fn extcodesize(
                 get_evm_bytecode(system.rt, &cid).map(|bytecode| bytecode.len())
             }
         }
-        // native cid
-        Ok(Err(cid)) => {
+        Ok(CodeCid::Native(cid)) => {
             if cid == system.rt.get_code_cid_for_type(Type::Account) {
                 // system account has no code (and we want solidity isContract to return false)
                 Ok(0)
@@ -65,9 +63,9 @@ pub fn extcodehash(
     addr: U256,
 ) -> Result<U256, StatusCode> {
     let addr = state.stack.pop();
-    let cid = get_evm_bytecode_cid(system.rt, addr)?.map_err(|_| {
+    let cid = get_evm_bytecode_cid(system.rt, addr)?.unwrap_evm(
         StatusCode::InvalidArgument("cannot invoke EXTCODEHASH for non-EVM actor".to_string())
-    })?;
+    )?;
 
     let digest = cid.hash().digest();
 
@@ -88,7 +86,7 @@ pub fn extcodecopy(
 
     // TODO err trying to copy native code
     let bytecode = get_evm_bytecode_cid(system.rt, addr).map(|cid| {
-        cid.map(|evm_cid| get_evm_bytecode(system.rt, &evm_cid))
+        cid.unwrap_evm(()).map(|evm_cid| get_evm_bytecode(system.rt, &evm_cid))
             // calling EXTCODECOPY on native actors results with a single byte 0xFE which solidtiy uses for its `assert`/`throw` methods
             // and in general invalid EVM bytecode
             .unwrap_or_else(|_| Ok(vec![0xFE]))
@@ -97,8 +95,24 @@ pub fn extcodecopy(
     copy_to_memory(&mut state.memory, dest_offset, size, data_offset, bytecode.as_slice(), true)
 }
 
+#[derive(Debug)]
+pub enum CodeCid {
+    EVM(Cid),
+    Native(Cid),
+}
+
+impl CodeCid {
+    pub fn unwrap_evm<E>(&self, err: E) -> Result<Cid, E> {
+        if let CodeCid::EVM(cid) = self {
+            Ok(*cid)
+        } else {
+            Err(err)
+        }
+    }
+}
+
 /// Attempts to get bytecode CID of an evm contract, returning either an error or the CID of the native actor as the error  
-pub fn get_evm_bytecode_cid(rt: &impl Runtime, addr: U256) -> Result<Result<Cid, Cid>, StatusCode> {
+pub fn get_evm_bytecode_cid(rt: &impl Runtime, addr: U256) -> Result<CodeCid, StatusCode> {
     let addr: EthAddress = addr.into();
     let addr: Address = addr.try_into()?;
     let actor_id = rt.resolve_address(&addr).ok_or_else(|| {
@@ -112,15 +126,15 @@ pub fn get_evm_bytecode_cid(rt: &impl Runtime, addr: U256) -> Result<Result<Cid,
     match target_cid {
         Some(cid) => {
             if cid != evm_cid {
-                return Ok(Err(cid));
+                return Ok(CodeCid::Native(cid));
             }
         }
         None => (),
     }
 
-    let cid = rt
+    let cid = CodeCid::EVM(rt
         .send(&addr, crate::Method::GetBytecode as u64, Default::default(), TokenAmount::zero())?
-        .deserialize()?;
+        .deserialize()?);
     Ok(cid)
 }
 
