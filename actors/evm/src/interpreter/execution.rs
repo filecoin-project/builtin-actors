@@ -46,11 +46,11 @@ impl ExecutionState {
 }
 
 pub struct Machine<'r, 'a, RT: Runtime + 'a> {
-    system: &'r mut System<'a, RT>,
-    state: &'r mut ExecutionState,
-    bytecode: &'r Bytecode,
-    pc: usize,
-    reverted: bool,
+    pub system: &'r mut System<'a, RT>,
+    pub state: &'r mut ExecutionState,
+    pub bytecode: &'r Bytecode,
+    pub pc: usize,
+    pub reverted: bool,
 }
 
 enum ControlFlow {
@@ -86,20 +86,8 @@ macro_rules! def_jmptable {
 }
 
 macro_rules! def_ins {
-    ($ins:ident {primop}) => {
-        def_ins_primop! { $ins }
-    };
-
-    ($ins:ident {push}) => {
-        def_ins_push! { $ins }
-    };
-
-    ($ins:ident {std}) => {
-        def_ins_std! { $ins }
-    };
-
-    ($ins:ident {code}) => {
-        def_ins_code! { $ins }
+    ($ins:ident {intrinsic}) => {
+        def_ins_intrinsic! { $ins }
     };
 
     ($ins:ident {=> $expr:expr}) => {
@@ -122,44 +110,11 @@ macro_rules! def_ins_raw {
     };
 }
 
-macro_rules! def_ins_primop {
+macro_rules! def_ins_intrinsic {
     ($ins:ident) => {
         def_ins_raw! {
             $ins (m) {
-                instructions::$ins(&mut m.state.stack)?;
-                Ok(ControlFlow::Continue)
-            }
-        }
-    };
-}
-
-macro_rules! def_ins_push {
-    ($ins:ident) => {
-        def_ins_raw! {
-            $ins (m) {
-                m.pc += instructions::$ins(&mut m.state.stack, &m.bytecode[m.pc + 1..])?;
-                Ok(ControlFlow::Continue)
-            }
-        }
-    };
-}
-
-macro_rules! def_ins_std {
-    ($ins:ident) => {
-        def_ins_raw! {
-            $ins (m) {
-                instructions::$ins(m.state, m.system)?;
-                Ok(ControlFlow::Continue)
-            }
-        }
-    };
-}
-
-macro_rules! def_ins_code {
-    ($ins:ident) => {
-        def_ins_raw! {
-            $ins (m) {
-                instructions::$ins(m.state, m.system, m.bytecode.as_ref())?;
+                instructions::$ins(m)?;
                 Ok(ControlFlow::Continue)
             }
         }
@@ -204,160 +159,162 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         STOP: {=> Ok(ControlFlow::Exit)}
 
         // primops
-        ADD: {primop}
-        MUL: {primop}
-        SUB: {primop}
-        DIV: {primop}
-        SDIV: {primop}
-        MOD: {primop}
-        SMOD: {primop}
-        ADDMOD: {primop}
-        MULMOD: {primop}
-        EXP: {primop}
-        SIGNEXTEND: {primop}
-        LT: {primop}
-        GT: {primop}
-        SLT: {primop}
-        SGT: {primop}
-        EQ: {primop}
-        ISZERO: {primop}
-        AND: {primop}
-        OR: {primop}
-        XOR: {primop}
-        NOT: {primop}
-        BYTE: {primop}
-        SHL: {primop}
-        SHR: {primop}
-        SAR: {primop}
-        POP: {primop}
+        ADD: {intrinsic}
+        MUL: {intrinsic}
+        SUB: {intrinsic}
+        DIV: {intrinsic}
+        SDIV: {intrinsic}
+        MOD: {intrinsic}
+        SMOD: {intrinsic}
+        ADDMOD: {intrinsic}
+        MULMOD: {intrinsic}
+        EXP: {intrinsic}
+        SIGNEXTEND: {intrinsic}
+        LT: {intrinsic}
+        GT: {intrinsic}
+        SLT: {intrinsic}
+        SGT: {intrinsic}
+        EQ: {intrinsic}
+        ISZERO: {intrinsic}
+        AND: {intrinsic}
+        OR: {intrinsic}
+        XOR: {intrinsic}
+        NOT: {intrinsic}
+        BYTE: {intrinsic}
+        SHL: {intrinsic}
+        SHR: {intrinsic}
+        SAR: {intrinsic}
 
         // std call convenction functionoids
-        KECCAK256: {std}
-        ADDRESS: {std}
-        BALANCE: {std}
-        ORIGIN: {std}
-        CALLER: {std}
-        CALLVALUE: {std}
-        CALLDATALOAD: {std}
-        CALLDATASIZE: {std}
-        CALLDATACOPY: {std}
-        CODESIZE: {code}
-        CODECOPY: {code}
-        GASPRICE: {std}
-        EXTCODESIZE: {std}
-        EXTCODECOPY: {std}
-        RETURNDATASIZE: {std}
-        RETURNDATACOPY: {std}
-        EXTCODEHASH: {std}
-        BLOCKHASH: {std}
-        COINBASE: {std}
-        TIMESTAMP: {std}
-        NUMBER: {std}
-        DIFFICULTY: {std}
-        GASLIMIT: {std}
-        CHAINID: {std}
-        BASEFEE: {std}
-        SELFBALANCE: {std}
-        MLOAD: {std}
-        MSTORE: {std}
-        MSTORE8: {std}
-        SLOAD: {std}
-        SSTORE: {std}
-        MSIZE: {std}
-        GAS: {std}
+        KECCAK256: {intrinsic}
+        ADDRESS: {intrinsic}
+        BALANCE: {intrinsic}
+        ORIGIN: {intrinsic}
+        CALLER: {intrinsic}
+        CALLVALUE: {intrinsic}
+        CALLDATALOAD: {intrinsic}
+        CALLDATASIZE: {intrinsic}
+        CALLDATACOPY: {intrinsic}
+        CODESIZE: {intrinsic}
+        CODECOPY: {intrinsic}
+        GASPRICE: {intrinsic}
+        EXTCODESIZE: {intrinsic}
+        EXTCODECOPY: {intrinsic}
+        RETURNDATASIZE: {intrinsic}
+        RETURNDATACOPY: {intrinsic}
+        EXTCODEHASH: {intrinsic}
+        BLOCKHASH: {intrinsic}
+        COINBASE: {intrinsic}
+        TIMESTAMP: {intrinsic}
+        NUMBER: {intrinsic}
+        DIFFICULTY: {intrinsic}
+        GASLIMIT: {intrinsic}
+        CHAINID: {intrinsic}
+        BASEFEE: {intrinsic}
+        SELFBALANCE: {intrinsic}
+        MLOAD: {intrinsic}
+        MSTORE: {intrinsic}
+        MSTORE8: {intrinsic}
+        SLOAD: {intrinsic}
+        SSTORE: {intrinsic}
+        MSIZE: {intrinsic}
+        GAS: {intrinsic}
+
+        // stack ops
+        POP: {intrinsic}
 
         // push variants
-        PUSH1: {push}
-        PUSH2: {push}
-        PUSH3: {push}
-        PUSH4: {push}
-        PUSH5: {push}
-        PUSH6: {push}
-        PUSH7: {push}
-        PUSH8: {push}
-        PUSH9: {push}
-        PUSH10: {push}
-        PUSH11: {push}
-        PUSH12: {push}
-        PUSH13: {push}
-        PUSH14: {push}
-        PUSH15: {push}
-        PUSH16: {push}
-        PUSH17: {push}
-        PUSH18: {push}
-        PUSH19: {push}
-        PUSH20: {push}
-        PUSH21: {push}
-        PUSH22: {push}
-        PUSH23: {push}
-        PUSH24: {push}
-        PUSH25: {push}
-        PUSH26: {push}
-        PUSH27: {push}
-        PUSH28: {push}
-        PUSH29: {push}
-        PUSH30: {push}
-        PUSH31: {push}
-        PUSH32: {push}
+        PUSH1: {intrinsic}
+        PUSH2: {intrinsic}
+        PUSH3: {intrinsic}
+        PUSH4: {intrinsic}
+        PUSH5: {intrinsic}
+        PUSH6: {intrinsic}
+        PUSH7: {intrinsic}
+        PUSH8: {intrinsic}
+        PUSH9: {intrinsic}
+        PUSH10: {intrinsic}
+        PUSH11: {intrinsic}
+        PUSH12: {intrinsic}
+        PUSH13: {intrinsic}
+        PUSH14: {intrinsic}
+        PUSH15: {intrinsic}
+        PUSH16: {intrinsic}
+        PUSH17: {intrinsic}
+        PUSH18: {intrinsic}
+        PUSH19: {intrinsic}
+        PUSH20: {intrinsic}
+        PUSH21: {intrinsic}
+        PUSH22: {intrinsic}
+        PUSH23: {intrinsic}
+        PUSH24: {intrinsic}
+        PUSH25: {intrinsic}
+        PUSH26: {intrinsic}
+        PUSH27: {intrinsic}
+        PUSH28: {intrinsic}
+        PUSH29: {intrinsic}
+        PUSH30: {intrinsic}
+        PUSH31: {intrinsic}
+        PUSH32: {intrinsic}
 
         // dup variants
-        DUP1: {primop}
-        DUP2: {primop}
-        DUP3: {primop}
-        DUP4: {primop}
-        DUP5: {primop}
-        DUP6: {primop}
-        DUP7: {primop}
-        DUP8: {primop}
-        DUP9: {primop}
-        DUP10: {primop}
-        DUP11: {primop}
-        DUP12: {primop}
-        DUP13: {primop}
-        DUP14: {primop}
-        DUP15: {primop}
-        DUP16: {primop}
+        DUP1: {intrinsic}
+        DUP2: {intrinsic}
+        DUP3: {intrinsic}
+        DUP4: {intrinsic}
+        DUP5: {intrinsic}
+        DUP6: {intrinsic}
+        DUP7: {intrinsic}
+        DUP8: {intrinsic}
+        DUP9: {intrinsic}
+        DUP10: {intrinsic}
+        DUP11: {intrinsic}
+        DUP12: {intrinsic}
+        DUP13: {intrinsic}
+        DUP14: {intrinsic}
+        DUP15: {intrinsic}
+        DUP16: {intrinsic}
 
         // swap variants
-        SWAP1: {primop}
-        SWAP2: {primop}
-        SWAP3: {primop}
-        SWAP4: {primop}
-        SWAP5: {primop}
-        SWAP6: {primop}
-        SWAP7: {primop}
-        SWAP8: {primop}
-        SWAP9: {primop}
-        SWAP10: {primop}
-        SWAP11: {primop}
-        SWAP12: {primop}
-        SWAP13: {primop}
-        SWAP14: {primop}
-        SWAP15: {primop}
-        SWAP16: {primop}
+        SWAP1: {intrinsic}
+        SWAP2: {intrinsic}
+        SWAP3: {intrinsic}
+        SWAP4: {intrinsic}
+        SWAP5: {intrinsic}
+        SWAP6: {intrinsic}
+        SWAP7: {intrinsic}
+        SWAP8: {intrinsic}
+        SWAP9: {intrinsic}
+        SWAP10: {intrinsic}
+        SWAP11: {intrinsic}
+        SWAP12: {intrinsic}
+        SWAP13: {intrinsic}
+        SWAP14: {intrinsic}
+        SWAP15: {intrinsic}
+        SWAP16: {intrinsic}
 
         // event logs
-        LOG0: {std}
-        LOG1: {std}
-        LOG2: {std}
-        LOG3: {std}
-        LOG4: {std}
+        LOG0: {intrinsic}
+        LOG1: {intrinsic}
+        LOG2: {intrinsic}
+        LOG3: {intrinsic}
+        LOG4: {intrinsic}
 
         // create variants
-        CREATE: {std}
-        CREATE2: {std}
+        CREATE: {intrinsic}
+        CREATE2: {intrinsic}
 
         // call variants
-        CALL: {std}
-        CALLCODE: {std}
-        DELEGATECALL: {std}
-        STATICCALL: {std}
+        CALL: {intrinsic}
+        CALLCODE: {intrinsic}
+        DELEGATECALL: {intrinsic}
+        STATICCALL: {intrinsic}
 
         // control flow magic
         JUMPDEST: {=> Ok(ControlFlow::Continue)} // noop marker opcode for valid jumps addresses
 
         JUMP: {(m) => {
-            if let Some(dest) = instructions::JUMP(&mut m.state.stack, m.bytecode)? {
+            if let Some(dest) = instructions::JUMP(m)? {
                 m.pc = dest;
                 Ok(ControlFlow::Jump)
             } else {
@@ -367,7 +324,7 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         }}
 
         JUMPI: {(m) => {
-            if let Some(dest) = instructions::JUMPI(&mut m.state.stack, m.bytecode)? {
+            if let Some(dest) = instructions::JUMPI(m)? {
                 m.pc = dest;
                 Ok(ControlFlow::Jump)
             } else {
@@ -376,23 +333,23 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         }}
 
         PC: {(m) => {
-            instructions::PC(&mut m.state.stack, m.pc)?;
+            instructions::PC(m)?;
             Ok(ControlFlow::Continue)
         }}
 
         RETURN: {(m) => {
-            instructions::RETURN(m.state, m.system)?;
+            instructions::RETURN(m)?;
             Ok(ControlFlow::Exit)
         }}
 
         REVERT: {(m) => {
-            instructions::REVERT(m.state, m.system)?;
+            instructions::REVERT(m)?;
             m.reverted = true;
             Ok(ControlFlow::Exit)
         }}
 
         SELFDESTRUCT: {(m) => {
-            instructions::SELFDESTRUCT(m.state, m.system)?;
+            instructions::SELFDESTRUCT(m)?;
             Ok(ControlFlow::Exit) // selfdestruct halts the current context
         }}
 

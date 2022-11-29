@@ -13,10 +13,10 @@ pub mod stack;
 pub mod state;
 pub mod storage;
 
+use crate::interpreter::execution::Machine;
 use crate::interpreter::opcode::{OpCode, StackSpec};
 use crate::interpreter::output::StatusCode;
-use crate::interpreter::stack::Stack;
-use crate::interpreter::{Bytecode, ExecutionState, System, U256};
+use crate::interpreter::U256;
 use fil_actors_runtime::runtime::Runtime;
 
 // macros for the instruction zoo:
@@ -24,12 +24,12 @@ use fil_actors_runtime::runtime::Runtime;
 macro_rules! def_primop {
     ($op:ident ($($arg:ident),*) => $impl:path) => {
         #[allow(non_snake_case)]
-        pub fn $op(sk: &mut Stack) -> Result<(), StatusCode> {
+        pub fn $op<'r, 'a, RT: Runtime + 'a>(m: &mut Machine<'r, 'a, RT> ) -> Result<(), StatusCode> {
             check_arity!($op, ($($arg),*));
-            check_stack!($op, sk);
-            $(let $arg = unsafe {sk.pop()};)*
+            check_stack!($op, m.state.stack);
+            $(let $arg = unsafe {m.state.stack.pop()};)*
             let result = $impl($($arg),*);
-            unsafe {sk.push(result);}
+            unsafe {m.state.stack.push(result);}
             Ok(())
         }
     }
@@ -39,25 +39,30 @@ macro_rules! def_primop {
 macro_rules! def_stackop {
     ($op:ident => $impl:path) => {
         #[allow(non_snake_case)]
-        pub fn $op(sk: &mut Stack) -> Result<(), StatusCode> {
-            check_stack!($op, sk);
+        pub fn $op<'r, 'a, RT: Runtime + 'a>(
+            m: &mut Machine<'r, 'a, RT>,
+        ) -> Result<(), StatusCode> {
+            check_stack!($op, m.state.stack);
             unsafe {
-                $impl(sk);
+                $impl(&mut m.state.stack);
             }
             Ok(())
         }
     };
 }
 
-// pushops: push stuff on the stack given input bytecode; the kind of thing that makes you want
-// to cry because it really is a stack op.
+// pusho variants: push stuff on the stack taken as input from bytecode; the kind of thing that
+// makes you want to cry because it really is a stack op.
 macro_rules! def_push {
     ($op:ident => $impl:path) => {
         #[allow(non_snake_case)]
-        pub fn $op(sk: &mut Stack, code: &[u8]) -> Result<usize, StatusCode> {
-            check_stack!($op, sk);
-            let off = unsafe { $impl(sk, code) };
-            Ok(off)
+        pub fn $op<'r, 'a, RT: Runtime + 'a>(
+            m: &mut Machine<'r, 'a, RT>,
+        ) -> Result<(), StatusCode> {
+            check_stack!($op, m.state.stack);
+            let code = &m.bytecode[m.pc + 1..];
+            m.pc += unsafe { $impl(&mut m.state.stack, code) };
+            Ok(())
         }
     };
 }
@@ -67,12 +72,12 @@ macro_rules! def_push {
 macro_rules! def_stdfun {
     ($op:ident ($($arg:ident),*) => $impl:path) => {
         #[allow(non_snake_case)]
-        pub fn $op(state: &mut ExecutionState, system: &mut System<impl Runtime>) -> Result<(), StatusCode> {
+        pub fn $op<'r, 'a, RT: Runtime + 'a>(m: &mut Machine<'r, 'a, RT> ) -> Result<(), StatusCode> {
             check_arity!($op, ($($arg),*));
-            check_stack!($op, state.stack);
-            $(let $arg = unsafe {state.stack.pop()};)*
-            let result = $impl(state, system, $($arg),*)?;
-            unsafe {state.stack.push(result);}
+            check_stack!($op, m.state.stack);
+            $(let $arg = unsafe {m.state.stack.pop()};)*
+            let result = $impl(&mut m.state, &mut m.system, $($arg),*)?;
+            unsafe {m.state.stack.push(result);}
             Ok(())
         }
     }
@@ -82,11 +87,11 @@ macro_rules! def_stdfun {
 macro_rules! def_stdproc {
     ($op:ident ($($arg:ident),*) => $impl:path) => {
         #[allow(non_snake_case)]
-        pub fn $op(state: &mut ExecutionState, system: &mut System<impl Runtime>) -> Result<(), StatusCode> {
+        pub fn $op<'r, 'a, RT: Runtime + 'a>(m: &mut Machine<'r, 'a, RT> ) -> Result<(), StatusCode> {
             check_arity!($op, ($($arg),*));
-            check_stack!($op, state.stack);
-            $(let $arg = unsafe {state.stack.pop()};)*
-            $impl(state, system, $($arg),*)?;
+            check_stack!($op, m.state.stack);
+            $(let $arg = unsafe {m.state.stack.pop()};)*
+            $impl(&mut m.state, &mut m.system, $($arg),*)?;
             Ok(())
         }
     }
@@ -96,25 +101,26 @@ macro_rules! def_stdproc {
 macro_rules! def_stdfun_code {
     ($op:ident ($($arg:ident),*) => $impl:path) => {
         #[allow(non_snake_case)]
-        pub fn $op(state: &mut ExecutionState, system: &mut System<impl Runtime>, code: &[u8]) -> Result<(), StatusCode> {
+        pub fn $op<'r, 'a, RT: Runtime + 'a>(m: &mut Machine<'r, 'a, RT> ) -> Result<(), StatusCode> {
             check_arity!($op, ($($arg),*));
-            check_stack!($op, state.stack);
-            $(let $arg = unsafe {state.stack.pop()};)*
-            let result = $impl(state, system, code, $($arg),*)?;
-            unsafe {state.stack.push(result);}
+            check_stack!($op, m.state.stack);
+            $(let $arg = unsafe {m.state.stack.pop()};)*
+            let result = $impl(&mut m.state, &mut m.system, m.bytecode.as_ref(), $($arg),*)?;
+            unsafe {m.state.stack.push(result);}
             Ok(())
         }
     }
 }
 
+// and the procedural variant
 macro_rules! def_stdproc_code {
     ($op:ident ($($arg:ident),*) => $impl:path) => {
         #[allow(non_snake_case)]
-        pub fn $op(state: &mut ExecutionState, system: &mut System<impl Runtime>, code: &[u8]) -> Result<(), StatusCode> {
+        pub fn $op<'r, 'a, RT: Runtime + 'a>(m: &mut Machine<'r, 'a, RT> ) -> Result<(), StatusCode> {
             check_arity!($op, ($($arg),*));
-            check_stack!($op, state.stack);
-            $(let $arg = unsafe {state.stack.pop()};)*
-            $impl(state, system, code, $($arg),*)?;
+            check_stack!($op, m.state.stack);
+            $(let $arg = unsafe {m.state.stack.pop()};)*
+            $impl(&mut m.state, &mut m.system, m.bytecode.as_ref(), $($arg),*)?;
             Ok(())
         }
     }
@@ -124,12 +130,12 @@ macro_rules! def_stdproc_code {
 macro_rules! def_stdlog {
     ($op:ident ($ntopics:literal, ($($topic:ident),*))) => {
         #[allow(non_snake_case)]
-        pub fn $op(state: &mut ExecutionState, system: &System<impl Runtime>) -> Result<(), StatusCode> {
-            check_stack!($op, state.stack);
-            let a = unsafe {state.stack.pop()};
-            let b = unsafe {state.stack.pop()};
-            $(let $topic = unsafe {state.stack.pop()};)*
-            log::log(state, system, $ntopics, a, b, &[$($topic),*])
+        pub fn $op<'r, 'a, RT: Runtime + 'a>(m: &mut Machine<'r, 'a, RT> ) -> Result<(), StatusCode> {
+            check_stack!($op, m.state.stack);
+            let a = unsafe {m.state.stack.pop()};
+            let b = unsafe {m.state.stack.pop()};
+            $(let $topic = unsafe {m.state.stack.pop()};)*
+            log::log(&mut m.state, &mut m.system, $ntopics, a, b, &[$($topic),*])
         }
     }
 }
@@ -138,11 +144,11 @@ macro_rules! def_stdlog {
 macro_rules! def_jmp {
     ($op:ident ($($arg:ident),*) => $impl:path) => {
         #[allow(non_snake_case)]
-        pub fn $op(sk: &mut Stack, bytecode: &Bytecode) -> Result<Option<usize>, StatusCode> {
+        pub fn $op<'r, 'a, RT: Runtime + 'a>(m: &mut Machine<'r, 'a, RT> ) -> Result<Option<usize>, StatusCode> {
             check_arity!($op, ($($arg),*));
-            check_stack!($op, sk);
-            $(let $arg = unsafe {sk.pop()};)*
-            $impl(bytecode, $($arg),*)
+            check_stack!($op, m.state.stack);
+            $(let $arg = unsafe {m.state.stack.pop()};)*
+            $impl(m.bytecode, $($arg),*)
         }
     }
 
@@ -150,16 +156,17 @@ macro_rules! def_jmp {
 
 // special: pc and things like that
 macro_rules! def_special {
-    ($op:ident ($($arg:ident: $t:ty),*) => $value:expr) => {
+    ($op:ident ($m:ident) => $value:expr) => {
         #[allow(non_snake_case)]
-        pub fn $op(sk: &mut Stack, $($arg:$t),*) -> Result<(), StatusCode> {
-            check_stack!($op, sk);
+        pub fn $op<'r, 'a, RT: Runtime + 'a>(
+            $m: &mut Machine<'r, 'a, RT>,
+        ) -> Result<(), StatusCode> {
+            check_stack!($op, $m.state.stack);
             let result = $value;
-            unsafe {sk.push(result)};
+            unsafe { $m.state.stack.push(result) };
             Ok(())
         }
-    }
-
+    };
 }
 
 // auxiliary macros
@@ -345,4 +352,4 @@ def_stdproc! { REVERT(a, b) => control::output }
 def_stdproc! { SELFDESTRUCT(a) => lifecycle::selfdestruct }
 def_jmp! { JUMP(a) => control::jump }
 def_jmp! { JUMPI(a, b) => control::jumpi }
-def_special! { PC(pc: usize) => U256::from(pc) }
+def_special! { PC(m) => U256::from(m.pc) }
