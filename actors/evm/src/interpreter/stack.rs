@@ -65,14 +65,16 @@ impl Stack {
 
     #[inline]
     pub unsafe fn push(&mut self, v: U256) {
-        *self.sk.get_unchecked_mut(self.d) = v;
+        //*self.sk.get_unchecked_mut(self.d) = v;
+        self.sk[self.d] = v;
         self.d += 1;
     }
 
     #[inline]
     pub unsafe fn pop(&mut self) -> U256 {
         self.d -= 1;
-        *self.sk.get_unchecked(self.d)
+        //*self.sk.get_unchecked(self.d)
+        self.sk[self.d]
     }
 
     #[inline]
