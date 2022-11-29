@@ -2453,7 +2453,7 @@ impl ActorHarness {
             for sector_nr in extension.sectors.validate().unwrap().iter() {
                 let sector = self.get_sector(&rt, sector_nr);
                 let mut new_sector = sector.clone();
-                new_sector.expiration = extension.new_expiration;
+                new_sector.commitment_expiration = extension.new_expiration;
                 qa_delta += qa_power_for_sector(self.sector_size, &new_sector)
                     - qa_power_for_sector(self.sector_size, &sector);
             }
@@ -2466,13 +2466,13 @@ impl ActorHarness {
                     }
                 }
                 let sector = self.get_sector(&rt, sector_claim.sector_number);
-                let old_duration = sector.expiration - sector.activation;
+                let old_duration = sector.commitment_expiration - sector.activation;
                 let old_verified_deal_space = &sector.verified_deal_weight / old_duration;
                 let new_verified_deal_space = old_verified_deal_space - dropped_space;
                 let mut new_sector = sector.clone();
-                new_sector.expiration = extension.new_expiration;
+                new_sector.commitment_expiration = extension.new_expiration;
                 new_sector.verified_deal_weight = BigInt::from(new_verified_deal_space)
-                    * (new_sector.expiration - new_sector.activation);
+                    * (new_sector.commitment_expiration - new_sector.activation);
                 qa_delta += qa_power_for_sector(self.sector_size, &new_sector)
                     - qa_power_for_sector(self.sector_size, &sector);
             }

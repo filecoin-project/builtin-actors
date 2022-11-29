@@ -444,9 +444,25 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
                     Some(s) => s,
                     None => continue,
                 };
-                // If the sector expires early at this epoch, remove it for re-scheduling.
+                // If the sector expires as faulty at this epoch, remove it for re-scheduling.
                 // It's not part of the on-time pledge number here.
                 faulty_unset.push(sector_number);
+                let power = power_for_sector(sector_size, sector);
+                faulty_power_delta -= &power;
+                sectors_rescheduled.push(sector);
+
+                recovered_power += &power;
+            }
+
+            let mut early_unset = Vec::new();
+            for sector_number in expiration_set.early_sectors.iter() {
+                let sector = match remaining.remove(&sector_number) {
+                    Some(s) => s,
+                    None => continue,
+                };
+                // If the sector expires early at this epoch, remove it for re-scheduling.
+                // It's not part of the on-time pledge number here.
+                early_unset.push(sector_number);
                 let power = power_for_sector(sector_size, sector);
                 faulty_power_delta -= &power;
                 sectors_rescheduled.push(sector);
@@ -457,6 +473,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
             // we need to defer the changes as we cannot borrow immutably for iteration
             // and mutably for changes at the same time
             if !early_unset.is_empty()
+                || !faulty_unset.is_empty()
                 || !faulty_power_delta.is_zero()
                 || !active_power_delta.is_zero()
             {
@@ -464,9 +481,9 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
                 expiration_set.faulty_power += &faulty_power_delta;
 
                 expiration_set.early_sectors -= BitField::try_from_bits(early_unset)?;
+                expiration_set.faulty_sectors -= BitField::try_from_bits(faulty_unset)?;
+                expiration_set.validate_state()?;
             }
-
-            expiration_set.validate_state()?;
 
             let keep_going = !remaining.is_empty();
             Ok(keep_going)
