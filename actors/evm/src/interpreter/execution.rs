@@ -338,7 +338,9 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
 
         // control flow magic
         // noop marker opcode for valid jumps addresses
-        JUMPDEST: {(m) => { m.pc += 1; } }
+        JUMPDEST: {(m) => {
+            m.pc += 1;
+        }}
 
         JUMP: {(m) => {
             try_ins! { JUMP(m) => (res) {
@@ -362,11 +364,15 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         }}
 
         PC: {(m) => {
-            try_ins! { PC(m) => { m.pc += 1; }}
+            try_ins! { PC(m) => {
+                m.pc += 1;
+            }}
         }}
 
         RETURN: {(m) => {
-            try_ins! { RETURN(m) => { m.exit = Some(StatusCode::Success); }}
+            try_ins! { RETURN(m) => {
+                m.exit = Some(StatusCode::Success);
+            }}
         }}
 
         REVERT: {(m) => {
@@ -377,7 +383,9 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         }}
 
         SELFDESTRUCT: {(m) => {
-            try_ins! { SELFDESTRUCT(m) => { m.exit = Some(StatusCode::Success); }}
+            try_ins! { SELFDESTRUCT(m) => {
+                m.exit = Some(StatusCode::Success);
+            }}
         }}
 
         INVALID: {=> StatusCode::InvalidInstruction}
