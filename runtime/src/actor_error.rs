@@ -102,11 +102,24 @@ impl From<fvm_sdk::error::ActorDeleteError> for ActorError {
     }
 }
 
-/// Converts a no-state error into an an actor error with the appropriate exit code (illegal actor).
+/// Converts a state read error into an an actor error with the appropriate exit code (illegal actor).
 /// This facilitates propagation.
 #[cfg(feature = "fil-actor")]
-impl From<fvm_sdk::error::NoStateError> for ActorError {
-    fn from(e: fvm_sdk::error::NoStateError) -> Self {
+impl From<fvm_sdk::error::StateReadError> for ActorError {
+    fn from(e: fvm_sdk::error::StateReadError) -> Self {
+        Self {
+            exit_code: ExitCode::USR_ILLEGAL_STATE,
+            msg: e.to_string(),
+            data: RawBytes::default(),
+        }
+    }
+}
+
+/// Converts a state read error into an an actor error with the appropriate exit code (illegal actor).
+/// This facilitates propagation.
+#[cfg(feature = "fil-actor")]
+impl From<fvm_sdk::error::StateUpdateError> for ActorError {
+    fn from(e: fvm_sdk::error::StateUpdateError) -> Self {
         Self {
             exit_code: ExitCode::USR_ILLEGAL_STATE,
             msg: e.to_string(),
