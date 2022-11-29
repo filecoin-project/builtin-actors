@@ -124,6 +124,26 @@ macro_rules! def_ins_intrinsic {
     };
 }
 
+macro_rules! try_ins {
+    ($ins:ident($m:ident) => ($res:ident) $body:block) => {
+        match instructions::$ins($m) {
+            Ok($res) => $body,
+            Err(err) => {
+                $m.exit = Some(err);
+            }
+        }
+    };
+
+    ($ins:ident($m:ident) => $body:block) => {
+        match instructions::$ins($m) {
+            Ok(_) => $body,
+            Err(err) => {
+                $m.exit = Some(err);
+            }
+        }
+    };
+}
+
 impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
     pub fn new(
         system: &'r mut System<'a, RT>,
@@ -321,61 +341,43 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         JUMPDEST: {(m) => { m.pc += 1; } }
 
         JUMP: {(m) => {
-            match instructions::JUMP(m) {
-                Ok(res) => {
-                    if let Some(dest) = res {
-                        m.pc = dest;
-                    } else {
-                        // cant happen, unless it's a cosmic ray
-                        m.exit = Some(StatusCode::Failure)
-                    }
-                },
-                Err(err) => { m.exit = Some(err) }
-            }
+            try_ins! { JUMP(m) => (res) {
+                if let Some(dest) = res {
+                    m.pc = dest;
+                } else {
+                    // cant happen, unless it's a cosmic ray
+                    m.exit = Some(StatusCode::Failure);
+                }
+            }}
         }}
 
         JUMPI: {(m) => {
-            match instructions::JUMPI(m) {
-                Ok(res) => {
-                    if let Some(dest) = res {
-                        m.pc = dest;
-                    } else {
-                        m.pc += 1;
-                    }
-                },
-                Err(err) => { m.exit = Some(err) }
-            }
+            try_ins! { JUMPI(m) => (res) {
+                if let Some(dest) = res {
+                    m.pc = dest;
+                } else {
+                    m.pc += 1;
+                }
+            }}
         }}
 
         PC: {(m) => {
-            match instructions::PC(m) {
-                Ok(_) => { m.pc += 1; },
-                Err(err) => { m.exit = Some(err) }
-            }
+            try_ins! { PC(m) => { m.pc += 1; }}
         }}
 
         RETURN: {(m) => {
-            match instructions::RETURN(m) {
-                Ok(_) => { m.exit = Some(StatusCode::Success); },
-                Err(err) => { m.exit = Some(err); }
-            }
+            try_ins! { RETURN(m) => { m.exit = Some(StatusCode::Success); }}
         }}
 
         REVERT: {(m) => {
-            match instructions::REVERT(m) {
-                Ok(_) => {
-                    m.reverted = true;
-                    m.exit = Some(StatusCode::Success);
-                },
-                Err(err) => { m.exit = Some(err); }
-            }
+            try_ins! { REVERT(m) => {
+                m.reverted = true;
+                m.exit = Some(StatusCode::Success);
+            }}
         }}
 
         SELFDESTRUCT: {(m) => {
-            match instructions::SELFDESTRUCT(m) {
-                Ok(_) => { m.exit = Some(StatusCode::Success); },
-                Err(err) => { m.exit = Some(err) }
-            }
+            try_ins! { SELFDESTRUCT(m) => { m.exit = Some(StatusCode::Success); }}
         }}
 
         INVALID: {=> StatusCode::InvalidInstruction}
