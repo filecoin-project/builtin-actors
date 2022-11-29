@@ -64,7 +64,7 @@ pub fn extcodehash(
 ) -> Result<U256, StatusCode> {
     let addr = state.stack.pop();
     let cid = get_evm_bytecode_cid(system.rt, addr)?.unwrap_evm(StatusCode::InvalidArgument(
-        "cannot invoke EXTCODEHASH for non-EVM actor".to_string(),
+        "Cannot invoke EXTCODEHASH for non-EVM actor.".to_string(),
     ))?;
 
     let digest = cid.hash().digest();
@@ -122,13 +122,18 @@ pub fn get_evm_bytecode_cid(rt: &impl Runtime, addr: U256) -> Result<CodeCid, St
     })?;
 
     let evm_cid = rt.get_code_cid_for_type(Type::EVM);
+    let embryo_cid = rt.get_code_cid_for_type(Type::Embryo);
     let target_cid = rt.get_actor_code_cid(&actor_id);
 
     if let Some(cid) = target_cid {
-        if cid != evm_cid {
+        // TODO part of embryo hack
+        if cid == embryo_cid {
+            return Ok(CodeCid::EVM(cid));
+        } else if cid != evm_cid {
             return Ok(CodeCid::Native(cid));
         }
     }
+    // REMOVEME if we dont find a CID for these things it fails silently till send...
 
     let cid = CodeCid::EVM(
         rt.send(&addr, crate::Method::GetBytecode as u64, Default::default(), TokenAmount::zero())?

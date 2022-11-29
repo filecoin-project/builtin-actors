@@ -16,16 +16,6 @@ mod util;
 pub fn magic_precompile_contract() -> Vec<u8> {
     let init = "";
     let body = r#"
-
-
-%macro return_stack_word()
-    push1 0x00
-    mstore
-    push1 0x20 # always return a full word
-    push1 0x00
-    return
-%end
-
 # magic value, used as initcode
 push16 0x666F6F206261722062617A20626F7879 # foo bar baz boxy
 push2 0x0100 # offset of input data

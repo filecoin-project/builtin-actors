@@ -23,6 +23,15 @@ const PRELUDE: &str = r#"
   dup1
   revert
 %end
+
+%macro return_stack_word()
+    # store at 0x00
+    push1 0x00
+    mstore
+    push1 0x20 # always return a full word
+    push1 0x00
+    return
+%end
 "#;
 
 #[allow(dead_code)]
