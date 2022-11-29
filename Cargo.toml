@@ -97,7 +97,7 @@ fvm_actor_utils = { git = "https://github.com/filecoin-project/filecoin-actor-ut
 inherits = "release"
 # This needs to be unwind, not abort, so that we can handle panics within our panic hook.
 panic = "unwind"
-overflow-checks = true
+overflow-checks = false
 lto = "thin"
 opt-level = "z"
 strip = true
