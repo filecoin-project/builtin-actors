@@ -1,6 +1,6 @@
 use eam::ext::init::{Exec4Params, Exec4Return, EXEC4_METHOD};
 use eam::{
-    Create2Params, CreateParams, EthAddress, EvmConstructorParams, Return, RlpCreateAddress,
+    compute_address_create, Create2Params, CreateParams, EthAddress, EvmConstructorParams, Return,
 };
 use fil_actor_eam as eam;
 use fil_actors_runtime::runtime::builtins::Type;
@@ -13,7 +13,6 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use rlp::Encodable;
 
 #[test]
 fn call_create() {
@@ -26,15 +25,11 @@ fn call_create() {
 
         let evm_params = EvmConstructorParams { creator: eth_addr, initcode: initcode.into() };
 
-        let rlp_params = RlpCreateAddress { address: eth_addr, nonce: 0 };
-        let mut subaddress =
-            rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &rlp_params.rlp_bytes());
-        subaddress.drain(..12);
-
+        let new_eth_addr = compute_address_create(rt, &eth_addr, 0);
         let params = Exec4Params {
             code_cid: *EVM_ACTOR_CODE_ID,
             constructor_params: RawBytes::serialize(evm_params).unwrap(),
-            subaddress: subaddress.clone().into(),
+            subaddress: new_eth_addr.0[..].to_owned().into(),
         };
 
         let send_return = RawBytes::serialize(Exec4Return {
@@ -61,11 +56,8 @@ fn call_create() {
             .deserialize::<Return>()
             .unwrap();
 
-        let expected_return = Return {
-            actor_id: 111,
-            robust_address: Address::new_id(0),
-            eth_address: EthAddress(subaddress.try_into().unwrap()),
-        };
+        let expected_return =
+            Return { actor_id: 111, robust_address: Address::new_id(0), eth_address: new_eth_addr };
 
         assert_eq!(result, expected_return);
         rt.verify();

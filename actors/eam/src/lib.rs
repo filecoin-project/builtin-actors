@@ -4,7 +4,6 @@ use ext::init::{Exec4Params, Exec4Return};
 use fil_actors_runtime::AsActorError;
 use fvm_ipld_encoding::Cbor;
 use fvm_shared::error::ExitCode;
-use rlp::Encodable;
 
 pub mod ext;
 
@@ -37,18 +36,22 @@ pub enum Method {
     // CreateAccount = 4,
 }
 
-#[derive(Debug)]
-/// Intermediate type between RLP encoding for CREATE
-pub struct RlpCreateAddress {
-    pub address: EthAddress,
-    pub nonce: u64,
+/// Compute the a new actor address using the EVM's CREATE rules.
+pub fn compute_address_create(rt: &impl Runtime, from: &EthAddress, nonce: u64) -> EthAddress {
+    let mut stream = rlp::RlpStream::new();
+    stream.begin_list(2).append(&&from.0[..]).append(&nonce);
+    EthAddress(hash_20(rt, &stream.out()))
 }
 
-impl rlp::Encodable for RlpCreateAddress {
-    fn rlp_append(&self, s: &mut rlp::RlpStream) {
-        s.encoder().encode_value(&self.address.0);
-        s.append(&self.nonce);
-    }
+/// Compute the a new actor address using the EVM's CREATE2 rules.
+pub fn compute_address_create2(
+    rt: &impl Runtime,
+    from: &EthAddress,
+    salt: &[u8; 32],
+    initcode: &[u8],
+) -> EthAddress {
+    let inithash = rt.hash(SupportedHashes::Keccak256, initcode);
+    EthAddress(hash_20(rt, &[&[0xff], &from.0[..], salt, &inithash].concat()))
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -210,8 +213,7 @@ impl EamActor {
         let caller_addr = resolve_caller(rt)?;
 
         // CREATE logic
-        let rlp = RlpCreateAddress { address: caller_addr, nonce: params.nonce };
-        let eth_addr = EthAddress(hash_20(rt, &rlp.rlp_bytes()));
+        let eth_addr = compute_address_create(rt, &caller_addr, params.nonce);
 
         // send to init actor
         create_actor(rt, caller_addr, eth_addr, params.initcode)
@@ -226,16 +228,11 @@ impl EamActor {
     ) -> Result<Create2Return, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
 
-        // CREATE2 logic
-        let inithash = rt.hash(SupportedHashes::Keccak256, &params.initcode);
-
         // Try to lookup the caller's EVM address, but otherwise derive one from the ID address.
         let caller_addr = resolve_caller(rt)?;
 
-        let eth_addr = EthAddress(hash_20(
-            rt,
-            &[&[0xff], &caller_addr.0[..], &params.salt, &inithash].concat(),
-        ));
+        // Compute the CREATE2 address
+        let eth_addr = compute_address_create2(rt, &caller_addr, &params.salt, &params.initcode);
 
         // send to init actor
         create_actor(rt, caller_addr, eth_addr, params.initcode)
@@ -297,30 +294,73 @@ impl ActorCode for EamActor {
     }
 }
 
-#[test]
-fn test_create_actor_rejects() {
+#[cfg(test)]
+mod test {
     use fil_actors_runtime::test_utils::MockRuntime;
     use fvm_shared::error::ExitCode;
-    let mut rt = MockRuntime::default();
-    let mut creator = EthAddress([0; 20]);
-    creator.0[0] = 0xff;
-    creator.0[19] = 0x1;
 
-    // Reject ID.
-    let mut new_addr = EthAddress([0; 20]);
-    new_addr.0[0] = 0xff;
-    new_addr.0[18] = 0x20;
-    new_addr.0[19] = 0x20;
-    assert_eq!(
-        ExitCode::USR_FORBIDDEN,
-        create_actor(&mut rt, creator, new_addr, Vec::new()).unwrap_err().exit_code()
-    );
+    use crate::compute_address_create2;
 
-    // Reject Precompile.
-    let mut new_addr = EthAddress([0; 20]);
-    new_addr.0[19] = 0x20;
-    assert_eq!(
-        ExitCode::USR_FORBIDDEN,
-        create_actor(&mut rt, creator, new_addr, Vec::new()).unwrap_err().exit_code()
-    );
+    use super::{compute_address_create, create_actor, EthAddress};
+
+    #[test]
+    fn test_create_actor_rejects() {
+        let mut rt = MockRuntime::default();
+        let mut creator = EthAddress([0; 20]);
+        creator.0[0] = 0xff;
+        creator.0[19] = 0x1;
+
+        // Reject ID.
+        let mut new_addr = EthAddress([0; 20]);
+        new_addr.0[0] = 0xff;
+        new_addr.0[18] = 0x20;
+        new_addr.0[19] = 0x20;
+        assert_eq!(
+            ExitCode::USR_FORBIDDEN,
+            create_actor(&mut rt, creator, new_addr, Vec::new()).unwrap_err().exit_code()
+        );
+
+        // Reject Precompile.
+        let mut new_addr = EthAddress([0; 20]);
+        new_addr.0[19] = 0x20;
+        assert_eq!(
+            ExitCode::USR_FORBIDDEN,
+            create_actor(&mut rt, creator, new_addr, Vec::new()).unwrap_err().exit_code()
+        );
+    }
+
+    #[test]
+    fn test_create_address() {
+        let rt = MockRuntime::default();
+        for (from, nonce, expected) in &[
+            ([0u8; 20], 0u64, hex_literal::hex!("bd770416a3345f91e4b34576cb804a576fa48eb1")),
+            ([0; 20], 200, hex_literal::hex!("a6b14387c1356b443061155e9c3e17f72c1777e5")),
+            ([123; 20], 12345, hex_literal::hex!("809a9ab0471e78ee5100e96ca4d0828d1b97e2ba")),
+        ] {
+            let result = compute_address_create(&rt, &EthAddress(*from), *nonce);
+            assert_eq!(result.0[..], expected[..]);
+        }
+    }
+
+    #[test]
+    fn test_create_address2() {
+        let rt = MockRuntime::default();
+        for (from, salt, initcode, expected) in &[
+            (
+                [0u8; 20],
+                [0u8; 32],
+                &b""[..],
+                hex_literal::hex!("e33c0c7f7df4809055c3eba6c09cfe4baf1bd9e0"),
+            ),
+            (
+                [0x99u8; 20],
+                [0x42; 32],
+                &b"foobar"[..],
+                hex_literal::hex!("64425c93a90901271fa355c2bc462190803b97d4"),
+            ),
+        ] {
+            let result = compute_address_create2(&rt, &EthAddress(*from), salt, initcode);
+            assert_eq!(result.0[..], expected[..]);
+        }
+    }
 }
