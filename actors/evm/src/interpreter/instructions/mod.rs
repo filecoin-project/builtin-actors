@@ -1,3 +1,5 @@
+#![allow(clippy::unnecessary_mut_passed)]
+
 pub mod arithmetic;
 pub mod bitwise;
 pub mod boolean;
