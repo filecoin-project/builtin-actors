@@ -60,6 +60,15 @@ mod tests {
     use super::*;
     use crate::interpreter::stack::Stack;
 
+    pub fn ins_byte(s: &mut Stack) {
+        unsafe {
+            let a = s.pop();
+            let b = s.pop();
+            let c = crate::interpreter::instructions::bitwise::byte(a, b);
+            s.push(c);
+        }
+    }
+
     #[test]
     fn test_instruction_byte() {
         let value = U256::from_big_endian(&(1u8..=32u8).map(|x| 5 * x).collect::<Vec<u8>>());
@@ -71,7 +80,7 @@ mod tests {
                 stack.push(U256::from(i));
             }
 
-            crate::interpreter::instructions::BYTE(&mut stack).unwrap();
+            ins_byte(&mut stack);
             let result = unsafe { stack.pop() };
 
             assert_eq!(result, U256::from(5 * (i + 1)));
@@ -83,7 +92,7 @@ mod tests {
             stack.push(U256::from(100u128));
         }
 
-        crate::interpreter::instructions::BYTE(&mut stack).unwrap();
+        ins_byte(&mut stack);
         let result = unsafe { stack.pop() };
         assert_eq!(result, U256::zero());
 
@@ -93,7 +102,7 @@ mod tests {
             stack.push(U256::from_u128_words(1, 0));
         }
 
-        crate::interpreter::instructions::BYTE(&mut stack).unwrap();
+        ins_byte(&mut stack);
         let result = unsafe { stack.pop() };
         assert_eq!(result, U256::zero());
     }
