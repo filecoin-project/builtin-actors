@@ -389,7 +389,7 @@ fn update_expiration2_multiple_claims() {
         state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
 
     let extension = 42 * rt.policy().wpost_proving_period;
-    let new_expiration = old_sector.expiration + extension;
+    let new_expiration = old_sector.commitment_expiration + extension;
 
     let claim_ids = vec![400, 500];
     let client = Address::new_id(3000).id().unwrap();
@@ -461,7 +461,7 @@ fn update_expiration2_failure_cases() {
         state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
 
     let extension = 42 * rt.policy().wpost_proving_period;
-    let new_expiration = old_sector.expiration + extension;
+    let new_expiration = old_sector.commitment_expiration + extension;
 
     let claim_ids = vec![400, 500];
     let client = Address::new_id(3000).id().unwrap();
@@ -514,7 +514,7 @@ fn update_expiration2_failure_cases() {
         check_for_expiration(
             &mut h,
             &mut rt,
-            old_sector.expiration,
+            old_sector.commitment_expiration,
             old_sector.sector_number,
             deadline_index,
             partition_index,
@@ -553,7 +553,7 @@ fn update_expiration2_failure_cases() {
         check_for_expiration(
             &mut h,
             &mut rt,
-            old_sector.expiration,
+            old_sector.commitment_expiration,
             old_sector.sector_number,
             deadline_index,
             partition_index,
@@ -596,7 +596,7 @@ fn update_expiration2_failure_cases() {
         check_for_expiration(
             &mut h,
             &mut rt,
-            old_sector.expiration,
+            old_sector.commitment_expiration,
             old_sector.sector_number,
             deadline_index,
             partition_index,
@@ -624,7 +624,7 @@ fn extend_expiration2_drop_claims() {
         state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
 
     let extension = 42 * rt.policy().wpost_proving_period;
-    let new_expiration = old_sector.expiration + extension;
+    let new_expiration = old_sector.commitment_expiration + extension;
 
     let claim_ids = vec![400, 500];
     let client = Address::new_id(3000).id().unwrap();
@@ -665,7 +665,7 @@ fn extend_expiration2_drop_claims() {
             }],
         }],
     };
-    rt.set_epoch(old_sector.expiration - policy.end_of_life_claim_drop_period);
+    rt.set_epoch(old_sector.commitment_expiration - policy.end_of_life_claim_drop_period);
     h.extend_sectors2(&mut rt, params, claims).unwrap();
     check_for_expiration(
         &mut h,
@@ -753,7 +753,7 @@ fn update_expiration_legacy_fails_on_new_sector_with_deals() {
         state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
 
     let extension = 42 * rt.policy().wpost_proving_period;
-    let new_expiration = old_sector.expiration + extension;
+    let new_expiration = old_sector.commitment_expiration + extension;
 
     let params = ExtendSectorExpirationParams {
         extensions: vec![ExpirationExtension {
@@ -774,7 +774,7 @@ fn update_expiration_legacy_fails_on_new_sector_with_deals() {
     check_for_expiration(
         &mut h,
         &mut rt,
-        old_sector.expiration,
+        old_sector.commitment_expiration,
         old_sector.sector_number,
         deadline_index,
         partition_index,
@@ -799,7 +799,7 @@ fn update_expiration2_drop_claims_failure_cases() {
         state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
 
     let extension = 42 * rt.policy().wpost_proving_period;
-    let new_expiration = old_sector.expiration + extension;
+    let new_expiration = old_sector.commitment_expiration + extension;
 
     let claim_ids = vec![400, 500];
     let client = Address::new_id(3000).id().unwrap();
@@ -842,14 +842,14 @@ fn update_expiration2_drop_claims_failure_cases() {
             }],
         }],
     };
-    rt.set_epoch(old_sector.expiration - policy.end_of_life_claim_drop_period - 1);
+    rt.set_epoch(old_sector.commitment_expiration - policy.end_of_life_claim_drop_period - 1);
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
         "attempt to drop claims with 86401 epochs > end of life claim drop period 86400 remaining",
         h.extend_sectors2(&mut rt, params.clone(), claims.clone()),
     );
     rt.reset();
-    rt.set_epoch(old_sector.expiration - policy.end_of_life_claim_drop_period);
+    rt.set_epoch(old_sector.commitment_expiration - policy.end_of_life_claim_drop_period);
 
     /* Dropped claim not found */
     let mut claims = HashMap::new();
@@ -930,7 +930,7 @@ fn check_for_expiration(
     partition_index: u64,
 ) {
     let new_sector = h.get_sector(rt, sector_number);
-    assert_eq!(expiration, new_sector.expiration);
+    assert_eq!(expiration, new_sector.commitment_expiration);
     let state: State = rt.get_state();
     let quant = state.quant_spec_for_deadline(rt.policy(), deadline_index);
 
@@ -956,7 +956,7 @@ fn assert_sector_verified_space(
     let new_sector = h.get_sector(rt, sector_number);
     assert_eq!(
         DealWeight::from(v_deal_space),
-        new_sector.verified_deal_weight / (new_sector.expiration - new_sector.activation)
+        new_sector.verified_deal_weight / (new_sector.commitment_expiration - new_sector.activation)
     );
 }
 
