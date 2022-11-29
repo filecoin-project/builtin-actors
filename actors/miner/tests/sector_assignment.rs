@@ -4,7 +4,7 @@
 use cid::Cid;
 use fil_actor_miner::{power_for_sectors, Deadline, PoStPartition, PowerPair, SectorOnChainInfo};
 use fil_actors_runtime::{runtime::Policy, test_utils::make_sealed_cid, EPOCHS_IN_YEAR};
-use fvm_ipld_bitfield::{BitField, UnvalidatedBitField};
+use fvm_ipld_bitfield::BitField;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 
