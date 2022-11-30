@@ -20,9 +20,7 @@ pub fn extcodesize(
     // TODO (M2.2) we're fetching the entire block here just to get its size. We should instead use
     //  the ipld::block_stat syscall, but the Runtime nor the Blockstore expose it.
     //  Tracked in https://github.com/filecoin-project/ref-fvm/issues/867
-    let cid = get_cid_type(system.rt, addr)?;
-
-    let len = match cid {
+    let len = match get_cid_type(system.rt, addr) {
         CodeCid::EVM(addr) => get_evm_bytecode(system.rt, &addr).map(|bytecode| bytecode.len())?,
         CodeCid::Native(_) => 1,
         // account and not found are flattened to 0 size
@@ -37,7 +35,7 @@ pub fn extcodehash(
     system: &System<impl Runtime>,
     addr: U256,
 ) -> Result<U256, StatusCode> {
-    let addr = get_cid_type(system.rt, addr)?.unwrap_evm(StatusCode::InvalidArgument(
+    let addr = get_cid_type(system.rt, addr).unwrap_evm(StatusCode::InvalidArgument(
         "Cannot invoke EXTCODEHASH for non-EVM actor.".to_string(),
     ))?;
     let bytecode_cid: Cid = system
@@ -45,7 +43,6 @@ pub fn extcodehash(
         .send(&addr, crate::Method::GetBytecode as u64, Default::default(), TokenAmount::zero())?
         .deserialize()?;
 
-    println!("{}", bytecode_cid);
     let digest = bytecode_cid.hash().digest();
 
     // Take the first 32 bytes of the Multihash
@@ -61,14 +58,15 @@ pub fn extcodecopy(
     data_offset: U256,
     size: U256,
 ) -> Result<(), StatusCode> {
-    let bytecode = get_cid_type(system.rt, addr).map(|cid| {
-        cid.unwrap_evm(())
-            .map(|addr| get_evm_bytecode(system.rt, &addr))
-            // calling EXTCODECOPY on native actors results with a single byte 0xFE which solidtiy uses for its `assert`/`throw` methods
-            // and in general invalid EVM bytecode
-            .unwrap_or_else(|_| Ok(vec![0xFE]))
-    })??;
-
+    let bytecode = match get_cid_type(system.rt, addr) {
+        CodeCid::EVM(addr) => get_evm_bytecode(system.rt, &addr)?,
+        CodeCid::NotFound |
+        CodeCid::Account => Vec::new(),
+        // calling EXTCODECOPY on native actors results with a single byte 0xFE which solidtiy uses for its `assert`/`throw` methods
+        // and in general invalid EVM bytecode
+        _ => vec![0xFE]
+    };
+    
     copy_to_memory(&mut state.memory, dest_offset, size, data_offset, bytecode.as_slice(), true)
 }
 
@@ -92,11 +90,11 @@ impl CodeCid {
 }
 
 /// Resolves an address to the address type
-pub fn get_cid_type(rt: &impl Runtime, addr: U256) -> Result<CodeCid, StatusCode> {
+pub fn get_cid_type(rt: &impl Runtime, addr: U256) -> CodeCid {
     let addr: EthAddress = addr.into();
-    let addr: Address = addr.try_into()?;
 
-    rt.resolve_address(&addr)
+    if let Ok(addr) = addr.try_into() {
+        rt.resolve_address(&addr)
         .and_then(|id| {
             rt.get_actor_code_cid(&id).map(|cid| {
                 let code_cid = rt
@@ -113,10 +111,14 @@ pub fn get_cid_type(rt: &impl Runtime, addr: U256) -> Result<CodeCid, StatusCode
                         // not a builtin actor, so it is probably a native actor
                     })
                     .unwrap_or(CodeCid::Native(cid));
-                Ok(code_cid)
+                code_cid
             })
         })
-        .unwrap_or(Ok(CodeCid::NotFound))
+        .unwrap_or(CodeCid::NotFound)
+    } else {
+        CodeCid::NotFound
+    }
+    
 }
 
 pub fn get_evm_bytecode(rt: &impl Runtime, addr: &Address) -> Result<Vec<u8>, StatusCode> {

@@ -151,14 +151,14 @@ fn test_extcodehash() {
         
 evm_contract:
     jumpdest
-    # get code hash of address f088
+    # get code hash of address 0x88
     push20 0xff00000000000000000000000000000000000088
     extcodehash
     %return_stack_word()
 
 native_actor:
     jumpdest
-    # get code hash of address f089
+    # get code hash of address 0x89
     push20 0xff00000000000000000000000000000000000089
     extcodehash
     %return_stack_word()
@@ -214,6 +214,7 @@ fn test_extcodecopy() {
 %dispatch_begin()
 %dispatch(0x00, evm_contract)
 %dispatch(0x01, native_actor)
+%dispatch(0x02, invalid_address)
 %dispatch_end()
 
 evm_contract:
@@ -237,6 +238,18 @@ native_actor:
     extcodecopy
     # return 0x00..0x01
     push1 0x01
+    push1 0x00
+    return
+
+invalid_address:
+    jumpdest
+    push1 0xff
+    push1 0x00
+    push1 0x00
+    push20 0xff000000000000000000000000000000000000ff
+    extcodecopy
+    # return 0x00..0x20
+    push1 0x20
     push1 0x00
     return
 
@@ -276,5 +289,12 @@ native_actor:
 
     // calling code copy on native actors return "invalid" instruction from EIP-141
     let result = util::invoke_contract(&mut rt, &util::dispatch_num_word(1));
+    rt.verify();
     assert_eq!(vec![0xFE], result);
+    rt.reset();
+
+    // invalid addresses are flattened
+    let result = util::invoke_contract(&mut rt, &util::dispatch_num_word(2));
+    rt.verify();
+    assert_eq!(U256::from_big_endian(&result), U256::from(0));
 }

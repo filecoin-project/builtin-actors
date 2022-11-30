@@ -71,6 +71,7 @@ pub fn invoke_contract_expect_err(rt: &mut MockRuntime, input_data: &[u8], expec
             &RawBytes::serialize(BytesSer(input_data)).unwrap(),
         )
         .expect_err(&format!("expected contract to fail with {}", expect));
+    rt.verify();
     // REMOVEME so this is jank... (just copies err creation from execute in lib.rs)
     assert_eq!(err, ActorError::unspecified(format!("EVM execution error: {expect:?}")))
 }
