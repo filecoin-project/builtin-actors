@@ -358,6 +358,10 @@ where
                     // TODO: Define a better exit code.
                     actor_error!(assertion_failed; "recursion limit exceeded")
                 }
+                ErrorNumber::ReadOnly => ActorError::unchecked(
+                    ExitCode::USR_READ_ONLY,
+                    "attempted to mutate state while in readonly mode".into(),
+                ),
                 err => {
                     // We don't expect any other syscall exit codes.
                     actor_error!(assertion_failed; "unexpected error: {}", err)

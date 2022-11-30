@@ -95,7 +95,10 @@ impl From<fvm_ipld_encoding::Error> for ActorError {
 impl From<fvm_sdk::error::ActorDeleteError> for ActorError {
     fn from(e: fvm_sdk::error::ActorDeleteError) -> Self {
         Self {
-            exit_code: ExitCode::USR_ILLEGAL_ARGUMENT,
+            exit_code: match e {
+                fvm_sdk::error::ActorDeleteError::ReadOnly => ExitCode::USR_READ_ONLY,
+                _ => ExitCode::USR_ILLEGAL_ARGUMENT,
+            },
             msg: e.to_string(),
             data: RawBytes::default(),
         }
@@ -121,7 +124,10 @@ impl From<fvm_sdk::error::StateReadError> for ActorError {
 impl From<fvm_sdk::error::StateUpdateError> for ActorError {
     fn from(e: fvm_sdk::error::StateUpdateError) -> Self {
         Self {
-            exit_code: ExitCode::USR_ILLEGAL_STATE,
+            exit_code: match e {
+                fvm_sdk::error::StateUpdateError::ActorDeleted => ExitCode::USR_ILLEGAL_STATE,
+                fvm_sdk::error::StateUpdateError::ReadOnly => ExitCode::USR_READ_ONLY,
+            },
             msg: e.to_string(),
             data: RawBytes::default(),
         }
