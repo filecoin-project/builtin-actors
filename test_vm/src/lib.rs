@@ -573,9 +573,6 @@ impl MessageInfo for InvocationCtx<'_, '_> {
     fn value_received(&self) -> TokenAmount {
         self.msg.value.clone()
     }
-    fn gas_limit(&self) -> u64 {
-        u32::MAX.into()
-    }
     fn gas_premium(&self) -> TokenAmount {
         TokenAmount::zero()
     }

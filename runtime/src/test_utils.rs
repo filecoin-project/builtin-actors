@@ -821,9 +821,6 @@ impl<BS> MessageInfo for MockRuntime<BS> {
     fn value_received(&self) -> TokenAmount {
         self.value_received.clone()
     }
-    fn gas_limit(&self) -> u64 {
-        self.gas_limit
-    }
     fn gas_premium(&self) -> TokenAmount {
         self.gas_premium.clone()
     }
