@@ -12,7 +12,6 @@ use {
     fil_actors_runtime::runtime::Runtime,
 };
 
-#[inline]
 pub fn extcodesize(
     _state: &mut ExecutionState,
     system: &System<impl Runtime>,
@@ -24,16 +23,7 @@ pub fn extcodesize(
     let cid = get_cid_type(system.rt, addr)?;
 
     let len = match cid {
-        CodeCid::EVM(evm) => system
-            .rt
-            .send(
-                &evm.0,
-                crate::Method::GetBytecode as u64,
-                Default::default(),
-                TokenAmount::zero(),
-            )?
-            .deserialize()
-            .map(|cid| get_evm_bytecode(system.rt, &cid).map(|bytecode| bytecode.len()))??,
+        CodeCid::EVM(addr) => get_evm_bytecode(system.rt, &addr).map(|bytecode| bytecode.len())?,
         CodeCid::Native(_) => 1,
         // account and not found are flattened to 0 size
         _ => 0,
@@ -47,14 +37,16 @@ pub fn extcodehash(
     system: &System<impl Runtime>,
     addr: U256,
 ) -> Result<U256, StatusCode> {
-    let addr = state.stack.pop();
-    let cid = get_cid_type(system.rt, addr)?
-        .unwrap_evm(StatusCode::InvalidArgument(
-            "Cannot invoke EXTCODEHASH for non-EVM actor.".to_string(),
-        ))?
-        .1;
+    let addr = get_cid_type(system.rt, addr)?.unwrap_evm(StatusCode::InvalidArgument(
+        "Cannot invoke EXTCODEHASH for non-EVM actor.".to_string(),
+    ))?;
+    let bytecode_cid: Cid = system
+        .rt
+        .send(&addr, crate::Method::GetBytecode as u64, Default::default(), TokenAmount::zero())?
+        .deserialize()?;
 
-    let digest = cid.hash().digest();
+    println!("{}", bytecode_cid);
+    let digest = bytecode_cid.hash().digest();
 
     // Take the first 32 bytes of the Multihash
     let digest_len = digest.len().min(32);
@@ -69,11 +61,9 @@ pub fn extcodecopy(
     data_offset: U256,
     size: U256,
 ) -> Result<(), StatusCode> {
-    let ExecutionState { stack, .. } = state;
-
     let bytecode = get_cid_type(system.rt, addr).map(|cid| {
         cid.unwrap_evm(())
-            .map(|evm_cid| get_evm_bytecode(system.rt, &evm_cid.1))
+            .map(|addr| get_evm_bytecode(system.rt, &addr))
             // calling EXTCODECOPY on native actors results with a single byte 0xFE which solidtiy uses for its `assert`/`throw` methods
             // and in general invalid EVM bytecode
             .unwrap_or_else(|_| Ok(vec![0xFE]))
@@ -85,16 +75,16 @@ pub fn extcodecopy(
 #[derive(Debug)]
 pub enum CodeCid {
     /// EVM Address and the CID of the actor (not the bytecode)
-    EVM((Address, Cid)),
+    EVM(Address),
     Native(Cid),
     Account,
     NotFound,
 }
 
 impl CodeCid {
-    pub fn unwrap_evm<E>(&self, err: E) -> Result<(Address, Cid), E> {
-        if let CodeCid::EVM(cid) = self {
-            Ok(*cid)
+    pub fn unwrap_evm<E>(&self, err: E) -> Result<Address, E> {
+        if let CodeCid::EVM(ret) = self {
+            Ok(*ret)
         } else {
             Err(err)
         }
@@ -116,7 +106,7 @@ pub fn get_cid_type(rt: &impl Runtime, addr: U256) -> Result<CodeCid, StatusCode
                             Type::Account => CodeCid::Account,
                             // TODO part of current account abstraction hack where emryos are accounts
                             Type::Embryo => CodeCid::Account,
-                            Type::EVM => CodeCid::EVM((addr, cid)),
+                            Type::EVM => CodeCid::EVM(addr),
                             // remaining builtin actors are native
                             _ => CodeCid::Native(cid),
                         }
@@ -129,10 +119,13 @@ pub fn get_cid_type(rt: &impl Runtime, addr: U256) -> Result<CodeCid, StatusCode
         .unwrap_or(Ok(CodeCid::NotFound))
 }
 
-pub fn get_evm_bytecode(rt: &impl Runtime, cid: &Cid) -> Result<Vec<u8>, StatusCode> {
+pub fn get_evm_bytecode(rt: &impl Runtime, addr: &Address) -> Result<Vec<u8>, StatusCode> {
+    let cid = rt
+        .send(addr, crate::Method::GetBytecode as u64, Default::default(), TokenAmount::zero())?
+        .deserialize()?;
     let raw_bytecode = rt
         .store()
-        .get(cid) // TODO this is inefficient; should call stat here.
+        .get(&cid) // TODO this is inefficient; should call stat here.
         .map_err(|e| StatusCode::InternalError(format!("failed to get bytecode block: {}", &e)))?
         .ok_or_else(|| ActorError::not_found("bytecode block not found".to_string()))?;
     Ok(raw_bytecode)

@@ -103,8 +103,8 @@ native_account:
         );
 
         let result = util::invoke_contract(&mut rt, &method);
-        assert_eq!(U256::from_big_endian(&result), expected);
         rt.verify();
+        assert_eq!(U256::from_big_endian(&result), expected);
         rt.reset();
     }
 
@@ -113,9 +113,8 @@ native_account:
     let expected = U256::from(0x01);
     {
         let result = util::invoke_contract(&mut rt, &method);
-        assert_eq!(U256::from_big_endian(&result), expected);
-
         rt.verify();
+        assert_eq!(U256::from_big_endian(&result), expected);
         rt.reset();
     }
 
@@ -124,9 +123,8 @@ native_account:
     let expected = U256::from(0x00);
     {
         let result = util::invoke_contract(&mut rt, &method);
-        assert_eq!(U256::from_big_endian(&result), expected);
-
         rt.verify();
+        assert_eq!(U256::from_big_endian(&result), expected);
         rt.reset();
     }
 
@@ -135,9 +133,8 @@ native_account:
     let expected = U256::from(0x00);
     {
         let result = util::invoke_contract(&mut rt, &method);
-        assert_eq!(U256::from_big_endian(&result), expected);
-
         rt.verify();
+        assert_eq!(U256::from_big_endian(&result), expected);
         rt.reset();
     }
 }
@@ -195,9 +192,8 @@ native_actor:
     );
 
     let result = util::invoke_contract(&mut rt, &util::dispatch_num_word(0));
-    assert_eq!(U256::from_big_endian(&result), U256::from(&bytecode_cid.hash().digest()[..32]));
-
     rt.verify();
+    assert_eq!(U256::from_big_endian(&result), U256::from(&bytecode_cid.hash().digest()[..32]));
     rt.reset();
 
     util::invoke_contract_expect_err(
@@ -274,9 +270,8 @@ native_actor:
     );
 
     let result = util::invoke_contract(&mut rt, &util::dispatch_num_word(0));
-    assert_eq!(other_bytecode.as_slice(), result);
-
     rt.verify();
+    assert_eq!(other_bytecode.as_slice(), result);
     rt.reset();
 
     // calling code copy on native actors return "invalid" instruction from EIP-141
