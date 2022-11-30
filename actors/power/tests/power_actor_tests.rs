@@ -618,7 +618,7 @@ fn given_no_miner_claim_update_pledge_total_should_abort() {
     h.create_miner_basic(&mut rt, *OWNER, *OWNER, *MINER).unwrap();
 
     // explicitly delete miner claim
-    h.delete_claim(&mut rt, &*MINER);
+    h.delete_claim(&mut rt, &MINER);
 
     rt.set_caller(*MINER_ACTOR_CODE_ID, *MINER);
     rt.expect_validate_caller_type(vec![Type::Miner]);

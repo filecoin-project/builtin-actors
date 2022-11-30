@@ -96,8 +96,8 @@ fn fails_if_miner_cant_repay_fee_debt() {
         h.withdraw_funds(
             &mut rt,
             h.owner,
-            &*ONE_PERCENT_BALANCE,
-            &*ONE_PERCENT_BALANCE,
+            &ONE_PERCENT_BALANCE,
+            &ONE_PERCENT_BALANCE,
             &TokenAmount::zero(),
         ),
     );

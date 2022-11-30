@@ -135,7 +135,7 @@ fn test_extcodecopy() {
         evm::Method::GetBytecode as u64,
         Default::default(),
         TokenAmount::zero(),
-        RawBytes::serialize(&bytecode_cid).unwrap(),
+        RawBytes::serialize(bytecode_cid).unwrap(),
         ExitCode::OK,
     );
 

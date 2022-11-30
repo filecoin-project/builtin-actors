@@ -503,7 +503,7 @@ fn fail_when_balance_is_zero() {
         ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MarketActor>(
             Method::AddBalance as u64,
-            &RawBytes::serialize(&PROVIDER_ADDR).unwrap(),
+            &RawBytes::serialize(PROVIDER_ADDR).unwrap(),
         ),
     );
 

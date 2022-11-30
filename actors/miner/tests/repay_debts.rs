@@ -139,9 +139,9 @@ fn pay_debt_partially_from_vested_funds() {
     // send 1 FIL and repay all debt from vesting funds and balance
     h.repay_debts(
         &mut rt,
-        &*BIG_BALANCE,  // send 1 FIL
+        &BIG_BALANCE,   // send 1 FIL
         &amount_locked, // 3 FIL comes from vesting funds
-        &*BIG_BALANCE,  // 1 FIL sent from balance
+        &BIG_BALANCE,   // 1 FIL sent from balance
     )
     .unwrap();
 
