@@ -2,6 +2,7 @@
 
 use fvm_ipld_encoding::{BytesDe, BytesSer};
 use fvm_shared::{address::Address, METHOD_SEND};
+use num_traits::Zero;
 
 use crate::interpreter::precompiles::PrecompileContext;
 
@@ -196,112 +197,125 @@ pub fn call_generic<RT: Runtime>(
             &[]
         };
 
-        if precompiles::Precompiles::<RT>::is_precompile(&dst) {
-            let context = PrecompileContext {
-                is_static: matches!(kind, CallKind::StaticCall) || system.readonly,
-                gas,
-                value,
-            };
+        'early_ret: {
+            if precompiles::Precompiles::<RT>::is_precompile(&dst) {
+                let context = PrecompileContext {
+                    is_static: matches!(kind, CallKind::StaticCall) || system.readonly,
+                    gas,
+                    value,
+                };
 
-            match precompiles::Precompiles::call_precompile(system.rt, dst, input_data, context)
-                .map_err(StatusCode::from)
-            {
-                Ok(return_data) => (1, return_data),
-                Err(status) => {
-                    let msg = format!("{}", status);
-                    (0, msg.as_bytes().to_vec())
+                match precompiles::Precompiles::call_precompile(system.rt, dst, input_data, context)
+                    .map_err(StatusCode::from)
+                {
+                    Ok(return_data) => (1, return_data),
+                    Err(status) => {
+                        let msg = format!("{}", status);
+                        (0, msg.as_bytes().to_vec())
+                    }
                 }
-            }
-        } else {
-            let call_result = match kind {
-                CallKind::Call | CallKind::StaticCall => {
-                    let dst_addr: EthAddress = dst.into();
-                    let dst_addr: Address = dst_addr.try_into().expect("address is a precompile");
+            } else {
+                let dst_addr: EthAddress = dst.into();
+                let dst_addr: Address = dst_addr.try_into().expect("address is a precompile");
 
-                    // Special casing for account/embryo/non-existent actors: we just do a SEND (method 0)
-                    // which allows us to transfer funds (and create embryos)
-                    let target_actor_code = system
-                        .rt
-                        .resolve_address(&dst_addr)
-                        .and_then(|actor_id| system.rt.get_actor_code_cid(&actor_id));
-                    let target_actor_type = target_actor_code
-                        .as_ref()
-                        .and_then(|cid| system.rt.resolve_builtin_actor_type(cid));
-                    let actor_exists = target_actor_code.is_some();
+                let call_result = match kind {
+                    CallKind::Call | CallKind::StaticCall => {
+                        // Special casing for account/embryo/non-existent actors: we just do a SEND (method 0)
+                        // which allows us to transfer funds (and create embryos)
+                        let target_actor_code = system
+                            .rt
+                            .resolve_address(&dst_addr)
+                            .and_then(|actor_id| system.rt.get_actor_code_cid(&actor_id));
+                        let target_actor_type = target_actor_code
+                            .as_ref()
+                            .and_then(|cid| system.rt.resolve_builtin_actor_type(cid));
+                        let actor_exists = target_actor_code.is_some();
 
-                    if !actor_exists && value.is_zero() {
-                        // If the actor doesn't exist and we're not sending value, return with
-                        // "success". The EVM only auto-creates actors when sending value.
-                        //
-                        // NOTE: this will also apply if we're in read-only mode, because we can't
-                        // send value in read-only mode anyways.
-                        Ok(RawBytes::default())
-                    } else {
-                        let method = if !actor_exists
-                            || matches!(target_actor_type, Some(Type::Embryo | Type::Account))
-                        {
-                            // If the target actor doesn't exist or is an account or an embryo,
-                            // switch to a basic "send" so the call will still work even if the
-                            // target actor would reject a normal ethereum call.
-                            METHOD_SEND
-                        } else if system.readonly || kind == CallKind::StaticCall {
-                            // Invoke, preserving read-only mode.
-                            Method::InvokeContractReadOnly as u64
+                        if !actor_exists && value.is_zero() {
+                            // If the actor doesn't exist and we're not sending value, return with
+                            // "success". The EVM only auto-creates actors when sending value.
+                            //
+                            // NOTE: this will also apply if we're in read-only mode, because we can't
+                            // send value in read-only mode anyways.
+                            Ok(RawBytes::default())
                         } else {
-                            // Otherwise, invoke normally.
-                            Method::InvokeContract as u64
+                            let method = if !actor_exists
+                                || matches!(target_actor_type, Some(Type::Embryo | Type::Account))
+                            {
+                                // If the target actor doesn't exist or is an account or an embryo,
+                                // switch to a basic "send" so the call will still work even if the
+                                // target actor would reject a normal ethereum call.
+                                METHOD_SEND
+                            } else if system.readonly || kind == CallKind::StaticCall {
+                                // Invoke, preserving read-only mode.
+                                Method::InvokeContractReadOnly as u64
+                            } else {
+                                // Otherwise, invoke normally.
+                                Method::InvokeContract as u64
+                            };
+                            system.send(
+                                &dst_addr,
+                                method,
+                                // TODO: support IPLD codecs #758
+                                RawBytes::serialize(BytesSer(input_data))?,
+                                TokenAmount::from(&value),
+                            )
+                        }
+                    }
+                    CallKind::DelegateCall => {
+                        // first invoke GetBytecode to get the code CID from the target
+                        let cid = match system
+                            .rt
+                            .resolve_address(&dst_addr)
+                            .and_then(|id| system.rt.get_actor_code_cid(&id))
+                        {
+                            Some(cid) => cid,
+                            // failure to find CID is flattened to an empty return
+                            None => break 'early_ret (1, vec![]),
+                        };
+
+                        let code = match system.rt.resolve_builtin_actor_type(&cid) {
+                            Some(Type::EVM) => system.rt
+                                .send(&dst_addr, crate::Method::GetBytecode as u64, Default::default(), TokenAmount::zero())?
+                                .deserialize()?
+                            ,
+                            // other builtin actors & native actors
+                            _ => todo!("revert when calling delegate call for native actors")
+                        };
+
+                        // and then invoke self with delegate; readonly context is sticky
+                        let params = DelegateCallParams {
+                            code,
+                            input: input_data.to_vec(),
+                            readonly: system.readonly,
                         };
                         system.send(
-                            &dst_addr,
-                            method,
-                            // TODO: support IPLD codecs #758
-                            RawBytes::serialize(BytesSer(input_data))?,
+                            &system.rt.message().receiver(),
+                            Method::InvokeContractDelegate as u64,
+                            RawBytes::serialize(&params)?,
                             TokenAmount::from(&value),
                         )
                     }
-                }
-                CallKind::DelegateCall => {
-                    // first invoke GetBytecode to get the code CID from the target
-                    let code = crate::interpreter::instructions::ext::get_evm_bytecode_cid(
-                        system.rt, dst,
-                    )?
-                    .unwrap_evm(StatusCode::InvalidArgument(format!(
-                        "DELEGATECALL cannot call native actor {}",
-                        dst
-                    )))?;
 
-                    // and then invoke self with delegate; readonly context is sticky
-                    let params = DelegateCallParams {
-                        code,
-                        input: input_data.to_vec(),
-                        readonly: system.readonly,
-                    };
-                    system.send(
-                        &system.rt.message().receiver(),
-                        Method::InvokeContractDelegate as u64,
-                        RawBytes::serialize(&params)?,
-                        TokenAmount::from(&value),
-                    )
-                }
-
-                CallKind::CallCode => Err(ActorError::unchecked(
-                    EVM_CONTRACT_EXECUTION_ERROR,
-                    "unsupported opcode".to_string(),
-                )),
-            };
-            match call_result {
-                Ok(result) => {
-                    // Support the "empty" result. We often use this to mean "returned nothing" and
-                    // it's important to support, e.g., sending to accounts.
-                    if result.is_empty() {
-                        (1, Vec::new())
-                    } else {
-                        // TODO: support IPLD codecs #758
-                        let BytesDe(result) = result.deserialize()?;
-                        (1, result)
+                    CallKind::CallCode => Err(ActorError::unchecked(
+                        EVM_CONTRACT_EXECUTION_ERROR,
+                        "unsupported opcode".to_string(),
+                    )),
+                };
+                match call_result {
+                    Ok(result) => {
+                        // Support the "empty" result. We often use this to mean "returned nothing" and
+                        // it's important to support, e.g., sending to accounts.
+                        if result.is_empty() {
+                            (1, Vec::new())
+                        } else {
+                            // TODO: support IPLD codecs #758
+                            let BytesDe(result) = result.deserialize()?;
+                            (1, result)
+                        }
                     }
+                    Err(ae) => (0, ae.data().to_vec()),
                 }
-                Err(ae) => (0, ae.data().to_vec()),
             }
         }
     };

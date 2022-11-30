@@ -21,38 +21,23 @@ pub fn extcodesize(
     // TODO (M2.2) we're fetching the entire block here just to get its size. We should instead use
     //  the ipld::block_stat syscall, but the Runtime nor the Blockstore expose it.
     //  Tracked in https://github.com/filecoin-project/ref-fvm/issues/867
-    let len = match get_evm_bytecode_cid(system.rt, addr) {
-        Ok(CodeCid::EVM(cid)) =>
-        // TODO this is part of account abstraction hack where EOAs are Embryos
-        {
-            if cid == system.rt.get_code_cid_for_type(Type::Embryo) {
-                Ok(0)
-            } else {
-                get_evm_bytecode(system.rt, &cid).map(|bytecode| bytecode.len())
-            }
-        }
-        Ok(CodeCid::Native(cid)) => {
-            if cid == system.rt.get_code_cid_for_type(Type::Account) {
-                // system account has no code (and we want solidity isContract to return false)
-                Ok(0)
-            } else {
-                // native actor code
-                // TODO bikeshed this, needs to be at least non-zero though for solidity isContract.
-                // https://github.com/filecoin-project/ref-fvm/issues/1134
-                Ok(1)
-            }
-        }
-        // non-existent address
-        Err(StatusCode::InvalidArgument(msg)) => {
-            // REMOVEME: kinda sketchy
-            if msg == "EVM EXT opcode failed to resolve address" {
-                Ok(0)
-            } else {
-                Err(StatusCode::InvalidArgument(msg))
-            }
-        }
-        Err(e) => Err(e),
-    }?;
+    let cid = get_cid_type(system.rt, addr)?;
+
+    let len = match cid {
+        CodeCid::EVM(evm) => system
+            .rt
+            .send(
+                &evm.0,
+                crate::Method::GetBytecode as u64,
+                Default::default(),
+                TokenAmount::zero(),
+            )?
+            .deserialize()
+            .map(|cid| get_evm_bytecode(system.rt, &cid).map(|bytecode| bytecode.len()))??,
+        CodeCid::Native(_) => 1,
+        // account and not found are flattened to 0 size
+        _ => 0,
+    };
 
     Ok(len.into())
 }
@@ -63,9 +48,11 @@ pub fn extcodehash(
     addr: U256,
 ) -> Result<U256, StatusCode> {
     let addr = state.stack.pop();
-    let cid = get_evm_bytecode_cid(system.rt, addr)?.unwrap_evm(StatusCode::InvalidArgument(
-        "Cannot invoke EXTCODEHASH for non-EVM actor.".to_string(),
-    ))?;
+    let cid = get_cid_type(system.rt, addr)?
+        .unwrap_evm(StatusCode::InvalidArgument(
+            "Cannot invoke EXTCODEHASH for non-EVM actor.".to_string(),
+        ))?
+        .1;
 
     let digest = cid.hash().digest();
 
@@ -84,10 +71,9 @@ pub fn extcodecopy(
 ) -> Result<(), StatusCode> {
     let ExecutionState { stack, .. } = state;
 
-    // TODO err trying to copy native code
-    let bytecode = get_evm_bytecode_cid(system.rt, addr).map(|cid| {
+    let bytecode = get_cid_type(system.rt, addr).map(|cid| {
         cid.unwrap_evm(())
-            .map(|evm_cid| get_evm_bytecode(system.rt, &evm_cid))
+            .map(|evm_cid| get_evm_bytecode(system.rt, &evm_cid.1))
             // calling EXTCODECOPY on native actors results with a single byte 0xFE which solidtiy uses for its `assert`/`throw` methods
             // and in general invalid EVM bytecode
             .unwrap_or_else(|_| Ok(vec![0xFE]))
@@ -98,12 +84,15 @@ pub fn extcodecopy(
 
 #[derive(Debug)]
 pub enum CodeCid {
-    EVM(Cid),
+    /// EVM Address and the CID of the actor (not the bytecode)
+    EVM((Address, Cid)),
     Native(Cid),
+    Account,
+    NotFound,
 }
 
 impl CodeCid {
-    pub fn unwrap_evm<E>(&self, err: E) -> Result<Cid, E> {
+    pub fn unwrap_evm<E>(&self, err: E) -> Result<(Address, Cid), E> {
         if let CodeCid::EVM(cid) = self {
             Ok(*cid)
         } else {
@@ -112,34 +101,32 @@ impl CodeCid {
     }
 }
 
-/// Attempts to get bytecode CID of an evm contract, returning either an error or the CID of the native actor as the error  
-pub fn get_evm_bytecode_cid(rt: &impl Runtime, addr: U256) -> Result<CodeCid, StatusCode> {
+/// Resolves an address to the address type
+pub fn get_cid_type(rt: &impl Runtime, addr: U256) -> Result<CodeCid, StatusCode> {
     let addr: EthAddress = addr.into();
     let addr: Address = addr.try_into()?;
-    let actor_id = rt.resolve_address(&addr).ok_or_else(|| {
-        StatusCode::InvalidArgument("EVM EXT opcode failed to resolve address".to_string())
-        // TODO better error code
-    })?;
 
-    let evm_cid = rt.get_code_cid_for_type(Type::EVM);
-    let embryo_cid = rt.get_code_cid_for_type(Type::Embryo);
-    let target_cid = rt.get_actor_code_cid(&actor_id);
-
-    if let Some(cid) = target_cid {
-        // TODO part of embryo hack
-        if cid == embryo_cid {
-            return Ok(CodeCid::EVM(cid));
-        } else if cid != evm_cid {
-            return Ok(CodeCid::Native(cid));
-        }
-    }
-    // REMOVEME if we dont find a CID for these things it fails silently till send...
-
-    let cid = CodeCid::EVM(
-        rt.send(&addr, crate::Method::GetBytecode as u64, Default::default(), TokenAmount::zero())?
-            .deserialize()?,
-    );
-    Ok(cid)
+    rt.resolve_address(&addr)
+        .and_then(|id| {
+            rt.get_actor_code_cid(&id).map(|cid| {
+                let code_cid = rt
+                    .resolve_builtin_actor_type(&cid)
+                    .map(|t| {
+                        match t {
+                            Type::Account => CodeCid::Account,
+                            // TODO part of current account abstraction hack where emryos are accounts
+                            Type::Embryo => CodeCid::Account,
+                            Type::EVM => CodeCid::EVM((addr, cid)),
+                            // remaining builtin actors are native
+                            _ => CodeCid::Native(cid),
+                        }
+                        // not a builtin actor, so it is probably a native actor
+                    })
+                    .unwrap_or(CodeCid::Native(cid));
+                Ok(code_cid)
+            })
+        })
+        .unwrap_or(Ok(CodeCid::NotFound))
 }
 
 pub fn get_evm_bytecode(rt: &impl Runtime, cid: &Cid) -> Result<Vec<u8>, StatusCode> {
