@@ -60,13 +60,12 @@ pub fn extcodecopy(
 ) -> Result<(), StatusCode> {
     let bytecode = match get_cid_type(system.rt, addr) {
         CodeCid::EVM(addr) => get_evm_bytecode(system.rt, &addr)?,
-        CodeCid::NotFound |
-        CodeCid::Account => Vec::new(),
+        CodeCid::NotFound | CodeCid::Account => Vec::new(),
         // calling EXTCODECOPY on native actors results with a single byte 0xFE which solidtiy uses for its `assert`/`throw` methods
         // and in general invalid EVM bytecode
-        _ => vec![0xFE]
+        _ => vec![0xFE],
     };
-    
+
     copy_to_memory(&mut state.memory, dest_offset, size, data_offset, bytecode.as_slice(), true)
 }
 
@@ -95,30 +94,29 @@ pub fn get_cid_type(rt: &impl Runtime, addr: U256) -> CodeCid {
 
     if let Ok(addr) = addr.try_into() {
         rt.resolve_address(&addr)
-        .and_then(|id| {
-            rt.get_actor_code_cid(&id).map(|cid| {
-                let code_cid = rt
-                    .resolve_builtin_actor_type(&cid)
-                    .map(|t| {
-                        match t {
-                            Type::Account => CodeCid::Account,
-                            // TODO part of current account abstraction hack where emryos are accounts
-                            Type::Embryo => CodeCid::Account,
-                            Type::EVM => CodeCid::EVM(addr),
-                            // remaining builtin actors are native
-                            _ => CodeCid::Native(cid),
-                        }
-                        // not a builtin actor, so it is probably a native actor
-                    })
-                    .unwrap_or(CodeCid::Native(cid));
-                code_cid
+            .and_then(|id| {
+                rt.get_actor_code_cid(&id).map(|cid| {
+                    let code_cid = rt
+                        .resolve_builtin_actor_type(&cid)
+                        .map(|t| {
+                            match t {
+                                Type::Account => CodeCid::Account,
+                                // TODO part of current account abstraction hack where emryos are accounts
+                                Type::Embryo => CodeCid::Account,
+                                Type::EVM => CodeCid::EVM(addr),
+                                // remaining builtin actors are native
+                                _ => CodeCid::Native(cid),
+                            }
+                            // not a builtin actor, so it is probably a native actor
+                        })
+                        .unwrap_or(CodeCid::Native(cid));
+                    code_cid
+                })
             })
-        })
-        .unwrap_or(CodeCid::NotFound)
+            .unwrap_or(CodeCid::NotFound)
     } else {
         CodeCid::NotFound
     }
-    
 }
 
 pub fn get_evm_bytecode(rt: &impl Runtime, addr: &Address) -> Result<Vec<u8>, StatusCode> {

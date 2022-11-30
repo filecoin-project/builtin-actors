@@ -197,28 +197,28 @@ pub fn call_generic<RT: Runtime>(
             &[]
         };
 
-        'early_ret: {
-            if precompiles::Precompiles::<RT>::is_precompile(&dst) {
-                let context = PrecompileContext {
-                    is_static: matches!(kind, CallKind::StaticCall) || system.readonly,
-                    gas,
-                    value,
-                };
+        if precompiles::Precompiles::<RT>::is_precompile(&dst) {
+            let context = PrecompileContext {
+                is_static: matches!(kind, CallKind::StaticCall) || system.readonly,
+                gas,
+                value,
+            };
 
-                match precompiles::Precompiles::call_precompile(system.rt, dst, input_data, context)
-                    .map_err(StatusCode::from)
-                {
-                    Ok(return_data) => (1, return_data),
-                    Err(status) => {
-                        let msg = format!("{}", status);
-                        (0, msg.as_bytes().to_vec())
-                    }
+            match precompiles::Precompiles::call_precompile(system.rt, dst, input_data, context)
+                .map_err(StatusCode::from)
+            {
+                Ok(return_data) => (1, return_data),
+                Err(status) => {
+                    let msg = format!("{}", status);
+                    (0, msg.as_bytes().to_vec())
                 }
-            } else {
-                let dst_addr: EthAddress = dst.into();
-                let dst_addr: Address = dst_addr.try_into().expect("address is a precompile");
+            }
+        } else {
+            let dst_addr: EthAddress = dst.into();
+            let dst_addr: Address = dst_addr.try_into().expect("address is a precompile");
 
-                let call_result = match kind {
+            let call_result = (|| {
+                match kind {
                     CallKind::Call | CallKind::StaticCall => {
                         // Special casing for account/embryo/non-existent actors: we just do a SEND (method 0)
                         // which allows us to transfer funds (and create embryos)
@@ -271,17 +271,17 @@ pub fn call_generic<RT: Runtime>(
                         {
                             Some(cid) => cid,
                             // failure to find CID is flattened to an empty return
-                            None => break 'early_ret (1, vec![]),
+                            None => return Ok(RawBytes::default()),
                         };
 
                         let code = match system.rt.resolve_builtin_actor_type(&cid) {
-                            Some(Type::EVM) => system.rt
-                                .send(&dst_addr, crate::Method::GetBytecode as u64, Default::default(), TokenAmount::zero())?
-                                .deserialize()?
-                            ,
-                            // other builtin actors & native actors
-                            _ => todo!("revert when calling delegate call for native actors")
-                        };
+                    Some(Type::EVM) => system.rt
+                        .send(&dst_addr, crate::Method::GetBytecode as u64, Default::default(), TokenAmount::zero())?
+                        .deserialize()?
+                    ,
+                    // other builtin actors & native actors
+                    _ => todo!("revert when calling delegate call for native actors")
+                };
 
                         // and then invoke self with delegate; readonly context is sticky
                         let params = DelegateCallParams {
@@ -301,21 +301,21 @@ pub fn call_generic<RT: Runtime>(
                         EVM_CONTRACT_EXECUTION_ERROR,
                         "unsupported opcode".to_string(),
                     )),
-                };
-                match call_result {
-                    Ok(result) => {
-                        // Support the "empty" result. We often use this to mean "returned nothing" and
-                        // it's important to support, e.g., sending to accounts.
-                        if result.is_empty() {
-                            (1, Vec::new())
-                        } else {
-                            // TODO: support IPLD codecs #758
-                            let BytesDe(result) = result.deserialize()?;
-                            (1, result)
-                        }
-                    }
-                    Err(ae) => (0, ae.data().to_vec()),
                 }
+            })();
+            match call_result {
+                Ok(result) => {
+                    // Support the "empty" result. We often use this to mean "returned nothing" and
+                    // it's important to support, e.g., sending to accounts.
+                    if result.is_empty() {
+                        (1, Vec::new())
+                    } else {
+                        // TODO: support IPLD codecs #758
+                        let BytesDe(result) = result.deserialize()?;
+                        (1, result)
+                    }
+                }
+                Err(ae) => (0, ae.data().to_vec()),
             }
         }
     };
