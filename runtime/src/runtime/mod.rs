@@ -265,9 +265,6 @@ pub trait MessageInfo {
     /// added to current_balance() before method invocation.
     fn value_received(&self) -> TokenAmount;
 
-    /// The message gas limit
-    fn gas_limit(&self) -> u64;
-
     /// The message gas premium
     fn gas_premium(&self) -> TokenAmount;
 }

@@ -94,10 +94,6 @@ impl MessageInfo for FvmMessage {
         fvm::message::value_received()
     }
 
-    fn gas_limit(&self) -> u64 {
-        fvm::message::gas_limit()
-    }
-
     fn gas_premium(&self) -> TokenAmount {
         fvm::message::gas_premium()
     }
