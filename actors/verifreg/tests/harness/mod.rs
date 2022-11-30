@@ -102,7 +102,7 @@ impl Harness {
         rt.expect_send(
             DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::BalanceOf as MethodNum,
-            RawBytes::serialize(&verifier_resolved).unwrap(),
+            RawBytes::serialize(verifier_resolved).unwrap(),
             TokenAmount::zero(),
             serialize(&BigIntSer(&(cap * TOKEN_PRECISION)), "").unwrap(),
             ExitCode::OK,

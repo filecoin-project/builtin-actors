@@ -68,11 +68,8 @@ fn token_receiver() {
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
 
     let param = Address::new_secp256k1(&[2; fvm_shared::address::SECP_PUB_LEN]).unwrap();
-    rt.call::<AccountActor>(
-        Method::Constructor as MethodNum,
-        &RawBytes::serialize(&param).unwrap(),
-    )
-    .unwrap();
+    rt.call::<AccountActor>(Method::Constructor as MethodNum, &RawBytes::serialize(param).unwrap())
+        .unwrap();
 
     rt.expect_validate_caller_any();
     let ret = rt.call::<AccountActor>(

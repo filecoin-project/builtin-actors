@@ -371,8 +371,7 @@ impl<'bs> VM<'bs> {
 
     pub fn get_state<C: Cbor>(&self, addr: Address) -> Option<C> {
         let a_opt = self.get_actor(addr);
-        a_opt.as_ref()?;
-        let a = a_opt.unwrap();
+        let a = a_opt.as_ref()?;
         self.store.get_cbor::<C>(&a.head).unwrap()
     }
 
