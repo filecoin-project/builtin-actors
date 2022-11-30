@@ -332,6 +332,7 @@ mod test {
     #[test]
     fn test_create_address() {
         let rt = MockRuntime::default();
+        // check addresses against externally generated cases
         for (from, nonce, expected) in &[
             ([0u8; 20], 0u64, hex_literal::hex!("bd770416a3345f91e4b34576cb804a576fa48eb1")),
             ([0; 20], 200, hex_literal::hex!("a6b14387c1356b443061155e9c3e17f72c1777e5")),
@@ -345,6 +346,7 @@ mod test {
     #[test]
     fn test_create_address2() {
         let rt = MockRuntime::default();
+        // check addresses against externally generated cases
         for (from, salt, initcode, expected) in &[
             (
                 [0u8; 20],
