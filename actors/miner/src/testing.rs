@@ -836,7 +836,7 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
             );
 
             summary.expiration_epochs.iter().for_each(|&epoch| {
-                partitions_with_expirations.entry(epoch).or_insert(Vec::new()).push(index);
+                partitions_with_expirations.entry(epoch).or_default().push(index);
             });
 
             if summary.early_termination_count > 0 {

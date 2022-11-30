@@ -249,8 +249,8 @@ impl State {
     pub(super) fn update_smoothed_estimate(&mut self, delta: ChainEpoch) {
         let filter_qa_power = AlphaBetaFilter::load(
             &self.this_epoch_qa_power_smoothed,
-            &*DEFAULT_ALPHA,
-            &*DEFAULT_BETA,
+            &DEFAULT_ALPHA,
+            &DEFAULT_BETA,
         );
         self.this_epoch_qa_power_smoothed =
             filter_qa_power.next_estimate(&self.this_epoch_quality_adj_power, delta);
