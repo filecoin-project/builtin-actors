@@ -9,7 +9,7 @@ use std::rc::Rc;
 use anyhow::anyhow;
 use cid::multihash::{Code, Multihash as OtherMultihash};
 use cid::Cid;
-use fvm_ipld_blockstore::MemoryBlockstore;
+use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::de::DeserializeOwned;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
 use fvm_shared::address::Payload;
@@ -103,7 +103,7 @@ pub fn make_builtin(bz: &[u8]) -> Cid {
     Cid::new_v1(IPLD_RAW, OtherMultihash::wrap(0, bz).expect("name too long"))
 }
 
-pub struct MockRuntime {
+pub struct MockRuntime<BS = MemoryBlockstore> {
     pub epoch: ChainEpoch,
     pub miner: Address,
     pub base_fee: TokenAmount,
@@ -124,7 +124,7 @@ pub struct MockRuntime {
 
     // VM Impl
     pub in_call: bool,
-    pub store: Rc<MemoryBlockstore>,
+    pub store: Rc<BS>,
     pub in_transaction: bool,
 
     // Expectations
@@ -155,6 +155,7 @@ pub struct Expectations {
     pub expect_aggregate_verify_seals: Option<ExpectAggregateVerifySeals>,
     pub expect_replica_verify: Option<ExpectReplicaVerify>,
     pub expect_gas_charge: VecDeque<i64>,
+    skip_verification_on_drop: bool,
 }
 
 impl Expectations {
@@ -245,10 +246,20 @@ impl Expectations {
             self.expect_gas_charge
         );
     }
+
+    fn skip_verification_on_drop(&mut self) {
+        self.skip_verification_on_drop = true;
+    }
 }
 
 impl Default for MockRuntime {
     fn default() -> Self {
+        Self::new(Default::default())
+    }
+}
+
+impl<BS> MockRuntime<BS> {
+    pub fn new(store: BS) -> Self {
         Self {
             epoch: Default::default(),
             miner: Address::new_id(0),
@@ -265,7 +276,7 @@ impl Default for MockRuntime {
             state: Default::default(),
             balance: Default::default(),
             in_call: Default::default(),
-            store: Default::default(),
+            store: Rc::new(store),
             in_transaction: Default::default(),
             expectations: Default::default(),
             policy: Default::default(),
@@ -391,7 +402,7 @@ pub fn expect_abort<T: fmt::Debug>(exit_code: ExitCode, res: Result<T, ActorErro
     expect_abort_contains_message(exit_code, "", res);
 }
 
-impl MockRuntime {
+impl<BS: Blockstore> MockRuntime<BS> {
     ///// Runtime access for tests /////
 
     pub fn get_state<T: Cbor>(&self) -> T {
@@ -463,6 +474,7 @@ impl MockRuntime {
 
     /// Clears all mock expectations.
     pub fn reset(&mut self) {
+        self.expectations.borrow_mut().skip_verification_on_drop();
         self.expectations.borrow_mut().reset();
     }
 
@@ -655,7 +667,7 @@ impl MockRuntime {
     }
 }
 
-impl MessageInfo for MockRuntime {
+impl<BS> MessageInfo for MockRuntime<BS> {
     fn caller(&self) -> Address {
         self.caller
     }
@@ -667,7 +679,9 @@ impl MessageInfo for MockRuntime {
     }
 }
 
-impl Runtime<Rc<MemoryBlockstore>> for MockRuntime {
+impl<BS: Blockstore> Runtime for MockRuntime<BS> {
+    type Blockstore = Rc<BS>;
+
     fn network_version(&self) -> NetworkVersion {
         self.network_version
     }
@@ -880,7 +894,7 @@ impl Runtime<Rc<MemoryBlockstore>> for MockRuntime {
         ret
     }
 
-    fn store(&self) -> &Rc<MemoryBlockstore> {
+    fn store(&self) -> &Rc<BS> {
         &self.store
     }
 
@@ -1010,7 +1024,7 @@ impl Runtime<Rc<MemoryBlockstore>> for MockRuntime {
     }
 }
 
-impl Primitives for MockRuntime {
+impl<BS> Primitives for MockRuntime<BS> {
     fn verify_signature(
         &self,
         signature: &Signature,
@@ -1085,7 +1099,7 @@ impl Primitives for MockRuntime {
     }
 }
 
-impl Verifier for MockRuntime {
+impl<BS> Verifier for MockRuntime<BS> {
     fn verify_seal(&self, seal: &SealVerifyInfo) -> anyhow::Result<()> {
         let exp = self
             .expectations
@@ -1213,9 +1227,19 @@ impl Verifier for MockRuntime {
     }
 }
 
-impl RuntimePolicy for MockRuntime {
+impl<BS> RuntimePolicy for MockRuntime<BS> {
     fn policy(&self) -> &Policy {
         &self.policy
+    }
+}
+
+// The Expectations are by default verified on drop().
+// In order to clear the unsatisfied expectations in tests, use MockRuntime#reset().
+impl Drop for Expectations {
+    fn drop(&mut self) {
+        if !self.skip_verification_on_drop {
+            self.verify();
+        }
     }
 }
 

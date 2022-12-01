@@ -447,8 +447,11 @@ impl Harness {
         rt: &mut MockRuntime,
         miner_address: Address,
         seal_info: SealVerifyInfo,
+        expect_success: bool,
     ) -> Result<(), ActorError> {
-        rt.expect_gas_charge(GAS_ON_SUBMIT_VERIFY_SEAL);
+        if expect_success {
+            rt.expect_gas_charge(GAS_ON_SUBMIT_VERIFY_SEAL);
+        }
         rt.expect_validate_caller_type(vec![Type::Miner]);
         rt.set_caller(*MINER_ACTOR_CODE_ID, miner_address);
         rt.call::<PowerActor>(

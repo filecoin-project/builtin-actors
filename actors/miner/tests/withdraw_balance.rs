@@ -33,6 +33,7 @@ fn happy_path_withdraws_funds() {
 fn fails_if_miner_cant_repay_fee_debt() {
     let h = ActorHarness::new(PERIOD_OFFSET);
     let mut rt = h.new_runtime();
+
     rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&mut rt);
 
@@ -50,6 +51,7 @@ fn fails_if_miner_cant_repay_fee_debt() {
             &TokenAmount::zero(),
         ),
     );
+    rt.reset();
     h.check_state(&rt);
 }
 

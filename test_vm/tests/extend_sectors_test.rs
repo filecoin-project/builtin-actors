@@ -1,6 +1,7 @@
 use fil_actor_miner::{
-    max_prove_commit_duration, ExpirationExtension, ExtendSectorExpirationParams,
-    Method as MinerMethod, PowerPair, Sectors, State as MinerState,
+    max_prove_commit_duration, ExpirationExtension, ExpirationExtension2,
+    ExtendSectorExpiration2Params, ExtendSectorExpirationParams, Method as MinerMethod, PowerPair,
+    Sectors, State as MinerState,
 };
 use fil_actor_power::{Method as PowerMethod, UpdateClaimedPowerParams};
 use fil_actors_runtime::cbor::serialize;
@@ -8,7 +9,10 @@ use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{DealWeight, EPOCHS_IN_DAY, STORAGE_POWER_ACTOR_ADDR};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
+use fvm_ipld_encoding::RawBytes;
+use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
@@ -22,7 +26,73 @@ use test_vm::util::{
 use test_vm::{ExpectInvocation, VM};
 
 #[test]
-fn extend_sector_with_deals() {
+fn extend_legacy_sector_with_deals() {
+    extend_legacy_sector_with_deals_inner(false);
+}
+
+#[test]
+fn extend2_legacy_sector_with_deals() {
+    extend_legacy_sector_with_deals_inner(true);
+}
+
+#[allow(clippy::too_many_arguments)]
+fn extend(
+    v: &VM,
+    worker: Address,
+    maddr: Address,
+    deadline_index: u64,
+    partition_index: u64,
+    sector_number: SectorNumber,
+    new_expiration: ChainEpoch,
+    power_update_params: RawBytes,
+    v2: bool,
+) {
+    let extension_method = match v2 {
+        false => MinerMethod::ExtendSectorExpiration as u64,
+        true => MinerMethod::ExtendSectorExpiration2 as u64,
+    };
+
+    match v2 {
+        false => {
+            let extension_params = ExtendSectorExpirationParams {
+                extensions: vec![ExpirationExtension {
+                    deadline: deadline_index,
+                    partition: partition_index,
+                    sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
+                    new_expiration,
+                }],
+            };
+            apply_ok(v, worker, maddr, TokenAmount::zero(), extension_method, extension_params);
+        }
+        true => {
+            let extension_params = ExtendSectorExpiration2Params {
+                extensions: vec![ExpirationExtension2 {
+                    deadline: deadline_index,
+                    partition: partition_index,
+                    sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
+                    new_expiration,
+                    sectors_with_claims: vec![],
+                }],
+            };
+            apply_ok(v, worker, maddr, TokenAmount::zero(), extension_method, extension_params);
+        }
+    };
+
+    ExpectInvocation {
+        to: maddr,
+        method: extension_method,
+        subinvocs: Some(vec![ExpectInvocation {
+            to: STORAGE_POWER_ACTOR_ADDR,
+            method: PowerMethod::UpdateClaimedPower as u64,
+            params: Some(power_update_params),
+            ..Default::default()
+        }]),
+        ..Default::default()
+    }
+    .matches(v.take_invocations().last().unwrap());
+}
+
+fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
     let store = MemoryBlockstore::new();
     let mut v = VM::new_with_singletons(&store);
     let addrs = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
@@ -154,23 +224,8 @@ fn extend_sector_with_deals() {
         deal_start + 90 * EPOCHS_IN_DAY,
     );
 
-    let mut extension_params = ExtendSectorExpirationParams {
-        extensions: vec![ExpirationExtension {
-            deadline: deadline_info.index,
-            partition: partition_index,
-            sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
-            new_expiration: deal_start + 2 * 180 * EPOCHS_IN_DAY,
-        }],
-    };
+    let new_expiration = deal_start + 2 * 180 * EPOCHS_IN_DAY;
 
-    apply_ok(
-        &v,
-        worker,
-        miner_id,
-        TokenAmount::zero(),
-        MinerMethod::ExtendSectorExpiration as u64,
-        extension_params,
-    );
     let mut expected_update_claimed_power_params = UpdateClaimedPowerParams {
         raw_byte_delta: StoragePower::zero(),
         quality_adjusted_delta: StoragePower::from(-675 * (32i64 << 30) / 100),
@@ -178,18 +233,17 @@ fn extend_sector_with_deals() {
     let mut expected_update_claimed_power_params_ser =
         serialize(&expected_update_claimed_power_params, "update_claimed_power params").unwrap();
 
-    ExpectInvocation {
-        to: miner_id,
-        method: MinerMethod::ExtendSectorExpiration as u64,
-        subinvocs: Some(vec![ExpectInvocation {
-            to: STORAGE_POWER_ACTOR_ADDR,
-            method: PowerMethod::UpdateClaimedPower as u64,
-            params: Some(expected_update_claimed_power_params_ser),
-            ..Default::default()
-        }]),
-        ..Default::default()
-    }
-    .matches(v.take_invocations().last().unwrap());
+    extend(
+        &v,
+        worker,
+        miner_id,
+        deadline_info.index,
+        partition_index,
+        sector_number,
+        new_expiration,
+        expected_update_claimed_power_params_ser,
+        do_extend2,
+    );
 
     // advance to 6 months (original expiration) and extend another 6 months
     // verified deal weight /= 2
@@ -204,24 +258,7 @@ fn extend_sector_with_deals() {
         deal_start + 180 * EPOCHS_IN_DAY,
     );
 
-    extension_params = ExtendSectorExpirationParams {
-        extensions: vec![ExpirationExtension {
-            deadline: deadline_info.index,
-            partition: partition_index,
-            sectors: BitField::try_from_bits([sector_number].iter().copied()).unwrap(),
-            new_expiration: deal_start + 3 * 180 * EPOCHS_IN_DAY,
-        }],
-    };
-
-    apply_ok(
-        &v,
-        worker,
-        miner_id,
-        TokenAmount::zero(),
-        MinerMethod::ExtendSectorExpiration as u64,
-        extension_params,
-    );
-
+    let new_expiration = deal_start + 3 * 180 * EPOCHS_IN_DAY;
     expected_update_claimed_power_params = UpdateClaimedPowerParams {
         raw_byte_delta: StoragePower::zero(),
         quality_adjusted_delta: StoragePower::from(-15 * (32i64 << 30) / 10),
@@ -229,18 +266,17 @@ fn extend_sector_with_deals() {
     expected_update_claimed_power_params_ser =
         serialize(&expected_update_claimed_power_params, "update_claimed_power params").unwrap();
 
-    ExpectInvocation {
-        to: miner_id,
-        method: MinerMethod::ExtendSectorExpiration as u64,
-        subinvocs: Some(vec![ExpectInvocation {
-            to: STORAGE_POWER_ACTOR_ADDR,
-            method: PowerMethod::UpdateClaimedPower as u64,
-            params: Some(expected_update_claimed_power_params_ser),
-            ..Default::default()
-        }]),
-        ..Default::default()
-    }
-    .matches(v.take_invocations().last().unwrap());
+    extend(
+        &v,
+        worker,
+        miner_id,
+        deadline_info.index,
+        partition_index,
+        sector_number,
+        new_expiration,
+        expected_update_claimed_power_params_ser,
+        do_extend2,
+    );
 
     miner_state = v.get_state::<MinerState>(miner_id).unwrap();
     sector_info = miner_state.get_sector(&store, sector_number).unwrap().unwrap();

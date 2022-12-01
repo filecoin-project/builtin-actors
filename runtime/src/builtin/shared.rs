@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use crate::{actor_error, ActorContext, ActorError};
-use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::address::Address;
 use fvm_shared::ActorID;
 use fvm_shared::METHOD_SEND;
@@ -20,11 +19,10 @@ pub const CALLER_TYPES_SIGNABLE: &[Type] = &[Type::Account, Type::Multisig];
 /// ResolveToActorID resolves the given address to it's actor ID.
 /// If an actor ID for the given address dosen't exist yet, it tries to create one by sending
 /// a zero balance to the given address.
-pub fn resolve_to_actor_id<BS, RT>(rt: &mut RT, address: &Address) -> Result<ActorID, ActorError>
-where
-    BS: Blockstore,
-    RT: Runtime<BS>,
-{
+pub fn resolve_to_actor_id(
+    rt: &mut impl Runtime,
+    address: &Address,
+) -> Result<ActorID, ActorError> {
     // if we are able to resolve it to an ID address, return the resolved address
     if let Some(id) = rt.resolve_address(address) {
         return Ok(id);

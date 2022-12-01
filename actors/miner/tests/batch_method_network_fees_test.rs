@@ -64,6 +64,7 @@ fn insufficient_funds_for_aggregated_prove_commit_network_fee() {
     );
 
     expect_abort(ExitCode::USR_INSUFFICIENT_FUNDS, res);
+    rt.reset();
 }
 
 #[test]
@@ -112,6 +113,7 @@ fn insufficient_funds_for_batch_precommit_network_fee() {
         "unlocked balance can not repay fee debt",
         res,
     );
+    rt.reset();
 }
 
 #[test]
@@ -167,6 +169,7 @@ fn insufficient_funds_for_batch_precommit_in_combination_of_fee_debt_and_network
         "unlocked balance can not repay fee debt",
         res,
     );
+    rt.reset();
 }
 
 #[test]
@@ -215,6 +218,7 @@ fn enough_funds_for_fee_debt_and_network_fee_but_not_for_pcd() {
         "insufficient funds 0.0 for pre-commit deposit",
         res,
     );
+    rt.reset();
 
     // state untouched
     let state: State = rt.get_state();

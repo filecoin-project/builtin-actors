@@ -2266,10 +2266,12 @@ impl ActorHarness {
             new_expiration: beneficiary_term.expiration,
         };
         let raw_bytes = &RawBytes::serialize(param).unwrap();
+        rt.expect_validate_caller_any();
         rt.call::<Actor>(Method::ChangeBeneficiary as u64, raw_bytes)?;
         rt.verify();
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, beneficiary_id_addr);
+        rt.expect_validate_caller_any();
         rt.call::<Actor>(Method::ChangeBeneficiary as u64, raw_bytes)?;
         rt.verify();
 
@@ -2284,6 +2286,7 @@ impl ActorHarness {
         beneficiary_change: &BeneficiaryChange,
         expect_beneficiary_addr: Option<Address>,
     ) -> Result<RawBytes, ActorError> {
+        rt.expect_validate_caller_any();
         rt.set_address_actor_type(
             beneficiary_change.beneficiary_addr.clone(),
             *ACCOUNT_ACTOR_CODE_ID,
@@ -2318,6 +2321,24 @@ impl ActorHarness {
         let ret = rt.call::<Actor>(Method::GetBeneficiary as u64, &RawBytes::default())?;
         rt.verify();
         Ok(ret.deserialize::<GetBeneficiaryReturn>().unwrap())
+    }
+
+    // extend sectors without verified deals using either legacy or updated sector extension
+    pub fn extend_sectors_versioned(
+        &self,
+        rt: &mut MockRuntime,
+        params: ExtendSectorExpirationParams,
+        v2: bool,
+    ) -> Result<RawBytes, ActorError> {
+        match v2 {
+            false => self.extend_sectors(rt, params),
+            true => {
+                let params2 = ExtendSectorExpiration2Params {
+                    extensions: params.extensions.iter().map(|x| x.into()).collect(),
+                };
+                self.extend_sectors2(rt, params2, HashMap::new())
+            }
+        }
     }
 
     pub fn extend_sectors(

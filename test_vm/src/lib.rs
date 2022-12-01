@@ -14,6 +14,7 @@ use fil_actor_power::{Actor as PowerActor, Method as MethodPower, State as Power
 use fil_actor_reward::{Actor as RewardActor, State as RewardState};
 use fil_actor_system::{Actor as SystemActor, State as SystemState};
 use fil_actor_verifreg::{Actor as VerifregActor, State as VerifRegState};
+use fil_actors_runtime::actor_error;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{
@@ -671,7 +672,8 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         // call target actor
         let to_actor = self.v.get_actor(to_addr).unwrap();
         let params = self.msg.params.clone();
-        let res = match ACTOR_TYPES.get(&to_actor.code).expect("Target actor is not a builtin") {
+        let mut res = match ACTOR_TYPES.get(&to_actor.code).expect("Target actor is not a builtin")
+        {
             Type::Account => AccountActor::invoke_method(self, self.msg.method, &params),
             Type::Cron => CronActor::invoke_method(self, self.msg.method, &params),
             Type::Init => InitActor::invoke_method(self, self.msg.method, &params),
@@ -686,14 +688,20 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             // Type::EVM => panic!("no EVM"),
             Type::DataCap => DataCapActor::invoke_method(self, self.msg.method, &params),
         };
+        if res.is_ok() && !self.caller_validated {
+            res = Err(actor_error!(assertion_failed, "failed to validate caller"));
+        }
         if res.is_err() {
             self.v.rollback(prior_root)
         };
+
         res
     }
 }
 
-impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocation, 'bs> {
+impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
+    type Blockstore = &'bs MemoryBlockstore;
+
     fn create_actor(&mut self, code_id: Cid, actor_id: ActorID) -> Result<(), ActorError> {
         match NON_SINGLETON_CODES.get(&code_id) {
             Some(_) => (),
@@ -754,6 +762,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
                 "caller double validated".to_string(),
             ));
         }
+        self.caller_validated = true;
         for addr in addresses {
             if *addr == self.msg.from {
                 return Ok(());
@@ -775,6 +784,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
                 "caller double validated".to_string(),
             ));
         }
+        self.caller_validated = true;
         let to_match = ACTOR_TYPES.get(&self.v.get_actor(self.msg.from).unwrap().code).unwrap();
         if types.into_iter().any(|t| *t == *to_match) {
             return Ok(());

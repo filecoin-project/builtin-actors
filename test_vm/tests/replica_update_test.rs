@@ -6,19 +6,27 @@ use fil_actor_miner::{
     ProveReplicaUpdatesParams2, ReplicaUpdate, ReplicaUpdate2, SectorOnChainInfo, Sectors,
     State as MinerState, TerminateSectorsParams, TerminationDeclaration, SECTORS_AMT_BITWIDTH,
 };
+use fil_actor_power::{Method as PowerMethod, UpdateClaimedPowerParams};
+use fil_actor_reward::Method as RewardMethod;
+use fil_actor_verifreg::Method as VerifregMethod;
+use fil_actors_runtime::{STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
+use test_vm::ExpectInvocation;
 
 use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
 use fvm_shared::piece::PaddedPieceSize;
 
+use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
-    Array, CRON_ACTOR_ADDR, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    Array, CRON_ACTOR_ADDR, EPOCHS_IN_DAY, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::{BigInt, Zero};
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -31,7 +39,7 @@ use test_vm::util::{
     apply_code, apply_ok, bf_all, check_sector_active, check_sector_faulty, create_accounts,
     create_miner, deadline_state, declare_recovery, invariant_failure_patterns, make_bitfield,
     market_publish_deal, miner_power, precommit_sectors, prove_commit_sectors, sector_info,
-    submit_invalid_post, submit_windowed_post,
+    submit_invalid_post, submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
 };
 use test_vm::VM;
 // ---- Success cases ----
@@ -930,7 +938,7 @@ fn deal_included_in_multiple_sectors_failure() {
 
     // make some unverified deals
 
-    let deal_ids = create_deals_frac(2, &v, worker, worker, maddr, 2);
+    let deal_ids = create_deals_frac(2, &v, worker, worker, maddr, 2, false, 180 * EPOCHS_IN_DAY);
 
     // replicaUpdate the sector
 
@@ -979,6 +987,193 @@ fn deal_included_in_multiple_sectors_failure() {
     assert!(new_sector_info_p2.deal_ids.len().is_zero());
     assert_ne!(new_sealed_cid2, new_sector_info_p2.sealed_cid);
     v.assert_state_invariants();
+}
+
+#[test]
+fn replica_update_verified_deal() {
+    let store = &MemoryBlockstore::new();
+    let mut v = VM::new_with_singletons(store);
+    let addrs = create_accounts(&v, 3, TokenAmount::from_whole(100_000));
+    let (worker, owner, client, verifier) = (addrs[0], addrs[0], addrs[1], addrs[2]);
+    let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
+    let policy = Policy::default();
+    let (maddr, robust) = create_miner(
+        &mut v,
+        owner,
+        worker,
+        seal_proof.registered_window_post_proof().unwrap(),
+        TokenAmount::from_whole(10_000),
+    );
+
+    // Get client verified
+    let datacap = StoragePower::from(32_u128 << 30);
+    verifreg_add_verifier(&v, verifier, datacap.clone());
+    verifreg_add_client(&v, verifier, client, datacap);
+
+    // advance to have seal randomness epoch in the past
+    let v = v.with_epoch(200);
+
+    let sector_number = 100;
+    let (v, d_idx, p_idx) = create_sector(v, worker, maddr, sector_number, seal_proof);
+
+    let old_sector_info = sector_info(&v, maddr, sector_number);
+    // make some deals, chop off market's alloc term buffer from deal lifetime.  This way term max can
+    // line up with sector lifetime AND the deal has buffer room to start a bit later while still fitting in the sector
+    let deal_ids = create_verified_deals(
+        1,
+        &v,
+        client,
+        worker,
+        maddr,
+        old_sector_info.expiration - v.get_epoch() - policy.market_default_allocation_term_buffer,
+    );
+
+    // replica update
+    let new_cid = make_sealed_cid(b"replica1");
+    let replica_update = ReplicaUpdate2 {
+        sector_number,
+        deadline: d_idx,
+        partition: p_idx,
+        new_sealed_cid: new_cid,
+        deals: deal_ids.clone(),
+        update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
+        replica_proof: vec![],
+        new_unsealed_cid: make_piece_cid(b"unsealed from itest vm"),
+    };
+    let updated_sectors: BitField = apply_ok(
+        &v,
+        worker,
+        robust,
+        TokenAmount::zero(),
+        MinerMethod::ProveReplicaUpdates2 as u64,
+        ProveReplicaUpdatesParams2 { updates: vec![replica_update] },
+    )
+    .deserialize()
+    .unwrap();
+    assert_eq!(vec![100], bf_all(updated_sectors));
+
+    let old_power = power_for_sector(seal_proof.sector_size().unwrap(), &old_sector_info);
+    let expected_update_claimed_power_params = UpdateClaimedPowerParams {
+        raw_byte_delta: StoragePower::zero(),
+        quality_adjusted_delta: 9 * old_power.qa, // sector now fully qap, 10x - x = 9x
+    };
+    // check for the expected subcalls
+    ExpectInvocation {
+        to: maddr,
+        method: MinerMethod::ProveReplicaUpdates2 as u64,
+        subinvocs: Some(vec![
+            ExpectInvocation {
+                to: STORAGE_MARKET_ACTOR_ADDR,
+                method: MarketMethod::ActivateDeals as u64,
+                ..Default::default()
+            },
+            ExpectInvocation {
+                to: VERIFIED_REGISTRY_ACTOR_ADDR,
+                method: VerifregMethod::ClaimAllocations as u64,
+                ..Default::default()
+            },
+            ExpectInvocation {
+                to: STORAGE_MARKET_ACTOR_ADDR,
+                method: MarketMethod::VerifyDealsForActivation as u64,
+                ..Default::default()
+            },
+            ExpectInvocation {
+                to: REWARD_ACTOR_ADDR,
+                method: RewardMethod::ThisEpochReward as u64,
+                ..Default::default()
+            },
+            ExpectInvocation {
+                to: STORAGE_POWER_ACTOR_ADDR,
+                method: PowerMethod::CurrentTotalPower as u64,
+                ..Default::default()
+            },
+            ExpectInvocation {
+                to: STORAGE_POWER_ACTOR_ADDR,
+                method: PowerMethod::UpdatePledgeTotal as u64,
+                ..Default::default()
+            },
+            ExpectInvocation {
+                to: STORAGE_POWER_ACTOR_ADDR,
+                method: PowerMethod::UpdateClaimedPower as u64,
+                params: Some(
+                    serialize(&expected_update_claimed_power_params, "update_claimed_power params")
+                        .unwrap(),
+                ),
+                ..Default::default()
+            },
+        ]),
+        ..Default::default()
+    }
+    .matches(v.take_invocations().last().unwrap());
+
+    // sanity check the sector after update
+    let new_sector_info = sector_info(&v, maddr, sector_number);
+    assert_eq!(1, new_sector_info.deal_ids.len());
+    assert_eq!(deal_ids[0], new_sector_info.deal_ids[0]);
+    assert_eq!(old_sector_info.sealed_cid, new_sector_info.sector_key_cid.unwrap());
+    assert_eq!(new_cid, new_sector_info.sealed_cid);
+}
+
+#[test]
+fn replica_update_verified_deal_max_term_violated() {
+    let store = &MemoryBlockstore::new();
+    let mut v = VM::new_with_singletons(store);
+    let addrs = create_accounts(&v, 3, TokenAmount::from_whole(100_000));
+    let (worker, owner, client, verifier) = (addrs[0], addrs[0], addrs[1], addrs[2]);
+    let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
+    let policy = Policy::default();
+    let (maddr, robust) = create_miner(
+        &mut v,
+        owner,
+        worker,
+        seal_proof.registered_window_post_proof().unwrap(),
+        TokenAmount::from_whole(10_000),
+    );
+
+    // Get client verified
+    let datacap = StoragePower::from(32_u128 << 30);
+    verifreg_add_verifier(&v, verifier, datacap.clone());
+    verifreg_add_client(&v, verifier, client, datacap);
+
+    // advance to have seal randomness epoch in the past
+    let v = v.with_epoch(200);
+
+    let sector_number = 100;
+    let (v, d_idx, p_idx) = create_sector(v, worker, maddr, sector_number, seal_proof);
+
+    let old_sector_info = sector_info(&v, maddr, sector_number);
+    // term max of claim is 1 epoch less than the remaining sector lifetime causing get claims validation failure
+    let sector_lifetime = old_sector_info.expiration - v.get_epoch();
+    let deal_ids = create_verified_deals(
+        1,
+        &v,
+        client,
+        worker,
+        maddr,
+        sector_lifetime - policy.market_default_allocation_term_buffer - 1,
+    );
+
+    // replica update
+    let new_cid = make_sealed_cid(b"replica1");
+    let replica_update = ReplicaUpdate2 {
+        sector_number,
+        deadline: d_idx,
+        partition: p_idx,
+        new_sealed_cid: new_cid,
+        deals: deal_ids,
+        update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
+        replica_proof: vec![],
+        new_unsealed_cid: make_piece_cid(b"unsealed from itest vm"),
+    };
+    apply_code(
+        &v,
+        worker,
+        robust,
+        TokenAmount::zero(),
+        MinerMethod::ProveReplicaUpdates2 as u64,
+        ProveReplicaUpdatesParams2 { updates: vec![replica_update] },
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+    );
 }
 
 fn create_miner_and_upgrade_sector(
@@ -1140,9 +1335,21 @@ fn create_deals(
     worker: Address,
     maddr: Address,
 ) -> Vec<DealID> {
-    create_deals_frac(num_deals, v, client, worker, maddr, 1)
+    create_deals_frac(num_deals, v, client, worker, maddr, 1, false, 180 * EPOCHS_IN_DAY)
 }
 
+fn create_verified_deals(
+    num_deals: u32,
+    v: &VM,
+    client: Address,
+    worker: Address,
+    maddr: Address,
+    deal_lifetime: ChainEpoch,
+) -> Vec<DealID> {
+    create_deals_frac(num_deals, v, client, worker, maddr, 1, true, deal_lifetime)
+}
+
+#[allow(clippy::too_many_arguments)]
 fn create_deals_frac(
     num_deals: u32,
     v: &VM,
@@ -1150,6 +1357,8 @@ fn create_deals_frac(
     worker: Address,
     maddr: Address,
     size_frac: u8,
+    verified_deal: bool,
+    deal_lifetime: ChainEpoch,
 ) -> Vec<DealID> {
     let collateral = TokenAmount::from_whole(3 * num_deals as i64);
     apply_ok(
@@ -1180,9 +1389,9 @@ fn create_deals_frac(
             maddr,
             format!("deal-label {}", i),
             PaddedPieceSize((32 << 30) / size_frac as u64),
-            false,
+            verified_deal,
             deal_start,
-            180 * EPOCHS_IN_DAY,
+            deal_lifetime,
         );
         for id in deals.ids.iter() {
             ids.push(*id);
