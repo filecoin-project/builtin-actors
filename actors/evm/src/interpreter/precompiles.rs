@@ -1,8 +1,8 @@
 use std::{borrow::Cow, convert::TryInto, marker::PhantomData, slice::ChunksExact};
 
-use super::{StatusCode, U256};
+use super::{StatusCode, System, U256};
 
-use fil_actors_runtime::runtime::{Primitives, Runtime};
+use fil_actors_runtime::runtime::Runtime;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::{
     address::Address,
@@ -255,12 +255,31 @@ pub struct PrecompileContext {
 }
 
 // really I'd want to have context as a type parameter, but since the table we generate must have the same types (or dyn) its messy
-pub type PrecompileFn<RT> = fn(&RT, &[u8], PrecompileContext) -> PrecompileResult;
+type PrecompileFn<RT> = unsafe fn(*mut System<RT>, &[u8], PrecompileContext) -> PrecompileResult;
 pub type PrecompileResult = Result<Vec<u8>, PrecompileError>; // TODO i dont like vec
 
 /// Generates a list of precompile smart contracts, index + 1 is the address (another option is to make an enum)
 const fn gen_precompiles<RT: Runtime>() -> [PrecompileFn<RT>; 14] {
-    [
+    macro_rules! precompiles {
+        ($($precompile:ident,)*) => {
+            mod trampolines {
+                use fil_actors_runtime::runtime::Runtime;
+                use crate::System;
+                use super::{PrecompileContext, PrecompileResult};
+                $(
+                    #[inline(always)]
+                    pub unsafe fn $precompile<RT: Runtime>(s: *mut System<RT>, inp: &[u8], ctx: PrecompileContext) -> PrecompileResult {
+                        super::$precompile(&mut *s, inp, ctx)
+                    }
+                )*
+            }
+            [
+                $(trampolines::$precompile,)*
+            ]
+        }
+    }
+
+    precompiles! {
         ec_recover, // ecrecover 0x01
         sha256,     // SHA2-256 0x02
         ripemd160,  // ripemd160 0x03
@@ -276,7 +295,7 @@ const fn gen_precompiles<RT: Runtime>() -> [PrecompileFn<RT>; 14] {
         get_actor_code_cid, // get code cid 0x0c
         get_randomness,     // rand 0x0d
         call_actor,         // call_actor 0x0e
-    ]
+    }
 }
 
 pub struct Precompiles<RT>(PhantomData<RT>);
@@ -291,12 +310,12 @@ impl<RT: Runtime> Precompiles<RT> {
 
     // Precompile Context will be flattened to None if not calling the call_actor precompile
     pub fn call_precompile(
-        runtime: &RT,
+        system: &mut System<RT>,
         precompile_addr: U256,
         input: &[u8],
         context: PrecompileContext,
     ) -> PrecompileResult {
-        Self::PRECOMPILES[precompile_addr.0[0] as usize - 1](runtime, input, context)
+        unsafe { Self::PRECOMPILES[precompile_addr.0[0] as usize - 1](system, input, context) }
     }
 
     #[inline]
@@ -320,13 +339,13 @@ fn read_right_pad<'a>(input: impl Into<Cow<'a, [u8]>>, len: usize) -> Cow<'a, [u
 /// Read right padded BE encoded low u64 ID address from a u256 word
 /// returns encoded CID or an empty array if actor not found
 fn get_actor_code_cid<RT: Runtime>(
-    rt: &RT,
+    system: &mut System<RT>,
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
     let id_bytes: [u8; 32] = read_right_pad(input, 32).as_ref().try_into().unwrap();
     let id = Parameter::<u64>::try_from(&id_bytes)?.0;
-    Ok(rt.get_actor_code_cid(&id).unwrap_or_default().to_bytes())
+    Ok(system.rt.get_actor_code_cid(&id).unwrap_or_default().to_bytes())
 }
 
 /// Params:
@@ -343,7 +362,11 @@ fn get_actor_code_cid<RT: Runtime>(
 ///
 /// Returns empty array if invalid randomness type
 /// Errors if unable to fetch randomness
-fn get_randomness<RT: Runtime>(rt: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
+fn get_randomness<RT: Runtime>(
+    system: &mut System<RT>,
+    input: &[u8],
+    _: PrecompileContext,
+) -> PrecompileResult {
     let mut input_params = U256Reader::new(input);
 
     #[derive(num_derive::FromPrimitive)]
@@ -363,10 +386,12 @@ fn get_randomness<RT: Runtime>(rt: &RT, input: &[u8], _: PrecompileContext) -> P
     let entropy = read_right_pad(input_params.remaining_slice(), entropy_len as usize);
 
     let randomness = match randomness_type {
-        Some(RandomnessType::Chain) => rt
+        Some(RandomnessType::Chain) => system
+            .rt
             .user_get_randomness_from_chain(personalization, rand_epoch, &entropy)
             .map(|a| a.to_vec()),
-        Some(RandomnessType::Beacon) => rt
+        Some(RandomnessType::Beacon) => system
+            .rt
             .user_get_randomness_from_beacon(personalization, rand_epoch, &entropy)
             .map(|a| a.to_vec()),
         None => Ok(Vec::new()),
@@ -377,11 +402,15 @@ fn get_randomness<RT: Runtime>(rt: &RT, input: &[u8], _: PrecompileContext) -> P
 
 /// Read BE encoded low u64 ID address from a u256 word
 /// Looks up and returns the other address (encoded f2 or f4 addresses) of an ID address, returning empty array if not found
-fn lookup_address<RT: Runtime>(rt: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
+fn lookup_address<RT: Runtime>(
+    system: &mut System<RT>,
+    input: &[u8],
+    _: PrecompileContext,
+) -> PrecompileResult {
     let mut id_bytes = U256Reader::new(input);
     let id = id_bytes.next_param_padded::<u64>()?;
 
-    let address = rt.lookup_address(id);
+    let address = system.rt.lookup_address(id);
     let ab = match address {
         Some(a) => a.to_bytes(),
         None => Vec::new(),
@@ -392,7 +421,11 @@ fn lookup_address<RT: Runtime>(rt: &RT, input: &[u8], _: PrecompileContext) -> P
 /// Reads a FIL encoded address
 /// Resolves a FIL encoded address into an ID address
 /// returns BE encoded u64 or empty array if nothing found
-fn resolve_address<RT: Runtime>(rt: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
+fn resolve_address<RT: Runtime>(
+    system: &mut System<RT>,
+    input: &[u8],
+    _: PrecompileContext,
+) -> PrecompileResult {
     let mut input_params = U256Reader::new(input);
 
     let len = input_params.next_param_padded::<u32>()? as usize;
@@ -400,7 +433,7 @@ fn resolve_address<RT: Runtime>(rt: &RT, input: &[u8], _: PrecompileContext) -> 
         Ok(o) => o,
         Err(_) => return Ok(Vec::new()),
     };
-    Ok(rt.resolve_address(&addr).map(|a| a.to_be_bytes().to_vec()).unwrap_or_default())
+    Ok(system.rt.resolve_address(&addr).map(|a| a.to_be_bytes().to_vec()).unwrap_or_default())
 }
 
 /// Errors:
@@ -416,7 +449,11 @@ fn resolve_address<RT: Runtime>(rt: &RT, input: &[u8], _: PrecompileContext) -> 
 /// - negative values are system errors
 /// - positive are user errors (from the called actor)
 /// - 0 is success
-pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8], ctx: PrecompileContext) -> PrecompileResult {
+pub fn call_actor<RT: Runtime>(
+    system: &mut System<RT>,
+    input: &[u8],
+    ctx: PrecompileContext,
+) -> PrecompileResult {
     // ----- Input Parameters -------
 
     let mut input_params = U256Reader::new(input);
@@ -443,7 +480,7 @@ pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8], ctx: PrecompileContext) ->
         let address = &bytes[send_data_size..send_data_size + address_size];
         let address = Address::from_bytes(address).map_err(|_| PrecompileError::InvalidInput)?;
 
-        rt.send_with_gas(
+        system.send_with_gas(
             &address,
             method,
             RawBytes::from(input_data.to_vec()),
@@ -498,7 +535,11 @@ pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8], ctx: PrecompileContext) ->
 // ---------------- Normal EVM Precompiles ------------------
 
 /// recover a secp256k1 pubkey from a hash, recovery byte, and a signature
-fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
+fn ec_recover<RT: Runtime>(
+    system: &mut System<RT>,
+    input: &[u8],
+    _: PrecompileContext,
+) -> PrecompileResult {
     let mut input_params = U256Reader::new(input);
 
     let hash: [u8; SECP_SIG_MESSAGE_HASH_SIZE] = input_params.next_padded();
@@ -535,36 +576,48 @@ fn ec_recover<RT: Primitives>(rt: &RT, input: &[u8], _: PrecompileContext) -> Pr
     sig[32..64].copy_from_slice(&s);
     sig[64] = v;
 
-    let pubkey = if let Ok(key) = rt.recover_secp_public_key(&hash, &sig) {
+    let pubkey = if let Ok(key) = system.rt.recover_secp_public_key(&hash, &sig) {
         key
     } else {
         return Ok(Vec::new());
     };
 
-    let mut address = rt.hash(SupportedHashes::Keccak256, &pubkey[1..]);
+    let mut address = system.rt.hash(SupportedHashes::Keccak256, &pubkey[1..]);
     address[..12].copy_from_slice(&[0u8; 12]);
 
     Ok(address)
 }
 
 /// hash with sha2-256
-fn sha256<RT: Primitives>(rt: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
-    Ok(rt.hash(SupportedHashes::Sha2_256, input))
+fn sha256<RT: Runtime>(
+    system: &mut System<RT>,
+    input: &[u8],
+    _: PrecompileContext,
+) -> PrecompileResult {
+    Ok(system.rt.hash(SupportedHashes::Sha2_256, input))
 }
 
 /// hash with ripemd160
-fn ripemd160<RT: Primitives>(rt: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
-    Ok(rt.hash(SupportedHashes::Ripemd160, input))
+fn ripemd160<RT: Runtime>(
+    system: &mut System<RT>,
+    input: &[u8],
+    _: PrecompileContext,
+) -> PrecompileResult {
+    Ok(system.rt.hash(SupportedHashes::Ripemd160, input))
 }
 
 /// data copy
-fn identity<RT: Primitives>(_: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
+fn identity<RT: Runtime>(
+    _: &mut System<RT>,
+    input: &[u8],
+    _: PrecompileContext,
+) -> PrecompileResult {
     Ok(Vec::from(input))
 }
 
 // https://eips.ethereum.org/EIPS/eip-198
 /// modulus exponent a number
-fn modexp<RT: Primitives>(_: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
+fn modexp<RT: Runtime>(_: &mut System<RT>, input: &[u8], _: PrecompileContext) -> PrecompileResult {
     let input = read_right_pad(input, 96);
 
     // Follows go-ethereum by truncating bits to u64, ignoring other all other values in the first 24 bytes.
@@ -629,7 +682,7 @@ fn curve_to_vec(curve: G1) -> Vec<u8> {
 }
 
 /// add 2 points together on an elliptic curve
-fn ec_add<RT: Primitives>(_: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
+fn ec_add<RT: Runtime>(_: &mut System<RT>, input: &[u8], _: PrecompileContext) -> PrecompileResult {
     let mut input_params: PaddedChunks<u8, 64> = PaddedChunks::new(input);
     let point1 = input_params.next_param_padded()?;
     let point2 = input_params.next_param_padded()?;
@@ -638,7 +691,7 @@ fn ec_add<RT: Primitives>(_: &RT, input: &[u8], _: PrecompileContext) -> Precomp
 }
 
 /// multiply a point on an elliptic curve by a scalar value
-fn ec_mul<RT: Primitives>(_: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
+fn ec_mul<RT: Runtime>(_: &mut System<RT>, input: &[u8], _: PrecompileContext) -> PrecompileResult {
     let input = read_right_pad(input, 96);
     let mut input_params: PaddedChunks<u8, 64> = PaddedChunks::new(&input);
     let point = input_params.next_param_padded()?;
@@ -652,7 +705,11 @@ fn ec_mul<RT: Primitives>(_: &RT, input: &[u8], _: PrecompileContext) -> Precomp
 }
 
 /// pairs multple groups of twisted bn curves
-fn ec_pairing<RT: Primitives>(_: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
+fn ec_pairing<RT: Runtime>(
+    _: &mut System<RT>,
+    input: &[u8],
+    _: PrecompileContext,
+) -> PrecompileResult {
     fn read_group(input: &[u8]) -> Result<(G1, G2), PrecompileError> {
         let mut i_in = U256Reader::new(input);
 
@@ -710,7 +767,11 @@ fn ec_pairing<RT: Primitives>(_: &RT, input: &[u8], _: PrecompileContext) -> Pre
 }
 
 /// https://eips.ethereum.org/EIPS/eip-152
-fn blake2f<RT: Primitives>(_: &RT, input: &[u8], _: PrecompileContext) -> PrecompileResult {
+fn blake2f<RT: Runtime>(
+    _: &mut System<RT>,
+    input: &[u8],
+    _: PrecompileContext,
+) -> PrecompileResult {
     if input.len() != 213 {
         return Err(PrecompileError::IncorrectInputSize);
     }
@@ -784,7 +845,8 @@ mod tests {
 
     #[test]
     fn bn_recover() {
-        let rt = MockRuntime::default();
+        let mut rt = MockRuntime::default();
+        let mut system = System::create(&mut rt).unwrap();
 
         let input = &hex!(
             "456e9aea5e197a1f1af7a3e85a3212fa4049a3ba34c2289b4c860fc0b0c64ef3" // h(ash)
@@ -795,7 +857,7 @@ mod tests {
         );
 
         let expected = hex!("0000000000000000000000007156526fbd7a3c72969b54f64e42c10fbb768c8a");
-        let res = ec_recover(&rt, input, PrecompileContext::default()).unwrap();
+        let res = ec_recover(&mut system, input, PrecompileContext::default()).unwrap();
         assert_eq!(&res, &expected);
 
         let input = &hex!(
@@ -806,7 +868,7 @@ mod tests {
             "4f8ae3bd7535248d0bd448298cc2e2071e56992d0774dc340c368ae950852ada" // s
         );
         // wrong signature
-        let res = ec_recover(&rt, input, PrecompileContext::default()).unwrap();
+        let res = ec_recover(&mut system, input, PrecompileContext::default()).unwrap();
         assert_eq!(res, Vec::new());
 
         let input = &hex!(
@@ -817,7 +879,7 @@ mod tests {
             "4f8ae3bd7535248d0bd448298cc2e2071e56992d0774dc340c368ae950852ada" // s
         );
         // invalid recovery byte
-        let res = ec_recover(&rt, input, PrecompileContext::default()).unwrap();
+        let res = ec_recover(&mut system, input, PrecompileContext::default()).unwrap();
         assert_eq!(res, Vec::new());
     }
 
@@ -826,10 +888,11 @@ mod tests {
         use super::sha256 as hash;
         let input = "foo bar baz boxy".as_bytes();
 
-        let rt = MockRuntime::default();
+        let mut rt = MockRuntime::default();
+        let mut system = System::create(&mut rt).unwrap();
 
         let expected = hex!("ace8597929092c14bd028ede7b07727875788c7e130278b5afed41940d965aba");
-        let res = hash(&rt, input, PrecompileContext::default()).unwrap();
+        let res = hash(&mut system, input, PrecompileContext::default()).unwrap();
         assert_eq!(&res, &expected);
     }
 
@@ -838,10 +901,11 @@ mod tests {
         use super::ripemd160 as hash;
         let input = "foo bar baz boxy".as_bytes();
 
-        let rt = MockRuntime::default();
+        let mut rt = MockRuntime::default();
+        let mut system = System::create(&mut rt).unwrap();
 
         let expected = hex!("4cd7a0452bd3d682e4cbd5fa90f446d7285b156a");
-        let res = hash(&rt, input, PrecompileContext::default()).unwrap();
+        let res = hash(&mut system, input, PrecompileContext::default()).unwrap();
         assert_eq!(&res, &expected);
     }
 
@@ -856,10 +920,11 @@ mod tests {
             "0A" // mod
         );
 
-        let rt = MockRuntime::default();
+        let mut rt = MockRuntime::default();
+        let mut system = System::create(&mut rt).unwrap();
 
         let expected = hex!("08");
-        let res = modexp(&rt, input, PrecompileContext::default()).unwrap();
+        let res = modexp(&mut system, input, PrecompileContext::default()).unwrap();
         assert_eq!(&res, &expected);
 
         let input = &hex!(
@@ -871,7 +936,7 @@ mod tests {
             "012345678910" // mod
         );
         let expected = hex!("00358eac8f30"); // left padding & 230026940208
-        let res = modexp(&rt, input, PrecompileContext::default()).unwrap();
+        let res = modexp(&mut system, input, PrecompileContext::default()).unwrap();
         assert_eq!(&res, &expected);
 
         let expected = hex!("000000"); // invalid values will just be [0; mod_len]
@@ -884,7 +949,7 @@ mod tests {
             "03" // mod
         );
         // input smaller than expected
-        let res = modexp(&rt, input, PrecompileContext::default()).unwrap();
+        let res = modexp(&mut system, input, PrecompileContext::default()).unwrap();
         assert_eq!(&res, &expected);
 
         let input = &hex!(
@@ -895,20 +960,22 @@ mod tests {
             "09" // exp
         );
         // no mod is invalid
-        let res = modexp(&rt, input, PrecompileContext::default()).unwrap();
+        let res = modexp(&mut system, input, PrecompileContext::default()).unwrap();
         assert_eq!(res, Vec::new());
     }
 
     // bn tests borrowed from https://github.com/bluealloy/revm/blob/26540bf5b29de6e7c8020c4c1880f8a97d1eadc9/crates/revm_precompiles/src/bn128.rs
     mod bn {
         use super::{GroupError, MockRuntime};
-        use crate::interpreter::precompiles::{
-            ec_add, ec_mul, ec_pairing, PrecompileContext, PrecompileError,
+        use crate::interpreter::{
+            precompiles::{ec_add, ec_mul, ec_pairing, PrecompileContext, PrecompileError},
+            System,
         };
 
         #[test]
         fn bn_add() {
-            let rt = MockRuntime::default();
+            let mut rt = MockRuntime::default();
+            let mut system = System::create(&mut rt).unwrap();
 
             let input = hex::decode(
                 "\
@@ -924,7 +991,7 @@ mod tests {
                 301d1d33be6da8e509df21cc35964723180eed7532537db9ae5e7d48f195c915",
             )
             .unwrap();
-            let res = ec_add(&rt, &input, PrecompileContext::default()).unwrap();
+            let res = ec_add(&mut system, &input, PrecompileContext::default()).unwrap();
             assert_eq!(res, expected);
             // zero sum test
             let input = hex::decode(
@@ -941,7 +1008,7 @@ mod tests {
                 0000000000000000000000000000000000000000000000000000000000000000",
             )
             .unwrap();
-            let res = ec_add(&rt, &input, PrecompileContext::default()).unwrap();
+            let res = ec_add(&mut system, &input, PrecompileContext::default()).unwrap();
             assert_eq!(res, expected);
 
             // no input test
@@ -952,7 +1019,7 @@ mod tests {
                 0000000000000000000000000000000000000000000000000000000000000000",
             )
             .unwrap();
-            let res = ec_add(&rt, &input, PrecompileContext::default()).unwrap();
+            let res = ec_add(&mut system, &input, PrecompileContext::default()).unwrap();
             assert_eq!(res, expected);
             // point not on curve fail
             let input = hex::decode(
@@ -963,13 +1030,14 @@ mod tests {
                 1111111111111111111111111111111111111111111111111111111111111111",
             )
             .unwrap();
-            let res = ec_add(&rt, &input, PrecompileContext::default());
+            let res = ec_add(&mut system, &input, PrecompileContext::default());
             assert!(matches!(res, Err(PrecompileError::EcGroupErr(GroupError::NotOnCurve))));
         }
 
         #[test]
         fn bn_mul() {
-            let rt = MockRuntime::default();
+            let mut rt = MockRuntime::default();
+            let mut system = System::create(&mut rt).unwrap();
 
             let input = hex::decode(
                 "\
@@ -984,7 +1052,7 @@ mod tests {
                 031b8ce914eba3a9ffb989f9cdd5b0f01943074bf4f0f315690ec3cec6981afc",
             )
             .unwrap();
-            let res = ec_mul(&rt, &input, PrecompileContext::default()).unwrap();
+            let res = ec_mul(&mut system, &input, PrecompileContext::default()).unwrap();
             assert_eq!(res, expected);
 
             // out of gas test
@@ -995,7 +1063,7 @@ mod tests {
                 0200000000000000000000000000000000000000000000000000000000000000",
             )
             .unwrap();
-            let res = ec_mul(&rt, &input, PrecompileContext::default()).unwrap();
+            let res = ec_mul(&mut system, &input, PrecompileContext::default()).unwrap();
             assert_eq!(&res, &vec![0; 64]);
 
             // no input test
@@ -1006,7 +1074,7 @@ mod tests {
                 0000000000000000000000000000000000000000000000000000000000000000",
             )
             .unwrap();
-            let res = ec_mul(&rt, &input, PrecompileContext::default()).unwrap();
+            let res = ec_mul(&mut system, &input, PrecompileContext::default()).unwrap();
             assert_eq!(res, expected);
             // point not on curve fail
             let input = hex::decode(
@@ -1016,13 +1084,14 @@ mod tests {
                 0f00000000000000000000000000000000000000000000000000000000000000",
             )
             .unwrap();
-            let res = ec_mul(&rt, &input, PrecompileContext::default());
+            let res = ec_mul(&mut system, &input, PrecompileContext::default());
             assert!(matches!(res, Err(PrecompileError::EcGroupErr(GroupError::NotOnCurve))));
         }
 
         #[test]
         fn bn_pair() {
-            let rt = MockRuntime::default();
+            let mut rt = MockRuntime::default();
+            let mut system = System::create(&mut rt).unwrap();
 
             let input = hex::decode(
                 "\
@@ -1045,7 +1114,7 @@ mod tests {
                 hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
                     .unwrap();
 
-            let res = ec_pairing(&rt, &input, PrecompileContext::default()).unwrap();
+            let res = ec_pairing(&mut system, &input, PrecompileContext::default()).unwrap();
             assert_eq!(res, expected);
 
             // out of gas test
@@ -1065,14 +1134,14 @@ mod tests {
                 12c85ea5db8c6deb4aab71808dcb408fe3d1e7690c43d37b4ce6cc0166fa7daa",
             )
             .unwrap();
-            let res = ec_pairing(&rt, &input, PrecompileContext::default()).unwrap();
+            let res = ec_pairing(&mut system, &input, PrecompileContext::default()).unwrap();
             assert_eq!(res, expected);
             // no input test
             let input = [0u8; 0];
             let expected =
                 hex::decode("0000000000000000000000000000000000000000000000000000000000000001")
                     .unwrap();
-            let res = ec_pairing(&rt, &input, PrecompileContext::default()).unwrap();
+            let res = ec_pairing(&mut system, &input, PrecompileContext::default()).unwrap();
             assert_eq!(res, expected);
             // point not on curve fail
             let input = hex::decode(
@@ -1085,7 +1154,7 @@ mod tests {
                 1111111111111111111111111111111111111111111111111111111111111111",
             )
             .unwrap();
-            let res = ec_pairing(&rt, &input, PrecompileContext::default());
+            let res = ec_pairing(&mut system, &input, PrecompileContext::default());
             assert!(matches!(res, Err(PrecompileError::EcGroupErr(GroupError::NotOnCurve))));
             // invalid input length
             let input = hex::decode(
@@ -1096,7 +1165,7 @@ mod tests {
             ",
             )
             .unwrap();
-            let res = ec_pairing(&rt, &input, PrecompileContext::default());
+            let res = ec_pairing(&mut system, &input, PrecompileContext::default());
             assert!(matches!(res, Err(PrecompileError::IncorrectInputSize)));
         }
     }
@@ -1105,7 +1174,8 @@ mod tests {
     #[test]
     fn blake2() {
         use super::blake2f;
-        let rt = MockRuntime::default();
+        let mut rt = MockRuntime::default();
+        let mut system = System::create(&mut rt).unwrap();
 
         // // helper to turn EIP test cases into something readable
         // fn test_case_formatter(mut remaining: impl ToString) {
@@ -1128,7 +1198,7 @@ mod tests {
 
         // T0 invalid input len
         assert!(matches!(
-            blake2f(&rt, &[], PrecompileContext::default()),
+            blake2f(&mut system, &[], PrecompileContext::default()),
             Err(PrecompileError::IncorrectInputSize)
         ));
 
@@ -1142,7 +1212,7 @@ mod tests {
             "02"
         );
         assert!(matches!(
-            blake2f(&rt, input, PrecompileContext::default()),
+            blake2f(&mut system, input, PrecompileContext::default()),
             Err(PrecompileError::IncorrectInputSize)
         ));
 
@@ -1156,7 +1226,7 @@ mod tests {
             "02"
         );
         assert!(matches!(
-            blake2f(&rt, input, PrecompileContext::default()),
+            blake2f(&mut system, input, PrecompileContext::default()),
             Err(PrecompileError::IncorrectInputSize)
         ));
 
@@ -1170,7 +1240,7 @@ mod tests {
             "02"
         );
         assert!(matches!(
-            blake2f(&rt, input, PrecompileContext::default()),
+            blake2f(&mut system, input, PrecompileContext::default()),
             Err(PrecompileError::IncorrectInputSize)
         ));
 
@@ -1187,7 +1257,7 @@ mod tests {
             "01"
         );
         assert!(
-            matches!(blake2f(&rt, input, PrecompileContext::default()), Ok(v) if v == expected)
+            matches!(blake2f(&mut system, input, PrecompileContext::default()), Ok(v) if v == expected)
         );
 
         // T5
@@ -1201,7 +1271,7 @@ mod tests {
             "01"
         );
         assert!(
-            matches!(blake2f(&rt, input, PrecompileContext::default()), Ok(v) if v == expected)
+            matches!(blake2f(&mut system, input, PrecompileContext::default()), Ok(v) if v == expected)
         );
 
         // T6
@@ -1215,7 +1285,7 @@ mod tests {
             "00"
         );
         assert!(
-            matches!(blake2f(&rt, input, PrecompileContext::default()), Ok(v) if v == expected)
+            matches!(blake2f(&mut system, input, PrecompileContext::default()), Ok(v) if v == expected)
         );
 
         // T7
@@ -1229,7 +1299,7 @@ mod tests {
             "01"
         );
         assert!(
-            matches!(blake2f(&rt, input, PrecompileContext::default()), Ok(v) if v == expected)
+            matches!(blake2f(&mut system, input, PrecompileContext::default()), Ok(v) if v == expected)
         );
 
         // T8
@@ -1248,7 +1318,7 @@ mod tests {
             "01"
         );
         assert!(
-            matches!(blake2f(&rt, input, PrecompileContext::default()), Ok(v) if v == expected)
+            matches!(blake2f(&mut system, input, PrecompileContext::default()), Ok(v) if v == expected)
         );
     }
 }
