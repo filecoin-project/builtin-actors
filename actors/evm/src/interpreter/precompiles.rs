@@ -417,13 +417,6 @@ fn resolve_address<RT: Runtime>(rt: &RT, input: &[u8], _: PrecompileContext) -> 
 /// - positive are user errors (from the called actor)
 /// - 0 is success
 pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8], ctx: PrecompileContext) -> PrecompileResult {
-    // TODO Until we support readonly (static) calls at the fvm level, we disallow callactor
-    //      when in static mode as it is sticky and there are no guarantee of preserving the
-    //      static invariant
-    if ctx.is_static {
-        return Err(PrecompileError::CallActorError(StatusCode::StaticModeViolation));
-    }
-
     // ----- Input Parameters -------
 
     let mut input_params = U256Reader::new(input);
@@ -450,12 +443,13 @@ pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8], ctx: PrecompileContext) ->
         let address = &bytes[send_data_size..send_data_size + address_size];
         let address = Address::from_bytes(address).map_err(|_| PrecompileError::InvalidInput)?;
 
-        // TODO passing underlying gas into send when implemented in FVM
-        rt.send(
+        rt.send_with_gas(
             &address,
             method,
             RawBytes::from(input_data.to_vec()),
             TokenAmount::from(&ctx.value),
+            if !ctx.gas.is_zero() { Some(ctx.gas.to_u64_saturating()) } else { None },
+            ctx.is_static,
         )
     };
 

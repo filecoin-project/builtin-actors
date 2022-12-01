@@ -362,6 +362,7 @@ pub struct ExpectedMessage {
     pub method: MethodNum,
     pub params: RawBytes,
     pub value: TokenAmount,
+    pub read_only: bool,
 
     // returns from applying expectedMessage
     pub send_return: RawBytes,
@@ -533,6 +534,68 @@ impl<BS: Blockstore> MockRuntime<BS> {
         self.delegated_addresses_source.insert(target, source);
     }
 
+    fn send_inner(
+        &self,
+        to: &Address,
+        method: MethodNum,
+        params: RawBytes,
+        value: TokenAmount,
+        _gas_limit: Option<u64>,
+        read_only: bool,
+    ) -> Result<RawBytes, ActorError> {
+        // TODO gas_limit is currently ignored, what should we do about it?
+        self.require_in_call();
+        if self.in_transaction {
+            return Err(actor_error!(assertion_failed; "side-effect within transaction"));
+        }
+
+        assert!(
+            !self.expectations.borrow_mut().expect_sends.is_empty(),
+            "unexpected message to: {:?} method: {:?}, value: {:?}, params: {:?}",
+            to,
+            method,
+            value,
+            params
+        );
+
+        let expected_msg = self.expectations.borrow_mut().expect_sends.pop_front().unwrap();
+
+        assert!(
+            expected_msg.to == *to
+                && expected_msg.method == method
+                && expected_msg.params == params
+                && expected_msg.value == value
+                && expected_msg.read_only == read_only,
+            "message sent does not match expectation.\n\
+             message  - to: {:?}, method: {:?}, value: {:?}, params: {:?}\n\
+             expected - to: {:?}, method: {:?}, value: {:?}, params: {:?}",
+            to,
+            method,
+            value,
+            params,
+            expected_msg.to,
+            expected_msg.method,
+            expected_msg.value,
+            expected_msg.params,
+        );
+
+        {
+            let mut balance = self.balance.borrow_mut();
+            if value > *balance {
+                return Err(ActorError::unchecked(
+                    ExitCode::SYS_SENDER_STATE_INVALID,
+                    format!("cannot send value: {:?} exceeds balance: {:?}", value, *balance),
+                ));
+            }
+            *balance -= value;
+        }
+
+        match expected_msg.exit_code {
+            ExitCode::OK => Ok(expected_msg.send_return),
+            x => Err(ActorError::unchecked(x, "Expected message Fail".to_string())),
+        }
+    }
+
     pub fn call<A: ActorCode>(
         &mut self,
         method_num: MethodNum,
@@ -662,6 +725,27 @@ impl<BS: Blockstore> MockRuntime<BS> {
             value,
             send_return,
             exit_code,
+            read_only: false,
+        })
+    }
+
+    #[allow(dead_code)]
+    pub fn expect_send_read_only(
+        &mut self,
+        to: Address,
+        method: MethodNum,
+        params: RawBytes,
+        send_return: RawBytes,
+        exit_code: ExitCode,
+    ) {
+        self.expectations.borrow_mut().expect_sends.push_back(ExpectedMessage {
+            to,
+            method,
+            params,
+            send_return,
+            exit_code,
+            value: TokenAmount::default(),
+            read_only: true,
         })
     }
 
@@ -820,9 +904,6 @@ impl<BS> MessageInfo for MockRuntime<BS> {
     }
     fn value_received(&self) -> TokenAmount {
         self.value_received.clone()
-    }
-    fn gas_limit(&self) -> u64 {
-        self.gas_limit
     }
     fn gas_premium(&self) -> TokenAmount {
         self.gas_premium.clone()
@@ -1078,55 +1159,28 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         params: RawBytes,
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError> {
-        self.require_in_call();
-        if self.in_transaction {
-            return Err(actor_error!(assertion_failed; "side-effect within transaction"));
-        }
+        self.send_inner(to, method, params, value, None, false)
+    }
 
-        assert!(
-            !self.expectations.borrow_mut().expect_sends.is_empty(),
-            "unexpected message to: {:?} method: {:?}, value: {:?}, params: {:?}",
-            to,
-            method,
-            value,
-            params
-        );
+    fn send_read_only(
+        &self,
+        to: &Address,
+        method: MethodNum,
+        params: RawBytes,
+    ) -> Result<RawBytes, ActorError> {
+        self.send_inner(to, method, params, TokenAmount::default(), None, true)
+    }
 
-        let expected_msg = self.expectations.borrow_mut().expect_sends.pop_front().unwrap();
-
-        assert!(
-            expected_msg.to == *to
-                && expected_msg.method == method
-                && expected_msg.params == params
-                && expected_msg.value == value,
-            "message sent does not match expectation.\n\
-             message  - to: {:?}, method: {:?}, value: {:?}, params: {:?}\n\
-             expected - to: {:?}, method: {:?}, value: {:?}, params: {:?}",
-            to,
-            method,
-            value,
-            params,
-            expected_msg.to,
-            expected_msg.method,
-            expected_msg.value,
-            expected_msg.params,
-        );
-
-        {
-            let mut balance = self.balance.borrow_mut();
-            if value > *balance {
-                return Err(ActorError::unchecked(
-                    ExitCode::SYS_SENDER_STATE_INVALID,
-                    format!("cannot send value: {:?} exceeds balance: {:?}", value, *balance),
-                ));
-            }
-            *balance -= value;
-        }
-
-        match expected_msg.exit_code {
-            ExitCode::OK => Ok(expected_msg.send_return),
-            x => Err(ActorError::unchecked(x, "Expected message Fail".to_string())),
-        }
+    fn send_with_gas(
+        &self,
+        to: &Address,
+        method: MethodNum,
+        params: RawBytes,
+        value: TokenAmount,
+        gas_limit: Option<u64>,
+        read_only: bool,
+    ) -> Result<RawBytes, ActorError> {
+        self.send_inner(to, method, params, value, gas_limit, read_only)
     }
 
     fn new_actor_address(&mut self) -> Result<Address, ActorError> {
@@ -1304,6 +1358,10 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
     fn exit(&self, code: u32, data: RawBytes, msg: Option<&str>) -> ! {
         self.actor_exit.replace(Some(ActorExit { code, data, msg: msg.map(|s| s.to_owned()) }));
         std::panic::panic_any("actor exit");
+    }
+
+    fn read_only(&self) -> bool {
+        false
     }
 }
 

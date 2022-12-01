@@ -5,7 +5,7 @@ use fvm_shared::{address::Address, METHOD_SEND};
 
 use crate::interpreter::precompiles::PrecompileContext;
 
-use super::ext::{get_cid_type, ContractType, get_evm_bytecode_cid};
+use super::ext::{get_cid_type, get_evm_bytecode_cid, ContractType};
 
 use {
     super::memory::{copy_to_memory, get_memory_region},
@@ -178,8 +178,6 @@ pub fn call_generic<RT: Runtime>(
 ) -> Result<U256, StatusCode> {
     let ExecutionState { stack: _, memory, .. } = state;
 
-    // NOTE gas is currently ignored as FVM's send doesn't allow the caller to specify a gas
-    //      limit (external invocation gas limit applies). This may changed in the future.
     let (gas, dst, value, input_offset, input_size, output_offset, output_size) = params;
 
     if system.readonly && value > U256::zero() {
@@ -246,20 +244,17 @@ pub fn call_generic<RT: Runtime>(
                             // switch to a basic "send" so the call will still work even if the
                             // target actor would reject a normal ethereum call.
                             METHOD_SEND
-                        } else if system.readonly || kind == CallKind::StaticCall {
-                            // Invoke, preserving read-only mode.
-                            Method::InvokeContractReadOnly as u64
                         } else {
                             // Otherwise, invoke normally.
                             Method::InvokeContract as u64
                         };
-                        system.send(
-                            &dst_addr,
-                            method,
-                            // TODO: support IPLD codecs #758
-                            RawBytes::serialize(BytesSer(input_data))?,
-                            TokenAmount::from(&value),
-                        )
+                        // TODO: support IPLD codecs #758
+                        let params = RawBytes::serialize(BytesSer(input_data))?;
+                        let value = TokenAmount::from(&value);
+                        let gas_limit =
+                            if !gas.is_zero() { Some(gas.to_u64_saturating()) } else { None };
+                        let read_only = kind == CallKind::StaticCall;
+                        system.send_with_gas(&dst_addr, method, params, value, gas_limit, read_only)
                     }
                 }
                 CallKind::DelegateCall => match get_cid_type(system.rt, dst) {
@@ -268,11 +263,7 @@ pub fn call_generic<RT: Runtime>(
                         let code = get_evm_bytecode_cid(system.rt, &dst_addr)?;
 
                         // and then invoke self with delegate; readonly context is sticky
-                        let params = DelegateCallParams {
-                            code,
-                            input: input_data.to_vec(),
-                            readonly: system.readonly,
-                        };
+                        let params = DelegateCallParams { code, input: input_data.into() };
                         system.send(
                             &system.rt.message().receiver(),
                             Method::InvokeContractDelegate as u64,
