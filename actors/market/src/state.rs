@@ -136,7 +136,7 @@ impl State {
             + &self.total_client_storage_fee
     }
 
-    pub fn find_deal_states<BS>(
+    pub fn find_deal_state<BS>(
         &self,
         store: &BS,
         deal_id: DealID,
@@ -144,18 +144,17 @@ impl State {
     where
         BS: Blockstore,
     {
-        let deal_states = DealMetaArray::load(&self.states, store)
+        let states = DealMetaArray::load(&self.states, store)
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal state array")?;
 
-        let deal_state =
-            deal_states.get(deal_id).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                format!("no such deal state for {}", deal_id)
-            })?;
+        let found = states.get(deal_id).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+            format!("no such deal state for {}", deal_id)
+        })?;
 
-        Ok(deal_state.cloned())
+        Ok(found.cloned())
     }
 
-    pub fn put_deal_states<BS>(
+    pub fn put_deal_state<BS>(
         &mut self,
         store: &BS,
         new_deal_states: &[(DealID, DealState)],
@@ -163,24 +162,24 @@ impl State {
     where
         BS: Blockstore,
     {
-        let mut deal_states = DealMetaArray::load(&self.states, store)
+        let mut states = DealMetaArray::load(&self.states, store)
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposal array")?;
 
         new_deal_states.iter().try_for_each(|(id, deal_state)| -> Result<(), ActorError> {
-            deal_states
+            states
                 .set(*id, *deal_state)
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to set deal state")?;
             Ok(())
         })?;
 
-        self.states = deal_states
+        self.states = states
             .flush()
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush deal states")?;
 
         Ok(())
     }
 
-    pub fn remove_deal_states<BS>(
+    pub fn remove_deal_state<BS>(
         &mut self,
         store: &BS,
         deal_id: DealID,
@@ -188,24 +187,21 @@ impl State {
     where
         BS: Blockstore,
     {
-        let mut deal_states = DealMetaArray::load(&self.states, store)
+        let mut states = DealMetaArray::load(&self.states, store)
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposal array")?;
 
-        let rval_deal_state = deal_states
+        let rval_deal_state = states
             .delete(deal_id)
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to delete deal state")?;
 
-        self.states = deal_states
+        self.states = states
             .flush()
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush deal states")?;
 
         Ok(rval_deal_state)
     }
 
-    pub fn get_deal_proposals_array<'a, BS>(
-        &'a self,
-        store: &'a BS,
-    ) -> Result<DealArray<BS>, ActorError>
+    pub fn get_proposal_array<'a, BS>(&'a self, store: &'a BS) -> Result<DealArray<BS>, ActorError>
     where
         BS: Blockstore,
     {
@@ -215,7 +211,18 @@ impl State {
         Ok(deal_proposals)
     }
 
-    pub fn find_deal_proposals<BS>(
+    pub fn get_proposal<BS: Blockstore>(
+        &self,
+        store: &BS,
+        id: DealID,
+    ) -> Result<DealProposal, ActorError> {
+        let found = self
+            .find_proposal(store, id)?
+            .with_context_code(ExitCode::USR_NOT_FOUND, || format!("no such deal {}", id))?;
+        Ok(found)
+    }
+
+    pub fn find_proposal<BS>(
         &self,
         store: &BS,
         deal_id: DealID,
@@ -234,7 +241,7 @@ impl State {
         Ok(proposal.cloned())
     }
 
-    pub fn remove_deal_proposals<BS>(
+    pub fn remove_proposal<BS>(
         &mut self,
         store: &BS,
         deal_id: DealID,
@@ -258,7 +265,7 @@ impl State {
         Ok(proposal)
     }
 
-    pub fn put_deal_proposals<BS>(
+    pub fn put_deal_proposal<BS>(
         &mut self,
         store: &BS,
         new_deal_proposals: &[(DealID, DealProposal)],
@@ -283,7 +290,7 @@ impl State {
         Ok(())
     }
 
-    pub fn put_pending_deal_allocation_ids<BS>(
+    pub fn put_pending_deal_allocation_id<BS>(
         &mut self,
         store: &BS,
         new_pending_deal_allocation_ids: &[(BytesKey, AllocationID)],
@@ -316,7 +323,7 @@ impl State {
         Ok(())
     }
 
-    pub fn remove_pending_deal_allocation_ids<BS>(
+    pub fn remove_pending_deal_allocation_id<BS>(
         &mut self,
         store: &BS,
         deal_id_key: &BytesKey,
@@ -499,7 +506,7 @@ impl State {
         Ok(ex)
     }
 
-    pub fn is_key_in_pending_deals<BS>(&self, store: &BS, key: Cid) -> Result<bool, ActorError>
+    pub fn is_key_in_pending_deal<BS>(&self, store: &BS, key: Cid) -> Result<bool, ActorError>
     where
         BS: Blockstore,
     {
@@ -513,7 +520,7 @@ impl State {
         Ok(rval)
     }
 
-    pub fn put_pending_deals<BS>(
+    pub fn put_pending_deal<BS>(
         &mut self,
         store: &BS,
         new_pending_deals: &[Cid],
@@ -538,7 +545,7 @@ impl State {
         Ok(())
     }
 
-    pub fn remove_pending_deals<BS>(
+    pub fn remove_pending_deal<BS>(
         &mut self,
         store: &BS,
         pending_deal_key: Cid,

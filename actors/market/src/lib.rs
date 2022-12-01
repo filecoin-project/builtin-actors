@@ -268,7 +268,7 @@ impl Actor {
 
             // check proposalCids for duplication within message batch
             // check state PendingProposals for duplication across messages
-            let duplicate_in_state = state.is_key_in_pending_deals(rt.store(), pcid)?;
+            let duplicate_in_state = state.is_key_in_pending_deal(rt.store(), pcid)?;
 
             let duplicate_in_message = proposal_cid_lookup.contains(&pcid);
             if duplicate_in_state || duplicate_in_message {
@@ -381,11 +381,11 @@ impl Actor {
                 new_deal_ids.push(deal_id);
             }
 
-            st.put_pending_deals(rt.store(), &pending_deals)?;
+            st.put_pending_deal(rt.store(), &pending_deals)?;
 
-            st.put_deal_proposals(rt.store(), &deal_proposals)?;
+            st.put_deal_proposal(rt.store(), &deal_proposals)?;
 
-            st.put_pending_deal_allocation_ids(rt.store(), &pending_deal_allocation_ids)?;
+            st.put_pending_deal_allocation_id(rt.store(), &pending_deal_allocation_ids)?;
 
             st.put_deals_by_epoch(rt.store(), &deals_by_epoch)?;
 
@@ -406,7 +406,7 @@ impl Actor {
         let curr_epoch = rt.curr_epoch();
 
         let st: State = rt.state()?;
-        let proposals = st.get_deal_proposals_array(rt.store())?;
+        let proposals = st.get_proposal_array(rt.store())?;
 
         let mut sectors_data = Vec::with_capacity(params.sectors.len());
         for sector in params.sectors.iter() {
@@ -445,7 +445,7 @@ impl Actor {
         let curr_epoch = rt.curr_epoch();
 
         let st: State = rt.state()?;
-        let proposals = st.get_deal_proposals_array(rt.store())?;
+        let proposals = st.get_proposal_array(rt.store())?;
 
         let deal_spaces = {
             validate_and_return_deal_space(
@@ -467,7 +467,7 @@ impl Actor {
             for deal_id in params.deal_ids {
                 // This construction could be replaced with a single "update deal state"
                 // state method, possibly batched over all deal ids at once.
-                let s = st.find_deal_states(rt.store(), deal_id)?;
+                let s = st.find_deal_state(rt.store(), deal_id)?;
 
                 if s.is_some() {
                     return Err(actor_error!(
@@ -478,14 +478,14 @@ impl Actor {
                 }
 
                 let proposal = st
-                    .find_deal_proposals(rt.store(), deal_id)?
+                    .find_proposal(rt.store(), deal_id)?
                     .ok_or_else(|| actor_error!(not_found, "no such deal_id: {}", deal_id))?;
 
                 let propc = rt_deal_cid(rt, &proposal)?;
 
                 // Confirm the deal is in the pending proposals queue.
                 // It will be removed from this queue later, during cron.
-                let has = st.is_key_in_pending_deals(rt.store(), propc)?;
+                let has = st.is_key_in_pending_deal(rt.store(), propc)?;
 
                 if !has {
                     return Err(actor_error!(
@@ -497,7 +497,7 @@ impl Actor {
 
                 // Extract and remove any verified allocation ID for the pending deal.
                 let allocation = st
-                    .remove_pending_deal_allocation_ids(rt.store(), &deal_id_key(deal_id))?
+                    .remove_pending_deal_allocation_id(rt.store(), &deal_id_key(deal_id))?
                     .unwrap_or((BytesKey(vec![]), NO_ALLOCATION_ID))
                     .1;
 
@@ -521,7 +521,7 @@ impl Actor {
                 ));
             }
 
-            st.put_deal_states(rt.store(), &deal_states)?;
+            st.put_deal_state(rt.store(), &deal_states)?;
 
             Ok(())
         })?;
@@ -543,7 +543,7 @@ impl Actor {
             let mut deal_states: Vec<(DealID, DealState)> = vec![];
 
             for id in params.deal_ids {
-                let deal = st.find_deal_proposals(rt.store(), id)?;
+                let deal = st.find_proposal(rt.store(), id)?;
 
                 // The deal may have expired and been deleted before the sector is terminated.
                 // Nothing to do, but continue execution for the other deals.
@@ -570,7 +570,7 @@ impl Actor {
                 }
 
                 let mut state: DealState = st
-                    .find_deal_states(rt.store(), id)?
+                    .find_deal_state(rt.store(), id)?
                     // A deal with a proposal but no state is not activated, but then it should not be
                     // part of a sector that is terminating.
                     .ok_or_else(|| actor_error!(illegal_argument, "no state for deal {}", id))?;
@@ -588,7 +588,7 @@ impl Actor {
                 deal_states.push((id, state));
             }
 
-            st.put_deal_states(rt.store(), &deal_states)?;
+            st.put_deal_state(rt.store(), &deal_states)?;
             Ok(())
         })?;
         Ok(())
@@ -601,7 +601,7 @@ impl Actor {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
 
         let st: State = rt.state()?;
-        let proposals = st.get_deal_proposals_array(rt.store())?;
+        let proposals = st.get_proposal_array(rt.store())?;
 
         let mut commds = Vec::with_capacity(params.inputs.len());
         for comm_input in params.inputs.iter() {
@@ -636,13 +636,13 @@ impl Actor {
                 let deal_ids = st.get_deals_for_epoch(rt.store(), i)?;
 
                 for deal_id in deal_ids {
-                    let deal = st.find_deal_proposals(rt.store(), deal_id)?.ok_or_else(|| {
+                    let deal = st.find_proposal(rt.store(), deal_id)?.ok_or_else(|| {
                         actor_error!(not_found, "proposal doesn't exist ({})", deal_id)
                     })?;
 
                     let dcid = rt_deal_cid(rt, &deal)?;
 
-                    let state = st.find_deal_states(rt.store(), deal_id)?;
+                    let state = st.find_deal_state(rt.store(), deal_id)?;
 
                     // deal has been published but not activated yet -> terminate it
                     // as it has timed out
@@ -663,7 +663,7 @@ impl Actor {
                         }
 
                         // Delete the proposal (but not state, which doesn't exist).
-                        let deleted = st.remove_deal_proposals(rt.store(), deal_id)?;
+                        let deleted = st.remove_proposal(rt.store(), deal_id)?;
 
                         if deleted.is_none() {
                             return Err(actor_error!(
@@ -676,7 +676,7 @@ impl Actor {
                         }
 
                         // Delete pending deal CID
-                        st.remove_pending_deals(rt.store(), dcid)?.ok_or_else(|| {
+                        st.remove_pending_deal(rt.store(), dcid)?.ok_or_else(|| {
                             actor_error!(
                                 illegal_state,
                                 "failed to delete pending deals: does not exist"
@@ -684,14 +684,14 @@ impl Actor {
                         })?;
 
                         // Delete pending deal allocation id (if present).
-                        st.remove_pending_deal_allocation_ids(rt.store(), &deal_id_key(deal_id))?;
+                        st.remove_pending_deal_allocation_id(rt.store(), &deal_id_key(deal_id))?;
 
                         continue;
                     }
                     let mut state = state.unwrap();
 
                     if state.last_updated_epoch == EPOCH_UNDEFINED {
-                        st.remove_pending_deals(rt.store(), dcid)?.ok_or_else(|| {
+                        st.remove_pending_deal(rt.store(), dcid)?.ok_or_else(|| {
                             actor_error!(
                                 illegal_state,
                                 "failed to delete pending proposal: does not exist"
@@ -731,7 +731,7 @@ impl Actor {
                         amount_slashed += slash_amount;
 
                         // Delete proposal and state simultaneously.
-                        let deleted = st.remove_deal_states(rt.store(), deal_id)?;
+                        let deleted = st.remove_deal_state(rt.store(), deal_id)?;
 
                         if deleted.is_none() {
                             return Err(actor_error!(
@@ -740,7 +740,7 @@ impl Actor {
                             ));
                         }
 
-                        let deleted = st.remove_deal_proposals(rt.store(), deal_id)?;
+                        let deleted = st.remove_proposal(rt.store(), deal_id)?;
 
                         if deleted.is_none() {
                             return Err(actor_error!(
@@ -766,7 +766,7 @@ impl Actor {
                         }
 
                         state.last_updated_epoch = curr_epoch;
-                        st.put_deal_states(rt.store(), &[(deal_id, state)])?;
+                        st.put_deal_state(rt.store(), &[(deal_id, state)])?;
 
                         if let Some(ev) = updates_needed.get_mut(&next_epoch) {
                             ev.push(deal_id);
