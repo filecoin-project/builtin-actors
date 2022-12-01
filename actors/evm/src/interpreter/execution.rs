@@ -154,8 +154,10 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
     }
 
     pub fn execute(&mut self) -> Result<(), StatusCode> {
-        while self.pc <  self.bytecode.len() {
-            unsafe { self.step(); }
+        while self.pc < self.bytecode.len() {
+            unsafe {
+                self.step();
+            }
 
             if self.exit.is_some() {
                 break;
