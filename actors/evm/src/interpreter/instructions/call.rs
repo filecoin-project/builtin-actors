@@ -264,11 +264,13 @@ pub fn call_generic<RT: Runtime>(
 
                         // and then invoke self with delegate; readonly context is sticky
                         let params = DelegateCallParams { code, input: input_data.into() };
-                        system.send(
+                        system.send_with_gas(
                             &system.rt.message().receiver(),
                             Method::InvokeContractDelegate as u64,
                             RawBytes::serialize(&params)?,
                             TokenAmount::from(&value),
+                            if !gas.is_zero() { Some(gas.to_u64_saturating()) } else { None },
+                            system.readonly,
                         )
                     }
                     // If we're calling an account or a non-existent actor, return nothing because
