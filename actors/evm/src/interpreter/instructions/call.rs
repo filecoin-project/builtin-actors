@@ -6,6 +6,8 @@ use num_traits::Zero;
 
 use crate::interpreter::precompiles::PrecompileContext;
 
+use super::ext::{get_cid_type, CodeCid};
+
 use {
     super::memory::{copy_to_memory, get_memory_region},
     crate::interpreter::address::EthAddress,
@@ -214,11 +216,11 @@ pub fn call_generic<RT: Runtime>(
                 }
             }
         } else {
-            let dst_addr: EthAddress = dst.into();
-            let dst_addr: Address = dst_addr.try_into().expect("address is a precompile");
-
             let call_result = match kind {
                 CallKind::Call | CallKind::StaticCall => {
+                    let dst_addr: EthAddress = dst.into();
+                    let dst_addr: Address = dst_addr.try_into().expect("address is a precompile");
+
                     // Special casing for account/embryo/non-existent actors: we just do a SEND (method 0)
                     // which allows us to transfer funds (and create embryos)
                     let target_actor_code = system
@@ -261,39 +263,40 @@ pub fn call_generic<RT: Runtime>(
                         )
                     }
                 }
-                CallKind::DelegateCall => {
-                    // first invoke GetBytecode to get the code CID from the target
-                    system
-                        .rt
-                        .resolve_address(&dst_addr)
-                        .and_then(|id| system.rt.get_actor_code_cid(&id))
-                        .map(|cid| {
-                            let code = match system.rt.resolve_builtin_actor_type(&cid) {
-                                Some(Type::EVM) => system.rt
-                                    .send(&dst_addr, crate::Method::GetBytecode as u64, Default::default(), TokenAmount::zero())?
-                                    .deserialize()?
-                                    ,
-                                // other builtin actors & native actors
-                                _ => todo!("revert when calling delegate call for native actors")
-                            };
+                CallKind::DelegateCall => match get_cid_type(system.rt, dst) {
+                    CodeCid::EVM(dst_addr) => {
+                        // If we're calling an actual EVM actor, get it's code.
+                        let code = system
+                            .rt
+                            .send(
+                                &dst_addr,
+                                crate::Method::GetBytecode as u64,
+                                Default::default(),
+                                TokenAmount::zero(),
+                            )?
+                            .deserialize()?;
 
-                            // and then invoke self with delegate; readonly context is sticky
-                            let params = DelegateCallParams {
-                                code,
-                                input: input_data.to_vec(),
-                                readonly: system.readonly,
-                            };
-                            system.send(
-                                &system.rt.message().receiver(),
-                                Method::InvokeContractDelegate as u64,
-                                RawBytes::serialize(&params)?,
-                                TokenAmount::from(&value),
-                            )
-                        })
-                        // failure to find CID is flattened to an empty return
-                        .unwrap_or_else(||Ok(RawBytes::default()))
-                }
-
+                        // and then invoke self with delegate; readonly context is sticky
+                        let params = DelegateCallParams {
+                            code,
+                            input: input_data.to_vec(),
+                            readonly: system.readonly,
+                        };
+                        system.send(
+                            &system.rt.message().receiver(),
+                            Method::InvokeContractDelegate as u64,
+                            RawBytes::serialize(&params)?,
+                            TokenAmount::from(&value),
+                        )
+                    }
+                    // If we're calling an account or a non-existent actor, return nothing because
+                    // this is how the EVM behaves.
+                    CodeCid::Account | CodeCid::NotFound => Ok(RawBytes::default()),
+                    // If we're calling a "native" actor, always revert.
+                    CodeCid::Native(_) => {
+                        Err(ActorError::forbidden("cannot delegate-call to native actors".into()))
+                    }
+                },
                 CallKind::CallCode => Err(ActorError::unchecked(
                     EVM_CONTRACT_EXECUTION_ERROR,
                     "unsupported opcode".to_string(),
