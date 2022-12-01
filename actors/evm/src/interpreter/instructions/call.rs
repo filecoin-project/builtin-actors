@@ -244,20 +244,17 @@ pub fn call_generic<RT: Runtime>(
                             // switch to a basic "send" so the call will still work even if the
                             // target actor would reject a normal ethereum call.
                             METHOD_SEND
-                        } else if system.readonly || kind == CallKind::StaticCall {
-                            // Invoke, preserving read-only mode.
-                            Method::InvokeContractReadOnly as u64
                         } else {
                             // Otherwise, invoke normally.
                             Method::InvokeContract as u64
                         };
-                        system.send(
-                            &dst_addr,
-                            method,
-                            // TODO: support IPLD codecs #758
-                            RawBytes::serialize(BytesSer(input_data))?,
-                            TokenAmount::from(&value),
-                        )
+                        // TODO: support IPLD codecs #758
+                        let params = RawBytes::serialize(BytesSer(input_data))?;
+                        if kind == CallKind::StaticCall {
+                            system.send_read_only(&dst_addr, method, params)
+                        } else {
+                            system.send(&dst_addr, method, params, TokenAmount::from(&value))
+                        }
                     }
                 }
                 CallKind::DelegateCall => {
@@ -267,11 +264,7 @@ pub fn call_generic<RT: Runtime>(
                     )?;
 
                     // and then invoke self with delegate; readonly context is sticky
-                    let params = DelegateCallParams {
-                        code,
-                        input: input_data.to_vec(),
-                        readonly: system.readonly,
-                    };
+                    let params = DelegateCallParams { code, input: input_data.to_vec() };
                     system.send(
                         &system.rt.message().receiver(),
                         Method::InvokeContractDelegate as u64,

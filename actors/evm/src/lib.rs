@@ -52,8 +52,7 @@ pub enum Method {
     InvokeContract = 2,
     GetBytecode = 3,
     GetStorageAt = 4,
-    InvokeContractReadOnly = 5,
-    InvokeContractDelegate = 6,
+    InvokeContractDelegate = 5,
 }
 
 pub struct EvmContractActor;
@@ -140,7 +139,6 @@ impl EvmContractActor {
     pub fn invoke_contract<RT>(
         rt: &mut RT,
         input_data: &[u8],
-        readonly: bool,
         with_code: Option<Cid>,
     ) -> Result<Vec<u8>, ActorError>
     where
@@ -153,7 +151,7 @@ impl EvmContractActor {
             rt.validate_immediate_caller_accept_any()?;
         }
 
-        let mut system = System::load(rt, readonly).map_err(|e| {
+        let mut system = System::load(rt).map_err(|e| {
             ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
         })?;
 
@@ -218,7 +216,7 @@ impl EvmContractActor {
         RT::Blockstore: Clone,
     {
         let input = handle_filecoin_method_input(method, codec, params);
-        Self::invoke_contract(rt, &input, false, None)
+        Self::invoke_contract(rt, &input, None)
     }
 
     pub fn bytecode(rt: &mut impl Runtime) -> Result<Cid, ActorError> {
@@ -238,7 +236,7 @@ impl EvmContractActor {
         // access arbitrary storage keys from a contract.
         rt.validate_immediate_caller_is([&Address::new_id(0)])?;
 
-        System::load(rt, true)?
+        System::load(rt)?
             .get_storage(params.storage_key)
             .context_code(ExitCode::USR_ASSERTION_FAILED, "failed to get storage key")
     }
@@ -289,7 +287,7 @@ impl ActorCode for EvmContractActor {
             }
             Some(Method::InvokeContract) => {
                 let BytesDe(params) = params.deserialize()?;
-                let value = Self::invoke_contract(rt, &params, false, None)?;
+                let value = Self::invoke_contract(rt, &params, None)?;
                 Ok(RawBytes::serialize(BytesSer(&value))?)
             }
             Some(Method::GetBytecode) => {
@@ -300,15 +298,9 @@ impl ActorCode for EvmContractActor {
                 let value = Self::storage_at(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(value)?)
             }
-            Some(Method::InvokeContractReadOnly) => {
-                let BytesDe(params) = params.deserialize()?;
-                let value = Self::invoke_contract(rt, &params, true, None)?;
-                Ok(RawBytes::serialize(BytesSer(&value))?)
-            }
             Some(Method::InvokeContractDelegate) => {
                 let params: DelegateCallParams = cbor::deserialize_params(params)?;
-                let value =
-                    Self::invoke_contract(rt, &params.input, params.readonly, Some(params.code))?;
+                let value = Self::invoke_contract(rt, &params.input, Some(params.code))?;
                 Ok(RawBytes::serialize(BytesSer(&value))?)
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
@@ -330,8 +322,6 @@ pub struct DelegateCallParams {
     /// The contract invocation parameters
     #[serde(with = "strict_bytes")]
     pub input: Vec<u8>,
-    /// Whether the call is within a read only (static) call context
-    pub readonly: bool,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]

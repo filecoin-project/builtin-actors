@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Error};
 use cid::multihash::Code;
 use cid::Cid;
+use fvm::SyscallResult;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes, DAG_CBOR};
 use fvm_sdk as fvm;
@@ -16,6 +17,7 @@ use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::event::ActorEvent;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::RANDOMNESS_LENGTH;
+use fvm_shared::receipt::Receipt;
 use fvm_shared::sector::{
     AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
     WindowPoStVerifyInfo,
@@ -96,6 +98,68 @@ impl MessageInfo for FvmMessage {
 
     fn gas_premium(&self) -> TokenAmount {
         fvm::message::gas_premium()
+    }
+}
+
+fn handle_send_result(
+    to: &Address,
+    method: MethodNum,
+    res: SyscallResult<Receipt>,
+) -> Result<RawBytes, ActorError> {
+    match res {
+        Ok(ret) => {
+            if ret.exit_code.is_success() {
+                Ok(ret.return_data)
+            } else {
+                // The returned code can't be simply propagated as it may be a system exit code.
+                // TODO: improve propagation once we return a RuntimeError.
+                // Ref https://github.com/filecoin-project/builtin-actors/issues/144
+                let exit_code = match ret.exit_code {
+                    // This means the called actor did something wrong. We can't "make up" a
+                    // reasonable exit code.
+                    ExitCode::SYS_MISSING_RETURN
+                    | ExitCode::SYS_ILLEGAL_INSTRUCTION
+                    | ExitCode::SYS_ILLEGAL_EXIT_CODE => ExitCode::USR_UNSPECIFIED,
+                    // We don't expect any other system errors.
+                    code if code.is_system_error() => ExitCode::USR_ASSERTION_FAILED,
+                    // Otherwise, pass it through.
+                    code => code,
+                };
+                Err(ActorError::unchecked_with_data(
+                    exit_code,
+                    format!("send to {} method {} aborted with code {}", to, method, ret.exit_code),
+                    ret.return_data,
+                ))
+            }
+        }
+        Err(err) => Err(match err {
+            // Some of these errors are from operations in the Runtime or SDK layer
+            // before or after the underlying VM send syscall.
+            ErrorNumber::NotFound => {
+                // This means that the receiving actor doesn't exist.
+                // TODO: we can't reasonably determine the correct "exit code" here.
+                actor_error!(unspecified; "receiver not found")
+            }
+            ErrorNumber::InsufficientFunds => {
+                // This means that the send failed because we have insufficient funds. We will
+                // get a _syscall error_, not an exit code, because the target actor will not
+                // run (and therefore will not exit).
+                actor_error!(insufficient_funds; "not enough funds")
+            }
+            ErrorNumber::LimitExceeded => {
+                // This means we've exceeded the recursion limit.
+                // TODO: Define a better exit code.
+                actor_error!(assertion_failed; "recursion limit exceeded")
+            }
+            ErrorNumber::ReadOnly => ActorError::unchecked(
+                ExitCode::USR_READ_ONLY,
+                "attempted to mutate state while in readonly mode".into(),
+            ),
+            err => {
+                // We don't expect any other syscall exit codes.
+                actor_error!(assertion_failed; "unexpected error: {}", err)
+            }
+        }),
     }
 }
 
@@ -306,64 +370,19 @@ where
         if self.in_transaction {
             return Err(actor_error!(assertion_failed; "send is not allowed during transaction"));
         }
-        match fvm::send::send(to, method, params, value, None) {
-            Ok(ret) => {
-                if ret.exit_code.is_success() {
-                    Ok(ret.return_data)
-                } else {
-                    // The returned code can't be simply propagated as it may be a system exit code.
-                    // TODO: improve propagation once we return a RuntimeError.
-                    // Ref https://github.com/filecoin-project/builtin-actors/issues/144
-                    let exit_code = match ret.exit_code {
-                        // This means the called actor did something wrong. We can't "make up" a
-                        // reasonable exit code.
-                        ExitCode::SYS_MISSING_RETURN
-                        | ExitCode::SYS_ILLEGAL_INSTRUCTION
-                        | ExitCode::SYS_ILLEGAL_EXIT_CODE => ExitCode::USR_UNSPECIFIED,
-                        // We don't expect any other system errors.
-                        code if code.is_system_error() => ExitCode::USR_ASSERTION_FAILED,
-                        // Otherwise, pass it through.
-                        code => code,
-                    };
-                    Err(ActorError::unchecked_with_data(
-                        exit_code,
-                        format!(
-                            "send to {} method {} aborted with code {}",
-                            to, method, ret.exit_code
-                        ),
-                        ret.return_data,
-                    ))
-                }
-            }
-            Err(err) => Err(match err {
-                // Some of these errors are from operations in the Runtime or SDK layer
-                // before or after the underlying VM send syscall.
-                ErrorNumber::NotFound => {
-                    // This means that the receiving actor doesn't exist.
-                    // TODO: we can't reasonably determine the correct "exit code" here.
-                    actor_error!(unspecified; "receiver not found")
-                }
-                ErrorNumber::InsufficientFunds => {
-                    // This means that the send failed because we have insufficient funds. We will
-                    // get a _syscall error_, not an exit code, because the target actor will not
-                    // run (and therefore will not exit).
-                    actor_error!(insufficient_funds; "not enough funds")
-                }
-                ErrorNumber::LimitExceeded => {
-                    // This means we've exceeded the recursion limit.
-                    // TODO: Define a better exit code.
-                    actor_error!(assertion_failed; "recursion limit exceeded")
-                }
-                ErrorNumber::ReadOnly => ActorError::unchecked(
-                    ExitCode::USR_READ_ONLY,
-                    "attempted to mutate state while in readonly mode".into(),
-                ),
-                err => {
-                    // We don't expect any other syscall exit codes.
-                    actor_error!(assertion_failed; "unexpected error: {}", err)
-                }
-            }),
+        handle_send_result(to, method, fvm::send::send(to, method, params, value, None))
+    }
+
+    fn send_read_only(
+        &self,
+        to: &Address,
+        method: MethodNum,
+        params: RawBytes,
+    ) -> Result<RawBytes, ActorError> {
+        if self.in_transaction {
+            return Err(actor_error!(assertion_failed; "send is not allowed during transaction"));
         }
+        handle_send_result(to, method, fvm::send::send_read_only(to, method, params, None))
     }
 
     fn new_actor_address(&mut self) -> Result<Address, ActorError> {
@@ -430,6 +449,10 @@ where
 
     fn exit(&self, code: u32, data: RawBytes, msg: Option<&str>) -> ! {
         fvm::vm::exit(code, data, msg)
+    }
+
+    fn read_only(&self) -> bool {
+        fvm::vm::read_only()
     }
 }
 

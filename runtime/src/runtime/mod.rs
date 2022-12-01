@@ -189,6 +189,20 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError>;
 
+    /// Like [`Runtime::send`] except that neither the called actor nor any recursively called actor
+    /// can make any state changes or emit any events. Specifically:
+    ///
+    /// - Value transfers are rejected.
+    /// - Events are discarded.
+    /// - State changes are rejected when the called actor attempts to update its state-root.
+    /// - Actor deletion is forbidden.
+    fn send_read_only(
+        &self,
+        to: &Address,
+        method: MethodNum,
+        params: RawBytes,
+    ) -> Result<RawBytes, ActorError>;
+
     /// Computes an address for a new actor. The returned address is intended to uniquely refer to
     /// the actor even in the event of a chain re-org (whereas an ID-address might refer to a
     /// different actor after messages are re-ordered).
@@ -248,6 +262,9 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// Exit the current computation with an error code and optionally data and a debugging
     /// message.
     fn exit(&self, code: u32, data: RawBytes, msg: Option<&str>) -> !;
+
+    /// Returns true if the system is in read-only mode.
+    fn read_only(&self) -> bool;
 }
 
 /// Message information available to the actor about executing message.
