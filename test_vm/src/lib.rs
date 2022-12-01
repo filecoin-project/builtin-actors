@@ -1034,7 +1034,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         gas_limit: Option<u64>,
         read_only: bool,
     ) -> Result<RawBytes, ActorError> {
-        self.send_inner(to, method, params, value, gas_limit, read_only)
+        self.send_inner(to, method, params, value, gas_limit, read_only || self.read_only)
     }
 
     fn get_randomness_from_tickets(
