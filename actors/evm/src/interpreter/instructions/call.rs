@@ -217,92 +217,88 @@ pub fn call_generic<RT: Runtime>(
             let dst_addr: EthAddress = dst.into();
             let dst_addr: Address = dst_addr.try_into().expect("address is a precompile");
 
-            let call_result = (|| {
-                match kind {
-                    CallKind::Call | CallKind::StaticCall => {
-                        // Special casing for account/embryo/non-existent actors: we just do a SEND (method 0)
-                        // which allows us to transfer funds (and create embryos)
-                        let target_actor_code = system
-                            .rt
-                            .resolve_address(&dst_addr)
-                            .and_then(|actor_id| system.rt.get_actor_code_cid(&actor_id));
-                        let target_actor_type = target_actor_code
-                            .as_ref()
-                            .and_then(|cid| system.rt.resolve_builtin_actor_type(cid));
-                        let actor_exists = target_actor_code.is_some();
+            let call_result = match kind {
+                CallKind::Call | CallKind::StaticCall => {
+                    // Special casing for account/embryo/non-existent actors: we just do a SEND (method 0)
+                    // which allows us to transfer funds (and create embryos)
+                    let target_actor_code = system
+                        .rt
+                        .resolve_address(&dst_addr)
+                        .and_then(|actor_id| system.rt.get_actor_code_cid(&actor_id));
+                    let target_actor_type = target_actor_code
+                        .as_ref()
+                        .and_then(|cid| system.rt.resolve_builtin_actor_type(cid));
+                    let actor_exists = target_actor_code.is_some();
 
-                        if !actor_exists && value.is_zero() {
-                            // If the actor doesn't exist and we're not sending value, return with
-                            // "success". The EVM only auto-creates actors when sending value.
-                            //
-                            // NOTE: this will also apply if we're in read-only mode, because we can't
-                            // send value in read-only mode anyways.
-                            Ok(RawBytes::default())
-                        } else {
-                            let method = if !actor_exists
-                                || matches!(target_actor_type, Some(Type::Embryo | Type::Account))
-                            {
-                                // If the target actor doesn't exist or is an account or an embryo,
-                                // switch to a basic "send" so the call will still work even if the
-                                // target actor would reject a normal ethereum call.
-                                METHOD_SEND
-                            } else if system.readonly || kind == CallKind::StaticCall {
-                                // Invoke, preserving read-only mode.
-                                Method::InvokeContractReadOnly as u64
-                            } else {
-                                // Otherwise, invoke normally.
-                                Method::InvokeContract as u64
-                            };
-                            system.send(
-                                &dst_addr,
-                                method,
-                                // TODO: support IPLD codecs #758
-                                RawBytes::serialize(BytesSer(input_data))?,
-                                TokenAmount::from(&value),
-                            )
-                        }
-                    }
-                    CallKind::DelegateCall => {
-                        // first invoke GetBytecode to get the code CID from the target
-                        let cid = match system
-                            .rt
-                            .resolve_address(&dst_addr)
-                            .and_then(|id| system.rt.get_actor_code_cid(&id))
+                    if !actor_exists && value.is_zero() {
+                        // If the actor doesn't exist and we're not sending value, return with
+                        // "success". The EVM only auto-creates actors when sending value.
+                        //
+                        // NOTE: this will also apply if we're in read-only mode, because we can't
+                        // send value in read-only mode anyways.
+                        Ok(RawBytes::default())
+                    } else {
+                        let method = if !actor_exists
+                            || matches!(target_actor_type, Some(Type::Embryo | Type::Account))
                         {
-                            Some(cid) => cid,
-                            // failure to find CID is flattened to an empty return
-                            None => return Ok(RawBytes::default()),
-                        };
-
-                        let code = match system.rt.resolve_builtin_actor_type(&cid) {
-                            Some(Type::EVM) => system.rt
-                                .send(&dst_addr, crate::Method::GetBytecode as u64, Default::default(), TokenAmount::zero())?
-                                .deserialize()?
-                                ,
-                            // other builtin actors & native actors
-                            _ => todo!("revert when calling delegate call for native actors")
-                        };
-
-                        // and then invoke self with delegate; readonly context is sticky
-                        let params = DelegateCallParams {
-                            code,
-                            input: input_data.to_vec(),
-                            readonly: system.readonly,
+                            // If the target actor doesn't exist or is an account or an embryo,
+                            // switch to a basic "send" so the call will still work even if the
+                            // target actor would reject a normal ethereum call.
+                            METHOD_SEND
+                        } else if system.readonly || kind == CallKind::StaticCall {
+                            // Invoke, preserving read-only mode.
+                            Method::InvokeContractReadOnly as u64
+                        } else {
+                            // Otherwise, invoke normally.
+                            Method::InvokeContract as u64
                         };
                         system.send(
-                            &system.rt.message().receiver(),
-                            Method::InvokeContractDelegate as u64,
-                            RawBytes::serialize(&params)?,
+                            &dst_addr,
+                            method,
+                            // TODO: support IPLD codecs #758
+                            RawBytes::serialize(BytesSer(input_data))?,
                             TokenAmount::from(&value),
                         )
                     }
-
-                    CallKind::CallCode => Err(ActorError::unchecked(
-                        EVM_CONTRACT_EXECUTION_ERROR,
-                        "unsupported opcode".to_string(),
-                    )),
                 }
-            })();
+                CallKind::DelegateCall => {
+                    // first invoke GetBytecode to get the code CID from the target
+                    system
+                        .rt
+                        .resolve_address(&dst_addr)
+                        .and_then(|id| system.rt.get_actor_code_cid(&id))
+                        .map(|cid| {
+                            let code = match system.rt.resolve_builtin_actor_type(&cid) {
+                                Some(Type::EVM) => system.rt
+                                    .send(&dst_addr, crate::Method::GetBytecode as u64, Default::default(), TokenAmount::zero())?
+                                    .deserialize()?
+                                    ,
+                                // other builtin actors & native actors
+                                _ => todo!("revert when calling delegate call for native actors")
+                            };
+
+                            // and then invoke self with delegate; readonly context is sticky
+                            let params = DelegateCallParams {
+                                code,
+                                input: input_data.to_vec(),
+                                readonly: system.readonly,
+                            };
+                            system.send(
+                                &system.rt.message().receiver(),
+                                Method::InvokeContractDelegate as u64,
+                                RawBytes::serialize(&params)?,
+                                TokenAmount::from(&value),
+                            )
+                        })
+                        // failure to find CID is flattened to an empty return
+                        .unwrap_or_else(||Ok(RawBytes::default()))
+                }
+
+                CallKind::CallCode => Err(ActorError::unchecked(
+                    EVM_CONTRACT_EXECUTION_ERROR,
+                    "unsupported opcode".to_string(),
+                )),
+            };
             match call_result {
                 Ok(result) => {
                     // Support the "empty" result. We often use this to mean "returned nothing" and
