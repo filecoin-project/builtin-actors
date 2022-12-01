@@ -443,17 +443,14 @@ pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8], ctx: PrecompileContext) ->
         let address = &bytes[send_data_size..send_data_size + address_size];
         let address = Address::from_bytes(address).map_err(|_| PrecompileError::InvalidInput)?;
 
-        // TODO passing underlying gas into send when implemented in FVM
-        if ctx.is_static {
-            rt.send_read_only(&address, method, RawBytes::from(input_data.to_vec()))
-        } else {
-            rt.send(
-                &address,
-                method,
-                RawBytes::from(input_data.to_vec()),
-                TokenAmount::from(&ctx.value),
-            )
-        }
+        rt.send_with_gas(
+            &address,
+            method,
+            RawBytes::from(input_data.to_vec()),
+            TokenAmount::from(&ctx.value),
+            if !ctx.gas.is_zero() { Some(ctx.gas.as_u64()) } else { None },
+            ctx.is_static,
+        )
     };
 
     // ------ Build Output -------

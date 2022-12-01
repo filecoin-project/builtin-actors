@@ -203,6 +203,18 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
         params: RawBytes,
     ) -> Result<RawBytes, ActorError>;
 
+    /// Generailizes [`Runtime::send`] and [`Runtime::send_read_only`] to allow the caller to
+    /// specify a gas limit.
+    fn send_with_gas(
+        &self,
+        to: &Address,
+        method: MethodNum,
+        params: RawBytes,
+        value: TokenAmount,
+        gas_limit: Option<u64>,
+        read_only: bool,
+    ) -> Result<RawBytes, ActorError>;
+
     /// Computes an address for a new actor. The returned address is intended to uniquely refer to
     /// the actor even in the event of a chain re-org (whereas an ID-address might refer to a
     /// different actor after messages are re-ordered).
