@@ -58,52 +58,21 @@ pub fn sar(shift: U256, mut value: U256) -> U256 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::interpreter::stack::Stack;
-
-    pub fn ins_byte(s: &mut Stack) {
-        unsafe {
-            let a = s.pop();
-            let b = s.pop();
-            let c = crate::interpreter::instructions::bitwise::byte(a, b);
-            s.push(c);
-        }
-    }
 
     #[test]
     fn test_instruction_byte() {
         let value = U256::from_big_endian(&(1u8..=32u8).map(|x| 5 * x).collect::<Vec<u8>>());
 
         for i in 0u16..32 {
-            let mut stack = Stack::new();
-            unsafe {
-                stack.push(value);
-                stack.push(U256::from(i));
-            }
-
-            ins_byte(&mut stack);
-            let result = unsafe { stack.pop() };
+            let result = byte(U256::from(i), value);
 
             assert_eq!(result, U256::from(5 * (i + 1)));
         }
 
-        let mut stack = Stack::new();
-        unsafe {
-            stack.push(value);
-            stack.push(U256::from(100u128));
-        }
-
-        ins_byte(&mut stack);
-        let result = unsafe { stack.pop() };
+        let result = byte(U256::from(100u128), value);
         assert_eq!(result, U256::zero());
 
-        let mut stack = Stack::new();
-        unsafe {
-            stack.push(value);
-            stack.push(U256::from_u128_words(1, 0));
-        }
-
-        ins_byte(&mut stack);
-        let result = unsafe { stack.pop() };
+        let result = byte(U256::from_u128_words(1, 0), value);
         assert_eq!(result, U256::zero());
     }
 }

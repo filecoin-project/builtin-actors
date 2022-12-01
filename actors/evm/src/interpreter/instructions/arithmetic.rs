@@ -111,192 +111,77 @@ pub fn exp(mut base: U256, power: U256) -> U256 {
 #[cfg(test)]
 mod test {
     mod basic {
-        use crate::interpreter::{stack::Stack, U256};
-
-        // all operations go a <op> b
-        fn push_2(s: &mut Stack, a: impl Into<U256>, b: impl Into<U256>) {
-            unsafe {
-                s.push(b.into());
-                s.push(a.into());
-            }
-        }
-
-        fn expect_stack_value(s: &mut Stack, e: impl Into<U256>, comment: impl AsRef<str>) {
-            let mut expected = Stack::new();
-            unsafe {
-                expected.push(e.into());
-            }
-
-            // stacks should be _exactly_ the same
-            assert_eq!(unsafe { s.get(0) }, unsafe { expected.get(0) }, "{}", comment.as_ref());
-            unsafe {
-                s.pop();
-            }
-        }
-
-        pub fn ins_add(s: &mut Stack) {
-            unsafe {
-                let a = s.pop();
-                let b = s.pop();
-                let c = crate::interpreter::instructions::arithmetic::add(a, b);
-                s.push(c);
-            }
-        }
-
-        pub fn ins_mul(s: &mut Stack) {
-            unsafe {
-                let a = s.pop();
-                let b = s.pop();
-                let c = crate::interpreter::instructions::arithmetic::mul(a, b);
-                s.push(c);
-            }
-        }
-
-        pub fn ins_sub(s: &mut Stack) {
-            unsafe {
-                let a = s.pop();
-                let b = s.pop();
-                let c = crate::interpreter::instructions::arithmetic::sub(a, b);
-                s.push(c);
-            }
-        }
-
-        pub fn ins_div(s: &mut Stack) {
-            unsafe {
-                let a = s.pop();
-                let b = s.pop();
-                let c = crate::interpreter::instructions::arithmetic::div(a, b);
-                s.push(c);
-            }
-        }
-
-        pub fn ins_signextend(s: &mut Stack) {
-            unsafe {
-                let a = s.pop();
-                let b = s.pop();
-                let c = crate::interpreter::instructions::arithmetic::signextend(a, b);
-                s.push(c);
-            }
-        }
-
-        pub fn ins_exp(s: &mut Stack) {
-            unsafe {
-                let a = s.pop();
-                let b = s.pop();
-                let c = crate::interpreter::instructions::arithmetic::exp(a, b);
-                s.push(c);
-            }
-        }
+        use crate::interpreter::instructions::arithmetic::*;
+        use crate::interpreter::U256;
 
         #[test]
-        fn add() {
-            let mut s = Stack::default();
-            let s = &mut s;
-
-            push_2(s, 0, 0);
-            ins_add(s);
-            expect_stack_value(s, 0, "add nothing to nothing");
-
+        fn test_add() {
+            assert_eq!(add(0.into(), 0.into()), 0, "add nothing to nothing");
             // does "math" on all limbs, so it is different than above
-            push_2(s, U256::max_value(), 0);
-            ins_add(s);
-            expect_stack_value(s, U256::max_value(), "add nothing to max value");
-
-            push_2(s, 2, 2);
-            ins_add(s);
-            expect_stack_value(s, 4, "2 plus 2 equals 5 (???)");
-
-            push_2(s, u64::MAX, 32);
-            ins_add(s);
-            expect_stack_value(s, u64::MAX as u128 + 32, "add 32 past a single (u64) limb of u256");
-
+            assert_eq!(
+                add(U256::max_value(), 0.into()),
+                U256::max_value(),
+                "add nothing to max value"
+            );
+            assert_eq!(add(2.into(), 2.into()), 4, "2 plus 2 equals 5 (???)");
+            assert_eq!(
+                add((u64::MAX).into(), 32.into()),
+                U256::from(u64::MAX as u128 + 32),
+                "add 32 past a single (u64) limb of u256"
+            );
             // wrap to zero
-            push_2(s, U256::max_value(), 1);
-            ins_add(s);
-            expect_stack_value(s, 0, "overflow by one");
-
+            assert_eq!(add(U256::max_value(), 1.into()), 0, "overflow by one");
             // wrap all limbs
-            push_2(s, U256::max_value(), U256::max_value());
-            ins_add(s);
-            expect_stack_value(s, U256::max_value() - 1, "overflow by max, should be 2^256-1");
+            assert_eq!(
+                add(U256::max_value(), U256::max_value()),
+                U256::max_value() - 1,
+                "overflow by max, should be 2^256-1"
+            );
         }
 
         #[test]
-        fn mul() {
-            let mut s = Stack::default();
-            let s = &mut s;
-
-            push_2(s, 0, 0);
-            ins_mul(s);
-            expect_stack_value(s, 0, "multiply nothing by nothing");
-
-            push_2(s, 2, 3);
-            ins_mul(s);
-            expect_stack_value(s, 6, "multiply 2 by 3");
-
-            push_2(s, u64::MAX, 2);
-            ins_mul(s);
-            expect_stack_value(s, (u64::MAX as u128) * 2, "2^64 x 2");
+        fn test_mul() {
+            assert_eq!(mul(0.into(), 0.into()), 0, "multiply nothing by nothing");
+            assert_eq!(mul(2.into(), 3.into()), 6, "multiply 2 by 3");
+            assert_eq!(
+                mul(u64::MAX.into(), 2.into()),
+                U256::from((u64::MAX as u128) * 2),
+                "2^64 x 2"
+            );
         }
 
         #[test]
-        fn sub() {
-            let mut s = Stack::default();
-            let s = &mut s;
-
-            push_2(s, 0, 0);
-            ins_sub(s);
-            expect_stack_value(s, 0, "subtract nothing by nothing");
-
-            push_2(s, 2, 1);
-            ins_sub(s);
-            expect_stack_value(s, 1, "subtract 2 by 1");
-
-            push_2(s, (u64::MAX as u128) + 32, 64);
-            ins_sub(s);
-            expect_stack_value(s, u64::MAX - 32, "subtract 64 from a value 32 over a single limb");
-
+        fn test_sub() {
+            assert_eq!(sub(0.into(), 0.into()), 0, "subtract nothing by nothing");
+            assert_eq!(sub(2.into(), 1.into()), 1, "subtract 2 by 1");
+            assert_eq!(
+                sub(((u64::MAX as u128) + 32).into(), 64.into()),
+                u64::MAX - 32,
+                "subtract 64 from a value 32 over a single limb"
+            );
             // wrap to max
-            push_2(s, 0, 1);
-            ins_sub(s);
-            expect_stack_value(s, U256::max_value(), "wrap around to max by one");
-
+            assert_eq!(sub(0.into(), 1.into()), U256::max_value(), "wrap around to max by one");
             // wrap all limbs
-            push_2(s, U256::max_value(), U256::max_value());
-            ins_sub(s);
-            expect_stack_value(s, 0, "wrap around zero by 2^256");
+            assert_eq!(sub(U256::max_value(), U256::max_value()), 0, "wrap around zero by 2^256");
         }
 
         #[test]
-        fn div() {
-            let mut s = Stack::default();
-            let s = &mut s;
-
-            push_2(s, 0, 0);
-            ins_div(s);
-            expect_stack_value(s, 0, "divide nothing by nothing (yes)");
-
-            push_2(s, 4, 1);
-            ins_div(s);
-            expect_stack_value(s, 4, "divide 4 by 1");
-
-            push_2(s, u128::MAX, 2);
-            ins_div(s);
-            expect_stack_value(s, u128::MAX / 2, "divide 2^128 by 2 (uses >1 limb)");
+        fn test_div() {
+            assert_eq!(div(0.into(), 0.into()), 0, "divide nothing by nothing (yes)");
+            assert_eq!(div(4.into(), 1.into()), 4, "divide 4 by 1");
+            assert_eq!(
+                div((u128::MAX).into(), 2.into()),
+                U256::from(u128::MAX / 2),
+                "divide 2^128 by 2 (uses >1 limb)"
+            );
         }
 
         #[test]
         fn test_signextend() {
             macro_rules! assert_exp {
                 ($num:expr, $byte:expr, $result:expr) => {
-                    let mut stack = Stack::new();
-                    unsafe {
-                        stack.push(($num).into());
-                        stack.push(($byte).into());
-                    }
-                    ins_signextend(&mut stack);
-                    let res: U256 = ($result).into();
-                    assert_eq!(res, unsafe { stack.pop() });
+                    let res: U256 = $result.into();
+                    assert_eq!(res, signextend(($byte).into(), ($num).into()));
                 };
             }
             assert_exp!(0xff, 0, U256::MAX);
@@ -318,14 +203,8 @@ mod test {
         fn test_exp() {
             macro_rules! assert_exp {
                 ($base:expr, $exp:expr, $result:expr) => {
-                    let mut stack = Stack::new();
-                    unsafe {
-                        stack.push(($exp).into());
-                        stack.push(($base).into());
-                    }
-                    ins_exp(&mut stack);
-                    let res: U256 = ($result).into();
-                    assert_eq!(res, unsafe { stack.pop() });
+                    let res: U256 = $result.into();
+                    assert_eq!(res, exp(($base).into(), ($exp).into()));
                 };
             }
 
