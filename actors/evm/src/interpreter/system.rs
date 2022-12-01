@@ -107,7 +107,9 @@ impl<'r, RT: Runtime> System<'r, RT> {
     ) -> Result<RawBytes, ActorError> {
         self.flush()?;
         let result = self.rt.send(to, method, params, value)?;
-        self.reload()?;
+        if !self.readonly {
+            self.reload()?;
+        }
         Ok(result)
     }
 
@@ -134,7 +136,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
     ) -> Result<RawBytes, ActorError> {
         self.flush()?;
         let result = self.rt.send_with_gas(to, method, params, value, gas_limit, read_only)?;
-        if !read_only {
+        if !read_only && !self.readonly {
             self.reload()?;
         }
         Ok(result)
