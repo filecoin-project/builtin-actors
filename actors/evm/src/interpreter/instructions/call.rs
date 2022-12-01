@@ -275,13 +275,13 @@ pub fn call_generic<RT: Runtime>(
                         };
 
                         let code = match system.rt.resolve_builtin_actor_type(&cid) {
-                    Some(Type::EVM) => system.rt
-                        .send(&dst_addr, crate::Method::GetBytecode as u64, Default::default(), TokenAmount::zero())?
-                        .deserialize()?
-                    ,
-                    // other builtin actors & native actors
-                    _ => todo!("revert when calling delegate call for native actors")
-                };
+                            Some(Type::EVM) => system.rt
+                                .send(&dst_addr, crate::Method::GetBytecode as u64, Default::default(), TokenAmount::zero())?
+                                .deserialize()?
+                                ,
+                            // other builtin actors & native actors
+                            _ => todo!("revert when calling delegate call for native actors")
+                        };
 
                         // and then invoke self with delegate; readonly context is sticky
                         let params = DelegateCallParams {
