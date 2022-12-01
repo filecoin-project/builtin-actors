@@ -1,6 +1,8 @@
-use evm::interpreter::address::EthAddress;
+use evm::interpreter::{address::EthAddress, StatusCode};
 use fil_actor_evm as evm;
-use fil_actors_runtime::{runtime::builtins::Type, test_utils::*, EAM_ACTOR_ID, INIT_ACTOR_ADDR};
+use fil_actors_runtime::{
+    runtime::builtins::Type, test_utils::*, ActorError, EAM_ACTOR_ID, INIT_ACTOR_ADDR,
+};
 use fvm_ipld_encoding::{BytesDe, BytesSer, RawBytes};
 use fvm_shared::address::Address;
 
@@ -58,4 +60,25 @@ pub fn invoke_contract(rt: &mut MockRuntime, input_data: &[u8]) -> Vec<u8> {
         .deserialize()
         .unwrap();
     res
+}
+
+#[allow(dead_code)]
+pub fn invoke_contract_expect_err(rt: &mut MockRuntime, input_data: &[u8], expect: StatusCode) {
+    rt.expect_validate_caller_any();
+    let err = rt
+        .call::<evm::EvmContractActor>(
+            evm::Method::InvokeContract as u64,
+            &RawBytes::serialize(BytesSer(input_data)).unwrap(),
+        )
+        .expect_err(&format!("expected contract to fail with {}", expect));
+    rt.verify();
+    // REMOVEME so this is jank... (just copies err creation from execute in lib.rs)
+    assert_eq!(err, ActorError::unspecified(format!("EVM execution error: {expect:?}")))
+}
+
+#[allow(dead_code)]
+pub fn dispatch_num_word(method_num: u8) -> [u8; 32] {
+    let mut word = [0u8; 32];
+    word[3] = method_num;
+    word
 }

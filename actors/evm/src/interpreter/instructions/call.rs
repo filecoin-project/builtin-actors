@@ -5,6 +5,8 @@ use fvm_shared::{address::Address, METHOD_SEND};
 
 use crate::interpreter::precompiles::PrecompileContext;
 
+use super::ext::{get_cid_type, get_evm_bytecode_cid, ContractType};
+
 use {
     super::memory::{copy_to_memory, get_memory_region},
     crate::interpreter::address::EthAddress,
@@ -255,22 +257,28 @@ pub fn call_generic<RT: Runtime>(
                         system.send_with_gas(&dst_addr, method, params, value, gas_limit, read_only)
                     }
                 }
-                CallKind::DelegateCall => {
-                    // first invoke GetBytecode to get the code CID from the target
-                    let code = crate::interpreter::instructions::ext::get_evm_bytecode_cid(
-                        system.rt, dst,
-                    )?;
+                CallKind::DelegateCall => match get_cid_type(system.rt, dst) {
+                    ContractType::EVM(dst_addr) => {
+                        // If we're calling an actual EVM actor, get it's code.
+                        let code = get_evm_bytecode_cid(system.rt, &dst_addr)?;
 
-                    // and then invoke self with delegate; readonly context is sticky
-                    let params = DelegateCallParams { code, input: input_data.to_vec() };
-                    system.send(
-                        &system.rt.message().receiver(),
-                        Method::InvokeContractDelegate as u64,
-                        RawBytes::serialize(&params)?,
-                        TokenAmount::from(&value),
-                    )
-                }
-
+                        // and then invoke self with delegate; readonly context is sticky
+                        let params = DelegateCallParams { code, input: input_data.into() };
+                        system.send(
+                            &system.rt.message().receiver(),
+                            Method::InvokeContractDelegate as u64,
+                            RawBytes::serialize(&params)?,
+                            TokenAmount::from(&value),
+                        )
+                    }
+                    // If we're calling an account or a non-existent actor, return nothing because
+                    // this is how the EVM behaves.
+                    ContractType::Account | ContractType::NotFound => Ok(RawBytes::default()),
+                    // If we're calling a "native" actor, always revert.
+                    ContractType::Native(_) => {
+                        Err(ActorError::forbidden("cannot delegate-call to native actors".into()))
+                    }
+                },
                 CallKind::CallCode => Err(ActorError::unchecked(
                     EVM_CONTRACT_EXECUTION_ERROR,
                     "unsupported opcode".to_string(),
