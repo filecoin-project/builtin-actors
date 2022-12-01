@@ -92,31 +92,18 @@ impl CodeCid {
 pub fn get_cid_type(rt: &impl Runtime, addr: U256) -> CodeCid {
     let addr: EthAddress = addr.into();
 
-    if let Ok(addr) = addr.try_into() {
-        rt.resolve_address(&addr)
-            .and_then(|id| {
-                rt.get_actor_code_cid(&id).map(|cid| {
-                    let code_cid = rt
-                        .resolve_builtin_actor_type(&cid)
-                        .map(|t| {
-                            match t {
-                                Type::Account => CodeCid::Account,
-                                // TODO part of current account abstraction hack where emryos are accounts
-                                Type::Embryo => CodeCid::Account,
-                                Type::EVM => CodeCid::EVM(addr),
-                                // remaining builtin actors are native
-                                _ => CodeCid::Native(cid),
-                            }
-                            // not a builtin actor, so it is probably a native actor
-                        })
-                        .unwrap_or(CodeCid::Native(cid));
-                    code_cid
-                })
-            })
-            .unwrap_or(CodeCid::NotFound)
-    } else {
-        CodeCid::NotFound
-    }
+    addr.try_into()
+        .ok() // into filecoin address
+        .and_then(|addr| rt.resolve_address(&addr)) // resolve actor id
+        .and_then(|id| rt.get_actor_code_cid(&id).map(|cid| (id, cid))) // resolve code cid
+        .map(|(id, cid)| match rt.resolve_builtin_actor_type(&cid) {
+            // TODO part of current account abstraction hack where embryos are accounts
+            Some(Type::Account | Type::Embryo) => CodeCid::Account,
+            Some(Type::EVM) => CodeCid::EVM(Address::new_id(id)),
+            // remaining builtin actors are native
+            _ => CodeCid::Native(cid),
+        })
+        .unwrap_or(CodeCid::NotFound)
 }
 
 pub fn get_evm_bytecode(rt: &impl Runtime, addr: &Address) -> Result<Vec<u8>, StatusCode> {
