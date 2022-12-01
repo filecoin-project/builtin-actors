@@ -201,7 +201,7 @@ pub fn call_generic<RT: Runtime>(
                 value,
             };
 
-            match precompiles::Precompiles::call_precompile(system.rt, dst, input_data, context)
+            match precompiles::Precompiles::call_precompile(system, dst, input_data, context)
                 .map_err(StatusCode::from)
             {
                 Ok(return_data) => (1, return_data),
