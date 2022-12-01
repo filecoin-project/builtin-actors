@@ -170,7 +170,7 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
     }
 
     unsafe fn step(&mut self) {
-        // Note: safe because we check ounds in execute (only caller)
+        // Note: safe because we check bounds in execute (only caller)
         let op = OpCode::try_from(*self.bytecode.get_unchecked(self.pc));
         match op {
             // Note: safe because u8 index
