@@ -154,12 +154,10 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
     }
 
     pub fn execute(&mut self) -> Result<(), StatusCode> {
-        loop {
-            if self.pc >= self.bytecode.len() {
-                break;
+        while self.pc < self.bytecode.len() {
+            unsafe {
+                self.step();
             }
-
-            self.step();
 
             if self.exit.is_some() {
                 break;
@@ -173,10 +171,12 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         }
     }
 
-    fn step(&mut self) {
-        let op = OpCode::try_from(self.bytecode[self.pc]);
+    unsafe fn step(&mut self) {
+        // Note: safe because we check bounds in execute (only caller)
+        let op = OpCode::try_from(*self.bytecode.get_unchecked(self.pc));
         match op {
-            Ok(op) => Self::JMPTABLE[op as usize](self),
+            // Note: safe because u8 index
+            Ok(op) => Self::JMPTABLE.get_unchecked(op as usize)(self),
             Err(err) => self.exit = Some(err),
         }
     }
