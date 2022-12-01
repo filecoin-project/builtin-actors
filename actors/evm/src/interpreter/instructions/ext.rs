@@ -21,8 +21,10 @@ pub fn extcodesize(
     //  the ipld::block_stat syscall, but the Runtime nor the Blockstore expose it.
     //  Tracked in https://github.com/filecoin-project/ref-fvm/issues/867
     let len = match get_cid_type(system.rt, addr) {
-        CodeCid::EVM(addr) => get_evm_bytecode(system.rt, &addr).map(|bytecode| bytecode.len())?,
-        CodeCid::Native(_) => 1,
+        ContractType::EVM(addr) => {
+            get_evm_bytecode(system.rt, &addr).map(|bytecode| bytecode.len())?
+        }
+        ContractType::Native(_) => 1,
         // account and not found are flattened to 0 size
         _ => 0,
     };
@@ -35,13 +37,13 @@ pub fn extcodehash(
     system: &System<impl Runtime>,
     addr: U256,
 ) -> Result<U256, StatusCode> {
-    let addr = get_cid_type(system.rt, addr).unwrap_evm(StatusCode::InvalidArgument(
-        "Cannot invoke EXTCODEHASH for non-EVM actor.".to_string(),
-    ))?;
-    let bytecode_cid: Cid = system
-        .rt
-        .send(&addr, crate::Method::GetBytecode as u64, Default::default(), TokenAmount::zero())?
-        .deserialize()?;
+    let addr = match get_cid_type(system.rt, addr) {
+        ContractType::EVM(a) => Ok(a),
+        _ => Err(StatusCode::InvalidArgument(
+            "Cannot invoke EXTCODEHASH for non-EVM actor.".to_string(),
+        )),
+    }?;
+    let bytecode_cid = get_evm_bytecode_cid(system.rt, &addr)?;
 
     let digest = bytecode_cid.hash().digest();
 
@@ -59,8 +61,8 @@ pub fn extcodecopy(
     size: U256,
 ) -> Result<(), StatusCode> {
     let bytecode = match get_cid_type(system.rt, addr) {
-        CodeCid::EVM(addr) => get_evm_bytecode(system.rt, &addr)?,
-        CodeCid::NotFound | CodeCid::Account => Vec::new(),
+        ContractType::EVM(addr) => get_evm_bytecode(system.rt, &addr)?,
+        ContractType::NotFound | ContractType::Account => Vec::new(),
         // calling EXTCODECOPY on native actors results with a single byte 0xFE which solidtiy uses for its `assert`/`throw` methods
         // and in general invalid EVM bytecode
         _ => vec![0xFE],
@@ -70,7 +72,7 @@ pub fn extcodecopy(
 }
 
 #[derive(Debug)]
-pub enum CodeCid {
+pub enum ContractType {
     /// EVM Address and the CID of the actor (not the bytecode)
     EVM(Address),
     Native(Cid),
@@ -78,18 +80,8 @@ pub enum CodeCid {
     NotFound,
 }
 
-impl CodeCid {
-    pub fn unwrap_evm<E>(&self, err: E) -> Result<Address, E> {
-        if let CodeCid::EVM(ret) = self {
-            Ok(*ret)
-        } else {
-            Err(err)
-        }
-    }
-}
-
 /// Resolves an address to the address type
-pub fn get_cid_type(rt: &impl Runtime, addr: U256) -> CodeCid {
+pub fn get_cid_type(rt: &impl Runtime, addr: U256) -> ContractType {
     let addr: EthAddress = addr.into();
 
     addr.try_into()
@@ -98,18 +90,22 @@ pub fn get_cid_type(rt: &impl Runtime, addr: U256) -> CodeCid {
         .and_then(|id| rt.get_actor_code_cid(&id).map(|cid| (id, cid))) // resolve code cid
         .map(|(id, cid)| match rt.resolve_builtin_actor_type(&cid) {
             // TODO part of current account abstraction hack where embryos are accounts
-            Some(Type::Account | Type::Embryo) => CodeCid::Account,
-            Some(Type::EVM) => CodeCid::EVM(Address::new_id(id)),
+            Some(Type::Account | Type::Embryo) => ContractType::Account,
+            Some(Type::EVM) => ContractType::EVM(Address::new_id(id)),
             // remaining builtin actors are native
-            _ => CodeCid::Native(cid),
+            _ => ContractType::Native(cid),
         })
-        .unwrap_or(CodeCid::NotFound)
+        .unwrap_or(ContractType::NotFound)
+}
+
+pub fn get_evm_bytecode_cid(rt: &impl Runtime, addr: &Address) -> Result<Cid, ActorError> {
+    Ok(rt
+        .send(addr, crate::Method::GetBytecode as u64, Default::default(), TokenAmount::zero())?
+        .deserialize()?)
 }
 
 pub fn get_evm_bytecode(rt: &impl Runtime, addr: &Address) -> Result<Vec<u8>, StatusCode> {
-    let cid = rt
-        .send(addr, crate::Method::GetBytecode as u64, Default::default(), TokenAmount::zero())?
-        .deserialize()?;
+    let cid = get_evm_bytecode_cid(rt, addr)?;
     let raw_bytecode = rt
         .store()
         .get(&cid) // TODO this is inefficient; should call stat here.

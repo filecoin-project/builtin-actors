@@ -2,11 +2,10 @@
 
 use fvm_ipld_encoding::{BytesDe, BytesSer};
 use fvm_shared::{address::Address, METHOD_SEND};
-use num_traits::Zero;
 
 use crate::interpreter::precompiles::PrecompileContext;
 
-use super::ext::{get_cid_type, CodeCid};
+use super::ext::{get_cid_type, ContractType, get_evm_bytecode_cid};
 
 use {
     super::memory::{copy_to_memory, get_memory_region},
@@ -264,17 +263,9 @@ pub fn call_generic<RT: Runtime>(
                     }
                 }
                 CallKind::DelegateCall => match get_cid_type(system.rt, dst) {
-                    CodeCid::EVM(dst_addr) => {
+                    ContractType::EVM(dst_addr) => {
                         // If we're calling an actual EVM actor, get it's code.
-                        let code = system
-                            .rt
-                            .send(
-                                &dst_addr,
-                                crate::Method::GetBytecode as u64,
-                                Default::default(),
-                                TokenAmount::zero(),
-                            )?
-                            .deserialize()?;
+                        let code = get_evm_bytecode_cid(system.rt, &dst_addr)?;
 
                         // and then invoke self with delegate; readonly context is sticky
                         let params = DelegateCallParams {
@@ -291,9 +282,9 @@ pub fn call_generic<RT: Runtime>(
                     }
                     // If we're calling an account or a non-existent actor, return nothing because
                     // this is how the EVM behaves.
-                    CodeCid::Account | CodeCid::NotFound => Ok(RawBytes::default()),
+                    ContractType::Account | ContractType::NotFound => Ok(RawBytes::default()),
                     // If we're calling a "native" actor, always revert.
-                    CodeCid::Native(_) => {
+                    ContractType::Native(_) => {
                         Err(ActorError::forbidden("cannot delegate-call to native actors".into()))
                     }
                 },
