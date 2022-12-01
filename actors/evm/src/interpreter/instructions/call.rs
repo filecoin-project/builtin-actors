@@ -250,7 +250,7 @@ pub fn call_generic<RT: Runtime>(
                         let params = RawBytes::serialize(BytesSer(input_data))?;
                         let value = TokenAmount::from(&value);
                         let gas_limit = if !gas.is_zero() { Some(gas.to_u64_saturating()) } else { None };
-                        let read_only = system.readonly || kind == CallKind::StaticCall;
+                        let read_only = kind == CallKind::StaticCall;
                         system.send_with_gas(&dst_addr, method, params, value, gas_limit, read_only)
                     }
                 }
