@@ -1011,7 +1011,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         params: RawBytes,
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError> {
-        self.send_inner(to, method, params, value, self.read_only || false)
+        self.send_inner(to, method, params, value, self.read_only)
     }
 
     fn send_read_only(
