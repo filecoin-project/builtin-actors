@@ -176,8 +176,6 @@ pub fn call_generic<RT: Runtime>(
 ) -> Result<U256, StatusCode> {
     let ExecutionState { stack: _, memory, .. } = state;
 
-    // NOTE gas is currently ignored as FVM's send doesn't allow the caller to specify a gas
-    //      limit (external invocation gas limit applies). This may changed in the future.
     let (gas, dst, value, input_offset, input_size, output_offset, output_size) = params;
 
     if system.readonly && value > U256::zero() {
@@ -250,11 +248,11 @@ pub fn call_generic<RT: Runtime>(
                         };
                         // TODO: support IPLD codecs #758
                         let params = RawBytes::serialize(BytesSer(input_data))?;
-                        if kind == CallKind::StaticCall {
-                            system.send_read_only(&dst_addr, method, params)
-                        } else {
-                            system.send(&dst_addr, method, params, TokenAmount::from(&value))
-                        }
+                        let value = TokenAmount::from(&value);
+                        let gas_limit =
+                            if !gas.is_zero() { Some(gas.to_u64_saturating()) } else { None };
+                        let read_only = kind == CallKind::StaticCall;
+                        system.send_with_gas(&dst_addr, method, params, value, gas_limit, read_only)
                     }
                 }
                 CallKind::DelegateCall => {

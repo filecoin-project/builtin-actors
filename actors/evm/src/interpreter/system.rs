@@ -122,6 +122,24 @@ impl<'r, RT: Runtime> System<'r, RT> {
         self.rt.send_read_only(to, method, params)
     }
 
+    /// Generalized send
+    pub fn send_with_gas(
+        &mut self,
+        to: &Address,
+        method: MethodNum,
+        params: RawBytes,
+        value: TokenAmount,
+        gas_limit: Option<u64>,
+        read_only: bool,
+    ) -> Result<RawBytes, ActorError> {
+        self.flush()?;
+        let result = self.rt.send_with_gas(to, method, params, value, gas_limit, read_only)?;
+        if !read_only {
+            self.reload()?;
+        }
+        Ok(result)
+    }
+
     /// Flush the actor state (bytecode, nonce, and slots).
     pub fn flush(&mut self) -> Result<(), ActorError> {
         if self.saved_state_root.is_some() {

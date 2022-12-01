@@ -385,6 +385,29 @@ where
         handle_send_result(to, method, fvm::send::send_read_only(to, method, params, None))
     }
 
+    fn send_with_gas(
+        &self,
+        to: &Address,
+        method: MethodNum,
+        params: RawBytes,
+        value: TokenAmount,
+        gas_limit: Option<u64>,
+        read_only: bool,
+    ) -> Result<RawBytes, ActorError> {
+        if self.in_transaction {
+            return Err(actor_error!(assertion_failed; "send is not allowed during transaction"));
+        }
+        handle_send_result(
+            to,
+            method,
+            if read_only {
+                fvm::send::send_read_only(to, method, params, gas_limit)
+            } else {
+                fvm::send::send(to, method, params, value, gas_limit)
+            },
+        )
+    }
+
     fn new_actor_address(&mut self) -> Result<Address, ActorError> {
         Ok(fvm::actor::next_actor_address())
     }

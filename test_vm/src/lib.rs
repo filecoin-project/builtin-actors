@@ -795,8 +795,10 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         method: MethodNum,
         params: RawBytes,
         value: TokenAmount,
+        _gas_limit: Option<u64>,
         read_only: bool,
     ) -> Result<RawBytes, ActorError> {
+        // TODO gas_limit is current ignored, what should we do about it?
         if !self.allow_side_effects {
             return Err(ActorError::unchecked(
                 ExitCode::SYS_ASSERTION_FAILED,
@@ -1011,7 +1013,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         params: RawBytes,
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError> {
-        self.send_inner(to, method, params, value, self.read_only)
+        self.send_inner(to, method, params, value, None, self.read_only)
     }
 
     fn send_read_only(
@@ -1020,7 +1022,19 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         method: MethodNum,
         params: RawBytes,
     ) -> Result<RawBytes, ActorError> {
-        self.send_inner(to, method, params, TokenAmount::zero(), true)
+        self.send_inner(to, method, params, TokenAmount::zero(), None, true)
+    }
+
+    fn send_with_gas(
+        &self,
+        to: &Address,
+        method: MethodNum,
+        params: RawBytes,
+        value: TokenAmount,
+        gas_limit: Option<u64>,
+        read_only: bool,
+    ) -> Result<RawBytes, ActorError> {
+        self.send_inner(to, method, params, value, gas_limit, read_only || self.read_only)
     }
 
     fn get_randomness_from_tickets(

@@ -63,6 +63,15 @@ impl U256 {
         self.to_big_endian(&mut buf);
         buf
     }
+
+    /// Returns the low 64 bits, saturating the value to u64 max if it is larger
+    pub fn to_u64_saturating(&self) -> u64 {
+        if self.bits() > 64 {
+            u64::MAX
+        } else {
+            self.0[0]
+        }
+    }
 }
 
 impl U512 {

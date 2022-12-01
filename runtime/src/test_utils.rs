@@ -540,8 +540,10 @@ impl<BS: Blockstore> MockRuntime<BS> {
         method: MethodNum,
         params: RawBytes,
         value: TokenAmount,
+        _gas_limit: Option<u64>,
         read_only: bool,
     ) -> Result<RawBytes, ActorError> {
+        // TODO gas_limit is currently ignored, what should we do about it?
         self.require_in_call();
         if self.in_transaction {
             return Err(actor_error!(assertion_failed; "side-effect within transaction"));
@@ -1157,7 +1159,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         params: RawBytes,
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError> {
-        self.send_inner(to, method, params, value, false)
+        self.send_inner(to, method, params, value, None, false)
     }
 
     fn send_read_only(
@@ -1166,7 +1168,19 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         method: MethodNum,
         params: RawBytes,
     ) -> Result<RawBytes, ActorError> {
-        self.send_inner(to, method, params, TokenAmount::default(), true)
+        self.send_inner(to, method, params, TokenAmount::default(), None, true)
+    }
+
+    fn send_with_gas(
+        &self,
+        to: &Address,
+        method: MethodNum,
+        params: RawBytes,
+        value: TokenAmount,
+        gas_limit: Option<u64>,
+        read_only: bool,
+    ) -> Result<RawBytes, ActorError> {
+        self.send_inner(to, method, params, value, gas_limit, read_only)
     }
 
     fn new_actor_address(&mut self) -> Result<Address, ActorError> {
