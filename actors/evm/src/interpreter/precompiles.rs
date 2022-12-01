@@ -448,7 +448,7 @@ pub fn call_actor<RT: Runtime>(rt: &RT, input: &[u8], ctx: PrecompileContext) ->
             method,
             RawBytes::from(input_data.to_vec()),
             TokenAmount::from(&ctx.value),
-            if !ctx.gas.is_zero() { Some(ctx.gas.as_u64()) } else { None },
+            if !ctx.gas.is_zero() { Some(ctx.gas.to_u64_saturating()) } else { None },
             ctx.is_static,
         )
     };
