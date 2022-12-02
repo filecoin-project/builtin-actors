@@ -1025,7 +1025,9 @@ fn replica_update_verified_deal() {
         client,
         worker,
         maddr,
-        old_sector_info.expiration - v.get_epoch() - policy.market_default_allocation_term_buffer,
+        old_sector_info.commitment_expiration
+            - v.get_epoch()
+            - policy.market_default_allocation_term_buffer,
     );
 
     // replica update
@@ -1143,7 +1145,7 @@ fn replica_update_verified_deal_max_term_violated() {
 
     let old_sector_info = sector_info(&v, maddr, sector_number);
     // term max of claim is 1 epoch less than the remaining sector lifetime causing get claims validation failure
-    let sector_lifetime = old_sector_info.expiration - v.get_epoch();
+    let sector_lifetime = old_sector_info.commitment_expiration - v.get_epoch();
     let deal_ids = create_verified_deals(
         1,
         &v,

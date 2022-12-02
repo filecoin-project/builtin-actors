@@ -485,8 +485,6 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
                 expiration_set.validate_state()?;
             }
 
-
-
             let keep_going = !remaining.is_empty();
             Ok(keep_going)
         })?;

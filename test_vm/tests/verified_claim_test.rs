@@ -112,7 +112,7 @@ fn verified_claim_scenario() {
     // Verify sector info
     let miner_state: MinerState = v.get_state(miner_id).unwrap();
     let sector_info = miner_state.get_sector(&store, sector_number).unwrap().unwrap();
-    assert_eq!(sector_term, sector_info.expiration - sector_info.activation);
+    assert_eq!(sector_term, sector_info.commitment_expiration - sector_info.activation);
     assert_eq!(DealWeight::zero(), sector_info.deal_weight);
     // Verified weight is sector term * 32 GiB, using simple QAP
     let verified_weight = DealWeight::from(sector_term as u64 * deal_size);
@@ -279,7 +279,7 @@ fn verified_claim_scenario() {
     // Verify sector info
     let miner_state: MinerState = v.get_state(miner_id).unwrap();
     let sector_info = miner_state.get_sector(&store, sector_number).unwrap().unwrap();
-    assert_eq!(extended_expiration_2, sector_info.expiration);
+    assert_eq!(extended_expiration_2, sector_info.commitment_expiration);
     assert_eq!(DealWeight::zero(), sector_info.deal_weight);
     assert_eq!(DealWeight::zero(), sector_info.verified_deal_weight); // No longer verified
 
