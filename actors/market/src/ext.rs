@@ -20,6 +20,15 @@ pub mod account {
         #[serde(with = "serde_bytes")]
         pub message: Vec<u8>,
     }
+
+    pub const MARKET_NOTIFY_DEAL: u64 = frc42_dispatch::method_hash!("MarketNotifyDeal");
+
+    #[derive(Serialize_tuple, Deserialize_tuple)]
+    pub struct MarketNotifyDealParams {
+        #[serde(with = "serde_bytes")]
+        pub proposal: Vec<u8>,
+        pub deal_id: u64,
+    }
 }
 
 pub mod miner {

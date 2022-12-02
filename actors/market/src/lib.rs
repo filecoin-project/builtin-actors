@@ -27,7 +27,7 @@ use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Zero};
 
 use crate::balance_table::BalanceTable;
-use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
+use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
@@ -231,6 +231,7 @@ impl Actor {
 
         struct ValidDeal {
             proposal: DealProposal,
+            serialized_proposal: RawBytes,
             cid: Cid,
             allocation: AllocationID,
         }
@@ -248,11 +249,15 @@ impl Actor {
         let state: State = rt.state()?;
 
         for (di, mut deal) in params.deals.into_iter().enumerate() {
-            // drop malformed deals
-            if let Err(e) = validate_deal(rt, &deal, &network_raw_power, &baseline_power) {
-                info!("invalid deal {}: {}", di, e);
-                continue;
-            }
+            let serialized_proposal =
+                match validate_deal(rt, &deal, &network_raw_power, &baseline_power) {
+                    // drop malformed deals
+                    Err(e) => {
+                        info!("invalid deal {}: {}", di, e);
+                        continue;
+                    }
+                    Ok(b) => b,
+                };
 
             if deal.proposal.provider != Address::new_id(provider_id)
                 && deal.proposal.provider != provider_raw
@@ -370,6 +375,7 @@ impl Actor {
             proposal_cid_lookup.insert(pcid);
             valid_deals.push(ValidDeal {
                 proposal: deal.proposal,
+                serialized_proposal,
                 cid: pcid,
                 allocation: allocation_id,
             });
@@ -434,6 +440,19 @@ impl Actor {
 
             Ok(())
         })?;
+
+        // notify clients ignoring any errors
+        for (i, valid_deal) in valid_deals.iter().enumerate() {
+            _ = rt.send(
+                &valid_deal.proposal.client,
+                ext::account::MARKET_NOTIFY_DEAL,
+                RawBytes::serialize(ext::account::MarketNotifyDealParams {
+                    proposal: valid_deal.serialized_proposal.to_vec(),
+                    deal_id: new_deal_ids[i],
+                })?,
+                TokenAmount::zero(),
+            );
+        }
 
         Ok(PublishStorageDealsReturn { ids: new_deal_ids, valid_deals: valid_input_bf })
     }
@@ -1156,8 +1175,8 @@ fn validate_deal(
     deal: &ClientDealProposal,
     network_raw_power: &StoragePower,
     baseline_power: &StoragePower,
-) -> Result<(), ActorError> {
-    deal_proposal_is_internally_valid(rt, deal)?;
+) -> Result<RawBytes, ActorError> {
+    let proposal_bytes = deal_proposal_is_internally_valid(rt, deal)?;
 
     let proposal = &deal.proposal;
 
@@ -1222,28 +1241,28 @@ fn validate_deal(
         return Err(actor_error!(illegal_argument, "Client collateral out of bounds."));
     };
 
-    Ok(())
+    Ok(proposal_bytes)
 }
 
 fn deal_proposal_is_internally_valid(
     rt: &impl Runtime,
     proposal: &ClientDealProposal,
-) -> Result<(), ActorError> {
+) -> Result<RawBytes, ActorError> {
     let signature_bytes = proposal.client_signature.bytes.clone();
     // Generate unsigned bytes
-    let proposal_bytes = serialize_vec(&proposal.proposal, "deal proposal")?;
+    let proposal_bytes = serialize(&proposal.proposal, "deal proposal")?;
 
     rt.send(
         &proposal.proposal.client,
         ext::account::AUTHENTICATE_MESSAGE_METHOD,
         RawBytes::serialize(ext::account::AuthenticateMessageParams {
             signature: signature_bytes,
-            message: proposal_bytes,
+            message: proposal_bytes.to_vec(),
         })?,
         TokenAmount::zero(),
     )
     .map_err(|e| e.wrap("proposal authentication failed"))?;
-    Ok(())
+    Ok(proposal_bytes)
 }
 
 pub const DAG_CBOR: u64 = 0x71; // TODO is there a better place to get this?
