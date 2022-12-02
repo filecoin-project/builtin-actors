@@ -16,56 +16,43 @@ pub struct MemoryRegion {
     pub size: NonZeroUsize,
 }
 
-/// Returns number of words what would fit to provided number of bytes,
-/// i.e. it rounds up the number bytes to number of words.
 #[inline]
-pub fn num_words(size_in_bytes: usize) -> usize {
-    (size_in_bytes + (WORD_SIZE - 1)) / WORD_SIZE
-}
-
-#[inline]
-fn grow_memory(mem: &mut Memory, new_size: usize) -> Result<(), ()> {
-    let new_words = num_words(new_size);
-    mem.grow((new_words * WORD_SIZE) as usize);
+fn grow_memory(mem: &mut Memory, mut new_size: usize) -> Result<(), ()> {
+    // Align to the next u256.
+    // Guaranteed to not overflow.
+    let alignment = new_size % WORD_SIZE;
+    if alignment > 0 {
+        new_size += WORD_SIZE - alignment;
+    }
+    mem.grow(new_size);
     Ok(())
-}
-
-#[inline]
-fn get_memory_region_u64(
-    mem: &mut Memory,
-    offset: U256,
-    size: NonZeroUsize,
-) -> Result<MemoryRegion, ()> {
-    if offset.bits() >= 32 {
-        return Err(());
-    }
-
-    let offset_usize = offset.as_usize();
-    let new_size = offset_usize + size.get();
-    let current_size = mem.len();
-    if new_size > current_size {
-        grow_memory(mem, new_size)?;
-    }
-
-    Ok(MemoryRegion { offset: offset_usize, size })
 }
 
 #[inline]
 #[allow(clippy::result_unit_err)]
 pub fn get_memory_region(
     mem: &mut Memory,
-    offset: U256,
-    size: U256,
+    offset: impl TryInto<u32>,
+    size: impl TryInto<u32>,
 ) -> Result<Option<MemoryRegion>, ()> {
-    if size.is_zero() {
+    // We use u32 because we don't support more than 4GiB of memory anyways.
+    // Also, explicitly check math so we don't panic and/or wrap around.
+    let size: u32 = size.try_into().map_err(|_| ())?;
+    if size == 0 {
         return Ok(None);
     }
+    let offset: u32 = offset.try_into().map_err(|_| ())?;
+    let new_size: u32 = offset.checked_add(size).ok_or(())?;
 
-    if size.bits() >= 32 {
-        return Err(());
+    let current_size = mem.len();
+    if new_size as usize > current_size {
+        grow_memory(mem, new_size as usize)?;
     }
 
-    get_memory_region_u64(mem, offset, NonZeroUsize::new(size.as_usize()).unwrap()).map(Some)
+    Ok(Some(MemoryRegion {
+        offset: offset as usize,
+        size: unsafe { NonZeroUsize::new_unchecked(size as usize) },
+    }))
 }
 
 pub fn copy_to_memory(
@@ -82,7 +69,7 @@ pub fn copy_to_memory(
     #[inline(always)]
     fn min(a: U256, b: usize) -> usize {
         if a < (b as u64) {
-            a.as_usize()
+            a.low_u64() as usize
         } else {
             b
         }
@@ -112,9 +99,9 @@ pub fn mload(
     _system: &System<impl Runtime>,
     index: U256,
 ) -> Result<U256, StatusCode> {
-    let region =
-        get_memory_region_u64(&mut state.memory, index, NonZeroUsize::new(WORD_SIZE).unwrap())
-            .map_err(|_| StatusCode::InvalidMemoryAccess)?;
+    let region = get_memory_region(&mut state.memory, index, WORD_SIZE)
+        .map_err(|_| StatusCode::InvalidMemoryAccess)?
+        .expect("empty region");
     let value =
         U256::from_big_endian(&state.memory[region.offset..region.offset + region.size.get()]);
 
@@ -128,9 +115,9 @@ pub fn mstore(
     index: U256,
     value: U256,
 ) -> Result<(), StatusCode> {
-    let region =
-        get_memory_region_u64(&mut state.memory, index, NonZeroUsize::new(WORD_SIZE).unwrap())
-            .map_err(|_| StatusCode::InvalidMemoryAccess)?;
+    let region = get_memory_region(&mut state.memory, index, WORD_SIZE)
+        .map_err(|_| StatusCode::InvalidMemoryAccess)?
+        .expect("empty region");
 
     let mut bytes = [0u8; WORD_SIZE];
     value.to_big_endian(&mut bytes);
@@ -146,8 +133,9 @@ pub fn mstore8(
     index: U256,
     value: U256,
 ) -> Result<(), StatusCode> {
-    let region = get_memory_region_u64(&mut state.memory, index, NonZeroUsize::new(1).unwrap())
-        .map_err(|_| StatusCode::InvalidMemoryAccess)?;
+    let region = get_memory_region(&mut state.memory, index, 1)
+        .map_err(|_| StatusCode::InvalidMemoryAccess)?
+        .expect("empty region");
 
     let value = (value.low_u32() & 0xff) as u8;
     state.memory[region.offset] = value;
