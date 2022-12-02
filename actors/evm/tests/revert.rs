@@ -30,5 +30,5 @@ revert
     assert!(result.is_err());
     let e = result.unwrap_err();
     assert_eq!(e.exit_code(), evm::EVM_CONTRACT_REVERTED);
-    assert_eq!(e.data(), RawBytes::from(vec![0xde, 0xad, 0xbe, 0xef]));
+    assert_eq!(e.data(), RawBytes::serialize(BytesSer(&[0xde, 0xad, 0xbe, 0xef])).unwrap());
 }
