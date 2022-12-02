@@ -39,17 +39,17 @@ pub fn calldataload(
     index: U256,
 ) -> Result<U256, StatusCode> {
     let input_len = state.input_data.len();
-    Ok(if index > U256::from(input_len) {
-        U256::zero()
-    } else {
-        let index_usize = index.as_usize();
-        let end = core::cmp::min(index_usize + 32, input_len);
-
-        let mut data = [0; 32];
-        data[..end - index_usize].copy_from_slice(&state.input_data[index_usize..end]);
-
-        U256::from_big_endian(&data)
-    })
+    Ok(index
+        .try_into()
+        .ok()
+        .filter(|&start| start < input_len)
+        .map(|start: usize| {
+            let end = core::cmp::min(start.saturating_add(32usize), input_len);
+            let mut data = [0; 32];
+            data[..end - start].copy_from_slice(&state.input_data[start..end]);
+            U256::from_big_endian(&data)
+        })
+        .unwrap_or_default())
 }
 
 #[inline]
