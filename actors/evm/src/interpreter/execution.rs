@@ -333,23 +333,14 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         }}
 
         JUMP: {(m) => {
-            try_ins! { JUMP(m) => (res) {
-                if let Some(dest) = res {
-                    m.pc = dest;
-                } else {
-                    // cant happen, unless it's a cosmic ray
-                    m.exit = Some(StatusCode::Failure);
-                }
+            try_ins! { JUMP(m) => (dest) {
+                m.pc = dest;
             }}
         }}
 
         JUMPI: {(m) => {
-            try_ins! { JUMPI(m) => (res) {
-                if let Some(dest) = res {
-                    m.pc = dest;
-                } else {
-                    m.pc += 1;
-                }
+            try_ins! { JUMPI(m) => (dest) {
+                m.pc = dest;
             }}
         }}
 

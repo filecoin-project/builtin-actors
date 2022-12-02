@@ -60,23 +60,25 @@ pub fn returndatacopy(
 }
 
 #[inline]
-pub fn jump(bytecode: &Bytecode, dest: U256) -> Result<Option<usize>, StatusCode> {
+pub fn jump(bytecode: &Bytecode, _pc: usize, dest: U256) -> Result<usize, StatusCode> {
     let dst = dest.try_into().map_err(|_| StatusCode::BadJumpDestination)?;
     if !bytecode.valid_jump_destination(dst) {
         return Err(StatusCode::BadJumpDestination);
     }
-    Ok(Some(dst))
+    // skip the JMPDEST noop sled
+    Ok(dst + 1)
 }
 
 #[inline]
-pub fn jumpi(bytecode: &Bytecode, dest: U256, test: U256) -> Result<Option<usize>, StatusCode> {
+pub fn jumpi(bytecode: &Bytecode, pc: usize, dest: U256, test: U256) -> Result<usize, StatusCode> {
     if !test.is_zero() {
         let dst = dest.try_into().map_err(|_| StatusCode::BadJumpDestination)?;
         if !bytecode.valid_jump_destination(dst) {
             return Err(StatusCode::BadJumpDestination);
         }
-        Ok(Some(dst))
+        // skip the JMPDEST noop sled
+        Ok(dst + 1)
     } else {
-        Ok(None)
+        Ok(pc + 1)
     }
 }

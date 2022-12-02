@@ -146,11 +146,11 @@ macro_rules! def_stdlog {
 macro_rules! def_jmp {
     ($op:ident ($($arg:ident),*) => $impl:path) => {
         #[allow(non_snake_case)]
-        pub fn $op<'r, 'a, RT: Runtime + 'a>(m: &mut Machine<'r, 'a, RT> ) -> Result<Option<usize>, StatusCode> {
+        pub fn $op<'r, 'a, RT: Runtime + 'a>(m: &mut Machine<'r, 'a, RT> ) -> Result<usize, StatusCode> {
             check_arity!($op, ($($arg),*));
             check_stack!($op, m.state.stack);
             $(let $arg = unsafe {m.state.stack.pop()};)*
-            $impl(m.bytecode, $($arg),*)
+            $impl(m.bytecode, m.pc, $($arg),*)
         }
     }
 
