@@ -2,6 +2,8 @@
 
 use crate::interpreter::U256;
 
+use super::StatusCode;
+
 /// Ethereum Yellow Paper (9.1)
 pub const STACK_SIZE: usize = 1024;
 
@@ -10,104 +12,115 @@ const INITIAL_STACK_SIZE: usize = 32;
 /// EVM stack.
 #[derive(Clone, Debug)]
 pub struct Stack {
-    sk: Vec<U256>,
-    d: usize,
+    stack: Vec<U256>,
 }
 
 impl Stack {
     #[inline]
     pub fn new() -> Self {
-        Stack { sk: Vec::from([U256::zero(); INITIAL_STACK_SIZE]), d: 0 }
-    }
-
-    #[inline]
-    pub fn require(&self, required: usize) -> bool {
-        required <= self.d
-    }
-
-    #[inline]
-    pub fn ensure(&mut self, space: usize) -> bool {
-        let required = self.d + space;
-
-        if required > self.sk.len() {
-            if required > STACK_SIZE {
-                return false;
-            }
-
-            while required > self.sk.len() {
-                self.sk.resize(2 * self.sk.len(), U256::zero());
-            }
-        }
-        true
+        Stack { stack: Vec::with_capacity(INITIAL_STACK_SIZE) }
     }
 
     #[inline(always)]
     pub fn len(&self) -> usize {
-        self.d
+        self.stack.len()
     }
 
     #[inline(always)]
     pub fn is_empty(&self) -> bool {
-        self.d == 0
+        self.stack.is_empty()
+    }
+
+    #[inline(always)]
+    pub fn push_unchecked(&mut self, value: U256) {
+        self.stack.push(value);
+    }
+
+    #[inline(always)]
+    pub fn push(&mut self, value: U256) -> Result<(), StatusCode> {
+        if self.stack.len() >= STACK_SIZE {
+            Err(StatusCode::StackOverflow)
+        } else {
+            self.stack.push(value);
+            Ok(())
+        }
     }
 
     #[inline]
-    pub unsafe fn get(&self, i: usize) -> &U256 {
-        let pos = self.d - i - 1;
-        self.sk.get_unchecked(pos)
+    pub fn pop_many<const S: usize>(&mut self) -> Result<&[U256; S], StatusCode> {
+        if self.len() < S {
+            return Err(StatusCode::StackUnderflow);
+        }
+        let new_len = self.len() - S;
+        unsafe {
+            // This is safe because:
+            //
+            // 1. U256 isn't drop.
+            // 2. The borrow will end before we can do anything else.
+            //
+            // It's faster than copying these elements multiple times.
+            self.stack.set_len(new_len);
+            Ok(&*(self.stack.as_ptr().add(new_len) as *const [U256; S]))
+        }
+    }
+
+    #[inline(always)]
+    pub fn ensure_one(&self) -> Result<(), StatusCode> {
+        if self.stack.len() >= STACK_SIZE {
+            Err(StatusCode::StackOverflow)
+        } else {
+            Ok(())
+        }
     }
 
     #[inline]
-    pub unsafe fn get_mut(&mut self, i: usize) -> &mut U256 {
-        let pos = self.d - i - 1;
-        self.sk.get_unchecked_mut(pos)
+    pub fn dup(&mut self, i: usize) -> Result<(), StatusCode> {
+        let len = self.stack.len();
+        if len >= STACK_SIZE {
+            Err(StatusCode::StackOverflow)
+        } else if i > len {
+            Err(StatusCode::StackUnderflow)
+        } else {
+            unsafe {
+                // This is safe because we're careful not to alias. We're _basically_ implementing
+                // "emplace", because rust still doesn't have it.
+                //
+                // Yes, this is faster than a get/push.
+                self.stack.reserve(1);
+                *self.stack.as_mut_ptr().add(len) = *self.stack.get_unchecked(len - i);
+                self.stack.set_len(len + 1);
+            }
+            Ok(())
+        }
     }
 
     #[inline]
-    pub unsafe fn push(&mut self, v: U256) {
-        *self.sk.get_unchecked_mut(self.d) = v;
-        self.d += 1;
+    pub fn swap_top(&mut self, i: usize) -> Result<(), StatusCode> {
+        let len = self.stack.len();
+        if len < i {
+            return Err(StatusCode::StackUnderflow);
+        }
+        self.stack.swap(len - i - 1, len - 1);
+        Ok(())
     }
 
     #[inline]
-    pub unsafe fn pop(&mut self) -> U256 {
-        self.d -= 1;
-        *self.sk.get_unchecked(self.d)
+    pub fn pop(&mut self) -> Result<U256, StatusCode> {
+        self.stack.pop().ok_or(StatusCode::StackUnderflow)
     }
 
     #[inline]
-    pub unsafe fn swap_top(&mut self, i: usize) {
-        let top = self.d - 1;
-        let pos = self.d - i - 1;
-        let tmp = *self.sk.get_unchecked(top);
-        *self.sk.get_unchecked_mut(top) = *self.sk.get_unchecked(pos);
-        *self.sk.get_unchecked_mut(pos) = tmp;
+    pub fn drop(&mut self) -> Result<(), StatusCode> {
+        if self.stack.pop().is_some() {
+            Ok(())
+        } else {
+            Err(StatusCode::StackUnderflow)
+        }
     }
 }
 
 impl Default for Stack {
     fn default() -> Self {
         Self::new()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn stack() {
-        let mut stack = Stack::new();
-
-        let items: [u128; 4] = [0xde, 0xad, 0xbe, 0xef];
-
-        for (i, item) in items.iter().copied().enumerate() {
-            unsafe { stack.push(item.into()) };
-            assert_eq!(stack.len(), i + 1);
-        }
-
-        assert_eq!(unsafe { *stack.get(2) }, U256::from(0xad));
-        assert_eq!(unsafe { stack.pop() }, U256::from(0xef));
-        assert_eq!(unsafe { *stack.get(2) }, U256::from(0xde));
     }
 }

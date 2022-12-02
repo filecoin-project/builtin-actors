@@ -1,5 +1,5 @@
 use etk_asm::ingest::Ingest;
-use evm::interpreter::opcode::OpCode::*;
+use evm::interpreter::execution::opcodes;
 use fil_actor_evm as evm;
 
 const PRELUDE: &str = r#"
@@ -67,23 +67,23 @@ pub fn new_contract(name: &str, init: &str, body: &str) -> Result<Vec<u8>, etk_a
         + 1 // RETURN
         ;
     let mut constructor_code = vec![
-        PUSH4 as u8,
+        opcodes::PUSH4,
         ((body_code_len >> 24) & 0xff) as u8,
         ((body_code_len >> 16) & 0xff) as u8,
         ((body_code_len >> 8) & 0xff) as u8,
         (body_code_len & 0xff) as u8,
-        DUP1 as u8,
-        PUSH4 as u8,
+        opcodes::DUP1,
+        opcodes::PUSH4,
         ((body_code_offset >> 24) & 0xff) as u8,
         ((body_code_offset >> 16) & 0xff) as u8,
         ((body_code_offset >> 8) & 0xff) as u8,
         (body_code_offset & 0xff) as u8,
-        PUSH1 as u8,
+        opcodes::PUSH1,
         0x00,
-        CODECOPY as u8,
-        PUSH1 as u8,
+        opcodes::CODECOPY,
+        opcodes::PUSH1,
         0x00,
-        RETURN as u8,
+        opcodes::RETURN,
     ];
     // the actual contract code
     let mut contract_code = Vec::new();

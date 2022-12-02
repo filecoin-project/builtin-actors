@@ -16,44 +16,64 @@ pub mod state;
 pub mod storage;
 
 use crate::interpreter::execution::Machine;
-use crate::interpreter::opcode::{OpCode, StackSpec};
 use crate::interpreter::output::StatusCode;
 use crate::interpreter::U256;
 use fil_actors_runtime::runtime::Runtime;
 
+macro_rules! rev {
+    ($($args:ident),*) => {
+        rev!(() $($args),*)
+    };
+    (($($reversed:ident),*) $first:ident $(, $rest:ident)*) => {
+        rev!(($first $(,$reversed)*) $($rest),*)
+    };
+    (($($reversed:ident),*)) => {
+        [$($reversed),*]
+    };
+}
+
+macro_rules! def_op {
+    ($op:ident ($m:ident) => { $($body:tt)* }) => {
+        #[allow(non_snake_case)]
+        #[inline(always)]
+        pub fn $op<'r, 'a, RT: Runtime + 'a>($m: &mut Machine<'r, 'a, RT> ) -> Result<(), StatusCode> {
+            $($body)*
+        }
+    }
+}
+
 // macros for the instruction zoo:
 // primops: take values of the stack and return a result value to be pushed on the stack
 macro_rules! def_primop {
-    ($op:ident ($($arg:ident),*) => $impl:path) => {
-        #[allow(non_snake_case)]
-        #[inline(always)]
-        pub fn $op<'r, 'a, RT: Runtime + 'a>(m: &mut Machine<'r, 'a, RT> ) -> Result<(), StatusCode> {
-            check_arity!($op, ($($arg),*));
-            check_stack!($op, m.state.stack);
-            $(let $arg = unsafe {m.state.stack.pop()};)*
+    ($op:ident ($($arg:ident),+) => $impl:path) => {
+        def_op!{ $op (m) => {
+            let &rev![$($arg),*] = m.state.stack.pop_many()?;
             let result = $impl($($arg),*);
-            unsafe {m.state.stack.push(result);}
+            m.state.stack.push_unchecked(result);
             m.pc += 1;
             Ok(())
-        }
-    }
+
+        }}
+    };
+    ($op:ident () => $impl:path) => {
+        def_op!{ $op (m) => {
+            m.state.stack.ensure_one();
+            let result = $impl($($arg),*);
+            m.state.stack.push_unchecked(result);
+            m.pc += 1;
+            Ok(())
+        }}
+    };
 }
 
 // stackops: operate directly on the stack
 macro_rules! def_stackop {
     ($op:ident => $impl:path) => {
-        #[allow(non_snake_case)]
-        #[inline(always)]
-        pub fn $op<'r, 'a, RT: Runtime + 'a>(
-            m: &mut Machine<'r, 'a, RT>,
-        ) -> Result<(), StatusCode> {
-            check_stack!($op, m.state.stack);
-            unsafe {
-                $impl(&mut m.state.stack);
-            }
+        def_op! { $op (m) => {
+            $impl(&mut m.state.stack)?;
             m.pc += 1;
             Ok(())
-        }
+        }}
     };
 }
 
@@ -61,184 +81,131 @@ macro_rules! def_stackop {
 // makes you want to cry because it really is a stack op.
 macro_rules! def_push {
     ($op:ident => $impl:path) => {
-        #[allow(non_snake_case)]
-        #[inline(always)]
-        pub fn $op<'r, 'a, RT: Runtime + 'a>(
-            m: &mut Machine<'r, 'a, RT>,
-        ) -> Result<(), StatusCode> {
-            check_stack!($op, m.state.stack);
+        def_op! { $op (m) => {
             m.pc += 1;
             let code = &m.bytecode[m.pc..];
-            m.pc += unsafe { $impl(&mut m.state.stack, code) };
+            m.pc += $impl(&mut m.state.stack, code)?;
             Ok(())
-        }
+        }}
     };
 }
 
 // stdfuns: take state and system as first args, and args from the stack and return a result value
 // to be pushed in the stack.
 macro_rules! def_stdfun {
-    ($op:ident ($($arg:ident),*) => $impl:path) => {
-        #[allow(non_snake_case)]
-        #[inline(always)]
-        pub fn $op<'r, 'a, RT: Runtime + 'a>(m: &mut Machine<'r, 'a, RT> ) -> Result<(), StatusCode> {
-            check_arity!($op, ($($arg),*));
-            check_stack!($op, m.state.stack);
-            $(let $arg = unsafe {m.state.stack.pop()};)*
+    ($op:ident ($($arg:ident),+) => $impl:path) => {
+        def_op!{ $op (m) => {
+            let &rev![$($arg),*] = m.state.stack.pop_many()?;
             let result = $impl(&mut m.state, &mut m.system, $($arg),*)?;
-            unsafe {m.state.stack.push(result);}
+            m.state.stack.push_unchecked(result);
             m.pc += 1;
             Ok(())
-        }
-    }
+        }}
+    };
+    ($op:ident () => $impl:path) => {
+        def_op!{ $op (m) => {
+            m.state.stack.ensure_one()?;
+            let result = $impl(&mut m.state, &mut m.system)?;
+            m.state.stack.push_unchecked(result);
+            m.pc += 1;
+            Ok(())
+        }}
+    };
 }
 
 // stdproc: like stdfun, but returns no value
 macro_rules! def_stdproc {
     ($op:ident ($($arg:ident),*) => $impl:path) => {
-        #[allow(non_snake_case)]
-        #[inline(always)]
-        pub fn $op<'r, 'a, RT: Runtime + 'a>(m: &mut Machine<'r, 'a, RT> ) -> Result<(), StatusCode> {
-            check_arity!($op, ($($arg),*));
-            check_stack!($op, m.state.stack);
-            $(let $arg = unsafe {m.state.stack.pop()};)*
+        def_op!{ $op (m) => {
+            let &rev![$($arg),*] = m.state.stack.pop_many()?;
             $impl(&mut m.state, &mut m.system, $($arg),*)?;
             m.pc += 1;
             Ok(())
-        }
+        }}
     }
 }
 
 // std*_code: code reflective functionoid
 macro_rules! def_stdfun_code {
-    ($op:ident ($($arg:ident),*) => $impl:path) => {
-        #[allow(non_snake_case)]
-        #[inline(always)]
-        pub fn $op<'r, 'a, RT: Runtime + 'a>(m: &mut Machine<'r, 'a, RT> ) -> Result<(), StatusCode> {
-            check_arity!($op, ($($arg),*));
-            check_stack!($op, m.state.stack);
-            $(let $arg = unsafe {m.state.stack.pop()};)*
+    ($op:ident ($($arg:ident),+) => $impl:path) => {
+        def_op!{ $op (m) => {
+            let &rev![$($arg),*] = m.state.stack.pop_many()?;
             let result = $impl(&mut m.state, &mut m.system, m.bytecode.as_ref(), $($arg),*)?;
-            unsafe {m.state.stack.push(result);}
+            m.state.stack.push_unchecked(result);
             m.pc += 1;
             Ok(())
-        }
-    }
+        }}
+    };
+    ($op:ident () => $impl:path) => {
+        def_op!{ $op (m) => {
+            m.state.stack.ensure_one()?;
+            let result = $impl(&mut m.state, &mut m.system, m.bytecode.as_ref())?;
+            m.state.stack.push_unchecked(result);
+            m.pc += 1;
+            Ok(())
+        }}
+    };
 }
 
 // and the procedural variant
 macro_rules! def_stdproc_code {
     ($op:ident ($($arg:ident),*) => $impl:path) => {
-        #[allow(non_snake_case)]
-        #[inline(always)]
-        pub fn $op<'r, 'a, RT: Runtime + 'a>(m: &mut Machine<'r, 'a, RT> ) -> Result<(), StatusCode> {
-            check_arity!($op, ($($arg),*));
-            check_stack!($op, m.state.stack);
-            $(let $arg = unsafe {m.state.stack.pop()};)*
+        def_op!{ $op (m) => {
+            let &rev![$($arg),*] = m.state.stack.pop_many()?;
             $impl(&mut m.state, &mut m.system, m.bytecode.as_ref(), $($arg),*)?;
             m.pc += 1;
             Ok(())
-        }
+        }}
     }
 }
 
 // stdproc: logging functionoid
 macro_rules! def_stdlog {
     ($op:ident ($ntopics:literal, ($($topic:ident),*))) => {
-        #[allow(non_snake_case)]
-        #[inline(always)]
-        pub fn $op<'r, 'a, RT: Runtime + 'a>(m: &mut Machine<'r, 'a, RT> ) -> Result<(), StatusCode> {
-            check_stack!($op, m.state.stack);
-            let a = unsafe {m.state.stack.pop()};
-            let b = unsafe {m.state.stack.pop()};
-            $(let $topic = unsafe {m.state.stack.pop()};)*
+        def_op!{ $op (m) => {
+            let &rev![a, b $(,$topic)*] = m.state.stack.pop_many()?;
             log::log(&mut m.state, &mut m.system, $ntopics, a, b, &[$($topic),*])?;
             m.pc += 1;
             Ok(())
-        }
+        }}
     }
 }
 
 // jmp: jump variants
 macro_rules! def_jmp {
     ($op:ident ($($arg:ident),*) => $impl:path) => {
-        #[allow(non_snake_case)]
-        #[inline(always)]
-        pub fn $op<'r, 'a, RT: Runtime + 'a>(m: &mut Machine<'r, 'a, RT> ) -> Result<(), StatusCode> {
-            check_arity!($op, ($($arg),*));
-            check_stack!($op, m.state.stack);
-            $(let $arg = unsafe {m.state.stack.pop()};)*
+        def_op!{ $op (m) => {
+            let &rev![$($arg),*] = m.state.stack.pop_many()?;
             m.pc = $impl(m.bytecode, m.pc, $($arg),*)?;
             Ok(())
-        }
+        }}
     }
 
 }
 macro_rules! def_exit {
     ($op:ident ($($arg:ident),*) => $impl:path) => {
-        #[allow(non_snake_case)]
-        #[inline(always)]
-        pub fn $op<'r, 'a, RT: Runtime + 'a>(m: &mut Machine<'r, 'a, RT> ) -> Result<(), StatusCode> {
-            check_arity!($op, ($($arg),*));
-            check_stack!($op, m.state.stack);
-            $(let $arg = unsafe {m.state.stack.pop()};)*
+        def_op!{ $op (m) => {
+            let &rev![$($arg),*] = m.state.stack.pop_many()?;
             m.output = $impl(&mut m.state, &mut m.system, $($arg),*)?;
             m.pc = m.bytecode.len(); // stop execution
             Ok(())
-        }
+        }}
     }
 }
 
 // special: pc and things like that
 macro_rules! def_special {
     ($op:ident ($m:ident) => $value:expr) => {
-        #[allow(non_snake_case)]
-        #[inline(always)]
-        pub fn $op<'r, 'a, RT: Runtime + 'a>(
-            $m: &mut Machine<'r, 'a, RT>,
-        ) -> Result<(), StatusCode> {
-            check_stack!($op, $m.state.stack);
-            let result = $value;
-            unsafe { $m.state.stack.push(result) };
-            $m.pc += 1;
+        def_op! { $op (m) => {
+            let result = {
+                let $m = &mut *m;
+                $value
+            };
+            m.state.stack.push(result)?;
+            m.pc += 1;
             Ok(())
-        }
+        }}
     };
-}
-
-// auxiliary macros
-macro_rules! check_stack {
-    ($op:ident, $sk:expr) => {{
-        const SPEC: StackSpec = OpCode::$op.spec();
-        if SPEC.required > 0 {
-            if !$sk.require(SPEC.required as usize) {
-                return Err(StatusCode::StackUnderflow);
-            }
-        }
-        if SPEC.changed > 0 {
-            if !$sk.ensure(SPEC.changed as usize) {
-                return Err(StatusCode::StackOverflow);
-            }
-        }
-    }};
-}
-
-macro_rules! check_arity {
-    ($op:ident, ($($arg:ident),*)) => {{
-        #[allow(dead_code)]
-        const fn checkargs() {
-            const SPEC: StackSpec = OpCode::$op.spec();
-            // the error message is super ugly, but this static asserts we got the
-            // arity of the primop right.
-            const _: [();(arg_count!($($arg)*)) - SPEC.required as usize] = [];
-        }
-        checkargs();
-    }}
-}
-
-macro_rules! arg_count {
-    () => { 0 };
-    ($arg:ident $($rest:ident)*) => { 1 + arg_count!($($rest)*) };
 }
 
 // IMPLEMENTATION
