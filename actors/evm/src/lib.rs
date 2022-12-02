@@ -125,7 +125,7 @@ impl EvmContractActor {
             Outcome::Revert => Err(ActorError::unchecked_with_data(
                 EVM_CONTRACT_REVERTED,
                 "constructor reverted".to_string(),
-                RawBytes::from(output.return_data.to_vec()),
+                RawBytes::serialize(BytesSer(&output.return_data)).unwrap(),
             )),
             Outcome::Delete => Ok(()),
         }
@@ -183,7 +183,7 @@ impl EvmContractActor {
             Outcome::Revert => Err(ActorError::unchecked_with_data(
                 EVM_CONTRACT_REVERTED,
                 "contract reverted".to_string(),
-                RawBytes::from(output.return_data.to_vec()),
+                RawBytes::serialize(BytesSer(&output.return_data)).unwrap(),
             )),
             Outcome::Delete => Ok(Vec::new()),
         }
