@@ -181,9 +181,6 @@ fn test_reserved_method() {
     let contract = filecoin_fallback_contract();
     let mut rt = util::construct_and_verify(contract);
 
-    // invoke the contract
-    rt.expect_validate_caller_any();
-
     let code =
         rt.call::<evm::EvmContractActor>(0x42, &RawBytes::default()).unwrap_err().exit_code();
     assert_eq!(ExitCode::USR_UNHANDLED_MESSAGE, code);
