@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use super::beneficiary::*;
+use crate::commd::CompactCommD;
+use crate::ext::verifreg::ClaimID;
 use cid::Cid;
 use fil_actors_runtime::DealWeight;
 use fvm_ipld_bitfield::BitField;
@@ -19,10 +21,6 @@ use fvm_shared::sector::{
 };
 use fvm_shared::smooth::FilterEstimate;
 use std::cmp::min;
-
-use crate::commd::CompactCommD;
-use crate::ext::verifreg::ClaimID;
-
 
 pub type CronEvent = i64;
 
