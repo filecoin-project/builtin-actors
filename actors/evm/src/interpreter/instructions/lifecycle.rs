@@ -1,4 +1,3 @@
-use fil_actors_runtime::ActorError;
 use fil_actors_runtime::EAM_ACTOR_ADDR;
 use fvm_ipld_encoding::{strict_bytes, tuple::*, RawBytes};
 use fvm_shared::MethodNum;
@@ -58,9 +57,7 @@ pub fn create(
     let input_data = if let Some(MemoryRegion { offset, size }) = input_region {
         &memory[offset..][..size.get()]
     } else {
-        return Err(StatusCode::ActorError(ActorError::assertion_failed(
-            "inicode not in memory range".to_string(),
-        )));
+        &[]
     };
 
     let nonce = system.increment_nonce();
@@ -93,9 +90,7 @@ pub fn create2(
     let input_data = if let Some(MemoryRegion { offset, size }) = input_region {
         &memory[offset..][..size.get()]
     } else {
-        return Err(StatusCode::ActorError(ActorError::illegal_argument(
-            "initcode not in memory range".to_string(),
-        )));
+        &[]
     };
     let params = Create2Params { code: input_data.to_vec(), salt };
 
