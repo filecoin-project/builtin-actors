@@ -65,7 +65,8 @@ pub fn jump(bytecode: &Bytecode, _pc: usize, dest: U256) -> Result<usize, Status
     if !bytecode.valid_jump_destination(dst) {
         return Err(StatusCode::BadJumpDestination);
     }
-    Ok(dst)
+    // skip the JMPDEST noop sled
+    Ok(dst + 1)
 }
 
 #[inline]
@@ -75,7 +76,8 @@ pub fn jumpi(bytecode: &Bytecode, pc: usize, dest: U256, test: U256) -> Result<u
         if !bytecode.valid_jump_destination(dst) {
             return Err(StatusCode::BadJumpDestination);
         }
-        Ok(dst)
+        // skip the JMPDEST noop sled
+        Ok(dst + 1)
     } else {
         Ok(pc + 1)
     }
