@@ -21,7 +21,6 @@ pub struct ExecutionState {
     pub memory: Memory,
     pub input_data: Bytes,
     pub return_data: Bytes,
-    pub output_data: Bytes,
     /// Indicates whether the contract called SELFDESTRUCT, providing the beneficiary.
     pub selfdestroyed: Option<FilecoinAddress>,
     /// The EVM address of the caller.
@@ -37,7 +36,6 @@ impl ExecutionState {
             memory: Memory::default(),
             input_data,
             return_data: Default::default(),
-            output_data: Bytes::new(),
             selfdestroyed: None,
             caller,
             receiver,
@@ -50,22 +48,24 @@ pub struct Machine<'r, 'a, RT: Runtime + 'a> {
     pub state: &'r mut ExecutionState,
     pub bytecode: &'r Bytecode,
     pub pc: usize,
-
-    // control flow
-    reverted: bool,
-    exit: Option<StatusCode>,
+    pub output: Output,
 }
 
-type Instruction<M> = fn(*mut M);
+type Instruction<M> = unsafe fn(*mut M) -> Result<(), StatusCode>;
 
 macro_rules! def_opcodes {
-    ($($op:ident: $body:tt)*) => {
+    ($($op:ident)*) => {
         def_ins_raw! {
-            UNDEFINED(m) {
-                m.exit = Some(StatusCode::UndefinedInstruction);
+            UNDEFINED(_m) {
+                Err(StatusCode::UndefinedInstruction)
             }
         }
-        $(def_ins! { $op $body })*
+        $(def_ins_raw! {
+            $op (m) {
+                instructions::$op(m)
+            }
+        })*
+
         def_jmptable! {
             $($op)*
         }
@@ -82,64 +82,14 @@ macro_rules! def_jmptable {
     }
 }
 
-macro_rules! def_ins {
-    ($ins:ident {intrinsic}) => {
-        def_ins_intrinsic! { $ins }
-    };
-
-    ($ins:ident {=> $expr:expr}) => {
-        def_ins_raw! { $ins (m) { m.exit = Some($expr); } }
-    };
-
-    ($ins:ident {($arg:ident) => $body:block}) => {
-        def_ins_raw! { $ins ($arg) $body }
-    };
-}
-
 macro_rules! def_ins_raw {
     ($ins:ident ($arg:ident) $body:block) => {
         #[allow(non_snake_case)]
-        fn $ins(p: *mut Self) {
-            // SAFETY: macro ensures that mut pointer is taken directly from a mutable borrow, used once, then goes out of scope immediately after
-            let $arg: &mut Self = unsafe { p.as_mut().unwrap() };
+        unsafe fn $ins(p: *mut Self) -> Result<(), StatusCode> {
+            // SAFETY: macro ensures that mut pointer is taken directly from a mutable borrow, used
+            // once, then goes out of scope immediately after
+            let $arg: &mut Self = &mut *p;
             $body
-        }
-    };
-}
-
-macro_rules! def_ins_intrinsic {
-    ($ins:ident) => {
-        def_ins_raw! {
-            $ins (m) {
-                match instructions::$ins(m) {
-                    Ok(_) => {
-                        m.pc += 1;
-                    },
-                    Err(err) => {
-                        m.exit = Some(err);
-                    }
-                }
-            }
-        }
-    };
-}
-
-macro_rules! try_ins {
-    ($ins:ident($m:ident) => ($res:ident) $body:block) => {
-        match instructions::$ins($m) {
-            Ok($res) => $body,
-            Err(err) => {
-                $m.exit = Some(err);
-            }
-        }
-    };
-
-    ($ins:ident($m:ident) => $body:block) => {
-        match instructions::$ins($m) {
-            Ok(_) => $body,
-            Err(err) => {
-                $m.exit = Some(err);
-            }
         }
     };
 }
@@ -150,226 +100,197 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         state: &'r mut ExecutionState,
         bytecode: &'r Bytecode,
     ) -> Self {
-        Machine { system, state, bytecode, pc: 0, reverted: false, exit: None }
+        Machine { system, state, bytecode, pc: 0, output: Output::default() }
     }
 
-    pub fn execute(&mut self) -> Result<(), StatusCode> {
-        while self.exit.is_none() && self.pc < self.bytecode.len() {
-            self.step();
+    pub fn execute(mut self) -> Result<Output, StatusCode> {
+        while self.pc < self.bytecode.len() {
+            // This is faster than the question mark operator, and speed counts here.
+            if let Err(e) = self.step() {
+                return Err(e);
+            }
         }
 
-        match &self.exit {
-            None => Ok(()),
-            Some(StatusCode::Success) => Ok(()),
-            Some(err) => Err(err.clone()),
-        }
+        Ok(self.output)
     }
 
     #[inline(always)]
-    fn step(&mut self) {
+    fn step(&mut self) -> Result<(), StatusCode> {
         let op = self.bytecode[self.pc];
-        Self::JMPTABLE[op as usize](self)
+        unsafe { Self::JMPTABLE[op as usize](self) }
     }
 
     def_opcodes! {
-        STOP: {=> StatusCode::Success}
-
         // primops
-        ADD: {intrinsic}
-        MUL: {intrinsic}
-        SUB: {intrinsic}
-        DIV: {intrinsic}
-        SDIV: {intrinsic}
-        MOD: {intrinsic}
-        SMOD: {intrinsic}
-        ADDMOD: {intrinsic}
-        MULMOD: {intrinsic}
-        EXP: {intrinsic}
-        SIGNEXTEND: {intrinsic}
-        LT: {intrinsic}
-        GT: {intrinsic}
-        SLT: {intrinsic}
-        SGT: {intrinsic}
-        EQ: {intrinsic}
-        ISZERO: {intrinsic}
-        AND: {intrinsic}
-        OR: {intrinsic}
-        XOR: {intrinsic}
-        NOT: {intrinsic}
-        BYTE: {intrinsic}
-        SHL: {intrinsic}
-        SHR: {intrinsic}
-        SAR: {intrinsic}
+        ADD
+        MUL
+        SUB
+        DIV
+        SDIV
+        MOD
+        SMOD
+        ADDMOD
+        MULMOD
+        EXP
+        SIGNEXTEND
+        LT
+        GT
+        SLT
+        SGT
+        EQ
+        ISZERO
+        AND
+        OR
+        XOR
+        NOT
+        BYTE
+        SHL
+        SHR
+        SAR
 
         // std call convenction functionoids
-        KECCAK256: {intrinsic}
-        ADDRESS: {intrinsic}
-        BALANCE: {intrinsic}
-        ORIGIN: {intrinsic}
-        CALLER: {intrinsic}
-        CALLVALUE: {intrinsic}
-        CALLDATALOAD: {intrinsic}
-        CALLDATASIZE: {intrinsic}
-        CALLDATACOPY: {intrinsic}
-        CODESIZE: {intrinsic}
-        CODECOPY: {intrinsic}
-        GASPRICE: {intrinsic}
-        EXTCODESIZE: {intrinsic}
-        EXTCODECOPY: {intrinsic}
-        RETURNDATASIZE: {intrinsic}
-        RETURNDATACOPY: {intrinsic}
-        EXTCODEHASH: {intrinsic}
-        BLOCKHASH: {intrinsic}
-        COINBASE: {intrinsic}
-        TIMESTAMP: {intrinsic}
-        NUMBER: {intrinsic}
-        DIFFICULTY: {intrinsic}
-        GASLIMIT: {intrinsic}
-        CHAINID: {intrinsic}
-        BASEFEE: {intrinsic}
-        SELFBALANCE: {intrinsic}
-        MLOAD: {intrinsic}
-        MSTORE: {intrinsic}
-        MSTORE8: {intrinsic}
-        SLOAD: {intrinsic}
-        SSTORE: {intrinsic}
-        MSIZE: {intrinsic}
-        GAS: {intrinsic}
+        KECCAK256
+        ADDRESS
+        BALANCE
+        ORIGIN
+        CALLER
+        CALLVALUE
+        CALLDATALOAD
+        CALLDATASIZE
+        CALLDATACOPY
+        CODESIZE
+        CODECOPY
+        GASPRICE
+        EXTCODESIZE
+        EXTCODECOPY
+        RETURNDATASIZE
+        RETURNDATACOPY
+        EXTCODEHASH
+        BLOCKHASH
+        COINBASE
+        TIMESTAMP
+        NUMBER
+        DIFFICULTY
+        GASLIMIT
+        CHAINID
+        BASEFEE
+        SELFBALANCE
+        MLOAD
+        MSTORE
+        MSTORE8
+        SLOAD
+        SSTORE
+        MSIZE
+        GAS
 
         // stack ops
-        POP: {intrinsic}
+        POP
 
         // push variants
-        PUSH1: {intrinsic}
-        PUSH2: {intrinsic}
-        PUSH3: {intrinsic}
-        PUSH4: {intrinsic}
-        PUSH5: {intrinsic}
-        PUSH6: {intrinsic}
-        PUSH7: {intrinsic}
-        PUSH8: {intrinsic}
-        PUSH9: {intrinsic}
-        PUSH10: {intrinsic}
-        PUSH11: {intrinsic}
-        PUSH12: {intrinsic}
-        PUSH13: {intrinsic}
-        PUSH14: {intrinsic}
-        PUSH15: {intrinsic}
-        PUSH16: {intrinsic}
-        PUSH17: {intrinsic}
-        PUSH18: {intrinsic}
-        PUSH19: {intrinsic}
-        PUSH20: {intrinsic}
-        PUSH21: {intrinsic}
-        PUSH22: {intrinsic}
-        PUSH23: {intrinsic}
-        PUSH24: {intrinsic}
-        PUSH25: {intrinsic}
-        PUSH26: {intrinsic}
-        PUSH27: {intrinsic}
-        PUSH28: {intrinsic}
-        PUSH29: {intrinsic}
-        PUSH30: {intrinsic}
-        PUSH31: {intrinsic}
-        PUSH32: {intrinsic}
+        PUSH1
+        PUSH2
+        PUSH3
+        PUSH4
+        PUSH5
+        PUSH6
+        PUSH7
+        PUSH8
+        PUSH9
+        PUSH10
+        PUSH11
+        PUSH12
+        PUSH13
+        PUSH14
+        PUSH15
+        PUSH16
+        PUSH17
+        PUSH18
+        PUSH19
+        PUSH20
+        PUSH21
+        PUSH22
+        PUSH23
+        PUSH24
+        PUSH25
+        PUSH26
+        PUSH27
+        PUSH28
+        PUSH29
+        PUSH30
+        PUSH31
+        PUSH32
 
         // dup variants
-        DUP1: {intrinsic}
-        DUP2: {intrinsic}
-        DUP3: {intrinsic}
-        DUP4: {intrinsic}
-        DUP5: {intrinsic}
-        DUP6: {intrinsic}
-        DUP7: {intrinsic}
-        DUP8: {intrinsic}
-        DUP9: {intrinsic}
-        DUP10: {intrinsic}
-        DUP11: {intrinsic}
-        DUP12: {intrinsic}
-        DUP13: {intrinsic}
-        DUP14: {intrinsic}
-        DUP15: {intrinsic}
-        DUP16: {intrinsic}
+        DUP1
+        DUP2
+        DUP3
+        DUP4
+        DUP5
+        DUP6
+        DUP7
+        DUP8
+        DUP9
+        DUP10
+        DUP11
+        DUP12
+        DUP13
+        DUP14
+        DUP15
+        DUP16
 
         // swap variants
-        SWAP1: {intrinsic}
-        SWAP2: {intrinsic}
-        SWAP3: {intrinsic}
-        SWAP4: {intrinsic}
-        SWAP5: {intrinsic}
-        SWAP6: {intrinsic}
-        SWAP7: {intrinsic}
-        SWAP8: {intrinsic}
-        SWAP9: {intrinsic}
-        SWAP10: {intrinsic}
-        SWAP11: {intrinsic}
-        SWAP12: {intrinsic}
-        SWAP13: {intrinsic}
-        SWAP14: {intrinsic}
-        SWAP15: {intrinsic}
-        SWAP16: {intrinsic}
+        SWAP1
+        SWAP2
+        SWAP3
+        SWAP4
+        SWAP5
+        SWAP6
+        SWAP7
+        SWAP8
+        SWAP9
+        SWAP10
+        SWAP11
+        SWAP12
+        SWAP13
+        SWAP14
+        SWAP15
+        SWAP16
+
+        // pc
+        PC
 
         // event logs
-        LOG0: {intrinsic}
-        LOG1: {intrinsic}
-        LOG2: {intrinsic}
-        LOG3: {intrinsic}
-        LOG4: {intrinsic}
+        LOG0
+        LOG1
+        LOG2
+        LOG3
+        LOG4
 
         // create variants
-        CREATE: {intrinsic}
-        CREATE2: {intrinsic}
+        CREATE
+        CREATE2
 
         // call variants
-        CALL: {intrinsic}
-        CALLCODE: {intrinsic}
-        DELEGATECALL: {intrinsic}
-        STATICCALL: {intrinsic}
+        CALL
+        CALLCODE
+        DELEGATECALL
+        STATICCALL
+
+        // exiting ops
+        STOP
+        RETURN
+        REVERT
+        SELFDESTRUCT
 
         // control flow magic
         // noop marker opcode for valid jumps addresses
-        JUMPDEST: {(m) => {
-            m.pc += 1;
-        }}
+        JUMPDEST
+        // reserved invalid instruction
+        INVALID
 
-        JUMP: {(m) => {
-            try_ins! { JUMP(m) => (dest) {
-                m.pc = dest;
-            }}
-        }}
-
-        JUMPI: {(m) => {
-            try_ins! { JUMPI(m) => (dest) {
-                m.pc = dest;
-            }}
-        }}
-
-        PC: {(m) => {
-            try_ins! { PC(m) => {
-                m.pc += 1;
-            }}
-        }}
-
-        RETURN: {(m) => {
-            try_ins! { RETURN(m) => {
-                m.exit = Some(StatusCode::Success);
-            }}
-        }}
-
-        REVERT: {(m) => {
-            try_ins! { REVERT(m) => {
-                m.reverted = true;
-                m.exit = Some(StatusCode::Success);
-            }}
-        }}
-
-        SELFDESTRUCT: {(m) => {
-            try_ins! { SELFDESTRUCT(m) => {
-                m.exit = Some(StatusCode::Success);
-            }}
-        }}
-
-        INVALID: {=> StatusCode::InvalidInstruction}
+        // jump ops
+        JUMP
+        JUMPI
     }
 
     const JMPTABLE: [Instruction<Machine<'r, 'a, RT>>; 256] = Machine::<'r, 'a, RT>::jmptable();
@@ -380,12 +301,5 @@ pub fn execute(
     runtime: &mut ExecutionState,
     system: &mut System<impl Runtime>,
 ) -> Result<Output, StatusCode> {
-    let mut m = Machine::new(system, runtime, bytecode);
-    m.execute()?;
-    Ok(Output {
-        reverted: m.reverted,
-        status_code: StatusCode::Success,
-        output_data: m.state.output_data.clone(),
-        selfdestroyed: m.state.selfdestroyed,
-    })
+    Machine::new(system, runtime, bytecode).execute()
 }

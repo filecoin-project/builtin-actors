@@ -26,12 +26,14 @@ use fil_actors_runtime::runtime::Runtime;
 macro_rules! def_primop {
     ($op:ident ($($arg:ident),*) => $impl:path) => {
         #[allow(non_snake_case)]
+        #[inline(always)]
         pub fn $op<'r, 'a, RT: Runtime + 'a>(m: &mut Machine<'r, 'a, RT> ) -> Result<(), StatusCode> {
             check_arity!($op, ($($arg),*));
             check_stack!($op, m.state.stack);
             $(let $arg = unsafe {m.state.stack.pop()};)*
             let result = $impl($($arg),*);
             unsafe {m.state.stack.push(result);}
+            m.pc += 1;
             Ok(())
         }
     }
@@ -41,6 +43,7 @@ macro_rules! def_primop {
 macro_rules! def_stackop {
     ($op:ident => $impl:path) => {
         #[allow(non_snake_case)]
+        #[inline(always)]
         pub fn $op<'r, 'a, RT: Runtime + 'a>(
             m: &mut Machine<'r, 'a, RT>,
         ) -> Result<(), StatusCode> {
@@ -48,6 +51,7 @@ macro_rules! def_stackop {
             unsafe {
                 $impl(&mut m.state.stack);
             }
+            m.pc += 1;
             Ok(())
         }
     };
@@ -58,11 +62,13 @@ macro_rules! def_stackop {
 macro_rules! def_push {
     ($op:ident => $impl:path) => {
         #[allow(non_snake_case)]
+        #[inline(always)]
         pub fn $op<'r, 'a, RT: Runtime + 'a>(
             m: &mut Machine<'r, 'a, RT>,
         ) -> Result<(), StatusCode> {
             check_stack!($op, m.state.stack);
-            let code = &m.bytecode[m.pc + 1..];
+            m.pc += 1;
+            let code = &m.bytecode[m.pc..];
             m.pc += unsafe { $impl(&mut m.state.stack, code) };
             Ok(())
         }
@@ -74,12 +80,14 @@ macro_rules! def_push {
 macro_rules! def_stdfun {
     ($op:ident ($($arg:ident),*) => $impl:path) => {
         #[allow(non_snake_case)]
+        #[inline(always)]
         pub fn $op<'r, 'a, RT: Runtime + 'a>(m: &mut Machine<'r, 'a, RT> ) -> Result<(), StatusCode> {
             check_arity!($op, ($($arg),*));
             check_stack!($op, m.state.stack);
             $(let $arg = unsafe {m.state.stack.pop()};)*
             let result = $impl(&mut m.state, &mut m.system, $($arg),*)?;
             unsafe {m.state.stack.push(result);}
+            m.pc += 1;
             Ok(())
         }
     }
@@ -89,11 +97,13 @@ macro_rules! def_stdfun {
 macro_rules! def_stdproc {
     ($op:ident ($($arg:ident),*) => $impl:path) => {
         #[allow(non_snake_case)]
+        #[inline(always)]
         pub fn $op<'r, 'a, RT: Runtime + 'a>(m: &mut Machine<'r, 'a, RT> ) -> Result<(), StatusCode> {
             check_arity!($op, ($($arg),*));
             check_stack!($op, m.state.stack);
             $(let $arg = unsafe {m.state.stack.pop()};)*
             $impl(&mut m.state, &mut m.system, $($arg),*)?;
+            m.pc += 1;
             Ok(())
         }
     }
@@ -103,12 +113,14 @@ macro_rules! def_stdproc {
 macro_rules! def_stdfun_code {
     ($op:ident ($($arg:ident),*) => $impl:path) => {
         #[allow(non_snake_case)]
+        #[inline(always)]
         pub fn $op<'r, 'a, RT: Runtime + 'a>(m: &mut Machine<'r, 'a, RT> ) -> Result<(), StatusCode> {
             check_arity!($op, ($($arg),*));
             check_stack!($op, m.state.stack);
             $(let $arg = unsafe {m.state.stack.pop()};)*
             let result = $impl(&mut m.state, &mut m.system, m.bytecode.as_ref(), $($arg),*)?;
             unsafe {m.state.stack.push(result);}
+            m.pc += 1;
             Ok(())
         }
     }
@@ -118,11 +130,13 @@ macro_rules! def_stdfun_code {
 macro_rules! def_stdproc_code {
     ($op:ident ($($arg:ident),*) => $impl:path) => {
         #[allow(non_snake_case)]
+        #[inline(always)]
         pub fn $op<'r, 'a, RT: Runtime + 'a>(m: &mut Machine<'r, 'a, RT> ) -> Result<(), StatusCode> {
             check_arity!($op, ($($arg),*));
             check_stack!($op, m.state.stack);
             $(let $arg = unsafe {m.state.stack.pop()};)*
             $impl(&mut m.state, &mut m.system, m.bytecode.as_ref(), $($arg),*)?;
+            m.pc += 1;
             Ok(())
         }
     }
@@ -132,12 +146,15 @@ macro_rules! def_stdproc_code {
 macro_rules! def_stdlog {
     ($op:ident ($ntopics:literal, ($($topic:ident),*))) => {
         #[allow(non_snake_case)]
+        #[inline(always)]
         pub fn $op<'r, 'a, RT: Runtime + 'a>(m: &mut Machine<'r, 'a, RT> ) -> Result<(), StatusCode> {
             check_stack!($op, m.state.stack);
             let a = unsafe {m.state.stack.pop()};
             let b = unsafe {m.state.stack.pop()};
             $(let $topic = unsafe {m.state.stack.pop()};)*
-            log::log(&mut m.state, &mut m.system, $ntopics, a, b, &[$($topic),*])
+            log::log(&mut m.state, &mut m.system, $ntopics, a, b, &[$($topic),*])?;
+            m.pc += 1;
+            Ok(())
         }
     }
 }
@@ -146,26 +163,44 @@ macro_rules! def_stdlog {
 macro_rules! def_jmp {
     ($op:ident ($($arg:ident),*) => $impl:path) => {
         #[allow(non_snake_case)]
-        pub fn $op<'r, 'a, RT: Runtime + 'a>(m: &mut Machine<'r, 'a, RT> ) -> Result<usize, StatusCode> {
+        #[inline(always)]
+        pub fn $op<'r, 'a, RT: Runtime + 'a>(m: &mut Machine<'r, 'a, RT> ) -> Result<(), StatusCode> {
             check_arity!($op, ($($arg),*));
             check_stack!($op, m.state.stack);
             $(let $arg = unsafe {m.state.stack.pop()};)*
-            $impl(m.bytecode, m.pc, $($arg),*)
+            m.pc = $impl(m.bytecode, m.pc, $($arg),*)?;
+            Ok(())
         }
     }
 
+}
+macro_rules! def_exit {
+    ($op:ident ($($arg:ident),*) => $impl:path) => {
+        #[allow(non_snake_case)]
+        #[inline(always)]
+        pub fn $op<'r, 'a, RT: Runtime + 'a>(m: &mut Machine<'r, 'a, RT> ) -> Result<(), StatusCode> {
+            check_arity!($op, ($($arg),*));
+            check_stack!($op, m.state.stack);
+            $(let $arg = unsafe {m.state.stack.pop()};)*
+            m.output = $impl(&mut m.state, &mut m.system, $($arg),*)?;
+            m.pc = m.bytecode.len(); // stop execution
+            Ok(())
+        }
+    }
 }
 
 // special: pc and things like that
 macro_rules! def_special {
     ($op:ident ($m:ident) => $value:expr) => {
         #[allow(non_snake_case)]
+        #[inline(always)]
         pub fn $op<'r, 'a, RT: Runtime + 'a>(
             $m: &mut Machine<'r, 'a, RT>,
         ) -> Result<(), StatusCode> {
             check_stack!($op, $m.state.stack);
             let result = $value;
             unsafe { $m.state.stack.push(result) };
+            $m.pc += 1;
             Ok(())
         }
     };
@@ -349,9 +384,12 @@ def_stdfun_code! { CODESIZE() => call::codesize }
 def_stdproc_code! { CODECOPY(a, b, c) => call::codecopy }
 def_stdfun! { CREATE(a, b, c) => lifecycle::create }
 def_stdfun! { CREATE2(a, b, c, d) => lifecycle::create2 }
-def_stdproc! { RETURN(a, b) => control::output }
-def_stdproc! { REVERT(a, b) => control::output }
-def_stdproc! { SELFDESTRUCT(a) => lifecycle::selfdestruct }
+def_stdproc! { JUMPDEST() => control::nop }
+def_stdproc! { INVALID() => control::invalid }
+def_exit! { RETURN(a, b) => control::ret }
+def_exit! { REVERT(a, b) => control::revert }
+def_exit! { STOP() => control::stop }
+def_exit! { SELFDESTRUCT(a) => lifecycle::selfdestruct }
 def_jmp! { JUMP(a) => control::jump }
 def_jmp! { JUMPI(a, b) => control::jumpi }
 def_special! { PC(m) => U256::from(m.pc) }

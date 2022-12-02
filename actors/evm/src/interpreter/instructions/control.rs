@@ -1,3 +1,7 @@
+use bytes::Bytes;
+
+use crate::interpreter::{memory::Memory, output::Outcome, Output};
+
 use {
     super::memory::get_memory_region,
     crate::interpreter::output::StatusCode,
@@ -7,20 +11,60 @@ use {
 };
 
 #[inline]
-pub fn output(
+pub fn nop(_state: &mut ExecutionState, _system: &System<impl Runtime>) -> Result<(), StatusCode> {
+    Ok(())
+}
+
+#[inline]
+pub fn invalid(
+    _state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+) -> Result<(), StatusCode> {
+    Err(StatusCode::InvalidInstruction)
+}
+
+#[inline]
+pub fn ret(
     state: &mut ExecutionState,
     _system: &System<impl Runtime>,
     offset: U256,
     size: U256,
-) -> Result<(), StatusCode> {
-    if let Some(region) = super::memory::get_memory_region(&mut state.memory, offset, size)
-        .map_err(|_| StatusCode::InvalidMemoryAccess)?
-    {
-        state.output_data =
-            state.memory[region.offset..region.offset + region.size.get()].to_vec().into();
-    }
+) -> Result<Output, StatusCode> {
+    exit(&mut state.memory, offset, size, Outcome::Return)
+}
 
-    Ok(())
+#[inline]
+pub fn revert(
+    state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+    offset: U256,
+    size: U256,
+) -> Result<Output, StatusCode> {
+    exit(&mut state.memory, offset, size, Outcome::Revert)
+}
+
+#[inline]
+pub fn stop(
+    _state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+) -> Result<Output, StatusCode> {
+    Ok(Output { return_data: Bytes::new(), outcome: Outcome::Return })
+}
+
+#[inline]
+fn exit(
+    memory: &mut Memory,
+    offset: U256,
+    size: U256,
+    status: Outcome,
+) -> Result<Output, StatusCode> {
+    Ok(Output {
+        outcome: status,
+        return_data: super::memory::get_memory_region(memory, offset, size)
+            .map_err(|_| StatusCode::InvalidMemoryAccess)?
+            .map(|region| memory[region.offset..region.offset + region.size.get()].to_vec().into())
+            .unwrap_or_default(),
+    })
 }
 
 #[inline]
