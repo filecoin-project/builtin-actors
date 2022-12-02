@@ -106,6 +106,8 @@ pub struct Return {
     pub actor_id: ActorID,
     pub robust_address: Address,
     pub eth_address: EthAddress,
+    #[serde(with = "strict_bytes")]
+    pub constructor_failure: Vec<u8>,
 }
 
 impl Cbor for Return {}

@@ -5,6 +5,7 @@ use cid::Cid;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{Cbor, RawBytes};
 use fvm_shared::address::Address;
+use fvm_shared::error::ExitCode;
 
 /// Init actor Constructor parameters
 #[derive(Serialize_tuple, Deserialize_tuple)]
@@ -26,6 +27,8 @@ pub struct ExecReturn {
     pub id_address: Address,
     /// Reorg safe address for actor
     pub robust_address: Address,
+    // /// Constructor failed
+    // pub constructor_failure: RawBytes
 }
 
 /// Init actor Exec4 Params
