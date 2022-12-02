@@ -435,6 +435,12 @@ impl Actor {
             Ok(())
         })?;
 
+        // notify clients ignoring any errors
+        for (i, valid_deal) in valid_deals.iter().enumerate() {
+            let raw_proposal = serialize_vec(&valid_deal.proposal, "deal proposal")?;
+            rt.send(&valid_deal.proposal.client, ext::account::MARKET_NOTIFY_DEAL, RawBytes::Serialize(ext::account::MarketNotifyDealParams{proposal: raw_proposal, deal_id: new_deal_ids[i]}), TokenAmount::zero());
+        }
+
         Ok(PublishStorageDealsReturn { ids: new_deal_ids, valid_deals: valid_input_bf })
     }
 
