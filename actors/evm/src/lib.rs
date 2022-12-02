@@ -5,6 +5,8 @@ use fvm_ipld_encoding::{strict_bytes, BytesDe, BytesSer, DAG_CBOR};
 use fvm_shared::address::{Address, Payload};
 use interpreter::{address::EthAddress, system::load_bytecode};
 
+use crate::interpreter::output::Outcome;
+
 pub mod interpreter;
 mod state;
 
@@ -110,29 +112,22 @@ impl EvmContractActor {
         let initcode = Bytecode::new(params.initcode.into());
 
         // invoke the contract constructor
-        let exec_status =
-            execute(&initcode, &mut exec_state, &mut system).map_err(|e| match e {
-                StatusCode::ActorError(e) => e,
-                _ => ActorError::unspecified(format!("EVM execution error: {e:?}")),
-            })?;
+        let output = execute(&initcode, &mut exec_state, &mut system).map_err(|e| match e {
+            StatusCode::ActorError(e) => e,
+            _ => ActorError::unspecified(format!("EVM execution error: {e:?}")),
+        })?;
 
-        // TODO this does not return revert data yet, but it has correct semantics.
-        if exec_status.reverted {
-            Err(ActorError::unchecked_with_data(
+        match output.outcome {
+            Outcome::Return => {
+                system.set_bytecode(&output.return_data)?;
+                system.flush()
+            }
+            Outcome::Revert => Err(ActorError::unchecked_with_data(
                 EVM_CONTRACT_REVERTED,
                 "constructor reverted".to_string(),
-                RawBytes::from(exec_status.output_data.to_vec()),
-            ))
-        } else if exec_status.status_code == StatusCode::Success {
-            system.set_bytecode(&exec_status.output_data)?;
-            system.flush()
-        } else if let StatusCode::ActorError(e) = exec_status.status_code {
-            Err(e)
-        } else {
-            Err(ActorError::unchecked(
-                EVM_CONTRACT_EXECUTION_ERROR,
-                format!("constructor execution error: {}", exec_status.status_code),
-            ))
+                RawBytes::from(output.return_data.to_vec()),
+            )),
+            Outcome::Delete => Ok(()),
         }
     }
 
@@ -175,34 +170,23 @@ impl EvmContractActor {
         let mut exec_state =
             ExecutionState::new(caller_eth_addr, receiver_eth_addr, input_data.to_vec().into());
 
-        let exec_status =
-            execute(&bytecode, &mut exec_state, &mut system).map_err(|e| match e {
-                StatusCode::ActorError(e) => e,
-                _ => ActorError::unspecified(format!("EVM execution error: {e:?}")),
-            })?;
+        let output = execute(&bytecode, &mut exec_state, &mut system).map_err(|e| match e {
+            StatusCode::ActorError(e) => e,
+            _ => ActorError::unspecified(format!("EVM execution error: {e:?}")),
+        })?;
 
-        if exec_status.reverted {
-            return Err(ActorError::unchecked_with_data(
+        match output.outcome {
+            Outcome::Return => {
+                system.flush()?;
+                Ok(output.return_data.to_vec())
+            }
+            Outcome::Revert => Err(ActorError::unchecked_with_data(
                 EVM_CONTRACT_REVERTED,
                 "contract reverted".to_string(),
-                RawBytes::from(exec_status.output_data.to_vec()),
-            ));
-        } else if exec_status.status_code == StatusCode::Success {
-            system.flush()?;
-        } else if let StatusCode::ActorError(e) = exec_status.status_code {
-            return Err(e);
-        } else {
-            return Err(ActorError::unchecked(
-                EVM_CONTRACT_EXECUTION_ERROR,
-                format!("contract execution error: {}", exec_status.status_code),
-            ));
+                RawBytes::from(output.return_data.to_vec()),
+            )),
+            Outcome::Delete => Ok(Vec::new()),
         }
-
-        if let Some(addr) = exec_status.selfdestroyed {
-            rt.delete_actor(&addr)?
-        }
-
-        Ok(exec_status.output_data.to_vec())
     }
 
     pub fn handle_filecoin_method<RT>(

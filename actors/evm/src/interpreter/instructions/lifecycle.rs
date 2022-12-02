@@ -1,9 +1,12 @@
+use bytes::Bytes;
+
 use fil_actors_runtime::EAM_ACTOR_ADDR;
 use fvm_ipld_encoding::{strict_bytes, tuple::*, RawBytes};
 use fvm_shared::MethodNum;
 use fvm_shared::{address::Address, econ::TokenAmount};
 use serde_tuple::{Deserialize_tuple, Serialize_tuple};
 
+use crate::interpreter::Output;
 use crate::interpreter::{address::EthAddress, U256};
 
 use super::memory::{get_memory_region, MemoryRegion};
@@ -139,15 +142,16 @@ fn create_init(
 
 #[inline]
 pub fn selfdestruct(
-    state: &mut ExecutionState,
+    _state: &mut ExecutionState,
     system: &mut System<impl Runtime>,
     beneficiary: U256,
-) -> Result<(), StatusCode> {
+) -> Result<Output, StatusCode> {
+    use crate::interpreter::output::Outcome;
+
     if system.readonly {
         return Err(StatusCode::StaticModeViolation);
     }
-    let beneficiary_addr: EthAddress = beneficiary.into();
-    // TODO: how do we handle errors here? Just ignore them?
-    state.selfdestroyed = beneficiary_addr.try_into().ok();
-    Ok(())
+    let beneficiary: Address = EthAddress::from(beneficiary).try_into()?;
+    system.rt.delete_actor(&beneficiary)?;
+    Ok(Output { outcome: Outcome::Delete, return_data: Bytes::new() })
 }

@@ -1,46 +1,27 @@
 use fil_actors_runtime::ActorError as RTActorError;
-use fvm_shared::address::Address as FilecoinAddress;
 use {bytes::Bytes, std::fmt::Debug, strum_macros::Display};
 
-/// Output of EVM execution.
-#[derive(Clone, PartialEq, Eq)]
-pub struct Output {
-    /// EVM exited with this status code.
-    pub status_code: StatusCode,
-    /// Output data returned.
-    pub output_data: Bytes,
-    /// Indicates if revert was requested
-    pub reverted: bool,
-    /// Indicates whether the contract called SELFDESTRUCT, providing the beneficiary.
-    pub selfdestroyed: Option<FilecoinAddress>,
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum Outcome {
+    #[default]
+    Return,
+    Revert,
+    Delete,
 }
 
-impl Debug for Output {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Output")
-            .field("status_code", &self.status_code)
-            .field("output_data", &hex::encode(&self.output_data))
-            .field("reverted", &self.reverted)
-            .finish()
-    }
+/// Output of EVM execution.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Output {
+    /// Indicates the "outcome" of the execution.
+    pub outcome: Outcome,
+    /// The return data.
+    pub return_data: Bytes,
 }
 
 /// Message status code.
 #[must_use]
 #[derive(Clone, Debug, Display, PartialEq, Eq)]
 pub enum StatusCode {
-    /// Execution finished with success.
-    #[strum(serialize = "success")]
-    Success,
-
-    /// Generic execution failure.
-    #[strum(serialize = "failure")]
-    Failure,
-
-    /// Execution terminated with REVERT opcode.
-    #[strum(serialize = "revert")]
-    Revert,
-
     /// The designated INVALID instruction has been hit during execution.
     ///
     /// [EIP-141](https://github.com/ethereum/EIPs/blob/master/EIPS/eip-141.md)
