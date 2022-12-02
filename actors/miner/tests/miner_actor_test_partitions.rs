@@ -395,10 +395,8 @@ mod miner_actor_test_partitions {
 
         // add 4, 5, and 8 as recoveries
         let mut recover_set = make_bitfield(&[4, 5, 8]);
-        let expected_recovery_power = power_for_sectors(
-            SECTOR_SIZE,
-            &select_sectors(&sectors(), &recover_set),
-        );
+        let expected_recovery_power =
+            power_for_sectors(SECTOR_SIZE, &select_sectors(&sectors(), &recover_set));
         partition.declare_faults_recovered(&sector_arr, SECTOR_SIZE, &mut recover_set).unwrap();
 
         // mark recoveries as recovered recover sectors
@@ -630,10 +628,8 @@ mod miner_actor_test_partitions {
         let expected_active_power =
             power_for_sectors(SECTOR_SIZE, &select_sectors(&sectors(), &make_bitfield(&[1])));
         assert_eq!(expected_active_power, removed.active_power);
-        let expected_faulty_power = power_for_sectors(
-            SECTOR_SIZE,
-            &select_sectors(&sectors(), &make_bitfield(&[3, 5, 7])),
-        );
+        let expected_faulty_power =
+            power_for_sectors(SECTOR_SIZE, &select_sectors(&sectors(), &make_bitfield(&[3, 5, 7])));
         assert_eq!(expected_faulty_power, removed.faulty_power);
 
         // expect partition state to no longer reflect power and pledge from terminated sectors and terminations to contain new sectors
