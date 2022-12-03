@@ -154,7 +154,7 @@ impl State {
         Ok(found.cloned())
     }
 
-    pub fn put_deal_state<BS>(
+    pub fn put_deal_states<BS>(
         &mut self,
         store: &BS,
         new_deal_states: &[(DealID, DealState)],
@@ -230,10 +230,9 @@ impl State {
     where
         BS: Blockstore,
     {
-        let deal_proposals = DealArray::load(&self.proposals, store)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposal array")?;
+		let deal_proposals = self.get_proposal_array(store)?;
 
-        let proposal =
+		let proposal =
             deal_proposals.get(deal_id).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
                 format!("failed to load deal proposal {}", deal_id)
             })?;
@@ -265,7 +264,7 @@ impl State {
         Ok(proposal)
     }
 
-    pub fn put_deal_proposal<BS>(
+    pub fn put_deal_proposals<BS>(
         &mut self,
         store: &BS,
         new_deal_proposals: &[(DealID, DealProposal)],
@@ -290,7 +289,7 @@ impl State {
         Ok(())
     }
 
-    pub fn put_pending_deal_allocation_id<BS>(
+    pub fn put_pending_deal_allocation_ids<BS>(
         &mut self,
         store: &BS,
         new_pending_deal_allocation_ids: &[(BytesKey, AllocationID)],
@@ -306,8 +305,8 @@ impl State {
         .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load pending deal allocation id's")?;
 
         new_pending_deal_allocation_ids.iter().try_for_each(
-            |(id, allocation_id)| -> Result<(), ActorError> {
-                pending_deal_allocation_ids.set(id.clone(), *allocation_id).context_code(
+            |(deal_id, allocation_id)| -> Result<(), ActorError> {
+                pending_deal_allocation_ids.set(deal_id.clone(), *allocation_id).context_code(
                     ExitCode::USR_ILLEGAL_STATE,
                     "failed to set pending deal allocation id",
                 )?;
@@ -429,7 +428,7 @@ impl State {
     pub fn remove_deals_by_epoch<BS>(
         &mut self,
         store: &BS,
-        new_deals_by_epoch: &[ChainEpoch],
+		epochs_to_remove: &[ChainEpoch],
     ) -> Result<(), ActorError>
     where
         BS: Blockstore,
@@ -437,7 +436,7 @@ impl State {
         let mut deals_by_epoch = SetMultimap::from_root(store, &self.deal_ops_by_epoch)
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deals by epoch")?;
 
-        new_deals_by_epoch.iter().try_for_each(|epoch| -> Result<(), ActorError> {
+		epochs_to_remove.iter().try_for_each(|epoch| -> Result<(), ActorError> {
             deals_by_epoch
                 .remove_all(*epoch)
                 .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
@@ -506,7 +505,7 @@ impl State {
         Ok(ex)
     }
 
-    pub fn is_key_in_pending_deal<BS>(&self, store: &BS, key: Cid) -> Result<bool, ActorError>
+    pub fn has_pending_deal<BS>(&self, store: &BS, key: Cid) -> Result<bool, ActorError>
     where
         BS: Blockstore,
     {
@@ -520,7 +519,7 @@ impl State {
         Ok(rval)
     }
 
-    pub fn put_pending_deal<BS>(
+    pub fn put_pending_deals<BS>(
         &mut self,
         store: &BS,
         new_pending_deals: &[Cid],

@@ -202,7 +202,7 @@ impl Actor {
         let mut valid_input_bf = BitField::default();
         let curr_epoch = rt.curr_epoch();
 
-        let state: State = rt.state::<State>()?;
+        let state: State = rt.state()?;
 
         for (di, mut deal) in params.deals.into_iter().enumerate() {
             // drop malformed deals
@@ -268,7 +268,7 @@ impl Actor {
 
             // check proposalCids for duplication within message batch
             // check state PendingProposals for duplication across messages
-            let duplicate_in_state = state.is_key_in_pending_deal(rt.store(), pcid)?;
+            let duplicate_in_state = state.has_pending_deal(rt.store(), pcid)?;
 
             let duplicate_in_message = proposal_cid_lookup.contains(&pcid);
             if duplicate_in_state || duplicate_in_message {
@@ -381,11 +381,11 @@ impl Actor {
                 new_deal_ids.push(deal_id);
             }
 
-            st.put_pending_deal(rt.store(), &pending_deals)?;
+            st.put_pending_deals(rt.store(), &pending_deals)?;
 
-            st.put_deal_proposal(rt.store(), &deal_proposals)?;
+            st.put_deal_proposals(rt.store(), &deal_proposals)?;
 
-            st.put_pending_deal_allocation_id(rt.store(), &pending_deal_allocation_ids)?;
+            st.put_pending_deal_allocation_ids(rt.store(), &pending_deal_allocation_ids)?;
 
             st.put_deals_by_epoch(rt.store(), &deals_by_epoch)?;
 
@@ -485,7 +485,7 @@ impl Actor {
 
                 // Confirm the deal is in the pending proposals queue.
                 // It will be removed from this queue later, during cron.
-                let has = st.is_key_in_pending_deal(rt.store(), propc)?;
+                let has = st.has_pending_deal(rt.store(), propc)?;
 
                 if !has {
                     return Err(actor_error!(
@@ -521,7 +521,7 @@ impl Actor {
                 ));
             }
 
-            st.put_deal_state(rt.store(), &deal_states)?;
+            st.put_deal_states(rt.store(), &deal_states)?;
 
             Ok(())
         })?;
@@ -588,7 +588,7 @@ impl Actor {
                 deal_states.push((id, state));
             }
 
-            st.put_deal_state(rt.store(), &deal_states)?;
+            st.put_deal_states(rt.store(), &deal_states)?;
             Ok(())
         })?;
         Ok(())
@@ -628,11 +628,6 @@ impl Actor {
             let mut rm_cron_id: Vec<ChainEpoch> = vec![];
 
             for i in (last_cron + 1)..=rt.curr_epoch() {
-                // TODO specs-actors modifies msm as it's iterated through, which is memory unsafe
-                // for now the deal ids are being collected and then iterated on, which could
-                // cause a potential inconsistency in exit code returned if a deal_id fails
-                // to be pulled from storage where it wouldn't be triggered otherwise.
-                // Workaround a better solution (seperating msm or fixing go impl)
                 let deal_ids = st.get_deals_for_epoch(rt.store(), i)?;
 
                 for deal_id in deal_ids {
@@ -766,7 +761,7 @@ impl Actor {
                         }
 
                         state.last_updated_epoch = curr_epoch;
-                        st.put_deal_state(rt.store(), &[(deal_id, state)])?;
+                        st.put_deal_states(rt.store(), &[(deal_id, state)])?;
 
                         if let Some(ev) = updates_needed.get_mut(&next_epoch) {
                             ev.push(deal_id);
