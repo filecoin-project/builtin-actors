@@ -684,8 +684,9 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
     // Construct a new runtime.
     let mut rt = FvmRuntime::default();
     // Invoke the method, aborting if the actor returns an errored exit code.
-    let ret = C::invoke_method(&mut rt, method, &params)
-        .unwrap_or_else(|err| fvm::vm::exit(err.exit_code().value(), err.data(), Some(err.msg())));
+    let ret = C::invoke_method(&mut rt, method, &params).unwrap_or_else(|mut err| {
+        fvm::vm::exit(err.exit_code().value(), err.take_data(), Some(err.msg()))
+    });
 
     // Abort with "assertion failed" if the actor failed to validate the caller somewhere.
     // We do this after handling the error, because the actor may have encountered an error before

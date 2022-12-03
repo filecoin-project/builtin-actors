@@ -301,7 +301,7 @@ pub fn call_generic<RT: Runtime>(
                         (1, result)
                     }
                 }
-                Err(ae) => (0, ae.data().to_vec()),
+                Err(mut ae) => (0, ae.take_data().into()),
             }
         }
     };

@@ -497,14 +497,14 @@ pub fn call_actor<RT: Runtime>(
         // positive values are user/actor errors
         // success is 0
         let (exit_code, data) = match result {
-            Err(ae) => {
+            Err(mut ae) => {
                 // TODO handle revert
                 // TODO https://github.com/filecoin-project/ref-fvm/issues/1020
                 // put error number from call into revert
                 let exit_code = U256::from(ae.exit_code().value());
 
                 // no return only exit code
-                (exit_code, RawBytes::default())
+                (exit_code, ae.take_data())
             }
             Ok(ret) => (U256::zero(), ret),
         };
@@ -525,7 +525,7 @@ pub fn call_actor<RT: Runtime>(
         // NOTE:
         // we dont pad out to 32 bytes here, the idea being that users will already be in the "everythig is bytes" mode
         // and will want re-pack align and whatever else by themselves
-        output.extend_from_slice(&data);
+        output.extend_from_slice(data.bytes());
         output
     };
 
