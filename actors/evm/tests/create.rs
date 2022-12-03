@@ -1,10 +1,10 @@
 mod asm;
 
-use evm::interpreter::StatusCode;
 use evm::interpreter::address::EthAddress;
 use evm::interpreter::instructions::lifecycle::{
     Create2Params, CreateParams, EamReturn, CREATE2_METHOD_NUM, CREATE_METHOD_NUM,
 };
+use evm::interpreter::StatusCode;
 use fil_actor_evm as evm;
 use fil_actors_runtime::EAM_ACTOR_ADDR;
 use fvm_ipld_encoding::RawBytes;
@@ -144,7 +144,11 @@ fn test_create() {
 
     // not enough funds -- create2
     {
-        util::invoke_contract_expect_err(&mut rt, &contract_params, StatusCode::InsufficientBalance);
+        util::invoke_contract_expect_err(
+            &mut rt,
+            &contract_params,
+            StatusCode::InsufficientBalance,
+        );
     }
 
     contract_params[3] = 0x00;
@@ -153,6 +157,10 @@ fn test_create() {
     {
         create_params.nonce += 3;
 
-        util::invoke_contract_expect_err(&mut rt, &contract_params, StatusCode::InsufficientBalance);
+        util::invoke_contract_expect_err(
+            &mut rt,
+            &contract_params,
+            StatusCode::InsufficientBalance,
+        );
     }
 }
