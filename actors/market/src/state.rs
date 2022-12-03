@@ -429,7 +429,7 @@ impl State {
     pub fn remove_deals_by_epoch<BS>(
         &mut self,
         store: &BS,
-        new_deals_by_epoch: &[ChainEpoch],
+        epochs_to_remove: &[ChainEpoch],
     ) -> Result<(), ActorError>
     where
         BS: Blockstore,
