@@ -2,6 +2,7 @@ mod asm;
 
 use evm::interpreter::address::EthAddress;
 use evm::interpreter::U256;
+use evm::EVM_CONTRACT_REVERTED;
 use fil_actor_evm as evm;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_encoding::{BytesSer, RawBytes, DAG_CBOR};
@@ -248,7 +249,18 @@ return
 }
 
 #[test]
-fn test_callactor() {
+fn test_callactor_success() {
+    // Should work if the called actor succeeds.
+    test_callactor_inner(ExitCode::OK)
+}
+
+#[test]
+fn test_callactor_revert() {
+    // Should propegate the return value if the called actor fails.
+    test_callactor_inner(EVM_CONTRACT_REVERTED)
+}
+
+fn test_callactor_inner(exit_code: ExitCode) {
     let contract = callactor_proxy_contract();
 
     // construct the proxy
@@ -289,7 +301,7 @@ fn test_callactor() {
         proxy_call_input_data,
         TokenAmount::zero(),
         RawBytes::from(return_data),
-        ExitCode::OK,
+        exit_code,
     );
 
     // invoke
@@ -343,7 +355,7 @@ fn test_callactor() {
 
     let result = CallActorReturn::read(&result);
     let expected = CallActorReturn {
-        exit_code: ExitCode::new(0),
+        exit_code,
         codec: DAG_CBOR,
         data_offset: 128,
         data_size: 32,
