@@ -1,6 +1,8 @@
 #![allow(dead_code)]
 
-use {super::opcode::OpCode, std::ops::Deref};
+use std::ops::Deref;
+
+use super::execution::opcodes;
 
 #[derive(Clone, Debug)]
 pub struct Bytecode {
@@ -15,11 +17,11 @@ impl Bytecode {
         let mut jumpdest = vec![false; bytecode.len()];
         let mut i = 0;
         while i < bytecode.len() {
-            if bytecode[i] == OpCode::JUMPDEST as u8 {
+            if bytecode[i] == opcodes::JUMPDEST as u8 {
                 jumpdest[i] = true;
                 i += 1;
-            } else if bytecode[i] >= OpCode::PUSH1 as u8 && bytecode[i] <= OpCode::PUSH32 as u8 {
-                i += (bytecode[i] - OpCode::PUSH1 as u8) as usize + 2;
+            } else if bytecode[i] >= opcodes::PUSH1 && bytecode[i] <= opcodes::PUSH32 {
+                i += (bytecode[i] - opcodes::PUSH1) as usize + 2;
             } else {
                 i += 1;
             }

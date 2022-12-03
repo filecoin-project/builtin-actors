@@ -5,7 +5,6 @@ use fvm_shared::address::Address as FilecoinAddress;
 use super::address::EthAddress;
 use {
     super::instructions,
-    super::opcode::OpCode,
     super::StatusCode,
     crate::interpreter::memory::Memory,
     crate::interpreter::stack::Stack,
@@ -51,47 +50,195 @@ pub struct Machine<'r, 'a, RT: Runtime + 'a> {
     pub output: Output,
 }
 
-type Instruction<M> = unsafe fn(*mut M) -> Result<(), StatusCode>;
-
 macro_rules! def_opcodes {
-    ($($op:ident)*) => {
-        def_ins_raw! {
-            UNDEFINED(_m) {
-                Err(StatusCode::UndefinedInstruction)
+    ($($code:literal: $op:ident,)*) => {
+        pub const fn jumptable<'r, 'a, RT: Runtime>() -> [Instruction<'r, 'a, RT>; 256] {
+            def_ins_raw! {
+                UNDEFINED(_m) {
+                    Err(StatusCode::UndefinedInstruction)
+                }
             }
-        }
-        $(def_ins_raw! {
-            $op (m) {
-                instructions::$op(m)
-            }
-        })*
+            $(def_ins_raw! {
+                $op (m) {
+                    instructions::$op(m)
+                }
+            })*
 
-        def_jmptable! {
-            $($op)*
-        }
-    }
-}
-
-macro_rules! def_jmptable {
-    ($($op:ident)*) => {
-        const fn jmptable() -> [Instruction<Machine<'r, 'a, RT>>; 256] {
-            let mut table: [Instruction<Machine::<'r, 'a, RT>>; 256] = [Machine::<'r, 'a, RT>::UNDEFINED; 256];
-            $(table[OpCode::$op as usize] = Machine::<'r, 'a, RT>::$op;)*
+            let mut table: [Instruction<'r, 'a, RT>; 256] = [UNDEFINED; 256];
+            $(table[$code] = $op;)*
             table
         }
+        $(pub const $op: u8 = $code;)*
     }
 }
 
 macro_rules! def_ins_raw {
     ($ins:ident ($arg:ident) $body:block) => {
         #[allow(non_snake_case)]
-        unsafe fn $ins(p: *mut Self) -> Result<(), StatusCode> {
+        unsafe fn $ins<'r, 'a, RT: Runtime>(p: *mut Machine<'r, 'a, RT>) -> Result<(), StatusCode> {
             // SAFETY: macro ensures that mut pointer is taken directly from a mutable borrow, used
             // once, then goes out of scope immediately after
-            let $arg: &mut Self = &mut *p;
+            let $arg: &mut Machine<'r, 'a, RT> = &mut *p;
             $body
         }
     };
+}
+
+pub mod opcodes {
+    use super::instructions;
+    use super::Machine;
+    use crate::interpreter::StatusCode;
+    use fil_actors_runtime::runtime::Runtime;
+
+    pub type Instruction<'r, 'a, RT> =
+        unsafe fn(*mut Machine<'r, 'a, RT>) -> Result<(), StatusCode>;
+
+    def_opcodes! {
+        0x00: STOP,
+        0x01: ADD,
+        0x02: MUL,
+        0x03: SUB,
+        0x04: DIV,
+        0x05: SDIV,
+        0x06: MOD,
+        0x07: SMOD,
+        0x08: ADDMOD,
+        0x09: MULMOD,
+        0x0a: EXP,
+        0x0b: SIGNEXTEND,
+        0x10: LT,
+        0x11: GT,
+        0x12: SLT,
+        0x13: SGT,
+        0x14: EQ,
+        0x15: ISZERO,
+        0x16: AND,
+        0x17: OR,
+        0x18: XOR,
+        0x19: NOT,
+        0x1a: BYTE,
+        0x1b: SHL,
+        0x1c: SHR,
+        0x1d: SAR,
+        0x20: KECCAK256,
+        0x30: ADDRESS,
+        0x31: BALANCE,
+        0x32: ORIGIN,
+        0x33: CALLER,
+        0x34: CALLVALUE,
+        0x35: CALLDATALOAD,
+        0x36: CALLDATASIZE,
+        0x37: CALLDATACOPY,
+        0x38: CODESIZE,
+        0x39: CODECOPY,
+        0x3a: GASPRICE,
+        0x3b: EXTCODESIZE,
+        0x3c: EXTCODECOPY,
+        0x3d: RETURNDATASIZE,
+        0x3e: RETURNDATACOPY,
+        0x3f: EXTCODEHASH,
+        0x40: BLOCKHASH,
+        0x41: COINBASE,
+        0x42: TIMESTAMP,
+        0x43: NUMBER,
+        0x44: DIFFICULTY,
+        0x45: GASLIMIT,
+        0x46: CHAINID,
+        0x47: SELFBALANCE,
+        0x48: BASEFEE,
+        0x50: POP,
+        0x51: MLOAD,
+        0x52: MSTORE,
+        0x53: MSTORE8,
+        0x54: SLOAD,
+        0x55: SSTORE,
+        0x56: JUMP,
+        0x57: JUMPI,
+        0x58: PC,
+        0x59: MSIZE,
+        0x5a: GAS,
+        0x5b: JUMPDEST,
+        0x60: PUSH1,
+        0x61: PUSH2,
+        0x62: PUSH3,
+        0x63: PUSH4,
+        0x64: PUSH5,
+        0x65: PUSH6,
+        0x66: PUSH7,
+        0x67: PUSH8,
+        0x68: PUSH9,
+        0x69: PUSH10,
+        0x6a: PUSH11,
+        0x6b: PUSH12,
+        0x6c: PUSH13,
+        0x6d: PUSH14,
+        0x6e: PUSH15,
+        0x6f: PUSH16,
+        0x70: PUSH17,
+        0x71: PUSH18,
+        0x72: PUSH19,
+        0x73: PUSH20,
+        0x74: PUSH21,
+        0x75: PUSH22,
+        0x76: PUSH23,
+        0x77: PUSH24,
+        0x78: PUSH25,
+        0x79: PUSH26,
+        0x7a: PUSH27,
+        0x7b: PUSH28,
+        0x7c: PUSH29,
+        0x7d: PUSH30,
+        0x7e: PUSH31,
+        0x7f: PUSH32,
+        0x80: DUP1,
+        0x81: DUP2,
+        0x82: DUP3,
+        0x83: DUP4,
+        0x84: DUP5,
+        0x85: DUP6,
+        0x86: DUP7,
+        0x87: DUP8,
+        0x88: DUP9,
+        0x89: DUP10,
+        0x8a: DUP11,
+        0x8b: DUP12,
+        0x8c: DUP13,
+        0x8d: DUP14,
+        0x8e: DUP15,
+        0x8f: DUP16,
+        0x90: SWAP1,
+        0x91: SWAP2,
+        0x92: SWAP3,
+        0x93: SWAP4,
+        0x94: SWAP5,
+        0x95: SWAP6,
+        0x96: SWAP7,
+        0x97: SWAP8,
+        0x98: SWAP9,
+        0x99: SWAP10,
+        0x9a: SWAP11,
+        0x9b: SWAP12,
+        0x9c: SWAP13,
+        0x9d: SWAP14,
+        0x9e: SWAP15,
+        0x9f: SWAP16,
+        0xa0: LOG0,
+        0xa1: LOG1,
+        0xa2: LOG2,
+        0xa3: LOG3,
+        0xa4: LOG4,
+        // 0xEF Reserved for EIP-3541
+        0xf0: CREATE,
+        0xf1: CALL,
+        0xf2: CALLCODE,
+        0xf3: RETURN,
+        0xf4: DELEGATECALL,
+        0xf5: CREATE2,
+        0xfa: STATICCALL,
+        0xfd: REVERT,
+        0xfe: INVALID,
+        0xff: SELFDESTRUCT,
+    }
 }
 
 impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
@@ -120,180 +267,7 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         unsafe { Self::JMPTABLE[op as usize](self) }
     }
 
-    def_opcodes! {
-        // primops
-        ADD
-        MUL
-        SUB
-        DIV
-        SDIV
-        MOD
-        SMOD
-        ADDMOD
-        MULMOD
-        EXP
-        SIGNEXTEND
-        LT
-        GT
-        SLT
-        SGT
-        EQ
-        ISZERO
-        AND
-        OR
-        XOR
-        NOT
-        BYTE
-        SHL
-        SHR
-        SAR
-
-        // std call convenction functionoids
-        KECCAK256
-        ADDRESS
-        BALANCE
-        ORIGIN
-        CALLER
-        CALLVALUE
-        CALLDATALOAD
-        CALLDATASIZE
-        CALLDATACOPY
-        CODESIZE
-        CODECOPY
-        GASPRICE
-        EXTCODESIZE
-        EXTCODECOPY
-        RETURNDATASIZE
-        RETURNDATACOPY
-        EXTCODEHASH
-        BLOCKHASH
-        COINBASE
-        TIMESTAMP
-        NUMBER
-        DIFFICULTY
-        GASLIMIT
-        CHAINID
-        BASEFEE
-        SELFBALANCE
-        MLOAD
-        MSTORE
-        MSTORE8
-        SLOAD
-        SSTORE
-        MSIZE
-        GAS
-
-        // stack ops
-        POP
-
-        // push variants
-        PUSH1
-        PUSH2
-        PUSH3
-        PUSH4
-        PUSH5
-        PUSH6
-        PUSH7
-        PUSH8
-        PUSH9
-        PUSH10
-        PUSH11
-        PUSH12
-        PUSH13
-        PUSH14
-        PUSH15
-        PUSH16
-        PUSH17
-        PUSH18
-        PUSH19
-        PUSH20
-        PUSH21
-        PUSH22
-        PUSH23
-        PUSH24
-        PUSH25
-        PUSH26
-        PUSH27
-        PUSH28
-        PUSH29
-        PUSH30
-        PUSH31
-        PUSH32
-
-        // dup variants
-        DUP1
-        DUP2
-        DUP3
-        DUP4
-        DUP5
-        DUP6
-        DUP7
-        DUP8
-        DUP9
-        DUP10
-        DUP11
-        DUP12
-        DUP13
-        DUP14
-        DUP15
-        DUP16
-
-        // swap variants
-        SWAP1
-        SWAP2
-        SWAP3
-        SWAP4
-        SWAP5
-        SWAP6
-        SWAP7
-        SWAP8
-        SWAP9
-        SWAP10
-        SWAP11
-        SWAP12
-        SWAP13
-        SWAP14
-        SWAP15
-        SWAP16
-
-        // pc
-        PC
-
-        // event logs
-        LOG0
-        LOG1
-        LOG2
-        LOG3
-        LOG4
-
-        // create variants
-        CREATE
-        CREATE2
-
-        // call variants
-        CALL
-        CALLCODE
-        DELEGATECALL
-        STATICCALL
-
-        // exiting ops
-        STOP
-        RETURN
-        REVERT
-        SELFDESTRUCT
-
-        // control flow magic
-        // noop marker opcode for valid jumps addresses
-        JUMPDEST
-        // reserved invalid instruction
-        INVALID
-
-        // jump ops
-        JUMP
-        JUMPI
-    }
-
-    const JMPTABLE: [Instruction<Machine<'r, 'a, RT>>; 256] = Machine::<'r, 'a, RT>::jmptable();
+    const JMPTABLE: [opcodes::Instruction<'r, 'a, RT>; 256] = opcodes::jumptable::<'r, 'a, RT>();
 }
 
 pub fn execute(
