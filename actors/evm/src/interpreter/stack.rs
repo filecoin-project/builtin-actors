@@ -65,6 +65,7 @@ impl Stack {
     }
 
     #[inline(always)]
+    /// Ensures at least one more item is able to be allocated on the stack.
     pub fn ensure_one(&self) -> Result<(), StatusCode> {
         if self.stack.len() >= STACK_SIZE {
             Err(StatusCode::StackOverflow)
