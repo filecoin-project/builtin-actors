@@ -5,9 +5,14 @@ use {crate::interpreter::stack::Stack, crate::interpreter::U256};
 
 macro_rules! be_u64 {
     ($byte:expr) => {$byte as u64};
-    ($byte1:expr, $byte2:expr $(,$rest:expr)*) => {
-        be_u64!{((($byte1 as u64) << 8) | ($byte2 as u64)) $(,$rest)*}
+    ($byte1:expr $(,$rest:expr)*) => {
+        (($byte1 as u64) << (be_shift!{$($rest),*})) + be_u64!{$($rest),*}
     };
+}
+
+macro_rules! be_shift {
+    ($byte:expr) => {8};
+    ($byte:expr $(,$rest:expr)*) => {8 + be_shift!{$($rest),*}};
 }
 
 #[inline]
