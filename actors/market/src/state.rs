@@ -230,9 +230,9 @@ impl State {
     where
         BS: Blockstore,
     {
-		let deal_proposals = self.get_proposal_array(store)?;
+        let deal_proposals = self.get_proposal_array(store)?;
 
-		let proposal =
+        let proposal =
             deal_proposals.get(deal_id).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
                 format!("failed to load deal proposal {}", deal_id)
             })?;
@@ -428,7 +428,7 @@ impl State {
     pub fn remove_deals_by_epoch<BS>(
         &mut self,
         store: &BS,
-		epochs_to_remove: &[ChainEpoch],
+        epochs_to_remove: &[ChainEpoch],
     ) -> Result<(), ActorError>
     where
         BS: Blockstore,
@@ -436,7 +436,7 @@ impl State {
         let mut deals_by_epoch = SetMultimap::from_root(store, &self.deal_ops_by_epoch)
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deals by epoch")?;
 
-		epochs_to_remove.iter().try_for_each(|epoch| -> Result<(), ActorError> {
+        epochs_to_remove.iter().try_for_each(|epoch| -> Result<(), ActorError> {
             deals_by_epoch
                 .remove_all(*epoch)
                 .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
