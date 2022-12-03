@@ -597,7 +597,11 @@ impl<BS: Blockstore> MockRuntime<BS> {
 
         match expected_msg.exit_code {
             ExitCode::OK => Ok(expected_msg.send_return),
-            x => Err(ActorError::unchecked(x, "Expected message Fail".to_string())),
+            x => Err(ActorError::unchecked_with_data(
+                x,
+                "Expected message Fail".to_string(),
+                expected_msg.send_return,
+            )),
         }
     }
 

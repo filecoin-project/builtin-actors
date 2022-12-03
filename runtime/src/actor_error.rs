@@ -67,8 +67,13 @@ impl ActorError {
     }
 
     /// Returns the optional data that might be associated with the error
-    pub fn data(&self) -> RawBytes {
-        self.data.clone()
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
+
+    /// Extracts the optional associated data without copying.
+    pub fn take_data(&mut self) -> RawBytes {
+        std::mem::take(&mut self.data)
     }
 
     /// Prefix error message with a string message.

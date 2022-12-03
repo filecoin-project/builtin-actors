@@ -465,12 +465,12 @@ impl<'bs> VM<'bs> {
             invocs
         });
         match res {
-            Err(ae) => {
+            Err(mut ae) => {
                 self.rollback(prior_root);
                 Ok(MessageResult {
                     code: ae.exit_code(),
                     message: ae.msg().to_string(),
-                    ret: ae.data(),
+                    ret: ae.take_data(),
                 })
             }
             Ok(ret) => {
