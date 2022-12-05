@@ -314,11 +314,11 @@ pub fn call_generic<RT: Runtime>(
 }
 
 fn effective_gas_limit<RT: Runtime>(system: &System<RT>, gas: U256) -> Option<u64> {
+    let gas_rsvp = (63 * system.rt.gas_available()) / 64;
     Some(if gas.is_zero() {
-        (63 * system.rt.gas_available()) / 64
+        gas_rsvp
     } else {
         let gas = gas.to_u64_saturating();
-        let gas_rsvp = (63 * system.rt.gas_available()) / 64;
         std::cmp::min(gas, gas_rsvp)
     })
 }
