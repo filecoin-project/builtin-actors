@@ -199,7 +199,7 @@ pub fn call_generic<RT: Runtime>(
         if precompiles::Precompiles::<RT>::is_precompile(&dst) {
             let context = PrecompileContext {
                 is_static: matches!(kind, CallKind::StaticCall) || system.readonly,
-                gas,
+                gas_limit: effective_gas_limit(system, gas),
                 value,
             };
 
@@ -254,8 +254,7 @@ pub fn call_generic<RT: Runtime>(
                         // TODO: support IPLD codecs #758
                         let params = RawBytes::serialize(BytesSer(input_data))?;
                         let value = TokenAmount::from(&value);
-                        let gas_limit =
-                            if !gas.is_zero() { Some(gas.to_u64_saturating()) } else { None };
+                        let gas_limit = effective_gas_limit(system, gas);
                         let read_only = kind == CallKind::StaticCall;
                         system.send_with_gas(&dst_addr, method, params, value, gas_limit, read_only)
                     }
@@ -272,7 +271,7 @@ pub fn call_generic<RT: Runtime>(
                             Method::InvokeContractDelegate as u64,
                             RawBytes::serialize(&params)?,
                             TokenAmount::from(&value),
-                            if !gas.is_zero() { Some(gas.to_u64_saturating()) } else { None },
+                            effective_gas_limit(system, gas),
                             system.readonly,
                         )
                     }
@@ -312,4 +311,16 @@ pub fn call_generic<RT: Runtime>(
     copy_to_memory(memory, output_offset, output_size, U256::zero(), &state.return_data, false)?;
 
     Ok(U256::from(call_result))
+}
+
+fn effective_gas_limit<RT: Runtime>(system: &System<RT>, gas: U256) -> Option<u64> {
+    Some(if gas.is_zero() {
+        // reserve 1/64th of gas for return
+        // see https://github.com/filecoin-project/ref-fvm/issues/874
+        let gas = system.rt.gas_available();
+        (gas * 63) / 64
+    } else {
+        // user has specified a limit himself, we are not going to muck with it.
+        gas.to_u64_saturating()
+    })
 }

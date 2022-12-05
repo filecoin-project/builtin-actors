@@ -250,7 +250,7 @@ impl From<GroupError> for PrecompileError {
 #[derive(Debug, PartialEq, Eq, Default)]
 pub struct PrecompileContext {
     pub is_static: bool,
-    pub gas: U256,
+    pub gas_limit: Option<u64>,
     pub value: U256,
 }
 
@@ -485,7 +485,7 @@ pub fn call_actor<RT: Runtime>(
             method,
             RawBytes::from(input_data.to_vec()),
             TokenAmount::from(&ctx.value),
-            if !ctx.gas.is_zero() { Some(ctx.gas.to_u64_saturating()) } else { None },
+            ctx.gas_limit,
             ctx.is_static,
         )
     };
