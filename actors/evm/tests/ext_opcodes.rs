@@ -10,15 +10,8 @@ use fvm_shared::address::Address as FILAddress;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::{IDENTITY_HASH, IPLD_RAW};
-use lazy_static::lazy_static;
 
 mod util;
-
-lazy_static! {
-    pub static ref DUMMY_ACTOR_CODE_ID: Cid =
-        Cid::new_v1(IPLD_RAW, Multihash::wrap(IDENTITY_HASH, b"foobarboxy").unwrap());
-}
 
 #[test]
 fn test_extcodesize() {
@@ -78,7 +71,7 @@ native_account:
 
     // 0x89 is a native actor
     let native_actor = FILAddress::new_id(0x89);
-    rt.set_address_actor_type(native_actor, *DUMMY_ACTOR_CODE_ID);
+    rt.set_address_actor_type(native_actor, *util::DUMMY_ACTOR_CODE_ID);
 
     // 0x0101 is an EVM EOA account
     let evm_account = FILAddress::new_id(0x0101);
@@ -176,7 +169,7 @@ native_actor:
 
     // 0x88 is an EVM actor
     let native_target = FILAddress::new_id(0x89);
-    rt.set_address_actor_type(native_target, *DUMMY_ACTOR_CODE_ID);
+    rt.set_address_actor_type(native_target, *util::DUMMY_ACTOR_CODE_ID);
 
     // a random CID
     let bytecode_cid =
@@ -266,7 +259,7 @@ invalid_address:
 
     // 0x89 is a native actor
     let native_target = FILAddress::new_id(0x89);
-    rt.set_address_actor_type(native_target, *DUMMY_ACTOR_CODE_ID);
+    rt.set_address_actor_type(native_target, *util::DUMMY_ACTOR_CODE_ID);
 
     // a random CID
     let bytecode_cid = Cid::try_from("baeaikaia").unwrap();

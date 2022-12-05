@@ -33,8 +33,9 @@ pub fn assert_zero_bytes<const S: usize>(src: &[u8]) -> Result<(), PrecompileErr
     }
 }
 
+/// Native Type of a given contract
 #[repr(u32)]
-pub enum BuiltinType {
+pub enum NativeType {
     NonExistent = 0,
     // user actors are flattened to "system"
     /// System includes any singletons not otherwise defined.
@@ -42,8 +43,14 @@ pub enum BuiltinType {
     Embryo = 2,
     Account = 3,
     StorageProvider = 4,
-    EVMActor = 5,
-    OtherBuiltin = 6,
+    EVMContract = 5,
+    OtherTypes = 6,
+}
+
+impl NativeType {
+    fn word_vec(self) -> Vec<u8> {
+        U256::from(self as u32).to_bytes().to_vec()
+    }
 }
 
 struct Parameter<T>(pub T);
@@ -356,12 +363,16 @@ fn get_actor_type<RT: Runtime>(
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
+    const LAST_SYSTEM_ACTOR_ID: u64 = 32;
+
     let id_bytes: [u8; 32] = read_right_pad(input, 32).as_ref().try_into().unwrap();
     let id = Parameter::<u64>::try_from(&id_bytes)?.0;
 
-    if id >= 99 {
-        Ok(U256::from(1).to_bytes().to_vec())
+    if id < LAST_SYSTEM_ACTOR_ID {
+        // known to be system actors
+        Ok(NativeType::System.word_vec())
     } else {
+        // resolve type from code CID
         let builtin_type = system
             .rt
             .get_actor_code_cid(&id)
@@ -369,15 +380,13 @@ fn get_actor_type<RT: Runtime>(
 
         let builtin_type = match builtin_type {
             Some(t) => match t {
-                Type::Account => BuiltinType::Account,
-                Type::System => BuiltinType::System,
-                Type::Embryo => BuiltinType::Embryo,
-                Type::EVM => BuiltinType::EVMActor,
-                // REMOVEME this might be useful to differentiate? though we already have opcodes that do all the calls we need to do for this
-                Type::EAM => BuiltinType::System,
-                Type::Miner => BuiltinType::StorageProvider,
+                Type::Account => NativeType::Account,
+                Type::System => NativeType::System,
+                Type::Embryo => NativeType::Embryo,
+                Type::EVM => NativeType::EVMContract,
+                Type::Miner => NativeType::StorageProvider,
                 // Others
-                Type::PaymentChannel | Type::Multisig => BuiltinType::OtherBuiltin,
+                Type::PaymentChannel | Type::Multisig => NativeType::OtherTypes,
                 // Singletons
                 Type::Market
                 | Type::Power
@@ -385,12 +394,14 @@ fn get_actor_type<RT: Runtime>(
                 | Type::Cron
                 | Type::Reward
                 | Type::VerifiedRegistry
-                | Type::DataCap => BuiltinType::System,
+                | Type::DataCap => NativeType::System,
+                // REMOVEME this might be useful to differentiate? though we already have opcodes that do all the calls we need to do for this
+                Type::EAM => NativeType::System,
             },
-            None => BuiltinType::NonExistent,
+            None => NativeType::NonExistent,
         };
 
-        Ok(U256::from(builtin_type as u32).to_bytes().to_vec())
+        Ok(builtin_type.word_vec())
     }
 }
 
