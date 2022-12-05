@@ -314,13 +314,10 @@ pub fn call_generic<RT: Runtime>(
 }
 
 fn effective_gas_limit<RT: Runtime>(system: &System<RT>, gas: U256) -> Option<u64> {
-    Some(if gas.is_zero() {
-        // reserve 1/64th of gas for return
-        // see https://github.com/filecoin-project/ref-fvm/issues/874
-        let gas = system.rt.gas_available();
-        (gas * 63) / 64
+    let gas = if gas.is_zero() {
+        system.rt.gas_available()
     } else {
-        // user has specified a limit thyself, we are not going to muck with it.
-        gas.to_u64_saturating()
-    })
+        std::cmp::min(gas.to_u64_saturating(), 10_000_000_000)
+    };
+    Some(std::cmp::max((gas * 63) / 64, 1))
 }
