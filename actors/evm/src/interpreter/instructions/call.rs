@@ -319,10 +319,6 @@ fn effective_gas_limit<RT: Runtime>(system: &System<RT>, gas: U256) -> Option<u6
     } else {
         let gas = gas.to_u64_saturating();
         let gas_rsvp = (63 * system.rt.gas_available()) / 64;
-        if gas < gas_rsvp {
-            gas
-        } else {
-            gas_rsvp
-        }
+        std::cmp::min(gas, gas_rsvp)
     })
 }
