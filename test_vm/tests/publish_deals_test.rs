@@ -20,6 +20,7 @@ use fil_actors_runtime::{
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::MemoryBlockstore;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
@@ -554,16 +555,13 @@ fn psd_bad_sig() {
             ExpectInvocation {
                 to: a.client1,
                 method: AccountMethod::AuthenticateMessage as u64,
-                params: Some(
-                    serialize(
-                        &AuthenticateMessageParams {
-                            signature: invalid_sig_bytes,
-                            message: serialize(&proposal, "deal proposal").unwrap().to_vec(),
-                        },
-                        "auth params",
-                    )
+                params: Some(Some(
+                    IpldBlock::serialize_cbor(&AuthenticateMessageParams {
+                        signature: invalid_sig_bytes,
+                        message: serialize(&proposal, "deal proposal").unwrap().to_vec(),
+                    })
                     .unwrap(),
-                ),
+                )),
                 code: Some(ExitCode::USR_ILLEGAL_ARGUMENT),
                 ..Default::default()
             },

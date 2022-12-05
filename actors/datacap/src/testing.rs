@@ -13,9 +13,11 @@ pub fn check_state_invariants<BS: Blockstore>(
 ) -> (StateSummary, MessageAccumulator) {
     let acc = MessageAccumulator::default();
     acc.require(state.governor.protocol() == Protocol::ID, "governor must be ID address");
+
     let (summary, msgs) = state.token.check_invariants(store, DATACAP_GRANULARITY);
     for e in msgs {
         acc.add(e.to_string());
     }
+
     (summary, acc)
 }

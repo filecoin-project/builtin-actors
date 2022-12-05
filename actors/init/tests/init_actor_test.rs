@@ -11,6 +11,7 @@ use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
     ActorError, Multimap, FIRST_NON_SINGLETON_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
@@ -72,7 +73,7 @@ fn repeated_robust_address() {
         rt.expect_send(
             expected_id_addr,
             METHOD_CONSTRUCTOR,
-            RawBytes::serialize(&fake_params).unwrap(),
+            Some(IpldBlock::serialize_cbor(&fake_params).unwrap()),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
@@ -96,8 +97,10 @@ fn repeated_robust_address() {
             constructor_params: RawBytes::serialize(&fake_params).unwrap(),
         };
 
-        let ret =
-            rt.call::<InitActor>(Method::Exec as u64, &RawBytes::serialize(&exec_params).unwrap());
+        let ret = rt.call::<InitActor>(
+            Method::Exec as u64,
+            Some(IpldBlock::serialize_cbor(&exec_params).unwrap()),
+        );
 
         rt.verify();
         assert!(ret.is_err());
@@ -135,7 +138,7 @@ fn create_2_payment_channels() {
         rt.expect_send(
             expected_id_addr,
             METHOD_CONSTRUCTOR,
-            RawBytes::serialize(&fake_params).unwrap(),
+            Some(IpldBlock::serialize_cbor(&fake_params).unwrap()),
             balance,
             RawBytes::default(),
             ExitCode::OK,
@@ -177,7 +180,7 @@ fn create_storage_miner() {
     rt.expect_send(
         expected_id_addr,
         METHOD_CONSTRUCTOR,
-        RawBytes::serialize(&fake_params).unwrap(),
+        Some(IpldBlock::serialize_cbor(&fake_params).unwrap()),
         TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::OK,
@@ -228,7 +231,7 @@ fn create_multisig_actor() {
     rt.expect_send(
         expected_id_addr,
         METHOD_CONSTRUCTOR,
-        RawBytes::serialize(&fake_params).unwrap(),
+        Some(IpldBlock::serialize_cbor(&fake_params).unwrap()),
         TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::OK,
@@ -263,7 +266,7 @@ fn sending_constructor_failure() {
     rt.expect_send(
         expected_id_addr,
         METHOD_CONSTRUCTOR,
-        RawBytes::serialize(&fake_params).unwrap(),
+        Some(IpldBlock::serialize_cbor(&fake_params).unwrap()),
         TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::USR_ILLEGAL_STATE,
@@ -290,8 +293,9 @@ fn sending_constructor_failure() {
 fn construct_and_verify(rt: &mut MockRuntime) {
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
     let params = ConstructorParams { network_name: "mock".to_string() };
-    let ret =
-        rt.call::<InitActor>(METHOD_CONSTRUCTOR, &RawBytes::serialize(&params).unwrap()).unwrap();
+    let ret = rt
+        .call::<InitActor>(METHOD_CONSTRUCTOR, Some(IpldBlock::serialize_cbor(&params).unwrap()))
+        .unwrap();
 
     assert_eq!(RawBytes::default(), ret);
     rt.verify();
@@ -320,8 +324,10 @@ where
     let exec_params =
         ExecParams { code_cid: code_id, constructor_params: RawBytes::serialize(params).unwrap() };
 
-    let ret =
-        rt.call::<InitActor>(Method::Exec as u64, &RawBytes::serialize(&exec_params).unwrap());
+    let ret = rt.call::<InitActor>(
+        Method::Exec as u64,
+        Some(IpldBlock::serialize_cbor(&exec_params).unwrap()),
+    );
 
     rt.verify();
     check_state(rt);

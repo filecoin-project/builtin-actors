@@ -6,7 +6,6 @@ use fil_actors_runtime::runtime::DomainSeparationTag;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::CALLER_TYPES_SIGNABLE;
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -16,6 +15,7 @@ use fvm_shared::sector::RegisteredSealProof;
 
 mod util;
 
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use num_traits::Zero;
 use util::*;
 
@@ -564,7 +564,7 @@ fn duplicate_proof_rejected() {
 
     let result = rt.call::<miner::Actor>(
         miner::Method::SubmitWindowedPoSt as u64,
-        &RawBytes::serialize(params).unwrap(),
+        Some(IpldBlock::serialize_cbor(&params).unwrap()),
     );
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -1040,7 +1040,7 @@ fn cannot_dispute_posts_when_the_challenge_window_is_open() {
 
     let result = rt.call::<miner::Actor>(
         miner::Method::DisputeWindowedPoSt as u64,
-        &RawBytes::serialize(params).unwrap(),
+        Some(IpldBlock::serialize_cbor(&params).unwrap()),
     );
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
@@ -1102,7 +1102,7 @@ fn can_dispute_up_till_window_end_but_not_after() {
 
     let result = rt.call::<miner::Actor>(
         miner::Method::DisputeWindowedPoSt as u64,
-        &RawBytes::serialize(params).unwrap(),
+        Some(IpldBlock::serialize_cbor(&params).unwrap()),
     );
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
@@ -1133,7 +1133,7 @@ fn cant_dispute_up_with_an_invalid_deadline() {
 
     let result = rt.call::<miner::Actor>(
         miner::Method::DisputeWindowedPoSt as u64,
-        &RawBytes::serialize(params).unwrap(),
+        Some(IpldBlock::serialize_cbor(&params).unwrap()),
     );
     expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "invalid deadline", result);
     rt.verify();

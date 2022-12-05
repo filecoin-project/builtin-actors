@@ -18,6 +18,7 @@ use cid::Cid;
 use std::collections::HashMap;
 
 mod util;
+
 use util::*;
 
 // an expiration ~10 days greater than effective min expiration taking into account 30 days max
@@ -156,6 +157,7 @@ mod miner_actor_precommit_batch {
         new_deadline_info_from_offset_and_epoch, Actor, Method, PreCommitSectorBatchParams2,
     };
     use fil_actors_runtime::{STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_ipld_encoding::RawBytes;
     use test_case::test_case;
 
@@ -403,7 +405,7 @@ mod miner_actor_precommit_batch {
             rt.expect_send(
                 STORAGE_MARKET_ACTOR_ADDR,
                 MarketMethod::VerifyDealsForActivation as u64,
-                RawBytes::serialize(vdparams).unwrap(),
+                Some(IpldBlock::serialize_cbor(&vdparams).unwrap()),
                 TokenAmount::zero(),
                 RawBytes::serialize(vdreturn).unwrap(),
                 ExitCode::OK,
@@ -420,7 +422,7 @@ mod miner_actor_precommit_batch {
             rt.expect_send(
                 STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::EnrollCronEvent as u64,
-                RawBytes::serialize(cron_params).unwrap(),
+                Some(IpldBlock::serialize_cbor(&cron_params).unwrap()),
                 TokenAmount::zero(),
                 RawBytes::default(),
                 ExitCode::OK,
@@ -428,7 +430,7 @@ mod miner_actor_precommit_batch {
 
             let result = rt.call::<Actor>(
                 Method::PreCommitSectorBatch2 as u64,
-                &RawBytes::serialize(PreCommitSectorBatchParams2 { sectors }).unwrap(),
+                Some(IpldBlock::serialize_cbor(&PreCommitSectorBatchParams2 { sectors }).unwrap()),
             );
 
             expect_abort_contains_message(

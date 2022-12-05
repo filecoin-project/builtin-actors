@@ -11,6 +11,8 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode};
 
 mod util;
+
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use itertools::Itertools;
 use num_traits::Zero;
 use util::*;
@@ -240,8 +242,10 @@ fn fails_if_new_worker_address_does_not_have_a_code() {
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.owner);
 
     let params = ChangeWorkerAddressParams { new_worker, new_control_addresses: Vec::new() };
-    let result =
-        rt.call::<Actor>(Method::ChangeWorkerAddress as u64, &RawBytes::serialize(params).unwrap());
+    let result = rt.call::<Actor>(
+        Method::ChangeWorkerAddress as u64,
+        Some(IpldBlock::serialize_cbor(&params).unwrap()),
+    );
     expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
     rt.verify();
 
@@ -257,8 +261,10 @@ fn fails_if_new_worker_is_not_account_actor() {
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.owner);
 
     let params = ChangeWorkerAddressParams { new_worker, new_control_addresses: Vec::new() };
-    let result =
-        rt.call::<Actor>(Method::ChangeWorkerAddress as u64, &RawBytes::serialize(params).unwrap());
+    let result = rt.call::<Actor>(
+        Method::ChangeWorkerAddress as u64,
+        Some(IpldBlock::serialize_cbor(&params).unwrap()),
+    );
     expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
     rt.verify();
 
@@ -275,7 +281,7 @@ fn fails_when_caller_is_not_the_owner() {
     rt.expect_send(
         new_worker,
         AccountMethod::PubkeyAddress as u64,
-        RawBytes::default(),
+        None,
         TokenAmount::zero(),
         RawBytes::serialize(h.worker_key).unwrap(),
         ExitCode::OK,
@@ -283,8 +289,10 @@ fn fails_when_caller_is_not_the_owner() {
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.worker);
 
     let params = ChangeWorkerAddressParams { new_worker, new_control_addresses: Vec::new() };
-    let result =
-        rt.call::<Actor>(Method::ChangeWorkerAddress as u64, &RawBytes::serialize(params).unwrap());
+    let result = rt.call::<Actor>(
+        Method::ChangeWorkerAddress as u64,
+        Some(IpldBlock::serialize_cbor(&params).unwrap()),
+    );
     expect_abort(ExitCode::USR_FORBIDDEN, result);
     rt.verify();
 

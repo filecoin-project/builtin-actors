@@ -33,9 +33,9 @@ mod mint {
     use fvm_shared::MethodNum;
 
     use fil_actor_datacap::{Actor, Method, MintParams, INFINITE_ALLOWANCE};
-    use fil_actors_runtime::cbor::serialize;
     use fil_actors_runtime::test_utils::{expect_abort_contains_message, MARKET_ACTOR_CODE_ID};
     use fil_actors_runtime::{STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_ipld_encoding::RawBytes;
     use std::ops::Sub;
 
@@ -73,7 +73,10 @@ mod mint {
         expect_abort_contains_message(
             ExitCode::USR_FORBIDDEN,
             "caller address",
-            rt.call::<Actor>(Method::Mint as MethodNum, &serialize(&params, "params").unwrap()),
+            rt.call::<Actor>(
+                Method::Mint as MethodNum,
+                Some(IpldBlock::serialize_cbor(&params).unwrap()),
+            ),
         );
         h.check_state(&rt);
     }
@@ -195,7 +198,7 @@ mod destroy {
     use fvm_shared::MethodNum;
 
     use fil_actor_datacap::{Actor, Method};
-    use fil_actors_runtime::cbor::serialize;
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_shared::error::ExitCode;
 
     #[test]
@@ -213,7 +216,10 @@ mod destroy {
         expect_abort_contains_message(
             ExitCode::USR_FORBIDDEN,
             "caller address",
-            rt.call::<Actor>(Method::Destroy as MethodNum, &serialize(&params, "params").unwrap()),
+            rt.call::<Actor>(
+                Method::Destroy as MethodNum,
+                Some(IpldBlock::serialize_cbor(&params).unwrap()),
+            ),
         );
 
         // Destroying from 0 allowance having governor works

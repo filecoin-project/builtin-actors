@@ -40,10 +40,11 @@ use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, ActorContext, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR,
-    CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
-    STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    actor_error, decode_params, ActorContext, ActorDowncast, ActorError, AsActorError,
+    BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 pub use monies::*;
 pub use partition_state::*;
 pub use policy::*;
@@ -132,10 +133,8 @@ pub const ERR_BALANCE_INVARIANTS_BROKEN: ExitCode = ExitCode::new(1000);
 pub struct Actor;
 
 impl Actor {
-    pub fn constructor(
-        rt: &mut impl Runtime,
-        params: MinerConstructorParams,
-    ) -> Result<(), ActorError> {
+    pub fn constructor(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
+        let params: MinerConstructorParams = decode_params!(args);
         rt.validate_immediate_caller_is(std::iter::once(&INIT_ACTOR_ADDR))?;
 
         check_control_addresses(rt.policy(), &params.control_addresses)?;
@@ -202,7 +201,11 @@ impl Actor {
         Ok(())
     }
 
-    fn control_addresses(rt: &mut impl Runtime) -> Result<GetControlAddressesReturn, ActorError> {
+    fn control_addresses(
+        rt: &mut impl Runtime,
+        _args: Option<IpldBlock>,
+    ) -> Result<GetControlAddressesReturn, ActorError> {
+        // TODO: NO_PARAMS
         rt.validate_immediate_caller_accept_any()?;
         let state: State = rt.state()?;
         let info = get_miner_info(rt.store(), &state)?;
@@ -218,8 +221,9 @@ impl Actor {
     /// A worker change will be scheduled if the worker passed in the params is different from the existing worker.
     fn change_worker_address(
         rt: &mut impl Runtime,
-        params: ChangeWorkerAddressParams,
+        args: Option<IpldBlock>,
     ) -> Result<(), ActorError> {
+        let params: ChangeWorkerAddressParams = decode_params!(args);
         check_control_addresses(rt.policy(), &params.new_control_addresses)?;
 
         let new_worker = resolve_worker_address(rt, params.new_worker)?;
@@ -257,7 +261,11 @@ impl Actor {
     }
 
     /// Triggers a worker address change if a change has been requested and its effective epoch has arrived.
-    fn confirm_update_worker_key(rt: &mut impl Runtime) -> Result<(), ActorError> {
+    fn confirm_update_worker_key(
+        rt: &mut impl Runtime,
+        _args: Option<IpldBlock>,
+    ) -> Result<(), ActorError> {
+        // TODO: NO_PARAMS
         rt.transaction(|state: &mut State, rt| {
             let mut info = get_miner_info(rt.store(), state)?;
 
@@ -274,7 +282,11 @@ impl Actor {
     /// current owner address, revokes any existing proposal.
     /// If invoked by the previously proposed address, with the same proposal, changes the current owner address to be
     /// that proposed address.
-    fn change_owner_address(rt: &mut impl Runtime, new_address: Address) -> Result<(), ActorError> {
+    fn change_owner_address(
+        rt: &mut impl Runtime,
+        args: Option<IpldBlock>,
+    ) -> Result<(), ActorError> {
+        let new_address: Address = decode_params!(args);
         // * Cannot match go checking for undef address, does go impl allow this to be
         // * deserialized over the wire? If so, a workaround will be needed
 
@@ -326,7 +338,8 @@ impl Actor {
         })
     }
 
-    fn change_peer_id(rt: &mut impl Runtime, params: ChangePeerIDParams) -> Result<(), ActorError> {
+    fn change_peer_id(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
+        let params: ChangePeerIDParams = decode_params!(args);
         let policy = rt.policy();
         check_peer_info(policy, &params.new_id, &[])?;
 
@@ -349,8 +362,9 @@ impl Actor {
 
     fn change_multiaddresses(
         rt: &mut impl Runtime,
-        params: ChangeMultiaddrsParams,
+        args: Option<IpldBlock>,
     ) -> Result<(), ActorError> {
+        let params: ChangeMultiaddrsParams = decode_params!(args);
         let policy = rt.policy();
         check_peer_info(policy, &[], &params.new_multi_addrs)?;
 
@@ -374,8 +388,9 @@ impl Actor {
     /// Invoked by miner's worker address to submit their fallback post
     fn submit_windowed_post(
         rt: &mut impl Runtime,
-        mut params: SubmitWindowedPoStParams,
+        args: Option<IpldBlock>,
     ) -> Result<(), ActorError> {
+        let mut params: SubmitWindowedPoStParams = decode_params!(args);
         let current_epoch = rt.curr_epoch();
 
         {
@@ -646,8 +661,9 @@ impl Actor {
     /// and precommit state is removed.
     fn prove_commit_aggregate(
         rt: &mut impl Runtime,
-        params: ProveCommitAggregateParams,
+        args: Option<IpldBlock>,
     ) -> Result<(), ActorError> {
+        let params: ProveCommitAggregateParams = decode_params!(args);
         let sector_numbers = params.sector_numbers.validate().map_err(|e| {
             actor_error!(illegal_state, "Failed to validate bitfield for aggregated sectors: {}", e)
         })?;
@@ -823,7 +839,7 @@ impl Actor {
 
     fn prove_replica_updates<RT>(
         rt: &mut RT,
-        params: ProveReplicaUpdatesParams,
+        args: Option<IpldBlock>,
     ) -> Result<BitField, ActorError>
     where
         // + Clone because we messed up and need to keep a copy around between transactions.
@@ -831,6 +847,7 @@ impl Actor {
         RT::Blockstore: Clone,
         RT: Runtime,
     {
+        let params: ProveReplicaUpdatesParams = decode_params!(args);
         // In this entry point, the unsealed CID is computed from deals via the market actor.
         // A future entry point will take the unsealed CID as parameter
         let updates = params
@@ -852,7 +869,7 @@ impl Actor {
 
     fn prove_replica_updates2<RT>(
         rt: &mut RT,
-        params: ProveReplicaUpdatesParams2,
+        args: Option<IpldBlock>,
     ) -> Result<BitField, ActorError>
     where
         // + Clone because we messed up and need to keep a copy around between transactions.
@@ -860,6 +877,7 @@ impl Actor {
         RT::Blockstore: Blockstore + Clone,
         RT: Runtime,
     {
+        let params: ProveReplicaUpdatesParams2 = decode_params!(args);
         let updates = params
             .updates
             .into_iter()
@@ -1342,8 +1360,9 @@ impl Actor {
 
     fn dispute_windowed_post(
         rt: &mut impl Runtime,
-        params: DisputeWindowedPoStParams,
+        args: Option<IpldBlock>,
     ) -> Result<(), ActorError> {
+        let params: DisputeWindowedPoStParams = decode_params!(args);
         rt.validate_immediate_caller_type(CALLER_TYPES_SIGNABLE.iter())?;
         let reporter = rt.message().caller();
 
@@ -1535,8 +1554,7 @@ impl Actor {
 
         request_update_power(rt, power_delta)?;
         if !to_reward.is_zero() {
-            if let Err(e) = rt.send(&reporter, METHOD_SEND, RawBytes::default(), to_reward.clone())
-            {
+            if let Err(e) = rt.send(&reporter, METHOD_SEND, None, to_reward.clone()) {
                 error!("failed to send reward: {}", e);
                 to_burn += to_reward;
             }
@@ -1552,12 +1570,10 @@ impl Actor {
 
     /// Pledges to seal and commit a single sector.
     /// See PreCommitSectorBatch for details.
-    fn pre_commit_sector(
-        rt: &mut impl Runtime,
-        params: PreCommitSectorParams,
-    ) -> Result<(), ActorError> {
+    fn pre_commit_sector(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
+        let params: PreCommitSectorParams = decode_params!(args);
         let batch_params = PreCommitSectorBatchParams { sectors: vec![params] };
-        Self::pre_commit_sector_batch(rt, batch_params)
+        Self::pre_commit_sector_batch(rt, Some(IpldBlock::serialize_cbor(&batch_params)?))
     }
 
     /// Pledges the miner to seal and commit some new sectors.
@@ -1570,8 +1586,9 @@ impl Actor {
     /// sector in state and waits for it to be proven or expire.
     fn pre_commit_sector_batch(
         rt: &mut impl Runtime,
-        params: PreCommitSectorBatchParams,
+        args: Option<IpldBlock>,
     ) -> Result<(), ActorError> {
+        let params: PreCommitSectorBatchParams = decode_params!(args);
         let sectors = params
             .sectors
             .into_iter()
@@ -1607,8 +1624,9 @@ impl Actor {
     /// sector in state and waits for it to be proven or expire.
     fn pre_commit_sector_batch2(
         rt: &mut impl Runtime,
-        params: PreCommitSectorBatchParams2,
+        args: Option<IpldBlock>,
     ) -> Result<(), ActorError> {
+        let params: PreCommitSectorBatchParams2 = decode_params!(args);
         Self::pre_commit_sector_batch_inner(
             rt,
             params
@@ -1894,8 +1912,9 @@ impl Actor {
     /// If valid, the power actor will call ConfirmSectorProofsValid at the end of the same epoch as this message.
     fn prove_commit_sector(
         rt: &mut impl Runtime,
-        params: ProveCommitSectorParams,
+        args: Option<IpldBlock>,
     ) -> Result<(), ActorError> {
+        let params: ProveCommitSectorParams = decode_params!(args);
         rt.validate_immediate_caller_accept_any()?;
 
         if params.sector_number > MAX_SECTOR_NUMBER {
@@ -1969,7 +1988,7 @@ impl Actor {
         rt.send(
             &STORAGE_POWER_ACTOR_ADDR,
             ext::power::SUBMIT_POREP_FOR_BULK_VERIFY_METHOD,
-            RawBytes::serialize(&svi)?,
+            Some(IpldBlock::serialize_cbor(&svi)?),
             TokenAmount::zero(),
         )?;
 
@@ -1978,8 +1997,9 @@ impl Actor {
 
     fn confirm_sector_proofs_valid(
         rt: &mut impl Runtime,
-        params: ConfirmSectorProofsParams,
+        args: Option<IpldBlock>,
     ) -> Result<(), ActorError> {
+        let params: ConfirmSectorProofsParams = decode_params!(args);
         rt.validate_immediate_caller_is(iter::once(&STORAGE_POWER_ACTOR_ADDR))?;
 
         // This should be enforced by the power actor. We log here just in case
@@ -2012,8 +2032,9 @@ impl Actor {
 
     fn check_sector_proven(
         rt: &mut impl Runtime,
-        params: CheckSectorProvenParams,
+        args: Option<IpldBlock>,
     ) -> Result<(), ActorError> {
+        let params: CheckSectorProvenParams = decode_params!(args);
         rt.validate_immediate_caller_accept_any()?;
 
         if params.sector_number > MAX_SECTOR_NUMBER {
@@ -2040,8 +2061,9 @@ impl Actor {
     /// This method is legacy and should be replaced with calls to extend_sector_expiration2
     fn extend_sector_expiration(
         rt: &mut impl Runtime,
-        params: ExtendSectorExpirationParams,
+        args: Option<IpldBlock>,
     ) -> Result<(), ActorError> {
+        let params: ExtendSectorExpirationParams = decode_params!(args);
         let extend_expiration_inner =
             validate_legacy_extension_declarations(&params.extensions, rt.policy())?;
         Self::extend_sector_expiration_inner(
@@ -2056,8 +2078,9 @@ impl Actor {
     // or claims are dropped.  Power only changes when claims are dropped.
     fn extend_sector_expiration2(
         rt: &mut impl Runtime,
-        params: ExtendSectorExpiration2Params,
+        args: Option<IpldBlock>,
     ) -> Result<(), ActorError> {
+        let params: ExtendSectorExpiration2Params = decode_params!(args);
         let extend_expiration_inner = validate_extension_declarations(rt, params.extensions)?;
         Self::extend_sector_expiration_inner(
             rt,
@@ -2290,8 +2313,9 @@ impl Actor {
     /// next batch of sectors.
     fn terminate_sectors(
         rt: &mut impl Runtime,
-        params: TerminateSectorsParams,
+        args: Option<IpldBlock>,
     ) -> Result<TerminateSectorsReturn, ActorError> {
+        let params: TerminateSectorsParams = decode_params!(args);
         // Note: this cannot terminate pre-committed but un-proven sectors.
         // They must be allowed to expire (and deposit burnt).
 
@@ -2441,10 +2465,8 @@ impl Actor {
         Ok(TerminateSectorsReturn { done: !more })
     }
 
-    fn declare_faults(
-        rt: &mut impl Runtime,
-        params: DeclareFaultsParams,
-    ) -> Result<(), ActorError> {
+    fn declare_faults(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
+        let params: DeclareFaultsParams = decode_params!(args);
         {
             let policy = rt.policy();
             if params.faults.len() as u64 > policy.declarations_max {
@@ -2582,8 +2604,9 @@ impl Actor {
 
     fn declare_faults_recovered(
         rt: &mut impl Runtime,
-        params: DeclareFaultsRecoveredParams,
+        args: Option<IpldBlock>,
     ) -> Result<(), ActorError> {
+        let params: DeclareFaultsRecoveredParams = decode_params!(args);
         {
             let policy = rt.policy();
             if params.recoveries.len() as u64 > policy.declarations_max {
@@ -2723,8 +2746,9 @@ impl Actor {
     /// May not be invoked if the deadline has any un-processed early terminations.
     fn compact_partitions(
         rt: &mut impl Runtime,
-        params: CompactPartitionsParams,
+        args: Option<IpldBlock>,
     ) -> Result<(), ActorError> {
+        let params: CompactPartitionsParams = decode_params!(args);
         {
             let policy = rt.policy();
             if params.deadline >= policy.wpost_period_deadlines {
@@ -2860,8 +2884,9 @@ impl Actor {
     /// 99 can be masked out to collapse these two ranges into one.
     fn compact_sector_numbers(
         rt: &mut impl Runtime,
-        params: CompactSectorNumbersParams,
+        args: Option<IpldBlock>,
     ) -> Result<(), ActorError> {
+        let params: CompactSectorNumbersParams = decode_params!(args);
         let mask_sector_numbers = params
             .mask_sector_numbers
             .validate()
@@ -2898,7 +2923,8 @@ impl Actor {
     }
 
     /// Locks up some amount of a the miner's unlocked balance (including funds received alongside the invoking message).
-    fn apply_rewards(rt: &mut impl Runtime, params: ApplyRewardParams) -> Result<(), ActorError> {
+    fn apply_rewards(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
+        let params: ApplyRewardParams = decode_params!(args);
         if params.reward.is_negative() {
             return Err(actor_error!(
                 illegal_argument,
@@ -2977,8 +3003,9 @@ impl Actor {
 
     fn report_consensus_fault(
         rt: &mut impl Runtime,
-        params: ReportConsensusFaultParams,
+        args: Option<IpldBlock>,
     ) -> Result<(), ActorError> {
+        let params: ReportConsensusFaultParams = decode_params!(args);
         // Note: only the first report of any fault is processed because it sets the
         // ConsensusFaultElapsed state variable to an epoch after the fault, and reports prior to
         // that epoch are no longer valid
@@ -3066,7 +3093,7 @@ impl Actor {
             Ok((burn_amount, reward_amount))
         })?;
 
-        if let Err(e) = rt.send(&reporter, METHOD_SEND, RawBytes::default(), reward_amount) {
+        if let Err(e) = rt.send(&reporter, METHOD_SEND, None, reward_amount) {
             error!("failed to send reward: {}", e);
         }
 
@@ -3080,8 +3107,9 @@ impl Actor {
 
     fn withdraw_balance(
         rt: &mut impl Runtime,
-        params: WithdrawBalanceParams,
+        args: Option<IpldBlock>,
     ) -> Result<WithdrawBalanceReturn, ActorError> {
+        let params: WithdrawBalanceParams = decode_params!(args);
         if params.amount_requested.is_negative() {
             return Err(actor_error!(
                 illegal_argument,
@@ -3165,7 +3193,7 @@ impl Actor {
             })?;
 
         if amount_withdrawn.is_positive() {
-            rt.send(&info.beneficiary, METHOD_SEND, RawBytes::default(), amount_withdrawn.clone())?;
+            rt.send(&info.beneficiary, METHOD_SEND, None, amount_withdrawn.clone())?;
         }
 
         burn_funds(rt, fee_to_burn)?;
@@ -3181,8 +3209,9 @@ impl Actor {
     //// See FIP-0029, https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0029.md
     fn change_beneficiary(
         rt: &mut impl Runtime,
-        params: ChangeBeneficiaryParams,
+        args: Option<IpldBlock>,
     ) -> Result<(), ActorError> {
+        let params: ChangeBeneficiaryParams = decode_params!(args);
         rt.validate_immediate_caller_accept_any()?;
         let caller = rt.message().caller();
         let new_beneficiary =
@@ -3309,7 +3338,11 @@ impl Actor {
     // GetBeneficiary retrieves the currently active and proposed beneficiary information.
     // This method is for use by other actors (such as those acting as beneficiaries),
     // and to abstract the state representation for clients.
-    fn get_beneficiary(rt: &mut impl Runtime) -> Result<GetBeneficiaryReturn, ActorError> {
+    fn get_beneficiary(
+        rt: &mut impl Runtime,
+        _args: Option<IpldBlock>,
+    ) -> Result<GetBeneficiaryReturn, ActorError> {
+        // TODO: NO_PARAMS
         rt.validate_immediate_caller_accept_any()?;
         let info = rt.transaction(|state: &mut State, rt| get_miner_info(rt.store(), state))?;
 
@@ -3322,7 +3355,8 @@ impl Actor {
         })
     }
 
-    fn repay_debt(rt: &mut impl Runtime) -> Result<(), ActorError> {
+    fn repay_debt(rt: &mut impl Runtime, _args: Option<IpldBlock>) -> Result<(), ActorError> {
+        // TODO: NO_PARAMS
         let (from_vesting, from_balance, state) = rt.transaction(|state: &mut State, rt| {
             let info = get_miner_info(rt.store(), state)?;
             rt.validate_immediate_caller_is(
@@ -3353,8 +3387,9 @@ impl Actor {
 
     fn on_deferred_cron_event(
         rt: &mut impl Runtime,
-        params: DeferredCronEventParams,
+        args: Option<IpldBlock>,
     ) -> Result<(), ActorError> {
+        let params: DeferredCronEventParams = decode_params!(args);
         rt.validate_immediate_caller_is(std::iter::once(&STORAGE_POWER_ACTOR_ADDR))?;
 
         let payload: CronEventPayload = from_slice(&params.event_payload).map_err(|e| {
@@ -3417,10 +3452,11 @@ pub struct ReplicaUpdateInner {
 }
 
 enum ExtensionKind {
-    ExtendCommittmentLegacy, // handle only legacy sectors
-    ExtendCommittment,       // handle both Simple QAP and legacy sectors
-                             // TODO: when landing https://github.com/filecoin-project/builtin-actors/pull/518
-                             // ExtendProofValidity
+    ExtendCommittmentLegacy,
+    // handle only legacy sectors
+    ExtendCommittment, // handle both Simple QAP and legacy sectors
+                       // TODO: when landing https://github.com/filecoin-project/builtin-actors/pull/518
+                       // ExtendProofValidity
 }
 
 // ExtendSectorExpiration param
@@ -3636,18 +3672,19 @@ fn extend_simple_qap_sector(
         let old_duration = sector.expiration - sector.activation;
         let deal_space = &sector.deal_weight / old_duration;
         let old_verified_deal_space = &sector.verified_deal_weight / old_duration;
-        let (expected_verified_deal_space, new_verified_deal_space) =
-            match claim_space_by_sector.get(&sector.sector_number) {
-                None => {
-                    return Err(actor_error!(
+        let (expected_verified_deal_space, new_verified_deal_space) = match claim_space_by_sector
+            .get(&sector.sector_number)
+        {
+            None => {
+                return Err(actor_error!(
                         illegal_argument,
                         "claim missing from declaration for sector {} with non-zero verified deal weight {}",
                         sector.sector_number,
                         &sector.verified_deal_weight
-                    ))
-                }
-                Some(space) => space,
-            };
+                    ));
+            }
+            Some(space) => space,
+        };
         // claims must be completely accounted for
         if BigInt::from(*expected_verified_deal_space as i64) != old_verified_deal_space {
             return Err(actor_error!(illegal_argument, "declared verified deal space in claims ({}) does not match verified deal space ({}) for sector {}", expected_verified_deal_space, old_verified_deal_space, sector.sector_number));
@@ -4020,8 +4057,10 @@ fn enroll_cron_event(
     cb: CronEventPayload,
 ) -> Result<(), ActorError> {
     let payload = serialize(&cb, "cron payload")?;
-    let ser_params =
-        serialize(&ext::power::EnrollCronEventParams { event_epoch, payload }, "cron params")?;
+    let ser_params = Some(IpldBlock::serialize_cbor(&ext::power::EnrollCronEventParams {
+        event_epoch,
+        payload,
+    })?);
     rt.send(
         &STORAGE_POWER_ACTOR_ADDR,
         ext::power::ENROLL_CRON_EVENT_METHOD,
@@ -4042,10 +4081,10 @@ fn request_update_power(rt: &mut impl Runtime, delta: PowerPair) -> Result<(), A
     rt.send(
         &STORAGE_POWER_ACTOR_ADDR,
         ext::power::UPDATE_CLAIMED_POWER_METHOD,
-        RawBytes::serialize(ext::power::UpdateClaimedPowerParams {
+        Some(IpldBlock::serialize_cbor(&ext::power::UpdateClaimedPowerParams {
             raw_byte_delta: delta.raw,
             quality_adjusted_delta: delta.qa,
-        })?,
+        })?),
         TokenAmount::zero(),
     )
     .map_err(|e| e.wrap(format!("failed to update power with {:?}", delta_clone)))?;
@@ -4064,10 +4103,10 @@ fn request_terminate_deals(
         rt.send(
             &STORAGE_MARKET_ACTOR_ADDR,
             ext::market::ON_MINER_SECTORS_TERMINATE_METHOD,
-            RawBytes::serialize(ext::market::OnMinerSectorsTerminateParamsRef {
+            Some(IpldBlock::serialize_cbor(&ext::market::OnMinerSectorsTerminateParamsRef {
                 epoch,
                 deal_ids: chunk,
-            })?,
+            })?),
             TokenAmount::zero(),
         )?;
     }
@@ -4198,7 +4237,9 @@ fn request_deal_data(
     let serialized = rt.send(
         &STORAGE_MARKET_ACTOR_ADDR,
         ext::market::VERIFY_DEALS_FOR_ACTIVATION_METHOD,
-        RawBytes::serialize(ext::market::VerifyDealsForActivationParamsRef { sectors })?,
+        Some(IpldBlock::serialize_cbor(&ext::market::VerifyDealsForActivationParamsRef {
+            sectors,
+        })?),
         TokenAmount::zero(),
     )?;
 
@@ -4289,7 +4330,7 @@ fn resolve_worker_address(rt: &mut impl Runtime, raw: Address) -> Result<Address
         let ret = rt.send(
             &Address::new_id(resolved),
             ext::account::PUBKEY_ADDRESS_METHOD,
-            RawBytes::default(),
+            None,
             TokenAmount::zero(),
         )?;
         let pub_key: Address = deserialize(&ret, "address response")?;
@@ -4308,7 +4349,7 @@ fn resolve_worker_address(rt: &mut impl Runtime, raw: Address) -> Result<Address
 fn burn_funds(rt: &mut impl Runtime, amount: TokenAmount) -> Result<(), ActorError> {
     log::debug!("storage provder {} burning {}", rt.message().receiver(), amount);
     if amount.is_positive() {
-        rt.send(&BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, RawBytes::default(), amount)?;
+        rt.send(&BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, None, amount)?;
     }
     Ok(())
 }
@@ -4321,7 +4362,7 @@ fn notify_pledge_changed(
         rt.send(
             &STORAGE_POWER_ACTOR_ADDR,
             ext::power::UPDATE_PLEDGE_TOTAL_METHOD,
-            RawBytes::serialize(pledge_delta)?,
+            Some(IpldBlock::serialize_cbor(pledge_delta)?),
             TokenAmount::zero(),
         )?;
     }
@@ -4339,7 +4380,7 @@ fn get_claims(
     let ret_raw = rt.send(
         &VERIFIED_REGISTRY_ACTOR_ADDR,
         ext::verifreg::GET_CLAIMS_METHOD as u64,
-        serialize(&params, "get claims parameters")?,
+        Some(IpldBlock::serialize_cbor(&params)?),
         TokenAmount::zero(),
     )?;
     let claims_ret: ext::verifreg::GetClaimsReturn = deserialize(&ret_raw, "get claims return")?;
@@ -4792,7 +4833,10 @@ fn activate_deals_and_claim_allocations(
     let activate_raw = rt.send(
         &STORAGE_MARKET_ACTOR_ADDR,
         ext::market::ACTIVATE_DEALS_METHOD,
-        RawBytes::serialize(ext::market::ActivateDealsParams { deal_ids, sector_expiry })?,
+        Some(IpldBlock::serialize_cbor(&ext::market::ActivateDealsParams {
+            deal_ids,
+            sector_expiry,
+        })?),
         TokenAmount::zero(),
     );
     let activate_res: ext::market::ActivateDealsResult = match activate_raw {
@@ -4826,10 +4870,10 @@ fn activate_deals_and_claim_allocations(
     let claim_raw = rt.send(
         &VERIFIED_REGISTRY_ACTOR_ADDR,
         ext::verifreg::CLAIM_ALLOCATIONS_METHOD,
-        RawBytes::serialize(ext::verifreg::ClaimAllocationsParams {
+        Some(IpldBlock::serialize_cbor(&ext::verifreg::ClaimAllocationsParams {
             sectors: sector_claims,
             all_or_nothing: true,
-        })?,
+        })?),
         TokenAmount::zero(),
     );
     let claim_res: ext::verifreg::ClaimAllocationsReturn = match claim_raw {
@@ -4857,7 +4901,7 @@ impl ActorCode for Actor {
     fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
-        params: &RawBytes,
+        args: Option<IpldBlock>,
     ) -> Result<RawBytes, ActorError>
     where
         RT: Runtime,
@@ -4865,131 +4909,131 @@ impl ActorCode for Actor {
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
-                Self::constructor(rt, cbor::deserialize_params(params)?)?;
+                Self::constructor(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ControlAddresses) => {
-                let res = Self::control_addresses(rt)?;
+                let res = Self::control_addresses(rt, args)?;
                 Ok(RawBytes::serialize(&res)?)
             }
             Some(Method::ChangeWorkerAddress) => {
-                Self::change_worker_address(rt, cbor::deserialize_params(params)?)?;
+                Self::change_worker_address(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ChangePeerID) => {
-                Self::change_peer_id(rt, cbor::deserialize_params(params)?)?;
+                Self::change_peer_id(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::SubmitWindowedPoSt) => {
-                Self::submit_windowed_post(rt, cbor::deserialize_params(params)?)?;
+                Self::submit_windowed_post(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::PreCommitSector) => {
-                Self::pre_commit_sector(rt, cbor::deserialize_params(params)?)?;
+                Self::pre_commit_sector(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ProveCommitSector) => {
-                Self::prove_commit_sector(rt, cbor::deserialize_params(params)?)?;
+                Self::prove_commit_sector(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ExtendSectorExpiration) => {
-                Self::extend_sector_expiration(rt, cbor::deserialize_params(params)?)?;
+                Self::extend_sector_expiration(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::TerminateSectors) => {
-                let ret = Self::terminate_sectors(rt, cbor::deserialize_params(params)?)?;
+                let ret = Self::terminate_sectors(rt, args)?;
                 Ok(RawBytes::serialize(ret)?)
             }
             Some(Method::DeclareFaults) => {
-                Self::declare_faults(rt, cbor::deserialize_params(params)?)?;
+                Self::declare_faults(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::DeclareFaultsRecovered) => {
-                Self::declare_faults_recovered(rt, cbor::deserialize_params(params)?)?;
+                Self::declare_faults_recovered(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::OnDeferredCronEvent) => {
-                Self::on_deferred_cron_event(rt, cbor::deserialize_params(params)?)?;
+                Self::on_deferred_cron_event(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::CheckSectorProven) => {
-                Self::check_sector_proven(rt, cbor::deserialize_params(params)?)?;
+                Self::check_sector_proven(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ApplyRewards) => {
-                Self::apply_rewards(rt, cbor::deserialize_params(params)?)?;
+                Self::apply_rewards(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ReportConsensusFault) => {
-                Self::report_consensus_fault(rt, cbor::deserialize_params(params)?)?;
+                Self::report_consensus_fault(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::WithdrawBalance) => {
-                let res = Self::withdraw_balance(rt, cbor::deserialize_params(params)?)?;
+                let res = Self::withdraw_balance(rt, args)?;
                 Ok(RawBytes::serialize(&res)?)
             }
             Some(Method::ConfirmSectorProofsValid) => {
-                Self::confirm_sector_proofs_valid(rt, cbor::deserialize_params(params)?)?;
+                Self::confirm_sector_proofs_valid(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ChangeMultiaddrs) => {
-                Self::change_multiaddresses(rt, cbor::deserialize_params(params)?)?;
+                Self::change_multiaddresses(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::CompactPartitions) => {
-                Self::compact_partitions(rt, cbor::deserialize_params(params)?)?;
+                Self::compact_partitions(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::CompactSectorNumbers) => {
-                Self::compact_sector_numbers(rt, cbor::deserialize_params(params)?)?;
+                Self::compact_sector_numbers(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ConfirmUpdateWorkerKey) => {
-                Self::confirm_update_worker_key(rt)?;
+                Self::confirm_update_worker_key(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::RepayDebt) => {
-                Self::repay_debt(rt)?;
+                Self::repay_debt(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ChangeOwnerAddress) => {
-                Self::change_owner_address(rt, cbor::deserialize_params(params)?)?;
+                Self::change_owner_address(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::DisputeWindowedPoSt) => {
-                Self::dispute_windowed_post(rt, cbor::deserialize_params(params)?)?;
+                Self::dispute_windowed_post(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::PreCommitSectorBatch) => {
-                Self::pre_commit_sector_batch(rt, cbor::deserialize_params(params)?)?;
+                Self::pre_commit_sector_batch(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ProveCommitAggregate) => {
-                Self::prove_commit_aggregate(rt, cbor::deserialize_params(params)?)?;
+                Self::prove_commit_aggregate(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ProveReplicaUpdates) => {
-                let res = Self::prove_replica_updates(rt, cbor::deserialize_params(params)?)?;
+                let res = Self::prove_replica_updates(rt, args)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::PreCommitSectorBatch2) => {
-                Self::pre_commit_sector_batch2(rt, cbor::deserialize_params(params)?)?;
+                Self::pre_commit_sector_batch2(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ProveReplicaUpdates2) => {
-                let res = Self::prove_replica_updates2(rt, cbor::deserialize_params(params)?)?;
+                let res = Self::prove_replica_updates2(rt, args)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::ChangeBeneficiary) => {
-                Self::change_beneficiary(rt, cbor::deserialize_params(params)?)?;
+                Self::change_beneficiary(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::GetBeneficiary) => {
-                let res = Self::get_beneficiary(rt)?;
+                let res = Self::get_beneficiary(rt, args)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::ExtendSectorExpiration2) => {
-                Self::extend_sector_expiration2(rt, cbor::deserialize_params(params)?)?;
+                Self::extend_sector_expiration2(rt, args)?;
                 Ok(RawBytes::default())
             }
             None => Err(actor_error!(unhandled_message, "Invalid method")),

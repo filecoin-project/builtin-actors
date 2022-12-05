@@ -10,7 +10,7 @@ use fil_actors_runtime::test_utils::{
     MINER_ACTOR_CODE_ID,
 };
 use fil_actors_runtime::EPOCHS_IN_DAY;
-use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
@@ -179,7 +179,7 @@ fn fail_when_caller_is_not_a_storage_miner_actor() {
         ExitCode::USR_FORBIDDEN,
         rt.call::<MarketActor>(
             Method::VerifyDealsForActivation as u64,
-            &RawBytes::serialize(params).unwrap(),
+            Some(IpldBlock::serialize_cbor(&params).unwrap()),
         ),
     );
 
@@ -204,7 +204,7 @@ fn fail_when_deal_proposal_is_not_found() {
         ExitCode::USR_NOT_FOUND,
         rt.call::<MarketActor>(
             Method::VerifyDealsForActivation as u64,
-            &RawBytes::serialize(params).unwrap(),
+            Some(IpldBlock::serialize_cbor(&params).unwrap()),
         ),
     );
 
@@ -232,7 +232,7 @@ fn fail_when_caller_is_not_the_provider() {
         ExitCode::USR_FORBIDDEN,
         rt.call::<MarketActor>(
             Method::VerifyDealsForActivation as u64,
-            &RawBytes::serialize(params).unwrap(),
+            Some(IpldBlock::serialize_cbor(&params).unwrap()),
         ),
     );
 
@@ -261,7 +261,7 @@ fn fail_when_current_epoch_is_greater_than_proposal_start_epoch() {
         ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MarketActor>(
             Method::VerifyDealsForActivation as u64,
-            &RawBytes::serialize(params).unwrap(),
+            Some(IpldBlock::serialize_cbor(&params).unwrap()),
         ),
     );
 
@@ -289,7 +289,7 @@ fn fail_when_deal_end_epoch_is_greater_than_sector_expiration() {
         ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MarketActor>(
             Method::VerifyDealsForActivation as u64,
-            &RawBytes::serialize(params).unwrap(),
+            Some(IpldBlock::serialize_cbor(&params).unwrap()),
         ),
     );
 
@@ -318,7 +318,7 @@ fn fail_when_the_same_deal_id_is_passed_multiple_times() {
         "multiple times",
         rt.call::<MarketActor>(
             Method::VerifyDealsForActivation as u64,
-            &RawBytes::serialize(params).unwrap(),
+            Some(IpldBlock::serialize_cbor(&params).unwrap()),
         ),
     );
 

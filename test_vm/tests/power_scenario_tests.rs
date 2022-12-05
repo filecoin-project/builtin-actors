@@ -5,7 +5,6 @@ use fil_actor_miner::{
 };
 use fil_actor_power::{CreateMinerParams, Method as PowerMethod};
 use fil_actor_reward::Method as RewardMethod;
-use fil_actors_runtime::cbor::serialize;
 
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::make_sealed_cid;
@@ -16,6 +15,7 @@ use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::address::Address;
 
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof};
 use fvm_shared::METHOD_SEND;
@@ -63,7 +63,7 @@ fn create_miner_test() {
         // send to power actor
         to: STORAGE_POWER_ACTOR_ADDR,
         method: PowerMethod::CreateMiner as u64,
-        params: Some(serialize(&params, "power create miner params").unwrap()),
+        params: Some(Some(IpldBlock::serialize_cbor(&params).unwrap())),
         ret: Some(res.ret),
         subinvocs: Some(vec![
             // request init actor construct miner
@@ -74,21 +74,17 @@ fn create_miner_test() {
                     // init then calls miner constructor
                     to: Address::new_id(FIRST_TEST_USER_ADDR + 1),
                     method: MinerMethod::Constructor as u64,
-                    params: Some(
-                        serialize(
-                            &MinerConstructorParams {
-                                owner,
-                                worker: owner,
-                                window_post_proof_type:
-                                    RegisteredPoStProof::StackedDRGWindow32GiBV1,
-                                peer_id,
-                                control_addresses: vec![],
-                                multi_addresses: multiaddrs,
-                            },
-                            "miner constructor params",
-                        )
+                    params: Some(Some(
+                        IpldBlock::serialize_cbor(&MinerConstructorParams {
+                            owner,
+                            worker: owner,
+                            window_post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1,
+                            peer_id,
+                            control_addresses: vec![],
+                            multi_addresses: multiaddrs,
+                        })
                         .unwrap(),
-                    ),
+                    )),
                     ..Default::default()
                 }]),
                 ..Default::default()

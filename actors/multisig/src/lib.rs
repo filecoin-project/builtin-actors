@@ -15,9 +15,10 @@ use num_traits::{FromPrimitive, Zero};
 use fil_actors_runtime::cbor::serialize_vec;
 use fil_actors_runtime::runtime::{builtins::Type, ActorCode, Primitives, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, make_empty_map, make_map_with_root, resolve_to_actor_id, ActorContext,
-    ActorError, AsActorError, Map, INIT_ACTOR_ADDR,
+    actor_error, decode_params, make_empty_map, make_map_with_root, resolve_to_actor_id,
+    ActorContext, ActorError, AsActorError, Map, INIT_ACTOR_ADDR,
 };
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 
 pub use self::state::*;
 pub use self::types::*;
@@ -47,9 +48,11 @@ pub enum Method {
 
 /// Multisig Actor
 pub struct Actor;
+
 impl Actor {
     /// Constructor for Multisig actor
-    pub fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
+    pub fn constructor(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
+        let params: ConstructorParams = decode_params!(args);
         rt.validate_immediate_caller_is(std::iter::once(&INIT_ACTOR_ADDR))?;
 
         if params.signers.is_empty() {
@@ -120,8 +123,9 @@ impl Actor {
     /// Multisig actor propose function
     pub fn propose(
         rt: &mut impl Runtime,
-        params: ProposeParams,
+        args: Option<IpldBlock>,
     ) -> Result<ProposeReturn, ActorError> {
+        let params: ProposeParams = decode_params!(args);
         rt.validate_immediate_caller_type(&[Type::Account, Type::Multisig])?;
         let proposer: Address = rt.message().caller();
 
@@ -173,8 +177,9 @@ impl Actor {
     /// Multisig actor approve function
     pub fn approve(
         rt: &mut impl Runtime,
-        params: TxnIDParams,
+        args: Option<IpldBlock>,
     ) -> Result<ApproveReturn, ActorError> {
+        let params: TxnIDParams = decode_params!(args);
         rt.validate_immediate_caller_type(&[Type::Account, Type::Multisig])?;
         let approver: Address = rt.message().caller();
 
@@ -206,7 +211,8 @@ impl Actor {
     }
 
     /// Multisig actor cancel function
-    pub fn cancel(rt: &mut impl Runtime, params: TxnIDParams) -> Result<(), ActorError> {
+    pub fn cancel(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
+        let params: TxnIDParams = decode_params!(args);
         rt.validate_immediate_caller_type(&[Type::Account, Type::Multisig])?;
         let caller_addr: Address = rt.message().caller();
 
@@ -251,7 +257,8 @@ impl Actor {
     }
 
     /// Multisig actor function to add signers to multisig
-    pub fn add_signer(rt: &mut impl Runtime, params: AddSignerParams) -> Result<(), ActorError> {
+    pub fn add_signer(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
+        let params: AddSignerParams = decode_params!(args);
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
         let resolved_new_signer = resolve_to_actor_id(rt, &params.signer)?;
@@ -279,10 +286,8 @@ impl Actor {
     }
 
     /// Multisig actor function to remove signers to multisig
-    pub fn remove_signer(
-        rt: &mut impl Runtime,
-        params: RemoveSignerParams,
-    ) -> Result<(), ActorError> {
+    pub fn remove_signer(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
+        let params: RemoveSignerParams = decode_params!(args);
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
         let resolved_old_signer = resolve_to_actor_id(rt, &params.signer)?;
@@ -329,7 +334,8 @@ impl Actor {
     }
 
     /// Multisig actor function to swap signers to multisig
-    pub fn swap_signer(rt: &mut impl Runtime, params: SwapSignerParams) -> Result<(), ActorError> {
+    pub fn swap_signer(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
+        let params: SwapSignerParams = decode_params!(args);
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
         let from_resolved = resolve_to_actor_id(rt, &params.from)?;
@@ -360,8 +366,9 @@ impl Actor {
     /// Multisig actor function to change number of approvals needed
     pub fn change_num_approvals_threshold(
         rt: &mut impl Runtime,
-        params: ChangeNumApprovalsThresholdParams,
+        args: Option<IpldBlock>,
     ) -> Result<(), ActorError> {
+        let params: ChangeNumApprovalsThresholdParams = decode_params!(args);
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
 
@@ -380,10 +387,8 @@ impl Actor {
     }
 
     /// Multisig actor function to change number of approvals needed
-    pub fn lock_balance(
-        rt: &mut impl Runtime,
-        params: LockBalanceParams,
-    ) -> Result<(), ActorError> {
+    pub fn lock_balance(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
+        let params: LockBalanceParams = decode_params!(args);
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
 
@@ -449,8 +454,9 @@ impl Actor {
     // Always succeeds, accepting any transfers.
     pub fn universal_receiver_hook(
         rt: &mut impl Runtime,
-        _params: &RawBytes,
+        _args: Option<IpldBlock>,
     ) -> Result<(), ActorError> {
+        // TODO: NO_PARAMS
         rt.validate_immediate_caller_accept_any()?;
         Ok(())
     }
@@ -469,7 +475,7 @@ fn execute_transaction_if_approved(
     if threshold_met {
         st.check_available(rt.current_balance(), &txn.value, rt.curr_epoch())?;
 
-        match rt.send(&txn.to, txn.method, txn.params.clone(), txn.value.clone()) {
+        match rt.send(&txn.to, txn.method, txn.params.clone().into(), txn.value.clone()) {
             Ok(ser) => {
                 out = ser;
             }
@@ -551,50 +557,50 @@ impl ActorCode for Actor {
     fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
-        params: &RawBytes,
+        args: Option<IpldBlock>,
     ) -> Result<RawBytes, ActorError>
     where
         RT: Runtime,
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
-                Self::constructor(rt, cbor::deserialize_params(params)?)?;
+                Self::constructor(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::Propose) => {
-                let res = Self::propose(rt, cbor::deserialize_params(params)?)?;
+                let res = Self::propose(rt, args)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::Approve) => {
-                let res = Self::approve(rt, cbor::deserialize_params(params)?)?;
+                let res = Self::approve(rt, args)?;
                 Ok(RawBytes::serialize(res)?)
             }
             Some(Method::Cancel) => {
-                Self::cancel(rt, cbor::deserialize_params(params)?)?;
+                Self::cancel(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::AddSigner) => {
-                Self::add_signer(rt, cbor::deserialize_params(params)?)?;
+                Self::add_signer(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::RemoveSigner) => {
-                Self::remove_signer(rt, cbor::deserialize_params(params)?)?;
+                Self::remove_signer(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::SwapSigner) => {
-                Self::swap_signer(rt, cbor::deserialize_params(params)?)?;
+                Self::swap_signer(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::ChangeNumApprovalsThreshold) => {
-                Self::change_num_approvals_threshold(rt, cbor::deserialize_params(params)?)?;
+                Self::change_num_approvals_threshold(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::LockBalance) => {
-                Self::lock_balance(rt, cbor::deserialize_params(params)?)?;
+                Self::lock_balance(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::UniversalReceiverHook) => {
-                Self::universal_receiver_hook(rt, params)?;
+                Self::universal_receiver_hook(rt, args)?;
                 Ok(RawBytes::default())
             }
             None => Err(actor_error!(unhandled_message, "Invalid method")),

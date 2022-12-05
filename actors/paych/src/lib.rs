@@ -4,12 +4,13 @@
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, resolve_to_actor_id, ActorDowncast, ActorError, Array,
+    actor_error, decode_params, resolve_to_actor_id, ActorDowncast, ActorError, Array, AsActorError,
 };
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::{RawBytes, DAG_CBOR};
 use fvm_shared::address::Address;
 
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
@@ -42,9 +43,11 @@ pub const ERR_CHANNEL_STATE_UPDATE_AFTER_SETTLED: ExitCode = ExitCode::new(32);
 
 /// Payment Channel actor
 pub struct Actor;
+
 impl Actor {
     /// Constructor for Payment channel actor
-    pub fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
+    pub fn constructor(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
+        let params: ConstructorParams = decode_params!(args);
         // Only InitActor can create a payment channel actor. It creates the actor on
         // behalf of the payer/payee.
         rt.validate_immediate_caller_type(std::iter::once(&Type::Init))?;
@@ -89,8 +92,9 @@ impl Actor {
 
     pub fn update_channel_state(
         rt: &mut impl Runtime,
-        params: UpdateChannelStateParams,
+        args: Option<IpldBlock>,
     ) -> Result<(), ActorError> {
+        let params: UpdateChannelStateParams = decode_params!(args);
         let st: State = rt.state()?;
 
         rt.validate_immediate_caller_is([st.from, st.to].iter())?;
@@ -159,8 +163,14 @@ impl Actor {
         }
 
         if let Some(extra) = &sv.extra {
-            rt.send(&extra.actor, extra.method, extra.data.clone(), TokenAmount::zero())
-                .map_err(|e| e.wrap("spend voucher verification failed"))?;
+            // TODO: Is this the best way to handle this?
+            rt.send(
+                &extra.actor,
+                extra.method,
+                Some(IpldBlock { codec: DAG_CBOR, data: extra.data.to_vec() }),
+                TokenAmount::zero(),
+            )
+            .map_err(|e| e.wrap("spend voucher verification failed"))?;
         }
 
         rt.transaction(|st: &mut State, rt| {
@@ -262,7 +272,8 @@ impl Actor {
         })
     }
 
-    pub fn settle(rt: &mut impl Runtime) -> Result<(), ActorError> {
+    pub fn settle(rt: &mut impl Runtime, _args: Option<IpldBlock>) -> Result<(), ActorError> {
+        // TODO: NO_PARAMS
         rt.transaction(|st: &mut State, rt| {
             rt.validate_immediate_caller_is([st.from, st.to].iter())?;
 
@@ -279,7 +290,8 @@ impl Actor {
         })
     }
 
-    pub fn collect(rt: &mut impl Runtime) -> Result<(), ActorError> {
+    pub fn collect(rt: &mut impl Runtime, _args: Option<IpldBlock>) -> Result<(), ActorError> {
+        // TODO: NO_PARAMS
         let st: State = rt.state()?;
         rt.validate_immediate_caller_is(&[st.from, st.to])?;
 
@@ -288,7 +300,7 @@ impl Actor {
         }
 
         // send ToSend to `to`
-        rt.send(&st.to, METHOD_SEND, RawBytes::default(), st.to_send)
+        rt.send(&st.to, METHOD_SEND, None, st.to_send)
             .map_err(|e| e.wrap("Failed to send funds to `to` address"))?;
 
         // the remaining balance will be returned to "From" upon deletion.
@@ -319,26 +331,26 @@ impl ActorCode for Actor {
     fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
-        params: &RawBytes,
+        args: Option<IpldBlock>,
     ) -> Result<RawBytes, ActorError>
     where
         RT: Runtime,
     {
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
-                Self::constructor(rt, cbor::deserialize_params(params)?)?;
+                Self::constructor(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::UpdateChannelState) => {
-                Self::update_channel_state(rt, cbor::deserialize_params(params)?)?;
+                Self::update_channel_state(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::Settle) => {
-                Self::settle(rt)?;
+                Self::settle(rt, args)?;
                 Ok(RawBytes::default())
             }
             Some(Method::Collect) => {
-                Self::collect(rt)?;
+                Self::collect(rt, args)?;
                 Ok(RawBytes::default())
             }
             _ => Err(actor_error!(unhandled_message; "Invalid method")),

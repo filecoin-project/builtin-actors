@@ -8,12 +8,13 @@ use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::*;
-use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::deal::DealID;
 use fvm_shared::error::ExitCode;
 
 mod harness;
+
 use harness::*;
 
 // Converted from https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1274
@@ -135,6 +136,7 @@ fn terminate_valid_deals_along_with_just_expired_deal() {
     assert_deals_not_terminated(&mut rt, &[deal3]);
     check_state(&rt);
 }
+
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1346
 #[test]
 fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
@@ -308,7 +310,7 @@ fn fail_when_caller_is_not_a_storage_miner_actor() {
         ExitCode::USR_FORBIDDEN,
         rt.call::<MarketActor>(
             Method::OnMinerSectorsTerminate as u64,
-            &RawBytes::serialize(params).unwrap(),
+            Some(IpldBlock::serialize_cbor(&params).unwrap()),
         )
         .unwrap_err()
         .exit_code()

@@ -2,7 +2,8 @@ use anyhow::{anyhow, Error};
 use cid::multihash::Code;
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::{CborStore, RawBytes, DAG_CBOR};
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::{Cbor, CborStore, RawBytes, DAG_CBOR};
 use fvm_sdk as fvm;
 use fvm_sdk::NO_DATA_BLOCK_ID;
 use fvm_shared::address::Address;
@@ -282,7 +283,7 @@ where
         &self,
         to: &Address,
         method: MethodNum,
-        params: RawBytes,
+        params: Option<IpldBlock>,
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError> {
         if self.in_transaction {
@@ -557,14 +558,14 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
 
     let method = fvm::message::method_number();
     log::debug!("fetching parameters block: {}", params);
-    let params = fvm::message::params_raw(params).expect("params block invalid").1;
-    let params = RawBytes::new(params);
-    log::debug!("input params: {:x?}", params.bytes());
+    let params = fvm::message::params_raw(params).expect("params block invalid");
+    // let params = RawBytes::new(params);
+    // log::debug!("input params: {:x?}", params.bytes());
 
     // Construct a new runtime.
     let mut rt = FvmRuntime::default();
     // Invoke the method, aborting if the actor returns an errored exit code.
-    let ret = C::invoke_method(&mut rt, method, &params)
+    let ret = C::invoke_method(&mut rt, method, params)
         .unwrap_or_else(|err| fvm::vm::abort(err.exit_code().value(), Some(err.msg())));
 
     // Abort with "assertion failed" if the actor failed to validate the caller somewhere.
