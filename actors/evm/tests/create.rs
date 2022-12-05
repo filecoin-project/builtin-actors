@@ -129,7 +129,7 @@ fn test_create() {
         rt.expect_send(
             EAM_ACTOR_ADDR,
             CREATE2_METHOD_NUM,
-            RawBytes::serialize(create2_params.clone()).unwrap(),
+            RawBytes::serialize(create2_params).unwrap(),
             TokenAmount::from_atto(1),
             RawBytes::serialize(fake_ret).unwrap(),
             ExitCode::OK,
