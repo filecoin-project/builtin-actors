@@ -854,7 +854,7 @@ pub fn verifreg_add_verifier(v: &VM, verifier: Address, data_cap: StoragePower) 
             params: Some(serialize(&add_verifier_params, "verifreg add verifier params").unwrap()),
             subinvocs: Some(vec![ExpectInvocation {
                 to: DATACAP_TOKEN_ACTOR_ADDR,
-                method: DataCapMethod::BalanceOf as u64,
+                method: DataCapMethod::BalanceOfExported as u64,
                 params: Some(serialize(&verifier, "balance of params").unwrap()),
                 code: Some(ExitCode::OK),
                 ..Default::default()
@@ -882,7 +882,7 @@ pub fn verifreg_add_client(v: &VM, verifier: Address, client: Address, allowance
         method: VerifregMethod::AddVerifiedClient as u64,
         subinvocs: Some(vec![ExpectInvocation {
             to: DATACAP_TOKEN_ACTOR_ADDR,
-            method: DataCapMethod::Mint as u64,
+            method: DataCapMethod::MintExported as u64,
             params: Some(
                 serialize(
                     &MintParams {
@@ -949,7 +949,7 @@ pub fn verifreg_remove_expired_allocations(
         method: VerifregMethod::RemoveExpiredAllocations as u64,
         subinvocs: Some(vec![ExpectInvocation {
             to: DATACAP_TOKEN_ACTOR_ADDR,
-            method: DataCapMethod::Transfer as u64,
+            method: DataCapMethod::TransferExported as u64,
             code: Some(ExitCode::OK),
             params: Some(
                 serialize(
@@ -975,7 +975,7 @@ pub fn datacap_get_balance(v: &VM, address: Address) -> TokenAmount {
         address,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::BalanceOf as u64,
+        DataCapMethod::BalanceOfExported as u64,
         address,
     );
     deserialize(&ret, "balance of return value").unwrap()
@@ -1006,13 +1006,13 @@ pub fn datacap_extend_claim(
         client,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::Transfer as u64,
+        DataCapMethod::TransferExported as u64,
         transfer_params,
     );
 
     ExpectInvocation {
         to: DATACAP_TOKEN_ACTOR_ADDR,
-        method: DataCapMethod::Transfer as u64,
+        method: DataCapMethod::TransferExported as u64,
         subinvocs: Some(vec![ExpectInvocation {
             to: VERIFIED_REGISTRY_ACTOR_ADDR,
             method: VerifregMethod::UniversalReceiverHook as u64,
@@ -1040,7 +1040,7 @@ pub fn datacap_extend_claim(
             ),
             subinvocs: Some(vec![ExpectInvocation {
                 to: DATACAP_TOKEN_ACTOR_ADDR,
-                method: DataCapMethod::Burn as u64,
+                method: DataCapMethod::BurnExported as u64,
                 code: Some(ExitCode::OK),
                 params: Some(
                     serialize(&BurnParams { amount: token_amount }, "burn params").unwrap(),
@@ -1153,7 +1153,7 @@ pub fn market_publish_deal(
         };
         expect_publish_invocs.push(ExpectInvocation {
             to: DATACAP_TOKEN_ACTOR_ADDR,
-            method: DataCapMethod::TransferFrom as u64,
+            method: DataCapMethod::TransferFromExported as u64,
             params: Some(
                 RawBytes::serialize(&TransferFromParams {
                     from: deal_client,

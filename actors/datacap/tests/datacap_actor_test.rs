@@ -34,9 +34,7 @@ mod mint {
 
     use fil_actor_datacap::{Actor, Method, MintParams, INFINITE_ALLOWANCE};
     use fil_actors_runtime::cbor::serialize;
-    use fil_actors_runtime::test_utils::{
-        expect_abort_contains_message, make_identity_cid, MARKET_ACTOR_CODE_ID,
-    };
+    use fil_actors_runtime::test_utils::{expect_abort_contains_message, MARKET_ACTOR_CODE_ID};
     use fil_actors_runtime::{STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
     use fvm_ipld_encoding::RawBytes;
     use std::ops::Sub;
@@ -65,21 +63,6 @@ mod mint {
     }
 
     #[test]
-    fn requires_builtin_caller() {
-        let (mut rt, h) = make_harness();
-        let amt = TokenAmount::from_whole(1);
-        let params = MintParams { to: *ALICE, amount: amt, operators: vec![] };
-
-        rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1000));
-        expect_abort_contains_message(
-            ExitCode::USR_FORBIDDEN,
-            "must be built-in",
-            rt.call::<Actor>(Method::Mint as MethodNum, &serialize(&params, "params").unwrap()),
-        );
-        h.check_state(&rt);
-    }
-
-    #[test]
     fn requires_verifreg_caller() {
         let (mut rt, h) = make_harness();
         let amt = TokenAmount::from_whole(1);
@@ -90,7 +73,10 @@ mod mint {
         expect_abort_contains_message(
             ExitCode::USR_FORBIDDEN,
             "caller address",
-            rt.call::<Actor>(Method::Mint as MethodNum, &serialize(&params, "params").unwrap()),
+            rt.call::<Actor>(
+                Method::MintExported as MethodNum,
+                &serialize(&params, "params").unwrap(),
+            ),
         );
         h.check_state(&rt);
     }
@@ -206,32 +192,14 @@ mod transfer {
 mod destroy {
     use crate::{make_harness, ALICE, BOB};
     use fil_actor_datacap::DestroyParams;
-    use fil_actors_runtime::test_utils::{
-        expect_abort_contains_message, make_identity_cid, ACCOUNT_ACTOR_CODE_ID,
-    };
+    use fil_actors_runtime::test_utils::{expect_abort_contains_message, ACCOUNT_ACTOR_CODE_ID};
     use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
-    use fvm_shared::address::Address;
     use fvm_shared::econ::TokenAmount;
     use fvm_shared::MethodNum;
 
     use fil_actor_datacap::{Actor, Method};
     use fil_actors_runtime::cbor::serialize;
     use fvm_shared::error::ExitCode;
-
-    #[test]
-    fn requires_builtin_caller() {
-        let (mut rt, h) = make_harness();
-        let amt = TokenAmount::from_whole(1);
-        let params = DestroyParams { owner: *ALICE, amount: amt };
-
-        rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1000));
-        expect_abort_contains_message(
-            ExitCode::USR_FORBIDDEN,
-            "must be built-in",
-            rt.call::<Actor>(Method::Destroy as MethodNum, &serialize(&params, "params").unwrap()),
-        );
-        h.check_state(&rt);
-    }
 
     #[test]
     fn only_governor_allowed() {
@@ -248,7 +216,10 @@ mod destroy {
         expect_abort_contains_message(
             ExitCode::USR_FORBIDDEN,
             "caller address",
-            rt.call::<Actor>(Method::Destroy as MethodNum, &serialize(&params, "params").unwrap()),
+            rt.call::<Actor>(
+                Method::DestroyExported as MethodNum,
+                &serialize(&params, "params").unwrap(),
+            ),
         );
 
         // Destroying from 0 allowance having governor works

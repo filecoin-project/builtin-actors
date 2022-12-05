@@ -93,8 +93,10 @@ impl Harness {
 
         let params = MintParams { to: *to, amount: amount.clone(), operators };
         rt.set_caller(*VERIFREG_ACTOR_CODE_ID, VERIFIED_REGISTRY_ACTOR_ADDR);
-        let ret =
-            rt.call::<DataCapActor>(Method::Mint as MethodNum, &serialize(&params, "params")?)?;
+        let ret = rt.call::<DataCapActor>(
+            Method::MintExported as MethodNum,
+            &serialize(&params, "params")?,
+        )?;
 
         rt.verify();
         Ok(ret.deserialize().unwrap())
@@ -111,8 +113,10 @@ impl Harness {
         let params = DestroyParams { owner: *owner, amount: amount.clone() };
 
         rt.set_caller(*VERIFREG_ACTOR_CODE_ID, VERIFIED_REGISTRY_ACTOR_ADDR);
-        let ret =
-            rt.call::<DataCapActor>(Method::Destroy as MethodNum, &serialize(&params, "params")?)?;
+        let ret = rt.call::<DataCapActor>(
+            Method::DestroyExported as MethodNum,
+            &serialize(&params, "params")?,
+        )?;
 
         rt.verify();
         Ok(ret.deserialize().unwrap())
@@ -155,8 +159,10 @@ impl Harness {
         );
 
         let params = TransferParams { to: *to, amount: amount.clone(), operator_data };
-        let ret =
-            rt.call::<DataCapActor>(Method::Transfer as MethodNum, &serialize(&params, "params")?)?;
+        let ret = rt.call::<DataCapActor>(
+            Method::TransferExported as MethodNum,
+            &serialize(&params, "params")?,
+        )?;
 
         rt.verify();
         Ok(ret.deserialize().unwrap())
@@ -202,7 +208,7 @@ impl Harness {
         let params =
             TransferFromParams { to: *to, from: *from, amount: amount.clone(), operator_data };
         let ret = rt.call::<DataCapActor>(
-            Method::TransferFrom as MethodNum,
+            Method::TransferFromExported as MethodNum,
             &serialize(&params, "params")?,
         )?;
 
