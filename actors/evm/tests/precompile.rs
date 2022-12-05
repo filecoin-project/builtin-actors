@@ -44,6 +44,7 @@ fn test_precompile_hash() {
     // invoke contract
     let contract_params = vec![0u8; 32];
 
+    rt.expect_gas_available(10_000_000_000u64);
     let result = util::invoke_contract(&mut rt, &contract_params);
     let expected =
         hex_literal::hex!("ace8597929092c14bd028ede7b07727875788c7e130278b5afed41940d965aba");

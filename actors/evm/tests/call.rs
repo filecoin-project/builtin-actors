@@ -89,6 +89,7 @@ fn test_call() {
     let mut return_data = vec![0u8; 32];
     return_data[31] = 0x42;
 
+    rt.expect_gas_available(10_000_000_000u64);
     rt.expect_send(
         f4_target,
         evm::Method::InvokeContract as u64,
@@ -157,6 +158,7 @@ fn test_call_convert_to_send() {
         let mut return_data = vec![0u8; 32];
         return_data[31] = 0x42;
 
+        rt.expect_gas_available(10_000_000_000u64);
         rt.expect_send(
             target,
             METHOD_SEND,
@@ -295,6 +297,7 @@ fn test_callactor_inner(exit_code: ExitCode) {
     let mut return_data = vec![0u8; 32];
     return_data[31] = 0x42;
 
+    rt.expect_gas_available(10_000_000_000u64);
     rt.expect_send(
         target,
         0x42,
