@@ -72,7 +72,7 @@ pub enum Method {
     NameExported = frc42_dispatch::method_hash!("Name"),
     SymbolExported = frc42_dispatch::method_hash!("Symbol"),
     TotalSupplyExported = frc42_dispatch::method_hash!("TotalSupply"),
-    BalanceOfExported = frc42_dispatch::method_hash!("BalanceOf"),
+    BalanceExported = frc42_dispatch::method_hash!("Balance"),
     TransferExported = frc42_dispatch::method_hash!("Transfer"),
     TransferFromExported = frc42_dispatch::method_hash!("TransferFrom"),
     IncreaseAllowanceExported = frc42_dispatch::method_hash!("IncreaseAllowance"),
@@ -117,7 +117,7 @@ impl Actor {
         Ok(token.total_supply())
     }
 
-    pub fn balance_of(rt: &mut impl Runtime, address: Address) -> Result<TokenAmount, ActorError> {
+    pub fn balance(rt: &mut impl Runtime, address: Address) -> Result<TokenAmount, ActorError> {
         // NOTE: mutability and method caller here are awkward for a read-only call
         rt.validate_immediate_caller_accept_any()?;
         let mut st: State = rt.state()?;
@@ -494,8 +494,8 @@ impl ActorCode for Actor {
                 let ret = Self::total_supply(rt, cbor::deserialize_params(params)?)?;
                 serialize(&ret, "total_supply result")
             }
-            Some(Method::BalanceOfExported) => {
-                let ret = Self::balance_of(rt, cbor::deserialize_params(params)?)?;
+            Some(Method::BalanceExported) => {
+                let ret = Self::balance(rt, cbor::deserialize_params(params)?)?;
                 serialize(&ret, "balance_of result")
             }
             Some(Method::TransferExported) => {

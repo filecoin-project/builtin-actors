@@ -854,7 +854,7 @@ pub fn verifreg_add_verifier(v: &VM, verifier: Address, data_cap: StoragePower) 
             params: Some(serialize(&add_verifier_params, "verifreg add verifier params").unwrap()),
             subinvocs: Some(vec![ExpectInvocation {
                 to: DATACAP_TOKEN_ACTOR_ADDR,
-                method: DataCapMethod::BalanceOfExported as u64,
+                method: DataCapMethod::BalanceExported as u64,
                 params: Some(serialize(&verifier, "balance of params").unwrap()),
                 code: Some(ExitCode::OK),
                 ..Default::default()
@@ -975,7 +975,7 @@ pub fn datacap_get_balance(v: &VM, address: Address) -> TokenAmount {
         address,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::BalanceOfExported as u64,
+        DataCapMethod::BalanceExported as u64,
         address,
     );
     deserialize(&ret, "balance of return value").unwrap()

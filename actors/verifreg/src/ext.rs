@@ -10,7 +10,7 @@ pub mod datacap {
     pub enum Method {
         Mint = frc42_dispatch::method_hash!("Mint"),
         Destroy = frc42_dispatch::method_hash!("Destroy"),
-        BalanceOf = frc42_dispatch::method_hash!("BalanceOf"),
+        Balance = frc42_dispatch::method_hash!("Balance"),
         Transfer = frc42_dispatch::method_hash!("Transfer"),
         Burn = frc42_dispatch::method_hash!("Burn"),
     }

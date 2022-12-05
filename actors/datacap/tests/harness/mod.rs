@@ -222,8 +222,18 @@ impl Harness {
     }
 
     // Reads a balance from state directly.
-    pub fn get_balance(&self, rt: &MockRuntime, address: &Address) -> TokenAmount {
-        rt.get_state::<State>().token.get_balance(rt.store(), address.id().unwrap()).unwrap()
+    pub fn get_balance(&self, rt: &mut MockRuntime, address: &Address) -> TokenAmount {
+        rt.expect_validate_caller_any();
+        let ret = rt
+            .call::<DataCapActor>(
+                Method::BalanceExported as MethodNum,
+                &serialize(&address, "params").unwrap(),
+            )
+            .unwrap()
+            .deserialize()
+            .unwrap();
+        rt.verify();
+        ret
     }
 
     // Reads allowance from state directly

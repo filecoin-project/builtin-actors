@@ -334,7 +334,7 @@ fn expect_remove_datacap(params: &RemoveDataCapParams) -> ExpectInvocation {
         subinvocs: Some(vec![
             ExpectInvocation {
                 to: DATACAP_TOKEN_ACTOR_ADDR,
-                method: DataCapMethod::BalanceOfExported as u64,
+                method: DataCapMethod::BalanceExported as u64,
                 params: Some(
                     serialize(&params.verified_client_to_remove, "balance_of params").unwrap(),
                 ),
