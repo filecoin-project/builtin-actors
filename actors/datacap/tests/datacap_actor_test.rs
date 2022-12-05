@@ -16,7 +16,10 @@ lazy_static! {
 
 mod construction {
     use crate::*;
+    use fil_actor_datacap::{Actor, GranularityReturn, Method, DATACAP_GRANULARITY};
     use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
+    use fvm_ipld_encoding::RawBytes;
+    use fvm_shared::MethodNum;
 
     #[test]
     fn construct_with_verified() {
@@ -24,6 +27,15 @@ mod construction {
         let h = Harness { governor: VERIFIED_REGISTRY_ACTOR_ADDR };
         h.construct_and_verify(&mut rt, &h.governor);
         h.check_state(&rt);
+
+        rt.expect_validate_caller_any();
+        let ret: GranularityReturn = rt
+            .call::<Actor>(Method::GranularityExported as MethodNum, &RawBytes::default())
+            .unwrap()
+            .deserialize()
+            .unwrap();
+        rt.verify();
+        assert_eq!(ret.granularity, DATACAP_GRANULARITY)
     }
 }
 

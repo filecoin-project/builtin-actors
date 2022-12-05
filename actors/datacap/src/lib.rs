@@ -71,6 +71,7 @@ pub enum Method {
     DestroyExported = frc42_dispatch::method_hash!("Destroy"),
     NameExported = frc42_dispatch::method_hash!("Name"),
     SymbolExported = frc42_dispatch::method_hash!("Symbol"),
+    GranularityExported = frc42_dispatch::method_hash!("GranularityExported"),
     TotalSupplyExported = frc42_dispatch::method_hash!("TotalSupply"),
     BalanceExported = frc42_dispatch::method_hash!("Balance"),
     TransferExported = frc42_dispatch::method_hash!("Transfer"),
@@ -107,6 +108,11 @@ impl Actor {
     pub fn symbol(rt: &mut impl Runtime) -> Result<String, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         Ok("DCAP".to_string())
+    }
+
+    pub fn granularity(rt: &mut impl Runtime) -> Result<GranularityReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        Ok(GranularityReturn { granularity: DATACAP_GRANULARITY })
     }
 
     pub fn total_supply(rt: &mut impl Runtime, _: ()) -> Result<TokenAmount, ActorError> {
@@ -489,6 +495,10 @@ impl ActorCode for Actor {
             Some(Method::SymbolExported) => {
                 let ret = Self::symbol(rt)?;
                 serialize(&ret, "symbol result")
+            }
+            Some(Method::GranularityExported) => {
+                let ret = Self::granularity(rt)?;
+                serialize(&ret, "granularity result")
             }
             Some(Method::TotalSupplyExported) => {
                 let ret = Self::total_supply(rt, cbor::deserialize_params(params)?)?;
