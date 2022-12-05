@@ -2,7 +2,7 @@ use std::{borrow::Cow, convert::TryInto, marker::PhantomData, slice::ChunksExact
 
 use super::{StatusCode, System, U256};
 
-use fil_actors_runtime::runtime::Runtime;
+use fil_actors_runtime::runtime::{builtins::Type, Runtime};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::{
     address::Address,
@@ -31,6 +31,19 @@ pub fn assert_zero_bytes<const S: usize>(src: &[u8]) -> Result<(), PrecompileErr
     } else {
         Ok(())
     }
+}
+
+#[repr(u32)]
+pub enum BuiltinType {
+    NonExistent = 0,
+    // user actors are flattened to "system"
+    /// System includes any singletons not otherwise defined.
+    System = 1,
+    Embryo = 2,
+    Account = 3,
+    StorageProvider = 4,
+    EVMActor = 5,
+    OtherBuiltin = 6,
 }
 
 struct Parameter<T>(pub T);
@@ -292,7 +305,7 @@ const fn gen_precompiles<RT: Runtime>() -> [PrecompileFn<RT>; 14] {
         // FIL precompiles
         resolve_address,    // lookup_address 0x0a
         lookup_address,     // resolve_address 0x0b
-        get_actor_code_cid, // get code cid 0x0c
+        get_actor_type,     // get actor type 0x0c
         get_randomness,     // rand 0x0d
         call_actor,         // call_actor 0x0e
     }
@@ -336,16 +349,49 @@ fn read_right_pad<'a>(input: impl Into<Cow<'a, [u8]>>, len: usize) -> Cow<'a, [u
 
 // --- Precompiles ---
 
-/// Read right padded BE encoded low u64 ID address from a u256 word
-/// returns encoded CID or an empty array if actor not found
-fn get_actor_code_cid<RT: Runtime>(
+/// Read right padded BE encoded low u64 ID address from a u256 word.
+/// Returns variant of [`BuiltinType`] encoded as a u256 word.
+fn get_actor_type<RT: Runtime>(
     system: &mut System<RT>,
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
     let id_bytes: [u8; 32] = read_right_pad(input, 32).as_ref().try_into().unwrap();
     let id = Parameter::<u64>::try_from(&id_bytes)?.0;
-    Ok(system.rt.get_actor_code_cid(&id).unwrap_or_default().to_bytes())
+
+    if id >= 99 {
+        Ok(U256::from(1).to_bytes().to_vec())
+    } else {
+        let builtin_type = system
+            .rt
+            .get_actor_code_cid(&id)
+            .and_then(|cid| system.rt.resolve_builtin_actor_type(&cid));
+
+        let builtin_type = match builtin_type {
+            Some(t) => match t {
+                Type::Account => BuiltinType::Account,
+                Type::System => BuiltinType::System,
+                Type::Embryo => BuiltinType::Embryo,
+                Type::EVM => BuiltinType::EVMActor,
+                // REMOVEME this might be useful to differentiate? though we already have opcodes that do all the calls we need to do for this
+                Type::EAM => BuiltinType::System,
+                Type::Miner => BuiltinType::StorageProvider,
+                // Others
+                Type::PaymentChannel | Type::Multisig => BuiltinType::OtherBuiltin,
+                // Singletons
+                Type::Market
+                | Type::Power
+                | Type::Init
+                | Type::Cron
+                | Type::Reward
+                | Type::VerifiedRegistry
+                | Type::DataCap => BuiltinType::System,
+            },
+            None => BuiltinType::NonExistent,
+        };
+
+        Ok(U256::from(builtin_type as u32).to_bytes().to_vec())
+    }
 }
 
 /// Params:
