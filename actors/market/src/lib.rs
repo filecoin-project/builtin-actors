@@ -879,7 +879,7 @@ impl Actor {
         Ok(GetDealTermReturn { start: found.start_epoch, duration: found.duration() })
     }
 
-    /// Returns the per-epoch price of a deal proposal.
+    /// Returns the total price that will be paid from the client to the provider for this deal.
     fn get_deal_total_price(
         rt: &mut impl Runtime,
         params: GetDealTotalPriceParams,
