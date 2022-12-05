@@ -317,7 +317,7 @@ fn effective_gas_limit<RT: Runtime>(system: &System<RT>, gas: U256) -> Option<u6
     let gas = if gas.is_zero() {
         system.rt.gas_available()
     } else {
-        std::cmp::min(gas.to_u64_saturating(), 10_000_000_000)
+        std::cmp::min(gas.to_u64_saturating(), system.rt.gas_available())
     };
     Some(std::cmp::max((gas * 63) / 64, 1))
 }
