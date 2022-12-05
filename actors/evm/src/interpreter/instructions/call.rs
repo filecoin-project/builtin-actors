@@ -320,7 +320,7 @@ fn effective_gas_limit<RT: Runtime>(system: &System<RT>, gas: U256) -> Option<u6
         let gas = system.rt.gas_available();
         (gas * 63) / 64
     } else {
-        // user has specified a limit himself, we are not going to muck with it.
+        // user has specified a limit thyself, we are not going to muck with it.
         gas.to_u64_saturating()
     })
 }
