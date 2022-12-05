@@ -4,7 +4,6 @@ use evm::interpreter::address::EthAddress;
 use evm::interpreter::instructions::lifecycle::{
     Create2Params, CreateParams, EamReturn, CREATE2_METHOD_NUM, CREATE_METHOD_NUM,
 };
-use evm::interpreter::StatusCode;
 use fil_actor_evm as evm;
 use fil_actors_runtime::EAM_ACTOR_ADDR;
 use fvm_ipld_encoding::RawBytes;
@@ -129,7 +128,7 @@ fn test_create() {
         rt.expect_send(
             EAM_ACTOR_ADDR,
             CREATE2_METHOD_NUM,
-            RawBytes::serialize(create2_params).unwrap(),
+            RawBytes::serialize(create2_params.clone()).unwrap(),
             TokenAmount::from_atto(1),
             RawBytes::serialize(fake_ret).unwrap(),
             ExitCode::OK,
@@ -144,11 +143,8 @@ fn test_create() {
 
     // not enough funds -- create2
     {
-        util::invoke_contract_expect_err(
-            &mut rt,
-            &contract_params,
-            StatusCode::InsufficientBalance,
-        );
+        let result = util::invoke_contract(&mut rt, &contract_params);
+        assert_eq!(&result[..], &[0; 32]);
     }
 
     contract_params[3] = 0x00;
@@ -157,10 +153,7 @@ fn test_create() {
     {
         create_params.nonce += 3;
 
-        util::invoke_contract_expect_err(
-            &mut rt,
-            &contract_params,
-            StatusCode::InsufficientBalance,
-        );
+        let result = util::invoke_contract(&mut rt, &contract_params);
+        assert_eq!(&result[..], &[0; 32]);
     }
 }
