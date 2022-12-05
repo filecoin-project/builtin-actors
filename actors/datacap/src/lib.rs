@@ -69,6 +69,8 @@ pub enum Method {
     Allowance = 21,
     // Method numbers derived from FRC-0042 standards
     NameExported = frc42_dispatch::method_hash!("Name"),
+    MintExported = frc42_dispatch::method_hash!("Mint"),
+    DestroyExported = frc42_dispatch::method_hash!("Destroy"),
     SymbolExported = frc42_dispatch::method_hash!("Symbol"),
     TotalSupplyExported = frc42_dispatch::method_hash!("TotalSupply"),
     BalanceOfExported = frc42_dispatch::method_hash!("BalanceOf"),
@@ -473,11 +475,11 @@ impl ActorCode for Actor {
                 Self::constructor(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::Mint) => {
+            Some(Method::Mint) | Some(Method::MintExported) => {
                 let ret = Self::mint(rt, cbor::deserialize_params(params)?)?;
                 serialize(&ret, "mint result")
             }
-            Some(Method::Destroy) => {
+            Some(Method::Destroy) | Some(Method::DestroyExported) => {
                 let ret = Self::destroy(rt, cbor::deserialize_params(params)?)?;
                 serialize(&ret, "destroy result")
             }
