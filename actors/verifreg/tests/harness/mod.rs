@@ -95,8 +95,8 @@ impl Harness {
         let verifier_resolved = rt.get_id_address(verifier).unwrap_or(*verifier);
         // Expect checking the verifier's token balance.
         rt.expect_send(
-            *DATACAP_TOKEN_ACTOR_ADDR,
-            ext::datacap::Method::BalanceOf as MethodNum,
+            DATACAP_TOKEN_ACTOR_ADDR,
+            ext::datacap::Method::Balance as MethodNum,
             RawBytes::serialize(&verifier_resolved).unwrap(),
             TokenAmount::zero(),
             serialize(&BigIntSer(&(cap * TOKEN_PRECISION)), "").unwrap(),

@@ -112,7 +112,7 @@ impl Actor {
         }
 
         // Disallow existing clients as verifiers.
-        let token_balance = balance_of(rt, &verifier)?;
+        let token_balance = balance(rt, &verifier)?;
         if token_balance.is_positive() {
             return Err(actor_error!(
                 illegal_argument,
@@ -469,7 +469,7 @@ impl Actor {
         })?;
 
         // Burn the client's data cap tokens.
-        let balance = balance_of(rt, &client).context("failed to fetch balance")?;
+        let balance = balance(rt, &client).context("failed to fetch balance")?;
         let burnt = std::cmp::min(balance, params.data_cap_amount_to_remove);
         destroy(rt, &client, &burnt)
             .context(format!("failed to destroy {} from allowance for {}", &burnt, &client))?;
@@ -900,13 +900,13 @@ fn is_verifier(rt: &impl Runtime, st: &State, address: Address) -> Result<bool, 
     Ok(found)
 }
 
-// Invokes BalanceOf on the data cap token actor, and converts the result to whole units of data cap.
-fn balance_of(rt: &mut impl Runtime, owner: &Address) -> Result<DataCap, ActorError> {
+// Invokes Balance on the data cap token actor, and converts the result to whole units of data cap.
+fn balance(rt: &mut impl Runtime, owner: &Address) -> Result<DataCap, ActorError> {
     let params = serialize(owner, "owner address")?;
     let ret = rt
         .send(
             &DATACAP_TOKEN_ACTOR_ADDR,
-            ext::datacap::Method::BalanceOf as u64,
+            ext::datacap::Method::Balance as u64,
             params,
             TokenAmount::zero(),
         )
