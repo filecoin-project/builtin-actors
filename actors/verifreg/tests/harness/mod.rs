@@ -102,7 +102,7 @@ impl Harness {
         // Expect checking the verifier's token balance.
         rt.expect_send(
             DATACAP_TOKEN_ACTOR_ADDR,
-            ext::datacap::Method::BalanceOf as MethodNum,
+            ext::datacap::Method::Balance as MethodNum,
             RawBytes::serialize(&verifier_resolved).unwrap(),
             TokenAmount::zero(),
             serialize(&BigIntSer(&(cap * TOKEN_PRECISION)), "").unwrap(),
