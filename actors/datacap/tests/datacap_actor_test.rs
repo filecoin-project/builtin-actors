@@ -16,7 +16,10 @@ lazy_static! {
 
 mod construction {
     use crate::*;
+    use fil_actor_datacap::{Actor, GranularityReturn, Method, DATACAP_GRANULARITY};
     use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
+    use fvm_ipld_encoding::RawBytes;
+    use fvm_shared::MethodNum;
 
     #[test]
     fn construct_with_verified() {
@@ -24,6 +27,15 @@ mod construction {
         let h = Harness { governor: VERIFIED_REGISTRY_ACTOR_ADDR };
         h.construct_and_verify(&mut rt, &h.governor);
         h.check_state(&rt);
+
+        rt.expect_validate_caller_any();
+        let ret: GranularityReturn = rt
+            .call::<Actor>(Method::GranularityExported as MethodNum, &RawBytes::default())
+            .unwrap()
+            .deserialize()
+            .unwrap();
+        rt.verify();
+        assert_eq!(ret.granularity, DATACAP_GRANULARITY)
     }
 }
 
@@ -53,13 +65,13 @@ mod mint {
         assert_eq!(amt, ret.supply);
         assert_eq!(amt, ret.balance);
         assert_eq!(amt, h.get_supply(&rt));
-        assert_eq!(amt, h.get_balance(&rt, &*ALICE));
+        assert_eq!(amt, h.get_balance(&mut rt, &*ALICE));
 
         let ret = h.mint(&mut rt, &*BOB, &amt, vec![]).unwrap();
         assert_eq!(&amt * 2, ret.supply);
         assert_eq!(amt, ret.balance);
         assert_eq!(&amt * 2, h.get_supply(&rt));
-        assert_eq!(amt, h.get_balance(&rt, &*BOB));
+        assert_eq!(amt, h.get_balance(&mut rt, &*BOB));
 
         h.check_state(&rt);
     }
@@ -90,7 +102,10 @@ mod mint {
         expect_abort_contains_message(
             ExitCode::USR_FORBIDDEN,
             "caller address",
-            rt.call::<Actor>(Method::Mint as MethodNum, &serialize(&params, "params").unwrap()),
+            rt.call::<Actor>(
+                Method::MintExported as MethodNum,
+                &serialize(&params, "params").unwrap(),
+            ),
         );
         h.check_state(&rt);
     }
@@ -248,7 +263,10 @@ mod destroy {
         expect_abort_contains_message(
             ExitCode::USR_FORBIDDEN,
             "caller address",
-            rt.call::<Actor>(Method::Destroy as MethodNum, &serialize(&params, "params").unwrap()),
+            rt.call::<Actor>(
+                Method::DestroyExported as MethodNum,
+                &serialize(&params, "params").unwrap(),
+            ),
         );
 
         // Destroying from 0 allowance having governor works

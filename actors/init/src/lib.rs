@@ -36,10 +36,12 @@ pub enum Method {
     InstallCode = 4,
     // Method numbers derived from FRC-0042 standards
     ExecExported = frc42_dispatch::method_hash!("Exec"),
+    // TODO: Export Exec4
 }
 
 /// Init actor
 pub struct Actor;
+
 impl Actor {
     /// Init actor constructor
     pub fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {

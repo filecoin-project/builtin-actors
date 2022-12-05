@@ -22,3 +22,9 @@ pub struct DestroyParams {
 }
 
 impl Cbor for DestroyParams {}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct GranularityReturn {
+    pub granularity: u64,
+}
