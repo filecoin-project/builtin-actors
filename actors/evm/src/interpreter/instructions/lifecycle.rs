@@ -55,6 +55,9 @@ pub fn create(
     let ExecutionState { stack: _, memory, .. } = state;
 
     let value = TokenAmount::from(&value);
+    if value > system.rt.current_balance() {
+        return Ok(U256::zero());
+    }
     let input_region =
         get_memory_region(memory, offset, size).map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
@@ -85,6 +88,10 @@ pub fn create2(
 
     // see `create()` overall TODOs
     let endowment = TokenAmount::from(&endowment);
+    if endowment > system.rt.current_balance() {
+        return Ok(U256::zero());
+    }
+
     let input_region =
         get_memory_region(memory, offset, size).map_err(|_| StatusCode::InvalidMemoryAccess)?;
 

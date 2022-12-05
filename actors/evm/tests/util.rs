@@ -63,7 +63,7 @@ pub fn invoke_contract(rt: &mut MockRuntime, input_data: &[u8]) -> Vec<u8> {
 }
 
 #[allow(dead_code)]
-pub fn invoke_contract_expect_err(rt: &mut MockRuntime, input_data: &[u8], expect: StatusCode) {
+pub fn invoke_contract_expect_abort(rt: &mut MockRuntime, input_data: &[u8], expect: StatusCode) {
     rt.expect_validate_caller_any();
     let err = rt
         .call::<evm::EvmContractActor>(

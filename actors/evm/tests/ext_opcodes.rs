@@ -196,7 +196,7 @@ native_actor:
     assert_eq!(U256::from_big_endian(&result), U256::from(&bytecode_cid.hash().digest()[..32]));
     rt.reset();
 
-    util::invoke_contract_expect_err(
+    util::invoke_contract_expect_abort(
         &mut rt,
         &util::dispatch_num_word(1),
         evm::interpreter::StatusCode::InvalidArgument(
