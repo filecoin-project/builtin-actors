@@ -364,20 +364,13 @@ impl Actor {
                 // Store verified allocation (if any) in the pending allocation IDs map.
                 // It will be removed when the deal is activated or expires.
                 if valid_deal.proposal.verified_deal {
-                    msm.pending_deal_allocation_ids
-                        .as_mut()
-                        .unwrap()
-                        .set(
-                            deal_id_key(deal_id),
-                            client_allocations
-                                .get_mut(&valid_deal.proposal.client.id().unwrap())
-                                .unwrap()
-                                .remove(0),
-                        )
-                        .context_code(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            "failed to set deal allocation",
-                        )?;
+                    pending_deal_allocation_ids.push((
+                        deal_id_key(deal_id),
+                        client_allocations
+                            .get_mut(&valid_deal.proposal.client.id().unwrap())
+                            .unwrap()
+                            .remove(0),
+                    ));
                 }
 
                 // Randomize the first epoch for when the deal will be processed so an attacker isn't able to
@@ -915,14 +908,10 @@ fn datacap_transfer_request(
 }
 
 // Invokes transfer_from on a data cap token actor.
-fn transfer_from<BS, RT>(
-    rt: &RT,
+fn transfer_from(
+    rt: &mut impl Runtime,
     params: TransferFromParams,
-) -> Result<Vec<AllocationID>, ActorError>
-where
-    BS: Blockstore,
-    RT: Runtime<BS>,
-{
+) -> Result<Vec<AllocationID>, ActorError> {
     let ret = rt
         .send(
             &DATACAP_TOKEN_ACTOR_ADDR,
@@ -935,11 +924,7 @@ where
 }
 
 // Invokes BalanceOf on the data cap token actor.
-fn balance_of<BS, RT>(rt: &RT, owner: &Address) -> Result<TokenAmount, ActorError>
-where
-    BS: Blockstore,
-    RT: Runtime<BS>,
-{
+fn balance_of(rt: &mut impl Runtime, owner: &Address) -> Result<TokenAmount, ActorError> {
     let params = serialize(owner, "owner address")?;
     let ret = rt
         .send(
@@ -949,7 +934,7 @@ where
             TokenAmount::zero(),
         )
         .context(format!("failed to query datacap balance of {}", owner))?;
-    Ok(deserialize(&ret, "balance result")?)
+    datacap_balance_response(&ret)
 }
 
 // Parses allocation IDs from a TransferFromReturn
