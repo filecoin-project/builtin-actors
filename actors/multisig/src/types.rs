@@ -4,7 +4,7 @@
 use std::fmt::Display;
 
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{serde_bytes, Cbor, RawBytes};
+use fvm_ipld_encoding::{serde_bytes, RawBytes};
 use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
 
@@ -96,9 +96,6 @@ pub struct ProposeReturn {
     pub ret: RawBytes,
 }
 
-impl Cbor for ProposeParams {}
-impl Cbor for ProposeReturn {}
-
 /// Parameters for approve and cancel multisig functions.
 #[derive(Clone, PartialEq, Eq, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct TxnIDParams {
@@ -122,9 +119,6 @@ pub struct ApproveReturn {
     pub ret: RawBytes,
 }
 
-impl Cbor for TxnIDParams {}
-impl Cbor for ApproveReturn {}
-
 /// Add signer params.
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct AddSignerParams {
@@ -139,16 +133,12 @@ pub struct RemoveSignerParams {
     pub decrease: bool,
 }
 
-impl Cbor for RemoveSignerParams {}
-
 /// Swap signer multisig method params
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct SwapSignerParams {
     pub from: Address,
     pub to: Address,
 }
-
-impl Cbor for SwapSignerParams {}
 
 /// Propose method call parameters
 #[derive(Serialize_tuple, Deserialize_tuple)]

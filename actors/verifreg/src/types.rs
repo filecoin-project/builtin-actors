@@ -4,7 +4,6 @@
 use cid::Cid;
 use fil_actors_runtime::BatchReturn;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::{bigint_ser, BigInt};
 use fvm_shared::clock::ChainEpoch;
@@ -26,8 +25,6 @@ pub struct VerifierParams {
     pub allowance: DataCap,
 }
 
-impl Cbor for VerifierParams {}
-
 pub type AddVerifierParams = VerifierParams;
 
 pub type AddVerifierClientParams = VerifierParams;
@@ -37,8 +34,6 @@ pub type AddVerifierClientParams = VerifierParams;
 pub type DataCap = StoragePower;
 
 pub const SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP: &[u8] = b"fil_removedatacap:";
-
-impl Cbor for RemoveDataCapParams {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct RemoveDataCapParams {
@@ -54,8 +49,6 @@ pub struct RemoveDataCapRequest {
     pub verifier: Address,
     pub signature: Signature,
 }
-
-impl Cbor for RemoveDataCapReturn {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct RemoveDataCapReturn {
@@ -103,7 +96,6 @@ pub struct RemoveExpiredAllocationsParams {
     // Empty means remove all eligible expired allocations.
     pub allocation_ids: Vec<AllocationID>,
 }
-impl Cbor for RemoveExpiredAllocationsParams {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct RemoveExpiredAllocationsReturn {
@@ -115,7 +107,6 @@ pub struct RemoveExpiredAllocationsReturn {
     #[serde(with = "bigint_ser")]
     pub datacap_recovered: DataCap,
 }
-impl Cbor for RemoveExpiredAllocationsReturn {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorAllocationClaim {
@@ -126,14 +117,12 @@ pub struct SectorAllocationClaim {
     pub sector: SectorNumber,
     pub sector_expiry: ChainEpoch,
 }
-impl Cbor for SectorAllocationClaim {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ClaimAllocationsParams {
     pub sectors: Vec<SectorAllocationClaim>,
     pub all_or_nothing: bool,
 }
-impl Cbor for ClaimAllocationsParams {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ClaimAllocationsReturn {
@@ -142,21 +131,17 @@ pub struct ClaimAllocationsReturn {
     pub claimed_space: BigInt,
 }
 
-impl Cbor for ClaimAllocationsReturn {}
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ClaimTerm {
     pub provider: ActorID,
     pub claim_id: ClaimID,
     pub term_max: ChainEpoch,
 }
-impl Cbor for ClaimTerm {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ExtendClaimTermsParams {
     pub terms: Vec<ClaimTerm>,
 }
-impl Cbor for ExtendClaimTermsParams {}
 
 pub type ExtendClaimTermsReturn = BatchReturn;
 
@@ -175,7 +160,6 @@ pub struct AllocationRequest {
     pub term_max: ChainEpoch,
     pub expiration: ChainEpoch,
 }
-impl Cbor for AllocationRequest {}
 
 // A request to extend the term of an existing claim with datacap tokens.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
@@ -184,7 +168,6 @@ pub struct ClaimExtensionRequest {
     pub claim: ClaimID,
     pub term_max: ChainEpoch,
 }
-impl Cbor for ClaimExtensionRequest {}
 
 /// Operator-data payload for a datacap token transfer receiver hook specifying an allocation.
 /// The implied client is the sender of the datacap.
@@ -193,7 +176,6 @@ pub struct AllocationRequests {
     pub allocations: Vec<AllocationRequest>,
     pub extensions: Vec<ClaimExtensionRequest>,
 }
-impl Cbor for AllocationRequests {}
 
 /// Recipient data payload in response to a datacap token transfer.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
@@ -205,21 +187,18 @@ pub struct AllocationsResponse {
     // IDs of new allocations created.
     pub new_allocations: Vec<AllocationID>,
 }
-impl Cbor for AllocationsResponse {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct GetClaimsParams {
     pub provider: ActorID,
     pub claim_ids: Vec<ClaimID>,
 }
-impl Cbor for GetClaimsParams {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct GetClaimsReturn {
     pub batch_info: BatchReturn,
     pub claims: Vec<Claim>,
 }
-impl Cbor for GetClaimsReturn {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct RemoveExpiredClaimsParams {
@@ -229,7 +208,6 @@ pub struct RemoveExpiredClaimsParams {
     // Empty means remove all eligible expired claims.
     pub claim_ids: Vec<ClaimID>,
 }
-impl Cbor for RemoveExpiredClaimsParams {}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct RemoveExpiredClaimsReturn {
@@ -238,4 +216,3 @@ pub struct RemoveExpiredClaimsReturn {
     // Results for each processed claim.
     pub results: BatchReturn,
 }
-impl Cbor for RemoveExpiredClaimsReturn {}
