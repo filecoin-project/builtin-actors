@@ -42,6 +42,8 @@ pub struct System<'r, RT: Runtime> {
     saved_state_root: Option<Cid>,
     /// Read Only context (staticcall)
     pub readonly: bool,
+    /// Restricted context; implies readonly
+    pub restricted: bool,
 }
 
 impl<'r, RT: Runtime> System<'r, RT> {
@@ -63,11 +65,12 @@ impl<'r, RT: Runtime> System<'r, RT> {
             saved_state_root: None,
             bytecode: None,
             readonly: read_only,
+            restricted: false,
         })
     }
 
     /// Load the actor from state.
-    pub fn load(rt: &'r mut RT) -> Result<Self, ActorError>
+    pub fn load(rt: &'r mut RT, restricted: bool) -> Result<Self, ActorError>
     where
         RT::Blockstore: Clone,
     {
@@ -86,7 +89,8 @@ impl<'r, RT: Runtime> System<'r, RT> {
             nonce: state.nonce,
             saved_state_root: Some(state_root),
             bytecode: Some(state.bytecode),
-            readonly: read_only,
+            readonly: read_only || restricted,
+            restricted,
         })
     }
 
@@ -105,6 +109,10 @@ impl<'r, RT: Runtime> System<'r, RT> {
         params: RawBytes,
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError> {
+        if self.restricted {
+            return Err(ActorError::forbidden("contract invocation is restricted".to_string()));
+        }
+
         self.flush()?;
         let result = self.rt.send(to, method, params, value)?;
         self.reload()?;
@@ -118,6 +126,10 @@ impl<'r, RT: Runtime> System<'r, RT> {
         method: MethodNum,
         params: RawBytes,
     ) -> Result<RawBytes, ActorError> {
+        if self.restricted {
+            return Err(ActorError::forbidden("contract invocation is restricted".to_string()));
+        }
+
         self.flush()?;
         self.rt.send_read_only(to, method, params)
     }
@@ -132,6 +144,10 @@ impl<'r, RT: Runtime> System<'r, RT> {
         gas_limit: Option<u64>,
         read_only: bool,
     ) -> Result<RawBytes, ActorError> {
+        if self.restricted {
+            return Err(ActorError::forbidden("contract invocation is restricted".to_string()));
+        }
+
         self.flush()?;
         let result = self.rt.send_with_gas(to, method, params, value, gas_limit, read_only)?;
         if !read_only {
@@ -144,6 +160,10 @@ impl<'r, RT: Runtime> System<'r, RT> {
     pub fn flush(&mut self) -> Result<(), ActorError> {
         if self.saved_state_root.is_some() {
             return Ok(());
+        }
+
+        if self.restricted {
+            return Err(ActorError::forbidden("contract invocation is restricted".to_string()));
         }
 
         if self.readonly {

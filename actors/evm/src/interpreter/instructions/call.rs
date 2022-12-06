@@ -239,14 +239,16 @@ pub fn call_generic<RT: Runtime>(
                     } else {
                         let method = if !actor_exists
                             || matches!(target_actor_type, Some(Type::Embryo | Type::Account))
-                        // See https://github.com/filecoin-project/ref-fvm/issues/980 for this
-                        // magic value
-                            || (!value.is_zero() && !gas.is_zero() && gas <= U256::from(21_000))
+                            || (!value.is_zero() && gas.is_zero())
                         {
                             // If the target actor doesn't exist or is an account or an embryo,
                             // switch to a basic "send" so the call will still work even if the
                             // target actor would reject a normal ethereum call.
                             METHOD_SEND
+                        } else if !value.is_zero() && !gas.is_zero() && gas <= U256::from(2300) {
+                            // See https://github.com/filecoin-project/ref-fvm/issues/980 for this
+                            // magic value
+                            Method::InvokeContractRestricted as u64
                         } else {
                             // Otherwise, invoke normally.
                             Method::InvokeContract as u64
@@ -314,11 +316,13 @@ pub fn call_generic<RT: Runtime>(
 }
 
 fn effective_gas_limit<RT: Runtime>(system: &System<RT>, gas: U256) -> Option<u64> {
+    // this is the minimum gas stipend for user specified gas values.
+    // it is derived by the obervation that it currently takes about 762K for the empty contract
+    // to execute (representing the EVM load and setup time) and we aim to charge 10gas/ns.
+    // So by default the user has a stipend of some 25us of contract execution time.
+    const GAS_STIPEND: u64 = 1_000_000;
+    let gas = gas.to_u64_saturating();
+    let gas_usr = std::cmp::max(gas, GAS_STIPEND);
     let gas_rsvp = (63 * system.rt.gas_available()) / 64;
-    Some(if gas.is_zero() {
-        gas_rsvp
-    } else {
-        let gas = gas.to_u64_saturating();
-        std::cmp::min(gas, gas_rsvp)
-    })
+    Some(std::cmp::min(gas_usr, gas_rsvp))
 }

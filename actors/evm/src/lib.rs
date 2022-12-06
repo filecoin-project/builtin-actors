@@ -55,6 +55,7 @@ pub enum Method {
     GetBytecode = 3,
     GetStorageAt = 4,
     InvokeContractDelegate = 5,
+    InvokeContractRestricted = 6,
 }
 
 pub struct EvmContractActor;
@@ -135,6 +136,7 @@ impl EvmContractActor {
         rt: &mut RT,
         input_data: &[u8],
         with_code: Option<Cid>,
+        restricted: bool,
     ) -> Result<Vec<u8>, ActorError>
     where
         RT: Runtime,
@@ -146,7 +148,7 @@ impl EvmContractActor {
             rt.validate_immediate_caller_accept_any()?;
         }
 
-        let mut system = System::load(rt).map_err(|e| {
+        let mut system = System::load(rt, restricted).map_err(|e| {
             ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
         })?;
 
@@ -200,7 +202,7 @@ impl EvmContractActor {
         RT::Blockstore: Clone,
     {
         let input = handle_filecoin_method_input(method, codec, params);
-        Self::invoke_contract(rt, &input, None)
+        Self::invoke_contract(rt, &input, None, false)
     }
 
     pub fn bytecode(rt: &mut impl Runtime) -> Result<Cid, ActorError> {
@@ -220,7 +222,7 @@ impl EvmContractActor {
         // access arbitrary storage keys from a contract.
         rt.validate_immediate_caller_is([&Address::new_id(0)])?;
 
-        System::load(rt)?
+        System::load(rt, true)?
             .get_storage(params.storage_key)
             .context_code(ExitCode::USR_ASSERTION_FAILED, "failed to get storage key")
     }
@@ -271,7 +273,7 @@ impl ActorCode for EvmContractActor {
             }
             Some(Method::InvokeContract) => {
                 let BytesDe(params) = params.deserialize()?;
-                let value = Self::invoke_contract(rt, &params, None)?;
+                let value = Self::invoke_contract(rt, &params, None, false)?;
                 Ok(RawBytes::serialize(BytesSer(&value))?)
             }
             Some(Method::GetBytecode) => {
@@ -284,7 +286,12 @@ impl ActorCode for EvmContractActor {
             }
             Some(Method::InvokeContractDelegate) => {
                 let params: DelegateCallParams = cbor::deserialize_params(params)?;
-                let value = Self::invoke_contract(rt, &params.input, Some(params.code))?;
+                let value = Self::invoke_contract(rt, &params.input, Some(params.code), false)?;
+                Ok(RawBytes::serialize(BytesSer(&value))?)
+            }
+            Some(Method::InvokeContractRestricted) => {
+                let BytesDe(params) = params.deserialize()?;
+                let value = Self::invoke_contract(rt, &params, None, true)?;
                 Ok(RawBytes::serialize(BytesSer(&value))?)
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
