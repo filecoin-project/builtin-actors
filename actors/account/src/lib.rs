@@ -1,6 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::crypto::signature::SignatureType::{Secp256k1, BLS};
@@ -12,9 +13,8 @@ use num_traits::FromPrimitive;
 
 use fil_actors_runtime::builtin::singletons::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::ActorDowncast;
-use fil_actors_runtime::{actor_error, decode_params, ActorError, AsActorError};
-use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fil_actors_runtime::{actor_dispatch, ActorDowncast};
+use fil_actors_runtime::{actor_error, ActorError};
 
 use crate::types::AuthenticateMessageParams;
 
@@ -42,9 +42,7 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for Account actor
-    pub fn constructor(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
-        let params: Address = decode_params!(args);
-
+    pub fn constructor(rt: &mut impl Runtime, params: Address) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
         match params.protocol() {
             Protocol::Secp256k1 | Protocol::BLS => {}
@@ -58,11 +56,7 @@ impl Actor {
     }
 
     /// Fetches the pubkey-type address from this actor.
-    pub fn pubkey_address(
-        rt: &mut impl Runtime,
-        _args: Option<IpldBlock>,
-    ) -> Result<Address, ActorError> {
-        // TODO: NO_PARAMS
+    pub fn pubkey_address(rt: &mut impl Runtime) -> Result<Address, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let st: State = rt.state()?;
         Ok(st.address)
@@ -73,10 +67,8 @@ impl Actor {
     /// Errors with USR_ILLEGAL_ARGUMENT if the authentication is invalid.
     pub fn authenticate_message(
         rt: &mut impl Runtime,
-        args: Option<IpldBlock>,
+        params: AuthenticateMessageParams,
     ) -> Result<(), ActorError> {
-        let params: AuthenticateMessageParams = decode_params!(args);
-
         rt.validate_immediate_caller_accept_any()?;
         let st: State = rt.state()?;
         let address = st.address;
@@ -102,41 +94,19 @@ impl Actor {
     // Always succeeds, accepting any transfers.
     pub fn universal_receiver_hook(
         rt: &mut impl Runtime,
-        _args: Option<IpldBlock>,
+        _params: UniversalReceiverParams,
     ) -> Result<(), ActorError> {
-        // TODO: NO_PARAMS
         rt.validate_immediate_caller_accept_any()?;
         Ok(())
     }
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        args: Option<IpldBlock>,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-    {
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(rt, args)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::PubkeyAddress) => {
-                let addr = Self::pubkey_address(rt, args)?;
-                Ok(RawBytes::serialize(addr)?)
-            }
-            Some(Method::AuthenticateMessage) => {
-                Self::authenticate_message(rt, args)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::UniversalReceiverHook) => {
-                Self::universal_receiver_hook(rt, args)?;
-                Ok(RawBytes::default())
-            }
-            None => Err(actor_error!(unhandled_message; "Invalid method")),
-        }
+    type Methods = Method;
+    actor_dispatch! {
+        Constructor => constructor,
+        PubkeyAddress => pubkey_address,
+        AuthenticateMessage => authenticate_message,
+        UniversalReceiverHook => universal_receiver_hook,
     }
 }

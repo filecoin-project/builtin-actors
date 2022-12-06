@@ -3,8 +3,8 @@
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, decode_params, ActorError, AsActorError, BURNT_FUNDS_ACTOR_ADDR,
-    EXPECTED_LEADERS_PER_EPOCH, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_dispatch, actor_error, ActorError, BURNT_FUNDS_ACTOR_ADDR, EXPECTED_LEADERS_PER_EPOCH,
+    STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -54,8 +54,7 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for Reward actor
-    fn constructor(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
-        let params: Option<BigIntDe> = decode_params!(args);
+    fn constructor(rt: &mut impl Runtime, params: Option<BigIntDe>) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         if let Some(power) = params.map(|v| v.0) {
@@ -78,9 +77,8 @@ impl Actor {
     /// - a penalty amount, provided as a parameter, which is burnt,
     fn award_block_reward(
         rt: &mut impl Runtime,
-        args: Option<IpldBlock>,
+        params: AwardBlockRewardParams,
     ) -> Result<(), ActorError> {
-        let params: AwardBlockRewardParams = decode_params!(args);
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
         let prior_balance = rt.current_balance();
         if params.penalty.is_negative() {
@@ -176,11 +174,7 @@ impl Actor {
     /// The award value used for the current epoch, updated at the end of an epoch
     /// through cron tick.  In the case previous epochs were null blocks this
     /// is the reward value as calculated at the last non-null epoch.
-    fn this_epoch_reward(
-        rt: &mut impl Runtime,
-        _args: Option<IpldBlock>,
-    ) -> Result<ThisEpochRewardReturn, ActorError> {
-        // TODO: NO_PARAMS
+    fn this_epoch_reward(rt: &mut impl Runtime) -> Result<ThisEpochRewardReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let st: State = rt.state()?;
         Ok(ThisEpochRewardReturn {
@@ -194,9 +188,8 @@ impl Actor {
     /// epochs to compute the next epoch reward.
     fn update_network_kpi(
         rt: &mut impl Runtime,
-        args: Option<IpldBlock>,
+        params: Option<BigIntDe>,
     ) -> Result<(), ActorError> {
-        let params: Option<BigIntDe> = decode_params!(args);
         rt.validate_immediate_caller_is(std::iter::once(&STORAGE_POWER_ACTOR_ADDR))?;
         let curr_realized_power =
             params.ok_or_else(|| actor_error!(illegal_argument, "argument cannot be None"))?.0;
@@ -219,32 +212,11 @@ impl Actor {
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        args: Option<IpldBlock>,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-    {
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(rt, args)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::AwardBlockReward) => {
-                Self::award_block_reward(rt, args)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::ThisEpochReward) => {
-                let res = Self::this_epoch_reward(rt, args)?;
-                Ok(RawBytes::serialize(&res)?)
-            }
-            Some(Method::UpdateNetworkKPI) => {
-                Self::update_network_kpi(rt, args)?;
-                Ok(RawBytes::default())
-            }
-            None => Err(actor_error!(unhandled_message, "Invalid method")),
-        }
+    type Methods = Method;
+    actor_dispatch! {
+        Constructor => constructor,
+        AwardBlockReward => award_block_reward,
+        ThisEpochReward => this_epoch_reward,
+        UpdateNetworkKPI => update_network_kpi,
     }
 }

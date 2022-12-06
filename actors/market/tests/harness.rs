@@ -295,12 +295,10 @@ pub fn activate_deals_raw(
 
     let params = ActivateDealsParams { deal_ids: deal_ids.to_vec(), sector_expiry };
 
-    let ret = rt
-        .call::<MarketActor>(
-            Method::ActivateDeals as u64,
-            Some(IpldBlock::serialize_cbor(&params).unwrap()),
-        )
-        .unwrap();
+    let ret = rt.call::<MarketActor>(
+        Method::ActivateDeals as u64,
+        Some(IpldBlock::serialize_cbor(&params).unwrap()),
+    )?;
     rt.verify();
 
     for d in deal_ids {

@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use anyhow::anyhow;
+use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::error::ExitCode;
-use fvm_shared::{MethodNum, IPLD_RAW};
+use fvm_shared::MethodNum;
 
 use fil_actor_account::types::AuthenticateMessageParams;
 use fil_actor_account::{testing::check_state_invariants, Actor as AccountActor, Method, State};
@@ -17,10 +18,6 @@ use fil_actors_runtime::test_utils::*;
 #[test]
 fn construction() {
     fn construct(addr: Address, exit_code: ExitCode) {
-        let start_val = 1080;
-        let ser = IpldBlock::serialize_cbor(&start_val).unwrap();
-        let end_val: i32 = ser.deserialize().unwrap();
-        assert_eq!(start_val, end_val);
         let mut rt = MockRuntime {
             receiver: Address::new_id(100),
             caller: SYSTEM_ACTOR_ADDR,
@@ -85,7 +82,13 @@ fn token_receiver() {
     rt.expect_validate_caller_any();
     let ret = rt.call::<AccountActor>(
         Method::UniversalReceiverHook as MethodNum,
-        Some(IpldBlock { codec: IPLD_RAW, data: vec![1, 2, 3] }),
+        Some(
+            IpldBlock::serialize_cbor(&UniversalReceiverParams {
+                type_: 0,
+                payload: RawBytes::new(vec![1, 2, 3]),
+            })
+            .unwrap(),
+        ),
     );
     assert!(ret.is_ok());
     assert_eq!(RawBytes::default(), ret.unwrap());

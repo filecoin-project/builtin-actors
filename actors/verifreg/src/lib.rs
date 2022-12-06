@@ -23,7 +23,7 @@ use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_error, decode_params, make_map_with_root_and_bitwidth, resolve_to_actor_id,
+    actor_dispatch, actor_error, make_map_with_root_and_bitwidth, resolve_to_actor_id,
     ActorDowncast, ActorError, BatchReturn, Map, DATACAP_TOKEN_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
@@ -69,8 +69,7 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for Registry Actor
-    pub fn constructor(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
-        let params: Address = decode_params!(args);
+    pub fn constructor(rt: &mut impl Runtime, params: Address) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         // root should be an ID address
@@ -85,8 +84,10 @@ impl Actor {
         Ok(())
     }
 
-    pub fn add_verifier(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
-        let params: AddVerifierParams = decode_params!(args);
+    pub fn add_verifier(
+        rt: &mut impl Runtime,
+        params: AddVerifierParams,
+    ) -> Result<(), ActorError> {
         if params.allowance < rt.policy().minimum_verified_allocation_size {
             return Err(actor_error!(
                 illegal_argument,
@@ -125,11 +126,7 @@ impl Actor {
         })
     }
 
-    pub fn remove_verifier(
-        rt: &mut impl Runtime,
-        args: Option<IpldBlock>,
-    ) -> Result<(), ActorError> {
-        let params: Address = decode_params!(args);
+    pub fn remove_verifier(rt: &mut impl Runtime, params: Address) -> Result<(), ActorError> {
         let verifier = resolve_to_actor_id(rt, &params)?;
         let verifier = Address::new_id(verifier);
 
@@ -143,9 +140,8 @@ impl Actor {
 
     pub fn add_verified_client(
         rt: &mut impl Runtime,
-        args: Option<IpldBlock>,
+        params: AddVerifierClientParams,
     ) -> Result<(), ActorError> {
-        let params: AddVerifierClientParams = decode_params!(args);
         // The caller will be verified by checking table below
         rt.validate_immediate_caller_accept_any()?;
 
@@ -210,9 +206,8 @@ impl Actor {
     /// Removes DataCap allocated to a verified client.
     pub fn remove_verified_client_data_cap(
         rt: &mut impl Runtime,
-        args: Option<IpldBlock>,
+        params: RemoveDataCapParams,
     ) -> Result<RemoveDataCapReturn, ActorError> {
-        let params: RemoveDataCapParams = decode_params!(args);
         let client = resolve_to_actor_id(rt, &params.verified_client_to_remove)?;
         let client = Address::new_id(client);
 
@@ -302,9 +297,8 @@ impl Actor {
     // If no allocations are specified, all eligible allocations are removed.
     pub fn remove_expired_allocations(
         rt: &mut impl Runtime,
-        args: Option<IpldBlock>,
+        params: RemoveExpiredAllocationsParams,
     ) -> Result<RemoveExpiredAllocationsReturn, ActorError> {
-        let params: RemoveExpiredAllocationsParams = decode_params!(args);
         // Since the allocations are expired, this is safe to be called by anyone.
         rt.validate_immediate_caller_accept_any()?;
         let curr_epoch = rt.curr_epoch();
@@ -366,9 +360,8 @@ impl Actor {
     // and size match that of the allocation.
     pub fn claim_allocations(
         rt: &mut impl Runtime,
-        args: Option<IpldBlock>,
+        params: ClaimAllocationsParams,
     ) -> Result<ClaimAllocationsReturn, ActorError> {
-        let params: ClaimAllocationsParams = decode_params!(args);
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         let provider = rt.message().caller().id().unwrap();
         if params.sectors.is_empty() {
@@ -466,9 +459,8 @@ impl Actor {
     // get claims for a provider
     pub fn get_claims(
         rt: &mut impl Runtime,
-        args: Option<IpldBlock>,
+        params: GetClaimsParams,
     ) -> Result<GetClaimsReturn, ActorError> {
-        let params: GetClaimsParams = decode_params!(args);
         rt.validate_immediate_caller_accept_any()?;
         let mut batch_gen = BatchReturnGen::new(params.claim_ids.len());
         let claims = rt
@@ -503,9 +495,8 @@ impl Actor {
     /// even if the term has previously been extended past that by spending new datacap.
     pub fn extend_claim_terms(
         rt: &mut impl Runtime,
-        args: Option<IpldBlock>,
+        params: ExtendClaimTermsParams,
     ) -> Result<ExtendClaimTermsReturn, ActorError> {
-        let params: ExtendClaimTermsParams = decode_params!(args);
         // Permissions are checked per-claim.
         rt.validate_immediate_caller_accept_any()?;
         let caller_id = rt.message().caller().id().unwrap();
@@ -567,9 +558,8 @@ impl Actor {
     // If no claims are specified, all eligible claims are removed.
     pub fn remove_expired_claims(
         rt: &mut impl Runtime,
-        args: Option<IpldBlock>,
+        params: RemoveExpiredClaimsParams,
     ) -> Result<RemoveExpiredClaimsReturn, ActorError> {
-        let params: RemoveExpiredClaimsParams = decode_params!(args);
         // Since the claims are expired, this is safe to be called by anyone.
         rt.validate_immediate_caller_accept_any()?;
         let curr_epoch = rt.curr_epoch();
@@ -617,9 +607,8 @@ impl Actor {
     // Returns the ids of the created allocations.
     pub fn universal_receiver_hook(
         rt: &mut impl Runtime,
-        args: Option<IpldBlock>,
+        params: UniversalReceiverParams,
     ) -> Result<AllocationsResponse, ActorError> {
-        let params: UniversalReceiverParams = decode_params!(args);
         // Accept only the data cap token.
         rt.validate_immediate_caller_is(&[DATACAP_TOKEN_ACTOR_ADDR])?;
 
@@ -1062,60 +1051,18 @@ fn can_claim_alloc(
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        args: Option<IpldBlock>,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-    {
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(rt, args)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::AddVerifier) => {
-                Self::add_verifier(rt, args)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::RemoveVerifier) => {
-                Self::remove_verifier(rt, args)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::AddVerifiedClient) => {
-                Self::add_verified_client(rt, args)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::RemoveVerifiedClientDataCap) => {
-                let res = Self::remove_verified_client_data_cap(rt, args)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::RemoveExpiredAllocations) => {
-                let res = Self::remove_expired_allocations(rt, args)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::ClaimAllocations) => {
-                let res = Self::claim_allocations(rt, args)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::ExtendClaimTerms) => {
-                let res = Self::extend_claim_terms(rt, args)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::GetClaims) => {
-                let res = Self::get_claims(rt, args)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::RemoveExpiredClaims) => {
-                let res = Self::remove_expired_claims(rt, args)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::UniversalReceiverHook) => {
-                let res = Self::universal_receiver_hook(rt, args)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            None => Err(actor_error!(unhandled_message; "Invalid method")),
-        }
+    type Methods = Method;
+    actor_dispatch! {
+        Constructor => constructor,
+                AddVerifier => add_verifier,
+    RemoveVerifier => remove_verifier,
+    AddVerifiedClient => add_verified_client,
+    RemoveVerifiedClientDataCap => remove_verified_client_data_cap,
+    RemoveExpiredAllocations => remove_expired_allocations,
+    ClaimAllocations => claim_allocations,
+    GetClaims => get_claims,
+    ExtendClaimTerms => extend_claim_terms,
+    RemoveExpiredClaims => remove_expired_claims,
+    UniversalReceiverHook => universal_receiver_hook,
     }
 }

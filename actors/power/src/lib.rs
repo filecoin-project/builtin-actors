@@ -9,8 +9,8 @@ use ext::init;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, decode_params, make_map_with_root_and_bitwidth, ActorDowncast, ActorError,
-    AsActorError, Multimap, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_dispatch, actor_error, make_map_with_root_and_bitwidth, ActorDowncast, ActorError,
+    Multimap, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
@@ -71,8 +71,7 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for StoragePower actor
-    fn constructor(rt: &mut impl Runtime, _args: Option<IpldBlock>) -> Result<(), ActorError> {
-        // TODO: NO_PARAMS
+    fn constructor(rt: &mut impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         let st = State::new(rt.store()).map_err(|e| {
@@ -84,10 +83,8 @@ impl Actor {
 
     fn create_miner(
         rt: &mut impl Runtime,
-        args: Option<IpldBlock>,
+        params: CreateMinerParams,
     ) -> Result<CreateMinerReturn, ActorError> {
-        let params: CreateMinerParams = decode_params!(args);
-
         rt.validate_immediate_caller_type(&[Type::Account, Type::Multisig])?;
         let value = rt.message().value_received();
 
@@ -158,9 +155,8 @@ impl Actor {
     /// May only be invoked by a miner actor.
     fn update_claimed_power(
         rt: &mut impl Runtime,
-        args: Option<IpldBlock>,
+        params: UpdateClaimedPowerParams,
     ) -> Result<(), ActorError> {
-        let params: UpdateClaimedPowerParams = decode_params!(args);
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         let miner_addr = rt.message().caller();
 
@@ -194,8 +190,10 @@ impl Actor {
         })
     }
 
-    fn enroll_cron_event(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
-        let params: EnrollCronEventParams = decode_params!(args);
+    fn enroll_cron_event(
+        rt: &mut impl Runtime,
+        params: EnrollCronEventParams,
+    ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         let miner_event = CronEvent {
             miner_addr: rt.message().caller(),
@@ -232,11 +230,7 @@ impl Actor {
         Ok(())
     }
 
-    fn on_epoch_tick_end(
-        rt: &mut impl Runtime,
-        _args: Option<IpldBlock>,
-    ) -> Result<(), ActorError> {
-        // TODO: NO_PARAMS
+    fn on_epoch_tick_end(rt: &mut impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&CRON_ACTOR_ADDR))?;
 
         let rewret: ThisEpochRewardReturn = rt
@@ -279,9 +273,8 @@ impl Actor {
 
     fn update_pledge_total(
         rt: &mut impl Runtime,
-        args: Option<IpldBlock>,
+        params: UpdatePledgeTotalParams,
     ) -> Result<(), ActorError> {
-        let params: UpdatePledgeTotalParams = decode_params!(args);
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         rt.transaction(|st: &mut State, rt| {
             st.validate_miner_has_claim(rt.store(), &rt.message().caller())?;
@@ -299,9 +292,8 @@ impl Actor {
 
     fn submit_porep_for_bulk_verify(
         rt: &mut impl Runtime,
-        args: Option<IpldBlock>,
+        params: SealVerifyInfo,
     ) -> Result<(), ActorError> {
-        let params: SealVerifyInfo = decode_params!(args);
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
 
         rt.transaction(|st: &mut State, rt| {
@@ -363,11 +355,7 @@ impl Actor {
     /// The returned values are frozen during the cron tick before this epoch
     /// so that this method returns consistent values while processing all messages
     /// of an epoch.
-    fn current_total_power(
-        rt: &mut impl Runtime,
-        _args: Option<IpldBlock>,
-    ) -> Result<CurrentTotalPowerReturn, ActorError> {
-        // TODO: NO_PARAMS
+    fn current_total_power(rt: &mut impl Runtime) -> Result<CurrentTotalPowerReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let st: State = rt.state()?;
 
@@ -634,48 +622,15 @@ impl Actor {
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        args: Option<IpldBlock>,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-    {
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(rt, args)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::CreateMiner) => {
-                let res = Self::create_miner(rt, args)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::UpdateClaimedPower) => {
-                Self::update_claimed_power(rt, args)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::EnrollCronEvent) => {
-                Self::enroll_cron_event(rt, args)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::OnEpochTickEnd) => {
-                Self::on_epoch_tick_end(rt, args)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::UpdatePledgeTotal) => {
-                Self::update_pledge_total(rt, args)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::SubmitPoRepForBulkVerify) => {
-                Self::submit_porep_for_bulk_verify(rt, args)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::CurrentTotalPower) => {
-                let res = Self::current_total_power(rt, args)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            None => Err(actor_error!(unhandled_message; "Invalid method")),
-        }
+    type Methods = Method;
+    actor_dispatch! {
+        Constructor => constructor,
+            CreateMiner => create_miner,
+    UpdateClaimedPower => update_claimed_power            ,
+    EnrollCronEvent => enroll_cron_event,
+    OnEpochTickEnd => on_epoch_tick_end,
+    UpdatePledgeTotal => update_pledge_total,
+    SubmitPoRepForBulkVerify => submit_porep_for_bulk_verify,
+    CurrentTotalPower => current_total_power,
     }
 }

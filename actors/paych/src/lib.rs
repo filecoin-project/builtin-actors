@@ -4,7 +4,7 @@
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, decode_params, resolve_to_actor_id, ActorDowncast, ActorError, Array, AsActorError,
+    actor_dispatch, actor_error, resolve_to_actor_id, ActorDowncast, ActorError, Array,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{RawBytes, DAG_CBOR};
@@ -46,8 +46,7 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for Payment channel actor
-    pub fn constructor(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
-        let params: ConstructorParams = decode_params!(args);
+    pub fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
         // Only InitActor can create a payment channel actor. It creates the actor on
         // behalf of the payer/payee.
         rt.validate_immediate_caller_type(std::iter::once(&Type::Init))?;
@@ -92,9 +91,8 @@ impl Actor {
 
     pub fn update_channel_state(
         rt: &mut impl Runtime,
-        args: Option<IpldBlock>,
+        params: UpdateChannelStateParams,
     ) -> Result<(), ActorError> {
-        let params: UpdateChannelStateParams = decode_params!(args);
         let st: State = rt.state()?;
 
         rt.validate_immediate_caller_is([st.from, st.to].iter())?;
@@ -272,8 +270,7 @@ impl Actor {
         })
     }
 
-    pub fn settle(rt: &mut impl Runtime, _args: Option<IpldBlock>) -> Result<(), ActorError> {
-        // TODO: NO_PARAMS
+    pub fn settle(rt: &mut impl Runtime) -> Result<(), ActorError> {
         rt.transaction(|st: &mut State, rt| {
             rt.validate_immediate_caller_is([st.from, st.to].iter())?;
 
@@ -290,8 +287,7 @@ impl Actor {
         })
     }
 
-    pub fn collect(rt: &mut impl Runtime, _args: Option<IpldBlock>) -> Result<(), ActorError> {
-        // TODO: NO_PARAMS
+    pub fn collect(rt: &mut impl Runtime) -> Result<(), ActorError> {
         let st: State = rt.state()?;
         rt.validate_immediate_caller_is(&[st.from, st.to])?;
 
@@ -328,32 +324,11 @@ where
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        args: Option<IpldBlock>,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-    {
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(rt, args)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::UpdateChannelState) => {
-                Self::update_channel_state(rt, args)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::Settle) => {
-                Self::settle(rt, args)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::Collect) => {
-                Self::collect(rt, args)?;
-                Ok(RawBytes::default())
-            }
-            _ => Err(actor_error!(unhandled_message; "Invalid method")),
-        }
+    type Methods = Method;
+    actor_dispatch! {
+        Constructor => constructor,
+        UpdateChannelState => update_channel_state,
+        Settle => settle,
+        Collect => collect,
     }
 }

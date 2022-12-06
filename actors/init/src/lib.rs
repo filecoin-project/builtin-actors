@@ -6,9 +6,8 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 
 use fil_actors_runtime::{
-    actor_error, decode_params, ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR,
+    actor_dispatch, actor_error, ActorContext, ActorError, SYSTEM_ACTOR_ADDR,
 };
-use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR};
@@ -37,8 +36,7 @@ pub enum Method {
 pub struct Actor;
 impl Actor {
     /// Init actor constructor
-    pub fn constructor(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
-        let params: ConstructorParams = decode_params!(args);
+    pub fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
         let sys_ref: &Address = &SYSTEM_ACTOR_ADDR;
         rt.validate_immediate_caller_is(std::iter::once(sys_ref))?;
         let state = State::new(rt.store(), params.network_name)?;
@@ -48,8 +46,7 @@ impl Actor {
     }
 
     /// Exec init actor
-    pub fn exec(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<ExecReturn, ActorError> {
-        let params: ExecParams = decode_params!(args);
+    pub fn exec(rt: &mut impl Runtime, params: ExecParams) -> Result<ExecReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
 
         log::trace!("called exec; params.code_cid: {:?}", &params.code_cid);
@@ -100,25 +97,10 @@ impl Actor {
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        args: Option<IpldBlock>,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-    {
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(rt, args)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::Exec) => {
-                let res = Self::exec(rt, args)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            None => Err(actor_error!(unhandled_message; "Invalid method")),
-        }
+    type Methods = Method;
+    actor_dispatch! {
+        Constructor => constructor,
+        Exec => exec,
     }
 }
 

@@ -18,10 +18,9 @@ use log::info;
 use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Zero};
 
-use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, decode_params, ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR,
+    actor_dispatch, actor_error, ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 
@@ -73,8 +72,7 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for DataCap Actor
-    pub fn constructor(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<(), ActorError> {
-        let params: Address = decode_params!(args);
+    pub fn constructor(rt: &mut impl Runtime, params: Address) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         // Confirm the governor address is an ID.
@@ -86,23 +84,17 @@ impl Actor {
         Ok(())
     }
 
-    pub fn name(rt: &mut impl Runtime, _args: Option<IpldBlock>) -> Result<String, ActorError> {
-        // TODO: NO_PARAMS
+    pub fn name(rt: &mut impl Runtime) -> Result<String, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         Ok("DataCap".to_string())
     }
 
-    pub fn symbol(rt: &mut impl Runtime, _args: Option<IpldBlock>) -> Result<String, ActorError> {
-        // TODO: NO_PARAMS
+    pub fn symbol(rt: &mut impl Runtime) -> Result<String, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         Ok("DCAP".to_string())
     }
 
-    pub fn total_supply(
-        rt: &mut impl Runtime,
-        _args: Option<IpldBlock>,
-    ) -> Result<TokenAmount, ActorError> {
-        // TODO: NO_PARAMS
+    pub fn total_supply(rt: &mut impl Runtime) -> Result<TokenAmount, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let mut st: State = rt.state()?;
         let msg = Messenger { rt };
@@ -110,11 +102,7 @@ impl Actor {
         Ok(token.total_supply())
     }
 
-    pub fn balance_of(
-        rt: &mut impl Runtime,
-        args: Option<IpldBlock>,
-    ) -> Result<TokenAmount, ActorError> {
-        let params: Address = decode_params!(args);
+    pub fn balance_of(rt: &mut impl Runtime, params: Address) -> Result<TokenAmount, ActorError> {
         // NOTE: mutability and method caller here are awkward for a read-only call
         rt.validate_immediate_caller_accept_any()?;
         let mut st: State = rt.state()?;
@@ -125,9 +113,8 @@ impl Actor {
 
     pub fn allowance(
         rt: &mut impl Runtime,
-        args: Option<IpldBlock>,
+        params: GetAllowanceParams,
     ) -> Result<TokenAmount, ActorError> {
-        let params: GetAllowanceParams = decode_params!(args);
         rt.validate_immediate_caller_accept_any()?;
         let mut st: State = rt.state()?;
         let msg = Messenger { rt };
@@ -139,8 +126,7 @@ impl Actor {
     /// Simultaneously sets the allowance for any specified operators to effectively infinite.
     /// Only the governor can call this method.
     /// This method is not part of the fungible token standard.
-    pub fn mint(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<MintReturn, ActorError> {
-        let params: MintParams = decode_params!(args);
+    pub fn mint(rt: &mut impl Runtime, params: MintParams) -> Result<MintReturn, ActorError> {
         let mut hook = rt
             .transaction(|st: &mut State, rt| {
                 // Only the governor can mint datacap tokens.
@@ -181,11 +167,7 @@ impl Actor {
     /// Only the governor can call this method.
     /// This method is not part of the fungible token standard, and is named distinctly from
     /// "burn" to reflect that distinction.
-    pub fn destroy(
-        rt: &mut impl Runtime,
-        args: Option<IpldBlock>,
-    ) -> Result<BurnReturn, ActorError> {
-        let params: DestroyParams = decode_params!(args);
+    pub fn destroy(rt: &mut impl Runtime, params: DestroyParams) -> Result<BurnReturn, ActorError> {
         rt.transaction(|st: &mut State, rt| {
             // Only the governor can destroy datacap tokens on behalf of a holder.
             rt.validate_immediate_caller_is(std::iter::once(&st.governor))?;
@@ -204,9 +186,8 @@ impl Actor {
     /// Succeeds if the to or from address is the governor, otherwise always fails.
     pub fn transfer(
         rt: &mut impl Runtime,
-        args: Option<IpldBlock>,
+        params: TransferParams,
     ) -> Result<TransferReturn, ActorError> {
-        let params: TransferParams = decode_params!(args);
         rt.validate_immediate_caller_accept_any()?;
         let operator = &rt.message().caller();
         let from = operator;
@@ -254,9 +235,8 @@ impl Actor {
     /// Succeeds if the to address is the governor, otherwise always fails.
     pub fn transfer_from(
         rt: &mut impl Runtime,
-        args: Option<IpldBlock>,
+        params: TransferFromParams,
     ) -> Result<TransferFromReturn, ActorError> {
-        let params: TransferFromParams = decode_params!(args);
         rt.validate_immediate_caller_accept_any()?;
         let operator = rt.message().caller();
         let from = params.from;
@@ -302,9 +282,8 @@ impl Actor {
 
     pub fn increase_allowance(
         rt: &mut impl Runtime,
-        args: Option<IpldBlock>,
+        params: IncreaseAllowanceParams,
     ) -> Result<TokenAmount, ActorError> {
-        let params: IncreaseAllowanceParams = decode_params!(args);
         rt.validate_immediate_caller_accept_any()?;
         let owner = rt.message().caller();
         let operator = params.operator;
@@ -319,9 +298,8 @@ impl Actor {
 
     pub fn decrease_allowance(
         rt: &mut impl Runtime,
-        args: Option<IpldBlock>,
+        params: DecreaseAllowanceParams,
     ) -> Result<TokenAmount, ActorError> {
-        let params: DecreaseAllowanceParams = decode_params!(args);
         rt.validate_immediate_caller_accept_any()?;
         let owner = &rt.message().caller();
         let operator = &params.operator;
@@ -336,9 +314,8 @@ impl Actor {
 
     pub fn revoke_allowance(
         rt: &mut impl Runtime,
-        args: Option<IpldBlock>,
+        params: RevokeAllowanceParams,
     ) -> Result<TokenAmount, ActorError> {
-        let params: RevokeAllowanceParams = decode_params!(args);
         rt.validate_immediate_caller_accept_any()?;
         let owner = &rt.message().caller();
         let operator = &params.operator;
@@ -351,8 +328,7 @@ impl Actor {
         .context("state transaction failed")
     }
 
-    pub fn burn(rt: &mut impl Runtime, args: Option<IpldBlock>) -> Result<BurnReturn, ActorError> {
-        let params: BurnParams = decode_params!(args);
+    pub fn burn(rt: &mut impl Runtime, params: BurnParams) -> Result<BurnReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let owner = &rt.message().caller();
 
@@ -366,9 +342,8 @@ impl Actor {
 
     pub fn burn_from(
         rt: &mut impl Runtime,
-        args: Option<IpldBlock>,
+        params: BurnFromParams,
     ) -> Result<BurnFromReturn, ActorError> {
-        let params: BurnFromParams = decode_params!(args);
         rt.validate_immediate_caller_accept_any()?;
         let operator = &rt.message().caller();
         let owner = &params.owner;
@@ -413,7 +388,7 @@ where
     ) -> fvm_actor_utils::messaging::Result<Receipt> {
         // The Runtime discards some of the information from the syscall :-(
         let fake_gas_used = 0;
-        let res = self.rt.send(to, method, params.clone(), value.clone());
+        let res = self.rt.send(to, method, params, value.clone());
 
         let rec = match res {
             Ok(bytes) => {
@@ -472,80 +447,22 @@ impl<T> AsActorResult<T> for Result<T, ReceiverHookError> {
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        args: Option<IpldBlock>,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-    {
-        // I'm trying to find a fixed template for these blocks so we can macro it.
-        // Current blockers:
-        // - the serialize method maps () to CBOR null (we want no bytes instead)
-        // - the serialize method can't do BigInts
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(rt, args)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::Mint) => {
-                let ret = Self::mint(rt, args)?;
-                serialize(&ret, "mint result")
-            }
-            Some(Method::Destroy) => {
-                let ret = Self::destroy(rt, args)?;
-                serialize(&ret, "destroy result")
-            }
-            Some(Method::Name) => {
-                let ret = Self::name(rt, args)?;
-                serialize(&ret, "name result")
-            }
-            Some(Method::Symbol) => {
-                let ret = Self::symbol(rt, args)?;
-                serialize(&ret, "symbol result")
-            }
-            Some(Method::TotalSupply) => {
-                let ret = Self::total_supply(rt, args)?;
-                serialize(&ret, "total_supply result")
-            }
-            Some(Method::BalanceOf) => {
-                let ret = Self::balance_of(rt, args)?;
-                serialize(&ret, "balance_of result")
-            }
-            Some(Method::Transfer) => {
-                let ret = Self::transfer(rt, args)?;
-                serialize(&ret, "transfer result")
-            }
-            Some(Method::TransferFrom) => {
-                let ret = Self::transfer_from(rt, args)?;
-                serialize(&ret, "transfer_from result")
-            }
-            Some(Method::IncreaseAllowance) => {
-                let ret = Self::increase_allowance(rt, args)?;
-                serialize(&ret, "increase_allowance result")
-            }
-            Some(Method::DecreaseAllowance) => {
-                let ret = Self::decrease_allowance(rt, args)?;
-                serialize(&ret, "decrease_allowance result")
-            }
-            Some(Method::RevokeAllowance) => {
-                Self::revoke_allowance(rt, args)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::Burn) => {
-                let ret = Self::burn(rt, args)?;
-                serialize(&ret, "burn result")
-            }
-            Some(Method::BurnFrom) => {
-                let ret = Self::burn_from(rt, args)?;
-                serialize(&ret, "burn_from result")
-            }
-            Some(Method::Allowance) => {
-                let ret = Self::allowance(rt, args)?;
-                serialize(&ret, "allowance result")
-            }
-            None => Err(actor_error!(unhandled_message; "Invalid method")),
-        }
+    type Methods = Method;
+    actor_dispatch! {
+        Constructor => constructor,
+        Mint => mint,
+        Destroy => destroy,
+        Name => name,
+        Symbol => symbol,
+        TotalSupply => total_supply,
+        BalanceOf => balance_of,
+        Transfer => transfer,
+        TransferFrom => transfer_from,
+        IncreaseAllowance => increase_allowance,
+        DecreaseAllowance => decrease_allowance,
+        RevokeAllowance => revoke_allowance,
+        Burn => burn,
+        BurnFrom => burn_from,
+        Allowance => allowance,
     }
 }

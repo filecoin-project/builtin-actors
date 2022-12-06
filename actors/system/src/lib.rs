@@ -11,8 +11,9 @@ use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR};
-use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fil_actors_runtime::{
+    actor_dispatch, actor_error, ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR,
+};
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
@@ -56,8 +57,7 @@ pub struct Actor;
 
 impl Actor {
     /// System actor constructor.
-    pub fn constructor(rt: &mut impl Runtime, _args: Option<IpldBlock>) -> Result<(), ActorError> {
-        // TODO: NO_PARAMS
+    pub fn constructor(rt: &mut impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         let state = State::new(rt.store()).context("failed to construct state")?;
@@ -67,21 +67,9 @@ impl Actor {
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        args: Option<IpldBlock>,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-    {
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(rt, args)?;
-                Ok(RawBytes::default())
-            }
-            None => Err(actor_error!(unhandled_message; "Invalid method")),
-        }
+    type Methods = Method;
+    actor_dispatch! {
+        Constructor => constructor,
     }
 }
 

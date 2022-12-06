@@ -7,6 +7,7 @@ use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
+use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{RawBytes, DAG_CBOR};
 use fvm_shared::address::{Address, BLS_PUB_LEN};
@@ -2419,7 +2420,13 @@ fn token_receiver() {
     rt.expect_validate_caller_any();
     let ret = rt.call::<MultisigActor>(
         Method::UniversalReceiverHook as MethodNum,
-        Some(IpldBlock { codec: DAG_CBOR, data: vec![1, 2, 3] }),
+        Some(
+            IpldBlock::serialize_cbor(&UniversalReceiverParams {
+                type_: 0,
+                payload: RawBytes::new(vec![1, 2, 3]),
+            })
+            .unwrap(),
+        ),
     );
     assert!(ret.is_ok());
     assert_eq!(RawBytes::default(), ret.unwrap());
