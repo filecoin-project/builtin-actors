@@ -48,8 +48,8 @@ fn datacap_transfer_scenario() {
         operator,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::MintExported as u64,
-        mint_params.clone(),
+        DataCapMethod::Mint as u64,
+        Some(mint_params.clone()),
         ExitCode::USR_FORBIDDEN,
     );
 
@@ -59,8 +59,8 @@ fn datacap_transfer_scenario() {
         VERIFIED_REGISTRY_ACTOR_ADDR,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::MintExported as u64,
-        mint_params,
+        DataCapMethod::Mint as u64,
+        Some(mint_params),
     );
 
     // confirm allowance was set to infinity
@@ -70,8 +70,8 @@ fn datacap_transfer_scenario() {
         owner,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::AllowanceExported as u64,
-        GetAllowanceParams { owner: client, operator },
+        DataCapMethod::Allowance as u64,
+        Some(GetAllowanceParams { owner: client, operator }),
     );
 
     let alloc = AllocationRequest {
@@ -116,8 +116,8 @@ fn datacap_transfer_scenario() {
         operator,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::TransferFromExported as u64,
-        params_piece_too_small,
+        DataCapMethod::TransferFrom as u64,
+        Some(params_piece_too_small),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 
@@ -130,8 +130,8 @@ fn datacap_transfer_scenario() {
         operator,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::TransferFromExported as u64,
-        params_mismatched_datacap,
+        DataCapMethod::TransferFrom as u64,
+        Some(params_mismatched_datacap),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 
@@ -149,8 +149,8 @@ fn datacap_transfer_scenario() {
         operator,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::TransferFromExported as u64,
-        params_bad_term,
+        DataCapMethod::TransferFrom as u64,
+        Some(params_bad_term),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 
@@ -162,8 +162,8 @@ fn datacap_transfer_scenario() {
         owner,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::TransferFromExported as u64,
-        clone_params(&params_bad_receiver),
+        DataCapMethod::TransferFrom as u64,
+        Some(clone_params(&params_bad_receiver)),
         ExitCode::USR_FORBIDDEN, // ExitCode(19) because non-operator has insufficient allowance
     );
 
@@ -173,8 +173,8 @@ fn datacap_transfer_scenario() {
         owner,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::TransferFromExported as u64,
-        clone_params(&transfer_from_params),
+        DataCapMethod::TransferFrom as u64,
+        Some(clone_params(&transfer_from_params)),
         ExitCode::USR_INSUFFICIENT_FUNDS, // ExitCode(19) because non-operator has insufficient allowance
     );
 
@@ -183,8 +183,8 @@ fn datacap_transfer_scenario() {
         operator,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::TransferFromExported as u64,
-        clone_params(&transfer_from_params),
+        DataCapMethod::TransferFrom as u64,
+        Some(clone_params(&transfer_from_params)),
     );
 
     // Datacap already spent, not enough left
@@ -193,8 +193,8 @@ fn datacap_transfer_scenario() {
         operator,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::TransferFromExported as u64,
-        transfer_from_params,
+        DataCapMethod::TransferFrom as u64,
+        Some(transfer_from_params),
         ExitCode::USR_INSUFFICIENT_FUNDS,
     );
 }
@@ -212,8 +212,8 @@ fn call_name_symbol() {
         sender,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::NameExported as u64,
-        RawBytes::default(),
+        DataCapMethod::Name as u64,
+        None::<RawBytes>,
     )
     .deserialize()
     .unwrap();
@@ -224,8 +224,8 @@ fn call_name_symbol() {
         sender,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::SymbolExported as u64,
-        RawBytes::default(),
+        DataCapMethod::Symbol as u64,
+        None::<RawBytes>,
     )
     .deserialize()
     .unwrap();

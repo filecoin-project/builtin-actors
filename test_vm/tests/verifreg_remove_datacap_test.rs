@@ -61,7 +61,7 @@ fn remove_datacap_simple_successful_path() {
         VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
         VerifregMethod::AddVerifiedClient as u64,
-        add_verified_client_params.clone(),
+        Some(add_verified_client_params.clone()),
     );
 
     ExpectInvocation {
@@ -154,7 +154,7 @@ fn remove_datacap_simple_successful_path() {
         VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
         VerifregMethod::RemoveVerifiedClientDataCap as u64,
-        remove_datacap_params.clone(),
+        Some(remove_datacap_params.clone()),
     )
     .deserialize()
     .unwrap();
@@ -237,7 +237,7 @@ fn remove_datacap_simple_successful_path() {
         VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
         VerifregMethod::RemoveVerifiedClientDataCap as u64,
-        remove_datacap_params.clone(),
+        Some(remove_datacap_params.clone()),
     )
     .deserialize()
     .unwrap();
@@ -337,7 +337,7 @@ fn remove_datacap_fails_on_verifreg() {
         VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
         VerifregMethod::RemoveVerifiedClientDataCap as u64,
-        remove_datacap_params,
+        Some(remove_datacap_params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 

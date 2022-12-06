@@ -185,7 +185,7 @@ impl<'bs> VM<'bs> {
             Address::new_bls(VERIFREG_ROOT_KEY).unwrap(),
             TokenAmount::zero(),
             METHOD_SEND,
-            RawBytes::default(),
+            None::<RawBytes>,
         )
         .unwrap();
         let verifreg_root_signer =
@@ -208,10 +208,10 @@ impl<'bs> VM<'bs> {
                 INIT_ACTOR_ADDR,
                 TokenAmount::zero(),
                 fil_actor_init::Method::Exec as u64,
-                fil_actor_init::ExecParams {
+                Some(fil_actor_init::ExecParams {
                     code_cid: *MULTISIG_ACTOR_CODE_ID,
                     constructor_params: msig_ctor_params,
-                },
+                }),
             )
             .unwrap()
             .ret
@@ -247,7 +247,7 @@ impl<'bs> VM<'bs> {
             Address::new_bls(FAUCET_ROOT_KEY).unwrap(),
             faucet_total,
             METHOD_SEND,
-            RawBytes::default(),
+            None::<RawBytes>,
         )
         .unwrap();
 
@@ -394,13 +394,13 @@ impl<'bs> VM<'bs> {
         self.curr_epoch
     }
 
-    pub fn apply_message<C: Cbor>(
+    pub fn apply_message<S: serde::Serialize>(
         &self,
         from: Address,
         to: Address,
         value: TokenAmount,
         method: MethodNum,
-        params: C,
+        params: Option<S>,
     ) -> Result<MessageResult, TestVMError> {
         let from_id = self.normalize_address(&from).unwrap();
         let mut a = self.get_actor(from_id).unwrap();
@@ -423,7 +423,9 @@ impl<'bs> VM<'bs> {
             to,
             value,
             method,
-            params: serialize(&params, "params for apply message").unwrap(),
+            params: params.map_or(RawBytes::default(), |p| {
+                serialize(&p, "params for apply message").unwrap()
+            }),
         };
         let mut new_ctx = InvocationCtx {
             v: self,
