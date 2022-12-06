@@ -305,7 +305,7 @@ fn test_call_send_value() {
     let contract = call_proxy_with_value_contract();
 
     // construct the proxy
-    let mut rt = util::construct_and_verify(contract.clone());
+    let mut rt = util::construct_and_verify(contract);
 
     // create a mock actor and proxy a call through the proxy
     let target_id = 0x100;
@@ -348,7 +348,7 @@ fn test_call_restricted() {
     let contract = call_proxy_with_value_gas2300_contract();
 
     // construct the proxy
-    let mut rt = util::construct_and_verify(contract.clone());
+    let mut rt = util::construct_and_verify(contract);
 
     // create a mock actor and proxy a call through the proxy
     let target_id = 0x100;
