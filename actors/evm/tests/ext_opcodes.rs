@@ -10,15 +10,9 @@ use fvm_shared::address::Address as FILAddress;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::{IDENTITY_HASH, IPLD_RAW};
-use lazy_static::lazy_static;
 
 mod util;
-
-lazy_static! {
-    pub static ref DUMMY_ACTOR_CODE_ID: Cid =
-        Cid::new_v1(IPLD_RAW, Multihash::wrap(IDENTITY_HASH, b"foobarboxy").unwrap());
-}
+use util::DUMMY_ACTOR_CODE_ID;
 
 #[test]
 fn test_extcodesize() {

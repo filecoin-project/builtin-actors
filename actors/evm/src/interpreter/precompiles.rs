@@ -2,7 +2,7 @@ use std::{borrow::Cow, convert::TryInto, marker::PhantomData, slice::ChunksExact
 
 use super::{StatusCode, System, U256};
 
-use fil_actors_runtime::runtime::Runtime;
+use fil_actors_runtime::runtime::{builtins::Type, Runtime};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::{
     address::Address,
@@ -30,6 +30,26 @@ pub fn assert_zero_bytes<const S: usize>(src: &[u8]) -> Result<(), PrecompileErr
         Err(PrecompileError::InvalidInput)
     } else {
         Ok(())
+    }
+}
+
+/// Native Type of a given contract
+#[repr(u32)]
+pub enum NativeType {
+    NonExistent = 0,
+    // user actors are flattened to "system"
+    /// System includes any singletons not otherwise defined.
+    System = 1,
+    Embryo = 2,
+    Account = 3,
+    StorageProvider = 4,
+    EVMContract = 5,
+    OtherTypes = 6,
+}
+
+impl NativeType {
+    fn word_vec(self) -> Vec<u8> {
+        U256::from(self as u32).to_bytes().to_vec()
     }
 }
 
@@ -292,7 +312,7 @@ const fn gen_precompiles<RT: Runtime>() -> [PrecompileFn<RT>; 14] {
         // FIL precompiles
         resolve_address,    // lookup_address 0x0a
         lookup_address,     // resolve_address 0x0b
-        get_actor_code_cid, // get code cid 0x0c
+        get_actor_type,     // get actor type 0x0c
         get_randomness,     // rand 0x0d
         call_actor,         // call_actor 0x0e
     }
@@ -336,16 +356,52 @@ fn read_right_pad<'a>(input: impl Into<Cow<'a, [u8]>>, len: usize) -> Cow<'a, [u
 
 // --- Precompiles ---
 
-/// Read right padded BE encoded low u64 ID address from a u256 word
-/// returns encoded CID or an empty array if actor not found
-fn get_actor_code_cid<RT: Runtime>(
+/// Read right padded BE encoded low u64 ID address from a u256 word.
+/// Returns variant of [`BuiltinType`] encoded as a u256 word.
+fn get_actor_type<RT: Runtime>(
     system: &mut System<RT>,
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
+    const LAST_SYSTEM_ACTOR_ID: u64 = 32;
+
     let id_bytes: [u8; 32] = read_right_pad(input, 32).as_ref().try_into().unwrap();
     let id = Parameter::<u64>::try_from(&id_bytes)?.0;
-    Ok(system.rt.get_actor_code_cid(&id).unwrap_or_default().to_bytes())
+
+    if id < LAST_SYSTEM_ACTOR_ID {
+        // known to be system actors
+        Ok(NativeType::System.word_vec())
+    } else {
+        // resolve type from code CID
+        let builtin_type = system
+            .rt
+            .get_actor_code_cid(&id)
+            .and_then(|cid| system.rt.resolve_builtin_actor_type(&cid));
+
+        let builtin_type = match builtin_type {
+            Some(t) => match t {
+                Type::Account => NativeType::Account,
+                Type::System => NativeType::System,
+                Type::Embryo => NativeType::Embryo,
+                Type::EVM => NativeType::EVMContract,
+                Type::Miner => NativeType::StorageProvider,
+                // Others
+                Type::PaymentChannel | Type::Multisig => NativeType::OtherTypes,
+                // Singletons
+                Type::Market
+                | Type::Power
+                | Type::Init
+                | Type::Cron
+                | Type::Reward
+                | Type::VerifiedRegistry
+                | Type::DataCap
+                | Type::EAM => NativeType::System,
+            },
+            None => NativeType::NonExistent,
+        };
+
+        Ok(builtin_type.word_vec())
+    }
 }
 
 /// Params:
