@@ -1,597 +1,31 @@
-use std::{borrow::Cow, convert::TryInto, marker::PhantomData, slice::ChunksExact};
-
-use super::{StatusCode, System, U256};
-
-use fil_actors_runtime::runtime::{builtins::Type, Runtime};
-use fvm_ipld_encoding::RawBytes;
+use fil_actors_runtime::runtime::Runtime;
 use fvm_shared::{
-    address::Address,
     bigint::BigUint,
     crypto::{
         hash::SupportedHashes,
         signature::{SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE},
     },
-    econ::TokenAmount,
 };
-use num_traits::FromPrimitive;
 use num_traits::{One, Zero};
 use substrate_bn::{pairing_batch, AffineG1, AffineG2, Fq, Fq2, Fr, Group, Gt, G1, G2};
 use uint::byteorder::{ByteOrder, LE};
 
-pub use substrate_bn::{CurveError, FieldError, GroupError};
+use crate::interpreter::{
+    precompiles::{parameter::read_right_pad, PrecompileError},
+    System, U256,
+};
+
+use super::{
+    parameter::{PaddedChunks, U256Reader},
+    PrecompileContext, PrecompileResult,
+};
 
 lazy_static::lazy_static! {
     pub(crate) static ref SECP256K1: BigUint = BigUint::from_bytes_be(&hex_literal::hex!("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"));
 }
 
-/// ensures top bits are zeroed
-pub fn assert_zero_bytes<const S: usize>(src: &[u8]) -> Result<(), PrecompileError> {
-    if src[..S] != [0u8; S] {
-        Err(PrecompileError::InvalidInput)
-    } else {
-        Ok(())
-    }
-}
-
-/// Native Type of a given contract
-#[repr(u32)]
-pub enum NativeType {
-    NonExistent = 0,
-    // user actors are flattened to "system"
-    /// System includes any singletons not otherwise defined.
-    System = 1,
-    Embryo = 2,
-    Account = 3,
-    StorageProvider = 4,
-    EVMContract = 5,
-    OtherTypes = 6,
-}
-
-impl NativeType {
-    fn word_vec(self) -> Vec<u8> {
-        U256::from(self as u32).to_bytes().to_vec()
-    }
-}
-
-struct Parameter<T>(pub T);
-
-impl<'a> TryFrom<&'a [u8; 64]> for Parameter<G1> {
-    type Error = PrecompileError;
-
-    fn try_from(value: &'a [u8; 64]) -> Result<Self, Self::Error> {
-        let x = Fq::from_u256(U256::from_big_endian(&value[0..32]).into())?;
-        let y = Fq::from_u256(U256::from_big_endian(&value[32..64]).into())?;
-
-        Ok(if x.is_zero() && y.is_zero() {
-            Parameter(G1::zero())
-        } else {
-            Parameter(AffineG1::new(x, y)?.into())
-        })
-    }
-}
-
-impl<'a> From<&'a [u8; 32]> for Parameter<[u8; 32]> {
-    fn from(value: &'a [u8; 32]) -> Self {
-        Self(*value)
-    }
-}
-
-impl<'a> TryFrom<&'a [u8; 32]> for Parameter<u32> {
-    type Error = PrecompileError;
-
-    fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
-        assert_zero_bytes::<28>(value)?;
-        // Type ensures our remaining len == 4
-        Ok(Self(u32::from_be_bytes(value[28..].try_into().unwrap())))
-    }
-}
-
-impl<'a> TryFrom<&'a [u8; 32]> for Parameter<i32> {
-    type Error = PrecompileError;
-
-    fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
-        assert_zero_bytes::<28>(value)?;
-        // Type ensures our remaining len == 4
-        Ok(Self(i32::from_be_bytes(value[28..].try_into().unwrap())))
-    }
-}
-
-impl<'a> TryFrom<&'a [u8; 32]> for Parameter<u8> {
-    type Error = PrecompileError;
-
-    fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
-        assert_zero_bytes::<31>(value)?;
-        Ok(Self(value[31]))
-    }
-}
-
-impl<'a> TryFrom<&'a [u8; 32]> for Parameter<u64> {
-    type Error = PrecompileError;
-
-    fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
-        assert_zero_bytes::<24>(value)?;
-        // Type ensures our remaining len == 8
-        Ok(Self(u64::from_be_bytes(value[24..].try_into().unwrap())))
-    }
-}
-
-impl<'a> TryFrom<&'a [u8; 32]> for Parameter<i64> {
-    type Error = PrecompileError;
-
-    fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
-        assert_zero_bytes::<24>(value)?;
-        // Type ensures our remaining len == 8
-        Ok(Self(i64::from_be_bytes(value[24..].try_into().unwrap())))
-    }
-}
-
-impl<'a> From<&'a [u8; 32]> for Parameter<U256> {
-    fn from(value: &'a [u8; 32]) -> Self {
-        Self(U256::from_big_endian(value))
-    }
-}
-
-type U256Reader<'a> = PaddedChunks<'a, u8, 32>;
-
-// will be nicer with https://github.com/rust-lang/rust/issues/74985
-/// Wrapper around `ChunksExact` that pads instead of overflowing.
-/// Also provides a nice API interface for reading Parameters from input
-struct PaddedChunks<'a, T: Sized + Copy, const CHUNK_SIZE: usize> {
-    slice: &'a [T],
-    chunks: ChunksExact<'a, T>,
-    exhausted: bool,
-}
-
-impl<'a, T: Sized + Copy, const CHUNK_SIZE: usize> PaddedChunks<'a, T, CHUNK_SIZE> {
-    pub(super) fn new(slice: &'a [T]) -> Self {
-        Self { slice, chunks: slice.chunks_exact(CHUNK_SIZE), exhausted: false }
-    }
-
-    pub fn next(&mut self) -> Option<&[T; CHUNK_SIZE]> {
-        self.chunks.next().map(|s| s.try_into().unwrap())
-    }
-
-    pub fn next_padded(&mut self) -> [T; CHUNK_SIZE]
-    where
-        T: Default,
-    {
-        if self.chunks.len() > 0 {
-            self.next().copied().unwrap_or([T::default(); CHUNK_SIZE])
-        } else if self.exhausted() {
-            [T::default(); CHUNK_SIZE]
-        } else {
-            self.exhausted = true;
-            let mut buf = [T::default(); CHUNK_SIZE];
-            let remainder = self.chunks.remainder();
-            buf[..remainder.len()].copy_from_slice(remainder);
-            buf
-        }
-    }
-
-    pub fn exhausted(&self) -> bool {
-        self.exhausted
-    }
-
-    pub fn remaining_len(&self) -> usize {
-        if self.exhausted {
-            0
-        } else {
-            self.chunks.len() * CHUNK_SIZE + self.chunks.remainder().len()
-        }
-    }
-
-    pub fn chunks_read(&self) -> usize {
-        let total_chunks = self.slice.len() / CHUNK_SIZE;
-        let unread_chunks = self.chunks.len();
-        total_chunks - unread_chunks
-    }
-
-    // remaining unpadded slice of unread items
-    pub fn remaining_slice(&self) -> &[T] {
-        let start = self.slice.len() - self.remaining_len();
-        &self.slice[start..]
-    }
-
-    // // tries to read an unpadded and exact (aligned) parameter
-    #[allow(unused)]
-    pub fn next_param<V>(&mut self) -> Result<V, PrecompileError>
-    where
-        Parameter<V>: for<'from> TryFrom<&'from [T; CHUNK_SIZE], Error = PrecompileError>,
-    {
-        Parameter::<V>::try_from(self.next().ok_or(PrecompileError::IncorrectInputSize)?)
-            .map(|a| a.0)
-    }
-
-    // tries to read a parameter with padding
-    pub fn next_param_padded<V>(&mut self) -> Result<V, PrecompileError>
-    where
-        T: Default,
-        Parameter<V>: for<'from> TryFrom<&'from [T; CHUNK_SIZE], Error = PrecompileError>,
-    {
-        Parameter::<V>::try_from(&self.next_padded()).map(|a| a.0)
-    }
-
-    #[allow(unused)]
-    pub fn next_into_param_padded<V>(&mut self) -> V
-    where
-        T: Default,
-        Parameter<V>: for<'from> From<&'from [T; CHUNK_SIZE]>,
-    {
-        Parameter::<V>::from(&self.next_padded()).0
-    }
-
-    // read a parameter with padding
-    pub fn next_into_param<V>(&mut self) -> Result<V, PrecompileError>
-    where
-        T: Default,
-        Parameter<V>: for<'from> From<&'from [T; CHUNK_SIZE]>,
-    {
-        self.next().map(|p| Parameter::<V>::from(p).0).ok_or(PrecompileError::IncorrectInputSize)
-    }
-}
-
-#[derive(Debug)]
-pub enum PrecompileError {
-    EcErr(CurveError),
-    EcGroupErr(GroupError),
-    InvalidInput, // TODO merge with below?
-    IncorrectInputSize,
-    OutOfGas,
-    CallActorError(StatusCode),
-}
-
-impl From<PrecompileError> for StatusCode {
-    fn from(src: PrecompileError) -> Self {
-        match src {
-            PrecompileError::CallActorError(e) => e,
-            _ => StatusCode::PrecompileFailure,
-        }
-    }
-}
-
-impl From<CurveError> for PrecompileError {
-    fn from(src: CurveError) -> Self {
-        PrecompileError::EcErr(src)
-    }
-}
-
-impl From<FieldError> for PrecompileError {
-    fn from(src: FieldError) -> Self {
-        PrecompileError::EcErr(src.into())
-    }
-}
-
-impl From<GroupError> for PrecompileError {
-    fn from(src: GroupError) -> Self {
-        PrecompileError::EcGroupErr(src)
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Default)]
-pub struct PrecompileContext {
-    pub is_static: bool,
-    pub gas_limit: Option<u64>,
-    pub value: U256,
-}
-
-// really I'd want to have context as a type parameter, but since the table we generate must have the same types (or dyn) its messy
-type PrecompileFn<RT> = unsafe fn(*mut System<RT>, &[u8], PrecompileContext) -> PrecompileResult;
-pub type PrecompileResult = Result<Vec<u8>, PrecompileError>; // TODO i dont like vec
-
-/// Generates a list of precompile smart contracts, index + 1 is the address (another option is to make an enum)
-const fn gen_precompiles<RT: Runtime>() -> [PrecompileFn<RT>; 14] {
-    macro_rules! precompiles {
-        ($($precompile:ident,)*) => {
-            mod trampolines {
-                use fil_actors_runtime::runtime::Runtime;
-                use crate::System;
-                use super::{PrecompileContext, PrecompileResult};
-                $(
-                    #[inline(always)]
-                    pub unsafe fn $precompile<RT: Runtime>(s: *mut System<RT>, inp: &[u8], ctx: PrecompileContext) -> PrecompileResult {
-                        super::$precompile(&mut *s, inp, ctx)
-                    }
-                )*
-            }
-            [
-                $(trampolines::$precompile,)*
-            ]
-        }
-    }
-
-    precompiles! {
-        ec_recover, // ecrecover 0x01
-        sha256,     // SHA2-256 0x02
-        ripemd160,  // ripemd160 0x03
-        identity,   // identity 0x04
-        modexp,     // modexp 0x05
-        ec_add,     // ecAdd 0x06
-        ec_mul,     // ecMul 0x07
-        ec_pairing, // ecPairing 0x08
-        blake2f,    // blake2f 0x09
-        // FIL precompiles
-        resolve_address,    // lookup_address 0x0a
-        lookup_address,     // resolve_address 0x0b
-        get_actor_type,     // get actor type 0x0c
-        get_randomness,     // rand 0x0d
-        call_actor,         // call_actor 0x0e
-    }
-}
-
-pub struct Precompiles<RT>(PhantomData<RT>);
-
-impl<RT: Runtime> Precompiles<RT> {
-    const PRECOMPILES: [PrecompileFn<RT>; 14] = gen_precompiles();
-    const MAX_PRECOMPILE: U256 = {
-        let mut limbs = [0u64; 4];
-        limbs[0] = Self::PRECOMPILES.len() as u64;
-        U256(limbs)
-    };
-
-    // Precompile Context will be flattened to None if not calling the call_actor precompile
-    pub fn call_precompile(
-        system: &mut System<RT>,
-        precompile_addr: U256,
-        input: &[u8],
-        context: PrecompileContext,
-    ) -> PrecompileResult {
-        unsafe { Self::PRECOMPILES[precompile_addr.0[0] as usize - 1](system, input, context) }
-    }
-
-    #[inline]
-    pub fn is_precompile(addr: &U256) -> bool {
-        !addr.is_zero() && addr <= &Self::MAX_PRECOMPILE
-    }
-}
-
-// It is uncomfortable how much Eth pads everything...
-fn read_right_pad<'a>(input: impl Into<Cow<'a, [u8]>>, len: usize) -> Cow<'a, [u8]> {
-    let mut input: Cow<[u8]> = input.into();
-    let input_len = input.len();
-    if len > input_len {
-        input.to_mut().resize(len, 0);
-    }
-    input
-}
-
-// --- Precompiles ---
-
-/// Read right padded BE encoded low u64 ID address from a u256 word.
-/// Returns variant of [`BuiltinType`] encoded as a u256 word.
-fn get_actor_type<RT: Runtime>(
-    system: &mut System<RT>,
-    input: &[u8],
-    _: PrecompileContext,
-) -> PrecompileResult {
-    const LAST_SYSTEM_ACTOR_ID: u64 = 32;
-
-    let id_bytes: [u8; 32] = read_right_pad(input, 32).as_ref().try_into().unwrap();
-    let id = Parameter::<u64>::try_from(&id_bytes)?.0;
-
-    if id < LAST_SYSTEM_ACTOR_ID {
-        // known to be system actors
-        Ok(NativeType::System.word_vec())
-    } else {
-        // resolve type from code CID
-        let builtin_type = system
-            .rt
-            .get_actor_code_cid(&id)
-            .and_then(|cid| system.rt.resolve_builtin_actor_type(&cid));
-
-        let builtin_type = match builtin_type {
-            Some(t) => match t {
-                Type::Account => NativeType::Account,
-                Type::System => NativeType::System,
-                Type::Embryo => NativeType::Embryo,
-                Type::EVM => NativeType::EVMContract,
-                Type::Miner => NativeType::StorageProvider,
-                // Others
-                Type::PaymentChannel | Type::Multisig => NativeType::OtherTypes,
-                // Singletons
-                Type::Market
-                | Type::Power
-                | Type::Init
-                | Type::Cron
-                | Type::Reward
-                | Type::VerifiedRegistry
-                | Type::DataCap
-                | Type::EAM => NativeType::System,
-            },
-            None => NativeType::NonExistent,
-        };
-
-        Ok(builtin_type.word_vec())
-    }
-}
-
-/// Params:
-///
-/// | Param            | Value                     |
-/// |------------------|---------------------------|
-/// | randomness_type  | U256 - low i32: `Chain`(0) OR `Beacon`(1) |
-/// | personalization  | U256 - low i64             |
-/// | randomness_epoch | U256 - low i64             |
-/// | entropy_length   | U256 - low u32             |
-/// | entropy          | input\[32..] (right padded)|
-///
-/// any bytes in between values are ignored
-///
-/// Returns empty array if invalid randomness type
-/// Errors if unable to fetch randomness
-fn get_randomness<RT: Runtime>(
-    system: &mut System<RT>,
-    input: &[u8],
-    _: PrecompileContext,
-) -> PrecompileResult {
-    let mut input_params = U256Reader::new(input);
-
-    #[derive(num_derive::FromPrimitive)]
-    #[repr(i32)]
-    enum RandomnessType {
-        Chain = 0,
-        Beacon = 1,
-    }
-
-    let randomness_type = RandomnessType::from_i32(input_params.next_param_padded::<i32>()?);
-    let personalization = input_params.next_param_padded::<i64>()?;
-    let rand_epoch = input_params.next_param_padded::<i64>()?;
-    let entropy_len = input_params.next_param_padded::<u32>()?;
-
-    debug_assert_eq!(input_params.chunks_read(), 4);
-
-    let entropy = read_right_pad(input_params.remaining_slice(), entropy_len as usize);
-
-    let randomness = match randomness_type {
-        Some(RandomnessType::Chain) => system
-            .rt
-            .user_get_randomness_from_chain(personalization, rand_epoch, &entropy)
-            .map(|a| a.to_vec()),
-        Some(RandomnessType::Beacon) => system
-            .rt
-            .user_get_randomness_from_beacon(personalization, rand_epoch, &entropy)
-            .map(|a| a.to_vec()),
-        None => Ok(Vec::new()),
-    };
-
-    randomness.map_err(|_| PrecompileError::InvalidInput)
-}
-
-/// Read BE encoded low u64 ID address from a u256 word
-/// Looks up and returns the other address (encoded f2 or f4 addresses) of an ID address, returning empty array if not found
-fn lookup_address<RT: Runtime>(
-    system: &mut System<RT>,
-    input: &[u8],
-    _: PrecompileContext,
-) -> PrecompileResult {
-    let mut id_bytes = U256Reader::new(input);
-    let id = id_bytes.next_param_padded::<u64>()?;
-
-    let address = system.rt.lookup_address(id);
-    let ab = match address {
-        Some(a) => a.to_bytes(),
-        None => Vec::new(),
-    };
-    Ok(ab)
-}
-
-/// Reads a FIL encoded address
-/// Resolves a FIL encoded address into an ID address
-/// returns BE encoded u64 or empty array if nothing found
-fn resolve_address<RT: Runtime>(
-    system: &mut System<RT>,
-    input: &[u8],
-    _: PrecompileContext,
-) -> PrecompileResult {
-    let mut input_params = U256Reader::new(input);
-
-    let len = input_params.next_param_padded::<u32>()? as usize;
-    let addr = match Address::from_bytes(&read_right_pad(input_params.remaining_slice(), len)) {
-        Ok(o) => o,
-        Err(_) => return Ok(Vec::new()),
-    };
-    Ok(system.rt.resolve_address(&addr).map(|a| a.to_be_bytes().to_vec()).unwrap_or_default())
-}
-
-/// Errors:
-///    TODO should just give 0s?
-/// - `IncorrectInputSize` if offset is larger than total input length
-/// - `InvalidInput` if supplied address bytes isnt a filecoin address
-///
-/// Returns:
-///
-/// `[int256 exit_code, uint codec, uint offset, uint size, []bytes <actor return value>]`
-///
-/// for exit_code:
-/// - negative values are system errors
-/// - positive are user errors (from the called actor)
-/// - 0 is success
-pub fn call_actor<RT: Runtime>(
-    system: &mut System<RT>,
-    input: &[u8],
-    ctx: PrecompileContext,
-) -> PrecompileResult {
-    // ----- Input Parameters -------
-
-    let mut input_params = U256Reader::new(input);
-
-    let method: u64 = input_params.next_param_padded()?;
-    let codec: u64 = input_params.next_param_padded()?;
-    // TODO only CBOR for now
-    if codec != fvm_ipld_encoding::DAG_CBOR {
-        return Err(PrecompileError::InvalidInput);
-    }
-
-    let address_size = input_params.next_param_padded::<u32>()? as usize;
-    let send_data_size = input_params.next_param_padded::<u32>()? as usize;
-
-    // ------ Begin Call -------
-
-    let result = {
-        // REMOVEME: closes https://github.com/filecoin-project/ref-fvm/issues/1018
-
-        let start = input_params.remaining_slice();
-        let bytes = read_right_pad(start, send_data_size + address_size);
-
-        let input_data = &bytes[..send_data_size];
-        let address = &bytes[send_data_size..send_data_size + address_size];
-        let address = Address::from_bytes(address).map_err(|_| PrecompileError::InvalidInput)?;
-
-        system.send_with_gas(
-            &address,
-            method,
-            RawBytes::from(input_data.to_vec()),
-            TokenAmount::from(&ctx.value),
-            ctx.gas_limit,
-            ctx.is_static,
-        )
-    };
-
-    // ------ Build Output -------
-
-    let output = {
-        // negative values are syscall errors
-        // positive values are user/actor errors
-        // success is 0
-        let (exit_code, data) = match result {
-            Err(mut ae) => {
-                // TODO handle revert
-                // TODO https://github.com/filecoin-project/ref-fvm/issues/1020
-                // put error number from call into revert
-                let exit_code = U256::from(ae.exit_code().value());
-
-                // no return only exit code
-                (exit_code, ae.take_data())
-            }
-            Ok(ret) => (U256::zero(), ret),
-        };
-
-        const NUM_OUTPUT_PARAMS: u32 = 4;
-
-        // codec of return data
-        // TODO hardcoded to CBOR for now
-        let codec = U256::from(fvm_ipld_encoding::DAG_CBOR);
-        let offset = U256::from(NUM_OUTPUT_PARAMS * 32);
-        let size = U256::from(data.len() as u32);
-
-        let mut output = Vec::with_capacity(NUM_OUTPUT_PARAMS as usize * 32 + data.len());
-        output.extend_from_slice(&exit_code.to_bytes());
-        output.extend_from_slice(&codec.to_bytes());
-        output.extend_from_slice(&offset.to_bytes());
-        output.extend_from_slice(&size.to_bytes());
-        // NOTE:
-        // we dont pad out to 32 bytes here, the idea being that users will already be in the "everythig is bytes" mode
-        // and will want re-pack align and whatever else by themselves
-        output.extend_from_slice(data.bytes());
-        output
-    };
-
-    Ok(output)
-}
-
-// ---------------- Normal EVM Precompiles ------------------
-
 /// recover a secp256k1 pubkey from a hash, recovery byte, and a signature
-fn ec_recover<RT: Runtime>(
+pub(super) fn ec_recover<RT: Runtime>(
     system: &mut System<RT>,
     input: &[u8],
     _: PrecompileContext,
@@ -645,7 +79,7 @@ fn ec_recover<RT: Runtime>(
 }
 
 /// hash with sha2-256
-fn sha256<RT: Runtime>(
+pub(super) fn sha256<RT: Runtime>(
     system: &mut System<RT>,
     input: &[u8],
     _: PrecompileContext,
@@ -654,7 +88,7 @@ fn sha256<RT: Runtime>(
 }
 
 /// hash with ripemd160
-fn ripemd160<RT: Runtime>(
+pub(super) fn ripemd160<RT: Runtime>(
     system: &mut System<RT>,
     input: &[u8],
     _: PrecompileContext,
@@ -663,7 +97,7 @@ fn ripemd160<RT: Runtime>(
 }
 
 /// data copy
-fn identity<RT: Runtime>(
+pub(super) fn identity<RT: Runtime>(
     _: &mut System<RT>,
     input: &[u8],
     _: PrecompileContext,
@@ -673,7 +107,11 @@ fn identity<RT: Runtime>(
 
 // https://eips.ethereum.org/EIPS/eip-198
 /// modulus exponent a number
-fn modexp<RT: Runtime>(_: &mut System<RT>, input: &[u8], _: PrecompileContext) -> PrecompileResult {
+pub(super) fn modexp<RT: Runtime>(
+    _: &mut System<RT>,
+    input: &[u8],
+    _: PrecompileContext,
+) -> PrecompileResult {
     let input = read_right_pad(input, 96);
 
     // Follows go-ethereum by truncating bits to u64, ignoring other all other values in the first 24 bytes.
@@ -726,7 +164,7 @@ fn modexp<RT: Runtime>(_: &mut System<RT>, input: &[u8], _: PrecompileContext) -
     Ok(output)
 }
 
-fn curve_to_vec(curve: G1) -> Vec<u8> {
+pub(super) fn curve_to_vec(curve: G1) -> Vec<u8> {
     AffineG1::from_jacobian(curve)
         .map(|product| {
             let mut output = vec![0; 64];
@@ -738,7 +176,11 @@ fn curve_to_vec(curve: G1) -> Vec<u8> {
 }
 
 /// add 2 points together on an elliptic curve
-fn ec_add<RT: Runtime>(_: &mut System<RT>, input: &[u8], _: PrecompileContext) -> PrecompileResult {
+pub(super) fn ec_add<RT: Runtime>(
+    _: &mut System<RT>,
+    input: &[u8],
+    _: PrecompileContext,
+) -> PrecompileResult {
     let mut input_params: PaddedChunks<u8, 64> = PaddedChunks::new(input);
     let point1 = input_params.next_param_padded()?;
     let point2 = input_params.next_param_padded()?;
@@ -747,7 +189,11 @@ fn ec_add<RT: Runtime>(_: &mut System<RT>, input: &[u8], _: PrecompileContext) -
 }
 
 /// multiply a point on an elliptic curve by a scalar value
-fn ec_mul<RT: Runtime>(_: &mut System<RT>, input: &[u8], _: PrecompileContext) -> PrecompileResult {
+pub(super) fn ec_mul<RT: Runtime>(
+    _: &mut System<RT>,
+    input: &[u8],
+    _: PrecompileContext,
+) -> PrecompileResult {
     let input = read_right_pad(input, 96);
     let mut input_params: PaddedChunks<u8, 64> = PaddedChunks::new(&input);
     let point = input_params.next_param_padded()?;
@@ -761,7 +207,7 @@ fn ec_mul<RT: Runtime>(_: &mut System<RT>, input: &[u8], _: PrecompileContext) -
 }
 
 /// pairs multple groups of twisted bn curves
-fn ec_pairing<RT: Runtime>(
+pub(super) fn ec_pairing<RT: Runtime>(
     _: &mut System<RT>,
     input: &[u8],
     _: PrecompileContext,
@@ -823,7 +269,7 @@ fn ec_pairing<RT: Runtime>(
 }
 
 /// https://eips.ethereum.org/EIPS/eip-152
-fn blake2f<RT: Runtime>(
+pub(super) fn blake2f<RT: Runtime>(
     _: &mut System<RT>,
     input: &[u8],
     _: PrecompileContext,
@@ -1022,7 +468,10 @@ mod tests {
 
     // bn tests borrowed from https://github.com/bluealloy/revm/blob/26540bf5b29de6e7c8020c4c1880f8a97d1eadc9/crates/revm_precompiles/src/bn128.rs
     mod bn {
-        use super::{GroupError, MockRuntime};
+        use substrate_bn::GroupError;
+
+        use super::MockRuntime;
+
         use crate::interpreter::{
             precompiles::{ec_add, ec_mul, ec_pairing, PrecompileContext, PrecompileError},
             System,

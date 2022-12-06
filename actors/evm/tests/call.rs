@@ -324,7 +324,7 @@ fn test_callactor_inner(exit_code: ExitCode) {
 
     impl CallActorReturn {
         pub fn read(src: &[u8]) -> Self {
-            use fil_actor_evm::interpreter::precompiles::assert_zero_bytes;
+            use fil_actor_evm::interpreter::precompiles::parameter::assert_zero_bytes;
             assert!(src.len() >= 4 * 32, "expected to read at least 4 U256 values");
 
             let bytes = &src[..32];
