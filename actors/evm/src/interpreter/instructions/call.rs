@@ -245,7 +245,7 @@ pub fn call_generic<RT: Runtime>(
                             // switch to a basic "send" so the call will still work even if the
                             // target actor would reject a normal ethereum call.
                             METHOD_SEND
-                        } else if !value.is_zero() && !gas.is_zero() && gas <= U256::from(2300) {
+                        } else if !gas.is_zero() && gas <= U256::from(2300) {
                             // See https://github.com/filecoin-project/ref-fvm/issues/980 for this
                             // magic value
                             Method::InvokeContractRestricted as u64
