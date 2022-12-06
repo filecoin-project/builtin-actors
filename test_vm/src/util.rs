@@ -3,7 +3,7 @@ use std::cmp::min;
 use frc46_token::receiver::types::{FRC46TokenReceived, UniversalReceiverParams, FRC46_TOKEN_TYPE};
 use frc46_token::token::types::{BurnParams, TransferFromParams, TransferParams};
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_encoding::{BytesDe, Cbor, RawBytes};
+use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::address::{Address, BLS_PUB_LEN};
 use fvm_shared::crypto::signature::{Signature, SignatureType};
 use fvm_shared::deal::DealID;
@@ -14,6 +14,7 @@ use fvm_shared::sector::{PoStProof, RegisteredPoStProof, RegisteredSealProof, Se
 use fvm_shared::{MethodNum, METHOD_SEND};
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
+use serde::Serialize;
 
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_cron::Method as CronMethod;
@@ -79,30 +80,30 @@ pub fn create_accounts_seeded(v: &VM, count: u64, balance: TokenAmount, seed: u6
     let pk_addrs = pk_addrs_from(seed, count);
     // Send funds from faucet to pk address, creating account actor
     for pk_addr in pk_addrs.clone() {
-        apply_ok(v, TEST_FAUCET_ADDR, pk_addr, balance.clone(), METHOD_SEND, RawBytes::default());
+        apply_ok(v, TEST_FAUCET_ADDR, pk_addr, balance.clone(), METHOD_SEND, None::<RawBytes>);
     }
     // Normalize pk address to return id address of account actor
     pk_addrs.iter().map(|&pk_addr| v.normalize_address(&pk_addr).unwrap()).collect()
 }
 
-pub fn apply_ok<C: Cbor>(
+pub fn apply_ok<S: Serialize>(
     v: &VM,
     from: Address,
     to: Address,
     value: TokenAmount,
     method: MethodNum,
-    params: C,
+    params: Option<S>,
 ) -> RawBytes {
     apply_code(v, from, to, value, method, params, ExitCode::OK)
 }
 
-pub fn apply_code<C: Cbor>(
+pub fn apply_code<S: Serialize>(
     v: &VM,
     from: Address,
     to: Address,
     value: TokenAmount,
     method: MethodNum,
-    params: C,
+    params: Option<S>,
     code: ExitCode,
 ) -> RawBytes {
     let res = v.apply_message(from, to, value, method, params).unwrap();
@@ -117,7 +118,7 @@ pub fn cron_tick(v: &VM) {
         CRON_ACTOR_ADDR,
         TokenAmount::zero(),
         CronMethod::EpochTick as u64,
-        RawBytes::default(),
+        None::<RawBytes>,
     );
 }
 
@@ -144,7 +145,7 @@ pub fn create_miner(
             STORAGE_POWER_ACTOR_ADDR,
             balance,
             PowerMethod::CreateMiner as u64,
-            params,
+            Some(params),
         )
         .unwrap()
         .ret
@@ -177,7 +178,14 @@ pub fn miner_precommit_sector(
         replace_sector_number: 0,
     };
 
-    apply_ok(v, worker, miner_id, TokenAmount::zero(), MinerMethod::PreCommitSector as u64, params);
+    apply_ok(
+        v,
+        worker,
+        miner_id,
+        TokenAmount::zero(),
+        MinerMethod::PreCommitSector as u64,
+        Some(params),
+    );
 
     let state: MinerState = v.get_state(miner_id).unwrap();
     state.get_precommitted_sector(v.store, sector_number).unwrap().unwrap()
@@ -191,7 +199,7 @@ pub fn miner_prove_sector(v: &VM, worker: Address, miner_id: Address, sector_num
         miner_id,
         TokenAmount::zero(),
         MinerMethod::ProveCommitSector as u64,
-        prove_commit_params,
+        Some(prove_commit_params),
     );
 
     ExpectInvocation {
@@ -297,7 +305,7 @@ pub fn precommit_sectors_v2(
                 maddr,
                 TokenAmount::zero(),
                 MinerMethod::PreCommitSectorBatch as u64,
-                PreCommitSectorBatchParams { sectors: param_sectors.clone() },
+                Some(PreCommitSectorBatchParams { sectors: param_sectors.clone() }),
             );
             let expect = ExpectInvocation {
                 to: mid,
@@ -346,7 +354,7 @@ pub fn precommit_sectors_v2(
                 maddr,
                 TokenAmount::zero(),
                 MinerMethod::PreCommitSectorBatch2 as u64,
-                PreCommitSectorBatchParams2 { sectors: param_sectors.clone() },
+                Some(PreCommitSectorBatchParams2 { sectors: param_sectors.clone() }),
             );
             let expect = ExpectInvocation {
                 to: mid,
@@ -424,7 +432,7 @@ pub fn prove_commit_sectors(
             maddr,
             TokenAmount::zero(),
             MinerMethod::ProveCommitAggregate as u64,
-            prove_commit_aggregate_params,
+            Some(prove_commit_aggregate_params),
         );
 
         ExpectInvocation {
@@ -487,7 +495,7 @@ pub fn miner_extend_sector_expiration2(
         miner_id,
         TokenAmount::zero(),
         MinerMethod::ExtendSectorExpiration2 as u64,
-        extension_params,
+        Some(extension_params),
     );
 
     let mut claim_ids = vec![];
@@ -674,7 +682,7 @@ pub fn declare_recovery(
         maddr,
         TokenAmount::zero(),
         MinerMethod::DeclareFaultsRecovered as u64,
-        recover_params,
+        Some(recover_params),
     );
 }
 
@@ -696,7 +704,14 @@ pub fn submit_windowed_post(
         chain_commit_epoch: dline_info.challenge,
         chain_commit_rand: Randomness(TEST_VM_RAND_ARRAY.into()),
     };
-    apply_ok(v, worker, maddr, TokenAmount::zero(), MinerMethod::SubmitWindowedPoSt as u64, params);
+    apply_ok(
+        v,
+        worker,
+        maddr,
+        TokenAmount::zero(),
+        MinerMethod::SubmitWindowedPoSt as u64,
+        Some(params),
+    );
     let mut subinvocs = None;
     if let Some(new_pow) = new_power {
         if new_pow == PowerPair::zero() {
@@ -740,7 +755,7 @@ pub fn change_beneficiary(
         maddr,
         TokenAmount::zero(),
         MinerMethod::ChangeBeneficiary as u64,
-        beneficiary_change_proposal.clone(),
+        Some(beneficiary_change_proposal.clone()),
     );
 }
 
@@ -751,7 +766,7 @@ pub fn get_beneficiary(v: &VM, from: Address, m_addr: Address) -> GetBeneficiary
         m_addr,
         TokenAmount::zero(),
         MinerMethod::GetBeneficiary as u64,
-        RawBytes::default(),
+        None::<RawBytes>,
     )
     .deserialize()
     .unwrap()
@@ -764,7 +779,7 @@ pub fn change_owner_address(v: &VM, from: Address, m_addr: Address, new_miner_ad
         m_addr,
         TokenAmount::zero(),
         MinerMethod::ChangeOwnerAddress as u64,
-        new_miner_addr,
+        Some(new_miner_addr),
     );
 }
 
@@ -782,7 +797,7 @@ pub fn withdraw_balance(
         m_addr,
         TokenAmount::zero(),
         MinerMethod::WithdrawBalance as u64,
-        params.clone(),
+        Some(params.clone()),
     )
     .deserialize()
     .unwrap();
@@ -824,7 +839,14 @@ pub fn submit_invalid_post(
         chain_commit_epoch: dline_info.challenge,
         chain_commit_rand: Randomness(TEST_VM_RAND_ARRAY.into()),
     };
-    apply_ok(v, worker, maddr, TokenAmount::zero(), MinerMethod::SubmitWindowedPoSt as u64, params);
+    apply_ok(
+        v,
+        worker,
+        maddr,
+        TokenAmount::zero(),
+        MinerMethod::SubmitWindowedPoSt as u64,
+        Some(params),
+    );
 }
 
 pub fn verifreg_add_verifier(v: &VM, verifier: Address, data_cap: StoragePower) {
@@ -843,7 +865,7 @@ pub fn verifreg_add_verifier(v: &VM, verifier: Address, data_cap: StoragePower) 
         TEST_VERIFREG_ROOT_ADDR,
         TokenAmount::zero(),
         MultisigMethod::Propose as u64,
-        proposal,
+        Some(proposal),
     );
     ExpectInvocation {
         to: TEST_VERIFREG_ROOT_ADDR,
@@ -875,7 +897,7 @@ pub fn verifreg_add_client(v: &VM, verifier: Address, client: Address, allowance
         VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
         VerifregMethod::AddVerifiedClient as u64,
-        add_client_params,
+        Some(add_client_params),
     );
     ExpectInvocation {
         to: VERIFIED_REGISTRY_ACTOR_ADDR,
@@ -923,7 +945,7 @@ pub fn verifreg_extend_claim_terms(
         VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
         VerifregMethod::ExtendClaimTerms as u64,
-        params,
+        Some(params),
     );
 }
 
@@ -942,7 +964,7 @@ pub fn verifreg_remove_expired_allocations(
         VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
         VerifregMethod::RemoveExpiredAllocations as u64,
-        params,
+        Some(params),
     );
     ExpectInvocation {
         to: VERIFIED_REGISTRY_ACTOR_ADDR,
@@ -976,7 +998,7 @@ pub fn datacap_get_balance(v: &VM, address: Address) -> TokenAmount {
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
         DataCapMethod::BalanceOf as u64,
-        address,
+        Some(address),
     );
     deserialize(&ret, "balance of return value").unwrap()
 }
@@ -1007,7 +1029,7 @@ pub fn datacap_extend_claim(
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
         DataCapMethod::Transfer as u64,
-        transfer_params,
+        Some(transfer_params),
     );
 
     ExpectInvocation {
@@ -1061,7 +1083,7 @@ pub fn market_add_balance(v: &VM, sender: Address, beneficiary: Address, amount:
         STORAGE_MARKET_ACTOR_ADDR,
         amount,
         MarketMethod::AddBalance as u64,
-        beneficiary,
+        Some(beneficiary),
     );
 }
 
@@ -1107,7 +1129,7 @@ pub fn market_publish_deal(
         STORAGE_MARKET_ACTOR_ADDR,
         TokenAmount::zero(),
         MarketMethod::PublishStorageDeals as u64,
-        publish_params,
+        Some(publish_params),
     )
     .deserialize()
     .unwrap();

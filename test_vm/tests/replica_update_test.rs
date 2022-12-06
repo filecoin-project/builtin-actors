@@ -285,7 +285,7 @@ fn prove_replica_update_multi_dline() {
         maddr,
         TokenAmount::zero(),
         MinerMethod::ProveReplicaUpdates as u64,
-        ProveReplicaUpdatesParams { updates: vec![replica_update_1, replica_update_2] },
+        Some(ProveReplicaUpdatesParams { updates: vec![replica_update_1, replica_update_2] }),
     )
     .deserialize()
     .unwrap();
@@ -354,7 +354,7 @@ fn immutable_deadline_failure() {
         robust,
         TokenAmount::zero(),
         MinerMethod::ProveReplicaUpdates as u64,
-        ProveReplicaUpdatesParams { updates: vec![replica_update] },
+        Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
     v.assert_state_invariants();
@@ -408,7 +408,7 @@ fn unhealthy_sector_failure() {
         robust,
         TokenAmount::zero(),
         MinerMethod::ProveReplicaUpdates as u64,
-        ProveReplicaUpdatesParams { updates: vec![replica_update] },
+        Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
     v.expect_state_invariants(
@@ -455,7 +455,7 @@ fn terminated_sector_failure() {
         maddr,
         TokenAmount::zero(),
         MinerMethod::TerminateSectors as u64,
-        terminate_parms,
+        Some(terminate_parms),
     );
 
     // replicaUpdate the sector
@@ -475,7 +475,7 @@ fn terminated_sector_failure() {
         robust,
         TokenAmount::zero(),
         MinerMethod::ProveReplicaUpdates as u64,
-        ProveReplicaUpdatesParams { updates: vec![replica_update] },
+        Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
     v.assert_state_invariants();
@@ -528,7 +528,7 @@ fn bad_batch_size_failure() {
         robust,
         TokenAmount::zero(),
         MinerMethod::ProveReplicaUpdates as u64,
-        ProveReplicaUpdatesParams { updates },
+        Some(ProveReplicaUpdatesParams { updates }),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
     v.assert_state_invariants();
@@ -547,7 +547,7 @@ fn no_dispute_after_upgrade() {
         miner_id,
         TokenAmount::zero(),
         MinerMethod::DisputeWindowedPoSt as u64,
-        dispute_params,
+        Some(dispute_params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
     v.assert_state_invariants();
@@ -578,7 +578,7 @@ fn upgrade_bad_post_dispute() {
         miner_id,
         TokenAmount::zero(),
         MinerMethod::DisputeWindowedPoSt as u64,
-        dispute_params,
+        Some(dispute_params),
     );
     v.assert_state_invariants();
 }
@@ -633,7 +633,7 @@ fn bad_post_upgrade_dispute() {
         robust,
         TokenAmount::zero(),
         MinerMethod::ProveReplicaUpdates as u64,
-        ProveReplicaUpdatesParams { updates: vec![replica_update] },
+        Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
     )
     .deserialize()
     .unwrap();
@@ -655,7 +655,7 @@ fn bad_post_upgrade_dispute() {
         maddr,
         TokenAmount::zero(),
         MinerMethod::DisputeWindowedPoSt as u64,
-        dispute_params,
+        Some(dispute_params),
     );
     v.assert_state_invariants();
 }
@@ -682,7 +682,7 @@ fn terminate_after_upgrade() {
         miner_id,
         TokenAmount::zero(),
         MinerMethod::TerminateSectors as u64,
-        terminate_params,
+        Some(terminate_params),
     );
 
     // expect power, market and miner to be in base state
@@ -734,7 +734,7 @@ fn extend_after_upgrade() {
         miner_id,
         TokenAmount::zero(),
         MinerMethod::ExtendSectorExpiration as u64,
-        extension_params,
+        Some(extension_params),
     );
 
     let miner_state = v.get_state::<MinerState>(miner_id).unwrap();
@@ -794,7 +794,7 @@ fn wrong_deadline_index_failure() {
         robust,
         TokenAmount::zero(),
         MinerMethod::ProveReplicaUpdates as u64,
-        ProveReplicaUpdatesParams { updates },
+        Some(ProveReplicaUpdatesParams { updates }),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 
@@ -851,7 +851,7 @@ fn wrong_partition_index_failure() {
         robust,
         TokenAmount::zero(),
         MinerMethod::ProveReplicaUpdates as u64,
-        ProveReplicaUpdatesParams { updates },
+        Some(ProveReplicaUpdatesParams { updates }),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 
@@ -911,7 +911,7 @@ fn deal_included_in_multiple_sectors_failure() {
         CRON_ACTOR_ADDR,
         TokenAmount::zero(),
         CronMethod::EpochTick as u64,
-        RawBytes::default(),
+        None::<RawBytes>,
     );
 
     // advance to proving period and submit post
@@ -970,7 +970,7 @@ fn deal_included_in_multiple_sectors_failure() {
         maddr,
         TokenAmount::zero(),
         MinerMethod::ProveReplicaUpdates as u64,
-        ProveReplicaUpdatesParams { updates: vec![replica_update_1, replica_update_2] },
+        Some(ProveReplicaUpdatesParams { updates: vec![replica_update_1, replica_update_2] }),
     )
     .deserialize()
     .unwrap();
@@ -1046,7 +1046,7 @@ fn replica_update_verified_deal() {
         robust,
         TokenAmount::zero(),
         MinerMethod::ProveReplicaUpdates2 as u64,
-        ProveReplicaUpdatesParams2 { updates: vec![replica_update] },
+        Some(ProveReplicaUpdatesParams2 { updates: vec![replica_update] }),
     )
     .deserialize()
     .unwrap();
@@ -1171,7 +1171,7 @@ fn replica_update_verified_deal_max_term_violated() {
         robust,
         TokenAmount::zero(),
         MinerMethod::ProveReplicaUpdates2 as u64,
-        ProveReplicaUpdatesParams2 { updates: vec![replica_update] },
+        Some(ProveReplicaUpdatesParams2 { updates: vec![replica_update] }),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 }
@@ -1220,7 +1220,7 @@ fn create_miner_and_upgrade_sector(
             robust,
             TokenAmount::zero(),
             MinerMethod::ProveReplicaUpdates as u64,
-            ProveReplicaUpdatesParams { updates: vec![replica_update] },
+            Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
         )
     } else {
         let replica_update = ReplicaUpdate2 {
@@ -1239,7 +1239,7 @@ fn create_miner_and_upgrade_sector(
             robust,
             TokenAmount::zero(),
             MinerMethod::ProveReplicaUpdates2 as u64,
-            ProveReplicaUpdatesParams2 { updates: vec![replica_update] },
+            Some(ProveReplicaUpdatesParams2 { updates: vec![replica_update] }),
         )
     }
     .deserialize()
@@ -1287,7 +1287,7 @@ fn create_sector(
         maddr,
         TokenAmount::zero(),
         MinerMethod::ProveCommitSector as u64,
-        prove_commit_params,
+        Some(prove_commit_params),
     );
     let res = v
         .apply_message(
@@ -1295,7 +1295,7 @@ fn create_sector(
             CRON_ACTOR_ADDR,
             TokenAmount::zero(),
             CronMethod::EpochTick as u64,
-            RawBytes::default(),
+            None::<RawBytes>,
         )
         .unwrap();
     assert_eq!(ExitCode::OK, res.code);
@@ -1367,7 +1367,7 @@ fn create_deals_frac(
         STORAGE_MARKET_ACTOR_ADDR,
         collateral.clone(),
         MarketMethod::AddBalance as u64,
-        client,
+        Some(client),
     );
     apply_ok(
         v,
@@ -1375,7 +1375,7 @@ fn create_deals_frac(
         STORAGE_MARKET_ACTOR_ADDR,
         collateral,
         MarketMethod::AddBalance as u64,
-        maddr,
+        Some(maddr),
     );
 
     let mut ids = Vec::<DealID>::new();
