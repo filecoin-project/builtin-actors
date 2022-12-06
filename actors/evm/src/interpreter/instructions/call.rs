@@ -239,16 +239,15 @@ pub fn call_generic<RT: Runtime>(
                     } else {
                         let method = if !actor_exists
                             || matches!(target_actor_type, Some(Type::Embryo | Type::Account))
-                            || (!value.is_zero() && gas.is_zero())
                         {
                             // If the target actor doesn't exist or is an account or an embryo,
                             // switch to a basic "send" so the call will still work even if the
                             // target actor would reject a normal ethereum call.
                             METHOD_SEND
-                        } else if !gas.is_zero() && gas <= U256::from(2300) {
+                        } else if gas <= U256::from(2300) {
                             // See https://github.com/filecoin-project/ref-fvm/issues/980 for this
                             // magic value
-                            Method::InvokeContractRestricted as u64
+                            Method::InvokeContractTransfer as u64
                         } else {
                             // Otherwise, invoke normally.
                             Method::InvokeContract as u64

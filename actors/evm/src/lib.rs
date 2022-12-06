@@ -55,7 +55,7 @@ pub enum Method {
     GetBytecode = 3,
     GetStorageAt = 4,
     InvokeContractDelegate = 5,
-    InvokeContractRestricted = 6,
+    InvokeContractTransfer = 6,
 }
 
 pub struct EvmContractActor;
@@ -289,7 +289,7 @@ impl ActorCode for EvmContractActor {
                 let value = Self::invoke_contract(rt, &params.input, Some(params.code), false)?;
                 Ok(RawBytes::serialize(BytesSer(&value))?)
             }
-            Some(Method::InvokeContractRestricted) => {
+            Some(Method::InvokeContractTransfer) => {
                 let BytesDe(params) = params.deserialize()?;
                 let value = Self::invoke_contract(rt, &params, None, true)?;
                 Ok(RawBytes::serialize(BytesSer(&value))?)

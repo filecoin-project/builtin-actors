@@ -43,7 +43,7 @@ push1 0x00
 push1 0x00
 calldataload
 # gas
-push1 0x00
+%push(1000000)
 # do the call
 call
 
@@ -330,7 +330,7 @@ fn test_call_send_value() {
     rt.expect_gas_available(10_000_000_000u64);
     rt.expect_send(
         target,
-        METHOD_SEND,
+        evm::Method::InvokeContractTransfer as u64,
         proxy_call_input_data,
         TokenAmount::from_atto(1_000),
         RawBytes::serialize(BytesSer(&return_data)).expect("failed to serialize return data"),
@@ -373,7 +373,7 @@ fn test_call_restricted() {
     rt.expect_gas_available(10_000_000_000u64);
     rt.expect_send(
         target,
-        evm::Method::InvokeContractRestricted as u64,
+        evm::Method::InvokeContractTransfer as u64,
         proxy_call_input_data,
         TokenAmount::from_atto(1_000),
         RawBytes::serialize(BytesSer(&return_data)).expect("failed to serialize return data"),
