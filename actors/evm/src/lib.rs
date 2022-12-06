@@ -11,6 +11,7 @@ pub mod interpreter;
 mod state;
 
 use {
+    crate::interpreter::system::Mode,
     crate::interpreter::{execute, Bytecode, ExecutionState, StatusCode, System, U256},
     crate::state::State,
     bytes::Bytes,
@@ -136,7 +137,7 @@ impl EvmContractActor {
         rt: &mut RT,
         input_data: &[u8],
         with_code: Option<Cid>,
-        restricted: bool,
+        transfer: bool,
     ) -> Result<Vec<u8>, ActorError>
     where
         RT: Runtime,
@@ -148,7 +149,11 @@ impl EvmContractActor {
             rt.validate_immediate_caller_accept_any()?;
         }
 
-        let mut system = System::load(rt, restricted).map_err(|e| {
+        let mut system = System::load(
+            rt,
+            if transfer { Mode::Transfer } else { Mode::Unrestricted },
+        )
+        .map_err(|e| {
             ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
         })?;
 
@@ -222,7 +227,7 @@ impl EvmContractActor {
         // access arbitrary storage keys from a contract.
         rt.validate_immediate_caller_is([&Address::new_id(0)])?;
 
-        System::load(rt, true)?
+        System::load(rt, Mode::ReadOnly)?
             .get_storage(params.storage_key)
             .context_code(ExitCode::USR_ASSERTION_FAILED, "failed to get storage key")
     }

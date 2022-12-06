@@ -180,7 +180,7 @@ pub fn call_generic<RT: Runtime>(
 
     let (gas, dst, value, input_offset, input_size, output_offset, output_size) = params;
 
-    if system.readonly && value > U256::zero() {
+    if system.mode.read_only() && value > U256::zero() {
         // non-zero sends are side-effects and hence a static mode violation
         return Err(StatusCode::StaticModeViolation);
     }
@@ -198,7 +198,7 @@ pub fn call_generic<RT: Runtime>(
 
         if precompiles::Precompiles::<RT>::is_precompile(&dst) {
             let context = PrecompileContext {
-                is_static: matches!(kind, CallKind::StaticCall) || system.readonly,
+                is_static: matches!(kind, CallKind::StaticCall) || system.mode.read_only(),
                 gas_limit: effective_gas_limit(system, gas),
                 value,
             };
@@ -273,7 +273,7 @@ pub fn call_generic<RT: Runtime>(
                             RawBytes::serialize(&params)?,
                             TokenAmount::from(&value),
                             effective_gas_limit(system, gas),
-                            system.readonly,
+                            system.mode.read_only(),
                         )
                     }
                     // If we're calling an account or a non-existent actor, return nothing because

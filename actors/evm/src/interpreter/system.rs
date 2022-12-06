@@ -27,6 +27,28 @@ use {
 /// The contract code size limit is 24kB.
 const MAX_CODE_SIZE: usize = 24 << 10;
 
+pub enum Mode {
+    Unrestricted,
+    ReadOnly,
+    Transfer,
+}
+
+impl Mode {
+    pub fn read_only(&self) -> bool {
+        match self {
+            Mode::Unrestricted => false,
+            _ => true,
+        }
+    }
+
+    pub fn restricted(&self) -> bool {
+        match self {
+            Mode::Transfer => true,
+            _ => false,
+        }
+    }
+}
+
 /// Platform Abstraction Layer
 /// that bridges the FVM world to EVM world
 pub struct System<'r, RT: Runtime> {
@@ -40,10 +62,8 @@ pub struct System<'r, RT: Runtime> {
     nonce: u64,
     /// The last saved state root. None if the current state hasn't been saved yet.
     saved_state_root: Option<Cid>,
-    /// Read Only context (staticcall)
-    pub readonly: bool,
-    /// Restricted context; implies readonly
-    pub restricted: bool,
+    /// contract execution mode
+    pub mode: Mode,
 }
 
 impl<'r, RT: Runtime> System<'r, RT> {
@@ -64,13 +84,12 @@ impl<'r, RT: Runtime> System<'r, RT> {
             nonce: 1,
             saved_state_root: None,
             bytecode: None,
-            readonly: read_only,
-            restricted: false,
+            mode: if read_only { Mode::ReadOnly } else { Mode::Unrestricted },
         })
     }
 
     /// Load the actor from state.
-    pub fn load(rt: &'r mut RT, restricted: bool) -> Result<Self, ActorError>
+    pub fn load(rt: &'r mut RT, mode: Mode) -> Result<Self, ActorError>
     where
         RT::Blockstore: Clone,
     {
@@ -89,8 +108,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
             nonce: state.nonce,
             saved_state_root: Some(state_root),
             bytecode: Some(state.bytecode),
-            readonly: read_only || restricted,
-            restricted,
+            mode: if read_only && !mode.read_only() { Mode::ReadOnly } else { mode },
         })
     }
 
@@ -109,7 +127,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
         params: RawBytes,
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError> {
-        if self.restricted {
+        if self.mode.restricted() {
             return Err(ActorError::forbidden("contract invocation is restricted".to_string()));
         }
 
@@ -126,7 +144,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
         method: MethodNum,
         params: RawBytes,
     ) -> Result<RawBytes, ActorError> {
-        if self.restricted {
+        if self.mode.restricted() {
             return Err(ActorError::forbidden("contract invocation is restricted".to_string()));
         }
 
@@ -144,7 +162,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
         gas_limit: Option<u64>,
         read_only: bool,
     ) -> Result<RawBytes, ActorError> {
-        if self.restricted {
+        if self.mode.restricted() {
             return Err(ActorError::forbidden("contract invocation is restricted".to_string()));
         }
 
@@ -162,11 +180,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
             return Ok(());
         }
 
-        if self.restricted {
-            return Err(ActorError::forbidden("contract invocation is restricted".to_string()));
-        }
-
-        if self.readonly {
+        if self.mode.read_only() {
             return Err(ActorError::forbidden("contract invocation is read only".to_string()));
         }
 
@@ -197,7 +211,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
 
     /// Reload the actor state if changed.
     pub fn reload(&mut self) -> Result<(), ActorError> {
-        if self.readonly {
+        if self.mode.read_only() {
             return Ok(());
         }
 

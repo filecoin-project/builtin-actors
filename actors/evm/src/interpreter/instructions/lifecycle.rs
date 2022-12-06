@@ -48,7 +48,7 @@ pub fn create(
     offset: U256,
     size: U256,
 ) -> Result<U256, StatusCode> {
-    if system.readonly {
+    if system.mode.read_only() {
         return Err(StatusCode::StaticModeViolation);
     }
 
@@ -80,7 +80,7 @@ pub fn create2(
     size: U256,
     salt: U256,
 ) -> Result<U256, StatusCode> {
-    if system.readonly {
+    if system.mode.read_only() {
         return Err(StatusCode::StaticModeViolation);
     }
 
@@ -156,7 +156,7 @@ pub fn selfdestruct(
 ) -> Result<Output, StatusCode> {
     use crate::interpreter::output::Outcome;
 
-    if system.readonly {
+    if system.mode.read_only() {
         return Err(StatusCode::StaticModeViolation);
     }
 

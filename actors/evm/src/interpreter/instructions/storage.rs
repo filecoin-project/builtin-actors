@@ -20,7 +20,7 @@ pub fn sstore(
     key: U256,
     value: U256,
 ) -> Result<(), StatusCode> {
-    if system.readonly {
+    if system.mode.read_only() {
         return Err(StatusCode::StaticModeViolation);
     }
 
