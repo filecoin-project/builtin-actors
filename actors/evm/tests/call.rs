@@ -47,6 +47,11 @@ push1 0x00
 # do the call
 call
 
+# check for success
+iszero
+%push(fail)
+jumpi
+
 # return result through
 returndatasize
 push1 0x00
@@ -55,6 +60,69 @@ returndatacopy
 returndatasize
 push1 0x00
 return
+
+fail:
+jumpdest
+push1 0x00
+push1 0x00
+revert
+"#;
+
+    asm::new_contract("call-proxy", init, body).unwrap()
+}
+
+#[allow(dead_code)]
+pub fn call_proxy_with_value_contract() -> Vec<u8> {
+    let init = "";
+    let body = r#"
+# this contract takes an address and the call payload and proxies a call to that address
+# get call payload size
+push1 0x20
+calldatasize
+sub
+# store payload to mem 0x00
+push1 0x20
+push1 0x00
+calldatacopy
+
+# prepare the proxy call
+# output offset and size -- 0 in this case, we use returndata
+push2 0x00
+push1 0x00
+# input offset and size
+push1 0x20
+calldatasize
+sub
+push1 0x00
+# value
+%push(1000)
+# dest address
+push1 0x00
+calldataload
+# gas
+push1 0x00
+# do the call
+call
+
+# check for success
+iszero
+%push(fail)
+jumpi
+
+# return result through
+returndatasize
+push1 0x00
+push1 0x00
+returndatacopy
+returndatasize
+push1 0x00
+return
+
+fail:
+jumpdest
+push1 0x00
+push1 0x00
+revert
 "#;
 
     asm::new_contract("call-proxy", init, body).unwrap()
@@ -172,6 +240,49 @@ fn test_call_convert_to_send() {
         assert_eq!(U256::from_big_endian(&result), U256::from(0x42));
         rt.verify();
     }
+}
+
+// Make sure we do bare sends when transferring value without gas
+#[test]
+fn test_call_send_value() {
+    let contract = call_proxy_with_value_contract();
+
+    // construct the proxy
+    let mut rt = util::construct_and_verify(contract.clone());
+
+    // create a mock actor and proxy a call through the proxy
+    let target_id = 0x100;
+    let target = FILAddress::new_id(target_id);
+    rt.actor_code_cids.insert(target, *EVM_ACTOR_CODE_ID);
+
+    let evm_target_word = EthAddress::from_id(target_id).as_evm_word();
+
+    // dest + method 0 with no data
+    let mut contract_params = vec![0u8; 36];
+    evm_target_word.to_big_endian(&mut contract_params[..32]);
+
+    let proxy_call_contract_params = vec![0u8; 4];
+    let proxy_call_input_data = RawBytes::serialize(BytesSer(&proxy_call_contract_params))
+        .expect("failed to serialize input data");
+
+    // expected return data
+    let mut return_data = vec![0u8; 32];
+    return_data[31] = 0x42;
+
+    rt.set_balance(TokenAmount::from_atto(1_000_000));
+    rt.expect_gas_available(10_000_000_000u64);
+    rt.expect_send(
+        target,
+        METHOD_SEND,
+        proxy_call_input_data,
+        TokenAmount::from_atto(1_000),
+        RawBytes::serialize(BytesSer(&return_data)).expect("failed to serialize return data"),
+        ExitCode::OK,
+    );
+
+    let result = util::invoke_contract(&mut rt, &contract_params);
+    assert_eq!(U256::from_big_endian(&result), U256::from(0x42));
+    rt.verify();
 }
 
 #[allow(dead_code)]
