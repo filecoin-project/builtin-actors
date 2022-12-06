@@ -3,8 +3,8 @@ mod asm;
 use evm::interpreter::U256;
 use fil_actor_evm as evm;
 use fil_actors_runtime::test_utils::{
-    ACCOUNT_ACTOR_CODE_ID, EMBRYO_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID,
-    MULTISIG_ACTOR_CODE_ID,
+    MockRuntime, ACCOUNT_ACTOR_CODE_ID, EMBRYO_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID,
+    MINER_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID,
 };
 use fvm_shared::address::Address as FILAddress;
 
@@ -145,45 +145,19 @@ return
         U256::from(src.id().unwrap()).to_bytes().to_vec()
     }
 
-    // evm
-    let result = util::invoke_contract(&mut rt, &id_to_vec(&evm_target));
-    rt.verify();
-    assert_eq!(&U256::from(NativeType::EVMContract as u32).to_bytes(), result.as_slice());
-    rt.reset();
+    fn test_type(rt: &mut MockRuntime, id: FILAddress, expected: NativeType) {
+        rt.expect_gas_available(10_000_000_000u64);
+        let result = util::invoke_contract(rt, &id_to_vec(&id));
+        rt.verify();
+        assert_eq!(&U256::from(expected as u32).to_bytes(), result.as_slice());
+        rt.reset();
+    }
 
-    // generic system
-    let result = util::invoke_contract(&mut rt, &id_to_vec(&system_target));
-    rt.verify();
-    assert_eq!(&U256::from(NativeType::System as u32).to_bytes(), result.as_slice());
-    rt.reset();
-
-    // account
-    let result = util::invoke_contract(&mut rt, &id_to_vec(&account_target));
-    rt.verify();
-    assert_eq!(&U256::from(NativeType::Account as u32).to_bytes(), result.as_slice());
-    rt.reset();
-
-    // embryo
-    let result = util::invoke_contract(&mut rt, &id_to_vec(&embryo_target));
-    rt.verify();
-    assert_eq!(&U256::from(NativeType::Embryo as u32).to_bytes(), result.as_slice());
-    rt.reset();
-
-    // storage provider
-    let result = util::invoke_contract(&mut rt, &id_to_vec(&miner_target));
-    rt.verify();
-    assert_eq!(&U256::from(NativeType::StorageProvider as u32).to_bytes(), result.as_slice());
-    rt.reset();
-
-    // multisig
-    let result = util::invoke_contract(&mut rt, &id_to_vec(&other_target));
-    rt.verify();
-    assert_eq!(&U256::from(NativeType::OtherTypes as u32).to_bytes(), result.as_slice());
-    rt.reset();
-
-    // not found
-    let result = util::invoke_contract(&mut rt, &id_to_vec(&FILAddress::new_id(10101)));
-    rt.verify();
-    assert_eq!(&U256::from(NativeType::NonExistent as u32).to_bytes(), result.as_slice());
-    rt.reset();
+    test_type(&mut rt, evm_target, NativeType::EVMContract);
+    test_type(&mut rt, system_target, NativeType::System);
+    test_type(&mut rt, account_target, NativeType::Account);
+    test_type(&mut rt, embryo_target, NativeType::Embryo);
+    test_type(&mut rt, miner_target, NativeType::StorageProvider);
+    test_type(&mut rt, other_target, NativeType::OtherTypes);
+    test_type(&mut rt, FILAddress::new_id(10101), NativeType::NonExistent);
 }
