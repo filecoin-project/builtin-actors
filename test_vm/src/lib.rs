@@ -425,9 +425,13 @@ impl<'bs> VM<'bs> {
             to,
             value,
             method,
+<<<<<<< HEAD
             params: params.map_or(RawBytes::default(), |p| {
                 serialize(&p, "params for apply message").unwrap()
             }),
+=======
+            params: params.map(|p| IpldBlock::serialize_cbor(&p).unwrap()),
+>>>>>>> 41b2af5a (Fixup test_vm to use IpldBlock)
         };
         let mut new_ctx = InvocationCtx {
             v: self,
@@ -599,7 +603,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             to: target_id_addr,
             value: TokenAmount::zero(),
             method: METHOD_CONSTRUCTOR,
-            params: Some(IpldBlock::serialize_cbor(target).unwrap()),
+            params: IpldBlock::serialize_cbor(target).unwrap(),
         };
         {
             let mut new_ctx = InvocationCtx {
