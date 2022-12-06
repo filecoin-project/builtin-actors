@@ -7,7 +7,6 @@ use fil_actors_runtime::Array;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::serde_bytes;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::{bigint_ser, BigInt};
 use fvm_shared::clock::ChainEpoch;
@@ -30,9 +29,7 @@ pub struct WithdrawBalanceParams {
     pub amount: TokenAmount,
 }
 
-impl Cbor for WithdrawBalanceParams {}
-
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+#[derive(Serialize_tuple, Deserialize_tuple)]
 #[serde(transparent)]
 pub struct WithdrawBalanceReturn {
     pub amount_withdrawn: TokenAmount,
@@ -55,9 +52,7 @@ pub struct PublishStorageDealsParams {
     pub deals: Vec<ClientDealProposal>,
 }
 
-impl Cbor for PublishStorageDealsParams {}
-
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, PartialEq)] // Add Eq when BitField does
+#[derive(Serialize_tuple, Deserialize_tuple, Debug)]
 pub struct PublishStorageDealsReturn {
     pub ids: Vec<DealID>,
     pub valid_deals: BitField,

@@ -637,7 +637,7 @@ impl ActorHarness {
         rt: &mut MockRuntime,
         sectors: &[SectorPreCommitInfo],
         method: MethodNum,
-        param: impl Cbor,
+        param: impl Serialize,
         first_for_miner: bool,
         base_fee: &TokenAmount,
     ) -> Result<RawBytes, ActorError> {

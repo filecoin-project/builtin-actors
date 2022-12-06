@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{serde_bytes, BytesDe, Cbor, RawBytes};
+use fvm_ipld_encoding::{serde_bytes, BytesDe, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
@@ -33,8 +33,6 @@ pub struct CreateMinerParams {
     pub peer: Vec<u8>,
     pub multiaddrs: Vec<BytesDe>,
 }
-
-impl Cbor for CreateMinerParams {}
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 pub struct CreateMinerReturn {
