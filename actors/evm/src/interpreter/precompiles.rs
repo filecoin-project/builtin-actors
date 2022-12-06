@@ -394,9 +394,8 @@ fn get_actor_type<RT: Runtime>(
                 | Type::Cron
                 | Type::Reward
                 | Type::VerifiedRegistry
-                | Type::DataCap => NativeType::System,
-                // REMOVEME this might be useful to differentiate? though we already have opcodes that do all the calls we need to do for this
-                Type::EAM => NativeType::System,
+                | Type::DataCap
+                | Type::EAM => NativeType::System,
             },
             None => NativeType::NonExistent,
         };

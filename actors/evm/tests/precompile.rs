@@ -10,6 +10,8 @@ use fvm_shared::address::Address as FILAddress;
 
 mod util;
 
+use util::DUMMY_ACTOR_CODE_ID;
+
 #[allow(dead_code)]
 pub fn magic_precompile_contract() -> Vec<u8> {
     let init = r#"
@@ -24,18 +26,18 @@ mstore # store value at offset
 jump # call hash, output written to 0x0200
 
 sha256_hash:
-    jumpdest
-    push1 0x20   # out size (32 bytes)
-    push2 0x0200 # out offset
-    push1 0x10   # in size (16 bytes)
-    push2 0x0110 # in offset
-    push1 0x00 # _value
-    push1 0x02 # dst (0x02 is keccak-256)
-    push1 0x00 # _gas
-    call
-    push1 0x20
-    push2 0x0200
-    return
+jumpdest
+push1 0x20   # out size (32 bytes)
+push2 0x0200 # out offset
+push1 0x10   # in size (16 bytes)
+push2 0x0110 # in offset
+push1 0x00 # _value
+push1 0x02 # dst (0x02 is keccak-256)
+push1 0x00 # _gas
+call
+push1 0x20
+push2 0x0200
+return
 "#;
 
     asm::new_contract("magic-precompile", init, body).unwrap()
@@ -121,7 +123,7 @@ return
 
     // f0 31 is a system actor
     let system_target = FILAddress::new_id(31);
-    rt.set_address_actor_type(system_target, *util::DUMMY_ACTOR_CODE_ID);
+    rt.set_address_actor_type(system_target, *DUMMY_ACTOR_CODE_ID);
 
     // f0 101 is an account
     let account_target = FILAddress::new_id(101);
