@@ -35,17 +35,11 @@ pub enum Mode {
 
 impl Mode {
     pub fn read_only(&self) -> bool {
-        match self {
-            Mode::Unrestricted => false,
-            _ => true,
-        }
+        !matches!(self, Mode::Unrestricted)
     }
 
     pub fn restricted(&self) -> bool {
-        match self {
-            Mode::Transfer => true,
-            _ => false,
-        }
+        matches!(self, Mode::Transfer)
     }
 }
 
