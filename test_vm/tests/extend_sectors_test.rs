@@ -62,7 +62,14 @@ fn extend(
                     new_expiration,
                 }],
             };
-            apply_ok(v, worker, maddr, TokenAmount::zero(), extension_method, extension_params);
+            apply_ok(
+                v,
+                worker,
+                maddr,
+                TokenAmount::zero(),
+                extension_method,
+                Some(extension_params),
+            );
         }
         true => {
             let extension_params = ExtendSectorExpiration2Params {
@@ -74,7 +81,14 @@ fn extend(
                     sectors_with_claims: vec![],
                 }],
             };
-            apply_ok(v, worker, maddr, TokenAmount::zero(), extension_method, extension_params);
+            apply_ok(
+                v,
+                worker,
+                maddr,
+                TokenAmount::zero(),
+                extension_method,
+                Some(extension_params),
+            );
         }
     };
 
