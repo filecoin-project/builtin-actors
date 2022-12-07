@@ -60,7 +60,7 @@ impl EvmContractActor {
         }
 
         // create an empty storage HAMT to pass it down for execution.
-        let mut hamt = Hamt::<_, U256, U256>::new(rt.store().clone());
+        let mut hamt = Hamt::new(rt.store().clone());
 
         // create an instance of the platform abstraction layer -- note: do we even need this?
         let mut system = System::new(rt, &mut hamt).map_err(|e| {
@@ -211,12 +211,9 @@ impl EvmContractActor {
         let blockstore = rt.store().clone();
 
         // load the storage HAMT
-        let mut hamt =
-            Hamt::<_, _, U256>::load(&state.contract_state, blockstore).map_err(|e| {
-                ActorError::illegal_state(format!(
-                    "failed to load storage HAMT on invoke: {e:?}, e"
-                ))
-            })?;
+        let mut hamt = Hamt::load(&state.contract_state, blockstore).map_err(|e| {
+            ActorError::illegal_state(format!("failed to load storage HAMT on invoke: {e:?}, e"))
+        })?;
 
         let mut system = System::new(rt, &mut hamt).map_err(|e| {
             ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))

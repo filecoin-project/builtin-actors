@@ -19,7 +19,7 @@ for S in 1 2; do
   cat $NAME.jsonline \
     | jq -r "select(.series == $S) | [.series, .i, .stats.get_count, .stats.get_bytes, .stats.put_count, .stats.put_bytes] | @tsv" \
     >> $NAME.dat
-  echo "\n" >> $NAME.dat
+  echo $'\n' >> $NAME.dat
 done
 
 gnuplot \
