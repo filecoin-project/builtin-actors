@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use fil_actors_runtime::runtime::Runtime;
 use substrate_bn::{CurveError, GroupError};
 
-use super::{StatusCode, System, U256};
+use super::{StatusCode, System, U256, instructions::call::CallKind};
 
 mod evm;
 mod fvm;
@@ -101,11 +101,18 @@ impl From<PrecompileError> for StatusCode {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Default)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct PrecompileContext {
+    pub call_type: CallKind,
     pub is_static: bool,
     pub gas_limit: Option<u64>,
     pub value: U256,
+}
+
+impl Default for PrecompileContext {
+    fn default() -> Self {
+        Self { call_type: CallKind::Call, is_static: true, gas_limit: None, value: U256::from(0) }
+    }
 }
 
 /// Native Type of a given contract

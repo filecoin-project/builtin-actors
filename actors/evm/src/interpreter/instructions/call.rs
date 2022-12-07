@@ -198,7 +198,8 @@ pub fn call_generic<RT: Runtime>(
 
         if precompiles::Precompiles::<RT>::is_precompile(&dst) {
             let context = PrecompileContext {
-                is_static: matches!(kind, CallKind::StaticCall) || system.readonly,
+                call_type: kind,
+                is_readonly: system.readonly,
                 gas_limit: effective_gas_limit(system, gas),
                 value,
             };
