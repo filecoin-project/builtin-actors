@@ -7,6 +7,7 @@ use fvm_shared::{
     address::{Address, Payload},
     econ::TokenAmount,
     error::ExitCode,
+    sys::SendFlags,
     MethodNum, IPLD_RAW,
 };
 use multihash::Code;
@@ -123,18 +124,19 @@ impl<'r, RT: Runtime> System<'r, RT> {
     }
 
     /// Generalized send
-    pub fn send_with_gas(
+    pub fn send_generalized(
         &mut self,
         to: &Address,
         method: MethodNum,
         params: RawBytes,
         value: TokenAmount,
         gas_limit: Option<u64>,
-        read_only: bool,
+        send_flags: SendFlags,
     ) -> Result<RawBytes, ActorError> {
         self.flush()?;
-        let result = self.rt.send_with_gas(to, method, params, value, gas_limit, read_only)?;
-        if !read_only {
+        let result =
+            self.rt.send_generalized(to, method, params, value, gas_limit, send_flags)?;
+        if !send_flags.read_only() {
             self.reload()?;
         }
         Ok(result)

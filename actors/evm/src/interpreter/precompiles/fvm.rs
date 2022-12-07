@@ -1,6 +1,6 @@
 use fil_actors_runtime::runtime::{builtins::Type, Runtime};
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::{address::Address, econ::TokenAmount};
+use fvm_shared::{address::Address, econ::TokenAmount, sys::SendFlags};
 use num_traits::FromPrimitive;
 
 use crate::interpreter::{
@@ -8,7 +8,7 @@ use crate::interpreter::{
         parameter::{read_right_pad, Parameter},
         NativeType,
     },
-    System, U256,
+    System, U256, instructions::call::CallKind,
 };
 
 use super::{parameter::U256Reader, PrecompileContext, PrecompileError, PrecompileResult};
@@ -169,14 +169,26 @@ pub(super) fn call_actor<RT: Runtime>(
 ) -> PrecompileResult {
     // ----- Input Parameters -------
 
+    if ctx.call_type != CallKind::DelegateCall {
+        return Err(PrecompileError::CallForbidden)
+    }
+
     let mut input_params = U256Reader::new(input);
 
     let method: u64 = input_params.next_param_padded()?;
+    
+    let flags: u64 = input_params.next_param_padded()?;
+    let flags = SendFlags::from_bits(flags).ok_or(PrecompileError::InvalidInput)?;
+    if !flags.read_only() && ctx.is_readonly {
+        // TODO static violation        
+    }
+
     let codec: u64 = input_params.next_param_padded()?;
     // TODO only CBOR for now
     if codec != fvm_ipld_encoding::DAG_CBOR {
         return Err(PrecompileError::InvalidInput);
     }
+    
 
     let address_size = input_params.next_param_padded::<u32>()? as usize;
     let send_data_size = input_params.next_param_padded::<u32>()? as usize;
@@ -184,7 +196,6 @@ pub(super) fn call_actor<RT: Runtime>(
     // ------ Begin Call -------
 
     let result = {
-        // REMOVEME: closes https://github.com/filecoin-project/ref-fvm/issues/1018
 
         let start = input_params.remaining_slice();
         let bytes = read_right_pad(start, send_data_size + address_size);
@@ -193,13 +204,13 @@ pub(super) fn call_actor<RT: Runtime>(
         let address = &bytes[send_data_size..send_data_size + address_size];
         let address = Address::from_bytes(address).map_err(|_| PrecompileError::InvalidInput)?;
 
-        system.send_with_gas(
+        system.send_generalized(
             &address,
             method,
             RawBytes::from(input_data.to_vec()),
             TokenAmount::from(&ctx.value),
             ctx.gas_limit,
-            ctx.is_static,
+            flags,
         )
     };
 

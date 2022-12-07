@@ -28,6 +28,7 @@ use fvm_shared::sector::{
     AggregateSealVerifyInfo, AggregateSealVerifyProofAndInfos, RegisteredSealProof,
     ReplicaUpdateInfo, SealVerifyInfo, WindowPoStVerifyInfo,
 };
+use fvm_shared::sys::SendFlags;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
 
@@ -367,7 +368,7 @@ pub struct ExpectedMessage {
     pub method: MethodNum,
     pub params: RawBytes,
     pub value: TokenAmount,
-    pub read_only: bool,
+    pub send_flags: SendFlags,
 
     // returns from applying expectedMessage
     pub send_return: RawBytes,
@@ -546,7 +547,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
         params: RawBytes,
         value: TokenAmount,
         _gas_limit: Option<u64>,
-        read_only: bool,
+        send_flags: SendFlags,
     ) -> Result<RawBytes, ActorError> {
         // TODO gas_limit is currently ignored, what should we do about it?
         self.require_in_call();
@@ -570,7 +571,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
                 && expected_msg.method == method
                 && expected_msg.params == params
                 && expected_msg.value == value
-                && expected_msg.read_only == read_only,
+                && expected_msg.send_flags == send_flags,
             "message sent does not match expectation.\n\
              message  - to: {:?}, method: {:?}, value: {:?}, params: {:?}\n\
              expected - to: {:?}, method: {:?}, value: {:?}, params: {:?}",
@@ -735,18 +736,19 @@ impl<BS: Blockstore> MockRuntime<BS> {
             value,
             send_return,
             exit_code,
-            read_only: false,
+            send_flags: SendFlags::default(),
         })
     }
 
     #[allow(dead_code)]
-    pub fn expect_send_read_only(
+    pub fn expect_send_generalized(
         &mut self,
         to: Address,
         method: MethodNum,
         params: RawBytes,
         send_return: RawBytes,
         exit_code: ExitCode,
+        send_flags: SendFlags,
     ) {
         self.expectations.borrow_mut().expect_sends.push_back(ExpectedMessage {
             to,
@@ -755,7 +757,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
             send_return,
             exit_code,
             value: TokenAmount::default(),
-            read_only: true,
+            send_flags,
         })
     }
 
@@ -1169,7 +1171,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         params: RawBytes,
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError> {
-        self.send_inner(to, method, params, value, None, false)
+        self.send_inner(to, method, params, value, None, SendFlags::default())
     }
 
     fn send_read_only(
@@ -1178,19 +1180,19 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         method: MethodNum,
         params: RawBytes,
     ) -> Result<RawBytes, ActorError> {
-        self.send_inner(to, method, params, TokenAmount::default(), None, true)
+        self.send_inner(to, method, params, TokenAmount::default(), None, SendFlags::READ_ONLY)
     }
 
-    fn send_with_gas(
+    fn send_generalized(
         &self,
         to: &Address,
         method: MethodNum,
         params: RawBytes,
         value: TokenAmount,
         gas_limit: Option<u64>,
-        read_only: bool,
+        flags: SendFlags,
     ) -> Result<RawBytes, ActorError> {
-        self.send_inner(to, method, params, value, gas_limit, read_only)
+        self.send_inner(to, method, params, value, gas_limit, flags)
     }
 
     fn new_actor_address(&mut self) -> Result<Address, ActorError> {

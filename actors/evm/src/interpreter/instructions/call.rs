@@ -1,7 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use fvm_ipld_encoding::{BytesDe, BytesSer};
-use fvm_shared::{address::Address, METHOD_SEND};
+use fvm_shared::{address::Address, sys::SendFlags, METHOD_SEND};
 
 use crate::interpreter::precompiles::PrecompileContext;
 
@@ -256,8 +256,14 @@ pub fn call_generic<RT: Runtime>(
                         let params = RawBytes::serialize(BytesSer(input_data))?;
                         let value = TokenAmount::from(&value);
                         let gas_limit = effective_gas_limit(system, gas);
-                        let read_only = kind == CallKind::StaticCall;
-                        system.send_with_gas(&dst_addr, method, params, value, gas_limit, read_only)
+                        let read_only = if kind == CallKind::StaticCall {
+                            SendFlags::READ_ONLY
+                        } else {
+                            SendFlags::default()
+                        };
+                        system.send_generalized(
+                            &dst_addr, method, params, value, gas_limit, read_only,
+                        )
                     }
                 }
                 CallKind::DelegateCall => match get_cid_type(system.rt, dst) {
@@ -267,13 +273,17 @@ pub fn call_generic<RT: Runtime>(
 
                         // and then invoke self with delegate; readonly context is sticky
                         let params = DelegateCallParams { code, input: input_data.into() };
-                        system.send_with_gas(
+                        system.send_generalized(
                             &system.rt.message().receiver(),
                             Method::InvokeContractDelegate as u64,
                             RawBytes::serialize(&params)?,
                             TokenAmount::from(&value),
                             effective_gas_limit(system, gas),
-                            system.readonly,
+                            if system.readonly {
+                                SendFlags::READ_ONLY
+                            } else {
+                                SendFlags::default()
+                            },
                         )
                     }
                     // If we're calling an account or a non-existent actor, return nothing because

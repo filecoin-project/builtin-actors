@@ -19,6 +19,7 @@ use fvm_shared::sector::{
     AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
     WindowPoStVerifyInfo,
 };
+use fvm_shared::sys::SendFlags;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
 use multihash::Code;
@@ -204,15 +205,15 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     ) -> Result<RawBytes, ActorError>;
 
     /// Generailizes [`Runtime::send`] and [`Runtime::send_read_only`] to allow the caller to
-    /// specify a gas limit.
-    fn send_with_gas(
+    /// specify a gas limit and send flags.
+    fn send_generalized(
         &self,
         to: &Address,
         method: MethodNum,
         params: RawBytes,
         value: TokenAmount,
         gas_limit: Option<u64>,
-        read_only: bool,
+        flags: SendFlags,
     ) -> Result<RawBytes, ActorError>;
 
     /// Computes an address for a new actor. The returned address is intended to uniquely refer to
