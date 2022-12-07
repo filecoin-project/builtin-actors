@@ -201,7 +201,6 @@ pub fn call_generic<RT: Runtime>(
                 call_type: kind,
                 is_readonly: system.readonly,
                 gas_limit: effective_gas_limit(system, gas),
-                value,
             };
 
             match precompiles::Precompiles::call_precompile(system, dst, input_data, context)

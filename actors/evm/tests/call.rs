@@ -264,7 +264,7 @@ fn test_callactor_revert() {
 fn test_callactor_inner(exit_code: ExitCode) {
     let contract = callactor_proxy_contract();
 
-    const CALLACTOR_NUM_PARAMS: usize = 5;
+    const CALLACTOR_NUM_PARAMS: usize = 6;
 
     // construct the proxy
     let mut rt = util::construct_and_verify(contract);
@@ -277,6 +277,7 @@ fn test_callactor_inner(exit_code: ExitCode) {
     let mut contract_params = Vec::new();
 
     let method = U256::from(0x42);
+    let value = U256::from(0);
     let send_flags = SendFlags::default();
     let codec = U256::from(DAG_CBOR);
 
@@ -287,6 +288,7 @@ fn test_callactor_inner(exit_code: ExitCode) {
     let data_size = U256::from(proxy_call_input_data.len());
 
     contract_params.extend_from_slice(&method.to_bytes());
+    contract_params.extend_from_slice(&value.to_bytes());
     contract_params.extend_from_slice(&U256::from(send_flags.bits()).to_bytes());
     contract_params.extend_from_slice(&codec.to_bytes());
     contract_params.extend_from_slice(&target_size.to_bytes());
@@ -333,11 +335,7 @@ fn test_callactor_inner(exit_code: ExitCode) {
     impl CallActorReturn {
         pub fn read(src: &[u8]) -> Self {
             use fil_actor_evm::interpreter::precompiles::parameter::assert_zero_bytes;
-            assert!(
-                src.len() >= CALLACTOR_NUM_PARAMS * 32,
-                "expected to read at least {} U256 values",
-                CALLACTOR_NUM_PARAMS
-            );
+            assert!(src.len() >= 4 * 32, "expected to read at least 4 U256 values");
 
             let bytes = &src[..32];
             let exit_code = {

@@ -178,6 +178,8 @@ pub(super) fn call_actor<RT: Runtime>(
 
     let method: u64 = input_params.next_param_padded()?;
 
+    let value: U256 = input_params.next_padded().into();
+
     let flags: u64 = input_params.next_param_padded()?;
     let flags = SendFlags::from_bits(flags).ok_or(PrecompileError::InvalidInput)?;
     if !flags.read_only() && ctx.is_readonly {
@@ -211,7 +213,7 @@ pub(super) fn call_actor<RT: Runtime>(
             &address,
             method,
             RawBytes::from(input_data.to_vec()),
-            TokenAmount::from(&ctx.value),
+            TokenAmount::from(&value),
             ctx.gas_limit,
             flags,
         )

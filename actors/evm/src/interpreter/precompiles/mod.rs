@@ -107,12 +107,11 @@ pub struct PrecompileContext {
     pub call_type: CallKind,
     pub is_readonly: bool,
     pub gas_limit: Option<u64>,
-    pub value: U256,
 }
 
 impl Default for PrecompileContext {
     fn default() -> Self {
-        Self { call_type: CallKind::Call, is_readonly: true, gas_limit: None, value: U256::from(0) }
+        Self { call_type: CallKind::Call, is_readonly: true, gas_limit: None }
     }
 }
 
