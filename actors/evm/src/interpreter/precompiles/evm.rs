@@ -326,9 +326,17 @@ pub(super) fn blake2f<RT: Runtime>(
 
 #[cfg(test)]
 mod tests {
+    use crate::interpreter::instructions::call::CallKind;
+
     use super::*;
     use fil_actors_runtime::test_utils::MockRuntime;
     use hex_literal::hex;
+
+    impl Default for PrecompileContext {
+        fn default() -> Self {
+            Self { call_type: CallKind::Call, gas_limit: None }
+        }
+    }
 
     #[test]
     fn padding() {
@@ -340,7 +348,7 @@ mod tests {
 
             let res = read_right_pad(&input, i);
             assert_eq!(&*res, &expected);
-
+            let _ = true;
             input.push(0);
         }
     }

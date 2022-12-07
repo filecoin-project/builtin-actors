@@ -108,12 +108,6 @@ pub struct PrecompileContext {
     pub gas_limit: Option<u64>,
 }
 
-impl Default for PrecompileContext {
-    fn default() -> Self {
-        Self { call_type: CallKind::Call, gas_limit: None }
-    }
-}
-
 /// Native Type of a given contract
 #[repr(u32)]
 pub enum NativeType {
