@@ -24,7 +24,7 @@ fn fee_increases_if_basefee_crosses_threshold() {
         let at_no_base_fee = fee_func(10, &zero());
         let at_balance_minus_one_base_fee =
             fee_func(10, &(&*BATCH_BALANCER - TokenAmount::from_atto(1)));
-        let at_balance_base_fee = fee_func(10, &*BATCH_BALANCER);
+        let at_balance_base_fee = fee_func(10, &BATCH_BALANCER);
         let at_balance_plus_one_base_fee =
             fee_func(10, &(&*BATCH_BALANCER + TokenAmount::from_nano(1)));
         let at_balance_plus_two_base_fee =

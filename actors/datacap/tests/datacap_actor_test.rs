@@ -47,17 +47,17 @@ mod mint {
         let (mut rt, h) = make_harness();
 
         let amt = TokenAmount::from_whole(1);
-        let ret = h.mint(&mut rt, &*ALICE, &amt, vec![]).unwrap();
+        let ret = h.mint(&mut rt, &ALICE, &amt, vec![]).unwrap();
         assert_eq!(amt, ret.supply);
         assert_eq!(amt, ret.balance);
         assert_eq!(amt, h.get_supply(&rt));
-        assert_eq!(amt, h.get_balance(&rt, &*ALICE));
+        assert_eq!(amt, h.get_balance(&rt, &ALICE));
 
-        let ret = h.mint(&mut rt, &*BOB, &amt, vec![]).unwrap();
+        let ret = h.mint(&mut rt, &BOB, &amt, vec![]).unwrap();
         assert_eq!(&amt * 2, ret.supply);
         assert_eq!(amt, ret.balance);
         assert_eq!(&amt * 2, h.get_supply(&rt));
-        assert_eq!(amt, h.get_balance(&rt, &*BOB));
+        assert_eq!(amt, h.get_balance(&rt, &BOB));
 
         h.check_state(&rt);
     }
@@ -88,7 +88,7 @@ mod mint {
         expect_abort_contains_message(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             "must be a multiple of 1000000000000000000",
-            h.mint(&mut rt, &*ALICE, &amt, vec![]),
+            h.mint(&mut rt, &ALICE, &amt, vec![]),
         );
         rt.reset();
         h.check_state(&rt);
@@ -98,25 +98,25 @@ mod mint {
     fn auto_allowance_on_mint() {
         let (mut rt, h) = make_harness();
         let amt = TokenAmount::from_whole(42);
-        h.mint(&mut rt, &*ALICE, &amt, vec![*BOB]).unwrap();
-        let allowance = h.get_allowance_between(&rt, &*ALICE, &*BOB);
+        h.mint(&mut rt, &ALICE, &amt, vec![*BOB]).unwrap();
+        let allowance = h.get_allowance_between(&rt, &ALICE, &BOB);
         assert!(allowance.eq(&INFINITE_ALLOWANCE));
 
         // mint again
-        h.mint(&mut rt, &*ALICE, &amt, vec![*BOB]).unwrap();
-        let allowance2 = h.get_allowance_between(&rt, &*ALICE, &*BOB);
+        h.mint(&mut rt, &ALICE, &amt, vec![*BOB]).unwrap();
+        let allowance2 = h.get_allowance_between(&rt, &ALICE, &BOB);
         assert!(allowance2.eq(&INFINITE_ALLOWANCE));
 
         // transfer of an allowance *does* deduct allowance even though it is too small to matter in practice
         let operator_data = RawBytes::new(vec![1, 2, 3, 4]);
-        h.transfer_from(&mut rt, &*BOB, &*ALICE, &h.governor, &(2 * amt.clone()), operator_data)
+        h.transfer_from(&mut rt, &BOB, &ALICE, &h.governor, &(2 * amt.clone()), operator_data)
             .unwrap();
-        let allowance3 = h.get_allowance_between(&rt, &*ALICE, &*BOB);
+        let allowance3 = h.get_allowance_between(&rt, &ALICE, &BOB);
         assert!(allowance3.eq(&INFINITE_ALLOWANCE.clone().sub(2 * amt.clone())));
 
         // minting any amount to this address at the same operator resets at infinite
-        h.mint(&mut rt, &*ALICE, &TokenAmount::from_whole(1), vec![*BOB]).unwrap();
-        let allowance = h.get_allowance_between(&rt, &*ALICE, &*BOB);
+        h.mint(&mut rt, &ALICE, &TokenAmount::from_whole(1), vec![*BOB]).unwrap();
+        let allowance = h.get_allowance_between(&rt, &ALICE, &BOB);
         assert!(allowance.eq(&INFINITE_ALLOWANCE));
 
         h.check_state(&rt);
@@ -138,20 +138,20 @@ mod transfer {
         let operator_data = RawBytes::new(vec![1, 2, 3, 4]);
 
         let amt = TokenAmount::from_whole(1);
-        h.mint(&mut rt, &*ALICE, &amt, vec![]).unwrap();
+        h.mint(&mut rt, &ALICE, &amt, vec![]).unwrap();
 
         expect_abort_contains_message(
             ExitCode::USR_FORBIDDEN,
             "transfer not allowed",
-            h.transfer(&mut rt, &*ALICE, &*BOB, &amt, operator_data.clone()),
+            h.transfer(&mut rt, &ALICE, &BOB, &amt, operator_data.clone()),
         );
         rt.reset();
 
         // Transfer to governor is allowed.
-        h.transfer(&mut rt, &*ALICE, &h.governor, &amt, operator_data.clone()).unwrap();
+        h.transfer(&mut rt, &ALICE, &h.governor, &amt, operator_data.clone()).unwrap();
 
         // The governor can transfer out.
-        h.transfer(&mut rt, &h.governor, &*BOB, &amt, operator_data).unwrap();
+        h.transfer(&mut rt, &h.governor, &BOB, &amt, operator_data).unwrap();
     }
 
     #[test]
@@ -160,13 +160,13 @@ mod transfer {
         let operator_data = RawBytes::new(vec![1, 2, 3, 4]);
 
         let amt = TokenAmount::from_whole(1);
-        h.mint(&mut rt, &*ALICE, &amt, vec![*BOB]).unwrap();
+        h.mint(&mut rt, &ALICE, &amt, vec![*BOB]).unwrap();
 
         // operator can't transfer out to third address
         expect_abort_contains_message(
             ExitCode::USR_FORBIDDEN,
             "transfer not allowed",
-            h.transfer_from(&mut rt, &*BOB, &*ALICE, &*CARLA, &amt, operator_data.clone()),
+            h.transfer_from(&mut rt, &BOB, &ALICE, &CARLA, &amt, operator_data.clone()),
         );
         rt.reset();
 
@@ -174,7 +174,7 @@ mod transfer {
         expect_abort_contains_message(
             ExitCode::USR_FORBIDDEN,
             "transfer not allowed",
-            h.transfer_from(&mut rt, &*BOB, &*ALICE, &*BOB, &amt, operator_data.clone()),
+            h.transfer_from(&mut rt, &BOB, &ALICE, &BOB, &amt, operator_data.clone()),
         );
         rt.reset();
         // even if governor has a delegate operator and enough tokens, delegated transfer
@@ -183,7 +183,7 @@ mod transfer {
         expect_abort_contains_message(
             ExitCode::USR_FORBIDDEN,
             "transfer not allowed",
-            h.transfer_from(&mut rt, &*BOB, &h.governor, &*ALICE, &amt, operator_data),
+            h.transfer_from(&mut rt, &BOB, &h.governor, &ALICE, &amt, operator_data),
         );
         rt.reset();
     }
@@ -206,7 +206,7 @@ mod destroy {
         let (mut rt, h) = make_harness();
 
         let amt = TokenAmount::from_whole(1);
-        h.mint(&mut rt, &*ALICE, &(2 * amt.clone()), vec![*BOB]).unwrap();
+        h.mint(&mut rt, &ALICE, &(2 * amt.clone()), vec![*BOB]).unwrap();
 
         // destroying from operator does not work
         let params = DestroyParams { owner: *ALICE, amount: amt.clone() };
@@ -223,8 +223,8 @@ mod destroy {
         );
 
         // Destroying from 0 allowance having governor works
-        assert!(h.get_allowance_between(&rt, &*ALICE, &h.governor).is_zero());
-        let ret = h.destroy(&mut rt, &*ALICE, &amt).unwrap();
+        assert!(h.get_allowance_between(&rt, &ALICE, &h.governor).is_zero());
+        let ret = h.destroy(&mut rt, &ALICE, &amt).unwrap();
         assert_eq!(ret.balance, amt); // burned 2 amt - amt = amt
         h.check_state(&rt)
     }
