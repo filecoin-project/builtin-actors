@@ -1,34 +1,36 @@
+use fvm_shared::address::Address;
+
 use crate::U256;
 use {
     crate::interpreter::address::EthAddress,
     crate::interpreter::{ExecutionState, StatusCode, System},
     fil_actors_runtime::runtime::Runtime,
-    fvm_ipld_blockstore::Blockstore,
 };
 
 #[inline]
-pub fn balance<'r, BS: Blockstore, RT: Runtime<BS>>(
-    state: &mut ExecutionState,
-    platform: &'r System<'r, BS, RT>,
-) -> Result<(), StatusCode> {
-    let actor = state.stack.pop();
+pub fn balance(
+    _state: &mut ExecutionState,
+    system: &System<impl Runtime>,
+    actor: U256,
+) -> Result<U256, StatusCode> {
+    let actor: EthAddress = actor.into();
 
-    let balance = EthAddress::try_from(actor)
+    let balance = actor
+        .try_into()
         .ok()
-        .and_then(|addr| addr.as_id())
-        .and_then(|id| platform.rt.actor_balance(id).as_ref().map(U256::from))
+        .and_then(|addr: Address| system.rt.resolve_address(&addr))
+        .and_then(|id| system.rt.actor_balance(id).as_ref().map(U256::from))
         .unwrap_or_default();
 
-    state.stack.push(balance);
-    Ok(())
+    Ok(balance)
 }
 
 #[inline]
-pub fn selfbalance<'r, BS: Blockstore, RT: Runtime<BS>>(
-    state: &mut ExecutionState,
-    platform: &'r System<'r, BS, RT>,
-) {
+pub fn selfbalance(
+    _state: &mut ExecutionState,
+    system: &System<impl Runtime>,
+) -> Result<U256, StatusCode> {
     // Returns native FIL balance of the receiver. Value precision is identical to Ethereum, so
     // no conversion needed (atto, 1e18).
-    state.stack.push(U256::from(&platform.rt.current_balance()))
+    Ok(U256::from(&system.rt.current_balance()))
 }

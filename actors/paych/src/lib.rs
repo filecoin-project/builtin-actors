@@ -4,7 +4,8 @@
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, resolve_to_actor_id, ActorDowncast, ActorError, Array,
+    actor_error, cbor, resolve_to_actor_id, restrict_internal_api, ActorDowncast, ActorError,
+    Array, AsActorError,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
@@ -22,6 +23,7 @@ pub use self::types::*;
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
 
+pub mod ext;
 mod state;
 pub mod testing;
 mod types;
@@ -42,21 +44,24 @@ pub const ERR_CHANNEL_STATE_UPDATE_AFTER_SETTLED: ExitCode = ExitCode::new(32);
 
 /// Payment Channel actor
 pub struct Actor;
+
 impl Actor {
     /// Constructor for Payment channel actor
-    pub fn constructor<BS, RT>(rt: &mut RT, params: ConstructorParams) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
         // Only InitActor can create a payment channel actor. It creates the actor on
         // behalf of the payer/payee.
         rt.validate_immediate_caller_type(std::iter::once(&Type::Init))?;
 
-        // Check both parties are capable of signing vouchers
-        let to = Self::resolve_account(rt, &params.to)?;
+        // Resolve both parties, confirming they exist in the state tree.
+        let to = Self::resolve_address(rt, &params.to)
+            .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
+                format!("to address not found {}", params.to)
+            })?;
 
-        let from = Self::resolve_account(rt, &params.from)?;
+        let from = Self::resolve_address(rt, &params.from)
+            .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
+                format!("to address not found {}", params.to)
+            })?;
 
         let empty_arr_cid =
             Array::<(), _>::new_with_bit_width(rt.store(), LANE_STATES_AMT_BITWIDTH)
@@ -69,40 +74,20 @@ impl Actor {
         Ok(())
     }
 
-    /// Resolves an address to a canonical ID address and requires it to address an account actor.
-    fn resolve_account<BS, RT>(rt: &mut RT, raw: &Address) -> Result<Address, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    /// Resolves an address to a canonical ID address and confirms it exists in the state tree.
+    fn resolve_address(rt: &mut impl Runtime, raw: &Address) -> Result<Address, ActorError> {
         let resolved = resolve_to_actor_id(rt, raw)?;
 
-        let code_cid = rt
-            .get_actor_code_cid(&resolved)
-            .ok_or_else(|| actor_error!(illegal_argument, "no code for address {}", resolved))?;
-
-        let typ = rt.resolve_builtin_actor_type(&code_cid);
-        if typ != Some(Type::Account) {
-            Err(actor_error!(
-                forbidden,
-                "actor {} must be an account, was {} ({:?})",
-                raw,
-                code_cid,
-                typ
-            ))
-        } else {
-            Ok(Address::new_id(resolved))
-        }
+        // so long as we can find code for this, return `resolved`
+        rt.get_actor_code_cid(&resolved)
+            .map(|_| Address::new_id(resolved))
+            .ok_or_else(|| actor_error!(illegal_argument, "no code for address {}", resolved))
     }
 
-    pub fn update_channel_state<BS, RT>(
-        rt: &mut RT,
+    pub fn update_channel_state(
+        rt: &mut impl Runtime,
         params: UpdateChannelStateParams,
-    ) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    ) -> Result<(), ActorError> {
         let st: State = rt.state()?;
 
         rt.validate_immediate_caller_is([st.from, st.to].iter())?;
@@ -110,10 +95,11 @@ impl Actor {
         let sv = params.sv;
 
         // Pull signature from signed voucher
-        let sig = sv
+        let sig = &sv
             .signature
             .as_ref()
-            .ok_or_else(|| actor_error!(illegal_argument, "voucher has no signature"))?;
+            .ok_or_else(|| actor_error!(illegal_argument, "voucher has no signature"))?
+            .bytes;
 
         if st.settling_at != 0 && rt.curr_epoch() >= st.settling_at {
             return Err(ActorError::unchecked(
@@ -132,9 +118,17 @@ impl Actor {
         })?;
 
         // Validate signature
-        rt.verify_signature(sig, &signer, &sv_bz).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_ARGUMENT, "voucher signature invalid")
-        })?;
+
+        rt.send(
+            &signer,
+            ext::account::AUTHENTICATE_MESSAGE_METHOD,
+            RawBytes::serialize(ext::account::AuthenticateMessageParams {
+                signature: sig.to_vec(),
+                message: sv_bz,
+            })?,
+            TokenAmount::zero(),
+        )
+        .map_err(|e| e.wrap("voucher sig authentication failed"))?;
 
         let pch_addr = rt.message().receiver();
         let svpch_id = rt.resolve_address(&sv.channel_addr).ok_or_else(|| {
@@ -274,11 +268,7 @@ impl Actor {
         })
     }
 
-    pub fn settle<BS, RT>(rt: &mut RT) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn settle(rt: &mut impl Runtime) -> Result<(), ActorError> {
         rt.transaction(|st: &mut State, rt| {
             rt.validate_immediate_caller_is([st.from, st.to].iter())?;
 
@@ -295,11 +285,7 @@ impl Actor {
         })
     }
 
-    pub fn collect<BS, RT>(rt: &mut RT) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn collect(rt: &mut impl Runtime) -> Result<(), ActorError> {
         let st: State = rt.state()?;
         rt.validate_immediate_caller_is(&[st.from, st.to])?;
 
@@ -336,15 +322,15 @@ where
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<BS, RT>(
+    fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
         params: &RawBytes,
     ) -> Result<RawBytes, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
+        restrict_internal_api(rt, method)?;
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
                 Self::constructor(rt, cbor::deserialize_params(params)?)?;

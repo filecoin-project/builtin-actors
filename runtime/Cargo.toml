@@ -8,9 +8,9 @@ edition = "2021"
 repository = "https://github.com/filecoin-project/builtin-actors"
 
 [dependencies]
-fvm_ipld_hamt = "0.6.0"
+fvm_ipld_hamt = "0.6.1"
 fvm_ipld_amt = { version = "0.5.0", features = ["go-interop"] }
-fvm_shared = { version = "3.0.0-alpha.5", default-features = false }
+fvm_shared = { version = "3.0.0-alpha.13", default-features = false }
 num-traits = "0.2.14"
 num-derive = "0.3.3"
 serde = { version = "1.0.136", features = ["derive"] }
@@ -20,7 +20,7 @@ byteorder = "1.4.3"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 log = "0.4.14"
 thiserror = "1.0.30"
-anyhow = "1.0.56"
+anyhow = "1.0.65"
 fvm_ipld_blockstore = "0.1.1"
 fvm_ipld_encoding = "0.3.0"
 multihash = { version = "0.16.1", default-features = false }
@@ -34,7 +34,7 @@ paste = "1.0.9"
 sha2 = "0.10"
 
 # fil-actor
-fvm_sdk = { version = "3.0.0-alpha.5", optional = true }
+fvm_sdk = { version = "3.0.0-alpha.15", optional = true }
 
 # test_util
 rand = { version = "0.8.5", default-features = false, optional = true }

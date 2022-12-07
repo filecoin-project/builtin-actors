@@ -2,7 +2,6 @@ mod asm;
 
 use evm::interpreter::U256;
 use fil_actor_evm as evm;
-use fvm_ipld_encoding::RawBytes;
 
 mod util;
 
@@ -51,7 +50,7 @@ return
 
 mul_magic:
 jumpdest
-push1 0x20   # length of return dataa
+push1 0x20   # length of return data
 push1 0x04
 calldataload # arg1
 push1 0x00   # key of magic
@@ -75,26 +74,23 @@ fn test_magic_calc() {
 
     // invoke contract -- get_magic
     let contract_params = vec![0u8; 32];
-    let input_data = RawBytes::from(contract_params);
 
-    let result = util::invoke_contract(&mut rt, input_data);
+    let result = util::invoke_contract(&mut rt, &contract_params);
     assert_eq!(U256::from_big_endian(&result), U256::from(0x42));
 
     // invoke contract -- add_magic
     let mut contract_params = vec![0u8; 36];
     contract_params[3] = 0x01;
     contract_params[35] = 0x01;
-    let input_data = RawBytes::from(contract_params);
 
-    let result = util::invoke_contract(&mut rt, input_data);
+    let result = util::invoke_contract(&mut rt, &contract_params);
     assert_eq!(U256::from_big_endian(&result), U256::from(0x43));
 
     // invoke contract -- mul_magic
     let mut contract_params = vec![0u8; 36];
     contract_params[3] = 0x02;
     contract_params[35] = 0x02;
-    let input_data = RawBytes::from(contract_params);
 
-    let result = util::invoke_contract(&mut rt, input_data);
+    let result = util::invoke_contract(&mut rt, &contract_params);
     assert_eq!(U256::from_big_endian(&result), U256::from(0x84));
 }

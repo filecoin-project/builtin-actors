@@ -24,9 +24,11 @@ use fvm_shared::clock::{ChainEpoch, QuantSpec, EPOCH_UNDEFINED};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, SectorSize, MAX_SECTOR_NUMBER};
-use fvm_shared::HAMT_BIT_WIDTH;
+use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
+use itertools::Itertools;
 use num_traits::Zero;
 
+use super::beneficiary::*;
 use super::deadlines::new_deadline_info;
 use super::policy::*;
 use super::types::*;
@@ -46,7 +48,7 @@ pub const SECTORS_AMT_BITWIDTH: u32 = 5;
 /// that limits a miner actor's behavior (i.e. no balance withdrawals)
 /// Excess balance as computed by st.GetAvailableBalance will be
 /// withdrawable or usable for pre-commit deposit or pledge lock-up.
-#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug)]
 pub struct State {
     /// Contains static info about this miner
     pub info: Cid,
@@ -982,7 +984,7 @@ impl State {
         &self,
         actor_balance: &TokenAmount,
     ) -> anyhow::Result<TokenAmount> {
-        // (actor_balance - &self.locked_funds) - &self.pre_commit_deposit
+        // (actor_balance - &self.locked_funds) - &self.pre_commit_deposit - &self.initial_pledge
         Ok(self.get_unlocked_balance(actor_balance)? - &self.fee_debt)
     }
 
@@ -1250,13 +1252,24 @@ pub struct MinerInfo {
     /// A proposed new owner account for this miner.
     /// Must be confirmed by a message from the pending address itself.
     pub pending_owner_address: Option<Address>,
+
+    /// Account for receive miner benefits, withdraw on miner must send to this address,
+    /// set owner address by default when create miner
+    pub beneficiary: Address,
+
+    /// beneficiary's total quota, how much quota has been withdraw,
+    /// and when this beneficiary expired
+    pub beneficiary_term: BeneficiaryTerm,
+
+    /// A proposal new beneficiary message for this miner
+    pub pending_beneficiary_term: Option<PendingBeneficiaryChange>,
 }
 
 impl MinerInfo {
     pub fn new(
-        owner: Address,
-        worker: Address,
-        control_addresses: Vec<Address>,
+        owner: ActorID,
+        worker: ActorID,
+        control_addresses: Vec<ActorID>,
         peer_id: Vec<u8>,
         multi_address: Vec<BytesDe>,
         window_post_proof_type: RegisteredPoStProof,
@@ -1270,10 +1283,14 @@ impl MinerInfo {
             .map_err(|e| actor_error!(illegal_argument, "invalid partition sectors: {}", e))?;
 
         Ok(Self {
-            owner,
-            worker,
-            control_addresses,
+            owner: Address::new_id(owner),
+            worker: Address::new_id(worker),
+            control_addresses: control_addresses.into_iter().map(Address::new_id).collect_vec(),
+
             pending_worker_key: None,
+            beneficiary: Address::new_id(owner),
+            beneficiary_term: BeneficiaryTerm::default(),
+            pending_beneficiary_term: None,
             peer_id,
             multi_address,
             window_post_proof_type,

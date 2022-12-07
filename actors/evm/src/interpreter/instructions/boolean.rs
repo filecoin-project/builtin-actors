@@ -1,77 +1,51 @@
-use {
-    crate::interpreter::stack::Stack, crate::interpreter::uints::*, crate::interpreter::U256,
-    std::cmp::Ordering,
-};
+use {crate::interpreter::uints::*, crate::interpreter::U256, std::cmp::Ordering};
 
 #[inline]
-pub fn lt(stack: &mut Stack) {
-    let a = stack.pop();
-    let b = stack.get_mut(0);
-
-    *b = if a.lt(b) { U256::from(1) } else { U256::zero() }
+pub fn lt(a: U256, b: U256) -> U256 {
+    U256::from_u64((a < b).into())
 }
 
 #[inline]
-pub fn gt(stack: &mut Stack) {
-    let a = stack.pop();
-    let b = stack.get_mut(0);
-
-    *b = if a.gt(b) { U256::from(1) } else { U256::zero() }
+pub fn gt(a: U256, b: U256) -> U256 {
+    U256::from_u64((a > b).into())
 }
 
 #[inline]
-pub(crate) fn slt(stack: &mut Stack) {
-    let a = stack.pop();
-    let b = stack.get_mut(0);
-
-    *b = if i256_cmp(a, *b) == Ordering::Less { U256::from(1) } else { U256::zero() }
+pub(crate) fn slt(a: U256, b: U256) -> U256 {
+    U256::from_u64((i256_cmp(a, b) == Ordering::Less).into())
 }
 
 #[inline]
-pub(crate) fn sgt(stack: &mut Stack) {
-    let a = stack.pop();
-    let b = stack.get_mut(0);
-
-    *b = if i256_cmp(a, *b) == Ordering::Greater { U256::from(1) } else { U256::zero() }
+pub(crate) fn sgt(a: U256, b: U256) -> U256 {
+    U256::from_u64((i256_cmp(a, b) == Ordering::Greater).into())
 }
 
 #[inline]
-pub fn eq(stack: &mut Stack) {
-    let a = stack.pop();
-    let b = stack.get_mut(0);
-
-    *b = if a.eq(b) { U256::from(1) } else { U256::zero() }
+pub fn eq(a: U256, b: U256) -> U256 {
+    U256::from_u64((a == b).into())
 }
 
 #[inline]
-pub fn iszero(stack: &mut Stack) {
-    let a = stack.get_mut(0);
-    *a = if *a == U256::zero() { U256::from(1) } else { U256::zero() }
+pub fn iszero(a: U256) -> U256 {
+    U256::from_u64(a.is_zero().into())
 }
 
 #[inline]
-pub(crate) fn and(stack: &mut Stack) {
-    let a = stack.pop();
-    let b = stack.get_mut(0);
-    *b = a & *b;
+pub(crate) fn and(a: U256, b: U256) -> U256 {
+    a & b
 }
 
 #[inline]
-pub(crate) fn or(stack: &mut Stack) {
-    let a = stack.pop();
-    let b = stack.get_mut(0);
-    *b = a | *b;
+pub(crate) fn or(a: U256, b: U256) -> U256 {
+    a | b
 }
 
 #[inline]
-pub(crate) fn xor(stack: &mut Stack) {
-    let a = stack.pop();
-    let b = stack.get_mut(0);
-    *b = a ^ *b;
+pub(crate) fn xor(a: U256, b: U256) -> U256 {
+    a ^ b
 }
 
 #[inline]
-pub(crate) fn not(stack: &mut Stack) {
-    let v = stack.get_mut(0);
-    *v = !*v;
+pub(crate) fn not(v: U256) -> U256 {
+    !v
 }

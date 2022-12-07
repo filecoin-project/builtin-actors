@@ -1,42 +1,95 @@
+use bytes::Bytes;
+
+use crate::interpreter::{memory::Memory, output::Outcome, Output};
+
 use {
-    super::memory::get_memory_region, crate::interpreter::output::StatusCode,
-    crate::interpreter::stack::Stack, crate::interpreter::Bytecode,
-    crate::interpreter::ExecutionState, crate::interpreter::U256,
+    super::memory::get_memory_region,
+    crate::interpreter::output::StatusCode,
+    crate::interpreter::Bytecode,
+    crate::interpreter::{ExecutionState, System, U256},
+    fil_actors_runtime::runtime::Runtime,
 };
 
 #[inline]
-pub fn ret(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    let offset = *state.stack.get(0);
-    let size = *state.stack.get(1);
-
-    if let Some(region) = super::memory::get_memory_region(&mut state.memory, offset, size)
-        .map_err(|_| StatusCode::InvalidMemoryAccess)?
-    {
-        state.output_data =
-            state.memory[region.offset..region.offset + region.size.get()].to_vec().into();
-    }
-
+pub fn nop(_state: &mut ExecutionState, _system: &System<impl Runtime>) -> Result<(), StatusCode> {
     Ok(())
 }
 
 #[inline]
-pub fn returndatasize(state: &mut ExecutionState) {
-    state.stack.push(U256::from(state.return_data.len()));
+pub fn invalid(
+    _state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+) -> Result<(), StatusCode> {
+    Err(StatusCode::InvalidInstruction)
 }
 
 #[inline]
-pub fn returndatacopy(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    let mem_index = state.stack.pop();
-    let input_index = state.stack.pop();
-    let size = state.stack.pop();
+pub fn ret(
+    state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+    offset: U256,
+    size: U256,
+) -> Result<Output, StatusCode> {
+    exit(&mut state.memory, offset, size, Outcome::Return)
+}
 
+#[inline]
+pub fn revert(
+    state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+    offset: U256,
+    size: U256,
+) -> Result<Output, StatusCode> {
+    exit(&mut state.memory, offset, size, Outcome::Revert)
+}
+
+#[inline]
+pub fn stop(
+    _state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+) -> Result<Output, StatusCode> {
+    Ok(Output { return_data: Bytes::new(), outcome: Outcome::Return })
+}
+
+#[inline]
+fn exit(
+    memory: &mut Memory,
+    offset: U256,
+    size: U256,
+    status: Outcome,
+) -> Result<Output, StatusCode> {
+    Ok(Output {
+        outcome: status,
+        return_data: super::memory::get_memory_region(memory, offset, size)
+            .map_err(|_| StatusCode::InvalidMemoryAccess)?
+            .map(|region| memory[region.offset..region.offset + region.size.get()].to_vec().into())
+            .unwrap_or_default(),
+    })
+}
+
+#[inline]
+pub fn returndatasize(
+    state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+) -> Result<U256, StatusCode> {
+    Ok(U256::from(state.return_data.len()))
+}
+
+#[inline]
+pub fn returndatacopy(
+    state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+    mem_index: U256,
+    input_index: U256,
+    size: U256,
+) -> Result<(), StatusCode> {
     let region = get_memory_region(&mut state.memory, mem_index, size)
         .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
-    if input_index > U256::from(state.return_data.len()) {
+    let src = input_index.try_into().map_err(|_| StatusCode::InvalidMemoryAccess)?;
+    if src > state.return_data.len() {
         return Err(StatusCode::InvalidMemoryAccess);
     }
-    let src = input_index.as_usize();
 
     if src + region.as_ref().map(|r| r.size.get()).unwrap_or(0) > state.return_data.len() {
         return Err(StatusCode::InvalidMemoryAccess);
@@ -51,29 +104,25 @@ pub fn returndatacopy(state: &mut ExecutionState) -> Result<(), StatusCode> {
 }
 
 #[inline]
-pub fn pc(stack: &mut Stack, pc: usize) {
-    stack.push(U256::from(pc))
-}
-
-#[inline]
-pub fn jump(stack: &mut Stack, bytecode: &Bytecode) -> Result<usize, StatusCode> {
-    let dst = stack.pop().as_usize();
+pub fn jump(bytecode: &Bytecode, _pc: usize, dest: U256) -> Result<usize, StatusCode> {
+    let dst = dest.try_into().map_err(|_| StatusCode::BadJumpDestination)?;
     if !bytecode.valid_jump_destination(dst) {
         return Err(StatusCode::BadJumpDestination);
     }
-    Ok(dst)
+    // skip the JMPDEST noop sled
+    Ok(dst + 1)
 }
 
 #[inline]
-pub fn jumpi(stack: &mut Stack, bytecode: &Bytecode) -> Result<Option<usize>, StatusCode> {
-    if *stack.get(1) != U256::zero() {
-        let ret = Ok(Some(jump(stack, bytecode)?));
-        stack.pop();
-        ret
+pub fn jumpi(bytecode: &Bytecode, pc: usize, dest: U256, test: U256) -> Result<usize, StatusCode> {
+    if !test.is_zero() {
+        let dst = dest.try_into().map_err(|_| StatusCode::BadJumpDestination)?;
+        if !bytecode.valid_jump_destination(dst) {
+            return Err(StatusCode::BadJumpDestination);
+        }
+        // skip the JMPDEST noop sled
+        Ok(dst + 1)
     } else {
-        stack.pop();
-        stack.pop();
-
-        Ok(None)
+        Ok(pc + 1)
     }
 }

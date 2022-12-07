@@ -68,6 +68,7 @@ fn simple_construction() {
     let mut env = prepare_env();
     let params = constructor_params(&env);
 
+    env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
     env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
     env.rt.expect_send(
         env.worker,
@@ -141,6 +142,7 @@ fn control_addresses_are_resolved_during_construction() {
     env.rt.id_addresses.insert(control2, control2id);
 
     let params = constructor_params(&env);
+    env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
     env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
     env.rt.expect_send(
         env.worker,
@@ -167,38 +169,12 @@ fn control_addresses_are_resolved_during_construction() {
 }
 
 #[test]
-fn fails_if_control_address_is_not_an_account_actor() {
-    let mut env = prepare_env();
-
-    let control1 = Address::new_id(501);
-    env.control_addrs = vec![control1];
-    env.rt.actor_code_cids.insert(control1, *PAYCH_ACTOR_CODE_ID);
-
-    let params = constructor_params(&env);
-    env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
-    env.rt.expect_send(
-        env.worker,
-        AccountMethod::PubkeyAddress as u64,
-        RawBytes::default(),
-        TokenAmount::zero(),
-        RawBytes::serialize(env.worker_key).unwrap(),
-        ExitCode::OK,
-    );
-
-    let result = env
-        .rt
-        .call::<Actor>(Method::Constructor as u64, &RawBytes::serialize(params).unwrap())
-        .unwrap_err();
-    assert_eq!(result.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
-    env.rt.verify();
-}
-
-#[test]
 fn test_construct_with_invalid_peer_id() {
     let mut env = prepare_env();
     env.peer_id = vec![0; env.rt.policy.max_peer_id_length + 1];
 
     let params = constructor_params(&env);
+    env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
     env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
 
     let result = env
@@ -218,6 +194,7 @@ fn fails_if_control_addresses_exceeds_maximum_length() {
     }
 
     let params = constructor_params(&env);
+    env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
     env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
 
     let result = env
@@ -237,6 +214,7 @@ fn test_construct_with_large_multiaddr() {
     }
 
     let params = constructor_params(&env);
+    env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
     env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
 
     let result = env
@@ -255,6 +233,7 @@ fn test_construct_with_empty_multiaddr() {
     env.multiaddrs.push(BytesDe(vec![1]));
 
     let params = constructor_params(&env);
+    env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
     env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
 
     let result = env

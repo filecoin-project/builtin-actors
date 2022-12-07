@@ -1,3 +1,12 @@
+use std::iter;
+
+use fil_actors_runtime::{actor_error, runtime::builtins::Type, AsActorError, EAM_ACTOR_ID};
+use fvm_ipld_encoding::{strict_bytes, BytesDe, BytesSer, DAG_CBOR};
+use fvm_shared::address::{Address, Payload};
+use interpreter::{address::EthAddress, system::load_bytecode};
+
+use crate::interpreter::output::Outcome;
+
 pub mod interpreter;
 mod state;
 
@@ -9,12 +18,10 @@ use {
     fil_actors_runtime::{
         cbor,
         runtime::{ActorCode, Runtime},
-        ActorDowncast, ActorError,
+        ActorError,
     },
-    fvm_ipld_blockstore::Blockstore,
     fvm_ipld_encoding::tuple::*,
     fvm_ipld_encoding::RawBytes,
-    fvm_ipld_kamt::{Config as KamtConfig, Kamt},
     fvm_shared::error::*,
     fvm_shared::{MethodNum, METHOD_CONSTRUCTOR},
     num_derive::FromPrimitive,
@@ -24,30 +31,20 @@ use {
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(EvmContractActor);
 
-/// Maximum allowed EVM bytecode size.
-/// The contract code size limit is 24kB.
-const MAX_CODE_SIZE: usize = 24 << 10;
+pub const EVM_CONTRACT_REVERTED: ExitCode = ExitCode::new(33);
+pub const EVM_CONTRACT_EXECUTION_ERROR: ExitCode = ExitCode::new(34);
 
-pub const EVM_CONTRACT_REVERTED: ExitCode = ExitCode::new(27);
+const EVM_MAX_RESERVED_METHOD: u64 = 1023;
+pub const NATIVE_METHOD_SIGNATURE: &str = "handle_filecoin_method(uint64,uint64,bytes)";
+pub const NATIVE_METHOD_SELECTOR: [u8; 4] = [0x86, 0x8e, 0x10, 0xc4];
 
-lazy_static::lazy_static! {
-    // The Solidity compiler creates contiguous array item keys.
-    // To prevent the tree from going very deep we use extensions,
-    // which the Kamt supports and does in all cases.
-    // There are maximum 32 levels in the tree with the default bit width of 8.
-    // The top few levels will have a higher level of overlap in their hashes.
-    // Intuitively these levels should be used for routing, not storing data.
-    // The only exception to this is the top level variables in the contract
-    // which solidity puts in the first few slots. There having to do extra
-    // lookups is burdensome, and they will always be accessed even for arrays
-    // because that's where the array length is stored.
-    // The following values have been set by looking at how the charts evolved
-    // with the test contract. They might not be the best for other contracts.
-    static ref KAMT_CONFIG: KamtConfig = KamtConfig {
-        min_data_depth: 2,
-        bit_width: 5,
-        max_array_width: 3
-    };
+#[test]
+fn test_method_selector() {
+    // We could just _generate_ this method selector with a proc macro, but this is easier.
+    use cid::multihash::MultihashDigest;
+    let hash = cid::multihash::Code::Keccak256.digest(NATIVE_METHOD_SIGNATURE.as_bytes());
+    let computed_selector = &hash.digest()[..4];
+    assert_eq!(computed_selector, NATIVE_METHOD_SELECTOR);
 }
 
 #[derive(FromPrimitive)]
@@ -57,164 +54,156 @@ pub enum Method {
     InvokeContract = 2,
     GetBytecode = 3,
     GetStorageAt = 4,
+    InvokeContractDelegate = 5,
 }
 
 pub struct EvmContractActor;
 impl EvmContractActor {
-    pub fn constructor<BS, RT>(rt: &mut RT, params: ConstructorParams) -> Result<(), ActorError>
+    pub fn constructor<RT>(rt: &mut RT, params: ConstructorParams) -> Result<(), ActorError>
     where
-        BS: Blockstore + Clone,
-        RT: Runtime<BS>,
+        RT: Runtime,
+        RT::Blockstore: Clone,
     {
-        rt.validate_immediate_caller_accept_any()?;
+        // TODO ideally we would be checking that we are constructed by the EAM actor,
+        //   but instead we check for init and then assert that we have a delegated address.
+        //   https://github.com/filecoin-project/ref-fvm/issues/746
+        // rt.validate_immediate_caller_is(vec![&EAM_ACTOR_ADDR])?;
+        rt.validate_immediate_caller_type(iter::once(&Type::Init))?;
 
-        if params.bytecode.len() > MAX_CODE_SIZE {
-            return Err(ActorError::illegal_argument(format!(
-                "EVM byte code length ({}) is exceeding the maximum allowed of {MAX_CODE_SIZE}",
-                params.bytecode.len()
-            )));
-        }
-
-        if params.bytecode.is_empty() {
-            return Err(ActorError::illegal_argument("no bytecode provided".into()));
-        }
-
-        // create an empty storage KAMT to pass it down for execution.
-        let mut kamt = Kamt::new_with_config(rt.store().clone(), KAMT_CONFIG.to_owned());
-
-        // create an instance of the platform abstraction layer -- note: do we even need this?
-        let mut system = System::new(rt, &mut kamt).map_err(|e| {
-            ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
+        // Assert we are constructed with a delegated address from the EAM
+        let receiver = rt.message().receiver();
+        let delegated_addr = rt.lookup_address(receiver.id().unwrap()).ok_or_else(|| {
+            ActorError::assertion_failed(format!(
+                "EVM actor {} created without a delegated address",
+                receiver
+            ))
         })?;
+        let delegated_addr = match delegated_addr.payload() {
+            Payload::Delegated(delegated) if delegated.namespace() == EAM_ACTOR_ID => {
+                // sanity check
+                assert_eq!(delegated.subaddress().len(), 20);
+                Ok(*delegated)
+            }
+            _ => Err(ActorError::assertion_failed(format!(
+                "EVM actor with delegated address {} created not namespaced to the EAM {}",
+                delegated_addr, EAM_ACTOR_ID,
+            ))),
+        }?;
+        let receiver_eth_addr = {
+            let subaddr: [u8; 20] = delegated_addr.subaddress().try_into().map_err(|_| {
+                ActorError::assertion_failed(format!(
+                    "expected 20 byte EVM address, found {} bytes",
+                    delegated_addr.subaddress().len()
+                ))
+            })?;
+            EthAddress(subaddr)
+        };
+
+        let mut system = System::create(rt)?;
+        // If we have no code, save the state and return.
+        if params.initcode.is_empty() {
+            return system.flush();
+        }
 
         // create a new execution context
-        let mut exec_state = ExecutionState::new(Method::Constructor as u64, Bytes::new());
+        let mut exec_state = ExecutionState::new(params.creator, receiver_eth_addr, Bytes::new());
 
         // identify bytecode valid jump destinations
-        let bytecode = Bytecode::new(&params.bytecode)
-            .map_err(|e| ActorError::unspecified(format!("failed to parse bytecode: {e:?}")))?;
+        let initcode = Bytecode::new(params.initcode.into());
 
         // invoke the contract constructor
-        let exec_status =
-            execute(&bytecode, &mut exec_state, &mut system.reborrow()).map_err(|e| match e {
-                StatusCode::ActorError(e) => e,
-                _ => ActorError::unspecified(format!("EVM execution error: {e:?}")),
-            })?;
+        let output = execute(&initcode, &mut exec_state, &mut system).map_err(|e| match e {
+            StatusCode::ActorError(e) => e,
+            _ => ActorError::unspecified(format!("EVM execution error: {e:?}")),
+        })?;
 
-        // TODO this does not return revert data yet, but it has correct semantics.
-        if exec_status.reverted {
-            Err(ActorError::unchecked(EVM_CONTRACT_REVERTED, "constructor reverted".to_string()))
-        } else if exec_status.status_code == StatusCode::Success {
-            if exec_status.output_data.is_empty() {
-                return Err(ActorError::unspecified(
-                    "EVM constructor returned empty contract".to_string(),
-                ));
+        match output.outcome {
+            Outcome::Return => {
+                system.set_bytecode(&output.return_data)?;
+                system.flush()
             }
-            // constructor ran to completion successfully and returned
-            // the resulting bytecode.
-            let contract_bytecode = exec_status.output_data;
-
-            let contract_state_cid = system.flush_state()?;
-
-            let state = State::new(
-                rt.store(),
-                RawBytes::new(contract_bytecode.to_vec()),
-                contract_state_cid,
-            )
-            .map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct state")
-            })?;
-            rt.create(&state)?;
-
-            Ok(())
-        } else if let StatusCode::ActorError(e) = exec_status.status_code {
-            Err(e)
-        } else {
-            Err(ActorError::unspecified("EVM constructor failed".to_string()))
+            Outcome::Revert => Err(ActorError::unchecked_with_data(
+                EVM_CONTRACT_REVERTED,
+                "constructor reverted".to_string(),
+                RawBytes::serialize(BytesSer(&output.return_data)).unwrap(),
+            )),
+            Outcome::Delete => Ok(()),
         }
     }
 
-    pub fn invoke_contract<BS, RT>(
+    pub fn invoke_contract<RT>(
         rt: &mut RT,
-        method: u64,
-        input_data: &RawBytes,
-    ) -> Result<RawBytes, ActorError>
+        input_data: &[u8],
+        with_code: Option<Cid>,
+    ) -> Result<Vec<u8>, ActorError>
     where
-        BS: Blockstore + Clone,
-        RT: Runtime<BS>,
+        RT: Runtime,
+        RT::Blockstore: Clone,
     {
-        rt.validate_immediate_caller_accept_any()?;
+        if with_code.is_some() {
+            rt.validate_immediate_caller_is(&[rt.message().receiver()])?;
+        } else {
+            rt.validate_immediate_caller_accept_any()?;
+        }
 
-        let state: State = rt.state()?;
-        let bytecode: Vec<u8> = rt
-            .store()
-            .get(&state.bytecode)
-            .map_err(|e| ActorError::unspecified(format!("failed to load bytecode: {e:?}")))?
-            .ok_or_else(|| ActorError::unspecified("missing bytecode".to_string()))?;
-
-        let bytecode = Bytecode::new(&bytecode)
-            .map_err(|e| ActorError::unspecified(format!("failed to parse bytecode: {e:?}")))?;
-
-        // clone the blockstore here to pass to the System, this is bound to the KAMT.
-        let blockstore = rt.store().clone();
-
-        // load the storage KAMT
-        let mut kamt =
-            Kamt::load_with_config(&state.contract_state, blockstore, KAMT_CONFIG.to_owned())
-                .map_err(|e| {
-                    ActorError::illegal_state(format!(
-                        "failed to load storage KAMT on invoke: {e:?}, e"
-                    ))
-                })?;
-
-        let mut system = System::new(rt, &mut kamt).map_err(|e| {
+        let mut system = System::load(rt).map_err(|e| {
             ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
         })?;
 
-        let mut exec_state = ExecutionState::new(method, input_data.to_vec().into());
+        let bytecode = match match with_code {
+            Some(cid) => load_bytecode(system.rt.store(), &cid),
+            None => system.load_bytecode(),
+        }? {
+            Some(bytecode) => bytecode,
+            // an EVM contract with no code returns immediately
+            None => return Ok(Vec::new()),
+        };
 
-        let exec_status =
-            execute(&bytecode, &mut exec_state, &mut system.reborrow()).map_err(|e| match e {
-                StatusCode::ActorError(e) => e,
-                _ => ActorError::unspecified(format!("EVM execution error: {e:?}")),
-            })?;
+        // Resolve the caller's ethereum address. If the caller doesn't have one, the caller's ID is used instead.
+        let caller_fil_addr = system.rt.message().caller();
+        let caller_eth_addr = system.resolve_ethereum_address(&caller_fil_addr).unwrap();
 
-        // TODO this does not return revert data yet, but it has correct semantics.
-        if exec_status.reverted {
-            return Err(ActorError::unchecked(
+        // Resolve the receiver's ethereum address.
+        let receiver_fil_addr = system.rt.message().receiver();
+        let receiver_eth_addr = system.resolve_ethereum_address(&receiver_fil_addr).unwrap();
+
+        let mut exec_state =
+            ExecutionState::new(caller_eth_addr, receiver_eth_addr, input_data.to_vec().into());
+
+        let output = execute(&bytecode, &mut exec_state, &mut system).map_err(|e| match e {
+            StatusCode::ActorError(e) => e,
+            _ => ActorError::unspecified(format!("EVM execution error: {e:?}")),
+        })?;
+
+        match output.outcome {
+            Outcome::Return => {
+                system.flush()?;
+                Ok(output.return_data.to_vec())
+            }
+            Outcome::Revert => Err(ActorError::unchecked_with_data(
                 EVM_CONTRACT_REVERTED,
                 "contract reverted".to_string(),
-            ));
-        } else if exec_status.status_code == StatusCode::Success {
-            // this needs to be outside the transaction or else rustc has a fit about
-            // mutably borrowing the runtime twice.... sigh.
-            let contract_state = system.flush_state()?;
-            rt.transaction(|state: &mut State, _rt| {
-                state.contract_state = contract_state;
-                Ok(())
-            })?;
-        } else if let StatusCode::ActorError(e) = exec_status.status_code {
-            return Err(e);
-        } else {
-            return Err(ActorError::unspecified(format!(
-                "EVM contract invocation failed: status: {}",
-                exec_status.status_code
-            )));
+                RawBytes::serialize(BytesSer(&output.return_data)).unwrap(),
+            )),
+            Outcome::Delete => Ok(Vec::new()),
         }
-
-        if let Some(addr) = exec_status.selfdestroyed {
-            rt.delete_actor(&addr)?
-        }
-
-        let output = RawBytes::from(exec_status.output_data.to_vec());
-        Ok(output)
     }
 
-    pub fn bytecode<BS, RT>(rt: &mut RT) -> Result<Cid, ActorError>
+    pub fn handle_filecoin_method<RT>(
+        rt: &mut RT,
+        method: u64,
+        codec: u64,
+        params: &[u8],
+    ) -> Result<Vec<u8>, ActorError>
     where
-        BS: Blockstore + Clone,
-        RT: Runtime<BS>,
+        RT: Runtime,
+        RT::Blockstore: Clone,
     {
+        let input = handle_filecoin_method_input(method, codec, params);
+        Self::invoke_contract(rt, &input, None)
+    }
+
+    pub fn bytecode(rt: &mut impl Runtime) -> Result<Cid, ActorError> {
         // Any caller can fetch the bytecode of a contract; this is now EXT* opcodes work.
         rt.validate_immediate_caller_accept_any()?;
 
@@ -222,55 +211,68 @@ impl EvmContractActor {
         Ok(state.bytecode)
     }
 
-    pub fn storage_at<BS, RT>(rt: &mut RT, params: GetStorageAtParams) -> Result<U256, ActorError>
+    pub fn storage_at<RT>(rt: &mut RT, params: GetStorageAtParams) -> Result<U256, ActorError>
     where
-        BS: Blockstore + Clone,
-        RT: Runtime<BS>,
+        RT: Runtime,
+        RT::Blockstore: Clone,
     {
         // This method cannot be called on-chain; other on-chain logic should not be able to
         // access arbitrary storage keys from a contract.
-        rt.validate_immediate_caller_is([&fvm_shared::address::Address::new_id(0)])?;
+        rt.validate_immediate_caller_is([&Address::new_id(0)])?;
 
-        let state: State = rt.state()?;
-        let blockstore = rt.store().clone();
-
-        // load the storage KAMT
-        let mut kamt =
-            Kamt::load_with_config(&state.contract_state, blockstore, KAMT_CONFIG.to_owned())
-                .map_err(|e| {
-                    ActorError::illegal_state(format!(
-                        "failed to load storage KAMT on invoke: {e:?}, e"
-                    ))
-                })?;
-
-        let mut system = System::new(rt, &mut kamt).map_err(|e| {
-            ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
-        })?;
-
-        system
+        System::load(rt)?
             .get_storage(params.storage_key)
-            .map_err(|st| ActorError::unspecified(format!("failed to get storage key: {}", &st)))?
-            .ok_or_else(|| ActorError::not_found(String::from("storage key not found")))
+            .context_code(ExitCode::USR_ASSERTION_FAILED, "failed to get storage key")
     }
 }
 
+/// Format "filecoin_native_method" input parameters.
+fn handle_filecoin_method_input(method: u64, codec: u64, params: &[u8]) -> Vec<u8> {
+    let static_args = [method, codec, 32 * 3 /* start of params */, params.len() as u64];
+    let total_words = static_args.len() + (params.len() / 32) + (params.len() % 32 > 0) as usize;
+    let len = 4 + total_words * 32;
+    let mut buf = Vec::with_capacity(len);
+    buf.extend_from_slice(&NATIVE_METHOD_SELECTOR);
+    for n in static_args {
+        // Left-pad to 32 bytes, then be-encode the value.
+        let encoded = n.to_be_bytes();
+        buf.resize(buf.len() + (32 - encoded.len()), 0);
+        buf.extend_from_slice(&encoded);
+    }
+    // Extend with the params, then right-pad with zeros.
+    buf.extend_from_slice(params);
+    buf.resize(len, 0);
+    buf
+}
+
 impl ActorCode for EvmContractActor {
-    fn invoke_method<BS, RT>(
+    fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
         params: &RawBytes,
     ) -> Result<RawBytes, ActorError>
     where
-        BS: Blockstore + Clone,
-        RT: Runtime<BS>,
+        RT: Runtime,
+        RT::Blockstore: Clone,
     {
+        // We reserve all methods below EVM_MAX_RESERVED (<= 1023) method. This is a _subset_ of
+        // those reserved by FRC0042.
+        if method > EVM_MAX_RESERVED_METHOD {
+            // FIXME: we need the actual codec.
+            // See https://github.com/filecoin-project/ref-fvm/issues/987
+            let codec = if params.is_empty() { 0 } else { DAG_CBOR };
+            return Self::handle_filecoin_method(rt, method, codec, params).map(RawBytes::new);
+        }
+
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
                 Self::constructor(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
             Some(Method::InvokeContract) => {
-                Self::invoke_contract(rt, Method::InvokeContract as u64, params)
+                let BytesDe(params) = params.deserialize()?;
+                let value = Self::invoke_contract(rt, &params, None)?;
+                Ok(RawBytes::serialize(BytesSer(&value))?)
             }
             Some(Method::GetBytecode) => {
                 let cid = Self::bytecode(rt)?;
@@ -280,14 +282,30 @@ impl ActorCode for EvmContractActor {
                 let value = Self::storage_at(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(value)?)
             }
-            None => Self::invoke_contract(rt, method, params),
+            Some(Method::InvokeContractDelegate) => {
+                let params: DelegateCallParams = cbor::deserialize_params(params)?;
+                let value = Self::invoke_contract(rt, &params.input, Some(params.code))?;
+                Ok(RawBytes::serialize(BytesSer(&value))?)
+            }
+            None => Err(actor_error!(unhandled_message; "Invalid method")),
         }
     }
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ConstructorParams {
-    pub bytecode: RawBytes,
+    /// The actor's "creator" (specified by the EAM).
+    pub creator: EthAddress,
+    /// The initcode that will construct the new EVM actor.
+    pub initcode: RawBytes,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct DelegateCallParams {
+    pub code: Cid,
+    /// The contract invocation parameters
+    #[serde(with = "strict_bytes")]
+    pub input: Vec<u8>,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]

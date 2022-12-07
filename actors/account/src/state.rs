@@ -6,7 +6,7 @@ use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
 
 /// State includes the address for the actor
-#[derive(Serialize_tuple, Deserialize_tuple, Debug)]
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone)]
 pub struct State {
     pub address: Address,
 }

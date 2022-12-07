@@ -1,19 +1,23 @@
 use anyhow::anyhow;
 use bimap::BiBTreeMap;
 use cid::multihash::Code;
+use cid::multihash::MultihashDigest;
 use cid::Cid;
 use fil_actor_account::{Actor as AccountActor, State as AccountState};
 use fil_actor_cron::{Actor as CronActor, Entry as CronEntry, State as CronState};
+use fil_actor_datacap::{Actor as DataCapActor, State as DataCapState};
+use fil_actor_eam::EamActor;
 use fil_actor_evm::EvmContractActor;
 use fil_actor_init::{Actor as InitActor, ExecReturn, State as InitState};
 use fil_actor_market::{Actor as MarketActor, Method as MarketMethod, State as MarketState};
-use fil_actor_miner::{Actor as MinerActor, State as MinerState};
+use fil_actor_miner::{Actor as MinerActor, MinerInfo, State as MinerState};
 use fil_actor_multisig::Actor as MultisigActor;
 use fil_actor_paych::Actor as PaychActor;
 use fil_actor_power::{Actor as PowerActor, Method as MethodPower, State as PowerState};
 use fil_actor_reward::{Actor as RewardActor, State as RewardState};
 use fil_actor_system::{Actor as SystemActor, State as SystemState};
 use fil_actor_verifreg::{Actor as VerifregActor, State as VerifRegState};
+use fil_actors_runtime::actor_error;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{
@@ -21,20 +25,19 @@ use fil_actors_runtime::runtime::{
     Verifier, EMPTY_ARR_CID,
 };
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::MessageAccumulator;
 use fil_actors_runtime::{
-    ActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, FIRST_NON_SINGLETON_ADDR, INIT_ACTOR_ADDR,
-    REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
+    ActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, EAM_ACTOR_ADDR, FIRST_NON_SINGLETON_ADDR,
+    INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+use fil_actors_runtime::{MessageAccumulator, DATACAP_TOKEN_ACTOR_ADDR};
 use fil_builtin_actors_state::check::check_state_invariants;
 use fil_builtin_actors_state::check::Tree;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
-use fvm_shared::address::Address;
-use fvm_shared::address::Payload;
+use fvm_shared::address::{Address, Payload};
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
@@ -44,16 +47,17 @@ use fvm_shared::crypto::signature::{
 };
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::event::ActorEvent;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::Randomness;
+use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
     AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
     StoragePower, WindowPoStVerifyInfo,
 };
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::version::NetworkVersion;
-use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
-use multihash::MultihashDigest;
+use fvm_shared::{ActorID, MethodNum, IPLD_RAW, METHOD_CONSTRUCTOR, METHOD_SEND};
 use regex::Regex;
 use serde::ser;
 use std::cell::{RefCell, RefMut};
@@ -237,11 +241,25 @@ impl<'bs> VM<'bs> {
             actor(*VERIFREG_ACTOR_CODE_ID, verifreg_head, 0, TokenAmount::zero(), None),
         );
 
+        // Ethereum Address Manager
+        v.set_actor(
+            EAM_ACTOR_ADDR,
+            actor(*EAM_ACTOR_CODE_ID, EMPTY_ARR_CID, 0, TokenAmount::zero(), None),
+        );
+
         // burnt funds
         let burnt_funds_head = v.put_store(&AccountState { address: BURNT_FUNDS_ACTOR_ADDR });
         v.set_actor(
             BURNT_FUNDS_ACTOR_ADDR,
             actor(*ACCOUNT_ACTOR_CODE_ID, burnt_funds_head, 0, TokenAmount::zero(), None),
+        );
+
+        // datacap
+        let datacap_head =
+            v.put_store(&DataCapState::new(&v.store, VERIFIED_REGISTRY_ACTOR_ADDR).unwrap());
+        v.set_actor(
+            DATACAP_TOKEN_ACTOR_ADDR,
+            actor(*DATACAP_TOKEN_ACTOR_CODE_ID, datacap_head, 0, TokenAmount::zero(), None),
         );
 
         // create a faucet with 1 billion FIL for setting up test accounts
@@ -281,6 +299,11 @@ impl<'bs> VM<'bs> {
             initial_pledge: st.initial_pledge,
             pre_commit_deposit: st.pre_commit_deposits,
         }
+    }
+
+    pub fn get_miner_info(&self, maddr: Address) -> MinerInfo {
+        let st = self.get_state::<MinerState>(maddr).unwrap();
+        self.store.get_cbor::<MinerInfo>(&st.info).unwrap().unwrap()
     }
 
     pub fn get_network_stats(&self) -> NetworkStats {
@@ -376,6 +399,18 @@ impl<'bs> VM<'bs> {
         self.store.get_cbor::<C>(&a.head).unwrap()
     }
 
+    pub fn mutate_state<C, F>(&self, addr: Address, f: F)
+    where
+        C: Cbor,
+        F: FnOnce(&mut C),
+    {
+        let mut a = self.get_actor(addr).unwrap();
+        let mut st = self.store.get_cbor::<C>(&a.head).unwrap().unwrap();
+        f(&mut st);
+        a.head = self.store.put_cbor(&st, Code::Blake2b256).unwrap();
+        self.set_actor(addr, a);
+    }
+
     pub fn get_epoch(&self) -> ChainEpoch {
         self.curr_epoch
     }
@@ -419,21 +454,28 @@ impl<'bs> VM<'bs> {
             caller_validated: false,
             policy: &Policy::default(),
             subinvocations: RefCell::new(vec![]),
+            actor_exit: RefCell::new(None),
+            read_only: false,
         };
-        let res = new_ctx.invoke();
+        let res = new_ctx.invoke_actor();
+
         let invoc = new_ctx.gather_trace(res.clone());
         RefMut::map(self.invocations.borrow_mut(), |invocs| {
             invocs.push(invoc);
             invocs
         });
         match res {
-            Err(ae) => {
+            Err(mut ae) => {
                 self.rollback(prior_root);
-                Ok(MessageResult { code: ae.exit_code(), ret: RawBytes::default() })
+                Ok(MessageResult {
+                    code: ae.exit_code(),
+                    message: ae.msg().to_string(),
+                    ret: ae.take_data(),
+                })
             }
             Ok(ret) => {
                 self.checkpoint();
-                Ok(MessageResult { code: ExitCode::OK, ret })
+                Ok(MessageResult { code: ExitCode::OK, message: "OK".to_string(), ret })
             }
         }
     }
@@ -532,16 +574,16 @@ impl MessageInfo for InvocationCtx<'_, '_> {
     fn value_received(&self) -> TokenAmount {
         self.msg.value.clone()
     }
-    fn gas_limit(&self) -> u64 {
-        todo!()
-    }
     fn gas_premium(&self) -> TokenAmount {
-        todo!()
+        TokenAmount::zero()
     }
 }
 
-pub const TEST_VM_RAND_STRING: &str = "i_am_random_____i_am_random_____";
-pub const TEST_VM_INVALID: &str = "i_am_invalid";
+pub const TEST_VM_RAND_ARRAY: [u8; 32] = [
+    1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+    26, 27, 28, 29, 30, 31, 32,
+];
+pub const TEST_VM_INVALID_POST: &str = "i_am_invalid_post";
 
 pub struct InvocationCtx<'invocation, 'bs> {
     v: &'invocation VM<'bs>,
@@ -549,8 +591,16 @@ pub struct InvocationCtx<'invocation, 'bs> {
     msg: InternalMessage,
     allow_side_effects: bool,
     caller_validated: bool,
+    read_only: bool,
     policy: &'invocation Policy,
     subinvocations: RefCell<Vec<InvocationTrace>>,
+    actor_exit: RefCell<Option<ActorExit>>,
+}
+
+struct ActorExit {
+    code: u32,
+    data: RawBytes,
+    msg: Option<String>,
 }
 
 impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
@@ -560,6 +610,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 return Ok((act, a));
             }
         };
+
         // Address does not yet exist, create it
         let is_account = match target.payload() {
             Payload::Secp256k1(_) | Payload::BLS(_) => true,
@@ -577,6 +628,15 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 ));
             }
         };
+
+        // But only if we're not in read-only mode.
+        if self.read_only {
+            return Err(ActorError::unchecked(
+                ExitCode::USR_READ_ONLY,
+                format!("cannot create actor {target} in read-only mode"),
+            ));
+        }
+
         let mut st = self.v.get_state::<InitState>(INIT_ACTOR_ADDR).unwrap();
         let target_id = st.map_address_to_new_id(self.v.store, target).unwrap();
         let target_id_addr = Address::new_id(target_id);
@@ -600,6 +660,8 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 caller_validated: false,
                 policy: self.policy,
                 subinvocations: RefCell::new(vec![]),
+                actor_exit: RefCell::new(None),
+                read_only: false,
             };
             if is_account {
                 new_ctx.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id, Some(*target)).unwrap();
@@ -619,8 +681,8 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
 
     fn gather_trace(&mut self, invoke_result: Result<RawBytes, ActorError>) -> InvocationTrace {
         let (ret, code) = match invoke_result {
-            Ok(rb) => (Some(rb), None),
-            Err(ae) => (None, Some(ae.exit_code())),
+            Ok(rb) => (Some(rb), ExitCode::OK),
+            Err(ae) => (None, ae.exit_code()),
         };
         let mut msg = self.msg.clone();
         msg.to = match self.resolve_target(&self.msg.to) {
@@ -632,6 +694,27 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
 
     fn to(&'_ self) -> Address {
         self.resolve_target(&self.msg.to).unwrap().1
+    }
+
+    fn invoke_actor(&mut self) -> Result<RawBytes, ActorError> {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.invoke())).unwrap_or_else(
+            |panic| {
+                if self.actor_exit.borrow().is_some() {
+                    let exit = self.actor_exit.take().unwrap();
+                    if exit.code == 0 {
+                        Ok(exit.data)
+                    } else {
+                        Err(ActorError::unchecked_with_data(
+                            ExitCode::new(exit.code),
+                            exit.msg.unwrap_or_else(|| "actor exited".to_owned()),
+                            exit.data,
+                        ))
+                    }
+                } else {
+                    std::panic::resume_unwind(panic)
+                }
+            },
+        )
     }
 
     fn invoke(&mut self) -> Result<RawBytes, ActorError> {
@@ -652,6 +735,12 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                     "insufficient balance to transfer".to_string(),
                 ));
             }
+            if self.read_only {
+                return Err(ActorError::unchecked(
+                    ExitCode::USR_READ_ONLY,
+                    "cannot transfer value in read-only mode".to_string(),
+                ));
+            }
         }
 
         // Load, deduct, store from actor before loading to actor to handle self-send case
@@ -670,7 +759,8 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         // call target actor
         let to_actor = self.v.get_actor(to_addr).unwrap();
         let params = self.msg.params.clone();
-        let res = match ACTOR_TYPES.get(&to_actor.code).expect("Target actor is not a builtin") {
+        let mut res = match ACTOR_TYPES.get(&to_actor.code).expect("Target actor is not a builtin")
+        {
             Type::Account => AccountActor::invoke_method(self, self.msg.method, &params),
             Type::Cron => CronActor::invoke_method(self, self.msg.method, &params),
             Type::Init => InitActor::invoke_method(self, self.msg.method, &params),
@@ -682,19 +772,65 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             Type::Power => PowerActor::invoke_method(self, self.msg.method, &params),
             Type::PaymentChannel => PaychActor::invoke_method(self, self.msg.method, &params),
             Type::VerifiedRegistry => VerifregActor::invoke_method(self, self.msg.method, &params),
+            Type::DataCap => DataCapActor::invoke_method(self, self.msg.method, &params),
             Type::Embryo => {
                 Err(ActorError::unhandled_message("embryo actors only handle method 0".into()))
             }
             Type::EVM => EvmContractActor::invoke_method(self, self.msg.method, &params),
+            Type::EAM => EamActor::invoke_method(self, self.msg.method, &params),
         };
+        if res.is_ok() && !self.caller_validated {
+            res = Err(actor_error!(assertion_failed, "failed to validate caller"));
+        }
         if res.is_err() {
             self.v.rollback(prior_root)
         };
+
+        res
+    }
+
+    fn send_inner(
+        &self,
+        to: &Address,
+        method: MethodNum,
+        params: RawBytes,
+        value: TokenAmount,
+        _gas_limit: Option<u64>,
+        read_only: bool,
+    ) -> Result<RawBytes, ActorError> {
+        // TODO gas_limit is current ignored, what should we do about it?
+        if !self.allow_side_effects {
+            return Err(ActorError::unchecked(
+                ExitCode::SYS_ASSERTION_FAILED,
+                "Calling send is not allowed during side-effect lock".to_string(),
+            ));
+        }
+
+        let new_actor_msg = InternalMessage { from: self.to(), to: *to, value, method, params };
+        let mut new_ctx = InvocationCtx {
+            v: self.v,
+            top: self.top.clone(),
+            msg: new_actor_msg,
+            allow_side_effects: true,
+            caller_validated: false,
+            policy: self.policy,
+            subinvocations: RefCell::new(vec![]),
+            actor_exit: RefCell::new(None),
+            read_only,
+        };
+        let res = new_ctx.invoke_actor();
+        let invoc = new_ctx.gather_trace(res.clone());
+        RefMut::map(self.subinvocations.borrow_mut(), |subinvocs| {
+            subinvocs.push(invoc);
+            subinvocs
+        });
         res
     }
 }
 
-impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocation, 'bs> {
+impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
+    type Blockstore = &'bs MemoryBlockstore;
+
     fn create_actor(
         &mut self,
         code_id: Cid,
@@ -725,6 +861,14 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
                 ));
             }
         };
+
+        if self.read_only {
+            return Err(ActorError::unchecked(
+                ExitCode::USR_READ_ONLY,
+                "cannot send value in read-only mode".into(),
+            ));
+        }
+
         self.v.set_actor(addr, actor);
         Ok(())
     }
@@ -757,6 +901,43 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
         }
     }
 
+    fn validate_immediate_caller_namespace<I>(
+        &mut self,
+        namespace_manager_addresses: I,
+    ) -> Result<(), ActorError>
+    where
+        I: IntoIterator<Item = u64>,
+    {
+        if self.caller_validated {
+            return Err(ActorError::unchecked(
+                ExitCode::SYS_ASSERTION_FAILED,
+                "caller double validated".to_string(),
+            ));
+        }
+        let managers: Vec<_> = namespace_manager_addresses.into_iter().collect();
+
+        if let Some(delegated) = self.lookup_address(self.message().caller().id().unwrap()) {
+            for id in managers {
+                if match delegated.payload() {
+                    Payload::Delegated(d) => d.namespace() == id,
+                    _ => false,
+                } {
+                    return Ok(());
+                }
+            }
+        } else {
+            return Err(ActorError::unchecked(
+                ExitCode::SYS_ASSERTION_FAILED,
+                "immediate caller actor expected to have namespace".to_string(),
+            ));
+        }
+
+        Err(ActorError::unchecked(
+            ExitCode::SYS_ASSERTION_FAILED,
+            "immediate caller actor namespace forbidden".to_string(),
+        ))
+    }
+
     fn validate_immediate_caller_is<'a, I>(&mut self, addresses: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Address>,
@@ -767,6 +948,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
                 "caller double validated".to_string(),
             ));
         }
+        self.caller_validated = true;
         for addr in addresses {
             if *addr == self.msg.from {
                 return Ok(());
@@ -788,6 +970,7 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
                 "caller double validated".to_string(),
             ));
         }
+        self.caller_validated = true;
         let to_match = ACTOR_TYPES.get(&self.v.get_actor(self.msg.from).unwrap().code).unwrap();
         if types.into_iter().any(|t| *t == *to_match) {
             return Ok(());
@@ -819,6 +1002,10 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
         }
     }
 
+    fn lookup_address(&self, id: ActorID) -> Option<Address> {
+        self.v.get_actor(Address::new_id(id)).and_then(|act| act.predictable_address)
+    }
+
     fn send(
         &self,
         to: &Address,
@@ -826,31 +1013,28 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
         params: RawBytes,
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError> {
-        if !self.allow_side_effects {
-            return Err(ActorError::unchecked(
-                ExitCode::SYS_ASSERTION_FAILED,
-                "Calling send is not allowed during side-effect lock".to_string(),
-            ));
-        }
+        self.send_inner(to, method, params, value, None, self.read_only)
+    }
 
-        let new_actor_msg = InternalMessage { from: self.to(), to: *to, value, method, params };
-        let mut new_ctx = InvocationCtx {
-            v: self.v,
-            top: self.top.clone(),
-            msg: new_actor_msg,
-            allow_side_effects: true,
-            caller_validated: false,
-            policy: self.policy,
-            subinvocations: RefCell::new(vec![]),
-        };
-        let res = new_ctx.invoke();
+    fn send_read_only(
+        &self,
+        to: &Address,
+        method: MethodNum,
+        params: RawBytes,
+    ) -> Result<RawBytes, ActorError> {
+        self.send_inner(to, method, params, TokenAmount::zero(), None, true)
+    }
 
-        let invoc = new_ctx.gather_trace(res.clone());
-        RefMut::map(self.subinvocations.borrow_mut(), |subinvocs| {
-            subinvocs.push(invoc);
-            subinvocs
-        });
-        res
+    fn send_with_gas(
+        &self,
+        to: &Address,
+        method: MethodNum,
+        params: RawBytes,
+        value: TokenAmount,
+        gas_limit: Option<u64>,
+        read_only: bool,
+    ) -> Result<RawBytes, ActorError> {
+        self.send_inner(to, method, params, value, gas_limit, read_only || self.read_only)
     }
 
     fn get_randomness_from_tickets(
@@ -858,8 +1042,8 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
         _personalization: DomainSeparationTag,
         _rand_epoch: ChainEpoch,
         _entropy: &[u8],
-    ) -> Result<Randomness, ActorError> {
-        Ok(Randomness(TEST_VM_RAND_STRING.as_bytes().into()))
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        Ok(TEST_VM_RAND_ARRAY)
     }
 
     fn get_randomness_from_beacon(
@@ -867,34 +1051,49 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
         _personalization: DomainSeparationTag,
         _rand_epoch: ChainEpoch,
         _entropy: &[u8],
-    ) -> Result<Randomness, ActorError> {
-        Ok(Randomness(TEST_VM_RAND_STRING.as_bytes().into()))
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        Ok(TEST_VM_RAND_ARRAY)
     }
 
-    fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
+    fn user_get_randomness_from_beacon(
+        &self,
+        _personalization: i64,
+        _epoch: ChainEpoch,
+        _entropy: &[u8],
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        Ok(TEST_VM_RAND_ARRAY)
+    }
+
+    fn user_get_randomness_from_chain(
+        &self,
+        _personalization: i64,
+        _epoch: ChainEpoch,
+        _entropy: &[u8],
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        Ok(TEST_VM_RAND_ARRAY)
+    }
+
+    fn get_state_root(&self) -> Result<Cid, ActorError> {
+        Ok(self.v.get_actor(self.to()).unwrap().head)
+    }
+
+    fn set_state_root(&mut self, root: &Cid) -> Result<(), ActorError> {
         let maybe_act = self.v.get_actor(self.to());
         match maybe_act {
             None => Err(ActorError::unchecked(
                 ExitCode::SYS_ASSERTION_FAILED,
-                "failed to create state".to_string(),
+                "actor does not exist".to_string(),
             )),
-            Some(mut act) => {
-                if act.head != EMPTY_ARR_CID {
-                    Err(ActorError::unchecked(
-                        ExitCode::SYS_ASSERTION_FAILED,
-                        "failed to construct state: already initialized".to_string(),
-                    ))
-                } else {
-                    act.head = self.v.store.put_cbor(obj, Code::Blake2b256).unwrap();
-                    self.v.set_actor(self.to(), act);
-                    Ok(())
-                }
+            Some(mut act) if !self.read_only => {
+                act.head = *root;
+                self.v.set_actor(self.to(), act);
+                Ok(())
             }
+            _ => Err(ActorError::unchecked(
+                ExitCode::USR_READ_ONLY,
+                "actor is read-only".to_string(),
+            )),
         }
-    }
-
-    fn state<C: Cbor>(&self) -> Result<C, ActorError> {
-        Ok(self.v.get_state::<C>(self.to()).unwrap())
     }
 
     fn transaction<C, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
@@ -909,6 +1108,14 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
         let ret = result?;
         let mut act = self.v.get_actor(self.to()).unwrap();
         act.head = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
+
+        if self.read_only {
+            return Err(ActorError::unchecked(
+                ExitCode::USR_READ_ONLY,
+                "actor is read-only".to_string(),
+            ));
+        }
+
         self.v.set_actor(self.to(), act);
         Ok(ret)
     }
@@ -944,33 +1151,49 @@ impl<'invocation, 'bs> Runtime<&'bs MemoryBlockstore> for InvocationCtx<'invocat
         TokenAmount::zero()
     }
 
-    fn actor_balance(&self, _id: ActorID) -> Option<TokenAmount> {
-        todo!()
+    fn actor_balance(&self, id: ActorID) -> Option<TokenAmount> {
+        self.v.get_actor(Address::new_id(id)).map(|act| act.balance)
     }
 
     fn gas_available(&self) -> u64 {
-        todo!()
+        u32::MAX.into()
     }
 
     fn tipset_timestamp(&self) -> u64 {
-        todo!()
+        0
     }
 
     fn tipset_cid(&self, _epoch: i64) -> Option<Cid> {
-        todo!()
+        Some(Cid::new_v1(IPLD_RAW, Multihash::wrap(0, b"faketipset").unwrap()))
+    }
+
+    // TODO No support for events yet.
+    fn emit_event(&self, _event: &ActorEvent) -> Result<(), ActorError> {
+        Ok(())
+    }
+
+    fn exit(&self, code: u32, data: RawBytes, msg: Option<&str>) -> ! {
+        self.actor_exit.replace(Some(ActorExit { code, data, msg: msg.map(|s| s.to_owned()) }));
+        std::panic::panic_any("actor exit");
+    }
+
+    fn read_only(&self) -> bool {
+        self.read_only
     }
 }
 
 impl Primitives for VM<'_> {
+    // A "valid" signature has its bytes equal to the plaintext.
+    // Anything else is considered invalid.
     fn verify_signature(
         &self,
         signature: &Signature,
         _signer: &Address,
-        _plaintext: &[u8],
+        plaintext: &[u8],
     ) -> Result<(), anyhow::Error> {
-        if signature.bytes.clone() == TEST_VM_INVALID.as_bytes() {
+        if signature.bytes != plaintext {
             return Err(anyhow::format_err!(
-                "verify signature syscall failing on TEST_VM_INVALID_SIG"
+                "invalid signature (mock sig validation expects siggy bytes to be equal to plaintext)"
             ));
         }
         Ok(())
@@ -995,9 +1218,20 @@ impl Primitives for VM<'_> {
         Ok(make_piece_cid(b"unsealed from itest vm"))
     }
 
+    #[cfg(feature = "m2-native")]
+    fn install_actor(&self, _: &Cid) -> Result<(), anyhow::Error> {
+        panic!("TODO implement me")
+    }
+
     fn hash(&self, hasher: SupportedHashes, data: &[u8]) -> Vec<u8> {
         let hasher = Code::try_from(hasher as u64).unwrap(); // supported hashes are all implemented in multihash
         hasher.digest(data).to_bytes()
+    }
+
+    fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
+        let hasher = Code::try_from(hasher as u64).unwrap();
+        let (len, buf, ..) = hasher.digest(data).into_inner();
+        (buf, len as usize)
     }
 
     fn recover_secp_public_key(
@@ -1040,6 +1274,10 @@ impl Primitives for InvocationCtx<'_, '_> {
         self.v.hash(hasher, data)
     }
 
+    fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
+        self.v.hash_64(hasher, data)
+    }
+
     fn recover_secp_public_key(
         &self,
         hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
@@ -1056,7 +1294,7 @@ impl Verifier for InvocationCtx<'_, '_> {
 
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), anyhow::Error> {
         for proof in &verify_info.proofs {
-            if proof.proof_bytes.eq(&TEST_VM_INVALID.as_bytes().to_vec()) {
+            if proof.proof_bytes.eq(&TEST_VM_INVALID_POST.as_bytes().to_vec()) {
                 return Err(anyhow!("invalid proof"));
             }
         }
@@ -1098,6 +1336,7 @@ impl RuntimePolicy for InvocationCtx<'_, '_> {
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct MessageResult {
     pub code: ExitCode,
+    pub message: String,
     pub ret: RawBytes,
 }
 
@@ -1123,7 +1362,7 @@ pub fn actor(
 #[derive(Clone)]
 pub struct InvocationTrace {
     pub msg: InternalMessage,
-    pub code: Option<ExitCode>,
+    pub code: ExitCode,
     pub ret: Option<RawBytes>,
     pub subinvocations: Vec<InvocationTrace>,
 }
@@ -1147,48 +1386,37 @@ impl ExpectInvocation {
         let id = format!("[{}:{}]", invoc.msg.to, invoc.msg.method);
         self.quick_match(invoc, String::new());
         if let Some(c) = self.code {
-            assert_ne!(
-                None,
-                invoc.code,
-                "{} unexpected code: expected:{}was:{}",
-                id,
-                c,
-                ExitCode::OK
-            );
             assert_eq!(
-                c,
-                invoc.code.unwrap(),
-                "{} unexpected code expected:{}was:{}",
-                id,
-                c,
-                invoc.code.unwrap()
+                c, invoc.code,
+                "{} unexpected code expected: {}, was: {}",
+                id, c, invoc.code
             );
         }
         if let Some(f) = self.from {
             assert_eq!(
                 f, invoc.msg.from,
-                "{} unexpected from addr: expected:{}was:{} ",
+                "{} unexpected from addr: expected: {}, was: {} ",
                 id, f, invoc.msg.from
             );
         }
         if let Some(v) = &self.value {
             assert_eq!(
                 v, &invoc.msg.value,
-                "{} unexpected value: expected:{}was:{} ",
+                "{} unexpected value: expected: {}, was: {} ",
                 id, v, invoc.msg.value
             );
         }
         if let Some(p) = &self.params {
             assert_eq!(
                 p, &invoc.msg.params,
-                "{} unexpected params: expected:{:x?}was:{:x?}",
+                "{} unexpected params: expected: {:x?}, was: {:x?}",
                 id, p, invoc.msg.params
             );
         }
         if let Some(r) = &self.ret {
-            assert_ne!(None, invoc.ret, "{} unexpected ret: expected:{:x?}was:None", id, r);
+            assert_ne!(None, invoc.ret, "{} unexpected ret: expected: {:x?}, was: None", id, r);
             let ret = &invoc.ret.clone().unwrap();
-            assert_eq!(r, ret, "{} unexpected ret: expected:{:x?}was:{:x?}", id, r, ret);
+            assert_eq!(r, ret, "{} unexpected ret: expected: {:x?}, was: {:x?}", id, r, ret);
         }
         if let Some(expect_subinvocs) = &self.subinvocs {
             let subinvocs = &invoc.subinvocations;
@@ -1229,12 +1457,12 @@ impl ExpectInvocation {
         let id = format!("[{}:{}]", invoc.msg.to, invoc.msg.method);
         assert_eq!(
             self.to, invoc.msg.to,
-            "{} unexpected to addr: expected:{} was:{} \n{}",
+            "{} unexpected to addr: expected: {}, was: {} \n{}",
             id, self.to, invoc.msg.to, extra_msg
         );
         assert_eq!(
             self.method, invoc.msg.method,
-            "{} unexpected method: expected:{}was:{} \n{}",
+            "{} unexpected method: expected: {}, was: {} \n{}",
             id, self.method, invoc.msg.from, extra_msg
         );
     }

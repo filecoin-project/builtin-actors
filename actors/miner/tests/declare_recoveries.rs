@@ -53,6 +53,7 @@ fn recovery_must_pay_back_fee_debt() {
     let (mut h, mut rt) = setup();
     let one_sector =
         h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION as u64, vec![], true);
+
     // advance to first proving period and submit so we'll have time to declare the fault next cycle
     h.advance_and_submit_posts(&mut rt, &one_sector);
 
@@ -127,7 +128,7 @@ fn recovery_fails_during_active_consensus_fault() {
         h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION as u64, vec![], true);
 
     // consensus fault
-    let test_addr = Address::new_actor("satoshi".as_bytes());
+    let test_addr = Address::new_id(1234);
     let epoch = rt.epoch;
     h.report_consensus_fault(
         &mut rt,

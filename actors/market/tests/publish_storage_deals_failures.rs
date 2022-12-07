@@ -9,7 +9,6 @@ use fil_actor_market::{
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::CALLER_TYPES_SIGNABLE;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
@@ -21,11 +20,13 @@ use fvm_shared::piece::PaddedPieceSize;
 
 use fvm_shared::TOTAL_FILECOIN;
 
-use anyhow::anyhow;
 use cid::Cid;
+use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
 
 mod harness;
+
 use harness::*;
+use num_traits::Zero;
 
 #[test]
 fn deal_end_after_deal_start() {
@@ -33,7 +34,7 @@ fn deal_end_after_deal_start() {
         d.start_epoch = 10;
         d.end_epoch = 9;
     };
-    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
 
 #[test]
@@ -41,7 +42,7 @@ fn current_epoch_greater_than_start_epoch() {
     let f = |rt: &mut MockRuntime, d: &mut DealProposal| {
         d.start_epoch = rt.epoch - 1;
     };
-    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
 
 #[test]
@@ -50,7 +51,7 @@ fn deal_duration_greater_than_max_deal_duration() {
         d.start_epoch = ChainEpoch::from(10);
         d.end_epoch = d.start_epoch + (540 * EPOCHS_IN_DAY) + 1
     };
-    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
 
 #[test]
@@ -58,7 +59,7 @@ fn negative_price_per_epoch() {
     let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
         d.storage_price_per_epoch = TokenAmount::from_atto(-1);
     };
-    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
 
 #[test]
@@ -66,7 +67,7 @@ fn price_per_epoch_greater_than_total_filecoin() {
     let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
         d.storage_price_per_epoch = &*TOTAL_FILECOIN + TokenAmount::from_atto(1);
     };
-    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
 
 #[test]
@@ -74,7 +75,7 @@ fn negative_provider_collateral() {
     let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
         d.provider_collateral = TokenAmount::from_atto(-1);
     };
-    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
 
 #[test]
@@ -82,7 +83,7 @@ fn provider_collateral_greater_than_max_collateral() {
     let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
         d.provider_collateral = &*TOTAL_FILECOIN + TokenAmount::from_atto(1);
     };
-    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
 
 #[test]
@@ -98,7 +99,7 @@ fn provider_collateral_less_than_bound() {
         );
         d.provider_collateral = provider_min - TokenAmount::from_atto(1);
     };
-    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
 
 #[test]
@@ -106,7 +107,7 @@ fn negative_client_collateral() {
     let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
         d.client_collateral = TokenAmount::from_atto(-1);
     };
-    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
 
 #[test]
@@ -114,7 +115,7 @@ fn client_collateral_greater_than_max_collateral() {
     let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
         d.client_collateral = &*TOTAL_FILECOIN + TokenAmount::from_atto(1);
     };
-    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
 
 #[test]
@@ -127,7 +128,7 @@ fn client_does_not_have_enough_balance_for_collateral() {
         );
         add_provider_funds(rt, d.provider_collateral.clone(), &MinerAddresses::default());
     };
-    assert_deal_failure(false, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    assert_deal_failure(false, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
 
 #[test]
@@ -140,7 +141,7 @@ fn provider_does_not_have_enough_balance_for_collateral() {
             &MinerAddresses::default(),
         );
     };
-    assert_deal_failure(false, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    assert_deal_failure(false, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
 
 #[test]
@@ -148,7 +149,7 @@ fn client_address_does_not_exist() {
     let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
         d.client = Address::new_id(1);
     };
-    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
 
 #[test]
@@ -156,13 +157,13 @@ fn unable_to_resolve_client_address() {
     let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
         d.client = new_bls_addr(1);
     };
-    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
 
 #[test]
 fn signature_is_invalid() {
     let f = |_rt: &mut MockRuntime, _d: &mut DealProposal| {};
-    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Err(anyhow!("error")));
+    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, false);
 }
 
 #[test]
@@ -170,7 +171,7 @@ fn no_entry_for_client_in_locked_balance_table() {
     let f = |rt: &mut MockRuntime, d: &mut DealProposal| {
         add_provider_funds(rt, d.provider_collateral.clone(), &MinerAddresses::default());
     };
-    assert_deal_failure(false, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    assert_deal_failure(false, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
 
 #[test]
@@ -178,7 +179,7 @@ fn no_entry_for_provider_in_locked_balance_table() {
     let f = |rt: &mut MockRuntime, d: &mut DealProposal| {
         add_participant_funds(rt, CLIENT_ADDR, d.client_balance_requirement());
     };
-    assert_deal_failure(false, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    assert_deal_failure(false, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
 
 #[test]
@@ -186,7 +187,7 @@ fn bad_piece_cid() {
     let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
         d.piece_cid = Cid::default();
     };
-    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
 
 #[test]
@@ -194,7 +195,7 @@ fn zero_piece_size() {
     let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
         d.piece_size = PaddedPieceSize(0u64);
     };
-    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
 
 #[test]
@@ -202,7 +203,7 @@ fn piece_size_less_than_128_bytes() {
     let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
         d.piece_size = PaddedPieceSize(64u64);
     };
-    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
 
 #[test]
@@ -210,7 +211,7 @@ fn piece_size_is_not_a_power_of_2() {
     let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
         d.piece_size = PaddedPieceSize(254u64);
     };
-    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, Ok(()));
+    assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
 
 #[test]
@@ -248,21 +249,31 @@ fn fail_when_provider_has_some_funds_but_not_enough_for_a_deal() {
     add_participant_funds(&mut rt, CLIENT_ADDR, deal1.client_balance_requirement());
 
     let buf = RawBytes::serialize(deal1.clone()).expect("failed to marshal deal proposal");
-    let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
+    let sig = Signature::new_bls(buf.to_vec());
     let params = PublishStorageDealsParams {
-        deals: vec![ClientDealProposal { proposal: deal1.clone(), client_signature: sig.clone() }],
+        deals: vec![ClientDealProposal { proposal: deal1.clone(), client_signature: sig }],
     };
 
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+    rt.expect_validate_caller_any();
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    rt.expect_verify_signature(ExpectedVerifySig {
-        sig,
-        signer: deal1.client,
-        plaintext: buf.to_vec(),
-        result: Ok(()),
-    });
+
+    let auth_param = RawBytes::serialize(AuthenticateMessageParams {
+        signature: buf.to_vec(),
+        message: buf.to_vec(),
+    })
+    .unwrap();
+
+    rt.expect_send(
+        deal1.client,
+        AUTHENTICATE_MESSAGE_METHOD,
+        auth_param,
+        TokenAmount::zero(),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
+
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MarketActor>(
@@ -294,30 +305,46 @@ fn fail_when_deals_have_different_providers() {
 
     let buf1 = RawBytes::serialize(deal1.clone()).expect("failed to marshal deal proposal");
     let buf2 = RawBytes::serialize(deal2.clone()).expect("failed to marshal deal proposal");
-    let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
+    let sig1 = Signature::new_bls(buf1.to_vec());
+    let sig2 = Signature::new_bls(buf2.to_vec());
     let params = PublishStorageDealsParams {
         deals: vec![
-            ClientDealProposal { proposal: deal1.clone(), client_signature: sig.clone() },
-            ClientDealProposal { proposal: deal2.clone(), client_signature: sig.clone() },
+            ClientDealProposal { proposal: deal1.clone(), client_signature: sig1 },
+            ClientDealProposal { proposal: deal2.clone(), client_signature: sig2 },
         ],
     };
 
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+    rt.expect_validate_caller_any();
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    rt.expect_verify_signature(ExpectedVerifySig {
-        sig: sig.clone(),
-        signer: deal1.client,
-        plaintext: buf1.to_vec(),
-        result: Ok(()),
-    });
-    rt.expect_verify_signature(ExpectedVerifySig {
-        sig,
-        signer: deal2.client,
-        plaintext: buf2.to_vec(),
-        result: Ok(()),
-    });
+    let authenticate_param1 = RawBytes::serialize(AuthenticateMessageParams {
+        signature: buf1.to_vec(),
+        message: buf1.to_vec(),
+    })
+    .unwrap();
+    let authenticate_param2 = RawBytes::serialize(AuthenticateMessageParams {
+        signature: buf2.to_vec(),
+        message: buf2.to_vec(),
+    })
+    .unwrap();
+
+    rt.expect_send(
+        deal1.client,
+        AUTHENTICATE_MESSAGE_METHOD as u64,
+        authenticate_param1,
+        TokenAmount::zero(),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
+    rt.expect_send(
+        deal2.client,
+        AUTHENTICATE_MESSAGE_METHOD as u64,
+        authenticate_param2,
+        TokenAmount::zero(),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
 
     let psd_ret: PublishStorageDealsReturn = rt
         .call::<MarketActor>(
@@ -336,35 +363,11 @@ fn fail_when_deals_have_different_providers() {
 }
 
 #[test]
-fn fail_when_caller_is_not_of_signable_type() {
-    let start_epoch = 10;
-    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
-
-    let mut rt = setup();
-    let deal = generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, start_epoch, end_epoch);
-    let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
-    let params = PublishStorageDealsParams {
-        deals: vec![ClientDealProposal { proposal: deal, client_signature: sig }],
-    };
-    let w = Address::new_id(1000);
-    rt.set_caller(*MINER_ACTOR_CODE_ID, w);
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
-    expect_abort(
-        ExitCode::USR_FORBIDDEN,
-        rt.call::<MarketActor>(
-            Method::PublishStorageDeals as u64,
-            &RawBytes::serialize(params).unwrap(),
-        ),
-    );
-    check_state(&rt);
-}
-
-#[test]
 fn fail_when_no_deals_in_params() {
     let mut rt = setup();
     let params = PublishStorageDealsParams { deals: vec![] };
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+    rt.expect_validate_caller_any();
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MarketActor>(
@@ -389,7 +392,7 @@ fn fail_to_resolve_provider_address() {
         deals: vec![ClientDealProposal { proposal: deal, client_signature: sig }],
     };
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+    rt.expect_validate_caller_any();
     expect_abort(
         ExitCode::USR_NOT_FOUND,
         rt.call::<MarketActor>(
@@ -412,7 +415,7 @@ fn caller_is_not_the_same_as_the_worker_address_for_miner() {
         deals: vec![ClientDealProposal { proposal: deal, client_signature: sig }],
     };
 
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+    rt.expect_validate_caller_any();
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(999));
     expect_abort(
@@ -441,7 +444,7 @@ fn fails_if_provider_is_not_a_storage_miner_actor() {
         deals: vec![ClientDealProposal { proposal: deal, client_signature: sig }],
     };
 
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+    rt.expect_validate_caller_any();
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,

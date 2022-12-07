@@ -4,7 +4,6 @@ use cid::Cid;
 use evm::interpreter::U256;
 use fil_actor_evm as evm;
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::ActorError;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -31,9 +30,7 @@ fn basic_contract_construction_and_invocation() {
     let mut arg0 = vec![0u8; 32];
     solidity_params.append(&mut arg0);
 
-    let input_data = RawBytes::from(solidity_params);
-
-    let result = util::invoke_contract(&mut rt, input_data);
+    let result = util::invoke_contract(&mut rt, &solidity_params);
     assert_eq!(U256::from_big_endian(&result), U256::from(0));
 
     // invoke contract -- getBalance
@@ -46,9 +43,7 @@ fn basic_contract_construction_and_invocation() {
     arg0[31] = 100; // the owner address
     solidity_params.append(&mut arg0);
 
-    let input_data = RawBytes::from(solidity_params);
-
-    let result = util::invoke_contract(&mut rt, input_data);
+    let result = util::invoke_contract(&mut rt, &solidity_params);
     assert_eq!(U256::from_big_endian(&result), U256::from(10000));
 }
 
@@ -133,16 +128,20 @@ sstore";
     assert_eq!(U256::from(0xfffa), value);
 
     //
-    // Get a storage key that doesn't exist.
+    // Get a storage key that doesn't exist, should default to zero.
     //
     let params = evm::GetStorageAtParams { storage_key: 0xaaaa.into() };
 
     rt.expect_validate_caller_addr(vec![sender]);
-    let ret = rt.call::<evm::EvmContractActor>(
-        evm::Method::GetStorageAt as u64,
-        &RawBytes::serialize(params).unwrap(),
-    );
-    rt.verify();
+    let value: U256 = rt
+        .call::<evm::EvmContractActor>(
+            evm::Method::GetStorageAt as u64,
+            &RawBytes::serialize(params).unwrap(),
+        )
+        .unwrap()
+        .deserialize()
+        .unwrap();
 
-    assert_eq!(ActorError::not_found("storage key not found".to_string()), ret.err().unwrap());
+    assert_eq!(U256::from(0), value);
+    rt.verify();
 }

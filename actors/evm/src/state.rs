@@ -1,14 +1,9 @@
 use {
     cid::Cid,
-    fvm_ipld_blockstore::Block,
-    fvm_ipld_blockstore::Blockstore,
     fvm_ipld_encoding::tuple::*,
-    fvm_ipld_encoding::{Cbor, RawBytes},
-    multihash::Code,
+    fvm_ipld_encoding::Cbor,
     serde_tuple::{Deserialize_tuple, Serialize_tuple},
 };
-
-pub const RAW: u64 = 0x55;
 
 /// Data stored by an EVM contract.
 /// This runs on the fvm-evm-runtime actor code cid.
@@ -23,17 +18,9 @@ pub struct State {
     ///
     /// KAMT<U256, U256>
     pub contract_state: Cid,
+
+    /// The EVM nonce used to track how many times CREATE or CREATE2 have been called.
+    pub nonce: u64,
 }
 
 impl Cbor for State {}
-
-impl State {
-    pub fn new<BS: Blockstore>(
-        store: &BS,
-        bytecode: RawBytes,
-        contract_state: Cid,
-    ) -> anyhow::Result<Self> {
-        let bytecode_cid = store.put(Code::Blake2b256, &Block::new(RAW, bytecode.to_vec()))?;
-        Ok(Self { bytecode: bytecode_cid, contract_state })
-    }
-}

@@ -90,43 +90,41 @@ mod test_award_block_reward {
 
         rt.set_balance(TokenAmount::from_atto(9));
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
-        assert_eq!(
-            ExitCode::USR_ILLEGAL_STATE,
-            award_block_reward(
-                &mut rt,
-                *WINNER,
-                TokenAmount::zero(),
-                TokenAmount::from_atto(10),
-                1,
-                TokenAmount::zero()
-            )
-            .unwrap_err()
-            .exit_code()
-        );
+
+        let params = AwardBlockRewardParams {
+            miner: *WINNER,
+            penalty: TokenAmount::zero(),
+            gas_reward: TokenAmount::from_atto(10),
+            win_count: 1,
+        };
+
+        let serialized_params = RawBytes::serialize(params).unwrap();
+        let result = rt.call::<RewardActor>(Method::AwardBlockReward as u64, &serialized_params);
+
+        expect_abort(ExitCode::USR_ILLEGAL_STATE, result);
     }
 
     #[test]
     fn rejects_negative_penalty_or_reward() {
         let mut rt = construct_and_verify(&StoragePower::default());
         rt.set_balance(TokenAmount::from_whole(1));
-        rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
 
         let reward_penalty_pairs = [(-1, 0), (0, -1)];
 
         for (reward, penalty) in &reward_penalty_pairs {
-            assert_eq!(
-                ExitCode::USR_ILLEGAL_ARGUMENT,
-                award_block_reward(
-                    &mut rt,
-                    *WINNER,
-                    TokenAmount::from_atto(*penalty),
-                    TokenAmount::from_atto(*reward),
-                    1,
-                    TokenAmount::zero()
-                )
-                .unwrap_err()
-                .exit_code()
-            );
+            rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
+            let params = AwardBlockRewardParams {
+                miner: *WINNER,
+                penalty: TokenAmount::from_atto(*penalty),
+                gas_reward: TokenAmount::from_atto(*reward),
+                win_count: 1,
+            };
+
+            let serialized_params = RawBytes::serialize(params).unwrap();
+            let result =
+                rt.call::<RewardActor>(Method::AwardBlockReward as u64, &serialized_params);
+
+            expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
             rt.reset();
         }
     }
@@ -137,16 +135,18 @@ mod test_award_block_reward {
         rt.set_balance(TokenAmount::from_whole(1));
 
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
-        assert!(award_block_reward(
-            &mut rt,
-            *WINNER,
-            TokenAmount::zero(),
-            TokenAmount::zero(),
-            0,
-            TokenAmount::zero()
-        )
-        .is_err());
-        rt.reset();
+
+        let params = AwardBlockRewardParams {
+            miner: *WINNER,
+            penalty: TokenAmount::zero(),
+            gas_reward: TokenAmount::zero(),
+            win_count: 0,
+        };
+
+        let serialized_params = RawBytes::serialize(params).unwrap();
+        let result = rt.call::<RewardActor>(Method::AwardBlockReward as u64, &serialized_params);
+
+        assert!(result.is_err());
     }
 
     #[test]
@@ -340,6 +340,7 @@ fn construct_and_verify(curr_power: &StoragePower) -> MockRuntime {
         caller_type: *SYSTEM_ACTOR_CODE_ID,
         ..Default::default()
     };
+    rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
     let ret = rt
         .call::<RewardActor>(

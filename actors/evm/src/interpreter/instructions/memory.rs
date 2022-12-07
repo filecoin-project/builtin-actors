@@ -2,7 +2,8 @@
 
 use {
     crate::interpreter::memory::Memory,
-    crate::interpreter::{ExecutionState, StatusCode, U256},
+    crate::interpreter::{ExecutionState, StatusCode, System, U256},
+    fil_actors_runtime::runtime::Runtime,
     std::num::NonZeroUsize,
 };
 
@@ -15,56 +16,43 @@ pub struct MemoryRegion {
     pub size: NonZeroUsize,
 }
 
-/// Returns number of words what would fit to provided number of bytes,
-/// i.e. it rounds up the number bytes to number of words.
 #[inline]
-pub fn num_words(size_in_bytes: usize) -> usize {
-    (size_in_bytes + (WORD_SIZE - 1)) / WORD_SIZE
-}
-
-#[inline]
-fn grow_memory(mem: &mut Memory, new_size: usize) -> Result<(), ()> {
-    let new_words = num_words(new_size);
-    mem.grow((new_words * WORD_SIZE) as usize);
+fn grow_memory(mem: &mut Memory, mut new_size: usize) -> Result<(), ()> {
+    // Align to the next u256.
+    // Guaranteed to not overflow.
+    let alignment = new_size % WORD_SIZE;
+    if alignment > 0 {
+        new_size += WORD_SIZE - alignment;
+    }
+    mem.grow(new_size);
     Ok(())
-}
-
-#[inline]
-fn get_memory_region_u64(
-    mem: &mut Memory,
-    offset: U256,
-    size: NonZeroUsize,
-) -> Result<MemoryRegion, ()> {
-    if offset.bits() >= 32 {
-        return Err(());
-    }
-
-    let offset_usize = offset.as_usize();
-    let new_size = offset_usize + size.get();
-    let current_size = mem.len();
-    if new_size > current_size {
-        grow_memory(mem, new_size)?;
-    }
-
-    Ok(MemoryRegion { offset: offset_usize, size })
 }
 
 #[inline]
 #[allow(clippy::result_unit_err)]
 pub fn get_memory_region(
     mem: &mut Memory,
-    offset: U256,
-    size: U256,
+    offset: impl TryInto<u32>,
+    size: impl TryInto<u32>,
 ) -> Result<Option<MemoryRegion>, ()> {
-    if size.is_zero() {
+    // We use u32 because we don't support more than 4GiB of memory anyways.
+    // Also, explicitly check math so we don't panic and/or wrap around.
+    let size: u32 = size.try_into().map_err(|_| ())?;
+    if size == 0 {
         return Ok(None);
     }
+    let offset: u32 = offset.try_into().map_err(|_| ())?;
+    let new_size: u32 = offset.checked_add(size).ok_or(())?;
 
-    if size.bits() >= 32 {
-        return Err(());
+    let current_size = mem.len();
+    if new_size as usize > current_size {
+        grow_memory(mem, new_size as usize)?;
     }
 
-    get_memory_region_u64(mem, offset, NonZeroUsize::new(size.as_usize()).unwrap()).map(Some)
+    Ok(Some(MemoryRegion {
+        offset: offset as usize,
+        size: unsafe { NonZeroUsize::new_unchecked(size as usize) },
+    }))
 }
 
 pub fn copy_to_memory(
@@ -73,68 +61,63 @@ pub fn copy_to_memory(
     dest_size: U256,
     data_offset: U256,
     data: &[u8],
+    zero_fill: bool,
 ) -> Result<(), StatusCode> {
-    // TODO this limits addressable output to 2G (31 bits full),
-    //      but it is still probably too much and we should consistently limit further.
-    //      See also https://github.com/filecoin-project/ref-fvm/issues/851
-    if dest_size.bits() >= 32 {
-        return Err(StatusCode::InvalidMemoryAccess);
-    }
-    let output_usize = dest_size.as_usize();
+    let region = get_memory_region(memory, dest_offset, dest_size)
+        .map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
-    if data_offset.bits() >= 32 {
-        return Err(StatusCode::InvalidMemoryAccess);
-    }
-    let data_offset_usize = data_offset.as_usize();
-    if data_offset_usize > data.len() {
-        return Err(StatusCode::InvalidMemoryAccess);
+    #[inline(always)]
+    fn min(a: U256, b: usize) -> usize {
+        if a < (b as u64) {
+            a.low_u64() as usize
+        } else {
+            b
+        }
     }
 
-    if output_usize > 0 {
-        // Limit the size if we're copying less than the data length.
-        let mut copy_len = data.len() - data_offset_usize;
-        if output_usize < copy_len {
-            copy_len = output_usize;
+    if let Some(region) = &region {
+        let data_len = data.len();
+        let data_offset = min(data_offset, data_len);
+        let copy_size = min(dest_size, data_len - data_offset);
+
+        if copy_size > 0 {
+            memory[region.offset..region.offset + copy_size]
+                .copy_from_slice(&data[data_offset..data_offset + copy_size]);
         }
 
-        let output_region = get_memory_region(memory, dest_offset, dest_size)
-            .map_err(|_| StatusCode::InvalidMemoryAccess)?;
-        let output_data = output_region
-            .map(|MemoryRegion { offset, size }| &mut memory[offset..][..size.get()])
-            .ok_or(StatusCode::InvalidMemoryAccess)?;
-
-        output_data
-            .get_mut(..copy_len)
-            .ok_or(StatusCode::InvalidMemoryAccess)?
-            .copy_from_slice(&data[data_offset_usize..][..copy_len]);
+        if zero_fill && region.size.get() > copy_size {
+            memory[region.offset + copy_size..region.offset + region.size.get()].fill(0);
+        }
     }
 
     Ok(())
 }
 
 #[inline]
-pub fn mload(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    let index = state.stack.pop();
-
-    let region =
-        get_memory_region_u64(&mut state.memory, index, NonZeroUsize::new(WORD_SIZE).unwrap())
-            .map_err(|_| StatusCode::InvalidMemoryAccess)?;
+pub fn mload(
+    state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+    index: U256,
+) -> Result<U256, StatusCode> {
+    let region = get_memory_region(&mut state.memory, index, WORD_SIZE)
+        .map_err(|_| StatusCode::InvalidMemoryAccess)?
+        .expect("empty region");
     let value =
         U256::from_big_endian(&state.memory[region.offset..region.offset + region.size.get()]);
 
-    state.stack.push(value);
-
-    Ok(())
+    Ok(value)
 }
 
 #[inline]
-pub fn mstore(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    let index = state.stack.pop();
-    let value = state.stack.pop();
-
-    let region =
-        get_memory_region_u64(&mut state.memory, index, NonZeroUsize::new(WORD_SIZE).unwrap())
-            .map_err(|_| StatusCode::InvalidMemoryAccess)?;
+pub fn mstore(
+    state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+    index: U256,
+    value: U256,
+) -> Result<(), StatusCode> {
+    let region = get_memory_region(&mut state.memory, index, WORD_SIZE)
+        .map_err(|_| StatusCode::InvalidMemoryAccess)?
+        .expect("empty region");
 
     let mut bytes = [0u8; WORD_SIZE];
     value.to_big_endian(&mut bytes);
@@ -144,23 +127,28 @@ pub fn mstore(state: &mut ExecutionState) -> Result<(), StatusCode> {
 }
 
 #[inline]
-pub fn mstore8(state: &mut ExecutionState) -> Result<(), StatusCode> {
-    let index = state.stack.pop();
-    let value = state.stack.pop();
-
-    let region = get_memory_region_u64(&mut state.memory, index, NonZeroUsize::new(1).unwrap())
-        .map_err(|_| StatusCode::InvalidMemoryAccess)?;
+pub fn mstore8(
+    state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+    index: U256,
+    value: U256,
+) -> Result<(), StatusCode> {
+    let region = get_memory_region(&mut state.memory, index, 1)
+        .map_err(|_| StatusCode::InvalidMemoryAccess)?
+        .expect("empty region");
 
     let value = (value.low_u32() & 0xff) as u8;
-
     state.memory[region.offset] = value;
 
     Ok(())
 }
 
 #[inline]
-pub fn msize(state: &mut ExecutionState) {
-    state.stack.push(u64::try_from(state.memory.len()).unwrap().into());
+pub fn msize(
+    state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
+) -> Result<U256, StatusCode> {
+    Ok(u64::try_from(state.memory.len()).unwrap().into())
 }
 
 #[cfg(test)]
@@ -171,16 +159,28 @@ mod tests {
     #[test]
     fn copy_to_memory_big() {
         let mut mem: Memory = Default::default();
-        let result =
-            copy_to_memory(&mut mem, U256::zero(), U256::from(1u128 << 40), U256::zero(), &[]);
+        let result = copy_to_memory(
+            &mut mem,
+            U256::zero(),
+            U256::from(1u128 << 40),
+            U256::zero(),
+            &[],
+            true,
+        );
         assert_eq!(result, Err(StatusCode::InvalidMemoryAccess));
     }
 
     #[test]
     fn copy_to_memory_zero() {
         let mut mem: Memory = Default::default();
-        let result =
-            copy_to_memory(&mut mem, U256::zero(), U256::zero(), U256::zero(), &[1u8, 2u8, 3u8]);
+        let result = copy_to_memory(
+            &mut mem,
+            U256::zero(),
+            U256::zero(),
+            U256::zero(),
+            &[1u8, 2u8, 3u8],
+            true,
+        );
         assert_eq!(result, Ok(()));
         assert!(mem.is_empty());
     }
@@ -189,7 +189,8 @@ mod tests {
     fn copy_to_memory_some() {
         let data = &[1u8, 2u8, 3u8];
         let mut mem: Memory = Default::default();
-        let result = copy_to_memory(&mut mem, U256::zero(), U256::from(3), U256::zero(), data);
+        let result =
+            copy_to_memory(&mut mem, U256::zero(), U256::from(3), U256::zero(), data, true);
         assert_eq!(result, Ok(()));
         assert_eq!(mem.len(), 32);
         assert_eq!(&mem[0..3], data);
@@ -201,7 +202,8 @@ mod tests {
         let result_data = &[1u8, 2u8, 3u8, 0u8];
 
         let mut mem: Memory = Default::default();
-        let result = copy_to_memory(&mut mem, U256::zero(), U256::from(3), U256::zero(), data);
+        let result =
+            copy_to_memory(&mut mem, U256::zero(), U256::from(3), U256::zero(), data, true);
         assert_eq!(result, Ok(()));
         assert_eq!(mem.len(), 32);
         assert_eq!(&mem[0..4], result_data);

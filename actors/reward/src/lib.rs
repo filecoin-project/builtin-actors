@@ -3,10 +3,10 @@
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, ActorError, BURNT_FUNDS_ACTOR_ADDR, EXPECTED_LEADERS_PER_EPOCH,
-    STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_error, cbor, restrict_internal_api, ActorError, BURNT_FUNDS_ACTOR_ADDR,
+    EXPECTED_LEADERS_PER_EPOCH, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
-use fvm_ipld_blockstore::Blockstore;
+
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
@@ -53,14 +53,10 @@ pub enum Method {
 pub struct Actor;
 impl Actor {
     /// Constructor for Reward actor
-    fn constructor<BS, RT>(
-        rt: &mut RT,
+    fn constructor(
+        rt: &mut impl Runtime,
         curr_realized_power: Option<StoragePower>,
-    ) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         if let Some(power) = curr_realized_power {
@@ -81,14 +77,10 @@ impl Actor {
     ///
     /// The reward is reduced before the residual is credited to the block producer, by:
     /// - a penalty amount, provided as a parameter, which is burnt,
-    fn award_block_reward<BS, RT>(
-        rt: &mut RT,
+    fn award_block_reward(
+        rt: &mut impl Runtime,
         params: AwardBlockRewardParams,
-    ) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
         let prior_balance = rt.current_balance();
         if params.penalty.is_negative() {
@@ -121,7 +113,7 @@ impl Actor {
 
         let total_reward = rt.transaction(|st: &mut State, rt| {
             let mut block_reward: TokenAmount =
-                (&st.this_epoch_reward * params.win_count).div_rem(EXPECTED_LEADERS_PER_EPOCH).0;
+                (&st.this_epoch_reward * params.win_count).div_floor(EXPECTED_LEADERS_PER_EPOCH);
             let mut total_reward = &params.gas_reward + &block_reward;
             let curr_balance = rt.current_balance();
             if total_reward > curr_balance {
@@ -185,11 +177,7 @@ impl Actor {
     /// The award value used for the current epoch, updated at the end of an epoch
     /// through cron tick.  In the case previous epochs were null blocks this
     /// is the reward value as calculated at the last non-null epoch.
-    fn this_epoch_reward<BS, RT>(rt: &mut RT) -> Result<ThisEpochRewardReturn, ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    fn this_epoch_reward(rt: &mut impl Runtime) -> Result<ThisEpochRewardReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let st: State = rt.state()?;
         Ok(ThisEpochRewardReturn {
@@ -201,14 +189,10 @@ impl Actor {
     /// Called at the end of each epoch by the power actor (in turn by its cron hook).
     /// This is only invoked for non-empty tipsets, but catches up any number of null
     /// epochs to compute the next epoch reward.
-    fn update_network_kpi<BS, RT>(
-        rt: &mut RT,
+    fn update_network_kpi(
+        rt: &mut impl Runtime,
         curr_realized_power: Option<StoragePower>,
-    ) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&STORAGE_POWER_ACTOR_ADDR))?;
         let curr_realized_power = curr_realized_power
             .ok_or_else(|| actor_error!(illegal_argument, "argument cannot be None"))?;
@@ -231,15 +215,15 @@ impl Actor {
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<BS, RT>(
+    fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
         params: &RawBytes,
     ) -> Result<RawBytes, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
+        restrict_internal_api(rt, method)?;
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
                 let param: Option<BigIntDe> = cbor::deserialize_params(params)?;

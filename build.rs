@@ -25,19 +25,17 @@ const ACTORS: &[(&Package, &ID)] = &[
     ("multisig", "multisig"),
     ("reward", "reward"),
     ("verifreg", "verifiedregistry"),
+    ("datacap", "datacap"),
     ("embryo", "embryo"),
     ("evm", "evm"),
+    ("eam", "eam"),
 ];
 
 /// Default Cargo features to activate during the build.
 const DEFAULT_CARGO_FEATURES: &[&str] = &["fil-actor"];
 
 /// Extra Cargo-level features to enable per network.
-const EXTRA_CARGO_FEATURES: &[(&str, &[&str])] = &[
-    ("devnet-wasm", &["m2-native"]),
-    /*("devnet-evm", &["m2-fevm"]),*/
-    ("wallaby", &["m2-native"]),
-];
+const EXTRA_CARGO_FEATURES: &[(&str, &[&str])] = &[("devnet-wasm", &["m2-native"])];
 
 const NETWORK_ENV: &str = "BUILD_FIL_NETWORK";
 

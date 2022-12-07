@@ -2,15 +2,14 @@ use std::collections::HashMap;
 
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee,
-    pre_commit_deposit_for_power, qa_power_for_weight, PreCommitSectorBatchParams, State,
+    pre_commit_deposit_for_power, qa_power_max, PreCommitSectorBatchParams, State,
 };
 use fil_actors_runtime::test_utils::{expect_abort, expect_abort_contains_message};
 use fvm_ipld_bitfield::BitField;
-use fvm_shared::{bigint::BigInt, clock::ChainEpoch, econ::TokenAmount, error::ExitCode};
+use fvm_shared::{clock::ChainEpoch, econ::TokenAmount, error::ExitCode};
 use lazy_static::lazy_static;
 
 mod util;
-use num_traits::Zero;
 use util::*;
 
 lazy_static! {
@@ -65,6 +64,7 @@ fn insufficient_funds_for_aggregated_prove_commit_network_fee() {
     );
 
     expect_abort(ExitCode::USR_INSUFFICIENT_FUNDS, res);
+    rt.reset();
 }
 
 #[test]
@@ -113,6 +113,7 @@ fn insufficient_funds_for_batch_precommit_network_fee() {
         "unlocked balance can not repay fee debt",
         res,
     );
+    rt.reset();
 }
 
 #[test]
@@ -168,6 +169,7 @@ fn insufficient_funds_for_batch_precommit_in_combination_of_fee_debt_and_network
         "unlocked balance can not repay fee debt",
         res,
     );
+    rt.reset();
 }
 
 #[test]
@@ -216,6 +218,7 @@ fn enough_funds_for_fee_debt_and_network_fee_but_not_for_pcd() {
         "insufficient funds 0.0 for pre-commit deposit",
         res,
     );
+    rt.reset();
 
     // state untouched
     let state: State = rt.get_state();
@@ -257,17 +260,11 @@ fn enough_funds_for_everything() {
 
     // give miner enough balance to pay both and pcd
     let mut balance = 2 * net_fee;
-    let one_sector_power_estimate = qa_power_for_weight(
-        actor.sector_size,
-        expiration - precommit_epoch,
-        &BigInt::zero(),
-        &BigInt::zero(),
-    );
     let expected_deposit = pre_commit_deposit_for_power(
         &actor.epoch_reward_smooth,
         &actor.epoch_qa_power_smooth,
-        &(BigInt::from(4u32) * one_sector_power_estimate),
-    );
+        &qa_power_max(actor.sector_size),
+    ) * precommits.len();
     balance += expected_deposit.clone();
     rt.set_balance(balance);
 

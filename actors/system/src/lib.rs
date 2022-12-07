@@ -11,7 +11,9 @@ use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime::{
+    actor_error, restrict_internal_api, ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR,
+};
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
@@ -24,7 +26,7 @@ pub enum Method {
 }
 
 /// System actor state.
-#[derive(Default, Deserialize_tuple, Serialize_tuple)]
+#[derive(Default, Deserialize_tuple, Serialize_tuple, Debug, Clone)]
 pub struct State {
     // builtin actor registry: Vec<(String, Cid)>
     pub builtin_actors: Cid,
@@ -55,11 +57,7 @@ impl State {
 pub struct Actor;
 impl Actor {
     /// System actor constructor.
-    pub fn constructor<BS, RT>(rt: &mut RT) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
+    pub fn constructor(rt: &mut impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         let state = State::new(rt.store()).context("failed to construct state")?;
@@ -69,15 +67,15 @@ impl Actor {
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<BS, RT>(
+    fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
         _params: &RawBytes,
     ) -> Result<RawBytes, ActorError>
     where
-        BS: Blockstore,
-        RT: Runtime<BS>,
+        RT: Runtime,
     {
+        restrict_internal_api(rt, method)?;
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
                 Self::constructor(rt)?;

@@ -3,7 +3,6 @@ pub mod bytecode;
 pub mod execution;
 pub mod instructions;
 pub mod memory;
-pub mod opcode;
 pub mod output;
 pub mod precompiles;
 pub mod stack;

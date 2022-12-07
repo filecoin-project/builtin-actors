@@ -1,0 +1,338 @@
+# this is the body of the callvariants contract
+
+# dispatch macros
+%macro dispatch_begin()
+  push1 0x00
+  calldataload
+  push1 0xe0   # 28 byte shift == 224 bits
+  shr
+%end
+
+%macro dispatch(method, lbl)
+  dup1
+  %push($method)
+  eq
+  %push($lbl)
+  jumpi
+%end
+
+%macro dispatch_end()
+  push1 0x00
+  dup1
+  revert
+%end
+
+%macro check()
+  iszero
+  %push(call_failed)
+  jumpi
+%end
+
+# method dispatch
+%dispatch_begin()
+
+### STATICCALL
+# A -> staticcall -> B (read) OK
+%dispatch(1, do_staticcall2)
+%dispatch(2, do_read)
+
+# A -> staticcall -> B (write) FAIL
+%dispatch(3, do_staticcall4)
+%dispatch(4, do_write)
+
+# A -> staticcall -> B -> call -> C (read) OK
+%dispatch(5, do_staticcall6)
+%dispatch(6, do_call2)
+
+# A -> staticcall -> B -> call -> C (write) FAIL
+%dispatch(7, do_staticcall8)
+%dispatch(8, do_call4)
+
+### DELEGATECALL
+# A -> delegatecall -> B (read) OK
+%dispatch(9, do_delegatecall2)
+
+# A -> delegatecall -> B (write) -> return (read) OK
+%dispatch(10, do_delegatecall4)
+
+# A -> staticcall -> B -> delegatecall -> C (read) OK
+%dispatch(11, do_staticcall12)
+%dispatch(12, do_delegatecall2)
+
+# A -> staticcall -> B -> delegatecall -> C (write) FAIL
+%dispatch(13, do_staticcall14)
+%dispatch(14, do_delegatecall4)
+
+%dispatch_end()
+
+#### CALLERS
+
+# do_staticcall2(address)
+do_staticcall2:
+jumpdest
+push1 0x20   # staticcall ret length
+push1 0x00   # staticcall ret offset
+push1 0x02   # arg: method
+push1 0xe0   # shift 224 bits (28 bytes)
+shl
+push1 0x00    # arg: offset
+mstore        # args
+push1 0x04    # staticcall args length
+push1 0x00    # staticcall args offset
+push1 0x04    # input (dest) offset
+calldataload  # staticcall dest
+push1 0x00    # staticcall gas (ignored)
+staticcall    # do it!
+%check()
+push1 0x20    # ret length
+push1 0x00    # ret offset
+return
+
+# do_staticcall4(address)
+do_staticcall4:
+jumpdest
+push1 0x20   # staticcall ret length
+push1 0x00   # staticcall ret offset
+push1 0x04   # arg: method
+push1 0xe0   # shift 224 bits (28 bytes)
+shl
+push1 0x00    # arg: offset
+mstore        # args
+push1 0x04    # staticcall args length
+push1 0x00    # staticcall args offset
+push1 0x04    # input (dest) offset
+calldataload  # staticcall dest
+push1 0x00    # staticcall gas (ignored)
+staticcall    # do it!
+%check()
+push1 0x20    # ret length
+push1 0x00    # ret offset
+return
+
+# do_staticcall6(address, address)
+do_staticcall6:
+jumpdest
+push1 0x20   # staticcall ret length
+push1 0x00   # staticcall ret offset
+push1 0x06   # arg1: method
+push1 0xe0   # shift 224 bits (28 bytes)
+shl
+push1 0x00    # arg1: offset
+mstore        # arg1
+push1 0x24    # arg2: address2 offset
+calldataload  # address2
+push1 0x04    # arg2: offset
+mstore        # arg2
+push1 0x24    # staticcall args length
+push1 0x00    # staticcall args offset
+push1 0x04    # input (dest) offset
+calldataload  # staticcall dest
+push1 0x00    # staticcall gas (ignored)
+staticcall    # do it!
+%check()
+push1 0x20    # ret length
+push1 0x00    # ret offset
+return
+
+# do_call2(address)
+do_call2:
+jumpdest
+push1 0x20   # call ret length
+push1 0x00   # call ret offset
+push1 0x02   # arg: method
+push1 0xe0   # shift 224 bits (28 bytes)
+shl
+push1 0x00    # arg: offset
+mstore        # args
+push1 0x04    # call args length
+push1 0x00    # call args offset
+push1 0x00    # value
+push1 0x04    # input (dest) offset
+calldataload  # call dest
+push1 0x00    # call gas (ignored)
+call          # do it!
+%check()
+push1 0x20    # ret length
+push1 0x00    # ret offset
+return
+
+# do_staticcall8(address, address)
+do_staticcall8:
+jumpdest
+push1 0x20   # staticcall ret length
+push1 0x00   # staticcall ret offset
+push1 0x08   # arg1: method
+push1 0xe0   # shift 224 bits (28 bytes)
+shl
+push1 0x00    # arg1: offset
+mstore        # arg1
+push1 0x24    # arg2: ddress2 offset
+calldataload  # address2
+push1 0x04    # arg2: offset
+mstore        # arg2
+push1 0x24    # staticcall args length
+push1 0x00    # staticcall args offset
+push1 0x04    # input (dest) offset
+calldataload  # staticcall dest
+push1 0x00    # staticcall gas (ignored)
+staticcall    # do it!
+%check()
+push1 0x20    # ret length
+push1 0x00    # ret offset
+return
+
+# do_call4(address)
+do_call4:
+jumpdest
+push1 0x20   # ccall ret length
+push1 0x00   # call ret offset
+push1 0x04   # arg: method
+push1 0xe0   # shift 224 bits (28 bytes)
+shl
+push1 0x00    # arg: offset
+mstore        # args
+push1 0x04    # call args length
+push1 0x00    # call args offset
+push1 0x00    # value
+push1 0x04    # input (dest) offset
+calldataload  # icall dest
+push1 0x00    # call gas (ignored)
+call          # do it!
+%check()
+push1 0x20    # ret length
+push1 0x00    # ret offset
+return
+
+# do_delegatecall10(address)
+do_delegatecall2:
+jumpdest
+push1 0x20   # delegate ret length
+push1 0x00   # delegate ret offset
+push1 0x02   # arg: method
+push1 0xe0   # shift 224 bits (28 bytes)
+shl
+push1 0x00    # arg: offset
+mstore        # args
+push1 0x04    # delegate args length
+push1 0x00    # delegate args offset
+push1 0x04    # input (dest) offset
+calldataload  # delegate dest
+push1 0x00    # delegate gas (ignored)
+delegatecall  # do it!
+%check()
+push1 0x20    # ret length
+push1 0x00    # ret offset
+return
+
+# do_delegatecall4(address)
+do_delegatecall4:
+jumpdest
+push1 0x20   # delegate ret length
+push1 0x00   # delegate ret offset
+push1 0x04   # arg: method
+push1 0xe0   # shift 224 bits (28 bytes)
+shl
+push1 0x00    # arg: offset
+mstore        # args
+push1 0x04    # delegate args length
+push1 0x00    # delegate args offset
+push1 0x04    # input (dest) offset
+calldataload  # delegate dest
+push1 0x00    # delegate gas (ignored)
+delegatecall  # do it!
+%check()
+push1 0x00    # slot
+sload         # read
+push1 0x00    # ret offset
+mstore        # ret data
+push1 0x20    # ret length
+push1 0x00    # ret offset
+return
+
+# do_staticcall12(address, address)
+do_staticcall12:
+jumpdest
+push1 0x20   # staticcall ret length
+push1 0x00   # staticcall ret offset
+push1 0x0c   # arg1: method
+push1 0xe0   # shift 224 bits (28 bytes)
+shl
+push1 0x00    # arg1: offset
+mstore        # arg1
+push1 0x24    # arg2: ddress2 offset
+calldataload  # address2
+push1 0x04    # arg2: offset
+mstore        # arg2
+push1 0x24    # staticcall args length
+push1 0x00    # staticcall args offset
+push1 0x04    # input (dest) offset
+calldataload  # staticcall dest
+push1 0x00    # staticcall gas (ignored)
+staticcall    # do it!
+%check()
+push1 0x20    # ret length
+push1 0x00    # ret offset
+return
+
+# do_staticcall14(address, address)
+do_staticcall14:
+jumpdest
+push1 0x20   # staticcall ret length
+push1 0x00   # staticcall ret offset
+push1 0x0e   # arg1: method
+push1 0xe0   # shift 224 bits (28 bytes)
+shl
+push1 0x00    # arg1: offset
+mstore        # arg1
+push1 0x24    # arg2: ddress2 offset
+calldataload  # address2
+push1 0x04    # arg2: offset
+mstore        # arg2
+push1 0x24    # staticcall args length
+push1 0x00    # staticcall args offset
+push1 0x04    # input (dest) offset
+calldataload  # staticcall dest
+push1 0x00    # staticcall gas (ignored)
+staticcall    # do it!
+%check()
+push1 0x20    # ret length
+push1 0x00    # ret offset
+return
+
+
+#### TERMINALS
+
+# do_read
+do_read:
+jumpdest
+push1 0x00
+sload
+push1 0x00
+mstore
+push1 0x20
+push1 0x00
+return
+
+# do_write
+do_write:
+jumpdest
+%push(0xffffff42)
+push1 0x00
+sstore
+push1 0x00
+sload
+push1 0x00
+mstore
+push1 0x20
+push1 0x00
+return
+
+# call_failed
+call_failed:
+jumpdest
+%push(0xdeadbeef)
+push1 0x00
+mstore
+push1 0x04
+push1 0x1c
+revert

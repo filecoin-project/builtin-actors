@@ -7,6 +7,7 @@ use fil_actor_init::{
     Actor as InitActor, ConstructorParams, Exec4Params, Exec4Return, ExecParams, ExecReturn,
     Method, State,
 };
+use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::{test_utils::*, EAM_ACTOR_ADDR, EAM_ACTOR_ID};
 use fil_actors_runtime::{
@@ -16,7 +17,7 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
+use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
 use num_traits::Zero;
 use serde::Serialize;
 
@@ -284,6 +285,65 @@ fn sending_constructor_failure() {
 }
 
 #[test]
+fn exec_restricted_correctly() {
+    let mut rt = construct_runtime();
+    construct_and_verify(&mut rt);
+
+    // set caller to not-builtin
+    rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1000));
+
+    // cannot call the unexported method num
+    let fake_constructor_params =
+        RawBytes::serialize(ConstructorParams { network_name: String::from("fake_param") })
+            .unwrap();
+    let exec_params = ExecParams {
+        code_cid: *MULTISIG_ACTOR_CODE_ID,
+        constructor_params: RawBytes::serialize(fake_constructor_params.clone()).unwrap(),
+    };
+
+    expect_abort_contains_message(
+        ExitCode::USR_FORBIDDEN,
+        "must be built-in",
+        rt.call::<InitActor>(
+            Method::Exec as MethodNum,
+            &serialize(&exec_params, "params").unwrap(),
+        ),
+    );
+
+    // can call the exported method num
+
+    // Assign addresses
+    let unique_address = Address::new_actor(b"multisig");
+    rt.new_actor_addr = Some(unique_address);
+
+    // Next id
+    let expected_id = 100;
+    let expected_id_addr = Address::new_id(expected_id);
+    rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id, None);
+
+    // Expect a send to the multisig actor constructor
+    rt.expect_send(
+        expected_id_addr,
+        METHOD_CONSTRUCTOR,
+        RawBytes::serialize(&fake_constructor_params).unwrap(),
+        TokenAmount::zero(),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
+
+    rt.expect_validate_caller_any();
+
+    let ret = rt
+        .call::<InitActor>(Method::ExecExported as u64, &RawBytes::serialize(&exec_params).unwrap())
+        .unwrap();
+    let exec_ret: ExecReturn = RawBytes::deserialize(&ret).unwrap();
+    assert_eq!(unique_address, exec_ret.robust_address, "Robust address does not macth");
+    assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
+    check_state(&rt);
+    rt.verify();
+}
+
+#[test]
 fn call_exec4() {
     let mut rt = construct_runtime();
     construct_and_verify(&mut rt);
@@ -330,6 +390,7 @@ fn call_exec4() {
 }
 
 fn construct_and_verify(rt: &mut MockRuntime) {
+    rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
     let params = ConstructorParams { network_name: "mock".to_string() };
     let ret =

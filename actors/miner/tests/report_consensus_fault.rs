@@ -24,13 +24,15 @@ fn setup() -> (ActorHarness, MockRuntime) {
 #[test]
 fn invalid_report_rejected() {
     let (h, mut rt) = setup();
+
     rt.set_epoch(1);
 
-    let test_addr = Address::new_actor("satoshi".as_bytes());
+    let test_addr = Address::new_id(1234);
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         h.report_consensus_fault(&mut rt, test_addr, None),
     );
+    rt.reset();
     check_state_invariants(rt.policy(), &h.get_state(&rt), rt.store(), &rt.get_balance());
 }
 
@@ -39,7 +41,7 @@ fn mistargeted_report_rejected() {
     let (h, mut rt) = setup();
     rt.set_epoch(1);
 
-    let test_addr = Address::new_actor("satoshi".as_bytes());
+    let test_addr = Address::new_id(1234);
     let epoch = rt.epoch;
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -53,6 +55,7 @@ fn mistargeted_report_rejected() {
             }),
         ),
     );
+    rt.reset();
     check_state_invariants(rt.policy(), &h.get_state(&rt), rt.store(), &rt.get_balance());
 }
 
@@ -61,7 +64,7 @@ fn report_consensus_fault_pays_reward_and_charges_fee() {
     let (h, mut rt) = setup();
     rt.set_epoch(1);
 
-    let test_addr = Address::new_actor("satoshi".as_bytes());
+    let test_addr = Address::new_id(1234);
     let epoch = rt.epoch;
     let receiver = rt.receiver;
     h.report_consensus_fault(
@@ -82,7 +85,7 @@ fn report_consensus_fault_updates_consensus_fault_reported_field() {
     let (h, mut rt) = setup();
     rt.set_epoch(1);
 
-    let test_addr = Address::new_actor("satoshi".as_bytes());
+    let test_addr = Address::new_id(1234);
     let receiver = rt.receiver;
 
     let start_info = h.get_info(&rt);
@@ -114,7 +117,7 @@ fn double_report_of_consensus_fault_fails() {
     let (h, mut rt) = setup();
     rt.set_epoch(1);
 
-    let test_addr = Address::new_actor("satoshi".as_bytes());
+    let test_addr = Address::new_id(1234);
     let receiver = rt.receiver;
 
     let start_info = h.get_info(&rt);
@@ -208,5 +211,6 @@ fn double_report_of_consensus_fault_fails() {
             }),
         ),
     );
+    rt.reset();
     check_state_invariants(rt.policy(), &h.get_state(&rt), rt.store(), &rt.get_balance());
 }

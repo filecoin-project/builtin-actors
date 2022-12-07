@@ -6,6 +6,7 @@ use bimap::BiBTreeMap;
 use cid::Cid;
 use fil_actor_account::State as AccountState;
 use fil_actor_cron::State as CronState;
+use fil_actor_datacap::State as DataCapState;
 use fil_actor_init::State as InitState;
 use fil_actor_market::State as MarketState;
 use fil_actor_miner::CronEventPayload;
@@ -18,9 +19,11 @@ use fil_actor_paych::State as PaychState;
 use fil_actor_power::testing::MinerCronEvent;
 use fil_actor_power::State as PowerState;
 use fil_actor_reward::State as RewardState;
-use fil_actor_verifreg::State as VerifregState;
+use fil_actor_verifreg::{DataCap, State as VerifregState};
 
 use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
+
 use fil_actors_runtime::Map;
 use fil_actors_runtime::MessageAccumulator;
 use fvm_ipld_blockstore::Blockstore;
@@ -38,6 +41,7 @@ use fvm_ipld_encoding::tuple::*;
 
 use fil_actor_account::testing as account;
 use fil_actor_cron::testing as cron;
+use fil_actor_datacap::testing as datacap;
 use fil_actor_init::testing as init;
 use fil_actor_market::testing as market;
 use fil_actor_miner::testing as miner;
@@ -129,6 +133,7 @@ pub fn check_state_invariants<'a, BS: Blockstore + Debug>(
     let mut multisig_summaries = Vec::<multisig::StateSummary>::new();
     let mut reward_summary: Option<reward::StateSummary> = None;
     let mut verifreg_summary: Option<verifreg::StateSummary> = None;
+    let mut datacap_summary: Option<datacap::StateSummary> = None;
 
     tree.for_each(|key, actor| {
         let acc = acc.with_prefix(format!("{key} "));
@@ -204,12 +209,20 @@ pub fn check_state_invariants<'a, BS: Blockstore + Debug>(
             }
             Some(Type::VerifiedRegistry) => {
                 let state = get_state!(tree, actor, VerifregState);
-                let (summary, msgs) = verifreg::check_state_invariants(&state, tree.store);
+                let (summary, msgs) =
+                    verifreg::check_state_invariants(&state, tree.store, prior_epoch);
                 acc.with_prefix("verifreg: ").add_all(&msgs);
                 verifreg_summary = Some(summary);
             }
+            Some(Type::DataCap) => {
+                let state = get_state!(tree, actor, DataCapState);
+                let (summary, msgs) = datacap::check_state_invariants(&state, tree.store);
+                acc.with_prefix("datacap: ").add_all(&msgs);
+                datacap_summary = Some(summary);
+            }
             Some(Type::Embryo) => {}
             Some(Type::EVM) => {}
+            Some(Type::EAM) => {}
             None => {
                 bail!("unexpected actor code CID {} for address {}", actor.code, key);
             }
@@ -223,8 +236,18 @@ pub fn check_state_invariants<'a, BS: Blockstore + Debug>(
         check_miner_against_power(&acc, &miner_summaries, &power_summary);
     }
 
-    if let Some(market_summary) = market_summary {
+    if let Some(market_summary) = market_summary.clone() {
         check_deal_states_against_sectors(&acc, &miner_summaries, &market_summary);
+    }
+
+    if let Some(verifreg_summary) = verifreg_summary {
+        if let Some(datacap_summary) = datacap_summary {
+            check_verifreg_against_datacap(&acc, &verifreg_summary, &datacap_summary);
+        }
+        if let Some(market_summary) = market_summary {
+            check_market_against_verifreg(&acc, &market_summary, &verifreg_summary);
+        }
+        check_verifreg_against_miners(&acc, &verifreg_summary, &miner_summaries);
     }
 
     acc.require(
@@ -368,6 +391,161 @@ fn check_deal_states_against_sectors(
             format!(
                 "deal state slashed at {} after sector expiration {} for miner {}",
                 deal.slash_epoch, sector_deal.sector_expiration, deal.provider
+            ),
+        );
+    }
+}
+
+fn check_verifreg_against_datacap(
+    acc: &MessageAccumulator,
+    verifreg_summary: &verifreg::StateSummary,
+    datacap_summary: &datacap::StateSummary,
+) {
+    // Verifier and datacap token holders are distinct.
+    for verifier in verifreg_summary.verifiers.keys() {
+        acc.require(
+            !datacap_summary.balances.contains_key(&verifier.id().unwrap()),
+            format!("verifier {} is also a datacap token holder", verifier),
+        );
+    }
+    // Verifreg token balance matches unclaimed allocations.
+    let pending_alloc_total: DataCap =
+        verifreg_summary.allocations.iter().map(|(_, alloc)| alloc.size.0).sum();
+    let verifreg_balance = datacap_summary
+        .balances
+        .get(&VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap())
+        .cloned()
+        .unwrap_or_else(TokenAmount::zero);
+    acc.require(
+        TokenAmount::from_whole(pending_alloc_total.clone()) == verifreg_balance,
+        format!(
+            "verifreg datacap balance {} does not match pending allocation size {}",
+            verifreg_balance, pending_alloc_total
+        ),
+    );
+}
+
+fn check_market_against_verifreg(
+    acc: &MessageAccumulator,
+    market_summary: &market::StateSummary,
+    verifreg_summary: &verifreg::StateSummary,
+) {
+    // all activated verified deals with claim ids reference a claim in verifreg state
+    // note that it is possible for claims to exist with no matching deal if the deal expires
+    for (claim_id, deal_id) in &market_summary.claim_id_to_deal_id {
+        // claim is found
+        let claim = match verifreg_summary.claims.get(claim_id) {
+            None => {
+                acc.add(format!("claim {} not found for activated deal {}", claim_id, deal_id));
+                continue;
+            }
+            Some(claim) => claim,
+        };
+
+        let info = match market_summary.deals.get(deal_id) {
+            None => {
+                acc.add(format!(
+                    "internal invariant error invalid market state referrences missing deal {}",
+                    deal_id
+                ));
+                continue;
+            }
+            Some(info) => info,
+        };
+        // claim and proposal match
+        acc.require(
+            info.provider.id().unwrap() == claim.provider,
+            format!(
+                "mismatched providers {} {} on claim {} and deal {}",
+                claim.provider,
+                info.provider.id().unwrap(),
+                claim_id,
+                deal_id
+            ),
+        );
+        acc.require(
+            info.piece_cid.unwrap() == claim.data,
+            format!(
+                "mismatched piece cid {} {} on claim {} and deal {}",
+                info.piece_cid.unwrap(),
+                claim.data,
+                claim_id,
+                deal_id
+            ),
+        );
+    }
+
+    // all pending deal allocation ids have an associated allocation
+    // note that it is possible for allocations to exist that don't match any deal
+    // if they are created from a direct DataCap transfer
+    for (allocation_id, deal_id) in &market_summary.alloc_id_to_deal_id {
+        // allocation is found
+        let alloc = match verifreg_summary.allocations.get(allocation_id) {
+            None => {
+                acc.add(format!(
+                    "allocation {} not found for pending deal {}",
+                    allocation_id, deal_id
+                ));
+                continue;
+            }
+            Some(alloc) => alloc,
+        };
+        // alloc and proposal match
+        let info = match market_summary.deals.get(deal_id) {
+            None => {
+                acc.add(format!(
+                    "internal invariant error invalid market state referrences missing deal {}",
+                    deal_id
+                ));
+                continue;
+            }
+            Some(info) => info,
+        };
+        acc.require(
+            info.provider.id().unwrap() == alloc.provider,
+            format!(
+                "mismatched providers {} {} on alloc {} and deal {}",
+                alloc.provider,
+                info.provider.id().unwrap(),
+                allocation_id,
+                deal_id
+            ),
+        );
+        acc.require(
+            info.piece_cid.unwrap() == alloc.data,
+            format!(
+                "mismatched piece cid {} {} on alloc {} and deal {}",
+                info.piece_cid.unwrap(),
+                alloc.data,
+                allocation_id,
+                deal_id
+            ),
+        );
+    }
+}
+
+fn check_verifreg_against_miners(
+    acc: &MessageAccumulator,
+    verifreg_summary: &verifreg::StateSummary,
+    miner_summaries: &HashMap<Address, miner::StateSummary>,
+) {
+    for claim in verifreg_summary.claims.values() {
+        // all claims are indexed by valid providers
+        let maddr = Address::new_id(claim.provider);
+        let miner_summary = match miner_summaries.get(&maddr) {
+            None => {
+                acc.add(format!("claim provider {} is not found in miner summaries", maddr));
+                continue;
+            }
+            Some(summary) => summary,
+        };
+
+        // all claims are linked to a valid sector number
+        acc.require(
+            miner_summary.sectors_with_deals.get(&claim.sector).is_some(),
+            format!(
+                "claim sector number {} not recorded as a sector with deals for miner {}",
+                claim.sector, maddr
             ),
         );
     }

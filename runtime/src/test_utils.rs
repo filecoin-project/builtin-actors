@@ -12,8 +12,7 @@ use cid::Cid;
 use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::de::DeserializeOwned;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
-use fvm_shared::address::Payload;
-use fvm_shared::address::{Address, Protocol};
+use fvm_shared::address::{Address, Payload, Protocol};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
 use fvm_shared::consensus::ConsensusFault;
@@ -24,7 +23,7 @@ use fvm_shared::crypto::signature::{
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
-use fvm_shared::randomness::Randomness;
+use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
     AggregateSealVerifyInfo, AggregateSealVerifyProofAndInfos, RegisteredSealProof,
     ReplicaUpdateInfo, SealVerifyInfo, WindowPoStVerifyInfo,
@@ -40,25 +39,28 @@ use rand::prelude::*;
 use crate::runtime::builtins::Type;
 use crate::runtime::{
     ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
-    Verifier,
+    Verifier, EMPTY_ARR_CID,
 };
 use crate::{actor_error, ActorError};
+use fvm_shared::event::ActorEvent;
 use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
 
 lazy_static::lazy_static! {
-    pub static ref SYSTEM_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/system");
-    pub static ref INIT_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/init");
-    pub static ref CRON_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/cron");
-    pub static ref ACCOUNT_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/account");
-    pub static ref POWER_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/storagepower");
-    pub static ref MINER_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/storageminer");
-    pub static ref MARKET_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/storagemarket");
-    pub static ref PAYCH_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/paymentchannel");
-    pub static ref MULTISIG_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/multisig");
-    pub static ref REWARD_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/reward");
-    pub static ref VERIFREG_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/verifiedregistry");
-    pub static ref EMBRYO_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/embryo");
-    pub static ref EVM_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/evm");
+    pub static ref SYSTEM_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/system");
+    pub static ref INIT_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/init");
+    pub static ref CRON_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/cron");
+    pub static ref ACCOUNT_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/account");
+    pub static ref POWER_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/storagepower");
+    pub static ref MINER_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/storageminer");
+    pub static ref MARKET_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/storagemarket");
+    pub static ref PAYCH_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/paymentchannel");
+    pub static ref MULTISIG_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/multisig");
+    pub static ref REWARD_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/reward");
+    pub static ref VERIFREG_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/verifiedregistry");
+    pub static ref DATACAP_TOKEN_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/datacap");
+    pub static ref EMBRYO_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/embryo");
+    pub static ref EVM_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/evm");
+    pub static ref EAM_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/eam");
     pub static ref ACTOR_TYPES: BTreeMap<Cid, Type> = {
         let mut map = BTreeMap::new();
         map.insert(*SYSTEM_ACTOR_CODE_ID, Type::System);
@@ -72,8 +74,10 @@ lazy_static::lazy_static! {
         map.insert(*MULTISIG_ACTOR_CODE_ID, Type::Multisig);
         map.insert(*REWARD_ACTOR_CODE_ID, Type::Reward);
         map.insert(*VERIFREG_ACTOR_CODE_ID, Type::VerifiedRegistry);
-        map.insert(*EMBRYO_ACTOR_CODE_ID, Type::EVM);
+        map.insert(*DATACAP_TOKEN_ACTOR_CODE_ID, Type::DataCap);
+        map.insert(*EMBRYO_ACTOR_CODE_ID, Type::Embryo);
         map.insert(*EVM_ACTOR_CODE_ID, Type::EVM);
+        map.insert(*EAM_ACTOR_CODE_ID, Type::EAM);
         map
     };
     pub static ref ACTOR_CODES: BTreeMap<Type, Cid> = [
@@ -88,8 +92,10 @@ lazy_static::lazy_static! {
         (Type::Multisig, *MULTISIG_ACTOR_CODE_ID),
         (Type::Reward, *REWARD_ACTOR_CODE_ID),
         (Type::VerifiedRegistry, *VERIFREG_ACTOR_CODE_ID),
+        (Type::DataCap, *DATACAP_TOKEN_ACTOR_CODE_ID),
         (Type::Embryo, *EMBRYO_ACTOR_CODE_ID),
         (Type::EVM, *EVM_ACTOR_CODE_ID),
+        (Type::EAM, *EAM_ACTOR_CODE_ID),
     ]
     .into_iter()
     .collect();
@@ -108,8 +114,14 @@ lazy_static::lazy_static! {
 const IPLD_RAW: u64 = 0x55;
 
 /// Returns an identity CID for bz.
-pub fn make_builtin(bz: &[u8]) -> Cid {
+pub fn make_identity_cid(bz: &[u8]) -> Cid {
     Cid::new_v1(IPLD_RAW, OtherMultihash::wrap(0, bz).expect("name too long"))
+}
+
+pub struct ActorExit {
+    code: u32,
+    data: RawBytes,
+    msg: Option<String>,
 }
 
 pub struct MockRuntime<BS = MemoryBlockstore> {
@@ -117,6 +129,8 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
     pub miner: Address,
     pub base_fee: TokenAmount,
     pub id_addresses: HashMap<Address, Address>,
+    pub delegated_addresses: HashMap<Address, Address>,
+    pub delegated_addresses_source: HashMap<Address, Address>,
     pub actor_code_cids: HashMap<Address, Cid>,
     pub new_actor_addr: Option<Address>,
     pub receiver: Address,
@@ -158,12 +172,16 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
     pub actor_balances: HashMap<ActorID, TokenAmount>,
     pub tipset_timestamp: u64,
     pub tipset_cids: Vec<Cid>,
+
+    // actor exits
+    pub actor_exit: RefCell<Option<ActorExit>>,
 }
 
 #[derive(Default)]
 pub struct Expectations {
     pub expect_validate_caller_any: bool,
     pub expect_validate_caller_addr: Option<Vec<Address>>,
+    pub expect_validate_caller_f4_namespace: Option<Vec<u64>>,
     pub expect_validate_caller_type: Option<Vec<Type>>,
     pub expect_sends: VecDeque<ExpectedMessage>,
     pub expect_create_actor: Option<ExpectCreateActor>,
@@ -173,13 +191,15 @@ pub struct Expectations {
     pub expect_verify_post: Option<ExpectVerifyPoSt>,
     pub expect_compute_unsealed_sector_cid: VecDeque<ExpectComputeUnsealedSectorCid>,
     pub expect_verify_consensus_fault: Option<ExpectVerifyConsensusFault>,
-    pub expect_get_randomness_tickets: VecDeque<ExpectRandomness>,
-    pub expect_get_randomness_beacon: VecDeque<ExpectRandomness>,
+    pub expect_get_randomness_from_chain: VecDeque<ExpectRandomness>,
+    pub expect_get_randomness_from_beacon: VecDeque<ExpectRandomness>,
     pub expect_batch_verify_seals: Option<ExpectBatchVerifySeals>,
     pub expect_aggregate_verify_seals: Option<ExpectAggregateVerifySeals>,
     pub expect_replica_verify: Option<ExpectReplicaVerify>,
     pub expect_gas_charge: VecDeque<i64>,
     pub expect_gas_available: VecDeque<u64>,
+    pub expect_emitted_events: VecDeque<ActorEvent>,
+    skip_verification_on_drop: bool,
 }
 
 impl Expectations {
@@ -193,6 +213,11 @@ impl Expectations {
             self.expect_validate_caller_addr.is_none(),
             "expected ValidateCallerAddr {:?}, not received",
             self.expect_validate_caller_addr
+        );
+        assert!(
+            self.expect_validate_caller_f4_namespace.is_none(),
+            "expected ValidateNamespace {:?}, not received",
+            self.expect_validate_caller_f4_namespace
         );
         assert!(
             self.expect_validate_caller_type.is_none(),
@@ -240,14 +265,14 @@ impl Expectations {
             self.expect_verify_consensus_fault
         );
         assert!(
-            self.expect_get_randomness_tickets.is_empty(),
-            "expect_get_randomness_tickets {:?}, not received",
-            self.expect_get_randomness_tickets
+            self.expect_get_randomness_from_beacon.is_empty(),
+            "expect_get_randomness_from_beacon {:?}, not received",
+            self.expect_get_randomness_from_beacon
         );
         assert!(
-            self.expect_get_randomness_beacon.is_empty(),
-            "expect_get_randomness_beacon {:?}, not received",
-            self.expect_get_randomness_beacon
+            self.expect_get_randomness_from_chain.is_empty(),
+            "expect_get_randomness_from_chain {:?}, not received",
+            self.expect_get_randomness_from_chain
         );
         assert!(
             self.expect_batch_verify_seals.is_none(),
@@ -274,6 +299,15 @@ impl Expectations {
             "expect_gas_charge {:?}, not received",
             self.expect_gas_available
         );
+        assert!(
+            self.expect_emitted_events.is_empty(),
+            "expect_emitted_events {:?}, not received",
+            self.expect_emitted_events
+        );
+    }
+
+    fn skip_verification_on_drop(&mut self) {
+        self.skip_verification_on_drop = true;
     }
 }
 
@@ -290,6 +324,8 @@ impl<BS> MockRuntime<BS> {
             miner: Address::new_id(0),
             base_fee: Default::default(),
             id_addresses: Default::default(),
+            delegated_addresses: Default::default(),
+            delegated_addresses_source: Default::default(),
             actor_code_cids: Default::default(),
             new_actor_addr: Default::default(),
             receiver: Address::new_id(0),
@@ -313,6 +349,7 @@ impl<BS> MockRuntime<BS> {
             actor_balances: Default::default(),
             tipset_timestamp: Default::default(),
             tipset_cids: Default::default(),
+            actor_exit: Default::default(),
         }
     }
 }
@@ -330,6 +367,7 @@ pub struct ExpectedMessage {
     pub method: MethodNum,
     pub params: RawBytes,
     pub value: TokenAmount,
+    pub read_only: bool,
 
     // returns from applying expectedMessage
     pub send_return: RawBytes,
@@ -376,10 +414,10 @@ pub struct ExpectComputeUnsealedSectorCid {
 
 #[derive(Clone, Debug)]
 pub struct ExpectRandomness {
-    tag: DomainSeparationTag,
+    tag: i64,
     epoch: ChainEpoch,
     entropy: Vec<u8>,
-    out: Randomness,
+    out: [u8; RANDOMNESS_LENGTH],
 }
 
 #[derive(Debug)]
@@ -463,6 +501,8 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 
     pub fn set_caller(&mut self, code_id: Cid, address: Address) {
+        // fail if called with a non-ID address, since the caller() method must always return an ID
+        address.id().unwrap();
         self.caller = address;
         self.caller_type = code_id;
         self.actor_code_cids.insert(address, code_id);
@@ -488,6 +528,83 @@ impl<BS: Blockstore> MockRuntime<BS> {
         self.id_addresses.insert(source, target);
     }
 
+    pub fn add_delegated_address(&mut self, source: Address, target: Address) {
+        assert_eq!(
+            target.protocol(),
+            Protocol::Delegated,
+            "target must use Delegated address protocol"
+        );
+        assert_eq!(source.protocol(), Protocol::ID, "source must use ID address protocol");
+        self.delegated_addresses.insert(source, target);
+        self.delegated_addresses_source.insert(target, source);
+    }
+
+    fn send_inner(
+        &self,
+        to: &Address,
+        method: MethodNum,
+        params: RawBytes,
+        value: TokenAmount,
+        _gas_limit: Option<u64>,
+        read_only: bool,
+    ) -> Result<RawBytes, ActorError> {
+        // TODO gas_limit is currently ignored, what should we do about it?
+        self.require_in_call();
+        if self.in_transaction {
+            return Err(actor_error!(assertion_failed; "side-effect within transaction"));
+        }
+
+        assert!(
+            !self.expectations.borrow_mut().expect_sends.is_empty(),
+            "unexpected message to: {:?} method: {:?}, value: {:?}, params: {:?}",
+            to,
+            method,
+            value,
+            params
+        );
+
+        let expected_msg = self.expectations.borrow_mut().expect_sends.pop_front().unwrap();
+
+        assert!(
+            expected_msg.to == *to
+                && expected_msg.method == method
+                && expected_msg.params == params
+                && expected_msg.value == value
+                && expected_msg.read_only == read_only,
+            "message sent does not match expectation.\n\
+             message  - to: {:?}, method: {:?}, value: {:?}, params: {:?}\n\
+             expected - to: {:?}, method: {:?}, value: {:?}, params: {:?}",
+            to,
+            method,
+            value,
+            params,
+            expected_msg.to,
+            expected_msg.method,
+            expected_msg.value,
+            expected_msg.params,
+        );
+
+        {
+            let mut balance = self.balance.borrow_mut();
+            if value > *balance {
+                return Err(ActorError::unchecked(
+                    ExitCode::SYS_SENDER_STATE_INVALID,
+                    format!("cannot send value: {:?} exceeds balance: {:?}", value, *balance),
+                ));
+            }
+            *balance -= value;
+        }
+
+        match expected_msg.exit_code {
+            ExitCode::OK => Ok(expected_msg.send_return),
+            x => Err(ActorError::unchecked_with_data(
+                x,
+                "Expected message Fail".to_string(),
+                expected_msg.send_return,
+            )),
+        }
+    }
+
     pub fn call<A: ActorCode>(
         &mut self,
         method_num: MethodNum,
@@ -495,7 +612,26 @@ impl<BS: Blockstore> MockRuntime<BS> {
     ) -> Result<RawBytes, ActorError> {
         self.in_call = true;
         let prev_state = self.state;
-        let res = A::invoke_method(self, method_num, params);
+        let res: Result<RawBytes, ActorError> =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                A::invoke_method(self, method_num, params)
+            }))
+            .unwrap_or_else(|panic| {
+                if self.actor_exit.borrow().is_some() {
+                    let exit = self.actor_exit.take().unwrap();
+                    if exit.code == 0 {
+                        Ok(exit.data)
+                    } else {
+                        Err(ActorError::unchecked_with_data(
+                            ExitCode::new(exit.code),
+                            exit.msg.unwrap_or_else(|| "actor exited".to_owned()),
+                            exit.data,
+                        ))
+                    }
+                } else {
+                    std::panic::resume_unwind(panic)
+                }
+            });
 
         if res.is_err() {
             self.state = prev_state;
@@ -511,6 +647,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
 
     /// Clears all mock expectations.
     pub fn reset(&mut self) {
+        self.expectations.borrow_mut().skip_verification_on_drop();
         self.expectations.borrow_mut().reset();
     }
 
@@ -571,6 +708,12 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 
     #[allow(dead_code)]
+    pub fn expect_validate_caller_namespace(&self, namespaces: Vec<u64>) {
+        assert!(!namespaces.is_empty(), "f4 namespaces must be non-empty");
+        self.expectations.borrow_mut().expect_validate_caller_f4_namespace = Some(namespaces);
+    }
+
+    #[allow(dead_code)]
     pub fn expect_delete_actor(&mut self, beneficiary: Address) {
         self.expectations.borrow_mut().expect_delete_actor = Some(beneficiary);
     }
@@ -592,6 +735,27 @@ impl<BS: Blockstore> MockRuntime<BS> {
             value,
             send_return,
             exit_code,
+            read_only: false,
+        })
+    }
+
+    #[allow(dead_code)]
+    pub fn expect_send_read_only(
+        &mut self,
+        to: Address,
+        method: MethodNum,
+        params: RawBytes,
+        send_return: RawBytes,
+        exit_code: ExitCode,
+    ) {
+        self.expectations.borrow_mut().expect_sends.push_back(ExpectedMessage {
+            to,
+            method,
+            params,
+            send_return,
+            exit_code,
+            value: TokenAmount::default(),
+            read_only: true,
         })
     }
 
@@ -643,10 +807,9 @@ impl<BS: Blockstore> MockRuntime<BS> {
         tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: Vec<u8>,
-        out: Randomness,
+        out: [u8; RANDOMNESS_LENGTH],
     ) {
-        let a = ExpectRandomness { tag, epoch, entropy, out };
-        self.expectations.borrow_mut().expect_get_randomness_tickets.push_back(a);
+        self.expect_user_get_randomness_from_chain(tag as i64, epoch, entropy, out)
     }
 
     #[allow(dead_code)]
@@ -655,10 +818,31 @@ impl<BS: Blockstore> MockRuntime<BS> {
         tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: Vec<u8>,
-        out: Randomness,
+        out: [u8; RANDOMNESS_LENGTH],
     ) {
-        let a = ExpectRandomness { tag, epoch, entropy, out };
-        self.expectations.borrow_mut().expect_get_randomness_beacon.push_back(a);
+        self.expect_user_get_randomness_from_beacon(tag as i64, epoch, entropy, out)
+    }
+
+    pub fn expect_user_get_randomness_from_beacon(
+        &mut self,
+        personalization: i64,
+        epoch: ChainEpoch,
+        entropy: Vec<u8>,
+        out: [u8; RANDOMNESS_LENGTH],
+    ) {
+        let a = ExpectRandomness { tag: personalization, epoch, entropy, out };
+        self.expectations.borrow_mut().expect_get_randomness_from_beacon.push_back(a);
+    }
+
+    pub fn expect_user_get_randomness_from_chain(
+        &mut self,
+        personalization: i64,
+        epoch: ChainEpoch,
+        entropy: Vec<u8>,
+        out: [u8; RANDOMNESS_LENGTH],
+    ) {
+        let a = ExpectRandomness { tag: personalization, epoch, entropy, out };
+        self.expectations.borrow_mut().expect_get_randomness_from_chain.push_back(a);
     }
 
     #[allow(dead_code)]
@@ -698,6 +882,11 @@ impl<BS: Blockstore> MockRuntime<BS> {
         self.expectations.borrow_mut().expect_gas_available.push_back(value);
     }
 
+    #[allow(dead_code)]
+    pub fn expect_emitted_event(&mut self, event: ActorEvent) {
+        self.expectations.borrow_mut().expect_emitted_events.push_back(event)
+    }
+
     ///// Private helpers /////
 
     fn require_in_call(&self) {
@@ -726,15 +915,14 @@ impl<BS> MessageInfo for MockRuntime<BS> {
     fn value_received(&self) -> TokenAmount {
         self.value_received.clone()
     }
-    fn gas_limit(&self) -> u64 {
-        self.gas_limit
-    }
     fn gas_premium(&self) -> TokenAmount {
         self.gas_premium.clone()
     }
 }
 
-impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
+impl<BS: Blockstore> Runtime for MockRuntime<BS> {
+    type Blockstore = Rc<BS>;
+
     fn network_version(&self) -> NetworkVersion {
         self.network_version
     }
@@ -792,6 +980,51 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
                 self.message().caller(), &addrs
         ))
     }
+
+    fn validate_immediate_caller_namespace<I>(&mut self, namespaces: I) -> Result<(), ActorError>
+    where
+        I: IntoIterator<Item = u64>,
+    {
+        self.require_in_call();
+
+        let namespaces: Vec<u64> = namespaces.into_iter().collect();
+
+        let mut expectations = self.expectations.borrow_mut();
+        assert!(
+            expectations.expect_validate_caller_f4_namespace.is_some(),
+            "unexpected validate caller namespace"
+        );
+
+        let expected_namespaces =
+            expectations.expect_validate_caller_f4_namespace.as_ref().unwrap();
+
+        assert_eq!(
+            &namespaces, expected_namespaces,
+            "unexpected validate caller namespace {:?}, expected {:?}",
+            namespaces, &expectations.expect_validate_caller_f4_namespace
+        );
+
+        let caller_f4 = self.lookup_address(self.caller().id().unwrap());
+
+        assert!(caller_f4.is_some(), "unexpected caller doesn't have a delegated address");
+
+        for id in namespaces.iter() {
+            let bound_address = match caller_f4.unwrap().payload() {
+                Payload::Delegated(d) => d.namespace(),
+                _ => unreachable!("lookup_address should always return a delegated address"),
+            };
+            if bound_address == *id {
+                expectations.expect_validate_caller_f4_namespace = None;
+                return Ok(());
+            }
+        }
+        expectations.expect_validate_caller_addr = None;
+        Err(actor_error!(forbidden;
+                "caller address {:?} forbidden, allowed: {:?}",
+                self.message().caller(), &namespaces
+        ))
+    }
+
     fn validate_immediate_caller_type<'a, I>(&mut self, types: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Type>,
@@ -811,11 +1044,12 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
             types, expected_caller_type,
         );
 
-        let call_type = self.resolve_builtin_actor_type(&self.caller_type).unwrap();
-        for expected in &types {
-            if &call_type == expected {
-                self.expectations.borrow_mut().expect_validate_caller_type = None;
-                return Ok(());
+        if let Some(call_type) = self.resolve_builtin_actor_type(&self.caller_type) {
+            for expected in &types {
+                if &call_type == expected {
+                    self.expectations.borrow_mut().expect_validate_caller_type = None;
+                    return Ok(());
+                }
             }
         }
 
@@ -839,6 +1073,12 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
         if let &Payload::ID(id) = address.payload() {
             return Some(id);
         }
+        if Protocol::Delegated == address.protocol() {
+            return self
+                .delegated_addresses_source
+                .get(address)
+                .and_then(|a| self.resolve_address(a));
+        }
 
         match self.get_id_address(address) {
             None => None,
@@ -851,6 +1091,11 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
         }
     }
 
+    fn lookup_address(&self, id: ActorID) -> Option<Address> {
+        self.require_in_call();
+        self.delegated_addresses.get(&Address::new_id(id)).copied()
+    }
+
     fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {
         self.require_in_call();
         self.actor_code_cids.get(&Address::new_id(*id)).cloned()
@@ -861,32 +1106,8 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
         tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: &[u8],
-    ) -> Result<Randomness, ActorError> {
-        let expected = self
-            .expectations
-            .borrow_mut()
-            .expect_get_randomness_tickets
-            .pop_front()
-            .expect("unexpected call to get_randomness_from_tickets");
-
-        assert!(epoch <= self.epoch, "attempt to get randomness from future");
-        assert_eq!(
-            expected.tag, tag,
-            "unexpected domain separation tag, expected: {:?}, actual: {:?}",
-            expected.tag, tag
-        );
-        assert_eq!(
-            expected.epoch, epoch,
-            "unexpected epoch, expected: {:?}, actual: {:?}",
-            expected.epoch, epoch
-        );
-        assert_eq!(
-            expected.entropy, *entropy,
-            "unexpected entroy, expected {:?}, actual: {:?}",
-            expected.entropy, entropy
-        );
-
-        Ok(expected.out)
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        self.user_get_randomness_from_chain(tag as i64, epoch, entropy)
     }
 
     fn get_randomness_from_beacon(
@@ -894,32 +1115,8 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
         tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: &[u8],
-    ) -> Result<Randomness, ActorError> {
-        let expected = self
-            .expectations
-            .borrow_mut()
-            .expect_get_randomness_beacon
-            .pop_front()
-            .expect("unexpected call to get_randomness_from_beacon");
-
-        assert!(epoch <= self.epoch, "attempt to get randomness from future");
-        assert_eq!(
-            expected.tag, tag,
-            "unexpected domain separation tag, expected: {:?}, actual: {:?}",
-            expected.tag, tag
-        );
-        assert_eq!(
-            expected.epoch, epoch,
-            "unexpected epoch, expected: {:?}, actual: {:?}",
-            expected.epoch, epoch
-        );
-        assert_eq!(
-            expected.entropy, *entropy,
-            "unexpected entroy, expected {:?}, actual: {:?}",
-            expected.entropy, entropy
-        );
-
-        Ok(expected.out)
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        self.user_get_randomness_from_beacon(tag as i64, epoch, entropy)
     }
 
     fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
@@ -932,6 +1129,15 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
 
     fn state<C: Cbor>(&self) -> Result<C, ActorError> {
         Ok(self.store_get(self.state.as_ref().unwrap()))
+    }
+
+    fn get_state_root(&self) -> Result<Cid, ActorError> {
+        Ok(self.state.unwrap_or(EMPTY_ARR_CID))
+    }
+
+    fn set_state_root(&mut self, root: &Cid) -> Result<(), ActorError> {
+        self.state = Some(*root);
+        Ok(())
     }
 
     fn transaction<C, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
@@ -963,55 +1169,28 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
         params: RawBytes,
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError> {
-        self.require_in_call();
-        if self.in_transaction {
-            return Err(actor_error!(assertion_failed; "side-effect within transaction"));
-        }
+        self.send_inner(to, method, params, value, None, false)
+    }
 
-        assert!(
-            !self.expectations.borrow_mut().expect_sends.is_empty(),
-            "unexpected expectedMessage to: {:?} method: {:?}, value: {:?}, params: {:?}",
-            to,
-            method,
-            value,
-            params
-        );
+    fn send_read_only(
+        &self,
+        to: &Address,
+        method: MethodNum,
+        params: RawBytes,
+    ) -> Result<RawBytes, ActorError> {
+        self.send_inner(to, method, params, TokenAmount::default(), None, true)
+    }
 
-        let expected_msg = self.expectations.borrow_mut().expect_sends.pop_front().unwrap();
-
-        assert!(
-            expected_msg.to == *to
-                && expected_msg.method == method
-                && expected_msg.params == params
-                && expected_msg.value == value,
-            "expectedMessage being sent does not match expectation.\n\
-             Message  - to: {:?}, method: {:?}, value: {:?}, params: {:?}\n\
-             Expected - to: {:?}, method: {:?}, value: {:?}, params: {:?}",
-            to,
-            method,
-            value,
-            params,
-            expected_msg.to,
-            expected_msg.method,
-            expected_msg.value,
-            expected_msg.params,
-        );
-
-        {
-            let mut balance = self.balance.borrow_mut();
-            if value > *balance {
-                return Err(ActorError::unchecked(
-                    ExitCode::SYS_SENDER_STATE_INVALID,
-                    format!("cannot send value: {:?} exceeds balance: {:?}", value, *balance),
-                ));
-            }
-            *balance -= value;
-        }
-
-        match expected_msg.exit_code {
-            ExitCode::OK => Ok(expected_msg.send_return),
-            x => Err(ActorError::unchecked(x, "Expected message Fail".to_string())),
-        }
+    fn send_with_gas(
+        &self,
+        to: &Address,
+        method: MethodNum,
+        params: RawBytes,
+        value: TokenAmount,
+        gas_limit: Option<u64>,
+        read_only: bool,
+    ) -> Result<RawBytes, ActorError> {
+        self.send_inner(to, method, params, value, gas_limit, read_only)
     }
 
     fn new_actor_address(&mut self) -> Result<Address, ActorError> {
@@ -1101,15 +1280,98 @@ impl<BS: Blockstore> Runtime<Rc<BS>> for MockRuntime<BS> {
     }
 
     fn tipset_cid(&self, epoch: i64) -> Option<Cid> {
-        if !(0..900).contains(&epoch) {
-            panic!("ivalidn epoch {}", epoch);
+        if epoch > self.epoch || epoch < 0 {
+            return None;
         }
+        self.tipset_cids.get((self.epoch - epoch) as usize).copied()
+    }
 
-        let epoch_index = epoch as usize;
-        if epoch_index < self.tipset_cids.len() {
-            return Some(self.tipset_cids[epoch_index]);
-        }
-        None
+    fn user_get_randomness_from_chain(
+        &self,
+        personalization: i64,
+        epoch: ChainEpoch,
+        entropy: &[u8],
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        let expected = self
+            .expectations
+            .borrow_mut()
+            .expect_get_randomness_from_chain
+            .pop_front()
+            .expect("unexpected call to get_chain_randomness");
+
+        assert!(epoch <= self.epoch, "attempt to get randomness from future");
+        assert_eq!(
+            expected.tag, personalization,
+            "unexpected domain personalization tag, expected: {:?}, actual: {:?}",
+            expected.tag, personalization
+        );
+        assert_eq!(
+            expected.epoch, epoch,
+            "unexpected epoch, expected: {:?}, actual: {:?}",
+            expected.epoch, epoch
+        );
+        assert_eq!(
+            expected.entropy, *entropy,
+            "unexpected entroy, expected {:?}, actual: {:?}",
+            expected.entropy, entropy
+        );
+
+        Ok(expected.out)
+    }
+
+    fn user_get_randomness_from_beacon(
+        &self,
+        personalization: i64,
+        epoch: ChainEpoch,
+        entropy: &[u8],
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        let expected = self
+            .expectations
+            .borrow_mut()
+            .expect_get_randomness_from_beacon
+            .pop_front()
+            .expect("unexpected call to get_beacon_randomness");
+
+        assert!(epoch <= self.epoch, "attempt to get randomness from future");
+        assert_eq!(
+            expected.tag, personalization,
+            "unexpected domain personalization tag, expected: {:?}, actual: {:?}",
+            expected.tag, personalization
+        );
+        assert_eq!(
+            expected.epoch, epoch,
+            "unexpected epoch, expected: {:?}, actual: {:?}",
+            expected.epoch, epoch
+        );
+        assert_eq!(
+            expected.entropy, *entropy,
+            "unexpected entroy, expected {:?}, actual: {:?}",
+            expected.entropy, entropy
+        );
+
+        Ok(expected.out)
+    }
+
+    fn emit_event(&self, event: &ActorEvent) -> Result<(), ActorError> {
+        let expected = self
+            .expectations
+            .borrow_mut()
+            .expect_emitted_events
+            .pop_front()
+            .expect("unexpected call to emit_evit");
+
+        assert_eq!(*event, expected);
+
+        Ok(())
+    }
+
+    fn exit(&self, code: u32, data: RawBytes, msg: Option<&str>) -> ! {
+        self.actor_exit.replace(Some(ActorExit { code, data, msg: msg.map(|s| s.to_owned()) }));
+        std::panic::panic_any("actor exit");
+    }
+
+    fn read_only(&self) -> bool {
+        false
     }
 }
 
@@ -1182,7 +1444,9 @@ impl<BS> Primitives for MockRuntime<BS> {
         assert_eq!(exp.reg, reg, "Unexpected compute_unsealed_sector_cid : reg mismatch");
         assert!(
             exp.pieces[..].eq(pieces),
-            "Unexpected compute_unsealed_sector_cid : pieces mismatch"
+            "Unexpected compute_unsealed_sector_cid : pieces mismatch, exp: {:?}, got: {:?}",
+            exp.pieces,
+            pieces,
         );
 
         if exp.exit_code != ExitCode::OK {
@@ -1205,6 +1469,10 @@ impl<BS> Primitives for MockRuntime<BS> {
         signature: &[u8; SECP_SIG_LEN],
     ) -> Result<[u8; SECP_PUB_LEN], anyhow::Error> {
         (*self.recover_pubkey_fn)(hash, signature).map_err(|_| anyhow!("failed to recover pubkey."))
+    }
+
+    fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
+        (*self.hash_func)(hasher, data)
     }
 }
 
@@ -1339,6 +1607,16 @@ impl<BS> Verifier for MockRuntime<BS> {
 impl<BS> RuntimePolicy for MockRuntime<BS> {
     fn policy(&self) -> &Policy {
         &self.policy
+    }
+}
+
+// The Expectations are by default verified on drop().
+// In order to clear the unsatisfied expectations in tests, use MockRuntime#reset().
+impl Drop for Expectations {
+    fn drop(&mut self) {
+        if !self.skip_verification_on_drop {
+            self.verify();
+        }
     }
 }
 

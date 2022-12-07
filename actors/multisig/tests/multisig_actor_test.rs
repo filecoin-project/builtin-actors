@@ -1,12 +1,12 @@
 use fil_actor_multisig::testing::check_state_invariants;
 use fil_actor_multisig::{
-    compute_proposal_hash, Actor as MultisigActor, ConstructorParams, Method, ProposeReturn, State,
-    Transaction, TxnID, TxnIDParams, SIGNERS_MAX,
+    compute_proposal_hash, Actor as MultisigActor, ConstructorParams, Method, ProposeParams,
+    ProposeReturn, State, Transaction, TxnID, TxnIDParams, SIGNERS_MAX,
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::{CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::{Address, BLS_PUB_LEN};
@@ -15,7 +15,7 @@ use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::METHOD_SEND;
+use fvm_shared::{MethodNum, METHOD_SEND};
 
 mod util;
 
@@ -120,7 +120,7 @@ mod constructor_tests {
             RawBytes::default(),
             rt.call::<MultisigActor>(
                 Method::Constructor as u64,
-                &RawBytes::serialize(&params).unwrap()
+                &RawBytes::serialize(&params).unwrap(),
             )
             .unwrap()
         );
@@ -516,7 +516,7 @@ mod vesting_tests {
 
         rt.set_balance(MSIG_INITIAL_BALANCE.clone());
         rt.set_received(MSIG_INITIAL_BALANCE.clone());
-        h.construct_and_verify(&mut rt, 2, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
+        h.construct_and_verify(&mut rt, 1, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
         rt.set_received(TokenAmount::zero());
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ANNE);
@@ -528,6 +528,7 @@ mod vesting_tests {
             RawBytes::default(),
             ExitCode::OK,
         );
+        h.propose_ok(&mut rt, BOB, TokenAmount::zero(), METHOD_SEND, RawBytes::default());
         check_state(&rt);
     }
 
@@ -751,6 +752,53 @@ fn test_fail_propose_from_non_signer() {
     check_state(&rt);
 }
 
+#[test]
+fn test_propose_restricted_correctly() {
+    let msig = Address::new_id(1000);
+    let mut rt = construct_runtime(msig);
+    let h = util::ActorHarness::new();
+
+    let anne = Address::new_id(101);
+    // We will treat Bob as having code CID b"102"
+    let bob = Address::new_id(102);
+    let chuck = Address::new_id(103);
+    let no_unlock_duration = 0;
+    let start_epoch = 0;
+    let signers = vec![anne, bob];
+
+    let send_value = TokenAmount::from_atto(10u8);
+    h.construct_and_verify(&mut rt, 2, no_unlock_duration, start_epoch, signers);
+
+    // set caller to not-builtin
+    rt.set_caller(make_identity_cid(b"102"), Address::new_id(102));
+    let propose_params = serialize(
+        &ProposeParams {
+            to: chuck,
+            value: send_value,
+            method: METHOD_SEND,
+            params: RawBytes::default(),
+        },
+        "propose params",
+    )
+    .unwrap();
+
+    // cannot call the unexported method num
+
+    expect_abort_contains_message(
+        ExitCode::USR_FORBIDDEN,
+        "must be built-in",
+        rt.call::<MultisigActor>(Method::Propose as u64, &propose_params),
+    );
+
+    rt.verify();
+
+    // can call the exported method num
+    rt.expect_validate_caller_any();
+    rt.call::<MultisigActor>(Method::ProposeExported as u64, &propose_params).unwrap();
+
+    rt.verify();
+}
+
 // AddSigner
 #[test]
 fn test_add_signer() {
@@ -764,7 +812,8 @@ fn test_add_signer() {
         #[allow(dead_code)]
         desc: &'a str,
 
-        id_addr_mapping: Vec<(Address, Address)>, // non-id to id
+        id_addr_mapping: Vec<(Address, Address)>,
+        // non-id to id
         initial_signers: Vec<Address>,
         initial_approvals: u64,
 
@@ -777,7 +826,7 @@ fn test_add_signer() {
     }
 
     let test_cases = vec![
-        TestCase{
+        TestCase {
             desc: "happy path add signer",
             id_addr_mapping: Vec::new(),
             initial_signers: vec![anne, bob],
@@ -788,7 +837,7 @@ fn test_add_signer() {
             expect_approvals: 2,
             code: ExitCode::OK,
         },
-        TestCase{
+        TestCase {
             desc: "add signer and increase threshold",
             id_addr_mapping: Vec::new(),
             initial_signers: vec![anne, bob],
@@ -799,7 +848,7 @@ fn test_add_signer() {
             expect_approvals: 3,
             code: ExitCode::OK,
         },
-        TestCase{
+        TestCase {
             desc: "fail to add signer that already exists",
             id_addr_mapping: Vec::new(),
             initial_signers: vec![anne, bob, chuck],
@@ -810,28 +859,28 @@ fn test_add_signer() {
             expect_approvals: 3,
             code: ExitCode::USR_FORBIDDEN,
         },
-        TestCase{
+        TestCase {
             desc: "fail to add signer with ID address that already exists even thugh we only have non ID address as approver",
             id_addr_mapping: vec![(chuck_pubkey, chuck)],
             initial_signers: vec![anne, bob, chuck_pubkey],
             initial_approvals: 3,
             add_signer: chuck,
-            increase:false,
+            increase: false,
             expect_signers: vec![anne, bob, chuck],
             expect_approvals: 3,
             code: ExitCode::USR_FORBIDDEN,
         },
-        TestCase{
+        TestCase {
             desc: "fail to add signer with ID address that already exists even thugh we only have non ID address as approver",
             id_addr_mapping: vec![(chuck_pubkey, chuck)],
             initial_signers: vec![anne, bob, chuck],
             initial_approvals: 3,
             add_signer: chuck_pubkey,
-            increase:false,
+            increase: false,
             expect_signers: vec![anne, bob, chuck],
             expect_approvals: 3,
             code: ExitCode::USR_FORBIDDEN,
-        }
+        },
     ];
 
     for tc in test_cases {
@@ -1089,7 +1138,7 @@ fn test_signer_swap() {
             swap_from: anne,
             expect_signers: vec![],
             code: ExitCode::USR_ILLEGAL_ARGUMENT,
-        }
+        },
     ];
 
     for tc in test_cases {
@@ -1448,6 +1497,7 @@ mod approval_tests {
         );
         check_state(&rt);
     }
+
     #[test]
     fn fail_approval_if_not_enough_unlocked_balance_available() {
         let msig = Address::new_id(100);
@@ -1550,7 +1600,7 @@ mod approval_tests {
             RawBytes::default(),
             ExitCode::OK,
         );
-        rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+        rt.expect_validate_caller_any();
         let params = TxnIDParams { id: TxnID(0), proposal_hash: Vec::<u8>::new() };
         rt.call::<MultisigActor>(Method::Approve as u64, &RawBytes::serialize(params).unwrap())
             .unwrap();
@@ -1612,7 +1662,7 @@ mod approval_tests {
         h.construct_and_verify(&mut rt, 1, 0, 0, signers);
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
-        rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+        rt.expect_validate_caller_any();
         let params = TxnIDParams { id: dne_tx_id, proposal_hash: Vec::<u8>::new() };
         rt.call::<MultisigActor>(Method::Approve as u64, &RawBytes::serialize(params).unwrap())
             .expect_err("should fail on approve of non existent tx id");
@@ -2407,4 +2457,23 @@ mod lock_balance_tests {
         );
         check_state(&rt);
     }
+}
+
+#[test]
+fn token_receiver() {
+    let msig = Address::new_id(1000);
+    let anne = Address::new_id(101);
+    let bob = Address::new_id(102);
+
+    let mut rt = construct_runtime(msig);
+    let h = util::ActorHarness::new();
+    h.construct_and_verify(&mut rt, 2, 0, 0, vec![anne, bob]);
+
+    rt.expect_validate_caller_any();
+    let ret = rt.call::<MultisigActor>(
+        Method::UniversalReceiverHook as MethodNum,
+        &RawBytes::new(vec![1, 2, 3]),
+    );
+    assert!(ret.is_ok());
+    assert_eq!(RawBytes::default(), ret.unwrap());
 }
