@@ -348,7 +348,6 @@ mod tests {
 
             let res = read_right_pad(&input, i);
             assert_eq!(&*res, &expected);
-            let _ = true;
             input.push(0);
         }
     }
