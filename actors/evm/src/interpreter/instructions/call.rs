@@ -240,8 +240,8 @@ pub fn call_generic<RT: Runtime>(
                         let method = if !actor_exists
                             || matches!(target_actor_type, Some(Type::Embryo | Type::Account))
                         // See https://github.com/filecoin-project/ref-fvm/issues/980 for this
-                        // magic value
-                            || (!value.is_zero() && !gas.is_zero() && gas <= U256::from(21_000))
+                        // hocus pocus
+                            || (input_data.is_empty() && ((gas == 0 && value > 0) || (gas == 2300 && value == 0)))
                         {
                             // If the target actor doesn't exist or is an account or an embryo,
                             // switch to a basic "send" so the call will still work even if the
