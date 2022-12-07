@@ -14,7 +14,7 @@ use {
     fvm_ipld_blockstore::Blockstore,
     fvm_ipld_encoding::tuple::*,
     fvm_ipld_encoding::RawBytes,
-    fvm_ipld_hamt::{Config as HamtConfig, Hamt},
+    fvm_ipld_kamt::{Config as KamtConfig, Kamt},
     fvm_shared::error::*,
     fvm_shared::{MethodNum, METHOD_CONSTRUCTOR},
     num_derive::FromPrimitive,
@@ -31,19 +31,22 @@ const MAX_CODE_SIZE: usize = 24 << 10;
 pub const EVM_CONTRACT_REVERTED: ExitCode = ExitCode::new(27);
 
 lazy_static::lazy_static! {
-    static ref HAMT_CONFIG: HamtConfig = HamtConfig {
-        // The Solidity compiler creates contiguous array item keys.
-        // To prevent the tree from going very deep we use extensions.
-        use_extensions: true,
-        // There are maximum 32 levels in the tree with the default bit width of 8.
-        // The top few levels will have a higher level of overlap in their hashed.
-        // Intuitively these levels should be used for routing, not storing data.
-        // The only exception to this is the top level variables in the contract
-        // which solidity puts in the first few slots. There having to do extra
-        // lookups is burdensome, and they will always be accessed even for arrays
-        // because that's where the array length is stored.
+    // The Solidity compiler creates contiguous array item keys.
+    // To prevent the tree from going very deep we use extensions,
+    // which the Kamt supports and does in all cases.
+    // There are maximum 32 levels in the tree with the default bit width of 8.
+    // The top few levels will have a higher level of overlap in their hashes.
+    // Intuitively these levels should be used for routing, not storing data.
+    // The only exception to this is the top level variables in the contract
+    // which solidity puts in the first few slots. There having to do extra
+    // lookups is burdensome, and they will always be accessed even for arrays
+    // because that's where the array length is stored.
+    // The following values have been set by looking at how the charts evolved
+    // with the test contract. They might not be the best for other contracts.
+    static ref KAMT_CONFIG: KamtConfig = KamtConfig {
         min_data_depth: 2,
         bit_width: 5,
+        max_array_width: 3
     };
 }
 
@@ -76,11 +79,11 @@ impl EvmContractActor {
             return Err(ActorError::illegal_argument("no bytecode provided".into()));
         }
 
-        // create an empty storage HAMT to pass it down for execution.
-        let mut hamt = Hamt::new_with_config(rt.store().clone(), HAMT_CONFIG.to_owned());
+        // create an empty storage KAMT to pass it down for execution.
+        let mut kamt = Kamt::new_with_config(rt.store().clone(), KAMT_CONFIG.to_owned());
 
         // create an instance of the platform abstraction layer -- note: do we even need this?
-        let mut system = System::new(rt, &mut hamt).map_err(|e| {
+        let mut system = System::new(rt, &mut kamt).map_err(|e| {
             ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
         })?;
 
@@ -152,19 +155,19 @@ impl EvmContractActor {
         let bytecode = Bytecode::new(&bytecode)
             .map_err(|e| ActorError::unspecified(format!("failed to parse bytecode: {e:?}")))?;
 
-        // clone the blockstore here to pass to the System, this is bound to the HAMT.
+        // clone the blockstore here to pass to the System, this is bound to the KAMT.
         let blockstore = rt.store().clone();
 
-        // load the storage HAMT
-        let mut hamt =
-            Hamt::load_with_config(&state.contract_state, blockstore, HAMT_CONFIG.to_owned())
+        // load the storage KAMT
+        let mut kamt =
+            Kamt::load_with_config(&state.contract_state, blockstore, KAMT_CONFIG.to_owned())
                 .map_err(|e| {
                     ActorError::illegal_state(format!(
-                        "failed to load storage HAMT on invoke: {e:?}, e"
+                        "failed to load storage KAMT on invoke: {e:?}, e"
                     ))
                 })?;
 
-        let mut system = System::new(rt, &mut hamt).map_err(|e| {
+        let mut system = System::new(rt, &mut kamt).map_err(|e| {
             ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
         })?;
 
@@ -231,16 +234,16 @@ impl EvmContractActor {
         let state: State = rt.state()?;
         let blockstore = rt.store().clone();
 
-        // load the storage HAMT
-        let mut hamt =
-            Hamt::load_with_config(&state.contract_state, blockstore, HAMT_CONFIG.to_owned())
+        // load the storage KAMT
+        let mut kamt =
+            Kamt::load_with_config(&state.contract_state, blockstore, KAMT_CONFIG.to_owned())
                 .map_err(|e| {
                     ActorError::illegal_state(format!(
-                        "failed to load storage HAMT on invoke: {e:?}, e"
+                        "failed to load storage KAMT on invoke: {e:?}, e"
                     ))
                 })?;
 
-        let mut system = System::new(rt, &mut hamt).map_err(|e| {
+        let mut system = System::new(rt, &mut kamt).map_err(|e| {
             ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
         })?;
 

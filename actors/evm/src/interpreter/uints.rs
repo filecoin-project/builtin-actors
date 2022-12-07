@@ -40,16 +40,6 @@ impl From<&U256> for TokenAmount {
 impl_uint_serde!(U256, 4);
 impl_uint_serde!(U512, 8);
 
-macro_rules! impl_hamt_hash {
-    ($type:ident) => {
-        impl fvm_ipld_hamt::Hash for $type {
-            fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-                self.0.hash(state);
-            }
-        }
-    };
-}
-
 fn zeroless_view(v: &impl AsRef<[u8]>) -> &[u8] {
     let v = v.as_ref();
     &v[v.iter().take_while(|&&b| b == 0).count()..]
@@ -74,10 +64,6 @@ macro_rules! impl_rlp_codec_uint {
     }
   };
 }
-
-// Hamt support
-impl_hamt_hash!(U256);
-impl_hamt_hash!(U512);
 
 // RLP Support
 impl_rlp_codec_uint!(U256, 32);

@@ -21,7 +21,7 @@ pub struct State {
     /// The EVM contract state dictionary.
     /// All eth contract state is a map of U256 -> U256 values.
     ///
-    /// HAMT<U256, U256>
+    /// KAMT<U256, U256>
     pub contract_state: Cid,
 }
 
