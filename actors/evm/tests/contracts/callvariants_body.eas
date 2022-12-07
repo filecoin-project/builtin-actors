@@ -81,7 +81,7 @@ push1 0x04    # staticcall args length
 push1 0x00    # staticcall args offset
 push1 0x04    # input (dest) offset
 calldataload  # staticcall dest
-push1 0x00    # staticcall gas (ignored)
+gas
 staticcall    # do it!
 %check()
 push1 0x20    # ret length
@@ -102,7 +102,7 @@ push1 0x04    # staticcall args length
 push1 0x00    # staticcall args offset
 push1 0x04    # input (dest) offset
 calldataload  # staticcall dest
-push1 0x00    # staticcall gas (ignored)
+gas
 staticcall    # do it!
 %check()
 push1 0x20    # ret length
@@ -127,7 +127,7 @@ push1 0x24    # staticcall args length
 push1 0x00    # staticcall args offset
 push1 0x04    # input (dest) offset
 calldataload  # staticcall dest
-push1 0x00    # staticcall gas (ignored)
+gas
 staticcall    # do it!
 %check()
 push1 0x20    # ret length
@@ -149,7 +149,7 @@ push1 0x00    # call args offset
 push1 0x00    # value
 push1 0x04    # input (dest) offset
 calldataload  # call dest
-push1 0x00    # call gas (ignored)
+gas
 call          # do it!
 %check()
 push1 0x20    # ret length
@@ -174,7 +174,7 @@ push1 0x24    # staticcall args length
 push1 0x00    # staticcall args offset
 push1 0x04    # input (dest) offset
 calldataload  # staticcall dest
-push1 0x00    # staticcall gas (ignored)
+gas
 staticcall    # do it!
 %check()
 push1 0x20    # ret length
@@ -196,7 +196,7 @@ push1 0x00    # call args offset
 push1 0x00    # value
 push1 0x04    # input (dest) offset
 calldataload  # icall dest
-push1 0x00    # call gas (ignored)
+gas
 call          # do it!
 %check()
 push1 0x20    # ret length
@@ -217,7 +217,7 @@ push1 0x04    # delegate args length
 push1 0x00    # delegate args offset
 push1 0x04    # input (dest) offset
 calldataload  # delegate dest
-push1 0x00    # delegate gas (ignored)
+gas
 delegatecall  # do it!
 %check()
 push1 0x20    # ret length
@@ -238,7 +238,7 @@ push1 0x04    # delegate args length
 push1 0x00    # delegate args offset
 push1 0x04    # input (dest) offset
 calldataload  # delegate dest
-push1 0x00    # delegate gas (ignored)
+gas
 delegatecall  # do it!
 %check()
 push1 0x00    # slot
@@ -267,7 +267,7 @@ push1 0x24    # staticcall args length
 push1 0x00    # staticcall args offset
 push1 0x04    # input (dest) offset
 calldataload  # staticcall dest
-push1 0x00    # staticcall gas (ignored)
+gas
 staticcall    # do it!
 %check()
 push1 0x20    # ret length
@@ -292,7 +292,7 @@ push1 0x24    # staticcall args length
 push1 0x00    # staticcall args offset
 push1 0x04    # input (dest) offset
 calldataload  # staticcall dest
-push1 0x00    # staticcall gas (ignored)
+gas
 staticcall    # do it!
 %check()
 push1 0x20    # ret length
