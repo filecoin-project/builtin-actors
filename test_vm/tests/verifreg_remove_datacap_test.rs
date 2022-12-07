@@ -68,7 +68,7 @@ fn remove_datacap_simple_successful_path() {
         params: Some(serialize(&add_verified_client_params, "add verifier params").unwrap()),
         subinvocs: Some(vec![ExpectInvocation {
             to: DATACAP_TOKEN_ACTOR_ADDR,
-            method: DataCapMethod::Mint as u64,
+            method: DataCapMethod::MintExported as u64,
             params: Some(serialize(&mint_params, "mint params").unwrap()),
             subinvocs: None,
             ..Default::default()
@@ -334,7 +334,7 @@ fn expect_remove_datacap(params: &RemoveDataCapParams) -> ExpectInvocation {
         subinvocs: Some(vec![
             ExpectInvocation {
                 to: DATACAP_TOKEN_ACTOR_ADDR,
-                method: DataCapMethod::BalanceOf as u64,
+                method: DataCapMethod::BalanceExported as u64,
                 params: Some(
                     serialize(&params.verified_client_to_remove, "balance_of params").unwrap(),
                 ),
@@ -344,7 +344,7 @@ fn expect_remove_datacap(params: &RemoveDataCapParams) -> ExpectInvocation {
             },
             ExpectInvocation {
                 to: DATACAP_TOKEN_ACTOR_ADDR,
-                method: DataCapMethod::Destroy as u64,
+                method: DataCapMethod::DestroyExported as u64,
                 params: Some(
                     serialize(
                         &DestroyParams {
