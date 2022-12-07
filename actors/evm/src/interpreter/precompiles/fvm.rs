@@ -4,11 +4,12 @@ use fvm_shared::{address::Address, econ::TokenAmount, sys::SendFlags};
 use num_traits::FromPrimitive;
 
 use crate::interpreter::{
+    instructions::call::CallKind,
     precompiles::{
         parameter::{read_right_pad, Parameter},
         NativeType,
     },
-    System, U256, instructions::call::CallKind,
+    System, U256,
 };
 
 use super::{parameter::U256Reader, PrecompileContext, PrecompileError, PrecompileResult};
@@ -170,17 +171,21 @@ pub(super) fn call_actor<RT: Runtime>(
     // ----- Input Parameters -------
 
     if ctx.call_type != CallKind::DelegateCall {
-        return Err(PrecompileError::CallForbidden)
+        return Err(PrecompileError::CallForbidden);
     }
 
     let mut input_params = U256Reader::new(input);
 
     let method: u64 = input_params.next_param_padded()?;
-    
+
     let flags: u64 = input_params.next_param_padded()?;
     let flags = SendFlags::from_bits(flags).ok_or(PrecompileError::InvalidInput)?;
     if !flags.read_only() && ctx.is_readonly {
-        // TODO static violation        
+        // read only is required to be set on send
+        // REMOVEME silently override maybe?
+        return Err(PrecompileError::CallActorError(
+            crate::interpreter::StatusCode::StaticModeViolation,
+        ));
     }
 
     let codec: u64 = input_params.next_param_padded()?;
@@ -188,7 +193,6 @@ pub(super) fn call_actor<RT: Runtime>(
     if codec != fvm_ipld_encoding::DAG_CBOR {
         return Err(PrecompileError::InvalidInput);
     }
-    
 
     let address_size = input_params.next_param_padded::<u32>()? as usize;
     let send_data_size = input_params.next_param_padded::<u32>()? as usize;
@@ -196,7 +200,6 @@ pub(super) fn call_actor<RT: Runtime>(
     // ------ Begin Call -------
 
     let result = {
-
         let start = input_params.remaining_slice();
         let bytes = read_right_pad(start, send_data_size + address_size);
 

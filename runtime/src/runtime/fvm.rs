@@ -22,6 +22,7 @@ use fvm_shared::sector::{
     AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
     WindowPoStVerifyInfo,
 };
+use fvm_shared::sys::SendFlags;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
 use num_traits::FromPrimitive;
@@ -385,14 +386,14 @@ where
         handle_send_result(to, method, fvm::send::send_read_only(to, method, params, None))
     }
 
-    fn send_with_gas(
+    fn send_generalized(
         &self,
         to: &Address,
         method: MethodNum,
         params: RawBytes,
         value: TokenAmount,
         gas_limit: Option<u64>,
-        read_only: bool,
+        flags: SendFlags,
     ) -> Result<RawBytes, ActorError> {
         if self.in_transaction {
             return Err(actor_error!(assertion_failed; "send is not allowed during transaction"));
@@ -400,7 +401,7 @@ where
         handle_send_result(
             to,
             method,
-            if read_only {
+            if flags.read_only() {
                 fvm::send::send_read_only(to, method, params, gas_limit)
             } else {
                 fvm::send::send(to, method, params, value, gas_limit)

@@ -134,8 +134,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
         send_flags: SendFlags,
     ) -> Result<RawBytes, ActorError> {
         self.flush()?;
-        let result =
-            self.rt.send_generalized(to, method, params, value, gas_limit, send_flags)?;
+        let result = self.rt.send_generalized(to, method, params, value, gas_limit, send_flags)?;
         if !send_flags.read_only() {
             self.reload()?;
         }

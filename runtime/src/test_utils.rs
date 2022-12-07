@@ -741,11 +741,13 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 
     #[allow(dead_code)]
+    #[allow(clippy::too_many_arguments)]
     pub fn expect_send_generalized(
         &mut self,
         to: Address,
         method: MethodNum,
         params: RawBytes,
+        value: TokenAmount,
         send_return: RawBytes,
         exit_code: ExitCode,
         send_flags: SendFlags,
@@ -756,7 +758,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
             params,
             send_return,
             exit_code,
-            value: TokenAmount::default(),
+            value,
             send_flags,
         })
     }
