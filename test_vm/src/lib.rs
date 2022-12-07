@@ -797,8 +797,13 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         params: RawBytes,
         value: TokenAmount,
         _gas_limit: Option<u64>,
-        send_flags: SendFlags,
+        mut send_flags: SendFlags,
     ) -> Result<RawBytes, ActorError> {
+        // replicate FVM by silently propagating read only flag to subcalls
+        if self.read_only() {
+            send_flags.set(SendFlags::READ_ONLY, true)
+        }
+
         // TODO gas_limit is current ignored, what should we do about it?
         if !self.allow_side_effects {
             return Err(ActorError::unchecked(
