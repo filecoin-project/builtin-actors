@@ -105,13 +105,12 @@ impl From<PrecompileError> for StatusCode {
 #[derive(Debug, PartialEq, Eq)]
 pub struct PrecompileContext {
     pub call_type: CallKind,
-    pub is_readonly: bool,
     pub gas_limit: Option<u64>,
 }
 
 impl Default for PrecompileContext {
     fn default() -> Self {
-        Self { call_type: CallKind::Call, is_readonly: true, gas_limit: None }
+        Self { call_type: CallKind::Call, gas_limit: None }
     }
 }
 

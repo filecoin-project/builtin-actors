@@ -197,11 +197,8 @@ pub fn call_generic<RT: Runtime>(
         };
 
         if precompiles::Precompiles::<RT>::is_precompile(&dst) {
-            let context = PrecompileContext {
-                call_type: kind,
-                is_readonly: system.readonly,
-                gas_limit: effective_gas_limit(system, gas),
-            };
+            let context =
+                PrecompileContext { call_type: kind, gas_limit: effective_gas_limit(system, gas) };
 
             match precompiles::Precompiles::call_precompile(system, dst, input_data, context)
                 .map_err(StatusCode::from)
@@ -261,7 +258,7 @@ pub fn call_generic<RT: Runtime>(
                             SendFlags::default()
                         };
                         system.send_generalized(
-                            &dst_addr, method, params, value, gas_limit, read_only,
+                            &dst_addr, method, params, value, gas_limit, send_flags,
                         )
                     }
                 }
@@ -278,11 +275,7 @@ pub fn call_generic<RT: Runtime>(
                             RawBytes::serialize(&params)?,
                             TokenAmount::from(&value),
                             effective_gas_limit(system, gas),
-                            if system.readonly {
-                                SendFlags::READ_ONLY
-                            } else {
-                                SendFlags::default()
-                            },
+                            SendFlags::default(),
                         )
                     }
                     // If we're calling an account or a non-existent actor, return nothing because

@@ -456,7 +456,7 @@ impl<'bs> VM<'bs> {
             policy: &Policy::default(),
             subinvocations: RefCell::new(vec![]),
             actor_exit: RefCell::new(None),
-            flags: SendFlags::default(),
+            read_only: false,
         };
         let res = new_ctx.invoke_actor();
 
@@ -592,7 +592,7 @@ pub struct InvocationCtx<'invocation, 'bs> {
     msg: InternalMessage,
     allow_side_effects: bool,
     caller_validated: bool,
-    flags: SendFlags,
+    read_only: bool,
     policy: &'invocation Policy,
     subinvocations: RefCell<Vec<InvocationTrace>>,
     actor_exit: RefCell<Option<ActorExit>>,
@@ -631,7 +631,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         };
 
         // But only if we're not in read-only mode.
-        if self.flags.read_only() {
+        if self.read_only() {
             return Err(ActorError::unchecked(
                 ExitCode::USR_READ_ONLY,
                 format!("cannot create actor {target} in read-only mode"),
@@ -662,7 +662,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 policy: self.policy,
                 subinvocations: RefCell::new(vec![]),
                 actor_exit: RefCell::new(None),
-                flags: SendFlags::default(),
+                read_only: false,
             };
             if is_account {
                 new_ctx.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id, Some(*target)).unwrap();
@@ -736,7 +736,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                     "insufficient balance to transfer".to_string(),
                 ));
             }
-            if self.flags.read_only() {
+            if self.read_only() {
                 return Err(ActorError::unchecked(
                     ExitCode::USR_READ_ONLY,
                     "cannot transfer value in read-only mode".to_string(),
@@ -822,7 +822,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             policy: self.policy,
             subinvocations: RefCell::new(vec![]),
             actor_exit: RefCell::new(None),
-            flags: send_flags,
+            read_only: send_flags.read_only(),
         };
         let res = new_ctx.invoke_actor();
         let invoc = new_ctx.gather_trace(res.clone());
@@ -868,7 +868,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
             }
         };
 
-        if self.flags.read_only() {
+        if self.read_only() {
             return Err(ActorError::unchecked(
                 ExitCode::USR_READ_ONLY,
                 "cannot send value in read-only mode".into(),
@@ -1019,7 +1019,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         params: RawBytes,
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError> {
-        self.send_inner(to, method, params, value, None, self.flags)
+        self.send_inner(to, method, params, value, None, SendFlags::default())
     }
 
     fn send_read_only(
@@ -1090,7 +1090,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
                 ExitCode::SYS_ASSERTION_FAILED,
                 "actor does not exist".to_string(),
             )),
-            Some(mut act) if !self.flags.read_only() => {
+            Some(mut act) if !self.read_only() => {
                 act.head = *root;
                 self.v.set_actor(self.to(), act);
                 Ok(())
@@ -1115,7 +1115,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         let mut act = self.v.get_actor(self.to()).unwrap();
         act.head = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
 
-        if self.flags.read_only() {
+        if self.read_only {
             return Err(ActorError::unchecked(
                 ExitCode::USR_READ_ONLY,
                 "actor is read-only".to_string(),
@@ -1184,7 +1184,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
     }
 
     fn read_only(&self) -> bool {
-        self.flags.read_only()
+        self.read_only
     }
 }
 

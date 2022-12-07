@@ -182,13 +182,6 @@ pub(super) fn call_actor<RT: Runtime>(
 
     let flags: u64 = input_params.next_param_padded()?;
     let flags = SendFlags::from_bits(flags).ok_or(PrecompileError::InvalidInput)?;
-    if !flags.read_only() && ctx.is_readonly {
-        // read only is required to be set on send
-        // REMOVEME silently override maybe?
-        return Err(PrecompileError::CallActorError(
-            crate::interpreter::StatusCode::StaticModeViolation,
-        ));
-    }
 
     let codec: u64 = input_params.next_param_padded()?;
     // TODO only CBOR for now
