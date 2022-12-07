@@ -272,7 +272,7 @@ fn test_call_convert_to_send2() {
     let contract = call_proxy_transfer_contract();
 
     // construct the proxy
-    let mut rt = util::construct_and_verify(contract.clone());
+    let mut rt = util::construct_and_verify(contract);
 
     // create a mock actor and proxy a call through the proxy
     let target_id = 0x100;
@@ -313,7 +313,7 @@ fn test_call_convert_to_send3() {
     let contract = call_proxy_gas2300_contract();
 
     // construct the proxy
-    let mut rt = util::construct_and_verify(contract.clone());
+    let mut rt = util::construct_and_verify(contract);
 
     // create a mock actor and proxy a call through the proxy
     let target_id = 0x100;
