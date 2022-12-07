@@ -255,7 +255,7 @@ pub fn call_generic<RT: Runtime>(
                         let params = RawBytes::serialize(BytesSer(input_data))?;
                         let value = TokenAmount::from(&value);
                         let gas_limit = effective_gas_limit(system, gas);
-                        let read_only = if kind == CallKind::StaticCall {
+                        let send_flags = if kind == CallKind::StaticCall {
                             SendFlags::READ_ONLY
                         } else {
                             SendFlags::default()
