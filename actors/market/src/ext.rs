@@ -80,7 +80,7 @@ pub mod verifreg {
 }
 
 pub mod datacap {
-    pub const TRANSFER_FROM_METHOD: u64 = 15;
+    pub const TRANSFER_FROM_METHOD: u64 = frc42_dispatch::method_hash!("TransferFrom");
 }
 
 pub mod reward {

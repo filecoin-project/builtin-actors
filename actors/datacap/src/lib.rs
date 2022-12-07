@@ -51,27 +51,29 @@ lazy_static! {
 #[repr(u64)]
 pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
-    // Non-standard.
-    Mint = 2,
-    Destroy = 3,
-    // Static method numbers for token standard methods, for private use.
-    Name = 10,
-    Symbol = 11,
-    TotalSupply = 12,
-    BalanceOf = 13,
-    Transfer = 14,
-    TransferFrom = 15,
-    IncreaseAllowance = 16,
-    DecreaseAllowance = 17,
-    RevokeAllowance = 18,
-    Burn = 19,
-    BurnFrom = 20,
-    Allowance = 21,
+    // Deprecated in v10
+    // Mint = 2,
+    // Destroy = 3,
+    // Name = 10,
+    // Symbol = 11,
+    // TotalSupply = 12,
+    // BalanceOf = 13,
+    // Transfer = 14,
+    // TransferFrom = 15,
+    // IncreaseAllowance = 16,
+    // DecreaseAllowance = 17,
+    // RevokeAllowance = 18,
+    // Burn = 19,
+    // BurnFrom = 20,
+    // Allowance = 21,
     // Method numbers derived from FRC-0042 standards
+    MintExported = frc42_dispatch::method_hash!("Mint"),
+    DestroyExported = frc42_dispatch::method_hash!("Destroy"),
     NameExported = frc42_dispatch::method_hash!("Name"),
     SymbolExported = frc42_dispatch::method_hash!("Symbol"),
+    GranularityExported = frc42_dispatch::method_hash!("GranularityExported"),
     TotalSupplyExported = frc42_dispatch::method_hash!("TotalSupply"),
-    BalanceOfExported = frc42_dispatch::method_hash!("BalanceOf"),
+    BalanceExported = frc42_dispatch::method_hash!("Balance"),
     TransferExported = frc42_dispatch::method_hash!("Transfer"),
     TransferFromExported = frc42_dispatch::method_hash!("TransferFrom"),
     IncreaseAllowanceExported = frc42_dispatch::method_hash!("IncreaseAllowance"),
@@ -108,6 +110,11 @@ impl Actor {
         Ok("DCAP".to_string())
     }
 
+    pub fn granularity(rt: &mut impl Runtime) -> Result<GranularityReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        Ok(GranularityReturn { granularity: DATACAP_GRANULARITY })
+    }
+
     pub fn total_supply(rt: &mut impl Runtime, _: ()) -> Result<TokenAmount, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let mut st: State = rt.state()?;
@@ -116,7 +123,7 @@ impl Actor {
         Ok(token.total_supply())
     }
 
-    pub fn balance_of(rt: &mut impl Runtime, address: Address) -> Result<TokenAmount, ActorError> {
+    pub fn balance(rt: &mut impl Runtime, address: Address) -> Result<TokenAmount, ActorError> {
         // NOTE: mutability and method caller here are awkward for a read-only call
         rt.validate_immediate_caller_accept_any()?;
         let mut st: State = rt.state()?;
@@ -477,59 +484,63 @@ impl ActorCode for Actor {
                 Self::constructor(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::Mint) => {
+            Some(Method::MintExported) => {
                 let ret = Self::mint(rt, cbor::deserialize_params(params)?)?;
                 serialize(&ret, "mint result")
             }
-            Some(Method::Destroy) => {
+            Some(Method::DestroyExported) => {
                 let ret = Self::destroy(rt, cbor::deserialize_params(params)?)?;
                 serialize(&ret, "destroy result")
             }
-            Some(Method::Name) | Some(Method::NameExported) => {
+            Some(Method::NameExported) => {
                 let ret = Self::name(rt)?;
                 serialize(&ret, "name result")
             }
-            Some(Method::Symbol) | Some(Method::SymbolExported) => {
+            Some(Method::SymbolExported) => {
                 let ret = Self::symbol(rt)?;
                 serialize(&ret, "symbol result")
             }
-            Some(Method::TotalSupply) | Some(Method::TotalSupplyExported) => {
+            Some(Method::GranularityExported) => {
+                let ret = Self::granularity(rt)?;
+                serialize(&ret, "granularity result")
+            }
+            Some(Method::TotalSupplyExported) => {
                 let ret = Self::total_supply(rt, cbor::deserialize_params(params)?)?;
                 serialize(&ret, "total_supply result")
             }
-            Some(Method::BalanceOf) | Some(Method::BalanceOfExported) => {
-                let ret = Self::balance_of(rt, cbor::deserialize_params(params)?)?;
+            Some(Method::BalanceExported) => {
+                let ret = Self::balance(rt, cbor::deserialize_params(params)?)?;
                 serialize(&ret, "balance_of result")
             }
-            Some(Method::Transfer) | Some(Method::TransferExported) => {
+            Some(Method::TransferExported) => {
                 let ret = Self::transfer(rt, cbor::deserialize_params(params)?)?;
                 serialize(&ret, "transfer result")
             }
-            Some(Method::TransferFrom) | Some(Method::TransferFromExported) => {
+            Some(Method::TransferFromExported) => {
                 let ret = Self::transfer_from(rt, cbor::deserialize_params(params)?)?;
                 serialize(&ret, "transfer_from result")
             }
-            Some(Method::IncreaseAllowance) | Some(Method::IncreaseAllowanceExported) => {
+            Some(Method::IncreaseAllowanceExported) => {
                 let ret = Self::increase_allowance(rt, cbor::deserialize_params(params)?)?;
                 serialize(&ret, "increase_allowance result")
             }
-            Some(Method::DecreaseAllowance) | Some(Method::DecreaseAllowanceExported) => {
+            Some(Method::DecreaseAllowanceExported) => {
                 let ret = Self::decrease_allowance(rt, cbor::deserialize_params(params)?)?;
                 serialize(&ret, "decrease_allowance result")
             }
-            Some(Method::RevokeAllowance) | Some(Method::RevokeAllowanceExported) => {
+            Some(Method::RevokeAllowanceExported) => {
                 Self::revoke_allowance(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            Some(Method::Burn) | Some(Method::BurnExported) => {
+            Some(Method::BurnExported) => {
                 let ret = Self::burn(rt, cbor::deserialize_params(params)?)?;
                 serialize(&ret, "burn result")
             }
-            Some(Method::BurnFrom) | Some(Method::BurnFromExported) => {
+            Some(Method::BurnFromExported) => {
                 let ret = Self::burn_from(rt, cbor::deserialize_params(params)?)?;
                 serialize(&ret, "burn_from result")
             }
-            Some(Method::Allowance) | Some(Method::AllowanceExported) => {
+            Some(Method::AllowanceExported) => {
                 let ret = Self::allowance(rt, cbor::deserialize_params(params)?)?;
                 serialize(&ret, "allowance result")
             }

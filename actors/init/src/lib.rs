@@ -36,6 +36,7 @@ pub enum Method {
     InstallCode = 4,
     // Method numbers derived from FRC-0042 standards
     ExecExported = frc42_dispatch::method_hash!("Exec"),
+    // TODO: Export new methods if appropriate
 }
 
 /// Init actor
