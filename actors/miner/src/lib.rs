@@ -257,12 +257,12 @@ impl Actor {
         })
     }
 
-    /// Returns the owner address.
+    /// Returns the owner address, as well as the proposed new owner (if any).
     fn get_owner(rt: &mut impl Runtime) -> Result<GetOwnerReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let state: State = rt.state()?;
-        let owner = get_miner_info(rt.store(), &state)?.owner;
-        Ok(GetOwnerReturn { owner })
+        let info = get_miner_info(rt.store(), &state)?;
+        Ok(GetOwnerReturn { owner: info.owner, proposed: info.pending_owner_address })
     }
 
     /// Returns whether the provided address is "controlling".
