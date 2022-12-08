@@ -31,19 +31,27 @@ lazy_static::lazy_static! {
     // The Solidity compiler creates contiguous array item keys.
     // To prevent the tree from going very deep we use extensions,
     // which the Kamt supports and does in all cases.
+    //
     // There are maximum 32 levels in the tree with the default bit width of 8.
     // The top few levels will have a higher level of overlap in their hashes.
     // Intuitively these levels should be used for routing, not storing data.
+    //
     // The only exception to this is the top level variables in the contract
     // which solidity puts in the first few slots. There having to do extra
     // lookups is burdensome, and they will always be accessed even for arrays
     // because that's where the array length is stored.
+    //
+    // However, for Solidity, the size of the KV pairs is 2x256, which is
+    // comparable to a size of a CID pointer plus extension metadata.
+    // We can keep the root small either by force-pushing data down,
+    // or by not allowing many KV pairs in a slot.
+    //
     // The following values have been set by looking at how the charts evolved
     // with the test contract. They might not be the best for other contracts.
     static ref KAMT_CONFIG: KamtConfig = KamtConfig {
-        min_data_depth: 2,
+        min_data_depth: 0,
         bit_width: 5,
-        max_array_width: 3
+        max_array_width: 1
     };
 }
 
