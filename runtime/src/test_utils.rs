@@ -160,95 +160,97 @@ pub struct Expectations {
 
 impl Expectations {
     fn reset(&mut self) {
+        self.skip_verification_on_drop = true;
         *self = Default::default();
     }
 
     fn verify(&mut self) {
-        assert!(!self.expect_validate_caller_any, "expected ValidateCallerAny, not received");
-        assert!(
-            self.expect_validate_caller_addr.is_none(),
-            "expected ValidateCallerAddr {:?}, not received",
-            self.expect_validate_caller_addr
-        );
-        assert!(
-            self.expect_validate_caller_type.is_none(),
-            "expected ValidateCallerType {:?}, not received",
-            self.expect_validate_caller_type
-        );
-        assert!(
-            self.expect_sends.is_empty(),
-            "expected all message to be send, unsent messages {:?}",
-            self.expect_sends
-        );
-        assert!(
-            self.expect_create_actor.is_none(),
-            "expected actor to be created, uncreated actor: {:?}",
-            self.expect_create_actor
-        );
-        assert!(
-            self.expect_delete_actor.is_none(),
-            "expected actor to be deleted: {:?}",
-            self.expect_delete_actor
-        );
-        assert!(
-            self.expect_verify_sigs.is_empty(),
-            "expect_verify_sigs: {:?}, not received",
-            self.expect_verify_sigs
-        );
-        assert!(
-            self.expect_verify_seal.is_none(),
-            "expect_verify_seal {:?}, not received",
-            self.expect_verify_seal
-        );
-        assert!(
-            self.expect_verify_post.is_none(),
-            "expect_verify_post {:?}, not received",
-            self.expect_verify_post
-        );
-        assert!(
-            self.expect_compute_unsealed_sector_cid.is_empty(),
-            "expect_compute_unsealed_sector_cid: {:?}, not received",
-            self.expect_compute_unsealed_sector_cid
-        );
-        assert!(
-            self.expect_verify_consensus_fault.is_none(),
-            "expect_verify_consensus_fault {:?}, not received",
-            self.expect_verify_consensus_fault
-        );
-        assert!(
-            self.expect_get_randomness_tickets.is_empty(),
-            "expect_get_randomness_tickets {:?}, not received",
-            self.expect_get_randomness_tickets
-        );
-        assert!(
-            self.expect_get_randomness_beacon.is_empty(),
-            "expect_get_randomness_beacon {:?}, not received",
-            self.expect_get_randomness_beacon
-        );
-        assert!(
-            self.expect_batch_verify_seals.is_none(),
-            "expect_batch_verify_seals {:?}, not received",
-            self.expect_batch_verify_seals
-        );
-        assert!(
-            self.expect_aggregate_verify_seals.is_none(),
-            "expect_aggregate_verify_seals {:?}, not received",
-            self.expect_aggregate_verify_seals
-        );
-        assert!(
-            self.expect_replica_verify.is_none(),
-            "expect_replica_verify {:?}, not received",
-            self.expect_replica_verify
-        );
-        assert!(
-            self.expect_gas_charge.is_empty(),
-            "expect_gas_charge {:?}, not received",
-            self.expect_gas_charge
-        );
-    }
-
-    fn skip_verification_on_drop(&mut self) {
+        // If we don't reset them, we'll try to re-verify on drop. If something fails, we'll panic
+        // twice and abort making the tests difficult to debug.
         self.skip_verification_on_drop = true;
+        let this = std::mem::take(self);
+
+        assert!(!this.expect_validate_caller_any, "expected ValidateCallerAny, not received");
+        assert!(
+            this.expect_validate_caller_addr.is_none(),
+            "expected ValidateCallerAddr {:?}, not received",
+            this.expect_validate_caller_addr
+        );
+        assert!(
+            this.expect_validate_caller_type.is_none(),
+            "expected ValidateCallerType {:?}, not received",
+            this.expect_validate_caller_type
+        );
+        assert!(
+            this.expect_sends.is_empty(),
+            "expected all message to be send, unsent messages {:?}",
+            this.expect_sends
+        );
+        assert!(
+            this.expect_create_actor.is_none(),
+            "expected actor to be created, uncreated actor: {:?}",
+            this.expect_create_actor
+        );
+        assert!(
+            this.expect_delete_actor.is_none(),
+            "expected actor to be deleted: {:?}",
+            this.expect_delete_actor
+        );
+        assert!(
+            this.expect_verify_sigs.is_empty(),
+            "expect_verify_sigs: {:?}, not received",
+            this.expect_verify_sigs
+        );
+        assert!(
+            this.expect_verify_seal.is_none(),
+            "expect_verify_seal {:?}, not received",
+            this.expect_verify_seal
+        );
+        assert!(
+            this.expect_verify_post.is_none(),
+            "expect_verify_post {:?}, not received",
+            this.expect_verify_post
+        );
+        assert!(
+            this.expect_compute_unsealed_sector_cid.is_empty(),
+            "expect_compute_unsealed_sector_cid: {:?}, not received",
+            this.expect_compute_unsealed_sector_cid
+        );
+        assert!(
+            this.expect_verify_consensus_fault.is_none(),
+            "expect_verify_consensus_fault {:?}, not received",
+            this.expect_verify_consensus_fault
+        );
+        assert!(
+            this.expect_get_randomness_tickets.is_empty(),
+            "expect_get_randomness_tickets {:?}, not received",
+            this.expect_get_randomness_tickets
+        );
+        assert!(
+            this.expect_get_randomness_beacon.is_empty(),
+            "expect_get_randomness_beacon {:?}, not received",
+            this.expect_get_randomness_beacon
+        );
+        assert!(
+            this.expect_batch_verify_seals.is_none(),
+            "expect_batch_verify_seals {:?}, not received",
+            this.expect_batch_verify_seals
+        );
+        assert!(
+            this.expect_aggregate_verify_seals.is_none(),
+            "expect_aggregate_verify_seals {:?}, not received",
+            this.expect_aggregate_verify_seals
+        );
+        assert!(
+            this.expect_replica_verify.is_none(),
+            "expect_replica_verify {:?}, not received",
+            this.expect_replica_verify
+        );
+        assert!(
+            this.expect_gas_charge.is_empty(),
+            "expect_gas_charge {:?}, not received",
+            this.expect_gas_charge
+        );
     }
 }
 
@@ -467,14 +469,13 @@ impl<BS: Blockstore> MockRuntime<BS> {
         res
     }
 
-    /// Verifies that all mock expectations have been met.
+    /// Verifies that all mock expectations have been met (and resets the expectations).
     pub fn verify(&mut self) {
         self.expectations.borrow_mut().verify()
     }
 
     /// Clears all mock expectations.
     pub fn reset(&mut self) {
-        self.expectations.borrow_mut().skip_verification_on_drop();
         self.expectations.borrow_mut().reset();
     }
 
