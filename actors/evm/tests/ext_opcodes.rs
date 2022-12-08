@@ -190,13 +190,11 @@ native_actor:
     assert_eq!(U256::from_big_endian(&result), U256::from(&bytecode_cid.hash().digest()[..32]));
     rt.reset();
 
-    util::invoke_contract_expect_abort(
-        &mut rt,
-        &util::dispatch_num_word(1),
-        evm::interpreter::StatusCode::InvalidArgument(
-            "Cannot invoke EXTCODEHASH for non-EVM actor.".to_string(),
-        ),
-    );
+    // invalid flattened to 0
+    let result = util::invoke_contract(&mut rt, &util::dispatch_num_word(1));
+    rt.verify();
+    assert_eq!(U256::from_big_endian(&result), U256::from(0));
+    rt.reset();
 }
 
 #[test]

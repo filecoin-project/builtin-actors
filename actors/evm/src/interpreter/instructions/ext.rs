@@ -38,11 +38,10 @@ pub fn extcodehash(
     addr: U256,
 ) -> Result<U256, StatusCode> {
     let addr = match get_cid_type(system.rt, addr) {
-        ContractType::EVM(a) => Ok(a),
-        _ => Err(StatusCode::InvalidArgument(
-            "Cannot invoke EXTCODEHASH for non-EVM actor.".to_string(),
-        )),
-    }?;
+        ContractType::EVM(a) => a,
+        // anything other than an EVM contract is invalid and flattened to 0
+        _ => return Ok(U256::zero()),
+    };
     let bytecode_cid = get_evm_bytecode_cid(system.rt, &addr)?;
 
     let digest = bytecode_cid.hash().digest();
