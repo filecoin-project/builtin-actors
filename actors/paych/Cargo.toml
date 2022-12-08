@@ -15,7 +15,7 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 fil_actors_runtime = { version = "10.0.0-alpha.1", path = "../../runtime" }
-fvm_shared = { version = "3.0.0-alpha.13", default-features = false }
+fvm_shared = { version = "3.0.0-alpha.14", default-features = false }
 frc42_dispatch = "1.0.0"
 num-traits = "0.2.14"
 num-derive = "0.3.3"
