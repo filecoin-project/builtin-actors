@@ -44,7 +44,7 @@ push1 0x00
 push1 0x00
 calldataload
 # gas
-push1 0x00
+push4 0xffffffff
 # do the call
 call
 
@@ -183,11 +183,13 @@ fn test_call() {
     return_data[31] = 0x42;
 
     rt.expect_gas_available(10_000_000_000u64);
-    rt.expect_send(
+    rt.expect_send_generalized(
         f4_target,
         evm::Method::InvokeContract as u64,
         proxy_call_input_data,
         TokenAmount::zero(),
+        Some(0xffffffff),
+        SendFlags::empty(),
         RawBytes::serialize(BytesSer(&return_data)).expect("failed to serialize return data"),
         ExitCode::OK,
     );
@@ -251,11 +253,13 @@ fn test_call_convert_to_send() {
         let mut return_data = vec![0u8; 32];
         return_data[31] = 0x42;
 
-        rt.expect_send(
+        rt.expect_send_generalized(
             target,
             METHOD_SEND,
             proxy_call_input_data,
             TokenAmount::zero(),
+            None,
+            SendFlags::empty(),
             RawBytes::serialize(BytesSer(&return_data)).expect("failed to serialize return data"),
             ExitCode::OK,
         );
@@ -400,7 +404,7 @@ push1 0x00
 push1 0x0e
 
 # gas
-push1 0x00
+push4 0xffffffff
 
 # call_actor must be from delegatecall
 delegatecall
@@ -483,9 +487,10 @@ fn test_callactor_inner(exit_code: ExitCode) {
         0x42,
         proxy_call_input_data,
         TokenAmount::zero(),
+        Some(0xffffffff),
+        send_flags,
         RawBytes::from(return_data),
         exit_code,
-        send_flags,
     );
 
     // invoke

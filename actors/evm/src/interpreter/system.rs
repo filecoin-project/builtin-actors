@@ -146,33 +146,8 @@ impl<'r, RT: Runtime> System<'r, RT> {
         nonce
     }
 
-    /// Send a message, saving and reloading state as necessary.
-    pub fn send(
-        &mut self,
-        to: &Address,
-        method: MethodNum,
-        params: RawBytes,
-        value: TokenAmount,
-    ) -> Result<RawBytes, ActorError> {
-        self.flush()?;
-        let result = self.rt.send(to, method, params, value)?;
-        self.reload()?;
-        Ok(result)
-    }
-
-    /// Send a message in "read-only" mode (for staticcall).
-    pub fn send_read_only(
-        &mut self,
-        to: &Address,
-        method: MethodNum,
-        params: RawBytes,
-    ) -> Result<RawBytes, ActorError> {
-        self.flush()?;
-        self.rt.send_read_only(to, method, params)
-    }
-
     /// Generalized send
-    pub fn send_generalized(
+    pub fn send(
         &mut self,
         to: &Address,
         method: MethodNum,

@@ -265,9 +265,7 @@ pub fn call_generic<RT: Runtime>(
                         } else {
                             SendFlags::default()
                         };
-                        system.send_generalized(
-                            &dst_addr, method, params, value, gas_limit, send_flags,
-                        )
+                        system.send(&dst_addr, method, params, value, gas_limit, send_flags)
                     }
                 }
                 CallKind::DelegateCall => match get_cid_type(system.rt, dst) {
@@ -277,7 +275,7 @@ pub fn call_generic<RT: Runtime>(
 
                         // and then invoke self with delegate; readonly context is sticky
                         let params = DelegateCallParams { code, input: input_data.into() };
-                        system.send_generalized(
+                        system.send(
                             &system.rt.message().receiver(),
                             Method::InvokeContractDelegate as u64,
                             RawBytes::serialize(&params)?,
