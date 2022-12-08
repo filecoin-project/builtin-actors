@@ -234,24 +234,32 @@ pub fn call_generic<RT: Runtime>(
                         // send value in read-only mode anyways.
                         Ok(RawBytes::default())
                     } else {
-                        let method = if !actor_exists
+                        let (method, gas_limit) = if !actor_exists
                             || matches!(target_actor_type, Some(Type::Embryo | Type::Account))
                         // See https://github.com/filecoin-project/ref-fvm/issues/980 for this
                         // hocus pocus
                             || (input_data.is_empty() && ((gas == 0 && value > 0) || (gas == 2300 && value == 0)))
                         {
-                            // If the target actor doesn't exist or is an account or an embryo,
-                            // switch to a basic "send" so the call will still work even if the
-                            // target actor would reject a normal ethereum call.
-                            METHOD_SEND
+                            // We switch to a bare send when:
+                            //
+                            // 1. The target is an embryo/account or doesn't exist. Otherwise,
+                            // sendign funds to an account/embryo would fail when we try to call
+                            // InvokeContract.
+                            // 2. The gas wouldn't let code execute anyways. This lets us support
+                            // solidity's "transfer" method.
+                            //
+                            // At the same time, we ignore the supplied gas value and set it to
+                            // infinity as user code won't execute anyways. The only code that might
+                            // run is related to account creation, which doesn't count against this
+                            // gas limit in the EVM anyways.
+                            (METHOD_SEND, None)
                         } else {
                             // Otherwise, invoke normally.
-                            Method::InvokeContract as u64
+                            (Method::InvokeContract as u64, Some(effective_gas_limit(system, gas)))
                         };
                         // TODO: support IPLD codecs #758
                         let params = RawBytes::serialize(BytesSer(input_data))?;
                         let value = TokenAmount::from(&value);
-                        let gas_limit = effective_gas_limit(system, gas);
                         let send_flags = if kind == CallKind::StaticCall {
                             SendFlags::READ_ONLY
                         } else {
@@ -274,7 +282,7 @@ pub fn call_generic<RT: Runtime>(
                             Method::InvokeContractDelegate as u64,
                             RawBytes::serialize(&params)?,
                             TokenAmount::from(&value),
-                            effective_gas_limit(system, gas),
+                            Some(effective_gas_limit(system, gas)),
                             SendFlags::default(),
                         )
                     }
@@ -316,12 +324,8 @@ pub fn call_generic<RT: Runtime>(
     Ok(U256::from(call_result))
 }
 
-fn effective_gas_limit<RT: Runtime>(system: &System<RT>, gas: U256) -> Option<u64> {
+fn effective_gas_limit<RT: Runtime>(system: &System<RT>, gas: U256) -> u64 {
     let gas_rsvp = (63 * system.rt.gas_available()) / 64;
-    Some(if gas.is_zero() {
-        gas_rsvp
-    } else {
-        let gas = gas.to_u64_saturating();
-        std::cmp::min(gas, gas_rsvp)
-    })
+    let gas = gas.to_u64_saturating();
+    std::cmp::min(gas, gas_rsvp)
 }
