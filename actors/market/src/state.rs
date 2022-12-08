@@ -221,6 +221,7 @@ impl State {
             .with_context_code(ExitCode::USR_NOT_FOUND, || format!("no such deal {}", id))?;
         Ok(found)
     }
+
     pub fn find_proposal<BS>(
         &self,
         store: &BS,
