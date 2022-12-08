@@ -10,6 +10,7 @@ use fvm_shared::address::Address as FILAddress;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::sys::SendFlags;
 use fvm_shared::METHOD_SEND;
 
 mod util;
@@ -398,16 +399,14 @@ push1 0xa0
 calldatasize
 push1 0x00
 
-# value
-push1 0x00
-
 # dst (callactor precompile)
 push1 0x0e
 
 # gas
 push1 0x00
 
-call
+# call_actor must be from delegatecall
+delegatecall
 
 # copy result to mem 0x00 (overwrites input data)
 returndatasize
@@ -439,6 +438,8 @@ fn test_callactor_revert() {
 fn test_callactor_inner(exit_code: ExitCode) {
     let contract = callactor_proxy_contract();
 
+    const CALLACTOR_NUM_PARAMS: usize = 6;
+
     // construct the proxy
     let mut rt = util::construct_and_verify(contract);
     // create a mock target and proxy a call through the proxy
@@ -450,6 +451,8 @@ fn test_callactor_inner(exit_code: ExitCode) {
     let mut contract_params = Vec::new();
 
     let method = U256::from(0x42);
+    let value = U256::from(0);
+    let send_flags = SendFlags::default();
     let codec = U256::from(DAG_CBOR);
 
     let target_bytes = target.to_bytes();
@@ -459,26 +462,33 @@ fn test_callactor_inner(exit_code: ExitCode) {
     let data_size = U256::from(proxy_call_input_data.len());
 
     contract_params.extend_from_slice(&method.to_bytes());
+    contract_params.extend_from_slice(&value.to_bytes());
+    contract_params.extend_from_slice(&U256::from(send_flags.bits()).to_bytes());
     contract_params.extend_from_slice(&codec.to_bytes());
     contract_params.extend_from_slice(&target_size.to_bytes());
     contract_params.extend_from_slice(&data_size.to_bytes());
     contract_params.extend_from_slice(&target_bytes);
     contract_params.extend_from_slice(&proxy_call_input_data);
 
-    assert_eq!(32 * 4 + target_bytes.len() + proxy_call_input_data.len(), contract_params.len());
+    assert_eq!(
+        32 * CALLACTOR_NUM_PARAMS + target_bytes.len() + proxy_call_input_data.len(),
+        contract_params.len(),
+        "unexpected input length"
+    );
 
     // expected return data
     let mut return_data = vec![0u8; 32];
     return_data[31] = 0x42;
 
     rt.expect_gas_available(10_000_000_000u64);
-    rt.expect_send(
+    rt.expect_send_generalized(
         target,
         0x42,
         proxy_call_input_data,
         TokenAmount::zero(),
         RawBytes::from(return_data),
         exit_code,
+        send_flags,
     );
 
     // invoke
@@ -538,6 +548,7 @@ fn test_callactor_inner(exit_code: ExitCode) {
         data_size: 32,
         data: U256::from(0x42).to_bytes().to_vec(),
     };
-
+    rt.verify();
     assert_eq!(result, expected);
+    rt.reset();
 }

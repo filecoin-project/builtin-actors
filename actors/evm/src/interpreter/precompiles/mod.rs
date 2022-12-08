@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use fil_actors_runtime::runtime::Runtime;
 use substrate_bn::{CurveError, GroupError};
 
-use super::{StatusCode, System, U256};
+use super::{instructions::call::CallKind, StatusCode, System, U256};
 
 mod evm;
 mod fvm;
@@ -87,6 +87,7 @@ pub enum PrecompileError {
     EcErr(CurveError),
     EcGroupErr(GroupError),
     InvalidInput, // TODO merge with below?
+    CallForbidden,
     IncorrectInputSize,
     OutOfGas,
     CallActorError(StatusCode),
@@ -101,11 +102,10 @@ impl From<PrecompileError> for StatusCode {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Default)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct PrecompileContext {
-    pub is_static: bool,
+    pub call_type: CallKind,
     pub gas_limit: Option<u64>,
-    pub value: U256,
 }
 
 /// Native Type of a given contract

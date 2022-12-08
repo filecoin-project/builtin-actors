@@ -56,6 +56,7 @@ use fvm_shared::sector::{
     StoragePower, WindowPoStVerifyInfo,
 };
 use fvm_shared::smooth::FilterEstimate;
+use fvm_shared::sys::SendFlags;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum, IPLD_RAW, METHOD_CONSTRUCTOR, METHOD_SEND};
 use regex::Regex;
@@ -630,7 +631,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         };
 
         // But only if we're not in read-only mode.
-        if self.read_only {
+        if self.read_only() {
             return Err(ActorError::unchecked(
                 ExitCode::USR_READ_ONLY,
                 format!("cannot create actor {target} in read-only mode"),
@@ -735,7 +736,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                     "insufficient balance to transfer".to_string(),
                 ));
             }
-            if self.read_only {
+            if self.read_only() {
                 return Err(ActorError::unchecked(
                     ExitCode::USR_READ_ONLY,
                     "cannot transfer value in read-only mode".to_string(),
@@ -796,8 +797,13 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         params: RawBytes,
         value: TokenAmount,
         _gas_limit: Option<u64>,
-        read_only: bool,
+        mut send_flags: SendFlags,
     ) -> Result<RawBytes, ActorError> {
+        // replicate FVM by silently propagating read only flag to subcalls
+        if self.read_only() {
+            send_flags.set(SendFlags::READ_ONLY, true)
+        }
+
         // TODO gas_limit is current ignored, what should we do about it?
         if !self.allow_side_effects {
             return Err(ActorError::unchecked(
@@ -816,7 +822,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             policy: self.policy,
             subinvocations: RefCell::new(vec![]),
             actor_exit: RefCell::new(None),
-            read_only,
+            read_only: send_flags.read_only(),
         };
         let res = new_ctx.invoke_actor();
         let invoc = new_ctx.gather_trace(res.clone());
@@ -862,7 +868,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
             }
         };
 
-        if self.read_only {
+        if self.read_only() {
             return Err(ActorError::unchecked(
                 ExitCode::USR_READ_ONLY,
                 "cannot send value in read-only mode".into(),
@@ -1013,7 +1019,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         params: RawBytes,
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError> {
-        self.send_inner(to, method, params, value, None, self.read_only)
+        self.send_inner(to, method, params, value, None, SendFlags::default())
     }
 
     fn send_read_only(
@@ -1022,19 +1028,19 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         method: MethodNum,
         params: RawBytes,
     ) -> Result<RawBytes, ActorError> {
-        self.send_inner(to, method, params, TokenAmount::zero(), None, true)
+        self.send_inner(to, method, params, TokenAmount::zero(), None, SendFlags::READ_ONLY)
     }
 
-    fn send_with_gas(
+    fn send_generalized(
         &self,
         to: &Address,
         method: MethodNum,
         params: RawBytes,
         value: TokenAmount,
         gas_limit: Option<u64>,
-        read_only: bool,
+        flags: SendFlags,
     ) -> Result<RawBytes, ActorError> {
-        self.send_inner(to, method, params, value, gas_limit, read_only || self.read_only)
+        self.send_inner(to, method, params, value, gas_limit, flags)
     }
 
     fn get_randomness_from_tickets(
@@ -1084,7 +1090,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
                 ExitCode::SYS_ASSERTION_FAILED,
                 "actor does not exist".to_string(),
             )),
-            Some(mut act) if !self.read_only => {
+            Some(mut act) if !self.read_only() => {
                 act.head = *root;
                 self.v.set_actor(self.to(), act);
                 Ok(())
