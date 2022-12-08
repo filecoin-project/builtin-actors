@@ -1102,7 +1102,7 @@ impl State {
         power_delta -= &expired.active_power;
 
         let no_early_terminations =
-            expired.faulty_sectors.is_empty() && expired.early_sectors.is_empty();
+            expired.faulty_sectors.is_empty() && expired.proof_expiring_sectors.is_empty();
         if !no_early_terminations {
             self.early_terminations.set(dl_info.index);
         }

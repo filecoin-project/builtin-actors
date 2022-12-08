@@ -647,7 +647,7 @@ impl ExpirationQueueStateSummary {
                 }
             }
 
-            for sector_number in expiration_set.early_sectors.iter() {
+            for sector_number in expiration_set.proof_expiring_sectors.iter() {
                 // check sectors are present only once
                 if !seen_sectors.insert(sector_number) {
                     acc.add(format!("sector {sector_number} in expiration queue twice"));
@@ -702,7 +702,7 @@ impl ExpirationQueueStateSummary {
             acc.require(expiration_set.on_time_pledge == on_time_sectors_pledge, format!("on time pledge recorded {} doesn't match computed: {on_time_sectors_pledge}", expiration_set.on_time_pledge));
 
             all_on_time.push(expiration_set.on_time_sectors.clone());
-            all_early.push(expiration_set.early_sectors.clone());
+            all_early.push(expiration_set.proof_expiring_sectors.clone());
             all_faulty.push(expiration_set.faulty_sectors.clone());
             all_active_power += &expiration_set.active_power;
             all_faulty_power += &expiration_set.faulty_power;

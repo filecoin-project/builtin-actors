@@ -67,7 +67,7 @@ fn adds_sectors_and_power_to_empty_set() {
     let set = default_set();
 
     assert_eq!(set.on_time_sectors, on_time_sectors());
-    assert_eq!(set.early_sectors, early_sectors());
+    assert_eq!(set.proof_expiring_sectors, early_sectors());
     assert_eq!(set.faulty_sectors, faulty_sectors());
     assert_eq!(set.on_time_pledge, on_time_pledge());
     assert_eq!(set.active_power, active_power());
@@ -91,7 +91,7 @@ fn adds_sectors_and_power_to_non_empty_set() {
     .unwrap();
 
     assert_eq!(set.on_time_sectors, mk_bitfield([5, 6, 7, 8, 9, 11]));
-    assert_eq!(set.early_sectors, mk_bitfield([101, 102, 103, 104]));
+    assert_eq!(set.proof_expiring_sectors, mk_bitfield([101, 102, 103, 104]));
     assert_eq!(set.faulty_sectors, mk_bitfield([1, 2, 3, 4]));
     assert_eq!(set.on_time_pledge, TokenAmount::from_atto(1300));
     let active = power_pair(1, 15);
@@ -115,7 +115,7 @@ fn removes_sectors_and_power_set() {
     .unwrap();
 
     assert_eq!(set.on_time_sectors, mk_bitfield([5, 8]));
-    assert_eq!(set.early_sectors, mk_bitfield([102]));
+    assert_eq!(set.proof_expiring_sectors, mk_bitfield([102]));
     assert_eq!(set.faulty_sectors, mk_bitfield([3]));
     assert_eq!(set.on_time_pledge, TokenAmount::from_atto(200));
     let active = power_pair(1, 11);
@@ -305,7 +305,7 @@ fn added_sectors_can_be_popped_off_queue() {
     assert_eq!(queue.amt.count(), 5);
 
     assert_eq!(set.on_time_sectors, mk_bitfield([1, 2, 3]));
-    assert!(set.early_sectors.is_empty());
+    assert!(set.proof_expiring_sectors.is_empty());
     assert!(set.faulty_sectors.is_empty());
 
     let active_power = power_for_sectors(SECTOR_SIZE, &sectors()[0..3]);
@@ -322,7 +322,7 @@ fn added_sectors_can_be_popped_off_queue() {
     assert_eq!(queue.amt.count(), 3);
 
     assert_eq!(set.on_time_sectors, mk_bitfield([4]));
-    assert_eq!(set.early_sectors, mk_bitfield([7]));
+    assert_eq!(set.proof_expiring_sectors, mk_bitfield([7]));
     assert!(set.faulty_sectors.is_empty());
 
     let active_power =
@@ -337,7 +337,7 @@ fn added_sectors_can_be_popped_off_queue() {
     let set = queue.pop_until(20).unwrap();
 
     assert_eq!(set.on_time_sectors, mk_bitfield([5, 6]));
-    assert_eq!(set.early_sectors, mk_bitfield([8]));
+    assert_eq!(set.proof_expiring_sectors, mk_bitfield([8]));
     assert!(set.faulty_sectors.is_empty());
 
     assert_eq!(set.on_time_pledge, TokenAmount::from_atto(2009)); // sum of last 3 sector pledges
@@ -366,13 +366,13 @@ fn quantizes_added_sectors_by_expiration() {
     // set popped before first quantized sector should be empty
     let set = queue.pop_until(2).unwrap();
     assert!(set.on_time_sectors.is_empty());
-    assert!(set.early_sectors.is_empty());
+    assert!(set.proof_expiring_sectors.is_empty());
     assert_eq!(queue.amt.count(), 4);
 
     // first 2 sectors will be in first set popped off at quantization offset (3)
     let set = queue.pop_until(3).unwrap();
     assert_eq!(set.on_time_sectors, mk_bitfield([1, 2]));
-    assert!(set.early_sectors.is_empty());
+    assert!(set.proof_expiring_sectors.is_empty());
     assert_eq!(queue.amt.count(), 3);
 
     let _ = queue.amt.flush().unwrap();
@@ -380,13 +380,13 @@ fn quantizes_added_sectors_by_expiration() {
     // no sectors will be popped off in quantization interval
     let set = queue.pop_until(7).unwrap();
     assert!(set.on_time_sectors.is_empty());
-    assert!(set.early_sectors.is_empty());
+    assert!(set.proof_expiring_sectors.is_empty());
     assert_eq!(queue.amt.count(), 3);
 
     // next 2 sectors will be in first set popped off after quantization interval (8)
     let set = queue.pop_until(8).unwrap();
     assert_eq!(set.on_time_sectors, mk_bitfield([3, 4]));
-    assert!(set.early_sectors.is_empty());
+    assert!(set.proof_expiring_sectors.is_empty());
     assert_eq!(queue.amt.count(), 2);
 
     let _ = queue.amt.flush().unwrap();
@@ -394,18 +394,18 @@ fn quantizes_added_sectors_by_expiration() {
     // no sectors will be popped off in quantization interval
     let set = queue.pop_until(12).unwrap();
     assert!(set.on_time_sectors.is_empty());
-    assert!(set.early_sectors.is_empty());
+    assert!(set.proof_expiring_sectors.is_empty());
     assert_eq!(queue.amt.count(), 2);
 
     // rest of sectors will be in first set popped off after quantization interval (13)
     let set = queue.pop_until(13).unwrap();
     assert_eq!(set.on_time_sectors, mk_bitfield([5, 6]));
-    assert_eq!(set.early_sectors, mk_bitfield([7]));
+    assert_eq!(set.proof_expiring_sectors, mk_bitfield([7]));
     assert_eq!(queue.amt.count(), 1);
 
     let set = queue.pop_until(18).unwrap();
     assert!(set.on_time_sectors.is_empty());
-    assert_eq!(set.early_sectors, mk_bitfield([8]));
+    assert_eq!(set.proof_expiring_sectors, mk_bitfield([8]));
     assert_eq!(queue.amt.count(), 0);
 }
 
@@ -446,7 +446,7 @@ fn reschedules_sectors_as_faults() {
     let set = queue.pop_until(9).unwrap();
 
     assert_eq!(set.on_time_sectors, mk_bitfield([3, 4]));
-    assert_eq!(set.early_sectors, mk_bitfield([7]));
+    assert_eq!(set.proof_expiring_sectors, mk_bitfield([7]));
     assert_eq!(set.faulty_sectors, mk_bitfield([5]));
 
     // pledge is kept from original 2 sectors. Pledge from new early sector is NOT added.
@@ -463,7 +463,7 @@ fn reschedules_sectors_as_faults() {
     let set = queue.pop_until(13).unwrap();
 
     assert_eq!(set.on_time_sectors, mk_bitfield([6]));
-    assert!(set.early_sectors.is_empty());
+    assert!(set.proof_expiring_sectors.is_empty());
     assert!(set.faulty_sectors.is_empty());
 
     // Pledge from sector moved from this set is dropped
@@ -477,7 +477,7 @@ fn reschedules_sectors_as_faults() {
     let set = queue.pop_until(20).unwrap();
 
     assert!(set.on_time_sectors.is_empty());
-    assert_eq!(set.early_sectors, mk_bitfield([8]));
+    assert_eq!(set.proof_expiring_sectors, mk_bitfield([8]));
     assert!(set.faulty_sectors.is_empty());
 
     // Pledge from sector moved from this set is dropped
@@ -524,7 +524,7 @@ fn reschedules_all_sectors_as_faults() {
     let set = queue.pop_until(5).unwrap();
 
     assert_eq!(set.on_time_sectors, mk_bitfield([1, 2])); // sectors are unmoved
-    assert!(set.early_sectors.is_empty());
+    assert!(set.proof_expiring_sectors.is_empty());
     assert!(set.faulty_sectors.is_empty());
 
     assert_eq!(set.on_time_pledge, TokenAmount::from_atto(2001)); // pledge is same
@@ -538,7 +538,7 @@ fn reschedules_all_sectors_as_faults() {
     let set = queue.pop_until(9).unwrap();
 
     assert_eq!(set.on_time_sectors, mk_bitfield([3, 4]));
-    assert_eq!(set.early_sectors, mk_bitfield([7]));
+    assert_eq!(set.proof_expiring_sectors, mk_bitfield([7]));
     assert_eq!(set.faulty_sectors, mk_bitfield([5, 6, 8]));
 
     // pledge is kept from original 2 sectors. Pledge from new early sectors is NOT added.
@@ -589,7 +589,7 @@ fn reschedule_recover_restores_all_sector_stats() {
     let set = queue.pop_until(5).unwrap();
 
     assert_eq!(set.on_time_sectors, mk_bitfield([1, 2]));
-    assert!(set.early_sectors.is_empty());
+    assert!(set.proof_expiring_sectors.is_empty());
     assert!(set.faulty_sectors.is_empty());
 
     // pledge from both sectors
@@ -603,7 +603,7 @@ fn reschedule_recover_restores_all_sector_stats() {
     let set = queue.pop_until(9).unwrap();
 
     assert_eq!(set.on_time_sectors, mk_bitfield([3, 4]));
-    assert_eq!(set.early_sectors, mk_bitfield([7]));
+    assert_eq!(set.proof_expiring_sectors, mk_bitfield([7]));
     assert!(set.faulty_sectors.is_empty());
 
     // pledge is kept from original 2 sectors
@@ -620,7 +620,7 @@ fn reschedule_recover_restores_all_sector_stats() {
     let set = queue.pop_until(20).unwrap();
 
     assert_eq!(set.on_time_sectors, mk_bitfield([5, 6]));
-    assert_eq!(set.early_sectors, mk_bitfield([8]));
+    assert_eq!(set.proof_expiring_sectors, mk_bitfield([8]));
     assert!(set.faulty_sectors.is_empty());
 
     // Pledge from sector 5 is restored
@@ -702,7 +702,7 @@ fn replaces_sectors_with_new_sectors() {
     let set = queue.pop_until(20).unwrap();
 
     assert!(set.on_time_sectors.is_empty());
-    assert_eq!(set.early_sectors, mk_bitfield([8]));
+    assert_eq!(set.proof_expiring_sectors, mk_bitfield([8]));
     assert!(set.faulty_sectors.is_empty());
 
     // pledge and power are the sum of old and new sectors
@@ -749,7 +749,7 @@ fn removes_sectors() {
     // assert all return values are correct
     assert_eq!(removed.on_time_sectors, mk_bitfield([1, 4]));
     assert_eq!(removed.faulty_sectors, mk_bitfield([5, 6, 8]));
-    assert_eq!(removed.early_sectors, mk_bitfield([7]));
+    assert_eq!(removed.proof_expiring_sectors, mk_bitfield([7]));
     assert_eq!(removed.on_time_pledge, TokenAmount::from_atto(1000 + 1003)); // only on-time
     assert_eq!(removed.active_power, power_for_sectors(SECTOR_SIZE, &sectors()[0..1]));
     assert_eq!(removed.faulty_power, power_for_sectors(SECTOR_SIZE, &sectors()[3..8]));
@@ -767,7 +767,7 @@ fn removes_sectors() {
 
     assert_eq!(set.on_time_sectors, mk_bitfield([2]));
     assert!(set.faulty_sectors.is_empty());
-    assert_eq!(set.early_sectors, mk_bitfield([]));
+    assert_eq!(set.proof_expiring_sectors, mk_bitfield([]));
     assert_eq!(set.on_time_pledge, TokenAmount::from_atto(1001));
     assert_eq!(set.active_power, PowerPair::zero());
     assert_eq!(set.faulty_power, power_for_sectors(SECTOR_SIZE, &sectors()[1..2]));
@@ -777,7 +777,7 @@ fn removes_sectors() {
     let set = queue.pop_until(9).unwrap();
 
     assert_eq!(set.on_time_sectors, mk_bitfield([3]));
-    assert_eq!(set.early_sectors, mk_bitfield([]));
+    assert_eq!(set.proof_expiring_sectors, mk_bitfield([]));
     assert!(set.faulty_sectors.is_empty());
     assert_eq!(set.on_time_pledge, TokenAmount::from_atto(1002));
     assert_eq!(set.active_power, PowerPair::zero());

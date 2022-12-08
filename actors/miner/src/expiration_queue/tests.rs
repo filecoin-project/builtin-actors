@@ -20,7 +20,7 @@ fn test_expirations() {
         SectorEpochSet {
             epoch: 13,
             on_time_sectors: vec![1, 2, 4],
-            early_sectors: vec![],
+            proof_expiring_sectors: vec![],
             power: PowerPair {
                 raw: StoragePower::from(2048 * 3),
                 qa: StoragePower::from(2048 * 3),
@@ -30,7 +30,7 @@ fn test_expirations() {
         SectorEpochSet {
             epoch: 23,
             on_time_sectors: vec![3],
-            early_sectors: vec![],
+            proof_expiring_sectors: vec![],
             power: PowerPair { raw: StoragePower::from(2048), qa: StoragePower::from(2048) },
             pledge: Zero::zero(),
         },
@@ -54,7 +54,7 @@ fn test_expirations_empty() {
 fn assert_sector_set(expected: &SectorEpochSet, actual: &SectorEpochSet) {
     assert_eq!(expected.epoch, actual.epoch);
     assert_eq!(expected.on_time_sectors, actual.on_time_sectors);
-    assert_eq!(expected.early_sectors, actual.early_sectors);
+    assert_eq!(expected.proof_expiring_sectors, actual.proof_expiring_sectors);
     assert_eq!(expected.power, actual.power);
     assert_eq!(expected.pledge, actual.pledge);
 }

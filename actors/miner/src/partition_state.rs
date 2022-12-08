@@ -581,7 +581,7 @@ impl Partition {
         self.faulty_power -= &popped.faulty_power;
 
         // Record the epoch of any sectors expiring early, for termination fee calculation later.
-        let expired_early = &popped.faulty_sectors | &popped.early_sectors;
+        let expired_early = &popped.faulty_sectors | &popped.proof_expiring_sectors;
         self.record_early_termination(store, until, &expired_early)
             .map_err(|e| e.downcast_wrap("failed to record early terminations"))?;
 

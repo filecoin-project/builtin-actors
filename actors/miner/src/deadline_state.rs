@@ -342,7 +342,7 @@ impl Deadline {
                 })?;
 
             if (!partition_expiration.faulty_sectors.is_empty())
-                || (!partition_expiration.early_sectors.is_empty())
+                || (!partition_expiration.proof_expiring_sectors.is_empty())
             {
                 partitions_with_early_terminations.push(partition_idx);
             }

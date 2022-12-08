@@ -777,7 +777,7 @@ mod miner_actor_test_partitions {
         let expset = partition.pop_expired_sectors(&rt.store, expire_epoch, QUANT_SPEC).unwrap();
 
         assert_bitfield_equals(&expset.on_time_sectors, &[1, 2]);
-        assert_bitfield_equals(&expset.early_sectors, &[7]);
+        assert_bitfield_equals(&expset.proof_expiring_sectors, &[7]);
         assert_bitfield_equals(&expset.faulty_sectors, &[4]);
         assert_eq!(TokenAmount::from_atto(1000u64 + 1001), expset.on_time_pledge);
 
