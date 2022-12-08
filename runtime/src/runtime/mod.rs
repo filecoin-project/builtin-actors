@@ -188,21 +188,9 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
         method: MethodNum,
         params: RawBytes,
         value: TokenAmount,
-    ) -> Result<RawBytes, ActorError>;
-
-    /// Like [`Runtime::send`] except that neither the called actor nor any recursively called actor
-    /// can make any state changes or emit any events. Specifically:
-    ///
-    /// - Value transfers are rejected.
-    /// - Events are discarded.
-    /// - State changes are rejected when the called actor attempts to update its state-root.
-    /// - Actor deletion is forbidden.
-    fn send_read_only(
-        &self,
-        to: &Address,
-        method: MethodNum,
-        params: RawBytes,
-    ) -> Result<RawBytes, ActorError>;
+    ) -> Result<RawBytes, ActorError> {
+        self.send_generalized(to, method, params, value, None, SendFlags::empty())
+    }
 
     /// Generailizes [`Runtime::send`] and [`Runtime::send_read_only`] to allow the caller to
     /// specify a gas limit and send flags.

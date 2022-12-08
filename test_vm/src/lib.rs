@@ -789,49 +789,6 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
 
         res
     }
-
-    fn send_inner(
-        &self,
-        to: &Address,
-        method: MethodNum,
-        params: RawBytes,
-        value: TokenAmount,
-        _gas_limit: Option<u64>,
-        mut send_flags: SendFlags,
-    ) -> Result<RawBytes, ActorError> {
-        // replicate FVM by silently propagating read only flag to subcalls
-        if self.read_only() {
-            send_flags.set(SendFlags::READ_ONLY, true)
-        }
-
-        // TODO gas_limit is current ignored, what should we do about it?
-        if !self.allow_side_effects {
-            return Err(ActorError::unchecked(
-                ExitCode::SYS_ASSERTION_FAILED,
-                "Calling send is not allowed during side-effect lock".to_string(),
-            ));
-        }
-
-        let new_actor_msg = InternalMessage { from: self.to(), to: *to, value, method, params };
-        let mut new_ctx = InvocationCtx {
-            v: self.v,
-            top: self.top.clone(),
-            msg: new_actor_msg,
-            allow_side_effects: true,
-            caller_validated: false,
-            policy: self.policy,
-            subinvocations: RefCell::new(vec![]),
-            actor_exit: RefCell::new(None),
-            read_only: send_flags.read_only(),
-        };
-        let res = new_ctx.invoke_actor();
-        let invoc = new_ctx.gather_trace(res.clone());
-        RefMut::map(self.subinvocations.borrow_mut(), |subinvocs| {
-            subinvocs.push(invoc);
-            subinvocs
-        });
-        res
-    }
 }
 
 impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
@@ -1012,35 +969,47 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         self.v.get_actor(Address::new_id(id)).and_then(|act| act.predictable_address)
     }
 
-    fn send(
-        &self,
-        to: &Address,
-        method: MethodNum,
-        params: RawBytes,
-        value: TokenAmount,
-    ) -> Result<RawBytes, ActorError> {
-        self.send_inner(to, method, params, value, None, SendFlags::default())
-    }
-
-    fn send_read_only(
-        &self,
-        to: &Address,
-        method: MethodNum,
-        params: RawBytes,
-    ) -> Result<RawBytes, ActorError> {
-        self.send_inner(to, method, params, TokenAmount::zero(), None, SendFlags::READ_ONLY)
-    }
-
     fn send_generalized(
         &self,
         to: &Address,
         method: MethodNum,
         params: RawBytes,
         value: TokenAmount,
-        gas_limit: Option<u64>,
-        flags: SendFlags,
+        _gas_limit: Option<u64>,
+        mut send_flags: SendFlags,
     ) -> Result<RawBytes, ActorError> {
-        self.send_inner(to, method, params, value, gas_limit, flags)
+        // replicate FVM by silently propagating read only flag to subcalls
+        if self.read_only() {
+            send_flags.set(SendFlags::READ_ONLY, true)
+        }
+
+        // TODO gas_limit is current ignored, what should we do about it?
+        if !self.allow_side_effects {
+            return Err(ActorError::unchecked(
+                ExitCode::SYS_ASSERTION_FAILED,
+                "Calling send is not allowed during side-effect lock".to_string(),
+            ));
+        }
+
+        let new_actor_msg = InternalMessage { from: self.to(), to: *to, value, method, params };
+        let mut new_ctx = InvocationCtx {
+            v: self.v,
+            top: self.top.clone(),
+            msg: new_actor_msg,
+            allow_side_effects: true,
+            caller_validated: false,
+            policy: self.policy,
+            subinvocations: RefCell::new(vec![]),
+            actor_exit: RefCell::new(None),
+            read_only: send_flags.read_only(),
+        };
+        let res = new_ctx.invoke_actor();
+        let invoc = new_ctx.gather_trace(res.clone());
+        RefMut::map(self.subinvocations.borrow_mut(), |subinvocs| {
+            subinvocs.push(invoc);
+            subinvocs
+        });
+        res
     }
 
     fn get_randomness_from_tickets(

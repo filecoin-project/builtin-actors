@@ -202,7 +202,7 @@ pub(super) fn call_actor<RT: Runtime>(
         let address = &bytes[send_data_size..send_data_size + address_size];
         let address = Address::from_bytes(address).map_err(|_| PrecompileError::InvalidInput)?;
 
-        system.send_generalized(
+        system.send(
             &address,
             method,
             RawBytes::from(input_data.to_vec()),
