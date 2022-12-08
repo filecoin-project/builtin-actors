@@ -105,7 +105,7 @@ impl From<PrecompileError> for StatusCode {
 #[derive(Debug, PartialEq, Eq)]
 pub struct PrecompileContext {
     pub call_type: CallKind,
-    pub gas_limit: Option<u64>,
+    pub gas_limit: u64,
 }
 
 /// Native Type of a given contract

@@ -251,7 +251,6 @@ fn test_call_convert_to_send() {
         let mut return_data = vec![0u8; 32];
         return_data[31] = 0x42;
 
-        rt.expect_gas_available(10_000_000_000u64);
         rt.expect_send(
             target,
             METHOD_SEND,
@@ -293,7 +292,6 @@ fn test_call_convert_to_send2() {
     // we don't expected return data
     let return_data = vec![];
 
-    rt.expect_gas_available(10_000_000_000u64);
     rt.expect_send(
         target,
         METHOD_SEND,
@@ -334,7 +332,6 @@ fn test_call_convert_to_send3() {
     // we don't expected return data
     let return_data = vec![];
 
-    rt.expect_gas_available(10_000_000_000u64);
     rt.expect_send(
         target,
         METHOD_SEND,

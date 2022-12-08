@@ -207,7 +207,7 @@ pub(super) fn call_actor<RT: Runtime>(
             method,
             RawBytes::from(input_data.to_vec()),
             TokenAmount::from(&value),
-            ctx.gas_limit,
+            Some(ctx.gas_limit),
             flags,
         )
     };
