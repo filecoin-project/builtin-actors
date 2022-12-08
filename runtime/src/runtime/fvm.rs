@@ -371,7 +371,11 @@ where
         if self.in_transaction {
             return Err(actor_error!(assertion_failed; "send is not allowed during transaction"));
         }
-        handle_send_result(to, method, fvm::send::send(to, method, params, value, None))
+        handle_send_result(
+            to,
+            method,
+            fvm::send::send(to, method, params, value, None, SendFlags::default()),
+        )
     }
 
     fn send_read_only(
@@ -383,7 +387,11 @@ where
         if self.in_transaction {
             return Err(actor_error!(assertion_failed; "send is not allowed during transaction"));
         }
-        handle_send_result(to, method, fvm::send::send_read_only(to, method, params, None))
+        handle_send_result(
+            to,
+            method,
+            fvm::send::send(to, method, params, TokenAmount::default(), None, SendFlags::READ_ONLY),
+        )
     }
 
     fn send_generalized(
@@ -398,15 +406,7 @@ where
         if self.in_transaction {
             return Err(actor_error!(assertion_failed; "send is not allowed during transaction"));
         }
-        handle_send_result(
-            to,
-            method,
-            if flags.read_only() {
-                fvm::send::send_read_only(to, method, params, gas_limit)
-            } else {
-                fvm::send::send(to, method, params, value, gas_limit)
-            },
-        )
+        handle_send_result(to, method, fvm::send::send(to, method, params, value, gas_limit, flags))
     }
 
     fn new_actor_address(&mut self) -> Result<Address, ActorError> {
