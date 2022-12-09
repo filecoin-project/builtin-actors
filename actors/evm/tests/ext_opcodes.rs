@@ -3,11 +3,13 @@ mod asm;
 use cid::Cid;
 use evm::interpreter::U256;
 use fil_actor_evm as evm;
+use fil_actors_runtime::runtime::Primitives;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address as FILAddress;
 use fvm_shared::bigint::Zero;
+use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 
@@ -141,6 +143,7 @@ fn test_extcodehash() {
 %dispatch_begin()
 %dispatch(0x00, evm_contract)
 %dispatch(0x01, native_actor)
+%dispatch(0x02, non_exist)
 %dispatch_end()
         
 evm_contract:
@@ -154,6 +157,13 @@ native_actor:
     jumpdest
     # get code hash of address 0x89
     push20 0xff00000000000000000000000000000000000089
+    extcodehash
+    %return_stack_word()
+
+non_exist:
+    jumpdest
+    # get code hash of address 0xff
+    push20 0xff000000000000000000000000000000000000ff
     extcodehash
     %return_stack_word()
 
@@ -172,26 +182,40 @@ native_actor:
     let native_target = FILAddress::new_id(0x89);
     rt.set_address_actor_type(native_target, *DUMMY_ACTOR_CODE_ID);
 
-    // a random CID
-    let bytecode_cid =
-        Cid::try_from("bafy2bzacecu7n7wbtogznrtuuvf73dsz7wasgyneqasksdblxupnyovmtwxxu").unwrap();
+    // a random hash value
+    let bytecode = b"foo bar boxy";
+    let bytecode_hash = Multihash::wrap(
+        SupportedHashes::Keccak256 as u64,
+        rt.hash(SupportedHashes::Keccak256, bytecode).as_slice(),
+    )
+    .unwrap();
 
     rt.expect_send(
         evm_target,
-        evm::Method::GetBytecode as u64,
+        evm::Method::GetBytecodeHash as u64,
         Default::default(),
         TokenAmount::zero(),
-        RawBytes::serialize(&bytecode_cid).unwrap(),
+        RawBytes::serialize(&bytecode_hash).unwrap(),
         ExitCode::OK,
     );
 
+    // Evm code
     let result = util::invoke_contract(&mut rt, &util::dispatch_num_word(0));
     rt.verify();
-    assert_eq!(U256::from_big_endian(&result), U256::from(&bytecode_cid.hash().digest()[..32]));
+    assert_eq!(U256::from_big_endian(&result), U256::from(bytecode_hash.digest()));
     rt.reset();
 
-    // invalid flattened to 0
+    // Native code is keccak256([0xfe])
     let result = util::invoke_contract(&mut rt, &util::dispatch_num_word(1));
+    rt.verify();
+    assert_eq!(
+        U256::from_big_endian(&result),
+        U256::from(rt.hash(SupportedHashes::Keccak256, &[0xfe]).as_slice())
+    );
+    rt.reset();
+
+    // Non-existing accounts are 0
+    let result = util::invoke_contract(&mut rt, &util::dispatch_num_word(2));
     rt.verify();
     assert_eq!(U256::from_big_endian(&result), U256::from(0));
     rt.reset();
@@ -207,6 +231,7 @@ fn test_extcodecopy() {
 %dispatch(0x00, evm_contract)
 %dispatch(0x01, native_actor)
 %dispatch(0x02, invalid_address)
+%dispatch(0x03, precompile)
 %dispatch_end()
 
 evm_contract:
@@ -239,6 +264,19 @@ invalid_address:
     push1 0x00
     push1 0x00
     push20 0xff000000000000000000000000000000000000ff
+    extcodecopy
+    # return 0x00..0x20
+    push1 0x20
+    push1 0x00
+    return
+
+precompile:
+    jumpdest
+    push1 0xff
+    push1 0x00
+    push1 0x00
+    # first precompile address
+    push20 0x0000000000000000000000000000000000000001
     extcodecopy
     # return 0x00..0x20
     push1 0x20
@@ -287,6 +325,11 @@ invalid_address:
 
     // invalid addresses are flattened
     let result = util::invoke_contract(&mut rt, &util::dispatch_num_word(2));
+    rt.verify();
+    assert_eq!(U256::from_big_endian(&result), U256::from(0));
+
+    // precompile addresses are flattened
+    let result = util::invoke_contract(&mut rt, &util::dispatch_num_word(3));
     rt.verify();
     assert_eq!(U256::from_big_endian(&result), U256::from(0));
 }

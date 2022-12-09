@@ -1,9 +1,12 @@
 use crate::StatusCode;
 use crate::U256;
+use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::EAM_ACTOR_ID;
 use fvm_ipld_encoding::{serde, strict_bytes};
 use fvm_shared::address::Address;
 use fvm_shared::ActorID;
+
+use super::precompiles::Precompiles;
 
 /// A Filecoin address as represented in the FEVM runtime (also called EVM-form).
 ///
@@ -77,6 +80,10 @@ impl EthAddress {
             return None;
         }
         Some(u64::from_be_bytes(self.0[12..].try_into().unwrap()))
+    }
+
+    pub fn is_precompile<RT: Runtime>(&self) -> bool {
+        Precompiles::<RT>::is_precompile(&self.as_evm_word())
     }
 
     /// Returns this Address as an EVM word.
