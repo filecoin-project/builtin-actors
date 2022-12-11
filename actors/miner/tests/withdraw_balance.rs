@@ -2,7 +2,7 @@ use fil_actor_miner::{
     Actor, BeneficiaryTerm, Method, WithdrawBalanceParams, WithdrawBalanceReturn,
 };
 use fil_actors_runtime::test_utils::{
-    expect_abort, expect_abort_contains_message, make_identity_cid,
+    expect_abort, expect_abort_contains_message, EVM_ACTOR_CODE_ID,
 };
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -13,6 +13,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
 
 mod util;
+
 use util::*;
 
 const PERIOD_OFFSET: ChainEpoch = 100;
@@ -45,7 +46,7 @@ fn withdraw_funds_restricted_correctly() {
         &RawBytes::serialize(WithdrawBalanceParams { amount_requested: amount_requested.clone() })
             .unwrap();
 
-    rt.set_caller(make_identity_cid(b"1234"), h.owner);
+    rt.set_caller(*EVM_ACTOR_CODE_ID, h.owner);
 
     // fail to call the unexported method
 

@@ -290,7 +290,7 @@ fn exec_restricted_correctly() {
     construct_and_verify(&mut rt);
 
     // set caller to not-builtin
-    rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1000));
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(1000));
 
     // cannot call the unexported method num
     let fake_constructor_params =
