@@ -13,7 +13,7 @@ static NETWORKS: &[(&[&str], &[&str])] = &[
     ),
     (&["butterflynet"], &["sector-512m", "sector-32g", "sector-64g", "min-power-2g"]),
     (
-        &["wallaby", "hyperspace"],
+        &["wallaby"],
         &["sector-512m", "sector-32g", "sector-64g", "min-power-16g", "short-precommit"],
     ),
     (&["calibrationnet"], &["sector-32g", "sector-64g", "min-power-32g"]),

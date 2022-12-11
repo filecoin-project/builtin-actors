@@ -1,8 +1,9 @@
 #[cfg(feature = "mainnet")]
 pub const CHAINID: u64 = 314;
 
-#[cfg(feature = "hyperspace")]
-pub const CHAINID: u64 = 3141;
+// TODO buildernet
+// #[cfg(feature = "buildernet")]
+// pub const CHAINID: u64 = 3141;
 
 #[cfg(feature = "wallaby")]
 pub const CHAINID: u64 = 31415;

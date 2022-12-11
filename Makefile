@@ -65,9 +65,6 @@ bundle-devnet: deps-build
 bundle-wallaby: deps-build
 	BUILD_FIL_NETWORK=wallaby cargo run -- -o output/builtin-actors-wallaby.car
 
-bundle-hyperspace: deps-build
-	BUILD_FIL_NETWORK=hyperspace cargo run -- -o output/builtin-actors-hyperspace.car
-
 bundle-devnet-wasm: deps-build
 	BUILD_FIL_NETWORK=devnet-wasm cargo run -- -o output/builtin-actors-devnet-wasm.car
 
