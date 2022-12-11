@@ -38,7 +38,7 @@ pub(super) fn get_actor_type<RT: Runtime>(
 
         let builtin_type = match builtin_type {
             Some(t) => match t {
-                Type::Account => NativeType::Account,
+                Type::Account | Type::EthAccount => NativeType::Account,
                 Type::System => NativeType::System,
                 Type::Embryo => NativeType::Embryo,
                 Type::EVM => NativeType::EVMContract,
