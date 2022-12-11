@@ -2,7 +2,7 @@ use fil_actor_power::ext::init::{ExecParams, EXEC_METHOD};
 use fil_actor_power::ext::miner::MinerConstructorParams;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::test_utils::{
-    expect_abort, expect_abort_contains_message, make_identity_cid, ACCOUNT_ACTOR_CODE_ID,
+    expect_abort, expect_abort_contains_message, ACCOUNT_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID,
     MINER_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID,
 };
 use fil_actors_runtime::{runtime::Policy, INIT_ACTOR_ADDR};
@@ -581,7 +581,7 @@ fn get_network_and_miner_power() {
     rt.replace_state(&state);
 
     // set caller to not-builtin
-    rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1234));
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(1234));
 
     rt.expect_validate_caller_any();
     let network_power: NetworkRawPowerReturn = rt
@@ -1460,7 +1460,7 @@ fn create_miner_restricted_correctly() {
     )
     .unwrap();
 
-    rt.set_caller(make_identity_cid(b"1234"), *OWNER);
+    rt.set_caller(*EVM_ACTOR_CODE_ID, *OWNER);
 
     // cannot call the unexported method
     expect_abort_contains_message(

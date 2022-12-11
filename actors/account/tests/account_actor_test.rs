@@ -66,7 +66,7 @@ fn token_receiver() {
     )
     .unwrap();
 
-    rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1000));
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(1000));
     rt.expect_validate_caller_any();
     let ret = rt.call::<AccountActor>(
         Method::UniversalReceiverHook as MethodNum,

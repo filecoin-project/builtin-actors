@@ -125,7 +125,7 @@ fn get_and_change_multiaddrs_restricted_correctly() {
         &RawBytes::serialize(ChangeMultiaddrsParams { new_multi_addrs: new_multiaddrs.clone() })
             .unwrap();
 
-    rt.set_caller(make_identity_cid(b"1234"), h.worker);
+    rt.set_caller(*EVM_ACTOR_CODE_ID, h.worker);
 
     // fail to call the unexported setter
 
