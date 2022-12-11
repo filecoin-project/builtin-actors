@@ -53,7 +53,8 @@ pub(super) fn get_actor_type<RT: Runtime>(
                 | Type::Reward
                 | Type::VerifiedRegistry
                 | Type::DataCap
-                | Type::EAM => NativeType::System,
+                | Type::EAM
+                | Type::EEOA => NativeType::System,
             },
             None => NativeType::NonExistent,
         };

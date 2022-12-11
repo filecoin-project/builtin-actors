@@ -7,6 +7,7 @@ use fil_actor_account::{Actor as AccountActor, State as AccountState};
 use fil_actor_cron::{Actor as CronActor, Entry as CronEntry, State as CronState};
 use fil_actor_datacap::{Actor as DataCapActor, State as DataCapState};
 use fil_actor_eam::EamActor;
+use fil_actor_eeoa::EeoaActor;
 use fil_actor_evm::EvmContractActor;
 use fil_actor_init::{Actor as InitActor, ExecReturn, State as InitState};
 use fil_actor_market::{Actor as MarketActor, Method as MarketMethod, State as MarketState};
@@ -779,6 +780,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             }
             Type::EVM => EvmContractActor::invoke_method(self, self.msg.method, &params),
             Type::EAM => EamActor::invoke_method(self, self.msg.method, &params),
+            Type::EEOA => EeoaActor::invoke_method(self, self.msg.method, &params),
         };
         if res.is_ok() && !self.caller_validated {
             res = Err(actor_error!(assertion_failed, "failed to validate caller"));

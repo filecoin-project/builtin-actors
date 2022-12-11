@@ -29,6 +29,7 @@ const ACTORS: &[(&Package, &ID)] = &[
     ("embryo", "embryo"),
     ("evm", "evm"),
     ("eam", "eam"),
+    ("eeoa", "eeoa"),
 ];
 
 /// Default Cargo features to activate during the build.
