@@ -1006,31 +1006,6 @@ fn validate_claim_extension(
     Ok(())
 }
 
-// Checks that an address corresponsds to a miner actor.
-fn resolve_miner_id(rt: &mut impl Runtime, addr: &Address) -> Result<ActorID, ActorError> {
-    let id = rt.resolve_address(addr).with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
-        format!("failed to resolve provider address {}", addr)
-    })?;
-    let code_cid =
-        rt.get_actor_code_cid(&id).with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
-            format!("no code CID for provider {}", addr)
-        })?;
-    let provider_type = rt
-        .resolve_builtin_actor_type(&code_cid)
-        .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
-            format!("provider code {} must be built-in miner actor", code_cid)
-        })?;
-    if provider_type != Type::Miner {
-        return Err(actor_error!(
-            illegal_argument,
-            "allocation provider {} must be a miner actor, was {:?}",
-            addr,
-            provider_type
-        ));
-    }
-    Ok(id)
-}
-
 fn can_claim_alloc(
     claim_alloc: &SectorAllocationClaim,
     provider: ActorID,
