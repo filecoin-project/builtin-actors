@@ -170,7 +170,8 @@ impl Cbor for SectorClaim {}
 pub struct ExpirationExtension2 {
     pub deadline: u64,
     pub partition: u64,
-    pub sectors: BitField, // IDs of sectors without FIL+ claims
+    // IDs of sectors without FIL+ claims
+    pub sectors: BitField,
     pub sectors_with_claims: Vec<SectorClaim>,
     pub new_expiration: ChainEpoch,
 }
@@ -314,6 +315,7 @@ impl Cbor for PreCommitSectorParams {}
 pub struct PreCommitSectorBatchParams {
     pub sectors: Vec<PreCommitSectorParams>,
 }
+
 impl Cbor for PreCommitSectorBatchParams {}
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
@@ -483,10 +485,10 @@ pub struct GetBeneficiaryReturn {
 
 impl Cbor for GetBeneficiaryReturn {}
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
-#[serde(transparent)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct GetOwnerReturn {
     pub owner: Address,
+    pub proposed: Option<Address>,
 }
 
 impl Cbor for GetOwnerReturn {}

@@ -47,7 +47,6 @@ fn withdraw_funds_restricted_correctly() {
             .unwrap();
 
     rt.set_caller(*EVM_ACTOR_CODE_ID, h.owner);
-
     // fail to call the unexported method
 
     expect_abort_contains_message(
