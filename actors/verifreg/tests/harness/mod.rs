@@ -462,7 +462,7 @@ pub fn make_extension_req(
     claim: ClaimID,
     term_max: ChainEpoch,
 ) -> ClaimExtensionRequest {
-    ClaimExtensionRequest { provider: Address::new_id(provider), claim, term_max }
+    ClaimExtensionRequest { provider, claim, term_max }
 }
 
 // Creates the expected allocation from a request.

@@ -648,16 +648,9 @@ impl Actor {
         let mut updated_claims = Vec::<(ClaimID, Claim)>::new();
         let mut extension_total = DataCap::zero();
         for req in &reqs.extensions {
-            // Note: we don't check the client address here, by design.
-            // Any client can spend datacap to extend an existing claim.
-            let provider_id = rt
-                .resolve_address(&req.provider)
-                .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
-                    format!("failed to resolve provider address {}", req.provider)
-                })?;
-            let claim = state::get_claim(&mut claims, provider_id, req.claim)?
+            let claim = state::get_claim(&mut claims, req.provider, req.claim)?
                 .with_context_code(ExitCode::USR_NOT_FOUND, || {
-                    format!("no claim {} for provider {}", req.claim, provider_id)
+                    format!("no claim {} for provider {}", req.claim, req.provider)
                 })?;
             let policy = rt.policy();
 

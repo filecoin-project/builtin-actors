@@ -180,7 +180,7 @@ impl Cbor for AllocationRequest {}
 // A request to extend the term of an existing claim with datacap tokens.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ClaimExtensionRequest {
-    pub provider: Address,
+    pub provider: ActorID,
     pub claim: ClaimID,
     pub term_max: ChainEpoch,
 }
