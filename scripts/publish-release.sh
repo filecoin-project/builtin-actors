@@ -33,8 +33,8 @@ release_tag="${GITHUB_REF:10}"
 
 # prepare artifacts
 pushd output
-mv $release_input $release_target
-shasum -a 256 $release_target > $release_target_hash
+mv $release_input "$release_target"
+shasum -a 256 "$release_target" > "$release_target_hash"
 popd
 
 # prepare release
@@ -42,18 +42,18 @@ ORG="filecoin-project"
 REPO="builtin-actors"
 
 # see if the release already exists by tag
-__release_response=`
+__release_response=$(
   curl \
    --header "Authorization: token $GITHUB_TOKEN" \
    "https://api.github.com/repos/$ORG/$REPO/releases/tags/$release_tag"
-`
-__release_id=`echo $__release_response | jq '.id'`
+)
+__release_id=$(echo "$__release_response" | jq '.id')
 if [ "$__release_id" = "null" ]; then
     echo "release $release_tag does not exist"
     exit 1
 fi
 
-__release_upload_url=`echo $__release_response | jq -r '.upload_url' | cut -d'{' -f1`
+__release_upload_url=$(echo "$__release_response" | jq -r '.upload_url' | cut -d'{' -f1)
 
 echo "uploading $release_target"
 curl \
