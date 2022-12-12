@@ -296,6 +296,16 @@ impl Expectations {
             "expect_gas_charge {:?}, not received",
             this.expect_gas_charge
         );
+        assert!(
+            this.expect_gas_available.is_empty(),
+            "expect_gas_available {:?}, not received",
+            this.expect_gas_available
+        );
+        assert!(
+            this.expect_emitted_events.is_empty(),
+            "expect_emitted_events {:?}, not received",
+            this.expect_emitted_events
+        );
     }
 }
 

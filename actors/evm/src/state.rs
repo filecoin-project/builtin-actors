@@ -13,6 +13,9 @@ pub struct State {
     /// initialization code by the constructor.
     pub bytecode: Cid,
 
+    /// The EVM contract bytecode hash keccak256(bytecode)
+    pub bytecode_hash: multihash::Multihash,
+
     /// The EVM contract state dictionary.
     /// All eth contract state is a map of U256 -> U256 values.
     ///
