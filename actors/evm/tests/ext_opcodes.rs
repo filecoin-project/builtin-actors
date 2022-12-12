@@ -170,7 +170,7 @@ non_exist:
 
 account:
     jumpdest
-    # get code hash of address 0xff
+    # get code hash of address 0x8A
     push20 0xff0000000000000000000000000000000000008A
     extcodehash
     %return_stack_word()
