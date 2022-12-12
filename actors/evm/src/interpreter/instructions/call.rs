@@ -297,19 +297,21 @@ pub fn call_generic<RT: Runtime>(
                     "unsupported opcode".to_string(),
                 )),
             };
-            match call_result {
-                Ok(result) => {
-                    // Support the "empty" result. We often use this to mean "returned nothing" and
-                    // it's important to support, e.g., sending to accounts.
-                    if result.is_empty() {
-                        (1, Vec::new())
-                    } else {
-                        // TODO: support IPLD codecs #758
-                        let BytesDe(result) = result.deserialize()?;
-                        (1, result)
-                    }
-                }
-                Err(mut ae) => (0, ae.take_data().into()),
+            let (code, data) = match call_result {
+                Ok(result) => (1, result),
+                Err(mut ae) => (0, ae.take_data()),
+            };
+            // Support the "empty" result. We often use this to mean "returned nothing" and
+            // it's important to support, e.g., sending to accounts.
+            if data.is_empty() {
+                (code, Vec::new())
+            } else {
+                // TODO: support IPLD codecs #758
+                // NOTE: If the user returns an invalid thing, we just the returned bytes as-is.
+                // We can't lie to the contract and say that the callee reverted, and we don't want
+                // to "abort".
+                let result = data.deserialize().map(|BytesDe(d)| d).unwrap_or_else(|_| data.into());
+                (code, result)
             }
         }
     };
