@@ -906,7 +906,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
         RawBytes::serialize(MarketNotifyDealParams { proposal: proposal_bytes.to_vec(), deal_id })
             .unwrap();
     rt.expect_send(
-        deal.client,
+        client_resolved,
         MARKET_NOTIFY_DEAL,
         notify_param,
         TokenAmount::zero(),
