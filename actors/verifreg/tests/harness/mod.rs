@@ -448,7 +448,7 @@ pub fn make_alloc(data_id: &str, client: ActorID, provider: ActorID, size: u64) 
 // Creates an allocation request for fixed data with default terms.
 pub fn make_alloc_req(rt: &MockRuntime, provider: ActorID, size: u64) -> AllocationRequest {
     AllocationRequest {
-        provider: Address::new_id(provider),
+        provider,
         data: make_piece_cid("1234".as_bytes()),
         size: PaddedPieceSize(size),
         term_min: MINIMUM_VERIFIED_ALLOCATION_TERM,
@@ -469,7 +469,7 @@ pub fn make_extension_req(
 pub fn alloc_from_req(client: ActorID, req: &AllocationRequest) -> Allocation {
     Allocation {
         client,
-        provider: req.provider.id().unwrap(),
+        provider: req.provider,
         data: req.data,
         size: req.size,
         term_min: req.term_min,
