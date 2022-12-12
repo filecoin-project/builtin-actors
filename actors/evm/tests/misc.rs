@@ -5,6 +5,7 @@ use cid::Cid;
 use evm::interpreter::{address::EthAddress, U256};
 use fil_actor_evm as evm;
 use fvm_ipld_encoding::DAG_CBOR;
+use fvm_shared::chainid::ChainID;
 use fvm_shared::{address::Address, econ::TokenAmount};
 use multihash::Multihash;
 
@@ -99,8 +100,9 @@ return
     .unwrap();
 
     let mut rt = util::construct_and_verify(contract);
+    rt.chain_id = ChainID::from(1989);
     let result = util::invoke_contract(&mut rt, &[]);
-    assert_eq!(U256::from_big_endian(&result), U256::from(31415926));
+    assert_eq!(U256::from_big_endian(&result), U256::from(1989));
 }
 
 #[test]

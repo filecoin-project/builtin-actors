@@ -13,6 +13,7 @@ use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::de::DeserializeOwned;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
 use fvm_shared::address::{Address, Payload, Protocol};
+use fvm_shared::chainid::ChainID;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
 use fvm_shared::consensus::ConsensusFault;
@@ -129,6 +130,7 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
     pub epoch: ChainEpoch,
     pub miner: Address,
     pub base_fee: TokenAmount,
+    pub chain_id: ChainID,
     pub id_addresses: HashMap<Address, Address>,
     pub delegated_addresses: HashMap<Address, Address>,
     pub delegated_addresses_source: HashMap<Address, Address>,
@@ -325,6 +327,7 @@ impl<BS> MockRuntime<BS> {
             epoch: Default::default(),
             miner: Address::new_id(0),
             base_fee: Default::default(),
+            chain_id: ChainID::from(0),
             id_addresses: Default::default(),
             delegated_addresses: Default::default(),
             delegated_addresses_source: Default::default(),
@@ -1352,6 +1355,10 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
 
     fn read_only(&self) -> bool {
         false
+    }
+
+    fn chain_id(&self) -> ChainID {
+        self.chain_id
     }
 }
 

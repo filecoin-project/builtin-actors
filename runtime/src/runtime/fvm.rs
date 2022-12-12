@@ -6,6 +6,7 @@ use fvm_ipld_encoding::{Cbor, CborStore, RawBytes, DAG_CBOR};
 use fvm_sdk as fvm;
 use fvm_sdk::NO_DATA_BLOCK_ID;
 use fvm_shared::address::{Address, Payload};
+use fvm_shared::chainid::ChainID;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::crypto::signature::{
@@ -116,6 +117,10 @@ where
 
     fn curr_epoch(&self) -> ChainEpoch {
         fvm::network::curr_epoch()
+    }
+
+    fn chain_id(&self) -> ChainID {
+        fvm::network::chain_id()
     }
 
     fn validate_immediate_caller_accept_any(&mut self) -> Result<(), ActorError> {

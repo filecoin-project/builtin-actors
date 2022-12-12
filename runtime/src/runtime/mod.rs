@@ -5,6 +5,7 @@ use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
 use fvm_shared::address::Address;
+use fvm_shared::chainid::ChainID;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::hash::SupportedHashes;
@@ -32,7 +33,6 @@ use crate::{actor_error, ActorError};
 
 mod actor_code;
 pub mod builtins;
-pub mod chainid;
 pub mod policy;
 mod randomness;
 
@@ -59,6 +59,9 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
 
     /// The current chain epoch number. The genesis block has epoch zero.
     fn curr_epoch(&self) -> ChainEpoch;
+
+    /// The ID for the EVM-based chain, as defined in https://github.com/ethereum-lists/chains.
+    fn chain_id(&self) -> ChainID;
 
     /// Validates the caller against some predicate.
     /// Exported actor methods must invoke at least one caller validation before returning.

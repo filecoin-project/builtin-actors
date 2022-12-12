@@ -2,7 +2,6 @@ use fvm_shared::clock::ChainEpoch;
 
 use {
     crate::interpreter::{ExecutionState, StatusCode, System, U256},
-    fil_actors_runtime::runtime::chainid,
     fil_actors_runtime::runtime::Runtime,
 };
 
@@ -131,9 +130,9 @@ pub fn gas_limit(
 #[inline]
 pub fn chain_id(
     _state: &mut ExecutionState,
-    _system: &System<impl Runtime>,
+    system: &System<impl Runtime>,
 ) -> Result<U256, StatusCode> {
-    Ok(U256::from(chainid::CHAINID))
+    Ok(U256::from_u64(system.rt.chain_id().into()))
 }
 
 #[inline]
