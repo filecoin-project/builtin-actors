@@ -168,7 +168,7 @@ pub type ExtendClaimTermsReturn = BatchReturn;
 // See Allocation state for description of field semantics.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct AllocationRequest {
-    pub provider: Address,
+    pub provider: ActorID,
     pub data: Cid,
     pub size: PaddedPieceSize,
     pub term_min: ChainEpoch,

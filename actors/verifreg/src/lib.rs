@@ -628,12 +628,9 @@ impl Actor {
         let mut new_allocs = Vec::with_capacity(reqs.allocations.len());
         for req in &reqs.allocations {
             validate_new_allocation(req, rt.policy(), curr_epoch)?;
-            // Require the provider for new allocations to be a miner actor.
-            // This doesn't matter much, but is more ergonomic to fail rather than lock up datacap.
-            let provider_id = resolve_miner_id(rt, &req.provider)?;
             new_allocs.push(Allocation {
                 client,
-                provider: provider_id,
+                provider: req.provider,
                 data: req.data,
                 size: req.size,
                 term_min: req.term_min,
