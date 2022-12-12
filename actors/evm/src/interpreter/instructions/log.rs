@@ -21,6 +21,10 @@ pub fn log(
     size: U256,
     topics: &[U256],
 ) -> Result<(), StatusCode> {
+    if system.readonly {
+        return Err(StatusCode::StaticModeViolation);
+    }
+
     // Handle the data.
     // Passing in a zero-sized memory region omits the data key entirely.
     // LOG0 + a zero-sized memory region emits an event with no entries whatsoever. In this case,
