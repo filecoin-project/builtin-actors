@@ -42,7 +42,11 @@ publish:
 
 # Create a bundle in a deterministic location
 bundle: deps-build
-	cargo run -- -o output/builtin-actors.car
+	cargo run --locked -- -o output/builtin-actors.car
+
+# Update the bundle size file, print the summary
+bundle-size: bundle
+	@bash scripts/update-bundle-size.sh $@ output/builtin-actors.car
 
 # Create all canonical network bundles
 all-bundles: bundle-mainnet bundle-caterpillarnet bundle-butterflynet bundle-calibrationnet bundle-devnet bundle-testing bundle-testing
@@ -66,7 +70,8 @@ bundle-testing: deps-build
 	BUILD_FIL_NETWORK=testing cargo run -- -o output/builtin-actors-testing.car
 	BUILD_FIL_NETWORK=testing-fake-proofs cargo run -- -o output/builtin-actors-testing-fake-proofs.car
 
-.PHONY: all-bundles bundle-mainnet bundle-caterpillarnet bundle-butterflynet bundle-calibrationnet bundle-devnet bundle-testing
+
+.PHONY: all-bundles bundle-mainnet bundle-caterpillarnet bundle-butterflynet bundle-calibrationnet bundle-devnet bundle-testing bundle-size
 
 # Check if the working tree is clean.
 check-clean:

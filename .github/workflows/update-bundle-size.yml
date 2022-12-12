@@ -1,0 +1,36 @@
+name: Update WASM bundle size
+
+on:
+  push:
+    branches:
+      - master
+
+# Updates the `bundle-size` on the master branch, pushes a commit from the Github
+# bot (doesn't trigger the CI thanks to the magic message)
+jobs:
+  bundle-size:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checking out
+      uses: actions/checkout@v3
+      with:
+        ref: ${{ github.head_ref }}
+        fetch-depth: 0
+    - name: Install Rust toolchain
+      uses: ./.github/actions/rust-cargo-run
+      with:
+        command: version
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        save_cache: true
+    - name: Update bundle size
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        make bundle-size
+        git add bundle-size
+        git commit -m "[skip ci] update bundle-size" || true
+    - name: Push changes
+      uses: ad-m/github-push-action@master
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        branch: ${{ github.head_ref }}
