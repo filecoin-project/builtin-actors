@@ -3,7 +3,7 @@ mod asm;
 use cid::Cid;
 use evm::interpreter::U256;
 use fil_actor_evm as evm;
-use fil_actors_runtime::runtime::Primitives;
+use fil_actors_runtime::runtime::{Primitives, Runtime};
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
@@ -144,6 +144,7 @@ fn test_extcodehash() {
 %dispatch(0x00, evm_contract)
 %dispatch(0x01, native_actor)
 %dispatch(0x02, non_exist)
+%dispatch(0x03, account)
 %dispatch_end()
         
 evm_contract:
@@ -167,6 +168,13 @@ non_exist:
     extcodehash
     %return_stack_word()
 
+account:
+    jumpdest
+    # get code hash of address 0xff
+    push20 0xff0000000000000000000000000000000000008A
+    extcodehash
+    %return_stack_word()
+
 "#;
 
         asm::new_contract("extcodehash", init, body).unwrap()
@@ -178,9 +186,15 @@ non_exist:
     let evm_target = FILAddress::new_id(0x88);
     rt.set_address_actor_type(evm_target, *EVM_ACTOR_CODE_ID);
 
-    // 0x88 is an EVM actor
+    // 0x89 is an native actor
     let native_target = FILAddress::new_id(0x89);
     rt.set_address_actor_type(native_target, *DUMMY_ACTOR_CODE_ID);
+
+    // 0x8A is an account
+    let native_target = FILAddress::new_id(0x8A);
+    rt.set_address_actor_type(native_target, *EMBRYO_ACTOR_CODE_ID);
+
+    let empty_hash = empty_bytecode_hash(&mut rt);
 
     // a random hash value
     let bytecode = b"foo bar boxy";
@@ -214,11 +228,41 @@ non_exist:
     );
     rt.reset();
 
-    // Non-existing accounts are 0
+    // Non-existing contracts are 0
     let result = util::invoke_contract(&mut rt, &util::dispatch_num_word(2));
     rt.verify();
     assert_eq!(U256::from_big_endian(&result), U256::from(0));
     rt.reset();
+
+    // _All_ existing accounts are empty hash
+    let result = util::invoke_contract(&mut rt, &util::dispatch_num_word(3));
+    rt.verify();
+    assert_eq!(
+        U256::from_big_endian(&result).to_bytes(),
+        empty_hash.as_slice(),
+        "expected empty hash: {}, got {}",
+        hex::encode(&empty_hash),
+        hex::encode(&result)
+    );
+    rt.reset();
+}
+
+#[test]
+fn test_getbytecodehash_method() {
+    let mut rt = util::construct_and_verify(Vec::new());
+    rt.expect_validate_caller_any();
+
+    let res: Multihash = rt
+        .call::<evm::EvmContractActor>(evm::Method::GetBytecodeHash as u64, &RawBytes::default())
+        .unwrap()
+        .deserialize()
+        .unwrap();
+    assert_eq!(res.digest(), empty_bytecode_hash(&mut rt))
+}
+
+/// Keccak256 hash of &[]
+fn empty_bytecode_hash(rt: &mut impl Runtime) -> [u8; 32] {
+    rt.hash(SupportedHashes::Keccak256, &[]).try_into().unwrap()
 }
 
 #[test]

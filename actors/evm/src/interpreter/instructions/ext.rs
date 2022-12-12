@@ -48,7 +48,7 @@ pub fn extcodehash(
 ) -> Result<U256, StatusCode> {
     let addr = match get_contract_type(system.rt, addr) {
         ContractType::EVM(a) => a,
-        // _Technically_ since we have native "bytecode" set as 0xfe this is valid, though we cant differentiate between
+        // _Technically_ since we have native "bytecode" set as 0xfe this is valid, though we cant differentiate between different native actors.
         ContractType::Native(_) => return Ok(NATIVE_BYTECODE_HASH.into()),
         // Precompiles "exist" and therefore aren't empty (although spec-wise they can be either 0 or keccak("") ).
         ContractType::Precompile => return Ok(EMPTY_EVM_HASH.into()),
@@ -57,8 +57,8 @@ pub fn extcodehash(
         //      and return keccak(""), or not exist (where nothing has ever been deployed at that address) and return 0.
         // TODO: With account abstraction, this may be something other than an empty hash!
         ContractType::Account => return Ok(EMPTY_EVM_HASH.into()),
-        // Everything else is flattened to 0
-        _ => return Ok(U256::zero()),
+        // Not found
+        ContractType::NotFound => return Ok(U256::zero()),
     };
 
     // multihash { keccak256(bytecode) }
