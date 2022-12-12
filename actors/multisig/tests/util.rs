@@ -42,10 +42,7 @@ impl ActorHarness {
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
         let result = rt
-            .call::<Actor>(
-                Method::Constructor as u64,
-                Some(IpldBlock::serialize_cbor(&params).unwrap()),
-            )
+            .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
             .unwrap();
         assert_eq!(result.bytes().len(), 0);
         rt.verify();
@@ -59,10 +56,8 @@ impl ActorHarness {
     ) -> Result<RawBytes, ActorError> {
         rt.expect_validate_caller_addr(vec![rt.receiver]);
         let params = AddSignerParams { signer, increase };
-        let ret = rt.call::<Actor>(
-            Method::AddSigner as u64,
-            Some(IpldBlock::serialize_cbor(&params).unwrap()),
-        );
+        let ret =
+            rt.call::<Actor>(Method::AddSigner as u64, IpldBlock::serialize_cbor(&params).unwrap());
         rt.verify();
         ret
     }
@@ -77,7 +72,7 @@ impl ActorHarness {
         let params = RemoveSignerParams { signer, decrease };
         let ret = rt.call::<Actor>(
             Method::RemoveSigner as u64,
-            Some(IpldBlock::serialize_cbor(&params).unwrap()),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         );
         rt.verify();
         ret
@@ -91,10 +86,8 @@ impl ActorHarness {
     ) -> Result<RawBytes, ActorError> {
         rt.expect_validate_caller_addr(vec![rt.receiver]);
         let params = SwapSignerParams { from: old_signer, to: new_signer };
-        let ret = rt.call::<Actor>(
-            Method::SwapSigner as u64,
-            Some(IpldBlock::serialize_cbor(&params).unwrap()),
-        );
+        let ret = rt
+            .call::<Actor>(Method::SwapSigner as u64, IpldBlock::serialize_cbor(&params).unwrap());
         rt.verify();
         ret
     }
@@ -140,7 +133,7 @@ impl ActorHarness {
         let propose_params = ProposeParams { to, value, method, params };
         let ret = rt.call::<Actor>(
             Method::Propose as u64,
-            Some(IpldBlock::serialize_cbor(&propose_params).unwrap()),
+            IpldBlock::serialize_cbor(&propose_params).unwrap(),
         );
         rt.verify();
         ret
@@ -157,7 +150,7 @@ impl ActorHarness {
             TxnIDParams { id: txn_id, proposal_hash: Vec::<u8>::from(proposal_hash) };
         let ret = rt.call::<Actor>(
             Method::Approve as u64,
-            Some(IpldBlock::serialize_cbor(&approve_params).unwrap()),
+            IpldBlock::serialize_cbor(&approve_params).unwrap(),
         );
         rt.verify();
         ret
@@ -174,7 +167,7 @@ impl ActorHarness {
             TxnIDParams { id: txn_id, proposal_hash: Vec::<u8>::from(proposal_hash) };
         let ret = rt.call::<Actor>(
             Method::Cancel as u64,
-            Some(IpldBlock::serialize_cbor(&cancel_params).unwrap()),
+            IpldBlock::serialize_cbor(&cancel_params).unwrap(),
         );
         rt.verify();
         ret
@@ -192,7 +185,7 @@ impl ActorHarness {
             LockBalanceParams { start_epoch: start, unlock_duration: duration, amount };
         let ret = rt.call::<Actor>(
             Method::LockBalance as u64,
-            Some(IpldBlock::serialize_cbor(&lock_balance_params).unwrap()),
+            IpldBlock::serialize_cbor(&lock_balance_params).unwrap(),
         );
         rt.verify();
         ret
@@ -207,7 +200,7 @@ impl ActorHarness {
         let change_threshold_params = ChangeNumApprovalsThresholdParams { new_threshold };
         let ret = rt.call::<Actor>(
             Method::ChangeNumApprovalsThreshold as u64,
-            Some(IpldBlock::serialize_cbor(&change_threshold_params).unwrap()),
+            IpldBlock::serialize_cbor(&change_threshold_params).unwrap(),
         );
         rt.verify();
         ret

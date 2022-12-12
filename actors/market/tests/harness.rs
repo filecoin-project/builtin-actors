@@ -169,9 +169,9 @@ pub fn add_provider_funds(rt: &mut MockRuntime, amount: TokenAmount, addrs: &Min
         RawBytes::default(),
         rt.call::<MarketActor>(
             Method::AddBalance as u64,
-            Some(IpldBlock::serialize_cbor(&addrs.provider).unwrap()),
+            IpldBlock::serialize_cbor(&addrs.provider).unwrap(),
         )
-        .unwrap()
+        .unwrap(),
     );
     rt.verify();
     rt.add_balance(amount);
@@ -185,10 +185,7 @@ pub fn add_participant_funds(rt: &mut MockRuntime, addr: Address, amount: TokenA
     rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
 
     assert!(rt
-        .call::<MarketActor>(
-            Method::AddBalance as u64,
-            Some(IpldBlock::serialize_cbor(&addr).unwrap()),
-        )
+        .call::<MarketActor>(Method::AddBalance as u64, IpldBlock::serialize_cbor(&addr).unwrap())
         .is_ok());
 
     rt.verify();
@@ -221,7 +218,7 @@ pub fn withdraw_provider_balance(
     let ret: WithdrawBalanceReturn = rt
         .call::<MarketActor>(
             Method::WithdrawBalance as u64,
-            Some(IpldBlock::serialize_cbor(&params).unwrap()),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )
         .unwrap()
         .deserialize()
@@ -257,7 +254,7 @@ pub fn withdraw_client_balance(
     let ret: WithdrawBalanceReturn = rt
         .call::<MarketActor>(
             Method::WithdrawBalance as u64,
-            Some(IpldBlock::serialize_cbor(&params).unwrap()),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )
         .unwrap()
         .deserialize()
@@ -297,7 +294,7 @@ pub fn activate_deals_raw(
 
     let ret = rt.call::<MarketActor>(
         Method::ActivateDeals as u64,
-        Some(IpldBlock::serialize_cbor(&params).unwrap()),
+        IpldBlock::serialize_cbor(&params).unwrap(),
     )?;
     rt.verify();
 
@@ -483,13 +480,11 @@ pub fn publish_deals(
         params.deals.push(client_proposal);
 
         // expect an invocation of authenticate_message to verify the above signature
-        let param = Some(
-            IpldBlock::serialize_cbor(&AuthenticateMessageParams {
-                signature: "does not matter".as_bytes().to_vec(),
-                message: buf.to_vec(),
-            })
-            .unwrap(),
-        );
+        let param = IpldBlock::serialize_cbor(&AuthenticateMessageParams {
+            signature: "does not matter".as_bytes().to_vec(),
+            message: buf.to_vec(),
+        })
+        .unwrap();
         rt.expect_send(
             deal.client,
             ext::account::AUTHENTICATE_MESSAGE_METHOD as u64,
@@ -528,7 +523,7 @@ pub fn publish_deals(
             rt.expect_send(
                 DATACAP_TOKEN_ACTOR_ADDR,
                 ext::datacap::TRANSFER_FROM_METHOD as u64,
-                Some(IpldBlock::serialize_cbor(&params).unwrap()),
+                IpldBlock::serialize_cbor(&params).unwrap(),
                 TokenAmount::zero(),
                 serialize(
                     &TransferFromReturn {
@@ -549,7 +544,7 @@ pub fn publish_deals(
     let ret: PublishStorageDealsReturn = rt
         .call::<MarketActor>(
             Method::PublishStorageDeals as u64,
-            Some(IpldBlock::serialize_cbor(&params).unwrap()),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )
         .unwrap()
         .deserialize()
@@ -592,13 +587,11 @@ pub fn publish_deals_expect_abort(
     let client_signature = Signature::new_bls(deal_serialized.to_vec());
 
     expect_query_network_info(rt);
-    let auth_param = Some(
-        IpldBlock::serialize_cbor(&AuthenticateMessageParams {
-            signature: deal_serialized.to_vec(),
-            message: deal_serialized.to_vec(),
-        })
-        .unwrap(),
-    );
+    let auth_param = IpldBlock::serialize_cbor(&AuthenticateMessageParams {
+        signature: deal_serialized.to_vec(),
+        message: deal_serialized.to_vec(),
+    })
+    .unwrap();
 
     rt.expect_send(
         proposal.client,
@@ -617,7 +610,7 @@ pub fn publish_deals_expect_abort(
         expected_exit_code,
         rt.call::<MarketActor>(
             Method::PublishStorageDeals as u64,
-            Some(IpldBlock::serialize_cbor(&deal_params).unwrap()),
+            IpldBlock::serialize_cbor(&deal_params).unwrap(),
         ),
     );
 
@@ -771,13 +764,11 @@ where
 
     let buf = RawBytes::serialize(deal_proposal.clone()).expect("failed to marshal deal proposal");
     let sig = Signature::new_bls(buf.to_vec());
-    let auth_param = Some(
-        IpldBlock::serialize_cbor(&AuthenticateMessageParams {
-            signature: buf.to_vec(),
-            message: buf.to_vec(),
-        })
-        .unwrap(),
-    );
+    let auth_param = IpldBlock::serialize_cbor(&AuthenticateMessageParams {
+        signature: buf.to_vec(),
+        message: buf.to_vec(),
+    })
+    .unwrap();
 
     rt.expect_send(
         deal_proposal.client,
@@ -799,7 +790,7 @@ where
         exit_code,
         rt.call::<MarketActor>(
             Method::PublishStorageDeals as u64,
-            Some(IpldBlock::serialize_cbor(&params).unwrap()),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )
         .unwrap_err()
         .exit_code()
@@ -992,7 +983,7 @@ pub fn terminate_deals_raw(
 
     rt.call::<MarketActor>(
         Method::OnMinerSectorsTerminate as u64,
-        Some(IpldBlock::serialize_cbor(&params).unwrap()),
+        IpldBlock::serialize_cbor(&params).unwrap(),
     )
 }
 
@@ -1029,7 +1020,7 @@ where
     let ret: VerifyDealsForActivationReturn = rt
         .call::<MarketActor>(
             Method::VerifyDealsForActivation as u64,
-            Some(IpldBlock::serialize_cbor(&param).unwrap()),
+            IpldBlock::serialize_cbor(&param).unwrap(),
         )
         .unwrap()
         .deserialize()

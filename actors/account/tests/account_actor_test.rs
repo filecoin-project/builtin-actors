@@ -29,7 +29,7 @@ fn construction() {
         if exit_code.is_success() {
             rt.call::<AccountActor>(
                 Method::Constructor as MethodNum,
-                Some(IpldBlock::serialize_cbor(&addr).unwrap()),
+                IpldBlock::serialize_cbor(&addr).unwrap(),
             )
             .unwrap();
 
@@ -47,7 +47,7 @@ fn construction() {
         } else {
             expect_abort(
                 exit_code,
-                rt.call::<AccountActor>(1, Some(IpldBlock::serialize_cbor(&addr).unwrap())),
+                rt.call::<AccountActor>(1, IpldBlock::serialize_cbor(&addr).unwrap()),
             )
         }
         rt.verify();
@@ -75,20 +75,18 @@ fn token_receiver() {
     let param = Address::new_secp256k1(&[2; fvm_shared::address::SECP_PUB_LEN]).unwrap();
     rt.call::<AccountActor>(
         Method::Constructor as MethodNum,
-        Some(IpldBlock::serialize_cbor(&param).unwrap()),
+        IpldBlock::serialize_cbor(&param).unwrap(),
     )
     .unwrap();
 
     rt.expect_validate_caller_any();
     let ret = rt.call::<AccountActor>(
         Method::UniversalReceiverHook as MethodNum,
-        Some(
-            IpldBlock::serialize_cbor(&UniversalReceiverParams {
-                type_: 0,
-                payload: RawBytes::new(vec![1, 2, 3]),
-            })
-            .unwrap(),
-        ),
+        IpldBlock::serialize_cbor(&UniversalReceiverParams {
+            type_: 0,
+            payload: RawBytes::new(vec![1, 2, 3]),
+        })
+        .unwrap(),
     );
     assert!(ret.is_ok());
     assert_eq!(RawBytes::default(), ret.unwrap());
@@ -112,18 +110,16 @@ fn authenticate_message() {
     let addr = Address::new_secp256k1(&[2; fvm_shared::address::SECP_PUB_LEN]).unwrap();
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
 
-    rt.call::<AccountActor>(1, Some(IpldBlock::serialize_cbor(&addr).unwrap())).unwrap();
+    rt.call::<AccountActor>(1, IpldBlock::serialize_cbor(&addr).unwrap()).unwrap();
 
     let state: State = rt.get_state();
     assert_eq!(state.address, addr);
 
-    let params = Some(
-        IpldBlock::serialize_cbor(&AuthenticateMessageParams {
-            signature: vec![],
-            message: vec![],
-        })
-        .unwrap(),
-    );
+    let params = IpldBlock::serialize_cbor(&AuthenticateMessageParams {
+        signature: vec![],
+        message: vec![],
+    })
+    .unwrap();
 
     rt.expect_validate_caller_any();
     rt.expect_verify_signature(ExpectedVerifySig {

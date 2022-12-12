@@ -150,7 +150,7 @@ impl Actor {
         let res = rt.send(
             &Address::new_id(miner_id),
             ext::miner::APPLY_REWARDS_METHOD,
-            Some(IpldBlock::serialize_cbor(&reward_params)?),
+            IpldBlock::serialize_cbor(&reward_params)?,
             total_reward.clone(),
         );
         if let Err(e) = res {

@@ -294,7 +294,7 @@ impl Actor {
                     .send(
                         &DATACAP_TOKEN_ACTOR_ADDR,
                         ext::datacap::TRANSFER_FROM_METHOD as u64,
-                        Some(IpldBlock::serialize_cbor(&params)?),
+                        IpldBlock::serialize_cbor(&params)?,
                         TokenAmount::zero(),
                     )
                     .and_then(|ret| datacap_transfer_response(&ret));
@@ -1054,10 +1054,10 @@ fn deal_proposal_is_internally_valid(
     rt.send(
         &proposal.proposal.client,
         ext::account::AUTHENTICATE_MESSAGE_METHOD,
-        Some(IpldBlock::serialize_cbor(&ext::account::AuthenticateMessageParams {
+        IpldBlock::serialize_cbor(&ext::account::AuthenticateMessageParams {
             signature: signature_bytes,
             message: proposal_bytes,
-        })?),
+        })?,
         TokenAmount::zero(),
     )
     .map_err(|e| e.wrap("proposal authentication failed"))?;

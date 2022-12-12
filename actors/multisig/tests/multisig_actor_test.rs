@@ -62,7 +62,7 @@ mod constructor_tests {
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         let ret = rt.call::<MultisigActor>(
             Method::Constructor as u64,
-            Some(IpldBlock::serialize_cbor(&params).unwrap()),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         );
         assert_eq!(RawBytes::default(), ret.unwrap());
         rt.verify();
@@ -99,7 +99,7 @@ mod constructor_tests {
         let ret = rt
             .call::<MultisigActor>(
                 Method::Constructor as u64,
-                Some(IpldBlock::serialize_cbor(&params).unwrap()),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             )
             .unwrap();
         assert_eq!(ret, RawBytes::default());
@@ -123,7 +123,7 @@ mod constructor_tests {
             RawBytes::default(),
             rt.call::<MultisigActor>(
                 Method::Constructor as u64,
-                Some(IpldBlock::serialize_cbor(&params).unwrap()),
+                IpldBlock::serialize_cbor(&params).unwrap()
             )
             .unwrap()
         );
@@ -154,7 +154,7 @@ mod constructor_tests {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<MultisigActor>(
                 Method::Constructor as u64,
-                Some(IpldBlock::serialize_cbor(&zero_signer_params).unwrap()),
+                IpldBlock::serialize_cbor(&zero_signer_params).unwrap(),
             ),
         );
         rt.verify();
@@ -181,7 +181,7 @@ mod constructor_tests {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<MultisigActor>(
                 Method::Constructor as u64,
-                Some(IpldBlock::serialize_cbor(&over_max_signers_params).unwrap()),
+                IpldBlock::serialize_cbor(&over_max_signers_params).unwrap(),
             ),
         );
         rt.verify();
@@ -202,7 +202,7 @@ mod constructor_tests {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<MultisigActor>(
                 Method::Constructor as u64,
-                Some(IpldBlock::serialize_cbor(&params).unwrap()),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             ),
         );
         rt.verify();
@@ -233,7 +233,7 @@ mod constructor_tests {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<MultisigActor>(
                 Method::Constructor as u64,
-                Some(IpldBlock::serialize_cbor(&params).unwrap()),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             ),
         );
         rt.verify();
@@ -254,7 +254,7 @@ mod constructor_tests {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<MultisigActor>(
                 Method::Constructor as u64,
-                Some(IpldBlock::serialize_cbor(&params).unwrap()),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             ),
         );
         rt.verify();
@@ -277,7 +277,7 @@ mod constructor_tests {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<MultisigActor>(
                 Method::Constructor as u64,
-                Some(IpldBlock::serialize_cbor(&params).unwrap()),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             ),
         );
         rt.verify();
@@ -1567,7 +1567,7 @@ mod approval_tests {
         let params = TxnIDParams { id: TxnID(0), proposal_hash: Vec::<u8>::new() };
         rt.call::<MultisigActor>(
             Method::Approve as u64,
-            Some(IpldBlock::serialize_cbor(&params).unwrap()),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )
         .unwrap();
         rt.verify();
@@ -1632,7 +1632,7 @@ mod approval_tests {
         let params = TxnIDParams { id: dne_tx_id, proposal_hash: Vec::<u8>::new() };
         rt.call::<MultisigActor>(
             Method::Approve as u64,
-            Some(IpldBlock::serialize_cbor(&params).unwrap()),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )
         .expect_err("should fail on approve of non existent tx id");
         rt.verify();
@@ -2420,13 +2420,11 @@ fn token_receiver() {
     rt.expect_validate_caller_any();
     let ret = rt.call::<MultisigActor>(
         Method::UniversalReceiverHook as MethodNum,
-        Some(
-            IpldBlock::serialize_cbor(&UniversalReceiverParams {
-                type_: 0,
-                payload: RawBytes::new(vec![1, 2, 3]),
-            })
-            .unwrap(),
-        ),
+        IpldBlock::serialize_cbor(&UniversalReceiverParams {
+            type_: 0,
+            payload: RawBytes::new(vec![1, 2, 3]),
+        })
+        .unwrap(),
     );
     assert!(ret.is_ok());
     assert_eq!(RawBytes::default(), ret.unwrap());

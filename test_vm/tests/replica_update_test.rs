@@ -1095,9 +1095,9 @@ fn replica_update_verified_deal() {
             ExpectInvocation {
                 to: STORAGE_POWER_ACTOR_ADDR,
                 method: PowerMethod::UpdateClaimedPower as u64,
-                params: Some(Some(
+                params: Some(
                     IpldBlock::serialize_cbor(&expected_update_claimed_power_params).unwrap(),
-                )),
+                ),
                 ..Default::default()
             },
         ]),

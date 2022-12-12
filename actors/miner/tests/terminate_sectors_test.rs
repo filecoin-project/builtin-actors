@@ -124,7 +124,7 @@ fn cannot_terminate_a_sector_when_the_challenge_window_is_open() {
     rt.expect_validate_caller_addr(h.caller_addrs());
     let res = rt.call::<Actor>(
         Method::TerminateSectors as u64,
-        Some(IpldBlock::serialize_cbor(&params).unwrap()),
+        IpldBlock::serialize_cbor(&params).unwrap(),
     );
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,

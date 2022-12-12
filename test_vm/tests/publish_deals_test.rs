@@ -555,13 +555,13 @@ fn psd_bad_sig() {
             ExpectInvocation {
                 to: a.client1,
                 method: AccountMethod::AuthenticateMessage as u64,
-                params: Some(Some(
+                params: Some(
                     IpldBlock::serialize_cbor(&AuthenticateMessageParams {
                         signature: invalid_sig_bytes,
                         message: serialize(&proposal, "deal proposal").unwrap().to_vec(),
                     })
                     .unwrap(),
-                )),
+                ),
                 code: Some(ExitCode::USR_ILLEGAL_ARGUMENT),
                 ..Default::default()
             },

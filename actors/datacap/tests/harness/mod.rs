@@ -47,7 +47,7 @@ impl Harness {
         let ret = rt
             .call::<DataCapActor>(
                 Method::Constructor as MethodNum,
-                Some(IpldBlock::serialize_cbor(registry).unwrap()),
+                IpldBlock::serialize_cbor(registry).unwrap(),
             )
             .unwrap();
 
@@ -86,7 +86,7 @@ impl Harness {
         rt.expect_send(
             *to,
             frc42_dispatch::method_hash!("Receive"),
-            Some(IpldBlock::serialize_cbor(&hook_params).unwrap()),
+            IpldBlock::serialize_cbor(&hook_params).unwrap(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
@@ -96,7 +96,7 @@ impl Harness {
         rt.set_caller(*VERIFREG_ACTOR_CODE_ID, VERIFIED_REGISTRY_ACTOR_ADDR);
         let ret = rt.call::<DataCapActor>(
             Method::Mint as MethodNum,
-            Some(IpldBlock::serialize_cbor(&params).unwrap()),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
 
         rt.verify();
@@ -116,7 +116,7 @@ impl Harness {
         rt.set_caller(*VERIFREG_ACTOR_CODE_ID, VERIFIED_REGISTRY_ACTOR_ADDR);
         let ret = rt.call::<DataCapActor>(
             Method::Destroy as MethodNum,
-            Some(IpldBlock::serialize_cbor(&params).unwrap()),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
 
         rt.verify();
@@ -153,7 +153,7 @@ impl Harness {
         rt.expect_send(
             *to,
             frc42_dispatch::method_hash!("Receive"),
-            Some(IpldBlock::serialize_cbor(&hook_params).unwrap()),
+            IpldBlock::serialize_cbor(&hook_params).unwrap(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
@@ -162,7 +162,7 @@ impl Harness {
         let params = TransferParams { to: *to, amount: amount.clone(), operator_data };
         let ret = rt.call::<DataCapActor>(
             Method::Transfer as MethodNum,
-            Some(IpldBlock::serialize_cbor(&params).unwrap()),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
 
         rt.verify();
@@ -200,7 +200,7 @@ impl Harness {
         rt.expect_send(
             *to,
             frc42_dispatch::method_hash!("Receive"),
-            Some(IpldBlock::serialize_cbor(&hook_params).unwrap()),
+            IpldBlock::serialize_cbor(&hook_params).unwrap(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
@@ -210,7 +210,7 @@ impl Harness {
             TransferFromParams { to: *to, from: *from, amount: amount.clone(), operator_data };
         let ret = rt.call::<DataCapActor>(
             Method::TransferFrom as MethodNum,
-            Some(IpldBlock::serialize_cbor(&params).unwrap()),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
 
         rt.verify();

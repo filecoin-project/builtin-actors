@@ -405,7 +405,7 @@ mod miner_actor_precommit_batch {
             rt.expect_send(
                 STORAGE_MARKET_ACTOR_ADDR,
                 MarketMethod::VerifyDealsForActivation as u64,
-                Some(IpldBlock::serialize_cbor(&vdparams).unwrap()),
+                IpldBlock::serialize_cbor(&vdparams).unwrap(),
                 TokenAmount::zero(),
                 RawBytes::serialize(vdreturn).unwrap(),
                 ExitCode::OK,
@@ -422,7 +422,7 @@ mod miner_actor_precommit_batch {
             rt.expect_send(
                 STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::EnrollCronEvent as u64,
-                Some(IpldBlock::serialize_cbor(&cron_params).unwrap()),
+                IpldBlock::serialize_cbor(&cron_params).unwrap(),
                 TokenAmount::zero(),
                 RawBytes::default(),
                 ExitCode::OK,
@@ -430,7 +430,7 @@ mod miner_actor_precommit_batch {
 
             let result = rt.call::<Actor>(
                 Method::PreCommitSectorBatch2 as u64,
-                Some(IpldBlock::serialize_cbor(&PreCommitSectorBatchParams2 { sectors }).unwrap()),
+                IpldBlock::serialize_cbor(&PreCommitSectorBatchParams2 { sectors }).unwrap(),
             );
 
             expect_abort_contains_message(

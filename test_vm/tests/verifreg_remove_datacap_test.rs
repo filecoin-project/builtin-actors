@@ -65,11 +65,11 @@ fn remove_datacap_simple_successful_path() {
     ExpectInvocation {
         to: VERIFIED_REGISTRY_ACTOR_ADDR,
         method: VerifregMethod::AddVerifiedClient as u64,
-        params: Some(Some(IpldBlock::serialize_cbor(&add_verified_client_params).unwrap())),
+        params: Some(IpldBlock::serialize_cbor(&add_verified_client_params).unwrap()),
         subinvocs: Some(vec![ExpectInvocation {
             to: DATACAP_TOKEN_ACTOR_ADDR,
             method: DataCapMethod::Mint as u64,
-            params: Some(Some(IpldBlock::serialize_cbor(&mint_params).unwrap())),
+            params: Some(IpldBlock::serialize_cbor(&mint_params).unwrap()),
             subinvocs: None,
             ..Default::default()
         }]),
@@ -330,15 +330,13 @@ fn expect_remove_datacap(params: &RemoveDataCapParams) -> ExpectInvocation {
     ExpectInvocation {
         to: VERIFIED_REGISTRY_ACTOR_ADDR,
         method: VerifregMethod::RemoveVerifiedClientDataCap as u64,
-        params: Some(Some(IpldBlock::serialize_cbor(&params).unwrap())),
+        params: Some(IpldBlock::serialize_cbor(&params).unwrap()),
         code: Some(ExitCode::OK),
         subinvocs: Some(vec![
             ExpectInvocation {
                 to: DATACAP_TOKEN_ACTOR_ADDR,
                 method: DataCapMethod::BalanceOf as u64,
-                params: Some(Some(
-                    IpldBlock::serialize_cbor(&params.verified_client_to_remove).unwrap(),
-                )),
+                params: Some(IpldBlock::serialize_cbor(&params.verified_client_to_remove).unwrap()),
                 code: Some(ExitCode::OK),
                 subinvocs: None,
                 ..Default::default()
@@ -346,7 +344,7 @@ fn expect_remove_datacap(params: &RemoveDataCapParams) -> ExpectInvocation {
             ExpectInvocation {
                 to: DATACAP_TOKEN_ACTOR_ADDR,
                 method: DataCapMethod::Destroy as u64,
-                params: Some(Some(
+                params: Some(
                     IpldBlock::serialize_cbor(&DestroyParams {
                         owner: params.verified_client_to_remove,
                         amount: TokenAmount::from_whole(
@@ -354,7 +352,7 @@ fn expect_remove_datacap(params: &RemoveDataCapParams) -> ExpectInvocation {
                         ),
                     })
                     .unwrap(),
-                )),
+                ),
                 code: Some(ExitCode::OK),
                 subinvocs: None,
                 ..Default::default()

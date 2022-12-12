@@ -244,7 +244,7 @@ fn fails_if_new_worker_address_does_not_have_a_code() {
     let params = ChangeWorkerAddressParams { new_worker, new_control_addresses: Vec::new() };
     let result = rt.call::<Actor>(
         Method::ChangeWorkerAddress as u64,
-        Some(IpldBlock::serialize_cbor(&params).unwrap()),
+        IpldBlock::serialize_cbor(&params).unwrap(),
     );
     expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
     rt.verify();
@@ -263,7 +263,7 @@ fn fails_if_new_worker_is_not_account_actor() {
     let params = ChangeWorkerAddressParams { new_worker, new_control_addresses: Vec::new() };
     let result = rt.call::<Actor>(
         Method::ChangeWorkerAddress as u64,
-        Some(IpldBlock::serialize_cbor(&params).unwrap()),
+        IpldBlock::serialize_cbor(&params).unwrap(),
     );
     expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
     rt.verify();
@@ -291,7 +291,7 @@ fn fails_when_caller_is_not_the_owner() {
     let params = ChangeWorkerAddressParams { new_worker, new_control_addresses: Vec::new() };
     let result = rt.call::<Actor>(
         Method::ChangeWorkerAddress as u64,
-        Some(IpldBlock::serialize_cbor(&params).unwrap()),
+        IpldBlock::serialize_cbor(&params).unwrap(),
     );
     expect_abort(ExitCode::USR_FORBIDDEN, result);
     rt.verify();

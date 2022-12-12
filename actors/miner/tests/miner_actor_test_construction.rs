@@ -81,10 +81,7 @@ fn simple_construction() {
 
     let result = env
         .rt
-        .call::<Actor>(
-            Method::Constructor as u64,
-            Some(IpldBlock::serialize_cbor(&params).unwrap()),
-        )
+        .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
         .unwrap();
     assert_eq!(result.bytes().len(), 0);
     env.rt.verify();
@@ -157,10 +154,7 @@ fn control_addresses_are_resolved_during_construction() {
 
     let result = env
         .rt
-        .call::<Actor>(
-            Method::Constructor as u64,
-            Some(IpldBlock::serialize_cbor(&params).unwrap()),
-        )
+        .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
         .unwrap();
     assert_eq!(result.bytes().len(), 0);
     env.rt.verify();
@@ -194,10 +188,7 @@ fn fails_if_control_address_is_not_an_account_actor() {
 
     let result = env
         .rt
-        .call::<Actor>(
-            Method::Constructor as u64,
-            Some(IpldBlock::serialize_cbor(&params).unwrap()),
-        )
+        .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
         .unwrap_err();
     assert_eq!(result.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
     env.rt.verify();
@@ -213,10 +204,7 @@ fn test_construct_with_invalid_peer_id() {
 
     let result = env
         .rt
-        .call::<Actor>(
-            Method::Constructor as u64,
-            Some(IpldBlock::serialize_cbor(&params).unwrap()),
-        )
+        .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
         .unwrap_err();
     assert_eq!(result.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
     env.rt.verify();
@@ -235,10 +223,7 @@ fn fails_if_control_addresses_exceeds_maximum_length() {
 
     let result = env
         .rt
-        .call::<Actor>(
-            Method::Constructor as u64,
-            Some(IpldBlock::serialize_cbor(&params).unwrap()),
-        )
+        .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
         .unwrap_err();
     assert_eq!(result.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
     env.rt.verify();
@@ -257,10 +242,7 @@ fn test_construct_with_large_multiaddr() {
 
     let result = env
         .rt
-        .call::<Actor>(
-            Method::Constructor as u64,
-            Some(IpldBlock::serialize_cbor(&params).unwrap()),
-        )
+        .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
         .unwrap_err();
     assert_eq!(result.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
     env.rt.verify();
@@ -278,10 +260,7 @@ fn test_construct_with_empty_multiaddr() {
 
     let result = env
         .rt
-        .call::<Actor>(
-            Method::Constructor as u64,
-            Some(IpldBlock::serialize_cbor(&params).unwrap()),
-        )
+        .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
         .unwrap_err();
     assert_eq!(result.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
     env.rt.verify();

@@ -63,7 +63,7 @@ fn create_miner_test() {
         // send to power actor
         to: STORAGE_POWER_ACTOR_ADDR,
         method: PowerMethod::CreateMiner as u64,
-        params: Some(Some(IpldBlock::serialize_cbor(&params).unwrap())),
+        params: Some(IpldBlock::serialize_cbor(&params).unwrap()),
         ret: Some(res.ret),
         subinvocs: Some(vec![
             // request init actor construct miner
@@ -74,7 +74,7 @@ fn create_miner_test() {
                     // init then calls miner constructor
                     to: Address::new_id(FIRST_TEST_USER_ADDR + 1),
                     method: MinerMethod::Constructor as u64,
-                    params: Some(Some(
+                    params: Some(
                         IpldBlock::serialize_cbor(&MinerConstructorParams {
                             owner,
                             worker: owner,
@@ -84,7 +84,7 @@ fn create_miner_test() {
                             multi_addresses: multiaddrs,
                         })
                         .unwrap(),
-                    )),
+                    ),
                     ..Default::default()
                 }]),
                 ..Default::default()

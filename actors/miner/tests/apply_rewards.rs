@@ -144,11 +144,8 @@ fn penalty_is_partially_burnt_and_stored_as_fee_debt() {
     );
 
     let params = ApplyRewardParams { reward, penalty };
-    rt.call::<Actor>(
-        Method::ApplyRewards as u64,
-        Some(IpldBlock::serialize_cbor(&params).unwrap()),
-    )
-    .unwrap();
+    rt.call::<Actor>(Method::ApplyRewards as u64, IpldBlock::serialize_cbor(&params).unwrap())
+        .unwrap();
     rt.verify();
 
     let st = h.get_state(&rt);
@@ -198,7 +195,7 @@ fn rewards_pay_back_fee_debt() {
     rt.expect_send(
         STORAGE_POWER_ACTOR_ADDR,
         PowerMethod::UpdatePledgeTotal as u64,
-        Some(IpldBlock::serialize_cbor(&pledge_delta).unwrap()),
+        IpldBlock::serialize_cbor(&pledge_delta).unwrap(),
         TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::OK,
@@ -215,11 +212,8 @@ fn rewards_pay_back_fee_debt() {
     );
 
     let params = ApplyRewardParams { reward: reward.clone(), penalty };
-    rt.call::<Actor>(
-        Method::ApplyRewards as u64,
-        Some(IpldBlock::serialize_cbor(&params).unwrap()),
-    )
-    .unwrap();
+    rt.call::<Actor>(Method::ApplyRewards as u64, IpldBlock::serialize_cbor(&params).unwrap())
+        .unwrap();
     rt.verify();
 
     // Set balance to deduct fee

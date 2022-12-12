@@ -244,7 +244,7 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
         quality_adjusted_delta: StoragePower::from(-675 * (32i64 << 30) / 100),
     };
     let mut expected_update_claimed_power_params_ser =
-        IpldBlock::serialize_cbor(&expected_update_claimed_power_params).unwrap();
+        IpldBlock::serialize_cbor(&expected_update_claimed_power_params).unwrap().unwrap();
 
     extend(
         &v,
@@ -277,7 +277,7 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
         quality_adjusted_delta: StoragePower::from(-15 * (32i64 << 30) / 10),
     };
     expected_update_claimed_power_params_ser =
-        IpldBlock::serialize_cbor(&expected_update_claimed_power_params).unwrap();
+        IpldBlock::serialize_cbor(&expected_update_claimed_power_params).unwrap().unwrap();
 
     extend(
         &v,

@@ -88,13 +88,11 @@ fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_l
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let auth_param = Some(
-        IpldBlock::serialize_cbor(&AuthenticateMessageParams {
-            signature: buf.to_vec(),
-            message: buf.to_vec(),
-        })
-        .unwrap(),
-    );
+    let auth_param = IpldBlock::serialize_cbor(&AuthenticateMessageParams {
+        signature: buf.to_vec(),
+        message: buf.to_vec(),
+    })
+    .unwrap();
 
     rt.expect_send(
         deal_proposal2.client,
@@ -109,7 +107,7 @@ fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_l
         ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MarketActor>(
             Method::PublishStorageDeals as u64,
-            Some(IpldBlock::serialize_cbor(&params).unwrap()),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         ),
     );
     rt.verify();

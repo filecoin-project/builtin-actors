@@ -710,7 +710,7 @@ fn is_verifier(rt: &impl Runtime, st: &State, address: Address) -> Result<bool, 
 
 // Invokes BalanceOf on the data cap token actor, and converts the result to whole units of data cap.
 fn balance_of(rt: &mut impl Runtime, owner: &Address) -> Result<DataCap, ActorError> {
-    let params = Some(IpldBlock::serialize_cbor(owner)?);
+    let params = IpldBlock::serialize_cbor(owner)?;
     let ret = rt
         .send(
             &DATACAP_TOKEN_ACTOR_ADDR,
@@ -735,7 +735,7 @@ fn mint(
     rt.send(
         &DATACAP_TOKEN_ACTOR_ADDR,
         ext::datacap::Method::Mint as u64,
-        Some(IpldBlock::serialize_cbor(&params)?),
+        IpldBlock::serialize_cbor(&params)?,
         TokenAmount::zero(),
     )
     .context(format!("failed to send mint {:?} to datacap", params))?;
@@ -753,7 +753,7 @@ fn burn(rt: &mut impl Runtime, amount: &DataCap) -> Result<(), ActorError> {
     rt.send(
         &DATACAP_TOKEN_ACTOR_ADDR,
         ext::datacap::Method::Burn as u64,
-        Some(IpldBlock::serialize_cbor(&params)?),
+        IpldBlock::serialize_cbor(&params)?,
         TokenAmount::zero(),
     )
     .context(format!("failed to send burn {:?} to datacap", params))?;
@@ -772,7 +772,7 @@ fn destroy(rt: &mut impl Runtime, owner: &Address, amount: &DataCap) -> Result<(
     rt.send(
         &DATACAP_TOKEN_ACTOR_ADDR,
         ext::datacap::Method::Destroy as u64,
-        Some(IpldBlock::serialize_cbor(&params)?),
+        IpldBlock::serialize_cbor(&params)?,
         TokenAmount::zero(),
     )
     .context(format!("failed to send destroy {:?} to datacap", params))?;
@@ -790,7 +790,7 @@ fn transfer(rt: &mut impl Runtime, to: ActorID, amount: &DataCap) -> Result<(), 
     rt.send(
         &DATACAP_TOKEN_ACTOR_ADDR,
         ext::datacap::Method::Transfer as u64,
-        Some(IpldBlock::serialize_cbor(&params)?),
+        IpldBlock::serialize_cbor(&params)?,
         TokenAmount::zero(),
     )
     .context(format!("failed to send transfer to datacap {:?}", params))?;

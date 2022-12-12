@@ -564,7 +564,7 @@ fn duplicate_proof_rejected() {
 
     let result = rt.call::<miner::Actor>(
         miner::Method::SubmitWindowedPoSt as u64,
-        Some(IpldBlock::serialize_cbor(&params).unwrap()),
+        IpldBlock::serialize_cbor(&params).unwrap(),
     );
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -1040,7 +1040,7 @@ fn cannot_dispute_posts_when_the_challenge_window_is_open() {
 
     let result = rt.call::<miner::Actor>(
         miner::Method::DisputeWindowedPoSt as u64,
-        Some(IpldBlock::serialize_cbor(&params).unwrap()),
+        IpldBlock::serialize_cbor(&params).unwrap(),
     );
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
@@ -1102,7 +1102,7 @@ fn can_dispute_up_till_window_end_but_not_after() {
 
     let result = rt.call::<miner::Actor>(
         miner::Method::DisputeWindowedPoSt as u64,
-        Some(IpldBlock::serialize_cbor(&params).unwrap()),
+        IpldBlock::serialize_cbor(&params).unwrap(),
     );
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
@@ -1133,7 +1133,7 @@ fn cant_dispute_up_with_an_invalid_deadline() {
 
     let result = rt.call::<miner::Actor>(
         miner::Method::DisputeWindowedPoSt as u64,
-        Some(IpldBlock::serialize_cbor(&params).unwrap()),
+        IpldBlock::serialize_cbor(&params).unwrap(),
     );
     expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "invalid deadline", result);
     rt.verify();

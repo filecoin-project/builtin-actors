@@ -160,7 +160,7 @@ impl Harness {
         rt.expect_send(
             INIT_ACTOR_ADDR,
             ext::init::EXEC_METHOD,
-            Some(IpldBlock::serialize_cbor(&expected_init_params).unwrap()),
+            IpldBlock::serialize_cbor(&expected_init_params).unwrap(),
             value.clone(),
             RawBytes::serialize(create_miner_ret).unwrap(),
             ExitCode::OK,
@@ -174,7 +174,7 @@ impl Harness {
         };
         rt.call::<PowerActor>(
             Method::CreateMiner as MethodNum,
-            Some(IpldBlock::serialize_cbor(&params).unwrap()),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
         Ok(())
     }
@@ -248,13 +248,11 @@ impl Harness {
     ) -> Result<(), ActorError> {
         rt.set_caller(*MINER_ACTOR_CODE_ID, miner_address.to_owned());
         rt.expect_validate_caller_type(vec![Type::Miner]);
-        let params = Some(
-            IpldBlock::serialize_cbor(&EnrollCronEventParams {
-                event_epoch: epoch,
-                payload: payload.clone(),
-            })
-            .unwrap(),
-        );
+        let params = IpldBlock::serialize_cbor(&EnrollCronEventParams {
+            event_epoch: epoch,
+            payload: payload.clone(),
+        })
+        .unwrap();
         rt.call::<PowerActor>(Method::EnrollCronEvent as u64, params)?;
         rt.verify();
         Ok(())
@@ -294,7 +292,7 @@ impl Harness {
         rt.expect_validate_caller_type(vec![Type::Miner]);
         rt.call::<PowerActor>(
             Method::UpdatePledgeTotal as MethodNum,
-            Some(IpldBlock::serialize_cbor(&delta).unwrap()),
+            IpldBlock::serialize_cbor(&delta).unwrap(),
         )
         .unwrap();
         rt.verify();
@@ -331,7 +329,7 @@ impl Harness {
         rt.expect_validate_caller_type(vec![Type::Miner]);
         rt.call::<PowerActor>(
             Method::UpdateClaimedPower as MethodNum,
-            Some(IpldBlock::serialize_cbor(&params).unwrap()),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )
         .unwrap();
         rt.verify();
@@ -414,7 +412,7 @@ impl Harness {
             rt.expect_send(
                 sector.miner,
                 CONFIRM_SECTOR_PROOFS_VALID_METHOD,
-                Some(IpldBlock::serialize_cbor(&param).unwrap()),
+                IpldBlock::serialize_cbor(&param).unwrap(),
                 TokenAmount::zero(),
                 RawBytes::default(),
                 ExitCode::new(0),
@@ -428,7 +426,7 @@ impl Harness {
         rt.expect_send(
             REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
-            Some(IpldBlock::serialize_cbor(&BigIntSer(expected_raw_power)).unwrap()),
+            IpldBlock::serialize_cbor(&BigIntSer(expected_raw_power)).unwrap(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::new(0),
@@ -459,7 +457,7 @@ impl Harness {
         rt.set_caller(*MINER_ACTOR_CODE_ID, miner_address);
         rt.call::<PowerActor>(
             Method::SubmitPoRepForBulkVerify as u64,
-            Some(IpldBlock::serialize_cbor(&seal_info).unwrap()),
+            IpldBlock::serialize_cbor(&seal_info).unwrap(),
         )?;
         rt.verify();
         Ok(())

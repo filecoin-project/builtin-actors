@@ -70,7 +70,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, MinerInfo, SectorInfo) {
 
     // prove commit, cron, advance to post time
     let prove_params = ProveCommitSectorParams { sector_number, proof: vec![] };
-    let prove_params_ser = Some(IpldBlock::serialize_cbor(&prove_params).unwrap());
+    let prove_params_ser = IpldBlock::serialize_cbor(&prove_params).unwrap();
     apply_ok(
         &v,
         worker,
@@ -476,7 +476,7 @@ fn aggregate_bad_sector_number() {
         sector_numbers: precommited_sector_nos,
         aggregate_proof: vec![],
     };
-    let prove_params_ser = Some(IpldBlock::serialize_cbor(&prove_params).unwrap());
+    let prove_params_ser = IpldBlock::serialize_cbor(&prove_params).unwrap();
     apply_code(
         &v,
         worker,
@@ -555,7 +555,7 @@ fn aggregate_size_limits() {
         sector_numbers: precommited_sector_nos.clone(),
         aggregate_proof: vec![],
     };
-    let mut prove_params_ser = Some(IpldBlock::serialize_cbor(&prove_params).unwrap());
+    let mut prove_params_ser = IpldBlock::serialize_cbor(&prove_params).unwrap();
     apply_code(
         &v,
         worker,
@@ -582,7 +582,7 @@ fn aggregate_size_limits() {
         sector_numbers: too_few_sector_nos_bf,
         aggregate_proof: vec![],
     };
-    prove_params_ser = Some(IpldBlock::serialize_cbor(&prove_params).unwrap());
+    prove_params_ser = IpldBlock::serialize_cbor(&prove_params).unwrap();
     apply_code(
         &v,
         worker,
@@ -610,7 +610,7 @@ fn aggregate_size_limits() {
         aggregate_proof: vec![0; policy.max_aggregated_proof_size + 1],
     };
 
-    prove_params_ser = Some(IpldBlock::serialize_cbor(&prove_params).unwrap());
+    prove_params_ser = IpldBlock::serialize_cbor(&prove_params).unwrap();
     apply_code(
         &v,
         worker,
@@ -686,7 +686,7 @@ fn aggregate_bad_sender() {
         sector_numbers: precommited_sector_nos,
         aggregate_proof: vec![],
     };
-    let prove_params_ser = Some(IpldBlock::serialize_cbor(&prove_params).unwrap());
+    let prove_params_ser = IpldBlock::serialize_cbor(&prove_params).unwrap();
     apply_code(
         &v,
         addrs[1],
@@ -793,7 +793,7 @@ fn aggregate_one_precommit_expires() {
 
     let prove_params =
         ProveCommitAggregateParams { sector_numbers: sector_nos_bf, aggregate_proof: vec![] };
-    let prove_params_ser = Some(IpldBlock::serialize_cbor(&prove_params).unwrap());
+    let prove_params_ser = IpldBlock::serialize_cbor(&prove_params).unwrap();
     apply_ok(
         &v,
         worker,

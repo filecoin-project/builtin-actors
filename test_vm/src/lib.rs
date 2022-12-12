@@ -425,13 +425,7 @@ impl<'bs> VM<'bs> {
             to,
             value,
             method,
-<<<<<<< HEAD
-            params: params.map_or(RawBytes::default(), |p| {
-                serialize(&p, "params for apply message").unwrap()
-            }),
-=======
-            params: params.map(|p| IpldBlock::serialize_cbor(&p).unwrap()),
->>>>>>> 41b2af5a (Fixup test_vm to use IpldBlock)
+            params: params.map(|p| IpldBlock::serialize_cbor(&p).unwrap().unwrap()),
         };
         let mut new_ctx = InvocationCtx {
             v: self,

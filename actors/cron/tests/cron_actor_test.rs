@@ -118,7 +118,7 @@ fn epoch_tick_with_entries() {
 
 fn construct_and_verify(rt: &mut MockRuntime, params: &ConstructorParams) {
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
-    let ret = rt.call::<CronActor>(1, Some(IpldBlock::serialize_cbor(&params).unwrap())).unwrap();
+    let ret = rt.call::<CronActor>(1, IpldBlock::serialize_cbor(&params).unwrap()).unwrap();
     assert_eq!(RawBytes::default(), ret);
     rt.verify();
 }

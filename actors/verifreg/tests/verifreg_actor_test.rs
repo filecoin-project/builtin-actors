@@ -69,7 +69,7 @@ mod construction {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<VerifregActor>(
                 Method::Constructor as MethodNum,
-                Some(IpldBlock::serialize_cbor(&root_pubkey).unwrap()),
+                IpldBlock::serialize_cbor(&root_pubkey).unwrap(),
             ),
         );
     }
@@ -102,7 +102,7 @@ mod verifiers {
             ExitCode::USR_FORBIDDEN,
             rt.call::<VerifregActor>(
                 Method::AddVerifier as MethodNum,
-                Some(IpldBlock::serialize_cbor(&params).unwrap()),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             ),
         );
         h.check_state(&rt);
@@ -116,7 +116,7 @@ mod verifiers {
         let params = AddVerifierParams { address: *VERIFIER, allowance };
         let result = rt.call::<VerifregActor>(
             Method::AddVerifier as MethodNum,
-            Some(IpldBlock::serialize_cbor(&params).unwrap()),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         );
         expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
         h.check_state(&rt);
@@ -164,7 +164,7 @@ mod verifiers {
         let params = AddVerifierParams { address: verifier_key_address, allowance };
         let result = rt.call::<VerifregActor>(
             Method::AddVerifier as MethodNum,
-            Some(IpldBlock::serialize_cbor(&params).unwrap()),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         );
 
         expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
@@ -203,7 +203,7 @@ mod verifiers {
             ExitCode::USR_FORBIDDEN,
             rt.call::<VerifregActor>(
                 Method::RemoveVerifier as MethodNum,
-                Some(IpldBlock::serialize_cbor(VERIFIER.deref()).unwrap()),
+                IpldBlock::serialize_cbor(VERIFIER.deref()).unwrap(),
             ),
         );
         h.check_state(&rt);
@@ -380,7 +380,7 @@ mod clients {
             ExitCode::USR_NOT_FOUND,
             rt.call::<VerifregActor>(
                 Method::AddVerifiedClient as MethodNum,
-                Some(IpldBlock::serialize_cbor(&params).unwrap()),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             ),
         );
         h.check_state(&rt);
@@ -1080,7 +1080,7 @@ mod datacap {
             "caller address",
             rt.call::<VerifregActor>(
                 Method::UniversalReceiverHook as MethodNum,
-                Some(IpldBlock::serialize_cbor(&params).unwrap()),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             ),
         );
         rt.verify();
@@ -1112,7 +1112,7 @@ mod datacap {
             "token receiver expected to",
             rt.call::<VerifregActor>(
                 Method::UniversalReceiverHook as MethodNum,
-                Some(IpldBlock::serialize_cbor(&params).unwrap()),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             ),
         );
         rt.verify();

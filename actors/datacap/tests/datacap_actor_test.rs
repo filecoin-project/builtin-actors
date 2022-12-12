@@ -75,7 +75,7 @@ mod mint {
             "caller address",
             rt.call::<Actor>(
                 Method::Mint as MethodNum,
-                Some(IpldBlock::serialize_cbor(&params).unwrap()),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             ),
         );
         h.check_state(&rt);
@@ -218,7 +218,7 @@ mod destroy {
             "caller address",
             rt.call::<Actor>(
                 Method::Destroy as MethodNum,
-                Some(IpldBlock::serialize_cbor(&params).unwrap()),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             ),
         );
 

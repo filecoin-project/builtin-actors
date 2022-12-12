@@ -1969,7 +1969,7 @@ impl Actor {
         rt.send(
             &STORAGE_POWER_ACTOR_ADDR,
             ext::power::SUBMIT_POREP_FOR_BULK_VERIFY_METHOD,
-            Some(IpldBlock::serialize_cbor(&svi)?),
+            IpldBlock::serialize_cbor(&svi)?,
             TokenAmount::zero(),
         )?;
 
@@ -4022,10 +4022,8 @@ fn enroll_cron_event(
     cb: CronEventPayload,
 ) -> Result<(), ActorError> {
     let payload = serialize(&cb, "cron payload")?;
-    let ser_params = Some(IpldBlock::serialize_cbor(&ext::power::EnrollCronEventParams {
-        event_epoch,
-        payload,
-    })?);
+    let ser_params =
+        IpldBlock::serialize_cbor(&ext::power::EnrollCronEventParams { event_epoch, payload })?;
     rt.send(
         &STORAGE_POWER_ACTOR_ADDR,
         ext::power::ENROLL_CRON_EVENT_METHOD,
@@ -4046,10 +4044,10 @@ fn request_update_power(rt: &mut impl Runtime, delta: PowerPair) -> Result<(), A
     rt.send(
         &STORAGE_POWER_ACTOR_ADDR,
         ext::power::UPDATE_CLAIMED_POWER_METHOD,
-        Some(IpldBlock::serialize_cbor(&ext::power::UpdateClaimedPowerParams {
+        IpldBlock::serialize_cbor(&ext::power::UpdateClaimedPowerParams {
             raw_byte_delta: delta.raw,
             quality_adjusted_delta: delta.qa,
-        })?),
+        })?,
         TokenAmount::zero(),
     )
     .map_err(|e| e.wrap(format!("failed to update power with {:?}", delta_clone)))?;
@@ -4068,10 +4066,10 @@ fn request_terminate_deals(
         rt.send(
             &STORAGE_MARKET_ACTOR_ADDR,
             ext::market::ON_MINER_SECTORS_TERMINATE_METHOD,
-            Some(IpldBlock::serialize_cbor(&ext::market::OnMinerSectorsTerminateParamsRef {
+            IpldBlock::serialize_cbor(&ext::market::OnMinerSectorsTerminateParamsRef {
                 epoch,
                 deal_ids: chunk,
-            })?),
+            })?,
             TokenAmount::zero(),
         )?;
     }
@@ -4202,9 +4200,7 @@ fn request_deal_data(
     let serialized = rt.send(
         &STORAGE_MARKET_ACTOR_ADDR,
         ext::market::VERIFY_DEALS_FOR_ACTIVATION_METHOD,
-        Some(IpldBlock::serialize_cbor(&ext::market::VerifyDealsForActivationParamsRef {
-            sectors,
-        })?),
+        IpldBlock::serialize_cbor(&ext::market::VerifyDealsForActivationParamsRef { sectors })?,
         TokenAmount::zero(),
     )?;
 
@@ -4327,7 +4323,7 @@ fn notify_pledge_changed(
         rt.send(
             &STORAGE_POWER_ACTOR_ADDR,
             ext::power::UPDATE_PLEDGE_TOTAL_METHOD,
-            Some(IpldBlock::serialize_cbor(pledge_delta)?),
+            IpldBlock::serialize_cbor(pledge_delta)?,
             TokenAmount::zero(),
         )?;
     }
@@ -4345,7 +4341,7 @@ fn get_claims(
     let ret_raw = rt.send(
         &VERIFIED_REGISTRY_ACTOR_ADDR,
         ext::verifreg::GET_CLAIMS_METHOD as u64,
-        Some(IpldBlock::serialize_cbor(&params)?),
+        IpldBlock::serialize_cbor(&params)?,
         TokenAmount::zero(),
     )?;
     let claims_ret: ext::verifreg::GetClaimsReturn = deserialize(&ret_raw, "get claims return")?;
@@ -4798,10 +4794,7 @@ fn activate_deals_and_claim_allocations(
     let activate_raw = rt.send(
         &STORAGE_MARKET_ACTOR_ADDR,
         ext::market::ACTIVATE_DEALS_METHOD,
-        Some(IpldBlock::serialize_cbor(&ext::market::ActivateDealsParams {
-            deal_ids,
-            sector_expiry,
-        })?),
+        IpldBlock::serialize_cbor(&ext::market::ActivateDealsParams { deal_ids, sector_expiry })?,
         TokenAmount::zero(),
     );
     let activate_res: ext::market::ActivateDealsResult = match activate_raw {
@@ -4835,10 +4828,10 @@ fn activate_deals_and_claim_allocations(
     let claim_raw = rt.send(
         &VERIFIED_REGISTRY_ACTOR_ADDR,
         ext::verifreg::CLAIM_ALLOCATIONS_METHOD,
-        Some(IpldBlock::serialize_cbor(&ext::verifreg::ClaimAllocationsParams {
+        IpldBlock::serialize_cbor(&ext::verifreg::ClaimAllocationsParams {
             sectors: sector_claims,
             all_or_nothing: true,
-        })?),
+        })?,
         TokenAmount::zero(),
     );
     let claim_res: ext::verifreg::ClaimAllocationsReturn = match claim_raw {

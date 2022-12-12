@@ -71,7 +71,7 @@ mod compute_data_commitment {
         let ret: ComputeDataCommitmentReturn = rt
             .call::<MarketActor>(
                 Method::ComputeDataCommitment as u64,
-                Some(IpldBlock::serialize_cbor(&param).unwrap()),
+                IpldBlock::serialize_cbor(&param).unwrap(),
             )
             .unwrap()
             .deserialize()
@@ -104,7 +104,7 @@ mod compute_data_commitment {
         let ret: ComputeDataCommitmentReturn = rt
             .call::<MarketActor>(
                 Method::ComputeDataCommitment as u64,
-                Some(IpldBlock::serialize_cbor(&param).unwrap()),
+                IpldBlock::serialize_cbor(&param).unwrap(),
             )
             .unwrap()
             .deserialize()
@@ -178,7 +178,7 @@ mod compute_data_commitment {
         let ret: ComputeDataCommitmentReturn = rt
             .call::<MarketActor>(
                 Method::ComputeDataCommitment as u64,
-                Some(IpldBlock::serialize_cbor(&param).unwrap()),
+                IpldBlock::serialize_cbor(&param).unwrap(),
             )
             .unwrap()
             .deserialize()
@@ -206,7 +206,7 @@ mod compute_data_commitment {
             ExitCode::USR_NOT_FOUND,
             rt.call::<MarketActor>(
                 Method::ComputeDataCommitment as u64,
-                Some(IpldBlock::serialize_cbor(&param).unwrap()),
+                IpldBlock::serialize_cbor(&param).unwrap(),
             ),
         );
         check_state(&rt);
@@ -246,7 +246,7 @@ mod compute_data_commitment {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<MarketActor>(
                 Method::ComputeDataCommitment as u64,
-                Some(IpldBlock::serialize_cbor(&param).unwrap()),
+                IpldBlock::serialize_cbor(&param).unwrap(),
             ),
         );
         check_state(&rt);
@@ -292,7 +292,7 @@ mod compute_data_commitment {
             ExitCode::USR_NOT_FOUND,
             rt.call::<MarketActor>(
                 Method::ComputeDataCommitment as u64,
-                Some(IpldBlock::serialize_cbor(&param).unwrap()),
+                IpldBlock::serialize_cbor(&param).unwrap(),
             ),
         );
         check_state(&rt);
@@ -343,7 +343,7 @@ mod compute_data_commitment {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<MarketActor>(
                 Method::ComputeDataCommitment as u64,
-                Some(IpldBlock::serialize_cbor(&param).unwrap()),
+                IpldBlock::serialize_cbor(&param).unwrap(),
             ),
         );
         check_state(&rt);

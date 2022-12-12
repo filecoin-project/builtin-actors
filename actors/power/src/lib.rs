@@ -102,10 +102,10 @@ impl Actor {
             .send(
                 &INIT_ACTOR_ADDR,
                 ext::init::EXEC_METHOD,
-                Some(IpldBlock::serialize_cbor(&init::ExecParams {
+                IpldBlock::serialize_cbor(&init::ExecParams {
                     code_cid: miner_actor_code_cid,
                     constructor_params,
-                })?),
+                })?,
                 value,
             )?
             .deserialize()?;
@@ -256,7 +256,7 @@ impl Actor {
             // Can assume delta is one since cron is invoked every epoch.
             st.update_smoothed_estimate(1);
 
-            Ok(Some(IpldBlock::serialize_cbor(&BigIntSer(&st.this_epoch_raw_byte_power))?))
+            Ok(IpldBlock::serialize_cbor(&BigIntSer(&st.this_epoch_raw_byte_power))?)
         })?;
 
         // Update network KPA in reward actor
@@ -484,15 +484,13 @@ impl Actor {
             if let Err(e) = rt.send(
                 &m,
                 ext::miner::CONFIRM_SECTOR_PROOFS_VALID_METHOD,
-                Some(
-                    IpldBlock::serialize_cbor(&ext::miner::ConfirmSectorProofsParams {
-                        sectors: successful,
-                        reward_smoothed: rewret.this_epoch_reward_smoothed.clone(),
-                        reward_baseline_power: rewret.this_epoch_baseline_power.clone(),
-                        quality_adj_power_smoothed: this_epoch_qa_power_smoothed.clone(),
-                    })
-                    .map_err(|e| format!("failed to serialize ConfirmSectorProofsParams: {}", e))?,
-                ),
+                IpldBlock::serialize_cbor(&ext::miner::ConfirmSectorProofsParams {
+                    sectors: successful,
+                    reward_smoothed: rewret.this_epoch_reward_smoothed.clone(),
+                    reward_baseline_power: rewret.this_epoch_baseline_power.clone(),
+                    quality_adj_power_smoothed: this_epoch_qa_power_smoothed.clone(),
+                })
+                .map_err(|e| format!("failed to serialize ConfirmSectorProofsParams: {}", e))?,
                 Default::default(),
             ) {
                 error!("failed to confirm sector proof validity to {}, error code {}", m, e);
@@ -569,11 +567,11 @@ impl Actor {
 
         let mut failed_miner_crons = Vec::new();
         for event in cron_events {
-            let params = Some(IpldBlock::serialize_cbor(&ext::miner::DeferredCronEventParams {
+            let params = IpldBlock::serialize_cbor(&ext::miner::DeferredCronEventParams {
                 event_payload: event.callback_payload.bytes().to_owned(),
                 reward_smoothed: rewret.this_epoch_reward_smoothed.clone(),
                 quality_adj_power_smoothed: st.this_epoch_qa_power_smoothed.clone(),
-            })?);
+            })?;
             let res = rt.send(
                 &event.miner_addr,
                 ext::miner::ON_DEFERRED_CRON_EVENT_METHOD,
