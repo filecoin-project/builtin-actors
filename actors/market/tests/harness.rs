@@ -532,7 +532,7 @@ pub fn publish_deals(
     }
 
     let mut deal_id = next_deal_id;
-    for deal in publish_deals { 
+    for deal in publish_deals {
         let buf = RawBytes::serialize(deal.clone()).expect("failed to marshal deal proposal");
         let params = RawBytes::serialize(ext::account::MarketNotifyDealParams {
             proposal: buf.to_vec(),

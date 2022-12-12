@@ -249,15 +249,15 @@ impl Actor {
         let state: State = rt.state()?;
 
         for (di, mut deal) in params.deals.into_iter().enumerate() {
-
-            let serialized_proposal = match validate_deal(rt, &deal, &network_raw_power, &baseline_power) {
-                // drop malformed deals
-                Err(e) => {
-                    info!("invalid deal {}: {}", di, e);
-                    continue;
-                }
-                Ok(b) => b,
-            };
+            let serialized_proposal =
+                match validate_deal(rt, &deal, &network_raw_power, &baseline_power) {
+                    // drop malformed deals
+                    Err(e) => {
+                        info!("invalid deal {}: {}", di, e);
+                        continue;
+                    }
+                    Ok(b) => b,
+                };
 
             if deal.proposal.provider != Address::new_id(provider_id)
                 && deal.proposal.provider != provider_raw
