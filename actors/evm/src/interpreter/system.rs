@@ -8,12 +8,13 @@ use fvm_ipld_encoding::{CborStore, RawBytes};
 use fvm_ipld_kamt::HashedKey;
 use fvm_shared::{
     address::{Address, Payload},
+    crypto::hash::SupportedHashes,
     econ::TokenAmount,
     error::ExitCode,
     sys::SendFlags,
     MethodNum, IPLD_RAW,
 };
-use multihash::Code;
+use multihash::{Code, Multihash};
 
 use crate::state::State;
 
@@ -76,13 +77,28 @@ pub type StateKamt<BS> = Kamt<BS, U256, U256, StateHashAlgorithm>;
 /// The contract code size limit is 24kB.
 const MAX_CODE_SIZE: usize = 24 << 10;
 
+#[derive(Clone, Copy)]
+pub struct EvmBytecode {
+    /// CID of the contract
+    pub cid: Cid,
+    /// Keccak256 hash of the contract
+    pub evm_hash: Multihash,
+}
+
+impl EvmBytecode {
+    fn new(cid: Cid, evm_hash: Multihash) -> Self {
+        Self { cid, evm_hash }
+    }
+}
+
 /// Platform Abstraction Layer
 /// that bridges the FVM world to EVM world
 pub struct System<'r, RT: Runtime> {
     pub rt: &'r mut RT,
 
     /// The current bytecode. This is usually only "none" when the actor is first constructed.
-    bytecode: Option<Cid>,
+    /// (blake2b256(ipld_raw(bytecode)), keccak256(bytecode))
+    bytecode: Option<EvmBytecode>,
     /// The contract's EVM storage slots.
     slots: StateKamt<RT::Blockstore>,
     /// The contracts "nonce" (incremented when creating new actors).
@@ -134,7 +150,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?,
             nonce: state.nonce,
             saved_state_root: Some(state_root),
-            bytecode: Some(state.bytecode),
+            bytecode: Some(EvmBytecode::new(state.bytecode, state.bytecode_hash)),
             readonly: read_only,
         })
     }
@@ -174,8 +190,9 @@ impl<'r, RT: Runtime> System<'r, RT> {
             return Err(ActorError::forbidden("contract invocation is read only".to_string()));
         }
 
-        let bytecode_cid = match self.bytecode {
+        let EvmBytecode { cid, evm_hash } = match self.bytecode {
             Some(cid) => cid,
+            // set empty bytecode hashes
             None => self.set_bytecode(&[])?,
         };
         let new_root = self
@@ -183,7 +200,8 @@ impl<'r, RT: Runtime> System<'r, RT> {
             .store()
             .put_cbor(
                 &State {
-                    bytecode: bytecode_cid,
+                    bytecode: cid,
+                    bytecode_hash: evm_hash,
                     contract_state: self.slots.flush().context_code(
                         ExitCode::USR_ILLEGAL_STATE,
                         "failed to flush contract state",
@@ -222,17 +240,22 @@ impl<'r, RT: Runtime> System<'r, RT> {
             .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?;
         self.nonce = state.nonce;
         self.saved_state_root = Some(root);
-        self.bytecode = Some(state.bytecode);
+        self.bytecode = Some(EvmBytecode::new(state.bytecode, state.bytecode_hash));
         Ok(())
     }
 
     /// Load the bytecode.
     pub fn load_bytecode(&self) -> Result<Option<Bytecode>, ActorError> {
-        Ok(self.bytecode.as_ref().map(|k| load_bytecode(self.rt.store(), k)).transpose()?.flatten())
+        Ok(self
+            .bytecode
+            .as_ref()
+            .map(|EvmBytecode { cid, .. }| load_bytecode(self.rt.store(), cid))
+            .transpose()?
+            .flatten())
     }
 
     /// Set the bytecode.
-    pub fn set_bytecode(&mut self, bytecode: &[u8]) -> Result<Cid, ActorError> {
+    pub fn set_bytecode(&mut self, bytecode: &[u8]) -> Result<EvmBytecode, ActorError> {
         self.saved_state_root = None;
         if bytecode.len() > MAX_CODE_SIZE {
             return Err(ActorError::illegal_argument(format!(
@@ -245,13 +268,21 @@ impl<'r, RT: Runtime> System<'r, RT> {
                 "EIP-3541: Contract code starting with the 0xEF byte is disallowed.".into(),
             ));
         }
-        let k = self
+
+        let code_hash = multihash::Multihash::wrap(
+            SupportedHashes::Keccak256 as u64,
+            &self.rt.hash(SupportedHashes::Keccak256, bytecode),
+        )
+        .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to hash bytecode with keccak")?;
+
+        let cid = self
             .rt
             .store()
             .put(Code::Blake2b256, &Block::new(IPLD_RAW, bytecode))
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to write bytecode")?;
-        self.bytecode = Some(k);
-        Ok(k)
+        let bytecode = EvmBytecode::new(cid, code_hash);
+        self.bytecode = Some(bytecode);
+        Ok(bytecode)
     }
 
     /// Get value of a storage key.

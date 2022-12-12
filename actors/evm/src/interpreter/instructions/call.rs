@@ -5,7 +5,7 @@ use fvm_shared::{address::Address, sys::SendFlags, METHOD_SEND};
 
 use crate::interpreter::precompiles::PrecompileContext;
 
-use super::ext::{get_cid_type, get_evm_bytecode_cid, ContractType};
+use super::ext::{get_contract_type, get_evm_bytecode_cid, ContractType};
 
 use {
     super::memory::{copy_to_memory, get_memory_region},
@@ -268,7 +268,7 @@ pub fn call_generic<RT: Runtime>(
                         system.send(&dst_addr, method, params, value, gas_limit, send_flags)
                     }
                 }
-                CallKind::DelegateCall => match get_cid_type(system.rt, dst) {
+                CallKind::DelegateCall => match get_contract_type(system.rt, dst) {
                     ContractType::EVM(dst_addr) => {
                         // If we're calling an actual EVM actor, get it's code.
                         let code = get_evm_bytecode_cid(system.rt, &dst_addr)?;
@@ -291,6 +291,10 @@ pub fn call_generic<RT: Runtime>(
                     ContractType::Native(_) => {
                         Err(ActorError::forbidden("cannot delegate-call to native actors".into()))
                     }
+                    ContractType::Precompile => Err(ActorError::assertion_failed(
+                        "Reached a precompile address when a precompile should've been caught earlier in the system"
+                            .to_string(),
+                    )),
                 },
                 CallKind::CallCode => Err(ActorError::unchecked(
                     EVM_CONTRACT_EXECUTION_ERROR,
