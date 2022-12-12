@@ -40,6 +40,7 @@ use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
 use fvm_shared::address::{Address, Payload};
 use fvm_shared::bigint::Zero;
+use fvm_shared::chainid::ChainID;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::hash::SupportedHashes;
@@ -852,6 +853,10 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
 
     fn curr_epoch(&self) -> ChainEpoch {
         self.v.get_epoch()
+    }
+
+    fn chain_id(&self) -> ChainID {
+        ChainID::from(0)
     }
 
     fn validate_immediate_caller_accept_any(&mut self) -> Result<(), ActorError> {
