@@ -5,7 +5,7 @@ use fvm_shared::{address::Address, sys::SendFlags, METHOD_SEND};
 
 use crate::interpreter::precompiles::PrecompileContext;
 
-use super::ext::{get_address_type, get_evm_bytecode_cid, ContractType};
+use super::ext::{get_contract_type, get_evm_bytecode_cid, ContractType};
 
 use {
     super::memory::{copy_to_memory, get_memory_region},
@@ -268,7 +268,7 @@ pub fn call_generic<RT: Runtime>(
                         system.send(&dst_addr, method, params, value, gas_limit, send_flags)
                     }
                 }
-                CallKind::DelegateCall => match get_address_type(system.rt, dst) {
+                CallKind::DelegateCall => match get_contract_type(system.rt, dst) {
                     ContractType::EVM(dst_addr) => {
                         // If we're calling an actual EVM actor, get it's code.
                         let code = get_evm_bytecode_cid(system.rt, &dst_addr)?;

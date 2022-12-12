@@ -1,5 +1,5 @@
-use crate::interpreter::address::EthAddress;
 use crate::interpreter::instructions::memory::copy_to_memory;
+use crate::interpreter::{address::EthAddress, precompiles::Precompiles};
 use crate::U256;
 use cid::Cid;
 use fil_actors_runtime::runtime::builtins::Type;
@@ -29,7 +29,7 @@ pub fn extcodesize(
     // TODO (M2.2) we're fetching the entire block here just to get its size. We should instead use
     //  the ipld::block_stat syscall, but the Runtime nor the Blockstore expose it.
     //  Tracked in https://github.com/filecoin-project/ref-fvm/issues/867
-    let len = match get_address_type(system.rt, addr) {
+    let len = match get_contract_type(system.rt, addr) {
         ContractType::EVM(addr) => {
             get_evm_bytecode(system.rt, &addr).map(|bytecode| bytecode.len())?
         }
@@ -46,23 +46,20 @@ pub fn extcodehash(
     system: &System<impl Runtime>,
     addr: U256,
 ) -> Result<U256, StatusCode> {
-    let addr = match get_address_type(system.rt, addr) {
+    let addr = match get_contract_type(system.rt, addr) {
         ContractType::EVM(a) => a,
         // _Technically_ since we have native "bytecode" set as 0xfe this is valid, though we cant differentiate between
         ContractType::Native(_) => return Ok(NATIVE_BYTECODE_HASH.into()),
         // Precompiles "exist" and therefore aren't empty (although spec-wise they can be either 0 or keccak("") ).
         ContractType::Precompile => return Ok(EMPTY_EVM_HASH.into()),
-        // Everything else is flattened to 0, "empty hash"
+        // NOTE: There may be accounts that in EVM would be considered "empty" (as defined in EIP-161) and give 0, but we will instead return keccak("").
+        //      The FVM does not have chain state cleanup so contracts will never end up "empty" and be removed, they will either exist (in any state in the contract lifecycle)
+        //      and return keccak(""), or not exist (where nothing has ever been deployed at that address) and return 0.
+        // TODO: With account abstraction, this may be something other than an empty hash!
+        ContractType::Account => return Ok(EMPTY_EVM_HASH.into()),
+        // Everything else is flattened to 0
         _ => return Ok(U256::zero()),
     };
-
-    // TODO: We have no way telling if an account is "empty" as described in EIP-161 We can check for no code and zero balance,
-    //      but we cannot discern if the nonce is zero following semantics of EVM nonces. Therefore there may be accounts that in EVM would be
-    //      considered "empty" and give 0, but we will instead return keccak(""), indicating existing but empty bytecode
-    //      (tracking nonce be possible if we can run code on receive)
-    //
-
-    // TODO there are simplifications of EIP-161 with EIP-4747
 
     // multihash { keccak256(bytecode) }
     let bytecode_hash: Multihash = system
@@ -90,7 +87,7 @@ pub fn extcodecopy(
     data_offset: U256,
     size: U256,
 ) -> Result<(), StatusCode> {
-    let bytecode = match get_address_type(system.rt, addr) {
+    let bytecode = match get_contract_type(system.rt, addr) {
         ContractType::EVM(addr) => get_evm_bytecode(system.rt, &addr)?,
         ContractType::NotFound | ContractType::Account | ContractType::Precompile => Vec::new(),
         // calling EXTCODECOPY on native actors results with a single byte 0xFE which solidtiy uses for its `assert`/`throw` methods
@@ -112,10 +109,10 @@ pub enum ContractType {
 }
 
 /// Resolves an address to the address type
-pub fn get_address_type<RT: Runtime>(rt: &RT, addr: U256) -> ContractType {
+pub fn get_contract_type<RT: Runtime>(rt: &RT, addr: U256) -> ContractType {
     let addr: EthAddress = addr.into();
     // precompiles cant be resolved by the FVM
-    if addr.is_precompile::<RT>() {
+    if Precompiles::<RT>::is_precompile(&addr.as_evm_word()) {
         return ContractType::Precompile;
     }
 
