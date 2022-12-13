@@ -900,11 +900,16 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
         serialize(&transfer_return, "transfer from return").unwrap(),
         ExitCode::OK,
     );
-
-    let proposal_bytes = RawBytes::serialize(&deal).expect("failed to marshal deal proposal");
-    let notify_param =
-        RawBytes::serialize(MarketNotifyDealParams { proposal: proposal_bytes.to_vec(), deal_id })
-            .unwrap();
+    let mut normalized_deal = deal.clone();
+    normalized_deal.provider = provider_resolved;
+    normalized_deal.client = client_resolved;
+    let normalized_proposal_bytes =
+        RawBytes::serialize(&normalized_deal).expect("failed to marshal deal proposal");
+    let notify_param = RawBytes::serialize(MarketNotifyDealParams {
+        proposal: normalized_proposal_bytes.to_vec(),
+        deal_id,
+    })
+    .unwrap();
     rt.expect_send(
         client_resolved,
         MARKET_NOTIFY_DEAL,

@@ -249,15 +249,10 @@ impl Actor {
         let state: State = rt.state()?;
 
         for (di, mut deal) in params.deals.into_iter().enumerate() {
-            let serialized_proposal =
-                match validate_deal(rt, &deal, &network_raw_power, &baseline_power) {
-                    // drop malformed deals
-                    Err(e) => {
-                        info!("invalid deal {}: {}", di, e);
-                        continue;
-                    }
-                    Ok(b) => b,
-                };
+            if let Err(e) = validate_deal(rt, &deal, &network_raw_power, &baseline_power) {
+                info!("invalid deal {}: {}", di, e);
+                continue;
+            }
 
             if deal.proposal.provider != Address::new_id(provider_id)
                 && deal.proposal.provider != provider_raw
@@ -310,7 +305,9 @@ impl Actor {
             // Must happen after signature verification and before taking cid.
             deal.proposal.provider = Address::new_id(provider_id);
             deal.proposal.client = Address::new_id(client_id);
-            let pcid = rt_deal_cid(rt, &deal.proposal).map_err(
+            let serialized_proposal = serialize(&deal.proposal, "normalized deal proposal")
+                .context_code(ExitCode::USR_SERIALIZATION, "failed to serialize")?;
+            let pcid = rt_serialized_deal_cid(rt, &serialized_proposal.to_vec()).map_err(
                 |e| actor_error!(illegal_argument; "failed to take cid of proposal {}: {}", di, e),
             )?;
 
@@ -1175,8 +1172,8 @@ fn validate_deal(
     deal: &ClientDealProposal,
     network_raw_power: &StoragePower,
     baseline_power: &StoragePower,
-) -> Result<RawBytes, ActorError> {
-    let proposal_bytes = deal_proposal_is_internally_valid(rt, deal)?;
+) -> Result<(), ActorError> {
+    deal_proposal_is_internally_valid(rt, deal)?;
 
     let proposal = &deal.proposal;
 
@@ -1241,13 +1238,13 @@ fn validate_deal(
         return Err(actor_error!(illegal_argument, "Client collateral out of bounds."));
     };
 
-    Ok(proposal_bytes)
+    Ok(())
 }
 
 fn deal_proposal_is_internally_valid(
     rt: &impl Runtime,
     proposal: &ClientDealProposal,
-) -> Result<RawBytes, ActorError> {
+) -> Result<(), ActorError> {
     let signature_bytes = proposal.client_signature.bytes.clone();
     // Generate unsigned bytes
     let proposal_bytes = serialize(&proposal.proposal, "deal proposal")?;
@@ -1262,15 +1259,20 @@ fn deal_proposal_is_internally_valid(
         TokenAmount::zero(),
     )
     .map_err(|e| e.wrap("proposal authentication failed"))?;
-    Ok(proposal_bytes)
+    Ok(())
 }
 
 pub const DAG_CBOR: u64 = 0x71; // TODO is there a better place to get this?
 
 /// Compute a deal CID using the runtime.
 pub(crate) fn rt_deal_cid(rt: &impl Runtime, proposal: &DealProposal) -> Result<Cid, ActorError> {
-    const DIGEST_SIZE: u32 = 32;
     let data = &proposal.marshal_cbor()?;
+    rt_serialized_deal_cid(rt, data)
+}
+
+/// Compute a deal CID from serialized proposal using the runtime
+pub(crate) fn rt_serialized_deal_cid(rt: &impl Runtime, data: &Vec<u8>) -> Result<Cid, ActorError> {
+    const DIGEST_SIZE: u32 = 32;
     let hash = MultihashGeneric::wrap(Code::Blake2b256.into(), &rt.hash_blake2b(data))
         .map_err(|e| actor_error!(illegal_argument; "failed to take cid of proposal {}", e))?;
     debug_assert_eq!(u32::from(hash.size()), DIGEST_SIZE, "expected 32byte digest");
