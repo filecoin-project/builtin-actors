@@ -213,3 +213,20 @@ impl<'a, T: Sized + Copy, const CHUNK_SIZE: usize> PaddedChunks<'a, T, CHUNK_SIZ
         self.next().map(|p| Parameter::<V>::from(p).0).ok_or(PrecompileError::IncorrectInputSize)
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_assert_zero_bytes() {
+        let mut bytes = [0u8; 32];
+        assert_zero_bytes::<32>(&bytes).unwrap();
+        bytes[31] = 1;
+        assert_zero_bytes::<31>(&bytes).unwrap();
+        assert_zero_bytes::<32>(&bytes).expect_err("expected error from nonzero byte");
+    }
+
+    // remaining slice
+    
+}
