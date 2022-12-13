@@ -106,12 +106,21 @@ pub fn block_number(
     Ok(U256::from(system.rt.curr_epoch()))
 }
 
+/// EIP-4399
 #[inline]
-pub fn difficulty(
+pub fn prevrandao(
     _state: &mut ExecutionState,
-    _system: &System<impl Runtime>,
+    system: &System<impl Runtime>,
 ) -> Result<U256, StatusCode> {
-    Ok(U256::zero())
+    // relies that `U256::from_be(value) > 2^64`
+    // get randomness from previous beacon epoch with entropy being self's f0 address
+    let rand = system.rt.get_randomness_from_beacon(
+        fil_actors_runtime::runtime::DomainSeparationTag::EvmPrevRandao,
+        system.rt.curr_epoch() - 1,
+        // f0xxxx
+        &system.rt.message().receiver().to_bytes(),
+    )?;
+    Ok(U256::from(rand))
 }
 
 #[inline]
