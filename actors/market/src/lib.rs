@@ -442,7 +442,7 @@ impl Actor {
         for (i, valid_deal) in valid_deals.iter().enumerate() {
             _ = rt.send(
                 &valid_deal.proposal.client,
-                MARKET_NOTIFY_DEAL,
+                MARKET_NOTIFY_DEAL_METHOD,
                 RawBytes::serialize(MarketNotifyDealParams {
                     proposal: valid_deal.serialized_proposal.to_vec(),
                     deal_id: new_deal_ids[i],

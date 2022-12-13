@@ -6,8 +6,8 @@ use fil_actor_market::policy::detail::DEAL_MAX_LABEL_SIZE;
 use fil_actor_market::{
     deal_id_key, ext, ActivateDealsParams, Actor as MarketActor, ClientDealProposal, DealArray,
     DealMetaArray, Label, MarketNotifyDealParams, Method, PublishStorageDealsParams,
-    PublishStorageDealsReturn, State, WithdrawBalanceParams, MARKET_NOTIFY_DEAL, NO_ALLOCATION_ID,
-    PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
+    PublishStorageDealsReturn, State, WithdrawBalanceParams, MARKET_NOTIFY_DEAL_METHOD,
+    NO_ALLOCATION_ID, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
 };
 use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
@@ -910,7 +910,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     .unwrap();
     rt.expect_send(
         client_resolved,
-        MARKET_NOTIFY_DEAL,
+        MARKET_NOTIFY_DEAL_METHOD,
         notify_param,
         TokenAmount::zero(),
         RawBytes::default(),
@@ -1841,7 +1841,7 @@ fn insufficient_client_balance_in_a_batch() {
     .unwrap();
     rt.expect_send(
         deal2.client,
-        MARKET_NOTIFY_DEAL,
+        MARKET_NOTIFY_DEAL_METHOD,
         notify_param2,
         TokenAmount::zero(),
         RawBytes::default(),
@@ -1975,7 +1975,7 @@ fn insufficient_provider_balance_in_a_batch() {
     .unwrap();
     rt.expect_send(
         deal2.client,
-        MARKET_NOTIFY_DEAL,
+        MARKET_NOTIFY_DEAL_METHOD,
         notify_param2,
         TokenAmount::zero(),
         RawBytes::default(),
@@ -2115,7 +2115,7 @@ fn psd_restricted_correctly() {
     .unwrap();
     rt.expect_send(
         deal.client,
-        MARKET_NOTIFY_DEAL,
+        MARKET_NOTIFY_DEAL_METHOD,
         notify_param,
         TokenAmount::zero(),
         RawBytes::default(),

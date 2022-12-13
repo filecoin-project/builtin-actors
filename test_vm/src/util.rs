@@ -23,7 +23,7 @@ use fil_actor_market::ext::verifreg::{
 };
 use fil_actor_market::{
     ClientDealProposal, DealProposal, Label, Method as MarketMethod, PublishStorageDealsParams,
-    PublishStorageDealsReturn, MARKET_NOTIFY_DEAL,
+    PublishStorageDealsReturn, MARKET_NOTIFY_DEAL_METHOD,
 };
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, max_prove_commit_duration,
@@ -1133,7 +1133,11 @@ pub fn market_publish_deal(
             method: AccountMethod::AuthenticateMessageExported as u64,
             ..Default::default()
         },
-        ExpectInvocation { to: deal_client, method: MARKET_NOTIFY_DEAL, ..Default::default() },
+        ExpectInvocation {
+            to: deal_client,
+            method: MARKET_NOTIFY_DEAL_METHOD,
+            ..Default::default()
+        },
     ];
     if verified_deal {
         let deal_term = deal.end_epoch - deal.start_epoch;

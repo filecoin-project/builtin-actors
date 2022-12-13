@@ -4,7 +4,7 @@
 use fil_actor_market::policy::deal_provider_collateral_bounds;
 use fil_actor_market::{
     Actor as MarketActor, ClientDealProposal, DealProposal, MarketNotifyDealParams, Method,
-    PublishStorageDealsParams, PublishStorageDealsReturn, State, MARKET_NOTIFY_DEAL,
+    PublishStorageDealsParams, PublishStorageDealsReturn, State, MARKET_NOTIFY_DEAL_METHOD,
 };
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
@@ -358,7 +358,7 @@ fn fail_when_deals_have_different_providers() {
 
     rt.expect_send(
         deal1.client,
-        MARKET_NOTIFY_DEAL,
+        MARKET_NOTIFY_DEAL_METHOD,
         notify_param1,
         TokenAmount::zero(),
         RawBytes::default(),

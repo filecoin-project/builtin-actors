@@ -16,7 +16,7 @@ use fil_actor_market::{
     GetBalanceReturn, Label, MarketNotifyDealParams, Method, OnMinerSectorsTerminateParams,
     PublishStorageDealsParams, PublishStorageDealsReturn, SectorDeals, State,
     VerifyDealsForActivationParams, VerifyDealsForActivationReturn, WithdrawBalanceParams,
-    WithdrawBalanceReturn, MARKET_NOTIFY_DEAL, NO_ALLOCATION_ID, PROPOSALS_AMT_BITWIDTH,
+    WithdrawBalanceReturn, MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID, PROPOSALS_AMT_BITWIDTH,
 };
 use fil_actor_power::{CurrentTotalPowerReturn, Method as PowerMethod};
 use fil_actor_reward::Method as RewardMethod;
@@ -539,7 +539,7 @@ pub fn publish_deals(
                 .unwrap();
         rt.expect_send(
             deal.client,
-            MARKET_NOTIFY_DEAL,
+            MARKET_NOTIFY_DEAL_METHOD,
             params,
             TokenAmount::zero(),
             RawBytes::default(),

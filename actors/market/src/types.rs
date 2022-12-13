@@ -219,7 +219,7 @@ pub struct GetDealActivationReturn {
 }
 
 // Interface market clients can implement to receive notifications from builtin market
-pub const MARKET_NOTIFY_DEAL: u64 = frc42_dispatch::method_hash!("MarketNotifyDeal");
+pub const MARKET_NOTIFY_DEAL_METHOD: u64 = frc42_dispatch::method_hash!("MarketNotifyDeal");
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct MarketNotifyDealParams {
