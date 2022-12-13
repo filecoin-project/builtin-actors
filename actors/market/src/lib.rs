@@ -307,7 +307,7 @@ impl Actor {
             deal.proposal.client = Address::new_id(client_id);
             let serialized_proposal = serialize(&deal.proposal, "normalized deal proposal")
                 .context_code(ExitCode::USR_SERIALIZATION, "failed to serialize")?;
-            let pcid = rt_serialized_deal_cid(rt, &serialized_proposal.to_vec()).map_err(
+            let pcid = rt_serialized_deal_cid(rt, &serialized_proposal).map_err(
                 |e| actor_error!(illegal_argument; "failed to take cid of proposal {}: {}", di, e),
             )?;
 
@@ -1271,7 +1271,7 @@ pub(crate) fn rt_deal_cid(rt: &impl Runtime, proposal: &DealProposal) -> Result<
 }
 
 /// Compute a deal CID from serialized proposal using the runtime
-pub(crate) fn rt_serialized_deal_cid(rt: &impl Runtime, data: &Vec<u8>) -> Result<Cid, ActorError> {
+pub(crate) fn rt_serialized_deal_cid(rt: &impl Runtime, data: &[u8]) -> Result<Cid, ActorError> {
     const DIGEST_SIZE: u32 = 32;
     let hash = MultihashGeneric::wrap(Code::Blake2b256.into(), &rt.hash_blake2b(data))
         .map_err(|e| actor_error!(illegal_argument; "failed to take cid of proposal {}", e))?;
