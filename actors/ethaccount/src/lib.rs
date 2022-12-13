@@ -1,10 +1,8 @@
-use fvm_ipld_encoding::{Cbor, RawBytes};
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Payload;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
-use serde::Deserialize;
-use serde::Serialize;
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
@@ -20,13 +18,6 @@ fil_actors_runtime::wasm_trampoline!(EthAccountActor);
 pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
 }
-
-/// Ethereum Externally Owned Address actor state.
-#[derive(Default, Deserialize, Serialize)]
-#[serde(transparent)]
-pub struct State([(); 0]);
-
-impl Cbor for State {}
 
 /// Ethereum Externally Owned Address actor.
 pub struct EthAccountActor;
@@ -50,7 +41,6 @@ impl EthAccountActor {
             }
         }
 
-        rt.create(&State::default())?;
         Ok(())
     }
 }
@@ -88,7 +78,7 @@ mod tests {
     };
     use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
 
-    use crate::{EthAccountActor, Method, State};
+    use crate::{EthAccountActor, Method};
 
     const EOA: Address = Address::new_id(1000);
 
@@ -116,8 +106,6 @@ mod tests {
         );
         rt.call::<EthAccountActor>(Method::Constructor as MethodNum, &RawBytes::default()).unwrap();
         rt.verify();
-        let state: State = rt.get_state();
-        assert_eq!([(); 0], state.0);
     }
 
     #[test]
