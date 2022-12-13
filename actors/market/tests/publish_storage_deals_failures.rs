@@ -3,8 +3,8 @@
 
 use fil_actor_market::policy::deal_provider_collateral_bounds;
 use fil_actor_market::{
-    Actor as MarketActor, ClientDealProposal, DealProposal, Method, PublishStorageDealsParams,
-    PublishStorageDealsReturn,
+    Actor as MarketActor, ClientDealProposal, DealProposal, MarketNotifyDealParams, Method,
+    PublishStorageDealsParams, PublishStorageDealsReturn, State, MARKET_NOTIFY_DEAL_METHOD,
 };
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
@@ -292,6 +292,9 @@ fn fail_when_deals_have_different_providers() {
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
 
     let mut rt = setup();
+    let st: State = rt.get_state();
+    let next_deal_id = st.next_id;
+
     let deal1 = generate_deal_and_add_funds(
         &mut rt,
         CLIENT_ADDR,
@@ -344,6 +347,22 @@ fn fail_when_deals_have_different_providers() {
         TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::OK,
+    );
+
+    // only valid deals are notified
+    let notify_param1 = RawBytes::serialize(MarketNotifyDealParams {
+        proposal: RawBytes::serialize(&deal1).expect("failed to marshal deal proposal").to_vec(),
+        deal_id: next_deal_id,
+    })
+    .unwrap();
+
+    rt.expect_send(
+        deal1.client,
+        MARKET_NOTIFY_DEAL_METHOD,
+        notify_param1,
+        TokenAmount::zero(),
+        RawBytes::default(),
+        ExitCode::USR_UNHANDLED_MESSAGE,
     );
 
     let psd_ret: PublishStorageDealsReturn = rt

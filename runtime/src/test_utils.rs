@@ -932,7 +932,8 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
                 && expected_msg.value == value,
             "message sent does not match expectation.\n\
              message  - to: {:?}, method: {:?}, value: {:?}, params: {:?}\n\
-             expected - to: {:?}, method: {:?}, value: {:?}, params: {:?}",
+             expected - to: {:?}, method: {:?}, value: {:?}, params: {:?}\n\
+             method match {}, params match {}, value match {}",
             to,
             method,
             value,
@@ -941,6 +942,9 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
             expected_msg.method,
             expected_msg.value,
             expected_msg.params,
+            expected_msg.method == method,
+            expected_msg.params == params,
+            expected_msg.value == value,
         );
 
         {

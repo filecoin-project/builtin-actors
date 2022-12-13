@@ -27,7 +27,7 @@ use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Zero};
 
 use crate::balance_table::BalanceTable;
-use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
+use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
@@ -231,6 +231,7 @@ impl Actor {
 
         struct ValidDeal {
             proposal: DealProposal,
+            serialized_proposal: RawBytes,
             cid: Cid,
             allocation: AllocationID,
         }
@@ -248,7 +249,6 @@ impl Actor {
         let state: State = rt.state()?;
 
         for (di, mut deal) in params.deals.into_iter().enumerate() {
-            // drop malformed deals
             if let Err(e) = validate_deal(rt, &deal, &network_raw_power, &baseline_power) {
                 info!("invalid deal {}: {}", di, e);
                 continue;
@@ -305,7 +305,9 @@ impl Actor {
             // Must happen after signature verification and before taking cid.
             deal.proposal.provider = Address::new_id(provider_id);
             deal.proposal.client = Address::new_id(client_id);
-            let pcid = rt_deal_cid(rt, &deal.proposal).map_err(
+            let serialized_proposal = serialize(&deal.proposal, "normalized deal proposal")
+                .context_code(ExitCode::USR_SERIALIZATION, "failed to serialize")?;
+            let pcid = rt_serialized_deal_cid(rt, &serialized_proposal).map_err(
                 |e| actor_error!(illegal_argument; "failed to take cid of proposal {}: {}", di, e),
             )?;
 
@@ -370,6 +372,7 @@ impl Actor {
             proposal_cid_lookup.insert(pcid);
             valid_deals.push(ValidDeal {
                 proposal: deal.proposal,
+                serialized_proposal,
                 cid: pcid,
                 allocation: allocation_id,
             });
@@ -434,6 +437,19 @@ impl Actor {
 
             Ok(())
         })?;
+
+        // notify clients ignoring any errors
+        for (i, valid_deal) in valid_deals.iter().enumerate() {
+            _ = rt.send(
+                &valid_deal.proposal.client,
+                MARKET_NOTIFY_DEAL_METHOD,
+                RawBytes::serialize(MarketNotifyDealParams {
+                    proposal: valid_deal.serialized_proposal.to_vec(),
+                    deal_id: new_deal_ids[i],
+                })?,
+                TokenAmount::zero(),
+            );
+        }
 
         Ok(PublishStorageDealsReturn { ids: new_deal_ids, valid_deals: valid_input_bf })
     }
@@ -1231,14 +1247,14 @@ fn deal_proposal_is_internally_valid(
 ) -> Result<(), ActorError> {
     let signature_bytes = proposal.client_signature.bytes.clone();
     // Generate unsigned bytes
-    let proposal_bytes = serialize_vec(&proposal.proposal, "deal proposal")?;
+    let proposal_bytes = serialize(&proposal.proposal, "deal proposal")?;
 
     rt.send(
         &proposal.proposal.client,
         ext::account::AUTHENTICATE_MESSAGE_METHOD,
         RawBytes::serialize(ext::account::AuthenticateMessageParams {
             signature: signature_bytes,
-            message: proposal_bytes,
+            message: proposal_bytes.to_vec(),
         })?,
         TokenAmount::zero(),
     )
@@ -1250,8 +1266,13 @@ pub const DAG_CBOR: u64 = 0x71; // TODO is there a better place to get this?
 
 /// Compute a deal CID using the runtime.
 pub(crate) fn rt_deal_cid(rt: &impl Runtime, proposal: &DealProposal) -> Result<Cid, ActorError> {
-    const DIGEST_SIZE: u32 = 32;
     let data = &proposal.marshal_cbor()?;
+    rt_serialized_deal_cid(rt, data)
+}
+
+/// Compute a deal CID from serialized proposal using the runtime
+pub(crate) fn rt_serialized_deal_cid(rt: &impl Runtime, data: &[u8]) -> Result<Cid, ActorError> {
+    const DIGEST_SIZE: u32 = 32;
     let hash = MultihashGeneric::wrap(Code::Blake2b256.into(), &rt.hash_blake2b(data))
         .map_err(|e| actor_error!(illegal_argument; "failed to take cid of proposal {}", e))?;
     debug_assert_eq!(u32::from(hash.size()), DIGEST_SIZE, "expected 32byte digest");
