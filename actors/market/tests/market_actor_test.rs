@@ -5,8 +5,9 @@ use fil_actor_market::balance_table::BALANCE_TABLE_BITWIDTH;
 use fil_actor_market::policy::detail::DEAL_MAX_LABEL_SIZE;
 use fil_actor_market::{
     deal_id_key, ext, ActivateDealsParams, Actor as MarketActor, ClientDealProposal, DealArray,
-    DealMetaArray, Label, Method, PublishStorageDealsParams, PublishStorageDealsReturn, State,
-    WithdrawBalanceParams, NO_ALLOCATION_ID, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
+    DealMetaArray, Label, MarketNotifyDealParams, Method, PublishStorageDealsParams,
+    PublishStorageDealsReturn, State, WithdrawBalanceParams, MARKET_NOTIFY_DEAL_METHOD,
+    NO_ALLOCATION_ID, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
 };
 use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
@@ -832,6 +833,8 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     expect_query_network_info(&mut rt);
 
     //  create a client proposal with a valid signature
+    let st: State = rt.get_state();
+    let deal_id = st.next_id;
     let mut params = PublishStorageDealsParams { deals: vec![] };
     let buf = RawBytes::serialize(&deal).expect("failed to marshal deal proposal");
     let sig = Signature::new_bls(buf.to_vec());
@@ -894,6 +897,24 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
         TokenAmount::zero(),
         serialize(&transfer_return, "transfer from return").unwrap(),
         ExitCode::OK,
+    );
+    let mut normalized_deal = deal;
+    normalized_deal.provider = provider_resolved;
+    normalized_deal.client = client_resolved;
+    let normalized_proposal_bytes =
+        RawBytes::serialize(&normalized_deal).expect("failed to marshal deal proposal");
+    let notify_param = RawBytes::serialize(MarketNotifyDealParams {
+        proposal: normalized_proposal_bytes.to_vec(),
+        deal_id,
+    })
+    .unwrap();
+    rt.expect_send(
+        client_resolved,
+        MARKET_NOTIFY_DEAL_METHOD,
+        notify_param,
+        TokenAmount::zero(),
+        RawBytes::default(),
+        ExitCode::USR_UNHANDLED_MESSAGE,
     );
 
     let ret: PublishStorageDealsReturn = rt
@@ -1723,6 +1744,8 @@ fn max_deal_label_size() {
 /// but can cover the second, then the first deal fails, but the second passes
 fn insufficient_client_balance_in_a_batch() {
     let mut rt = setup();
+    let st: State = rt.get_state();
+    let next_deal_id = st.next_id;
 
     let mut deal1 = generate_deal_proposal(
         CLIENT_ADDR,
@@ -1810,6 +1833,21 @@ fn insufficient_client_balance_in_a_batch() {
         ExitCode::OK,
     );
 
+    // only valid deals notified
+    let notify_param2 = RawBytes::serialize(MarketNotifyDealParams {
+        proposal: buf2.to_vec(),
+        deal_id: next_deal_id,
+    })
+    .unwrap();
+    rt.expect_send(
+        deal2.client,
+        MARKET_NOTIFY_DEAL_METHOD,
+        notify_param2,
+        TokenAmount::zero(),
+        RawBytes::default(),
+        ExitCode::USR_UNHANDLED_MESSAGE,
+    );
+
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
 
     let ret: PublishStorageDealsReturn = rt
@@ -1834,6 +1872,8 @@ fn insufficient_client_balance_in_a_batch() {
 /// but can cover the second, then the first deal fails, but the second passes
 fn insufficient_provider_balance_in_a_batch() {
     let mut rt = setup();
+    let st: State = rt.get_state();
+    let next_deal_id = st.next_id;
 
     let mut deal1 = generate_deal_proposal(
         CLIENT_ADDR,
@@ -1927,6 +1967,21 @@ fn insufficient_provider_balance_in_a_batch() {
         ExitCode::OK,
     );
 
+    // only valid deal notified
+    let notify_param2 = RawBytes::serialize(MarketNotifyDealParams {
+        proposal: buf2.to_vec(),
+        deal_id: next_deal_id,
+    })
+    .unwrap();
+    rt.expect_send(
+        deal2.client,
+        MARKET_NOTIFY_DEAL_METHOD,
+        notify_param2,
+        TokenAmount::zero(),
+        RawBytes::default(),
+        ExitCode::USR_UNHANDLED_MESSAGE,
+    );
+
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
 
     let ret: PublishStorageDealsReturn = rt
@@ -1979,6 +2034,8 @@ fn add_balance_restricted_correctly() {
 #[test]
 fn psd_restricted_correctly() {
     let mut rt = setup();
+    let st: State = rt.get_state();
+    let next_deal_id = st.next_id;
 
     let deal = generate_deal_proposal(
         CLIENT_ADDR,
@@ -2049,6 +2106,20 @@ fn psd_restricted_correctly() {
         TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::OK,
+    );
+
+    let notify_param = RawBytes::serialize(MarketNotifyDealParams {
+        proposal: buf.to_vec(),
+        deal_id: next_deal_id,
+    })
+    .unwrap();
+    rt.expect_send(
+        deal.client,
+        MARKET_NOTIFY_DEAL_METHOD,
+        notify_param,
+        TokenAmount::zero(),
+        RawBytes::default(),
+        ExitCode::USR_UNHANDLED_MESSAGE,
     );
 
     let ret: PublishStorageDealsReturn = rt

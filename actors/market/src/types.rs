@@ -5,6 +5,7 @@ use super::ext::verifreg::AllocationID;
 use cid::Cid;
 use fil_actors_runtime::Array;
 use fvm_ipld_bitfield::BitField;
+use fvm_ipld_encoding::serde_bytes;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
@@ -215,4 +216,14 @@ pub struct GetDealActivationReturn {
     pub activated: ChainEpoch,
     /// Epoch at which the deal was terminated abnormally, or -1.
     pub terminated: ChainEpoch,
+}
+
+// Interface market clients can implement to receive notifications from builtin market
+pub const MARKET_NOTIFY_DEAL_METHOD: u64 = frc42_dispatch::method_hash!("MarketNotifyDeal");
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct MarketNotifyDealParams {
+    #[serde(with = "serde_bytes")]
+    pub proposal: Vec<u8>,
+    pub deal_id: u64,
 }
