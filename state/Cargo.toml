@@ -27,6 +27,7 @@ fil_actor_reward = { version = "10.0.0-alpha.1", path = "../actors/reward"}
 fil_actor_system = { version = "10.0.0-alpha.1", path = "../actors/system"}
 fil_actor_init = { version = "10.0.0-alpha.1", path = "../actors/init"}
 fil_actors_runtime = { version = "10.0.0-alpha.1", path = "../runtime"}
+frc46_token = "2.0.0"
 fvm_shared = { version = "2.0.0-alpha.2", default-features = false }
 fvm_ipld_encoding = "0.2.3"
 fvm_ipld_blockstore = "0.1.1"
