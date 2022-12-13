@@ -904,7 +904,8 @@ mod allocs_claims {
 }
 
 mod datacap {
-    use frc46_token::receiver::types::{UniversalReceiverParams, FRC46_TOKEN_TYPE};
+    use frc46_token::receiver::FRC46_TOKEN_TYPE;
+    use fvm_actor_utils::receiver::UniversalReceiverParams;
     use fvm_ipld_encoding::RawBytes;
     use fvm_shared::address::Address;
     use fvm_shared::econ::TokenAmount;

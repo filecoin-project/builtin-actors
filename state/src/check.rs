@@ -129,7 +129,7 @@ pub fn check_state_invariants<'a, BS: Blockstore + Debug>(
     let mut multisig_summaries = Vec::<multisig::StateSummary>::new();
     let mut reward_summary: Option<reward::StateSummary> = None;
     let mut verifreg_summary: Option<verifreg::StateSummary> = None;
-    let mut datacap_summary: Option<datacap::StateSummary> = None;
+    let mut datacap_summary: Option<frc46_token::token::state::StateSummary> = None;
 
     tree.for_each(|key, actor| {
         let acc = acc.with_prefix(format!("{key} "));
@@ -392,12 +392,12 @@ fn check_deal_states_against_sectors(
 fn check_verifreg_against_datacap(
     acc: &MessageAccumulator,
     verifreg_summary: &verifreg::StateSummary,
-    datacap_summary: &datacap::StateSummary,
+    datacap_summary: &frc46_token::token::state::StateSummary,
 ) {
     // Verifier and datacap token holders are distinct.
     for verifier in verifreg_summary.verifiers.keys() {
         acc.require(
-            !datacap_summary.balances.contains_key(&verifier.id().unwrap()),
+            !datacap_summary.balance_map.as_ref().unwrap().contains_key(&verifier.id().unwrap()),
             format!("verifier {} is also a datacap token holder", verifier),
         );
     }
@@ -405,7 +405,9 @@ fn check_verifreg_against_datacap(
     let pending_alloc_total: DataCap =
         verifreg_summary.allocations.iter().map(|(_, alloc)| alloc.size.0).sum();
     let verifreg_balance = datacap_summary
-        .balances
+        .balance_map
+        .as_ref()
+        .unwrap()
         .get(&VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap())
         .cloned()
         .unwrap_or_else(TokenAmount::zero);
