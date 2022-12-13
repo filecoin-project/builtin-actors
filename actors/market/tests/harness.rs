@@ -13,10 +13,10 @@ use fil_actor_market::{
     deal_id_key, ext, ext::miner::GetControlAddressesReturnParams, gen_rand_next_epoch,
     testing::check_state_invariants, ActivateDealsParams, ActivateDealsResult,
     Actor as MarketActor, ClientDealProposal, DealArray, DealMetaArray, DealProposal, DealState,
-    GetBalanceReturn, Label, Method, OnMinerSectorsTerminateParams, PublishStorageDealsParams,
-    PublishStorageDealsReturn, SectorDeals, State, VerifyDealsForActivationParams,
-    VerifyDealsForActivationReturn, WithdrawBalanceParams, WithdrawBalanceReturn, NO_ALLOCATION_ID,
-    PROPOSALS_AMT_BITWIDTH,
+    GetBalanceReturn, Label, MarketNotifyDealParams, Method, OnMinerSectorsTerminateParams,
+    PublishStorageDealsParams, PublishStorageDealsReturn, SectorDeals, State,
+    VerifyDealsForActivationParams, VerifyDealsForActivationReturn, WithdrawBalanceParams,
+    WithdrawBalanceReturn, MARKET_NOTIFY_DEAL, NO_ALLOCATION_ID, PROPOSALS_AMT_BITWIDTH,
 };
 use fil_actor_power::{CurrentTotalPowerReturn, Method as PowerMethod};
 use fil_actor_reward::Method as RewardMethod;
@@ -534,14 +534,12 @@ pub fn publish_deals(
     let mut deal_id = next_deal_id;
     for deal in publish_deals {
         let buf = RawBytes::serialize(deal.clone()).expect("failed to marshal deal proposal");
-        let params = RawBytes::serialize(ext::account::MarketNotifyDealParams {
-            proposal: buf.to_vec(),
-            deal_id,
-        })
-        .unwrap();
+        let params =
+            RawBytes::serialize(MarketNotifyDealParams { proposal: buf.to_vec(), deal_id })
+                .unwrap();
         rt.expect_send(
             deal.client,
-            ext::account::MARKET_NOTIFY_DEAL,
+            MARKET_NOTIFY_DEAL,
             params,
             TokenAmount::zero(),
             RawBytes::default(),

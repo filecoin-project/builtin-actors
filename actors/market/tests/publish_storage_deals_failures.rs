@@ -3,9 +3,8 @@
 
 use fil_actor_market::policy::deal_provider_collateral_bounds;
 use fil_actor_market::{
-    ext::account::MarketNotifyDealParams, ext::account::MARKET_NOTIFY_DEAL, Actor as MarketActor,
-    ClientDealProposal, DealProposal, Method, PublishStorageDealsParams, PublishStorageDealsReturn,
-    State,
+    Actor as MarketActor, ClientDealProposal, DealProposal, MarketNotifyDealParams, Method,
+    PublishStorageDealsParams, PublishStorageDealsReturn, State, MARKET_NOTIFY_DEAL,
 };
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;

@@ -5,8 +5,9 @@ use fil_actor_market::balance_table::BALANCE_TABLE_BITWIDTH;
 use fil_actor_market::policy::detail::DEAL_MAX_LABEL_SIZE;
 use fil_actor_market::{
     deal_id_key, ext, ActivateDealsParams, Actor as MarketActor, ClientDealProposal, DealArray,
-    DealMetaArray, Label, Method, PublishStorageDealsParams, PublishStorageDealsReturn, State,
-    WithdrawBalanceParams, NO_ALLOCATION_ID, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
+    DealMetaArray, Label, MarketNotifyDealParams, Method, PublishStorageDealsParams,
+    PublishStorageDealsReturn, State, WithdrawBalanceParams, MARKET_NOTIFY_DEAL, NO_ALLOCATION_ID,
+    PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
 };
 use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
@@ -32,10 +33,7 @@ use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND};
 use regex::Regex;
 use std::ops::Add;
 
-use fil_actor_market::ext::account::{
-    AuthenticateMessageParams, MarketNotifyDealParams, AUTHENTICATE_MESSAGE_METHOD,
-    MARKET_NOTIFY_DEAL,
-};
+use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
 use fil_actor_market::ext::verifreg::{AllocationID, AllocationRequest, AllocationsResponse};
 use num_traits::{FromPrimitive, Zero};
 

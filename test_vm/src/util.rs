@@ -22,8 +22,8 @@ use fil_actor_market::ext::verifreg::{
     AllocationRequest, AllocationRequests, ClaimExtensionRequest,
 };
 use fil_actor_market::{
-    ext::account::MARKET_NOTIFY_DEAL, ClientDealProposal, DealProposal, Label,
-    Method as MarketMethod, PublishStorageDealsParams, PublishStorageDealsReturn,
+    ClientDealProposal, DealProposal, Label, Method as MarketMethod, PublishStorageDealsParams,
+    PublishStorageDealsReturn, MARKET_NOTIFY_DEAL,
 };
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, max_prove_commit_duration,
