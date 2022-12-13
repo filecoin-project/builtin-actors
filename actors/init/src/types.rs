@@ -3,7 +3,7 @@
 
 use cid::Cid;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{Cbor, RawBytes};
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 
 /// Init actor Constructor parameters
@@ -27,6 +27,3 @@ pub struct ExecReturn {
     /// Reorg safe address for actor
     pub robust_address: Address,
 }
-
-impl Cbor for ExecReturn {}
-impl Cbor for ExecParams {}

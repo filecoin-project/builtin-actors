@@ -68,7 +68,7 @@ fn terminate_sectors() {
         VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
         VerifregMethod::AddVerifiedClient as u64,
-        add_client_params,
+        Some(add_client_params),
     );
 
     // add market collateral
@@ -79,7 +79,7 @@ fn terminate_sectors() {
         STORAGE_MARKET_ACTOR_ADDR,
         collateral.clone(),
         MarketMethod::AddBalance as u64,
-        unverified_client,
+        Some(unverified_client),
     );
     apply_ok(
         &v,
@@ -87,7 +87,7 @@ fn terminate_sectors() {
         STORAGE_MARKET_ACTOR_ADDR,
         collateral,
         MarketMethod::AddBalance as u64,
-        verified_client,
+        Some(verified_client),
     );
 
     let miner_collateral = TokenAmount::from_whole(64);
@@ -97,7 +97,7 @@ fn terminate_sectors() {
         STORAGE_MARKET_ACTOR_ADDR,
         miner_collateral.clone(),
         MarketMethod::AddBalance as u64,
-        miner_id_addr,
+        Some(miner_id_addr),
     );
 
     // create 3 deals, some verified and some not
@@ -152,7 +152,7 @@ fn terminate_sectors() {
             CRON_ACTOR_ADDR,
             TokenAmount::zero(),
             CronMethod::EpochTick as u64,
-            RawBytes::default(),
+            None::<RawBytes>,
         )
         .unwrap();
     assert_eq!(ExitCode::OK, res.code);
@@ -170,7 +170,7 @@ fn terminate_sectors() {
         miner_robust_addr,
         TokenAmount::zero(),
         MinerMethod::PreCommitSector as u64,
-        PreCommitSectorParams {
+        Some(PreCommitSectorParams {
             seal_proof,
             sector_number,
             sealed_cid,
@@ -178,7 +178,7 @@ fn terminate_sectors() {
             deal_ids: deal_ids.clone(),
             expiration: v.get_epoch() + 220 * EPOCHS_IN_DAY,
             ..Default::default()
-        },
+        }),
     );
     let prove_time = v.get_epoch() + Policy::default().pre_commit_challenge_delay + 1;
     let v = advance_by_deadline_to_epoch(v, miner_id_addr, prove_time).0;
@@ -191,7 +191,7 @@ fn terminate_sectors() {
         miner_robust_addr,
         TokenAmount::zero(),
         MinerMethod::ProveCommitSector as u64,
-        prove_params,
+        Some(prove_params),
     );
     let res = v
         .apply_message(
@@ -199,7 +199,7 @@ fn terminate_sectors() {
             CRON_ACTOR_ADDR,
             TokenAmount::zero(),
             CronMethod::EpochTick as u64,
-            RawBytes::default(),
+            None::<RawBytes>,
         )
         .unwrap();
     assert_eq!(ExitCode::OK, res.code);
@@ -216,7 +216,7 @@ fn terminate_sectors() {
         CRON_ACTOR_ADDR,
         TokenAmount::zero(),
         CronMethod::EpochTick as u64,
-        RawBytes::default(),
+        None::<RawBytes>,
     )
     .unwrap();
     assert_eq!(ExitCode::OK, res.code);
@@ -248,13 +248,13 @@ fn terminate_sectors() {
         miner_robust_addr,
         TokenAmount::zero(),
         MinerMethod::TerminateSectors as u64,
-        TerminateSectorsParams {
+        Some(TerminateSectorsParams {
             terminations: vec![TerminationDeclaration {
                 deadline: d_idx,
                 partition: p_idx,
                 sectors: make_bitfield(&[sector_number]),
             }],
-        },
+        }),
     );
     ExpectInvocation {
         to: miner_id_addr,
@@ -332,7 +332,10 @@ fn terminate_sectors() {
         STORAGE_MARKET_ACTOR_ADDR,
         TokenAmount::zero(),
         MarketMethod::WithdrawBalance as u64,
-        WithdrawBalanceParams { provider_or_client: verified_client, amount: withdrawal.clone() },
+        Some(WithdrawBalanceParams {
+            provider_or_client: verified_client,
+            amount: withdrawal.clone(),
+        }),
     );
     ExpectInvocation {
         to: STORAGE_MARKET_ACTOR_ADDR,
@@ -353,7 +356,7 @@ fn terminate_sectors() {
         STORAGE_MARKET_ACTOR_ADDR,
         TokenAmount::zero(),
         MarketMethod::WithdrawBalance as u64,
-        WithdrawBalanceParams { provider_or_client: miner_id_addr, amount: miner_collateral },
+        Some(WithdrawBalanceParams { provider_or_client: miner_id_addr, amount: miner_collateral }),
     );
 
     let value_withdrawn = v.take_invocations().last().unwrap().subinvocations[1].msg.value();

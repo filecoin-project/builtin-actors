@@ -36,7 +36,7 @@ fn create_miner_test() {
         owner,
         TokenAmount::from_atto(10_000u32),
         METHOD_SEND,
-        RawBytes::default(),
+        None::<RawBytes>,
     )
     .unwrap();
     let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
@@ -55,7 +55,7 @@ fn create_miner_test() {
             STORAGE_POWER_ACTOR_ADDR,
             TokenAmount::from_atto(1000u32),
             PowerMethod::CreateMiner as u64,
-            params.clone(),
+            Some(params.clone()),
         )
         .unwrap();
 
@@ -139,7 +139,7 @@ fn test_cron_tick() {
         robust_addr,
         TokenAmount::zero(),
         MinerMethod::PreCommitSector as u64,
-        precommit_params,
+        Some(precommit_params),
     );
 
     // find epoch of miner's next cron task (precommit:1, enrollCron:2)
@@ -155,7 +155,7 @@ fn test_cron_tick() {
         STORAGE_POWER_ACTOR_ADDR,
         TokenAmount::zero(),
         PowerMethod::OnEpochTickEnd as u64,
-        RawBytes::default(),
+        None::<RawBytes>,
     );
 
     // expect miner call to be missing
@@ -192,7 +192,7 @@ fn test_cron_tick() {
         STORAGE_POWER_ACTOR_ADDR,
         TokenAmount::zero(),
         PowerMethod::OnEpochTickEnd as u64,
-        RawBytes::default(),
+        None::<RawBytes>,
     );
 
     let sub_invocs = vec![

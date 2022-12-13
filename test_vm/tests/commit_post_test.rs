@@ -77,7 +77,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, MinerInfo, SectorInfo) {
         robust_addr,
         TokenAmount::zero(),
         MinerMethod::ProveCommitSector as u64,
-        prove_params,
+        Some(prove_params),
     );
     ExpectInvocation {
         to: id_addr,
@@ -97,7 +97,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, MinerInfo, SectorInfo) {
             CRON_ACTOR_ADDR,
             TokenAmount::zero(),
             CronMethod::EpochTick as u64,
-            RawBytes::default(),
+            None::<RawBytes>,
         )
         .unwrap();
     assert_eq!(ExitCode::OK, res.code);
@@ -217,7 +217,7 @@ fn skip_sector() {
         miner_info.miner_id,
         TokenAmount::zero(),
         MinerMethod::SubmitWindowedPoSt as u64,
-        params,
+        Some(params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 
@@ -249,7 +249,7 @@ fn missed_first_post_deadline() {
         CRON_ACTOR_ADDR,
         TokenAmount::zero(),
         CronMethod::EpochTick as u64,
-        RawBytes::default(),
+        None::<RawBytes>,
     );
 
     ExpectInvocation {
@@ -354,7 +354,7 @@ fn overdue_precommit() {
         CRON_ACTOR_ADDR,
         TokenAmount::zero(),
         CronMethod::EpochTick as u64,
-        RawBytes::default(),
+        None::<RawBytes>,
     );
 
     ExpectInvocation {
@@ -483,7 +483,7 @@ fn aggregate_bad_sector_number() {
         robust_addr,
         TokenAmount::zero(),
         MinerMethod::ProveCommitAggregate as u64,
-        prove_params,
+        Some(prove_params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
     ExpectInvocation {
@@ -562,7 +562,7 @@ fn aggregate_size_limits() {
         robust_addr,
         TokenAmount::zero(),
         MinerMethod::ProveCommitAggregate as u64,
-        prove_params,
+        Some(prove_params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
     ExpectInvocation {
@@ -589,7 +589,7 @@ fn aggregate_size_limits() {
         robust_addr,
         TokenAmount::zero(),
         MinerMethod::ProveCommitAggregate as u64,
-        prove_params,
+        Some(prove_params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
     ExpectInvocation {
@@ -617,7 +617,7 @@ fn aggregate_size_limits() {
         robust_addr,
         TokenAmount::zero(),
         MinerMethod::ProveCommitAggregate as u64,
-        prove_params,
+        Some(prove_params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
     ExpectInvocation {
@@ -693,7 +693,7 @@ fn aggregate_bad_sender() {
         robust_addr,
         TokenAmount::zero(),
         MinerMethod::ProveCommitAggregate as u64,
-        prove_params,
+        Some(prove_params),
         ExitCode::USR_FORBIDDEN,
     );
     ExpectInvocation {
@@ -800,7 +800,7 @@ fn aggregate_one_precommit_expires() {
         robust_addr,
         TokenAmount::zero(),
         MinerMethod::ProveCommitAggregate as u64,
-        prove_params,
+        Some(prove_params),
     );
     ExpectInvocation {
         to: id_addr,

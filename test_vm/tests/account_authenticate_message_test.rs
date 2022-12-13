@@ -33,7 +33,7 @@ fn account_authenticate_message() {
         addr,
         TokenAmount::zero(),
         AuthenticateMessage as u64,
-        authenticate_message_params,
+        Some(authenticate_message_params),
     );
 
     // Bad, bad sig! message fails
@@ -45,7 +45,7 @@ fn account_authenticate_message() {
         addr,
         TokenAmount::zero(),
         AuthenticateMessage as u64,
-        authenticate_message_params,
+        Some(authenticate_message_params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 }
