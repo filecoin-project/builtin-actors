@@ -19,7 +19,7 @@
 /// - "verifreg"
 /// - "evm"
 /// - "eam"
-/// - "eeoa"
+/// - "ethaccount"
 ///
 /// The Filecoin client must import the contents of CAR into the blockstore, but
 /// may opt to exclude the index data structure.

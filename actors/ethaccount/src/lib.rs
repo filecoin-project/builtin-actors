@@ -1,6 +1,5 @@
 use fvm_ipld_encoding::{Cbor, RawBytes};
 use fvm_shared::address::Payload;
-use fvm_shared::error::ExitCode;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
@@ -9,11 +8,11 @@ use serde::Serialize;
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, restrict_internal_api, ActorError, AsActorError, EAM_ACTOR_ID, SYSTEM_ACTOR_ADDR,
+    actor_error, restrict_internal_api, ActorError, EAM_ACTOR_ID, SYSTEM_ACTOR_ADDR,
 };
 
 #[cfg(feature = "fil-actor")]
-fil_actors_runtime::wasm_trampoline!(EeoaActor);
+fil_actors_runtime::wasm_trampoline!(EthAccountActor);
 
 /// Ethereum Externally Owned Address actor methods.
 #[derive(FromPrimitive)]
@@ -30,25 +29,25 @@ pub struct State([(); 0]);
 impl Cbor for State {}
 
 /// Ethereum Externally Owned Address actor.
-pub struct EeoaActor;
+pub struct EthAccountActor;
 
-impl EeoaActor {
+impl EthAccountActor {
     /// Ethereum Externally Owned Address actor constructor.
     pub fn constructor(rt: &mut impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
-        let valid = rt
-            .lookup_address(rt.message().receiver().id().unwrap())
-            .map(
-                |a| matches!(a.payload(), Payload::Delegated(da) if da.namespace() == EAM_ACTOR_ID),
-            )
-            .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
-                "receiver must have predictable address".to_string()
-            })?;
-        if !valid {
-            return Err(ActorError::illegal_argument(
-                "invalid target for EEOA creation".to_string(),
-            ));
+        match rt.lookup_address(rt.message().receiver().id().unwrap()).map(|a| *a.payload()) {
+            Some(Payload::Delegated(da)) if da.namespace() == EAM_ACTOR_ID => {}
+            Some(_) => {
+                return Err(ActorError::illegal_argument(
+                    "invalid target for EthAccount creation".to_string(),
+                ));
+            }
+            None => {
+                return Err(ActorError::illegal_argument(
+                    "receiver must have a predictable address".to_string(),
+                ));
+            }
         }
 
         rt.create(&State::default())?;
@@ -56,7 +55,7 @@ impl EeoaActor {
     }
 }
 
-impl ActorCode for EeoaActor {
+impl ActorCode for EthAccountActor {
     fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
@@ -89,7 +88,7 @@ mod tests {
     };
     use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
 
-    use crate::{EeoaActor, Method, State};
+    use crate::{EthAccountActor, Method, State};
 
     const EOA: Address = Address::new_id(1000);
 
@@ -115,7 +114,7 @@ mod tests {
             )
             .unwrap(),
         );
-        rt.call::<EeoaActor>(Method::Constructor as MethodNum, &RawBytes::default()).unwrap();
+        rt.call::<EthAccountActor>(Method::Constructor as MethodNum, &RawBytes::default()).unwrap();
         rt.verify();
         let state: State = rt.get_state();
         assert_eq!([(); 0], state.0);
@@ -128,8 +127,8 @@ mod tests {
         rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
         expect_abort_contains_message(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            "receiver must have predictable address",
-            rt.call::<EeoaActor>(Method::Constructor as MethodNum, &RawBytes::default()),
+            "receiver must have a predictable address",
+            rt.call::<EthAccountActor>(Method::Constructor as MethodNum, &RawBytes::default()),
         );
         rt.verify();
     }

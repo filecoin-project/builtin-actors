@@ -1500,32 +1500,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "fil_actor_eeoa"
-version = "10.0.0-alpha.1"
-dependencies = [
- "anyhow",
- "cid 0.8.6",
- "fil_actor_evm",
- "fil_actors_runtime",
- "fvm_ipld_blockstore",
- "fvm_ipld_encoding",
- "fvm_shared",
- "hex-literal",
- "log",
- "multihash 0.16.3",
- "num-derive",
- "num-traits",
- "rlp",
- "serde",
- "serde_tuple",
-]
-
-[[package]]
 name = "fil_actor_embryo"
 version = "10.0.0-alpha.1"
 dependencies = [
  "fvm_sdk",
  "fvm_shared",
+]
+
+[[package]]
+name = "fil_actor_ethaccount"
+version = "10.0.0-alpha.1"
+dependencies = [
+ "fil_actors_runtime",
+ "fvm_ipld_encoding",
+ "fvm_shared",
+ "hex-literal",
+ "num-derive",
+ "num-traits",
+ "serde",
 ]
 
 [[package]]
@@ -1795,8 +1787,8 @@ dependencies = [
  "fil_actor_bundler",
  "fil_actor_cron",
  "fil_actor_datacap",
- "fil_actor_eeoa",
  "fil_actor_embryo",
+ "fil_actor_ethaccount",
  "fil_actor_evm",
  "fil_actor_init",
  "fil_actor_market",
@@ -3979,7 +3971,7 @@ dependencies = [
  "fil_actor_cron",
  "fil_actor_datacap",
  "fil_actor_eam",
- "fil_actor_eeoa",
+ "fil_actor_ethaccount",
  "fil_actor_evm",
  "fil_actor_init",
  "fil_actor_market",
