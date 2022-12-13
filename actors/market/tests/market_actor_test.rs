@@ -2031,6 +2031,8 @@ fn add_balance_restricted_correctly() {
 #[test]
 fn psd_restricted_correctly() {
     let mut rt = setup();
+    let st: State = rt.get_state();
+    let next_deal_id = st.next_id;
 
     let deal = generate_deal_proposal(
         CLIENT_ADDR,
@@ -2101,6 +2103,20 @@ fn psd_restricted_correctly() {
         TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::OK,
+    );
+
+    let notify_param = RawBytes::serialize(MarketNotifyDealParams {
+        proposal: buf.to_vec(),
+        deal_id: next_deal_id,
+    })
+    .unwrap();
+    rt.expect_send(
+        deal.client,
+        MARKET_NOTIFY_DEAL,
+        notify_param,
+        TokenAmount::zero(),
+        RawBytes::default(),
+        ExitCode::USR_UNHANDLED_MESSAGE,
     );
 
     let ret: PublishStorageDealsReturn = rt
