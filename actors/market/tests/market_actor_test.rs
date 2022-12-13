@@ -898,7 +898,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
         serialize(&transfer_return, "transfer from return").unwrap(),
         ExitCode::OK,
     );
-    let mut normalized_deal = deal.clone();
+    let mut normalized_deal = deal;
     normalized_deal.provider = provider_resolved;
     normalized_deal.client = client_resolved;
     let normalized_proposal_bytes =
