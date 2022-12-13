@@ -991,7 +991,11 @@ pub fn datacap_extend_claim(
 ) {
     let payload = AllocationRequests {
         allocations: vec![],
-        extensions: vec![ClaimExtensionRequest { provider, claim, term_max: new_term }],
+        extensions: vec![ClaimExtensionRequest {
+            provider: provider.id().unwrap(),
+            claim,
+            term_max: new_term,
+        }],
     };
     let token_amount = TokenAmount::from_whole(size);
     let operator_data = serialize(&payload, "allocation requests").unwrap();
@@ -1142,7 +1146,7 @@ pub fn market_publish_deal(
 
         let alloc_reqs = AllocationRequests {
             allocations: vec![AllocationRequest {
-                provider: miner_id,
+                provider: miner_id.id().unwrap(),
                 data: deal.piece_cid,
                 size: deal.piece_size,
                 term_min: deal_term,
