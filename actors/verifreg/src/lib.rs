@@ -628,9 +628,10 @@ impl Actor {
         let mut new_allocs = Vec::with_capacity(reqs.allocations.len());
         for req in &reqs.allocations {
             validate_new_allocation(req, rt.policy(), curr_epoch)?;
+            let provider_id = resolve_miner_id(rt, &req.provider)?;
             new_allocs.push(Allocation {
                 client,
-                provider: req.provider,
+                provider: provider_id,
                 data: req.data,
                 size: req.size,
                 term_min: req.term_min,
@@ -645,6 +646,8 @@ impl Actor {
         let mut updated_claims = Vec::<(ClaimID, Claim)>::new();
         let mut extension_total = DataCap::zero();
         for req in &reqs.extensions {
+            // Note: we don't check the client address here, by design.
+            // Any client can spend datacap to extend an existing claim.
             let claim = state::get_claim(&mut claims, req.provider, req.claim)?
                 .with_context_code(ExitCode::USR_NOT_FOUND, || {
                     format!("no claim {} for provider {}", req.claim, req.provider)
@@ -1004,6 +1007,28 @@ fn validate_claim_extension(
         ));
     }
     Ok(())
+}
+
+// Checks that an address corresponsds to a miner actor.
+fn resolve_miner_id(rt: &mut impl Runtime, id: &ActorID) -> Result<ActorID, ActorError> {
+    let code_cid =
+        rt.get_actor_code_cid(id).with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
+            format!("no code CID for provider {}", id)
+        })?;
+    let provider_type = rt
+        .resolve_builtin_actor_type(&code_cid)
+        .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
+            format!("provider code {} must be built-in miner actor", code_cid)
+        })?;
+    if provider_type != Type::Miner {
+        return Err(actor_error!(
+            illegal_argument,
+            "allocation provider {} must be a miner actor, was {:?}",
+            id,
+            provider_type
+        ));
+    }
+    Ok(*id)
 }
 
 fn can_claim_alloc(
