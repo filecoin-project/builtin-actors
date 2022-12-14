@@ -83,7 +83,7 @@ impl Actor {
         // Allocate an ID for this actor.
         // Store mapping of actor addresses to the actor ID.
         let id_address: ActorID = rt.transaction(|s: &mut State, rt| {
-            s.map_address_to_new_id(rt.store(), &robust_address)
+            s.map_addresses_to_id(rt.store(), &robust_address, None)
                 .context("failed to allocate ID address")
         })?;
 
@@ -130,8 +130,8 @@ impl Actor {
         // Allocate an ID for this actor.
         // Store mapping of actor addresses to the actor ID.
         let id_address: ActorID = rt.transaction(|s: &mut State, rt| {
-            s.map_address_to_f4(rt.store(), &robust_address, &delegated_address)
-                .context("constructor failed")
+            s.map_addresses_to_id(rt.store(), &robust_address, Some(&delegated_address))
+                .context("failed to map addresses to ID")
         })?;
 
         // Create an empty actor

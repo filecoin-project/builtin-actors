@@ -640,7 +640,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         }
 
         let mut st = self.v.get_state::<InitState>(INIT_ACTOR_ADDR).unwrap();
-        let target_id = st.map_address_to_new_id(self.v.store, target).unwrap();
+        let target_id = st.map_addresses_to_id(self.v.store, target, None).unwrap();
         let target_id_addr = Address::new_id(target_id);
         let mut init_actor = self.v.get_actor(INIT_ACTOR_ADDR).unwrap();
         init_actor.head = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
