@@ -30,7 +30,7 @@ anyhow = "1.0.65"
 fvm_sdk = { version = "2.0.0-alpha.3", optional = true }
 blake2b_simd = "1.0"
 fvm_ipld_blockstore = "0.1.1"
-fvm_ipld_encoding = "0.2.2"
+fvm_ipld_encoding = "0.2.3"
 fvm_ipld_bitfield = "0.5.2"
 multihash = { version = "0.16.1", default-features = false }
 rand = "0.8.5"
@@ -38,6 +38,7 @@ serde_repr = "0.1.8"
 regex = "1"
 itertools = "0.10"
 paste = "1.0.9"
+castaway = "0.2.2"
 
 [dependencies.sha2]
 version = "0.10"
