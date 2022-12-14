@@ -1245,7 +1245,7 @@ impl<BS> RuntimePolicy for MockRuntime<BS> {
 // In order to clear the unsatisfied expectations in tests, use MockRuntime#reset().
 impl Drop for Expectations {
     fn drop(&mut self) {
-        if !self.skip_verification_on_drop {
+        if !self.skip_verification_on_drop && !std::thread::panicking() {
             self.verify();
         }
     }
