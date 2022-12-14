@@ -1125,7 +1125,8 @@ mod datacap {
         let payload = make_receiver_hook_token_payload(CLIENT1, reqs, vec![], SIZE);
         expect_abort_contains_message(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            format!("allocation provider {} must be a miner actor", provider1).as_str(),
+            format!("allocation provider {} must be a miner actor", provider1.id().unwrap())
+                .as_str(),
             h.receive_tokens(&mut rt, payload, BatchReturn::ok(1), BATCH_EMPTY, vec![1], 0),
         );
         h.check_state(&rt);
