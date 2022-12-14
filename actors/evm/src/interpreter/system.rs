@@ -352,13 +352,15 @@ impl<'r, RT: Runtime> System<'r, RT> {
         }
     }
 
-    pub fn get_or_init_randomness(&mut self) -> Result<&[u8; 32], StatusCode> {
+    /// Gets the cached EVM randomness seed of the current epoch 
+    pub fn get_randomness(&mut self) -> Result<&[u8; 32], StatusCode> {
+        const ENTROPY: &[u8] = b"prevrandao";
         self.randomness.get_or_try_init(|| {
-            // get randomness from current beacon epoch with entropy of b"prevrandao"
+            // get randomness from current beacon epoch with entropy of "prevrandao"
             Ok(self.rt.get_randomness_from_beacon(
                 fil_actors_runtime::runtime::DomainSeparationTag::EvmPrevRandao,
                 self.rt.curr_epoch(),
-                "prevrandao".as_bytes(),
+                ENTROPY,
             )?)
         })
     }
