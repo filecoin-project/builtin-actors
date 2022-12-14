@@ -17,5 +17,5 @@ pub enum DomainSeparationTag {
     WindowPoStDeadlineAssignment = 7,
     MarketDealCronSeed = 8,
     PoStChainCommit = 9,
-    EvmPrevRandao = 32,
+    EvmPrevRandao = 10,
 }

@@ -106,21 +106,20 @@ pub fn block_number(
     Ok(U256::from(system.rt.curr_epoch()))
 }
 
-/// EIP-4399
+/// EIP-4399: DIFFICULTY -> PREVRANDAO
 #[inline]
 pub fn prevrandao(
     _state: &mut ExecutionState,
-    system: &System<impl Runtime>,
+    system: &mut System<impl Runtime>,
 ) -> Result<U256, StatusCode> {
-    // relies that `U256::from_be(value) > 2^64`
-    // get randomness from previous beacon epoch with entropy being self's f0 address
-    let rand = system.rt.get_randomness_from_beacon(
-        fil_actors_runtime::runtime::DomainSeparationTag::EvmPrevRandao,
-        system.rt.curr_epoch() - 1,
-        // f0xxxx
-        &system.rt.message().receiver().to_bytes(),
-    )?;
-    Ok(U256::from(rand))
+    // NOTE: Beacon randomness return value is expected to be `value > 2^64`.
+    // NOTE: Entropy must be consistent between contracts.
+    // NOTE: Getting randomness from beacon is expected to be deterministic for any given (previous) epoch.
+    // NOTE: EVM uses previous RANDAO value since the _current_ RANDAO for them runs as a smart contract on current state
+    //      and wont be finalized till the end of a block. Filecoin derives randomness from the League of Entropy and has different
+    //      biasability properties (https://drand.love/docs/security-model/#distributed-key-generation-set-up) than RANDAO. Since the
+    //      current chain randomness in filecoin is generated _before_ any contract is run, we grab randomness from the current epoch.
+    system.get_or_init_randomness().map(|v| U256::from(*v))
 }
 
 #[inline]
