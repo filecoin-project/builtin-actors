@@ -4,10 +4,11 @@
 use std::iter;
 
 use cid::Cid;
+use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, restrict_internal_api, ActorContext, ActorError, EAM_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR,
+    actor_error, cbor, restrict_internal_api, ActorContext, ActorError, AsActorError,
+    EAM_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -82,10 +83,16 @@ impl Actor {
 
         // Allocate an ID for this actor.
         // Store mapping of actor addresses to the actor ID.
-        let id_address: ActorID = rt.transaction(|s: &mut State, rt| {
+        let (id_address, existing): (ActorID, bool) = rt.transaction(|s: &mut State, rt| {
             s.map_addresses_to_id(rt.store(), &robust_address, None)
                 .context("failed to allocate ID address")
         })?;
+
+        if existing {
+            // NOTE: this case should be impossible, but we check it anyways just in case something
+            // changes.
+            return Err(ActorError::forbidden("cannot exec over an existing actor".into()));
+        }
 
         // Create an empty actor
         rt.create_actor(params.code_cid, id_address, None)?;
@@ -129,10 +136,24 @@ impl Actor {
 
         // Allocate an ID for this actor.
         // Store mapping of actor addresses to the actor ID.
-        let id_address: ActorID = rt.transaction(|s: &mut State, rt| {
+        let (id_address, existing): (ActorID, bool) = rt.transaction(|s: &mut State, rt| {
             s.map_addresses_to_id(rt.store(), &robust_address, Some(&delegated_address))
                 .context("failed to map addresses to ID")
         })?;
+
+        // If the f4 address was already assigned, make sure we're deploying over an embryo and not
+        // some other existing actor (and make sure the target actor wasn't deleted either).
+        if existing {
+            let code_cid = rt
+                .get_actor_code_cid(&id_address)
+                .context_code(ActorError::USR_FORBIDDEN, "cannot redeploy a deleted actor")?;
+            let embryo_cid = rt.get_code_cid_for_type(Type::Embryo);
+            if code_cid != embryo_cid {
+                return Err(ActorError::forbidden(format!(
+                    "cannot replace an existing non-embryo actor with code: {code_cid}"
+                )));
+            }
+        }
 
         // Create an empty actor
         rt.create_actor(params.code_cid, id_address, Some(delegated_address))?;
