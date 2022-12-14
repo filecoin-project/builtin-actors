@@ -21,7 +21,7 @@ cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] 
 frc42_dispatch = "1.0.0"
 frc46_token = "1.1.0"
 fvm_ipld_blockstore = "0.1.1"
-fvm_ipld_encoding = "0.2.2"
+fvm_ipld_encoding = "0.2.3"
 fvm_ipld_hamt = "0.5.1"
 fvm_shared = { version = "2.0.0-alpha.2", default-features = false }
 lazy_static = "1.4.0"
