@@ -51,7 +51,6 @@ use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::runtime::policy_constants::{
     MARKET_DEFAULT_ALLOCATION_TERM_BUFFER, MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION,
 };
-use fvm_actor_utils::receiver::UniversalReceiverParams;
 
 use crate::*;
 

@@ -916,13 +916,9 @@ dependencies = [
 
 [[package]]
 name = "frc42_dispatch"
-version = "1.1.0"
-<<<<<<< HEAD
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "35603a100f622ebeaa2b6a252071878d52b45c14487c8391f9a2f067b6ca00bb"
-=======
-source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=asr/ipld-block-master#c4c89e930762a0ce639dad69fb888d92a26afccd"
->>>>>>> 531afd56 (Use Option<IpldBlock> for all message params)
+checksum = "4271778fe29028ec60cdc759ae7edd7e49bf928bc27fc4cdcbaa12ffbc4774e0"
 dependencies = [
  "frc42_hasher",
  "frc42_macros",
@@ -934,13 +930,9 @@ dependencies = [
 
 [[package]]
 name = "frc42_hasher"
-version = "1.1.0"
-<<<<<<< HEAD
+version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0cce4462a4b1f36909664f66962dc70b7b6b53c4abb0183ca3d34163a3106c7b"
-=======
-source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=asr/ipld-block-master#c4c89e930762a0ce639dad69fb888d92a26afccd"
->>>>>>> 531afd56 (Use Option<IpldBlock> for all message params)
+checksum = "18775b28d34b541f5bf010f43680dd2b9ef7cabbee620abeac49eeacc66bb9e6"
 dependencies = [
  "fvm_sdk",
  "fvm_shared",
@@ -950,7 +942,8 @@ dependencies = [
 [[package]]
 name = "frc42_macros"
 version = "1.0.0"
-source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=asr/ipld-block-master#c4c89e930762a0ce639dad69fb888d92a26afccd"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c343356c3652593452cc1cfe95535a915261342e2a4c13bb8388ca29b259a400"
 dependencies = [
  "blake2b_simd",
  "frc42_hasher",
@@ -961,9 +954,9 @@ dependencies = [
 
 [[package]]
 name = "frc46_token"
-version = "2.0.0"
+version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae2f892831141eef7b6e5f6a64512cf752059818cb7342468ed926112392684a"
+checksum = "cac862663726f7341bfb136e8103bddb16903e4f6e346cc884b92689d9c20638"
 dependencies = [
  "anyhow",
  "cid",
@@ -1088,9 +1081,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_actor_utils"
-version = "1.0.0"
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cbc652e017d585a4a2885a3cce8c4100484d63a9097dc5282291e6b7dca0757d"
+checksum = "9a15c3d54610b7aad992859abc3cc243c8a51adc55d184394f8e3b4d3c6c6ec8"
 dependencies = [
  "anyhow",
  "cid",
@@ -1218,15 +1211,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_sdk"
-<<<<<<< HEAD
-version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19d6b29114b9cbdee7ccf7540bdda6657af7fa91666e2489c4d415a7f0706748"
-=======
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e211f0571eed80e90537f09dcca43ca6f7172b43c9a40850ea404bcf09a139c1"
->>>>>>> 531afd56 (Use Option<IpldBlock> for all message params)
 dependencies = [
  "cid",
  "fvm_ipld_encoding 0.2.3",
@@ -2262,13 +2249,3 @@ name = "windows_x86_64_msvc"
 version = "0.42.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f40009d85759725a34da6d89a94e63d7bdc50a862acf0dbc7c8e488f1edcb6f5"
-
-[[patch.unused]]
-name = "frc46_token"
-version = "2.0.0"
-source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=asr/ipld-block-master#c4c89e930762a0ce639dad69fb888d92a26afccd"
-
-[[patch.unused]]
-name = "fvm_actor_utils"
-version = "1.0.0"
-source = "git+https://github.com/filecoin-project/filecoin-actor-utils?branch=asr/ipld-block-master#c4c89e930762a0ce639dad69fb888d92a26afccd"
