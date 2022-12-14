@@ -867,6 +867,7 @@ pub fn validate_and_return_deal_space<BS: Blockstore>(
 }
 
 fn alloc_request_for_deal(
+    // Deal proposal must have ID addresses
     deal: &ClientDealProposal,
     policy: &Policy,
     curr_epoch: ChainEpoch,

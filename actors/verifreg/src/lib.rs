@@ -628,10 +628,12 @@ impl Actor {
         let mut new_allocs = Vec::with_capacity(reqs.allocations.len());
         for req in &reqs.allocations {
             validate_new_allocation(req, rt.policy(), curr_epoch)?;
-            let provider_id = resolve_miner_id(rt, &req.provider)?;
+            // Require the provider for new allocations to be a miner actor.
+            // This doesn't matter much, but is more ergonomic to fail rather than lock up datacap.
+            check_miner_id(rt, req.provider)?;
             new_allocs.push(Allocation {
                 client,
-                provider: provider_id,
+                provider: req.provider,
                 data: req.data,
                 size: req.size,
                 term_min: req.term_min,
@@ -1010,9 +1012,9 @@ fn validate_claim_extension(
 }
 
 // Checks that an address corresponsds to a miner actor.
-fn resolve_miner_id(rt: &mut impl Runtime, id: &ActorID) -> Result<ActorID, ActorError> {
+fn check_miner_id(rt: &mut impl Runtime, id: ActorID) -> Result<(), ActorError> {
     let code_cid =
-        rt.get_actor_code_cid(id).with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
+        rt.get_actor_code_cid(&id).with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
             format!("no code CID for provider {}", id)
         })?;
     let provider_type = rt
@@ -1028,7 +1030,7 @@ fn resolve_miner_id(rt: &mut impl Runtime, id: &ActorID) -> Result<ActorID, Acto
             provider_type
         ));
     }
-    Ok(*id)
+    Ok(())
 }
 
 fn can_claim_alloc(
