@@ -1,6 +1,6 @@
 use std::iter;
 
-use fil_actors_runtime::{actor_error, runtime::builtins::Type, AsActorError, EAM_ACTOR_ID};
+use fil_actors_runtime::{actor_error, AsActorError, EAM_ACTOR_ID, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::{strict_bytes, BytesDe, BytesSer, DAG_CBOR};
 use fvm_shared::address::{Address, Payload};
 use interpreter::{address::EthAddress, system::load_bytecode};
@@ -65,11 +65,7 @@ impl EvmContractActor {
         RT: Runtime,
         RT::Blockstore: Clone,
     {
-        // TODO ideally we would be checking that we are constructed by the EAM actor,
-        //   but instead we check for init and then assert that we have a delegated address.
-        //   https://github.com/filecoin-project/ref-fvm/issues/746
-        // rt.validate_immediate_caller_is(vec![&EAM_ACTOR_ADDR])?;
-        rt.validate_immediate_caller_type(iter::once(&Type::Init))?;
+        rt.validate_immediate_caller_is(iter::once(&INIT_ACTOR_ADDR))?;
 
         // Assert we are constructed with a delegated address from the EAM
         let receiver = rt.message().receiver();
