@@ -30,6 +30,7 @@ pub mod builtin;
 pub mod runtime;
 pub mod util;
 
+mod dispatch;
 #[cfg(feature = "test_utils")]
 pub mod test_utils;
 
