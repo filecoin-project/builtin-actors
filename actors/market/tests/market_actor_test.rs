@@ -860,7 +860,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     // Data cap transfer is requested using the resolved address (not that it matters).
     let alloc_req = ext::verifreg::AllocationRequests {
         allocations: vec![AllocationRequest {
-            provider: provider_resolved,
+            provider: provider_resolved.id().unwrap(),
             data: deal.piece_cid,
             size: deal.piece_size,
             term_min: deal.end_epoch - deal.start_epoch,

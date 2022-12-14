@@ -75,7 +75,7 @@ fn datacap_transfer_scenario() {
     );
 
     let alloc = AllocationRequest {
-        provider: maddr,
+        provider: maddr.id().unwrap(),
         data: make_piece_cid("datacap-test-alloc".as_bytes()),
         size: PaddedPieceSize(MINIMUM_VERIFIED_ALLOCATION_SIZE as u64),
         term_min: policy.minimum_verified_allocation_term,

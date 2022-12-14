@@ -822,10 +822,10 @@ impl Actor {
             validate_new_allocation(req, rt.policy(), curr_epoch)?;
             // Require the provider for new allocations to be a miner actor.
             // This doesn't matter much, but is more ergonomic to fail rather than lock up datacap.
-            let provider_id = resolve_miner_id(rt, &req.provider)?;
+            check_miner_id(rt, req.provider)?;
             new_allocs.push(Allocation {
                 client,
-                provider: provider_id,
+                provider: req.provider,
                 data: req.data,
                 size: req.size,
                 term_min: req.term_min,
@@ -842,14 +842,9 @@ impl Actor {
         for req in &reqs.extensions {
             // Note: we don't check the client address here, by design.
             // Any client can spend datacap to extend an existing claim.
-            let provider_id = rt
-                .resolve_address(&req.provider)
-                .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
-                    format!("failed to resolve provider address {}", req.provider)
-                })?;
-            let claim = state::get_claim(&mut claims, provider_id, req.claim)?
+            let claim = state::get_claim(&mut claims, req.provider, req.claim)?
                 .with_context_code(ExitCode::USR_NOT_FOUND, || {
-                    format!("no claim {} for provider {}", req.claim, provider_id)
+                    format!("no claim {} for provider {}", req.claim, req.provider)
                 })?;
             let policy = rt.policy();
 
@@ -1216,13 +1211,10 @@ fn validate_claim_extension(
 }
 
 // Checks that an address corresponsds to a miner actor.
-fn resolve_miner_id(rt: &mut impl Runtime, addr: &Address) -> Result<ActorID, ActorError> {
-    let id = rt.resolve_address(addr).with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
-        format!("failed to resolve provider address {}", addr)
-    })?;
+fn check_miner_id(rt: &mut impl Runtime, id: ActorID) -> Result<(), ActorError> {
     let code_cid =
         rt.get_actor_code_cid(&id).with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
-            format!("no code CID for provider {}", addr)
+            format!("no code CID for provider {}", id)
         })?;
     let provider_type = rt
         .resolve_builtin_actor_type(&code_cid)
@@ -1233,11 +1225,11 @@ fn resolve_miner_id(rt: &mut impl Runtime, addr: &Address) -> Result<ActorID, Ac
         return Err(actor_error!(
             illegal_argument,
             "allocation provider {} must be a miner actor, was {:?}",
-            addr,
+            id,
             provider_type
         ));
     }
-    Ok(id)
+    Ok(())
 }
 
 fn can_claim_alloc(

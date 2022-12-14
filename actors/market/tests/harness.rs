@@ -489,7 +489,7 @@ pub fn publish_deals(
             let curr_epoch = rt.epoch;
             let alloc_req = ext::verifreg::AllocationRequests {
                 allocations: vec![AllocationRequest {
-                    provider: deal.provider,
+                    provider: deal.provider.id().unwrap(),
                     data: deal.piece_cid,
                     size: deal.piece_size,
                     term_min: deal.end_epoch - deal.start_epoch,
