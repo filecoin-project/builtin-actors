@@ -52,16 +52,16 @@ impl State {
     /// If the delegated address is already present, maps the robust address to that actor ID.
     /// Fails if the robust address is already mapped, providing tombstone.
     ///
-    /// Returns the nwe or existing actor ID.
+    /// Returns the actor ID and a boolean indicating whether or not the actor already exists.
     pub fn map_addresses_to_id<BS: Blockstore>(
         &mut self,
         store: &BS,
         robust_addr: &Address,
         delegated_addr: Option<&Address>,
-    ) -> Result<ActorID, ActorError> {
+    ) -> Result<(ActorID, bool), ActorError> {
         let mut map = make_map_with_root_and_bitwidth(&self.address_map, store, HAMT_BIT_WIDTH)
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load address map")?;
-        let id = if let Some(delegated_addr) = delegated_addr {
+        let (id, existing) = if let Some(delegated_addr) = delegated_addr {
             // If there's a delegated address, either recall the already-mapped actor ID or
             // create and map a new one.
             let delegated_key = delegated_addr.to_bytes().into();
@@ -69,19 +69,19 @@ impl State {
                 .get(&delegated_key)
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to lookup delegated address")?
             {
-                *existing_id
+                (*existing_id, true)
             } else {
                 let new_id = self.next_id;
                 self.next_id += 1;
                 map.set(delegated_key, new_id)
                     .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to map delegated address")?;
-                new_id
+                (new_id, false)
             }
         } else {
             // With no delegated address, always create a new actor ID.
             let new_id = self.next_id;
             self.next_id += 1;
-            new_id
+            (new_id, false)
         };
 
         // Map the robust address to the ID, failing if it's already mapped to anything.
@@ -97,7 +97,7 @@ impl State {
         }
         self.address_map =
             map.flush().context_code(ExitCode::USR_ILLEGAL_STATE, "failed to store address map")?;
-        Ok(id)
+        Ok((id, existing))
     }
 
     /// ResolveAddress resolves an address to an ID-address, if possible.

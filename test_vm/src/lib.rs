@@ -641,7 +641,8 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         }
 
         let mut st = self.v.get_state::<InitState>(INIT_ACTOR_ADDR).unwrap();
-        let target_id = st.map_addresses_to_id(self.v.store, target, None).unwrap();
+        let (target_id, existing) = st.map_addresses_to_id(self.v.store, target, None).unwrap();
+        assert!(!existing, "should never have existing actor when no f4 address is specified");
         let target_id_addr = Address::new_id(target_id);
         let mut init_actor = self.v.get_actor(INIT_ACTOR_ADDR).unwrap();
         init_actor.head = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
