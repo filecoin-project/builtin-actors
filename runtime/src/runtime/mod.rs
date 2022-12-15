@@ -5,6 +5,7 @@ use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
 use fvm_shared::address::Address;
+use fvm_shared::chainid::ChainID;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::hash::SupportedHashes;
@@ -19,6 +20,7 @@ use fvm_shared::sector::{
     AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
     WindowPoStVerifyInfo,
 };
+use fvm_shared::sys::SendFlags;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
 use multihash::Code;
@@ -31,7 +33,6 @@ use crate::{actor_error, ActorError};
 
 mod actor_code;
 pub mod builtins;
-pub mod chainid;
 pub mod policy;
 mod randomness;
 
@@ -58,6 +59,9 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
 
     /// The current chain epoch number. The genesis block has epoch zero.
     fn curr_epoch(&self) -> ChainEpoch;
+
+    /// The ID for the EVM-based chain, as defined in https://github.com/ethereum-lists/chains.
+    fn chain_id(&self) -> ChainID;
 
     /// Validates the caller against some predicate.
     /// Exported actor methods must invoke at least one caller validation before returning.
@@ -187,32 +191,20 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
         method: MethodNum,
         params: RawBytes,
         value: TokenAmount,
-    ) -> Result<RawBytes, ActorError>;
-
-    /// Like [`Runtime::send`] except that neither the called actor nor any recursively called actor
-    /// can make any state changes or emit any events. Specifically:
-    ///
-    /// - Value transfers are rejected.
-    /// - Events are discarded.
-    /// - State changes are rejected when the called actor attempts to update its state-root.
-    /// - Actor deletion is forbidden.
-    fn send_read_only(
-        &self,
-        to: &Address,
-        method: MethodNum,
-        params: RawBytes,
-    ) -> Result<RawBytes, ActorError>;
+    ) -> Result<RawBytes, ActorError> {
+        self.send_generalized(to, method, params, value, None, SendFlags::empty())
+    }
 
     /// Generailizes [`Runtime::send`] and [`Runtime::send_read_only`] to allow the caller to
-    /// specify a gas limit.
-    fn send_with_gas(
+    /// specify a gas limit and send flags.
+    fn send_generalized(
         &self,
         to: &Address,
         method: MethodNum,
         params: RawBytes,
         value: TokenAmount,
         gas_limit: Option<u64>,
-        read_only: bool,
+        flags: SendFlags,
     ) -> Result<RawBytes, ActorError>;
 
     /// Computes an address for a new actor. The returned address is intended to uniquely refer to

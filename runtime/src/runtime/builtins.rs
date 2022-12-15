@@ -23,6 +23,7 @@ pub enum Type {
     Embryo = 13,
     EVM = 14,
     EAM = 15,
+    EthAccount = 16,
 }
 
 impl Type {
@@ -43,6 +44,7 @@ impl Type {
             Type::Embryo => "embryo",
             Type::EVM => "evm",
             Type::EAM => "eam",
+            Type::EthAccount => "ethaccount",
         }
     }
 }

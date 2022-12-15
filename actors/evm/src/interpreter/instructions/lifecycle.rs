@@ -2,6 +2,7 @@ use bytes::Bytes;
 
 use fil_actors_runtime::{BURNT_FUNDS_ACTOR_ADDR, EAM_ACTOR_ADDR};
 use fvm_ipld_encoding::{strict_bytes, tuple::*, RawBytes};
+use fvm_shared::sys::SendFlags;
 use fvm_shared::MethodNum;
 use fvm_shared::METHOD_SEND;
 use fvm_shared::{address::Address, econ::TokenAmount};
@@ -55,6 +56,9 @@ pub fn create(
     let ExecutionState { stack: _, memory, .. } = state;
 
     let value = TokenAmount::from(&value);
+    if value > system.rt.current_balance() {
+        return Ok(U256::zero());
+    }
     let input_region =
         get_memory_region(memory, offset, size).map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
@@ -85,6 +89,10 @@ pub fn create2(
 
     // see `create()` overall TODOs
     let endowment = TokenAmount::from(&endowment);
+    if endowment > system.rt.current_balance() {
+        return Ok(U256::zero());
+    }
+
     let input_region =
         get_memory_region(memory, offset, size).map_err(|_| StatusCode::InvalidMemoryAccess)?;
 
@@ -111,7 +119,7 @@ fn create_init(
     value: TokenAmount,
 ) -> Result<U256, StatusCode> {
     // send bytecode & params to EAM to generate the address and contract
-    let ret = system.send(&EAM_ACTOR_ADDR, method, params, value);
+    let ret = system.send(&EAM_ACTOR_ADDR, method, params, value, None, SendFlags::default());
 
     // https://github.com/ethereum/go-ethereum/blob/fb75f11e87420ec25ff72f7eeeb741fa8974e87e/core/vm/evm.go#L406-L496
     // Normally EVM will do some checks here to ensure that a contract has the capability

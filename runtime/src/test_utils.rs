@@ -13,6 +13,7 @@ use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::de::DeserializeOwned;
 use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
 use fvm_shared::address::{Address, Payload, Protocol};
+use fvm_shared::chainid::ChainID;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
 use fvm_shared::consensus::ConsensusFault;
@@ -28,6 +29,7 @@ use fvm_shared::sector::{
     AggregateSealVerifyInfo, AggregateSealVerifyProofAndInfos, RegisteredSealProof,
     ReplicaUpdateInfo, SealVerifyInfo, WindowPoStVerifyInfo,
 };
+use fvm_shared::sys::SendFlags;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
 
@@ -128,6 +130,7 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
     pub epoch: ChainEpoch,
     pub miner: Address,
     pub base_fee: TokenAmount,
+    pub chain_id: ChainID,
     pub id_addresses: HashMap<Address, Address>,
     pub delegated_addresses: HashMap<Address, Address>,
     pub delegated_addresses_source: HashMap<Address, Address>,
@@ -204,105 +207,106 @@ pub struct Expectations {
 
 impl Expectations {
     fn reset(&mut self) {
+        self.skip_verification_on_drop = true;
         *self = Default::default();
     }
 
     fn verify(&mut self) {
-        assert!(!self.expect_validate_caller_any, "expected ValidateCallerAny, not received");
+        // If we don't reset them, we'll try to re-verify on drop. If something fails, we'll panic
+        // twice and abort making the tests difficult to debug.
+        self.skip_verification_on_drop = true;
+        let this = std::mem::take(self);
+
+        assert!(!this.expect_validate_caller_any, "expected ValidateCallerAny, not received");
         assert!(
-            self.expect_validate_caller_addr.is_none(),
+            this.expect_validate_caller_addr.is_none(),
             "expected ValidateCallerAddr {:?}, not received",
-            self.expect_validate_caller_addr
+            this.expect_validate_caller_addr
         );
         assert!(
-            self.expect_validate_caller_f4_namespace.is_none(),
-            "expected ValidateNamespace {:?}, not received",
-            self.expect_validate_caller_f4_namespace
-        );
-        assert!(
-            self.expect_validate_caller_type.is_none(),
+            this.expect_validate_caller_type.is_none(),
             "expected ValidateCallerType {:?}, not received",
-            self.expect_validate_caller_type
+            this.expect_validate_caller_type
         );
         assert!(
-            self.expect_sends.is_empty(),
+            this.expect_sends.is_empty(),
             "expected all message to be send, unsent messages {:?}",
-            self.expect_sends
+            this.expect_sends
         );
         assert!(
-            self.expect_create_actor.is_none(),
+            this.expect_create_actor.is_none(),
             "expected actor to be created, uncreated actor: {:?}",
-            self.expect_create_actor
+            this.expect_create_actor
         );
         assert!(
-            self.expect_delete_actor.is_none(),
+            this.expect_delete_actor.is_none(),
             "expected actor to be deleted: {:?}",
-            self.expect_delete_actor
+            this.expect_delete_actor
         );
         assert!(
-            self.expect_verify_sigs.is_empty(),
+            this.expect_verify_sigs.is_empty(),
             "expect_verify_sigs: {:?}, not received",
-            self.expect_verify_sigs
+            this.expect_verify_sigs
         );
         assert!(
-            self.expect_verify_seal.is_none(),
+            this.expect_verify_seal.is_none(),
             "expect_verify_seal {:?}, not received",
-            self.expect_verify_seal
+            this.expect_verify_seal
         );
         assert!(
-            self.expect_verify_post.is_none(),
+            this.expect_verify_post.is_none(),
             "expect_verify_post {:?}, not received",
-            self.expect_verify_post
+            this.expect_verify_post
         );
         assert!(
-            self.expect_compute_unsealed_sector_cid.is_empty(),
+            this.expect_compute_unsealed_sector_cid.is_empty(),
             "expect_compute_unsealed_sector_cid: {:?}, not received",
-            self.expect_compute_unsealed_sector_cid
+            this.expect_compute_unsealed_sector_cid
         );
         assert!(
-            self.expect_verify_consensus_fault.is_none(),
+            this.expect_verify_consensus_fault.is_none(),
             "expect_verify_consensus_fault {:?}, not received",
-            self.expect_verify_consensus_fault
+            this.expect_verify_consensus_fault
         );
         assert!(
-            self.expect_get_randomness_from_beacon.is_empty(),
-            "expect_get_randomness_from_beacon {:?}, not received",
-            self.expect_get_randomness_from_beacon
-        );
-        assert!(
-            self.expect_get_randomness_from_chain.is_empty(),
+            this.expect_get_randomness_from_chain.is_empty(),
             "expect_get_randomness_from_chain {:?}, not received",
-            self.expect_get_randomness_from_chain
+            this.expect_get_randomness_from_chain
         );
         assert!(
-            self.expect_batch_verify_seals.is_none(),
+            this.expect_get_randomness_from_beacon.is_empty(),
+            "expect_get_randomness_from_beacon {:?}, not received",
+            this.expect_get_randomness_from_beacon
+        );
+        assert!(
+            this.expect_batch_verify_seals.is_none(),
             "expect_batch_verify_seals {:?}, not received",
-            self.expect_batch_verify_seals
+            this.expect_batch_verify_seals
         );
         assert!(
-            self.expect_aggregate_verify_seals.is_none(),
+            this.expect_aggregate_verify_seals.is_none(),
             "expect_aggregate_verify_seals {:?}, not received",
-            self.expect_aggregate_verify_seals
+            this.expect_aggregate_verify_seals
         );
         assert!(
-            self.expect_replica_verify.is_none(),
+            this.expect_replica_verify.is_none(),
             "expect_replica_verify {:?}, not received",
-            self.expect_replica_verify
+            this.expect_replica_verify
         );
         assert!(
-            self.expect_gas_charge.is_empty(),
+            this.expect_gas_charge.is_empty(),
             "expect_gas_charge {:?}, not received",
-            self.expect_gas_charge
+            this.expect_gas_charge
         );
         assert!(
-            self.expect_gas_available.is_empty(),
-            "expect_gas_charge {:?}, not received",
-            self.expect_gas_available
+            this.expect_gas_available.is_empty(),
+            "expect_gas_available {:?}, not received",
+            this.expect_gas_available
         );
         assert!(
-            self.expect_emitted_events.is_empty(),
+            this.expect_emitted_events.is_empty(),
             "expect_emitted_events {:?}, not received",
-            self.expect_emitted_events
+            this.expect_emitted_events
         );
     }
 
@@ -323,6 +327,7 @@ impl<BS> MockRuntime<BS> {
             epoch: Default::default(),
             miner: Address::new_id(0),
             base_fee: Default::default(),
+            chain_id: ChainID::from(0),
             id_addresses: Default::default(),
             delegated_addresses: Default::default(),
             delegated_addresses_source: Default::default(),
@@ -367,7 +372,8 @@ pub struct ExpectedMessage {
     pub method: MethodNum,
     pub params: RawBytes,
     pub value: TokenAmount,
-    pub read_only: bool,
+    pub gas_limit: Option<u64>,
+    pub send_flags: SendFlags,
 
     // returns from applying expectedMessage
     pub send_return: RawBytes,
@@ -539,72 +545,6 @@ impl<BS: Blockstore> MockRuntime<BS> {
         self.delegated_addresses_source.insert(target, source);
     }
 
-    fn send_inner(
-        &self,
-        to: &Address,
-        method: MethodNum,
-        params: RawBytes,
-        value: TokenAmount,
-        _gas_limit: Option<u64>,
-        read_only: bool,
-    ) -> Result<RawBytes, ActorError> {
-        // TODO gas_limit is currently ignored, what should we do about it?
-        self.require_in_call();
-        if self.in_transaction {
-            return Err(actor_error!(assertion_failed; "side-effect within transaction"));
-        }
-
-        assert!(
-            !self.expectations.borrow_mut().expect_sends.is_empty(),
-            "unexpected message to: {:?} method: {:?}, value: {:?}, params: {:?}",
-            to,
-            method,
-            value,
-            params
-        );
-
-        let expected_msg = self.expectations.borrow_mut().expect_sends.pop_front().unwrap();
-
-        assert!(
-            expected_msg.to == *to
-                && expected_msg.method == method
-                && expected_msg.params == params
-                && expected_msg.value == value
-                && expected_msg.read_only == read_only,
-            "message sent does not match expectation.\n\
-             message  - to: {:?}, method: {:?}, value: {:?}, params: {:?}\n\
-             expected - to: {:?}, method: {:?}, value: {:?}, params: {:?}",
-            to,
-            method,
-            value,
-            params,
-            expected_msg.to,
-            expected_msg.method,
-            expected_msg.value,
-            expected_msg.params,
-        );
-
-        {
-            let mut balance = self.balance.borrow_mut();
-            if value > *balance {
-                return Err(ActorError::unchecked(
-                    ExitCode::SYS_SENDER_STATE_INVALID,
-                    format!("cannot send value: {:?} exceeds balance: {:?}", value, *balance),
-                ));
-            }
-            *balance -= value;
-        }
-
-        match expected_msg.exit_code {
-            ExitCode::OK => Ok(expected_msg.send_return),
-            x => Err(ActorError::unchecked_with_data(
-                x,
-                "Expected message Fail".to_string(),
-                expected_msg.send_return,
-            )),
-        }
-    }
-
     pub fn call<A: ActorCode>(
         &mut self,
         method_num: MethodNum,
@@ -735,16 +675,21 @@ impl<BS: Blockstore> MockRuntime<BS> {
             value,
             send_return,
             exit_code,
-            read_only: false,
+            send_flags: SendFlags::default(),
+            gas_limit: None,
         })
     }
 
     #[allow(dead_code)]
-    pub fn expect_send_read_only(
+    #[allow(clippy::too_many_arguments)]
+    pub fn expect_send_generalized(
         &mut self,
         to: Address,
         method: MethodNum,
         params: RawBytes,
+        value: TokenAmount,
+        gas_limit: Option<u64>,
+        send_flags: SendFlags,
         send_return: RawBytes,
         exit_code: ExitCode,
     ) {
@@ -754,8 +699,9 @@ impl<BS: Blockstore> MockRuntime<BS> {
             params,
             send_return,
             exit_code,
-            value: TokenAmount::default(),
-            read_only: true,
+            value,
+            send_flags,
+            gas_limit,
         })
     }
 
@@ -1162,35 +1108,72 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         &self.store
     }
 
-    fn send(
-        &self,
-        to: &Address,
-        method: MethodNum,
-        params: RawBytes,
-        value: TokenAmount,
-    ) -> Result<RawBytes, ActorError> {
-        self.send_inner(to, method, params, value, None, false)
-    }
-
-    fn send_read_only(
-        &self,
-        to: &Address,
-        method: MethodNum,
-        params: RawBytes,
-    ) -> Result<RawBytes, ActorError> {
-        self.send_inner(to, method, params, TokenAmount::default(), None, true)
-    }
-
-    fn send_with_gas(
+    fn send_generalized(
         &self,
         to: &Address,
         method: MethodNum,
         params: RawBytes,
         value: TokenAmount,
         gas_limit: Option<u64>,
-        read_only: bool,
+        send_flags: SendFlags,
     ) -> Result<RawBytes, ActorError> {
-        self.send_inner(to, method, params, value, gas_limit, read_only)
+        // TODO gas_limit is currently ignored, what should we do about it?
+        self.require_in_call();
+        if self.in_transaction {
+            return Err(actor_error!(assertion_failed; "side-effect within transaction"));
+        }
+
+        assert!(
+            !self.expectations.borrow_mut().expect_sends.is_empty(),
+            "unexpected message to: {:?} method: {:?}, value: {:?}, params: {:?}",
+            to,
+            method,
+            value,
+            params
+        );
+
+        let expected_msg = self.expectations.borrow_mut().expect_sends.pop_front().unwrap();
+
+        assert_eq!(expected_msg.gas_limit, gas_limit, "gas limit did not match expectation");
+        assert_eq!(expected_msg.send_flags, send_flags, "send flags did not match expectation");
+
+        assert!(
+            expected_msg.to == *to
+                && expected_msg.method == method
+                && expected_msg.params == params
+                && expected_msg.value == value,
+            "message sent does not match expectation.\n\
+             message  - to: {:?}, method: {:?}, value: {:?}, params: {:?}\n\
+             expected - to: {:?}, method: {:?}, value: {:?}, params: {:?}",
+            to,
+            method,
+            value,
+            params,
+            expected_msg.to,
+            expected_msg.method,
+            expected_msg.value,
+            expected_msg.params,
+        );
+
+        {
+            let mut balance = self.balance.borrow_mut();
+            if value > *balance {
+                return Err(ActorError::unchecked(
+                    ExitCode::SYS_SENDER_STATE_INVALID,
+                    format!("cannot send value: {:?} exceeds balance: {:?}", value, *balance),
+                ));
+            }
+            *balance -= value;
+        }
+
+        match expected_msg.exit_code {
+            ExitCode::OK => Ok(expected_msg.send_return),
+            x => Err(ActorError::unchecked_with_data(
+                x,
+                "Expected message Fail".to_string(),
+                expected_msg.send_return,
+            )),
+        }
     }
 
     fn new_actor_address(&mut self) -> Result<Address, ActorError> {
@@ -1222,6 +1205,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
             ExpectCreateActor { code_id, actor_id, predictable_address },
             "unexpected actor being created"
         );
+        self.set_address_actor_type(Address::new_id(actor_id), code_id);
         Ok(())
     }
 
@@ -1372,6 +1356,10 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
 
     fn read_only(&self) -> bool {
         false
+    }
+
+    fn chain_id(&self) -> ChainID {
+        self.chain_id
     }
 }
 

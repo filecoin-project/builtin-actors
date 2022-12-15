@@ -1,15 +1,21 @@
 #![allow(dead_code)]
 
+use std::borrow::Cow;
+
 use fil_actors_runtime::{actor_error, runtime::EMPTY_ARR_CID, AsActorError, EAM_ACTOR_ID};
 use fvm_ipld_blockstore::Block;
 use fvm_ipld_encoding::{CborStore, RawBytes};
+use fvm_ipld_kamt::HashedKey;
 use fvm_shared::{
     address::{Address, Payload},
+    crypto::hash::SupportedHashes,
     econ::TokenAmount,
     error::ExitCode,
+    sys::SendFlags,
     MethodNum, IPLD_RAW,
 };
-use multihash::Code;
+use multihash::{Code, Multihash};
+use once_cell::unsync::OnceCell;
 
 use crate::state::State;
 
@@ -20,12 +26,71 @@ use {
     cid::Cid,
     fil_actors_runtime::{runtime::Runtime, ActorError},
     fvm_ipld_blockstore::Blockstore,
-    fvm_ipld_hamt::Hamt,
+    fvm_ipld_kamt::{AsHashedKey, Config as KamtConfig, Kamt},
 };
+
+lazy_static::lazy_static! {
+    // The Solidity compiler creates contiguous array item keys.
+    // To prevent the tree from going very deep we use extensions,
+    // which the Kamt supports and does in all cases.
+    //
+    // There are maximum 32 levels in the tree with the default bit width of 8.
+    // The top few levels will have a higher level of overlap in their hashes.
+    // Intuitively these levels should be used for routing, not storing data.
+    //
+    // The only exception to this is the top level variables in the contract
+    // which solidity puts in the first few slots. There having to do extra
+    // lookups is burdensome, and they will always be accessed even for arrays
+    // because that's where the array length is stored.
+    //
+    // However, for Solidity, the size of the KV pairs is 2x256, which is
+    // comparable to a size of a CID pointer plus extension metadata.
+    // We can keep the root small either by force-pushing data down,
+    // or by not allowing many KV pairs in a slot.
+    //
+    // The following values have been set by looking at how the charts evolved
+    // with the test contract. They might not be the best for other contracts.
+    static ref KAMT_CONFIG: KamtConfig = KamtConfig {
+        min_data_depth: 0,
+        bit_width: 5,
+        max_array_width: 1
+    };
+}
+
+pub struct StateHashAlgorithm;
+
+/// Wrapper around the base U256 type so we can control the byte order in the hash, because
+/// the words backing `U256` are in little endian order, and we need them in big endian for
+/// the nibbles to be co-located in the tree.
+impl AsHashedKey<U256, 32> for StateHashAlgorithm {
+    fn as_hashed_key(key: &U256) -> Cow<HashedKey<32>> {
+        let mut bs = [0u8; 32];
+        key.to_big_endian(&mut bs);
+        Cow::Owned(bs)
+    }
+}
+
+/// The EVM stores its state as Key-Value pairs with both keys and values
+/// being 256 bits long, which we store in a KAMT.
+pub type StateKamt<BS> = Kamt<BS, U256, U256, StateHashAlgorithm>;
 
 /// Maximum allowed EVM bytecode size.
 /// The contract code size limit is 24kB.
 const MAX_CODE_SIZE: usize = 24 << 10;
+
+#[derive(Clone, Copy)]
+pub struct EvmBytecode {
+    /// CID of the contract
+    pub cid: Cid,
+    /// Keccak256 hash of the contract
+    pub evm_hash: Multihash,
+}
+
+impl EvmBytecode {
+    fn new(cid: Cid, evm_hash: Multihash) -> Self {
+        Self { cid, evm_hash }
+    }
+}
 
 /// Platform Abstraction Layer
 /// that bridges the FVM world to EVM world
@@ -33,15 +98,18 @@ pub struct System<'r, RT: Runtime> {
     pub rt: &'r mut RT,
 
     /// The current bytecode. This is usually only "none" when the actor is first constructed.
-    bytecode: Option<Cid>,
+    /// (blake2b256(ipld_raw(bytecode)), keccak256(bytecode))
+    bytecode: Option<EvmBytecode>,
     /// The contract's EVM storage slots.
-    slots: Hamt<RT::Blockstore, U256, U256>,
+    slots: StateKamt<RT::Blockstore>,
     /// The contracts "nonce" (incremented when creating new actors).
     nonce: u64,
     /// The last saved state root. None if the current state hasn't been saved yet.
     saved_state_root: Option<Cid>,
     /// Read Only context (staticcall)
     pub readonly: bool,
+    /// Randomness taken from the current epoch of chain randomness
+    randomness: OnceCell<[u8; 32]>,
 }
 
 impl<'r, RT: Runtime> System<'r, RT> {
@@ -58,11 +126,12 @@ impl<'r, RT: Runtime> System<'r, RT> {
         let store = rt.store().clone();
         Ok(Self {
             rt,
-            slots: Hamt::<_, U256, U256>::new(store),
+            slots: StateKamt::new_with_config(store, KAMT_CONFIG.clone()),
             nonce: 1,
             saved_state_root: None,
             bytecode: None,
             readonly: read_only,
+            randomness: OnceCell::new(),
         })
     }
 
@@ -81,12 +150,13 @@ impl<'r, RT: Runtime> System<'r, RT> {
 
         Ok(Self {
             rt,
-            slots: Hamt::<_, U256, U256>::load(&state.contract_state, store)
+            slots: StateKamt::load_with_config(&state.contract_state, store, KAMT_CONFIG.clone())
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?,
             nonce: state.nonce,
             saved_state_root: Some(state_root),
-            bytecode: Some(state.bytecode),
+            bytecode: Some(EvmBytecode::new(state.bytecode, state.bytecode_hash)),
             readonly: read_only,
+            randomness: OnceCell::new(),
         })
     }
 
@@ -97,44 +167,19 @@ impl<'r, RT: Runtime> System<'r, RT> {
         nonce
     }
 
-    /// Send a message, saving and reloading state as necessary.
+    /// Generalized send
     pub fn send(
         &mut self,
         to: &Address,
         method: MethodNum,
         params: RawBytes,
         value: TokenAmount,
-    ) -> Result<RawBytes, ActorError> {
-        self.flush()?;
-        let result = self.rt.send(to, method, params, value)?;
-        self.reload()?;
-        Ok(result)
-    }
-
-    /// Send a message in "read-only" mode (for staticcall).
-    pub fn send_read_only(
-        &mut self,
-        to: &Address,
-        method: MethodNum,
-        params: RawBytes,
-    ) -> Result<RawBytes, ActorError> {
-        self.flush()?;
-        self.rt.send_read_only(to, method, params)
-    }
-
-    /// Generalized send
-    pub fn send_with_gas(
-        &mut self,
-        to: &Address,
-        method: MethodNum,
-        params: RawBytes,
-        value: TokenAmount,
         gas_limit: Option<u64>,
-        read_only: bool,
+        send_flags: SendFlags,
     ) -> Result<RawBytes, ActorError> {
         self.flush()?;
-        let result = self.rt.send_with_gas(to, method, params, value, gas_limit, read_only)?;
-        if !read_only {
+        let result = self.rt.send_generalized(to, method, params, value, gas_limit, send_flags)?;
+        if !send_flags.read_only() {
             self.reload()?;
         }
         Ok(result)
@@ -150,8 +195,9 @@ impl<'r, RT: Runtime> System<'r, RT> {
             return Err(ActorError::forbidden("contract invocation is read only".to_string()));
         }
 
-        let bytecode_cid = match self.bytecode {
+        let EvmBytecode { cid, evm_hash } = match self.bytecode {
             Some(cid) => cid,
+            // set empty bytecode hashes
             None => self.set_bytecode(&[])?,
         };
         let new_root = self
@@ -159,7 +205,8 @@ impl<'r, RT: Runtime> System<'r, RT> {
             .store()
             .put_cbor(
                 &State {
-                    bytecode: bytecode_cid,
+                    bytecode: cid,
+                    bytecode_hash: evm_hash,
                     contract_state: self.slots.flush().context_code(
                         ExitCode::USR_ILLEGAL_STATE,
                         "failed to flush contract state",
@@ -198,17 +245,22 @@ impl<'r, RT: Runtime> System<'r, RT> {
             .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?;
         self.nonce = state.nonce;
         self.saved_state_root = Some(root);
-        self.bytecode = Some(state.bytecode);
+        self.bytecode = Some(EvmBytecode::new(state.bytecode, state.bytecode_hash));
         Ok(())
     }
 
     /// Load the bytecode.
     pub fn load_bytecode(&self) -> Result<Option<Bytecode>, ActorError> {
-        Ok(self.bytecode.as_ref().map(|k| load_bytecode(self.rt.store(), k)).transpose()?.flatten())
+        Ok(self
+            .bytecode
+            .as_ref()
+            .map(|EvmBytecode { cid, .. }| load_bytecode(self.rt.store(), cid))
+            .transpose()?
+            .flatten())
     }
 
     /// Set the bytecode.
-    pub fn set_bytecode(&mut self, bytecode: &[u8]) -> Result<Cid, ActorError> {
+    pub fn set_bytecode(&mut self, bytecode: &[u8]) -> Result<EvmBytecode, ActorError> {
         self.saved_state_root = None;
         if bytecode.len() > MAX_CODE_SIZE {
             return Err(ActorError::illegal_argument(format!(
@@ -221,13 +273,21 @@ impl<'r, RT: Runtime> System<'r, RT> {
                 "EIP-3541: Contract code starting with the 0xEF byte is disallowed.".into(),
             ));
         }
-        let k = self
+
+        let code_hash = multihash::Multihash::wrap(
+            SupportedHashes::Keccak256 as u64,
+            &self.rt.hash(SupportedHashes::Keccak256, bytecode),
+        )
+        .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to hash bytecode with keccak")?;
+
+        let cid = self
             .rt
             .store()
             .put(Code::Blake2b256, &Block::new(IPLD_RAW, bytecode))
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to write bytecode")?;
-        self.bytecode = Some(k);
-        Ok(k)
+        let bytecode = EvmBytecode::new(cid, code_hash);
+        self.bytecode = Some(bytecode);
+        Ok(bytecode)
     }
 
     /// Get value of a storage key.
@@ -290,6 +350,19 @@ impl<'r, RT: Runtime> System<'r, RT> {
             // But use an EVM address as the fallback.
             _ => Ok(EthAddress::from_id(actor_id)),
         }
+    }
+
+    /// Gets the cached EVM randomness seed of the current epoch
+    pub fn get_randomness(&mut self) -> Result<&[u8; 32], StatusCode> {
+        const ENTROPY: &[u8] = b"prevrandao";
+        self.randomness.get_or_try_init(|| {
+            // get randomness from current beacon epoch with entropy of "prevrandao"
+            Ok(self.rt.get_randomness_from_beacon(
+                fil_actors_runtime::runtime::DomainSeparationTag::EvmPrevRandao,
+                self.rt.curr_epoch(),
+                ENTROPY,
+            )?)
+        })
     }
 }
 

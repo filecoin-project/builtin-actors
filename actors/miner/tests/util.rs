@@ -2552,7 +2552,7 @@ impl ActorHarness {
 
     pub fn get_available_balance(&self, rt: &mut MockRuntime) -> Result<TokenAmount, ActorError> {
         // set caller to non-builtin
-        rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1234));
+        rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(1234));
         rt.expect_validate_caller_any();
         let available_balance_ret: GetAvailableBalanceReturn = rt
             .call::<Actor>(Method::GetAvailableBalanceExported as u64, &RawBytes::default())?

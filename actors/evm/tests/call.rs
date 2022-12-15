@@ -10,6 +10,7 @@ use fvm_shared::address::Address as FILAddress;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::sys::SendFlags;
 use fvm_shared::METHOD_SEND;
 
 mod util;
@@ -43,7 +44,7 @@ push1 0x00
 push1 0x00
 calldataload
 # gas
-push1 0x00
+push4 0xffffffff
 # do the call
 call
 
@@ -58,6 +59,98 @@ return
 "#;
 
     asm::new_contract("call-proxy", init, body).unwrap()
+}
+
+#[allow(dead_code)]
+pub fn call_proxy_transfer_contract() -> Vec<u8> {
+    let init = "";
+    let body = r#"
+# this contract takes an address and the call payload and proxies a call to that address
+# get call payload size
+push1 0x20
+calldatasize
+sub
+# store payload to mem 0x00
+push1 0x20
+push1 0x00
+calldatacopy
+
+# prepare the proxy call
+# output offset and size -- 0 in this case, we use returndata
+push2 0x00
+push1 0x00
+# input offset and size
+push1 0x20
+calldatasize
+sub
+push1 0x00
+# value
+push1 0x42
+# dest address
+push1 0x00
+calldataload
+# gas
+push1 0x00
+# do the call
+call
+
+# return result through
+returndatasize
+push1 0x00
+push1 0x00
+returndatacopy
+returndatasize
+push1 0x00
+return
+"#;
+
+    asm::new_contract("call-proxy-transfer", init, body).unwrap()
+}
+
+#[allow(dead_code)]
+pub fn call_proxy_gas2300_contract() -> Vec<u8> {
+    let init = "";
+    let body = r#"
+# this contract takes an address and the call payload and proxies a call to that address
+# get call payload size
+push1 0x20
+calldatasize
+sub
+# store payload to mem 0x00
+push1 0x20
+push1 0x00
+calldatacopy
+
+# prepare the proxy call
+# output offset and size -- 0 in this case, we use returndata
+push2 0x00
+push1 0x00
+# input offset and size
+push1 0x20
+calldatasize
+sub
+push1 0x00
+# value
+push1 0x00
+# dest address
+push1 0x00
+calldataload
+# gas
+%push(2300)
+# do the call
+call
+
+# return result through
+returndatasize
+push1 0x00
+push1 0x00
+returndatacopy
+returndatasize
+push1 0x00
+return
+"#;
+
+    asm::new_contract("call-proxy-gas2300", init, body).unwrap()
 }
 
 #[test]
@@ -89,11 +182,14 @@ fn test_call() {
     let mut return_data = vec![0u8; 32];
     return_data[31] = 0x42;
 
-    rt.expect_send(
+    rt.expect_gas_available(10_000_000_000u64);
+    rt.expect_send_generalized(
         f4_target,
         evm::Method::InvokeContract as u64,
         proxy_call_input_data,
         TokenAmount::zero(),
+        Some(0xffffffff),
+        SendFlags::empty(),
         RawBytes::serialize(BytesSer(&return_data)).expect("failed to serialize return data"),
         ExitCode::OK,
     );
@@ -157,11 +253,13 @@ fn test_call_convert_to_send() {
         let mut return_data = vec![0u8; 32];
         return_data[31] = 0x42;
 
-        rt.expect_send(
+        rt.expect_send_generalized(
             target,
             METHOD_SEND,
             proxy_call_input_data,
             TokenAmount::zero(),
+            None,
+            SendFlags::empty(),
             RawBytes::serialize(BytesSer(&return_data)).expect("failed to serialize return data"),
             ExitCode::OK,
         );
@@ -170,6 +268,86 @@ fn test_call_convert_to_send() {
         assert_eq!(U256::from_big_endian(&result), U256::from(0x42));
         rt.verify();
     }
+}
+
+// Make sure we do bare sends when calling with 0 gas and value
+#[test]
+fn test_call_convert_to_send2() {
+    let contract = call_proxy_transfer_contract();
+
+    // construct the proxy
+    let mut rt = util::construct_and_verify(contract);
+
+    // create a mock actor and proxy a call through the proxy
+    let target_id = 0x100;
+    let target = FILAddress::new_id(target_id);
+    rt.actor_code_cids.insert(target, *EVM_ACTOR_CODE_ID);
+
+    let evm_target_word = EthAddress::from_id(target_id).as_evm_word();
+
+    // dest with no data
+    let mut contract_params = vec![0u8; 32];
+    evm_target_word.to_big_endian(&mut contract_params);
+
+    let proxy_call_contract_params = vec![];
+    let proxy_call_input_data = RawBytes::serialize(BytesSer(&proxy_call_contract_params))
+        .expect("failed to serialize input data");
+
+    // we don't expected return data
+    let return_data = vec![];
+
+    rt.expect_send(
+        target,
+        METHOD_SEND,
+        proxy_call_input_data,
+        TokenAmount::from_atto(0x42),
+        RawBytes::serialize(BytesSer(&return_data)).expect("failed to serialize return data"),
+        ExitCode::OK,
+    );
+
+    let result = util::invoke_contract(&mut rt, &contract_params);
+    assert_eq!(U256::from_big_endian(&result), U256::from(0));
+    rt.verify();
+}
+
+// Make sure we do bare sends when calling with 2300 gas and no value
+#[test]
+fn test_call_convert_to_send3() {
+    let contract = call_proxy_gas2300_contract();
+
+    // construct the proxy
+    let mut rt = util::construct_and_verify(contract);
+
+    // create a mock actor and proxy a call through the proxy
+    let target_id = 0x100;
+    let target = FILAddress::new_id(target_id);
+    rt.actor_code_cids.insert(target, *EVM_ACTOR_CODE_ID);
+
+    let evm_target_word = EthAddress::from_id(target_id).as_evm_word();
+
+    // dest with no data
+    let mut contract_params = vec![0u8; 32];
+    evm_target_word.to_big_endian(&mut contract_params);
+
+    let proxy_call_contract_params = vec![];
+    let proxy_call_input_data = RawBytes::serialize(BytesSer(&proxy_call_contract_params))
+        .expect("failed to serialize input data");
+
+    // we don't expected return data
+    let return_data = vec![];
+
+    rt.expect_send(
+        target,
+        METHOD_SEND,
+        proxy_call_input_data,
+        TokenAmount::zero(),
+        RawBytes::serialize(BytesSer(&return_data)).expect("failed to serialize return data"),
+        ExitCode::OK,
+    );
+
+    let result = util::invoke_contract(&mut rt, &contract_params);
+    assert_eq!(U256::from_big_endian(&result), U256::from(0));
+    rt.verify();
 }
 
 #[allow(dead_code)]
@@ -222,16 +400,14 @@ push1 0xa0
 calldatasize
 push1 0x00
 
-# value
-push1 0x00
-
 # dst (callactor precompile)
 push1 0x0e
 
 # gas
-push1 0x00
+push4 0xffffffff
 
-call
+# call_actor must be from delegatecall
+delegatecall
 
 # copy result to mem 0x00 (overwrites input data)
 returndatasize
@@ -263,6 +439,8 @@ fn test_callactor_revert() {
 fn test_callactor_inner(exit_code: ExitCode) {
     let contract = callactor_proxy_contract();
 
+    const CALLACTOR_NUM_PARAMS: usize = 6;
+
     // construct the proxy
     let mut rt = util::construct_and_verify(contract);
     // create a mock target and proxy a call through the proxy
@@ -274,6 +452,8 @@ fn test_callactor_inner(exit_code: ExitCode) {
     let mut contract_params = Vec::new();
 
     let method = U256::from(0x42);
+    let value = U256::from(0);
+    let send_flags = SendFlags::default();
     let codec = U256::from(DAG_CBOR);
 
     let target_bytes = target.to_bytes();
@@ -283,23 +463,32 @@ fn test_callactor_inner(exit_code: ExitCode) {
     let data_size = U256::from(proxy_call_input_data.len());
 
     contract_params.extend_from_slice(&method.to_bytes());
+    contract_params.extend_from_slice(&value.to_bytes());
+    contract_params.extend_from_slice(&U256::from(send_flags.bits()).to_bytes());
     contract_params.extend_from_slice(&codec.to_bytes());
     contract_params.extend_from_slice(&target_size.to_bytes());
     contract_params.extend_from_slice(&data_size.to_bytes());
     contract_params.extend_from_slice(&target_bytes);
     contract_params.extend_from_slice(&proxy_call_input_data);
 
-    assert_eq!(32 * 4 + target_bytes.len() + proxy_call_input_data.len(), contract_params.len());
+    assert_eq!(
+        32 * CALLACTOR_NUM_PARAMS + target_bytes.len() + proxy_call_input_data.len(),
+        contract_params.len(),
+        "unexpected input length"
+    );
 
     // expected return data
     let mut return_data = vec![0u8; 32];
     return_data[31] = 0x42;
 
-    rt.expect_send(
+    rt.expect_gas_available(10_000_000_000u64);
+    rt.expect_send_generalized(
         target,
         0x42,
         proxy_call_input_data,
         TokenAmount::zero(),
+        Some(0xffffffff),
+        send_flags,
         RawBytes::from(return_data),
         exit_code,
     );
@@ -321,7 +510,7 @@ fn test_callactor_inner(exit_code: ExitCode) {
 
     impl CallActorReturn {
         pub fn read(src: &[u8]) -> Self {
-            use fil_actor_evm::interpreter::precompiles::assert_zero_bytes;
+            use fil_actor_evm::interpreter::precompiles::parameter::assert_zero_bytes;
             assert!(src.len() >= 4 * 32, "expected to read at least 4 U256 values");
 
             let bytes = &src[..32];
@@ -361,6 +550,7 @@ fn test_callactor_inner(exit_code: ExitCode) {
         data_size: 32,
         data: U256::from(0x42).to_bytes().to_vec(),
     };
-
+    rt.verify();
     assert_eq!(result, expected);
+    rt.reset();
 }

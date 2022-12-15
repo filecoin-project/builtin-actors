@@ -239,12 +239,12 @@ impl Actor {
         })
     }
 
-    /// Returns the owner address
+    /// Returns the owner address, as well as the proposed new owner (if any).
     fn get_owner(rt: &mut impl Runtime) -> Result<GetOwnerReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let state: State = rt.state()?;
-        let owner = get_miner_info(rt.store(), &state)?.owner;
-        Ok(GetOwnerReturn { owner })
+        let info = get_miner_info(rt.store(), &state)?;
+        Ok(GetOwnerReturn { owner: info.owner, proposed: info.pending_owner_address })
     }
 
     /// Returns whether the provided address is "controlling".
@@ -270,7 +270,7 @@ impl Actor {
         Ok(IsControllingAddressReturn { is_controlling })
     }
 
-    /// Returns the miner's sector size
+    /// Returns the miner's sector size.
     fn get_sector_size(rt: &mut impl Runtime) -> Result<GetSectorSizeReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let state: State = rt.state()?;
@@ -422,6 +422,7 @@ impl Actor {
         })
     }
 
+    /// Returns the Peer ID for this miner.
     fn get_peer_id(rt: &mut impl Runtime) -> Result<GetPeerIDReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let state: State = rt.state()?;
@@ -450,6 +451,7 @@ impl Actor {
         Ok(())
     }
 
+    /// Returns the multiaddresses set for this miner.
     fn get_multiaddresses(rt: &mut impl Runtime) -> Result<GetMultiaddrsReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let state: State = rt.state()?;

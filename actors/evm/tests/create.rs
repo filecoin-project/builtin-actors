@@ -128,7 +128,7 @@ fn test_create() {
         rt.expect_send(
             EAM_ACTOR_ADDR,
             CREATE2_METHOD_NUM,
-            RawBytes::serialize(create2_params.clone()).unwrap(),
+            RawBytes::serialize(create2_params).unwrap(),
             TokenAmount::from_atto(1),
             RawBytes::serialize(fake_ret).unwrap(),
             ExitCode::OK,
@@ -143,15 +143,6 @@ fn test_create() {
 
     // not enough funds -- create2
     {
-        rt.expect_send(
-            EAM_ACTOR_ADDR,
-            CREATE2_METHOD_NUM,
-            RawBytes::serialize(create2_params).unwrap(),
-            TokenAmount::from_atto(1),
-            RawBytes::serialize(fake_ret).unwrap(),
-            ExitCode::OK,
-        );
-
         let result = util::invoke_contract(&mut rt, &contract_params);
         assert_eq!(&result[..], &[0; 32]);
     }
@@ -160,16 +151,7 @@ fn test_create() {
 
     // not enough funds -- create
     {
-        // TODO this nonce is broken
         create_params.nonce += 3;
-        rt.expect_send(
-            EAM_ACTOR_ADDR,
-            CREATE_METHOD_NUM,
-            RawBytes::serialize(create_params).unwrap(),
-            TokenAmount::from_atto(1),
-            RawBytes::serialize(fake_ret).unwrap(),
-            ExitCode::OK,
-        );
 
         let result = util::invoke_contract(&mut rt, &contract_params);
         assert_eq!(&result[..], &[0; 32]);

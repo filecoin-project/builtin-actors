@@ -770,7 +770,7 @@ fn test_propose_restricted_correctly() {
     h.construct_and_verify(&mut rt, 2, no_unlock_duration, start_epoch, signers);
 
     // set caller to not-builtin
-    rt.set_caller(make_identity_cid(b"102"), Address::new_id(102));
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(102));
     let propose_params = serialize(
         &ProposeParams {
             to: chuck,

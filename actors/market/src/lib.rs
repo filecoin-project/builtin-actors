@@ -99,9 +99,7 @@ impl Actor {
     pub fn constructor(rt: &mut impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
-        let st = State::new(rt.store()).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "Failed to create market state")
-        })?;
+        let st = State::new(rt.store())?;
         rt.create(&st)?;
         Ok(())
     }
@@ -123,23 +121,7 @@ impl Actor {
         let (nominal, _, _) = escrow_address(rt, &provider_or_client)?;
 
         rt.transaction(|st: &mut State, rt| {
-            let mut msm = st.mutator(rt.store());
-            msm.with_escrow_table(Permission::Write)
-                .with_locked_table(Permission::Write)
-                .build()
-                .map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load state")
-                })?;
-
-            msm.escrow_table.as_mut().unwrap().add(&nominal, &msg_value).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to add balance to escrow table",
-                )
-            })?;
-
-            msm.commit_state()?;
-
+            st.add_balance_to_escrow_table(rt.store(), &nominal, &msg_value)?;
             Ok(())
         })?;
 
@@ -162,34 +144,7 @@ impl Actor {
         rt.validate_immediate_caller_is(&approved)?;
 
         let amount_extracted = rt.transaction(|st: &mut State, rt| {
-            let mut msm = st.mutator(rt.store());
-            msm.with_escrow_table(Permission::Write)
-                .with_locked_table(Permission::Write)
-                .build()
-                .map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load state")
-                })?;
-
-            // The withdrawable amount might be slightly less than nominal
-            // depending on whether or not all relevant entries have been processed
-            // by cron
-            let min_balance = msm.locked_table.as_ref().unwrap().get(&nominal).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get locked balance")
-            })?;
-
-            let ex = msm
-                .escrow_table
-                .as_mut()
-                .unwrap()
-                .subtract_with_minimum(&nominal, &params.amount, &min_balance)
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        "failed to subtract from escrow table",
-                    )
-                })?;
-
-            msm.commit_state()?;
+            let ex = st.withdraw_balance_from_escrow_table(rt.store(), &nominal, &params.amount)?;
 
             Ok(ex)
         })?;
@@ -290,14 +245,7 @@ impl Actor {
         let mut valid_input_bf = BitField::default();
         let curr_epoch = rt.curr_epoch();
 
-        let mut state: State = rt.state::<State>()?;
-        let store = rt.store();
-        let mut msm = state.mutator(store);
-        msm.with_pending_proposals(Permission::ReadOnly)
-            .with_escrow_table(Permission::ReadOnly)
-            .with_locked_table(Permission::ReadOnly)
-            .build()
-            .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load msm"))?;
+        let state: State = rt.state()?;
 
         for (di, mut deal) in params.deals.into_iter().enumerate() {
             // drop malformed deals
@@ -332,12 +280,7 @@ impl Actor {
             client_lockup += deal.proposal.client_balance_requirement();
 
             let client_balance_ok =
-                msm.balance_covered(Address::new_id(client_id), &client_lockup).map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        "failed to check client balance coverage",
-                    )
-                })?;
+                state.balance_covered(rt.store(), Address::new_id(client_id), &client_lockup)?;
 
             if !client_balance_ok {
                 info!("invalid deal: {}: insufficient client funds to cover proposal cost", di);
@@ -346,14 +289,11 @@ impl Actor {
 
             let mut provider_lockup = total_provider_lockup.clone();
             provider_lockup += &deal.proposal.provider_collateral;
-            let provider_balance_ok = msm
-                .balance_covered(Address::new_id(provider_id), &provider_lockup)
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        "failed to check provider balance coverage",
-                    )
-                })?;
+            let provider_balance_ok = state.balance_covered(
+                rt.store(),
+                Address::new_id(provider_id),
+                &provider_lockup,
+            )?;
 
             if !provider_balance_ok {
                 info!("invalid deal: {}: insufficient provider funds to cover proposal cost", di);
@@ -371,13 +311,8 @@ impl Actor {
 
             // check proposalCids for duplication within message batch
             // check state PendingProposals for duplication across messages
-            let duplicate_in_state =
-                msm.pending_deals.as_ref().unwrap().has(&pcid.to_bytes()).map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        "failed to check for existence of deal proposal",
-                    )
-                })?;
+            let duplicate_in_state = state.has_pending_deal(rt.store(), pcid)?;
+
             let duplicate_in_message = proposal_cid_lookup.contains(&pcid);
             if duplicate_in_state || duplicate_in_message {
                 info!("invalid deal {}: cannot publish duplicate deal proposal", di);
@@ -456,63 +391,47 @@ impl Actor {
 
         let mut new_deal_ids = Vec::with_capacity(valid_deals.len());
         rt.transaction(|st: &mut State, rt| {
-            let mut msm = st.mutator(rt.store());
-            msm.with_pending_proposals(Permission::Write)
-                .with_deal_proposals(Permission::Write)
-                .with_deals_by_epoch(Permission::Write)
-                .with_escrow_table(Permission::Write)
-                .with_locked_table(Permission::Write)
-                .build()
-                .map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load state")
-                })?;
+            let mut pending_deals: Vec<Cid> = vec![];
+            let mut deal_proposals: Vec<(DealID, DealProposal)> = vec![];
+            let mut deals_by_epoch: Vec<(ChainEpoch, DealID)> = vec![];
+            let mut pending_deal_allocation_ids: Vec<(BytesKey, AllocationID)> = vec![];
+
             // All storage dealProposals will be added in an atomic transaction; this operation will be unrolled if any of them fails.
             // This should only fail on programmer error because all expected invalid conditions should be filtered in the first set of checks.
             for valid_deal in valid_deals.iter() {
-                msm.lock_client_and_provider_balances(&valid_deal.proposal)?;
+                st.lock_client_and_provider_balances(rt.store(), &valid_deal.proposal)?;
 
                 // Store the proposal CID in pending deals set.
-                msm.pending_deals
-                    .as_mut()
-                    .unwrap()
-                    .put(valid_deal.cid.to_bytes().into())
-                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to set pending deal")?;
+                pending_deals.push(valid_deal.cid);
+
                 // Allocate a deal ID and store the proposal in the proposals AMT.
-                let deal_id = msm.generate_storage_deal_id();
-                msm.deal_proposals
-                    .as_mut()
-                    .unwrap()
-                    .set(deal_id, valid_deal.proposal.clone())
-                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to set deal")?;
+                let deal_id = st.generate_storage_deal_id();
+                deal_proposals.push((deal_id, valid_deal.proposal.clone()));
+
                 // Store verified allocation (if any) in the pending allocation IDs map.
                 // It will be removed when the deal is activated or expires.
                 if valid_deal.allocation != NO_ALLOCATION_ID {
-                    msm.pending_deal_allocation_ids
-                        .as_mut()
-                        .unwrap()
-                        .set(deal_id_key(deal_id), valid_deal.allocation)
-                        .context_code(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            "failed to set deal allocation",
-                        )?;
+                    pending_deal_allocation_ids.push((deal_id_key(deal_id), valid_deal.allocation));
                 }
 
                 // Randomize the first epoch for when the deal will be processed so an attacker isn't able to
                 // schedule too many deals for the same tick.
-                let process_epoch =
-                    gen_rand_next_epoch(rt.policy(), valid_deal.proposal.start_epoch, deal_id);
-
-                msm.deals_by_epoch.as_mut().unwrap().put(process_epoch, deal_id).map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        "failed to set deal ops by epoch",
-                    )
-                })?;
+                deals_by_epoch.push((
+                    gen_rand_next_epoch(rt.policy(), valid_deal.proposal.start_epoch, deal_id),
+                    deal_id,
+                ));
 
                 new_deal_ids.push(deal_id);
             }
 
-            msm.commit_state()?;
+            st.put_pending_deals(rt.store(), &pending_deals)?;
+
+            st.put_deal_proposals(rt.store(), &deal_proposals)?;
+
+            st.put_pending_deal_allocation_ids(rt.store(), &pending_deal_allocation_ids)?;
+
+            st.put_deals_by_epoch(rt.store(), &deals_by_epoch)?;
+
             Ok(())
         })?;
 
@@ -530,9 +449,7 @@ impl Actor {
         let curr_epoch = rt.curr_epoch();
 
         let st: State = rt.state()?;
-        let proposals = DealArray::load(&st.proposals, rt.store()).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposals")
-        })?;
+        let proposals = st.get_proposal_array(rt.store())?;
 
         let mut sectors_data = Vec::with_capacity(params.sectors.len());
         for sector in params.sectors.iter() {
@@ -570,12 +487,10 @@ impl Actor {
         let miner_addr = rt.message().caller();
         let curr_epoch = rt.curr_epoch();
 
-        let deal_spaces = {
-            let st: State = rt.state()?;
-            let proposals = DealArray::load(&st.proposals, rt.store()).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposals")
-            })?;
+        let st: State = rt.state()?;
+        let proposals = st.get_proposal_array(rt.store())?;
 
+        let deal_spaces = {
             validate_and_return_deal_space(
                 &proposals,
                 &params.deal_ids,
@@ -590,26 +505,13 @@ impl Actor {
         // Update deal states
         let mut verified_infos = Vec::new();
         rt.transaction(|st: &mut State, rt| {
-            let mut msm = st.mutator(rt.store());
-            msm.with_deal_states(Permission::Write)
-                .with_pending_proposals(Permission::Write)
-                .with_deal_proposals(Permission::ReadOnly)
-                .build()
-                .map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load state")
-                })?;
+            let mut deal_states: Vec<(DealID, DealState)> = vec![];
 
             for deal_id in params.deal_ids {
                 // This construction could be replaced with a single "update deal state"
                 // state method, possibly batched over all deal ids at once.
-                let s = msm
-                    .deal_states
-                    .as_ref()
-                    .unwrap()
-                    .get(deal_id)
-                    .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                        format!("failed to check state for deal ({})", deal_id)
-                    })?;
+                let s = st.find_deal_state(rt.store(), deal_id)?;
+
                 if s.is_some() {
                     return Err(actor_error!(
                         illegal_argument,
@@ -618,28 +520,15 @@ impl Actor {
                     ));
                 }
 
-                let proposal = msm
-                    .deal_proposals
-                    .as_ref()
-                    .unwrap()
-                    .get(deal_id)
-                    .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                        format!("failed to load deal proposal {}", deal_id)
-                    })?
-                    .ok_or_else(|| actor_error!(not_found, "no such deal proposal {}", deal_id))?;
+                let proposal = st
+                    .find_proposal(rt.store(), deal_id)?
+                    .ok_or_else(|| actor_error!(not_found, "no such deal_id: {}", deal_id))?;
 
-                let propc = rt_deal_cid(rt, proposal)?;
+                let propc = rt_deal_cid(rt, &proposal)?;
 
                 // Confirm the deal is in the pending proposals queue.
                 // It will be removed from this queue later, during cron.
-                let has = msm
-                    .pending_deals
-                    .as_ref()
-                    .unwrap()
-                    .has(&propc.to_bytes())
-                    .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                        format!("failed to get pending proposal ({})", propc)
-                    })?;
+                let has = st.has_pending_deal(rt.store(), propc)?;
 
                 if !has {
                     return Err(actor_error!(
@@ -650,16 +539,11 @@ impl Actor {
                 }
 
                 // Extract and remove any verified allocation ID for the pending deal.
-                let allocation = msm
-                    .pending_deal_allocation_ids
-                    .as_mut()
-                    .unwrap()
-                    .delete(&deal_id_key(deal_id))
-                    .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                        format!("failed to remove allocation id for deal {}", deal_id)
-                    })?
+                let allocation = st
+                    .remove_pending_deal_allocation_id(rt.store(), &deal_id_key(deal_id))?
                     .unwrap_or((BytesKey(vec![]), NO_ALLOCATION_ID))
                     .1;
+
                 if allocation != NO_ALLOCATION_ID {
                     verified_infos.push(VerifiedDealInfo {
                         client: proposal.client.id().unwrap(),
@@ -668,24 +552,20 @@ impl Actor {
                         size: proposal.piece_size,
                     })
                 }
-                msm.deal_states
-                    .as_mut()
-                    .unwrap()
-                    .set(
-                        deal_id,
-                        DealState {
-                            sector_start_epoch: curr_epoch,
-                            last_updated_epoch: EPOCH_UNDEFINED,
-                            slash_epoch: EPOCH_UNDEFINED,
-                            verified_claim: allocation,
-                        },
-                    )
-                    .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                        format!("failed to set deal state {}", deal_id)
-                    })?;
+
+                deal_states.push((
+                    deal_id,
+                    DealState {
+                        sector_start_epoch: curr_epoch,
+                        last_updated_epoch: EPOCH_UNDEFINED,
+                        slash_epoch: EPOCH_UNDEFINED,
+                        verified_claim: allocation,
+                    },
+                ));
             }
 
-            msm.commit_state()?;
+            st.put_deal_states(rt.store(), &deal_states)?;
+
             Ok(())
         })?;
 
@@ -703,18 +583,11 @@ impl Actor {
         let miner_addr = rt.message().caller();
 
         rt.transaction(|st: &mut State, rt| {
-            let mut msm = st.mutator(rt.store());
-            msm.with_deal_states(Permission::Write)
-                .with_deal_proposals(Permission::ReadOnly)
-                .build()
-                .map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load state")
-                })?;
+            let mut deal_states: Vec<(DealID, DealState)> = vec![];
 
             for id in params.deal_ids {
-                let deal = msm.deal_proposals.as_ref().unwrap().get(id).map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get deal proposal")
-                })?;
+                let deal = st.find_proposal(rt.store(), id)?;
+
                 // The deal may have expired and been deleted before the sector is terminated.
                 // Nothing to do, but continue execution for the other deals.
                 if deal.is_none() {
@@ -739,14 +612,8 @@ impl Actor {
                     continue;
                 }
 
-                let mut state: DealState = *msm
-                    .deal_states
-                    .as_ref()
-                    .unwrap()
-                    .get(id)
-                    .map_err(|e| {
-                        e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get deal state")
-                    })?
+                let mut state: DealState = st
+                    .find_deal_state(rt.store(), id)?
                     // A deal with a proposal but no state is not activated, but then it should not be
                     // part of a sector that is terminating.
                     .ok_or_else(|| actor_error!(illegal_argument, "no state for deal {}", id))?;
@@ -761,15 +628,10 @@ impl Actor {
                 // and slashing of provider collateral happens in cron_tick.
                 state.slash_epoch = params.epoch;
 
-                msm.deal_states.as_mut().unwrap().set(id, state).map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to set deal state ({})", id),
-                    )
-                })?;
+                deal_states.push((id, state));
             }
 
-            msm.commit_state()?;
+            st.put_deal_states(rt.store(), &deal_states)?;
             Ok(())
         })?;
         Ok(())
@@ -782,10 +644,8 @@ impl Actor {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
 
         let st: State = rt.state()?;
+        let proposals = st.get_proposal_array(rt.store())?;
 
-        let proposals = DealArray::load(&st.proposals, rt.store()).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposals")
-        })?;
         let mut commds = Vec::with_capacity(params.inputs.len());
         for comm_input in params.inputs.iter() {
             commds.push(compute_data_commitment(
@@ -808,57 +668,19 @@ impl Actor {
         rt.transaction(|st: &mut State, rt| {
             let last_cron = st.last_cron;
             let mut updates_needed: BTreeMap<ChainEpoch, Vec<DealID>> = BTreeMap::new();
-            let mut msm = st.mutator(rt.store());
-            msm.with_deal_states(Permission::Write)
-                .with_locked_table(Permission::Write)
-                .with_escrow_table(Permission::Write)
-                .with_deals_by_epoch(Permission::Write)
-                .with_deal_proposals(Permission::Write)
-                .with_pending_proposals(Permission::Write)
-                .build()
-                .map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load state")
-                })?;
+            let mut rm_cron_id: Vec<ChainEpoch> = vec![];
 
             for i in (last_cron + 1)..=rt.curr_epoch() {
-                // TODO specs-actors modifies msm as it's iterated through, which is memory unsafe
-                // for now the deal ids are being collected and then iterated on, which could
-                // cause a potential inconsistency in exit code returned if a deal_id fails
-                // to be pulled from storage where it wouldn't be triggered otherwise.
-                // Workaround a better solution (seperating msm or fixing go impl)
-                let mut deal_ids = Vec::new();
-                msm.deals_by_epoch
-                    .as_ref()
-                    .unwrap()
-                    .for_each(i, |deal_id| {
-                        deal_ids.push(deal_id);
-                        Ok(())
-                    })
-                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to set deal state")?;
+                let deal_ids = st.get_deals_for_epoch(rt.store(), i)?;
 
                 for deal_id in deal_ids {
-                    let deal = msm
-                        .deal_proposals
-                        .as_ref()
-                        .unwrap()
-                        .get(deal_id)
-                        .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                            format!("failed to get deal_id ({})", deal_id)
-                        })?
-                        .ok_or_else(|| {
-                            actor_error!(not_found, "proposal doesn't exist ({})", deal_id)
-                        })?
-                        .clone();
+                    let deal = st.find_proposal(rt.store(), deal_id)?.ok_or_else(|| {
+                        actor_error!(not_found, "proposal doesn't exist ({})", deal_id)
+                    })?;
 
                     let dcid = rt_deal_cid(rt, &deal)?;
 
-                    let state = msm
-                        .deal_states
-                        .as_ref()
-                        .unwrap()
-                        .get(deal_id)
-                        .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get deal state")?
-                        .cloned();
+                    let state = st.find_deal_state(rt.store(), deal_id)?;
 
                     // deal has been published but not activated yet -> terminate it
                     // as it has timed out
@@ -873,20 +695,14 @@ impl Actor {
                             ));
                         }
 
-                        let slashed = msm.process_deal_init_timed_out(&deal)?;
+                        let slashed = st.process_deal_init_timed_out(rt.store(), &deal)?;
                         if !slashed.is_zero() {
                             amount_slashed += slashed;
                         }
 
                         // Delete the proposal (but not state, which doesn't exist).
-                        let deleted = msm
-                            .deal_proposals
-                            .as_mut()
-                            .unwrap()
-                            .delete(deal_id)
-                            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                                format!("failed to delete deal proposal {}", deal_id)
-                            })?;
+                        let deleted = st.remove_proposal(rt.store(), deal_id)?;
+
                         if deleted.is_none() {
                             return Err(actor_error!(
                                 illegal_state,
@@ -896,57 +712,39 @@ impl Actor {
                                 )
                             ));
                         }
+
                         // Delete pending deal CID
-                        msm.pending_deals
-                            .as_mut()
-                            .unwrap()
-                            .delete(&dcid.to_bytes())
-                            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                                format!("failed to delete pending proposal {}", deal_id)
-                            })?
-                            .ok_or_else(|| {
-                                actor_error!(
-                                    illegal_state,
-                                    "failed to delete pending proposal: does not exist"
-                                )
-                            })?;
+                        st.remove_pending_deal(rt.store(), dcid)?.ok_or_else(|| {
+                            actor_error!(
+                                illegal_state,
+                                "failed to delete pending deals: does not exist"
+                            )
+                        })?;
+
                         // Delete pending deal allocation id (if present).
-                        msm.pending_deal_allocation_ids
-                            .as_mut()
-                            .unwrap()
-                            .delete(&deal_id_key(deal_id))
-                            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                                format!(
-                                    "failed to delete pending proposal allocation id for {}",
-                                    deal_id
-                                )
-                            })?;
+                        st.remove_pending_deal_allocation_id(rt.store(), &deal_id_key(deal_id))?;
 
                         continue;
                     }
                     let mut state = state.unwrap();
 
                     if state.last_updated_epoch == EPOCH_UNDEFINED {
-                        msm.pending_deals
-                            .as_mut()
-                            .unwrap()
-                            .delete(&dcid.to_bytes())
-                            .map_err(|e| {
-                                e.downcast_default(
-                                    ExitCode::USR_ILLEGAL_STATE,
-                                    format!("failed to delete pending proposal {}", dcid),
-                                )
-                            })?
-                            .ok_or_else(|| {
-                                actor_error!(
-                                    illegal_state,
-                                    "failed to delete pending proposal: does not exist"
-                                )
-                            })?;
+                        st.remove_pending_deal(rt.store(), dcid)?.ok_or_else(|| {
+                            actor_error!(
+                                illegal_state,
+                                "failed to delete pending proposal: does not exist"
+                            )
+                        })?;
                     }
 
-                    let (slash_amount, next_epoch, remove_deal) =
-                        msm.update_pending_deal_state(rt.policy(), &state, &deal, curr_epoch)?;
+                    let (slash_amount, next_epoch, remove_deal) = st.put_pending_deal_state(
+                        rt.store(),
+                        rt.policy(),
+                        &state,
+                        &deal,
+                        curr_epoch,
+                    )?;
+
                     if slash_amount.is_negative() {
                         return Err(actor_error!(
                             illegal_state,
@@ -971,13 +769,8 @@ impl Actor {
                         amount_slashed += slash_amount;
 
                         // Delete proposal and state simultaneously.
-                        let deleted =
-                            msm.deal_states.as_mut().unwrap().delete(deal_id).map_err(|e| {
-                                e.downcast_default(
-                                    ExitCode::USR_ILLEGAL_STATE,
-                                    "failed to delete deal state",
-                                )
-                            })?;
+                        let deleted = st.remove_deal_state(rt.store(), deal_id)?;
+
                         if deleted.is_none() {
                             return Err(actor_error!(
                                 illegal_state,
@@ -985,13 +778,8 @@ impl Actor {
                             ));
                         }
 
-                        let deleted =
-                            msm.deal_proposals.as_mut().unwrap().delete(deal_id).map_err(|e| {
-                                e.downcast_default(
-                                    ExitCode::USR_ILLEGAL_STATE,
-                                    "failed to delete deal proposal",
-                                )
-                            })?;
+                        let deleted = st.remove_proposal(rt.store(), deal_id)?;
+
                         if deleted.is_none() {
                             return Err(actor_error!(
                                 illegal_state,
@@ -1016,12 +804,7 @@ impl Actor {
                         }
 
                         state.last_updated_epoch = curr_epoch;
-                        msm.deal_states.as_mut().unwrap().set(deal_id, state).map_err(|e| {
-                            e.downcast_default(
-                                ExitCode::USR_ILLEGAL_STATE,
-                                "failed to set deal state",
-                            )
-                        })?;
+                        st.put_deal_states(rt.store(), &[(deal_id, state)])?;
 
                         if let Some(ev) = updates_needed.get_mut(&next_epoch) {
                             ev.push(deal_id);
@@ -1030,27 +813,16 @@ impl Actor {
                         }
                     }
                 }
-                msm.deals_by_epoch.as_mut().unwrap().remove_all(i).map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to delete deal ops for epoch {}", i),
-                    )
-                })?;
+                rm_cron_id.push(i);
             }
+
+            st.remove_deals_by_epoch(rt.store(), &rm_cron_id)?;
 
             // updates_needed is already sorted by epoch.
-            for (epoch, deals) in updates_needed {
-                msm.deals_by_epoch.as_mut().unwrap().put_many(epoch, &deals).map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to reinsert deal IDs for epoch {}", epoch),
-                    )
-                })?;
-            }
+            st.put_batch_deals_by_epoch(rt.store(), &updates_needed)?;
 
-            msm.st.last_cron = rt.curr_epoch();
+            st.last_cron = rt.curr_epoch();
 
-            msm.commit_state()?;
             Ok(())
         })?;
 
@@ -1112,7 +884,7 @@ impl Actor {
         Ok(GetDealTermReturn { start: found.start_epoch, duration: found.duration() })
     }
 
-    /// Returns the per-epoch price of a deal proposal.
+    /// Returns the total price that will be paid from the client to the provider for this deal.
     fn get_deal_total_price(
         rt: &mut impl Runtime,
         params: GetDealTotalPriceParams,
@@ -1209,6 +981,7 @@ fn compute_data_commitment<BS: Blockstore>(
     deal_ids: &[DealID],
 ) -> Result<Cid, ActorError> {
     let mut pieces = Vec::with_capacity(deal_ids.len());
+
     for deal_id in deal_ids {
         let deal = proposals
             .get(*deal_id)
@@ -1219,6 +992,7 @@ fn compute_data_commitment<BS: Blockstore>(
                 )
             })?
             .ok_or_else(|| actor_error!(not_found, "proposal doesn't exist ({})", deal_id))?;
+
         pieces.push(PieceInfo { cid: deal.piece_cid, size: deal.piece_size });
     }
     rt.compute_unsealed_sector_cid(sector_type, &pieces).map_err(|e| {
@@ -1237,6 +1011,7 @@ pub fn validate_and_return_deal_space<BS: Blockstore>(
     let mut seen_deal_ids = BTreeSet::new();
     let mut deal_space = BigInt::zero();
     let mut verified_deal_space = BigInt::zero();
+
     for deal_id in deal_ids {
         if !seen_deal_ids.insert(deal_id) {
             return Err(actor_error!(
@@ -1245,6 +1020,7 @@ pub fn validate_and_return_deal_space<BS: Blockstore>(
                 deal_id
             ));
         }
+
         let proposal = proposals
             .get(*deal_id)
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal")?

@@ -55,6 +55,7 @@ pub enum Method {
     GetBytecode = 3,
     GetStorageAt = 4,
     InvokeContractDelegate = 5,
+    GetBytecodeHash = 6,
 }
 
 pub struct EvmContractActor;
@@ -211,6 +212,15 @@ impl EvmContractActor {
         Ok(state.bytecode)
     }
 
+    pub fn bytecode_hash(rt: &mut impl Runtime) -> Result<multihash::Multihash, ActorError> {
+        // Any caller can fetch the bytecode hash of a contract; this is where EXTCODEHASH gets it's value for EVM contracts.
+        rt.validate_immediate_caller_accept_any()?;
+
+        let state: State = rt.state()?;
+        // return value must be either keccak("") or keccak(bytecode)
+        Ok(state.bytecode_hash)
+    }
+
     pub fn storage_at<RT>(rt: &mut RT, params: GetStorageAtParams) -> Result<U256, ActorError>
     where
         RT: Runtime,
@@ -276,6 +286,10 @@ impl ActorCode for EvmContractActor {
             }
             Some(Method::GetBytecode) => {
                 let cid = Self::bytecode(rt)?;
+                Ok(RawBytes::serialize(cid)?)
+            }
+            Some(Method::GetBytecodeHash) => {
+                let cid = Self::bytecode_hash(rt)?;
                 Ok(RawBytes::serialize(cid)?)
             }
             Some(Method::GetStorageAt) => {

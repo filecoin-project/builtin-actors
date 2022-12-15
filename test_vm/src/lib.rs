@@ -7,6 +7,7 @@ use fil_actor_account::{Actor as AccountActor, State as AccountState};
 use fil_actor_cron::{Actor as CronActor, Entry as CronEntry, State as CronState};
 use fil_actor_datacap::{Actor as DataCapActor, State as DataCapState};
 use fil_actor_eam::EamActor;
+use fil_actor_ethaccount::EthAccountActor;
 use fil_actor_evm::EvmContractActor;
 use fil_actor_init::{Actor as InitActor, ExecReturn, State as InitState};
 use fil_actor_market::{Actor as MarketActor, Method as MarketMethod, State as MarketState};
@@ -39,6 +40,7 @@ use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
 use fvm_shared::address::{Address, Payload};
 use fvm_shared::bigint::Zero;
+use fvm_shared::chainid::ChainID;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::hash::SupportedHashes;
@@ -56,6 +58,7 @@ use fvm_shared::sector::{
     StoragePower, WindowPoStVerifyInfo,
 };
 use fvm_shared::smooth::FilterEstimate;
+use fvm_shared::sys::SendFlags;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum, IPLD_RAW, METHOD_CONSTRUCTOR, METHOD_SEND};
 use regex::Regex;
@@ -615,12 +618,12 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         let is_account = match target.payload() {
             Payload::Secp256k1(_) | Payload::BLS(_) => true,
             Payload::Delegated(da)
-                // Validate that there's an actor at the target ID (we don't care what is there,
-                // just that something is there).
-                if self.v.get_actor(Address::new_id(da.namespace())).is_some() =>
-            {
-                false
-            }
+            // Validate that there's an actor at the target ID (we don't care what is there,
+            // just that something is there).
+            if self.v.get_actor(Address::new_id(da.namespace())).is_some() =>
+                {
+                    false
+                }
             _ => {
                 return Err(ActorError::unchecked(
                     ExitCode::SYS_INVALID_RECEIVER,
@@ -630,7 +633,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         };
 
         // But only if we're not in read-only mode.
-        if self.read_only {
+        if self.read_only() {
             return Err(ActorError::unchecked(
                 ExitCode::USR_READ_ONLY,
                 format!("cannot create actor {target} in read-only mode"),
@@ -638,7 +641,8 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         }
 
         let mut st = self.v.get_state::<InitState>(INIT_ACTOR_ADDR).unwrap();
-        let target_id = st.map_address_to_new_id(self.v.store, target).unwrap();
+        let (target_id, existing) = st.map_addresses_to_id(self.v.store, target, None).unwrap();
+        assert!(!existing, "should never have existing actor when no f4 address is specified");
         let target_id_addr = Address::new_id(target_id);
         let mut init_actor = self.v.get_actor(INIT_ACTOR_ADDR).unwrap();
         init_actor.head = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
@@ -735,7 +739,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                     "insufficient balance to transfer".to_string(),
                 ));
             }
-            if self.read_only {
+            if self.read_only() {
                 return Err(ActorError::unchecked(
                     ExitCode::USR_READ_ONLY,
                     "cannot transfer value in read-only mode".to_string(),
@@ -778,6 +782,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             }
             Type::EVM => EvmContractActor::invoke_method(self, self.msg.method, &params),
             Type::EAM => EamActor::invoke_method(self, self.msg.method, &params),
+            Type::EthAccount => EthAccountActor::invoke_method(self, self.msg.method, &params),
         };
         if res.is_ok() && !self.caller_validated {
             res = Err(actor_error!(assertion_failed, "failed to validate caller"));
@@ -786,44 +791,6 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             self.v.rollback(prior_root)
         };
 
-        res
-    }
-
-    fn send_inner(
-        &self,
-        to: &Address,
-        method: MethodNum,
-        params: RawBytes,
-        value: TokenAmount,
-        _gas_limit: Option<u64>,
-        read_only: bool,
-    ) -> Result<RawBytes, ActorError> {
-        // TODO gas_limit is current ignored, what should we do about it?
-        if !self.allow_side_effects {
-            return Err(ActorError::unchecked(
-                ExitCode::SYS_ASSERTION_FAILED,
-                "Calling send is not allowed during side-effect lock".to_string(),
-            ));
-        }
-
-        let new_actor_msg = InternalMessage { from: self.to(), to: *to, value, method, params };
-        let mut new_ctx = InvocationCtx {
-            v: self.v,
-            top: self.top.clone(),
-            msg: new_actor_msg,
-            allow_side_effects: true,
-            caller_validated: false,
-            policy: self.policy,
-            subinvocations: RefCell::new(vec![]),
-            actor_exit: RefCell::new(None),
-            read_only,
-        };
-        let res = new_ctx.invoke_actor();
-        let invoc = new_ctx.gather_trace(res.clone());
-        RefMut::map(self.subinvocations.borrow_mut(), |subinvocs| {
-            subinvocs.push(invoc);
-            subinvocs
-        });
         res
     }
 }
@@ -862,7 +829,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
             }
         };
 
-        if self.read_only {
+        if self.read_only() {
             return Err(ActorError::unchecked(
                 ExitCode::USR_READ_ONLY,
                 "cannot send value in read-only mode".into(),
@@ -887,6 +854,10 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
 
     fn curr_epoch(&self) -> ChainEpoch {
         self.v.get_epoch()
+    }
+
+    fn chain_id(&self) -> ChainID {
+        ChainID::from(0)
     }
 
     fn validate_immediate_caller_accept_any(&mut self) -> Result<(), ActorError> {
@@ -1006,35 +977,47 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         self.v.get_actor(Address::new_id(id)).and_then(|act| act.predictable_address)
     }
 
-    fn send(
+    fn send_generalized(
         &self,
         to: &Address,
         method: MethodNum,
         params: RawBytes,
         value: TokenAmount,
+        _gas_limit: Option<u64>,
+        mut send_flags: SendFlags,
     ) -> Result<RawBytes, ActorError> {
-        self.send_inner(to, method, params, value, None, self.read_only)
-    }
+        // replicate FVM by silently propagating read only flag to subcalls
+        if self.read_only() {
+            send_flags.set(SendFlags::READ_ONLY, true)
+        }
 
-    fn send_read_only(
-        &self,
-        to: &Address,
-        method: MethodNum,
-        params: RawBytes,
-    ) -> Result<RawBytes, ActorError> {
-        self.send_inner(to, method, params, TokenAmount::zero(), None, true)
-    }
+        // TODO gas_limit is current ignored, what should we do about it?
+        if !self.allow_side_effects {
+            return Err(ActorError::unchecked(
+                ExitCode::SYS_ASSERTION_FAILED,
+                "Calling send is not allowed during side-effect lock".to_string(),
+            ));
+        }
 
-    fn send_with_gas(
-        &self,
-        to: &Address,
-        method: MethodNum,
-        params: RawBytes,
-        value: TokenAmount,
-        gas_limit: Option<u64>,
-        read_only: bool,
-    ) -> Result<RawBytes, ActorError> {
-        self.send_inner(to, method, params, value, gas_limit, read_only || self.read_only)
+        let new_actor_msg = InternalMessage { from: self.to(), to: *to, value, method, params };
+        let mut new_ctx = InvocationCtx {
+            v: self.v,
+            top: self.top.clone(),
+            msg: new_actor_msg,
+            allow_side_effects: true,
+            caller_validated: false,
+            policy: self.policy,
+            subinvocations: RefCell::new(vec![]),
+            actor_exit: RefCell::new(None),
+            read_only: send_flags.read_only(),
+        };
+        let res = new_ctx.invoke_actor();
+        let invoc = new_ctx.gather_trace(res.clone());
+        RefMut::map(self.subinvocations.borrow_mut(), |subinvocs| {
+            subinvocs.push(invoc);
+            subinvocs
+        });
+        res
     }
 
     fn get_randomness_from_tickets(
@@ -1084,7 +1067,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
                 ExitCode::SYS_ASSERTION_FAILED,
                 "actor does not exist".to_string(),
             )),
-            Some(mut act) if !self.read_only => {
+            Some(mut act) if !self.read_only() => {
                 act.head = *root;
                 self.v.set_actor(self.to(), act);
                 Ok(())

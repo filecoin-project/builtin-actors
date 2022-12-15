@@ -3,7 +3,7 @@ use fil_actor_miner::{
     IsControllingAddressParam, IsControllingAddressReturn, Method,
 };
 use fil_actors_runtime::cbor::serialize;
-use fil_actors_runtime::test_utils::make_identity_cid;
+use fil_actors_runtime::test_utils::EVM_ACTOR_CODE_ID;
 use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -28,7 +28,7 @@ fn info_getters() {
     h.construct_and_verify(&mut rt);
 
     // set caller to not-builtin
-    rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1234));
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(1234));
 
     // owner is good
     rt.expect_validate_caller_any();

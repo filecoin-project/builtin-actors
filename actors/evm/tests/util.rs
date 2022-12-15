@@ -1,10 +1,12 @@
+use cid::Cid;
 use evm::interpreter::{address::EthAddress, StatusCode};
 use fil_actor_evm as evm;
 use fil_actors_runtime::{
     runtime::builtins::Type, test_utils::*, ActorError, EAM_ACTOR_ID, INIT_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::{BytesDe, BytesSer, RawBytes};
-use fvm_shared::address::Address;
+use fvm_shared::{address::Address, IDENTITY_HASH, IPLD_RAW};
+use lazy_static::lazy_static;
 
 #[allow(dead_code)]
 pub fn construct_and_verify(initcode: Vec<u8>) -> MockRuntime {
@@ -63,7 +65,7 @@ pub fn invoke_contract(rt: &mut MockRuntime, input_data: &[u8]) -> Vec<u8> {
 }
 
 #[allow(dead_code)]
-pub fn invoke_contract_expect_err(rt: &mut MockRuntime, input_data: &[u8], expect: StatusCode) {
+pub fn invoke_contract_expect_abort(rt: &mut MockRuntime, input_data: &[u8], expect: StatusCode) {
     rt.expect_validate_caller_any();
     let err = rt
         .call::<evm::EvmContractActor>(
@@ -81,4 +83,9 @@ pub fn dispatch_num_word(method_num: u8) -> [u8; 32] {
     let mut word = [0u8; 32];
     word[3] = method_num;
     word
+}
+
+lazy_static! {
+    pub static ref DUMMY_ACTOR_CODE_ID: Cid =
+        Cid::new_v1(IPLD_RAW, Multihash::wrap(IDENTITY_HASH, b"foobarboxy").unwrap());
 }

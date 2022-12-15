@@ -1,11 +1,11 @@
 #![allow(clippy::too_many_arguments)]
 
 use fvm_ipld_encoding::{BytesDe, BytesSer};
-use fvm_shared::{address::Address, METHOD_SEND};
+use fvm_shared::{address::Address, sys::SendFlags, METHOD_SEND};
 
 use crate::interpreter::precompiles::PrecompileContext;
 
-use super::ext::{get_cid_type, get_evm_bytecode_cid, ContractType};
+use super::ext::{get_contract_type, get_evm_bytecode_cid, ContractType};
 
 use {
     super::memory::{copy_to_memory, get_memory_region},
@@ -197,11 +197,8 @@ pub fn call_generic<RT: Runtime>(
         };
 
         if precompiles::Precompiles::<RT>::is_precompile(&dst) {
-            let context = PrecompileContext {
-                is_static: matches!(kind, CallKind::StaticCall) || system.readonly,
-                gas,
-                value,
-            };
+            let context =
+                PrecompileContext { call_type: kind, gas_limit: effective_gas_limit(system, gas) };
 
             match precompiles::Precompiles::call_precompile(system, dst, input_data, context)
                 .map_err(StatusCode::from)
@@ -237,43 +234,54 @@ pub fn call_generic<RT: Runtime>(
                         // send value in read-only mode anyways.
                         Ok(RawBytes::default())
                     } else {
-                        let method = if !actor_exists
+                        let (method, gas_limit) = if !actor_exists
                             || matches!(target_actor_type, Some(Type::Embryo | Type::Account))
                         // See https://github.com/filecoin-project/ref-fvm/issues/980 for this
-                        // magic value
-                            || (!value.is_zero() && !gas.is_zero() && gas <= U256::from(21_000))
+                        // hocus pocus
+                            || (input_data.is_empty() && ((gas == 0 && value > 0) || (gas == 2300 && value == 0)))
                         {
-                            // If the target actor doesn't exist or is an account or an embryo,
-                            // switch to a basic "send" so the call will still work even if the
-                            // target actor would reject a normal ethereum call.
-                            METHOD_SEND
+                            // We switch to a bare send when:
+                            //
+                            // 1. The target is an embryo/account or doesn't exist. Otherwise,
+                            // sendign funds to an account/embryo would fail when we try to call
+                            // InvokeContract.
+                            // 2. The gas wouldn't let code execute anyways. This lets us support
+                            // solidity's "transfer" method.
+                            //
+                            // At the same time, we ignore the supplied gas value and set it to
+                            // infinity as user code won't execute anyways. The only code that might
+                            // run is related to account creation, which doesn't count against this
+                            // gas limit in the EVM anyways.
+                            (METHOD_SEND, None)
                         } else {
                             // Otherwise, invoke normally.
-                            Method::InvokeContract as u64
+                            (Method::InvokeContract as u64, Some(effective_gas_limit(system, gas)))
                         };
                         // TODO: support IPLD codecs #758
                         let params = RawBytes::serialize(BytesSer(input_data))?;
                         let value = TokenAmount::from(&value);
-                        let gas_limit =
-                            if !gas.is_zero() { Some(gas.to_u64_saturating()) } else { None };
-                        let read_only = kind == CallKind::StaticCall;
-                        system.send_with_gas(&dst_addr, method, params, value, gas_limit, read_only)
+                        let send_flags = if kind == CallKind::StaticCall {
+                            SendFlags::READ_ONLY
+                        } else {
+                            SendFlags::default()
+                        };
+                        system.send(&dst_addr, method, params, value, gas_limit, send_flags)
                     }
                 }
-                CallKind::DelegateCall => match get_cid_type(system.rt, dst) {
+                CallKind::DelegateCall => match get_contract_type(system.rt, dst) {
                     ContractType::EVM(dst_addr) => {
                         // If we're calling an actual EVM actor, get it's code.
                         let code = get_evm_bytecode_cid(system.rt, &dst_addr)?;
 
                         // and then invoke self with delegate; readonly context is sticky
                         let params = DelegateCallParams { code, input: input_data.into() };
-                        system.send_with_gas(
+                        system.send(
                             &system.rt.message().receiver(),
                             Method::InvokeContractDelegate as u64,
                             RawBytes::serialize(&params)?,
                             TokenAmount::from(&value),
-                            if !gas.is_zero() { Some(gas.to_u64_saturating()) } else { None },
-                            system.readonly,
+                            Some(effective_gas_limit(system, gas)),
+                            SendFlags::default(),
                         )
                     }
                     // If we're calling an account or a non-existent actor, return nothing because
@@ -283,25 +291,31 @@ pub fn call_generic<RT: Runtime>(
                     ContractType::Native(_) => {
                         Err(ActorError::forbidden("cannot delegate-call to native actors".into()))
                     }
+                    ContractType::Precompile => Err(ActorError::assertion_failed(
+                        "Reached a precompile address when a precompile should've been caught earlier in the system"
+                            .to_string(),
+                    )),
                 },
                 CallKind::CallCode => Err(ActorError::unchecked(
                     EVM_CONTRACT_EXECUTION_ERROR,
                     "unsupported opcode".to_string(),
                 )),
             };
-            match call_result {
-                Ok(result) => {
-                    // Support the "empty" result. We often use this to mean "returned nothing" and
-                    // it's important to support, e.g., sending to accounts.
-                    if result.is_empty() {
-                        (1, Vec::new())
-                    } else {
-                        // TODO: support IPLD codecs #758
-                        let BytesDe(result) = result.deserialize()?;
-                        (1, result)
-                    }
-                }
-                Err(mut ae) => (0, ae.take_data().into()),
+            let (code, data) = match call_result {
+                Ok(result) => (1, result),
+                Err(mut ae) => (0, ae.take_data()),
+            };
+            // Support the "empty" result. We often use this to mean "returned nothing" and
+            // it's important to support, e.g., sending to accounts.
+            if data.is_empty() {
+                (code, Vec::new())
+            } else {
+                // TODO: support IPLD codecs #758
+                // NOTE: If the user returns an invalid thing, we just the returned bytes as-is.
+                // We can't lie to the contract and say that the callee reverted, and we don't want
+                // to "abort".
+                let result = data.deserialize().map(|BytesDe(d)| d).unwrap_or_else(|_| data.into());
+                (code, result)
             }
         }
     };
@@ -312,4 +326,10 @@ pub fn call_generic<RT: Runtime>(
     copy_to_memory(memory, output_offset, output_size, U256::zero(), &state.return_data, false)?;
 
     Ok(U256::from(call_result))
+}
+
+fn effective_gas_limit<RT: Runtime>(system: &System<RT>, gas: U256) -> u64 {
+    let gas_rsvp = (63 * system.rt.gas_available()) / 64;
+    let gas = gas.to_u64_saturating();
+    std::cmp::min(gas, gas_rsvp)
 }

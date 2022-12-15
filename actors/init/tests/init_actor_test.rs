@@ -290,7 +290,7 @@ fn exec_restricted_correctly() {
     construct_and_verify(&mut rt);
 
     // set caller to not-builtin
-    rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1000));
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(1000));
 
     // cannot call the unexported method num
     let fake_constructor_params =
@@ -359,6 +359,82 @@ fn call_exec4() {
     // Next id
     let expected_id = 100;
     let expected_id_addr = Address::new_id(expected_id);
+    rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id, Some(f4_addr));
+
+    let fake_params = ConstructorParams { network_name: String::from("fake_param") };
+    // Expect a send to the multisig actor constructor
+    rt.expect_send(
+        expected_id_addr,
+        METHOD_CONSTRUCTOR,
+        RawBytes::serialize(&fake_params).unwrap(),
+        TokenAmount::zero(),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
+
+    // Return should have been successful. Check the returned addresses
+    let exec_ret =
+        exec4_and_verify(&mut rt, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap();
+
+    assert_eq!(unique_address, exec_ret.robust_address, "Robust address does not macth");
+    assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
+
+    // Check that we assigned the right f4 address.
+    let init_state: State = rt.get_state();
+    let resolved_id = init_state
+        .resolve_address(rt.store(), &f4_addr)
+        .ok()
+        .flatten()
+        .expect("failed to lookup f4 address");
+    assert_eq!(expected_id_addr, resolved_id, "f4 address not assigned to the right actor");
+
+    // Try again and expect it to fail with "forbidden".
+    let unique_address = Address::new_actor(b"test2");
+    rt.new_actor_addr = Some(unique_address);
+    let exec_err =
+        exec4_and_verify(&mut rt, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap_err();
+
+    assert_eq!(exec_err.exit_code(), ExitCode::USR_FORBIDDEN);
+
+    // Delete and try again, it should still fail.
+    rt.actor_code_cids.remove(&resolved_id);
+    let unique_address = Address::new_actor(b"test2");
+    rt.new_actor_addr = Some(unique_address);
+    let exec_err =
+        exec4_and_verify(&mut rt, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap_err();
+
+    assert_eq!(exec_err.exit_code(), ExitCode::USR_FORBIDDEN);
+}
+
+// Try turning an embryo into an f4 actor.
+#[test]
+fn call_exec4_embryo() {
+    let mut rt = construct_runtime();
+    construct_and_verify(&mut rt);
+
+    // Assign addresses
+    let unique_address = Address::new_actor(b"test");
+    rt.new_actor_addr = Some(unique_address);
+
+    // Make the f4 addr
+    let subaddr = b"foobar";
+    let f4_addr = Address::new_delegated(EAM_ACTOR_ID, subaddr).unwrap();
+
+    // Register an embryo with the init actor.
+    let expected_id = {
+        let mut state: State = rt.get_state();
+        let (id, existing) = state.map_addresses_to_id(rt.store(), &f4_addr, None).unwrap();
+        assert!(!existing);
+        rt.replace_state(&state);
+        id
+    };
+
+    // Register it in the state-tree.
+    let expected_id_addr = Address::new_id(expected_id);
+    rt.set_address_actor_type(expected_id_addr, *EMBRYO_ACTOR_CODE_ID);
+    rt.add_delegated_address(expected_id_addr, f4_addr);
+
+    // Now try to create it.
     rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id, Some(f4_addr));
 
     let fake_params = ConstructorParams { network_name: String::from("fake_param") };

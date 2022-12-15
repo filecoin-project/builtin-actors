@@ -17,6 +17,7 @@ fil_actor_account = { version = "10.0.0-alpha.1", path = "./actors/account", fea
 fil_actor_cron = { version = "10.0.0-alpha.1", path = "./actors/cron", features = ["fil-actor"] }
 fil_actor_datacap = { version = "10.0.0-alpha.1", path = "./actors/datacap", features = ["fil-actor"] }
 fil_actor_embryo = { version = "10.0.0-alpha.1", path = "./actors/embryo", features = ["fil-actor"] }
+fil_actor_ethaccount = { version = "10.0.0-alpha.1", path = "actors/ethaccount", features = ["fil-actor"] }
 fil_actor_evm = { version = "10.0.0-alpha.1", path = "./actors/evm", features = ["fil-actor"] }
 fil_actor_init = { version = "10.0.0-alpha.1", path = "./actors/init", features = ["fil-actor"] }
 fil_actor_market = { version = "10.0.0-alpha.1", path = "./actors/market", features = ["fil-actor"] }
@@ -38,7 +39,7 @@ num-traits = "0.2.15"
 clap = { version = "3.2.3", features = ["derive"] }
 
 [features]
-default = [] ## translates to mainnet
+default = []             ## translates to mainnet
 mainnet = []
 caterpillarnet = []
 butterflynet = []
@@ -54,7 +55,7 @@ members = [
      "state",
      "runtime",
      "test_vm",
-	 "test_evm_eth_compliance",
+     "test_evm_eth_compliance",
 ]
 
 [patch.crates-io]
@@ -62,13 +63,14 @@ frc42_dispatch = { git = "https://github.com/filecoin-project/filecoin-actor-uti
 frc46_token = { git = "https://github.com/filecoin-project/filecoin-actor-utils", branch = "feat/fvm-m2" }
 fvm_actor_utils = { git = "https://github.com/filecoin-project/filecoin-actor-utils", branch = "feat/fvm-m2" }
 
-#fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm" }
-#fvm_sdk = { git = "https://github.com/filecoin-project/ref-fvm" }
-#fvm_ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm" }
-#fvm_ipld_amt = { git = "https://github.com/filecoin-project/ref-fvm" }
-#fvm_ipld_bitfield = { git = "https://github.com/filecoin-project/ref-fvm" }
-#fvm_ipld_encoding = { git = "https://github.com/filecoin-project/ref-fvm" }
-#fvm_ipld_blockstore = { git = "https://github.com/filecoin-project/ref-fvm" }
+# fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+# fvm_sdk = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+# fvm_ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+# fvm_ipld_kamt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+# fvm_ipld_amt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+# fvm_ipld_bitfield = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+# fvm_ipld_encoding = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+# fvm_ipld_blockstore = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
 
 ## Uncomment when working locally on ref-fvm and this repo simultaneously.
 ## Assumes the ref-fvm checkout is in a sibling directory with the same name.
@@ -77,22 +79,24 @@ fvm_actor_utils = { git = "https://github.com/filecoin-project/filecoin-actor-ut
 #fvm_shared = { path = "../ref-fvm/shared" }
 #fvm_sdk = { path = "../ref-fvm/sdk" }
 #fvm_ipld_hamt = { path = "../ref-fvm/ipld/hamt" }
+#fvm_ipld_kamt = { path = "../ref-fvm/ipld/kamt" }
 #fvm_ipld_amt = { path = "../ref-fvm/ipld/amt" }
 #fvm_ipld_bitfield = { path = "../ref-fvm/ipld/bitfield"}
 #fvm_ipld_encoding = { path = "../ref-fvm/ipld/encoding"}
 #fvm_ipld_blockstore = { path = "../ref-fvm/ipld/blockstore"}
 
-## Uncomment entries below when working locally on ref-fvm and this repo simultaneously.
-## Assumes the ref-fvm checkout is in a sibling directory with the same name.
-## (Valid once FVM modules are published to crates.io)
+# Uncomment entries below when working locally on ref-fvm and this repo simultaneously.
+# Assumes the ref-fvm checkout is in a sibling directory with the same name.
+# (Valid once FVM modules are published to crates.io)
 # [patch.crates-io]
 # fvm_shared = { path = "../ref-fvm/shared" }
 # fvm_sdk = { path = "../ref-fvm/sdk" }
 # fvm_ipld_hamt = { path = "../ref-fvm/ipld/hamt" }
+# fvm_ipld_kamt = { path = "../ref-fvm/ipld/kamt" }
 # fvm_ipld_amt = { path = "../ref-fvm/ipld/amt" }
-# fvm_ipld_bitfield = { path = "../ref-fvm/ipld/bitfield"}
-# fvm_ipld_encoding = { path = "../ref-fvm/ipld/encoding"}
-# fvm_ipld_blockstore = { path = "../ref-fvm/ipld/blockstore"}
+# fvm_ipld_bitfield = { path = "../ref-fvm/ipld/bitfield" }
+# fvm_ipld_encoding = { path = "../ref-fvm/ipld/encoding" }
+# fvm_ipld_blockstore = { path = "../ref-fvm/ipld/blockstore" }
 
 [profile.wasm]
 inherits = "release"

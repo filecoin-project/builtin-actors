@@ -11,7 +11,8 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode};
 
 mod util;
-use fil_actors_runtime::test_utils::make_identity_cid;
+
+use fil_actors_runtime::test_utils::EVM_ACTOR_CODE_ID;
 use itertools::Itertools;
 use num_traits::Zero;
 use util::*;
@@ -89,7 +90,7 @@ fn change_and_confirm_worker_address_restricted_correctly() {
     })
     .unwrap();
 
-    rt.set_caller(make_identity_cid(b"1234"), h.owner);
+    rt.set_caller(*EVM_ACTOR_CODE_ID, h.owner);
 
     // fail to call the unexported method
 
