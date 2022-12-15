@@ -192,10 +192,11 @@ impl Actor {
         }
         // Deals that passed validation.
         let mut valid_deals: Vec<ValidDeal> = Vec::with_capacity(params.deals.len());
+        let mut client_alloc_reqs: BTreeMap<ActorID, Vec<AllocationRequest>> = BTreeMap::new();
         // CIDs of valid proposals.
         let mut proposal_cid_lookup = BTreeSet::new();
         let mut total_client_lockup: BTreeMap<ActorID, TokenAmount> = BTreeMap::new();
-        let mut all_client_datacap: BTreeMap<ActorID, (TokenAmount, TokenAmount)> = BTreeMap::new();
+        let mut all_client_remaining_datacap: BTreeMap<ActorID, TokenAmount> = BTreeMap::new();
         let mut total_provider_lockup = TokenAmount::zero();
 
         let mut valid_input_bf = BitField::default();
@@ -233,24 +234,23 @@ impl Actor {
             // Fetch client's datacap balance and calculate the amount of datacap required for the verified deals.
             // Drop any verified deals for which the client has insufficient datacap.
             if deal.proposal.verified_deal {
-                let (mut use_client_datacap, total_client_datacap) =
-                    match all_client_datacap.get(&client_id).cloned() {
-                        None => {
-                            let total_datacap = balance_of(rt, &Address::new_id(client_id)).map_err(
+                let mut remaining_datacap = match all_client_remaining_datacap.get(&client_id).cloned()
+                {
+                    None => {
+                        let total_datacap = balance_of(rt, &Address::new_id(client_id)).map_err(
                             |e| actor_error!(not_found; "failed to get datacap {}", e.msg()),
                         )?;
-
-                            (TokenAmount::zero(), total_datacap)
-                        }
-                        Some(client_data) => client_data,
-                    };
+                        total_datacap
+                    }
+                    Some(client_data) => client_data,
+                };
                 let piece_datacap_required =
                     TokenAmount::from_whole(deal.proposal.piece_size.0 as i64);
-                if &use_client_datacap + &piece_datacap_required > total_client_datacap {
+                if remaining_datacap < piece_datacap_required {
                     continue;
                 }
-                use_client_datacap += &piece_datacap_required;
-                all_client_datacap.insert(client_id, (use_client_datacap, total_client_datacap));
+                remaining_datacap -= &piece_datacap_required;
+                all_client_remaining_datacap.insert(client_id, remaining_datacap);
             }
 
             // drop deals with insufficient lock up to cover costs
@@ -301,15 +301,12 @@ impl Actor {
             total_provider_lockup = provider_lockup;
             total_client_lockup.insert(client_id, client_lockup);
             proposal_cid_lookup.insert(pcid);
+            client_alloc_reqs
+                .entry(deal.proposal.client.id().unwrap())
+                .or_default()
+                .push(alloc_request_for_deal(&deal, rt.policy(), curr_epoch));
             valid_deals.push(ValidDeal { proposal: deal.proposal, cid: pcid });
             valid_input_bf.set(di as u64)
-        }
-        let mut client_alloc_reqs: BTreeMap<ActorID, Vec<AllocationRequest>> = BTreeMap::new();
-        for valid_deal in valid_deals.iter() {
-            client_alloc_reqs
-                .entry(valid_deal.proposal.client.id().unwrap())
-                .or_default()
-                .push(alloc_request_for_deal(&valid_deal.proposal, rt.policy(), curr_epoch));
         }
 
         let mut client_allocations: BTreeMap<ActorID, Vec<AllocationID>> = BTreeMap::new();
@@ -874,13 +871,13 @@ fn alloc_request_for_deal(
     policy: &Policy,
     curr_epoch: ChainEpoch,
 ) -> ext::verifreg::AllocationRequest {
-    let alloc_term_min = proposal.end_epoch - proposal.start_epoch;
+    let alloc_term_min = deal.proposal.end_epoch - deal.proposal.start_epoch;
     let alloc_term_max = min(
         alloc_term_min + policy.market_default_allocation_term_buffer,
         policy.maximum_verified_allocation_term,
     );
     let alloc_expiration =
-        min(proposal.start_epoch, curr_epoch + policy.maximum_verified_allocation_expiration);
+        min(deal.proposal.start_epoch, curr_epoch + policy.maximum_verified_allocation_expiration);
     ext::verifreg::AllocationRequest {
         provider: deal.proposal.provider.id().unwrap(),
         data: deal.proposal.piece_cid,
