@@ -16,6 +16,7 @@ pub enum Error {
 #[allow(clippy::large_enum_variant)]
 pub enum MainCmd {
     Statetest(statetest::Cmd),
+    Dummytest,
 }
 
 impl MainCmd {

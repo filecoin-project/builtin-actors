@@ -5,7 +5,6 @@ use num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
-    ffi::OsStr,
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -144,7 +143,7 @@ fn execute_test_suit(path: &Path, elapsed: &Arc<Mutex<Duration>>) -> Result<(), 
 
             // Process the "transaction" block
             for (spec_name, tests) in &unit.post {
-                for (id, test) in tests.into_iter().enumerate() {
+                for (id, test) in tests.iter().enumerate() {
                     let gas_limit = *unit.transaction.gas_limit.get(test.indexes.gas).unwrap();
                     let gas_limit = u64::try_from(gas_limit).unwrap_or(u64::MAX);
                     let tx_gas_limit = gas_limit;

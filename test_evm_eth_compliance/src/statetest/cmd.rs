@@ -28,7 +28,7 @@ impl Cmd {
             system_find_all_json_tests(path.as_path())
         };
 
-        if test_files.len() == 0usize {
+        if test_files.is_empty() {
             info!("Cmd Exiting, no valid test files in the Path :: {:#?}", path,);
         } else {
             info!(
