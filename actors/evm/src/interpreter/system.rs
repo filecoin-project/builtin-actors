@@ -352,7 +352,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
         }
     }
 
-    /// Gets the cached EVM randomness seed of the current epoch 
+    /// Gets the cached EVM randomness seed of the current epoch
     pub fn get_randomness(&mut self) -> Result<&[u8; 32], StatusCode> {
         const ENTROPY: &[u8] = b"prevrandao";
         self.randomness.get_or_try_init(|| {
