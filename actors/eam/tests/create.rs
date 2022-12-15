@@ -3,12 +3,11 @@ use eam::{
     compute_address_create, Create2Params, CreateParams, EthAddress, EvmConstructorParams, Return,
 };
 use fil_actor_eam as eam;
-use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::Primitives;
 use fil_actors_runtime::test_utils::{
-    expect_empty, MockRuntime, EVM_ACTOR_CODE_ID, INIT_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID,
+    expect_empty, MockRuntime, EVM_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID,
 };
-use fil_actors_runtime::INIT_ACTOR_ADDR;
+use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
@@ -159,9 +158,9 @@ pub fn construct_and_verify() -> MockRuntime {
     let mut rt = MockRuntime { receiver: Address::new_id(10), ..Default::default() };
 
     // construct EAM singleton actor
-    rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
+    rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
 
-    rt.expect_validate_caller_type(vec![Type::Init]);
+    rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
 
     let result =
         rt.call::<eam::EamActor>(eam::Method::Constructor as u64, &RawBytes::default()).unwrap();

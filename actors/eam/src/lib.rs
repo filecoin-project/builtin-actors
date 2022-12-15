@@ -12,7 +12,7 @@ use {
         actor_error, cbor,
         runtime::builtins::Type,
         runtime::{ActorCode, Runtime},
-        ActorError, EAM_ACTOR_ID, INIT_ACTOR_ADDR,
+        ActorError, EAM_ACTOR_ID, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     },
     fvm_ipld_encoding::{strict_bytes, tuple::*, RawBytes},
     fvm_shared::{
@@ -195,7 +195,7 @@ impl EamActor {
                 "The Ethereum Address Manager must be deployed at {EAM_ACTOR_ID}, was deployed at {actor_id}"
             )));
         }
-        rt.validate_immediate_caller_type(std::iter::once(&Type::Init))
+        rt.validate_immediate_caller_is(iter::once(&SYSTEM_ACTOR_ADDR))
     }
 
     /// Create a new contract per the EVM's CREATE rules.

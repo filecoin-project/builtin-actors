@@ -6,8 +6,8 @@ use ethers::{
 use evm::interpreter::address::EthAddress;
 use fil_actor_evm as evm;
 use fil_actors_runtime::{
-    runtime::builtins::Type,
     test_utils::{MockRuntime, EVM_ACTOR_CODE_ID, INIT_ACTOR_CODE_ID},
+    INIT_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::tracking::{BSStats, TrackingBlockstore};
 use fvm_ipld_blockstore::MemoryBlockstore;
@@ -48,8 +48,8 @@ impl TestEnv {
             initcode: hex::decode(contract_hex).unwrap().into(),
         };
         // invoke constructor
-        self.runtime.expect_validate_caller_type(vec![Type::Init]);
-        self.runtime.caller_type = *INIT_ACTOR_CODE_ID;
+        self.runtime.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
+        self.runtime.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
 
         self.runtime.set_origin(self.evm_address);
         // first actor created is 0
