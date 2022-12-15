@@ -4,7 +4,6 @@
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::clock::ChainEpoch;
@@ -252,8 +251,6 @@ pub struct Allocation {
     // The latest epoch by which a provider must commit data before the allocation expires.
     pub expiration: ChainEpoch,
 }
-
-impl Cbor for State {}
 
 pub fn get_allocation<'a, BS>(
     allocations: &'a mut MapMap<BS, Allocation, ActorID, AllocationID>,

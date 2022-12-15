@@ -12,7 +12,7 @@ use fil_actors_runtime::{
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{Cbor, RawBytes};
+use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
@@ -392,8 +392,6 @@ pub fn epoch_key(e: ChainEpoch) -> BytesKey {
     bz.into()
 }
 
-impl Cbor for State {}
-
 #[derive(Debug, Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Eq)]
 pub struct Claim {
     /// Miner's proof type used to determine minimum miner size
@@ -411,8 +409,6 @@ pub struct CronEvent {
     pub miner_addr: Address,
     pub callback_payload: RawBytes,
 }
-
-impl Cbor for CronEvent {}
 
 /// Returns the minimum storage power required for each seal proof types.
 pub fn consensus_miner_min_power(

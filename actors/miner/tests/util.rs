@@ -57,7 +57,7 @@ use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
 use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::de::Deserialize;
 use fvm_ipld_encoding::ser::Serialize;
-use fvm_ipld_encoding::{BytesDe, Cbor, CborStore, RawBytes};
+use fvm_ipld_encoding::{BytesDe, CborStore, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::QuantSpec;
@@ -86,6 +86,7 @@ use multihash::MultihashDigest;
 use fil_actor_miner::testing::{
     check_deadline_state_invariants, check_state_invariants, DeadlineStateSummary,
 };
+use fil_actors_runtime::cbor::serialize;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::TryInto;
 use std::iter;
@@ -948,17 +949,17 @@ impl ActorHarness {
                 precommit.pre_commit_epoch + rt.policy.pre_commit_challenge_delay;
 
             let receiver = rt.receiver;
-            let buf = receiver.marshal_cbor()?;
+            let buf = serialize(&receiver, "receiver address")?;
             rt.expect_get_randomness_from_tickets(
                 DomainSeparationTag::SealRandomness,
                 precommit.info.seal_rand_epoch,
-                buf.clone(),
+                buf.clone().into(),
                 seal_rand,
             );
             rt.expect_get_randomness_from_beacon(
                 DomainSeparationTag::InteractiveSealChallengeSeed,
                 interactive_epoch,
-                buf,
+                buf.into(),
                 seal_int_rand.clone(),
             );
         }

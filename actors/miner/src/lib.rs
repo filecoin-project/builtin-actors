@@ -25,7 +25,7 @@ use fil_actors_runtime::{
 };
 use fvm_ipld_bitfield::{BitField, Validate};
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::{from_slice, BytesDe, Cbor, CborStore, RawBytes};
+use fvm_ipld_encoding::{from_slice, BytesDe, CborStore, RawBytes};
 use fvm_shared::address::{Address, Payload, Protocol};
 use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
@@ -4477,7 +4477,7 @@ fn assign_proving_period_offset(
     current_epoch: ChainEpoch,
     blake2b: impl FnOnce(&[u8]) -> [u8; 32],
 ) -> anyhow::Result<ChainEpoch> {
-    let mut my_addr = addr.marshal_cbor()?;
+    let mut my_addr = serialize_vec(&addr, "address")?;
     my_addr.write_i64::<BigEndian>(current_epoch)?;
 
     let digest = blake2b(&my_addr);
