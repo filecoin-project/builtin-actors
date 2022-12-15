@@ -24,7 +24,11 @@ define_singletons! {
     STORAGE_POWER_ACTOR = 4,
     STORAGE_MARKET_ACTOR = 5,
     VERIFIED_REGISTRY_ACTOR = 6,
+<<<<<<< HEAD
     CHAOS_ACTOR = 98,
+=======
+    DATACAP_TOKEN_ACTOR = 7,
+>>>>>>> 038630ce (Removed chaos actor code (#956))
     BURNT_FUNDS_ACTOR = 99,
 }
 
