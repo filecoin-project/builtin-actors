@@ -112,7 +112,7 @@ pub fn prevrandao(
     system: &mut System<impl Runtime>,
 ) -> Result<U256, StatusCode> {
     // NOTE: Filecoin beacon randomness is expected to fall outside of the `2^64` reserved range, following PREVRANDAO's assumptions.
-    // NOTE: EVM uses previous RANDAO value in this opcode since the _current_ RANDAO for them runs as a smart contract on current state
+    // NOTE: EVM uses previous RANDAO value in this opcode since the _current_ RANDAO for them runs on the beacon chain's state
     //      and wont be finalized till the end of a block. Filecoin's chain randomness is generated _before_ any contract is run, so we instead
     //      grab randomness from the current epoch.
     system.get_randomness().map(|v| U256::from(*v))
