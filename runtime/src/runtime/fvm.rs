@@ -2,7 +2,7 @@ use anyhow::{anyhow, Error};
 use cid::multihash::Code;
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::{Cbor, CborStore, RawBytes, DAG_CBOR};
+use fvm_ipld_encoding::{CborStore, RawBytes, DAG_CBOR};
 use fvm_sdk as fvm;
 use fvm_sdk::NO_DATA_BLOCK_ID;
 use fvm_shared::address::Address;
@@ -19,6 +19,8 @@ use fvm_shared::sector::{
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
 use num_traits::FromPrimitive;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 #[cfg(feature = "fake-proofs")]
 use sha2::{Digest, Sha256};
 
@@ -225,7 +227,7 @@ where
         })
     }
 
-    fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
+    fn create<T: Serialize>(&mut self, obj: &T) -> Result<(), ActorError> {
         let root = fvm::sself::root()?;
         if root != EMPTY_ARR_CID {
             return Err(
@@ -238,7 +240,7 @@ where
         Ok(())
     }
 
-    fn state<C: Cbor>(&self) -> Result<C, ActorError> {
+    fn state<T: DeserializeOwned>(&self) -> Result<T, ActorError> {
         let root = fvm::sself::root()?;
         Ok(ActorBlockstore
             .get_cbor(&root)
@@ -246,10 +248,10 @@ where
             .expect("State does not exist for actor state root"))
     }
 
-    fn transaction<C, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
+    fn transaction<S, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
     where
-        C: Cbor,
-        F: FnOnce(&mut C, &mut Self) -> Result<RT, ActorError>,
+        S: Serialize + DeserializeOwned,
+        F: FnOnce(&mut S, &mut Self) -> Result<RT, ActorError>,
     {
         let state_cid = fvm::sself::root()
             .map_err(|_| actor_error!(illegal_argument; "failed to get actor root state CID"))?;
@@ -257,7 +259,7 @@ where
         log::debug!("getting cid: {}", state_cid);
 
         let mut state = ActorBlockstore
-            .get_cbor::<C>(&state_cid)
+            .get_cbor::<S>(&state_cid)
             .map_err(|_| actor_error!(illegal_argument; "failed to get actor state"))?
             .expect("State does not exist for actor state root");
 

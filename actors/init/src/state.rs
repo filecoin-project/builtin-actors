@@ -8,7 +8,6 @@ use fil_actors_runtime::{
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::error::ExitCode;
 use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
@@ -89,5 +88,3 @@ impl State {
         Ok(found.copied().map(Address::new_id))
     }
 }
-
-impl Cbor for State {}

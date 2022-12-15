@@ -5,7 +5,6 @@ use cid::Cid;
 use fil_actors_runtime::{actor_error, ActorError, AsActorError};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::bigint::Integer;
@@ -153,5 +152,3 @@ impl State {
         Ok(())
     }
 }
-
-impl Cbor for State {}

@@ -11,7 +11,6 @@ use fil_actors_runtime::{
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::Cbor;
 use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
@@ -75,8 +74,6 @@ pub struct State {
     /// Verified registry allocation IDs for deals that are not yet activated.
     pub pending_deal_allocation_ids: Cid, // HAMT[DealID]AllocationID
 }
-
-impl Cbor for State {}
 
 impl State {
     pub fn new<BS: Blockstore>(store: &BS) -> Result<Self, ActorError> {
