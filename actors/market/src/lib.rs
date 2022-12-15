@@ -9,7 +9,7 @@ use cid::Cid;
 use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::{Cbor, RawBytes};
+use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
@@ -1068,8 +1068,8 @@ pub const DAG_CBOR: u64 = 0x71; // TODO is there a better place to get this?
 /// Compute a deal CID using the runtime.
 pub(crate) fn rt_deal_cid(rt: &impl Runtime, proposal: &DealProposal) -> Result<Cid, ActorError> {
     const DIGEST_SIZE: u32 = 32;
-    let data = &proposal.marshal_cbor()?;
-    let hash = MultihashGeneric::wrap(Code::Blake2b256.into(), &rt.hash_blake2b(data))
+    let data = serialize(proposal, "deal proposal")?;
+    let hash = MultihashGeneric::wrap(Code::Blake2b256.into(), &rt.hash_blake2b(data.bytes()))
         .map_err(|e| actor_error!(illegal_argument; "failed to take cid of proposal {}", e))?;
     debug_assert_eq!(u32::from(hash.size()), DIGEST_SIZE, "expected 32byte digest");
     Ok(Cid::new_v1(DAG_CBOR, hash))
@@ -1078,8 +1078,8 @@ pub(crate) fn rt_deal_cid(rt: &impl Runtime, proposal: &DealProposal) -> Result<
 /// Compute a deal CID directly.
 pub(crate) fn deal_cid(proposal: &DealProposal) -> Result<Cid, ActorError> {
     const DIGEST_SIZE: u32 = 32;
-    let data = &proposal.marshal_cbor()?;
-    let hash = Code::Blake2b256.digest(data);
+    let data = serialize(proposal, "deal proposal")?;
+    let hash = Code::Blake2b256.digest(data.bytes());
     debug_assert_eq!(u32::from(hash.size()), DIGEST_SIZE, "expected 32byte digest");
     Ok(Cid::new_v1(DAG_CBOR, hash))
 }

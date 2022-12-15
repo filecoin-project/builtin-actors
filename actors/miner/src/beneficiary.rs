@@ -1,5 +1,4 @@
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
 
 use fvm_shared::clock::ChainEpoch;
@@ -16,8 +15,6 @@ pub struct BeneficiaryTerm {
     /// The epoch at which the beneficiary's rights expire and revert to the owner
     pub expiration: ChainEpoch,
 }
-
-impl Cbor for BeneficiaryTerm {}
 
 impl BeneficiaryTerm {
     pub fn default() -> BeneficiaryTerm {
@@ -57,8 +54,6 @@ pub struct PendingBeneficiaryChange {
     pub approved_by_beneficiary: bool,
     pub approved_by_nominee: bool,
 }
-
-impl Cbor for PendingBeneficiaryChange {}
 
 impl PendingBeneficiaryChange {
     pub fn new(
