@@ -12,6 +12,7 @@ use fil_actors_runtime::{
 };
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
+use fvm_shared::error::ExitCode;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
@@ -146,7 +147,7 @@ impl Actor {
         if existing {
             let code_cid = rt
                 .get_actor_code_cid(&id_address)
-                .context_code(ActorError::USR_FORBIDDEN, "cannot redeploy a deleted actor")?;
+                .context_code(ExitCode::USR_FORBIDDEN, "cannot redeploy a deleted actor")?;
             let embryo_cid = rt.get_code_cid_for_type(Type::Embryo);
             if code_cid != embryo_cid {
                 return Err(ActorError::forbidden(format!(
@@ -247,7 +248,6 @@ impl ActorCode for Actor {
 
 #[cfg(not(feature = "m2-native"))]
 fn can_exec(rt: &impl Runtime, caller: &Cid, exec: &Cid) -> bool {
-    use fil_actors_runtime::runtime::builtins::Type;
     rt.resolve_builtin_actor_type(exec)
         .map(|typ| match typ {
             Type::Multisig | Type::PaymentChannel => true,

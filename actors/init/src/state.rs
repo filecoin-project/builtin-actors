@@ -52,7 +52,7 @@ impl State {
     /// If the delegated address is already present, maps the robust address to that actor ID.
     /// Fails if the robust address is already mapped, providing tombstone.
     ///
-    /// Returns the nwe or existing actor ID.
+    /// Returns the actor ID and a boolean indicating whether or not the actor already exists.
     pub fn map_addresses_to_id<BS: Blockstore>(
         &mut self,
         store: &BS,
