@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use cid::multihash::{Code, MultihashDigest, MultihashGeneric};
 use cid::Cid;
+use fil_actors_runtime::FIRST_ACTOR_SPECIFIC_EXIT_CODE;
 use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
@@ -60,7 +61,7 @@ fil_actors_runtime::wasm_trampoline!(Actor);
 pub const NO_ALLOCATION_ID: u64 = 0;
 
 // An exit code indicating that information about a past deal is no longer available.
-pub const EX_DEAL_EXPIRED: ExitCode = ExitCode::new(32);
+pub const EX_DEAL_EXPIRED: ExitCode = ExitCode::new(FIRST_ACTOR_SPECIFIC_EXIT_CODE);
 
 /// Market actor methods available
 #[derive(FromPrimitive)]
