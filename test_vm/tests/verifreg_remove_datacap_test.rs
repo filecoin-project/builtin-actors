@@ -1,5 +1,7 @@
 use std::ops::{Div, Sub};
 
+use fil_actor_account::types::AuthenticateMessageParams;
+use fil_actor_account::Method as AccountMethod;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::to_vec;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
@@ -157,13 +159,11 @@ fn remove_datacap_simple_successful_path() {
     .deserialize()
     .unwrap();
 
-    ExpectInvocation {
-        to: VERIFIED_REGISTRY_ACTOR_ADDR,
-        method: VerifregMethod::RemoveVerifiedClientDataCap as u64,
-        params: Some(remove_datacap_params_ser),
-        subinvocs: Some(vec![]),
-        ..Default::default()
-    }
+    expect_remove_datacap(
+        &remove_datacap_params,
+        RemoveDataCapProposalID { id: 0 },
+        RemoveDataCapProposalID { id: 0 },
+    )
     .matches(v.take_invocations().last().unwrap());
 
     assert_eq!(verified_client_id_addr, remove_datacap_ret.verified_client);
@@ -242,13 +242,11 @@ fn remove_datacap_simple_successful_path() {
     .deserialize()
     .unwrap();
 
-    ExpectInvocation {
-        to: VERIFIED_REGISTRY_ACTOR_ADDR,
-        method: VerifregMethod::RemoveVerifiedClientDataCap as u64,
-        params: Some(remove_datacap_params_ser),
-        subinvocs: Some(vec![]),
-        ..Default::default()
-    }
+    expect_remove_datacap(
+        &remove_datacap_params,
+        RemoveDataCapProposalID { id: 1 },
+        RemoveDataCapProposalID { id: 1 },
+    )
     .matches(v.take_invocations().last().unwrap());
 
     assert_eq!(verified_client_id_addr, remove_datacap_ret.verified_client);
@@ -287,6 +285,7 @@ fn remove_datacap_simple_successful_path() {
     assert_eq!(2u64, verifier2_proposal_id.id);
     v.assert_state_invariants();
 }
+
 #[test]
 fn remove_datacap_fails_on_verifreg() {
     let store = MemoryBlockstore::new();
@@ -345,13 +344,79 @@ fn remove_datacap_fails_on_verifreg() {
     v.assert_state_invariants();
 }
 
-fn expect_remove_datacap(params: &RemoveDataCapParams) -> ExpectInvocation {
+fn expect_remove_datacap(
+    params: &RemoveDataCapParams,
+    proposal_id1: RemoveDataCapProposalID,
+    proposal_id2: RemoveDataCapProposalID,
+) -> ExpectInvocation {
+    let payload1 = [
+        SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP,
+        serialize(
+            &RemoveDataCapProposal {
+                removal_proposal_id: proposal_id1,
+                data_cap_amount: params.data_cap_amount_to_remove.clone(),
+                verified_client: params.verified_client_to_remove,
+            },
+            "remove datacap proposal",
+        )
+        .unwrap()
+        .bytes(),
+    ]
+    .concat();
+    let payload2 = [
+        SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP,
+        serialize(
+            &RemoveDataCapProposal {
+                removal_proposal_id: proposal_id2,
+                data_cap_amount: params.data_cap_amount_to_remove.clone(),
+                verified_client: params.verified_client_to_remove,
+            },
+            "remove datacap proposal",
+        )
+        .unwrap()
+        .bytes(),
+    ]
+    .concat();
     ExpectInvocation {
         to: *VERIFIED_REGISTRY_ACTOR_ADDR,
         method: VerifregMethod::RemoveVerifiedClientDataCap as u64,
         params: Some(serialize(&params, "remove datacap params").unwrap()),
         code: Some(ExitCode::OK),
         subinvocs: Some(vec![
+            ExpectInvocation {
+                to: params.verifier_request_1.verifier,
+                method: AccountMethod::AuthenticateMessageExported as u64,
+                params: Some(
+                    serialize(
+                        &AuthenticateMessageParams {
+                            signature: payload1.clone(),
+                            message: payload1,
+                        },
+                        "authenticate_message params",
+                    )
+                    .unwrap(),
+                ),
+                code: Some(ExitCode::OK),
+                subinvocs: None,
+                ..Default::default()
+            },
+            ExpectInvocation {
+                to: params.verifier_request_2.verifier,
+                method: AccountMethod::AuthenticateMessageExported as u64,
+                params: Some(
+                    serialize(
+                        &AuthenticateMessageParams {
+                            signature: payload2.clone(),
+                            message: payload2,
+                        },
+                        "authenticate_message params",
+                    )
+                    .unwrap(),
+                ),
+                code: Some(ExitCode::OK),
+                subinvocs: None,
+                ..Default::default()
+            },
             ExpectInvocation {
                 to: DATACAP_TOKEN_ACTOR_ADDR,
                 method: DataCapMethod::BalanceExported as u64,

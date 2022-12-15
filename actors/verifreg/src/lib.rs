@@ -412,8 +412,7 @@ impl Actor {
             ));
         }
 
-        // Validate and then remove the proposal.
-        rt.transaction(|st: &mut State, rt| {
+        let (verifier_1_id, verifier_2_id) = rt.transaction(|st: &mut State, rt| {
             rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
 
             if params.verified_client_to_remove == VERIFIED_REGISTRY_ACTOR_ADDR {
@@ -447,26 +446,31 @@ impl Actor {
             let verifier_1_id = use_proposal_id(&mut proposal_ids, verifier_1, client)?;
             let verifier_2_id = use_proposal_id(&mut proposal_ids, verifier_2, client)?;
 
-            remove_data_cap_request_is_valid(
-                rt,
-                &params.verifier_request_1,
-                verifier_1_id,
-                &params.data_cap_amount_to_remove,
-                client,
-            )?;
-            remove_data_cap_request_is_valid(
-                rt,
-                &params.verifier_request_2,
-                verifier_2_id,
-                &params.data_cap_amount_to_remove,
-                client,
-            )?;
-
+            // Assume proposal ids are valid and increment them
             st.remove_data_cap_proposal_ids = proposal_ids
                 .flush()
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush proposal ids")?;
-            Ok(())
+            Ok((verifier_1_id, verifier_2_id))
         })?;
+
+        // Now make sure the proposals were actually valid. We had to increment them first in case
+        // re-entrant calls do anything funny.
+        //
+        // If this fails, we'll revert and the proposals will be restored.
+        remove_data_cap_request_is_valid(
+            rt,
+            &params.verifier_request_1,
+            verifier_1_id,
+            &params.data_cap_amount_to_remove,
+            client,
+        )?;
+        remove_data_cap_request_is_valid(
+            rt,
+            &params.verifier_request_2,
+            verifier_2_id,
+            &params.data_cap_amount_to_remove,
+            client,
+        )?;
 
         // Burn the client's data cap tokens.
         let balance = balance(rt, &client).context("failed to fetch balance")?;
@@ -607,7 +611,8 @@ impl Actor {
                         format!("failed to write claim {}", claim_alloc.allocation_id),
                     )?;
                 if !inserted {
-                    ret_gen.add_fail(ExitCode::USR_ILLEGAL_STATE); // should be unreachable since claim and alloc can't exist at once
+                    // should be unreachable since claim and alloc can't exist at once
+                    ret_gen.add_fail(ExitCode::USR_ILLEGAL_STATE);
                     info!(
                         "claim for allocation {} could not be inserted as it already exists",
                         claim_alloc.allocation_id,
@@ -1057,10 +1062,17 @@ fn remove_data_cap_request_is_valid(
 
     let payload = [SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP, b.bytes()].concat();
 
-    // verify signature of proposal
-    rt.verify_signature(&request.signature, &request.verifier, &payload).map_err(
-        |e| actor_error!(illegal_argument; "invalid signature for datacap removal request: {}", e),
+    rt.send(
+        &request.verifier,
+        ext::account::AUTHENTICATE_MESSAGE_METHOD,
+        RawBytes::serialize(ext::account::AuthenticateMessageParams {
+            signature: request.signature.bytes.clone(),
+            message: payload,
+        })?,
+        TokenAmount::zero(),
     )
+    .map_err(|e| e.wrap("proposal authentication failed"))?;
+    Ok(())
 }
 
 // Deserializes and validates a receiver hook payload, expecting only an FRC-46 transfer.
