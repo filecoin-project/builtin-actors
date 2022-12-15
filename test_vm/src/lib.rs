@@ -7,6 +7,7 @@ use fil_actor_account::{Actor as AccountActor, State as AccountState};
 use fil_actor_cron::{Actor as CronActor, Entry as CronEntry, State as CronState};
 use fil_actor_datacap::{Actor as DataCapActor, State as DataCapState};
 use fil_actor_eam::EamActor;
+use fil_actor_ethaccount::EthAccountActor;
 use fil_actor_evm::EvmContractActor;
 use fil_actor_init::{Actor as InitActor, ExecReturn, State as InitState};
 use fil_actor_market::{Actor as MarketActor, Method as MarketMethod, State as MarketState};
@@ -616,12 +617,12 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         let is_account = match target.payload() {
             Payload::Secp256k1(_) | Payload::BLS(_) => true,
             Payload::Delegated(da)
-                // Validate that there's an actor at the target ID (we don't care what is there,
-                // just that something is there).
-                if self.v.get_actor(Address::new_id(da.namespace())).is_some() =>
-            {
-                false
-            }
+            // Validate that there's an actor at the target ID (we don't care what is there,
+            // just that something is there).
+            if self.v.get_actor(Address::new_id(da.namespace())).is_some() =>
+                {
+                    false
+                }
             _ => {
                 return Err(ActorError::unchecked(
                     ExitCode::SYS_INVALID_RECEIVER,
@@ -639,7 +640,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         }
 
         let mut st = self.v.get_state::<InitState>(INIT_ACTOR_ADDR).unwrap();
-        let target_id = st.map_address_to_new_id(self.v.store, target).unwrap();
+        let target_id = st.map_addresses_to_id(self.v.store, target, None).unwrap();
         let target_id_addr = Address::new_id(target_id);
         let mut init_actor = self.v.get_actor(INIT_ACTOR_ADDR).unwrap();
         init_actor.head = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
@@ -779,6 +780,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             }
             Type::EVM => EvmContractActor::invoke_method(self, self.msg.method, &params),
             Type::EAM => EamActor::invoke_method(self, self.msg.method, &params),
+            Type::EthAccount => EthAccountActor::invoke_method(self, self.msg.method, &params),
         };
         if res.is_ok() && !self.caller_validated {
             res = Err(actor_error!(assertion_failed, "failed to validate caller"));

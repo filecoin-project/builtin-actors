@@ -217,6 +217,7 @@ impl EvmContractActor {
         rt.validate_immediate_caller_accept_any()?;
 
         let state: State = rt.state()?;
+        // return value must be either keccak("") or keccak(bytecode)
         Ok(state.bytecode_hash)
     }
 
@@ -288,7 +289,7 @@ impl ActorCode for EvmContractActor {
                 Ok(RawBytes::serialize(cid)?)
             }
             Some(Method::GetBytecodeHash) => {
-                let cid = Self::bytecode(rt)?;
+                let cid = Self::bytecode_hash(rt)?;
                 Ok(RawBytes::serialize(cid)?)
             }
             Some(Method::GetStorageAt) => {

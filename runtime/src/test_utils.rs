@@ -205,105 +205,106 @@ pub struct Expectations {
 
 impl Expectations {
     fn reset(&mut self) {
+        self.skip_verification_on_drop = true;
         *self = Default::default();
     }
 
     fn verify(&mut self) {
-        assert!(!self.expect_validate_caller_any, "expected ValidateCallerAny, not received");
+        // If we don't reset them, we'll try to re-verify on drop. If something fails, we'll panic
+        // twice and abort making the tests difficult to debug.
+        self.skip_verification_on_drop = true;
+        let this = std::mem::take(self);
+
+        assert!(!this.expect_validate_caller_any, "expected ValidateCallerAny, not received");
         assert!(
-            self.expect_validate_caller_addr.is_none(),
+            this.expect_validate_caller_addr.is_none(),
             "expected ValidateCallerAddr {:?}, not received",
-            self.expect_validate_caller_addr
+            this.expect_validate_caller_addr
         );
         assert!(
-            self.expect_validate_caller_f4_namespace.is_none(),
-            "expected ValidateNamespace {:?}, not received",
-            self.expect_validate_caller_f4_namespace
-        );
-        assert!(
-            self.expect_validate_caller_type.is_none(),
+            this.expect_validate_caller_type.is_none(),
             "expected ValidateCallerType {:?}, not received",
-            self.expect_validate_caller_type
+            this.expect_validate_caller_type
         );
         assert!(
-            self.expect_sends.is_empty(),
+            this.expect_sends.is_empty(),
             "expected all message to be send, unsent messages {:?}",
-            self.expect_sends
+            this.expect_sends
         );
         assert!(
-            self.expect_create_actor.is_none(),
+            this.expect_create_actor.is_none(),
             "expected actor to be created, uncreated actor: {:?}",
-            self.expect_create_actor
+            this.expect_create_actor
         );
         assert!(
-            self.expect_delete_actor.is_none(),
+            this.expect_delete_actor.is_none(),
             "expected actor to be deleted: {:?}",
-            self.expect_delete_actor
+            this.expect_delete_actor
         );
         assert!(
-            self.expect_verify_sigs.is_empty(),
+            this.expect_verify_sigs.is_empty(),
             "expect_verify_sigs: {:?}, not received",
-            self.expect_verify_sigs
+            this.expect_verify_sigs
         );
         assert!(
-            self.expect_verify_seal.is_none(),
+            this.expect_verify_seal.is_none(),
             "expect_verify_seal {:?}, not received",
-            self.expect_verify_seal
+            this.expect_verify_seal
         );
         assert!(
-            self.expect_verify_post.is_none(),
+            this.expect_verify_post.is_none(),
             "expect_verify_post {:?}, not received",
-            self.expect_verify_post
+            this.expect_verify_post
         );
         assert!(
-            self.expect_compute_unsealed_sector_cid.is_empty(),
+            this.expect_compute_unsealed_sector_cid.is_empty(),
             "expect_compute_unsealed_sector_cid: {:?}, not received",
-            self.expect_compute_unsealed_sector_cid
+            this.expect_compute_unsealed_sector_cid
         );
         assert!(
-            self.expect_verify_consensus_fault.is_none(),
+            this.expect_verify_consensus_fault.is_none(),
             "expect_verify_consensus_fault {:?}, not received",
-            self.expect_verify_consensus_fault
+            this.expect_verify_consensus_fault
         );
         assert!(
-            self.expect_get_randomness_from_beacon.is_empty(),
-            "expect_get_randomness_from_beacon {:?}, not received",
-            self.expect_get_randomness_from_beacon
-        );
-        assert!(
-            self.expect_get_randomness_from_chain.is_empty(),
+            this.expect_get_randomness_from_chain.is_empty(),
             "expect_get_randomness_from_chain {:?}, not received",
-            self.expect_get_randomness_from_chain
+            this.expect_get_randomness_from_chain
         );
         assert!(
-            self.expect_batch_verify_seals.is_none(),
+            this.expect_get_randomness_from_beacon.is_empty(),
+            "expect_get_randomness_from_beacon {:?}, not received",
+            this.expect_get_randomness_from_beacon
+        );
+        assert!(
+            this.expect_batch_verify_seals.is_none(),
             "expect_batch_verify_seals {:?}, not received",
-            self.expect_batch_verify_seals
+            this.expect_batch_verify_seals
         );
         assert!(
-            self.expect_aggregate_verify_seals.is_none(),
+            this.expect_aggregate_verify_seals.is_none(),
             "expect_aggregate_verify_seals {:?}, not received",
-            self.expect_aggregate_verify_seals
+            this.expect_aggregate_verify_seals
         );
         assert!(
-            self.expect_replica_verify.is_none(),
+            this.expect_replica_verify.is_none(),
             "expect_replica_verify {:?}, not received",
-            self.expect_replica_verify
+            this.expect_replica_verify
         );
         assert!(
-            self.expect_gas_charge.is_empty(),
+            this.expect_gas_charge.is_empty(),
             "expect_gas_charge {:?}, not received",
-            self.expect_gas_charge
+            this.expect_gas_charge
         );
         assert!(
-            self.expect_gas_available.is_empty(),
-            "expect_gas_charge {:?}, not received",
-            self.expect_gas_available
+            this.expect_gas_available.is_empty(),
+            "expect_gas_available {:?}, not received",
+            this.expect_gas_available
         );
         assert!(
-            self.expect_emitted_events.is_empty(),
+            this.expect_emitted_events.is_empty(),
             "expect_emitted_events {:?}, not received",
-            self.expect_emitted_events
+            this.expect_emitted_events
         );
     }
 

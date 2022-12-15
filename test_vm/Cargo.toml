@@ -27,6 +27,7 @@ fil_actor_miner = { version = "10.0.0-alpha.1", path = "../actors/miner" }
 fil_actor_datacap = { version = "10.0.0-alpha.1", path = "../actors/datacap" }
 fil_actor_evm = { version = "10.0.0-alpha.1", path = "../actors/evm" }
 fil_actor_eam = { version = "10.0.0-alpha.1", path = "../actors/eam" }
+fil_actor_ethaccount = { version = "10.0.0-alpha.1", path = "../actors/ethaccount" }
 
 anyhow = "1.0.65"
 bimap = { version = "0.6.2" }
