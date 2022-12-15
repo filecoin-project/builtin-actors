@@ -1202,6 +1202,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
             ExpectCreateActor { code_id, actor_id, predictable_address },
             "unexpected actor being created"
         );
+        self.set_address_actor_type(Address::new_id(actor_id), code_id);
         Ok(())
     }
 
