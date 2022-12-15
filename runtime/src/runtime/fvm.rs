@@ -3,7 +3,7 @@ use cid::multihash::Code;
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::{Cbor, CborStore, RawBytes, DAG_CBOR};
+use fvm_ipld_encoding::{CborStore, RawBytes, DAG_CBOR};
 use fvm_sdk as fvm;
 use fvm_sdk::NO_DATA_BLOCK_ID;
 use fvm_shared::address::Address;
@@ -191,18 +191,18 @@ where
         // explicitly.
         fvm::rand::get_chain_randomness(personalization as i64, rand_epoch, entropy)
             .map_err(|e| {
-            if self.network_version() < NetworkVersion::V16 {
-                ActorError::unchecked(ExitCode::SYS_ILLEGAL_INSTRUCTION,
-                    "failed to get chain randomness".into())
-            } else {
-                match e {
-                    ErrorNumber::LimitExceeded => {
-                        actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
+                if self.network_version() < NetworkVersion::V16 {
+                    ActorError::unchecked(ExitCode::SYS_ILLEGAL_INSTRUCTION,
+                                          "failed to get chain randomness".into())
+                } else {
+                    match e {
+                        ErrorNumber::LimitExceeded => {
+                            actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
+                        }
+                        e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
                     }
-                    e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
                 }
-            }
-        })
+            })
     }
 
     fn get_randomness_from_beacon(
@@ -214,18 +214,18 @@ where
         // See note on exit codes in get_randomness_from_tickets.
         fvm::rand::get_beacon_randomness(personalization as i64, rand_epoch, entropy)
             .map_err(|e| {
-            if self.network_version() < NetworkVersion::V16 {
-                ActorError::unchecked(ExitCode::SYS_ILLEGAL_INSTRUCTION,
-                    "failed to get chain randomness".into())
-            } else {
-                match e {
-                    ErrorNumber::LimitExceeded => {
-                        actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
+                if self.network_version() < NetworkVersion::V16 {
+                    ActorError::unchecked(ExitCode::SYS_ILLEGAL_INSTRUCTION,
+                                          "failed to get chain randomness".into())
+                } else {
+                    match e {
+                        ErrorNumber::LimitExceeded => {
+                            actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
+                        }
+                        e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
                     }
-                    e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
                 }
-            }
-        })
+            })
     }
 
     fn create<T: Serialize>(&mut self, obj: &T) -> Result<(), ActorError> {
@@ -559,8 +559,6 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
     let method = fvm::message::method_number();
     log::debug!("fetching parameters block: {}", params);
     let params = fvm::message::params_raw(params).expect("params block invalid");
-    // let params = RawBytes::new(params);
-    // log::debug!("input params: {:x?}", params.bytes());
 
     // Construct a new runtime.
     let mut rt = FvmRuntime::default();

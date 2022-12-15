@@ -292,7 +292,7 @@ impl Actor {
 
     fn submit_porep_for_bulk_verify(
         rt: &mut impl Runtime,
-        params: SealVerifyInfo,
+        seal_info: SealVerifyInfo,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
 
@@ -335,7 +335,7 @@ impl Actor {
                 }
             }
 
-            mmap.add(miner_addr.to_bytes().into(), params).map_err(|e| {
+            mmap.add(miner_addr.to_bytes().into(), seal_info).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to insert proof into set")
             })?;
 
@@ -623,12 +623,12 @@ impl ActorCode for Actor {
     type Methods = Method;
     actor_dispatch! {
         Constructor => constructor,
-            CreateMiner => create_miner,
-    UpdateClaimedPower => update_claimed_power            ,
-    EnrollCronEvent => enroll_cron_event,
-    OnEpochTickEnd => on_epoch_tick_end,
-    UpdatePledgeTotal => update_pledge_total,
-    SubmitPoRepForBulkVerify => submit_porep_for_bulk_verify,
-    CurrentTotalPower => current_total_power,
+        CreateMiner => create_miner,
+        UpdateClaimedPower => update_claimed_power            ,
+        EnrollCronEvent => enroll_cron_event,
+        OnEpochTickEnd => on_epoch_tick_end,
+        UpdatePledgeTotal => update_pledge_total,
+        SubmitPoRepForBulkVerify => submit_porep_for_bulk_verify,
+        CurrentTotalPower => current_total_power,
     }
 }

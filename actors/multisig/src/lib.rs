@@ -553,15 +553,14 @@ impl ActorCode for Actor {
     type Methods = Method;
     actor_dispatch! {
         Constructor => constructor,
-                Propose => propose,
-    Approve => approve,
-    Cancel => cancel,
-    AddSigner => add_signer,
-    RemoveSigner => remove_signer,
-    SwapSigner => swap_signer,
-    ChangeNumApprovalsThreshold => change_num_approvals_threshold,
-    LockBalance => lock_balance,
-    UniversalReceiverHook => universal_receiver_hook,
-
+        Propose => propose,
+        Approve => approve,
+        Cancel => cancel,
+        AddSigner => add_signer,
+        RemoveSigner => remove_signer,
+        SwapSigner => swap_signer,
+        ChangeNumApprovalsThreshold => change_num_approvals_threshold,
+        LockBalance => lock_balance,
+        UniversalReceiverHook => universal_receiver_hook,
     }
 }

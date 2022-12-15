@@ -85,6 +85,7 @@ use multihash::MultihashDigest;
 use fil_actor_miner::testing::{
     check_deadline_state_invariants, check_state_invariants, DeadlineStateSummary,
 };
+use fil_actors_runtime::cbor::serialize;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::TryInto;

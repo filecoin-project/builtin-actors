@@ -53,7 +53,6 @@ members = [
      "test_vm",
 ]
 
-[patch.crates-io]
 #[patch.crates-io]
 #fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm" }
 #fvm_sdk = { git = "https://github.com/filecoin-project/ref-fvm" }

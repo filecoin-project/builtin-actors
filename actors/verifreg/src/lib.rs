@@ -69,12 +69,12 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for Registry Actor
-    pub fn constructor(rt: &mut impl Runtime, params: Address) -> Result<(), ActorError> {
+    pub fn constructor(rt: &mut impl Runtime, root_key: Address) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         // root should be an ID address
         let id_addr = rt
-            .resolve_address(&params)
+            .resolve_address(&root_key)
             .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "root should be an ID address")?;
 
         let st = State::new(rt.store(), Address::new_id(id_addr))
@@ -1054,15 +1054,15 @@ impl ActorCode for Actor {
     type Methods = Method;
     actor_dispatch! {
         Constructor => constructor,
-                AddVerifier => add_verifier,
-    RemoveVerifier => remove_verifier,
-    AddVerifiedClient => add_verified_client,
-    RemoveVerifiedClientDataCap => remove_verified_client_data_cap,
-    RemoveExpiredAllocations => remove_expired_allocations,
-    ClaimAllocations => claim_allocations,
-    GetClaims => get_claims,
-    ExtendClaimTerms => extend_claim_terms,
-    RemoveExpiredClaims => remove_expired_claims,
-    UniversalReceiverHook => universal_receiver_hook,
+        AddVerifier => add_verifier,
+        RemoveVerifier => remove_verifier,
+        AddVerifiedClient => add_verified_client,
+        RemoveVerifiedClientDataCap => remove_verified_client_data_cap,
+        RemoveExpiredAllocations => remove_expired_allocations,
+        ClaimAllocations => claim_allocations,
+        GetClaims => get_claims,
+        ExtendClaimTerms => extend_claim_terms,
+        RemoveExpiredClaims => remove_expired_claims,
+        UniversalReceiverHook => universal_receiver_hook,
     }
 }

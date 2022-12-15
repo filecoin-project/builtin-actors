@@ -3417,11 +3417,12 @@ pub struct ReplicaUpdateInner {
 }
 
 enum ExtensionKind {
-    ExtendCommittmentLegacy,
     // handle only legacy sectors
-    ExtendCommittment, // handle both Simple QAP and legacy sectors
-                       // TODO: when landing https://github.com/filecoin-project/builtin-actors/pull/518
-                       // ExtendProofValidity
+    ExtendCommittmentLegacy,
+    // handle both Simple QAP and legacy sectors
+    // TODO: when landing https://github.com/filecoin-project/builtin-actors/pull/518
+    // ExtendProofValidity
+    ExtendCommittment,
 }
 
 // ExtendSectorExpiration param
@@ -4859,38 +4860,38 @@ impl ActorCode for Actor {
     type Methods = Method;
     actor_dispatch! {
         Constructor => constructor,
-    ControlAddresses => control_addresses,
-    ChangeWorkerAddress => change_worker_address,
-    ChangePeerID => change_peer_id,
-    SubmitWindowedPoSt => submit_windowed_post,
-    PreCommitSector => pre_commit_sector,
-    ProveCommitSector => prove_commit_sector,
-    ExtendSectorExpiration => extend_sector_expiration,
-    TerminateSectors => terminate_sectors,
-    DeclareFaults => declare_faults,
-    DeclareFaultsRecovered => declare_faults_recovered,
-    OnDeferredCronEvent => on_deferred_cron_event,
-    CheckSectorProven => check_sector_proven,
-    ApplyRewards => apply_rewards,
-    ReportConsensusFault => report_consensus_fault,
-    WithdrawBalance => withdraw_balance,
-    ConfirmSectorProofsValid => confirm_sector_proofs_valid,
-    ChangeMultiaddrs => change_multiaddresses,
-    CompactPartitions => compact_partitions,
-    CompactSectorNumbers => compact_sector_numbers,
-    ConfirmUpdateWorkerKey => confirm_update_worker_key,
-    RepayDebt => repay_debt,
-    ChangeOwnerAddress => change_owner_address,
-    DisputeWindowedPoSt => dispute_windowed_post,
-    PreCommitSectorBatch => pre_commit_sector_batch,
-    ProveCommitAggregate => prove_commit_aggregate,
-    ProveReplicaUpdates => prove_replica_updates,
-    PreCommitSectorBatch2 => pre_commit_sector_batch2,
-    ProveReplicaUpdates2 => prove_replica_updates2,
-    ChangeBeneficiary => change_beneficiary,
-    GetBeneficiary => get_beneficiary,
-    ExtendSectorExpiration2 => extend_sector_expiration2,
-            }
+        ControlAddresses => control_addresses,
+        ChangeWorkerAddress => change_worker_address,
+        ChangePeerID => change_peer_id,
+        SubmitWindowedPoSt => submit_windowed_post,
+        PreCommitSector => pre_commit_sector,
+        ProveCommitSector => prove_commit_sector,
+        ExtendSectorExpiration => extend_sector_expiration,
+        TerminateSectors => terminate_sectors,
+        DeclareFaults => declare_faults,
+        DeclareFaultsRecovered => declare_faults_recovered,
+        OnDeferredCronEvent => on_deferred_cron_event,
+        CheckSectorProven => check_sector_proven,
+        ApplyRewards => apply_rewards,
+        ReportConsensusFault => report_consensus_fault,
+        WithdrawBalance => withdraw_balance,
+        ConfirmSectorProofsValid => confirm_sector_proofs_valid,
+        ChangeMultiaddrs => change_multiaddresses,
+        CompactPartitions => compact_partitions,
+        CompactSectorNumbers => compact_sector_numbers,
+        ConfirmUpdateWorkerKey => confirm_update_worker_key,
+        RepayDebt => repay_debt,
+        ChangeOwnerAddress => change_owner_address,
+        DisputeWindowedPoSt => dispute_windowed_post,
+        PreCommitSectorBatch => pre_commit_sector_batch,
+        ProveCommitAggregate => prove_commit_aggregate,
+        ProveReplicaUpdates => prove_replica_updates,
+        PreCommitSectorBatch2 => pre_commit_sector_batch2,
+        ProveReplicaUpdates2 => prove_replica_updates2,
+        ChangeBeneficiary => change_beneficiary,
+        GetBeneficiary => get_beneficiary,
+        ExtendSectorExpiration2 => extend_sector_expiration2,
+    }
 }
 
 #[cfg(test)]

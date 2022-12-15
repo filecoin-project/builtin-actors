@@ -161,7 +161,6 @@ impl Actor {
         }
 
         if let Some(extra) = &sv.extra {
-            // TODO: Is this the best way to handle this?
             rt.send(
                 &extra.actor,
                 extra.method,

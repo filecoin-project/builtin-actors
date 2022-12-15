@@ -87,7 +87,7 @@ impl Actor {
     }
 
     /// Deposits the received value into the balance held in escrow.
-    fn add_balance(rt: &mut impl Runtime, params: Address) -> Result<(), ActorError> {
+    fn add_balance(rt: &mut impl Runtime, provider_or_client: Address) -> Result<(), ActorError> {
         let msg_value = rt.message().value_received();
 
         if msg_value <= TokenAmount::zero() {
@@ -101,7 +101,7 @@ impl Actor {
         // only signing parties can add balance for client AND provider.
         rt.validate_immediate_caller_type(CALLER_TYPES_SIGNABLE.iter())?;
 
-        let (nominal, _, _) = escrow_address(rt, &params)?;
+        let (nominal, _, _) = escrow_address(rt, &provider_or_client)?;
 
         rt.transaction(|st: &mut State, rt| {
             st.add_balance_to_escrow_table(rt.store(), &nominal, &msg_value)?;
