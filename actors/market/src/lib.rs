@@ -869,7 +869,8 @@ pub fn validate_and_return_deal_space<BS: Blockstore>(
 }
 
 fn alloc_request_for_deal(
-    proposal: &DealProposal,
+    // Deal proposal must have ID addresses
+    deal: &ClientDealProposal,
     policy: &Policy,
     curr_epoch: ChainEpoch,
 ) -> ext::verifreg::AllocationRequest {
@@ -881,9 +882,9 @@ fn alloc_request_for_deal(
     let alloc_expiration =
         min(proposal.start_epoch, curr_epoch + policy.maximum_verified_allocation_expiration);
     ext::verifreg::AllocationRequest {
-        provider: proposal.provider,
-        data: proposal.piece_cid,
-        size: proposal.piece_size,
+        provider: deal.proposal.provider.id().unwrap(),
+        data: deal.proposal.piece_cid,
+        size: deal.proposal.piece_size,
         term_min: alloc_term_min,
         term_max: alloc_term_max,
         expiration: alloc_expiration,

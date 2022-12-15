@@ -67,7 +67,7 @@ fn test_sent() {
         addr1,
         TokenAmount::from_atto(42u8),
         METHOD_SEND,
-        RawBytes::default(),
+        None::<RawBytes>,
     )
     .unwrap();
     let expect_id_addr1 = Address::new_id(FIRST_TEST_USER_ADDR);
@@ -75,25 +75,25 @@ fn test_sent() {
 
     // send from this account actor to another uninit account actor
     let addr2 = Address::new_bls(&[2; fvm_shared::address::BLS_PUB_LEN]).unwrap();
-    v.apply_message(addr1, addr2, TokenAmount::from_atto(41u8), METHOD_SEND, RawBytes::default())
+    v.apply_message(addr1, addr2, TokenAmount::from_atto(41u8), METHOD_SEND, None::<RawBytes>)
         .unwrap();
     let expect_id_addr2 = Address::new_id(FIRST_TEST_USER_ADDR + 1);
     assert_account_actor(0, TokenAmount::from_atto(41u8), addr2, &v, expect_id_addr2);
 
     // send between two initialized account actors
-    v.apply_message(addr2, addr1, TokenAmount::from_atto(41u8), METHOD_SEND, RawBytes::default())
+    v.apply_message(addr2, addr1, TokenAmount::from_atto(41u8), METHOD_SEND, None::<RawBytes>)
         .unwrap();
     assert_account_actor(1, TokenAmount::from_atto(42u8), addr1, &v, expect_id_addr1);
     assert_account_actor(1, TokenAmount::zero(), addr2, &v, expect_id_addr2);
 
     // self send is noop
-    v.apply_message(addr1, addr1, TokenAmount::from_atto(1u8), METHOD_SEND, RawBytes::default())
+    v.apply_message(addr1, addr1, TokenAmount::from_atto(1u8), METHOD_SEND, None::<RawBytes>)
         .unwrap();
     assert_account_actor(2, TokenAmount::from_atto(42u8), addr1, &v, expect_id_addr1);
 
     // fail with insufficient funds
     let mres = v
-        .apply_message(addr2, addr1, TokenAmount::from_atto(1u8), METHOD_SEND, RawBytes::default())
+        .apply_message(addr2, addr1, TokenAmount::from_atto(1u8), METHOD_SEND, None::<RawBytes>)
         .unwrap();
     assert_eq!(ExitCode::SYS_INSUFFICIENT_FUNDS, mres.code);
     assert_account_actor(2, TokenAmount::from_atto(42u8), addr1, &v, expect_id_addr1);
@@ -106,7 +106,7 @@ fn test_sent() {
             Address::new_id(88),
             TokenAmount::from_atto(1u8),
             METHOD_SEND,
-            RawBytes::default(),
+            None::<RawBytes>,
         )
         .unwrap();
     assert_eq!(ExitCode::SYS_INVALID_RECEIVER, mres.code);

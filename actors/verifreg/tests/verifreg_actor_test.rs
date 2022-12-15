@@ -904,7 +904,8 @@ mod allocs_claims {
 }
 
 mod datacap {
-    use frc46_token::receiver::types::{UniversalReceiverParams, FRC46_TOKEN_TYPE};
+    use frc46_token::receiver::FRC46_TOKEN_TYPE;
+    use fvm_actor_utils::receiver::UniversalReceiverParams;
     use fvm_ipld_encoding::RawBytes;
     use fvm_shared::address::Address;
     use fvm_shared::econ::TokenAmount;
@@ -1125,7 +1126,8 @@ mod datacap {
         let payload = make_receiver_hook_token_payload(CLIENT1, reqs, vec![], SIZE);
         expect_abort_contains_message(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            format!("allocation provider {} must be a miner actor", provider1).as_str(),
+            format!("allocation provider {} must be a miner actor", provider1.id().unwrap())
+                .as_str(),
             h.receive_tokens(&mut rt, payload, BatchReturn::ok(1), BATCH_EMPTY, vec![1], 0),
         );
         h.check_state(&rt);
