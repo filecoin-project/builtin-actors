@@ -84,6 +84,8 @@ pub struct CreateParams {
     pub nonce: u64,
 }
 
+impl Cbor for CreateParams {}
+
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct Create2Params {
     #[serde(with = "strict_bytes")]

@@ -54,6 +54,7 @@ members = [
      "state",
      "runtime",
      "test_vm",
+	 "test_evm_eth_compliance",
 ]
 
 [patch.crates-io]

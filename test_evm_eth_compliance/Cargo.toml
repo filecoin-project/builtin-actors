@@ -1,0 +1,37 @@
+[package]
+name = "test_fevm_eth_compliance"
+description = "FEVM Eth Compliance Test"
+version = "10.0.0-alpha.1"
+license = "MIT OR Apache-2.0"
+authors = ["Protocol Labs", "Filecoin Core Devs"]
+edition = "2021"
+keywords = ["filecoin", "web3", "wasm"]
+publish = false
+
+[dependencies]
+bytes = "1.1"
+num-traits = "0.2"
+ruint = { version = "1.7.0", features = ["rlp", "serde"] }
+hex = { version = "0.4" }
+fixed-hash = { version = "0.8", default-features = false, features = ["rustc-hex"]}
+hex-literal = "0.3"
+derive_more = "0.99"
+lazy_static = "1.4.0"
+structopt = "0.3"
+thiserror = "1.0"
+num_cpus = "1.13.0"
+indicatif = "0.17"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+serde = { version = "1.0", features = ["derive", "rc"] }
+serde_json = "1.0"
+walkdir = "2.3"
+
+fvm_ipld_blockstore = { version = "0.1.1", default-features = false }
+fvm_ipld_encoding = { version = "0.3.0", default-features = false }
+fvm_shared = { version = "3.0.0-alpha.13", default-features = false }
+
+fil_actors_runtime = { path = "../runtime", features = ["test_utils"] }
+fil_actor_evm = { version = "10.0.0-alpha.1", path = "../actors/evm" }
+fil_actor_eam = { version = "10.0.0-alpha.1", path = "../actors/eam" }
+test_vm = { version = "10.0.0-alpha.1", path = "../test_vm" }

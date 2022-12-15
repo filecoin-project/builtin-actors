@@ -1,0 +1,9 @@
+[submodule "test_evm_eth_compliance/test-vectors/tests"]
+	path = test_evm_eth_compliance/test-vectors/tests
+	url = https://github.com/ethereum/tests.git
+	branch = develop
+
+
+[submodule "test_evm_eth_compliance/test-vectors/tests"]
+	active = true
+	url = https://github.com/ethereum/tests.git
