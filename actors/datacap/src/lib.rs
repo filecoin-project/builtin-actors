@@ -72,14 +72,14 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for DataCap Actor
-    pub fn constructor(rt: &mut impl Runtime, params: Address) -> Result<(), ActorError> {
+    pub fn constructor(rt: &mut impl Runtime, governor: Address) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         // Confirm the governor address is an ID.
-        rt.resolve_address(&params)
+        rt.resolve_address(&governor)
             .ok_or_else(|| actor_error!(illegal_argument, "failed to resolve governor address"))?;
 
-        let st = State::new(rt.store(), params).context("failed to create datacap state")?;
+        let st = State::new(rt.store(), governor).context("failed to create datacap state")?;
         rt.create(&st)?;
         Ok(())
     }

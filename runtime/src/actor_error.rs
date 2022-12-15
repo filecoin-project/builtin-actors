@@ -121,7 +121,7 @@ macro_rules! decode_params {
                 format!("method expected args")
             })?
             .deserialize()
-            .with_context_code(fvm_shared::error::ExitCode::USR_ILLEGAL_ARGUMENT, || {
+            .with_context_code(fvm_shared::error::ExitCode::USR_SERIALIZATION, || {
                 format!("failed to deserialize method params")
             })?
     };
