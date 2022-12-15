@@ -15,6 +15,7 @@ use fvm_shared::{
     MethodNum, IPLD_RAW,
 };
 use multihash::{Code, Multihash};
+use once_cell::unsync::OnceCell;
 
 use crate::state::State;
 
@@ -107,6 +108,8 @@ pub struct System<'r, RT: Runtime> {
     saved_state_root: Option<Cid>,
     /// Read Only context (staticcall)
     pub readonly: bool,
+    /// Randomness taken from the current epoch of chain randomness
+    randomness: OnceCell<[u8; 32]>,
 }
 
 impl<'r, RT: Runtime> System<'r, RT> {
@@ -128,6 +131,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
             saved_state_root: None,
             bytecode: None,
             readonly: read_only,
+            randomness: OnceCell::new(),
         })
     }
 
@@ -152,6 +156,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
             saved_state_root: Some(state_root),
             bytecode: Some(EvmBytecode::new(state.bytecode, state.bytecode_hash)),
             readonly: read_only,
+            randomness: OnceCell::new(),
         })
     }
 
@@ -345,6 +350,19 @@ impl<'r, RT: Runtime> System<'r, RT> {
             // But use an EVM address as the fallback.
             _ => Ok(EthAddress::from_id(actor_id)),
         }
+    }
+
+    /// Gets the cached EVM randomness seed of the current epoch
+    pub fn get_randomness(&mut self) -> Result<&[u8; 32], StatusCode> {
+        const ENTROPY: &[u8] = b"prevrandao";
+        self.randomness.get_or_try_init(|| {
+            // get randomness from current beacon epoch with entropy of "prevrandao"
+            Ok(self.rt.get_randomness_from_beacon(
+                fil_actors_runtime::runtime::DomainSeparationTag::EvmPrevRandao,
+                self.rt.curr_epoch(),
+                ENTROPY,
+            )?)
+        })
     }
 }
 

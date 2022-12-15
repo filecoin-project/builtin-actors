@@ -106,12 +106,17 @@ pub fn block_number(
     Ok(U256::from(system.rt.curr_epoch()))
 }
 
+/// EIP-4399: DIFFICULTY -> PREVRANDAO
 #[inline]
-pub fn difficulty(
+pub fn prevrandao(
     _state: &mut ExecutionState,
-    _system: &System<impl Runtime>,
+    system: &mut System<impl Runtime>,
 ) -> Result<U256, StatusCode> {
-    Ok(U256::zero())
+    // NOTE: Filecoin beacon randomness is expected to fall outside of the `2^64` reserved range, following PREVRANDAO's assumptions.
+    // NOTE: EVM uses previous RANDAO value in this opcode since the _current_ RANDAO for them runs as a smart contract on current state
+    //      and wont be finalized till the end of a block. Filecoin's chain randomness is generated _before_ any contract is run, so we instead
+    //      grab randomness from the current epoch.
+    system.get_randomness().map(|v| U256::from(*v))
 }
 
 #[inline]

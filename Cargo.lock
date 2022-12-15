@@ -1546,6 +1546,8 @@ dependencies = [
  "near-blake2",
  "num-derive",
  "num-traits",
+ "once_cell",
+ "rand",
  "rlp",
  "serde",
  "serde_json",

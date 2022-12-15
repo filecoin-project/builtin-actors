@@ -41,12 +41,14 @@ hex-literal = "0.3.4"
 substrate-bn = { version = "0.6.0", default-features = false }
 near-blake2 = { version = "0.9.1", git = "https://github.com/filecoin-project/near-blake2.git" }
 lazy_static = "1.4.0"
+once_cell = { version = "1.16.0", default-features = false}
 
 [dev-dependencies]
 fil_actors_runtime = { path = "../../runtime", features = ["test_utils", "sector-default"] }
 etk-asm = "^0.2.1"
 ethers = { version = "0.17.0", features = ["abigen"] }
 serde_json = "1.0"
+rand = "0.8.5"
 
 [features]
 fil-actor = ["fil_actors_runtime/fil-actor"]
