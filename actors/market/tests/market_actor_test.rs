@@ -874,6 +874,17 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
         }],
         extensions: vec![],
     };
+    let balance_of_params = client_resolved;
+    let balance_of_return = TokenAmount::from_whole(2048);
+    rt.expect_send(
+        DATACAP_TOKEN_ACTOR_ADDR,
+        ext::datacap::BALANCE_OF_METHOD as u64,
+        serialize(&balance_of_params, "transfer from params").unwrap(),
+        TokenAmount::zero(),
+        serialize(&balance_of_return, "transfer from return").unwrap(),
+        ExitCode::OK,
+    );
+
     let datacap_amount = TokenAmount::from_whole(deal.piece_size.0 as i64);
     let transfer_params = TransferFromParams {
         from: client_resolved,

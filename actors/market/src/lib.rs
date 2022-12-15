@@ -231,28 +231,6 @@ impl Actor {
                 }
             };
 
-            // Fetch client's datacap balance and calculate the amount of datacap required for the verified deals.
-            // Drop any verified deals for which the client has insufficient datacap.
-            if deal.proposal.verified_deal {
-                let mut remaining_datacap = match all_client_remaining_datacap.get(&client_id).cloned()
-                {
-                    None => {
-                        let total_datacap = balance_of(rt, &Address::new_id(client_id)).map_err(
-                            |e| actor_error!(not_found; "failed to get datacap {}", e.msg()),
-                        )?;
-                        total_datacap
-                    }
-                    Some(client_data) => client_data,
-                };
-                let piece_datacap_required =
-                    TokenAmount::from_whole(deal.proposal.piece_size.0 as i64);
-                if remaining_datacap < piece_datacap_required {
-                    continue;
-                }
-                remaining_datacap -= &piece_datacap_required;
-                all_client_remaining_datacap.insert(client_id, remaining_datacap);
-            }
-
             // drop deals with insufficient lock up to cover costs
             let mut client_lockup =
                 total_client_lockup.get(&client_id).cloned().unwrap_or_default();
@@ -297,14 +275,35 @@ impl Actor {
                 info!("invalid deal {}: cannot publish duplicate deal proposal", di);
                 continue;
             }
+            // Fetch client's datacap balance and calculate the amount of datacap required for the verified deals.
+            // Drop any verified deals for which the client has insufficient datacap.
+            if deal.proposal.verified_deal {
+                let mut remaining_datacap =
+                    match all_client_remaining_datacap.get(&client_id).cloned() {
+                        None => {
+                            balance_of(rt, &Address::new_id(client_id)).map_err(
+                                |e| actor_error!(not_found; "failed to get datacap {}", e.msg()),
+                            )?
+                        }
+                        Some(client_data) => client_data,
+                    };
+                let piece_datacap_required =
+                    TokenAmount::from_whole(deal.proposal.piece_size.0 as i64);
+                if remaining_datacap < piece_datacap_required {
+                    continue;
+                }
+                remaining_datacap -= &piece_datacap_required;
+                all_client_remaining_datacap.insert(client_id, remaining_datacap);
+                client_alloc_reqs.entry(client_id).or_default().push(alloc_request_for_deal(
+                    &deal,
+                    rt.policy(),
+                    curr_epoch,
+                ));
+            }
 
             total_provider_lockup = provider_lockup;
             total_client_lockup.insert(client_id, client_lockup);
             proposal_cid_lookup.insert(pcid);
-            client_alloc_reqs
-                .entry(deal.proposal.client.id().unwrap())
-                .or_default()
-                .push(alloc_request_for_deal(&deal, rt.policy(), curr_epoch));
             valid_deals.push(ValidDeal { proposal: deal.proposal, cid: pcid });
             valid_input_bf.set(di as u64)
         }
