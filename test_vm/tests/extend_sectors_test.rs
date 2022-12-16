@@ -4,12 +4,11 @@ use fil_actor_miner::{
     Sectors, State as MinerState,
 };
 use fil_actor_power::{Method as PowerMethod, UpdateClaimedPowerParams};
-use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{DealWeight, EPOCHS_IN_DAY, STORAGE_POWER_ACTOR_ADDR};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
-use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
@@ -44,7 +43,7 @@ fn extend(
     partition_index: u64,
     sector_number: SectorNumber,
     new_expiration: ChainEpoch,
-    power_update_params: RawBytes,
+    power_update_params: IpldBlock,
     v2: bool,
 ) {
     let extension_method = match v2 {
@@ -98,7 +97,7 @@ fn extend(
         subinvocs: Some(vec![ExpectInvocation {
             to: STORAGE_POWER_ACTOR_ADDR,
             method: PowerMethod::UpdateClaimedPower as u64,
-            params: Some(power_update_params),
+            params: Some(Some(power_update_params)),
             ..Default::default()
         }]),
         ..Default::default()
@@ -245,7 +244,7 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
         quality_adjusted_delta: StoragePower::from(-675 * (32i64 << 30) / 100),
     };
     let mut expected_update_claimed_power_params_ser =
-        serialize(&expected_update_claimed_power_params, "update_claimed_power params").unwrap();
+        IpldBlock::serialize_cbor(&expected_update_claimed_power_params).unwrap().unwrap();
 
     extend(
         &v,
@@ -278,7 +277,7 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
         quality_adjusted_delta: StoragePower::from(-15 * (32i64 << 30) / 10),
     };
     expected_update_claimed_power_params_ser =
-        serialize(&expected_update_claimed_power_params, "update_claimed_power params").unwrap();
+        IpldBlock::serialize_cbor(&expected_update_claimed_power_params).unwrap().unwrap();
 
     extend(
         &v,

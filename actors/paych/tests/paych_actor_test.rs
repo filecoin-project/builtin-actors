@@ -17,6 +17,7 @@ use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fvm_ipld_amt::Amt;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
@@ -39,11 +40,11 @@ struct LaneParams {
     nonce: u64,
 }
 
-fn call(rt: &mut MockRuntime, method_num: u64, ser: &RawBytes) -> RawBytes {
+fn call(rt: &mut MockRuntime, method_num: u64, ser: Option<IpldBlock>) -> RawBytes {
     rt.call::<PaychActor>(method_num, ser).unwrap()
 }
 
-fn expect_abort(rt: &mut MockRuntime, method_num: u64, ser: &RawBytes, exp: ExitCode) {
+fn expect_abort(rt: &mut MockRuntime, method_num: u64, ser: Option<IpldBlock>, exp: ExitCode) {
     let err = rt.call::<PaychActor>(method_num, ser).unwrap_err();
     assert_eq!(exp, err.exit_code());
 }
@@ -116,7 +117,7 @@ mod paych_constructor {
         expect_abort(
             &mut rt,
             METHOD_CONSTRUCTOR,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
             ExitCode::USR_ILLEGAL_ARGUMENT,
         );
     }
@@ -192,7 +193,7 @@ mod paych_constructor {
             expect_abort(
                 &mut rt,
                 METHOD_CONSTRUCTOR,
-                &RawBytes::serialize(params).unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
                 test_case.expected_exit_code,
             );
         }
@@ -231,7 +232,7 @@ mod paych_constructor {
         expect_abort(
             &mut rt,
             METHOD_CONSTRUCTOR,
-            &RawBytes::serialize(&params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
             ExitCode::USR_ILLEGAL_ARGUMENT,
         );
     }
@@ -268,7 +269,7 @@ mod paych_constructor {
         expect_abort(
             &mut rt,
             METHOD_CONSTRUCTOR,
-            &RawBytes::serialize(&params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
             ExitCode::USR_ILLEGAL_ARGUMENT,
         );
     }
@@ -458,7 +459,7 @@ mod create_lane_tests {
                 call(
                     &mut rt,
                     Method::UpdateChannelState as u64,
-                    &RawBytes::serialize(ucp).unwrap(),
+                    IpldBlock::serialize_cbor(&ucp).unwrap(),
                 );
 
                 let st: PState = rt.get_state();
@@ -473,7 +474,7 @@ mod create_lane_tests {
                 expect_abort(
                     &mut rt,
                     Method::UpdateChannelState as u64,
-                    &RawBytes::serialize(ucp).unwrap(),
+                    IpldBlock::serialize_cbor(&ucp).unwrap(),
                     test_case.exp_exit_code,
                 );
                 verify_initial_state(&rt, payer_addr, payee_addr);
@@ -509,7 +510,7 @@ mod update_channel_state_redeem {
         call(
             &mut rt,
             Method::UpdateChannelState as u64,
-            &RawBytes::serialize(UpdateChannelStateParams::from(sv)).unwrap(),
+            IpldBlock::serialize_cbor(&UpdateChannelStateParams::from(sv)).unwrap(),
         );
 
         rt.verify();
@@ -552,7 +553,7 @@ mod update_channel_state_redeem {
         call(
             &mut rt,
             Method::UpdateChannelState as u64,
-            &RawBytes::serialize(UpdateChannelStateParams::from(sv.clone())).unwrap(),
+            IpldBlock::serialize_cbor(&UpdateChannelStateParams::from(sv.clone())).unwrap(),
         );
 
         rt.verify();
@@ -592,7 +593,7 @@ mod update_channel_state_redeem {
         expect_abort(
             &mut rt,
             Method::UpdateChannelState as u64,
-            &RawBytes::serialize(UpdateChannelStateParams::from(sv)).unwrap(),
+            IpldBlock::serialize_cbor(&UpdateChannelStateParams::from(sv)).unwrap(),
             ExitCode::USR_ILLEGAL_ARGUMENT,
         );
 
@@ -623,7 +624,7 @@ mod merge_tests {
         expect_abort(
             rt,
             Method::UpdateChannelState as u64,
-            &RawBytes::serialize(UpdateChannelStateParams::from(sv)).unwrap(),
+            IpldBlock::serialize_cbor(&UpdateChannelStateParams::from(sv)).unwrap(),
             exp_exit_code,
         );
         rt.verify();
@@ -652,7 +653,7 @@ mod merge_tests {
         call(
             &mut rt,
             Method::UpdateChannelState as u64,
-            &RawBytes::serialize(UpdateChannelStateParams::from(sv.clone())).unwrap(),
+            IpldBlock::serialize_cbor(&UpdateChannelStateParams::from(sv.clone())).unwrap(),
         );
         rt.verify();
         let exp_merge_to = LaneState { redeemed: sv.amount.clone(), nonce: sv.nonce };
@@ -751,6 +752,7 @@ mod merge_tests {
 
 mod update_channel_state_extra {
     use super::*;
+    use fvm_ipld_encoding::DAG_CBOR;
 
     const OTHER_ADDR: u64 = 104;
 
@@ -777,7 +779,7 @@ mod update_channel_state_extra {
         rt.expect_send(
             other_addr,
             Method::UpdateChannelState as u64,
-            fake_params,
+            Some(IpldBlock { codec: DAG_CBOR, data: fake_params.to_vec() }),
             TokenAmount::zero(),
             RawBytes::default(),
             exit_code,
@@ -791,7 +793,7 @@ mod update_channel_state_extra {
         call(
             &mut rt,
             Method::UpdateChannelState as u64,
-            &RawBytes::serialize(UpdateChannelStateParams::from(sv)).unwrap(),
+            IpldBlock::serialize_cbor(&UpdateChannelStateParams::from(sv)).unwrap(),
         );
         rt.verify();
         check_state(&rt);
@@ -803,7 +805,7 @@ mod update_channel_state_extra {
         expect_abort(
             &mut rt,
             Method::UpdateChannelState as u64,
-            &RawBytes::serialize(UpdateChannelStateParams::from(sv)).unwrap(),
+            IpldBlock::serialize_cbor(&UpdateChannelStateParams::from(sv)).unwrap(),
             ExitCode::USR_UNSPECIFIED,
         );
         rt.verify();
@@ -818,7 +820,7 @@ fn update_channel_settling() {
     let state: PState = rt.get_state();
     rt.expect_validate_caller_addr(vec![state.from, state.to]);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
-    call(&mut rt, Method::Settle as u64, &RawBytes::default());
+    call(&mut rt, Method::Settle as u64, None);
 
     let exp_settling_at = SETTLE_DELAY + 10;
     let state: PState = rt.get_state();
@@ -855,7 +857,7 @@ fn update_channel_settling() {
             plaintext: ucp.sv.signing_bytes().unwrap(),
             result: Ok(()),
         });
-        call(&mut rt, Method::UpdateChannelState as u64, &RawBytes::serialize(&ucp).unwrap());
+        call(&mut rt, Method::UpdateChannelState as u64, IpldBlock::serialize_cbor(&ucp).unwrap());
         let new_state: PState = rt.get_state();
         assert_eq!(tc.exp_settling_at, new_state.settling_at);
         assert_eq!(tc.exp_min_settle_height, new_state.min_settle_height);
@@ -882,7 +884,7 @@ mod secret_preimage {
             result: Ok(()),
         });
 
-        call(&mut rt, Method::UpdateChannelState as u64, &RawBytes::serialize(ucp).unwrap());
+        call(&mut rt, Method::UpdateChannelState as u64, IpldBlock::serialize_cbor(&ucp).unwrap());
 
         rt.verify();
         check_state(&rt);
@@ -909,7 +911,7 @@ mod secret_preimage {
         expect_abort(
             &mut rt,
             Method::UpdateChannelState as u64,
-            &RawBytes::serialize(ucp).unwrap(),
+            IpldBlock::serialize_cbor(&ucp).unwrap(),
             ExitCode::USR_ILLEGAL_ARGUMENT,
         );
 
@@ -931,7 +933,7 @@ mod actor_settle {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
 
-        call(&mut rt, Method::Settle as u64, &RawBytes::default());
+        call(&mut rt, Method::Settle as u64, None);
 
         let exp_settling_at = EP + SETTLE_DELAY;
         state = rt.get_state();
@@ -947,15 +949,10 @@ mod actor_settle {
         let state: PState = rt.get_state();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
-        call(&mut rt, Method::Settle as u64, &RawBytes::default());
+        call(&mut rt, Method::Settle as u64, None);
 
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
-        expect_abort(
-            &mut rt,
-            Method::Settle as u64,
-            &RawBytes::default(),
-            ExitCode::USR_ILLEGAL_STATE,
-        );
+        expect_abort(&mut rt, Method::Settle as u64, None, ExitCode::USR_ILLEGAL_STATE);
     }
 
     #[test]
@@ -974,7 +971,7 @@ mod actor_settle {
             plaintext: sv.signing_bytes().unwrap(),
             result: Ok(()),
         });
-        call(&mut rt, Method::UpdateChannelState as u64, &RawBytes::serialize(&ucp).unwrap());
+        call(&mut rt, Method::UpdateChannelState as u64, IpldBlock::serialize_cbor(&ucp).unwrap());
 
         state = rt.get_state();
         assert_eq!(state.settling_at, 0);
@@ -983,7 +980,7 @@ mod actor_settle {
         // Settle.
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
-        call(&mut rt, Method::Settle as u64, &RawBytes::default());
+        call(&mut rt, Method::Settle as u64, None);
 
         state = rt.get_state();
         assert_eq!(state.settling_at, ucp.sv.min_settle_height);
@@ -1000,7 +997,7 @@ mod actor_settle {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
 
-        call(&mut rt, Method::Settle as u64, &RawBytes::default());
+        call(&mut rt, Method::Settle as u64, None);
 
         state = rt.get_state();
         rt.epoch = state.settling_at + 40;
@@ -1008,7 +1005,7 @@ mod actor_settle {
         expect_abort(
             &mut rt,
             Method::UpdateChannelState as u64,
-            &RawBytes::serialize(UpdateChannelStateParams::from(sv)).unwrap(),
+            IpldBlock::serialize_cbor(&UpdateChannelStateParams::from(sv)).unwrap(),
             ERR_CHANNEL_STATE_UPDATE_AFTER_SETTLED,
         );
     }
@@ -1029,7 +1026,7 @@ mod actor_collect {
         // Settle.
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, st.from);
         rt.expect_validate_caller_addr(vec![st.from, st.to]);
-        call(&mut rt, Method::Settle as u64, &Default::default());
+        call(&mut rt, Method::Settle as u64, None);
 
         let st: PState = rt.get_state();
         assert_eq!(st.settling_at, SETTLE_DELAY + curr_epoch);
@@ -1051,7 +1048,7 @@ mod actor_collect {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, st.to);
         rt.expect_validate_caller_addr(vec![st.from, st.to]);
         rt.expect_delete_actor(st.from);
-        let res = call(&mut rt, Method::Collect as u64, &Default::default());
+        let res = call(&mut rt, Method::Collect as u64, None);
         assert_eq!(res, RawBytes::default());
         check_state(&rt);
     }
@@ -1087,7 +1084,7 @@ mod actor_collect {
             if !tc.dont_settle {
                 rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
                 rt.expect_validate_caller_addr(vec![state.from, state.to]);
-                call(&mut rt, Method::Settle as u64, &RawBytes::default());
+                call(&mut rt, Method::Settle as u64, None);
                 state = rt.get_state();
                 assert_eq!(state.settling_at, SETTLE_DELAY + rt.epoch);
             }
@@ -1109,12 +1106,7 @@ mod actor_collect {
             // Collect.
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
             rt.expect_validate_caller_addr(vec![state.from, state.to]);
-            expect_abort(
-                &mut rt,
-                Method::Collect as u64,
-                &RawBytes::default(),
-                tc.exp_collect_exit,
-            );
+            expect_abort(&mut rt, Method::Collect as u64, None, tc.exp_collect_exit);
             check_state(&rt);
         }
     }
@@ -1189,7 +1181,7 @@ fn require_add_new_lane(rt: &mut MockRuntime, param: LaneParams) -> SignedVouche
     call(
         rt,
         Method::UpdateChannelState as u64,
-        &RawBytes::serialize(UpdateChannelStateParams::from(sv.clone())).unwrap(),
+        IpldBlock::serialize_cbor(&UpdateChannelStateParams::from(sv.clone())).unwrap(),
     );
     rt.verify();
     sv.nonce += 1;
@@ -1199,7 +1191,7 @@ fn require_add_new_lane(rt: &mut MockRuntime, param: LaneParams) -> SignedVouche
 fn construct_and_verify(rt: &mut MockRuntime, sender: Address, receiver: Address) {
     let params = ConstructorParams { from: sender, to: receiver };
     rt.expect_validate_caller_type(vec![Type::Init]);
-    call(rt, METHOD_CONSTRUCTOR, &RawBytes::serialize(&params).unwrap());
+    call(rt, METHOD_CONSTRUCTOR, IpldBlock::serialize_cbor(&params).unwrap());
     rt.verify();
     let sender_id = rt.id_addresses.get(&sender).unwrap_or(&sender);
     let receiver_id = rt.id_addresses.get(&receiver).unwrap_or(&receiver);

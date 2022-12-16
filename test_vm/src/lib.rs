@@ -31,6 +31,7 @@ use fil_actors_runtime::{MessageAccumulator, DATACAP_TOKEN_ACTOR_ADDR};
 use fil_builtin_actors_state::check::check_state_invariants;
 use fil_builtin_actors_state::check::Tree;
 use fvm_ipld_blockstore::MemoryBlockstore;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{CborStore, RawBytes};
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
@@ -424,9 +425,7 @@ impl<'bs> VM<'bs> {
             to,
             value,
             method,
-            params: params.map_or(RawBytes::default(), |p| {
-                serialize(&p, "params for apply message").unwrap()
-            }),
+            params: params.map(|p| IpldBlock::serialize_cbor(&p).unwrap().unwrap()),
         };
         let mut new_ctx = InvocationCtx {
             v: self,
@@ -531,7 +530,7 @@ pub struct InternalMessage {
     to: Address,
     value: TokenAmount,
     method: MethodNum,
-    params: RawBytes,
+    params: Option<IpldBlock>,
 }
 
 impl InternalMessage {
@@ -598,7 +597,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             to: target_id_addr,
             value: TokenAmount::zero(),
             method: METHOD_CONSTRUCTOR,
-            params: serialize::<Address>(target, "address").unwrap(),
+            params: IpldBlock::serialize_cbor(target).unwrap(),
         };
         {
             let mut new_ctx = InvocationCtx {
@@ -677,19 +676,19 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         let params = self.msg.params.clone();
         let mut res = match ACTOR_TYPES.get(&to_actor.code).expect("Target actor is not a builtin")
         {
-            Type::Account => AccountActor::invoke_method(self, self.msg.method, &params),
-            Type::Cron => CronActor::invoke_method(self, self.msg.method, &params),
-            Type::Init => InitActor::invoke_method(self, self.msg.method, &params),
-            Type::Market => MarketActor::invoke_method(self, self.msg.method, &params),
-            Type::Miner => MinerActor::invoke_method(self, self.msg.method, &params),
-            Type::Multisig => MultisigActor::invoke_method(self, self.msg.method, &params),
-            Type::System => SystemActor::invoke_method(self, self.msg.method, &params),
-            Type::Reward => RewardActor::invoke_method(self, self.msg.method, &params),
-            Type::Power => PowerActor::invoke_method(self, self.msg.method, &params),
-            Type::PaymentChannel => PaychActor::invoke_method(self, self.msg.method, &params),
-            Type::VerifiedRegistry => VerifregActor::invoke_method(self, self.msg.method, &params),
+            Type::Account => AccountActor::invoke_method(self, self.msg.method, params),
+            Type::Cron => CronActor::invoke_method(self, self.msg.method, params),
+            Type::Init => InitActor::invoke_method(self, self.msg.method, params),
+            Type::Market => MarketActor::invoke_method(self, self.msg.method, params),
+            Type::Miner => MinerActor::invoke_method(self, self.msg.method, params),
+            Type::Multisig => MultisigActor::invoke_method(self, self.msg.method, params),
+            Type::System => SystemActor::invoke_method(self, self.msg.method, params),
+            Type::Reward => RewardActor::invoke_method(self, self.msg.method, params),
+            Type::Power => PowerActor::invoke_method(self, self.msg.method, params),
+            Type::PaymentChannel => PaychActor::invoke_method(self, self.msg.method, params),
+            Type::VerifiedRegistry => VerifregActor::invoke_method(self, self.msg.method, params),
             // Type::EVM => panic!("no EVM"),
-            Type::DataCap => DataCapActor::invoke_method(self, self.msg.method, &params),
+            Type::DataCap => DataCapActor::invoke_method(self, self.msg.method, params),
         };
         if res.is_ok() && !self.caller_validated {
             res = Err(actor_error!(assertion_failed, "failed to validate caller"));
@@ -823,7 +822,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         &self,
         to: &Address,
         method: MethodNum,
-        params: RawBytes,
+        params: Option<IpldBlock>,
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError> {
         if !self.allow_side_effects {
@@ -1086,7 +1085,7 @@ pub struct ExpectInvocation {
     pub code: Option<ExitCode>,
     pub from: Option<Address>,
     pub value: Option<TokenAmount>,
-    pub params: Option<RawBytes>,
+    pub params: Option<Option<IpldBlock>>,
     pub ret: Option<RawBytes>,
     pub subinvocs: Option<Vec<ExpectInvocation>>,
 }

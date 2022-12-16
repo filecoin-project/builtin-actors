@@ -26,6 +26,7 @@ use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MES
 
 mod harness;
 
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use harness::*;
 use num_traits::Zero;
 
@@ -260,7 +261,7 @@ fn fail_when_provider_has_some_funds_but_not_enough_for_a_deal() {
     expect_query_network_info(&mut rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
 
-    let auth_param = RawBytes::serialize(AuthenticateMessageParams {
+    let auth_param = IpldBlock::serialize_cbor(&AuthenticateMessageParams {
         signature: buf.to_vec(),
         message: buf.to_vec(),
     })
@@ -279,7 +280,7 @@ fn fail_when_provider_has_some_funds_but_not_enough_for_a_deal() {
         ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MarketActor>(
             Method::PublishStorageDeals as u64,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         ),
     );
 
@@ -319,12 +320,12 @@ fn fail_when_deals_have_different_providers() {
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let authenticate_param1 = RawBytes::serialize(AuthenticateMessageParams {
+    let authenticate_param1 = IpldBlock::serialize_cbor(&AuthenticateMessageParams {
         signature: buf1.to_vec(),
         message: buf1.to_vec(),
     })
     .unwrap();
-    let authenticate_param2 = RawBytes::serialize(AuthenticateMessageParams {
+    let authenticate_param2 = IpldBlock::serialize_cbor(&AuthenticateMessageParams {
         signature: buf2.to_vec(),
         message: buf2.to_vec(),
     })
@@ -350,7 +351,7 @@ fn fail_when_deals_have_different_providers() {
     let psd_ret: PublishStorageDealsReturn = rt
         .call::<MarketActor>(
             Method::PublishStorageDeals as u64,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )
         .unwrap()
         .deserialize()
@@ -381,7 +382,7 @@ fn fail_when_caller_is_not_of_signable_type() {
         ExitCode::USR_FORBIDDEN,
         rt.call::<MarketActor>(
             Method::PublishStorageDeals as u64,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         ),
     );
     check_state(&rt);
@@ -397,7 +398,7 @@ fn fail_when_no_deals_in_params() {
         ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MarketActor>(
             Method::PublishStorageDeals as u64,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         ),
     );
     check_state(&rt);
@@ -422,7 +423,7 @@ fn fail_to_resolve_provider_address() {
         ExitCode::USR_NOT_FOUND,
         rt.call::<MarketActor>(
             Method::PublishStorageDeals as u64,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         ),
     );
     check_state(&rt);
@@ -447,7 +448,7 @@ fn caller_is_not_the_same_as_the_worker_address_for_miner() {
         ExitCode::USR_FORBIDDEN,
         rt.call::<MarketActor>(
             Method::PublishStorageDeals as u64,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         ),
     );
 
@@ -475,7 +476,7 @@ fn fails_if_provider_is_not_a_storage_miner_actor() {
         ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MarketActor>(
             Method::PublishStorageDeals as u64,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         ),
     );
 

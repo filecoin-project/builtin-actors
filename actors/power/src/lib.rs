@@ -9,9 +9,10 @@ use ext::init;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, make_map_with_root_and_bitwidth, ActorDowncast, ActorError, Multimap,
-    CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_dispatch, actor_error, make_map_with_root_and_bitwidth, ActorDowncast, ActorError,
+    Multimap, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
@@ -67,6 +68,7 @@ pub const ERR_TOO_MANY_PROVE_COMMITS: ExitCode = ExitCode::new(32);
 
 /// Storage Power Actor
 pub struct Actor;
+
 impl Actor {
     /// Constructor for StoragePower actor
     fn constructor(rt: &mut impl Runtime) -> Result<(), ActorError> {
@@ -100,7 +102,7 @@ impl Actor {
             .send(
                 &INIT_ACTOR_ADDR,
                 ext::init::EXEC_METHOD,
-                RawBytes::serialize(init::ExecParams {
+                IpldBlock::serialize_cbor(&init::ExecParams {
                     code_cid: miner_actor_code_cid,
                     constructor_params,
                 })?,
@@ -145,6 +147,7 @@ impl Actor {
             })?;
             Ok(())
         })?;
+        println!("12345");
         Ok(CreateMinerReturn { id_address, robust_address })
     }
 
@@ -234,7 +237,7 @@ impl Actor {
             .send(
                 &REWARD_ACTOR_ADDR,
                 ext::reward::Method::ThisEpochReward as MethodNum,
-                RawBytes::default(),
+                None,
                 TokenAmount::zero(),
             )
             .map_err(|e| e.wrap("failed to check epoch baseline power"))?
@@ -253,14 +256,14 @@ impl Actor {
             // Can assume delta is one since cron is invoked every epoch.
             st.update_smoothed_estimate(1);
 
-            Ok(RawBytes::serialize(&BigIntSer(&st.this_epoch_raw_byte_power)))
+            Ok(IpldBlock::serialize_cbor(&BigIntSer(&st.this_epoch_raw_byte_power))?)
         })?;
 
         // Update network KPA in reward actor
         rt.send(
             &REWARD_ACTOR_ADDR,
             ext::reward::UPDATE_NETWORK_KPI,
-            this_epoch_raw_byte_power?,
+            this_epoch_raw_byte_power,
             TokenAmount::zero(),
         )
         .map_err(|e| e.wrap("failed to update network KPI with reward actor"))?;
@@ -270,12 +273,12 @@ impl Actor {
 
     fn update_pledge_total(
         rt: &mut impl Runtime,
-        pledge_delta: TokenAmount,
+        params: UpdatePledgeTotalParams,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         rt.transaction(|st: &mut State, rt| {
             st.validate_miner_has_claim(rt.store(), &rt.message().caller())?;
-            st.add_pledge_total(pledge_delta);
+            st.add_pledge_total(params.pledge_delta);
             if st.total_pledge_collateral.is_negative() {
                 return Err(actor_error!(
                     illegal_state,
@@ -481,7 +484,7 @@ impl Actor {
             if let Err(e) = rt.send(
                 &m,
                 ext::miner::CONFIRM_SECTOR_PROOFS_VALID_METHOD,
-                RawBytes::serialize(&ext::miner::ConfirmSectorProofsParams {
+                IpldBlock::serialize_cbor(&ext::miner::ConfirmSectorProofsParams {
                     sectors: successful,
                     reward_smoothed: rewret.this_epoch_reward_smoothed.clone(),
                     reward_baseline_power: rewret.this_epoch_baseline_power.clone(),
@@ -564,7 +567,7 @@ impl Actor {
 
         let mut failed_miner_crons = Vec::new();
         for event in cron_events {
-            let params = RawBytes::serialize(ext::miner::DeferredCronEventParams {
+            let params = IpldBlock::serialize_cbor(&ext::miner::DeferredCronEventParams {
                 event_payload: event.callback_payload.bytes().to_owned(),
                 reward_smoothed: rewret.this_epoch_reward_smoothed.clone(),
                 quality_adj_power_smoothed: st.this_epoch_qa_power_smoothed.clone(),
@@ -617,49 +620,15 @@ impl Actor {
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        params: &RawBytes,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-    {
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(rt)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::CreateMiner) => {
-                let res = Self::create_miner(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::UpdateClaimedPower) => {
-                Self::update_claimed_power(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::EnrollCronEvent) => {
-                Self::enroll_cron_event(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::OnEpochTickEnd) => {
-                Self::on_epoch_tick_end(rt)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::UpdatePledgeTotal) => {
-                let param: TokenAmount = cbor::deserialize_params(params)?;
-                Self::update_pledge_total(rt, param)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::SubmitPoRepForBulkVerify) => {
-                Self::submit_porep_for_bulk_verify(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::CurrentTotalPower) => {
-                let res = Self::current_total_power(rt)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            None => Err(actor_error!(unhandled_message; "Invalid method")),
-        }
+    type Methods = Method;
+    actor_dispatch! {
+        Constructor => constructor,
+        CreateMiner => create_miner,
+        UpdateClaimedPower => update_claimed_power            ,
+        EnrollCronEvent => enroll_cron_event,
+        OnEpochTickEnd => on_epoch_tick_end,
+        UpdatePledgeTotal => update_pledge_total,
+        SubmitPoRepForBulkVerify => submit_porep_for_bulk_verify,
+        CurrentTotalPower => current_total_power,
     }
 }

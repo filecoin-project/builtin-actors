@@ -403,7 +403,7 @@ fn check_verifreg_against_datacap(
     }
     // Verifreg token balance matches unclaimed allocations.
     let pending_alloc_total: DataCap =
-        verifreg_summary.allocations.iter().map(|(_, alloc)| alloc.size.0).sum();
+        verifreg_summary.allocations.values().map(|alloc| alloc.size.0).sum();
     let verifreg_balance = datacap_summary
         .balance_map
         .as_ref()
