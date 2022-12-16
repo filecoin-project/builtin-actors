@@ -28,10 +28,16 @@ use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
+<<<<<<< HEAD
     actor_error, cbor, restrict_internal_api, ActorContext, ActorDowncast, ActorError,
     AsActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR,
+=======
+    actor_dispatch, actor_error, ActorContext, ActorDowncast, ActorError, AsActorError,
+    BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE, CRON_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR,
+>>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
     REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 
 pub use self::deal::*;
 use self::policy::*;
@@ -144,7 +150,7 @@ impl Actor {
             Ok(ex)
         })?;
 
-        rt.send(&recipient, METHOD_SEND, RawBytes::default(), amount_extracted.clone())?;
+        rt.send(&recipient, METHOD_SEND, None, amount_extracted.clone())?;
 
         Ok(WithdrawBalanceReturn { amount_withdrawn: amount_extracted })
     }
@@ -333,7 +339,7 @@ impl Actor {
                     .send(
                         &DATACAP_TOKEN_ACTOR_ADDR,
                         ext::datacap::TRANSFER_FROM_METHOD as u64,
-                        serialize(&params, "transfer parameters")?,
+                        IpldBlock::serialize_cbor(&params)?,
                         TokenAmount::zero(),
                     )
                     .and_then(|ret| datacap_transfer_response(&ret));
@@ -838,7 +844,7 @@ impl Actor {
         })?;
 
         if !amount_slashed.is_zero() {
-            rt.send(&BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, RawBytes::default(), amount_slashed)?;
+            rt.send(&BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, None, amount_slashed)?;
         }
         Ok(())
     }
@@ -1248,7 +1254,7 @@ fn deal_proposal_is_internally_valid(
     rt.send(
         &proposal.proposal.client,
         ext::account::AUTHENTICATE_MESSAGE_METHOD,
-        RawBytes::serialize(ext::account::AuthenticateMessageParams {
+        IpldBlock::serialize_cbor(&ext::account::AuthenticateMessageParams {
             signature: signature_bytes,
             message: proposal_bytes.to_vec(),
         })?,
@@ -1286,7 +1292,7 @@ fn request_miner_control_addrs(
     let ret = rt.send(
         &Address::new_id(miner_id),
         ext::miner::CONTROL_ADDRESSES_METHOD,
-        RawBytes::default(),
+        None,
         TokenAmount::zero(),
     )?;
     let addrs: ext::miner::GetControlAddressesReturnParams = ret.deserialize()?;
@@ -1325,7 +1331,7 @@ fn request_current_baseline_power(rt: &mut impl Runtime) -> Result<StoragePower,
     let rwret = rt.send(
         &REWARD_ACTOR_ADDR,
         ext::reward::THIS_EPOCH_REWARD_METHOD,
-        RawBytes::default(),
+        None,
         TokenAmount::zero(),
     )?;
     let ret: ThisEpochRewardReturn = rwret.deserialize()?;
@@ -1340,7 +1346,7 @@ fn request_current_network_power(
     let rwret = rt.send(
         &STORAGE_POWER_ACTOR_ADDR,
         ext::power::CURRENT_TOTAL_POWER_METHOD,
-        RawBytes::default(),
+        None,
         TokenAmount::zero(),
     )?;
     let ret: ext::power::CurrentTotalPowerReturnParams = rwret.deserialize()?;
@@ -1353,6 +1359,7 @@ pub fn deal_id_key(k: DealID) -> BytesKey {
 }
 
 impl ActorCode for Actor {
+<<<<<<< HEAD
     fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
@@ -1446,5 +1453,18 @@ impl ActorCode for Actor {
             }
             None => Err(actor_error!(unhandled_message, "Invalid method")),
         }
+=======
+    type Methods = Method;
+    actor_dispatch! {
+        Constructor => constructor,
+        AddBalance => add_balance,
+        WithdrawBalance => withdraw_balance,
+        PublishStorageDeals => publish_storage_deals,
+        VerifyDealsForActivation => verify_deals_for_activation,
+        ActivateDeals => activate_deals,
+        OnMinerSectorsTerminate => on_miner_sectors_terminate,
+        ComputeDataCommitment => compute_data_commitment,
+        CronTick => cron_tick,
+>>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
     }
 }

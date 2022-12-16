@@ -20,6 +20,7 @@ use fvm_shared::METHOD_SEND;
 mod util;
 
 use fil_actor_miner::testing::check_state_invariants;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use util::*;
 
 const PERIOD_OFFSET: ChainEpoch = 1808;
@@ -136,14 +137,15 @@ fn penalty_is_partially_burnt_and_stored_as_fee_debt() {
     rt.expect_send(
         BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
-        RawBytes::default(),
+        None,
         expect_burnt,
         RawBytes::default(),
         ExitCode::OK,
     );
 
     let params = ApplyRewardParams { reward, penalty };
-    rt.call::<Actor>(Method::ApplyRewards as u64, &RawBytes::serialize(params).unwrap()).unwrap();
+    rt.call::<Actor>(Method::ApplyRewards as u64, IpldBlock::serialize_cbor(&params).unwrap())
+        .unwrap();
     rt.verify();
 
     let st = h.get_state(&rt);
@@ -194,7 +196,7 @@ fn rewards_pay_back_fee_debt() {
     rt.expect_send(
         STORAGE_POWER_ACTOR_ADDR,
         PowerMethod::UpdatePledgeTotal as u64,
-        RawBytes::serialize(&pledge_delta).unwrap(),
+        IpldBlock::serialize_cbor(&pledge_delta).unwrap(),
         TokenAmount::zero(),
         RawBytes::default(),
         ExitCode::OK,
@@ -204,14 +206,20 @@ fn rewards_pay_back_fee_debt() {
     rt.expect_send(
         BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
+<<<<<<< HEAD
         RawBytes::default(),
         expect_burnt,
+=======
+        None,
+        expect_burnt.clone(),
+>>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
         RawBytes::default(),
         ExitCode::OK,
     );
 
     let params = ApplyRewardParams { reward: reward.clone(), penalty };
-    rt.call::<Actor>(Method::ApplyRewards as u64, &RawBytes::serialize(params).unwrap()).unwrap();
+    rt.call::<Actor>(Method::ApplyRewards as u64, IpldBlock::serialize_cbor(&params).unwrap())
+        .unwrap();
     rt.verify();
 
     let st = h.get_state(&rt);

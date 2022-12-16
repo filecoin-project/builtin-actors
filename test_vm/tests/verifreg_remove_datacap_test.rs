@@ -22,11 +22,11 @@ use fil_actor_verifreg::{
 };
 use fil_actor_verifreg::{AddrPairKey, Method as VerifregMethod};
 use fil_actor_verifreg::{RemoveDataCapProposal, RemoveDataCapProposalID, State as VerifregState};
-use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::{
     make_map_with_root_and_bitwidth, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use test_vm::util::{apply_code, apply_ok, create_accounts, verifreg_add_verifier};
 use test_vm::{ExpectInvocation, TEST_VERIFREG_ROOT_ADDR, VM};
 
@@ -67,11 +67,16 @@ fn remove_datacap_simple_successful_path() {
     ExpectInvocation {
         to: VERIFIED_REGISTRY_ACTOR_ADDR,
         method: VerifregMethod::AddVerifiedClient as u64,
-        params: Some(serialize(&add_verified_client_params, "add verifier params").unwrap()),
+        params: Some(IpldBlock::serialize_cbor(&add_verified_client_params).unwrap()),
         subinvocs: Some(vec![ExpectInvocation {
             to: DATACAP_TOKEN_ACTOR_ADDR,
+<<<<<<< HEAD
             method: DataCapMethod::MintExported as u64,
             params: Some(serialize(&mint_params, "mint params").unwrap()),
+=======
+            method: DataCapMethod::Mint as u64,
+            params: Some(IpldBlock::serialize_cbor(&mint_params).unwrap()),
+>>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
             subinvocs: None,
             ..Default::default()
         }]),
@@ -380,7 +385,7 @@ fn expect_remove_datacap(
     ExpectInvocation {
         to: *VERIFIED_REGISTRY_ACTOR_ADDR,
         method: VerifregMethod::RemoveVerifiedClientDataCap as u64,
-        params: Some(serialize(&params, "remove datacap params").unwrap()),
+        params: Some(IpldBlock::serialize_cbor(&params).unwrap()),
         code: Some(ExitCode::OK),
         subinvocs: Some(vec![
             ExpectInvocation {
@@ -419,10 +424,15 @@ fn expect_remove_datacap(
             },
             ExpectInvocation {
                 to: DATACAP_TOKEN_ACTOR_ADDR,
+<<<<<<< HEAD
                 method: DataCapMethod::BalanceExported as u64,
                 params: Some(
                     serialize(&params.verified_client_to_remove, "balance_of params").unwrap(),
                 ),
+=======
+                method: DataCapMethod::BalanceOf as u64,
+                params: Some(IpldBlock::serialize_cbor(&params.verified_client_to_remove).unwrap()),
+>>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
                 code: Some(ExitCode::OK),
                 subinvocs: None,
                 ..Default::default()
@@ -431,6 +441,7 @@ fn expect_remove_datacap(
                 to: DATACAP_TOKEN_ACTOR_ADDR,
                 method: DataCapMethod::DestroyExported as u64,
                 params: Some(
+<<<<<<< HEAD
                     serialize(
                         &DestroyParams {
                             owner: params.verified_client_to_remove,
@@ -438,6 +449,14 @@ fn expect_remove_datacap(
                         },
                         "destroy params",
                     )
+=======
+                    IpldBlock::serialize_cbor(&DestroyParams {
+                        owner: params.verified_client_to_remove,
+                        amount: TokenAmount::from_whole(
+                            params.data_cap_amount_to_remove.to_i64().unwrap(),
+                        ),
+                    })
+>>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
                     .unwrap(),
                 ),
                 code: Some(ExitCode::OK),

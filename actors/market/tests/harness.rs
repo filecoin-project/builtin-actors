@@ -31,6 +31,7 @@ use fil_actors_runtime::{
     DATACAP_TOKEN_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
     STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{to_vec, RawBytes};
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
@@ -116,10 +117,7 @@ pub fn check_state_with_expected(rt: &MockRuntime, expected_patterns: &[Regex]) 
 pub fn construct_and_verify(rt: &mut MockRuntime) {
     rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
-    assert_eq!(
-        RawBytes::default(),
-        rt.call::<MarketActor>(METHOD_CONSTRUCTOR, &RawBytes::default()).unwrap()
-    );
+    assert_eq!(RawBytes::default(), rt.call::<MarketActor>(METHOD_CONSTRUCTOR, None).unwrap());
     rt.verify();
 }
 
@@ -147,7 +145,7 @@ pub fn expect_get_control_addresses(
     rt.expect_send(
         provider,
         ext::miner::CONTROL_ADDRESSES_METHOD,
-        RawBytes::default(),
+        None,
         TokenAmount::zero(),
         RawBytes::serialize(result).unwrap(),
         ExitCode::OK,
@@ -175,9 +173,9 @@ pub fn add_provider_funds(rt: &mut MockRuntime, amount: TokenAmount, addrs: &Min
         RawBytes::default(),
         rt.call::<MarketActor>(
             Method::AddBalance as u64,
-            &RawBytes::serialize(addrs.provider).unwrap(),
+            IpldBlock::serialize_cbor(&addrs.provider).unwrap(),
         )
-        .unwrap()
+        .unwrap(),
     );
     rt.verify();
     rt.add_balance(amount);
@@ -190,7 +188,7 @@ pub fn add_participant_funds(rt: &mut MockRuntime, addr: Address, amount: TokenA
 
     rt.expect_validate_caller_any();
     assert!(rt
-        .call::<MarketActor>(Method::AddBalance as u64, &RawBytes::serialize(addr).unwrap())
+        .call::<MarketActor>(Method::AddBalance as u64, IpldBlock::serialize_cbor(&addr).unwrap())
         .is_ok());
 
     rt.verify();
@@ -215,13 +213,16 @@ pub fn withdraw_provider_balance(
     rt.expect_send(
         owner,
         METHOD_SEND,
-        RawBytes::default(),
+        None,
         expected_send.clone(),
         RawBytes::default(),
         ExitCode::OK,
     );
     let ret: WithdrawBalanceReturn = rt
-        .call::<MarketActor>(Method::WithdrawBalance as u64, &RawBytes::serialize(params).unwrap())
+        .call::<MarketActor>(
+            Method::WithdrawBalance as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )
         .unwrap()
         .deserialize()
         .unwrap();
@@ -244,7 +245,7 @@ pub fn withdraw_client_balance(
     rt.expect_send(
         client,
         METHOD_SEND,
-        RawBytes::default(),
+        None,
         expected_send.clone(),
         RawBytes::default(),
         ExitCode::OK,
@@ -254,7 +255,10 @@ pub fn withdraw_client_balance(
     let params = WithdrawBalanceParams { provider_or_client: client, amount: withdraw_amount };
 
     let ret: WithdrawBalanceReturn = rt
-        .call::<MarketActor>(Method::WithdrawBalance as u64, &RawBytes::serialize(params).unwrap())
+        .call::<MarketActor>(
+            Method::WithdrawBalance as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )
         .unwrap()
         .deserialize()
         .unwrap();
@@ -291,8 +295,10 @@ pub fn activate_deals_raw(
 
     let params = ActivateDealsParams { deal_ids: deal_ids.to_vec(), sector_expiry };
 
-    let ret = rt
-        .call::<MarketActor>(Method::ActivateDeals as u64, &RawBytes::serialize(params).unwrap())?;
+    let ret = rt.call::<MarketActor>(
+        Method::ActivateDeals as u64,
+        IpldBlock::serialize_cbor(&params).unwrap(),
+    )?;
     rt.verify();
 
     for d in deal_ids {
@@ -368,7 +374,7 @@ pub fn cron_tick_and_assert_balances(
         rt.expect_send(
             BURNT_FUNDS_ACTOR_ADDR,
             METHOD_SEND,
-            RawBytes::default(),
+            None,
             d.provider_collateral.clone(),
             RawBytes::default(),
             ExitCode::OK,
@@ -450,7 +456,7 @@ pub fn publish_deals(
     rt.expect_send(
         addrs.provider,
         ext::miner::CONTROL_ADDRESSES_METHOD,
-        RawBytes::default(),
+        None,
         TokenAmount::zero(),
         RawBytes::serialize(return_value).unwrap(),
         ExitCode::OK,
@@ -470,7 +476,7 @@ pub fn publish_deals(
         params.deals.push(client_proposal);
 
         // expect an invocation of authenticate_message to verify the above signature
-        let param = RawBytes::serialize(AuthenticateMessageParams {
+        let param = IpldBlock::serialize_cbor(&AuthenticateMessageParams {
             signature: "does not matter".as_bytes().to_vec(),
             message: buf.to_vec(),
         })
@@ -511,9 +517,15 @@ pub fn publish_deals(
                 new_allocations: vec![alloc_id],
             };
             rt.expect_send(
+<<<<<<< HEAD
                 VERIFIED_REGISTRY_ACTOR_ADDR,
                 ext::verifreg::USE_BYTES_METHOD as u64,
                 param,
+=======
+                DATACAP_TOKEN_ACTOR_ADDR,
+                ext::datacap::TRANSFER_FROM_METHOD as u64,
+                IpldBlock::serialize_cbor(&params).unwrap(),
+>>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
                 TokenAmount::zero(),
                 serialize(
                     &TransferFromReturn {
@@ -551,7 +563,7 @@ pub fn publish_deals(
     let ret: PublishStorageDealsReturn = rt
         .call::<MarketActor>(
             Method::PublishStorageDeals as u64,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )
         .unwrap()
         .deserialize()
@@ -594,7 +606,7 @@ pub fn publish_deals_expect_abort(
     let client_signature = Signature::new_bls(deal_serialized.to_vec());
 
     expect_query_network_info(rt);
-    let auth_param = RawBytes::serialize(AuthenticateMessageParams {
+    let auth_param = IpldBlock::serialize_cbor(&AuthenticateMessageParams {
         signature: deal_serialized.to_vec(),
         message: deal_serialized.to_vec(),
     })
@@ -617,7 +629,7 @@ pub fn publish_deals_expect_abort(
         expected_exit_code,
         rt.call::<MarketActor>(
             Method::PublishStorageDeals as u64,
-            &RawBytes::serialize(&deal_params).unwrap(),
+            IpldBlock::serialize_cbor(&deal_params).unwrap(),
         ),
     );
 
@@ -644,7 +656,7 @@ pub fn cron_tick_raw(rt: &mut MockRuntime) -> Result<RawBytes, ActorError> {
     rt.expect_validate_caller_addr(vec![CRON_ACTOR_ADDR]);
     rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
 
-    rt.call::<MarketActor>(Method::CronTick as u64, &RawBytes::default())
+    rt.call::<MarketActor>(Method::CronTick as u64, None)
 }
 
 pub fn expect_query_network_info(rt: &mut MockRuntime) {
@@ -667,7 +679,7 @@ pub fn expect_query_network_info(rt: &mut MockRuntime) {
     rt.expect_send(
         REWARD_ACTOR_ADDR,
         RewardMethod::ThisEpochReward as u64,
-        RawBytes::default(),
+        None,
         TokenAmount::zero(),
         RawBytes::serialize(current_reward).unwrap(),
         ExitCode::OK,
@@ -675,7 +687,7 @@ pub fn expect_query_network_info(rt: &mut MockRuntime) {
     rt.expect_send(
         STORAGE_POWER_ACTOR_ADDR,
         PowerMethod::CurrentTotalPower as u64,
-        RawBytes::default(),
+        None,
         TokenAmount::zero(),
         RawBytes::serialize(current_power).unwrap(),
         ExitCode::OK,
@@ -771,7 +783,7 @@ where
 
     let buf = RawBytes::serialize(deal_proposal.clone()).expect("failed to marshal deal proposal");
     let sig = Signature::new_bls(buf.to_vec());
-    let auth_param = RawBytes::serialize(AuthenticateMessageParams {
+    let auth_param = IpldBlock::serialize_cbor(&AuthenticateMessageParams {
         signature: buf.to_vec(),
         message: buf.to_vec(),
     })
@@ -797,7 +809,7 @@ where
         exit_code,
         rt.call::<MarketActor>(
             Method::PublishStorageDeals as u64,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )
         .unwrap_err()
         .exit_code()
@@ -990,7 +1002,7 @@ pub fn terminate_deals_raw(
 
     rt.call::<MarketActor>(
         Method::OnMinerSectorsTerminate as u64,
-        &RawBytes::serialize(params).unwrap(),
+        IpldBlock::serialize_cbor(&params).unwrap(),
     )
 }
 
@@ -1028,7 +1040,7 @@ where
     let ret: VerifyDealsForActivationReturn = rt
         .call::<MarketActor>(
             Method::VerifyDealsForActivation as u64,
-            &RawBytes::serialize(param).unwrap(),
+            IpldBlock::serialize_cbor(&param).unwrap(),
         )
         .unwrap()
         .deserialize()

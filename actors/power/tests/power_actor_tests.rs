@@ -22,7 +22,11 @@ use fil_actor_power::{
     EnrollCronEventParams, Method, MinerRawPowerParams, MinerRawPowerReturn, NetworkRawPowerReturn,
     State, UpdateClaimedPowerParams, CONSENSUS_MINER_MIN_MINERS,
 };
+<<<<<<< HEAD
 use fil_actors_runtime::cbor::serialize;
+=======
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+>>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
 
 use crate::harness::*;
 
@@ -79,6 +83,37 @@ fn create_miner() {
 }
 
 #[test]
+<<<<<<< HEAD
+=======
+fn create_miner_given_caller_is_not_of_signable_type_should_fail() {
+    let (h, mut rt) = setup();
+
+    let peer = "miner".as_bytes().to_vec();
+    let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
+
+    let create_miner_params = CreateMinerParams {
+        owner: *OWNER,
+        worker: *OWNER,
+        window_post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        peer,
+        multiaddrs,
+    };
+
+    rt.set_caller(*MINER_ACTOR_CODE_ID, *OWNER);
+    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+    expect_abort(
+        ExitCode::USR_FORBIDDEN,
+        rt.call::<PowerActor>(
+            Method::CreateMiner as u64,
+            IpldBlock::serialize_cbor(&&create_miner_params).unwrap(),
+        ),
+    );
+    rt.verify();
+    h.check_state(&rt);
+}
+
+#[test]
+>>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
 fn create_miner_given_send_to_init_actor_fails_should_fail() {
     let (h, mut rt) = setup();
 
@@ -115,7 +150,7 @@ fn create_miner_given_send_to_init_actor_fails_should_fail() {
     rt.expect_send(
         INIT_ACTOR_ADDR,
         EXEC_METHOD,
-        RawBytes::serialize(message_params).unwrap(),
+        IpldBlock::serialize_cbor(&message_params).unwrap(),
         TokenAmount::from_atto(10),
         RawBytes::default(),
         ExitCode::SYS_INSUFFICIENT_FUNDS,
@@ -125,7 +160,7 @@ fn create_miner_given_send_to_init_actor_fails_should_fail() {
         ExitCode::SYS_INSUFFICIENT_FUNDS,
         rt.call::<PowerActor>(
             Method::CreateMiner as u64,
-            &RawBytes::serialize(&create_miner_params).unwrap(),
+            IpldBlock::serialize_cbor(&create_miner_params).unwrap(),
         ),
     );
     rt.verify();
@@ -148,7 +183,7 @@ fn claimed_power_given_caller_is_not_storage_miner_should_fail() {
         ExitCode::USR_FORBIDDEN,
         rt.call::<PowerActor>(
             Method::UpdateClaimedPower as u64,
-            &RawBytes::serialize(&params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         ),
     );
 
@@ -172,7 +207,7 @@ fn claimed_power_given_claim_does_not_exist_should_fail() {
         ExitCode::USR_NOT_FOUND,
         rt.call::<PowerActor>(
             Method::UpdateClaimedPower as u64,
-            &RawBytes::serialize(&params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         ),
     );
 
@@ -431,7 +466,7 @@ fn enroll_cron_epoch_given_negative_epoch_should_fail() {
         ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<PowerActor>(
             Method::EnrollCronEvent as u64,
-            &RawBytes::serialize(&params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         ),
     );
 
@@ -618,7 +653,7 @@ fn given_no_miner_claim_update_pledge_total_should_abort() {
     h.create_miner_basic(&mut rt, *OWNER, *OWNER, *MINER).unwrap();
 
     // explicitly delete miner claim
-    h.delete_claim(&mut rt, &*MINER);
+    h.delete_claim(&mut rt, &MINER);
 
     rt.set_caller(*MINER_ACTOR_CODE_ID, *MINER);
     rt.expect_validate_caller_type(vec![Type::Miner]);
@@ -627,7 +662,7 @@ fn given_no_miner_claim_update_pledge_total_should_abort() {
         "unknown miner",
         rt.call::<PowerActor>(
             Method::UpdatePledgeTotal as u64,
-            &RawBytes::serialize(&TokenAmount::from_atto(1_000_000)).unwrap(),
+            IpldBlock::serialize_cbor(&&TokenAmount::from_atto(1_000_000)).unwrap(),
         ),
     );
 
@@ -662,7 +697,7 @@ mod cron_tests {
         rt.expect_send(
             REWARD_ACTOR_ADDR,
             RewardMethod::UpdateNetworkKPI as u64,
-            RawBytes::serialize(BigIntSer(&expected_power)).unwrap(),
+            IpldBlock::serialize_cbor(&BigIntSer(&expected_power)).unwrap(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
@@ -670,7 +705,7 @@ mod cron_tests {
         rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
         rt.expect_batch_verify_seals(Vec::new(), Ok(Vec::new()));
 
-        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
+        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, None).unwrap();
 
         rt.verify();
         h.check_state(&rt);
@@ -750,7 +785,7 @@ mod cron_tests {
         rt.expect_send(
             miner1,
             ON_DEFERRED_CRON_EVENT_METHOD,
-            RawBytes::serialize(params1).unwrap(),
+            IpldBlock::serialize_cbor(&params1).unwrap(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
@@ -764,7 +799,7 @@ mod cron_tests {
         rt.expect_send(
             miner2,
             ON_DEFERRED_CRON_EVENT_METHOD,
-            RawBytes::serialize(params2).unwrap(),
+            IpldBlock::serialize_cbor(&params2).unwrap(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
@@ -773,14 +808,14 @@ mod cron_tests {
         rt.expect_send(
             REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
-            RawBytes::serialize(BigIntSer(&expected_raw_byte_power)).unwrap(),
+            IpldBlock::serialize_cbor(&BigIntSer(&expected_raw_byte_power)).unwrap(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );
         rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
         rt.expect_batch_verify_seals(Vec::new(), Ok(Vec::new()));
-        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
+        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, None).unwrap();
 
         rt.verify();
         h.check_state(&rt);
@@ -801,7 +836,7 @@ mod cron_tests {
         rt.expect_send(
             REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
-            RawBytes::serialize(BigIntSer(&expected_raw_byte_power)).unwrap(),
+            IpldBlock::serialize_cbor(&BigIntSer(&expected_raw_byte_power)).unwrap(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
@@ -810,7 +845,7 @@ mod cron_tests {
 
         rt.expect_batch_verify_seals(Vec::new(), Ok(Vec::new()));
 
-        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
+        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, None).unwrap();
         rt.verify();
 
         // enroll a cron task at epoch 2 (which is in the past)
@@ -832,7 +867,7 @@ mod cron_tests {
         rt.expect_send(
             miner_addr,
             ON_DEFERRED_CRON_EVENT_METHOD,
-            RawBytes::serialize(input).unwrap(),
+            IpldBlock::serialize_cbor(&input).unwrap(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
@@ -840,7 +875,7 @@ mod cron_tests {
         rt.expect_send(
             REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
-            RawBytes::serialize(BigIntSer(&expected_raw_byte_power)).unwrap(),
+            IpldBlock::serialize_cbor(&BigIntSer(&expected_raw_byte_power)).unwrap(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
@@ -848,7 +883,7 @@ mod cron_tests {
         rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
         rt.expect_batch_verify_seals(Vec::new(), Ok(Vec::new()));
 
-        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
+        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, None).unwrap();
         rt.verify();
 
         // assert used cron events are cleaned up
@@ -907,7 +942,7 @@ mod cron_tests {
         rt.expect_send(
             miner2,
             ON_DEFERRED_CRON_EVENT_METHOD,
-            RawBytes::serialize(input).unwrap(),
+            IpldBlock::serialize_cbor(&input).unwrap(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
@@ -917,13 +952,13 @@ mod cron_tests {
         rt.expect_send(
             REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
-            RawBytes::serialize(BigIntSer(&BigInt::zero())).unwrap(),
+            IpldBlock::serialize_cbor(&BigIntSer(&BigInt::zero())).unwrap(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );
         rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
-        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
+        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, None).unwrap();
         rt.verify();
 
         h.check_state(&rt);
@@ -963,7 +998,7 @@ mod cron_tests {
         h.expect_query_network_info(&mut rt);
 
         let state: State = rt.get_state();
-        let input = RawBytes::serialize(DeferredCronEventParams {
+        let input = IpldBlock::serialize_cbor(&DeferredCronEventParams {
             event_payload: Vec::new(),
             reward_smoothed: h.this_epoch_reward_smoothed.clone(),
             quality_adj_power_smoothed: state.this_epoch_qa_power_smoothed,
@@ -974,7 +1009,7 @@ mod cron_tests {
         rt.expect_send(
             miner1,
             ON_DEFERRED_CRON_EVENT_METHOD,
-            RawBytes::from(input.bytes().to_vec()),
+            input.clone(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::USR_ILLEGAL_STATE,
@@ -994,12 +1029,12 @@ mod cron_tests {
         rt.expect_send(
             REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
-            RawBytes::serialize(BigIntSer(&BigInt::zero())).unwrap(),
+            IpldBlock::serialize_cbor(&BigIntSer(&BigInt::zero())).unwrap(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );
-        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
+        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, None).unwrap();
         rt.verify();
 
         // expect power stats to be decremented due to claim deletion
@@ -1021,7 +1056,7 @@ mod cron_tests {
         rt.expect_send(
             REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
-            RawBytes::serialize(BigIntSer(&BigInt::zero())).unwrap(),
+            IpldBlock::serialize_cbor(&BigIntSer(&BigInt::zero())).unwrap(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
@@ -1029,7 +1064,7 @@ mod cron_tests {
         rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
         rt.expect_batch_verify_seals(Vec::new(), Ok(Vec::new()));
 
-        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
+        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, None).unwrap();
         rt.verify();
         h.check_state(&rt);
     }
@@ -1255,7 +1290,7 @@ mod cron_batch_proof_verifies_tests {
         rt.expect_send(
             cs.miner,
             CONFIRM_SECTOR_PROOFS_VALID_METHOD,
-            RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
@@ -1267,7 +1302,7 @@ mod cron_batch_proof_verifies_tests {
         rt.expect_send(
             REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
-            RawBytes::serialize(BigIntSer(&BigInt::zero())).unwrap(),
+            IpldBlock::serialize_cbor(&BigIntSer(&BigInt::zero())).unwrap(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
@@ -1278,7 +1313,7 @@ mod cron_batch_proof_verifies_tests {
         rt.set_epoch(0);
         rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
 
-        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
+        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, None).unwrap();
 
         rt.verify();
         h.check_state(&rt);
@@ -1303,7 +1338,7 @@ mod cron_batch_proof_verifies_tests {
         rt.expect_send(
             REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
-            RawBytes::serialize(BigIntSer(&BigInt::zero())).unwrap(),
+            IpldBlock::serialize_cbor(&BigIntSer(&BigInt::zero())).unwrap(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
@@ -1311,7 +1346,7 @@ mod cron_batch_proof_verifies_tests {
         rt.set_epoch(0);
         rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
 
-        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, &RawBytes::default()).unwrap();
+        rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, None).unwrap();
         rt.verify();
         h.check_state(&rt);
     }

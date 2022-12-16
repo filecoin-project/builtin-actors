@@ -87,6 +87,7 @@ use fil_actor_miner::testing::{
     check_deadline_state_invariants, check_state_invariants, DeadlineStateSummary,
 };
 use fil_actors_runtime::cbor::serialize;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::TryInto;
 use std::iter;
@@ -261,14 +262,14 @@ impl ActorHarness {
         rt.expect_send(
             self.worker,
             AccountMethod::PubkeyAddress as u64,
-            RawBytes::default(),
+            None,
             TokenAmount::zero(),
             RawBytes::serialize(self.worker_key).unwrap(),
             ExitCode::OK,
         );
 
         let result = rt
-            .call::<Actor>(Method::Constructor as u64, &RawBytes::serialize(params).unwrap())
+            .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
             .unwrap();
         expect_empty(result);
         rt.verify();
@@ -285,7 +286,7 @@ impl ActorHarness {
         rt.expect_validate_caller_addr(caller_addrs);
 
         let result = rt
-            .call::<Actor>(Method::ChangePeerID as u64, &RawBytes::serialize(params).unwrap())
+            .call::<Actor>(Method::ChangePeerID as u64, IpldBlock::serialize_cbor(&params).unwrap())
             .unwrap();
         expect_empty(result);
         rt.verify();
@@ -307,7 +308,7 @@ impl ActorHarness {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
 
         let result = rt
-            .call::<Actor>(Method::ChangePeerID as u64, &RawBytes::serialize(params).unwrap())
+            .call::<Actor>(Method::ChangePeerID as u64, IpldBlock::serialize_cbor(&params).unwrap())
             .unwrap_err();
         assert_eq!(result.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
         rt.verify();
@@ -320,7 +321,10 @@ impl ActorHarness {
         rt.expect_validate_caller_addr(self.caller_addrs());
 
         let result = rt
-            .call::<Actor>(Method::ChangeMultiaddrs as u64, &RawBytes::serialize(params).unwrap())
+            .call::<Actor>(
+                Method::ChangeMultiaddrs as u64,
+                IpldBlock::serialize_cbor(&params).unwrap(),
+            )
             .unwrap();
         expect_empty(result);
         rt.verify();
@@ -342,7 +346,10 @@ impl ActorHarness {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
 
         let result = rt
-            .call::<Actor>(Method::ChangeMultiaddrs as u64, &RawBytes::serialize(params).unwrap())
+            .call::<Actor>(
+                Method::ChangeMultiaddrs as u64,
+                IpldBlock::serialize_cbor(&params).unwrap(),
+            )
             .unwrap_err();
         assert_eq!(result.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
         rt.verify();
@@ -351,8 +358,7 @@ impl ActorHarness {
     pub fn get_control_addresses(&self, rt: &mut MockRuntime) -> (Address, Address, Vec<Address>) {
         rt.expect_validate_caller_any();
 
-        let result =
-            rt.call::<Actor>(Method::ControlAddresses as u64, &RawBytes::default()).unwrap();
+        let result = rt.call::<Actor>(Method::ControlAddresses as u64, None).unwrap();
         rt.verify();
 
         let value = result.deserialize::<GetControlAddressesReturn>().unwrap();
@@ -483,7 +489,10 @@ impl ActorHarness {
 
         let params = CompactSectorNumbersParams { mask_sector_numbers: bf };
 
-        rt.call::<Actor>(Method::CompactSectorNumbers as u64, &RawBytes::serialize(params).unwrap())
+        rt.call::<Actor>(
+            Method::CompactSectorNumbers as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )
     }
 
     pub fn compact_sector_numbers(&self, rt: &mut MockRuntime, addr: Address, bf: BitField) {
@@ -667,7 +676,7 @@ impl ActorHarness {
             rt.expect_send(
                 STORAGE_MARKET_ACTOR_ADDR,
                 MarketMethod::VerifyDealsForActivation as u64,
-                RawBytes::serialize(vdparams).unwrap(),
+                IpldBlock::serialize_cbor(&vdparams).unwrap(),
                 TokenAmount::zero(),
                 RawBytes::serialize(vdreturn).unwrap(),
                 ExitCode::OK,
@@ -683,7 +692,7 @@ impl ActorHarness {
             rt.expect_send(
                 BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
-                RawBytes::default(),
+                None,
                 expected_burn,
                 RawBytes::default(),
                 ExitCode::OK,
@@ -700,14 +709,14 @@ impl ActorHarness {
             rt.expect_send(
                 STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::EnrollCronEvent as u64,
-                RawBytes::serialize(cron_params).unwrap(),
+                IpldBlock::serialize_cbor(&cron_params).unwrap(),
                 TokenAmount::zero(),
                 RawBytes::default(),
                 ExitCode::OK,
             );
         }
 
-        let result = rt.call::<Actor>(method as u64, &RawBytes::serialize(param).unwrap());
+        let result = rt.call::<Actor>(method as u64, IpldBlock::serialize_cbor(&param).unwrap());
         result
     }
 
@@ -750,7 +759,7 @@ impl ActorHarness {
             rt.expect_send(
                 STORAGE_MARKET_ACTOR_ADDR,
                 MarketMethod::VerifyDealsForActivation as u64,
-                RawBytes::serialize(vdparams).unwrap(),
+                IpldBlock::serialize_cbor(&vdparams).unwrap(),
                 TokenAmount::zero(),
                 RawBytes::serialize(vdreturn).unwrap(),
                 ExitCode::OK,
@@ -763,7 +772,7 @@ impl ActorHarness {
             rt.expect_send(
                 BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
-                RawBytes::default(),
+                None,
                 state.fee_debt.clone(),
                 RawBytes::default(),
                 ExitCode::OK,
@@ -780,7 +789,7 @@ impl ActorHarness {
             rt.expect_send(
                 STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::EnrollCronEvent as u64,
-                RawBytes::serialize(cron_params).unwrap(),
+                IpldBlock::serialize_cbor(&cron_params).unwrap(),
                 TokenAmount::zero(),
                 RawBytes::default(),
                 ExitCode::OK,
@@ -789,7 +798,7 @@ impl ActorHarness {
 
         let result = rt.call::<Actor>(
             Method::PreCommitSector as u64,
-            &RawBytes::serialize(params.clone()).unwrap(),
+            IpldBlock::serialize_cbor(&params.clone()).unwrap(),
         );
         result
     }
@@ -837,7 +846,7 @@ impl ActorHarness {
         rt.expect_send(
             REWARD_ACTOR_ADDR,
             RewardMethod::ThisEpochReward as u64,
-            RawBytes::default(),
+            None,
             TokenAmount::zero(),
             RawBytes::serialize(current_reward).unwrap(),
             ExitCode::OK,
@@ -845,7 +854,7 @@ impl ActorHarness {
         rt.expect_send(
             STORAGE_POWER_ACTOR_ADDR,
             PowerMethod::CurrentTotalPower as u64,
-            RawBytes::default(),
+            None,
             TokenAmount::zero(),
             RawBytes::serialize(current_power).unwrap(),
             ExitCode::OK,
@@ -906,7 +915,7 @@ impl ActorHarness {
         rt.expect_send(
             STORAGE_POWER_ACTOR_ADDR,
             PowerMethod::SubmitPoRepForBulkVerify as u64,
-            RawBytes::serialize(seal).unwrap(),
+            IpldBlock::serialize_cbor(&seal).unwrap(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
@@ -914,7 +923,7 @@ impl ActorHarness {
         rt.expect_validate_caller_any();
         let result = rt.call::<Actor>(
             Method::ProveCommitSector as u64,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
         expect_empty(result);
         rt.verify();
@@ -986,7 +995,7 @@ impl ActorHarness {
         rt.expect_send(
             BURNT_FUNDS_ACTOR_ADDR,
             METHOD_SEND,
-            RawBytes::default(),
+            None,
             expected_fee,
             RawBytes::default(),
             ExitCode::OK,
@@ -997,7 +1006,7 @@ impl ActorHarness {
         rt.expect_validate_caller_addr(addrs);
         rt.call::<Actor>(
             MinerMethod::ProveCommitAggregate as u64,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
         rt.verify();
 
@@ -1028,7 +1037,7 @@ impl ActorHarness {
         };
         rt.call::<Actor>(
             Method::ConfirmSectorProofsValid as u64,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
         rt.verify();
         Ok(())
@@ -1069,7 +1078,7 @@ impl ActorHarness {
                 rt.expect_send(
                     STORAGE_MARKET_ACTOR_ADDR,
                     MarketMethod::ActivateDeals as u64,
-                    RawBytes::serialize(activate_params).unwrap(),
+                    IpldBlock::serialize_cbor(&activate_params).unwrap(),
                     TokenAmount::zero(),
                     RawBytes::serialize(&ret).unwrap(),
                     activate_deals_exit,
@@ -1106,7 +1115,7 @@ impl ActorHarness {
                     rt.expect_send(
                         VERIFIED_REGISTRY_ACTOR_ADDR,
                         CLAIM_ALLOCATIONS_METHOD as u64,
-                        RawBytes::serialize(&claim_allocation_params).unwrap(),
+                        IpldBlock::serialize_cbor(&claim_allocation_params).unwrap(),
                         TokenAmount::zero(),
                         RawBytes::serialize(&claim_allocs_ret).unwrap(),
                         ExitCode::OK,
@@ -1153,7 +1162,7 @@ impl ActorHarness {
                 rt.expect_send(
                     STORAGE_POWER_ACTOR_ADDR,
                     PowerMethod::UpdatePledgeTotal as u64,
-                    RawBytes::serialize(&expected_pledge).unwrap(),
+                    IpldBlock::serialize_cbor(&expected_pledge).unwrap(),
                     TokenAmount::zero(),
                     RawBytes::default(),
                     ExitCode::OK,
@@ -1225,7 +1234,7 @@ impl ActorHarness {
             rt.expect_send(
                 STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::UpdateClaimedPower as u64,
-                RawBytes::serialize(params).unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
                 TokenAmount::zero(),
                 RawBytes::default(),
                 ExitCode::OK,
@@ -1243,7 +1252,7 @@ impl ActorHarness {
             rt.expect_send(
                 BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
-                RawBytes::default(),
+                None,
                 penalty_total.clone(),
                 RawBytes::default(),
                 ExitCode::OK,
@@ -1267,7 +1276,7 @@ impl ActorHarness {
             rt.expect_send(
                 STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::UpdatePledgeTotal as u64,
-                RawBytes::serialize(&pledge_delta).unwrap(),
+                IpldBlock::serialize_cbor(&pledge_delta).unwrap(),
                 TokenAmount::zero(),
                 RawBytes::default(),
                 ExitCode::OK,
@@ -1280,7 +1289,7 @@ impl ActorHarness {
             rt.expect_send(
                 STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::EnrollCronEvent as u64,
-                RawBytes::serialize(params).unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
                 TokenAmount::zero(),
                 RawBytes::default(),
                 ExitCode::OK,
@@ -1292,8 +1301,11 @@ impl ActorHarness {
             self.epoch_qa_power_smooth.clone(),
         );
         rt.set_caller(*POWER_ACTOR_CODE_ID, STORAGE_POWER_ACTOR_ADDR);
-        rt.call::<Actor>(Method::OnDeferredCronEvent as u64, &RawBytes::serialize(params).unwrap())
-            .unwrap();
+        rt.call::<Actor>(
+            Method::OnDeferredCronEvent as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )
+        .unwrap();
         rt.verify();
     }
 
@@ -1397,7 +1409,7 @@ impl ActorHarness {
                 rt.expect_send(
                     STORAGE_POWER_ACTOR_ADDR,
                     PowerMethod::UpdateClaimedPower as u64,
-                    RawBytes::serialize(claim).unwrap(),
+                    IpldBlock::serialize_cbor(&claim).unwrap(),
                     TokenAmount::zero(),
                     RawBytes::default(),
                     ExitCode::OK,
@@ -1405,7 +1417,10 @@ impl ActorHarness {
             }
         }
 
-        rt.call::<Actor>(Method::SubmitWindowedPoSt as u64, &RawBytes::serialize(params).unwrap())
+        rt.call::<Actor>(
+            Method::SubmitWindowedPoSt as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )
     }
 
     fn make_window_post_verify_info(
@@ -1505,7 +1520,7 @@ impl ActorHarness {
                 rt.expect_send(
                     STORAGE_POWER_ACTOR_ADDR,
                     PowerMethod::UpdateClaimedPower as u64,
-                    RawBytes::serialize(claim).unwrap(),
+                    IpldBlock::serialize_cbor(&claim).unwrap(),
                     TokenAmount::zero(),
                     RawBytes::default(),
                     ExitCode::OK,
@@ -1517,7 +1532,7 @@ impl ActorHarness {
                 rt.expect_send(
                     self.worker,
                     METHOD_SEND,
-                    RawBytes::default(),
+                    None,
                     expected_reward,
                     RawBytes::default(),
                     ExitCode::OK,
@@ -1529,7 +1544,7 @@ impl ActorHarness {
                 rt.expect_send(
                     BURNT_FUNDS_ACTOR_ADDR,
                     METHOD_SEND,
-                    RawBytes::default(),
+                    None,
                     expected_penalty,
                     RawBytes::default(),
                     ExitCode::OK,
@@ -1541,7 +1556,7 @@ impl ActorHarness {
                 rt.expect_send(
                     STORAGE_POWER_ACTOR_ADDR,
                     PowerMethod::UpdatePledgeTotal as u64,
-                    RawBytes::serialize(&expected_pledge_delta).unwrap(),
+                    IpldBlock::serialize_cbor(&expected_pledge_delta).unwrap(),
                     TokenAmount::zero(),
                     RawBytes::default(),
                     ExitCode::OK,
@@ -1553,7 +1568,7 @@ impl ActorHarness {
             DisputeWindowedPoStParams { deadline: deadline.index, post_index: proof_index };
         let result = rt.call::<Actor>(
             Method::DisputeWindowedPoSt as u64,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         );
 
         if expect_success.is_some() {
@@ -1610,7 +1625,7 @@ impl ActorHarness {
         rt.expect_send(
             STORAGE_POWER_ACTOR_ADDR,
             PowerMethod::UpdatePledgeTotal as u64,
-            RawBytes::serialize(&pledge_delta).unwrap(),
+            IpldBlock::serialize_cbor(&pledge_delta).unwrap(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
@@ -1620,7 +1635,7 @@ impl ActorHarness {
             rt.expect_send(
                 BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
-                RawBytes::default(),
+                None,
                 penalty.clone(),
                 RawBytes::default(),
                 ExitCode::OK,
@@ -1628,7 +1643,7 @@ impl ActorHarness {
         }
 
         let params = ApplyRewardParams { reward: amt, penalty: penalty };
-        rt.call::<Actor>(Method::ApplyRewards as u64, &RawBytes::serialize(params).unwrap())
+        rt.call::<Actor>(Method::ApplyRewards as u64, IpldBlock::serialize_cbor(&params).unwrap())
             .unwrap();
         rt.verify();
     }
@@ -1766,7 +1781,7 @@ impl ActorHarness {
         rt.expect_send(
             STORAGE_POWER_ACTOR_ADDR,
             PowerMethod::UpdateClaimedPower as u64,
-            RawBytes::serialize(claim).unwrap(),
+            IpldBlock::serialize_cbor(&claim).unwrap(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
@@ -1775,7 +1790,7 @@ impl ActorHarness {
         // Calculate params from faulted sector infos
         let state = self.get_state(rt);
         let params = make_fault_params_from_faulting_sectors(&rt, &state, fault_sector_infos);
-        rt.call::<Actor>(Method::DeclareFaults as u64, &RawBytes::serialize(params).unwrap())
+        rt.call::<Actor>(Method::DeclareFaults as u64, IpldBlock::serialize_cbor(&params).unwrap())
             .unwrap();
         rt.verify();
 
@@ -1797,7 +1812,7 @@ impl ActorHarness {
             rt.expect_send(
                 BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
-                RawBytes::default(),
+                None,
                 expected_debt_repaid,
                 RawBytes::default(),
                 ExitCode::OK,
@@ -1810,7 +1825,7 @@ impl ActorHarness {
         let params = DeclareFaultsRecoveredParams { recoveries: vec![recovery] };
         let ret = rt.call::<Actor>(
             Method::DeclareFaultsRecovered as u64,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         );
         if ret.is_ok() {
             rt.verify();
@@ -1907,7 +1922,7 @@ impl ActorHarness {
         rt.expect_send(
             REWARD_ACTOR_ADDR,
             RewardMethod::ThisEpochReward as u64,
-            RawBytes::default(),
+            None,
             TokenAmount::zero(),
             RawBytes::serialize(current_reward).unwrap(),
             ExitCode::OK,
@@ -1918,7 +1933,7 @@ impl ActorHarness {
         rt.expect_send(
             from,
             METHOD_SEND,
-            RawBytes::default(),
+            None,
             reward_total.clone(),
             RawBytes::default(),
             ExitCode::OK,
@@ -1929,7 +1944,7 @@ impl ActorHarness {
         rt.expect_send(
             BURNT_FUNDS_ACTOR_ADDR,
             METHOD_SEND,
-            RawBytes::default(),
+            None,
             to_burn,
             RawBytes::default(),
             ExitCode::OK,
@@ -1937,7 +1952,7 @@ impl ActorHarness {
 
         let result = rt.call::<Actor>(
             Method::ReportConsensusFault as u64,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
         expect_empty(result);
         rt.verify();
@@ -2006,7 +2021,7 @@ impl ActorHarness {
             rt.expect_send(
                 BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
-                RawBytes::default(),
+                None,
                 expected_fee.clone(),
                 RawBytes::default(),
                 ExitCode::OK,
@@ -2023,7 +2038,7 @@ impl ActorHarness {
             rt.expect_send(
                 STORAGE_POWER_ACTOR_ADDR,
                 UPDATE_PLEDGE_TOTAL_METHOD,
-                RawBytes::serialize(&pledge_delta).unwrap(),
+                IpldBlock::serialize_cbor(&pledge_delta).unwrap(),
                 TokenAmount::zero(),
                 RawBytes::default(),
                 ExitCode::OK,
@@ -2040,7 +2055,7 @@ impl ActorHarness {
             rt.expect_send(
                 STORAGE_MARKET_ACTOR_ADDR,
                 ON_MINER_SECTORS_TERMINATE_METHOD,
-                RawBytes::serialize(params).unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
                 TokenAmount::zero(),
                 RawBytes::default(),
                 ExitCode::OK,
@@ -2055,7 +2070,7 @@ impl ActorHarness {
         rt.expect_send(
             STORAGE_POWER_ACTOR_ADDR,
             UPDATE_CLAIMED_POWER_METHOD,
-            RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
@@ -2079,8 +2094,11 @@ impl ActorHarness {
 
         let params = TerminateSectorsParams { terminations };
 
-        rt.call::<Actor>(Method::TerminateSectors as u64, &RawBytes::serialize(params).unwrap())
-            .unwrap();
+        rt.call::<Actor>(
+            Method::TerminateSectors as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )
+        .unwrap();
         rt.verify();
 
         (-sector_power, pledge_delta)
@@ -2092,7 +2110,7 @@ impl ActorHarness {
         rt.expect_validate_caller_addr(self.caller_addrs());
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
 
-        rt.call::<Actor>(Method::ChangePeerID as u64, &RawBytes::serialize(params).unwrap())
+        rt.call::<Actor>(Method::ChangePeerID as u64, IpldBlock::serialize_cbor(&params).unwrap())
             .unwrap();
         rt.verify();
 
@@ -2124,7 +2142,7 @@ impl ActorHarness {
             rt.expect_send(
                 STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::UpdatePledgeTotal as u64,
-                RawBytes::serialize(&pledge_delta).unwrap(),
+                IpldBlock::serialize_cbor(&pledge_delta).unwrap(),
                 TokenAmount::zero(),
                 RawBytes::default(),
                 ExitCode::OK,
@@ -2136,13 +2154,13 @@ impl ActorHarness {
             rt.expect_send(
                 BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
-                RawBytes::default(),
+                None,
                 total_repaid.clone(),
                 RawBytes::default(),
                 ExitCode::OK,
             );
         }
-        let result = rt.call::<Actor>(Method::RepayDebt as u64, &RawBytes::default())?;
+        let result = rt.call::<Actor>(Method::RepayDebt as u64, None)?;
         expect_empty(result);
         Ok(())
     }
@@ -2163,7 +2181,7 @@ impl ActorHarness {
             rt.expect_send(
                 self.beneficiary,
                 METHOD_SEND,
-                RawBytes::default(),
+                None,
                 expected_withdrawn.clone(),
                 RawBytes::default(),
                 ExitCode::OK,
@@ -2174,7 +2192,7 @@ impl ActorHarness {
             rt.expect_send(
                 BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
-                RawBytes::default(),
+                None,
                 expected_debt_repaid.clone(),
                 RawBytes::default(),
                 ExitCode::OK,
@@ -2183,7 +2201,7 @@ impl ActorHarness {
         let ret = rt
             .call::<Actor>(
                 Method::WithdrawBalance as u64,
-                &RawBytes::serialize(WithdrawBalanceParams {
+                IpldBlock::serialize_cbor(&WithdrawBalanceParams {
                     amount_requested: amount_requested.clone(),
                 })
                 .unwrap(),
@@ -2209,7 +2227,10 @@ impl ActorHarness {
     ) -> Result<(), ActorError> {
         let params = CheckSectorProvenParams { sector_number };
         rt.expect_validate_caller_any();
-        rt.call::<Actor>(Method::CheckSectorProven as u64, &RawBytes::serialize(params).unwrap())?;
+        rt.call::<Actor>(
+            Method::CheckSectorProven as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )?;
         rt.verify();
         Ok(())
     }
@@ -2229,7 +2250,7 @@ impl ActorHarness {
         rt.expect_send(
             new_worker,
             AccountMethod::PubkeyAddress as u64,
-            RawBytes::default(),
+            None,
             TokenAmount::zero(),
             RawBytes::serialize(self.worker_key).unwrap(),
             ExitCode::OK,
@@ -2239,7 +2260,7 @@ impl ActorHarness {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.owner);
         let ret = rt.call::<Actor>(
             Method::ChangeWorkerAddress as u64,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         );
 
         if ret.is_err() {
@@ -2264,7 +2285,11 @@ impl ActorHarness {
     pub fn confirm_change_worker_address(&self, rt: &mut MockRuntime) -> Result<(), ActorError> {
         rt.expect_validate_caller_addr(vec![self.owner]);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.owner);
+<<<<<<< HEAD
         rt.call::<Actor>(Method::ConfirmChangeWorkerAddress as u64, &RawBytes::default())?;
+=======
+        rt.call::<Actor>(Method::ConfirmUpdateWorkerKey as u64, None)?;
+>>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
         rt.verify();
 
         Ok(())
@@ -2283,9 +2308,9 @@ impl ActorHarness {
             new_quota: beneficiary_term.quota,
             new_expiration: beneficiary_term.expiration,
         };
-        let raw_bytes = &RawBytes::serialize(param).unwrap();
+        let raw_bytes = IpldBlock::serialize_cbor(&param).unwrap();
         rt.expect_validate_caller_any();
-        rt.call::<Actor>(Method::ChangeBeneficiary as u64, raw_bytes)?;
+        rt.call::<Actor>(Method::ChangeBeneficiary as u64, raw_bytes.clone())?;
         rt.verify();
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, beneficiary_id_addr);
@@ -2318,7 +2343,7 @@ impl ActorHarness {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, caller_id);
         let ret = rt.call::<Actor>(
             Method::ChangeBeneficiary as u64,
-            &RawBytes::serialize(param).unwrap(),
+            IpldBlock::serialize_cbor(&param).unwrap(),
         )?;
         rt.verify();
 
@@ -2336,7 +2361,7 @@ impl ActorHarness {
         rt: &mut MockRuntime,
     ) -> Result<GetBeneficiaryReturn, ActorError> {
         rt.expect_validate_caller_any();
-        let ret = rt.call::<Actor>(Method::GetBeneficiary as u64, &RawBytes::default())?;
+        let ret = rt.call::<Actor>(Method::GetBeneficiary as u64, None)?;
         rt.verify();
         Ok(ret.deserialize::<GetBeneficiaryReturn>().unwrap())
     }
@@ -2386,7 +2411,7 @@ impl ActorHarness {
             rt.expect_send(
                 STORAGE_POWER_ACTOR_ADDR,
                 UPDATE_CLAIMED_POWER_METHOD,
-                RawBytes::serialize(params).unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
                 TokenAmount::zero(),
                 RawBytes::default(),
                 ExitCode::OK,
@@ -2395,7 +2420,7 @@ impl ActorHarness {
 
         let ret = rt.call::<Actor>(
             Method::ExtendSectorExpiration as u64,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
 
         rt.verify();
@@ -2434,7 +2459,7 @@ impl ActorHarness {
                 rt.expect_send(
                     *VERIFIED_REGISTRY_ACTOR_ADDR,
                     fil_actor_miner::ext::verifreg::GET_CLAIMS_METHOD as u64,
-                    RawBytes::serialize(GetClaimsParams {
+                    IpldBlock::serialize_cbor(&GetClaimsParams {
                         provider: self.receiver.id().unwrap(),
                         claim_ids: all_claim_ids,
                     })
@@ -2485,7 +2510,7 @@ impl ActorHarness {
             rt.expect_send(
                 *STORAGE_POWER_ACTOR_ADDR,
                 UPDATE_CLAIMED_POWER_METHOD,
-                RawBytes::serialize(params).unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
                 TokenAmount::zero(),
                 RawBytes::default(),
                 ExitCode::OK,
@@ -2494,7 +2519,7 @@ impl ActorHarness {
 
         let ret = rt.call::<Actor>(
             Method::ExtendSectorExpiration2 as u64,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
 
         rt.verify();
@@ -2512,7 +2537,10 @@ impl ActorHarness {
         rt.expect_validate_caller_addr(self.caller_addrs());
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
 
-        rt.call::<Actor>(Method::CompactPartitions as u64, &RawBytes::serialize(params).unwrap())?;
+        rt.call::<Actor>(
+            Method::CompactPartitions as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )?;
         rt.verify();
         Ok(())
     }
@@ -2539,7 +2567,7 @@ impl ActorHarness {
         rt.expect_validate_caller_addr(vec![expected]);
         let ret = rt.call::<Actor>(
             Method::ChangeOwnerAddress as u64,
-            &RawBytes::serialize(new_address).unwrap(),
+            IpldBlock::serialize_cbor(&new_address).unwrap(),
         );
 
         if ret.is_ok() {

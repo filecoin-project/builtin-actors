@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use anyhow::anyhow;
-use fil_actor_account::types::AuthenticateMessageParams;
-use fil_actor_account::{testing::check_state_invariants, Actor as AccountActor, State};
-use fil_actors_runtime::builtin::SYSTEM_ACTOR_ADDR;
-use fil_actors_runtime::test_utils::*;
+use fvm_actor_utils::receiver::UniversalReceiverParams;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::crypto::signature::Signature;
@@ -26,7 +24,7 @@ fn construction() {
         if exit_code.is_success() {
             rt.call::<AccountActor>(
                 Method::Constructor as MethodNum,
-                &RawBytes::serialize(addr).unwrap(),
+                IpldBlock::serialize_cbor(&addr).unwrap(),
             )
             .unwrap();
 
@@ -35,14 +33,17 @@ fn construction() {
             rt.expect_validate_caller_any();
 
             let pk: Address = rt
-                .call::<AccountActor>(Method::PubkeyAddress as MethodNum, &RawBytes::default())
+                .call::<AccountActor>(Method::PubkeyAddress as MethodNum, None)
                 .unwrap()
                 .deserialize()
                 .unwrap();
             assert_eq!(pk, addr);
             check_state(&rt);
         } else {
-            expect_abort(exit_code, rt.call::<AccountActor>(1, &RawBytes::serialize(addr).unwrap()))
+            expect_abort(
+                exit_code,
+                rt.call::<AccountActor>(1, IpldBlock::serialize_cbor(&addr).unwrap()),
+            )
         }
         rt.verify();
     }
@@ -65,15 +66,19 @@ fn token_receiver() {
     let param = Address::new_secp256k1(&[2; fvm_shared::address::SECP_PUB_LEN]).unwrap();
     rt.call::<AccountActor>(
         Method::Constructor as MethodNum,
-        &RawBytes::serialize(&param).unwrap(),
+        IpldBlock::serialize_cbor(&param).unwrap(),
     )
     .unwrap();
 
     rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1000));
     rt.expect_validate_caller_any();
     let ret = rt.call::<AccountActor>(
-        Method::FungibleTokenReceiverHook as MethodNum,
-        &RawBytes::new(vec![1, 2, 3]),
+        Method::UniversalReceiverHook as MethodNum,
+        IpldBlock::serialize_cbor(&UniversalReceiverParams {
+            type_: 0,
+            payload: RawBytes::new(vec![1, 2, 3]),
+        })
+        .unwrap(),
     );
     assert!(ret.is_ok());
     assert_eq!(RawBytes::default(), ret.unwrap());
@@ -86,15 +91,17 @@ fn authenticate_message() {
 
     let addr = Address::new_secp256k1(&[2; fvm_shared::address::SECP_PUB_LEN]).unwrap();
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
-    rt.call::<AccountActor>(Method::Constructor as MethodNum, &RawBytes::serialize(addr).unwrap())
-        .unwrap();
+
+    rt.call::<AccountActor>(1, IpldBlock::serialize_cbor(&addr).unwrap()).unwrap();
 
     let state: State = rt.get_state();
     assert_eq!(state.address, addr);
 
-    let params =
-        RawBytes::serialize(AuthenticateMessageParams { signature: vec![], message: vec![] })
-            .unwrap();
+    let params = IpldBlock::serialize_cbor(&AuthenticateMessageParams {
+        signature: vec![],
+        message: vec![],
+    })
+    .unwrap();
 
     // Valid signature
     rt.expect_validate_caller_any();
@@ -104,11 +111,7 @@ fn authenticate_message() {
         plaintext: vec![],
         result: Ok(()),
     });
-    assert_eq!(
-        RawBytes::default(),
-        rt.call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, &params).unwrap()
-    );
-    rt.verify();
+    assert_eq!(RawBytes::default(), rt.call::<AccountActor>(3, params.clone()).unwrap());
 
     // Invalid signature
     rt.expect_validate_caller_any();
@@ -120,8 +123,7 @@ fn authenticate_message() {
     });
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
-        "bad signature",
-        rt.call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, &params),
+        rt.call::<AccountActor>(3, params).unwrap_err().exit_code()
     );
     rt.verify();
 

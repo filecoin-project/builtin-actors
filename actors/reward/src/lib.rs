@@ -3,15 +3,20 @@
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
+<<<<<<< HEAD
     actor_error, cbor, restrict_internal_api, ActorError, BURNT_FUNDS_ACTOR_ADDR,
     EXPECTED_LEADERS_PER_EPOCH, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+=======
+    actor_dispatch, actor_error, ActorError, BURNT_FUNDS_ACTOR_ADDR, EXPECTED_LEADERS_PER_EPOCH,
+    STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+>>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
 };
 
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::sector::StoragePower;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use log::{error, warn};
 use num_derive::FromPrimitive;
@@ -51,15 +56,13 @@ pub enum Method {
 
 /// Reward Actor
 pub struct Actor;
+
 impl Actor {
     /// Constructor for Reward actor
-    fn constructor(
-        rt: &mut impl Runtime,
-        curr_realized_power: Option<StoragePower>,
-    ) -> Result<(), ActorError> {
+    fn constructor(rt: &mut impl Runtime, params: Option<BigIntDe>) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
-        if let Some(power) = curr_realized_power {
+        if let Some(power) = params.map(|v| v.0) {
             rt.create(&State::new(power))?;
             Ok(())
         } else {
@@ -152,7 +155,7 @@ impl Actor {
         let res = rt.send(
             &Address::new_id(miner_id),
             ext::miner::APPLY_REWARDS_METHOD,
-            RawBytes::serialize(&reward_params)?,
+            IpldBlock::serialize_cbor(&reward_params)?,
             total_reward.clone(),
         );
         if let Err(e) = res {
@@ -161,8 +164,7 @@ impl Actor {
                 total_reward,
                 e.exit_code()
             );
-            let res =
-                rt.send(&BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, RawBytes::default(), total_reward);
+            let res = rt.send(&BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, None, total_reward);
             if let Err(e) = res {
                 error!(
                     "failed to send unsent reward to the burnt funds actor, code: {:?}",
@@ -191,11 +193,11 @@ impl Actor {
     /// epochs to compute the next epoch reward.
     fn update_network_kpi(
         rt: &mut impl Runtime,
-        curr_realized_power: Option<StoragePower>,
+        params: Option<BigIntDe>,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&STORAGE_POWER_ACTOR_ADDR))?;
-        let curr_realized_power = curr_realized_power
-            .ok_or_else(|| actor_error!(illegal_argument, "argument cannot be None"))?;
+        let curr_realized_power =
+            params.ok_or_else(|| actor_error!(illegal_argument, "argument cannot be None"))?.0;
 
         rt.transaction(|st: &mut State, rt| {
             let prev = st.epoch;
@@ -215,6 +217,7 @@ impl Actor {
 }
 
 impl ActorCode for Actor {
+<<<<<<< HEAD
     fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
@@ -245,5 +248,13 @@ impl ActorCode for Actor {
             }
             None => Err(actor_error!(unhandled_message, "Invalid method")),
         }
+=======
+    type Methods = Method;
+    actor_dispatch! {
+        Constructor => constructor,
+        AwardBlockReward => award_block_reward,
+        ThisEpochReward => this_epoch_reward,
+        UpdateNetworkKPI => update_network_kpi,
+>>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
     }
 }

@@ -2,6 +2,7 @@ use std::cmp::min;
 
 use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
 use frc46_token::token::types::{BurnParams, TransferFromParams, TransferParams};
+use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::address::{Address, BLS_PUB_LEN};
@@ -50,7 +51,6 @@ use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::runtime::policy_constants::{
     MARKET_DEFAULT_ALLOCATION_TERM_BUFFER, MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION,
 };
-use fvm_actor_utils::receiver::UniversalReceiverParams;
 
 use crate::*;
 
@@ -312,10 +312,9 @@ pub fn precommit_sectors_v2(
                 to: mid,
                 method: MinerMethod::PreCommitSectorBatch as u64,
                 params: Some(
-                    serialize(
-                        &PreCommitSectorBatchParams { sectors: param_sectors },
-                        "precommit batch params",
-                    )
+                    IpldBlock::serialize_cbor(&PreCommitSectorBatchParams {
+                        sectors: param_sectors,
+                    })
                     .unwrap(),
                 ),
                 subinvocs: Some(invocs),
@@ -361,10 +360,9 @@ pub fn precommit_sectors_v2(
                 to: mid,
                 method: MinerMethod::PreCommitSectorBatch2 as u64,
                 params: Some(
-                    serialize(
-                        &PreCommitSectorBatchParams2 { sectors: param_sectors },
-                        "precommit batch params",
-                    )
+                    IpldBlock::serialize_cbor(&PreCommitSectorBatchParams2 {
+                        sectors: param_sectors,
+                    })
                     .unwrap(),
                 ),
                 subinvocs: Some(invocs),
@@ -425,7 +423,7 @@ pub fn prove_commit_sectors(
             aggregate_proof: vec![],
         };
         let prove_commit_aggregate_params_ser =
-            serialize(&prove_commit_aggregate_params, "prove commit aggregate params").unwrap();
+            IpldBlock::serialize_cbor(&prove_commit_aggregate_params).unwrap();
 
         apply_ok(
             v,
@@ -468,6 +466,7 @@ pub fn prove_commit_sectors(
         .matches(v.take_invocations().last().unwrap());
     }
 }
+
 #[allow(clippy::too_many_arguments)]
 pub fn miner_extend_sector_expiration2(
     v: &VM,
@@ -512,10 +511,10 @@ pub fn miner_extend_sector_expiration2(
             method: VerifregMethod::GetClaims as u64,
             code: Some(ExitCode::OK),
             params: Some(
-                serialize(
-                    &GetClaimsParams { provider: miner_id.id().unwrap(), claim_ids },
-                    "get claims params",
-                )
+                IpldBlock::serialize_cbor(&GetClaimsParams {
+                    provider: miner_id.id().unwrap(),
+                    claim_ids,
+                })
                 .unwrap(),
             ),
             ..Default::default()
@@ -526,13 +525,10 @@ pub fn miner_extend_sector_expiration2(
             to: STORAGE_POWER_ACTOR_ADDR,
             method: PowerMethod::UpdateClaimedPower as u64,
             params: Some(
-                serialize(
-                    &UpdateClaimedPowerParams {
-                        raw_byte_delta: power_delta.raw,
-                        quality_adjusted_delta: power_delta.qa,
-                    },
-                    "update_claimed_power params",
-                )
+                IpldBlock::serialize_cbor(&UpdateClaimedPowerParams {
+                    raw_byte_delta: power_delta.raw,
+                    quality_adjusted_delta: power_delta.qa,
+                })
                 .unwrap(),
             ),
             ..Default::default()
@@ -718,13 +714,10 @@ pub fn submit_windowed_post(
         if new_pow == PowerPair::zero() {
             subinvocs = Some(vec![])
         } else {
-            let update_power_params = serialize(
-                &UpdateClaimedPowerParams {
-                    raw_byte_delta: new_pow.raw,
-                    quality_adjusted_delta: new_pow.qa,
-                },
-                "update claim params",
-            )
+            let update_power_params = IpldBlock::serialize_cbor(&UpdateClaimedPowerParams {
+                raw_byte_delta: new_pow.raw,
+                quality_adjusted_delta: new_pow.qa,
+            })
             .unwrap();
             subinvocs = Some(vec![ExpectInvocation {
                 to: STORAGE_POWER_ACTOR_ADDR,
@@ -804,7 +797,7 @@ pub fn withdraw_balance(
     .unwrap();
 
     if expect_withdraw_amount.is_positive() {
-        let withdraw_balance_params_se = serialize(&params, "withdraw  balance params").unwrap();
+        let withdraw_balance_params_se = IpldBlock::serialize_cbor(&params).unwrap();
         ExpectInvocation {
             from: Some(from),
             to: m_addr,
@@ -881,11 +874,16 @@ pub fn verifreg_add_verifier(v: &VM, verifier: Address, data_cap: StoragePower) 
         subinvocs: Some(vec![ExpectInvocation {
             to: *VERIFIED_REGISTRY_ACTOR_ADDR,
             method: VerifregMethod::AddVerifier as u64,
-            params: Some(serialize(&add_verifier_params, "verifreg add verifier params").unwrap()),
+            params: Some(IpldBlock::serialize_cbor(&add_verifier_params).unwrap()),
             subinvocs: Some(vec![ExpectInvocation {
                 to: DATACAP_TOKEN_ACTOR_ADDR,
+<<<<<<< HEAD
                 method: DataCapMethod::BalanceExported as u64,
                 params: Some(serialize(&verifier, "balance of params").unwrap()),
+=======
+                method: DataCapMethod::BalanceOf as u64,
+                params: Some(IpldBlock::serialize_cbor(&verifier).unwrap()),
+>>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
                 code: Some(ExitCode::OK),
                 ..Default::default()
             }]),
@@ -914,14 +912,11 @@ pub fn verifreg_add_client(v: &VM, verifier: Address, client: Address, allowance
             to: DATACAP_TOKEN_ACTOR_ADDR,
             method: DataCapMethod::MintExported as u64,
             params: Some(
-                serialize(
-                    &MintParams {
-                        to: client,
-                        amount: TokenAmount::from_whole(allowance),
-                        operators: vec![STORAGE_MARKET_ACTOR_ADDR],
-                    },
-                    "mint params",
-                )
+                IpldBlock::serialize_cbor(&MintParams {
+                    to: client,
+                    amount: TokenAmount::from_whole(allowance),
+                    operators: vec![STORAGE_MARKET_ACTOR_ADDR],
+                })
                 .unwrap(),
             ),
             code: Some(ExitCode::OK),
@@ -982,14 +977,11 @@ pub fn verifreg_remove_expired_allocations(
             method: DataCapMethod::TransferExported as u64,
             code: Some(ExitCode::OK),
             params: Some(
-                serialize(
-                    &TransferParams {
-                        to: client,
-                        amount: TokenAmount::from_whole(datacap_refund),
-                        operator_data: Default::default(),
-                    },
-                    "transfer params",
-                )
+                IpldBlock::serialize_cbor(&TransferParams {
+                    to: client,
+                    amount: TokenAmount::from_whole(datacap_refund),
+                    operator_data: Default::default(),
+                })
                 .unwrap(),
             ),
             ..Default::default()
@@ -1052,24 +1044,21 @@ pub fn datacap_extend_claim(
             method: VerifregMethod::UniversalReceiverHook as u64,
             code: Some(ExitCode::OK),
             params: Some(
-                serialize(
-                    &UniversalReceiverParams {
-                        type_: FRC46_TOKEN_TYPE,
-                        payload: serialize(
-                            &FRC46TokenReceived {
-                                from: client.id().unwrap(),
-                                to: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
-                                operator: client.id().unwrap(),
-                                amount: token_amount.clone(),
-                                operator_data,
-                                token_data: RawBytes::default(),
-                            },
-                            "token received params",
-                        )
-                        .unwrap(),
-                    },
-                    "token received params",
-                )
+                IpldBlock::serialize_cbor(&UniversalReceiverParams {
+                    type_: FRC46_TOKEN_TYPE,
+                    payload: serialize(
+                        &FRC46TokenReceived {
+                            from: client.id().unwrap(),
+                            to: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
+                            operator: client.id().unwrap(),
+                            amount: token_amount.clone(),
+                            operator_data,
+                            token_data: RawBytes::default(),
+                        },
+                        "token received params",
+                    )
+                    .unwrap(),
+                })
                 .unwrap(),
             ),
             subinvocs: Some(vec![ExpectInvocation {
@@ -1077,7 +1066,7 @@ pub fn datacap_extend_claim(
                 method: DataCapMethod::BurnExported as u64,
                 code: Some(ExitCode::OK),
                 params: Some(
-                    serialize(&BurnParams { amount: token_amount }, "burn params").unwrap(),
+                    IpldBlock::serialize_cbor(&BurnParams { amount: token_amount }).unwrap(),
                 ),
                 ..Default::default()
             }]),
@@ -1190,6 +1179,7 @@ pub fn market_publish_deal(
             }],
             extensions: vec![],
         };
+<<<<<<< HEAD
         expect_publish_invocs.insert(
             expect_publish_invocs.len() - 1,
             ExpectInvocation {
@@ -1201,6 +1191,39 @@ pub fn market_publish_deal(
                         to: VERIFIED_REGISTRY_ACTOR_ADDR,
                         amount: token_amount.clone(),
                         operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
+=======
+        expect_publish_invocs.push(ExpectInvocation {
+            to: DATACAP_TOKEN_ACTOR_ADDR,
+            method: DataCapMethod::TransferFrom as u64,
+            params: Some(
+                IpldBlock::serialize_cbor(&TransferFromParams {
+                    from: deal_client,
+                    to: VERIFIED_REGISTRY_ACTOR_ADDR,
+                    amount: token_amount.clone(),
+                    operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
+                })
+                .unwrap(),
+            ),
+            code: Some(ExitCode::OK),
+            subinvocs: Some(vec![ExpectInvocation {
+                to: VERIFIED_REGISTRY_ACTOR_ADDR,
+                method: VerifregMethod::UniversalReceiverHook as u64,
+                params: Some(
+                    IpldBlock::serialize_cbor(&UniversalReceiverParams {
+                        type_: FRC46_TOKEN_TYPE,
+                        payload: serialize(
+                            &FRC46TokenReceived {
+                                from: deal_client.id().unwrap(),
+                                to: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
+                                operator: STORAGE_MARKET_ACTOR_ADDR.id().unwrap(),
+                                amount: token_amount,
+                                operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
+                                token_data: Default::default(),
+                            },
+                            "token received params",
+                        )
+                        .unwrap(),
+>>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
                     })
                     .unwrap(),
                 ),

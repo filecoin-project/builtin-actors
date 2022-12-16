@@ -13,6 +13,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredPoStProof, SectorSize};
 
 use cid::Cid;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use num_traits::Zero;
 
 mod util;
@@ -73,7 +74,7 @@ fn simple_construction() {
     env.rt.expect_send(
         env.worker,
         AccountMethod::PubkeyAddress as u64,
-        RawBytes::default(),
+        None,
         TokenAmount::zero(),
         RawBytes::serialize(env.worker_key).unwrap(),
         ExitCode::OK,
@@ -81,7 +82,7 @@ fn simple_construction() {
 
     let result = env
         .rt
-        .call::<Actor>(Method::Constructor as u64, &RawBytes::serialize(params).unwrap())
+        .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
         .unwrap();
     assert_eq!(result.bytes().len(), 0);
     env.rt.verify();
@@ -147,7 +148,7 @@ fn control_addresses_are_resolved_during_construction() {
     env.rt.expect_send(
         env.worker,
         AccountMethod::PubkeyAddress as u64,
-        RawBytes::default(),
+        None,
         TokenAmount::zero(),
         RawBytes::serialize(env.worker_key).unwrap(),
         ExitCode::OK,
@@ -155,7 +156,7 @@ fn control_addresses_are_resolved_during_construction() {
 
     let result = env
         .rt
-        .call::<Actor>(Method::Constructor as u64, &RawBytes::serialize(params).unwrap())
+        .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
         .unwrap();
     assert_eq!(result.bytes().len(), 0);
     env.rt.verify();
@@ -169,6 +170,36 @@ fn control_addresses_are_resolved_during_construction() {
 }
 
 #[test]
+<<<<<<< HEAD
+=======
+fn fails_if_control_address_is_not_an_account_actor() {
+    let mut env = prepare_env();
+
+    let control1 = Address::new_id(501);
+    env.control_addrs = vec![control1];
+    env.rt.actor_code_cids.insert(control1, *PAYCH_ACTOR_CODE_ID);
+
+    let params = constructor_params(&env);
+    env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
+    env.rt.expect_send(
+        env.worker,
+        AccountMethod::PubkeyAddress as u64,
+        None,
+        TokenAmount::zero(),
+        RawBytes::serialize(env.worker_key).unwrap(),
+        ExitCode::OK,
+    );
+
+    let result = env
+        .rt
+        .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
+        .unwrap_err();
+    assert_eq!(result.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
+    env.rt.verify();
+}
+
+#[test]
+>>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
 fn test_construct_with_invalid_peer_id() {
     let mut env = prepare_env();
     env.peer_id = vec![0; env.rt.policy.max_peer_id_length + 1];
@@ -179,7 +210,7 @@ fn test_construct_with_invalid_peer_id() {
 
     let result = env
         .rt
-        .call::<Actor>(Method::Constructor as u64, &RawBytes::serialize(params).unwrap())
+        .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
         .unwrap_err();
     assert_eq!(result.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
     env.rt.verify();
@@ -199,7 +230,7 @@ fn fails_if_control_addresses_exceeds_maximum_length() {
 
     let result = env
         .rt
-        .call::<Actor>(Method::Constructor as u64, &RawBytes::serialize(params).unwrap())
+        .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
         .unwrap_err();
     assert_eq!(result.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
     env.rt.verify();
@@ -219,7 +250,7 @@ fn test_construct_with_large_multiaddr() {
 
     let result = env
         .rt
-        .call::<Actor>(Method::Constructor as u64, &RawBytes::serialize(params).unwrap())
+        .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
         .unwrap_err();
     assert_eq!(result.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
     env.rt.verify();
@@ -238,7 +269,7 @@ fn test_construct_with_empty_multiaddr() {
 
     let result = env
         .rt
-        .call::<Actor>(Method::Constructor as u64, &RawBytes::serialize(params).unwrap())
+        .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
         .unwrap_err();
     assert_eq!(result.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
     env.rt.verify();

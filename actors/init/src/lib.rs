@@ -4,8 +4,14 @@
 use cid::Cid;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
+<<<<<<< HEAD
 use fil_actors_runtime::{
     actor_error, cbor, restrict_internal_api, ActorContext, ActorError, SYSTEM_ACTOR_ADDR,
+=======
+
+use fil_actors_runtime::{
+    actor_dispatch, actor_error, ActorContext, ActorError, SYSTEM_ACTOR_ADDR,
+>>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
 };
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -88,7 +94,7 @@ impl Actor {
         rt.send(
             &Address::new_id(id_address),
             METHOD_CONSTRUCTOR,
-            params.constructor_params,
+            params.constructor_params.into(),
             rt.message().value_received(),
         )
         .context("constructor failed")?;
@@ -98,6 +104,7 @@ impl Actor {
 }
 
 impl ActorCode for Actor {
+<<<<<<< HEAD
     fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
@@ -118,6 +125,12 @@ impl ActorCode for Actor {
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }
+=======
+    type Methods = Method;
+    actor_dispatch! {
+        Constructor => constructor,
+        Exec => exec,
+>>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
     }
 }
 

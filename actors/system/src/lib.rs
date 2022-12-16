@@ -12,7 +12,11 @@ use num_traits::FromPrimitive;
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
+<<<<<<< HEAD
     actor_error, restrict_internal_api, ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR,
+=======
+    actor_dispatch, actor_error, ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR,
+>>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
 };
 
 #[cfg(feature = "fil-actor")]
@@ -54,6 +58,7 @@ impl State {
 
 /// System actor.
 pub struct Actor;
+
 impl Actor {
     /// System actor constructor.
     pub fn constructor(rt: &mut impl Runtime) -> Result<(), ActorError> {
@@ -66,6 +71,7 @@ impl Actor {
 }
 
 impl ActorCode for Actor {
+<<<<<<< HEAD
     fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
@@ -82,12 +88,16 @@ impl ActorCode for Actor {
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }
+=======
+    type Methods = Method;
+    actor_dispatch! {
+        Constructor => constructor,
+>>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use fvm_ipld_encoding::RawBytes;
     use fvm_shared::MethodNum;
 
     use fil_actors_runtime::test_utils::{MockRuntime, SYSTEM_ACTOR_CODE_ID};
@@ -109,7 +119,7 @@ mod tests {
         let mut rt = new_runtime();
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
-        rt.call::<Actor>(Method::Constructor as MethodNum, &RawBytes::default()).unwrap();
+        rt.call::<Actor>(Method::Constructor as MethodNum, None).unwrap();
 
         let state: State = rt.get_state();
         let builtin_actors = state.get_builtin_actors(&rt.store).unwrap();
