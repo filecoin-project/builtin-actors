@@ -228,5 +228,4 @@ mod test {
     }
 
     // remaining slice
-    
 }

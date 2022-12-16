@@ -1,6 +1,6 @@
 mod asm;
 
-use evm::interpreter::U256;
+use evm::interpreter::{address::EthAddress, U256};
 use fil_actor_evm as evm;
 use fil_actors_runtime::test_utils::{
     MockRuntime, ACCOUNT_ACTOR_CODE_ID, EAM_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID,
@@ -108,7 +108,7 @@ push1 0x00
 return
 "#;
 
-        asm::new_contract("native_precompiles", init, body).unwrap()
+        asm::new_contract("native_actor_type", init, body).unwrap()
     };
 
     use evm::interpreter::precompiles::NativeType;
@@ -138,10 +138,6 @@ return
     // f0 104 is a multisig
     let other_target = FILAddress::new_id(104);
     rt.set_address_actor_type(other_target, *MULTISIG_ACTOR_CODE_ID);
-
-    fn id_to_vec(src: &FILAddress) -> Vec<u8> {
-        U256::from(src.id().unwrap()).to_bytes().to_vec()
-    }
 
     fn test_type(rt: &mut MockRuntime, id: FILAddress, expected: NativeType) {
         rt.expect_gas_available(10_000_000_000u64);
