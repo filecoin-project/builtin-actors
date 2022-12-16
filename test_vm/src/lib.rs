@@ -32,7 +32,7 @@ use fil_builtin_actors_state::check::check_state_invariants;
 use fil_builtin_actors_state::check::Tree;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
+use fvm_ipld_encoding::{CborStore, RawBytes};
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
 use fvm_shared::address::Payload;
 use fvm_shared::address::{Address, Protocol};
@@ -53,7 +53,8 @@ use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use regex::Regex;
-use serde::ser;
+use serde::de::DeserializeOwned;
+use serde::{ser, Serialize};
 use std::cell::{RefCell, RefMut};
 use std::collections::HashMap;
 use std::error::Error;
@@ -369,22 +370,22 @@ impl<'bs> VM<'bs> {
         st.resolve_address::<MemoryBlockstore>(self.store, addr).unwrap()
     }
 
-    pub fn get_state<C: Cbor>(&self, addr: Address) -> Option<C> {
+    pub fn get_state<T: DeserializeOwned>(&self, addr: Address) -> Option<T> {
         let a_opt = self.get_actor(addr);
         if a_opt == None {
             return None;
         };
         let a = a_opt.unwrap();
-        self.store.get_cbor::<C>(&a.head).unwrap()
+        self.store.get_cbor::<T>(&a.head).unwrap()
     }
 
-    pub fn mutate_state<C, F>(&self, addr: Address, f: F)
+    pub fn mutate_state<S, F>(&self, addr: Address, f: F)
     where
-        C: Cbor,
-        F: FnOnce(&mut C),
+        S: Serialize + DeserializeOwned,
+        F: FnOnce(&mut S),
     {
         let mut a = self.get_actor(addr).unwrap();
-        let mut st = self.store.get_cbor::<C>(&a.head).unwrap().unwrap();
+        let mut st = self.store.get_cbor::<S>(&a.head).unwrap().unwrap();
         f(&mut st);
         a.head = self.store.put_cbor(&st, Code::Blake2b256).unwrap();
         self.set_actor(addr, a);
@@ -870,7 +871,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         Ok(TEST_VM_RAND_ARRAY)
     }
 
-    fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
+    fn create<T: Serialize>(&mut self, obj: &T) -> Result<(), ActorError> {
         let maybe_act = self.v.get_actor(self.to());
         match maybe_act {
             None => Err(ActorError::unchecked(
@@ -892,16 +893,16 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         }
     }
 
-    fn state<C: Cbor>(&self) -> Result<C, ActorError> {
-        Ok(self.v.get_state::<C>(self.to()).unwrap())
+    fn state<T: DeserializeOwned>(&self) -> Result<T, ActorError> {
+        Ok(self.v.get_state::<T>(self.to()).unwrap())
     }
 
-    fn transaction<C, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
+    fn transaction<S, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
     where
-        C: Cbor,
-        F: FnOnce(&mut C, &mut Self) -> Result<RT, ActorError>,
+        S: Serialize + DeserializeOwned,
+        F: FnOnce(&mut S, &mut Self) -> Result<RT, ActorError>,
     {
-        let mut st = self.state::<C>().unwrap();
+        let mut st = self.state::<S>().unwrap();
         self.allow_side_effects = false;
         let result = f(&mut st, self);
         self.allow_side_effects = true;

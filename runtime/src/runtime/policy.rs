@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 
-use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof, StoragePower};
 use num_traits::FromPrimitive;
@@ -137,7 +136,6 @@ pub struct Policy {
 
     // --- verifreg policy
     /// Minimum verified deal size
-    #[serde(with = "bigint_ser")]
     pub minimum_verified_allocation_size: StoragePower,
     /// Minimum term for a verified data allocation (epochs)
     pub minimum_verified_allocation_term: i64,
@@ -167,7 +165,6 @@ pub struct Policy {
 
     // --- power ---
     /// Minimum miner consensus power
-    #[serde(with = "bigint_ser")]
     pub minimum_consensus_power: StoragePower,
 }
 
