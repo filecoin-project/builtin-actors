@@ -132,7 +132,7 @@ pub enum Method {
     ConfirmChangeWorkerAddressExported = frc42_dispatch::method_hash!("ConfirmChangeWorkerAddress"),
     RepayDebtExported = frc42_dispatch::method_hash!("RepayDebt"),
     ChangeOwnerAddressExported = frc42_dispatch::method_hash!("ChangeOwnerAddress"),
-    ChangeBenificiaryExported = frc42_dispatch::method_hash!("ChangeBeneficiary"),
+    ChangeBeneficiaryExported = frc42_dispatch::method_hash!("ChangeBeneficiary"),
     GetBeneficiaryExported = frc42_dispatch::method_hash!("GetBeneficiary"),
     GetOwnerExported = frc42_dispatch::method_hash!("GetOwner"),
     IsControllingAddressExported = frc42_dispatch::method_hash!("IsControllingAddress"),
@@ -5070,7 +5070,7 @@ impl ActorCode for Actor {
                 let res = Self::prove_replica_updates2(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::serialize(res)?)
             }
-            Some(Method::ChangeBeneficiary) | Some(Method::ChangeBenificiaryExported) => {
+            Some(Method::ChangeBeneficiary) | Some(Method::ChangeBeneficiaryExported) => {
                 Self::change_beneficiary(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
@@ -5082,7 +5082,6 @@ impl ActorCode for Actor {
                 Self::extend_sector_expiration2(rt, cbor::deserialize_params(params)?)?;
                 Ok(RawBytes::default())
             }
-            None => Err(actor_error!(unhandled_message, "Invalid method")),
             Some(Method::GetOwnerExported) => {
                 let res = Self::get_owner(rt)?;
                 Ok(RawBytes::serialize(res)?)
@@ -5111,6 +5110,7 @@ impl ActorCode for Actor {
                 let res = Self::get_multiaddresses(rt)?;
                 Ok(RawBytes::serialize(res)?)
             }
+            None => Err(actor_error!(unhandled_message, "Invalid method")),
         }
     }
 }
