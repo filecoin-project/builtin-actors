@@ -5,6 +5,7 @@ use frc46_token::token::types::{
 };
 use frc46_token::token::{Token, TokenError, TOKEN_PRECISION};
 use fvm_actor_utils::messaging::{Messaging, MessagingError};
+use fvm_actor_utils::receiver::ReceiverHookError;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
@@ -17,12 +18,12 @@ use log::info;
 use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Zero};
 
-use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, restrict_internal_api, ActorContext, ActorError, AsActorError,
+    actor_dispatch, actor_error, restrict_internal_api, ActorContext, ActorError, AsActorError,
     SYSTEM_ACTOR_ADDR,
 };
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 
 pub use self::state::State;
 pub use self::types::*;
@@ -115,7 +116,7 @@ impl Actor {
         Ok(GranularityReturn { granularity: DATACAP_GRANULARITY })
     }
 
-    pub fn total_supply(rt: &mut impl Runtime, _: ()) -> Result<TokenAmount, ActorError> {
+    pub fn total_supply(rt: &mut impl Runtime) -> Result<TokenAmount, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let mut st: State = rt.state()?;
         let msg = Messenger { rt };
@@ -123,13 +124,13 @@ impl Actor {
         Ok(token.total_supply())
     }
 
-    pub fn balance(rt: &mut impl Runtime, address: Address) -> Result<TokenAmount, ActorError> {
+    pub fn balance(rt: &mut impl Runtime, params: Address) -> Result<TokenAmount, ActorError> {
         // NOTE: mutability and method caller here are awkward for a read-only call
         rt.validate_immediate_caller_accept_any()?;
         let mut st: State = rt.state()?;
         let msg = Messenger { rt };
         let token = as_token(&mut st, &msg);
-        token.balance_of(&address).actor_result()
+        token.balance_of(&params).actor_result()
     }
 
     pub fn allowance(
@@ -404,12 +405,12 @@ where
         &self,
         to: &Address,
         method: MethodNum,
-        params: &RawBytes,
+        params: Option<IpldBlock>,
         value: &TokenAmount,
     ) -> fvm_actor_utils::messaging::Result<Receipt> {
         // The Runtime discards some of the information from the syscall :-(
         let fake_gas_used = 0;
-        let res = self.rt.send(to, method, params.clone(), value.clone());
+        let res = self.rt.send(to, method, params, value.clone());
 
         let rec = match res {
             Ok(bytes) => {
@@ -461,86 +462,30 @@ impl<T> AsActorResult<T> for Result<T, TokenError> {
     }
 }
 
+impl<T> AsActorResult<T> for Result<T, ReceiverHookError> {
+    fn actor_result(self) -> Result<T, ActorError> {
+        self.map_err(|e| ActorError::unchecked(ExitCode::from(&e), e.to_string()))
+    }
+}
+
 impl ActorCode for Actor {
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        params: &RawBytes,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-    {
-        restrict_internal_api(rt, method)?;
-        // I'm trying to find a fixed template for these blocks so we can macro it.
-        // Current blockers:
-        // - the serialize method maps () to CBOR null (we want no bytes instead)
-        // - the serialize method can't do BigInts
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::MintExported) => {
-                let ret = Self::mint(rt, cbor::deserialize_params(params)?)?;
-                serialize(&ret, "mint result")
-            }
-            Some(Method::DestroyExported) => {
-                let ret = Self::destroy(rt, cbor::deserialize_params(params)?)?;
-                serialize(&ret, "destroy result")
-            }
-            Some(Method::NameExported) => {
-                let ret = Self::name(rt)?;
-                serialize(&ret, "name result")
-            }
-            Some(Method::SymbolExported) => {
-                let ret = Self::symbol(rt)?;
-                serialize(&ret, "symbol result")
-            }
-            Some(Method::GranularityExported) => {
-                let ret = Self::granularity(rt)?;
-                serialize(&ret, "granularity result")
-            }
-            Some(Method::TotalSupplyExported) => {
-                let ret = Self::total_supply(rt, cbor::deserialize_params(params)?)?;
-                serialize(&ret, "total_supply result")
-            }
-            Some(Method::BalanceExported) => {
-                let ret = Self::balance(rt, cbor::deserialize_params(params)?)?;
-                serialize(&ret, "balance_of result")
-            }
-            Some(Method::TransferExported) => {
-                let ret = Self::transfer(rt, cbor::deserialize_params(params)?)?;
-                serialize(&ret, "transfer result")
-            }
-            Some(Method::TransferFromExported) => {
-                let ret = Self::transfer_from(rt, cbor::deserialize_params(params)?)?;
-                serialize(&ret, "transfer_from result")
-            }
-            Some(Method::IncreaseAllowanceExported) => {
-                let ret = Self::increase_allowance(rt, cbor::deserialize_params(params)?)?;
-                serialize(&ret, "increase_allowance result")
-            }
-            Some(Method::DecreaseAllowanceExported) => {
-                let ret = Self::decrease_allowance(rt, cbor::deserialize_params(params)?)?;
-                serialize(&ret, "decrease_allowance result")
-            }
-            Some(Method::RevokeAllowanceExported) => {
-                Self::revoke_allowance(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::BurnExported) => {
-                let ret = Self::burn(rt, cbor::deserialize_params(params)?)?;
-                serialize(&ret, "burn result")
-            }
-            Some(Method::BurnFromExported) => {
-                let ret = Self::burn_from(rt, cbor::deserialize_params(params)?)?;
-                serialize(&ret, "burn_from result")
-            }
-            Some(Method::AllowanceExported) => {
-                let ret = Self::allowance(rt, cbor::deserialize_params(params)?)?;
-                serialize(&ret, "allowance result")
-            }
-            None => Err(actor_error!(unhandled_message; "Invalid method")),
-        }
+    type Methods = Method;
+    actor_dispatch! {
+        Constructor => constructor,
+        MintExported => mint,
+        DestroyExported => destroy,
+        NameExported => name,
+        SymbolExported => symbol,
+        GranularityExported => granularity,
+        TotalSupplyExported => total_supply,
+        BalanceExported => balance,
+        TransferExported => transfer,
+        TransferFromExported => transfer_from,
+        IncreaseAllowanceExported => increase_allowance,
+        DecreaseAllowanceExported => decrease_allowance,
+        RevokeAllowanceExported => revoke_allowance,
+        BurnExported => burn,
+        BurnFromExported => burn_from,
+        AllowanceExported => allowance,
     }
 }

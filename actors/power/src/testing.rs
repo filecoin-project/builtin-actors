@@ -126,7 +126,7 @@ fn check_cron_invariants<BS: Blockstore>(
                 );
                 events
                     .for_each(|_, event| {
-                        cron_events_by_address.entry(event.miner_addr).or_insert(Vec::new()).push(
+                        cron_events_by_address.entry(event.miner_addr).or_default().push(
                             MinerCronEvent { epoch, payload: event.callback_payload.clone() },
                         );
                         Ok(())

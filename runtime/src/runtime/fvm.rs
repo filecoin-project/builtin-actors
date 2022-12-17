@@ -2,7 +2,8 @@ use anyhow::{anyhow, Error};
 use cid::multihash::Code;
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::{Cbor, CborStore, RawBytes, DAG_CBOR};
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::{CborStore, RawBytes, DAG_CBOR};
 use fvm_sdk as fvm;
 use fvm_sdk::NO_DATA_BLOCK_ID;
 use fvm_shared::address::Address;
@@ -19,6 +20,8 @@ use fvm_shared::sector::{
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
 use num_traits::FromPrimitive;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 #[cfg(feature = "fake-proofs")]
 use sha2::{Digest, Sha256};
 
@@ -188,18 +191,18 @@ where
         // explicitly.
         fvm::rand::get_chain_randomness(personalization as i64, rand_epoch, entropy)
             .map_err(|e| {
-            if self.network_version() < NetworkVersion::V16 {
-                ActorError::unchecked(ExitCode::SYS_ILLEGAL_INSTRUCTION,
-                    "failed to get chain randomness".into())
-            } else {
-                match e {
-                    ErrorNumber::LimitExceeded => {
-                        actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
+                if self.network_version() < NetworkVersion::V16 {
+                    ActorError::unchecked(ExitCode::SYS_ILLEGAL_INSTRUCTION,
+                                          "failed to get chain randomness".into())
+                } else {
+                    match e {
+                        ErrorNumber::LimitExceeded => {
+                            actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
+                        }
+                        e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
                     }
-                    e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
                 }
-            }
-        })
+            })
     }
 
     fn get_randomness_from_beacon(
@@ -211,21 +214,21 @@ where
         // See note on exit codes in get_randomness_from_tickets.
         fvm::rand::get_beacon_randomness(personalization as i64, rand_epoch, entropy)
             .map_err(|e| {
-            if self.network_version() < NetworkVersion::V16 {
-                ActorError::unchecked(ExitCode::SYS_ILLEGAL_INSTRUCTION,
-                    "failed to get chain randomness".into())
-            } else {
-                match e {
-                    ErrorNumber::LimitExceeded => {
-                        actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
+                if self.network_version() < NetworkVersion::V16 {
+                    ActorError::unchecked(ExitCode::SYS_ILLEGAL_INSTRUCTION,
+                                          "failed to get chain randomness".into())
+                } else {
+                    match e {
+                        ErrorNumber::LimitExceeded => {
+                            actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
+                        }
+                        e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
                     }
-                    e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
                 }
-            }
-        })
+            })
     }
 
-    fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
+    fn create<T: Serialize>(&mut self, obj: &T) -> Result<(), ActorError> {
         let root = fvm::sself::root()?;
         if root != EMPTY_ARR_CID {
             return Err(
@@ -238,7 +241,7 @@ where
         Ok(())
     }
 
-    fn state<C: Cbor>(&self) -> Result<C, ActorError> {
+    fn state<T: DeserializeOwned>(&self) -> Result<T, ActorError> {
         let root = fvm::sself::root()?;
         Ok(ActorBlockstore
             .get_cbor(&root)
@@ -246,10 +249,10 @@ where
             .expect("State does not exist for actor state root"))
     }
 
-    fn transaction<C, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
+    fn transaction<S, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
     where
-        C: Cbor,
-        F: FnOnce(&mut C, &mut Self) -> Result<RT, ActorError>,
+        S: Serialize + DeserializeOwned,
+        F: FnOnce(&mut S, &mut Self) -> Result<RT, ActorError>,
     {
         let state_cid = fvm::sself::root()
             .map_err(|_| actor_error!(illegal_argument; "failed to get actor root state CID"))?;
@@ -257,7 +260,7 @@ where
         log::debug!("getting cid: {}", state_cid);
 
         let mut state = ActorBlockstore
-            .get_cbor::<C>(&state_cid)
+            .get_cbor::<S>(&state_cid)
             .map_err(|_| actor_error!(illegal_argument; "failed to get actor state"))?
             .expect("State does not exist for actor state root");
 
@@ -280,7 +283,7 @@ where
         &self,
         to: &Address,
         method: MethodNum,
-        params: RawBytes,
+        params: Option<IpldBlock>,
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError> {
         if self.in_transaction {
@@ -555,14 +558,12 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
 
     let method = fvm::message::method_number();
     log::debug!("fetching parameters block: {}", params);
-    let params = fvm::message::params_raw(params).expect("params block invalid").1;
-    let params = RawBytes::new(params);
-    log::debug!("input params: {:x?}", params.bytes());
+    let params = fvm::message::params_raw(params).expect("params block invalid");
 
     // Construct a new runtime.
     let mut rt = FvmRuntime::default();
     // Invoke the method, aborting if the actor returns an errored exit code.
-    let ret = C::invoke_method(&mut rt, method, &params)
+    let ret = C::invoke_method(&mut rt, method, params)
         .unwrap_or_else(|err| fvm::vm::abort(err.exit_code().value(), Some(err.msg())));
 
     // Abort with "assertion failed" if the actor failed to validate the caller somewhere.

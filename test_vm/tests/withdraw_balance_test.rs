@@ -83,7 +83,7 @@ fn withdraw_balance_fail() {
         miner_id,
         TokenAmount::zero(),
         MinerMethod::WithdrawBalance as u64,
-        WithdrawBalanceParams { amount_requested: withdraw_amount },
+        Some(WithdrawBalanceParams { amount_requested: withdraw_amount }),
         ExitCode::USR_FORBIDDEN,
     );
     assert_eq!(balance_before_withdraw, v.get_actor(beneficiary).unwrap().balance);
@@ -100,7 +100,7 @@ fn withdraw_balance_fail() {
         miner_id,
         TokenAmount::zero(),
         MinerMethod::WithdrawBalance as u64,
-        WithdrawBalanceParams { amount_requested: withdraw_amount.clone() },
+        Some(WithdrawBalanceParams { amount_requested: withdraw_amount.clone() }),
         ExitCode::USR_FORBIDDEN,
     );
     assert_eq!(balance_before_withdraw, v.get_actor(addr).unwrap().balance);

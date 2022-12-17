@@ -7,7 +7,6 @@ use fil_actor_miner::{
 };
 use fil_actor_power::{Method as PowerMethod, State as PowerState};
 use fil_actor_reward::Method as RewardMethod;
-use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
     BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
@@ -15,6 +14,7 @@ use fil_actors_runtime::{
 };
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
@@ -70,14 +70,14 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, MinerInfo, SectorInfo) {
 
     // prove commit, cron, advance to post time
     let prove_params = ProveCommitSectorParams { sector_number, proof: vec![] };
-    let prove_params_ser = serialize(&prove_params, "commit params").unwrap();
+    let prove_params_ser = IpldBlock::serialize_cbor(&prove_params).unwrap();
     apply_ok(
         &v,
         worker,
         robust_addr,
         TokenAmount::zero(),
         MinerMethod::ProveCommitSector as u64,
-        prove_params,
+        Some(prove_params),
     );
     ExpectInvocation {
         to: id_addr,
@@ -97,7 +97,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, MinerInfo, SectorInfo) {
             CRON_ACTOR_ADDR,
             TokenAmount::zero(),
             CronMethod::EpochTick as u64,
-            RawBytes::default(),
+            None::<RawBytes>,
         )
         .unwrap();
     assert_eq!(ExitCode::OK, res.code);
@@ -217,7 +217,7 @@ fn skip_sector() {
         miner_info.miner_id,
         TokenAmount::zero(),
         MinerMethod::SubmitWindowedPoSt as u64,
-        params,
+        Some(params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 
@@ -249,7 +249,7 @@ fn missed_first_post_deadline() {
         CRON_ACTOR_ADDR,
         TokenAmount::zero(),
         CronMethod::EpochTick as u64,
-        RawBytes::default(),
+        None::<RawBytes>,
     );
 
     ExpectInvocation {
@@ -354,7 +354,7 @@ fn overdue_precommit() {
         CRON_ACTOR_ADDR,
         TokenAmount::zero(),
         CronMethod::EpochTick as u64,
-        RawBytes::default(),
+        None::<RawBytes>,
     );
 
     ExpectInvocation {
@@ -476,14 +476,14 @@ fn aggregate_bad_sector_number() {
         sector_numbers: precommited_sector_nos,
         aggregate_proof: vec![],
     };
-    let prove_params_ser = serialize(&prove_params, "commit params").unwrap();
+    let prove_params_ser = IpldBlock::serialize_cbor(&prove_params).unwrap();
     apply_code(
         &v,
         worker,
         robust_addr,
         TokenAmount::zero(),
         MinerMethod::ProveCommitAggregate as u64,
-        prove_params,
+        Some(prove_params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
     ExpectInvocation {
@@ -555,14 +555,14 @@ fn aggregate_size_limits() {
         sector_numbers: precommited_sector_nos.clone(),
         aggregate_proof: vec![],
     };
-    let mut prove_params_ser = serialize(&prove_params, "commit params").unwrap();
+    let mut prove_params_ser = IpldBlock::serialize_cbor(&prove_params).unwrap();
     apply_code(
         &v,
         worker,
         robust_addr,
         TokenAmount::zero(),
         MinerMethod::ProveCommitAggregate as u64,
-        prove_params,
+        Some(prove_params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
     ExpectInvocation {
@@ -582,14 +582,14 @@ fn aggregate_size_limits() {
         sector_numbers: too_few_sector_nos_bf,
         aggregate_proof: vec![],
     };
-    prove_params_ser = serialize(&prove_params, "commit params").unwrap();
+    prove_params_ser = IpldBlock::serialize_cbor(&prove_params).unwrap();
     apply_code(
         &v,
         worker,
         robust_addr,
         TokenAmount::zero(),
         MinerMethod::ProveCommitAggregate as u64,
-        prove_params,
+        Some(prove_params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
     ExpectInvocation {
@@ -610,14 +610,14 @@ fn aggregate_size_limits() {
         aggregate_proof: vec![0; policy.max_aggregated_proof_size + 1],
     };
 
-    prove_params_ser = serialize(&prove_params, "commit params").unwrap();
+    prove_params_ser = IpldBlock::serialize_cbor(&prove_params).unwrap();
     apply_code(
         &v,
         worker,
         robust_addr,
         TokenAmount::zero(),
         MinerMethod::ProveCommitAggregate as u64,
-        prove_params,
+        Some(prove_params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
     ExpectInvocation {
@@ -686,14 +686,14 @@ fn aggregate_bad_sender() {
         sector_numbers: precommited_sector_nos,
         aggregate_proof: vec![],
     };
-    let prove_params_ser = serialize(&prove_params, "commit params").unwrap();
+    let prove_params_ser = IpldBlock::serialize_cbor(&prove_params).unwrap();
     apply_code(
         &v,
         addrs[1],
         robust_addr,
         TokenAmount::zero(),
         MinerMethod::ProveCommitAggregate as u64,
-        prove_params,
+        Some(prove_params),
         ExitCode::USR_FORBIDDEN,
     );
     ExpectInvocation {
@@ -793,14 +793,14 @@ fn aggregate_one_precommit_expires() {
 
     let prove_params =
         ProveCommitAggregateParams { sector_numbers: sector_nos_bf, aggregate_proof: vec![] };
-    let prove_params_ser = serialize(&prove_params, "commit params").unwrap();
+    let prove_params_ser = IpldBlock::serialize_cbor(&prove_params).unwrap();
     apply_ok(
         &v,
         worker,
         robust_addr,
         TokenAmount::zero(),
         MinerMethod::ProveCommitAggregate as u64,
-        prove_params,
+        Some(prove_params),
     );
     ExpectInvocation {
         to: id_addr,

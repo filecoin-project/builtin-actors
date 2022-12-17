@@ -150,7 +150,7 @@ fn batch_onboarding(v2: bool) {
         CRON_ACTOR_ADDR,
         TokenAmount::zero(),
         CronMethod::EpochTick as u64,
-        RawBytes::default(),
+        None::<RawBytes>,
     );
 
     v.expect_state_invariants(

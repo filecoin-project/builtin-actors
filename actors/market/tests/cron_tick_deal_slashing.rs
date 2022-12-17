@@ -13,6 +13,7 @@ use fvm_shared::METHOD_SEND;
 use num_traits::Zero;
 
 mod harness;
+
 use harness::*;
 
 const SECTOR_EXPIRY: ChainEpoch = 400 + 200 * EPOCHS_IN_DAY;
@@ -240,7 +241,7 @@ fn slash_multiple_deals_in_the_same_epoch() {
     rt.expect_send(
         BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
-        RawBytes::default(),
+        None,
         total_slashed,
         RawBytes::default(),
         ExitCode::OK,

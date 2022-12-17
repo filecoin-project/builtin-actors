@@ -1,5 +1,4 @@
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::Cbor;
 use fvm_shared::error::ExitCode;
 use std::fmt;
 
@@ -86,8 +85,6 @@ impl fmt::Display for BatchReturn {
         f.write_str(&ret)
     }
 }
-
-impl Cbor for BatchReturn {}
 
 pub struct BatchReturnGen {
     success_count: usize,

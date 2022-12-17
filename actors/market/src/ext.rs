@@ -41,13 +41,14 @@ pub mod verifreg {
     use fil_actors_runtime::BatchReturn;
     use fvm_shared::clock::ChainEpoch;
     use fvm_shared::piece::PaddedPieceSize;
+    use fvm_shared::ActorID;
 
     pub type AllocationID = u64;
     pub type ClaimID = u64;
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
     pub struct AllocationRequest {
-        pub provider: Address,
+        pub provider: ActorID,
         pub data: Cid,
         pub size: PaddedPieceSize,
         pub term_min: ChainEpoch,
@@ -57,7 +58,7 @@ pub mod verifreg {
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
     pub struct ClaimExtensionRequest {
-        pub provider: Address,
+        pub provider: ActorID,
         pub claim: ClaimID,
         pub term_max: ChainEpoch,
     }

@@ -7,11 +7,11 @@ use fil_actors_runtime::{
     test_utils::{expect_abort_contains_message, MockRuntime, ACCOUNT_ACTOR_CODE_ID},
     EPOCHS_IN_DAY,
 };
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::{econ::TokenAmount, error::ExitCode};
 
 mod util;
 
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use num_traits::Zero;
 use util::*;
 
@@ -122,8 +122,10 @@ fn cannot_terminate_a_sector_when_the_challenge_window_is_open() {
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.worker);
     rt.expect_validate_caller_addr(h.caller_addrs());
-    let res =
-        rt.call::<Actor>(Method::TerminateSectors as u64, &RawBytes::serialize(params).unwrap());
+    let res = rt.call::<Actor>(
+        Method::TerminateSectors as u64,
+        IpldBlock::serialize_cbor(&params).unwrap(),
+    );
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "cannot terminate sectors in immutable deadline",
