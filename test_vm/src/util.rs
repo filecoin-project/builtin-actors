@@ -23,7 +23,7 @@ use fil_actor_market::ext::verifreg::{
 };
 use fil_actor_market::{
     ClientDealProposal, DealProposal, Label, Method as MarketMethod, PublishStorageDealsParams,
-    PublishStorageDealsReturn,
+    PublishStorageDealsReturn, MARKET_NOTIFY_DEAL_METHOD,
 };
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, max_prove_commit_duration,
@@ -1133,6 +1133,11 @@ pub fn market_publish_deal(
             method: AccountMethod::AuthenticateMessageExported as u64,
             ..Default::default()
         },
+        ExpectInvocation {
+            to: deal_client,
+            method: MARKET_NOTIFY_DEAL_METHOD,
+            ..Default::default()
+        },
     ];
     if verified_deal {
         let deal_term = deal.end_epoch - deal.start_epoch;
@@ -1151,42 +1156,45 @@ pub fn market_publish_deal(
             }],
             extensions: vec![],
         };
-        expect_publish_invocs.push(ExpectInvocation {
-            to: DATACAP_TOKEN_ACTOR_ADDR,
-            method: DataCapMethod::TransferFromExported as u64,
-            params: Some(
-                RawBytes::serialize(&TransferFromParams {
-                    from: deal_client,
-                    to: VERIFIED_REGISTRY_ACTOR_ADDR,
-                    amount: token_amount.clone(),
-                    operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
-                })
-                .unwrap(),
-            ),
-            code: Some(ExitCode::OK),
-            subinvocs: Some(vec![ExpectInvocation {
-                to: VERIFIED_REGISTRY_ACTOR_ADDR,
-                method: VerifregMethod::UniversalReceiverHook as u64,
+        expect_publish_invocs.insert(
+            expect_publish_invocs.len() - 1,
+            ExpectInvocation {
+                to: DATACAP_TOKEN_ACTOR_ADDR,
+                method: DataCapMethod::TransferFromExported as u64,
                 params: Some(
-                    RawBytes::serialize(&UniversalReceiverParams {
-                        type_: FRC46_TOKEN_TYPE,
-                        payload: RawBytes::serialize(&FRC46TokenReceived {
-                            from: deal_client.id().unwrap(),
-                            to: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
-                            operator: STORAGE_MARKET_ACTOR_ADDR.id().unwrap(),
-                            amount: token_amount,
-                            operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
-                            token_data: Default::default(),
-                        })
-                        .unwrap(),
+                    RawBytes::serialize(&TransferFromParams {
+                        from: deal_client,
+                        to: VERIFIED_REGISTRY_ACTOR_ADDR,
+                        amount: token_amount.clone(),
+                        operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
                     })
                     .unwrap(),
                 ),
                 code: Some(ExitCode::OK),
+                subinvocs: Some(vec![ExpectInvocation {
+                    to: VERIFIED_REGISTRY_ACTOR_ADDR,
+                    method: VerifregMethod::UniversalReceiverHook as u64,
+                    params: Some(
+                        RawBytes::serialize(&UniversalReceiverParams {
+                            type_: FRC46_TOKEN_TYPE,
+                            payload: RawBytes::serialize(&FRC46TokenReceived {
+                                from: deal_client.id().unwrap(),
+                                to: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
+                                operator: STORAGE_MARKET_ACTOR_ADDR.id().unwrap(),
+                                amount: token_amount,
+                                operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
+                                token_data: Default::default(),
+                            })
+                            .unwrap(),
+                        })
+                        .unwrap(),
+                    ),
+                    code: Some(ExitCode::OK),
+                    ..Default::default()
+                }]),
                 ..Default::default()
-            }]),
-            ..Default::default()
-        })
+            },
+        )
     }
     ExpectInvocation {
         to: STORAGE_MARKET_ACTOR_ADDR,

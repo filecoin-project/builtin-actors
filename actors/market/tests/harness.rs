@@ -13,10 +13,10 @@ use fil_actor_market::{
     deal_id_key, ext, ext::miner::GetControlAddressesReturnParams, gen_rand_next_epoch,
     testing::check_state_invariants, ActivateDealsParams, ActivateDealsResult,
     Actor as MarketActor, ClientDealProposal, DealArray, DealMetaArray, DealProposal, DealState,
-    GetBalanceReturn, Label, Method, OnMinerSectorsTerminateParams, PublishStorageDealsParams,
-    PublishStorageDealsReturn, SectorDeals, State, VerifyDealsForActivationParams,
-    VerifyDealsForActivationReturn, WithdrawBalanceParams, WithdrawBalanceReturn, NO_ALLOCATION_ID,
-    PROPOSALS_AMT_BITWIDTH,
+    GetBalanceReturn, Label, MarketNotifyDealParams, Method, OnMinerSectorsTerminateParams,
+    PublishStorageDealsParams, PublishStorageDealsReturn, SectorDeals, State,
+    VerifyDealsForActivationParams, VerifyDealsForActivationReturn, WithdrawBalanceParams,
+    WithdrawBalanceReturn, MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID, PROPOSALS_AMT_BITWIDTH,
 };
 use fil_actor_power::{CurrentTotalPowerReturn, Method as PowerMethod};
 use fil_actor_reward::Method as RewardMethod;
@@ -439,6 +439,8 @@ pub fn publish_deals(
     publish_deals: &[DealProposal],
     next_allocation_id: AllocationID,
 ) -> Vec<DealID> {
+    let st: State = rt.get_state();
+    let next_deal_id = st.next_id;
     rt.expect_validate_caller_any();
     let return_value = GetControlAddressesReturnParams {
         owner: addrs.owner,
@@ -527,6 +529,23 @@ pub fn publish_deals(
             );
             alloc_id += 1
         }
+    }
+
+    let mut deal_id = next_deal_id;
+    for deal in publish_deals {
+        let buf = RawBytes::serialize(deal.clone()).expect("failed to marshal deal proposal");
+        let params =
+            RawBytes::serialize(MarketNotifyDealParams { proposal: buf.to_vec(), deal_id })
+                .unwrap();
+        rt.expect_send(
+            deal.client,
+            MARKET_NOTIFY_DEAL_METHOD,
+            params,
+            TokenAmount::zero(),
+            RawBytes::default(),
+            ExitCode::USR_UNHANDLED_MESSAGE,
+        );
+        deal_id += 1;
     }
 
     let ret: PublishStorageDealsReturn = rt
