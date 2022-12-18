@@ -51,6 +51,7 @@ fn test_method_selector() {
 #[repr(u64)]
 pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
+    // TODO: Do we want to use ExportedNums for all of these, per FRC-42?
     InvokeContract = 2,
     GetBytecode = 3,
     GetStorageAt = 4,

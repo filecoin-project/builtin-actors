@@ -1,7 +1,7 @@
 use std::iter;
 
 use ext::init::{Exec4Params, Exec4Return};
-use fil_actors_runtime::{actor_dispatch, restrict_internal_api, AsActorError};
+use fil_actors_runtime::AsActorError;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::error::ExitCode;
 
@@ -31,6 +31,7 @@ fil_actors_runtime::wasm_trampoline!(EamActor);
 #[repr(u64)]
 pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
+    // TODO: Do we want to use ExportedNums for all of these, per FRC-42?
     Create = 2,
     Create2 = 3,
     // CreateAccount = 4,
@@ -182,7 +183,6 @@ fn resolve_caller(rt: &mut impl Runtime) -> Result<EthAddress, ActorError> {
 }
 
 pub struct EamActor;
-
 impl EamActor {
     pub fn constructor(rt: &mut impl Runtime) -> Result<(), ActorError> {
         let actor_id = rt.resolve_address(&rt.message().receiver()).unwrap();
@@ -264,10 +264,38 @@ impl EamActor {
 
 impl ActorCode for EamActor {
     type Methods = Method;
-    actor_dispatch! {
-        Constructor => constructor,
-        Create => create,
-        Create2 => create2,
+    fn invoke_method<RT>(
+        rt: &mut RT,
+        method: MethodNum,
+        args: Option<IpldBlock>,
+    ) -> Result<RawBytes, ActorError>
+    where
+        RT: Runtime,
+    {
+        match FromPrimitive::from_u64(method) {
+            Some(Method::Constructor) => {
+                Self::constructor(rt)?;
+                Ok(RawBytes::default())
+            }
+            Some(Method::Create) => Ok(RawBytes::serialize(Self::create(
+                rt,
+                args.with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
+                    "method expects arguments".to_string()
+                })?
+                .deserialize()?,
+            )?)?),
+            Some(Method::Create2) => Ok(RawBytes::serialize(Self::create2(
+                rt,
+                args.with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
+                    "method expects arguments".to_string()
+                })?
+                .deserialize()?,
+            )?)?),
+            // Some(Method::CreateAccount) => {
+            //     Self::create_account(rt, cbor::deserialize_params(params)?)
+            // }
+            None => Err(actor_error!(unhandled_message; "Invalid method")),
+        }
     }
 }
 
