@@ -1,0 +1,529 @@
+{
+    "state": [
+        {
+            "issueId": "ID-0001 | EIPTests/stEIP3855/push0.json",
+            "failing": "EVM execution error: UndefinedInstruction",
+            "preTests": {
+                "push0": {
+                    "preOwners": [
+                        "0x0000000000000000000000000000000000000100",
+                        "0x0000000000000000000000000000000000000200",
+                        "0x0000000000000000000000000000000000000300",
+                        "0x0000000000000000000000000000000000000400",
+                        "0x0000000000000000000000000000000000000500",
+                        "0x0000000000000000000000000000000000000600",
+                        "0x0000000000000000000000000000000000000700",
+                        "0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0xb94f5374fce5edbc8e2a8697c15331677e6ebf0b"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0002 | EIPTests/stEIP3855/push0Gas.json",
+            "failing": "EVM execution error: UndefinedInstruction",
+            "preTests": {
+                "push0Gas": {
+                    "preOwners": [
+                        "0x0000000000000000000000000000000000000100"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0003 | EIPTests/stEIP3855/push0Gas2.json",
+            "failing": "address is a precompile: BadAddress()",
+            "preTests": {
+                "push0Gas2": {
+                    "preOwners": [
+                        "0x0000000000000000000000000000000000000100",
+                        "0xb94f5374fce5edbc8e2a8697c15331677e6ebf0b"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0004 | EIPTests/stEOF/stEIP3540/CREATE2_EOF1Invalid_FromEOF.json",
+            "failing": "EVM execution error: UndefinedInstruction",
+            "preTests": {
+                "CREATE2_EOF1Invalid_FromEOF": {
+                    "preOwners": [
+                        "0xb94f5374fce5edbc8e2a8697c15331677e6ebf0b"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0005 | EIPTests/stEOF/stEIP3540/CREATE2_EOF1_FromEOF.json",
+            "failing": "EVM execution error: UndefinedInstruction",
+            "preTests": {
+                "CREATE2_EOF1_FromEOF": {
+                    "preOwners": [
+                        "0xb94f5374fce5edbc8e2a8697c15331677e6ebf0b"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0006 | EIPTests/stEOF/stEIP3540/CREATE_EOF1Invalid_FromEOF.json",
+            "failing": "EVM execution error: UndefinedInstruction",
+            "preTests": {
+                "CREATE_EOF1Invalid_FromEOF": {
+                    "preOwners": [
+                        "0xb94f5374fce5edbc8e2a8697c15331677e6ebf0b"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0007 | EIPTests/stEOF/stEIP3540/CREATE_EOF1_FromEOF.json",
+            "failing": "EVM execution error: UndefinedInstruction",
+            "preTests": {
+                "CREATE_EOF1_FromEOF": {
+                    "preOwners": [
+                        "0xb94f5374fce5edbc8e2a8697c15331677e6ebf0b"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0008 | EIPTests/stEOF/stEIP3540/EOF1_Calls.json",
+            "failing": "address is a precompile: BadAddress()",
+            "preTests": {
+                "EOF1_Calls": {
+                    "preOwners": [
+                        "0xb94f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x244f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x304f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x204f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x224f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0xd94f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x234f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0xc94f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x314f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x324f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x334f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x214f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x344f5374fce5edbc8e2a8697c15331677e6ebf0b"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0009 | EIPTests/stEOF/stEIP3540/EOF1_Execution.json",
+            "failing": "EVM execution error: UndefinedInstruction",
+            "preTests": {
+                "EOF1_Execution": {
+                    "preOwners": [
+                        "0x294f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x234f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x164f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x174f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x154f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x204f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x014f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x614f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x114f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x284f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x294f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x134f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x104f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x164f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x294f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x124f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0xc94f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x264f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x254f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x274f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x244f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x654f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x214f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x004f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x024f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0xd94f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x224f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x144f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x634f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x514f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0xb94f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x674f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x524f5374fce5edbc8e2a8697c15331677e6ebf0b",
+                        "0x504f5374fce5edbc8e2a8697c15331677e6ebf0b"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0010 | stArgsZeroOneBalance/callNonConst.json",
+            "failing": "address is a precompile: BadAddress()",
+            "preTests": {
+                "callNonConst": {
+                    "preOwners": [
+                        "0x095e7baea6a6c7c4c2dfeb977efac326af552d87"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0011 | stArgsZeroOneBalance/jumpNonConst.json",
+            "failing": "constructor failed: EVM execution error: BadJumpDestination",
+            "preTests": {
+                "jumpNonConst": {
+                    "preOwners": [
+                        "0x095e7baea6a6c7c4c2dfeb977efac326af552d87"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0012 | stArgsZeroOneBalance/suicideNonConst.json",
+            "failing": "panicked at 'TODO implement me', test_vm/src/lib.rs:1116:9",
+            "preTests": {
+                "suicideNonConst": {
+                    "preOwners": [
+                        "0x095e7baea6a6c7c4c2dfeb977efac326af552d87"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0013 | stAttackTest/ContractCreationSpam.json",
+            "failing": "panicked at 'TODO implement me', test_vm/src/lib.rs:1116:9",
+            "preTests": {
+                "ContractCreationSpam": {
+                    "preOwners": [
+                        "0x6a0a0fc761c612c340a0e98d33b37a75e5268472"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0014 | stBadOpcode/eip2315NotRemoved.json",
+            "failing": "EVM execution error: UndefinedInstruction",
+            "preTests": {
+                "eip2315NotRemoved": {
+                    "preOwners": [
+                        "0x1000000000000000000000000000000000000000"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0015 | stBadOpcode/invalidAddr.json",
+            "failing": "TODO implement me', test_vm/src/lib.rs:1116:9",
+            "preTests": {
+                "invalidAddr": {
+                    "preOwners": [
+                        "0x0000000000000000000000000000000000dead02",
+                        "0x0000000000000000000000000000000000dead01"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0016 | stBadOpcode/invalidDiffPlaces.json",
+            "failing": "EVM execution error: InvalidInstruction",
+            "preTests": {
+                "invalidDiffPlaces": {
+                    "preOwners": [
+                        "0x000000000000000000000000000000000000ca11",
+                        "0x0000000000000000000000000000000000060006",
+                        "0x000000000000000000000000000000000000c0de",
+                        "0x00000000000000000000000000000060baccfa57",
+                        "0x000000000000000000000000000000000020c0de",
+                        "0xcccccccccccccccccccccccccccccccccccccccc",
+                        "0x000000000000000000000000000000000060bacc",
+                        "0x00000000000000000000000000000000ca1100f2",
+                        "0x00000000000000000000000000000000deaddead"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0017 | stBadOpcode/opc0CDiffPlaces.json",
+            "failing": "EVM execution error: InvalidInstruction",
+            "preTests": {
+                "opc0CDiffPlaces": {
+                    "preOwners": [
+                        "0x000000000000000000000000000000000000ca11",
+                        "0x0000000000000000000000000000000000060006",
+                        "0x000000000000000000000000000000000000c0de",
+                        "0x00000000000000000000000000000060baccfa57",
+                        "0x000000000000000000000000000000000020c0de",
+                        "0xcccccccccccccccccccccccccccccccccccccccc",
+                        "0x000000000000000000000000000000000060bacc",
+                        "0x00000000000000000000000000000000ca1100f2",
+                        "0x00000000000000000000000000000000deaddead"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0018 | stBadOpcode/opc0DDiffPlaces.json",
+            "failing": "constructor failed: constructor reverted",
+            "preTests": {
+                "opc0DDiffPlaces": {
+                    "preOwners": [
+                        "0x00000000000000000000000000000000ca1100f2",
+                        "0x000000000000000000000000000000000000c0de",
+                        "0x00000000000000000000000000000060baccfa57",
+                        "0x000000000000000000000000000000000000ca11",
+                        "0x000000000000000000000000000000000020c0de",
+                        "0x000000000000000000000000000000000060bacc",
+                        "0xcccccccccccccccccccccccccccccccccccccccc",
+                        "0x00000000000000000000000000000000deaddead",
+                        "0x0000000000000000000000000000000000060006"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0019 | stBadOpcode/opc0EDiffPlaces.json",
+            "failing": "constructor failed: EVM execution error: UndefinedInstruction",
+            "preTests": {
+                "opc0EDiffPlaces": {
+                    "preOwners": [
+                        "0x00000000000000000000000000000000deaddead",
+                        "0x000000000000000000000000000000000000ca11",
+                        "0x000000000000000000000000000000000060bacc",
+                        "0x000000000000000000000000000000000020c0de",
+                        "0x0000000000000000000000000000000000060006",
+                        "0x00000000000000000000000000000000ca1100f2",
+                        "0xcccccccccccccccccccccccccccccccccccccccc",
+                        "0x000000000000000000000000000000000000c0de",
+                        "0x00000000000000000000000000000060baccfa57"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0020 | stBadOpcode/opc0FDiffPlaces.json",
+            "failing": "constructor failed: EVM execution error: UndefinedInstruction",
+            "preTests": {
+                "opc0FDiffPlaces": {
+                    "preOwners": [
+                        "0x000000000000000000000000000000000060bacc",
+                        "0x00000000000000000000000000000000deaddead",
+                        "0x00000000000000000000000000000000ca1100f2",
+                        "0x000000000000000000000000000000000060bacc",
+                        "0x0000000000000000000000000000000000060006",
+                        "0x000000000000000000000000000000000000ca11",
+                        "0x00000000000000000000000000000060baccfa57",
+                        "0x000000000000000000000000000000000020c0de",
+                        "0xcccccccccccccccccccccccccccccccccccccccc",
+                        "0x000000000000000000000000000000000000c0de"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0021 | stBadOpcode/opc1EDiffPlaces.json",
+            "failing": "constructor failed: EVM execution error: UndefinedInstruction",
+            "preTests": {
+                "opc1EDiffPlaces": {
+                    "preOwners": [
+                        "0x000000000000000000000000000000000000c0de",
+                        "0x000000000000000000000000000000000020c0de",
+                        "0x00000000000000000000000000000000deaddead",
+                        "0x000000000000000000000000000000000060bacc",
+                        "0xcccccccccccccccccccccccccccccccccccccccc",
+                        "0x000000000000000000000000000000000000ca11",
+                        "0x0000000000000000000000000000000000060006",
+                        "0x00000000000000000000000000000060baccfa57",
+                        "0x00000000000000000000000000000000ca1100f2"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0022 | stBadOpcode/opc1FDiffPlaces.json",
+            "failing": "constructor failed: constructor reverted",
+            "preTests": {
+                "opc1FDiffPlaces": {
+                    "preOwners": [
+                        "0x000000000000000000000000000000000000c0de",
+                        "0x00000000000000000000000000000000ca1100f2",
+                        "0x000000000000000000000000000000000020c0de",
+                        "0xcccccccccccccccccccccccccccccccccccccccc",
+                        "0x0000000000000000000000000000000000060006",
+                        "0x00000000000000000000000000000060baccfa57",
+                        "0x00000000000000000000000000000000deaddead",
+                        "0x000000000000000000000000000000000000ca11",
+                        "0x000000000000000000000000000000000060bacc"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0023 | stBadOpcode/opc21DiffPlaces.json",
+            "failing": "constructor failed: EVM execution error: UndefinedInstruction",
+            "preTests": {
+                "opc21DiffPlaces": {
+                    "preOwners": [
+                        "0x0000000000000000000000000000000000060006",
+                        "0x00000000000000000000000000000000deaddead",
+                        "0x000000000000000000000000000000000060bacc",
+                        "0x000000000000000000000000000000000000ca11",
+                        "0x000000000000000000000000000000000020c0de",
+                        "0x00000000000000000000000000000000ca1100f2",
+                        "0xcccccccccccccccccccccccccccccccccccccccc",
+                        "0x000000000000000000000000000000000000c0de",
+                        "0x00000000000000000000000000000060baccfa57"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0024 | stBadOpcode/opc22DiffPlaces.json",
+            "failing": "TODO implement me', test_vm/src/lib.rs:1116:9",
+            "preTests": {
+                "opc22DiffPlaces": {
+                    "preOwners": [
+                        "0x00000000000000000000000000000000deaddead",
+                        "0x000000000000000000000000000000000020c0de",
+                        "0x000000000000000000000000000000000000c0de",
+                        "0x0000000000000000000000000000000000060006",
+                        "0x00000000000000000000000000000060baccfa57",
+                        "0xcccccccccccccccccccccccccccccccccccccccc",
+                        "0x000000000000000000000000000000000060bacc",
+                        "0x000000000000000000000000000000000000ca11",
+                        "0x00000000000000000000000000000000ca1100f2"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0025 | stBadOpcode/opc23DiffPlaces.json",
+            "failing": "constructor failed: EVM execution error: UndefinedInstruction",
+            "preTests": {
+                "opc23DiffPlaces": {
+                    "preOwners": [
+                        "0x00000000000000000000000000000000deaddead",
+                        "0x000000000000000000000000000000000000ca11",
+                        "0x00000000000000000000000000000000ca1100f2",
+                        "0x0000000000000000000000000000000000060006",
+                        "0xcccccccccccccccccccccccccccccccccccccccc",
+                        "0x000000000000000000000000000000000000c0de",
+                        "0x00000000000000000000000000000060baccfa57",
+                        "0x000000000000000000000000000000000020c0de",
+                        "0x000000000000000000000000000000000060bacc"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0026 | stBadOpcode/opc24DiffPlaces.json",
+            "failing": "constructor failed: EVM execution error: UndefinedInstruction",
+            "preTests": {
+                "opc24DiffPlaces": {
+                    "preOwners": [
+                        "0x000000000000000000000000000000000020c0de",
+                        "0x0000000000000000000000000000000000060006",
+                        "0xcccccccccccccccccccccccccccccccccccccccc",
+                        "0x00000000000000000000000000000000deaddead",
+                        "0x00000000000000000000000000000060baccfa57",
+                        "0x000000000000000000000000000000000060bacc",
+                        "0x000000000000000000000000000000000000c0de",
+                        "0x00000000000000000000000000000000ca1100f2",
+                        "0x000000000000000000000000000000000000ca11"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0027 | stBadOpcode/opc25DiffPlaces.json",
+            "failing": "constructor failed: EVM execution error: UndefinedInstruction",
+            "preTests": {
+                "opc25DiffPlaces": {
+                    "preOwners": [
+                        "0x00000000000000000000000000000000deaddead",
+                        "0x000000000000000000000000000000000060bacc",
+                        "0x00000000000000000000000000000000ca1100f2",
+                        "0x00000000000000000000000000000060baccfa57",
+                        "0x000000000000000000000000000000000000ca11",
+                        "0x000000000000000000000000000000000020c0de",
+                        "0x000000000000000000000000000000000000c0de",
+                        "0x0000000000000000000000000000000000060006",
+                        "0xcccccccccccccccccccccccccccccccccccccccc"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0028 | stBadOpcode/opc26DiffPlaces.json",
+            "failing": "constructor failed: EVM execution error: UndefinedInstruction",
+            "preTests": {
+                "opc26DiffPlaces": {
+                    "preOwners": [
+                        "0x00000000000000000000000000000000deaddead",
+                        "0x000000000000000000000000000000000060bacc",
+                        "0x00000000000000000000000000000000ca1100f2",
+                        "0x00000000000000000000000000000060baccfa57",
+                        "0x000000000000000000000000000000000000ca11",
+                        "0x000000000000000000000000000000000020c0de",
+                        "0x000000000000000000000000000000000000c0de",
+                        "0x0000000000000000000000000000000000060006",
+                        "0xcccccccccccccccccccccccccccccccccccccccc"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0029 | stBadOpcode/opc27DiffPlaces.json",
+            "failing": "constructor failed: EVM execution error: UndefinedInstruction",
+            "preTests": {
+                "opc27DiffPlaces": {
+                    "preOwners": [
+                        "0x00000000000000000000000000000000deaddead",
+                        "0x000000000000000000000000000000000060bacc",
+                        "0x00000000000000000000000000000000ca1100f2",
+                        "0x00000000000000000000000000000060baccfa57",
+                        "0x000000000000000000000000000000000000ca11",
+                        "0x000000000000000000000000000000000020c0de",
+                        "0x000000000000000000000000000000000000c0de",
+                        "0x0000000000000000000000000000000000060006",
+                        "0xcccccccccccccccccccccccccccccccccccccccc"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0030 | stBadOpcode/opc28DiffPlaces.json",
+            "failing": "constructor failed: EVM execution error: UndefinedInstruction",
+            "preTests": {
+                "opc28DiffPlaces": {
+                    "preOwners": [
+                        "0x00000000000000000000000000000000deaddead",
+                        "0x000000000000000000000000000000000060bacc",
+                        "0x00000000000000000000000000000000ca1100f2",
+                        "0x00000000000000000000000000000060baccfa57",
+                        "0x000000000000000000000000000000000000ca11",
+                        "0x000000000000000000000000000000000020c0de",
+                        "0x000000000000000000000000000000000000c0de",
+                        "0x0000000000000000000000000000000000060006",
+                        "0xcccccccccccccccccccccccccccccccccccccccc"
+                    ]
+                }
+            }
+        },
+        {
+            "issueId": "ID-0031 | stBadOpcode/opc29DiffPlaces.json",
+            "failing": "constructor failed: EVM execution error: UndefinedInstruction",
+            "preTests": {
+                "opc29DiffPlaces": {
+                    "preOwners": [
+                        "0x00000000000000000000000000000000deaddead",
+                        "0x000000000000000000000000000000000060bacc",
+                        "0x00000000000000000000000000000000ca1100f2",
+                        "0x00000000000000000000000000000060baccfa57",
+                        "0x000000000000000000000000000000000000ca11",
+                        "0x000000000000000000000000000000000020c0de",
+                        "0x000000000000000000000000000000000000c0de",
+                        "0x0000000000000000000000000000000000060006",
+                        "0xcccccccccccccccccccccccccccccccccccccccc"
+                    ]
+                }
+            }
+        }
+    ]
+}

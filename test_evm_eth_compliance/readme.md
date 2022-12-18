@@ -22,3 +22,11 @@ RUST_LOG=trace \
 	-- statetest
 ```
 
+2, Launch all the test under the folder.
+
+```
+RUST_LOG=trace \
+	VECTOR=test_evm_eth_compliance/test-vectors/tests/GeneralStateTests/EIPTests \
+	cargo run -p test_fevm_eth_compliance \
+	-- statetest
+```
