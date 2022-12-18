@@ -1,7 +1,7 @@
 use fil_actor_multisig::testing::check_state_invariants;
 use fil_actor_multisig::{
-    compute_proposal_hash, Actor as MultisigActor, ConstructorParams, Method, ProposeParams,
-    ProposeReturn, State, Transaction, TxnID, TxnIDParams, SIGNERS_MAX,
+    compute_proposal_hash, Actor as MultisigActor, ConstructorParams, Method, ProposeReturn, State,
+    Transaction, TxnID, TxnIDParams, SIGNERS_MAX,
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Runtime;
@@ -123,7 +123,7 @@ mod constructor_tests {
             RawBytes::default(),
             rt.call::<MultisigActor>(
                 Method::Constructor as u64,
-                IpldBlock::serialize_cbor(&params).unwrap()
+                IpldBlock::serialize_cbor(&params).unwrap(),
             )
             .unwrap()
         );
@@ -746,50 +746,6 @@ fn test_fail_propose_from_non_signer() {
     rt.reset();
     h.assert_transactions(&rt, vec![]);
     check_state(&rt);
-}
-
-#[test]
-fn test_propose_restricted_correctly() {
-    let msig = Address::new_id(1000);
-    let mut rt = construct_runtime(msig);
-    let h = util::ActorHarness::new();
-
-    let anne = Address::new_id(101);
-    // We will treat Bob as having code CID b"102"
-    let bob = Address::new_id(102);
-    let chuck = Address::new_id(103);
-    let no_unlock_duration = 0;
-    let start_epoch = 0;
-    let signers = vec![anne, bob];
-
-    let send_value = TokenAmount::from_atto(10u8);
-    h.construct_and_verify(&mut rt, 2, no_unlock_duration, start_epoch, signers);
-
-    // set caller to not-builtin
-    rt.set_caller(make_identity_cid(b"102"), Address::new_id(102));
-    let propose_params = IpldBlock::serialize_cbor(&ProposeParams {
-        to: chuck,
-        value: send_value,
-        method: METHOD_SEND,
-        params: RawBytes::default(),
-    })
-    .unwrap();
-
-    // cannot call the unexported method num
-
-    expect_abort_contains_message(
-        ExitCode::USR_FORBIDDEN,
-        "must be built-in",
-        rt.call::<MultisigActor>(Method::Propose as u64, propose_params.clone()),
-    );
-
-    rt.verify();
-
-    // can call the exported method num
-    rt.expect_validate_caller_any();
-    rt.call::<MultisigActor>(Method::ProposeExported as u64, propose_params).unwrap();
-
-    rt.verify();
 }
 
 // AddSigner
