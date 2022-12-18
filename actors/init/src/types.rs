@@ -3,7 +3,7 @@
 
 use cid::Cid;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{Cbor, RawBytes};
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 
 /// Init actor Constructor parameters
@@ -39,10 +39,6 @@ pub struct Exec4Params {
 /// Init actor Exec4 Return value
 pub type Exec4Return = ExecReturn;
 
-impl Cbor for ExecReturn {}
-impl Cbor for ExecParams {}
-impl Cbor for Exec4Params {}
-
 /// Init actor Install Params
 #[cfg(feature = "m2-native")]
 #[derive(Serialize_tuple, Deserialize_tuple)]
@@ -57,8 +53,3 @@ pub struct InstallReturn {
     pub code_cid: Cid,
     pub installed: bool,
 }
-
-#[cfg(feature = "m2-native")]
-impl Cbor for InstallParams {}
-#[cfg(feature = "m2-native")]
-impl Cbor for InstallReturn {}

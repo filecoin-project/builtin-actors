@@ -39,7 +39,7 @@ fn embryo_deploy() {
             addr,
             TokenAmount::from_atto(42u8),
             METHOD_SEND,
-            RawBytes::default(),
+            None::<RawBytes>,
         )
         .unwrap()
         .code
@@ -68,11 +68,11 @@ fn embryo_deploy() {
             INIT_ACTOR_ADDR,
             TokenAmount::zero(),
             fil_actor_init::Method::Exec4 as u64,
-            fil_actor_init::Exec4Params {
+            Some(fil_actor_init::Exec4Params {
                 code_cid: *MULTISIG_ACTOR_CODE_ID,
                 constructor_params: msig_ctor_params.clone(),
                 subaddress: subaddr[..].to_owned().into(),
-            },
+            }),
         )
         .unwrap()
     };

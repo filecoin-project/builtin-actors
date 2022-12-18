@@ -11,7 +11,8 @@ use fil_actors_runtime::{
 };
 use fvm_ipld_blockstore::tracking::{BSStats, TrackingBlockstore};
 use fvm_ipld_blockstore::MemoryBlockstore;
-use fvm_ipld_encoding::{BytesDe, BytesSer, RawBytes};
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::{BytesDe, BytesSer};
 use fvm_shared::address::Address;
 
 /// Alias for a call we will never send to the blockchain.
@@ -66,7 +67,7 @@ impl TestEnv {
             .runtime
             .call::<evm::EvmContractActor>(
                 evm::Method::Constructor as u64,
-                &RawBytes::serialize(params).unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             )
             .unwrap()
             .is_empty());
@@ -79,12 +80,13 @@ impl TestEnv {
     /// EVM interpreter in the test runtime. Finally parse the results.
     pub fn call<R: Detokenize>(&mut self, call: TestContractCall<R>) -> R {
         let input = call.calldata().expect("Should have calldata.");
-        let input = RawBytes::serialize(BytesSer(&input)).expect("failed to serialize input data");
+        let input =
+            IpldBlock::serialize_cbor(&BytesSer(&input)).expect("failed to serialize input data");
         self.runtime.expect_validate_caller_any();
 
         let BytesDe(result) = self
             .runtime
-            .call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, &input)
+            .call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, input)
             .unwrap()
             .deserialize()
             .unwrap();

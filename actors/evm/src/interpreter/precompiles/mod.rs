@@ -10,7 +10,7 @@ mod fvm;
 pub mod parameter;
 
 use evm::{blake2f, ec_add, ec_mul, ec_pairing, ec_recover, identity, modexp, ripemd160, sha256};
-use fvm::{call_actor, get_actor_type, get_randomness, lookup_address, resolve_address};
+use fvm::{call_actor, get_actor_type, get_randomness, lookup_delegated_address, resolve_address};
 
 // really I'd want to have context as a type parameter, but since the table we generate must have the same types (or dyn) its messy
 type PrecompileFn<RT> = unsafe fn(*mut System<RT>, &[u8], PrecompileContext) -> PrecompileResult;
@@ -48,8 +48,8 @@ const fn gen_precompiles<RT: Runtime>() -> [PrecompileFn<RT>; 14] {
         ec_pairing, // ecPairing 0x08
         blake2f,    // blake2f 0x09
         // FIL precompiles
-        resolve_address,    // lookup_address 0x0a
-        lookup_address,     // resolve_address 0x0b
+        resolve_address,    // resolve_address 0x0a
+        lookup_delegated_address,     // lookup_delegated_address 0x0b
         get_actor_type,     // get actor type 0x0c
         get_randomness,     // rand 0x0d
         call_actor,         // call_actor 0x0e

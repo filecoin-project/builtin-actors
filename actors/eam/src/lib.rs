@@ -1,15 +1,15 @@
 use std::iter;
 
 use ext::init::{Exec4Params, Exec4Return};
-use fil_actors_runtime::AsActorError;
-use fvm_ipld_encoding::Cbor;
+use fil_actors_runtime::{actor_dispatch_unrestricted, AsActorError};
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::error::ExitCode;
 
 pub mod ext;
 
 use {
     fil_actors_runtime::{
-        actor_error, cbor,
+        actor_error,
         runtime::builtins::Type,
         runtime::{ActorCode, Runtime},
         ActorError, EAM_ACTOR_ID, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
@@ -31,6 +31,7 @@ fil_actors_runtime::wasm_trampoline!(EamActor);
 #[repr(u64)]
 pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
+    // TODO: Do we want to use ExportedNums for all of these, per FRC-42?
     Create = 2,
     Create2 = 3,
     // CreateAccount = 4,
@@ -92,14 +93,11 @@ pub struct Create2Params {
     pub salt: [u8; 32],
 }
 
-impl Cbor for Create2Params {}
-
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct InitAccountParams {
     #[serde(with = "strict_bytes")]
     pub pubkey: [u8; SECP_PUB_LEN],
 }
-impl Cbor for InitAccountParams {}
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, PartialEq, Eq)]
 pub struct Return {
@@ -107,8 +105,6 @@ pub struct Return {
     pub robust_address: Address,
     pub eth_address: EthAddress,
 }
-
-impl Cbor for Return {}
 
 pub type CreateReturn = Return;
 pub type Create2Return = Return;
@@ -161,7 +157,7 @@ fn create_actor(
         .send(
             &INIT_ACTOR_ADDR,
             ext::init::EXEC4_METHOD,
-            RawBytes::serialize(&init_params)?,
+            IpldBlock::serialize_cbor(&init_params)?,
             rt.message().value_received(),
         )?
         .deserialize()?;
@@ -171,7 +167,7 @@ fn create_actor(
 
 fn resolve_caller(rt: &mut impl Runtime) -> Result<EthAddress, ActorError> {
     let caller_id = rt.message().caller().id().unwrap();
-    Ok(match rt.lookup_address(caller_id).map(|a| *a.payload()) {
+    Ok(match rt.lookup_delegated_address(caller_id).map(|a| *a.payload()) {
         Some(Payload::Delegated(addr)) if addr.namespace() == EAM_ACTOR_ID => EthAddress(
             addr.subaddress()
                 .try_into()
@@ -187,6 +183,7 @@ fn resolve_caller(rt: &mut impl Runtime) -> Result<EthAddress, ActorError> {
 }
 
 pub struct EamActor;
+
 impl EamActor {
     pub fn constructor(rt: &mut impl Runtime) -> Result<(), ActorError> {
         let actor_id = rt.resolve_address(&rt.message().receiver()).unwrap();
@@ -267,30 +264,11 @@ impl EamActor {
 }
 
 impl ActorCode for EamActor {
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        params: &RawBytes,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-    {
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(rt)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::Create) => {
-                Ok(RawBytes::serialize(Self::create(rt, cbor::deserialize_params(params)?)?)?)
-            }
-            Some(Method::Create2) => {
-                Ok(RawBytes::serialize(Self::create2(rt, cbor::deserialize_params(params)?)?)?)
-            }
-            // Some(Method::CreateAccount) => {
-            //     Self::create_account(rt, cbor::deserialize_params(params)?)
-            // }
-            None => Err(actor_error!(unhandled_message; "Invalid method")),
-        }
+    type Methods = Method;
+    actor_dispatch_unrestricted! {
+        Constructor => constructor,
+        Create => create,
+        Create2 => create2,
     }
 }
 

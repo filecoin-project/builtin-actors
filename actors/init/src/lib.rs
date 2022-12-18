@@ -6,8 +6,9 @@ use std::iter;
 use cid::Cid;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
+
 use fil_actors_runtime::{
-    actor_error, cbor, restrict_internal_api, ActorContext, ActorError, AsActorError,
+    actor_dispatch, actor_error, restrict_internal_api, ActorContext, ActorError, AsActorError,
     EAM_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::RawBytes;
@@ -43,6 +44,7 @@ pub enum Method {
 
 /// Init actor
 pub struct Actor;
+
 impl Actor {
     /// Init actor constructor
     pub fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
@@ -102,7 +104,7 @@ impl Actor {
         rt.send(
             &Address::new_id(id_address),
             METHOD_CONSTRUCTOR,
-            params.constructor_params,
+            params.constructor_params.into(),
             rt.message().value_received(),
         )
         .context("constructor failed")?;
@@ -163,7 +165,7 @@ impl Actor {
         rt.send(
             &Address::new_id(id_address),
             METHOD_CONSTRUCTOR,
-            params.constructor_params,
+            params.constructor_params.into(),
             rt.message().value_received(),
         )
         .context("constructor failed")?;
@@ -214,35 +216,14 @@ impl Actor {
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        params: &RawBytes,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-    {
-        restrict_internal_api(rt, method)?;
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::Exec) | Some(Method::ExecExported) => {
-                let res = Self::exec(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::Exec4) => {
-                let res = Self::exec4(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            #[cfg(feature = "m2-native")]
-            Some(Method::InstallCode) => {
-                let res = Self::install(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            None => Err(actor_error!(unhandled_message; "Invalid method")),
-        }
+    type Methods = Method;
+    actor_dispatch! {
+        Constructor => constructor,
+        Exec => exec,
+        ExecExported => exec,
+        Exec4 => exec4,
+        #[cfg(feature = "m2-native")]
+        InstallCode => install,
     }
 }
 

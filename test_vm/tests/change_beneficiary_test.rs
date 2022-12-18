@@ -147,7 +147,7 @@ fn change_beneficiary_fail() {
         miner_id,
         TokenAmount::zero(),
         MinerMethod::ChangeBeneficiary as u64,
-        ChangeBeneficiaryParams::new(beneficiary, TokenAmount::from_atto(0), 0),
+        Some(ChangeBeneficiaryParams::new(beneficiary, TokenAmount::from_atto(0), 0)),
         ExitCode::USR_FORBIDDEN,
     );
 
@@ -162,7 +162,7 @@ fn change_beneficiary_fail() {
         miner_id,
         TokenAmount::zero(),
         MinerMethod::ChangeBeneficiary as u64,
-        ChangeBeneficiaryParams::new(beneficiary, TokenAmount::from_atto(100), 400),
+        Some(ChangeBeneficiaryParams::new(beneficiary, TokenAmount::from_atto(100), 400)),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 
@@ -172,7 +172,7 @@ fn change_beneficiary_fail() {
         miner_id,
         TokenAmount::zero(),
         MinerMethod::ChangeBeneficiary as u64,
-        ChangeBeneficiaryParams::new(beneficiary, TokenAmount::from_atto(80), 500),
+        Some(ChangeBeneficiaryParams::new(beneficiary, TokenAmount::from_atto(80), 500)),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 
@@ -182,7 +182,7 @@ fn change_beneficiary_fail() {
         miner_id,
         TokenAmount::zero(),
         MinerMethod::ChangeBeneficiary as u64,
-        ChangeBeneficiaryParams::new(addr, TokenAmount::from_atto(80), 500),
+        Some(ChangeBeneficiaryParams::new(addr, TokenAmount::from_atto(80), 500)),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 
@@ -193,7 +193,7 @@ fn change_beneficiary_fail() {
         miner_id,
         TokenAmount::zero(),
         MinerMethod::ChangeBeneficiary as u64,
-        beneficiary_change_proposal.clone(),
+        Some(beneficiary_change_proposal.clone()),
         ExitCode::USR_FORBIDDEN,
     );
     change_beneficiary(&v, beneficiary, miner_id, &beneficiary_change_proposal);
@@ -205,7 +205,7 @@ fn change_beneficiary_fail() {
         miner_id,
         TokenAmount::zero(),
         MinerMethod::ChangeBeneficiary as u64,
-        ChangeBeneficiaryParams::new(owner, TokenAmount::from_atto(80), 0),
+        Some(ChangeBeneficiaryParams::new(owner, TokenAmount::from_atto(80), 0)),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
     apply_code(
@@ -214,7 +214,7 @@ fn change_beneficiary_fail() {
         miner_id,
         TokenAmount::zero(),
         MinerMethod::ChangeBeneficiary as u64,
-        ChangeBeneficiaryParams::new(owner, TokenAmount::from_atto(0), 100),
+        Some(ChangeBeneficiaryParams::new(owner, TokenAmount::from_atto(0), 100)),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 

@@ -1,5 +1,5 @@
 use fil_actors_runtime::runtime::{builtins::Type, Runtime};
-use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::{address::Address, econ::TokenAmount, sys::SendFlags};
 use num_traits::FromPrimitive;
 
@@ -115,8 +115,8 @@ pub(super) fn get_randomness<RT: Runtime>(
 }
 
 /// Read BE encoded low u64 ID address from a u256 word
-/// Looks up and returns the other address (encoded f2 or f4 addresses) of an ID address, returning empty array if not found
-pub(super) fn lookup_address<RT: Runtime>(
+/// Looks up and returns the encoded f4 addresses of an ID address, returning empty array if not found
+pub(super) fn lookup_delegated_address<RT: Runtime>(
     system: &mut System<RT>,
     input: &[u8],
     _: PrecompileContext,
@@ -124,7 +124,7 @@ pub(super) fn lookup_address<RT: Runtime>(
     let mut id_bytes = U256Reader::new(input);
     let id = id_bytes.next_param_padded::<u64>()?;
 
-    let address = system.rt.lookup_address(id);
+    let address = system.rt.lookup_delegated_address(id);
     let ab = match address {
         Some(a) => a.to_bytes(),
         None => Vec::new(),
@@ -184,10 +184,6 @@ pub(super) fn call_actor<RT: Runtime>(
     let flags = SendFlags::from_bits(flags).ok_or(PrecompileError::InvalidInput)?;
 
     let codec: u64 = input_params.next_param_padded()?;
-    // TODO only CBOR for now
-    if codec != fvm_ipld_encoding::DAG_CBOR {
-        return Err(PrecompileError::InvalidInput);
-    }
 
     let address_size = input_params.next_param_padded::<u32>()? as usize;
     let send_data_size = input_params.next_param_padded::<u32>()? as usize;
@@ -202,14 +198,13 @@ pub(super) fn call_actor<RT: Runtime>(
         let address = &bytes[send_data_size..send_data_size + address_size];
         let address = Address::from_bytes(address).map_err(|_| PrecompileError::InvalidInput)?;
 
-        system.send(
-            &address,
-            method,
-            RawBytes::from(input_data.to_vec()),
-            TokenAmount::from(&value),
-            Some(ctx.gas_limit),
-            flags,
-        )
+        // TODO only CBOR or "nothing" for now
+        let params = match codec {
+            fvm_ipld_encoding::DAG_CBOR => Some(IpldBlock { codec, data: input_data.into() }),
+            0 if input_data.is_empty() => None,
+            _ => return Err(PrecompileError::InvalidInput),
+        };
+        system.send(&address, method, params, TokenAmount::from(&value), Some(ctx.gas_limit), flags)
     };
 
     // ------ Build Output -------

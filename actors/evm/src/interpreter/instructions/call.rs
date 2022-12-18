@@ -1,7 +1,8 @@
 #![allow(clippy::too_many_arguments)]
 
-use fvm_ipld_encoding::{BytesDe, BytesSer};
-use fvm_shared::{address::Address, sys::SendFlags, METHOD_SEND};
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::BytesDe;
+use fvm_shared::{address::Address, sys::SendFlags, IPLD_RAW, METHOD_SEND};
 
 use crate::interpreter::precompiles::PrecompileContext;
 
@@ -236,8 +237,8 @@ pub fn call_generic<RT: Runtime>(
                     } else {
                         let (method, gas_limit) = if !actor_exists
                             || matches!(target_actor_type, Some(Type::Embryo | Type::Account))
-                        // See https://github.com/filecoin-project/ref-fvm/issues/980 for this
-                        // hocus pocus
+                            // See https://github.com/filecoin-project/ref-fvm/issues/980 for this
+                            // hocus pocus
                             || (input_data.is_empty() && ((gas == 0 && value > 0) || (gas == 2300 && value == 0)))
                         {
                             // We switch to a bare send when:
@@ -257,8 +258,11 @@ pub fn call_generic<RT: Runtime>(
                             // Otherwise, invoke normally.
                             (Method::InvokeContract as u64, Some(effective_gas_limit(system, gas)))
                         };
-                        // TODO: support IPLD codecs #758
-                        let params = RawBytes::serialize(BytesSer(input_data))?;
+                        let params = if input_data.is_empty() {
+                            None
+                        } else {
+                            Some(IpldBlock { codec: IPLD_RAW, data: input_data.into() })
+                        };
                         let value = TokenAmount::from(&value);
                         let send_flags = if kind == CallKind::StaticCall {
                             SendFlags::READ_ONLY
@@ -270,7 +274,7 @@ pub fn call_generic<RT: Runtime>(
                 }
                 CallKind::DelegateCall => match get_contract_type(system.rt, dst) {
                     ContractType::EVM(dst_addr) => {
-                        // If we're calling an actual EVM actor, get it's code.
+                        // If we're calling an actual EVM actor, get its code.
                         let code = get_evm_bytecode_cid(system.rt, &dst_addr)?;
 
                         // and then invoke self with delegate; readonly context is sticky
@@ -278,7 +282,7 @@ pub fn call_generic<RT: Runtime>(
                         system.send(
                             &system.rt.message().receiver(),
                             Method::InvokeContractDelegate as u64,
-                            RawBytes::serialize(&params)?,
+                            IpldBlock::serialize_cbor(&params)?,
                             TokenAmount::from(&value),
                             Some(effective_gas_limit(system, gas)),
                             SendFlags::default(),

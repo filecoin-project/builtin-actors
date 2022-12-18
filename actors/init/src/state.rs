@@ -10,7 +10,6 @@ use fil_actors_runtime::{
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::Cbor;
 #[cfg(feature = "m2-native")]
 use fvm_ipld_encoding::CborStore;
 use fvm_shared::address::{Address, Protocol};
@@ -166,5 +165,3 @@ impl State {
         Ok(())
     }
 }
-
-impl Cbor for State {}

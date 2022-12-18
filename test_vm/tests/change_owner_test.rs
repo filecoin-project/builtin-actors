@@ -114,7 +114,7 @@ fn change_owner_fail() {
         miner_id,
         TokenAmount::zero(),
         MinerMethod::ChangeOwnerAddress as u64,
-        new_owner,
+        Some(new_owner),
         ExitCode::USR_FORBIDDEN,
     );
 
@@ -126,7 +126,7 @@ fn change_owner_fail() {
         miner_id,
         TokenAmount::zero(),
         MinerMethod::ChangeOwnerAddress as u64,
-        addr,
+        Some(addr),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
     // only pending can confirm
@@ -136,7 +136,7 @@ fn change_owner_fail() {
         miner_id,
         TokenAmount::zero(),
         MinerMethod::ChangeOwnerAddress as u64,
-        new_owner,
+        Some(new_owner),
         ExitCode::USR_FORBIDDEN,
     );
     //only miner can change proposal
@@ -146,7 +146,7 @@ fn change_owner_fail() {
         miner_id,
         TokenAmount::zero(),
         MinerMethod::ChangeOwnerAddress as u64,
-        addr,
+        Some(addr),
         ExitCode::USR_FORBIDDEN,
     );
 

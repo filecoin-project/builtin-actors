@@ -2,7 +2,8 @@ use cid::Cid;
 use evm::interpreter::{address::EthAddress, StatusCode};
 use fil_actor_evm as evm;
 use fil_actors_runtime::{test_utils::*, ActorError, EAM_ACTOR_ID, INIT_ACTOR_ADDR};
-use fvm_ipld_encoding::{BytesDe, BytesSer, RawBytes};
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::{BytesDe, BytesSer};
 use fvm_shared::{address::Address, IDENTITY_HASH, IPLD_RAW};
 use lazy_static::lazy_static;
 
@@ -39,7 +40,7 @@ pub fn init_construct_and_verify<F: FnOnce(&mut MockRuntime)>(
     assert!(rt
         .call::<evm::EvmContractActor>(
             evm::Method::Constructor as u64,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )
         .unwrap()
         .is_empty());
@@ -54,7 +55,7 @@ pub fn invoke_contract(rt: &mut MockRuntime, input_data: &[u8]) -> Vec<u8> {
     let BytesDe(res) = rt
         .call::<evm::EvmContractActor>(
             evm::Method::InvokeContract as u64,
-            &RawBytes::serialize(BytesSer(input_data)).unwrap(),
+            IpldBlock::serialize_cbor(&BytesSer(input_data)).unwrap(),
         )
         .unwrap()
         .deserialize()
@@ -68,7 +69,7 @@ pub fn invoke_contract_expect_abort(rt: &mut MockRuntime, input_data: &[u8], exp
     let err = rt
         .call::<evm::EvmContractActor>(
             evm::Method::InvokeContract as u64,
-            &RawBytes::serialize(BytesSer(input_data)).unwrap(),
+            IpldBlock::serialize_cbor(&BytesSer(input_data)).unwrap(),
         )
         .expect_err(&format!("expected contract to fail with {}", expect));
     rt.verify();
