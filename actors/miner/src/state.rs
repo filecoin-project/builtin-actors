@@ -16,7 +16,7 @@ use fvm_ipld_amt::Error as AmtError;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{strict_bytes, BytesDe, Cbor, CborStore};
+use fvm_ipld_encoding::{strict_bytes, BytesDe, CborStore};
 use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::address::Address;
 
@@ -115,8 +115,6 @@ pub enum CollisionPolicy {
     AllowCollisions,
     DenyCollisions,
 }
-
-impl Cbor for State {}
 
 impl State {
     #[allow(clippy::too_many_arguments)]

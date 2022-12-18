@@ -253,7 +253,7 @@ fn test_getbytecodehash_method() {
     rt.expect_validate_caller_any();
 
     let res: Multihash = rt
-        .call::<evm::EvmContractActor>(evm::Method::GetBytecodeHash as u64, &RawBytes::default())
+        .call::<evm::EvmContractActor>(evm::Method::GetBytecodeHash as u64, None)
         .unwrap()
         .deserialize()
         .unwrap();

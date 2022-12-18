@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{strict_bytes, BytesDe, Cbor, RawBytes};
+use fvm_ipld_encoding::{strict_bytes, BytesDe, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
@@ -10,6 +10,8 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredPoStProof, StoragePower};
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::ActorID;
+
+use serde::{Deserialize, Serialize};
 
 pub type SectorTermination = i64;
 
@@ -34,8 +36,6 @@ pub struct CreateMinerParams {
     pub multiaddrs: Vec<BytesDe>,
 }
 
-impl Cbor for CreateMinerParams {}
-
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 pub struct CreateMinerReturn {
     /// Canonical ID-based address for the actor.
@@ -58,7 +58,13 @@ pub struct EnrollCronEventParams {
     pub payload: RawBytes,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Default)]
+#[serde(transparent)]
+pub struct UpdatePledgeTotalParams {
+    pub pledge_delta: TokenAmount,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, PartialEq, Eq)]
 pub struct CurrentTotalPowerReturn {
     #[serde(with = "bigint_ser")]
     pub raw_byte_power: StoragePower,
@@ -75,15 +81,11 @@ pub struct NetworkRawPowerReturn {
     pub raw_byte_power: StoragePower,
 }
 
-impl Cbor for NetworkRawPowerReturn {}
-
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 #[serde(transparent)]
 pub struct MinerRawPowerParams {
     pub miner: ActorID,
 }
-
-impl Cbor for MinerRawPowerParams {}
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 pub struct MinerRawPowerReturn {
@@ -91,8 +93,6 @@ pub struct MinerRawPowerReturn {
     pub raw_byte_power: StoragePower,
     pub meets_consensus_minimum: bool,
 }
-
-impl Cbor for MinerRawPowerReturn {}
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 #[serde(transparent)]

@@ -325,7 +325,7 @@ fn verified_claim_scenario() {
         VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
         VerifregMethod::RemoveExpiredClaims as u64,
-        cleanup_claims,
+        Some(cleanup_claims),
     );
     let ret: RemoveExpiredClaimsReturn = deserialize(&ret_raw, "balance of return value").unwrap();
     assert_eq!(vec![claim_id], ret.considered);

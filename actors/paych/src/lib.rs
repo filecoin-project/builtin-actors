@@ -4,13 +4,14 @@
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, resolve_to_actor_id, restrict_internal_api, ActorDowncast, ActorError,
-    Array, AsActorError,
+    actor_dispatch, actor_error, resolve_to_actor_id, restrict_internal_api, ActorDowncast,
+    ActorError, Array, AsActorError,
 };
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::{RawBytes, DAG_CBOR};
 use fvm_shared::address::Address;
 
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
@@ -122,7 +123,7 @@ impl Actor {
         rt.send(
             &signer,
             ext::account::AUTHENTICATE_MESSAGE_METHOD,
-            RawBytes::serialize(ext::account::AuthenticateMessageParams {
+            IpldBlock::serialize_cbor(&ext::account::AuthenticateMessageParams {
                 signature: sig.to_vec(),
                 message: sv_bz,
             })?,
@@ -165,8 +166,13 @@ impl Actor {
         }
 
         if let Some(extra) = &sv.extra {
-            rt.send(&extra.actor, extra.method, extra.data.clone(), TokenAmount::zero())
-                .map_err(|e| e.wrap("spend voucher verification failed"))?;
+            rt.send(
+                &extra.actor,
+                extra.method,
+                Some(IpldBlock { codec: DAG_CBOR, data: extra.data.to_vec() }),
+                TokenAmount::zero(),
+            )
+            .map_err(|e| e.wrap("spend voucher verification failed"))?;
         }
 
         rt.transaction(|st: &mut State, rt| {
@@ -294,7 +300,7 @@ impl Actor {
         }
 
         // send ToSend to `to`
-        rt.send(&st.to, METHOD_SEND, RawBytes::default(), st.to_send)
+        rt.send(&st.to, METHOD_SEND, None, st.to_send)
             .map_err(|e| e.wrap("Failed to send funds to `to` address"))?;
 
         // the remaining balance will be returned to "From" upon deletion.
@@ -322,33 +328,11 @@ where
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        params: &RawBytes,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-    {
-        restrict_internal_api(rt, method)?;
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::UpdateChannelState) => {
-                Self::update_channel_state(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::Settle) => {
-                Self::settle(rt)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::Collect) => {
-                Self::collect(rt)?;
-                Ok(RawBytes::default())
-            }
-            _ => Err(actor_error!(unhandled_message; "Invalid method")),
-        }
+    type Methods = Method;
+    actor_dispatch! {
+        Constructor => constructor,
+        UpdateChannelState => update_channel_state,
+        Settle => settle,
+        Collect => collect,
     }
 }

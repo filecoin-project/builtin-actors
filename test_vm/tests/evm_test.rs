@@ -5,7 +5,7 @@ use ethers::prelude::abigen;
 use ethers::providers::Provider;
 use fil_actors_runtime::{test_utils::EVM_ACTOR_CODE_ID, EAM_ACTOR_ADDR};
 use fvm_ipld_blockstore::MemoryBlockstore;
-use fvm_ipld_encoding::{strict_bytes, BytesDe, Cbor};
+use fvm_ipld_encoding::{strict_bytes, BytesDe};
 use fvm_shared::ActorID;
 use fvm_shared::{address::Address, econ::TokenAmount};
 use num_traits::Zero;
@@ -22,14 +22,9 @@ fn id_to_eth(id: ActorID) -> EthAddress {
     EthAddress::from_slice(&addr)
 }
 
-// TODO: we should move this somewhere else, or just find a way to avoid this. Unfortunately, "BytesSer" doesn't implemenet `Cbor`.
-// Really, we should consider getting rid of `Cbor` entirely.
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
 struct ContractParams(#[serde(with = "strict_bytes")] pub Vec<u8>);
-
-impl Cbor for ContractParams {}
 
 #[test]
 fn test_evm_lifecycle() {
@@ -51,7 +46,7 @@ fn test_evm_lifecycle() {
             EAM_ACTOR_ADDR,
             TokenAmount::zero(),
             fil_actor_eam::Method::Create2 as u64,
-            fil_actor_eam::Create2Params { initcode: bytecode, salt: [0u8; 32] },
+            Some(fil_actor_eam::Create2Params { initcode: bytecode, salt: [0u8; 32] }),
         )
         .unwrap();
 
@@ -71,7 +66,7 @@ fn test_evm_lifecycle() {
             create_return.robust_address,
             TokenAmount::zero(),
             fil_actor_evm::Method::InvokeContract as u64,
-            ContractParams(contract_params.to_vec()),
+            Some(ContractParams(contract_params.to_vec())),
         )
         .unwrap();
     assert!(call_result.code.is_success(), "failed to call the new actor {}", call_result.message);
@@ -95,7 +90,7 @@ fn test_evm_empty_initcode() {
             EAM_ACTOR_ADDR,
             TokenAmount::zero(),
             fil_actor_eam::Method::Create2 as u64,
-            fil_actor_eam::Create2Params { initcode: vec![], salt: [0u8; 32] },
+            Some(fil_actor_eam::Create2Params { initcode: vec![], salt: [0u8; 32] }),
         )
         .unwrap();
 
@@ -134,7 +129,10 @@ fn test_evm_staticcall() {
                     EAM_ACTOR_ADDR,
                     TokenAmount::zero(),
                     fil_actor_eam::Method::Create2 as u64,
-                    fil_actor_eam::Create2Params { initcode: bytecode.clone(), salt: [0u8; 32] },
+                    Some(fil_actor_eam::Create2Params {
+                        initcode: bytecode.clone(),
+                        salt: [0u8; 32],
+                    }),
                 )
                 .unwrap();
 
@@ -172,7 +170,7 @@ fn test_evm_staticcall() {
                 A_robust_addr,
                 TokenAmount::zero(),
                 fil_actor_evm::Method::InvokeContract as u64,
-                ContractParams(params.to_vec()),
+                Some(ContractParams(params.to_vec())),
             )
             .unwrap();
         assert!(
@@ -200,7 +198,7 @@ fn test_evm_staticcall() {
                 A_robust_addr,
                 TokenAmount::zero(),
                 fil_actor_evm::Method::InvokeContract as u64,
-                ContractParams(params.to_vec()),
+                Some(ContractParams(params.to_vec())),
             )
             .unwrap();
         assert_eq!(call_result.code.value(), 33, "static call mutation did not revert");
@@ -223,7 +221,7 @@ fn test_evm_staticcall() {
                 A_robust_addr,
                 TokenAmount::zero(),
                 fil_actor_evm::Method::InvokeContract as u64,
-                ContractParams(params.to_vec()),
+                Some(ContractParams(params.to_vec())),
             )
             .unwrap();
         assert!(
@@ -253,7 +251,7 @@ fn test_evm_staticcall() {
                 A_robust_addr,
                 TokenAmount::zero(),
                 fil_actor_evm::Method::InvokeContract as u64,
-                ContractParams(params.to_vec()),
+                Some(ContractParams(params.to_vec())),
             )
             .unwrap();
         assert_eq!(call_result.code.value(), 33, "static call mutation did not revert");
@@ -288,7 +286,10 @@ fn test_evm_delegatecall() {
                     EAM_ACTOR_ADDR,
                     TokenAmount::zero(),
                     fil_actor_eam::Method::Create2 as u64,
-                    fil_actor_eam::Create2Params { initcode: bytecode.clone(), salt: [0u8; 32] },
+                    Some(fil_actor_eam::Create2Params {
+                        initcode: bytecode.clone(),
+                        salt: [0u8; 32],
+                    }),
                 )
                 .unwrap();
 
@@ -326,7 +327,7 @@ fn test_evm_delegatecall() {
                 A_robust_addr,
                 TokenAmount::zero(),
                 fil_actor_evm::Method::InvokeContract as u64,
-                ContractParams(params.to_vec()),
+                Some(ContractParams(params.to_vec())),
             )
             .unwrap();
         assert!(
@@ -354,7 +355,7 @@ fn test_evm_delegatecall() {
                 A_robust_addr,
                 TokenAmount::zero(),
                 fil_actor_evm::Method::InvokeContract as u64,
-                ContractParams(params.to_vec()),
+                Some(ContractParams(params.to_vec())),
             )
             .unwrap();
         assert!(
@@ -396,7 +397,10 @@ fn test_evm_staticcall_delegatecall() {
                     EAM_ACTOR_ADDR,
                     TokenAmount::zero(),
                     fil_actor_eam::Method::Create2 as u64,
-                    fil_actor_eam::Create2Params { initcode: bytecode.clone(), salt: [0u8; 32] },
+                    Some(fil_actor_eam::Create2Params {
+                        initcode: bytecode.clone(),
+                        salt: [0u8; 32],
+                    }),
                 )
                 .unwrap();
 
@@ -436,7 +440,7 @@ fn test_evm_staticcall_delegatecall() {
                 A_robust_addr,
                 TokenAmount::zero(),
                 fil_actor_evm::Method::InvokeContract as u64,
-                ContractParams(params.to_vec()),
+                Some(ContractParams(params.to_vec())),
             )
             .unwrap();
         assert!(
@@ -467,7 +471,7 @@ fn test_evm_staticcall_delegatecall() {
                 A_robust_addr,
                 TokenAmount::zero(),
                 fil_actor_evm::Method::InvokeContract as u64,
-                ContractParams(params.to_vec()),
+                Some(ContractParams(params.to_vec())),
             )
             .unwrap();
         assert_eq!(call_result.code.value(), 33, "static call mutation did not revert");

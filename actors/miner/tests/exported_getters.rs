@@ -2,10 +2,9 @@ use fil_actor_miner::{
     Actor, GetAvailableBalanceReturn, GetOwnerReturn, GetSectorSizeReturn,
     IsControllingAddressParam, IsControllingAddressReturn, Method,
 };
-use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::test_utils::EVM_ACTOR_CODE_ID;
 use fil_actors_runtime::INIT_ACTOR_ADDR;
-use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::{clock::ChainEpoch, econ::TokenAmount, sector::MAX_SECTOR_NUMBER};
 use std::ops::Sub;
@@ -32,11 +31,8 @@ fn info_getters() {
 
     // owner is good
     rt.expect_validate_caller_any();
-    let owner_ret: GetOwnerReturn = rt
-        .call::<Actor>(Method::GetOwnerExported as u64, &RawBytes::default())
-        .unwrap()
-        .deserialize()
-        .unwrap();
+    let owner_ret: GetOwnerReturn =
+        rt.call::<Actor>(Method::GetOwnerExported as u64, None).unwrap().deserialize().unwrap();
 
     rt.verify();
 
@@ -48,7 +44,7 @@ fn info_getters() {
         let is_control_ret: IsControllingAddressReturn = rt
             .call::<Actor>(
                 Method::IsControllingAddressExported as u64,
-                &serialize(&IsControllingAddressParam { address: *control }, "serializing control")
+                IpldBlock::serialize_cbor(&IsControllingAddressParam { address: *control })
                     .unwrap(),
             )
             .unwrap()
@@ -65,11 +61,8 @@ fn info_getters() {
     let is_control_ret: IsControllingAddressReturn = rt
         .call::<Actor>(
             Method::IsControllingAddressExported as u64,
-            &serialize(
-                &IsControllingAddressParam { address: INIT_ACTOR_ADDR },
-                "serializing control",
-            )
-            .unwrap(),
+            IpldBlock::serialize_cbor(&IsControllingAddressParam { address: INIT_ACTOR_ADDR })
+                .unwrap(),
         )
         .unwrap()
         .deserialize()
@@ -81,7 +74,7 @@ fn info_getters() {
     // sector size is good
     rt.expect_validate_caller_any();
     let sector_size_ret: GetSectorSizeReturn = rt
-        .call::<Actor>(Method::GetSectorSizeExported as u64, &RawBytes::default())
+        .call::<Actor>(Method::GetSectorSizeExported as u64, None)
         .unwrap()
         .deserialize()
         .unwrap();
@@ -136,7 +129,7 @@ fn collateral_getters() {
 
     rt.expect_validate_caller_any();
     let available_balance_ret: GetAvailableBalanceReturn = rt
-        .call::<Actor>(Method::GetAvailableBalanceExported as u64, &RawBytes::default())
+        .call::<Actor>(Method::GetAvailableBalanceExported as u64, None)
         .unwrap()
         .deserialize()
         .unwrap();

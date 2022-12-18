@@ -11,7 +11,7 @@ use cid::multihash::{Code, Multihash as OtherMultihash};
 use cid::Cid;
 use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::de::DeserializeOwned;
-use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
+use fvm_ipld_encoding::{CborStore, RawBytes};
 use fvm_shared::address::{Address, Payload, Protocol};
 use fvm_shared::chainid::ChainID;
 use fvm_shared::clock::ChainEpoch;
@@ -37,6 +37,7 @@ use multihash::derive::Multihash;
 use multihash::MultihashDigest;
 
 use rand::prelude::*;
+use serde::Serialize;
 
 use crate::runtime::builtins::Type;
 use crate::runtime::{
@@ -46,6 +47,8 @@ use crate::runtime::{
 use crate::{actor_error, ActorError};
 use fvm_shared::event::ActorEvent;
 use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
+
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 
 lazy_static::lazy_static! {
     pub static ref SYSTEM_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/system");
@@ -370,7 +373,7 @@ pub struct ExpectCreateActor {
 pub struct ExpectedMessage {
     pub to: Address,
     pub method: MethodNum,
-    pub params: RawBytes,
+    pub params: Option<IpldBlock>,
     pub value: TokenAmount,
     pub gas_limit: Option<u64>,
     pub send_flags: SendFlags,
@@ -482,11 +485,11 @@ pub fn expect_abort<T: fmt::Debug>(exit_code: ExitCode, res: Result<T, ActorErro
 impl<BS: Blockstore> MockRuntime<BS> {
     ///// Runtime access for tests /////
 
-    pub fn get_state<T: Cbor>(&self) -> T {
+    pub fn get_state<T: DeserializeOwned>(&self) -> T {
         self.store_get(self.state.as_ref().unwrap())
     }
 
-    pub fn replace_state<C: Cbor>(&mut self, obj: &C) {
+    pub fn replace_state<T: Serialize>(&mut self, obj: &T) {
         self.state = Some(self.store_put(obj));
     }
 
@@ -548,7 +551,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
     pub fn call<A: ActorCode>(
         &mut self,
         method_num: MethodNum,
-        params: &RawBytes,
+        params: Option<IpldBlock>,
     ) -> Result<RawBytes, ActorError> {
         self.in_call = true;
         let prev_state = self.state;
@@ -663,7 +666,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
         &mut self,
         to: Address,
         method: MethodNum,
-        params: RawBytes,
+        params: Option<IpldBlock>,
         value: TokenAmount,
         send_return: RawBytes,
         exit_code: ExitCode,
@@ -686,7 +689,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
         &mut self,
         to: Address,
         method: MethodNum,
-        params: RawBytes,
+        params: Option<IpldBlock>,
         value: TokenAmount,
         gas_limit: Option<u64>,
         send_flags: SendFlags,
@@ -839,7 +842,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
         assert!(self.in_call, "invalid runtime invocation outside of method call")
     }
 
-    fn store_put<C: Cbor>(&self, o: &C) -> Cid {
+    fn store_put<T: Serialize>(&self, o: &T) -> Cid {
         self.store.put_cbor(&o, Code::Blake2b256).unwrap()
     }
 
@@ -950,14 +953,16 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
             namespaces, &expectations.expect_validate_caller_f4_namespace
         );
 
-        let caller_f4 = self.lookup_address(self.caller().id().unwrap());
+        let caller_f4 = self.lookup_delegated_address(self.caller().id().unwrap());
 
         assert!(caller_f4.is_some(), "unexpected caller doesn't have a delegated address");
 
         for id in namespaces.iter() {
             let bound_address = match caller_f4.unwrap().payload() {
                 Payload::Delegated(d) => d.namespace(),
-                _ => unreachable!("lookup_address should always return a delegated address"),
+                _ => unreachable!(
+                    "lookup_delegated_address should always return a delegated address"
+                ),
             };
             if bound_address == *id {
                 expectations.expect_validate_caller_f4_namespace = None;
@@ -1037,7 +1042,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         }
     }
 
-    fn lookup_address(&self, id: ActorID) -> Option<Address> {
+    fn lookup_delegated_address(&self, id: ActorID) -> Option<Address> {
         self.require_in_call();
         self.delegated_addresses.get(&Address::new_id(id)).copied()
     }
@@ -1065,7 +1070,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         self.user_get_randomness_from_beacon(tag as i64, epoch, entropy)
     }
 
-    fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
+    fn create<T: Serialize>(&mut self, obj: &T) -> Result<(), ActorError> {
         if self.state.is_some() {
             return Err(actor_error!(illegal_state; "state already constructed"));
         }
@@ -1073,7 +1078,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         Ok(())
     }
 
-    fn state<C: Cbor>(&self) -> Result<C, ActorError> {
+    fn state<T: DeserializeOwned>(&self) -> Result<T, ActorError> {
         Ok(self.store_get(self.state.as_ref().unwrap()))
     }
 
@@ -1086,10 +1091,10 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         Ok(())
     }
 
-    fn transaction<C, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
+    fn transaction<S, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
     where
-        C: Cbor,
-        F: FnOnce(&mut C, &mut Self) -> Result<RT, ActorError>,
+        S: Serialize + DeserializeOwned,
+        F: FnOnce(&mut S, &mut Self) -> Result<RT, ActorError>,
     {
         if self.in_transaction {
             return Err(actor_error!(assertion_failed; "nested transaction"));
@@ -1112,7 +1117,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         &self,
         to: &Address,
         method: MethodNum,
-        params: RawBytes,
+        params: Option<IpldBlock>,
         value: TokenAmount,
         gas_limit: Option<u64>,
         send_flags: SendFlags,
@@ -1606,7 +1611,7 @@ impl<BS> RuntimePolicy for MockRuntime<BS> {
 // In order to clear the unsatisfied expectations in tests, use MockRuntime#reset().
 impl Drop for Expectations {
     fn drop(&mut self) {
-        if !self.skip_verification_on_drop {
+        if !self.skip_verification_on_drop && !std::thread::panicking() {
             self.verify();
         }
     }

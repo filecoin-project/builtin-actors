@@ -4,6 +4,7 @@ use std::borrow::Cow;
 
 use fil_actors_runtime::{actor_error, runtime::EMPTY_ARR_CID, AsActorError, EAM_ACTOR_ID};
 use fvm_ipld_blockstore::Block;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{CborStore, RawBytes};
 use fvm_ipld_kamt::HashedKey;
 use fvm_shared::{
@@ -172,7 +173,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
         &mut self,
         to: &Address,
         method: MethodNum,
-        params: RawBytes,
+        params: Option<IpldBlock>,
         value: TokenAmount,
         gas_limit: Option<u64>,
         send_flags: SendFlags,
@@ -337,10 +338,10 @@ impl<'r, RT: Runtime> System<'r, RT> {
 
         // Then attempt to resolve back into an EVM address.
         //
-        // TODO: this method doesn't differentiate between "actor doesn't have a predictable
+        // TODO: this method doesn't differentiate between "actor doesn't have a delegated
         // address" and "actor doesn't exist". We should probably fix that and return an error if
         // the actor doesn't exist.
-        match self.rt.lookup_address(actor_id).map(|a| a.into_payload()) {
+        match self.rt.lookup_delegated_address(actor_id).map(|a| a.into_payload()) {
             Some(Payload::Delegated(delegated)) if delegated.namespace() == EAM_ACTOR_ID => {
                 let subaddr: [u8; 20] = delegated.subaddress().try_into().map_err(|_| {
                     StatusCode::BadAddress("invalid ethereum address length".into())

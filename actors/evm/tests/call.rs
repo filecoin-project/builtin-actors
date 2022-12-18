@@ -5,6 +5,7 @@ use evm::interpreter::U256;
 use evm::EVM_CONTRACT_REVERTED;
 use fil_actor_evm as evm;
 use fil_actors_runtime::test_utils::*;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{BytesSer, RawBytes, DAG_CBOR};
 use fvm_shared::address::Address as FILAddress;
 use fvm_shared::bigint::Zero;
@@ -175,7 +176,7 @@ fn test_call() {
     evm_target_word.to_big_endian(&mut contract_params[..32]);
 
     let proxy_call_contract_params = vec![0u8; 4];
-    let proxy_call_input_data = RawBytes::serialize(BytesSer(&proxy_call_contract_params))
+    let proxy_call_input_data = IpldBlock::serialize_cbor(&BytesSer(&proxy_call_contract_params))
         .expect("failed to serialize input data");
 
     // expected return data
@@ -246,8 +247,9 @@ fn test_call_convert_to_send() {
         evm_target_word.to_big_endian(&mut contract_params[..32]);
 
         let proxy_call_contract_params = vec![0u8; 4];
-        let proxy_call_input_data = RawBytes::serialize(BytesSer(&proxy_call_contract_params))
-            .expect("failed to serialize input data");
+        let proxy_call_input_data =
+            IpldBlock::serialize_cbor(&BytesSer(&proxy_call_contract_params))
+                .expect("failed to serialize input data");
 
         // expected return data
         let mut return_data = vec![0u8; 32];
@@ -290,7 +292,7 @@ fn test_call_convert_to_send2() {
     evm_target_word.to_big_endian(&mut contract_params);
 
     let proxy_call_contract_params = vec![];
-    let proxy_call_input_data = RawBytes::serialize(BytesSer(&proxy_call_contract_params))
+    let proxy_call_input_data = IpldBlock::serialize_cbor(&BytesSer(&proxy_call_contract_params))
         .expect("failed to serialize input data");
 
     // we don't expected return data
@@ -330,7 +332,7 @@ fn test_call_convert_to_send3() {
     evm_target_word.to_big_endian(&mut contract_params);
 
     let proxy_call_contract_params = vec![];
-    let proxy_call_input_data = RawBytes::serialize(BytesSer(&proxy_call_contract_params))
+    let proxy_call_input_data = IpldBlock::serialize_cbor(&BytesSer(&proxy_call_contract_params))
         .expect("failed to serialize input data");
 
     // we don't expected return data
@@ -360,8 +362,7 @@ fn test_reserved_method() {
     let contract = filecoin_fallback_contract();
     let mut rt = util::construct_and_verify(contract);
 
-    let code =
-        rt.call::<evm::EvmContractActor>(0x42, &RawBytes::default()).unwrap_err().exit_code();
+    let code = rt.call::<evm::EvmContractActor>(0x42, None).unwrap_err().exit_code();
     assert_eq!(ExitCode::USR_UNHANDLED_MESSAGE, code);
 }
 
@@ -373,7 +374,7 @@ fn test_native_call() {
     // invoke the contract
     rt.expect_validate_caller_any();
 
-    let result = rt.call::<evm::EvmContractActor>(1024, &RawBytes::default()).unwrap();
+    let result = rt.call::<evm::EvmContractActor>(1024, None).unwrap();
     assert_eq!(U256::from_big_endian(&result), U256::from(1024));
 }
 
@@ -485,7 +486,7 @@ fn test_callactor_inner(exit_code: ExitCode) {
     rt.expect_send_generalized(
         target,
         0x42,
-        proxy_call_input_data,
+        None,
         TokenAmount::zero(),
         Some(0xffffffff),
         send_flags,

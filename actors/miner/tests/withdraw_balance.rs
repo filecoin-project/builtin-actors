@@ -4,6 +4,7 @@ use fil_actor_miner::{
 use fil_actors_runtime::test_utils::{
     expect_abort, expect_abort_contains_message, EVM_ACTOR_CODE_ID,
 };
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
@@ -42,9 +43,10 @@ fn withdraw_funds_restricted_correctly() {
     rt.set_balance(BIG_BALANCE.clone());
     let amount_requested = ONE_PERCENT_BALANCE.clone();
 
-    let params =
-        &RawBytes::serialize(WithdrawBalanceParams { amount_requested: amount_requested.clone() })
-            .unwrap();
+    let params = IpldBlock::serialize_cbor(&WithdrawBalanceParams {
+        amount_requested: amount_requested.clone(),
+    })
+    .unwrap();
 
     rt.set_caller(*EVM_ACTOR_CODE_ID, h.owner);
 
@@ -53,7 +55,7 @@ fn withdraw_funds_restricted_correctly() {
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
         "must be built-in",
-        rt.call::<Actor>(Method::WithdrawBalance as u64, params),
+        rt.call::<Actor>(Method::WithdrawBalance as u64, params.clone()),
     );
 
     // call the exported method
@@ -62,7 +64,7 @@ fn withdraw_funds_restricted_correctly() {
     rt.expect_send(
         h.beneficiary,
         METHOD_SEND,
-        RawBytes::default(),
+        None,
         amount_requested.clone(),
         RawBytes::default(),
         ExitCode::OK,
@@ -98,8 +100,8 @@ fn fails_if_miner_cant_repay_fee_debt() {
         h.withdraw_funds(
             &mut rt,
             h.owner,
-            &*ONE_PERCENT_BALANCE,
-            &*ONE_PERCENT_BALANCE,
+            &ONE_PERCENT_BALANCE,
+            &ONE_PERCENT_BALANCE,
             &TokenAmount::zero(),
         ),
     );

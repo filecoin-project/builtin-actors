@@ -29,7 +29,6 @@ mod util {
 }
 
 mod construction {
-    use fvm_ipld_encoding::RawBytes;
     use fvm_shared::address::{Address, BLS_PUB_LEN};
     use fvm_shared::error::ExitCode;
     use fvm_shared::MethodNum;
@@ -37,6 +36,7 @@ mod construction {
     use fil_actor_verifreg::{Actor as VerifregActor, Method};
     use fil_actors_runtime::test_utils::*;
     use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use harness::*;
 
     use crate::*;
@@ -70,7 +70,7 @@ mod construction {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<VerifregActor>(
                 Method::Constructor as MethodNum,
-                &RawBytes::serialize(root_pubkey).unwrap(),
+                IpldBlock::serialize_cbor(&root_pubkey).unwrap(),
             ),
         );
     }
@@ -82,9 +82,11 @@ mod verifiers {
     use fvm_shared::econ::TokenAmount;
     use fvm_shared::error::ExitCode;
     use fvm_shared::{MethodNum, METHOD_SEND};
+    use std::ops::Deref;
 
     use fil_actor_verifreg::{Actor as VerifregActor, AddVerifierParams, DataCap, Method};
     use fil_actors_runtime::test_utils::*;
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use harness::*;
     use util::*;
 
@@ -101,7 +103,7 @@ mod verifiers {
             ExitCode::USR_FORBIDDEN,
             rt.call::<VerifregActor>(
                 Method::AddVerifier as MethodNum,
-                &RawBytes::serialize(params).unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             ),
         );
         h.check_state(&rt);
@@ -115,7 +117,7 @@ mod verifiers {
         let params = AddVerifierParams { address: *VERIFIER, allowance };
         let result = rt.call::<VerifregActor>(
             Method::AddVerifier as MethodNum,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         );
         expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
         h.check_state(&rt);
@@ -154,7 +156,7 @@ mod verifiers {
         rt.expect_send(
             verifier_key_address,
             METHOD_SEND,
-            RawBytes::default(),
+            None,
             TokenAmount::default(),
             RawBytes::default(),
             ExitCode::OK,
@@ -163,7 +165,7 @@ mod verifiers {
         let params = AddVerifierParams { address: verifier_key_address, allowance };
         let result = rt.call::<VerifregActor>(
             Method::AddVerifier as MethodNum,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         );
 
         expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
@@ -202,7 +204,7 @@ mod verifiers {
             ExitCode::USR_FORBIDDEN,
             rt.call::<VerifregActor>(
                 Method::RemoveVerifier as MethodNum,
-                &RawBytes::serialize(*VERIFIER).unwrap(),
+                IpldBlock::serialize_cbor(VERIFIER.deref()).unwrap(),
             ),
         );
         h.check_state(&rt);
@@ -252,6 +254,7 @@ mod clients {
     use fil_actors_runtime::test_utils::*;
     use fil_actors_runtime::{DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR};
 
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use harness::*;
     use num_traits::ToPrimitive;
     use util::*;
@@ -339,7 +342,7 @@ mod clients {
         rt.expect_send(
             client,
             METHOD_SEND,
-            RawBytes::default(),
+            None,
             TokenAmount::default(),
             RawBytes::default(),
             ExitCode::OK,
@@ -383,7 +386,7 @@ mod clients {
             ExitCode::USR_NOT_FOUND,
             rt.call::<VerifregActor>(
                 Method::AddVerifiedClient as MethodNum,
-                &RawBytes::serialize(params).unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             ),
         );
         h.check_state(&rt);
@@ -408,7 +411,7 @@ mod clients {
             "must be built-in",
             rt.call::<VerifregActor>(
                 Method::AddVerifiedClient as MethodNum,
-                &RawBytes::serialize(params.clone()).unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             ),
         );
 
@@ -424,7 +427,7 @@ mod clients {
         rt.expect_send(
             DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Mint as MethodNum,
-            RawBytes::serialize(&mint_params).unwrap(),
+            IpldBlock::serialize_cbor(&mint_params).unwrap(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
@@ -433,7 +436,7 @@ mod clients {
         rt.expect_validate_caller_any();
         rt.call::<VerifregActor>(
             Method::AddVerifiedClientExported as MethodNum,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )
         .unwrap();
 
@@ -495,6 +498,7 @@ mod clients {
 
 mod allocs_claims {
     use cid::Cid;
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_shared::bigint::BigInt;
     use fvm_shared::error::ExitCode;
     use fvm_shared::piece::PaddedPieceSize;
@@ -507,7 +511,6 @@ mod allocs_claims {
         GetClaimsReturn, Method, State,
     };
     use fil_actor_verifreg::{Claim, ExtendClaimTermsReturn};
-    use fil_actors_runtime::cbor::serialize;
     use fil_actors_runtime::runtime::policy_constants::{
         MAXIMUM_VERIFIED_ALLOCATION_TERM, MINIMUM_VERIFIED_ALLOCATION_SIZE,
         MINIMUM_VERIFIED_ALLOCATION_TERM,
@@ -1002,7 +1005,7 @@ mod allocs_claims {
         let ret: ExtendClaimTermsReturn = rt
             .call::<Actor>(
                 Method::ExtendClaimTermsExported as MethodNum,
-                &serialize(&params, "extend claim terms params").unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             )
             .unwrap()
             .deserialize()
@@ -1022,7 +1025,7 @@ mod allocs_claims {
             "must be built-in",
             rt.call::<Actor>(
                 Method::GetClaims as MethodNum,
-                &serialize(&params, "get claims params").unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             ),
         );
 
@@ -1033,7 +1036,7 @@ mod allocs_claims {
         let ret: GetClaimsReturn = rt
             .call::<Actor>(
                 Method::GetClaimsExported as MethodNum,
-                &serialize(&params, "get claims params").unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             )
             .unwrap()
             .deserialize()
@@ -1049,8 +1052,8 @@ mod allocs_claims {
 }
 
 mod datacap {
-    use frc46_token::receiver::types::{UniversalReceiverParams, FRC46_TOKEN_TYPE};
-    use fvm_ipld_encoding::RawBytes;
+    use frc46_token::receiver::FRC46_TOKEN_TYPE;
+    use fvm_actor_utils::receiver::UniversalReceiverParams;
     use fvm_shared::address::Address;
     use fvm_shared::econ::TokenAmount;
     use fvm_shared::error::ExitCode;
@@ -1066,6 +1069,7 @@ mod datacap {
     use fil_actors_runtime::{
         BatchReturn, DATACAP_TOKEN_ACTOR_ADDR, EPOCHS_IN_YEAR, STORAGE_MARKET_ACTOR_ADDR,
     };
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use harness::*;
 
     use crate::*;
@@ -1221,7 +1225,7 @@ mod datacap {
             "caller address",
             rt.call::<VerifregActor>(
                 Method::UniversalReceiverHook as MethodNum,
-                &RawBytes::serialize(&params).unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             ),
         );
         rt.verify();
@@ -1253,7 +1257,7 @@ mod datacap {
             "token receiver expected to",
             rt.call::<VerifregActor>(
                 Method::UniversalReceiverHook as MethodNum,
-                &RawBytes::serialize(&params).unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             ),
         );
         rt.verify();
@@ -1270,7 +1274,8 @@ mod datacap {
         let payload = make_receiver_hook_token_payload(CLIENT1, reqs, vec![], SIZE);
         expect_abort_contains_message(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            format!("allocation provider {} must be a miner actor", provider1).as_str(),
+            format!("allocation provider {} must be a miner actor", provider1.id().unwrap())
+                .as_str(),
             h.receive_tokens(&mut rt, payload, BatchReturn::ok(1), BATCH_EMPTY, vec![1], 0),
         );
         h.check_state(&rt);
