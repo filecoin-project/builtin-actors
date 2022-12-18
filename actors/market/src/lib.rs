@@ -31,8 +31,8 @@ use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, restrict_internal_api, ActorContext, ActorDowncast, ActorError,
-    AsActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR,
+    actor_dispatch_restricted, actor_error, restrict_internal_api, ActorContext, ActorDowncast,
+    ActorError, AsActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -1365,7 +1365,7 @@ pub fn deal_id_key(k: DealID) -> BytesKey {
 
 impl ActorCode for Actor {
     type Methods = Method;
-    actor_dispatch! {
+    actor_dispatch_restricted! {
         Constructor => constructor,
         AddBalance => add_balance,
         AddBalanceExported => add_balance,

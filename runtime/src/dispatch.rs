@@ -18,13 +18,13 @@ use crate::ActorError;
 /// }
 /// impl ActorCode for Actor {
 ///     type Methods = Method;
-///     actor_dispatch! {
+///     actor_dispatch_restricted! {
 ///         Constructor => constructor,
 ///     }
 /// }
 /// ```
 #[macro_export]
-macro_rules! actor_dispatch {
+macro_rules! actor_dispatch_restricted {
     ($($(#[$m:meta])* $method:ident => $func:ident,)*) => {
         fn invoke_method<RT>(
             rt: &mut RT,
@@ -36,6 +36,26 @@ macro_rules! actor_dispatch {
             RT::Blockstore: Clone,
         {
             restrict_internal_api(rt, method)?;
+            match FromPrimitive::from_u64(method) {
+                $($(#[$m])* Some(Self::Methods::$method) => $crate::dispatch(rt, Self::$func, &args),)*
+                None => Err(actor_error!(unhandled_message; "invalid method: {}", method)),
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! actor_dispatch_unrestricted {
+    ($($(#[$m:meta])* $method:ident => $func:ident,)*) => {
+        fn invoke_method<RT>(
+            rt: &mut RT,
+            method: MethodNum,
+            args: Option<fvm_ipld_encoding::ipld_block::IpldBlock>,
+        ) -> Result<RawBytes, ActorError>
+        where
+            RT: Runtime,
+            RT::Blockstore: Clone,
+        {
             match FromPrimitive::from_u64(method) {
                 $($(#[$m])* Some(Self::Methods::$method) => $crate::dispatch(rt, Self::$func, &args),)*
                 None => Err(actor_error!(unhandled_message; "invalid method: {}", method)),

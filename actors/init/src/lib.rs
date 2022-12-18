@@ -8,8 +8,8 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, restrict_internal_api, ActorContext, ActorError, AsActorError,
-    EAM_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_dispatch_restricted, actor_error, restrict_internal_api, ActorContext, ActorError,
+    AsActorError, EAM_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -44,6 +44,7 @@ pub enum Method {
 
 /// Init actor
 pub struct Actor;
+
 impl Actor {
     /// Init actor constructor
     pub fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
@@ -216,7 +217,7 @@ impl Actor {
 
 impl ActorCode for Actor {
     type Methods = Method;
-    actor_dispatch! {
+    actor_dispatch_restricted! {
         Constructor => constructor,
         Exec => exec,
         ExecExported => exec,

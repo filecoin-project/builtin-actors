@@ -288,16 +288,13 @@ fn test_call_convert_to_send2() {
     let mut contract_params = vec![0u8; 32];
     evm_target_word.to_big_endian(&mut contract_params);
 
-    let proxy_call_contract_params = vec![];
-    let proxy_call_input_data = make_raw_params(proxy_call_contract_params);
-
     // we don't expected return data
     let return_data = vec![];
 
     rt.expect_send(
         target,
         METHOD_SEND,
-        proxy_call_input_data,
+        None,
         TokenAmount::from_atto(0x42),
         RawBytes::serialize(BytesSer(&return_data)).expect("failed to serialize return data"),
         ExitCode::OK,
@@ -327,16 +324,13 @@ fn test_call_convert_to_send3() {
     let mut contract_params = vec![0u8; 32];
     evm_target_word.to_big_endian(&mut contract_params);
 
-    let proxy_call_contract_params = vec![];
-    let proxy_call_input_data = make_raw_params(proxy_call_contract_params);
-
     // we don't expected return data
     let return_data = vec![];
 
     rt.expect_send(
         target,
         METHOD_SEND,
-        proxy_call_input_data,
+        None,
         TokenAmount::zero(),
         RawBytes::serialize(BytesSer(&return_data)).expect("failed to serialize return data"),
         ExitCode::OK,
@@ -361,17 +355,17 @@ fn test_reserved_method() {
     assert_eq!(ExitCode::USR_UNHANDLED_MESSAGE, code);
 }
 
-#[test]
-fn test_native_call() {
-    let contract = filecoin_fallback_contract();
-    let mut rt = util::construct_and_verify(contract);
-
-    // invoke the contract
-    rt.expect_validate_caller_any();
-
-    let result = rt.call::<evm::EvmContractActor>(1024, None).unwrap();
-    assert_eq!(U256::from_big_endian(&result), U256::from(1024));
-}
+// #[test]
+// fn test_native_call() {
+//     let contract = filecoin_fallback_contract();
+//     let mut rt = util::construct_and_verify(contract);
+//
+//     // invoke the contract
+//     rt.expect_validate_caller_any();
+//
+//     let result = rt.call::<evm::EvmContractActor>(1024, None).unwrap();
+//     assert_eq!(U256::from_big_endian(&result), U256::from(1024));
+// }
 
 #[allow(dead_code)]
 pub fn callactor_proxy_contract() -> Vec<u8> {
@@ -450,12 +444,12 @@ fn test_callactor_inner(exit_code: ExitCode) {
     let method = U256::from(0x42);
     let value = U256::from(0);
     let send_flags = SendFlags::default();
-    let codec = U256::from(DAG_CBOR);
+    let codec = U256::from(0);
 
     let target_bytes = target.to_bytes();
     let target_size = U256::from(target_bytes.len());
 
-    let proxy_call_input_data = RawBytes::default();
+    let proxy_call_input_data = vec![];
     let data_size = U256::from(proxy_call_input_data.len());
 
     contract_params.extend_from_slice(&method.to_bytes());
@@ -481,7 +475,7 @@ fn test_callactor_inner(exit_code: ExitCode) {
     rt.expect_send_generalized(
         target,
         0x42,
-        None,
+        make_raw_params(proxy_call_input_data),
         TokenAmount::zero(),
         Some(0xffffffff),
         send_flags,
@@ -553,7 +547,7 @@ fn test_callactor_inner(exit_code: ExitCode) {
 
 fn make_raw_params(bytes: Vec<u8>) -> Option<IpldBlock> {
     if bytes.is_empty() {
-        return None;
+        return Some(IpldBlock { codec: 0, data: bytes });
     }
 
     Some(IpldBlock { codec: IPLD_RAW, data: bytes })

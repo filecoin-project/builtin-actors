@@ -184,13 +184,15 @@ pub(super) fn call_actor<RT: Runtime>(
     let flags = SendFlags::from_bits(flags).ok_or(PrecompileError::InvalidInput)?;
 
     let codec: u64 = input_params.next_param_padded()?;
-    // TODO only CBOR for now
-    if codec != fvm_ipld_encoding::DAG_CBOR {
-        return Err(PrecompileError::InvalidInput);
-    }
 
     let address_size = input_params.next_param_padded::<u32>()? as usize;
     let send_data_size = input_params.next_param_padded::<u32>()? as usize;
+    // TODO only CBOR or "nothing" for now
+    if (codec != fvm_ipld_encoding::DAG_CBOR || send_data_size == 0)
+        && (codec != 0 || send_data_size != 0)
+    {
+        return Err(PrecompileError::InvalidInput);
+    }
 
     // ------ Begin Call -------
 
@@ -202,20 +204,8 @@ pub(super) fn call_actor<RT: Runtime>(
         let address = &bytes[send_data_size..send_data_size + address_size];
         let address = Address::from_bytes(address).map_err(|_| PrecompileError::InvalidInput)?;
 
-        let params = if input_data.is_empty() {
-            None
-        } else {
-            Some(IpldBlock { codec, data: input_data.into() })
-        };
-        system.send(
-            &address,
-            method,
-            // TODO: Is this correct?
-            params,
-            TokenAmount::from(&value),
-            Some(ctx.gas_limit),
-            flags,
-        )
+        let params = Some(IpldBlock { codec, data: input_data.into() });
+        system.send(&address, method, params, TokenAmount::from(&value), Some(ctx.gas_limit), flags)
     };
 
     // ------ Build Output -------

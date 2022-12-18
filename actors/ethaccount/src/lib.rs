@@ -6,7 +6,8 @@ use num_traits::FromPrimitive;
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, restrict_internal_api, ActorError, EAM_ACTOR_ID, SYSTEM_ACTOR_ADDR,
+    actor_dispatch_restricted, actor_error, restrict_internal_api, ActorError, EAM_ACTOR_ID,
+    SYSTEM_ACTOR_ADDR,
 };
 
 #[cfg(feature = "fil-actor")]
@@ -50,7 +51,7 @@ impl EthAccountActor {
 
 impl ActorCode for EthAccountActor {
     type Methods = Method;
-    actor_dispatch! {
+    actor_dispatch_restricted! {
         Constructor => constructor,
     }
 }

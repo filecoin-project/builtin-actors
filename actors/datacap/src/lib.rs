@@ -20,8 +20,8 @@ use num_traits::{FromPrimitive, Zero};
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, restrict_internal_api, ActorContext, ActorError, AsActorError,
-    SYSTEM_ACTOR_ADDR,
+    actor_dispatch_restricted, actor_error, restrict_internal_api, ActorContext, ActorError,
+    AsActorError, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 
@@ -474,7 +474,7 @@ impl<T> AsActorResult<T> for Result<T, ReceiverHookError> {
 
 impl ActorCode for Actor {
     type Methods = Method;
-    actor_dispatch! {
+    actor_dispatch_restricted! {
         Constructor => constructor,
         MintExported => mint,
         DestroyExported => destroy,

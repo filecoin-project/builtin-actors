@@ -13,7 +13,7 @@ use num_traits::FromPrimitive;
 
 use fil_actors_runtime::builtin::singletons::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_dispatch, restrict_internal_api, ActorDowncast};
+use fil_actors_runtime::{actor_dispatch_restricted, restrict_internal_api, ActorDowncast};
 use fil_actors_runtime::{actor_error, ActorError};
 
 use crate::types::AuthenticateMessageParams;
@@ -105,7 +105,7 @@ impl Actor {
 
 impl ActorCode for Actor {
     type Methods = Method;
-    actor_dispatch! {
+    actor_dispatch_restricted! {
         Constructor => constructor,
         PubkeyAddress => pubkey_address,
         AuthenticateMessageExported => authenticate_message,

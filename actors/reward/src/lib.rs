@@ -3,8 +3,9 @@
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, restrict_internal_api, ActorError, BURNT_FUNDS_ACTOR_ADDR,
-    EXPECTED_LEADERS_PER_EPOCH, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_dispatch_restricted, actor_error, restrict_internal_api, ActorError,
+    BURNT_FUNDS_ACTOR_ADDR, EXPECTED_LEADERS_PER_EPOCH, STORAGE_POWER_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR,
 };
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -213,7 +214,7 @@ impl Actor {
 
 impl ActorCode for Actor {
     type Methods = Method;
-    actor_dispatch! {
+    actor_dispatch_restricted! {
         Constructor => constructor,
         AwardBlockReward => award_block_reward,
         ThisEpochReward => this_epoch_reward,

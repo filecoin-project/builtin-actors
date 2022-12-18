@@ -9,7 +9,7 @@ use ext::init;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, make_map_with_root_and_bitwidth, restrict_internal_api,
+    actor_dispatch_restricted, actor_error, make_map_with_root_and_bitwidth, restrict_internal_api,
     ActorDowncast, ActorError, Multimap, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
     SYSTEM_ACTOR_ADDR,
 };
@@ -676,7 +676,7 @@ impl Actor {
 
 impl ActorCode for Actor {
     type Methods = Method;
-    actor_dispatch! {
+    actor_dispatch_restricted! {
         Constructor => constructor,
         CreateMiner => create_miner,
         CreateMinerExported => create_miner,

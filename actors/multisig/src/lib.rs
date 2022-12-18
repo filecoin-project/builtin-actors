@@ -16,8 +16,9 @@ use num_traits::{FromPrimitive, Zero};
 use fil_actors_runtime::cbor::serialize_vec;
 use fil_actors_runtime::runtime::{ActorCode, Primitives, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, make_empty_map, make_map_with_root, resolve_to_actor_id,
-    restrict_internal_api, ActorContext, ActorError, AsActorError, Map, INIT_ACTOR_ADDR,
+    actor_dispatch_restricted, actor_error, make_empty_map, make_map_with_root,
+    resolve_to_actor_id, restrict_internal_api, ActorContext, ActorError, AsActorError, Map,
+    INIT_ACTOR_ADDR,
 };
 
 pub use self::state::*;
@@ -561,7 +562,7 @@ pub fn compute_proposal_hash(txn: &Transaction, sys: &dyn Primitives) -> anyhow:
 
 impl ActorCode for Actor {
     type Methods = Method;
-    actor_dispatch! {
+    actor_dispatch_restricted! {
           Constructor => constructor,
           Propose => propose,
                ProposeExported => propose,

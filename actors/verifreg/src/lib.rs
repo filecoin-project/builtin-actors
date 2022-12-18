@@ -23,7 +23,7 @@ use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, make_map_with_root_and_bitwidth, resolve_to_actor_id,
+    actor_dispatch_restricted, actor_error, make_map_with_root_and_bitwidth, resolve_to_actor_id,
     restrict_internal_api, ActorDowncast, ActorError, BatchReturn, Map, DATACAP_TOKEN_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
@@ -1069,7 +1069,7 @@ fn can_claim_alloc(
 
 impl ActorCode for Actor {
     type Methods = Method;
-    actor_dispatch! {
+    actor_dispatch_restricted! {
         Constructor => constructor,
         AddVerifier => add_verifier,
         RemoveVerifier => remove_verifier,

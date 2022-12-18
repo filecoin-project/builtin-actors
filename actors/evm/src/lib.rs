@@ -2,7 +2,7 @@ use std::iter;
 
 use fil_actors_runtime::{actor_error, AsActorError, EAM_ACTOR_ID, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::{strict_bytes, BytesDe, BytesSer, IPLD_RAW};
+use fvm_ipld_encoding::{strict_bytes, BytesDe, BytesSer};
 use fvm_shared::address::{Address, Payload};
 use fvm_shared::error::ExitCode;
 use interpreter::{address::EthAddress, system::load_bytecode};
@@ -198,8 +198,7 @@ impl EvmContractActor {
         RT: Runtime,
         RT::Blockstore: Clone,
     {
-        // TODO: Raw feels like the correct-est thing here? Is there an "I'm empty" codec?
-        let params = args.unwrap_or(IpldBlock { codec: IPLD_RAW, data: vec![] });
+        let params = args.unwrap_or(IpldBlock { codec: 0, data: vec![] });
         let input = handle_filecoin_method_input(method, params.codec, params.data.as_slice());
         Self::invoke_contract(rt, &input, None)
     }
@@ -257,7 +256,7 @@ fn handle_filecoin_method_input(method: u64, codec: u64, params: &[u8]) -> Vec<u
 
 impl ActorCode for EvmContractActor {
     type Methods = Method;
-    // TODO: Use actor_dispatch for this, maybe.
+    // TODO: Use actor_dispatch macros for this: https://github.com/filecoin-project/builtin-actors/issues/966
     fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,

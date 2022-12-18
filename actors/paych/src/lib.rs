@@ -4,8 +4,8 @@
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, resolve_to_actor_id, restrict_internal_api, ActorDowncast,
-    ActorError, Array, AsActorError,
+    actor_dispatch_restricted, actor_error, resolve_to_actor_id, restrict_internal_api,
+    ActorDowncast, ActorError, Array, AsActorError,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{RawBytes, DAG_CBOR};
@@ -329,7 +329,7 @@ where
 
 impl ActorCode for Actor {
     type Methods = Method;
-    actor_dispatch! {
+    actor_dispatch_restricted! {
         Constructor => constructor,
         UpdateChannelState => update_channel_state,
         Settle => settle,
