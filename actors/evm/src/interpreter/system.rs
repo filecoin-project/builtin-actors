@@ -165,14 +165,18 @@ impl<'r, RT: Runtime> System<'r, RT> {
         })
     }
 
+    fn current_txn_context(&self) -> Option<(Address, u64)> {
+        Some((self.rt.message().origin(), self.nonce))
+    }
+
     pub fn delete(&mut self) -> Result<(), ActorError> {
-        self.tombstone = Some((self.rt.message().origin(), self.nonce));
+        self.tombstone = self.current_txn_context();
         self.flush()?;
         Ok(())
     }
 
     pub fn is_deleted(&self) -> bool {
-        self.tombstone.is_some()
+        self.tombstone.is_some() && self.tombstone != self.current_txn_context()
     }
 
     pub fn increment_nonce(&mut self) -> u64 {
