@@ -21,20 +21,15 @@ pub(super) fn get_actor_type<RT: Runtime>(
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    const LAST_SYSTEM_ACTOR_ID: u64 = 32;
-
+    // should never panic
     let id_bytes: [u8; 32] = read_right_pad(input, 32).as_ref().try_into().unwrap();
     let id = Parameter::<u64>::try_from(&id_bytes)?.0;
 
-    if id < LAST_SYSTEM_ACTOR_ID {
-        // known to be system actors
-        Ok(NativeType::System.word_vec())
-    } else {
-        // resolve type from code CID
-        let builtin_type = system
-            .rt
-            .get_actor_code_cid(&id)
-            .and_then(|cid| system.rt.resolve_builtin_actor_type(&cid));
+    // resolve type from code CID
+    let builtin_type = system
+        .rt
+        .get_actor_code_cid(&id)
+        .and_then(|cid| system.rt.resolve_builtin_actor_type(&cid));
 
         let builtin_type = match builtin_type {
             Some(t) => match t {
@@ -45,7 +40,7 @@ pub(super) fn get_actor_type<RT: Runtime>(
                 Type::Miner => NativeType::StorageProvider,
                 // Others
                 Type::PaymentChannel | Type::Multisig => NativeType::OtherTypes,
-                // Singletons
+                // Singletons (this should be caught earlier, but we are being exhaustive)
                 Type::Market
                 | Type::Power
                 | Type::Init
@@ -58,8 +53,7 @@ pub(super) fn get_actor_type<RT: Runtime>(
             None => NativeType::NonExistent,
         };
 
-        Ok(builtin_type.word_vec())
-    }
+    Ok(builtin_type.word_vec())
 }
 
 /// Params:
