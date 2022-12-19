@@ -46,7 +46,7 @@ once_cell = { version = "1.16.0", default-features = false}
 [dev-dependencies]
 fil_actors_runtime = { path = "../../runtime", features = ["test_utils", "sector-default"] }
 etk-asm = "^0.2.1"
-ethers = { version = "0.17.0", features = ["abigen"] }
+ethers = { version = "1.0.2", features = ["abigen"] }
 serde_json = "1.0"
 rand = "0.8.5"
 
