@@ -61,6 +61,9 @@ members = [
 #fvm_ipld_bitfield = { git = "https://github.com/filecoin-project/ref-fvm" }
 #fvm_ipld_encoding = { git = "https://github.com/filecoin-project/ref-fvm" }
 #fvm_ipld_blockstore = { git = "https://github.com/filecoin-project/ref-fvm" }
+#fvm_actor_utils = { git = "https://github.com/helix-onchain/filecoin", branch = "main" }
+#frc42_dispatch = { git = "https://github.com/helix-onchain/filecoin", branch = "main" }
+#frc46_token = { git = "https://github.com/helix-onchain/filecoin", branch = "main" }
 
 ## Uncomment when working locally on ref-fvm and this repo simultaneously.
 ## Assumes the ref-fvm checkout is in a sibling directory with the same name.
@@ -85,6 +88,9 @@ members = [
 # fvm_ipld_bitfield = { path = "../ref-fvm/ipld/bitfield"}
 # fvm_ipld_encoding = { path = "../ref-fvm/ipld/encoding"}
 # fvm_ipld_blockstore = { path = "../ref-fvm/ipld/blockstore"}
+#fvm_actor_utils = { path = "../../filecoin/fvm_actor_utils"}
+#frc42_dispatch = { path = "../../filecoin/frc42_dispatch"}
+#frc46_token = { path = "../../filecoin/frc46_token"}
 
 [profile.wasm]
 inherits = "release"

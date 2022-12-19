@@ -162,7 +162,7 @@ impl Harness {
             ext::init::EXEC_METHOD,
             IpldBlock::serialize_cbor(&expected_init_params).unwrap(),
             value.clone(),
-            RawBytes::serialize(create_miner_ret).unwrap(),
+            IpldBlock::serialize_cbor(&create_miner_ret).unwrap(),
             ExitCode::OK,
         );
         let params = CreateMinerParams {
@@ -306,6 +306,7 @@ impl Harness {
         let ret: CurrentTotalPowerReturn = rt
             .call::<PowerActor>(Method::CurrentTotalPower as u64, None)
             .unwrap()
+            .unwrap()
             .deserialize()
             .unwrap();
         rt.verify();
@@ -384,7 +385,7 @@ impl Harness {
             ThisEpochReward as u64,
             None,
             TokenAmount::zero(),
-            RawBytes::serialize(current_reward).unwrap(),
+            IpldBlock::serialize_cbor(&current_reward).unwrap(),
             ExitCode::OK,
         );
     }
@@ -414,7 +415,7 @@ impl Harness {
                 CONFIRM_SECTOR_PROOFS_VALID_METHOD,
                 IpldBlock::serialize_cbor(&param).unwrap(),
                 TokenAmount::zero(),
-                RawBytes::default(),
+                None,
                 ExitCode::new(0),
             );
         }
@@ -428,7 +429,7 @@ impl Harness {
             UPDATE_NETWORK_KPI,
             IpldBlock::serialize_cbor(&BigIntSer(expected_raw_power)).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::new(0),
         );
         rt.expect_validate_caller_addr(vec![CRON_ACTOR_ADDR]);
