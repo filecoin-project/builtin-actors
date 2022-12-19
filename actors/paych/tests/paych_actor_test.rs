@@ -41,7 +41,7 @@ struct LaneParams {
     nonce: u64,
 }
 
-fn call(rt: &mut MockRuntime, method_num: u64, ser: Option<IpldBlock>) -> RawBytes {
+fn call(rt: &mut MockRuntime, method_num: u64, ser: Option<IpldBlock>) -> Option<IpldBlock> {
     rt.call::<PaychActor>(method_num, ser).unwrap()
 }
 
@@ -140,8 +140,6 @@ mod paych_constructor {
     }
 
     #[test]
-<<<<<<< HEAD
-=======
     fn actor_constructor_fails() {
         let paych_addr = Address::new_id(TEST_PAYCH_ADDR);
         let payer_addr = Address::new_id(TEST_PAYER_ADDR);
@@ -201,7 +199,6 @@ mod paych_constructor {
     }
 
     #[test]
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
     fn sendr_addr_not_resolvable_to_id_addr() {
         const TO_ADDR: u64 = 101;
         let to_addr = Address::new_id(TO_ADDR);
@@ -334,7 +331,7 @@ mod create_lane_tests {
         let payee_addr = Address::new_id(PAYEE_ADDR);
         let paych_balance = TokenAmount::from_atto(PAYCH_BALANCE);
         let paych_non_id = Address::new_bls(&[201; fvm_shared::address::BLS_PUB_LEN]).unwrap();
-        let sig = Option::Some(Signature::new_bls("doesn't matter".as_bytes().to_vec()));
+        let sig = Some(Signature::new_bls("doesn't matter".as_bytes().to_vec()));
 
         let test_cases: Vec<TestCase> = vec![
             TestCase::builder()
@@ -385,7 +382,7 @@ mod create_lane_tests {
                 .unwrap(),
             TestCase::builder()
                 .desc("fails is signature is not valid".to_string())
-                .sig(Option::None)
+                .sig(None)
                 .build()
                 .unwrap(),
             TestCase::builder()
@@ -754,7 +751,7 @@ mod update_channel_state_extra {
             Method::UpdateChannelState as u64,
             Some(IpldBlock { codec: DAG_CBOR, data: fake_params.to_vec() }),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             exit_code,
         );
         (rt, sv)
@@ -824,12 +821,6 @@ fn update_channel_settling() {
     for tc in test_cases {
         ucp.sv.min_settle_height = tc.min_settle;
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
-<<<<<<< HEAD
-
-        expect_authenticate_message(&mut rt, state.to, ucp.sv.clone(), ExitCode::OK);
-
-        call(&mut rt, Method::UpdateChannelState as u64, &RawBytes::serialize(&ucp).unwrap());
-=======
         rt.expect_verify_signature(ExpectedVerifySig {
             sig: sv.clone().signature.unwrap(),
             signer: state.to,
@@ -837,7 +828,6 @@ fn update_channel_settling() {
             result: Ok(()),
         });
         call(&mut rt, Method::UpdateChannelState as u64, IpldBlock::serialize_cbor(&ucp).unwrap());
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
         let new_state: PState = rt.get_state();
         assert_eq!(tc.exp_settling_at, new_state.settling_at);
         assert_eq!(tc.exp_min_settle_height, new_state.min_settle_height);
@@ -937,11 +927,6 @@ mod actor_settle {
         let ucp = UpdateChannelStateParams::from(sv.clone());
 
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
-<<<<<<< HEAD
-        expect_authenticate_message(&mut rt, state.to, sv, ExitCode::OK);
-
-        call(&mut rt, Method::UpdateChannelState as u64, &RawBytes::serialize(&ucp).unwrap());
-=======
         rt.expect_verify_signature(ExpectedVerifySig {
             sig: ucp.sv.signature.clone().unwrap(),
             signer: state.to,
@@ -949,7 +934,6 @@ mod actor_settle {
             result: Ok(()),
         });
         call(&mut rt, Method::UpdateChannelState as u64, IpldBlock::serialize_cbor(&ucp).unwrap());
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
 
         state = rt.get_state();
         assert_eq!(state.settling_at, 0);
@@ -1027,7 +1011,7 @@ mod actor_collect {
         rt.expect_validate_caller_addr(vec![st.from, st.to]);
         rt.expect_delete_actor(st.from);
         let res = call(&mut rt, Method::Collect as u64, None);
-        assert_eq!(res, RawBytes::default());
+        assert!(res.is_none());
         check_state(&rt);
     }
 

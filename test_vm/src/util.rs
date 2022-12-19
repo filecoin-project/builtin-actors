@@ -109,7 +109,7 @@ pub fn apply_code<S: Serialize>(
 ) -> RawBytes {
     let res = v.apply_message(from, to, value, method, params).unwrap();
     assert_eq!(code, res.code, "expected code {}, got {} ({})", code, res.code, res.message);
-    res.ret
+    res.ret.map_or(RawBytes::default(), |b| RawBytes::new(b.data))
 }
 
 pub fn cron_tick(v: &VM) {
@@ -150,6 +150,7 @@ pub fn create_miner(
         )
         .unwrap()
         .ret
+        .unwrap()
         .deserialize()
         .unwrap();
     (res.id_address, res.robust_address)
@@ -877,13 +878,8 @@ pub fn verifreg_add_verifier(v: &VM, verifier: Address, data_cap: StoragePower) 
             params: Some(IpldBlock::serialize_cbor(&add_verifier_params).unwrap()),
             subinvocs: Some(vec![ExpectInvocation {
                 to: DATACAP_TOKEN_ACTOR_ADDR,
-<<<<<<< HEAD
-                method: DataCapMethod::BalanceExported as u64,
-                params: Some(serialize(&verifier, "balance of params").unwrap()),
-=======
                 method: DataCapMethod::BalanceOf as u64,
                 params: Some(IpldBlock::serialize_cbor(&verifier).unwrap()),
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
                 code: Some(ExitCode::OK),
                 ..Default::default()
             }]),
@@ -1179,19 +1175,6 @@ pub fn market_publish_deal(
             }],
             extensions: vec![],
         };
-<<<<<<< HEAD
-        expect_publish_invocs.insert(
-            expect_publish_invocs.len() - 1,
-            ExpectInvocation {
-                to: DATACAP_TOKEN_ACTOR_ADDR,
-                method: DataCapMethod::TransferFromExported as u64,
-                params: Some(
-                    RawBytes::serialize(&TransferFromParams {
-                        from: deal_client,
-                        to: VERIFIED_REGISTRY_ACTOR_ADDR,
-                        amount: token_amount.clone(),
-                        operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
-=======
         expect_publish_invocs.push(ExpectInvocation {
             to: DATACAP_TOKEN_ACTOR_ADDR,
             method: DataCapMethod::TransferFrom as u64,
@@ -1223,7 +1206,6 @@ pub fn market_publish_deal(
                             "token received params",
                         )
                         .unwrap(),
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
                     })
                     .unwrap(),
                 ),

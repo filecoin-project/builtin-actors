@@ -7,16 +7,11 @@ use fil_actors_runtime::{
         ACCOUNT_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID,
     },
 };
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode};
 
 mod util;
-<<<<<<< HEAD
-use fil_actors_runtime::test_utils::make_identity_cid;
-=======
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
 use itertools::Itertools;
 use num_traits::Zero;
 use util::*;
@@ -358,7 +353,7 @@ fn fails_when_caller_is_not_the_owner() {
         AccountMethod::PubkeyAddress as u64,
         None,
         TokenAmount::zero(),
-        RawBytes::serialize(h.worker_key).unwrap(),
+        IpldBlock::serialize_cbor(&h.worker_key).unwrap(),
         ExitCode::OK,
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.worker);

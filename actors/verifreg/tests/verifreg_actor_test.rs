@@ -77,7 +77,6 @@ mod construction {
 }
 
 mod verifiers {
-    use fvm_ipld_encoding::RawBytes;
     use fvm_shared::address::{Address, BLS_PUB_LEN};
     use fvm_shared::econ::TokenAmount;
     use fvm_shared::error::ExitCode;
@@ -158,7 +157,7 @@ mod verifiers {
             METHOD_SEND,
             None,
             TokenAmount::default(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
@@ -241,7 +240,6 @@ mod verifiers {
 }
 
 mod clients {
-    use fvm_ipld_encoding::RawBytes;
     use fvm_shared::address::{Address, BLS_PUB_LEN};
     use fvm_shared::econ::TokenAmount;
     use fvm_shared::error::ExitCode;
@@ -252,12 +250,7 @@ mod clients {
         ext, Actor as VerifregActor, AddVerifiedClientParams, DataCap, Method,
     };
     use fil_actors_runtime::test_utils::*;
-<<<<<<< HEAD
-    use fil_actors_runtime::{DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR};
-
-=======
     use fvm_ipld_encoding::ipld_block::IpldBlock;
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
     use harness::*;
     use num_traits::ToPrimitive;
     use util::*;
@@ -342,14 +335,7 @@ mod clients {
         let client = Address::new_bls(&[7u8; BLS_PUB_LEN]).unwrap();
         // Expect runtime to attempt to create the actor, but don't add it to the mock's
         // address resolution table.
-        rt.expect_send(
-            client,
-            METHOD_SEND,
-            None,
-            TokenAmount::default(),
-            RawBytes::default(),
-            ExitCode::OK,
-        );
+        rt.expect_send(client, METHOD_SEND, None, TokenAmount::default(), None, ExitCode::OK);
 
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,

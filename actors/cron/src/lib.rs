@@ -5,7 +5,6 @@ use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{actor_dispatch, actor_error, ActorError, SYSTEM_ACTOR_ADDR};
 
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::econ::TokenAmount;
 
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};

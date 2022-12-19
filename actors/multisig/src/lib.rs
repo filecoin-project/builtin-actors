@@ -480,12 +480,13 @@ fn execute_transaction_if_approved(
         st.check_available(rt.current_balance(), &txn.value, rt.curr_epoch())?;
 
         match rt.send(&txn.to, txn.method, txn.params.clone().into(), txn.value.clone()) {
-            Ok(ser) => {
-                out = ser;
+            Ok(Some(r)) => {
+                out = RawBytes::new(r.data);
             }
             Err(e) => {
                 code = e.exit_code();
             }
+            _ => {}
         }
         applied = true;
 
@@ -558,76 +559,8 @@ pub fn compute_proposal_hash(txn: &Transaction, sys: &dyn Primitives) -> anyhow:
 }
 
 impl ActorCode for Actor {
-<<<<<<< HEAD
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        params: &RawBytes,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-    {
-        restrict_internal_api(rt, method)?;
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::Propose) | Some(Method::ProposeExported) => {
-                let res = Self::propose(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::Approve) | Some(Method::ApproveExported) => {
-                let res = Self::approve(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::Cancel) | Some(Method::CancelExported) => {
-                Self::cancel(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::AddSigner) | Some(Method::AddSignerExported) => {
-                Self::add_signer(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::RemoveSigner) | Some(Method::RemoveSignerExported) => {
-                Self::remove_signer(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::SwapSigner) | Some(Method::SwapSignerExported) => {
-                Self::swap_signer(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::ChangeNumApprovalsThreshold)
-            | Some(Method::ChangeNumApprovalsThresholdExported) => {
-                Self::change_num_approvals_threshold(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::LockBalance) | Some(Method::LockBalanceExported) => {
-                Self::lock_balance(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::FungibleTokenReceiverHook) => {
-                Self::fungible_token_receiver_hook(rt, params)?;
-                Ok(RawBytes::default())
-            }
-            None => Err(actor_error!(unhandled_message, "Invalid method")),
-        }
-=======
     type Methods = Method;
     actor_dispatch! {
-<<<<<<< HEAD
-        Constructor => constructor,
-        Propose => propose,
-        Approve => approve,
-        Cancel => cancel,
-        AddSigner => add_signer,
-        RemoveSigner => remove_signer,
-        SwapSigner => swap_signer,
-        ChangeNumApprovalsThreshold => change_num_approvals_threshold,
-        LockBalance => lock_balance,
-        UniversalReceiverHook => universal_receiver_hook,
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
-=======
       Constructor => constructor,
       Propose => propose,
       Approve => approve,
@@ -638,6 +571,5 @@ impl ActorCode for Actor {
       ChangeNumApprovalsThreshold => change_num_approvals_threshold,
       LockBalance => lock_balance,
       UniversalReceiverHook => universal_receiver_hook,
->>>>>>> c57b032f (Multisig: Do not export any functionality (#967))
     }
 }

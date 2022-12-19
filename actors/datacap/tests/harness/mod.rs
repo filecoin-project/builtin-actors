@@ -52,7 +52,7 @@ impl Harness {
             )
             .unwrap();
 
-        assert_eq!(RawBytes::default(), ret);
+        assert!(ret.is_none());
         rt.verify();
 
         let state: State = rt.get_state();
@@ -89,24 +89,19 @@ impl Harness {
             frc42_dispatch::method_hash!("Receive"),
             IpldBlock::serialize_cbor(&hook_params).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
         let params = MintParams { to: *to, amount: amount.clone(), operators };
         rt.set_caller(*VERIFREG_ACTOR_CODE_ID, VERIFIED_REGISTRY_ACTOR_ADDR);
         let ret = rt.call::<DataCapActor>(
-<<<<<<< HEAD
-            Method::MintExported as MethodNum,
-            &serialize(&params, "params")?,
-=======
             Method::Mint as MethodNum,
             IpldBlock::serialize_cbor(&params).unwrap(),
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
         )?;
 
         rt.verify();
-        Ok(ret.deserialize().unwrap())
+        Ok(ret.unwrap().deserialize().unwrap())
     }
 
     pub fn destroy(
@@ -121,17 +116,12 @@ impl Harness {
 
         rt.set_caller(*VERIFREG_ACTOR_CODE_ID, VERIFIED_REGISTRY_ACTOR_ADDR);
         let ret = rt.call::<DataCapActor>(
-<<<<<<< HEAD
-            Method::DestroyExported as MethodNum,
-            &serialize(&params, "params")?,
-=======
             Method::Destroy as MethodNum,
             IpldBlock::serialize_cbor(&params).unwrap(),
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
         )?;
 
         rt.verify();
-        Ok(ret.deserialize().unwrap())
+        Ok(ret.unwrap().deserialize().unwrap())
     }
 
     pub fn transfer(
@@ -166,23 +156,18 @@ impl Harness {
             frc42_dispatch::method_hash!("Receive"),
             IpldBlock::serialize_cbor(&hook_params).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
         let params = TransferParams { to: *to, amount: amount.clone(), operator_data };
         let ret = rt.call::<DataCapActor>(
-<<<<<<< HEAD
-            Method::TransferExported as MethodNum,
-            &serialize(&params, "params")?,
-=======
             Method::Transfer as MethodNum,
             IpldBlock::serialize_cbor(&params).unwrap(),
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
         )?;
 
         rt.verify();
-        Ok(ret.deserialize().unwrap())
+        Ok(ret.unwrap().deserialize().unwrap())
     }
 
     pub fn transfer_from(
@@ -218,24 +203,19 @@ impl Harness {
             frc42_dispatch::method_hash!("Receive"),
             IpldBlock::serialize_cbor(&hook_params).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
         let params =
             TransferFromParams { to: *to, from: *from, amount: amount.clone(), operator_data };
         let ret = rt.call::<DataCapActor>(
-<<<<<<< HEAD
-            Method::TransferFromExported as MethodNum,
-            &serialize(&params, "params")?,
-=======
             Method::TransferFrom as MethodNum,
             IpldBlock::serialize_cbor(&params).unwrap(),
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
         )?;
 
         rt.verify();
-        Ok(ret.deserialize().unwrap())
+        Ok(ret.unwrap().deserialize().unwrap())
     }
 
     // Reads the total supply from state directly.

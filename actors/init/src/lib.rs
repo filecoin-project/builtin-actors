@@ -4,16 +4,10 @@
 use cid::Cid;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-<<<<<<< HEAD
-use fil_actors_runtime::{
-    actor_error, cbor, restrict_internal_api, ActorContext, ActorError, SYSTEM_ACTOR_ADDR,
-=======
 
 use fil_actors_runtime::{
     actor_dispatch, actor_error, ActorContext, ActorError, SYSTEM_ACTOR_ADDR,
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
 };
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
@@ -41,6 +35,7 @@ pub enum Method {
 
 /// Init actor
 pub struct Actor;
+
 impl Actor {
     /// Init actor constructor
     pub fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
@@ -104,33 +99,10 @@ impl Actor {
 }
 
 impl ActorCode for Actor {
-<<<<<<< HEAD
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        params: &RawBytes,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-    {
-        restrict_internal_api(rt, method)?;
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::Exec) | Some(Method::ExecExported) => {
-                let res = Self::exec(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            None => Err(actor_error!(unhandled_message; "Invalid method")),
-        }
-=======
     type Methods = Method;
     actor_dispatch! {
         Constructor => constructor,
         Exec => exec,
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
     }
 }
 

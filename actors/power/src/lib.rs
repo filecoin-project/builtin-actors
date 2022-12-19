@@ -9,13 +9,9 @@ use ext::init;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-<<<<<<< HEAD
-    actor_error, cbor, make_map_with_root_and_bitwidth, restrict_internal_api, ActorDowncast,
-    ActorError, Multimap, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-=======
-    actor_dispatch, actor_error, make_map_with_root_and_bitwidth, ActorDowncast, ActorError,
-    Multimap, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
+    actor_dispatch, actor_error, deserialize_block, extract_send_result,
+    make_map_with_root_and_bitwidth, ActorDowncast, ActorError, Multimap, CRON_ACTOR_ADDR,
+    INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
@@ -109,17 +105,15 @@ impl Actor {
         })?;
 
         let miner_actor_code_cid = rt.get_code_cid_for_type(Type::Miner);
-        let ext::init::ExecReturn { id_address, robust_address } = rt
-            .send(
-                &INIT_ACTOR_ADDR,
-                ext::init::EXEC_METHOD,
-                IpldBlock::serialize_cbor(&init::ExecParams {
-                    code_cid: miner_actor_code_cid,
-                    constructor_params,
-                })?,
-                value,
-            )?
-            .deserialize()?;
+        let ext::init::ExecReturn { id_address, robust_address } = deserialize_block(rt.send(
+            &INIT_ACTOR_ADDR,
+            ext::init::EXEC_METHOD,
+            IpldBlock::serialize_cbor(&init::ExecParams {
+                code_cid: miner_actor_code_cid,
+                constructor_params,
+            })?,
+            value,
+        )?)?;
 
         let window_post_proof_type = params.window_post_proof_type;
         rt.transaction(|st: &mut State, rt| {
@@ -244,15 +238,15 @@ impl Actor {
     fn on_epoch_tick_end(rt: &mut impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&CRON_ACTOR_ADDR))?;
 
-        let rewret: ThisEpochRewardReturn = rt
-            .send(
+        let rewret: ThisEpochRewardReturn = deserialize_block(
+            rt.send(
                 &REWARD_ACTOR_ADDR,
                 ext::reward::Method::ThisEpochReward as MethodNum,
                 None,
                 TokenAmount::zero(),
             )
-            .map_err(|e| e.wrap("failed to check epoch baseline power"))?
-            .deserialize()?;
+            .map_err(|e| e.wrap("failed to check epoch baseline power"))?,
+        )?;
 
         if let Err(e) = Self::process_batch_proof_verifies(rt, &rewret) {
             error!("unexpected error processing batch proof verifies: {}. Skipping all verification for epoch {}", e, rt.curr_epoch());
@@ -679,69 +673,6 @@ impl Actor {
 }
 
 impl ActorCode for Actor {
-<<<<<<< HEAD
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        params: &RawBytes,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-    {
-        restrict_internal_api(rt, method)?;
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(rt)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::CreateMiner) | Some(Method::CreateMinerExported) => {
-                let res = Self::create_miner(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::UpdateClaimedPower) => {
-                Self::update_claimed_power(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::EnrollCronEvent) => {
-                Self::enroll_cron_event(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::OnEpochTickEnd) => {
-                Self::on_epoch_tick_end(rt)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::UpdatePledgeTotal) => {
-                let param: TokenAmount = cbor::deserialize_params(params)?;
-                Self::update_pledge_total(rt, param)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::SubmitPoRepForBulkVerify) => {
-                Self::submit_porep_for_bulk_verify(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::CurrentTotalPower) => {
-                let res = Self::current_total_power(rt)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::NetworkRawPowerExported) => {
-                let res = Self::network_raw_power(rt)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::MinerRawPowerExported) => {
-                let res = Self::miner_raw_power(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::MinerCountExported) => {
-                let res = Self::miner_count(rt)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::MinerConsensusCountExported) => {
-                let res = Self::miner_consensus_count(rt)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            None => Err(actor_error!(unhandled_message; "Invalid method")),
-        }
-=======
     type Methods = Method;
     actor_dispatch! {
         Constructor => constructor,
@@ -752,6 +683,5 @@ impl ActorCode for Actor {
         UpdatePledgeTotal => update_pledge_total,
         SubmitPoRepForBulkVerify => submit_porep_for_bulk_verify,
         CurrentTotalPower => current_total_power,
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
     }
 }

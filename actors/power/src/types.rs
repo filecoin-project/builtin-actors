@@ -58,9 +58,6 @@ pub struct EnrollCronEventParams {
     pub payload: RawBytes,
 }
 
-<<<<<<< HEAD
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, PartialEq)]
-=======
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Clone, Default)]
 #[serde(transparent)]
 pub struct UpdatePledgeTotalParams {
@@ -68,7 +65,6 @@ pub struct UpdatePledgeTotalParams {
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
 pub struct CurrentTotalPowerReturn {
     #[serde(with = "bigint_ser")]
     pub raw_byte_power: StoragePower,

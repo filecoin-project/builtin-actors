@@ -4,7 +4,6 @@ use cid::{multihash, Cid};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::CborStore;
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
@@ -12,11 +11,7 @@ use num_traits::FromPrimitive;
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-<<<<<<< HEAD
-    actor_error, restrict_internal_api, ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR,
-=======
     actor_dispatch, actor_error, ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR,
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
 };
 
 #[cfg(feature = "fil-actor")]
@@ -71,28 +66,9 @@ impl Actor {
 }
 
 impl ActorCode for Actor {
-<<<<<<< HEAD
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        _params: &RawBytes,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-    {
-        restrict_internal_api(rt, method)?;
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(rt)?;
-                Ok(RawBytes::default())
-            }
-            None => Err(actor_error!(unhandled_message; "Invalid method")),
-        }
-=======
     type Methods = Method;
     actor_dispatch! {
         Constructor => constructor,
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
     }
 }
 

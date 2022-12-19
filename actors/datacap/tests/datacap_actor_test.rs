@@ -63,21 +63,13 @@ mod mint {
         assert_eq!(amt, ret.supply);
         assert_eq!(amt, ret.balance);
         assert_eq!(amt, h.get_supply(&rt));
-<<<<<<< HEAD
-        assert_eq!(amt, h.get_balance(&mut rt, &*ALICE));
-=======
         assert_eq!(amt, h.get_balance(&rt, &ALICE));
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
 
         let ret = h.mint(&mut rt, &BOB, &amt, vec![]).unwrap();
         assert_eq!(&amt * 2, ret.supply);
         assert_eq!(amt, ret.balance);
         assert_eq!(&amt * 2, h.get_supply(&rt));
-<<<<<<< HEAD
-        assert_eq!(amt, h.get_balance(&mut rt, &*BOB));
-=======
         assert_eq!(amt, h.get_balance(&rt, &BOB));
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
 
         h.check_state(&rt);
     }
@@ -94,13 +86,8 @@ mod mint {
             ExitCode::USR_FORBIDDEN,
             "caller address",
             rt.call::<Actor>(
-<<<<<<< HEAD
-                Method::MintExported as MethodNum,
-                &serialize(&params, "params").unwrap(),
-=======
                 Method::Mint as MethodNum,
                 IpldBlock::serialize_cbor(&params).unwrap(),
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
             ),
         );
         h.check_state(&rt);
@@ -242,13 +229,8 @@ mod destroy {
             ExitCode::USR_FORBIDDEN,
             "caller address",
             rt.call::<Actor>(
-<<<<<<< HEAD
-                Method::DestroyExported as MethodNum,
-                &serialize(&params, "params").unwrap(),
-=======
                 Method::Destroy as MethodNum,
                 IpldBlock::serialize_cbor(&params).unwrap(),
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
             ),
         );
 

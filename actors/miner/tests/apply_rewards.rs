@@ -9,7 +9,6 @@ use fil_actors_runtime::test_utils::REWARD_ACTOR_CODE_ID;
 use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
 use fil_actors_runtime::REWARD_ACTOR_ADDR;
 use fil_actors_runtime::STORAGE_POWER_ACTOR_ADDR;
-use fvm_ipld_encoding::RawBytes;
 
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
@@ -134,14 +133,7 @@ fn penalty_is_partially_burnt_and_stored_as_fee_debt() {
 
     // burn initial balance + reward = 2*amt
     let expect_burnt = 2 * &amt;
-    rt.expect_send(
-        BURNT_FUNDS_ACTOR_ADDR,
-        METHOD_SEND,
-        None,
-        expect_burnt,
-        RawBytes::default(),
-        ExitCode::OK,
-    );
+    rt.expect_send(BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, None, expect_burnt, None, ExitCode::OK);
 
     let params = ApplyRewardParams { reward, penalty };
     rt.call::<Actor>(Method::ApplyRewards as u64, IpldBlock::serialize_cbor(&params).unwrap())
@@ -198,24 +190,12 @@ fn rewards_pay_back_fee_debt() {
         PowerMethod::UpdatePledgeTotal as u64,
         IpldBlock::serialize_cbor(&pledge_delta).unwrap(),
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
 
     let expect_burnt = st.fee_debt;
-    rt.expect_send(
-        BURNT_FUNDS_ACTOR_ADDR,
-        METHOD_SEND,
-<<<<<<< HEAD
-        RawBytes::default(),
-        expect_burnt,
-=======
-        None,
-        expect_burnt.clone(),
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
-        RawBytes::default(),
-        ExitCode::OK,
-    );
+    rt.expect_send(BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, None, expect_burnt, None, ExitCode::OK);
 
     let params = ApplyRewardParams { reward: reward.clone(), penalty };
     rt.call::<Actor>(Method::ApplyRewards as u64, IpldBlock::serialize_cbor(&params).unwrap())

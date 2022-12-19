@@ -7,49 +7,27 @@ use std::iter;
 use std::ops::Neg;
 
 use anyhow::{anyhow, Error};
-pub use bitfield_queue::*;
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
-use cid::multihash::Code;
 use cid::Cid;
-pub use commd::*;
-pub use deadline_assignment::*;
-pub use deadline_info::*;
-pub use deadline_state::*;
-pub use deadlines::*;
-pub use expiration_queue::*;
-use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
-use fil_actors_runtime::{
-    actor_error, cbor, ActorContext, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR,
-    CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
-    STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
-};
 use fvm_ipld_bitfield::{BitField, Validate};
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::{from_slice, BytesDe, CborStore, RawBytes};
+use fvm_ipld_encoding::{from_slice, BytesDe, CborStore};
 use fvm_shared::address::{Address, Payload, Protocol};
 use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-// The following errors are particular cases of illegal state.
-// They're not expected to ever happen, but if they do, distinguished codes can help us
-// diagnose the problem.
-
-use crate::Code::Blake2b256;
-pub use beneficiary::*;
-use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
-use fil_actors_runtime::runtime::builtins::Type;
 use fvm_shared::error::*;
 use fvm_shared::randomness::*;
 use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::*;
 use fvm_shared::smooth::FilterEstimate;
-use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
+use fvm_shared::{ActorID, METHOD_CONSTRUCTOR, METHOD_SEND};
 use itertools::Itertools;
 use log::{error, info, warn};
-pub use monies::*;
+use multihash::Code::Blake2b256;
 use num_derive::FromPrimitive;
-use num_traits::{FromPrimitive, Zero};
+use num_traits::Zero;
 
 pub use beneficiary::*;
 pub use bitfield_queue::*;
@@ -59,18 +37,13 @@ pub use deadline_info::*;
 pub use deadline_state::*;
 pub use deadlines::*;
 pub use expiration_queue::*;
-use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
+use fil_actors_runtime::cbor::{serialize, serialize_vec};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
-<<<<<<< HEAD
-    actor_error, cbor, restrict_internal_api, ActorContext, ActorDowncast, ActorError,
-    BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
-=======
-    actor_dispatch, actor_error, ActorContext, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR,
-    CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
-    STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    actor_dispatch, actor_error, deserialize_block, extract_send_result, ActorContext,
+    ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 pub use monies::*;
@@ -82,6 +55,10 @@ pub use state::*;
 pub use termination::*;
 pub use types::*;
 pub use vesting_state::*;
+
+// The following errors are particular cases of illegal state.
+// They're not expected to ever happen, but if they do, distinguished codes can help us
+// diagnose the problem.
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
@@ -156,7 +133,7 @@ pub enum Method {
     ConfirmChangeWorkerAddressExported = frc42_dispatch::method_hash!("ConfirmChangeWorkerAddress"),
     RepayDebtExported = frc42_dispatch::method_hash!("RepayDebt"),
     ChangeOwnerAddressExported = frc42_dispatch::method_hash!("ChangeOwnerAddress"),
-    ChangeBenificiaryExported = frc42_dispatch::method_hash!("ChangeBeneficiary"),
+    ChangeBeneficiaryExported = frc42_dispatch::method_hash!("ChangeBeneficiary"),
     GetBeneficiaryExported = frc42_dispatch::method_hash!("GetBeneficiary"),
     GetOwnerExported = frc42_dispatch::method_hash!("GetOwner"),
     IsControllingAddressExported = frc42_dispatch::method_hash!("IsControllingAddress"),
@@ -1672,7 +1649,9 @@ impl Actor {
 
         request_update_power(rt, power_delta)?;
         if !to_reward.is_zero() {
-            if let Err(e) = rt.send(&reporter, METHOD_SEND, None, to_reward.clone()) {
+            if let Err(e) =
+                extract_send_result(rt.send_simple(&reporter, METHOD_SEND, None, to_reward.clone()))
+            {
                 error!("failed to send reward: {}", e);
                 to_burn += to_reward;
             }
@@ -2101,12 +2080,12 @@ impl Actor {
             precommit.info.unsealed_cid,
         )?;
 
-        rt.send(
+        extract_send_result(rt.send_simple(
             &STORAGE_POWER_ACTOR_ADDR,
             ext::power::SUBMIT_POREP_FOR_BULK_VERIFY_METHOD,
             IpldBlock::serialize_cbor(&svi)?,
             TokenAmount::zero(),
-        )?;
+        ))?;
 
         Ok(())
     }
@@ -3201,7 +3180,9 @@ impl Actor {
             Ok((burn_amount, reward_amount))
         })?;
 
-        if let Err(e) = rt.send(&reporter, METHOD_SEND, None, reward_amount) {
+        if let Err(e) =
+            extract_send_result(rt.send_simple(&reporter, METHOD_SEND, None, reward_amount))
+        {
             error!("failed to send reward: {}", e);
         }
 
@@ -3300,7 +3281,12 @@ impl Actor {
             })?;
 
         if amount_withdrawn.is_positive() {
-            rt.send(&info.beneficiary, METHOD_SEND, None, amount_withdrawn.clone())?;
+            extract_send_result(rt.send_simple(
+                &info.beneficiary,
+                METHOD_SEND,
+                None,
+                amount_withdrawn.clone(),
+            ))?;
         }
 
         burn_funds(rt, fee_to_burn)?;
@@ -3612,24 +3598,10 @@ fn validate_legacy_extension_declarations(
                 ));
             }
 
-            let sectors = match &decl.sectors {
-                UnvalidatedBitField::Validated(bf) => Ok(bf.clone()),
-                UnvalidatedBitField::Unvalidated(bytes) => BitField::from_bytes(bytes),
-            }
-            .map_err(|e| {
-                actor_error!(
-                    illegal_argument,
-                    "failed to validate sectors for deadline {}, partition {}: {}",
-                    decl.deadline,
-                    decl.partition,
-                    e
-                )
-            })?;
-
             Ok(ValidatedExpirationExtension {
                 deadline: decl.deadline,
                 partition: decl.partition,
-                sectors,
+                sectors: decl.sectors.clone(),
                 new_expiration: decl.new_expiration,
             })
         })
@@ -4174,12 +4146,12 @@ fn enroll_cron_event(
     let payload = serialize(&cb, "cron payload")?;
     let ser_params =
         IpldBlock::serialize_cbor(&ext::power::EnrollCronEventParams { event_epoch, payload })?;
-    rt.send(
+    extract_send_result(rt.send_simple(
         &STORAGE_POWER_ACTOR_ADDR,
         ext::power::ENROLL_CRON_EVENT_METHOD,
         ser_params,
         TokenAmount::zero(),
-    )?;
+    ))?;
 
     Ok(())
 }
@@ -4191,7 +4163,7 @@ fn request_update_power(rt: &mut impl Runtime, delta: PowerPair) -> Result<(), A
 
     let delta_clone = delta.clone();
 
-    rt.send(
+    extract_send_result(rt.send_simple(
         &STORAGE_POWER_ACTOR_ADDR,
         ext::power::UPDATE_CLAIMED_POWER_METHOD,
         IpldBlock::serialize_cbor(&ext::power::UpdateClaimedPowerParams {
@@ -4199,7 +4171,7 @@ fn request_update_power(rt: &mut impl Runtime, delta: PowerPair) -> Result<(), A
             quality_adjusted_delta: delta.qa,
         })?,
         TokenAmount::zero(),
-    )
+    ))
     .map_err(|e| e.wrap(format!("failed to update power with {:?}", delta_clone)))?;
 
     Ok(())
@@ -4213,7 +4185,7 @@ fn request_terminate_deals(
     const MAX_LENGTH: usize = 8192;
 
     for chunk in deal_ids.chunks(MAX_LENGTH) {
-        rt.send(
+        extract_send_result(rt.send_simple(
             &STORAGE_MARKET_ACTOR_ADDR,
             ext::market::ON_MINER_SECTORS_TERMINATE_METHOD,
             IpldBlock::serialize_cbor(&ext::market::OnMinerSectorsTerminateParamsRef {
@@ -4221,7 +4193,7 @@ fn request_terminate_deals(
                 deal_ids: chunk,
             })?,
             TokenAmount::zero(),
-        )?;
+        ))?;
     }
 
     Ok(())
@@ -4347,14 +4319,12 @@ fn request_deal_data(
         });
     }
 
-    let serialized = rt.send(
+    deserialize_block(extract_send_result(rt.send_simple(
         &STORAGE_MARKET_ACTOR_ADDR,
         ext::market::VERIFY_DEALS_FOR_ACTIVATION_METHOD,
         IpldBlock::serialize_cbor(&ext::market::VerifyDealsForActivationParamsRef { sectors })?,
         TokenAmount::zero(),
-    )?;
-
-    Ok(serialized.deserialize()?)
+    ))?)
 }
 
 /// Requests the current epoch target block reward from the reward actor.
@@ -4362,34 +4332,30 @@ fn request_deal_data(
 fn request_current_epoch_block_reward(
     rt: &mut impl Runtime,
 ) -> Result<ThisEpochRewardReturn, ActorError> {
-    let ret = rt
-        .send(
+    deserialize_block(
+        extract_send_result(rt.send_simple(
             &REWARD_ACTOR_ADDR,
             ext::reward::THIS_EPOCH_REWARD_METHOD,
             Default::default(),
             TokenAmount::zero(),
-        )
-        .map_err(|e| e.wrap("failed to check epoch baseline power"))?;
-
-    let ret: ThisEpochRewardReturn = deserialize(&ret, "epoch reward response")?;
-    Ok(ret)
+        ))
+        .map_err(|e| e.wrap("failed to check epoch baseline power"))?,
+    )
 }
 
 /// Requests the current network total power and pledge from the power actor.
 fn request_current_total_power(
     rt: &mut impl Runtime,
 ) -> Result<ext::power::CurrentTotalPowerReturn, ActorError> {
-    let ret = rt
-        .send(
+    deserialize_block(
+        extract_send_result(rt.send_simple(
             &STORAGE_POWER_ACTOR_ADDR,
             ext::power::CURRENT_TOTAL_POWER_METHOD,
             Default::default(),
             TokenAmount::zero(),
-        )
-        .map_err(|e| e.wrap("failed to check current power"))?;
-
-    let power: ext::power::CurrentTotalPowerReturn = deserialize(&ret, "total power response")?;
-    Ok(power)
+        ))
+        .map_err(|e| e.wrap("failed to check current power"))?,
+    )
 }
 
 /// Resolves an address to an ID address and verifies that it is address of an account actor with an associated BLS key.
@@ -4411,13 +4377,12 @@ fn resolve_worker_address(rt: &mut impl Runtime, raw: Address) -> Result<ActorID
     }
 
     if raw.protocol() != Protocol::BLS {
-        let ret = rt.send(
+        let pub_key: Address = deserialize_block(extract_send_result(rt.send_simple(
             &Address::new_id(resolved),
             ext::account::PUBKEY_ADDRESS_METHOD,
             None,
             TokenAmount::zero(),
-        )?;
-        let pub_key: Address = deserialize(&ret, "address response")?;
+        ))?)?;
         if pub_key.protocol() != Protocol::BLS {
             return Err(actor_error!(
                 illegal_argument,
@@ -4433,7 +4398,7 @@ fn resolve_worker_address(rt: &mut impl Runtime, raw: Address) -> Result<ActorID
 fn burn_funds(rt: &mut impl Runtime, amount: TokenAmount) -> Result<(), ActorError> {
     log::debug!("storage provder {} burning {}", rt.message().receiver(), amount);
     if amount.is_positive() {
-        rt.send(&BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, None, amount)?;
+        extract_send_result(rt.send_simple(&BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, None, amount))?;
     }
     Ok(())
 }
@@ -4443,12 +4408,12 @@ fn notify_pledge_changed(
     pledge_delta: &TokenAmount,
 ) -> Result<(), ActorError> {
     if !pledge_delta.is_zero() {
-        rt.send(
+        extract_send_result(rt.send_simple(
             &STORAGE_POWER_ACTOR_ADDR,
             ext::power::UPDATE_PLEDGE_TOTAL_METHOD,
             IpldBlock::serialize_cbor(pledge_delta)?,
             TokenAmount::zero(),
-        )?;
+        ))?;
     }
     Ok(())
 }
@@ -4461,13 +4426,13 @@ fn get_claims(
         provider: rt.message().receiver().id().unwrap(),
         claim_ids: ids.clone(),
     };
-    let ret_raw = rt.send(
-        &VERIFIED_REGISTRY_ACTOR_ADDR,
-        ext::verifreg::GET_CLAIMS_METHOD as u64,
-        IpldBlock::serialize_cbor(&params)?,
-        TokenAmount::zero(),
-    )?;
-    let claims_ret: ext::verifreg::GetClaimsReturn = deserialize(&ret_raw, "get claims return")?;
+    let claims_ret: ext::verifreg::GetClaimsReturn =
+        deserialize_block(extract_send_result(rt.send_simple(
+            &VERIFIED_REGISTRY_ACTOR_ADDR,
+            ext::verifreg::GET_CLAIMS_METHOD as u64,
+            IpldBlock::serialize_cbor(&params)?,
+            TokenAmount::zero(),
+        ))?)?;
     if (claims_ret.batch_info.success_count as usize) < ids.len() {
         return Err(actor_error!(illegal_argument, "invalid claims"));
     }
@@ -4909,19 +4874,19 @@ fn activate_deals_and_claim_allocations(
     deal_ids: Vec<DealID>,
     sector_expiry: ChainEpoch,
     sector_number: SectorNumber,
-) -> Result<Option<crate::ext::market::DealSpaces>, ActorError> {
+) -> Result<Option<ext::market::DealSpaces>, ActorError> {
     if deal_ids.is_empty() {
         return Ok(Some(ext::market::DealSpaces::default()));
     }
     // Check (and activate) storage deals associated to sector. Abort if checks failed.
-    let activate_raw = rt.send(
+    let activate_raw = extract_send_result(rt.send_simple(
         &STORAGE_MARKET_ACTOR_ADDR,
         ext::market::ACTIVATE_DEALS_METHOD,
         IpldBlock::serialize_cbor(&ext::market::ActivateDealsParams { deal_ids, sector_expiry })?,
         TokenAmount::zero(),
-    );
+    ));
     let activate_res: ext::market::ActivateDealsResult = match activate_raw {
-        Ok(res) => res.deserialize()?,
+        Ok(res) => deserialize_block(res)?,
         Err(e) => {
             info!("error activating deals on sector {}: {}", sector_number, e.msg());
             return Ok(None);
@@ -4948,7 +4913,7 @@ fn activate_deals_and_claim_allocations(
         })
         .collect();
 
-    let claim_raw = rt.send(
+    let claim_raw = extract_send_result(rt.send_simple(
         &VERIFIED_REGISTRY_ACTOR_ADDR,
         ext::verifreg::CLAIM_ALLOCATIONS_METHOD,
         IpldBlock::serialize_cbor(&ext::verifreg::ClaimAllocationsParams {
@@ -4956,9 +4921,9 @@ fn activate_deals_and_claim_allocations(
             all_or_nothing: true,
         })?,
         TokenAmount::zero(),
-    );
+    ));
     let claim_res: ext::verifreg::ClaimAllocationsReturn = match claim_raw {
-        Ok(res) => res.deserialize()?,
+        Ok(res) => deserialize_block(res)?,
         Err(e) => {
             info!("error claiming allocation on sector {}: {}", sector_number, e.msg());
             return Ok(None);
@@ -4979,184 +4944,14 @@ fn balance_invariants_broken(e: Error) -> ActorError {
 }
 
 impl ActorCode for Actor {
-<<<<<<< HEAD
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        params: &RawBytes,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-        RT::Blockstore: Clone,
-    {
-        restrict_internal_api(rt, method)?;
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::ControlAddresses) => {
-                let res = Self::control_addresses(rt)?;
-                Ok(RawBytes::serialize(&res)?)
-            }
-            Some(Method::ChangeWorkerAddress) | Some(Method::ChangeWorkerAddressExported) => {
-                Self::change_worker_address(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::ChangePeerID) | Some(Method::ChangePeerIDExported) => {
-                Self::change_peer_id(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::SubmitWindowedPoSt) => {
-                Self::submit_windowed_post(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::PreCommitSector) => {
-                Self::pre_commit_sector(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::ProveCommitSector) => {
-                Self::prove_commit_sector(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::ExtendSectorExpiration) => {
-                Self::extend_sector_expiration(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::TerminateSectors) => {
-                let ret = Self::terminate_sectors(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(ret)?)
-            }
-            Some(Method::DeclareFaults) => {
-                Self::declare_faults(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::DeclareFaultsRecovered) => {
-                Self::declare_faults_recovered(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::OnDeferredCronEvent) => {
-                Self::on_deferred_cron_event(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::CheckSectorProven) => {
-                Self::check_sector_proven(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::ApplyRewards) => {
-                Self::apply_rewards(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::ReportConsensusFault) => {
-                Self::report_consensus_fault(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::WithdrawBalance) | Some(Method::WithdrawBalanceExported) => {
-                let res = Self::withdraw_balance(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(&res)?)
-            }
-            Some(Method::ConfirmSectorProofsValid) => {
-                Self::confirm_sector_proofs_valid(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::ChangeMultiaddrs) | Some(Method::ChangeMultiaddrsExported) => {
-                Self::change_multiaddresses(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::CompactPartitions) => {
-                Self::compact_partitions(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::CompactSectorNumbers) => {
-                Self::compact_sector_numbers(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::ConfirmChangeWorkerAddress)
-            | Some(Method::ConfirmChangeWorkerAddressExported) => {
-                Self::confirm_change_worker_address(rt)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::RepayDebt) | Some(Method::RepayDebtExported) => {
-                Self::repay_debt(rt)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::ChangeOwnerAddress) | Some(Method::ChangeOwnerAddressExported) => {
-                Self::change_owner_address(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::DisputeWindowedPoSt) => {
-                Self::dispute_windowed_post(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::PreCommitSectorBatch) => {
-                Self::pre_commit_sector_batch(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::ProveCommitAggregate) => {
-                Self::prove_commit_aggregate(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::ProveReplicaUpdates) => {
-                let res = Self::prove_replica_updates(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::PreCommitSectorBatch2) => {
-                Self::pre_commit_sector_batch2(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::ProveReplicaUpdates2) => {
-                let res = Self::prove_replica_updates2(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::ChangeBeneficiary) | Some(Method::ChangeBenificiaryExported) => {
-                Self::change_beneficiary(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::GetBeneficiary) | Some(Method::GetBeneficiaryExported) => {
-                let res = Self::get_beneficiary(rt)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::ExtendSectorExpiration2) => {
-                Self::extend_sector_expiration2(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            None => Err(actor_error!(unhandled_message, "Invalid method")),
-            Some(Method::GetOwnerExported) => {
-                let res = Self::get_owner(rt)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::IsControllingAddressExported) => {
-                let res = Self::is_controlling_address(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::GetSectorSizeExported) => {
-                let res = Self::get_sector_size(rt)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::GetAvailableBalanceExported) => {
-                let res = Self::get_available_balance(rt)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::GetVestingFundsExported) => {
-                let res = Self::get_vesting_funds(rt)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::GetPeerIDExported) => {
-                let res = Self::get_peer_id(rt)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::GetMultiaddrsExported) => {
-                let res = Self::get_multiaddresses(rt)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-        }
-=======
     type Methods = Method;
     actor_dispatch! {
         Constructor => constructor,
         ControlAddresses => control_addresses,
         ChangeWorkerAddress => change_worker_address,
+        ChangeWorkerAddressExported => change_worker_address,
         ChangePeerID => change_peer_id,
+        ChangePeerIDExported=> change_peer_id,
         SubmitWindowedPoSt => submit_windowed_post,
         PreCommitSector => pre_commit_sector,
         ProveCommitSector => prove_commit_sector,
@@ -5169,13 +4964,18 @@ impl ActorCode for Actor {
         ApplyRewards => apply_rewards,
         ReportConsensusFault => report_consensus_fault,
         WithdrawBalance => withdraw_balance,
+        WithdrawBalanceExported => withdraw_balance,
         ConfirmSectorProofsValid => confirm_sector_proofs_valid,
         ChangeMultiaddrs => change_multiaddresses,
+        ChangeMultiaddrsExported => change_multiaddresses,
         CompactPartitions => compact_partitions,
         CompactSectorNumbers => compact_sector_numbers,
-        ConfirmUpdateWorkerKey => confirm_update_worker_key,
+        ConfirmChangeWorkerAddress => confirm_change_worker_address,
+        ConfirmChangeWorkerAddressExported => confirm_change_worker_address,
         RepayDebt => repay_debt,
+        RepayDebtExported => repay_debt,
         ChangeOwnerAddress => change_owner_address,
+        ChangeOwnerAddressExported => change_owner_address,
         DisputeWindowedPoSt => dispute_windowed_post,
         PreCommitSectorBatch => pre_commit_sector_batch,
         ProveCommitAggregate => prove_commit_aggregate,
@@ -5183,9 +4983,17 @@ impl ActorCode for Actor {
         PreCommitSectorBatch2 => pre_commit_sector_batch2,
         ProveReplicaUpdates2 => prove_replica_updates2,
         ChangeBeneficiary => change_beneficiary,
+        ChangeBeneficiaryExported => change_beneficiary,
         GetBeneficiary => get_beneficiary,
+        GetBeneficiaryExported => get_beneficiary,
         ExtendSectorExpiration2 => extend_sector_expiration2,
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
+        GetOwnerExported => get_owner,
+        IsControllingAddressExported => is_controlling_address,
+        GetSectorSizeExported => get_sector_size,
+        GetAvailableBalanceExported => get_available_balance,
+        GetVestingFundsExported => get_vesting_funds,
+        GetPeerIDExported => get_peer_id,
+        GetMultiaddrsExported => get_multiaddresses,
     }
 }
 

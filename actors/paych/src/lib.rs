@@ -4,15 +4,10 @@
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-<<<<<<< HEAD
-    actor_error, cbor, resolve_to_actor_id, restrict_internal_api, ActorDowncast, ActorError,
-    Array, AsActorError,
-=======
     actor_dispatch, actor_error, resolve_to_actor_id, ActorDowncast, ActorError, Array,
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
 };
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::{RawBytes, DAG_CBOR};
+use fvm_ipld_encoding::DAG_CBOR;
 use fvm_shared::address::Address;
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -332,42 +327,11 @@ where
 }
 
 impl ActorCode for Actor {
-<<<<<<< HEAD
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        params: &RawBytes,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-    {
-        restrict_internal_api(rt, method)?;
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::UpdateChannelState) => {
-                Self::update_channel_state(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::Settle) => {
-                Self::settle(rt)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::Collect) => {
-                Self::collect(rt)?;
-                Ok(RawBytes::default())
-            }
-            _ => Err(actor_error!(unhandled_message; "Invalid method")),
-        }
-=======
     type Methods = Method;
     actor_dispatch! {
         Constructor => constructor,
         UpdateChannelState => update_channel_state,
         Settle => settle,
         Collect => collect,
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
     }
 }

@@ -3,17 +3,11 @@
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-<<<<<<< HEAD
-    actor_error, cbor, restrict_internal_api, ActorError, BURNT_FUNDS_ACTOR_ADDR,
-    EXPECTED_LEADERS_PER_EPOCH, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-=======
     actor_dispatch, actor_error, ActorError, BURNT_FUNDS_ACTOR_ADDR, EXPECTED_LEADERS_PER_EPOCH,
     STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
 };
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::econ::TokenAmount;
@@ -217,44 +211,11 @@ impl Actor {
 }
 
 impl ActorCode for Actor {
-<<<<<<< HEAD
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        params: &RawBytes,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-    {
-        restrict_internal_api(rt, method)?;
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                let param: Option<BigIntDe> = cbor::deserialize_params(params)?;
-                Self::constructor(rt, param.map(|v| v.0))?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::AwardBlockReward) => {
-                Self::award_block_reward(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::ThisEpochReward) => {
-                let res = Self::this_epoch_reward(rt)?;
-                Ok(RawBytes::serialize(&res)?)
-            }
-            Some(Method::UpdateNetworkKPI) => {
-                let param: Option<BigIntDe> = cbor::deserialize_params(params)?;
-                Self::update_network_kpi(rt, param.map(|v| v.0))?;
-                Ok(RawBytes::default())
-            }
-            None => Err(actor_error!(unhandled_message, "Invalid method")),
-        }
-=======
     type Methods = Method;
     actor_dispatch! {
         Constructor => constructor,
         AwardBlockReward => award_block_reward,
         ThisEpochReward => this_epoch_reward,
         UpdateNetworkKPI => update_network_kpi,
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
     }
 }

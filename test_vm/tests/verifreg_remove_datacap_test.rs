@@ -70,13 +70,8 @@ fn remove_datacap_simple_successful_path() {
         params: Some(IpldBlock::serialize_cbor(&add_verified_client_params).unwrap()),
         subinvocs: Some(vec![ExpectInvocation {
             to: DATACAP_TOKEN_ACTOR_ADDR,
-<<<<<<< HEAD
-            method: DataCapMethod::MintExported as u64,
-            params: Some(serialize(&mint_params, "mint params").unwrap()),
-=======
             method: DataCapMethod::Mint as u64,
             params: Some(IpldBlock::serialize_cbor(&mint_params).unwrap()),
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
             subinvocs: None,
             ..Default::default()
         }]),
@@ -424,15 +419,8 @@ fn expect_remove_datacap(
             },
             ExpectInvocation {
                 to: DATACAP_TOKEN_ACTOR_ADDR,
-<<<<<<< HEAD
-                method: DataCapMethod::BalanceExported as u64,
-                params: Some(
-                    serialize(&params.verified_client_to_remove, "balance_of params").unwrap(),
-                ),
-=======
                 method: DataCapMethod::BalanceOf as u64,
                 params: Some(IpldBlock::serialize_cbor(&params.verified_client_to_remove).unwrap()),
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
                 code: Some(ExitCode::OK),
                 subinvocs: None,
                 ..Default::default()
@@ -441,22 +429,12 @@ fn expect_remove_datacap(
                 to: DATACAP_TOKEN_ACTOR_ADDR,
                 method: DataCapMethod::DestroyExported as u64,
                 params: Some(
-<<<<<<< HEAD
-                    serialize(
-                        &DestroyParams {
-                            owner: params.verified_client_to_remove,
-                            amount: &params.data_cap_amount_to_remove * TOKEN_PRECISION,
-                        },
-                        "destroy params",
-                    )
-=======
                     IpldBlock::serialize_cbor(&DestroyParams {
                         owner: params.verified_client_to_remove,
                         amount: TokenAmount::from_whole(
                             params.data_cap_amount_to_remove.to_i64().unwrap(),
                         ),
                     })
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
                     .unwrap(),
                 ),
                 code: Some(ExitCode::OK),

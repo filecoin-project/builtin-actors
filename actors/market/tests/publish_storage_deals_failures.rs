@@ -271,7 +271,7 @@ fn fail_when_provider_has_some_funds_but_not_enough_for_a_deal() {
         AUTHENTICATE_MESSAGE_METHOD,
         auth_param,
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
 
@@ -338,7 +338,7 @@ fn fail_when_deals_have_different_providers() {
         AUTHENTICATE_MESSAGE_METHOD as u64,
         authenticate_param1,
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
     rt.expect_send(
@@ -346,7 +346,7 @@ fn fail_when_deals_have_different_providers() {
         AUTHENTICATE_MESSAGE_METHOD as u64,
         authenticate_param2,
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
 
@@ -372,6 +372,7 @@ fn fail_when_deals_have_different_providers() {
             IpldBlock::serialize_cbor(&params).unwrap(),
         )
         .unwrap()
+        .unwrap()
         .deserialize()
         .unwrap();
 
@@ -383,8 +384,6 @@ fn fail_when_deals_have_different_providers() {
 }
 
 #[test]
-<<<<<<< HEAD
-=======
 fn fail_when_caller_is_not_of_signable_type() {
     let start_epoch = 10;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
@@ -409,7 +408,6 @@ fn fail_when_caller_is_not_of_signable_type() {
 }
 
 #[test]
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
 fn fail_when_no_deals_in_params() {
     let mut rt = setup();
     let params = PublishStorageDealsParams { deals: vec![] };

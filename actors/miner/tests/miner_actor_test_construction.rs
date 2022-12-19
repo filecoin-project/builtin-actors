@@ -6,7 +6,7 @@ use fil_actor_miner::{
     Actor, Deadline, Deadlines, Method, MinerConstructorParams as ConstructorParams, State,
 };
 
-use fvm_ipld_encoding::{BytesDe, CborStore, RawBytes};
+use fvm_ipld_encoding::{BytesDe, CborStore};
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -76,7 +76,7 @@ fn simple_construction() {
         AccountMethod::PubkeyAddress as u64,
         None,
         TokenAmount::zero(),
-        RawBytes::serialize(env.worker_key).unwrap(),
+        IpldBlock::serialize_cbor(&env.worker_key).unwrap(),
         ExitCode::OK,
     );
 
@@ -84,7 +84,7 @@ fn simple_construction() {
         .rt
         .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
         .unwrap();
-    assert_eq!(result.bytes().len(), 0);
+    expect_empty(result);
     env.rt.verify();
 
     let state = env.rt.get_state::<State>();
@@ -150,7 +150,7 @@ fn control_addresses_are_resolved_during_construction() {
         AccountMethod::PubkeyAddress as u64,
         None,
         TokenAmount::zero(),
-        RawBytes::serialize(env.worker_key).unwrap(),
+        IpldBlock::serialize_cbor(&env.worker_key).unwrap(),
         ExitCode::OK,
     );
 
@@ -158,7 +158,7 @@ fn control_addresses_are_resolved_during_construction() {
         .rt
         .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
         .unwrap();
-    assert_eq!(result.bytes().len(), 0);
+    expect_empty(result);
     env.rt.verify();
 
     let state: State = env.rt.get_state();
@@ -170,8 +170,6 @@ fn control_addresses_are_resolved_during_construction() {
 }
 
 #[test]
-<<<<<<< HEAD
-=======
 fn fails_if_control_address_is_not_an_account_actor() {
     let mut env = prepare_env();
 
@@ -186,7 +184,7 @@ fn fails_if_control_address_is_not_an_account_actor() {
         AccountMethod::PubkeyAddress as u64,
         None,
         TokenAmount::zero(),
-        RawBytes::serialize(env.worker_key).unwrap(),
+        IpldBlock::serialize_cbor(&env.worker_key).unwrap(),
         ExitCode::OK,
     );
 
@@ -199,7 +197,6 @@ fn fails_if_control_address_is_not_an_account_actor() {
 }
 
 #[test]
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
 fn test_construct_with_invalid_peer_id() {
     let mut env = prepare_env();
     env.peer_id = vec![0; env.rt.policy.max_peer_id_length + 1];
