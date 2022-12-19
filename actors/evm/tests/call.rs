@@ -456,8 +456,8 @@ fn test_callactor_inner(exit_code: ExitCode) {
     contract_params.extend_from_slice(&value.to_bytes());
     contract_params.extend_from_slice(&U256::from(send_flags.bits()).to_bytes());
     contract_params.extend_from_slice(&codec.to_bytes());
-    contract_params.extend_from_slice(&target_size.to_bytes());
     contract_params.extend_from_slice(&data_size.to_bytes());
+    contract_params.extend_from_slice(&target_size.to_bytes());
     contract_params.extend_from_slice(&target_bytes);
     contract_params.extend_from_slice(&proxy_call_input_data);
 
