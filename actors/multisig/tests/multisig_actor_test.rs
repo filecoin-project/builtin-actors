@@ -1,17 +1,13 @@
 use fil_actor_multisig::testing::check_state_invariants;
 use fil_actor_multisig::{
-    compute_proposal_hash, Actor as MultisigActor, ConstructorParams, Method, ProposeParams,
-    ProposeReturn, State, Transaction, TxnID, TxnIDParams, SIGNERS_MAX,
+    compute_proposal_hash, Actor as MultisigActor, ConstructorParams, Method, ProposeReturn, State,
+    Transaction, TxnID, TxnIDParams, SIGNERS_MAX,
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
-<<<<<<< HEAD
-use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
-=======
 use fil_actors_runtime::{CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
 use fvm_actor_utils::receiver::UniversalReceiverParams;
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{RawBytes, DAG_CBOR};
 use fvm_shared::address::{Address, BLS_PUB_LEN};
@@ -128,10 +124,14 @@ mod constructor_tests {
             rt.call::<MultisigActor>(
                 Method::Constructor as u64,
 <<<<<<< HEAD
+<<<<<<< HEAD
                 &RawBytes::serialize(&params).unwrap(),
 =======
                 IpldBlock::serialize_cbor(&params).unwrap()
 >>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
+=======
+                IpldBlock::serialize_cbor(&params).unwrap(),
+>>>>>>> c57b032f (Multisig: Do not export any functionality (#967))
             )
             .unwrap()
         );
@@ -756,6 +756,7 @@ fn test_fail_propose_from_non_signer() {
     check_state(&rt);
 }
 
+<<<<<<< HEAD
 #[test]
 fn test_propose_restricted_correctly() {
     let msig = Address::new_id(1000);
@@ -803,6 +804,8 @@ fn test_propose_restricted_correctly() {
     rt.verify();
 }
 
+=======
+>>>>>>> c57b032f (Multisig: Do not export any functionality (#967))
 // AddSigner
 #[test]
 fn test_add_signer() {

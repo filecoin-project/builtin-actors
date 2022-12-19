@@ -23,13 +23,8 @@ use num_traits::{FromPrimitive, Zero};
 use fil_actors_runtime::cbor::serialize_vec;
 use fil_actors_runtime::runtime::{ActorCode, Primitives, Runtime};
 use fil_actors_runtime::{
-<<<<<<< HEAD
-    actor_error, cbor, make_empty_map, make_map_with_root, resolve_to_actor_id,
-    restrict_internal_api, ActorContext, ActorError, AsActorError, Map, INIT_ACTOR_ADDR,
-=======
     actor_dispatch, actor_error, make_empty_map, make_map_with_root, resolve_to_actor_id,
     ActorContext, ActorError, AsActorError, Map, INIT_ACTOR_ADDR,
->>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
 };
 
 pub use self::state::*;
@@ -56,15 +51,6 @@ pub enum Method {
     ChangeNumApprovalsThreshold = 8,
     LockBalance = 9,
     // Method numbers derived from FRC-0042 standards
-    ProposeExported = frc42_dispatch::method_hash!("Propose"),
-    ApproveExported = frc42_dispatch::method_hash!("Approve"),
-    CancelExported = frc42_dispatch::method_hash!("Cancel"),
-    AddSignerExported = frc42_dispatch::method_hash!("AddSigner"),
-    RemoveSignerExported = frc42_dispatch::method_hash!("RemoveSigner"),
-    SwapSignerExported = frc42_dispatch::method_hash!("SwapSigner"),
-    ChangeNumApprovalsThresholdExported =
-        frc42_dispatch::method_hash!("ChangeNumApprovalsThreshold"),
-    LockBalanceExported = frc42_dispatch::method_hash!("LockBalance"),
     UniversalReceiverHook = frc42_dispatch::method_hash!("Receive"),
 }
 
@@ -629,6 +615,7 @@ impl ActorCode for Actor {
 =======
     type Methods = Method;
     actor_dispatch! {
+<<<<<<< HEAD
         Constructor => constructor,
         Propose => propose,
         Approve => approve,
@@ -640,5 +627,17 @@ impl ActorCode for Actor {
         LockBalance => lock_balance,
         UniversalReceiverHook => universal_receiver_hook,
 >>>>>>> 18f89bef (Use Option<IpldBlock> for all message params (#913))
+=======
+      Constructor => constructor,
+      Propose => propose,
+      Approve => approve,
+      Cancel => cancel,
+      AddSigner => add_signer,
+      RemoveSigner => remove_signer,
+      SwapSigner => swap_signer,
+      ChangeNumApprovalsThreshold => change_num_approvals_threshold,
+      LockBalance => lock_balance,
+      UniversalReceiverHook => universal_receiver_hook,
+>>>>>>> c57b032f (Multisig: Do not export any functionality (#967))
     }
 }
