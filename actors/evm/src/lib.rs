@@ -33,6 +33,8 @@ fil_actors_runtime::wasm_trampoline!(EvmContractActor);
 
 pub const EVM_CONTRACT_REVERTED: ExitCode = ExitCode::new(33);
 pub const EVM_CONTRACT_EXECUTION_ERROR: ExitCode = ExitCode::new(34);
+pub const EVM_CONTRACT_SELF_DESTRUCTED: ExitCode = ExitCode::new(35);
+pub const EVM_CONTRACT_ALIVE: ExitCode = ExitCode::new(36);
 
 const EVM_MAX_RESERVED_METHOD: u64 = 1023;
 pub const NATIVE_METHOD_SIGNATURE: &str = "handle_filecoin_method(uint64,uint64,bytes)";
@@ -57,12 +59,17 @@ pub enum Method {
     GetStorageAt = 4,
     InvokeContractDelegate = 5,
     GetBytecodeHash = 6,
+    Resurrect = 666,
 }
 
 pub struct EvmContractActor;
 
 impl EvmContractActor {
-    pub fn constructor<RT>(rt: &mut RT, params: ConstructorParams) -> Result<(), ActorError>
+    pub fn constructor<RT>(
+        rt: &mut RT,
+        params: ConstructorParams,
+        resurrecting: bool,
+    ) -> Result<(), ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
@@ -99,7 +106,7 @@ impl EvmContractActor {
             EthAddress(subaddr)
         };
 
-        let mut system = System::create(rt)?;
+        let mut system = System::create(rt, resurrecting)?;
         // If we have no code, save the state and return.
         if params.initcode.is_empty() {
             return system.flush();
@@ -131,6 +138,26 @@ impl EvmContractActor {
         }
     }
 
+    pub fn resurrect<RT>(rt: &mut RT, params: ConstructorParams) -> Result<(), ActorError>
+    where
+        RT: Runtime,
+        RT::Blockstore: Clone,
+    {
+        rt.validate_immediate_caller_is(iter::once(&INIT_ACTOR_ADDR))?;
+
+        let system = System::load(rt)?;
+
+        if !system.is_deleted() {
+            return Err(ActorError::unchecked_with_data(
+                EVM_CONTRACT_ALIVE,
+                "resurrection failed; contract is still alive".to_string(),
+                RawBytes::default(),
+            ));
+        }
+
+        Self::constructor(rt, params, true)
+    }
+
     pub fn invoke_contract<RT>(
         rt: &mut RT,
         input_data: &[u8],
@@ -149,6 +176,10 @@ impl EvmContractActor {
         let mut system = System::load(rt).map_err(|e| {
             ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
         })?;
+
+        if system.is_deleted() {
+            return Ok(Vec::new());
+        }
 
         let bytecode = match match with_code {
             Some(cid) => load_bytecode(system.rt.store(), &cid),
@@ -185,7 +216,10 @@ impl EvmContractActor {
                 "contract reverted".to_string(),
                 RawBytes::serialize(BytesSer(&output.return_data)).unwrap(),
             )),
-            Outcome::Delete => Ok(Vec::new()),
+            Outcome::Delete => {
+                system.delete()?;
+                Ok(Vec::new())
+            }
         }
     }
 
@@ -216,7 +250,16 @@ impl EvmContractActor {
         rt.validate_immediate_caller_accept_any()?;
 
         let state: State = rt.state()?;
-        // return value must be either keccak("") or keccak(bytecode)
+
+        // should we return zero instead? what is the correct behaviour here?
+        if state.tombstone.is_some() {
+            return Err(ActorError::unchecked_with_data(
+                EVM_CONTRACT_SELF_DESTRUCTED,
+                "contract has self destructed".to_string(),
+                RawBytes::default(),
+            ));
+        }
+
         Ok(state.bytecode_hash)
     }
 
@@ -229,7 +272,18 @@ impl EvmContractActor {
         // access arbitrary storage keys from a contract.
         rt.validate_immediate_caller_is([&Address::new_id(0)])?;
 
-        System::load(rt)?
+        let mut system = System::load(rt)?;
+
+        // should we return zero instead? what is the correct behaviour here?
+        if system.is_deleted() {
+            return Err(ActorError::unchecked_with_data(
+                EVM_CONTRACT_SELF_DESTRUCTED,
+                "contract has self destructed".to_string(),
+                RawBytes::default(),
+            ));
+        }
+
+        system
             .get_storage(params.storage_key)
             .context_code(ExitCode::USR_ASSERTION_FAILED, "failed to get storage key")
     }
@@ -280,6 +334,7 @@ impl ActorCode for EvmContractActor {
                         "method expects arguments".to_string()
                     })?
                     .deserialize()?,
+                    false,
                 )?;
                 Ok(RawBytes::default())
             }
@@ -321,6 +376,17 @@ impl ActorCode for EvmContractActor {
                 let value = Self::invoke_contract(rt, &params.input, Some(params.code))?;
                 Ok(RawBytes::serialize(BytesSer(&value))?)
             }
+            Some(Method::Resurrect) => {
+                Self::resurrect(
+                    rt,
+                    args.with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
+                        "method expects arguments".to_string()
+                    })?
+                    .deserialize()?,
+                )?;
+                Ok(RawBytes::default())
+            }
+
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }
     }

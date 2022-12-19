@@ -111,17 +111,19 @@ pub struct System<'r, RT: Runtime> {
     pub readonly: bool,
     /// Randomness taken from the current epoch of chain randomness
     randomness: OnceCell<[u8; 32]>,
+    /// Tombstonr markerd when the contract selfdestructs
+    tombstone: Option<(Address, u64)>,
 }
 
 impl<'r, RT: Runtime> System<'r, RT> {
     /// Create the actor.
-    pub fn create(rt: &'r mut RT) -> Result<Self, ActorError>
+    pub fn create(rt: &'r mut RT, resurrect: bool) -> Result<Self, ActorError>
     where
         RT::Blockstore: Clone,
     {
         let read_only = rt.read_only();
         let state_root = rt.get_state_root()?;
-        if state_root != EMPTY_ARR_CID {
+        if state_root != EMPTY_ARR_CID && !resurrect {
             return Err(actor_error!(illegal_state, "can't create over an existing actor"));
         }
         let store = rt.store().clone();
@@ -133,6 +135,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
             bytecode: None,
             readonly: read_only,
             randomness: OnceCell::new(),
+            tombstone: None,
         })
     }
 
@@ -153,12 +156,23 @@ impl<'r, RT: Runtime> System<'r, RT> {
             rt,
             slots: StateKamt::load_with_config(&state.contract_state, store, KAMT_CONFIG.clone())
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?,
+            tombstone: state.tombstone,
             nonce: state.nonce,
             saved_state_root: Some(state_root),
             bytecode: Some(EvmBytecode::new(state.bytecode, state.bytecode_hash)),
             readonly: read_only,
             randomness: OnceCell::new(),
         })
+    }
+
+    pub fn delete(&mut self) -> Result<(), ActorError> {
+        self.tombstone = Some((self.rt.message().origin(), self.nonce));
+        self.flush()?;
+        Ok(())
+    }
+
+    pub fn is_deleted(&self) -> bool {
+        self.tombstone.is_some()
     }
 
     pub fn increment_nonce(&mut self) -> u64 {
@@ -213,6 +227,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
                         "failed to flush contract state",
                     )?,
                     nonce: self.nonce,
+                    tombstone: self.tombstone,
                 },
                 Code::Blake2b256,
             )
@@ -244,6 +259,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
         self.slots
             .set_root(&state.contract_state)
             .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?;
+        self.tombstone = state.tombstone;
         self.nonce = state.nonce;
         self.saved_state_root = Some(root);
         self.bytecode = Some(EvmBytecode::new(state.bytecode, state.bytecode_hash));

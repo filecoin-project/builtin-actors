@@ -152,6 +152,24 @@ impl Actor {
                 .context_code(ExitCode::USR_FORBIDDEN, "cannot redeploy a deleted actor")?;
             let embryo_cid = rt.get_code_cid_for_type(Type::Embryo);
             if code_cid != embryo_cid {
+                let evm_cid = rt.get_code_cid_for_type(Type::EVM);
+                if code_cid == evm_cid {
+                    // invoke resurrector
+                    rt.send(
+                        &Address::new_id(id_address),
+                        // TODO don't harcode the antichrist
+                        666,
+                        params.constructor_params.into(),
+                        rt.message().value_received(),
+                    )
+                    .context("resurrection failed")?;
+
+                    return Ok(Exec4Return {
+                        id_address: Address::new_id(id_address),
+                        robust_address,
+                    });
+                }
+
                 return Err(ActorError::forbidden(format!(
                     "cannot replace an existing non-embryo actor with code: {code_cid}"
                 )));

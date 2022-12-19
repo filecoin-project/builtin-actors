@@ -1,6 +1,6 @@
 use bytes::Bytes;
 
-use fil_actors_runtime::{BURNT_FUNDS_ACTOR_ADDR, EAM_ACTOR_ADDR};
+use fil_actors_runtime::EAM_ACTOR_ADDR;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{strict_bytes, tuple::*};
 use fvm_shared::sys::SendFlags;
@@ -166,12 +166,10 @@ pub fn selfdestruct(
     // because that won't auto-create the beneficiary (and will fail if, for some reason, we can't
     // send them the funds).
     //
-    // If we fail, we'll just burn the funds. Yes, this is what the EVM does.
+    // if we fail, the funds will stay in the tombstone; this differs from the EVM which burns it.
     if let Ok(addr) = EthAddress::from(beneficiary).try_into() {
         let balance = system.rt.current_balance();
         let _ = system.rt.send(&addr, METHOD_SEND, None, balance);
     }
-    // Now try to delete ourselves. If this fails, we abort execution.
-    system.rt.delete_actor(&BURNT_FUNDS_ACTOR_ADDR)?;
     Ok(Output { outcome: Outcome::Delete, return_data: Bytes::new() })
 }

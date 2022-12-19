@@ -2,6 +2,7 @@ use {
     cid::Cid,
     fvm_ipld_encoding::tuple::*,
     fvm_ipld_encoding::Cbor,
+    fvm_shared::address::Address,
     serde_tuple::{Deserialize_tuple, Serialize_tuple},
 };
 
@@ -24,6 +25,9 @@ pub struct State {
 
     /// The EVM nonce used to track how many times CREATE or CREATE2 have been called.
     pub nonce: u64,
+
+    /// Tombstonr markerd when the contract selfdestructs
+    pub tombstone: Option<(Address, u64)>,
 }
 
 impl Cbor for State {}
