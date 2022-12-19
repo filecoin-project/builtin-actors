@@ -185,8 +185,8 @@ pub(super) fn call_actor<RT: Runtime>(
 
     let codec: u64 = input_params.next_param_padded()?;
 
-    let address_size = input_params.next_param_padded::<u32>()? as usize;
     let send_data_size = input_params.next_param_padded::<u32>()? as usize;
+    let address_size = input_params.next_param_padded::<u32>()? as usize;
 
     // ------ Begin Call -------
 
