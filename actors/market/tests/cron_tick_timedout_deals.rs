@@ -15,6 +15,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
 
 use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use num_traits::Zero;
 
 mod harness;
@@ -43,7 +44,7 @@ fn timed_out_deal_is_slashed_and_deleted() {
     rt.expect_send(
         BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
-        RawBytes::default(),
+        None,
         deal_proposal.provider_collateral.clone(),
         RawBytes::default(),
         ExitCode::OK,
@@ -87,7 +88,7 @@ fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_l
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let auth_param = RawBytes::serialize(AuthenticateMessageParams {
+    let auth_param = IpldBlock::serialize_cbor(&AuthenticateMessageParams {
         signature: buf.to_vec(),
         message: buf.to_vec(),
     })
@@ -106,7 +107,7 @@ fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_l
         ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MarketActor>(
             Method::PublishStorageDeals as u64,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         ),
     );
     rt.verify();
@@ -116,7 +117,7 @@ fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_l
     rt.expect_send(
         BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
-        RawBytes::default(),
+        None,
         deal_proposal.provider_collateral.clone(),
         RawBytes::default(),
         ExitCode::OK,
@@ -181,7 +182,7 @@ fn timed_out_and_verified_deals_are_slashed_deleted() {
     rt.expect_send(
         BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
-        RawBytes::default(),
+        None,
         expected_burn,
         RawBytes::default(),
         ExitCode::OK,

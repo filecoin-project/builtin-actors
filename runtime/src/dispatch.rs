@@ -33,6 +33,7 @@ macro_rules! actor_dispatch {
         ) -> Result<RawBytes, ActorError>
         where
             RT: Runtime,
+            RT::Blockstore: Clone,
         {
             match FromPrimitive::from_u64(method) {
                 $(Some(Self::Methods::$method) => $crate::dispatch(rt, Self::$func, &args),)*
@@ -52,8 +53,6 @@ pub struct Dispatcher<F, A> {
 }
 
 impl<F, A> Dispatcher<F, A> {
-    // TODO: drop this allow
-    #[allow(dead_code)]
     const fn new(f: F) -> Self {
         Dispatcher { func: f, _marker: PhantomData }
     }
@@ -65,8 +64,6 @@ impl<F, A> Dispatcher<F, A> {
 ///
 /// - Dispatching None/Some based on the number of parameters (0/1).
 /// - Returning None if the return type is `Result<(), ActorError>`.
-// TODO: drop this allow
-#[allow(dead_code)]
 pub fn dispatch<'de, F, A, RT>(
     rt: &mut RT,
     func: F,
@@ -78,6 +75,7 @@ where
     Dispatcher::new(func).call(rt, arg)
 }
 
+/// Convert the passed value into an IPLD Block, or None if it's `()`.
 fn maybe_into_block<T: Serialize>(v: T) -> Result<RawBytes, ActorError> {
     if cast!(&v, &()).is_ok() {
         Ok(RawBytes::default())

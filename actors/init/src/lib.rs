@@ -4,7 +4,10 @@
 use cid::Cid;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, cbor, ActorContext, ActorError, SYSTEM_ACTOR_ADDR};
+
+use fil_actors_runtime::{
+    actor_dispatch, actor_error, ActorContext, ActorError, SYSTEM_ACTOR_ADDR,
+};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR};
@@ -84,7 +87,7 @@ impl Actor {
         rt.send(
             &Address::new_id(id_address),
             METHOD_CONSTRUCTOR,
-            params.constructor_params,
+            params.constructor_params.into(),
             rt.message().value_received(),
         )
         .context("constructor failed")?;
@@ -94,25 +97,10 @@ impl Actor {
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        params: &RawBytes,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-    {
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::Exec) => {
-                let res = Self::exec(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            None => Err(actor_error!(unhandled_message; "Invalid method")),
-        }
+    type Methods = Method;
+    actor_dispatch! {
+        Constructor => constructor,
+        Exec => exec,
     }
 }
 

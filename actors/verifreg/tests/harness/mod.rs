@@ -33,6 +33,7 @@ use fil_actors_runtime::{
     make_empty_map, ActorError, AsActorError, BatchReturn, DATACAP_TOKEN_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 
 pub const ROOT_ADDR: Address = Address::new_id(101);
 
@@ -67,7 +68,7 @@ impl Harness {
         let ret = rt
             .call::<VerifregActor>(
                 Method::Constructor as MethodNum,
-                &RawBytes::serialize(root_param).unwrap(),
+                IpldBlock::serialize_cbor(root_param).unwrap(),
             )
             .unwrap();
 
@@ -103,7 +104,7 @@ impl Harness {
         rt.expect_send(
             DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::BalanceOf as MethodNum,
-            RawBytes::serialize(&verifier_resolved).unwrap(),
+            IpldBlock::serialize_cbor(&verifier_resolved).unwrap(),
             TokenAmount::zero(),
             serialize(&BigIntSer(&(cap * TOKEN_PRECISION)), "").unwrap(),
             ExitCode::OK,
@@ -112,7 +113,7 @@ impl Harness {
         let params = AddVerifierParams { address: *verifier, allowance: allowance.clone() };
         let ret = rt.call::<VerifregActor>(
             Method::AddVerifier as MethodNum,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
         assert_eq!(RawBytes::default(), ret);
         rt.verify();
@@ -130,7 +131,7 @@ impl Harness {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.root);
         let ret = rt.call::<VerifregActor>(
             Method::RemoveVerifier as MethodNum,
-            &RawBytes::serialize(verifier).unwrap(),
+            IpldBlock::serialize_cbor(verifier).unwrap(),
         )?;
         assert_eq!(RawBytes::default(), ret);
         rt.verify();
@@ -181,7 +182,7 @@ impl Harness {
         rt.expect_send(
             DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Mint as MethodNum,
-            RawBytes::serialize(&mint_params).unwrap(),
+            IpldBlock::serialize_cbor(&mint_params).unwrap(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
@@ -190,7 +191,7 @@ impl Harness {
         let params = AddVerifierClientParams { address: *client, allowance: allowance.clone() };
         let ret = rt.call::<VerifregActor>(
             Method::AddVerifiedClient as MethodNum,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
         assert_eq!(RawBytes::default(), ret);
         rt.verify();
@@ -248,7 +249,7 @@ impl Harness {
             rt.expect_send(
                 DATACAP_TOKEN_ACTOR_ADDR,
                 ext::datacap::Method::Burn as MethodNum,
-                RawBytes::serialize(&BurnParams {
+                IpldBlock::serialize_cbor(&BurnParams {
                     amount: TokenAmount::from_whole(datacap_burnt.to_i64().unwrap()),
                 })
                 .unwrap(),
@@ -262,7 +263,7 @@ impl Harness {
         let ret = rt
             .call::<VerifregActor>(
                 Method::ClaimAllocations as MethodNum,
-                &RawBytes::serialize(params).unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             )?
             .deserialize()
             .expect("failed to deserialize claim allocations return");
@@ -283,7 +284,7 @@ impl Harness {
         rt.expect_send(
             DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Transfer as MethodNum,
-            RawBytes::serialize(&TransferParams {
+            IpldBlock::serialize_cbor(&TransferParams {
                 to: Address::new_id(client),
                 amount: TokenAmount::from_whole(expected_datacap.to_i64().unwrap()),
                 operator_data: RawBytes::default(),
@@ -298,7 +299,7 @@ impl Harness {
         let ret = rt
             .call::<VerifregActor>(
                 Method::RemoveExpiredAllocations as MethodNum,
-                &RawBytes::serialize(params).unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             )?
             .deserialize()
             .expect("failed to deserialize remove expired allocations return");
@@ -319,7 +320,7 @@ impl Harness {
         let ret = rt
             .call::<VerifregActor>(
                 Method::RemoveExpiredClaims as MethodNum,
-                &RawBytes::serialize(params).unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             )?
             .deserialize()
             .expect("failed to deserialize remove expired claims return");
@@ -357,8 +358,10 @@ impl Harness {
             rt.expect_send(
                 DATACAP_TOKEN_ACTOR_ADDR,
                 ext::datacap::Method::Burn as MethodNum,
-                RawBytes::serialize(&BurnParams { amount: TokenAmount::from_whole(expected_burn) })
-                    .unwrap(),
+                IpldBlock::serialize_cbor(&BurnParams {
+                    amount: TokenAmount::from_whole(expected_burn),
+                })
+                .unwrap(),
                 TokenAmount::zero(),
                 RawBytes::serialize(&BurnReturn { balance: TokenAmount::zero() }).unwrap(),
                 ExitCode::OK,
@@ -368,13 +371,13 @@ impl Harness {
         rt.expect_validate_caller_addr(vec![DATACAP_TOKEN_ACTOR_ADDR]);
         let ret = rt.call::<VerifregActor>(
             Method::UniversalReceiverHook as MethodNum,
-            &serialize(&params, "hook params").unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
         assert_eq!(
             RawBytes::serialize(AllocationsResponse {
                 allocation_results: expected_alloc_results,
                 extension_results: expected_extension_results,
-                new_allocations: expected_alloc_ids
+                new_allocations: expected_alloc_ids,
             })
             .unwrap(),
             ret
@@ -408,7 +411,7 @@ impl Harness {
         let ret = rt
             .call::<VerifregActor>(
                 Method::GetClaims as MethodNum,
-                &serialize(&params, "get claims params").unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             )?
             .deserialize()
             .expect("failed to deserialize get claims return");
@@ -425,7 +428,7 @@ impl Harness {
         let ret = rt
             .call::<VerifregActor>(
                 Method::ExtendClaimTerms as MethodNum,
-                &serialize(&params, "extend claim terms params").unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             )?
             .deserialize()
             .expect("failed to deserialize extend claim terms return");

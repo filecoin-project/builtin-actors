@@ -1,6 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use fvm_actor_utils::receiver::UniversalReceiverParams;
 use std::collections::BTreeSet;
 
 use fvm_ipld_blockstore::Blockstore;
@@ -15,8 +16,8 @@ use num_traits::{FromPrimitive, Zero};
 use fil_actors_runtime::cbor::serialize_vec;
 use fil_actors_runtime::runtime::{builtins::Type, ActorCode, Primitives, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, make_empty_map, make_map_with_root, resolve_to_actor_id, ActorContext,
-    ActorError, AsActorError, Map, INIT_ACTOR_ADDR,
+    actor_dispatch, actor_error, make_empty_map, make_map_with_root, resolve_to_actor_id,
+    ActorContext, ActorError, AsActorError, Map, INIT_ACTOR_ADDR,
 };
 
 pub use self::state::*;
@@ -47,6 +48,7 @@ pub enum Method {
 
 /// Multisig Actor
 pub struct Actor;
+
 impl Actor {
     /// Constructor for Multisig actor
     pub fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
@@ -446,10 +448,10 @@ impl Actor {
         execute_transaction_if_approved(rt, &st, tx_id, &txn)
     }
 
-    // Always succeeds, accepting any transfers.
+    // Always succeeds, accepting any transfers, so long as the params are valid `UniversalReceiverParams`.
     pub fn universal_receiver_hook(
         rt: &mut impl Runtime,
-        _params: &RawBytes,
+        _params: UniversalReceiverParams,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         Ok(())
@@ -469,7 +471,7 @@ fn execute_transaction_if_approved(
     if threshold_met {
         st.check_available(rt.current_balance(), &txn.value, rt.curr_epoch())?;
 
-        match rt.send(&txn.to, txn.method, txn.params.clone(), txn.value.clone()) {
+        match rt.send(&txn.to, txn.method, txn.params.clone().into(), txn.value.clone()) {
             Ok(ser) => {
                 out = ser;
             }
@@ -548,56 +550,17 @@ pub fn compute_proposal_hash(txn: &Transaction, sys: &dyn Primitives) -> anyhow:
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        params: &RawBytes,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-    {
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::Propose) => {
-                let res = Self::propose(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::Approve) => {
-                let res = Self::approve(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::Cancel) => {
-                Self::cancel(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::AddSigner) => {
-                Self::add_signer(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::RemoveSigner) => {
-                Self::remove_signer(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::SwapSigner) => {
-                Self::swap_signer(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::ChangeNumApprovalsThreshold) => {
-                Self::change_num_approvals_threshold(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::LockBalance) => {
-                Self::lock_balance(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::UniversalReceiverHook) => {
-                Self::universal_receiver_hook(rt, params)?;
-                Ok(RawBytes::default())
-            }
-            None => Err(actor_error!(unhandled_message, "Invalid method")),
-        }
+    type Methods = Method;
+    actor_dispatch! {
+        Constructor => constructor,
+        Propose => propose,
+        Approve => approve,
+        Cancel => cancel,
+        AddSigner => add_signer,
+        RemoveSigner => remove_signer,
+        SwapSigner => swap_signer,
+        ChangeNumApprovalsThreshold => change_num_approvals_threshold,
+        LockBalance => lock_balance,
+        UniversalReceiverHook => universal_receiver_hook,
     }
 }
