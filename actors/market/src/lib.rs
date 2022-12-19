@@ -313,7 +313,7 @@ impl Actor {
         for (client_id, alloc_reqs) in client_alloc_reqs.iter() {
             let params =
                 datacap_transfer_request(&Address::new_id(*client_id), alloc_reqs.clone())?;
-            let mut alloc_ids = match transfer_from(rt, params) {
+            let alloc_ids = match transfer_from(rt, params) {
                 Ok(ids) => ids,
                 Err(e) => {
                     return Err(actor_error!(
@@ -323,7 +323,7 @@ impl Actor {
                     ));
                 }
             };
-            client_allocations.entry(*client_id).or_default().append(alloc_ids.as_mut());
+            client_allocations.insert(*client_id, alloc_ids);
         }
 
         let valid_deal_count = valid_input_bf.len();
@@ -914,7 +914,7 @@ fn transfer_from(
         .send(
             &DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::TRANSFER_FROM_METHOD as u64,
-            serialize(&params, "transfer params")?,
+            IpldBlock::serialize_cbor(&params)?,
             TokenAmount::zero(),
         )
         .context(format!("failed to send transfer to datacap {:?}", params))?;
@@ -923,7 +923,7 @@ fn transfer_from(
 
 // Invokes BalanceOf on the data cap token actor.
 fn balance_of(rt: &mut impl Runtime, owner: &Address) -> Result<TokenAmount, ActorError> {
-    let params = serialize(owner, "owner address")?;
+    let params = IpldBlock::serialize_cbor(owner)?;
     let ret = rt
         .send(
             &DATACAP_TOKEN_ACTOR_ADDR,
