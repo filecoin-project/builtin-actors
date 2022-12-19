@@ -513,7 +513,7 @@ pub fn publish_deals(
             rt.expect_send(
                 DATACAP_TOKEN_ACTOR_ADDR,
                 ext::datacap::BALANCE_OF_METHOD as u64,
-                serialize(&balance_of_params, "transfer from params").unwrap(),
+                IpldBlock::serialize_cbor(&balance_of_params).unwrap(),
                 TokenAmount::zero(),
                 serialize(&balance_of_return, "transfer from return").unwrap(),
                 ExitCode::OK,
