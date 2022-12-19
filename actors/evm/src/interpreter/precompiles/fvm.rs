@@ -31,27 +31,27 @@ pub(super) fn get_actor_type<RT: Runtime>(
         .get_actor_code_cid(&id)
         .and_then(|cid| system.rt.resolve_builtin_actor_type(&cid));
 
-        let builtin_type = match builtin_type {
-            Some(t) => match t {
-                Type::Account | Type::EthAccount => NativeType::Account,
-                Type::System => NativeType::System,
-                Type::Embryo => NativeType::Embryo,
-                Type::EVM => NativeType::EVMContract,
-                Type::Miner => NativeType::StorageProvider,
-                // Others
-                Type::PaymentChannel | Type::Multisig => NativeType::OtherTypes,
-                // Singletons (this should be caught earlier, but we are being exhaustive)
-                Type::Market
-                | Type::Power
-                | Type::Init
-                | Type::Cron
-                | Type::Reward
-                | Type::VerifiedRegistry
-                | Type::DataCap
-                | Type::EAM => NativeType::System,
-            },
-            None => NativeType::NonExistent,
-        };
+    let builtin_type = match builtin_type {
+        Some(t) => match t {
+            Type::Account | Type::EthAccount => NativeType::Account,
+            Type::System => NativeType::System,
+            Type::Embryo => NativeType::Embryo,
+            Type::EVM => NativeType::EVMContract,
+            Type::Miner => NativeType::StorageProvider,
+            // Others
+            Type::PaymentChannel | Type::Multisig => NativeType::OtherTypes,
+            // Singletons (this should be caught earlier, but we are being exhaustive)
+            Type::Market
+            | Type::Power
+            | Type::Init
+            | Type::Cron
+            | Type::Reward
+            | Type::VerifiedRegistry
+            | Type::DataCap
+            | Type::EAM => NativeType::System,
+        },
+        None => NativeType::NonExistent,
+    };
 
     Ok(builtin_type.word_vec())
 }
