@@ -718,8 +718,9 @@ fn balance_of(rt: &mut impl Runtime, owner: &Address) -> Result<DataCap, ActorEr
             params,
             TokenAmount::zero(),
         )
-        .context(format!("failed to query datacap balance of {}", owner))?;
-    let x: TokenAmount = deserialize(&ret, "balance result")?;
+        .context(format!("failed to query datacap balance of {}", owner))?
+        .with_context_code(ExitCode::USR_ASSERTION_FAILED, || "return expected".to_string())?;
+    let x: TokenAmount = ret.deserialize()?;
     Ok(tokens_to_datacap(&x))
 }
 

@@ -472,12 +472,13 @@ fn execute_transaction_if_approved(
         st.check_available(rt.current_balance(), &txn.value, rt.curr_epoch())?;
 
         match rt.send(&txn.to, txn.method, txn.params.clone().into(), txn.value.clone()) {
-            Ok(ser) => {
-                out = ser;
+            Ok(Some(r)) => {
+                out = RawBytes::new(r.data);
             }
             Err(e) => {
                 code = e.exit_code();
             }
+            _ => {}
         }
         applied = true;
 

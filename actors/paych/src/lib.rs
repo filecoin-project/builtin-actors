@@ -7,7 +7,7 @@ use fil_actors_runtime::{
     actor_dispatch, actor_error, resolve_to_actor_id, ActorDowncast, ActorError, Array,
 };
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::{RawBytes, DAG_CBOR};
+use fvm_ipld_encoding::DAG_CBOR;
 use fvm_shared::address::Address;
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;

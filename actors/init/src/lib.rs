@@ -8,7 +8,6 @@ use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
     actor_dispatch, actor_error, ActorContext, ActorError, SYSTEM_ACTOR_ADDR,
 };
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
@@ -34,6 +33,7 @@ pub enum Method {
 
 /// Init actor
 pub struct Actor;
+
 impl Actor {
     /// Init actor constructor
     pub fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {

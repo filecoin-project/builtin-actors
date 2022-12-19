@@ -10,7 +10,7 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
     actor_dispatch, actor_error, make_map_with_root_and_bitwidth, ActorDowncast, ActorError,
-    Multimap, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    AsActorError, Multimap, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
@@ -108,6 +108,7 @@ impl Actor {
                 })?,
                 value,
             )?
+            .with_context_code(ExitCode::USR_ASSERTION_FAILED, || "return expected".to_string())?
             .deserialize()?;
 
         let window_post_proof_type = params.window_post_proof_type;
@@ -241,6 +242,7 @@ impl Actor {
                 TokenAmount::zero(),
             )
             .map_err(|e| e.wrap("failed to check epoch baseline power"))?
+            .with_context_code(ExitCode::USR_ASSERTION_FAILED, || "return expected".to_string())?
             .deserialize()?;
 
         if let Err(e) = Self::process_batch_proof_verifies(rt, &rewret) {

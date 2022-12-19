@@ -3,7 +3,9 @@ use cid::multihash::Code;
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::{CborStore, RawBytes, DAG_CBOR};
+use fvm_ipld_encoding::CborStore;
+#[cfg(feature = "fake-proofs")]
+use fvm_ipld_encoding::RawBytes;
 use fvm_sdk as fvm;
 use fvm_sdk::NO_DATA_BLOCK_ID;
 use fvm_shared::address::Address;
@@ -285,7 +287,7 @@ where
         method: MethodNum,
         params: Option<IpldBlock>,
         value: TokenAmount,
-    ) -> Result<RawBytes, ActorError> {
+    ) -> Result<Option<IpldBlock>, ActorError> {
         if self.in_transaction {
             return Err(actor_error!(assertion_failed; "send is not allowed during transaction"));
         }
@@ -574,9 +576,11 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
     }
 
     // Then handle the return value.
-    if ret.is_empty() {
-        NO_DATA_BLOCK_ID
-    } else {
-        fvm::ipld::put_block(DAG_CBOR, ret.bytes()).expect("failed to write result")
-    }
+    ret.map_or_else(
+        || NO_DATA_BLOCK_ID,
+        |ret_block| {
+            fvm::ipld::put_block(ret_block.codec, ret_block.data.as_slice())
+                .expect("failed to write result")
+        },
+    )
 }

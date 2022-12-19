@@ -158,7 +158,6 @@ mod miner_actor_precommit_batch {
     };
     use fil_actors_runtime::{STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
     use fvm_ipld_encoding::ipld_block::IpldBlock;
-    use fvm_ipld_encoding::RawBytes;
     use test_case::test_case;
 
     #[test_case(false; "v1")]
@@ -407,7 +406,7 @@ mod miner_actor_precommit_batch {
                 MarketMethod::VerifyDealsForActivation as u64,
                 IpldBlock::serialize_cbor(&vdparams).unwrap(),
                 TokenAmount::zero(),
-                RawBytes::serialize(vdreturn).unwrap(),
+                IpldBlock::serialize_cbor(&vdreturn).unwrap(),
                 ExitCode::OK,
             );
 
@@ -424,7 +423,7 @@ mod miner_actor_precommit_batch {
                 PowerMethod::EnrollCronEvent as u64,
                 IpldBlock::serialize_cbor(&cron_params).unwrap(),
                 TokenAmount::zero(),
-                RawBytes::default(),
+                None,
                 ExitCode::OK,
             );
 
