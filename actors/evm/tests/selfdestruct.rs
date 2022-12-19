@@ -5,6 +5,7 @@ use fvm_shared::{address::Address, error::ExitCode, METHOD_SEND};
 mod util;
 
 #[test]
+#[ignore] // meaningless with userspace self destruct; FIXME
 fn test_selfdestruct() {
     let bytecode = hex::decode(include_str!("contracts/selfdestruct.hex")).unwrap();
 
@@ -33,6 +34,7 @@ fn test_selfdestruct() {
 }
 
 #[test]
+#[ignore] // meaningless with userspace self destruct; FIXME
 fn test_selfdestruct_missing() {
     let bytecode = hex::decode(include_str!("contracts/selfdestruct.hex")).unwrap();
 
