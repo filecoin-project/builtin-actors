@@ -159,22 +159,6 @@ macro_rules! actor_error {
     };
 }
 
-/// Convenience macro for generating Actor Errors
-#[macro_export]
-macro_rules! decode_params {
-    // Error with only one stringable expression
-    ($args:ident) => {
-        $args
-            .with_context_code(fvm_shared::error::ExitCode::USR_ILLEGAL_ARGUMENT, || {
-                format!("method expected args")
-            })?
-            .deserialize()
-            .with_context_code(fvm_shared::error::ExitCode::USR_SERIALIZATION, || {
-                format!("failed to deserialize method params")
-            })?
-    };
-}
-
 // Adds context to an actor error's descriptive message.
 pub trait ActorContext<T> {
     fn context<C>(self, context: C) -> Result<T, ActorError>
