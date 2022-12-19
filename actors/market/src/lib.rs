@@ -193,11 +193,14 @@ impl Actor {
         }
         // Deals that passed validation.
         let mut valid_deals: Vec<ValidDeal> = Vec::with_capacity(params.deals.len());
-        let mut client_alloc_reqs: BTreeMap<ActorID, Vec<AllocationRequest>> = BTreeMap::new();
         // CIDs of valid proposals.
         let mut proposal_cid_lookup = BTreeSet::new();
         let mut total_client_lockup: BTreeMap<ActorID, TokenAmount> = BTreeMap::new();
-        let mut all_client_remaining_datacap: BTreeMap<ActorID, TokenAmount> = BTreeMap::new();
+        // Client datacap balance remaining after allocations for deals processed so far.
+        let mut client_datacap_remaining: BTreeMap<ActorID, TokenAmount> = BTreeMap::new();
+        // Verified allocation requests to make for each client, paird with the proposal CID.
+        let mut client_alloc_reqs: BTreeMap<ActorID, Vec<(Cid, AllocationRequest)>> =
+            BTreeMap::new();
         let mut total_provider_lockup = TokenAmount::zero();
 
         let mut valid_input_bf = BitField::default();
@@ -276,30 +279,29 @@ impl Actor {
                 info!("invalid deal {}: cannot publish duplicate deal proposal", di);
                 continue;
             }
-            // Fetch client's datacap balance and calculate the amount of datacap required for the verified deals.
+
+            // Fetch each client's datacap balance and calculate the amount of datacap required for
+            // each client's verified deals.
             // Drop any verified deals for which the client has insufficient datacap.
             if deal.proposal.verified_deal {
-                let mut remaining_datacap =
-                    match all_client_remaining_datacap.get(&client_id).cloned() {
-                        None => {
-                            balance_of(rt, &Address::new_id(client_id)).map_err(
-                                |e| actor_error!(not_found; "failed to get datacap {}", e.msg()),
-                            )?
-                        }
-                        Some(client_data) => client_data,
-                    };
+                let remaining_datacap = match client_datacap_remaining.get(&client_id).cloned() {
+                    None => balance_of(rt, &Address::new_id(client_id))
+                        .with_context_code(ExitCode::USR_NOT_FOUND, || {
+                            format!("failed to get datacap balance for client {}", client_id)
+                        })?,
+                    Some(client_data) => client_data,
+                };
                 let piece_datacap_required =
                     TokenAmount::from_whole(deal.proposal.piece_size.0 as i64);
                 if remaining_datacap < piece_datacap_required {
-                    continue;
+                    continue; // Drop the deal
                 }
-                remaining_datacap -= &piece_datacap_required;
-                all_client_remaining_datacap.insert(client_id, remaining_datacap);
-                client_alloc_reqs.entry(client_id).or_default().push(alloc_request_for_deal(
-                    &deal,
-                    rt.policy(),
-                    curr_epoch,
-                ));
+                client_datacap_remaining
+                    .insert(client_id, remaining_datacap - piece_datacap_required);
+                client_alloc_reqs
+                    .entry(client_id)
+                    .or_default()
+                    .push((pcid, alloc_request_for_deal(&deal, rt.policy(), curr_epoch)));
             }
 
             total_provider_lockup = provider_lockup;
@@ -309,21 +311,28 @@ impl Actor {
             valid_input_bf.set(di as u64)
         }
 
-        let mut client_allocations: BTreeMap<ActorID, Vec<AllocationID>> = BTreeMap::new();
-        for (client_id, alloc_reqs) in client_alloc_reqs.iter() {
-            let params =
-                datacap_transfer_request(&Address::new_id(*client_id), alloc_reqs.clone())?;
-            let alloc_ids = match transfer_from(rt, params) {
-                Ok(ids) => ids,
-                Err(e) => {
-                    return Err(actor_error!(
-                        illegal_state,
-                        "failed transfer datacap: {}",
-                        e.msg()
-                    ));
-                }
-            };
-            client_allocations.insert(*client_id, alloc_ids);
+        // Make datacap allocation requests by transferring datacap tokens, once per client.
+        // Record the allocation ID for each deal proposal CID.
+        let mut deal_allocation_ids: BTreeMap<Cid, AllocationID> = BTreeMap::new();
+        for (client_id, cids_and_reqs) in client_alloc_reqs.iter() {
+            let reqs: Vec<AllocationRequest> =
+                cids_and_reqs.iter().map(|(_, req)| req.clone()).collect();
+            let params = datacap_transfer_request(&Address::new_id(*client_id), reqs)?;
+            // A datacap transfer is all-or-nothing.
+            // We expect it to succeed because we checked the client's balance earlier.
+            let alloc_ids = transfer_from(rt, params)
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to transfer datacap from client {}", *client_id)
+                })?;
+            if alloc_ids.len() != cids_and_reqs.len() {
+                return Err(
+                    actor_error!(illegal_state; "datacap transfer returned {} allocation IDs for {} requests",
+                        alloc_ids.len(), cids_and_reqs.len()),
+                );
+            }
+            for ((cid, _), alloc_id) in cids_and_reqs.iter().zip(alloc_ids.iter()) {
+                deal_allocation_ids.insert(cid.clone(), *alloc_id);
+            }
         }
 
         let valid_deal_count = valid_input_bf.len();
@@ -360,14 +369,8 @@ impl Actor {
 
                 // Store verified allocation (if any) in the pending allocation IDs map.
                 // It will be removed when the deal is activated or expires.
-                if valid_deal.proposal.verified_deal {
-                    pending_deal_allocation_ids.push((
-                        deal_id_key(deal_id),
-                        client_allocations
-                            .get_mut(&valid_deal.proposal.client.id().unwrap())
-                            .unwrap()
-                            .remove(0),
-                    ));
+                if let Some(alloc_id) = deal_allocation_ids.get(&valid_deal.cid) {
+                    pending_deal_allocation_ids.push((deal_id_key(deal_id), *alloc_id));
                 }
 
                 // Randomize the first epoch for when the deal will be processed so an attacker isn't able to
@@ -381,13 +384,9 @@ impl Actor {
             }
 
             st.put_pending_deals(rt.store(), &pending_deals)?;
-
             st.put_deal_proposals(rt.store(), &deal_proposals)?;
-
             st.put_pending_deal_allocation_ids(rt.store(), &pending_deal_allocation_ids)?;
-
             st.put_deals_by_epoch(rt.store(), &deals_by_epoch)?;
-
             Ok(())
         })?;
 
