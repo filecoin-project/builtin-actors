@@ -34,7 +34,6 @@ pub enum Method {
     // TODO: Do we want to use ExportedNums for all of these, per FRC-42?
     Create = 2,
     Create2 = 3,
-    // CreateAccount = 4,
 }
 
 /// Compute the a new actor address using the EVM's CREATE rules.
@@ -233,33 +232,6 @@ impl EamActor {
 
         // send to init actor
         create_actor(rt, caller_addr, eth_addr, params.initcode)
-    }
-
-    pub fn create_account(
-        rt: &mut impl Runtime,
-        params: InitAccountParams,
-    ) -> Result<Return, ActorError> {
-        // First, validate that we're receiving this message from the filecoin account that maps to
-        // this ethereum account.
-        //
-        // We don't need to validate that the _key_ is well formed or anything, because the fact
-        // that we're receiving a message from the account proves that to be the case anyways.
-        //
-        // TODO: allow off-chain deployment!
-        let key_addr = Address::new_secp256k1(&params.pubkey)
-            .map_err(|e| ActorError::illegal_argument(format!("not a valid public key: {e}")))?;
-
-        rt.validate_immediate_caller_is(iter::once(&key_addr))?;
-
-        // Compute the equivalent eth address
-        let eth_address = EthAddress(hash_20(rt, &params.pubkey[1..]));
-
-        // TODO: Check reserved ranges (id, precompile, etc.).
-
-        // Attempt to deploy an account there.
-        // TODO
-        create_actor(rt, EthAddress([0u8; 20]), eth_address, Vec::new()).ok();
-        todo!()
     }
 }
 
