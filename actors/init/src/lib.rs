@@ -144,7 +144,7 @@ impl Actor {
                 .context("failed to map addresses to ID")
         })?;
 
-        // If the f4 address was already assigned, make sure we're deploying over an placeholder and not
+        // If the f4 address was already assigned, make sure we're deploying over a placeholder and not
         // some other existing actor (and make sure the target actor wasn't deleted either).
         if existing {
             let code_cid = rt

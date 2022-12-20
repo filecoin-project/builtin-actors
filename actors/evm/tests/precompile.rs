@@ -127,7 +127,7 @@ return
     let account_target = FILAddress::new_id(101);
     rt.set_address_actor_type(account_target, *ACCOUNT_ACTOR_CODE_ID);
 
-    // f0 102 is an placeholder
+    // f0 102 is a placeholder
     let placeholder_target = FILAddress::new_id(102);
     rt.set_address_actor_type(placeholder_target, *PLACEHOLDER_ACTOR_CODE_ID);
 

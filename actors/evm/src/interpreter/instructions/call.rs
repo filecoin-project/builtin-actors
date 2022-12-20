@@ -243,7 +243,7 @@ pub fn call_generic<RT: Runtime>(
                         {
                             // We switch to a bare send when:
                             //
-                            // 1. The target is an placeholder/account or doesn't exist. Otherwise,
+                            // 1. The target is a placeholder/account or doesn't exist. Otherwise,
                             // sendign funds to an account/placeholder would fail when we try to call
                             // InvokeContract.
                             // 2. The gas wouldn't let code execute anyways. This lets us support

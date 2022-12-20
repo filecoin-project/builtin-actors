@@ -29,7 +29,7 @@ fn placeholder_deploy() {
         actor(*EAM_ACTOR_CODE_ID, EMPTY_ARR_CID, 0, TokenAmount::zero(), None),
     );
 
-    // Create an placeholder.
+    // Create a placeholder.
 
     let subaddr = b"foobar";
     let addr = Address::new_delegated(EAM_ACTOR_ID, subaddr).unwrap();
