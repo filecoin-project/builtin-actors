@@ -3,8 +3,8 @@ mod asm;
 use evm::interpreter::U256;
 use fil_actor_evm as evm;
 use fil_actors_runtime::test_utils::{
-    MockRuntime, ACCOUNT_ACTOR_CODE_ID, EAM_ACTOR_CODE_ID, PLACEHOLDER_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID,
-    MINER_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID,
+    MockRuntime, ACCOUNT_ACTOR_CODE_ID, EAM_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID,
+    MULTISIG_ACTOR_CODE_ID, PLACEHOLDER_ACTOR_CODE_ID,
 };
 use fvm_shared::address::Address as FILAddress;
 

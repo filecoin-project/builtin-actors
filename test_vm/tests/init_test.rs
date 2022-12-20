@@ -2,7 +2,7 @@ use fil_actor_init::Exec4Return;
 use fil_actors_runtime::{
     cbor::serialize,
     runtime::EMPTY_ARR_CID,
-    test_utils::{EAM_ACTOR_CODE_ID, PLACEHOLDER_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID},
+    test_utils::{EAM_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID, PLACEHOLDER_ACTOR_CODE_ID},
     EAM_ACTOR_ADDR, EAM_ACTOR_ID, INIT_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::MemoryBlockstore;
