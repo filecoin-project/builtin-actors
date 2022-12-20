@@ -220,7 +220,7 @@ pub fn check_state_invariants<'a, BS: Blockstore + Debug>(
                 acc.with_prefix("datacap: ").add_all(&msgs);
                 datacap_summary = Some(summary);
             }
-            Some(Type::Embryo) => {}
+            Some(Type::Placeholder) => {}
             Some(Type::EVM) => {}
             Some(Type::EAM) => {}
             Some(Type::EthAccount) => {}
