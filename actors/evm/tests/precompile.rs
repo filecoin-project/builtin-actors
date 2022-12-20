@@ -161,7 +161,7 @@ return
 
     // invalid format address
     rt.expect_gas_available(10_000_000_000u64);
-    let result = util::invoke_contract(&mut rt, &vec![0xff; 64]);
+    let result = util::invoke_contract(&mut rt, &[0xff; 64]);
     rt.verify();
     assert!(result.is_empty());
     rt.reset();

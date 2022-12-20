@@ -22,11 +22,11 @@ pub(super) fn get_actor_type<RT: Runtime>(
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    // should never panic, pad to 32 bytes then read exactly 32 bytes 
+    // should never panic, pad to 32 bytes then read exactly 32 bytes
     let id_bytes: [u8; 32] = read_right_pad(input, 32)[..32].as_ref().try_into().unwrap();
     let id = match Parameter::<u64>::try_from(&id_bytes) {
         Ok(id) => id.0,
-        Err(_) => return Ok(Vec::new())
+        Err(_) => return Ok(Vec::new()),
     };
 
     // resolve type from code CID
@@ -51,7 +51,7 @@ pub(super) fn get_actor_type<RT: Runtime>(
             | Type::Reward
             | Type::VerifiedRegistry
             | Type::DataCap
-            | Type::EAM 
+            | Type::EAM
             | Type::System => NativeType::System,
         },
         None => NativeType::NonExistent,
