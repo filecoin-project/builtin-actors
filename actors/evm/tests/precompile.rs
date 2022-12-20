@@ -3,14 +3,12 @@ mod asm;
 use evm::interpreter::U256;
 use fil_actor_evm as evm;
 use fil_actors_runtime::test_utils::{
-    MockRuntime, ACCOUNT_ACTOR_CODE_ID, EMBRYO_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID,
+    MockRuntime, ACCOUNT_ACTOR_CODE_ID, EAM_ACTOR_CODE_ID, EMBRYO_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID,
     MINER_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID,
 };
 use fvm_shared::address::Address as FILAddress;
 
 mod util;
-
-use util::DUMMY_ACTOR_CODE_ID;
 
 #[allow(dead_code)]
 pub fn magic_precompile_contract() -> Vec<u8> {
@@ -122,8 +120,8 @@ return
     rt.set_address_actor_type(evm_target, *EVM_ACTOR_CODE_ID);
 
     // f0 31 is a system actor
-    let system_target = FILAddress::new_id(31);
-    rt.set_address_actor_type(system_target, *DUMMY_ACTOR_CODE_ID);
+    let system_target = FILAddress::new_id(10);
+    rt.set_address_actor_type(system_target, *EAM_ACTOR_CODE_ID);
 
     // f0 101 is an account
     let account_target = FILAddress::new_id(101);
@@ -160,4 +158,11 @@ return
     test_type(&mut rt, miner_target, NativeType::StorageProvider);
     test_type(&mut rt, other_target, NativeType::OtherTypes);
     test_type(&mut rt, FILAddress::new_id(10101), NativeType::NonExistent);
+
+    // invalid format address
+    rt.expect_gas_available(10_000_000_000u64);
+    let result = util::invoke_contract(&mut rt, &[0xff; 64]);
+    rt.verify();
+    assert!(result.is_empty());
+    rt.reset();
 }

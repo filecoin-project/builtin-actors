@@ -16,50 +16,48 @@ use super::{parameter::U256Reader, PrecompileContext, PrecompileError, Precompil
 
 /// Read right padded BE encoded low u64 ID address from a u256 word.
 /// Returns variant of [`BuiltinType`] encoded as a u256 word.
+/// Returns nothing inputs >2^65
 pub(super) fn get_actor_type<RT: Runtime>(
     system: &mut System<RT>,
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    const LAST_SYSTEM_ACTOR_ID: u64 = 32;
+    // should never panic, pad to 32 bytes then read exactly 32 bytes
+    let id_bytes: [u8; 32] = read_right_pad(input, 32)[..32].as_ref().try_into().unwrap();
+    let id = match Parameter::<u64>::try_from(&id_bytes) {
+        Ok(id) => id.0,
+        Err(_) => return Ok(Vec::new()),
+    };
 
-    let id_bytes: [u8; 32] = read_right_pad(input, 32).as_ref().try_into().unwrap();
-    let id = Parameter::<u64>::try_from(&id_bytes)?.0;
+    // resolve type from code CID
+    let builtin_type = system
+        .rt
+        .get_actor_code_cid(&id)
+        .and_then(|cid| system.rt.resolve_builtin_actor_type(&cid));
 
-    if id < LAST_SYSTEM_ACTOR_ID {
-        // known to be system actors
-        Ok(NativeType::System.word_vec())
-    } else {
-        // resolve type from code CID
-        let builtin_type = system
-            .rt
-            .get_actor_code_cid(&id)
-            .and_then(|cid| system.rt.resolve_builtin_actor_type(&cid));
+    let builtin_type = match builtin_type {
+        Some(t) => match t {
+            Type::Account | Type::EthAccount => NativeType::Account,
+            Type::Embryo => NativeType::Embryo,
+            Type::EVM => NativeType::EVMContract,
+            Type::Miner => NativeType::StorageProvider,
+            // Others
+            Type::PaymentChannel | Type::Multisig => NativeType::OtherTypes,
+            // Singletons (this should be caught earlier, but we are being exhaustive)
+            Type::Market
+            | Type::Power
+            | Type::Init
+            | Type::Cron
+            | Type::Reward
+            | Type::VerifiedRegistry
+            | Type::DataCap
+            | Type::EAM
+            | Type::System => NativeType::System,
+        },
+        None => NativeType::NonExistent,
+    };
 
-        let builtin_type = match builtin_type {
-            Some(t) => match t {
-                Type::Account | Type::EthAccount => NativeType::Account,
-                Type::System => NativeType::System,
-                Type::Embryo => NativeType::Embryo,
-                Type::EVM => NativeType::EVMContract,
-                Type::Miner => NativeType::StorageProvider,
-                // Others
-                Type::PaymentChannel | Type::Multisig => NativeType::OtherTypes,
-                // Singletons
-                Type::Market
-                | Type::Power
-                | Type::Init
-                | Type::Cron
-                | Type::Reward
-                | Type::VerifiedRegistry
-                | Type::DataCap
-                | Type::EAM => NativeType::System,
-            },
-            None => NativeType::NonExistent,
-        };
-
-        Ok(builtin_type.word_vec())
-    }
+    Ok(builtin_type.word_vec())
 }
 
 /// Params:
