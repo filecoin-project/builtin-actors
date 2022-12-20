@@ -83,6 +83,7 @@ lazy_static::lazy_static! {
         map.insert(*PLACEHOLDER_ACTOR_CODE_ID, Type::Placeholder);
         map.insert(*EVM_ACTOR_CODE_ID, Type::EVM);
         map.insert(*EAM_ACTOR_CODE_ID, Type::EAM);
+        map
     };
     pub static ref ACTOR_CODES: BTreeMap<Type, Cid> = [
         (Type::System, *SYSTEM_ACTOR_CODE_ID),
