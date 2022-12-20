@@ -158,4 +158,11 @@ return
     test_type(&mut rt, miner_target, NativeType::StorageProvider);
     test_type(&mut rt, other_target, NativeType::OtherTypes);
     test_type(&mut rt, FILAddress::new_id(10101), NativeType::NonExistent);
+
+    // invalid format address
+    rt.expect_gas_available(10_000_000_000u64);
+    let result = util::invoke_contract(&mut rt, &vec![0xff; 64]);
+    rt.verify();
+    assert!(result.is_empty());
+    rt.reset();
 }

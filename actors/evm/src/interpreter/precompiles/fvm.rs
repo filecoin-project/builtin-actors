@@ -16,14 +16,18 @@ use super::{parameter::U256Reader, PrecompileContext, PrecompileError, Precompil
 
 /// Read right padded BE encoded low u64 ID address from a u256 word.
 /// Returns variant of [`BuiltinType`] encoded as a u256 word.
+/// Returns nothing inputs >2^65
 pub(super) fn get_actor_type<RT: Runtime>(
     system: &mut System<RT>,
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    // should never panic
-    let id_bytes: [u8; 32] = read_right_pad(input, 32).as_ref().try_into().unwrap();
-    let id = Parameter::<u64>::try_from(&id_bytes)?.0;
+    // should never panic, pad to 32 bytes then read exactly 32 bytes 
+    let id_bytes: [u8; 32] = read_right_pad(input, 32)[..32].as_ref().try_into().unwrap();
+    let id = match Parameter::<u64>::try_from(&id_bytes) {
+        Ok(id) => id.0,
+        Err(_) => return Ok(Vec::new())
+    };
 
     // resolve type from code CID
     let builtin_type = system
@@ -34,7 +38,6 @@ pub(super) fn get_actor_type<RT: Runtime>(
     let builtin_type = match builtin_type {
         Some(t) => match t {
             Type::Account | Type::EthAccount => NativeType::Account,
-            Type::System => NativeType::System,
             Type::Embryo => NativeType::Embryo,
             Type::EVM => NativeType::EVMContract,
             Type::Miner => NativeType::StorageProvider,
@@ -48,7 +51,8 @@ pub(super) fn get_actor_type<RT: Runtime>(
             | Type::Reward
             | Type::VerifiedRegistry
             | Type::DataCap
-            | Type::EAM => NativeType::System,
+            | Type::EAM 
+            | Type::System => NativeType::System,
         },
         None => NativeType::NonExistent,
     };
