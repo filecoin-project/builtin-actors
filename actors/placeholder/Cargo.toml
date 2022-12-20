@@ -1,6 +1,6 @@
 [package]
-name = "fil_actor_embryo"
-description = "Builtin embryo actor for Filecoin"
+name = "fil_actor_placeholder"
+description = "Builtin placeholder actor for Filecoin"
 version = "10.0.0-alpha.1"
 license = "MIT OR Apache-2.0"
 authors = ["Protocol Labs", "Filecoin Core Devs"]

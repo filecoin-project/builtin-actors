@@ -78,8 +78,8 @@ native_account:
 
     // 0x0101 is an EVM EOA account
     let evm_account = FILAddress::new_id(0x0101);
-    // TODO this is part of the account abstraction hack, where embryos are magically accounts
-    rt.set_address_actor_type(evm_account, *EMBRYO_ACTOR_CODE_ID);
+    // TODO this is part of the account abstraction hack, where placeholders are magically accounts
+    rt.set_address_actor_type(evm_account, *PLACEHOLDER_ACTOR_CODE_ID);
 
     // 0x0102 is a native account
     let native_account = FILAddress::new_id(0x0102);
@@ -192,7 +192,7 @@ account:
 
     // 0x8A is an account
     let native_target = FILAddress::new_id(0x8A);
-    rt.set_address_actor_type(native_target, *EMBRYO_ACTOR_CODE_ID);
+    rt.set_address_actor_type(native_target, *PLACEHOLDER_ACTOR_CODE_ID);
 
     let empty_hash = empty_bytecode_hash(&mut rt);
 

@@ -216,8 +216,8 @@ pub fn call_generic<RT: Runtime>(
                     let dst_addr: EthAddress = dst.into();
                     let dst_addr: Address = dst_addr.try_into().expect("address is a precompile");
 
-                    // Special casing for account/embryo/non-existent actors: we just do a SEND (method 0)
-                    // which allows us to transfer funds (and create embryos)
+                    // Special casing for account/placeholder/non-existent actors: we just do a SEND (method 0)
+                    // which allows us to transfer funds (and create placeholders)
                     let target_actor_code = system
                         .rt
                         .resolve_address(&dst_addr)
@@ -236,15 +236,15 @@ pub fn call_generic<RT: Runtime>(
                         Ok(RawBytes::default())
                     } else {
                         let (method, gas_limit) = if !actor_exists
-                            || matches!(target_actor_type, Some(Type::Embryo | Type::Account))
+                            || matches!(target_actor_type, Some(Type::Placeholder | Type::Account))
                             // See https://github.com/filecoin-project/ref-fvm/issues/980 for this
                             // hocus pocus
                             || (input_data.is_empty() && ((gas == 0 && value > 0) || (gas == 2300 && value == 0)))
                         {
                             // We switch to a bare send when:
                             //
-                            // 1. The target is an embryo/account or doesn't exist. Otherwise,
-                            // sendign funds to an account/embryo would fail when we try to call
+                            // 1. The target is an placeholder/account or doesn't exist. Otherwise,
+                            // sendign funds to an account/placeholder would fail when we try to call
                             // InvokeContract.
                             // 2. The gas wouldn't let code execute anyways. This lets us support
                             // solidity's "transfer" method.
