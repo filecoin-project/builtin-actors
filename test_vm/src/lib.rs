@@ -678,7 +678,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                     subinvocs
                 });
             } else {
-                new_ctx.create_actor(*EMBRYO_ACTOR_CODE_ID, target_id, Some(*target)).unwrap();
+                new_ctx.create_actor(*PLACEHOLDER_ACTOR_CODE_ID, target_id, Some(*target)).unwrap();
             }
         }
 
@@ -780,8 +780,8 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             Type::VerifiedRegistry => VerifregActor::invoke_method(self, self.msg.method, params),
             // Type::EVM => panic!("no EVM"),
             Type::DataCap => DataCapActor::invoke_method(self, self.msg.method, params),
-            Type::Embryo => {
-                Err(ActorError::unhandled_message("embryo actors only handle method 0".into()))
+            Type::Placeholder => {
+                Err(ActorError::unhandled_message("placeholder actors only handle method 0".into()))
             }
             Type::EVM => EvmContractActor::invoke_method(self, self.msg.method, params),
             Type::EAM => EamActor::invoke_method(self, self.msg.method, params),
@@ -818,7 +818,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         }
         let addr = Address::new_id(actor_id);
         let actor = match self.v.get_actor(addr) {
-            Some(mut act) if act.code == *EMBRYO_ACTOR_CODE_ID => {
+            Some(mut act) if act.code == *PLACEHOLDER_ACTOR_CODE_ID => {
                 act.code = code_id;
                 act
             }

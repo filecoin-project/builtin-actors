@@ -2,7 +2,7 @@ use fil_actor_init::Exec4Return;
 use fil_actors_runtime::{
     cbor::serialize,
     runtime::EMPTY_ARR_CID,
-    test_utils::{EAM_ACTOR_CODE_ID, EMBRYO_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID},
+    test_utils::{EAM_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID, PLACEHOLDER_ACTOR_CODE_ID},
     EAM_ACTOR_ADDR, EAM_ACTOR_ID, INIT_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::MemoryBlockstore;
@@ -11,15 +11,15 @@ use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode, METHOD_SE
 use num_traits::Zero;
 use test_vm::{actor, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
 
-fn assert_embryo_actor(exp_bal: TokenAmount, v: &VM, addr: Address) {
+fn assert_placeholder_actor(exp_bal: TokenAmount, v: &VM, addr: Address) {
     let act = v.get_actor(addr).unwrap();
     assert_eq!(EMPTY_ARR_CID, act.head);
-    assert_eq!(*EMBRYO_ACTOR_CODE_ID, act.code);
+    assert_eq!(*PLACEHOLDER_ACTOR_CODE_ID, act.code);
     assert_eq!(exp_bal, act.balance);
 }
 
 #[test]
-fn embryo_deploy() {
+fn placeholder_deploy() {
     let store = MemoryBlockstore::new();
     let v = VM::new_with_singletons(&store);
 
@@ -29,7 +29,7 @@ fn embryo_deploy() {
         actor(*EAM_ACTOR_CODE_ID, EMPTY_ARR_CID, 0, TokenAmount::zero(), None),
     );
 
-    // Create an embryo.
+    // Create a placeholder.
 
     let subaddr = b"foobar";
     let addr = Address::new_delegated(EAM_ACTOR_ID, subaddr).unwrap();
@@ -45,12 +45,12 @@ fn embryo_deploy() {
         .code
         .is_success());
     let expect_id_addr = Address::new_id(FIRST_TEST_USER_ADDR);
-    assert_embryo_actor(TokenAmount::from_atto(42u8), &v, expect_id_addr);
+    assert_placeholder_actor(TokenAmount::from_atto(42u8), &v, expect_id_addr);
 
     // Make sure we assigned the right f4 address.
     assert_eq!(v.normalize_address(&addr).unwrap(), expect_id_addr);
 
-    // Deploy a multisig to the embryo.
+    // Deploy a multisig to the placeholder.
     let msig_ctor_params = serialize(
         &fil_actor_multisig::ConstructorParams {
             signers: vec![EAM_ACTOR_ADDR],
@@ -83,7 +83,7 @@ fn embryo_deploy() {
 
     assert_eq!(
         expect_id_addr, msig_ctor_ret.id_address,
-        "expected actor to be deployed over embryo"
+        "expected actor to be deployed over placeholder"
     );
 
     // Make sure we kept the balance.

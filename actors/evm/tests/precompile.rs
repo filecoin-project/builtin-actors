@@ -3,8 +3,8 @@ mod asm;
 use evm::interpreter::U256;
 use fil_actor_evm as evm;
 use fil_actors_runtime::test_utils::{
-    MockRuntime, ACCOUNT_ACTOR_CODE_ID, EAM_ACTOR_CODE_ID, EMBRYO_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID,
-    MINER_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID,
+    MockRuntime, ACCOUNT_ACTOR_CODE_ID, EAM_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID,
+    MULTISIG_ACTOR_CODE_ID, PLACEHOLDER_ACTOR_CODE_ID,
 };
 use fvm_shared::address::Address as FILAddress;
 
@@ -127,9 +127,9 @@ return
     let account_target = FILAddress::new_id(101);
     rt.set_address_actor_type(account_target, *ACCOUNT_ACTOR_CODE_ID);
 
-    // f0 102 is an embryo
-    let embryo_target = FILAddress::new_id(102);
-    rt.set_address_actor_type(embryo_target, *EMBRYO_ACTOR_CODE_ID);
+    // f0 102 is a placeholder
+    let placeholder_target = FILAddress::new_id(102);
+    rt.set_address_actor_type(placeholder_target, *PLACEHOLDER_ACTOR_CODE_ID);
 
     // f0 103 is a storage provider
     let miner_target = FILAddress::new_id(103);
@@ -154,7 +154,7 @@ return
     test_type(&mut rt, evm_target, NativeType::EVMContract);
     test_type(&mut rt, system_target, NativeType::System);
     test_type(&mut rt, account_target, NativeType::Account);
-    test_type(&mut rt, embryo_target, NativeType::Embryo);
+    test_type(&mut rt, placeholder_target, NativeType::Placeholder);
     test_type(&mut rt, miner_target, NativeType::StorageProvider);
     test_type(&mut rt, other_target, NativeType::OtherTypes);
     test_type(&mut rt, FILAddress::new_id(10101), NativeType::NonExistent);

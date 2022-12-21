@@ -115,7 +115,7 @@ pub enum NativeType {
     // user actors are flattened to "system"
     /// System includes any singletons not otherwise defined.
     System = 1,
-    Embryo = 2,
+    Placeholder = 2,
     Account = 3,
     StorageProvider = 4,
     EVMContract = 5,

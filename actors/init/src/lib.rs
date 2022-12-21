@@ -144,16 +144,16 @@ impl Actor {
                 .context("failed to map addresses to ID")
         })?;
 
-        // If the f4 address was already assigned, make sure we're deploying over an embryo and not
+        // If the f4 address was already assigned, make sure we're deploying over a placeholder and not
         // some other existing actor (and make sure the target actor wasn't deleted either).
         if existing {
             let code_cid = rt
                 .get_actor_code_cid(&id_address)
                 .context_code(ExitCode::USR_FORBIDDEN, "cannot redeploy a deleted actor")?;
-            let embryo_cid = rt.get_code_cid_for_type(Type::Embryo);
-            if code_cid != embryo_cid {
+            let placeholder_cid = rt.get_code_cid_for_type(Type::Placeholder);
+            if code_cid != placeholder_cid {
                 return Err(ActorError::forbidden(format!(
-                    "cannot replace an existing non-embryo actor with code: {code_cid}"
+                    "cannot replace an existing non-placeholder actor with code: {code_cid}"
                 )));
             }
         }

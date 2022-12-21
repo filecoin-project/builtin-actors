@@ -411,9 +411,9 @@ fn call_exec4() {
     assert_eq!(exec_err.exit_code(), ExitCode::USR_FORBIDDEN);
 }
 
-// Try turning an embryo into an f4 actor.
+// Try turning a placeholder into an f4 actor.
 #[test]
-fn call_exec4_embryo() {
+fn call_exec4_placeholder() {
     let mut rt = construct_runtime();
     construct_and_verify(&mut rt);
 
@@ -425,7 +425,7 @@ fn call_exec4_embryo() {
     let subaddr = b"foobar";
     let f4_addr = Address::new_delegated(EAM_ACTOR_ID, subaddr).unwrap();
 
-    // Register an embryo with the init actor.
+    // Register a placeholder with the init actor.
     let expected_id = {
         let mut state: State = rt.get_state();
         let (id, existing) = state.map_addresses_to_id(rt.store(), &f4_addr, None).unwrap();
@@ -436,7 +436,7 @@ fn call_exec4_embryo() {
 
     // Register it in the state-tree.
     let expected_id_addr = Address::new_id(expected_id);
-    rt.set_address_actor_type(expected_id_addr, *EMBRYO_ACTOR_CODE_ID);
+    rt.set_address_actor_type(expected_id_addr, *PLACEHOLDER_ACTOR_CODE_ID);
     rt.add_delegated_address(expected_id_addr, f4_addr);
 
     // Now try to create it.

@@ -225,12 +225,12 @@ fn test_empty_call_no_side_effects() {
     rt.verify();
 }
 
-// Make sure we do bare sends when calling accounts/embryo, and make sure it works.
+// Make sure we do bare sends when calling accounts/placeholder, and make sure it works.
 #[test]
 fn test_call_convert_to_send() {
     let contract = call_proxy_contract();
 
-    for code in [*ACCOUNT_ACTOR_CODE_ID, *EMBRYO_ACTOR_CODE_ID] {
+    for code in [*ACCOUNT_ACTOR_CODE_ID, *PLACEHOLDER_ACTOR_CODE_ID] {
         // construct the proxy
         let mut rt = util::construct_and_verify(contract.clone());
 

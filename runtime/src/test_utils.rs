@@ -63,7 +63,7 @@ lazy_static::lazy_static! {
     pub static ref REWARD_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/reward");
     pub static ref VERIFREG_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/verifiedregistry");
     pub static ref DATACAP_TOKEN_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/datacap");
-    pub static ref EMBRYO_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/embryo");
+    pub static ref PLACEHOLDER_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/placeholder");
     pub static ref EVM_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/evm");
     pub static ref EAM_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/eam");
     pub static ref ACTOR_TYPES: BTreeMap<Cid, Type> = {
@@ -80,7 +80,7 @@ lazy_static::lazy_static! {
         map.insert(*REWARD_ACTOR_CODE_ID, Type::Reward);
         map.insert(*VERIFREG_ACTOR_CODE_ID, Type::VerifiedRegistry);
         map.insert(*DATACAP_TOKEN_ACTOR_CODE_ID, Type::DataCap);
-        map.insert(*EMBRYO_ACTOR_CODE_ID, Type::Embryo);
+        map.insert(*PLACEHOLDER_ACTOR_CODE_ID, Type::Placeholder);
         map.insert(*EVM_ACTOR_CODE_ID, Type::EVM);
         map.insert(*EAM_ACTOR_CODE_ID, Type::EAM);
         map
@@ -98,7 +98,7 @@ lazy_static::lazy_static! {
         (Type::Reward, *REWARD_ACTOR_CODE_ID),
         (Type::VerifiedRegistry, *VERIFREG_ACTOR_CODE_ID),
         (Type::DataCap, *DATACAP_TOKEN_ACTOR_CODE_ID),
-        (Type::Embryo, *EMBRYO_ACTOR_CODE_ID),
+        (Type::Placeholder, *PLACEHOLDER_ACTOR_CODE_ID),
         (Type::EVM, *EVM_ACTOR_CODE_ID),
         (Type::EAM, *EAM_ACTOR_CODE_ID),
     ]
@@ -110,7 +110,7 @@ lazy_static::lazy_static! {
         map.insert(*PAYCH_ACTOR_CODE_ID, ());
         map.insert(*MULTISIG_ACTOR_CODE_ID, ());
         map.insert(*MINER_ACTOR_CODE_ID, ());
-        map.insert(*EMBRYO_ACTOR_CODE_ID, ());
+        map.insert(*PLACEHOLDER_ACTOR_CODE_ID, ());
         map.insert(*EVM_ACTOR_CODE_ID, ());
         map
     };
