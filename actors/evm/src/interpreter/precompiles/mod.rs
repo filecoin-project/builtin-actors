@@ -14,7 +14,7 @@ use fvm::{call_actor, get_actor_type, get_randomness, lookup_delegated_address, 
 
 // really I'd want to have context as a type parameter, but since the table we generate must have the same types (or dyn) its messy
 type PrecompileFn<RT> = unsafe fn(*mut System<RT>, &[u8], PrecompileContext) -> PrecompileResult;
-pub type PrecompileResult = Result<Vec<u8>, PrecompileError>; // TODO i dont like vec
+pub type PrecompileResult = Result<Vec<u8>, PrecompileError>;
 
 pub const NATIVE_PRECOMPILE_ADDRESS_PREFIX: u8 = 0xFE;
 
@@ -124,7 +124,7 @@ impl<RT: Runtime> Precompiles<RT> {
 pub enum PrecompileError {
     EcErr(CurveError),
     EcGroupErr(GroupError),
-    InvalidInput, // TODO merge with below?
+    InvalidInput,
     CallForbidden,
     IncorrectInputSize,
     OutOfGas,
@@ -165,7 +165,6 @@ impl NativeType {
         U256::from(self as u32).to_bytes().to_vec()
     }
 }
-
 
 #[cfg(test)]
 mod test {
