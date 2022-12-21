@@ -16,7 +16,7 @@ use {
     },
     fvm_ipld_encoding::{strict_bytes, tuple::*, RawBytes},
     fvm_shared::{
-        address::{Address, Payload, SECP_PUB_LEN},
+        address::{Address, Payload},
         crypto::hash::SupportedHashes,
         ActorID, MethodNum, METHOD_CONSTRUCTOR,
     },
@@ -90,12 +90,6 @@ pub struct Create2Params {
     pub initcode: Vec<u8>,
     #[serde(with = "strict_bytes")]
     pub salt: [u8; 32],
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct InitAccountParams {
-    #[serde(with = "strict_bytes")]
-    pub pubkey: [u8; SECP_PUB_LEN],
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, PartialEq, Eq)]
