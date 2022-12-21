@@ -12,18 +12,19 @@ use fil_actors_runtime::{
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(EthAccountActor);
 
-/// Ethereum Externally Owned Address actor methods.
+/// Ethereum Account actor methods.
 #[derive(FromPrimitive)]
 #[repr(u64)]
 pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
 }
 
-/// Ethereum Externally Owned Address actor.
+/// Ethereum Account actor.
 pub struct EthAccountActor;
 
 impl EthAccountActor {
-    /// Ethereum Externally Owned Address actor constructor.
+    /// Ethereum Account actor constructor.
+    /// NOTE: This method is NOT currently called from anywhere, instead the FVM just deploys EthAccounts.
     pub fn constructor(rt: &mut impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
