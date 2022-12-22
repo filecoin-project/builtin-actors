@@ -391,7 +391,7 @@ calldatasize
 push1 0x00
 
 # dst (callactor precompile)
-push1 0x0e
+push20 0xfe00000000000000000000000000000000000003
 
 # gas
 push4 0xffffffff
@@ -501,7 +501,7 @@ fn test_callactor_inner(exit_code: ExitCode) {
     impl CallActorReturn {
         pub fn read(src: &[u8]) -> Self {
             use fil_actor_evm::interpreter::precompiles::parameter::assert_zero_bytes;
-            assert!(src.len() >= 4 * 32, "expected to read at least 4 U256 values");
+            assert!(src.len() >= 4 * 32, "expected to read at least 4 U256 values, got {:?}", src);
 
             let bytes = &src[..32];
             let exit_code = {

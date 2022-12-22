@@ -89,7 +89,7 @@ push1 0x00
 push1 0x00
 
 # dst (get_actor_type precompile)
-push1 0x0c
+push20 0xfe00000000000000000000000000000000000004
 
 # gas
 push1 0x00
