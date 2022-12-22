@@ -164,7 +164,7 @@ macro_rules! def_stdlog {
     ($op:ident ($ntopics:literal, ($($topic:ident),*))) => {
         def_op!{ $op (m) => {
             let &rev![a, b $(,$topic)*] = m.state.stack.pop_many()?;
-            log::log(&mut m.state, &mut m.system, $ntopics, a, b, &[$($topic),*])?;
+            log::log_event(&mut m.state, &mut m.system, $ntopics, a, b, &[$($topic),*])?;
             m.pc += 1;
             Ok(())
         }}
