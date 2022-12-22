@@ -53,13 +53,12 @@ const fn gen_evm_precompiles<RT: Runtime>() -> [PrecompileFn<RT>; 9] {
 }
 
 const fn gen_native_precompiles<RT: Runtime>() -> [PrecompileFn<RT>; 5] {
-    // ? REMOVEME since we are already re-doing addressing, I'd like to put call_actor after lookup delegated
     precompiles! {
         resolve_address,            // 0xfe00..01 resolve_address
         lookup_delegated_address,   // 0xfe00..02 lookup_delegated_address
-        get_actor_type,             // 0xfe00..03 get actor type
-        get_randomness,             // 0xfe00..04 rand
-        call_actor,                 // 0xfe00..05 call_actor
+        call_actor,                 // 0xfe00..03 call_actor
+        get_actor_type,             // 0xfe00..04 get actor type
+        get_randomness,             // 0xfe00..05 rand
     }
 }
 
@@ -67,29 +66,23 @@ pub struct Precompiles<RT>(PhantomData<RT>);
 
 impl<RT: Runtime> Precompiles<RT> {
     const EVM_PRECOMPILES: [PrecompileFn<RT>; 9] = gen_evm_precompiles();
-    const MAX_EVM_PRECOMPILE: U256 = { U256::from_u64(Self::EVM_PRECOMPILES.len() as u64) };
-
     const NATIVE_PRECOMPILES: [PrecompileFn<RT>; 5] = gen_native_precompiles();
-    /// 0x<leading zeros>FE..00
-    const NATIVE_PRECOMPILE_START: U256 = {
-        let mut limbs = [0u64; 4];
 
-        let prefix_limb = {
-            let mut limb = [0u8; 8];
-            // 20th byte
-            // 0x<12 bytes of zeros>FE00..00
-            limb[3] = 0xFE;
-            u64::from_le_bytes(limb)
-        };
-        limbs[2] = prefix_limb;
-
-        U256(limbs)
-    };
-    const MAX_NATIVE_PRECOMPILE: U256 = {
-        // 0x<leading zeros>FE00..<len>
-        U256::from_u64(Self::NATIVE_PRECOMPILES.len() as u64)
-            .bits_or(&Self::NATIVE_PRECOMPILE_START)
-    };
+    fn lookup_precompile(addr: &[u8; 32]) -> Option<PrecompileFn<RT>> {
+        // unrwap will never panic, 32 - 12 = 20
+        let addr: [u8; 20] = addr[12..].try_into().unwrap();
+        let [prefix, middle @ .., index] = addr;
+        if middle == [0u8; 18] && index > 0 {
+            let index = index as usize - 1;
+            match prefix {
+                NATIVE_PRECOMPILE_ADDRESS_PREFIX => Some(Self::NATIVE_PRECOMPILES[index]),
+                0x00 => Some(Self::EVM_PRECOMPILES[index]),
+                _ => None,
+            }
+        } else {
+            None
+        }
+    }
 
     /// Precompile Context will be flattened to None if not calling the call_actor precompile.
     /// Panics if address is not a precompile.
@@ -100,23 +93,14 @@ impl<RT: Runtime> Precompiles<RT> {
         context: PrecompileContext,
     ) -> PrecompileResult {
         unsafe {
-            if precompile_addr.byte(19) == NATIVE_PRECOMPILE_ADDRESS_PREFIX {
-                Self::NATIVE_PRECOMPILES[precompile_addr.0[0] as usize - 1](system, input, context)
-            } else {
-                Self::EVM_PRECOMPILES[precompile_addr.0[0] as usize - 1](system, input, context)
-            }
+            Self::lookup_precompile(&precompile_addr.to_bytes()).unwrap()(system, input, context)
         }
-    }
-
-    #[inline]
-    fn is_native_precompile(addr: &U256) -> bool {
-        addr > &Self::NATIVE_PRECOMPILE_START && addr <= &Self::MAX_NATIVE_PRECOMPILE
     }
 
     /// Checks if word represents
     #[inline]
     pub fn is_precompile(addr: &U256) -> bool {
-        !addr.is_zero() && (addr <= &Self::MAX_EVM_PRECOMPILE || Self::is_native_precompile(addr))
+        !addr.is_zero() && Self::lookup_precompile(&addr.to_bytes()).is_some()
     }
 }
 
@@ -175,24 +159,15 @@ mod test {
     use super::Precompiles;
 
     #[test]
-    fn native_precompile_start() {
-        let start = Precompiles::<MockRuntime>::NATIVE_PRECOMPILE_START;
-        let arr = start.to_bytes();
-        assert_eq!(*arr[12..].first().unwrap(), 0xFE, "expected FE at 20th byte, got {:x}", start)
-    }
-
-    #[test]
     fn is_native_precompile() {
         let addr = EthAddress(hex_literal::hex!("fe00000000000000000000000000000000000001"));
         assert!(Precompiles::<MockRuntime>::is_precompile(&addr.as_evm_word()));
-        assert!(Precompiles::<MockRuntime>::is_native_precompile(&addr.as_evm_word()));
     }
 
     #[test]
     fn is_evm_precompile() {
         let addr = EthAddress(hex_literal::hex!("0000000000000000000000000000000000000001"));
         assert!(Precompiles::<MockRuntime>::is_precompile(&addr.as_evm_word()));
-        assert!(!Precompiles::<MockRuntime>::is_native_precompile(&addr.as_evm_word()));
     }
 
     #[test]

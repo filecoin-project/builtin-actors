@@ -72,16 +72,6 @@ impl U256 {
             self.0[0]
         }
     }
-
-    // Can't implement Bit<op> trait till const fn in traits are a thing.
-    pub const fn bits_or(&self, other: &U256) -> U256 {
-        U256([
-            self.0[0] | other.0[0],
-            self.0[1] | other.0[1],
-            self.0[2] | other.0[2],
-            self.0[3] | other.0[3],
-        ])
-    }
 }
 
 impl U512 {
