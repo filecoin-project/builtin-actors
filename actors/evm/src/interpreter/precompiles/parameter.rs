@@ -226,6 +226,4 @@ mod test {
         assert_zero_bytes::<31>(&bytes).unwrap();
         assert_zero_bytes::<32>(&bytes).expect_err("expected error from nonzero byte");
     }
-
-    // remaining slice
 }
