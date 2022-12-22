@@ -24,6 +24,9 @@ pub fn init_construct_and_verify<F: FnOnce(&mut MockRuntime)>(
 ) -> MockRuntime {
     let mut rt = MockRuntime::default();
 
+    // enable logging to std out
+    rt.init_logging();
+
     // construct EVM actor
     rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
     rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);

@@ -360,6 +360,11 @@ impl<BS> MockRuntime<BS> {
             actor_exit: Default::default(),
         }
     }
+
+    /// Enable logging to enviornment
+    pub fn init_logging(&self) {
+        pretty_env_logger::init();
+    }
 }
 
 #[derive(PartialEq, Eq, Clone, Debug)]
