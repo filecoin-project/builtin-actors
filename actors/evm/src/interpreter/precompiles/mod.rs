@@ -57,7 +57,7 @@ const fn gen_native_precompiles<RT: Runtime>() -> [PrecompileFn<RT>; 5] {
         resolve_address,            // 0xfe00..01 resolve_address
         lookup_delegated_address,   // 0xfe00..02 lookup_delegated_address
         call_actor,                 // 0xfe00..03 call_actor
-        get_actor_type,             // 0xfe00..04 get actor type
+        get_actor_type,             // 0xfe00..04 get_actor_type
         get_randomness,             // 0xfe00..05 rand
     }
 }
