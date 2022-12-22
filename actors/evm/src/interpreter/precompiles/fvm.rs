@@ -149,8 +149,8 @@ pub(super) fn resolve_address<RT: Runtime>(
         Ok(o) => o,
         Err(e) => {
             log::debug!("resolve_address: Address parsing failed {}", e);
-            return Ok(Vec::new())
-        },
+            return Ok(Vec::new());
+        }
     };
     let resolved = system.rt.resolve_address(&addr);
     log::debug!("resolve_address: {:?}", resolved);
