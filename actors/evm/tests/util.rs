@@ -1,4 +1,5 @@
 use cid::Cid;
+use evm::interpreter::U256;
 use evm::interpreter::{address::EthAddress, StatusCode};
 use fil_actor_evm as evm;
 use fil_actors_runtime::{
@@ -92,6 +93,11 @@ pub fn dispatch_num_word(method_num: u8) -> [u8; 32] {
     let mut word = [0u8; 32];
     word[3] = method_num;
     word
+}
+
+#[allow(dead_code)]
+pub fn id_to_vec(src: &Address) -> Vec<u8> {
+    U256::from(src.id().unwrap()).to_bytes().to_vec()
 }
 
 lazy_static! {
