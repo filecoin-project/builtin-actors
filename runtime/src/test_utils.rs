@@ -361,9 +361,9 @@ impl<BS> MockRuntime<BS> {
         }
     }
 
-    /// Enable logging to enviornment
-    pub fn init_logging(&self) {
-        pretty_env_logger::init();
+    /// Enable logging to enviornment. Returns error if already init.
+    pub fn init_logging(&self) -> Result<(), log::SetLoggerError> {
+        pretty_env_logger::try_init()
     }
 }
 

@@ -3,6 +3,8 @@ use std::marker::PhantomData;
 use fil_actors_runtime::runtime::Runtime;
 use substrate_bn::{CurveError, GroupError};
 
+use crate::interpreter::address::EthAddress;
+
 use super::{instructions::call::CallKind, StatusCode, System, U256};
 
 mod evm;
@@ -116,6 +118,7 @@ pub enum PrecompileError {
 
 impl From<PrecompileError> for StatusCode {
     fn from(src: PrecompileError) -> Self {
+        log::warn!("Precompile errored: {:?}", src);
         match src {
             PrecompileError::CallActorError(e) => e,
             _ => StatusCode::PrecompileFailure,
@@ -130,6 +133,7 @@ pub struct PrecompileContext {
 }
 
 /// Native Type of a given contract
+#[derive(Debug)]
 #[repr(u32)]
 pub enum NativeType {
     NonExistent = 0,
