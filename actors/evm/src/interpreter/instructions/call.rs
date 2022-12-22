@@ -236,15 +236,15 @@ pub fn call_generic<RT: Runtime>(
                         Ok(RawBytes::default())
                     } else {
                         let (method, gas_limit) = if !actor_exists
-                            || matches!(target_actor_type, Some(Type::Embryo | Type::Account))
+                            || matches!(target_actor_type, Some(Type::Embryo | Type::Account | Type::EthAccount))
                             // See https://github.com/filecoin-project/ref-fvm/issues/980 for this
                             // hocus pocus
                             || (input_data.is_empty() && ((gas == 0 && value > 0) || (gas == 2300 && value == 0)))
                         {
                             // We switch to a bare send when:
                             //
-                            // 1. The target is an embryo/account or doesn't exist. Otherwise,
-                            // sendign funds to an account/embryo would fail when we try to call
+                            // 1. The target is a embryo/account or doesn't exist. Otherwise,
+                            // sending funds to an account/embryo would fail when we try to call
                             // InvokeContract.
                             // 2. The gas wouldn't let code execute anyways. This lets us support
                             // solidity's "transfer" method.

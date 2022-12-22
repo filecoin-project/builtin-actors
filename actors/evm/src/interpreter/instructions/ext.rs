@@ -122,7 +122,7 @@ pub fn get_contract_type<RT: Runtime>(rt: &RT, addr: U256) -> ContractType {
         .and_then(|id| rt.get_actor_code_cid(&id).map(|cid| (id, cid))) // resolve code cid
         .map(|(id, cid)| match rt.resolve_builtin_actor_type(&cid) {
             // TODO part of current account abstraction hack where embryos are accounts
-            Some(Type::Account | Type::Embryo) => ContractType::Account,
+            Some(Type::Account | Type::Embryo | Type::EthAccount) => ContractType::Account,
             Some(Type::EVM) => ContractType::EVM(Address::new_id(id)),
             // remaining builtin actors are native
             _ => ContractType::Native(cid),
