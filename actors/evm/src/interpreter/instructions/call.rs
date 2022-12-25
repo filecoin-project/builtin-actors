@@ -278,7 +278,8 @@ pub fn call_generic<RT: Runtime>(
                         let code = get_evm_bytecode_cid(system.rt, &dst_addr)?;
 
                         // and then invoke self with delegate; readonly context is sticky
-                        let params = DelegateCallParams { code, input: input_data.into() };
+                        let params = DelegateCallParams { code, input: input_data.into(), 
+                            caller: system.rt.message().caller().clone() };
                         system.send(
                             &system.rt.message().receiver(),
                             Method::InvokeContractDelegate as u64,
