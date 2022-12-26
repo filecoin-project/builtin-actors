@@ -1,4 +1,5 @@
 use std::iter;
+use tracing::trace;
 
 use fil_actors_runtime::{actor_error, runtime::builtins::Type, AsActorError, EAM_ACTOR_ID};
 use fvm_ipld_encoding::{strict_bytes, BytesDe, BytesSer, DAG_CBOR};
@@ -65,6 +66,7 @@ impl EvmContractActor {
         RT: Runtime,
         RT::Blockstore: Clone,
     {
+        trace!("Entering::constructor=>");
         // TODO ideally we would be checking that we are constructed by the EAM actor,
         //   but instead we check for init and then assert that we have a delegated address.
         //   https://github.com/filecoin-project/ref-fvm/issues/746
@@ -141,6 +143,7 @@ impl EvmContractActor {
         RT: Runtime,
         RT::Blockstore: Clone,
     {
+        trace!("Entering::invoke_contract=>");
         if with_code.is_some() {
             rt.validate_immediate_caller_is(&[rt.message().receiver()])?;
         } else {

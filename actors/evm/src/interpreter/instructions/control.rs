@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use tracing::warn;
 
 use crate::interpreter::{memory::Memory, output::Outcome, Output};
 
@@ -20,7 +21,9 @@ pub fn invalid(
     _state: &mut ExecutionState,
     _system: &System<impl Runtime>,
 ) -> Result<(), StatusCode> {
-    Err(StatusCode::InvalidInstruction)
+    warn!("InvalidInstruction");
+    Ok(())
+    // Err(StatusCode::InvalidInstruction)
 }
 
 #[inline]

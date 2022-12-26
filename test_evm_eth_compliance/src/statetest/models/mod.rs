@@ -16,7 +16,7 @@ pub struct TestSuit(pub BTreeMap<String, TestUnit>);
 #[derive(Debug, PartialEq, Eq, Deserialize)]
 pub struct TestUnit {
     pub env: Env,
-    pub pre: HashMap<B160, AccountInfo>,
+    pub pre: BTreeMap<B160, AccountInfo>,
     pub post: BTreeMap<SpecName, Vec<Test>>,
     pub transaction: TransactionParts,
 }
@@ -80,6 +80,8 @@ pub struct TransactionParts {
     pub gas_price: Option<U256>,
     pub nonce: U256,
     pub secret_key: Option<B256>,
+    #[serde(deserialize_with = "deserialize_maybe_empty")]
+    pub sender: Option<B160>,
     #[serde(deserialize_with = "deserialize_maybe_empty")]
     pub to: Option<B160>,
     pub value: Vec<U256>,

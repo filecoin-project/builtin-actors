@@ -53,13 +53,16 @@ pub struct Machine<'r, 'a, RT: Runtime + 'a> {
 macro_rules! def_opcodes {
     ($($code:literal: $op:ident,)*) => {
         pub const fn jumptable<'r, 'a, RT: Runtime>() -> [Instruction<'r, 'a, RT>; 256] {
+			use tracing::{trace, warn};
             def_ins_raw! {
-                UNDEFINED(_m) {
-                    Err(StatusCode::UndefinedInstruction)
+                UNDEFINED(m) {
+					warn!("UNDEFINED PC:[{:#?}], [{:#0x}]", m.pc, &m.bytecode[m.pc]);
+					instructions::INVALID(m)
                 }
             }
             $(def_ins_raw! {
                 $op (m) {
+					trace!("Entering=>PC:[{:#0x}], [{:#0x}]", m.pc, $code);
                     instructions::$op(m)
                 }
             })*

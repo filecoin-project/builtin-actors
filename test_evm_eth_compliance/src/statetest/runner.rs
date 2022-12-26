@@ -156,7 +156,7 @@ fn execute_test_suit(path: &Path, elapsed: &Arc<Mutex<Duration>>) -> Result<(), 
 
     let timer = Instant::now();
 
-    for (name, unit) in suit.0.into_iter() {
+    for (name, unit) in suit.0.iter() {
         // info!("{:#?}:{:#?}", name, unit);
 
         // TODO :: Process env block
@@ -168,6 +168,33 @@ fn execute_test_suit(path: &Path, elapsed: &Arc<Mutex<Duration>>) -> Result<(), 
             // let eth_addr = EthAddress::try_from(U256::from(address.as_slice())).unwrap();
 
             if skip_pre_test(name.as_ref(), address) {
+                continue;
+            }
+
+            let (do_sender_deployment, do_post_transaction) = if unit.transaction.to.is_some()
+                || unit.transaction.sender.is_some()
+            {
+                let do_post_transaction = if let Some(to_address) = unit.transaction.to {
+                    to_address == *address
+                } else {
+                    false
+                };
+
+                let do_sender_deployment = if let Some(sender_address) = unit.transaction.sender {
+                    sender_address == *address
+                } else {
+                    false
+                };
+
+                (do_sender_deployment, do_post_transaction)
+            } else {
+                (false, false)
+            };
+
+            warn!("Processing status sender:{} to:{}", do_sender_deployment, do_post_transaction);
+
+            if !do_sender_deployment && !do_post_transaction {
+                warn!("Ignoring test! not valid transaction sender or to_address");
                 continue;
             }
 
@@ -200,6 +227,10 @@ fn execute_test_suit(path: &Path, elapsed: &Arc<Mutex<Duration>>) -> Result<(), 
             let create_return: fil_actor_eam::Create2Return =
                 create_result.ret.deserialize().expect("failed to decode results");
 
+            if !do_post_transaction {
+                continue;
+            }
+
             // Process the "transaction" block
             for (spec_name, tests) in &unit.post {
                 for (id, test) in tests.iter().enumerate() {
@@ -218,11 +249,11 @@ fn execute_test_suit(path: &Path, elapsed: &Arc<Mutex<Duration>>) -> Result<(), 
                     let tx_data = unit.transaction.data.get(test.indexes.data).unwrap().clone();
                     let tx_value = *unit.transaction.value.get(test.indexes.value).unwrap();
 
-                    let tx_bytes = if let Some(txbytes) = test.txbytes.clone() {
-                        txbytes.to_vec()
-                    } else {
-                        vec![]
-                    };
+                    // let tx_bytes = if let Some(txbytes) = test.txbytes.clone() {
+                    //     txbytes.to_vec()
+                    // } else {
+                    //     vec![]
+                    // };
 
                     let call_result = test_vm
                         .apply_message(
@@ -230,7 +261,7 @@ fn execute_test_suit(path: &Path, elapsed: &Arc<Mutex<Duration>>) -> Result<(), 
                             create_return.robust_address,
                             TokenAmount::zero(),
                             fil_actor_evm::Method::InvokeContract as u64,
-                            ContractParams(tx_bytes),
+                            ContractParams(tx_data.to_vec()),
                         )
                         .unwrap();
 

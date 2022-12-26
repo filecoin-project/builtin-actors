@@ -1599,6 +1599,8 @@ dependencies = [
  "strum",
  "strum_macros",
  "substrate-bn",
+ "tracing",
+ "tracing-subscriber",
  "uint",
 ]
 

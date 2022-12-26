@@ -20,6 +20,9 @@ pub fn init_construct_and_verify<F: FnOnce(&mut MockRuntime)>(
     initcode: Vec<u8>,
     initrt: F,
 ) -> MockRuntime {
+    // install global collector configured based on RUST_LOG env var.
+    tracing_subscriber::fmt::init();
+
     let mut rt = MockRuntime::default();
 
     // construct EVM actor

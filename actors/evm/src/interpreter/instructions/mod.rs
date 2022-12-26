@@ -37,7 +37,7 @@ macro_rules! def_op {
         #[allow(non_snake_case)]
         #[inline(always)]
         pub fn $op<'r, 'a, RT: Runtime + 'a>($m: &mut Machine<'r, 'a, RT> ) -> Result<(), StatusCode> {
-            $($body)*
+			$($body)*
         }
     }
 }

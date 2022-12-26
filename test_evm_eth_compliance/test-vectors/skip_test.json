@@ -1,25 +1,6 @@
 {
     "state": [
         {
-            "issueId": "ID-0001 | EIPTests/stEIP3855/push0.json",
-            "failing": "EVM execution error: UndefinedInstruction",
-            "preTests": {
-                "push0": {
-                    "preOwners": [
-                        "0x0000000000000000000000000000000000000100",
-                        "0x0000000000000000000000000000000000000200",
-                        "0x0000000000000000000000000000000000000300",
-                        "0x0000000000000000000000000000000000000400",
-                        "0x0000000000000000000000000000000000000500",
-                        "0x0000000000000000000000000000000000000600",
-                        "0x0000000000000000000000000000000000000700",
-                        "0xa94f5374fce5edbc8e2a8697c15331677e6ebf0b",
-                        "0xb94f5374fce5edbc8e2a8697c15331677e6ebf0b"
-                    ]
-                }
-            }
-        },
-        {
             "issueId": "ID-0002 | EIPTests/stEIP3855/push0Gas.json",
             "failing": "EVM execution error: UndefinedInstruction",
             "preTests": {
