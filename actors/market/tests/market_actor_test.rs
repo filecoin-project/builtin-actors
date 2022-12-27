@@ -6,8 +6,8 @@ use fil_actor_market::policy::detail::DEAL_MAX_LABEL_SIZE;
 use fil_actor_market::{
     deal_id_key, ext, ActivateDealsParams, Actor as MarketActor, ClientDealProposal, DealArray,
     DealMetaArray, Label, MarketNotifyDealParams, Method, PublishStorageDealsParams,
-    PublishStorageDealsReturn, State, WithdrawBalanceParams, MARKET_NOTIFY_DEAL_METHOD,
-    NO_ALLOCATION_ID, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
+    PublishStorageDealsReturn, State, WithdrawBalanceParams, EX_DEAL_EXPIRED,
+    MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
 };
 use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
@@ -1237,7 +1237,7 @@ fn fail_when_deal_is_activated_but_proposal_is_not_found() {
     delete_deal_proposal(&mut rt, deal_id);
 
     rt.set_epoch(process_epoch(start_epoch, deal_id));
-    expect_abort(ExitCode::USR_NOT_FOUND, cron_tick_raw(&mut rt));
+    expect_abort(EX_DEAL_EXPIRED, cron_tick_raw(&mut rt));
 
     check_state_with_expected(
         &rt,
