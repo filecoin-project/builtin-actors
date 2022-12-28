@@ -3,4 +3,4 @@
 
 # Global owners
 # Ensure maintainers team is a requested reviewer for non-draft PRs
-*                       @filecoin-project/actor-maintainers
+*                       @filecoin-project/actors-maintainers
