@@ -31,8 +31,9 @@ use fil_actors_runtime::{MessageAccumulator, DATACAP_TOKEN_ACTOR_ADDR};
 use fil_builtin_actors_state::check::check_state_invariants;
 use fil_builtin_actors_state::check::Tree;
 use fvm_ipld_blockstore::MemoryBlockstore;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
+use fvm_ipld_encoding::{CborStore, RawBytes};
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
 use fvm_shared::address::Payload;
 use fvm_shared::address::{Address, Protocol};
@@ -53,7 +54,8 @@ use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use regex::Regex;
-use serde::ser;
+use serde::de::DeserializeOwned;
+use serde::{ser, Serialize};
 use std::cell::{RefCell, RefMut};
 use std::collections::HashMap;
 use std::error::Error;
@@ -185,7 +187,7 @@ impl<'bs> VM<'bs> {
             Address::new_bls(VERIFREG_ROOT_KEY).unwrap(),
             TokenAmount::zero(),
             METHOD_SEND,
-            RawBytes::default(),
+            None::<RawBytes>,
         )
         .unwrap();
         let verifreg_root_signer =
@@ -208,10 +210,10 @@ impl<'bs> VM<'bs> {
                 INIT_ACTOR_ADDR,
                 TokenAmount::zero(),
                 fil_actor_init::Method::Exec as u64,
-                fil_actor_init::ExecParams {
+                Some(fil_actor_init::ExecParams {
                     code_cid: *MULTISIG_ACTOR_CODE_ID,
                     constructor_params: msig_ctor_params,
-                },
+                }),
             )
             .unwrap()
             .ret
@@ -247,7 +249,7 @@ impl<'bs> VM<'bs> {
             Address::new_bls(FAUCET_ROOT_KEY).unwrap(),
             faucet_total,
             METHOD_SEND,
-            RawBytes::default(),
+            None::<RawBytes>,
         )
         .unwrap();
 
@@ -369,22 +371,22 @@ impl<'bs> VM<'bs> {
         st.resolve_address::<MemoryBlockstore>(self.store, addr).unwrap()
     }
 
-    pub fn get_state<C: Cbor>(&self, addr: Address) -> Option<C> {
+    pub fn get_state<T: DeserializeOwned>(&self, addr: Address) -> Option<T> {
         let a_opt = self.get_actor(addr);
         if a_opt == None {
             return None;
         };
         let a = a_opt.unwrap();
-        self.store.get_cbor::<C>(&a.head).unwrap()
+        self.store.get_cbor::<T>(&a.head).unwrap()
     }
 
-    pub fn mutate_state<C, F>(&self, addr: Address, f: F)
+    pub fn mutate_state<S, F>(&self, addr: Address, f: F)
     where
-        C: Cbor,
-        F: FnOnce(&mut C),
+        S: Serialize + DeserializeOwned,
+        F: FnOnce(&mut S),
     {
         let mut a = self.get_actor(addr).unwrap();
-        let mut st = self.store.get_cbor::<C>(&a.head).unwrap().unwrap();
+        let mut st = self.store.get_cbor::<S>(&a.head).unwrap().unwrap();
         f(&mut st);
         a.head = self.store.put_cbor(&st, Code::Blake2b256).unwrap();
         self.set_actor(addr, a);
@@ -394,13 +396,13 @@ impl<'bs> VM<'bs> {
         self.curr_epoch
     }
 
-    pub fn apply_message<C: Cbor>(
+    pub fn apply_message<S: serde::Serialize>(
         &self,
         from: Address,
         to: Address,
         value: TokenAmount,
         method: MethodNum,
-        params: C,
+        params: Option<S>,
     ) -> Result<MessageResult, TestVMError> {
         let from_id = self.normalize_address(&from).unwrap();
         let mut a = self.get_actor(from_id).unwrap();
@@ -423,7 +425,7 @@ impl<'bs> VM<'bs> {
             to,
             value,
             method,
-            params: serialize(&params, "params for apply message").unwrap(),
+            params: params.map(|p| IpldBlock::serialize_cbor(&p).unwrap().unwrap()),
         };
         let mut new_ctx = InvocationCtx {
             v: self,
@@ -528,7 +530,7 @@ pub struct InternalMessage {
     to: Address,
     value: TokenAmount,
     method: MethodNum,
-    params: RawBytes,
+    params: Option<IpldBlock>,
 }
 
 impl InternalMessage {
@@ -595,7 +597,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             to: target_id_addr,
             value: TokenAmount::zero(),
             method: METHOD_CONSTRUCTOR,
-            params: serialize::<Address>(target, "address").unwrap(),
+            params: IpldBlock::serialize_cbor(target).unwrap(),
         };
         {
             let mut new_ctx = InvocationCtx {
@@ -674,19 +676,19 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         let params = self.msg.params.clone();
         let mut res = match ACTOR_TYPES.get(&to_actor.code).expect("Target actor is not a builtin")
         {
-            Type::Account => AccountActor::invoke_method(self, self.msg.method, &params),
-            Type::Cron => CronActor::invoke_method(self, self.msg.method, &params),
-            Type::Init => InitActor::invoke_method(self, self.msg.method, &params),
-            Type::Market => MarketActor::invoke_method(self, self.msg.method, &params),
-            Type::Miner => MinerActor::invoke_method(self, self.msg.method, &params),
-            Type::Multisig => MultisigActor::invoke_method(self, self.msg.method, &params),
-            Type::System => SystemActor::invoke_method(self, self.msg.method, &params),
-            Type::Reward => RewardActor::invoke_method(self, self.msg.method, &params),
-            Type::Power => PowerActor::invoke_method(self, self.msg.method, &params),
-            Type::PaymentChannel => PaychActor::invoke_method(self, self.msg.method, &params),
-            Type::VerifiedRegistry => VerifregActor::invoke_method(self, self.msg.method, &params),
+            Type::Account => AccountActor::invoke_method(self, self.msg.method, params),
+            Type::Cron => CronActor::invoke_method(self, self.msg.method, params),
+            Type::Init => InitActor::invoke_method(self, self.msg.method, params),
+            Type::Market => MarketActor::invoke_method(self, self.msg.method, params),
+            Type::Miner => MinerActor::invoke_method(self, self.msg.method, params),
+            Type::Multisig => MultisigActor::invoke_method(self, self.msg.method, params),
+            Type::System => SystemActor::invoke_method(self, self.msg.method, params),
+            Type::Reward => RewardActor::invoke_method(self, self.msg.method, params),
+            Type::Power => PowerActor::invoke_method(self, self.msg.method, params),
+            Type::PaymentChannel => PaychActor::invoke_method(self, self.msg.method, params),
+            Type::VerifiedRegistry => VerifregActor::invoke_method(self, self.msg.method, params),
             // Type::EVM => panic!("no EVM"),
-            Type::DataCap => DataCapActor::invoke_method(self, self.msg.method, &params),
+            Type::DataCap => DataCapActor::invoke_method(self, self.msg.method, params),
         };
         if res.is_ok() && !self.caller_validated {
             res = Err(actor_error!(assertion_failed, "failed to validate caller"));
@@ -820,7 +822,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         &self,
         to: &Address,
         method: MethodNum,
-        params: RawBytes,
+        params: Option<IpldBlock>,
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError> {
         if !self.allow_side_effects {
@@ -868,7 +870,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         Ok(TEST_VM_RAND_ARRAY)
     }
 
-    fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
+    fn create<T: Serialize>(&mut self, obj: &T) -> Result<(), ActorError> {
         let maybe_act = self.v.get_actor(self.to());
         match maybe_act {
             None => Err(ActorError::unchecked(
@@ -890,16 +892,16 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         }
     }
 
-    fn state<C: Cbor>(&self) -> Result<C, ActorError> {
-        Ok(self.v.get_state::<C>(self.to()).unwrap())
+    fn state<T: DeserializeOwned>(&self) -> Result<T, ActorError> {
+        Ok(self.v.get_state::<T>(self.to()).unwrap())
     }
 
-    fn transaction<C, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
+    fn transaction<S, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
     where
-        C: Cbor,
-        F: FnOnce(&mut C, &mut Self) -> Result<RT, ActorError>,
+        S: Serialize + DeserializeOwned,
+        F: FnOnce(&mut S, &mut Self) -> Result<RT, ActorError>,
     {
-        let mut st = self.state::<C>().unwrap();
+        let mut st = self.state::<S>().unwrap();
         self.allow_side_effects = false;
         let result = f(&mut st, self);
         self.allow_side_effects = true;
@@ -1083,7 +1085,7 @@ pub struct ExpectInvocation {
     pub code: Option<ExitCode>,
     pub from: Option<Address>,
     pub value: Option<TokenAmount>,
-    pub params: Option<RawBytes>,
+    pub params: Option<Option<IpldBlock>>,
     pub ret: Option<RawBytes>,
     pub subinvocs: Option<Vec<ExpectInvocation>>,
 }

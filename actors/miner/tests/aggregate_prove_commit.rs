@@ -14,7 +14,7 @@ use fil_actors_runtime::test_utils::make_piece_cid;
 use num_traits::Zero;
 use util::*;
 
-// an expriration ~10 days greater than effective min expiration taking into account 30 days max
+// an expiration ~10 days greater than effective min expiration taking into account 30 days max
 // between pre and prove commit
 const DEFAULT_SECTOR_EXPIRATION: ChainEpoch = 220;
 

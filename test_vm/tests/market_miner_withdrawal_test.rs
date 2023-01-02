@@ -132,7 +132,7 @@ mod miner_tests {
             m_addr,
             TokenAmount::zero(),
             MinerMethod::WithdrawBalance as u64,
-            params,
+            Some(params),
             ExitCode::USR_FORBIDDEN,
         );
     }
@@ -165,7 +165,7 @@ fn assert_add_collateral_and_withdraw(
     if collateral.is_positive() {
         match a_type {
             x if x == *MINER_ACTOR_CODE_ID => {
-                apply_ok(v, caller, escrow, collateral.clone(), METHOD_SEND, RawBytes::default())
+                apply_ok(v, caller, escrow, collateral.clone(), METHOD_SEND, None::<RawBytes>)
             }
             x if x == *MARKET_ACTOR_CODE_ID => apply_ok(
                 v,
@@ -173,7 +173,7 @@ fn assert_add_collateral_and_withdraw(
                 escrow,
                 collateral.clone(),
                 MarketMethod::AddBalance as u64,
-                caller,
+                Some(caller),
             ),
             _ => panic!("unreachable"),
         };
@@ -192,7 +192,7 @@ fn assert_add_collateral_and_withdraw(
                 escrow,
                 TokenAmount::zero(),
                 MinerMethod::WithdrawBalance as u64,
-                params,
+                Some(params),
             )
             .deserialize()
             .unwrap()
@@ -206,7 +206,7 @@ fn assert_add_collateral_and_withdraw(
                 escrow,
                 TokenAmount::zero(),
                 MarketMethod::WithdrawBalance as u64,
-                params,
+                Some(params),
             )
             .deserialize()
             .unwrap()

@@ -44,7 +44,7 @@ fn test_proposal_hash() {
         msig_addr,
         fil_delta.clone(),
         MsigMethod::Propose as u64,
-        propose_send_sys_params,
+        Some(propose_send_sys_params),
     );
 
     let wrong_tx = Transaction {
@@ -62,7 +62,7 @@ fn test_proposal_hash() {
         msig_addr,
         TokenAmount::zero(),
         MsigMethod::Approve as u64,
-        wrong_approval_params,
+        Some(wrong_approval_params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 
@@ -82,7 +82,7 @@ fn test_proposal_hash() {
         msig_addr,
         TokenAmount::zero(),
         MsigMethod::Approve as u64,
-        correct_approval_params,
+        Some(correct_approval_params),
     );
     let expect = ExpectInvocation {
         to: msig_addr,
@@ -124,7 +124,7 @@ fn test_delete_self() {
             msig_addr,
             TokenAmount::zero(),
             MsigMethod::Propose as u64,
-            propose_remove_params,
+            Some(propose_remove_params),
         );
 
         // approval goes through
@@ -139,7 +139,7 @@ fn test_delete_self() {
                 msig_addr,
                 TokenAmount::zero(),
                 MsigMethod::Approve as u64,
-                approve_remove_signer.clone(),
+                Some(approve_remove_signer.clone()),
             );
         }
 
@@ -151,7 +151,7 @@ fn test_delete_self() {
                 msig_addr,
                 TokenAmount::zero(),
                 MsigMethod::Approve as u64,
-                approve_remove_signer,
+                Some(approve_remove_signer),
                 ExitCode::USR_NOT_FOUND,
             );
         }
@@ -193,7 +193,7 @@ fn swap_self_1_of_2() {
         msig_addr,
         TokenAmount::zero(),
         MsigMethod::Propose as u64,
-        propose_swap_signer_params,
+        Some(propose_swap_signer_params),
     );
     let st = v.get_state::<MsigState>(msig_addr).unwrap();
     assert_eq!(vec![bob, chuck], st.signers);
@@ -225,7 +225,7 @@ fn swap_self_2_of_3() {
         msig_addr,
         TokenAmount::zero(),
         MsigMethod::Propose as u64,
-        propose_swap_signer_params,
+        Some(propose_swap_signer_params),
     );
 
     // approval goes through
@@ -236,7 +236,7 @@ fn swap_self_2_of_3() {
         msig_addr,
         TokenAmount::zero(),
         MsigMethod::Approve as u64,
-        approve_swap_signer_params,
+        Some(approve_swap_signer_params),
     );
     let st = v.get_state::<MsigState>(msig_addr).unwrap();
     assert_eq!(vec![bob, chuck, dinesh], st.signers);
@@ -257,7 +257,7 @@ fn swap_self_2_of_3() {
         msig_addr,
         TokenAmount::zero(),
         MsigMethod::Propose as u64,
-        propose_swap_signer_params,
+        Some(propose_swap_signer_params),
     );
     let approve_swap_signer_params = TxnIDParams { id: TxnID(1), proposal_hash: vec![] };
     apply_ok(
@@ -266,7 +266,7 @@ fn swap_self_2_of_3() {
         msig_addr,
         TokenAmount::zero(),
         MsigMethod::Approve as u64,
-        approve_swap_signer_params,
+        Some(approve_swap_signer_params),
     );
     let st = v.get_state::<MsigState>(msig_addr).unwrap();
     assert_eq!(vec![bob, chuck, alice], st.signers);
@@ -291,10 +291,10 @@ fn create_msig(v: &VM, signers: Vec<Address>, threshold: u64) -> Address {
         INIT_ACTOR_ADDR,
         TokenAmount::zero(),
         fil_actor_init::Method::Exec as u64,
-        fil_actor_init::ExecParams {
+        Some(fil_actor_init::ExecParams {
             code_cid: *MULTISIG_ACTOR_CODE_ID,
             constructor_params: msig_ctor_params,
-        },
+        }),
     )
     .deserialize()
     .unwrap();

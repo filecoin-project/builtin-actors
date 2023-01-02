@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, cbor, restrict_internal_api, ActorError, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime::{
+    actor_dispatch, actor_error, restrict_internal_api, ActorError, SYSTEM_ACTOR_ADDR,
+};
 
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::RawBytes;
@@ -40,6 +42,7 @@ pub struct ConstructorParams {
 
 /// Cron actor
 pub struct Actor;
+
 impl Actor {
     /// Constructor for Cron actor
     fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
@@ -56,12 +59,7 @@ impl Actor {
         let st: State = rt.state()?;
         for entry in st.entries {
             // Intentionally ignore any error when calling cron methods
-            let res = rt.send(
-                &entry.receiver,
-                entry.method_num,
-                RawBytes::default(),
-                TokenAmount::zero(),
-            );
+            let res = rt.send(&entry.receiver, entry.method_num, None, TokenAmount::zero());
             if let Err(e) = res {
                 log::error!(
                     "cron failed to send entry to {}, send error code {}",
@@ -75,25 +73,9 @@ impl Actor {
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        params: &RawBytes,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-    {
-        restrict_internal_api(rt, method)?;
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::EpochTick) => {
-                Self::epoch_tick(rt)?;
-                Ok(RawBytes::default())
-            }
-            None => Err(actor_error!(unhandled_message; "Invalid method")),
-        }
+    type Methods = Method;
+    actor_dispatch! {
+        Constructor => constructor,
+        EpochTick => epoch_tick,
     }
 }

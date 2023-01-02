@@ -10,7 +10,7 @@ use fil_actors_runtime::FIRST_ACTOR_SPECIFIC_EXIT_CODE;
 use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::{Cbor, RawBytes};
+use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
@@ -32,10 +32,11 @@ use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, restrict_internal_api, ActorContext, ActorDowncast, ActorError,
+    actor_dispatch, actor_error, restrict_internal_api, ActorContext, ActorDowncast, ActorError,
     AsActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 
 use crate::ext::verifreg::{AllocationID, AllocationRequest};
 
@@ -150,7 +151,7 @@ impl Actor {
             Ok(ex)
         })?;
 
-        rt.send(&recipient, METHOD_SEND, RawBytes::default(), amount_extracted.clone())?;
+        rt.send(&recipient, METHOD_SEND, None, amount_extracted.clone())?;
 
         Ok(WithdrawBalanceReturn { amount_withdrawn: amount_extracted })
     }
@@ -339,7 +340,7 @@ impl Actor {
                     .send(
                         &DATACAP_TOKEN_ACTOR_ADDR,
                         ext::datacap::TRANSFER_FROM_METHOD as u64,
-                        serialize(&params, "transfer parameters")?,
+                        IpldBlock::serialize_cbor(&params)?,
                         TokenAmount::zero(),
                     )
                     .and_then(|ret| datacap_transfer_response(&ret));
@@ -444,7 +445,7 @@ impl Actor {
             _ = rt.send(
                 &valid_deal.proposal.client,
                 MARKET_NOTIFY_DEAL_METHOD,
-                RawBytes::serialize(MarketNotifyDealParams {
+                IpldBlock::serialize_cbor(&MarketNotifyDealParams {
                     proposal: valid_deal.serialized_proposal.to_vec(),
                     deal_id: new_deal_ids[i],
                 })?,
@@ -844,7 +845,7 @@ impl Actor {
         })?;
 
         if !amount_slashed.is_zero() {
-            rt.send(&BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, RawBytes::default(), amount_slashed)?;
+            rt.send(&BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, None, amount_slashed)?;
         }
         Ok(())
     }
@@ -1068,6 +1069,7 @@ pub fn validate_and_return_deal_space<BS: Blockstore>(
 }
 
 fn alloc_request_for_deal(
+    // Deal proposal must have ID addresses
     deal: &ClientDealProposal,
     policy: &Policy,
     curr_epoch: ChainEpoch,
@@ -1080,7 +1082,7 @@ fn alloc_request_for_deal(
     let alloc_expiration =
         min(deal.proposal.start_epoch, curr_epoch + policy.maximum_verified_allocation_expiration);
     ext::verifreg::AllocationRequest {
-        provider: deal.proposal.provider,
+        provider: deal.proposal.provider.id().unwrap(),
         data: deal.proposal.piece_cid,
         size: deal.proposal.piece_size,
         term_min: alloc_term_min,
@@ -1253,7 +1255,7 @@ fn deal_proposal_is_internally_valid(
     rt.send(
         &proposal.proposal.client,
         ext::account::AUTHENTICATE_MESSAGE_METHOD,
-        RawBytes::serialize(ext::account::AuthenticateMessageParams {
+        IpldBlock::serialize_cbor(&ext::account::AuthenticateMessageParams {
             signature: signature_bytes,
             message: proposal_bytes.to_vec(),
         })?,
@@ -1267,8 +1269,8 @@ pub const DAG_CBOR: u64 = 0x71; // TODO is there a better place to get this?
 
 /// Compute a deal CID using the runtime.
 pub(crate) fn rt_deal_cid(rt: &impl Runtime, proposal: &DealProposal) -> Result<Cid, ActorError> {
-    let data = &proposal.marshal_cbor()?;
-    rt_serialized_deal_cid(rt, data)
+    let data = serialize(proposal, "deal proposal")?;
+    rt_serialized_deal_cid(rt, data.bytes())
 }
 
 /// Compute a deal CID from serialized proposal using the runtime
@@ -1283,8 +1285,8 @@ pub(crate) fn rt_serialized_deal_cid(rt: &impl Runtime, data: &[u8]) -> Result<C
 /// Compute a deal CID directly.
 pub(crate) fn deal_cid(proposal: &DealProposal) -> Result<Cid, ActorError> {
     const DIGEST_SIZE: u32 = 32;
-    let data = &proposal.marshal_cbor()?;
-    let hash = Code::Blake2b256.digest(data);
+    let data = serialize(proposal, "deal proposal")?;
+    let hash = Code::Blake2b256.digest(data.bytes());
     debug_assert_eq!(u32::from(hash.size()), DIGEST_SIZE, "expected 32byte digest");
     Ok(Cid::new_v1(DAG_CBOR, hash))
 }
@@ -1296,7 +1298,7 @@ fn request_miner_control_addrs(
     let ret = rt.send(
         &Address::new_id(miner_id),
         ext::miner::CONTROL_ADDRESSES_METHOD,
-        RawBytes::default(),
+        None,
         TokenAmount::zero(),
     )?;
     let addrs: ext::miner::GetControlAddressesReturnParams = ret.deserialize()?;
@@ -1335,7 +1337,7 @@ fn request_current_baseline_power(rt: &mut impl Runtime) -> Result<StoragePower,
     let rwret = rt.send(
         &REWARD_ACTOR_ADDR,
         ext::reward::THIS_EPOCH_REWARD_METHOD,
-        RawBytes::default(),
+        None,
         TokenAmount::zero(),
     )?;
     let ret: ThisEpochRewardReturn = rwret.deserialize()?;
@@ -1350,7 +1352,7 @@ fn request_current_network_power(
     let rwret = rt.send(
         &STORAGE_POWER_ACTOR_ADDR,
         ext::power::CURRENT_TOTAL_POWER_METHOD,
-        RawBytes::default(),
+        None,
         TokenAmount::zero(),
     )?;
     let ret: ext::power::CurrentTotalPowerReturnParams = rwret.deserialize()?;
@@ -1363,98 +1365,30 @@ pub fn deal_id_key(k: DealID) -> BytesKey {
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        params: &RawBytes,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-    {
-        restrict_internal_api(rt, method)?;
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(rt)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::AddBalance) | Some(Method::AddBalanceExported) => {
-                Self::add_balance(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::WithdrawBalance) | Some(Method::WithdrawBalanceExported) => {
-                let res = Self::withdraw_balance(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::PublishStorageDeals) | Some(Method::PublishStorageDealsExported) => {
-                let res = Self::publish_storage_deals(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::VerifyDealsForActivation) => {
-                let res = Self::verify_deals_for_activation(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::ActivateDeals) => {
-                let res = Self::activate_deals(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::OnMinerSectorsTerminate) => {
-                Self::on_miner_sectors_terminate(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::ComputeDataCommitment) => {
-                let res = Self::compute_data_commitment(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::CronTick) => {
-                Self::cron_tick(rt)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::GetBalanceExported) => {
-                let res = Self::get_balance(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::GetDealDataCommitmentExported) => {
-                let res = Self::get_deal_data_commitment(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::GetDealClientExported) => {
-                let res = Self::get_deal_client(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::GetDealProviderExported) => {
-                let res = Self::get_deal_provider(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::GetDealLabelExported) => {
-                let res = Self::get_deal_label(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::GetDealTermExported) => {
-                let res = Self::get_deal_term(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::GetDealTotalPriceExported) => {
-                let res = Self::get_deal_total_price(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::GetDealClientCollateralExported) => {
-                let res = Self::get_deal_client_collateral(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::GetDealProviderCollateralExported) => {
-                let res =
-                    Self::get_deal_provider_collateral(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::GetDealVerifiedExported) => {
-                let res = Self::get_deal_verified(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::GetDealActivationExported) => {
-                let res = Self::get_deal_activation(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            None => Err(actor_error!(unhandled_message, "Invalid method")),
-        }
+    type Methods = Method;
+    actor_dispatch! {
+        Constructor => constructor,
+        AddBalance => add_balance,
+        AddBalanceExported => add_balance,
+        WithdrawBalance => withdraw_balance,
+        WithdrawBalanceExported => withdraw_balance,
+        PublishStorageDeals => publish_storage_deals,
+        PublishStorageDealsExported => publish_storage_deals,
+        VerifyDealsForActivation => verify_deals_for_activation,
+        ActivateDeals => activate_deals,
+        OnMinerSectorsTerminate => on_miner_sectors_terminate,
+        ComputeDataCommitment => compute_data_commitment,
+        CronTick => cron_tick,
+        GetBalanceExported => get_balance,
+        GetDealDataCommitmentExported => get_deal_data_commitment,
+        GetDealClientExported => get_deal_client,
+        GetDealProviderExported => get_deal_provider,
+        GetDealLabelExported => get_deal_label,
+        GetDealTermExported => get_deal_term,
+        GetDealTotalPriceExported => get_deal_total_price,
+        GetDealClientCollateralExported => get_deal_client_collateral,
+        GetDealProviderCollateralExported => get_deal_provider_collateral,
+        GetDealVerifiedExported => get_deal_verified,
+        GetDealActivationExported => get_deal_activation,
     }
 }

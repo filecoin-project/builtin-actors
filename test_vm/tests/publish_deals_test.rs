@@ -20,6 +20,7 @@ use fil_actors_runtime::{
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::MemoryBlockstore;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
@@ -84,7 +85,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Addrs, ChainEpoch) {
         VERIFIED_REGISTRY_ACTOR_ADDR,
         TokenAmount::zero(),
         VerifregMethod::AddVerifiedClient as u64,
-        add_client_params,
+        Some(add_client_params),
     );
 
     let client_collateral = TokenAmount::from_whole(100);
@@ -94,7 +95,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Addrs, ChainEpoch) {
         STORAGE_MARKET_ACTOR_ADDR,
         client_collateral.clone(),
         MarketMethod::AddBalance as u64,
-        client1,
+        Some(client1),
     );
     apply_ok(
         &v,
@@ -102,7 +103,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Addrs, ChainEpoch) {
         STORAGE_MARKET_ACTOR_ADDR,
         client_collateral.clone(),
         MarketMethod::AddBalance as u64,
-        client2,
+        Some(client2),
     );
     apply_ok(
         &v,
@@ -110,7 +111,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Addrs, ChainEpoch) {
         STORAGE_MARKET_ACTOR_ADDR,
         client_collateral,
         MarketMethod::AddBalance as u64,
-        verified_client,
+        Some(verified_client),
     );
 
     let miner_collateral = TokenAmount::from_whole(100);
@@ -120,7 +121,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Addrs, ChainEpoch) {
         STORAGE_MARKET_ACTOR_ADDR,
         miner_collateral,
         MarketMethod::AddBalance as u64,
-        maddr,
+        Some(maddr),
     );
 
     let deal_start =
@@ -242,7 +243,7 @@ fn psd_not_enought_client_lockup_for_batch() {
         STORAGE_MARKET_ACTOR_ADDR,
         one_lifetime_cost,
         MarketMethod::AddBalance as u64,
-        a.cheap_client,
+        Some(a.cheap_client),
     );
 
     let mut batcher =
@@ -282,7 +283,7 @@ fn psd_not_enough_provider_lockup_for_batch() {
         STORAGE_MARKET_ACTOR_ADDR,
         default_provider_collateral,
         MarketMethod::AddBalance as u64,
-        cheap_maddr,
+        Some(cheap_maddr),
     );
     let mut batcher = DealBatcher::new(
         &v,
@@ -405,7 +406,7 @@ fn psd_random_assortment_of_failures() {
         STORAGE_MARKET_ACTOR_ADDR,
         one_lifetime_cost,
         MarketMethod::AddBalance as u64,
-        a.cheap_client,
+        Some(a.cheap_client),
     );
     let broke_client = create_accounts_seeded(&v, 1, TokenAmount::zero(), 555)[0];
 
@@ -527,7 +528,7 @@ fn psd_bad_sig() {
             STORAGE_MARKET_ACTOR_ADDR,
             TokenAmount::zero(),
             MarketMethod::PublishStorageDeals as u64,
-            publish_params,
+            Some(publish_params),
         )
         .unwrap();
     assert_eq!(ExitCode::USR_ILLEGAL_ARGUMENT, ret.code);
@@ -555,13 +556,10 @@ fn psd_bad_sig() {
                 to: a.client1,
                 method: AccountMethod::AuthenticateMessageExported as u64,
                 params: Some(
-                    serialize(
-                        &AuthenticateMessageParams {
-                            signature: invalid_sig_bytes,
-                            message: serialize(&proposal, "deal proposal").unwrap().to_vec(),
-                        },
-                        "auth params",
-                    )
+                    IpldBlock::serialize_cbor(&AuthenticateMessageParams {
+                        signature: invalid_sig_bytes,
+                        message: serialize(&proposal, "deal proposal").unwrap().to_vec(),
+                    })
                     .unwrap(),
                 ),
                 code: Some(ExitCode::USR_ILLEGAL_ARGUMENT),
@@ -713,7 +711,7 @@ impl<'bs> DealBatcher<'bs> {
             STORAGE_MARKET_ACTOR_ADDR,
             TokenAmount::zero(),
             MarketMethod::PublishStorageDeals as u64,
-            publish_params,
+            Some(publish_params),
         )
         .deserialize()
         .unwrap();
@@ -740,7 +738,7 @@ impl<'bs> DealBatcher<'bs> {
                 STORAGE_MARKET_ACTOR_ADDR,
                 TokenAmount::zero(),
                 MarketMethod::PublishStorageDeals as u64,
-                publish_params,
+                Some(publish_params),
             )
             .unwrap();
         assert_eq!(ExitCode::USR_ILLEGAL_ARGUMENT, ret.code);

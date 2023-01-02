@@ -11,6 +11,7 @@ repository = "https://github.com/filecoin-project/builtin-actors"
 fvm_ipld_hamt = "0.5.1"
 fvm_ipld_amt = { version = "0.4.2", features = ["go-interop"] }
 fvm_shared = { version = "2.0.0-alpha.2", default-features = false }
+num = { version = "0.4", features = ["serde"] }
 num-traits = "0.2.14"
 num-derive = "0.3.3"
 serde = { version = "1.0.136", features = ["derive"] }
@@ -27,10 +28,10 @@ thiserror = "1.0.30"
 getrandom = { version = "0.2.5", features = ["js"] }
 hex = { version = "0.4.3", optional = true }
 anyhow = "1.0.65"
-fvm_sdk = { version = "2.0.0-alpha.3", optional = true }
+fvm_sdk = { version = "2.1.0", optional = true }
 blake2b_simd = "1.0"
 fvm_ipld_blockstore = "0.1.1"
-fvm_ipld_encoding = "0.2.2"
+fvm_ipld_encoding = "0.2.3"
 fvm_ipld_bitfield = "0.5.2"
 multihash = { version = "0.16.1", default-features = false }
 rand = "0.8.5"
@@ -38,6 +39,7 @@ serde_repr = "0.1.8"
 regex = "1"
 itertools = "0.10"
 paste = "1.0.9"
+castaway = "0.2.2"
 
 [dependencies.sha2]
 version = "0.10"

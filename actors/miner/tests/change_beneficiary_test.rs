@@ -2,7 +2,6 @@ use fil_actor_miner::{Actor, BeneficiaryTerm, GetBeneficiaryReturn, Method};
 use fil_actors_runtime::test_utils::{
     expect_abort, expect_abort_contains_message, make_identity_cid, MockRuntime,
 };
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode, MethodNum};
 use num_traits::Zero;
@@ -456,13 +455,13 @@ fn get_beneficiary_correctly_restricted() {
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
         "must be built-in",
-        rt.call::<Actor>(Method::GetBeneficiary as MethodNum, &RawBytes::default()),
+        rt.call::<Actor>(Method::GetBeneficiary as MethodNum, None),
     );
 
     // can call the exported method num
     rt.expect_validate_caller_any();
     let beneficiary_return: GetBeneficiaryReturn = rt
-        .call::<Actor>(Method::GetBeneficiaryExported as u64, &RawBytes::default())
+        .call::<Actor>(Method::GetBeneficiaryExported as u64, None)
         .unwrap()
         .deserialize()
         .unwrap();
