@@ -135,7 +135,7 @@ impl EvmContractActor {
         rt: &mut RT,
         input_data: &[u8],
         with_code: Option<Cid>,
-        with_caller: Option<Address>,
+        with_caller: Option<EthAddress>,
     ) -> Result<Vec<u8>, ActorError>
     where
         RT: Runtime,
@@ -160,12 +160,12 @@ impl EvmContractActor {
             None => return Ok(Vec::new()),
         };
 
-        // Resolve the caller's ethereum address. If the caller doesn't have one, the caller's ID is used instead.
-        let caller_fil_addr = match with_caller {
+        // Use passed Eth address (from delegate call).
+        // Otherwise resolve the caller's ethereum address. If the caller doesn't have one, the caller's Eth encoded ID is used instead.
+        let caller_eth_addr = match with_caller {
             Some(addr) => addr,
-            None => system.rt.message().caller(),
+            None => system.resolve_ethereum_address(&system.rt.message().caller()).unwrap(),
         };
-        let caller_eth_addr = system.resolve_ethereum_address(&caller_fil_addr).unwrap();
 
         // Resolve the receiver's ethereum address.
         let receiver_fil_addr = system.rt.message().receiver();
@@ -349,7 +349,8 @@ pub struct DelegateCallParams {
     /// The contract invocation parameters
     #[serde(with = "strict_bytes")]
     pub input: Vec<u8>,
-    pub caller: Address,
+    /// The original caller's Eth address.
+    pub caller: EthAddress,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
