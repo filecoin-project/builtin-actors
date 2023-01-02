@@ -275,7 +275,7 @@ pub fn call_generic<RT: Runtime>(
                 CallKind::DelegateCall => match get_contract_type(system.rt, dst) {
                     ContractType::EVM(dst_addr) => {
                         // If we're calling an actual EVM actor, get its code.
-                        let code = get_evm_bytecode_cid(system.rt, &dst_addr)?;
+                        let code = get_evm_bytecode_cid(system, &dst_addr)?;
 
                         // and then invoke self with delegate; readonly context is sticky
                         let params = DelegateCallParams { code, input: input_data.into(),

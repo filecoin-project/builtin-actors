@@ -5,6 +5,7 @@ use cid::Cid;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::ActorError;
 use fvm_ipld_blockstore::Blockstore;
+use fvm_shared::sys::SendFlags;
 use fvm_shared::{address::Address, econ::TokenAmount};
 use multihash::Multihash;
 use num_traits::Zero;
@@ -23,7 +24,7 @@ const EMPTY_EVM_HASH: [u8; 32] =
 
 pub fn extcodesize(
     _state: &mut ExecutionState,
-    system: &System<impl Runtime>,
+    system: &mut System<impl Runtime>,
     addr: U256,
 ) -> Result<U256, StatusCode> {
     // TODO (M2.2) we're fetching the entire block here just to get its size. We should instead use
@@ -31,7 +32,7 @@ pub fn extcodesize(
     //  Tracked in https://github.com/filecoin-project/ref-fvm/issues/867
     let len = match get_contract_type(system.rt, addr) {
         ContractType::EVM(addr) => {
-            get_evm_bytecode(system.rt, &addr).map(|bytecode| bytecode.len())?
+            get_evm_bytecode(system, &addr).map(|bytecode| bytecode.len())?
         }
         ContractType::Native(_) => 1,
         // account, not found, and precompiles are 0 size
@@ -43,7 +44,7 @@ pub fn extcodesize(
 
 pub fn extcodehash(
     _state: &mut ExecutionState,
-    system: &System<impl Runtime>,
+    system: &mut System<impl Runtime>,
     addr: U256,
 ) -> Result<U256, StatusCode> {
     let addr = match get_contract_type(system.rt, addr) {
@@ -63,12 +64,13 @@ pub fn extcodehash(
 
     // multihash { keccak256(bytecode) }
     let bytecode_hash: Multihash = system
-        .rt
         .send(
             &addr,
             crate::Method::GetBytecodeHash as u64,
             Default::default(),
             TokenAmount::zero(),
+            None,
+            SendFlags::READ_ONLY,
         )?
         .deserialize()?;
 
@@ -81,14 +83,14 @@ pub fn extcodehash(
 
 pub fn extcodecopy(
     state: &mut ExecutionState,
-    system: &System<impl Runtime>,
+    system: &mut System<impl Runtime>,
     addr: U256,
     dest_offset: U256,
     data_offset: U256,
     size: U256,
 ) -> Result<(), StatusCode> {
     let bytecode = match get_contract_type(system.rt, addr) {
-        ContractType::EVM(addr) => get_evm_bytecode(system.rt, &addr)?,
+        ContractType::EVM(addr) => get_evm_bytecode(system, &addr)?,
         ContractType::NotFound | ContractType::Account | ContractType::Precompile => Vec::new(),
         // calling EXTCODECOPY on native actors results with a single byte 0xFE which solidtiy uses for its `assert`/`throw` methods
         // and in general invalid EVM bytecode
@@ -130,15 +132,15 @@ pub fn get_contract_type<RT: Runtime>(rt: &RT, addr: U256) -> ContractType {
         .unwrap_or(ContractType::NotFound)
 }
 
-pub fn get_evm_bytecode_cid(rt: &impl Runtime, addr: &Address) -> Result<Cid, ActorError> {
-    Ok(rt
-        .send(addr, crate::Method::GetBytecode as u64, Default::default(), TokenAmount::zero())?
+pub fn get_evm_bytecode_cid(system: &mut System<impl Runtime>, addr: &Address) -> Result<Cid, ActorError> {
+    Ok(system
+        .send(addr, crate::Method::GetBytecode as u64, Default::default(), TokenAmount::zero(), None, SendFlags::READ_ONLY)?
         .deserialize()?)
 }
 
-pub fn get_evm_bytecode(rt: &impl Runtime, addr: &Address) -> Result<Vec<u8>, StatusCode> {
-    let cid = get_evm_bytecode_cid(rt, addr)?;
-    let raw_bytecode = rt
+pub fn get_evm_bytecode(system: &mut System<impl Runtime>, addr: &Address) -> Result<Vec<u8>, StatusCode> {
+    let cid = get_evm_bytecode_cid(system, addr)?;
+    let raw_bytecode = system.rt
         .store()
         .get(&cid) // TODO this is inefficient; should call stat here.
         .map_err(|e| StatusCode::InternalError(format!("failed to get bytecode block: {}", &e)))?
