@@ -317,7 +317,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
     }
 
     /// Resolve the address to the ethereum equivalent, if possible.
-    /// 
+    ///
     /// - Eth f4 maps directly to an Eth address.
     /// - f3, f2, and f1, addresses will resolve to ID address then...
     /// - Attempt to lookup Eth f4 address from ID address.
