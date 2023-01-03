@@ -135,6 +135,7 @@ impl EvmContractActor {
         rt: &mut RT,
         input_data: &[u8],
         with_code: Option<Cid>,
+        with_caller: Option<EthAddress>,
     ) -> Result<Vec<u8>, ActorError>
     where
         RT: Runtime,
@@ -159,9 +160,12 @@ impl EvmContractActor {
             None => return Ok(Vec::new()),
         };
 
-        // Resolve the caller's ethereum address. If the caller doesn't have one, the caller's ID is used instead.
-        let caller_fil_addr = system.rt.message().caller();
-        let caller_eth_addr = system.resolve_ethereum_address(&caller_fil_addr).unwrap();
+        // Use passed Eth address (from delegate call).
+        // Otherwise resolve the caller's ethereum address. If the caller doesn't have one, the caller's Eth encoded ID is used instead.
+        let caller_eth_addr = match with_caller {
+            Some(addr) => addr,
+            None => system.resolve_ethereum_address(&system.rt.message().caller()).unwrap(),
+        };
 
         // Resolve the receiver's ethereum address.
         let receiver_fil_addr = system.rt.message().receiver();
@@ -200,7 +204,7 @@ impl EvmContractActor {
     {
         let params = args.unwrap_or(IpldBlock { codec: 0, data: vec![] });
         let input = handle_filecoin_method_input(method, params.codec, params.data.as_slice());
-        Self::invoke_contract(rt, &input, None)
+        Self::invoke_contract(rt, &input, None, None)
     }
 
     pub fn bytecode(rt: &mut impl Runtime) -> Result<Cid, ActorError> {
@@ -291,7 +295,7 @@ impl ActorCode for EvmContractActor {
                         p
                     }
                 };
-                let value = Self::invoke_contract(rt, &params, None)?;
+                let value = Self::invoke_contract(rt, &params, None, None)?;
                 Ok(RawBytes::serialize(BytesSer(&value))?)
             }
             Some(Method::GetBytecode) => {
@@ -318,7 +322,12 @@ impl ActorCode for EvmContractActor {
                         "method expects arguments".to_string()
                     })?
                     .deserialize()?;
-                let value = Self::invoke_contract(rt, &params.input, Some(params.code))?;
+                let value = Self::invoke_contract(
+                    rt,
+                    &params.input,
+                    Some(params.code),
+                    Some(params.caller),
+                )?;
                 Ok(RawBytes::serialize(BytesSer(&value))?)
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
@@ -340,6 +349,8 @@ pub struct DelegateCallParams {
     /// The contract invocation parameters
     #[serde(with = "strict_bytes")]
     pub input: Vec<u8>,
+    /// The original caller's Eth address.
+    pub caller: EthAddress,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
