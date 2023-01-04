@@ -164,6 +164,7 @@ impl<'a, T: Sized + Copy, const CHUNK_SIZE: usize> PaddedChunks<'a, T, CHUNK_SIZ
         }
     }
 
+    #[allow(unused)]
     pub fn chunks_read(&self) -> usize {
         let total_chunks = self.slice.len() / CHUNK_SIZE;
         let unread_chunks = self.chunks.len();

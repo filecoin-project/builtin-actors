@@ -10,7 +10,7 @@ mod fvm;
 pub mod parameter;
 
 use evm::{blake2f, ec_add, ec_mul, ec_pairing, ec_recover, identity, modexp, ripemd160, sha256};
-use fvm::{call_actor, get_actor_type, get_randomness, lookup_delegated_address, resolve_address};
+use fvm::{call_actor, get_actor_type, lookup_delegated_address, resolve_address};
 
 // really I'd want to have context as a type parameter, but since the table we generate must have the same types (or dyn) its messy
 type PrecompileFn<RT> = unsafe fn(*mut System<RT>, &[u8], PrecompileContext) -> PrecompileResult;
@@ -58,7 +58,7 @@ const fn gen_native_precompiles<RT: Runtime>() -> [PrecompileFn<RT>; 5] {
         lookup_delegated_address,   // 0xfe00..02 lookup_delegated_address
         call_actor,                 // 0xfe00..03 call_actor
         get_actor_type,             // 0xfe00..04 get_actor_type
-        get_randomness,             // 0xfe00..05 rand
+        disabled_precompile,             // 0xfe00..05 rand
     }
 }
 
@@ -104,6 +104,14 @@ impl<RT: Runtime> Precompiles<RT> {
     }
 }
 
+fn disabled_precompile<RT: Runtime>(
+    _: &mut System<RT>,
+    _: &[u8],
+    _: PrecompileContext,
+) -> PrecompileResult {
+    Err(PrecompileError::PrecompileDisabled)
+}
+
 #[derive(Debug)]
 pub enum PrecompileError {
     EcErr(CurveError),
@@ -113,6 +121,7 @@ pub enum PrecompileError {
     IncorrectInputSize,
     OutOfGas,
     CallActorError(StatusCode),
+    PrecompileDisabled,
 }
 
 impl From<PrecompileError> for StatusCode {
