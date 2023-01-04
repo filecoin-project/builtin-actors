@@ -1026,6 +1026,10 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
     fn base_fee(&self) -> TokenAmount {
         self.base_fee.clone()
     }
+
+    fn log(&self, msg: String) {
+        log::log!(msg);
+    }
 }
 
 impl<BS> Primitives for MockRuntime<BS> {

@@ -942,6 +942,10 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
     fn base_fee(&self) -> TokenAmount {
         TokenAmount::zero()
     }
+
+    fn log(&self, msg: String) {
+        log::log!(msg);
+    }
 }
 
 impl Primitives for VM<'_> {

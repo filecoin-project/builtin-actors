@@ -382,6 +382,10 @@ where
     fn base_fee(&self) -> TokenAmount {
         fvm::network::base_fee()
     }
+
+    fn log(&self, msg: String) {
+        fvm::debug::log(msg);
+    }
 }
 
 impl<B> Primitives for FvmRuntime<B>

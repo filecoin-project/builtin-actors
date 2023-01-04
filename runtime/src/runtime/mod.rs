@@ -171,7 +171,12 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// `name` provides information about gas charging point
     fn charge_gas(&mut self, name: &'static str, compute: i64);
 
+    /// Returns the gas base fee (cost per unit) for the current epoch.
     fn base_fee(&self) -> TokenAmount;
+
+    /// Logs a message with the VM.
+    /// This message can appear in execution traces.
+    fn log(&self, msg: String);
 }
 
 /// Message information available to the actor about executing message.
