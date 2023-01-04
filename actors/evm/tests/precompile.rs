@@ -158,10 +158,9 @@ return
 
     // invalid format address
     rt.expect_gas_available(10_000_000_000u64);
-    let _result = util::invoke_contract(&mut rt, &[0xff; 64]);
+    let result = util::invoke_contract(&mut rt, &[0xff; 64]);
     rt.verify();
-    // TODO re-enable when precompile return value is fixed !! (soon)
-    // assert!(result.is_empty());
+    assert!(result.is_empty());
     rt.reset();
 }
 
