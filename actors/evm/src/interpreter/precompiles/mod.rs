@@ -52,13 +52,12 @@ const fn gen_evm_precompiles<RT: Runtime>() -> [PrecompileFn<RT>; 9] {
     }
 }
 
-const fn gen_native_precompiles<RT: Runtime>() -> [PrecompileFn<RT>; 5] {
+const fn gen_native_precompiles<RT: Runtime>() -> [PrecompileFn<RT>; 4] {
     precompiles! {
         resolve_address,            // 0xfe00..01 resolve_address
         lookup_delegated_address,   // 0xfe00..02 lookup_delegated_address
         call_actor,                 // 0xfe00..03 call_actor
         get_actor_type,             // 0xfe00..04 get_actor_type
-        disabled_precompile,             // 0xfe00..05 rand
     }
 }
 
@@ -66,7 +65,7 @@ pub struct Precompiles<RT>(PhantomData<RT>);
 
 impl<RT: Runtime> Precompiles<RT> {
     const EVM_PRECOMPILES: [PrecompileFn<RT>; 9] = gen_evm_precompiles();
-    const NATIVE_PRECOMPILES: [PrecompileFn<RT>; 5] = gen_native_precompiles();
+    const NATIVE_PRECOMPILES: [PrecompileFn<RT>; 4] = gen_native_precompiles();
 
     fn lookup_precompile(addr: &[u8; 32]) -> Option<PrecompileFn<RT>> {
         // unrwap will never panic, 32 - 12 = 20
@@ -104,14 +103,6 @@ impl<RT: Runtime> Precompiles<RT> {
     }
 }
 
-fn disabled_precompile<RT: Runtime>(
-    _: &mut System<RT>,
-    _: &[u8],
-    _: PrecompileContext,
-) -> PrecompileResult {
-    Err(PrecompileError::PrecompileDisabled)
-}
-
 #[derive(Debug)]
 pub enum PrecompileError {
     EcErr(CurveError),
@@ -121,7 +112,6 @@ pub enum PrecompileError {
     IncorrectInputSize,
     OutOfGas,
     CallActorError(StatusCode),
-    PrecompileDisabled,
 }
 
 impl From<PrecompileError> for StatusCode {
