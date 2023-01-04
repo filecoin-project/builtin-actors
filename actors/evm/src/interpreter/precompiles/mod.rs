@@ -74,10 +74,11 @@ impl<RT: Runtime> Precompiles<RT> {
         if middle == [0u8; 18] && index > 0 {
             let index = index as usize - 1;
             match prefix {
-                NATIVE_PRECOMPILE_ADDRESS_PREFIX => Some(Self::NATIVE_PRECOMPILES[index]),
-                0x00 => Some(Self::EVM_PRECOMPILES[index]),
+                NATIVE_PRECOMPILE_ADDRESS_PREFIX => Self::NATIVE_PRECOMPILES.get(index),
+                0x00 => Self::EVM_PRECOMPILES.get(index),
                 _ => None,
             }
+            .copied()
         } else {
             None
         }
@@ -187,5 +188,13 @@ mod test {
     fn between_precompile() {
         let addr = EthAddress(hex_literal::hex!("a000000000000000000000000000000000000001"));
         assert!(!Precompiles::<MockRuntime>::is_precompile(&addr.as_evm_word()));
+    }
+
+    #[test]
+    fn bad_index() {
+        let eth_addr = EthAddress(hex_literal::hex!("fe00000000000000000000000000000000000020"));
+        let native_addr = EthAddress(hex_literal::hex!("0000000000000000000000000000000000000020"));
+        assert!(!Precompiles::<MockRuntime>::is_precompile(&eth_addr.as_evm_word()));
+        assert!(!Precompiles::<MockRuntime>::is_precompile(&native_addr.as_evm_word()));
     }
 }
