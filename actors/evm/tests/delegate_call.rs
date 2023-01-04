@@ -106,11 +106,13 @@ fn test_delegate_call_caller() {
     let return_data = U256::from(0x42);
 
     rt.expect_gas_available(10_000_000_000u64);
-    rt.expect_send(
+    rt.expect_send_generalized(
         target,
         Method::GetBytecode as u64,
         None,
         TokenAmount::zero(),
+        None,
+        SendFlags::READ_ONLY,
         RawBytes::serialize(EMPTY_ARR_CID).expect("failed to serialize bytecode hash"),
         ExitCode::OK,
     );

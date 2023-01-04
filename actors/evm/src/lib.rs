@@ -303,8 +303,8 @@ impl ActorCode for EvmContractActor {
                 Ok(RawBytes::serialize(cid)?)
             }
             Some(Method::GetBytecodeHash) => {
-                let cid = Self::bytecode_hash(rt)?;
-                Ok(RawBytes::serialize(cid)?)
+                let multihash = Self::bytecode_hash(rt)?;
+                Ok(RawBytes::serialize(multihash)?)
             }
             Some(Method::GetStorageAt) => {
                 let value = Self::storage_at(
