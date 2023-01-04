@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use fil_actors_runtime::runtime::Runtime;
 use substrate_bn::{CurveError, GroupError};
 
-use super::{instructions::call::CallKind, StatusCode, System, U256};
+use super::{instructions::call::CallKind, System, U256};
 
 mod evm;
 mod fvm;
@@ -106,22 +106,14 @@ impl<RT: Runtime> Precompiles<RT> {
 
 #[derive(Debug)]
 pub enum PrecompileError {
+    // EVM precompile errors
     EcErr(CurveError),
     EcGroupErr(GroupError),
-    InvalidInput,
-    CallForbidden,
     IncorrectInputSize,
     OutOfGas,
-    CallActorError(StatusCode),
-}
-
-impl From<PrecompileError> for StatusCode {
-    fn from(src: PrecompileError) -> Self {
-        match src {
-            PrecompileError::CallActorError(e) => e,
-            _ => StatusCode::PrecompileFailure,
-        }
-    }
+    // FVM precompile errors
+    InvalidInput,
+    CallForbidden,
 }
 
 #[derive(Debug, PartialEq, Eq)]

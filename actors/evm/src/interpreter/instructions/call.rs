@@ -4,7 +4,7 @@ use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::BytesDe;
 use fvm_shared::{address::Address, sys::SendFlags, IPLD_RAW, METHOD_SEND};
 
-use crate::interpreter::precompiles::PrecompileContext;
+use crate::interpreter::precompiles::{PrecompileContext, PrecompileError};
 
 use super::ext::{get_contract_type, get_evm_bytecode_cid, ContractType};
 
@@ -201,13 +201,21 @@ pub fn call_generic<RT: Runtime>(
             let context =
                 PrecompileContext { call_type: kind, gas_limit: effective_gas_limit(system, gas) };
 
-            match precompiles::Precompiles::call_precompile(system, dst, input_data, context)
-                .map_err(StatusCode::from)
-            {
+            match precompiles::Precompiles::call_precompile(system, dst, input_data, context) {
                 Ok(return_data) => (1, return_data),
-                Err(status) => {
-                    let msg = format!("{}", status);
-                    (0, msg.as_bytes().to_vec())
+                Err(e) => {
+                    match e {
+                        PrecompileError::EcErr(_)
+                        | PrecompileError::EcGroupErr(_)
+                        | PrecompileError::OutOfGas
+                        | PrecompileError::IncorrectInputSize => {
+                            // NOTE: this would be where we consume gas sent to the contract
+                            // TODO: refer to gh issue for reasoning
+                        }
+                        PrecompileError::CallForbidden | PrecompileError::InvalidInput => (),
+                    };
+                    // return reverted
+                    (0, vec![])
                 }
             }
         } else {

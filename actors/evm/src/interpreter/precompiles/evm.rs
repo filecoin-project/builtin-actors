@@ -172,7 +172,7 @@ pub(super) fn curve_to_vec(curve: G1) -> Vec<u8> {
             product.y().to_big_endian(&mut output[32..64]).unwrap();
             output
         })
-        .unwrap_or_else(|| vec![0; 64])
+        .unwrap_or_else(|| vec![0; 64]) // TODO should be empty
 }
 
 /// add 2 points together on an elliptic curve
