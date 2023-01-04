@@ -58,10 +58,13 @@ pub fn compute_address_create2(
 pub struct EthAddress(#[serde(with = "strict_bytes")] pub [u8; 20]);
 
 impl EthAddress {
-    /// Returns true if the EthAddress refers to a precompile.
+    /// Returns true if the EthAddress refers to an address in the precompile range.
+    /// [reference](https://github.com/filecoin-project/ref-fvm/issues/1164#issuecomment-1371304676)
     #[inline]
     fn is_precompile(&self) -> bool {
-        self.0[..19].iter().all(|&i| i == 0)
+        // Exact index is not checked since it is unknown to the EAM what precompiles exist in the EVM actor.
+        let [prefix, middle @ .., _index] = self.0;
+        (prefix == 0xfe || prefix == 0x00) && middle == [0u8; 18]
     }
 
     /// Returns true if the EthAddress is an actor ID embedded in an eth address.
