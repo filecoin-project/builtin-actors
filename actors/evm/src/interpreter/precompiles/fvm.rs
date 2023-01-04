@@ -60,6 +60,8 @@ pub(super) fn get_actor_type<RT: Runtime>(
     Ok(builtin_type.word_vec())
 }
 
+/// !! DISABLED !!
+///
 /// Params:
 ///
 /// | Param            | Value                     |
@@ -74,6 +76,7 @@ pub(super) fn get_actor_type<RT: Runtime>(
 ///
 /// Returns empty array if invalid randomness type
 /// Errors if unable to fetch randomness
+#[allow(unused)]
 pub(super) fn get_randomness<RT: Runtime>(
     system: &mut System<RT>,
     input: &[u8],
