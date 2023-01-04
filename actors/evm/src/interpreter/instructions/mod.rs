@@ -9,7 +9,7 @@ pub mod control;
 pub mod ext;
 pub mod hash;
 pub mod lifecycle;
-pub mod log;
+pub mod log_event;
 pub mod memory;
 pub mod stack;
 pub mod state;
@@ -164,7 +164,7 @@ macro_rules! def_stdlog {
     ($op:ident ($ntopics:literal, ($($topic:ident),*))) => {
         def_op!{ $op (m) => {
             let &rev![a, b $(,$topic)*] = m.state.stack.pop_many()?;
-            log::log(&mut m.state, &mut m.system, $ntopics, a, b, &[$($topic),*])?;
+            log_event::log(&mut m.state, &mut m.system, $ntopics, a, b, &[$($topic),*])?;
             m.pc += 1;
             Ok(())
         }}
