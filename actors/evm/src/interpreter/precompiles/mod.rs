@@ -77,7 +77,8 @@ impl<RT: Runtime> Precompiles<RT> {
                 NATIVE_PRECOMPILE_ADDRESS_PREFIX => Self::NATIVE_PRECOMPILES.get(index),
                 0x00 => Self::EVM_PRECOMPILES.get(index),
                 _ => None,
-            }.map(|f| *f)
+            }
+            .copied()
         } else {
             None
         }
