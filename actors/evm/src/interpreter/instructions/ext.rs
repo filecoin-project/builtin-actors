@@ -5,6 +5,7 @@ use cid::Cid;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::ActorError;
 use fvm_ipld_blockstore::Blockstore;
+use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::sys::SendFlags;
 use fvm_shared::{address::Address, econ::TokenAmount};
 use multihash::Multihash;
@@ -15,11 +16,11 @@ use {
 };
 
 /// Keccak256 hash of `[0xfe]`, "native bytecode"
-const NATIVE_BYTECODE_HASH: [u8; 32] =
+pub const NATIVE_BYTECODE_HASH: [u8; 32] =
     hex_literal::hex!("bcc90f2d6dada5b18e155c17a1c0a55920aae94f39857d39d0d8ed07ae8f228b");
 
 /// Keccak256 hash of `[]`, empty bytecode
-const EMPTY_EVM_HASH: [u8; 32] =
+pub const EMPTY_EVM_HASH: [u8; 32] =
     hex_literal::hex!("c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470");
 
 pub fn extcodesize(
@@ -75,6 +76,7 @@ pub fn extcodehash(
         .deserialize()?;
 
     let digest = bytecode_hash.digest();
+    debug_assert_eq!(SupportedHashes::Keccak256 as u64, bytecode_hash.code());
 
     // Take the first 32 bytes of the Multihash
     let digest_len = digest.len().min(32);
