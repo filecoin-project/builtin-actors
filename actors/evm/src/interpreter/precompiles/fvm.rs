@@ -56,6 +56,7 @@ pub(super) fn get_actor_type<RT: Runtime>(
         },
         None => NativeType::NonExistent,
     };
+
     Ok(builtin_type.word_vec())
 }
 
@@ -125,11 +126,11 @@ pub(super) fn lookup_delegated_address<RT: Runtime>(
     let id = id_bytes.next_param_padded::<u64>()?;
 
     let address = system.rt.lookup_delegated_address(id);
-    let address = match address {
+    let ab = match address {
         Some(a) => a.to_bytes(),
         None => Vec::new(),
     };
-    Ok(address)
+    Ok(ab)
 }
 
 /// Reads a FIL encoded address
@@ -145,12 +146,9 @@ pub(super) fn resolve_address<RT: Runtime>(
     let len = input_params.next_param_padded::<u32>()? as usize;
     let addr = match Address::from_bytes(&read_right_pad(input_params.remaining_slice(), len)) {
         Ok(o) => o,
-        Err(_e) => {
-            return Ok(Vec::new());
-        }
+        Err(_) => return Ok(Vec::new()),
     };
-    let resolved = system.rt.resolve_address(&addr);
-    Ok(resolved.map(|a| a.to_be_bytes().to_vec()).unwrap_or_default())
+    Ok(system.rt.resolve_address(&addr).map(|a| a.to_be_bytes().to_vec()).unwrap_or_default())
 }
 
 /// Errors:

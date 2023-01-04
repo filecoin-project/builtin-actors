@@ -130,7 +130,6 @@ pub struct PrecompileContext {
 }
 
 /// Native Type of a given contract
-#[derive(Debug)]
 #[repr(u32)]
 pub enum NativeType {
     NonExistent = 0,
