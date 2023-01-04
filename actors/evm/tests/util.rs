@@ -15,6 +15,7 @@ pub fn construct_and_verify(initcode: Vec<u8>) -> MockRuntime {
 pub const CONTRACT_ADDRESS: [u8; 20] =
     hex_literal::hex!("FEEDFACECAFEBEEF000000000000000000000000");
 
+#[allow(unused)]
 pub const CONTRACT_ID: Address = Address::new_id(0);
 
 pub fn init_construct_and_verify<F: FnOnce(&mut MockRuntime)>(
@@ -34,7 +35,6 @@ pub fn init_construct_and_verify<F: FnOnce(&mut MockRuntime)>(
         Address::new_delegated(EAM_ACTOR_ID, &CONTRACT_ADDRESS).unwrap(),
     );
     rt.set_address_actor_type(Address::new_id(0), *EVM_ACTOR_CODE_ID);
-
 
     let params = evm::ConstructorParams {
         creator: EthAddress::from_id(fil_actors_runtime::EAM_ACTOR_ADDR.id().unwrap()),

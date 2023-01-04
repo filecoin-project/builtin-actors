@@ -1,15 +1,14 @@
 mod asm;
 
 use cid::Cid;
-use evm::interpreter::U256;
-use evm::interpreter::address::EthAddress;
 use evm::interpreter::instructions::ext::EMPTY_EVM_HASH;
+use evm::interpreter::U256;
 use fil_actor_evm as evm;
 use fil_actors_runtime::runtime::{Primitives, Runtime, EMPTY_ARR_CID};
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::{RawBytes, BytesSer};
-use fvm_shared::address::{Address as FILAddress, DelegatedAddress};
+use fvm_ipld_encoding::RawBytes;
+use fvm_shared::address::Address as FILAddress;
 use fvm_shared::bigint::Zero;
 use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::econ::TokenAmount;
@@ -17,7 +16,7 @@ use fvm_shared::error::ExitCode;
 
 mod util;
 use fvm_shared::sys::SendFlags;
-use util::{DUMMY_ACTOR_CODE_ID, CONTRACT_ID};
+use util::{CONTRACT_ID, DUMMY_ACTOR_CODE_ID};
 
 #[test]
 fn test_extcodesize() {
@@ -436,7 +435,10 @@ init_extsize:
             TokenAmount::zero(),
             None,
             SendFlags::READ_ONLY,
-            RawBytes::serialize(Multihash::wrap(SupportedHashes::Keccak256 as u64, &EMPTY_EVM_HASH).unwrap()).unwrap(),
+            RawBytes::serialize(
+                Multihash::wrap(SupportedHashes::Keccak256 as u64, &EMPTY_EVM_HASH).unwrap(),
+            )
+            .unwrap(),
             ExitCode::OK,
         );
 
