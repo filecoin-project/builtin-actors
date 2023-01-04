@@ -56,7 +56,6 @@ pub(super) fn get_actor_type<RT: Runtime>(
         },
         None => NativeType::NonExistent,
     };
-    log::debug!("get_actor_type: {:?}", builtin_type);
     Ok(builtin_type.word_vec())
 }
 
@@ -126,7 +125,6 @@ pub(super) fn lookup_delegated_address<RT: Runtime>(
     let id = id_bytes.next_param_padded::<u64>()?;
 
     let address = system.rt.lookup_delegated_address(id);
-    log::debug!("lookup_delegated_address: {:?}", address);
     let address = match address {
         Some(a) => a.to_bytes(),
         None => Vec::new(),
@@ -147,13 +145,11 @@ pub(super) fn resolve_address<RT: Runtime>(
     let len = input_params.next_param_padded::<u32>()? as usize;
     let addr = match Address::from_bytes(&read_right_pad(input_params.remaining_slice(), len)) {
         Ok(o) => o,
-        Err(e) => {
-            log::debug!("resolve_address: Address parsing failed {}", e);
+        Err(_e) => {
             return Ok(Vec::new());
         }
     };
     let resolved = system.rt.resolve_address(&addr);
-    log::debug!("resolve_address: {:?}", resolved);
     Ok(resolved.map(|a| a.to_be_bytes().to_vec()).unwrap_or_default())
 }
 
@@ -211,15 +207,12 @@ pub(super) fn call_actor<RT: Runtime>(
             0 if input_data.is_empty() => None,
             _ => return Err(PrecompileError::InvalidInput),
         };
-        // flags bit format length is set to 8, when more flags are added set higher (max 64)
-        log::debug!("call_actor Call:\n\taddress: {} \n\tmethod: {} \n\tflags: {:#08b} \n\tgas: {} \n\tparams: {:?}", address, method, flags, ctx.gas_limit, params);
         system.send(&address, method, params, TokenAmount::from(&value), Some(ctx.gas_limit), flags)
     };
 
     // ------ Build Output -------
 
     let output = {
-        log::debug!("call_actor Return:\n\t{:?}", result);
         // negative values are syscall errors
         // positive values are user/actor errors
         // success is 0

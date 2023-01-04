@@ -13,7 +13,7 @@ const EVENT_DATA_KEY: &str = "data";
 const EVENT_TOPIC_KEYS: &[&str] = &["topic1", "topic2", "topic3", "topic4"];
 
 #[inline]
-pub fn log_event(
+pub fn log(
     state: &mut ExecutionState,
     system: &System<impl Runtime>,
     num_topics: usize,

@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt::Debug, slice::ChunksExact};
+use std::{borrow::Cow, slice::ChunksExact};
 
 use substrate_bn::{AffineG1, FieldError, Fq, Group, GroupError, G1};
 
@@ -47,19 +47,15 @@ impl<'a> TryFrom<&'a [u8; 64]> for Parameter<G1> {
         let y = Fq::from_u256(U256::from_big_endian(&value[32..64]).into())?;
 
         Ok(if x.is_zero() && y.is_zero() {
-            log::trace!("Read empty G1 curve");
             Parameter(G1::zero())
         } else {
-            let p = AffineG1::new(x, y)?.into();
-            log::trace!("Read G1: {:?}", p);
-            Parameter(p)
+            Parameter(AffineG1::new(x, y)?.into())
         })
     }
 }
 
 impl<'a> From<&'a [u8; 32]> for Parameter<[u8; 32]> {
     fn from(value: &'a [u8; 32]) -> Self {
-        log::trace!("Read [u8; 32]: {:?}", value);
         Self(*value)
     }
 }
@@ -70,9 +66,7 @@ impl<'a> TryFrom<&'a [u8; 32]> for Parameter<u32> {
     fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
         assert_zero_bytes::<28>(value)?;
         // Type ensures our remaining len == 4
-        let p = u32::from_be_bytes(value[28..].try_into().unwrap());
-        log::trace!("Read u32: {}", p);
-        Ok(Self(p))
+        Ok(Self(u32::from_be_bytes(value[28..].try_into().unwrap())))
     }
 }
 
@@ -82,9 +76,7 @@ impl<'a> TryFrom<&'a [u8; 32]> for Parameter<i32> {
     fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
         assert_zero_bytes::<28>(value)?;
         // Type ensures our remaining len == 4
-        let p = i32::from_be_bytes(value[28..].try_into().unwrap());
-        log::trace!("Read i32: {}", p);
-        Ok(Self(p))
+        Ok(Self(i32::from_be_bytes(value[28..].try_into().unwrap())))
     }
 }
 
@@ -93,7 +85,6 @@ impl<'a> TryFrom<&'a [u8; 32]> for Parameter<u8> {
 
     fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
         assert_zero_bytes::<31>(value)?;
-        log::trace!("Read u8: {}", value[31]);
         Ok(Self(value[31]))
     }
 }
@@ -104,9 +95,7 @@ impl<'a> TryFrom<&'a [u8; 32]> for Parameter<u64> {
     fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
         assert_zero_bytes::<24>(value)?;
         // Type ensures our remaining len == 8
-        let p = u64::from_be_bytes(value[24..].try_into().unwrap());
-        log::trace!("Read u64: {}", p);
-        Ok(Self(p))
+        Ok(Self(u64::from_be_bytes(value[24..].try_into().unwrap())))
     }
 }
 
@@ -116,17 +105,13 @@ impl<'a> TryFrom<&'a [u8; 32]> for Parameter<i64> {
     fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
         assert_zero_bytes::<24>(value)?;
         // Type ensures our remaining len == 8
-        let p = i64::from_be_bytes(value[24..].try_into().unwrap());
-        log::trace!("Read i64: {}", p);
-        Ok(Self(p))
+        Ok(Self(i64::from_be_bytes(value[24..].try_into().unwrap())))
     }
 }
 
 impl<'a> From<&'a [u8; 32]> for Parameter<U256> {
     fn from(value: &'a [u8; 32]) -> Self {
-        let p = U256::from_big_endian(value);
-        log::trace!("Read U256: {:x}", p);
-        Self(p)
+        Self(U256::from_big_endian(value))
     }
 }
 
@@ -141,7 +126,7 @@ pub(super) struct PaddedChunks<'a, T: Sized + Copy, const CHUNK_SIZE: usize> {
     exhausted: bool,
 }
 
-impl<'a, T: Sized + Copy + Debug, const CHUNK_SIZE: usize> PaddedChunks<'a, T, CHUNK_SIZE> {
+impl<'a, T: Sized + Copy, const CHUNK_SIZE: usize> PaddedChunks<'a, T, CHUNK_SIZE> {
     pub(super) fn new(slice: &'a [T]) -> Self {
         Self { slice, chunks: slice.chunks_exact(CHUNK_SIZE), exhausted: false }
     }
@@ -157,14 +142,8 @@ impl<'a, T: Sized + Copy + Debug, const CHUNK_SIZE: usize> PaddedChunks<'a, T, C
         if self.chunks.len() > 0 {
             self.next().copied().unwrap_or([T::default(); CHUNK_SIZE])
         } else if self.exhausted() {
-            log::trace!("No data remaing from input.");
             [T::default(); CHUNK_SIZE]
         } else {
-            log::trace!(
-                "Padding out partial chunk {:?} to len: {}.",
-                self.chunks.remainder(),
-                CHUNK_SIZE
-            );
             self.exhausted = true;
             let mut buf = [T::default(); CHUNK_SIZE];
             let remainder = self.chunks.remainder();
