@@ -123,6 +123,11 @@ pub fn make_identity_cid(bz: &[u8]) -> Cid {
     Cid::new_v1(IPLD_RAW, OtherMultihash::wrap(0, bz).expect("name too long"))
 }
 
+/// Enable logging to enviornment. Returns error if already init.
+pub fn init_logging() -> Result<(), log::SetLoggerError> {
+    pretty_env_logger::try_init()
+}
+
 pub struct ActorExit {
     code: u32,
     data: RawBytes,
@@ -359,11 +364,6 @@ impl<BS> MockRuntime<BS> {
             tipset_cids: Default::default(),
             actor_exit: Default::default(),
         }
-    }
-
-    /// Enable logging to enviornment. Returns error if already init.
-    pub fn init_logging(&self) -> Result<(), log::SetLoggerError> {
-        pretty_env_logger::try_init()
     }
 }
 
