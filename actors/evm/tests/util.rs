@@ -1,7 +1,10 @@
 use cid::Cid;
 use evm::interpreter::{address::EthAddress, StatusCode};
 use fil_actor_evm as evm;
-use fil_actors_runtime::{test_utils::{*, self}, ActorError, EAM_ACTOR_ID, INIT_ACTOR_ADDR};
+use fil_actors_runtime::{
+    test_utils::{self, *},
+    ActorError, EAM_ACTOR_ID, INIT_ACTOR_ADDR,
+};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{BytesDe, BytesSer};
 use fvm_shared::{address::Address, IDENTITY_HASH, IPLD_RAW};
