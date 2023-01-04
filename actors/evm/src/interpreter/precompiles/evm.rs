@@ -164,15 +164,14 @@ pub(super) fn modexp<RT: Runtime>(
     Ok(output)
 }
 
-pub(super) fn curve_to_vec(curve: G1) -> Vec<u8> {
+pub(super) fn curve_to_vec(curve: G1) -> Result<Vec<u8>, PrecompileError> {
     AffineG1::from_jacobian(curve)
         .map(|product| {
             let mut output = vec![0; 64];
             product.x().to_big_endian(&mut output[0..32]).unwrap();
             product.y().to_big_endian(&mut output[32..64]).unwrap();
             output
-        })
-        .unwrap_or_else(|| vec![0; 64]) // TODO should be empty
+        }).ok_or(PrecompileError::EcErr(substrate_bn::CurveError::InvalidEncoding))
 }
 
 /// add 2 points together on an elliptic curve
@@ -185,7 +184,7 @@ pub(super) fn ec_add<RT: Runtime>(
     let point1 = input_params.next_param_padded()?;
     let point2 = input_params.next_param_padded()?;
 
-    Ok(curve_to_vec(point1 + point2))
+    Ok(curve_to_vec(point1 + point2)?)
 }
 
 /// multiply a point on an elliptic curve by a scalar value
@@ -203,7 +202,7 @@ pub(super) fn ec_mul<RT: Runtime>(
         Fr::new_mul_factor(data.into())
     };
 
-    Ok(curve_to_vec(point * scalar))
+    Ok(curve_to_vec(point * scalar)?) 
 }
 
 /// pairs multple groups of twisted bn curves
@@ -515,23 +514,11 @@ mod tests {
                 0000000000000000000000000000000000000000000000000000000000000000",
             )
             .unwrap();
-            let expected = hex::decode(
-                "\
-                0000000000000000000000000000000000000000000000000000000000000000\
-                0000000000000000000000000000000000000000000000000000000000000000",
-            )
-            .unwrap();
             let res = ec_add(&mut system, &input, PrecompileContext::default()).unwrap();
-            assert_eq!(res, expected);
+            assert_eq!(res, );
 
             // no input test
             let input = [];
-            let expected = hex::decode(
-                "\
-                0000000000000000000000000000000000000000000000000000000000000000\
-                0000000000000000000000000000000000000000000000000000000000000000",
-            )
-            .unwrap();
             let res = ec_add(&mut system, &input, PrecompileContext::default()).unwrap();
             assert_eq!(res, expected);
             // point not on curve fail
