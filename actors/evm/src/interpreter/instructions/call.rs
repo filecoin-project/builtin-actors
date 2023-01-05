@@ -4,7 +4,7 @@ use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::BytesDe;
 use fvm_shared::{address::Address, sys::SendFlags, IPLD_RAW, METHOD_SEND};
 
-use crate::interpreter::precompiles::{PrecompileContext, PrecompileError};
+use crate::interpreter::precompiles::PrecompileContext;
 
 use super::ext::{get_contract_type, get_evm_bytecode_cid, ContractType};
 
@@ -204,16 +204,7 @@ pub fn call_generic<RT: Runtime>(
             match precompiles::Precompiles::call_precompile(system, dst, input_data, context) {
                 Ok(return_data) => (1, return_data),
                 Err(e) => {
-                    match e {
-                        PrecompileError::EcErr(_)
-                        | PrecompileError::EcGroupErr(_)
-                        | PrecompileError::OutOfGas
-                        | PrecompileError::IncorrectInputSize => {
-                            // NOTE: this would be where we consume gas sent to the contract
-                            // TODO: refer to gh issue for reasoning
-                        }
-                        PrecompileError::CallForbidden | PrecompileError::InvalidInput => (),
-                    };
+                    log::error!(target: "evm", "Precompile failed: {e:?}");
                     // return reverted
                     (0, vec![])
                 }
