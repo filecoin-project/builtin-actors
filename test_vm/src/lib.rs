@@ -582,6 +582,10 @@ impl MessageInfo for InvocationCtx<'_, '_> {
     fn gas_premium(&self) -> TokenAmount {
         TokenAmount::zero()
     }
+
+    fn nonce(&self) -> u64 {
+        self.top.originator_call_seq
+    }
 }
 
 pub const TEST_VM_RAND_ARRAY: [u8; 32] = [

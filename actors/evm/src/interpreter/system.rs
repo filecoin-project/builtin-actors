@@ -18,7 +18,7 @@ use fvm_shared::{
 use multihash::{Code, Multihash};
 use once_cell::unsync::OnceCell;
 
-use crate::state::State;
+use crate::state::{State, Tombstone};
 
 use super::{address::EthAddress, Bytecode};
 
@@ -111,9 +111,29 @@ pub struct System<'r, RT: Runtime> {
     pub readonly: bool,
     /// Randomness taken from the current epoch of chain randomness
     randomness: OnceCell<[u8; 32]>,
+
+    /// This is "some" if the actor is currently a "zombie". I.e., it has selfdestructed, but the
+    /// current message is still executing.
+    tombstone: Option<Tombstone>,
 }
 
 impl<'r, RT: Runtime> System<'r, RT> {
+    fn new(rt: &'r mut RT, readonly: bool) -> Self
+    where
+        RT::Blockstore: Clone,
+    {
+        let store = rt.store().clone();
+        Self {
+            rt,
+            slots: StateKamt::new_with_config(store, KAMT_CONFIG.clone()),
+            nonce: 1,
+            saved_state_root: None,
+            bytecode: None,
+            readonly,
+            randomness: OnceCell::new(),
+            tombstone: None,
+        }
+    }
     /// Create the actor.
     pub fn create(rt: &'r mut RT) -> Result<Self, ActorError>
     where
@@ -122,18 +142,17 @@ impl<'r, RT: Runtime> System<'r, RT> {
         let read_only = rt.read_only();
         let state_root = rt.get_state_root()?;
         if state_root != EMPTY_ARR_CID {
-            return Err(actor_error!(illegal_state, "can't create over an existing actor"));
+            // Check if we're resurecting
+            let state: State = rt
+                .store()
+                .get_cbor(&state_root)
+                .context_code(ExitCode::USR_SERIALIZATION, "failed to decode state")?
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?;
+            if !crate::is_dead(rt, &state) {
+                return Err(actor_error!(illegal_state, "can't create over an existing actor"));
+            }
         }
-        let store = rt.store().clone();
-        Ok(Self {
-            rt,
-            slots: StateKamt::new_with_config(store, KAMT_CONFIG.clone()),
-            nonce: 1,
-            saved_state_root: None,
-            bytecode: None,
-            readonly: read_only,
-            randomness: OnceCell::new(),
-        })
+        return Ok(Self::new(rt, read_only));
     }
 
     /// Load the actor from state.
@@ -141,13 +160,20 @@ impl<'r, RT: Runtime> System<'r, RT> {
     where
         RT::Blockstore: Clone,
     {
-        let read_only = rt.read_only();
         let store = rt.store().clone();
         let state_root = rt.get_state_root()?;
         let state: State = store
             .get_cbor(&state_root)
             .context_code(ExitCode::USR_SERIALIZATION, "failed to decode state")?
             .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?;
+
+        if crate::is_dead(rt, &state) {
+            // If we're "dead", return an empty read-only contract. The code will be empty, so
+            // nothing can happen anyways.
+            return Ok(Self::new(rt, true));
+        }
+
+        let read_only = rt.read_only();
 
         Ok(Self {
             rt,
@@ -158,6 +184,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
             bytecode: Some(EvmBytecode::new(state.bytecode, state.bytecode_hash)),
             readonly: read_only,
             randomness: OnceCell::new(),
+            tombstone: state.tombstone,
         })
     }
 
@@ -213,6 +240,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
                         "failed to flush contract state",
                     )?,
                     nonce: self.nonce,
+                    tombstone: self.tombstone,
                 },
                 Code::Blake2b256,
             )
@@ -369,6 +397,12 @@ impl<'r, RT: Runtime> System<'r, RT> {
                 ENTROPY,
             )?)
         })
+    }
+
+    /// Mark ourselves as "selfdestructed".
+    pub fn mark_selfdestructed(&mut self) {
+        self.saved_state_root = None;
+        self.tombstone = Some(crate::current_tombstone(self.rt));
     }
 }
 

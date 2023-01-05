@@ -1,11 +1,14 @@
-use std::iter;
-
-use fil_actors_runtime::{actor_error, AsActorError, EAM_ACTOR_ID, INIT_ACTOR_ADDR};
+use fil_actors_runtime::{
+    actor_error, AsActorError, EAM_ACTOR_ADDR, EAM_ACTOR_ID, INIT_ACTOR_ADDR,
+};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{strict_bytes, BytesDe, BytesSer};
 use fvm_shared::address::{Address, Payload};
+use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::error::ExitCode;
+use interpreter::instructions::ext::EMPTY_EVM_HASH;
 use interpreter::{address::EthAddress, system::load_bytecode};
+use multihash::Multihash;
 
 use crate::interpreter::output::Outcome;
 
@@ -14,7 +17,6 @@ mod state;
 
 use {
     crate::interpreter::{execute, Bytecode, ExecutionState, StatusCode, System, U256},
-    crate::state::State,
     bytes::Bytes,
     cid::Cid,
     fil_actors_runtime::{
@@ -27,6 +29,8 @@ use {
     num_derive::FromPrimitive,
     num_traits::FromPrimitive,
 };
+
+pub use state::*;
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(EvmContractActor);
@@ -61,13 +65,26 @@ pub enum Method {
 
 pub struct EvmContractActor;
 
+/// Returns a tombstone for the currently executing message.
+pub(crate) fn current_tombstone(rt: &impl Runtime) -> Tombstone {
+    Tombstone { origin: rt.message().origin().id().unwrap(), nonce: rt.message().nonce() }
+}
+
+/// Returns true if the contract is "dead". A contract is dead if:
+///
+/// 1. It has a tombstone.
+/// 2. It's tombstone is not from the current message execution.
+pub(crate) fn is_dead(rt: &impl Runtime, state: &State) -> bool {
+    state.tombstone.map_or(false, |t| t != current_tombstone(rt))
+}
+
 impl EvmContractActor {
     pub fn constructor<RT>(rt: &mut RT, params: ConstructorParams) -> Result<(), ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
     {
-        rt.validate_immediate_caller_is(iter::once(&INIT_ACTOR_ADDR))?;
+        rt.validate_immediate_caller_is(&[INIT_ACTOR_ADDR, EAM_ACTOR_ADDR])?;
 
         // Assert we are constructed with a delegated address from the EAM
         let receiver = rt.message().receiver();
@@ -127,7 +144,6 @@ impl EvmContractActor {
                 "constructor reverted".to_string(),
                 RawBytes::serialize(BytesSer(&output.return_data)).unwrap(),
             )),
-            Outcome::Delete => Ok(()),
         }
     }
 
@@ -189,7 +205,6 @@ impl EvmContractActor {
                 "contract reverted".to_string(),
                 RawBytes::serialize(BytesSer(&output.return_data)).unwrap(),
             )),
-            Outcome::Delete => Ok(Vec::new()),
         }
     }
 
@@ -212,16 +227,28 @@ impl EvmContractActor {
         rt.validate_immediate_caller_accept_any()?;
 
         let state: State = rt.state()?;
-        Ok(state.bytecode)
+        if is_dead(rt, &state) {
+            // TODO: to return the "empty bytecode" cid, we'd need to actually write the empty
+            // bytecode. Otherwise, it's not reachable.
+            // Or we could implement https://github.com/filecoin-project/ref-fvm/issues/1358.
+            // Finally, we could just return an error and let the caller deal with it?
+            todo!("non-trivial?");
+        } else {
+            Ok(state.bytecode)
+        }
     }
 
     pub fn bytecode_hash(rt: &mut impl Runtime) -> Result<multihash::Multihash, ActorError> {
         // Any caller can fetch the bytecode hash of a contract; this is where EXTCODEHASH gets it's value for EVM contracts.
         rt.validate_immediate_caller_accept_any()?;
 
-        let state: State = rt.state()?;
         // return value must be either keccak("") or keccak(bytecode)
-        Ok(state.bytecode_hash)
+        let state: State = rt.state()?;
+        if is_dead(rt, &state) {
+            Ok(Multihash::wrap(SupportedHashes::Keccak256 as u64, &EMPTY_EVM_HASH).unwrap())
+        } else {
+            Ok(state.bytecode_hash)
+        }
     }
 
     pub fn storage_at<RT>(rt: &mut RT, params: GetStorageAtParams) -> Result<U256, ActorError>
@@ -233,6 +260,7 @@ impl EvmContractActor {
         // access arbitrary storage keys from a contract.
         rt.validate_immediate_caller_is([&Address::new_id(0)])?;
 
+        // If the contract is dead, this will always return "0".
         System::load(rt)?
             .get_storage(params.storage_key)
             .context_code(ExitCode::USR_ASSERTION_FAILED, "failed to get storage key")

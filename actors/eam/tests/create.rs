@@ -56,8 +56,11 @@ fn call_create() {
             .deserialize::<Return>()
             .unwrap();
 
-        let expected_return =
-            Return { actor_id: 111, robust_address: Address::new_id(0), eth_address: new_eth_addr };
+        let expected_return = Return {
+            actor_id: 111,
+            robust_address: Some(Address::new_id(0)),
+            eth_address: new_eth_addr,
+        };
 
         assert_eq!(result, expected_return);
         rt.verify();
@@ -147,7 +150,7 @@ fn call_create2() {
 
     let expected_return = Return {
         actor_id: 111,
-        robust_address: Address::new_id(0),
+        robust_address: Some(Address::new_id(0)),
         eth_address: EthAddress(subaddress.try_into().unwrap()),
     };
 

@@ -1,4 +1,5 @@
-use fil_actors_runtime::{test_utils::*, BURNT_FUNDS_ACTOR_ADDR};
+use fil_actor_evm::{State, Tombstone};
+use fil_actors_runtime::test_utils::*;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::{address::Address, error::ExitCode, METHOD_SEND};
 
@@ -26,10 +27,11 @@ fn test_selfdestruct() {
         RawBytes::default(),
         ExitCode::OK,
     );
-    rt.expect_delete_actor(BURNT_FUNDS_ACTOR_ADDR);
 
     assert!(util::invoke_contract(&mut rt, &solidity_params).is_empty());
-    rt.verify();
+    let state: State = rt.get_state();
+    assert_eq!(state.tombstone, Some(Tombstone { origin: 100, nonce: 0 }));
+    rt.verify()
 }
 
 #[test]
@@ -54,8 +56,10 @@ fn test_selfdestruct_missing() {
         RawBytes::default(),
         ExitCode::SYS_INVALID_RECEIVER,
     );
-    rt.expect_delete_actor(BURNT_FUNDS_ACTOR_ADDR);
 
+    // It still works even if the beneficiary doesn't exist.
     assert!(util::invoke_contract(&mut rt, &solidity_params).is_empty());
+    let state: State = rt.get_state();
+    assert_eq!(state.tombstone, Some(Tombstone { origin: 100, nonce: 0 }));
     rt.verify();
 }

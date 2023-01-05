@@ -1,6 +1,6 @@
 use bytes::Bytes;
 
-use fil_actors_runtime::{BURNT_FUNDS_ACTOR_ADDR, EAM_ACTOR_ADDR};
+use fil_actors_runtime::EAM_ACTOR_ADDR;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{strict_bytes, tuple::*};
 use fvm_shared::sys::SendFlags;
@@ -162,16 +162,18 @@ pub fn selfdestruct(
         return Err(StatusCode::StaticModeViolation);
     }
 
-    // Try to give funds to the beneficiary. We don't use the `delete_actor` syscall to do this
-    // because that won't auto-create the beneficiary (and will fail if, for some reason, we can't
-    // send them the funds).
-    //
-    // If we fail, we'll just burn the funds. Yes, this is what the EVM does.
+    // Try to give funds to the beneficiary. If this fails, we just keep them.
     if let Ok(addr) = EthAddress::from(beneficiary).try_into() {
         let balance = system.rt.current_balance();
         let _ = system.rt.send(&addr, METHOD_SEND, None, balance);
     }
-    // Now try to delete ourselves. If this fails, we abort execution.
-    system.rt.delete_actor(&BURNT_FUNDS_ACTOR_ADDR)?;
-    Ok(Output { outcome: Outcome::Delete, return_data: Bytes::new() })
+
+    // Now mark ourselves as deleted.
+    system.mark_selfdestructed();
+
+    // And "return".
+    //
+    // 1. In the constructor, this will set our code to "empty". This is correct.
+    // 2. Otherwise, we'll successfully return nothing to the caller.
+    Ok(Output { outcome: Outcome::Return, return_data: Bytes::new() })
 }

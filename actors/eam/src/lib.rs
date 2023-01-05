@@ -98,7 +98,7 @@ pub struct Create2Params {
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, PartialEq, Eq)]
 pub struct Return {
     pub actor_id: ActorID,
-    pub robust_address: Address,
+    pub robust_address: Option<Address>,
     pub eth_address: EthAddress,
 }
 
@@ -109,7 +109,7 @@ impl Return {
     fn from_exec4(exec4: Exec4Return, eth_address: EthAddress) -> Self {
         Self {
             actor_id: exec4.id_address.id().unwrap(),
-            robust_address: exec4.robust_address,
+            robust_address: Some(exec4.robust_address),
             eth_address,
         }
     }
@@ -140,8 +140,17 @@ fn create_actor(
     if new_addr.is_reserved() {
         return Err(ActorError::forbidden("cannot create address with a reserved prefix".into()));
     }
+
     let constructor_params =
         RawBytes::serialize(EvmConstructorParams { creator, initcode: initcode.into() })?;
+    let value = rt.message().value_received();
+
+    // Try to resurrect it if it already exists.
+    let f4_addr = Address::new_delegated(EAM_ACTOR_ID, &new_addr.0).unwrap();
+    if let Some(id) = rt.resolve_address(&f4_addr) {
+        rt.send(&Address::new_id(id), METHOD_CONSTRUCTOR, constructor_params.into(), value)?;
+        return Ok(Return { actor_id: id, robust_address: None, eth_address: new_addr });
+    }
 
     let init_params = Exec4Params {
         code_cid: rt.get_code_cid_for_type(Type::EVM),
@@ -154,7 +163,7 @@ fn create_actor(
             &INIT_ACTOR_ADDR,
             ext::init::EXEC4_METHOD,
             IpldBlock::serialize_cbor(&init_params)?,
-            rt.message().value_received(),
+            value,
         )?
         .deserialize()?;
 
