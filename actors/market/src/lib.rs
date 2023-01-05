@@ -641,7 +641,13 @@ impl Actor {
                     .find_deal_state(rt.store(), id)?
                     // A deal with a proposal but no state is not activated, but then it should not be
                     // part of a sector that is terminating.
-                    .ok_or_else(|| actor_error!(illegal_argument, "no state for deal {}", id))?;
+                    .ok_or_else(|| {
+                        if id < st.next_id {
+                            ActorError::unchecked(EX_DEAL_EXPIRED, format!("deal {} expired", id))
+                        } else {
+                            ActorError::not_found(format!("no such deal {}", id))
+                        }
+                    })?;
 
                 // If a deal is already slashed, don't need to do anything
                 if state.slash_epoch != EPOCH_UNDEFINED {
@@ -733,17 +739,20 @@ impl Actor {
                         }
 
                         // Delete the proposal (but not state, which doesn't exist).
-                        let deleted = st.remove_proposal(rt.store(), deal_id)?;
-
-                        if deleted.is_none() {
-                            return Err(actor_error!(
-                                illegal_state,
-                                format!(
-                                    "failed to delete deal {} proposal {}: does not exist",
-                                    deal_id, dcid
-                                )
-                            ));
-                        }
+                        let _deleted =
+                            st.remove_proposal(rt.store(), deal_id)?.ok_or_else(|| {
+                                if deal_id < st.next_id {
+                                    ActorError::unchecked(
+                                        EX_DEAL_EXPIRED,
+                                        format!("deal {} expired", deal_id),
+                                    )
+                                } else {
+                                    ActorError::illegal_state(format!(
+                                        "failed to delete deal {} proposal {}: does not exist",
+                                        deal_id, dcid
+                                    ))
+                                }
+                            })?;
 
                         // Delete pending deal CID
                         st.remove_pending_deal(rt.store(), dcid)?.ok_or_else(|| {
@@ -801,14 +810,19 @@ impl Actor {
                         amount_slashed += slash_amount;
 
                         // Delete proposal and state simultaneously.
-                        let deleted = st.remove_deal_state(rt.store(), deal_id)?;
-
-                        if deleted.is_none() {
-                            return Err(actor_error!(
-                                illegal_state,
-                                "failed to delete deal state: does not exist"
-                            ));
-                        }
+                        let _deleted =
+                            st.remove_deal_state(rt.store(), deal_id)?.ok_or_else(|| {
+                                if deal_id < st.next_id {
+                                    ActorError::unchecked(
+                                        EX_DEAL_EXPIRED,
+                                        format!("deal {} expired", deal_id),
+                                    )
+                                } else {
+                                    ActorError::illegal_state(
+                                        "failed to delete deal state: does not exist".to_string(),
+                                    )
+                                }
+                            })?;
 
                         let deleted = st.remove_proposal(rt.store(), deal_id)?;
 
