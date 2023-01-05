@@ -503,7 +503,6 @@ impl Actor {
         params: ActivateDealsParams,
     ) -> Result<ActivateDealsResult, ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
-
         let miner_addr = rt.message().caller();
         let curr_epoch = rt.curr_epoch();
 
