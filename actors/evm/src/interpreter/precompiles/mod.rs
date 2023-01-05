@@ -63,7 +63,9 @@ const fn gen_native_precompiles<RT: Runtime>() -> [PrecompileFn<RT>; 4] {
 
 pub fn is_reserved_precompile_address(addr: [u8; 20]) -> bool {
     let [prefix, middle @ .., index] = addr;
-    (prefix == 0x00 || prefix == NATIVE_PRECOMPILE_ADDRESS_PREFIX) && middle == [0u8; 18] && index > 0 
+    (prefix == 0x00 || prefix == NATIVE_PRECOMPILE_ADDRESS_PREFIX)
+        && middle == [0u8; 18]
+        && index > 0
 }
 
 pub struct Precompiles<RT>(PhantomData<RT>);
