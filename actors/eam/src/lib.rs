@@ -74,10 +74,15 @@ impl EthAddress {
         self.0[0] == 0xff && self.0[1..12].iter().all(|&i| i == 0)
     }
 
+    #[inline]
+    fn is_null(&self) -> bool {
+        self.0 == [0; 20]
+    }
+
     /// Returns true if the EthAddress is "reserved" (cannot be assigned by the EAM).
     #[inline]
     fn is_reserved(&self) -> bool {
-        self.is_precompile() || self.is_id()
+        self.is_precompile() || self.is_id() || self.is_null()
     }
 }
 
