@@ -273,9 +273,23 @@ mod test {
             create_actor(&mut rt, creator, new_addr, Vec::new()).unwrap_err().exit_code()
         );
 
-        // Reject Precompile.
+        // Reject EVM Precompile.
         let mut new_addr = EthAddress([0; 20]);
         new_addr.0[19] = 0x20;
+        assert_eq!(
+            ExitCode::USR_FORBIDDEN,
+            create_actor(&mut rt, creator, new_addr, Vec::new()).unwrap_err().exit_code()
+        );
+
+        // Reject Native Precompile.
+        new_addr.0[0] = 0xfe;
+        assert_eq!(
+            ExitCode::USR_FORBIDDEN,
+            create_actor(&mut rt, creator, new_addr, Vec::new()).unwrap_err().exit_code()
+        );
+
+        // Reject Null.
+        let new_addr = EthAddress([0; 20]);
         assert_eq!(
             ExitCode::USR_FORBIDDEN,
             create_actor(&mut rt, creator, new_addr, Vec::new()).unwrap_err().exit_code()
