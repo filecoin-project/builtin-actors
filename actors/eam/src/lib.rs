@@ -63,6 +63,7 @@ impl EthAddress {
     #[inline]
     fn is_precompile(&self) -> bool {
         // Exact index is not checked since it is unknown to the EAM what precompiles exist in the EVM actor.
+        // 0 indexes of both ranges are not assignable as well but are _not_ precompile address.
         let [prefix, middle @ .., _index] = self.0;
         (prefix == 0xfe || prefix == 0x00) && middle == [0u8; 18]
     }

@@ -5,6 +5,8 @@ use fvm_ipld_encoding::{serde, strict_bytes};
 use fvm_shared::address::Address;
 use fvm_shared::ActorID;
 
+use super::precompiles::is_reserved_precompile_address;
+
 /// A Filecoin address as represented in the FEVM runtime (also called EVM-form).
 ///
 /// TODO this type will eventually handle f4 address detection.
@@ -38,9 +40,10 @@ impl TryFrom<EthAddress> for Address {
 impl TryFrom<&EthAddress> for Address {
     type Error = StatusCode;
     fn try_from(addr: &EthAddress) -> Result<Self, Self::Error> {
-        if addr.0[..19] == [0; 19] {
+        if is_reserved_precompile_address(addr.0) {
             return Err(StatusCode::BadAddress(format!(
-                "cannot convert precompile {} to an f4 address",
+                "cannot convert precompile address: prefix {} and index {} to an f4 address",
+                addr.0[0],
                 addr.0[19]
             )));
         }
