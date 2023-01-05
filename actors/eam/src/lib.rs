@@ -1,6 +1,9 @@
 use std::iter;
 
-use ext::init::{Exec4Params, Exec4Return};
+use ext::{
+    evm::RESURRECT_METHOD,
+    init::{Exec4Params, Exec4Return},
+};
 use fil_actors_runtime::{actor_dispatch_unrestricted, AsActorError};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::error::ExitCode;
@@ -148,7 +151,7 @@ fn create_actor(
     // Try to resurrect it if it already exists.
     let f4_addr = Address::new_delegated(EAM_ACTOR_ID, &new_addr.0).unwrap();
     if let Some(id) = rt.resolve_address(&f4_addr) {
-        rt.send(&Address::new_id(id), METHOD_CONSTRUCTOR, constructor_params.into(), value)?;
+        rt.send(&Address::new_id(id), RESURRECT_METHOD, constructor_params.into(), value)?;
         return Ok(Return { actor_id: id, robust_address: None, eth_address: new_addr });
     }
 

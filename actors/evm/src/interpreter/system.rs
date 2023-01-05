@@ -134,7 +134,30 @@ impl<'r, RT: Runtime> System<'r, RT> {
             tombstone: None,
         }
     }
-    /// Create the actor.
+
+    /// Resurrect the contract. This will return a new empty contract if, and only if, the contract
+    /// is "dead".
+    pub fn resurrect(rt: &'r mut RT) -> Result<Self, ActorError>
+    where
+        RT::Blockstore: Clone,
+    {
+        let read_only = rt.read_only();
+        let state_root = rt.get_state_root()?;
+        // Check the tombstone.
+        let state: State = rt
+            .store()
+            .get_cbor(&state_root)
+            .context_code(ExitCode::USR_SERIALIZATION, "failed to decode state")?
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?;
+        if !crate::is_dead(rt, &state) {
+            return Err(actor_error!(illegal_state, "can only resurrect a dead contract"));
+        }
+
+        return Ok(Self::new(rt, read_only));
+    }
+
+    /// Create the contract. This will return a new empty contract if, and only if, the contract
+    /// doesn't have any state.
     pub fn create(rt: &'r mut RT) -> Result<Self, ActorError>
     where
         RT::Blockstore: Clone,
@@ -142,15 +165,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
         let read_only = rt.read_only();
         let state_root = rt.get_state_root()?;
         if state_root != EMPTY_ARR_CID {
-            // Check if we're resurecting
-            let state: State = rt
-                .store()
-                .get_cbor(&state_root)
-                .context_code(ExitCode::USR_SERIALIZATION, "failed to decode state")?
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?;
-            if !crate::is_dead(rt, &state) {
-                return Err(actor_error!(illegal_state, "can't create over an existing actor"));
-            }
+            return Err(actor_error!(illegal_state, "can't create over an existing actor"));
         }
         return Ok(Self::new(rt, read_only));
     }

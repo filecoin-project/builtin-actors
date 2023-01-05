@@ -1,9 +1,7 @@
-use fil_actors_runtime::{
-    actor_error, AsActorError, EAM_ACTOR_ADDR, EAM_ACTOR_ID, INIT_ACTOR_ADDR,
-};
+use fil_actors_runtime::{actor_error, AsActorError, EAM_ACTOR_ADDR, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{strict_bytes, BytesDe, BytesSer};
-use fvm_shared::address::{Address, Payload};
+use fvm_shared::address::Address;
 use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::error::ExitCode;
 use interpreter::instructions::ext::EMPTY_EVM_HASH;
@@ -61,6 +59,7 @@ pub enum Method {
     GetStorageAt = 4,
     InvokeContractDelegate = 5,
     GetBytecodeHash = 6,
+    Resurrect = 7,
 }
 
 pub struct EvmContractActor;
@@ -78,73 +77,74 @@ pub(crate) fn is_dead(rt: &impl Runtime, state: &State) -> bool {
     state.tombstone.map_or(false, |t| t != current_tombstone(rt))
 }
 
+pub fn initialize_evm_contract(
+    system: &mut System<impl Runtime>,
+    caller: EthAddress,
+    initcode: Vec<u8>,
+) -> Result<(), ActorError> {
+    // Lookup our Ethereum address.
+    let receiver_fil_addr = system.rt.message().receiver();
+    let receiver_eth_addr = system.resolve_ethereum_address(&receiver_fil_addr).context_code(
+        ExitCode::USR_ASSERTION_FAILED,
+        "failed to resolve the contracts ETH address",
+    )?;
+
+    // Make sure we have an actual Ethereum address (assigned by the EAM). This is how we make sure
+    // an EVM actor may only be constructed by the EAM.
+    if receiver_eth_addr.as_id().is_some() {
+        return Err(ActorError::assertion_failed(format!(
+            "contract {} doesn't have an eth address",
+            receiver_fil_addr,
+        )));
+    }
+
+    // If we have no code, save the state and return.
+    if initcode.is_empty() {
+        return system.flush();
+    }
+
+    // create a new execution context
+    let mut exec_state = ExecutionState::new(caller, receiver_eth_addr, Bytes::new());
+
+    // identify bytecode valid jump destinations
+    let initcode = Bytecode::new(initcode);
+
+    // invoke the contract constructor
+    let output = execute(&initcode, &mut exec_state, system).map_err(|e| match e {
+        StatusCode::ActorError(e) => e,
+        _ => ActorError::unspecified(format!("EVM execution error: {e:?}")),
+    })?;
+
+    match output.outcome {
+        Outcome::Return => {
+            system.set_bytecode(&output.return_data)?;
+            system.flush()
+        }
+        Outcome::Revert => Err(ActorError::unchecked_with_data(
+            EVM_CONTRACT_REVERTED,
+            "constructor reverted".to_string(),
+            RawBytes::serialize(BytesSer(&output.return_data)).unwrap(),
+        )),
+    }
+}
+
 impl EvmContractActor {
     pub fn constructor<RT>(rt: &mut RT, params: ConstructorParams) -> Result<(), ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
     {
-        rt.validate_immediate_caller_is(&[INIT_ACTOR_ADDR, EAM_ACTOR_ADDR])?;
+        rt.validate_immediate_caller_is(&[INIT_ACTOR_ADDR])?;
+        initialize_evm_contract(&mut System::create(rt)?, params.creator, params.initcode.into())
+    }
 
-        // Assert we are constructed with a delegated address from the EAM
-        let receiver = rt.message().receiver();
-        let delegated_addr =
-            rt.lookup_delegated_address(receiver.id().unwrap()).ok_or_else(|| {
-                ActorError::assertion_failed(format!(
-                    "EVM actor {} created without a delegated address",
-                    receiver
-                ))
-            })?;
-        let delegated_addr = match delegated_addr.payload() {
-            Payload::Delegated(delegated) if delegated.namespace() == EAM_ACTOR_ID => {
-                // sanity check
-                assert_eq!(delegated.subaddress().len(), 20);
-                Ok(*delegated)
-            }
-            _ => Err(ActorError::assertion_failed(format!(
-                "EVM actor with delegated address {} created not namespaced to the EAM {}",
-                delegated_addr, EAM_ACTOR_ID,
-            ))),
-        }?;
-        let receiver_eth_addr = {
-            let subaddr: [u8; 20] = delegated_addr.subaddress().try_into().map_err(|_| {
-                ActorError::assertion_failed(format!(
-                    "expected 20 byte EVM address, found {} bytes",
-                    delegated_addr.subaddress().len()
-                ))
-            })?;
-            EthAddress(subaddr)
-        };
-
-        let mut system = System::create(rt)?;
-        // If we have no code, save the state and return.
-        if params.initcode.is_empty() {
-            return system.flush();
-        }
-
-        // create a new execution context
-        let mut exec_state = ExecutionState::new(params.creator, receiver_eth_addr, Bytes::new());
-
-        // identify bytecode valid jump destinations
-        let initcode = Bytecode::new(params.initcode.into());
-
-        // invoke the contract constructor
-        let output = execute(&initcode, &mut exec_state, &mut system).map_err(|e| match e {
-            StatusCode::ActorError(e) => e,
-            _ => ActorError::unspecified(format!("EVM execution error: {e:?}")),
-        })?;
-
-        match output.outcome {
-            Outcome::Return => {
-                system.set_bytecode(&output.return_data)?;
-                system.flush()
-            }
-            Outcome::Revert => Err(ActorError::unchecked_with_data(
-                EVM_CONTRACT_REVERTED,
-                "constructor reverted".to_string(),
-                RawBytes::serialize(BytesSer(&output.return_data)).unwrap(),
-            )),
-        }
+    pub fn resurrect<RT>(rt: &mut RT, params: ConstructorParams) -> Result<(), ActorError>
+    where
+        RT: Runtime,
+        RT::Blockstore: Clone,
+    {
+        rt.validate_immediate_caller_is(&[EAM_ACTOR_ADDR])?;
+        initialize_evm_contract(&mut System::resurrect(rt)?, params.creator, params.initcode.into())
     }
 
     pub fn invoke_contract<RT>(
@@ -358,6 +358,16 @@ impl ActorCode for EvmContractActor {
                 )?;
                 Ok(RawBytes::serialize(BytesSer(&value))?)
             }
+            Some(Method::Resurrect) => {
+                Self::resurrect(
+                    rt,
+                    args.with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
+                        "method expects arguments".to_string()
+                    })?
+                    .deserialize()?,
+                )?;
+                Ok(RawBytes::default())
+            }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }
     }
@@ -370,6 +380,8 @@ pub struct ConstructorParams {
     /// The initcode that will construct the new EVM actor.
     pub initcode: RawBytes,
 }
+
+pub type ResurrectParams = ConstructorParams;
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct DelegateCallParams {

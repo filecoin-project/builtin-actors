@@ -35,4 +35,6 @@ pub mod evm {
         pub bytecode: RawBytes,
         pub input_data: RawBytes,
     }
+
+    pub const RESURRECT_METHOD: u64 = 7;
 }
