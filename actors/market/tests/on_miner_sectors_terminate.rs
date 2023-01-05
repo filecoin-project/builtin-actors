@@ -3,7 +3,9 @@
 
 use std::convert::TryInto;
 
-use fil_actor_market::{Actor as MarketActor, Method, OnMinerSectorsTerminateParams};
+use fil_actor_market::{
+    Actor as MarketActor, Method, OnMinerSectorsTerminateParams, EX_DEAL_EXPIRED,
+};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::Policy;
@@ -371,7 +373,7 @@ fn fail_when_deal_has_been_published_but_not_activated() {
     );
 
     let ret = terminate_deals_raw(&mut rt, PROVIDER_ADDR, &[deal]);
-    expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "no state for deal", ret);
+    expect_abort_contains_message(EX_DEAL_EXPIRED, &format!("deal {} expired", deal), ret);
     rt.verify();
     check_state(&rt);
 }
@@ -405,7 +407,7 @@ fn termination_of_all_deals_should_fail_when_one_deal_fails() {
     );
 
     let ret = terminate_deals_raw(&mut rt, PROVIDER_ADDR, &[deal1, deal2]);
-    expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "no state for deal", ret);
+    expect_abort_contains_message(EX_DEAL_EXPIRED, &format!("deal {} expired", deal2), ret);
     rt.verify();
 
     // verify deal1 has not been terminated
