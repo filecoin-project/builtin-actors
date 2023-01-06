@@ -72,7 +72,11 @@ pub(crate) fn current_tombstone(rt: &impl Runtime) -> Tombstone {
 /// Returns true if the contract is "dead". A contract is dead if:
 ///
 /// 1. It has a tombstone.
-/// 2. It's tombstone is not from the current message execution.
+/// 2. It's tombstone is not from the current message execution (the nonce/origin don't match the
+///    currently executing message).
+///
+/// Specifically, this lets us mark the contract as "self-destructed" but keep it alive until the
+/// current top-level message finishes executing.
 pub(crate) fn is_dead(rt: &impl Runtime, state: &State) -> bool {
     state.tombstone.map_or(false, |t| t != current_tombstone(rt))
 }
