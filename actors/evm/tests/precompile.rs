@@ -166,3 +166,73 @@ return
     assert!(result.is_empty());
     rt.reset();
 }
+
+fn resolve_address_contract() -> Vec<u8> {
+    let init = "";
+    let body = r#"
+    
+# get call payload size
+calldatasize
+# store payload to mem 0x00
+push1 0x00
+push1 0x00
+calldatacopy
+
+# out size
+# out off
+push1 0x20
+push1 0xA0
+
+# in size
+# in off
+calldatasize
+push1 0x00
+
+# value
+push1 0x00
+
+# dst (resolve_address precompile)
+push20 0xfe00000000000000000000000000000000000001
+
+# gas
+push1 0x00
+
+call
+
+# write exit code memory
+push1 0x00 # offset
+mstore8
+
+returndatasize
+push1 0x00 # offset
+push1 0x01 # dest offset
+returndatacopy
+
+returndatasize
+push1 0x01
+add
+push1 0x00
+return
+"#;
+    asm::new_contract("native_precompiles", init, body).unwrap()
+}
+
+#[test]
+fn test_precompile_failure() {
+    let bytecode = resolve_address_contract();
+    let mut rt = util::construct_and_verify(bytecode);
+
+    // invalid input fails
+    rt.expect_gas_available(10_000_000_000u64);
+    let result = util::invoke_contract(&mut rt, &[0xff; 32]);
+    rt.verify();
+    assert_eq!(&[0u8], result.as_slice());
+    rt.reset();
+
+    // not found succeeds with empty
+    rt.expect_gas_available(10_000_000_000u64);
+    let result = util::invoke_contract(&mut rt, &U256::from(111).to_bytes());
+    rt.verify();
+    assert_eq!(&[1u8], result.as_slice());
+    rt.reset();
+}

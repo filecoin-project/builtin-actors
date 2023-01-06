@@ -206,7 +206,7 @@ pub fn call_generic<RT: Runtime>(
                 input_hex.truncate(512);
                 log::info!(target: "evm", "Calling Precompile:\n\taddress: {:x?}\n\tcontext: {:?}\n\tinput: {}", EthAddress::try_from(dst).unwrap_or(EthAddress([0xff; 20])), context, input_hex);
             }
-
+   
             match precompiles::Precompiles::call_precompile(system, dst, input_data, context) {
                 Ok(return_data) => (1, return_data),
                 Err(err) => {
