@@ -540,13 +540,7 @@ impl Actor {
                     ));
                 }
 
-                let proposal = st.find_proposal(rt.store(), deal_id)?.ok_or_else(|| {
-                    if deal_id < st.next_id {
-                        ActorError::unchecked(EX_DEAL_EXPIRED, format!("deal {} expired", deal_id))
-                    } else {
-                        ActorError::not_found(format!("no such deal {}", deal_id))
-                    }
-                })?;
+                let proposal = st.get_proposal(rt.store(), deal_id)?;
 
                 let propc = rt_deal_cid(rt, &proposal)?;
 
@@ -698,16 +692,7 @@ impl Actor {
                 let deal_ids = st.get_deals_for_epoch(rt.store(), i)?;
 
                 for deal_id in deal_ids {
-                    let deal = st.find_proposal(rt.store(), deal_id)?.ok_or_else(|| {
-                        if deal_id < st.next_id {
-                            ActorError::unchecked(
-                                EX_DEAL_EXPIRED,
-                                format!("deal {} expired", deal_id),
-                            )
-                        } else {
-                            ActorError::not_found(format!("no such deal {}", deal_id))
-                        }
-                    })?;
+                    let deal = st.get_proposal(rt.store(), deal_id)?;
 
                     let dcid = rt_deal_cid(rt, &deal)?;
 
@@ -982,27 +967,13 @@ impl Actor {
             }),
             None => {
                 // State::get_proposal will fail with USR_NOT_FOUND in either case.
-                let maybe_proposal = st.find_proposal(rt.store(), params.id)?;
-                match maybe_proposal {
-                    Some(_) => Ok(GetDealActivationReturn {
-                        // The proposal has been published, but not activated.
-                        activated: EPOCH_UNDEFINED,
-                        terminated: EPOCH_UNDEFINED,
-                    }),
-                    None => {
-                        if params.id < st.next_id {
-                            // If the deal ID has been used, it must have been cleaned up.
-                            Err(ActorError::unchecked(
-                                EX_DEAL_EXPIRED,
-                                format!("deal {} expired", params.id),
-                            ))
-                        } else {
-                            // We can't distinguish between failing to activate, or having been
-                            // cleaned up after completion/termination.
-                            Err(ActorError::not_found(format!("no such deal {}", params.id)))
-                        }
-                    }
-                }
+                let _proposal = st.get_proposal(rt.store(), params.id)?;
+
+                Ok(GetDealActivationReturn {
+                    // The proposal has been published, but not activated.
+                    activated: EPOCH_UNDEFINED,
+                    terminated: EPOCH_UNDEFINED,
+                })
             }
         }
     }
