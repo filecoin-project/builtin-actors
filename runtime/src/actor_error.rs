@@ -1,3 +1,5 @@
+use fvm_ipld_encoding::de::DeserializeOwned;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use std::fmt::Display;
 
 use fvm_shared::error::ExitCode;
@@ -201,4 +203,13 @@ impl<T> AsActorError<T> for Option<T> {
     {
         self.ok_or_else(|| ActorError { exit_code: code, msg: f().to_string() })
     }
+}
+
+pub fn extract_return<T>(ret: Option<IpldBlock>) -> Result<T, ActorError>
+where
+    T: DeserializeOwned,
+{
+    ret.with_context_code(ExitCode::USR_ASSERTION_FAILED, || "return expected".to_string())?
+        .deserialize()
+        .exit_code(ExitCode::USR_SERIALIZATION)
 }

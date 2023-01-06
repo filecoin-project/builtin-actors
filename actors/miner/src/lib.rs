@@ -40,7 +40,7 @@ use fil_actors_runtime::cbor::{serialize, serialize_vec};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, ActorContext, ActorDowncast, ActorError, AsActorError,
+    actor_dispatch, actor_error, extract_return, ActorContext, ActorDowncast, ActorError,
     BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
@@ -4198,16 +4198,12 @@ fn request_deal_data(
         });
     }
 
-    let serialized = rt
-        .send(
-            &STORAGE_MARKET_ACTOR_ADDR,
-            ext::market::VERIFY_DEALS_FOR_ACTIVATION_METHOD,
-            IpldBlock::serialize_cbor(&ext::market::VerifyDealsForActivationParamsRef { sectors })?,
-            TokenAmount::zero(),
-        )?
-        .with_context_code(ExitCode::USR_ASSERTION_FAILED, || "return expected".to_string())?;
-
-    Ok(serialized.deserialize()?)
+    extract_return(rt.send(
+        &STORAGE_MARKET_ACTOR_ADDR,
+        ext::market::VERIFY_DEALS_FOR_ACTIVATION_METHOD,
+        IpldBlock::serialize_cbor(&ext::market::VerifyDealsForActivationParamsRef { sectors })?,
+        TokenAmount::zero(),
+    )?)
 }
 
 /// Requests the current epoch target block reward from the reward actor.
@@ -4215,36 +4211,30 @@ fn request_deal_data(
 fn request_current_epoch_block_reward(
     rt: &mut impl Runtime,
 ) -> Result<ThisEpochRewardReturn, ActorError> {
-    let ret = rt
-        .send(
+    extract_return(
+        rt.send(
             &REWARD_ACTOR_ADDR,
             ext::reward::THIS_EPOCH_REWARD_METHOD,
             Default::default(),
             TokenAmount::zero(),
         )
-        .map_err(|e| e.wrap("failed to check epoch baseline power"))?
-        .with_context_code(ExitCode::USR_ASSERTION_FAILED, || "return expected".to_string())?;
-
-    let ret: ThisEpochRewardReturn = ret.deserialize()?;
-    Ok(ret)
+        .map_err(|e| e.wrap("failed to check epoch baseline power"))?,
+    )
 }
 
 /// Requests the current network total power and pledge from the power actor.
 fn request_current_total_power(
     rt: &mut impl Runtime,
 ) -> Result<ext::power::CurrentTotalPowerReturn, ActorError> {
-    let ret = rt
-        .send(
+    extract_return(
+        rt.send(
             &STORAGE_POWER_ACTOR_ADDR,
             ext::power::CURRENT_TOTAL_POWER_METHOD,
             Default::default(),
             TokenAmount::zero(),
         )
-        .map_err(|e| e.wrap("failed to check current power"))?
-        .with_context_code(ExitCode::USR_ASSERTION_FAILED, || "return expected".to_string())?;
-
-    let power: ext::power::CurrentTotalPowerReturn = ret.deserialize()?;
-    Ok(power)
+        .map_err(|e| e.wrap("failed to check current power"))?,
+    )
 }
 
 /// Resolves an address to an ID address and verifies that it is address of an account or multisig actor.
@@ -4293,15 +4283,12 @@ fn resolve_worker_address(rt: &mut impl Runtime, raw: Address) -> Result<Address
     }
 
     if raw.protocol() != Protocol::BLS {
-        let ret = rt
-            .send(
-                &Address::new_id(resolved),
-                ext::account::PUBKEY_ADDRESS_METHOD,
-                None,
-                TokenAmount::zero(),
-            )?
-            .with_context_code(ExitCode::USR_ASSERTION_FAILED, || "return expected".to_string())?;
-        let pub_key: Address = ret.deserialize()?;
+        let pub_key: Address = extract_return(rt.send(
+            &Address::new_id(resolved),
+            ext::account::PUBKEY_ADDRESS_METHOD,
+            None,
+            TokenAmount::zero(),
+        )?)?;
         if pub_key.protocol() != Protocol::BLS {
             return Err(actor_error!(
                 illegal_argument,
@@ -4345,15 +4332,12 @@ fn get_claims(
         provider: rt.message().receiver().id().unwrap(),
         claim_ids: ids.clone(),
     };
-    let ret_raw = rt
-        .send(
-            &VERIFIED_REGISTRY_ACTOR_ADDR,
-            ext::verifreg::GET_CLAIMS_METHOD as u64,
-            IpldBlock::serialize_cbor(&params)?,
-            TokenAmount::zero(),
-        )?
-        .with_context_code(ExitCode::USR_ASSERTION_FAILED, || "return expected".to_string())?;
-    let claims_ret: ext::verifreg::GetClaimsReturn = ret_raw.deserialize()?;
+    let claims_ret: ext::verifreg::GetClaimsReturn = extract_return(rt.send(
+        &VERIFIED_REGISTRY_ACTOR_ADDR,
+        ext::verifreg::GET_CLAIMS_METHOD as u64,
+        IpldBlock::serialize_cbor(&params)?,
+        TokenAmount::zero(),
+    )?)?;
     if (claims_ret.batch_info.success_count as usize) < ids.len() {
         return Err(actor_error!(illegal_argument, "invalid claims"));
     }
@@ -4795,7 +4779,7 @@ fn activate_deals_and_claim_allocations(
     deal_ids: Vec<DealID>,
     sector_expiry: ChainEpoch,
     sector_number: SectorNumber,
-) -> Result<Option<crate::ext::market::DealSpaces>, ActorError> {
+) -> Result<Option<ext::market::DealSpaces>, ActorError> {
     if deal_ids.is_empty() {
         return Ok(Some(ext::market::DealSpaces::default()));
     }
@@ -4807,9 +4791,7 @@ fn activate_deals_and_claim_allocations(
         TokenAmount::zero(),
     );
     let activate_res: ext::market::ActivateDealsResult = match activate_raw {
-        Ok(res) => res
-            .with_context_code(ExitCode::USR_ASSERTION_FAILED, || "return expected".to_string())?
-            .deserialize()?,
+        Ok(res) => extract_return(res)?,
         Err(e) => {
             info!("error activating deals on sector {}: {}", sector_number, e.msg());
             return Ok(None);
@@ -4846,9 +4828,7 @@ fn activate_deals_and_claim_allocations(
         TokenAmount::zero(),
     );
     let claim_res: ext::verifreg::ClaimAllocationsReturn = match claim_raw {
-        Ok(res) => res
-            .with_context_code(ExitCode::USR_ASSERTION_FAILED, || "return expected".to_string())?
-            .deserialize()?,
+        Ok(res) => extract_return(res)?,
         Err(e) => {
             info!("error claiming allocation on sector {}: {}", sector_number, e.msg());
             return Ok(None);

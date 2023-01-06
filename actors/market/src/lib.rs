@@ -29,9 +29,10 @@ use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, ActorContext, ActorDowncast, ActorError, AsActorError,
-    BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE, CRON_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR,
-    REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    actor_dispatch, actor_error, extract_return, ActorContext, ActorDowncast, ActorError,
+    AsActorError, BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE, CRON_ACTOR_ADDR,
+    DATACAP_TOKEN_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 
@@ -1094,15 +1095,12 @@ fn request_miner_control_addrs(
     rt: &mut impl Runtime,
     miner_id: ActorID,
 ) -> Result<(Address, Address, Vec<Address>), ActorError> {
-    let ret = rt
-        .send(
-            &Address::new_id(miner_id),
-            ext::miner::CONTROL_ADDRESSES_METHOD,
-            None,
-            TokenAmount::zero(),
-        )?
-        .with_context_code(ExitCode::USR_ASSERTION_FAILED, || "return expected".to_string())?;
-    let addrs: ext::miner::GetControlAddressesReturnParams = ret.deserialize()?;
+    let addrs: ext::miner::GetControlAddressesReturnParams = extract_return(rt.send(
+        &Address::new_id(miner_id),
+        ext::miner::CONTROL_ADDRESSES_METHOD,
+        None,
+        TokenAmount::zero(),
+    )?)?;
 
     Ok((addrs.owner, addrs.worker, addrs.control_addresses))
 }
@@ -1135,10 +1133,12 @@ fn escrow_address(
 
 /// Requests the current epoch target block reward from the reward actor.
 fn request_current_baseline_power(rt: &mut impl Runtime) -> Result<StoragePower, ActorError> {
-    let rwret = rt
-        .send(&REWARD_ACTOR_ADDR, ext::reward::THIS_EPOCH_REWARD_METHOD, None, TokenAmount::zero())?
-        .with_context_code(ExitCode::USR_ASSERTION_FAILED, || "return expected".to_string())?;
-    let ret: ThisEpochRewardReturn = rwret.deserialize()?;
+    let ret: ThisEpochRewardReturn = extract_return(rt.send(
+        &REWARD_ACTOR_ADDR,
+        ext::reward::THIS_EPOCH_REWARD_METHOD,
+        None,
+        TokenAmount::zero(),
+    )?)?;
     Ok(ret.this_epoch_baseline_power)
 }
 
@@ -1147,15 +1147,12 @@ fn request_current_baseline_power(rt: &mut impl Runtime) -> Result<StoragePower,
 fn request_current_network_power(
     rt: &mut impl Runtime,
 ) -> Result<(StoragePower, StoragePower), ActorError> {
-    let rwret = rt
-        .send(
-            &STORAGE_POWER_ACTOR_ADDR,
-            ext::power::CURRENT_TOTAL_POWER_METHOD,
-            None,
-            TokenAmount::zero(),
-        )?
-        .with_context_code(ExitCode::USR_ASSERTION_FAILED, || "return expected".to_string())?;
-    let ret: ext::power::CurrentTotalPowerReturnParams = rwret.deserialize()?;
+    let ret: ext::power::CurrentTotalPowerReturnParams = extract_return(rt.send(
+        &STORAGE_POWER_ACTOR_ADDR,
+        ext::power::CURRENT_TOTAL_POWER_METHOD,
+        None,
+        TokenAmount::zero(),
+    )?)?;
     Ok((ret.raw_byte_power, ret.quality_adj_power))
 }
 

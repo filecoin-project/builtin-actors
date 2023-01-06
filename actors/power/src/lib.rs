@@ -9,8 +9,8 @@ use ext::init;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, make_map_with_root_and_bitwidth, ActorDowncast, ActorError,
-    AsActorError, Multimap, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_dispatch, actor_error, extract_return, make_map_with_root_and_bitwidth, ActorDowncast,
+    ActorError, Multimap, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
@@ -98,18 +98,15 @@ impl Actor {
         })?;
 
         let miner_actor_code_cid = rt.get_code_cid_for_type(Type::Miner);
-        let ext::init::ExecReturn { id_address, robust_address } = rt
-            .send(
-                &INIT_ACTOR_ADDR,
-                ext::init::EXEC_METHOD,
-                IpldBlock::serialize_cbor(&init::ExecParams {
-                    code_cid: miner_actor_code_cid,
-                    constructor_params,
-                })?,
-                value,
-            )?
-            .with_context_code(ExitCode::USR_ASSERTION_FAILED, || "return expected".to_string())?
-            .deserialize()?;
+        let ext::init::ExecReturn { id_address, robust_address } = extract_return(rt.send(
+            &INIT_ACTOR_ADDR,
+            ext::init::EXEC_METHOD,
+            IpldBlock::serialize_cbor(&init::ExecParams {
+                code_cid: miner_actor_code_cid,
+                constructor_params,
+            })?,
+            value,
+        )?)?;
 
         let window_post_proof_type = params.window_post_proof_type;
         rt.transaction(|st: &mut State, rt| {
@@ -234,16 +231,15 @@ impl Actor {
     fn on_epoch_tick_end(rt: &mut impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&CRON_ACTOR_ADDR))?;
 
-        let rewret: ThisEpochRewardReturn = rt
-            .send(
+        let rewret: ThisEpochRewardReturn = extract_return(
+            rt.send(
                 &REWARD_ACTOR_ADDR,
                 ext::reward::Method::ThisEpochReward as MethodNum,
                 None,
                 TokenAmount::zero(),
             )
-            .map_err(|e| e.wrap("failed to check epoch baseline power"))?
-            .with_context_code(ExitCode::USR_ASSERTION_FAILED, || "return expected".to_string())?
-            .deserialize()?;
+            .map_err(|e| e.wrap("failed to check epoch baseline power"))?,
+        )?;
 
         if let Err(e) = Self::process_batch_proof_verifies(rt, &rewret) {
             error!("unexpected error processing batch proof verifies: {}. Skipping all verification for epoch {}", e, rt.curr_epoch());
