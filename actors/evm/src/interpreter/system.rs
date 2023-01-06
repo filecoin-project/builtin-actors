@@ -150,7 +150,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
             .context_code(ExitCode::USR_SERIALIZATION, "failed to decode state")?
             .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?;
         if !crate::is_dead(rt, &state) {
-            return Err(actor_error!(illegal_state, "can only resurrect a dead contract"));
+            return Err(actor_error!(forbidden, "can only resurrect a dead contract"));
         }
 
         return Ok(Self::new(rt, read_only));

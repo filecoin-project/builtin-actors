@@ -92,7 +92,7 @@ pub fn initialize_evm_contract(
     // Make sure we have an actual Ethereum address (assigned by the EAM). This is how we make sure
     // an EVM actor may only be constructed by the EAM.
     if receiver_eth_addr.as_id().is_some() {
-        return Err(ActorError::assertion_failed(format!(
+        return Err(ActorError::forbidden(format!(
             "contract {} doesn't have an eth address",
             receiver_fil_addr,
         )));
@@ -138,7 +138,7 @@ impl EvmContractActor {
         initialize_evm_contract(&mut System::create(rt)?, params.creator, params.initcode.into())
     }
 
-    pub fn resurrect<RT>(rt: &mut RT, params: ConstructorParams) -> Result<(), ActorError>
+    pub fn resurrect<RT>(rt: &mut RT, params: ResurrectParams) -> Result<(), ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
