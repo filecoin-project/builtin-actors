@@ -98,7 +98,7 @@ impl Stack {
     #[inline]
     pub fn swap_top(&mut self, i: usize) -> Result<(), StatusCode> {
         let len = self.stack.len();
-        if len < i {
+        if len <= i {
             return Err(StatusCode::StackUnderflow);
         }
         self.stack.swap(len - i - 1, len - 1);
@@ -124,4 +124,78 @@ impl Default for Stack {
     fn default() -> Self {
         Self::new()
     }
+}
+
+#[test]
+fn test_stack_push_pop() {
+    let mut stack = Stack::new();
+    stack.push(1.into()).unwrap();
+    stack.push(2.into()).unwrap();
+    assert_eq!(stack.pop().unwrap(), 2);
+    assert_eq!(stack.pop().unwrap(), 1);
+}
+
+#[test]
+fn test_stack_swap() {
+    let mut stack = Stack::new();
+    stack.push(1.into()).unwrap();
+    stack.push(2.into()).unwrap();
+    stack.swap_top(1).unwrap();
+    assert_eq!(stack.pop().unwrap(), 1);
+    assert_eq!(stack.pop().unwrap(), 2);
+
+    let mut stack = Stack::new();
+    stack.push(1.into()).unwrap();
+    stack.push(2.into()).unwrap();
+    stack.push(3.into()).unwrap();
+    stack.swap_top(2).unwrap();
+    assert_eq!(stack.pop().unwrap(), 1);
+    assert_eq!(stack.pop().unwrap(), 2);
+    assert_eq!(stack.pop().unwrap(), 3);
+}
+
+#[test]
+fn test_stack_swap_underflow() {
+    let mut stack = Stack::new();
+    assert_eq!(stack.swap_top(1).unwrap_err(), StatusCode::StackUnderflow);
+
+    stack.push(1.into()).unwrap();
+    assert_eq!(stack.swap_top(1).unwrap_err(), StatusCode::StackUnderflow);
+
+    stack.push(2.into()).unwrap();
+    assert_eq!(stack.swap_top(2).unwrap_err(), StatusCode::StackUnderflow);
+}
+
+#[test]
+fn test_stack_dup() {
+    let mut stack = Stack::new();
+    stack.push(1.into()).unwrap();
+    stack.push(2.into()).unwrap();
+    stack.dup(1).unwrap();
+    assert_eq!(stack.pop().unwrap(), 2);
+    stack.dup(2).unwrap();
+    assert_eq!(stack.pop().unwrap(), 1);
+    assert_eq!(stack.pop().unwrap(), 2);
+    assert_eq!(stack.pop().unwrap(), 1);
+}
+
+#[test]
+fn test_stack_dup_underflow() {
+    let mut stack = Stack::new();
+    assert_eq!(stack.dup(1).unwrap_err(), StatusCode::StackUnderflow);
+    stack.push(1.into()).unwrap();
+    assert_eq!(stack.dup(2).unwrap_err(), StatusCode::StackUnderflow);
+}
+
+#[test]
+fn test_stack_overflow() {
+    let mut stack = Stack::new();
+    for i in 0..1024 {
+        stack.push(i.into()).unwrap();
+    }
+
+    assert_eq!(stack.push(1024.into()).unwrap_err(), StatusCode::StackOverflow);
+    assert_eq!(stack.dup(1).unwrap_err(), StatusCode::StackOverflow);
+    stack.swap_top(1).unwrap();
+    assert_eq!(stack.pop().unwrap(), 1022);
 }
