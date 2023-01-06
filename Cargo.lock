@@ -916,8 +916,9 @@ dependencies = [
 
 [[package]]
 name = "frc42_dispatch"
-version = "2.0.0"
-source = "git+https://github.com/helix-onchain/filecoin?branch=main#532dc167784520ad620207e4c5f18c002388ee13"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a093747f6447d7528cf37b87b8ab9879c7417e960d2ea1ac523890eb3a924e2a"
 dependencies = [
  "frc42_hasher",
  "frc42_macros",
@@ -929,8 +930,9 @@ dependencies = [
 
 [[package]]
 name = "frc42_hasher"
-version = "1.2.0"
-source = "git+https://github.com/helix-onchain/filecoin?branch=main#532dc167784520ad620207e4c5f18c002388ee13"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0cf52e60a67e9ad15cd4909ef8c8e45ab3744015dbb603efd8dfbdbfc7ce95b7"
 dependencies = [
  "fvm_sdk",
  "fvm_shared",
@@ -940,7 +942,8 @@ dependencies = [
 [[package]]
 name = "frc42_macros"
 version = "1.0.0"
-source = "git+https://github.com/helix-onchain/filecoin?branch=main#532dc167784520ad620207e4c5f18c002388ee13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c343356c3652593452cc1cfe95535a915261342e2a4c13bb8388ca29b259a400"
 dependencies = [
  "blake2b_simd",
  "frc42_hasher",
@@ -951,8 +954,9 @@ dependencies = [
 
 [[package]]
 name = "frc46_token"
-version = "3.0.0"
-source = "git+https://github.com/helix-onchain/filecoin?branch=main#532dc167784520ad620207e4c5f18c002388ee13"
+version = "3.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "112bdb7d37e58715087146b19465f59374e8cffd81561a8d20dbdb1eb2c75fbe"
 dependencies = [
  "anyhow",
  "cid",
@@ -1077,8 +1081,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_actor_utils"
-version = "2.0.0"
-source = "git+https://github.com/helix-onchain/filecoin?branch=main#532dc167784520ad620207e4c5f18c002388ee13"
+version = "3.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8a11cab1852eb6f381cc11ebcfa6b2c84d3df5b5603ab6c79d6b02761718da77"
 dependencies = [
  "anyhow",
  "cid",

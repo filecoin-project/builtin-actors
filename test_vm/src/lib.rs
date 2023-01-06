@@ -623,7 +623,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         invoke_result: Result<Option<IpldBlock>, ActorError>,
     ) -> InvocationTrace {
         let (ret, code) = match invoke_result {
-            Ok(rb) => (Some(rb), ExitCode::OK),
+            Ok(rb) => (rb, ExitCode::OK),
             Err(ae) => (None, ae.exit_code()),
         };
         let mut msg = self.msg.clone();
@@ -1073,7 +1073,7 @@ pub fn actor(code: Cid, head: Cid, seq: u64, bal: TokenAmount) -> Actor {
 pub struct InvocationTrace {
     pub msg: InternalMessage,
     pub code: ExitCode,
-    pub ret: Option<Option<IpldBlock>>,
+    pub ret: Option<IpldBlock>,
     pub subinvocations: Vec<InvocationTrace>,
 }
 
@@ -1124,9 +1124,11 @@ impl ExpectInvocation {
             );
         }
         if let Some(r) = &self.ret {
-            assert_ne!(None, invoc.ret, "{} unexpected ret: expected: {:x?}, was: None", id, r);
-            let ret = &invoc.ret.clone().unwrap();
-            assert_eq!(r, ret, "{} unexpected ret: expected: {:x?}, was: {:x?}", id, r, ret);
+            assert_eq!(
+                r, &invoc.ret,
+                "{} unexpected ret: expected: {:x?}, was: {:x?}",
+                id, r, invoc.ret
+            );
         }
         if let Some(expect_subinvocs) = &self.subinvocs {
             let subinvocs = &invoc.subinvocations;

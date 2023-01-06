@@ -40,7 +40,7 @@ use fil_actors_runtime::cbor::{serialize, serialize_vec};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, extract_return, ActorContext, ActorDowncast, ActorError,
+    actor_dispatch, actor_error, deserialize_block, ActorContext, ActorDowncast, ActorError,
     BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
@@ -4198,7 +4198,7 @@ fn request_deal_data(
         });
     }
 
-    extract_return(rt.send(
+    deserialize_block(rt.send(
         &STORAGE_MARKET_ACTOR_ADDR,
         ext::market::VERIFY_DEALS_FOR_ACTIVATION_METHOD,
         IpldBlock::serialize_cbor(&ext::market::VerifyDealsForActivationParamsRef { sectors })?,
@@ -4211,7 +4211,7 @@ fn request_deal_data(
 fn request_current_epoch_block_reward(
     rt: &mut impl Runtime,
 ) -> Result<ThisEpochRewardReturn, ActorError> {
-    extract_return(
+    deserialize_block(
         rt.send(
             &REWARD_ACTOR_ADDR,
             ext::reward::THIS_EPOCH_REWARD_METHOD,
@@ -4226,7 +4226,7 @@ fn request_current_epoch_block_reward(
 fn request_current_total_power(
     rt: &mut impl Runtime,
 ) -> Result<ext::power::CurrentTotalPowerReturn, ActorError> {
-    extract_return(
+    deserialize_block(
         rt.send(
             &STORAGE_POWER_ACTOR_ADDR,
             ext::power::CURRENT_TOTAL_POWER_METHOD,
@@ -4283,7 +4283,7 @@ fn resolve_worker_address(rt: &mut impl Runtime, raw: Address) -> Result<Address
     }
 
     if raw.protocol() != Protocol::BLS {
-        let pub_key: Address = extract_return(rt.send(
+        let pub_key: Address = deserialize_block(rt.send(
             &Address::new_id(resolved),
             ext::account::PUBKEY_ADDRESS_METHOD,
             None,
@@ -4332,7 +4332,7 @@ fn get_claims(
         provider: rt.message().receiver().id().unwrap(),
         claim_ids: ids.clone(),
     };
-    let claims_ret: ext::verifreg::GetClaimsReturn = extract_return(rt.send(
+    let claims_ret: ext::verifreg::GetClaimsReturn = deserialize_block(rt.send(
         &VERIFIED_REGISTRY_ACTOR_ADDR,
         ext::verifreg::GET_CLAIMS_METHOD as u64,
         IpldBlock::serialize_cbor(&params)?,
@@ -4791,7 +4791,7 @@ fn activate_deals_and_claim_allocations(
         TokenAmount::zero(),
     );
     let activate_res: ext::market::ActivateDealsResult = match activate_raw {
-        Ok(res) => extract_return(res)?,
+        Ok(res) => deserialize_block(res)?,
         Err(e) => {
             info!("error activating deals on sector {}: {}", sector_number, e.msg());
             return Ok(None);
@@ -4828,7 +4828,7 @@ fn activate_deals_and_claim_allocations(
         TokenAmount::zero(),
     );
     let claim_res: ext::verifreg::ClaimAllocationsReturn = match claim_raw {
-        Ok(res) => extract_return(res)?,
+        Ok(res) => deserialize_block(res)?,
         Err(e) => {
             info!("error claiming allocation on sector {}: {}", sector_number, e.msg());
             return Ok(None);

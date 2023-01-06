@@ -29,7 +29,7 @@ use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, extract_return, ActorContext, ActorDowncast, ActorError,
+    actor_dispatch, actor_error, deserialize_block, ActorContext, ActorDowncast, ActorError,
     AsActorError, BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE, CRON_ACTOR_ADDR,
     DATACAP_TOKEN_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
@@ -1095,7 +1095,7 @@ fn request_miner_control_addrs(
     rt: &mut impl Runtime,
     miner_id: ActorID,
 ) -> Result<(Address, Address, Vec<Address>), ActorError> {
-    let addrs: ext::miner::GetControlAddressesReturnParams = extract_return(rt.send(
+    let addrs: ext::miner::GetControlAddressesReturnParams = deserialize_block(rt.send(
         &Address::new_id(miner_id),
         ext::miner::CONTROL_ADDRESSES_METHOD,
         None,
@@ -1133,7 +1133,7 @@ fn escrow_address(
 
 /// Requests the current epoch target block reward from the reward actor.
 fn request_current_baseline_power(rt: &mut impl Runtime) -> Result<StoragePower, ActorError> {
-    let ret: ThisEpochRewardReturn = extract_return(rt.send(
+    let ret: ThisEpochRewardReturn = deserialize_block(rt.send(
         &REWARD_ACTOR_ADDR,
         ext::reward::THIS_EPOCH_REWARD_METHOD,
         None,
@@ -1147,7 +1147,7 @@ fn request_current_baseline_power(rt: &mut impl Runtime) -> Result<StoragePower,
 fn request_current_network_power(
     rt: &mut impl Runtime,
 ) -> Result<(StoragePower, StoragePower), ActorError> {
-    let ret: ext::power::CurrentTotalPowerReturnParams = extract_return(rt.send(
+    let ret: ext::power::CurrentTotalPowerReturnParams = deserialize_block(rt.send(
         &STORAGE_POWER_ACTOR_ADDR,
         ext::power::CURRENT_TOTAL_POWER_METHOD,
         None,
