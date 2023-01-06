@@ -33,14 +33,7 @@ fn test_selfdestruct() {
     })
     .unwrap();
 
-    rt.expect_send(
-        beneficiary,
-        METHOD_SEND,
-        None,
-        token_amount.clone(),
-        RawBytes::default(),
-        ExitCode::OK,
-    );
+    rt.expect_send(beneficiary, METHOD_SEND, None, token_amount, RawBytes::default(), ExitCode::OK);
 
     assert!(util::invoke_contract(&mut rt, &selfdestruct_params).is_empty());
     let state: State = rt.get_state();
@@ -91,7 +84,7 @@ fn test_selfdestruct() {
     // We should now be able to resurrect.
     rt.set_caller(*EAM_ACTOR_CODE_ID, EAM_ACTOR_ADDR);
     rt.expect_validate_caller_addr(vec![EAM_ACTOR_ADDR]);
-    rt.call::<EvmContractActor>(Method::Resurrect as MethodNum, resurrect_params.clone()).unwrap();
+    rt.call::<EvmContractActor>(Method::Resurrect as MethodNum, resurrect_params).unwrap();
     rt.verify();
 
     // The tombstone should be gone!

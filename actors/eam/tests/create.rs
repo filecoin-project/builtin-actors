@@ -107,7 +107,7 @@ fn call_resurrect() {
     rt.set_caller(*EVM_ACTOR_CODE_ID, caller_id_addr);
 
     let target_id_addr = Address::new_id(111);
-    let target_eth_addr = compute_address_create(&mut rt, &caller_eth_addr, 0);
+    let target_eth_addr = compute_address_create(&rt, &caller_eth_addr, 0);
     let target_f4_eth_addr = Address::new_delegated(10, &target_eth_addr.0).unwrap();
     rt.add_delegated_address(target_id_addr, target_f4_eth_addr);
 
