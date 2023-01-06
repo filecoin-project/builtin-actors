@@ -275,19 +275,22 @@ pub fn call_generic<RT: Runtime>(
                 CallKind::DelegateCall => match get_contract_type(system.rt, dst) {
                     ContractType::EVM(dst_addr) => {
                         // If we're calling an actual EVM actor, get its code.
-                        let code = get_evm_bytecode_cid(system, &dst_addr)?;
-
-                        // and then invoke self with delegate; readonly context is sticky
-                        let params = DelegateCallParams { code, input: input_data.into(),
-                            caller: state.caller, };
-                        system.send(
-                            &system.rt.message().receiver(),
-                            Method::InvokeContractDelegate as u64,
-                            IpldBlock::serialize_cbor(&params)?,
-                            TokenAmount::from(&value),
-                            Some(effective_gas_limit(system, gas)),
-                            SendFlags::default(),
-                        )
+                        if let Some(code) = get_evm_bytecode_cid(system, &dst_addr)? {
+                            // and then invoke self with delegate; readonly context is sticky
+                            let params = DelegateCallParams { code, input: input_data.into(),
+                                                              caller: state.caller, };
+                            system.send(
+                                &system.rt.message().receiver(),
+                                Method::InvokeContractDelegate as u64,
+                                IpldBlock::serialize_cbor(&params)?,
+                                TokenAmount::from(&value),
+                                Some(effective_gas_limit(system, gas)),
+                                SendFlags::default(),
+                            )
+                        } else {
+                            // If it doesn't have code, short-circuit and return immediately.
+                            Ok(RawBytes::default())
+                        }
                     }
                     // If we're calling an account or a non-existent actor, return nothing because
                     // this is how the EVM behaves.

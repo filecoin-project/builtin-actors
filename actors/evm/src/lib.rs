@@ -222,19 +222,17 @@ impl EvmContractActor {
         Self::invoke_contract(rt, &input, None, None)
     }
 
-    pub fn bytecode(rt: &mut impl Runtime) -> Result<Cid, ActorError> {
+    /// Returns the contract's EVM bytecode, or `None` if the contract has been deleted (has called
+    /// SELFDESTRUCT).
+    pub fn bytecode(rt: &mut impl Runtime) -> Result<Option<Cid>, ActorError> {
         // Any caller can fetch the bytecode of a contract; this is now EXT* opcodes work.
         rt.validate_immediate_caller_accept_any()?;
 
         let state: State = rt.state()?;
         if is_dead(rt, &state) {
-            // TODO: to return the "empty bytecode" cid, we'd need to actually write the empty
-            // bytecode. Otherwise, it's not reachable.
-            // Or we could implement https://github.com/filecoin-project/ref-fvm/issues/1358.
-            // Finally, we could just return an error and let the caller deal with it?
-            todo!("non-trivial?");
+            Ok(None)
         } else {
-            Ok(state.bytecode)
+            Ok(Some(state.bytecode))
         }
     }
 
@@ -327,8 +325,8 @@ impl ActorCode for EvmContractActor {
                 Ok(RawBytes::serialize(BytesSer(&value))?)
             }
             Some(Method::GetBytecode) => {
-                let cid = Self::bytecode(rt)?;
-                Ok(RawBytes::serialize(cid)?)
+                let ret = Self::bytecode(rt)?;
+                Ok(RawBytes::serialize(ret)?)
             }
             Some(Method::GetBytecodeHash) => {
                 let multihash = Self::bytecode_hash(rt)?;

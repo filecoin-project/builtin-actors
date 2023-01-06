@@ -37,6 +37,22 @@ pub struct State {
     pub nonce: u64,
 
     /// Possibly a tombstone if this actor has been self-destructed.
+    ///
+    /// In the EVM, self-destructed contracts are "alive" until the current top-level transaction
+    /// ends. We track this by recording the origin and nonce.
+    ///
+    /// Specifically:
+    ///
+    /// 1. On SELFDESTRUCT, they mark themselves as "deleted" (by setting a tombstone with the
+    ///    current origin/nonce), send away all funds, and return immediately.
+    /// 2. For the rest of the current transaction (as long as the tombstone's origin/nonce matches
+    ///    the currently executing top-level transaction) , the contract continues to behave
+    ///    normally.
+    /// 3. After the current transaction ends, the contract behaves as if it were an "empty"
+    ///    contract, kind of like an embryo. At this point, the contract can be "resurrected"
+    ///    (recreated) by via CREATE/CREATE2.
+    ///
+    /// See https://github.com/filecoin-project/ref-fvm/issues/1174 for some context.
     pub tombstone: Option<Tombstone>,
 }
 

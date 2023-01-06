@@ -113,7 +113,7 @@ pub struct System<'r, RT: Runtime> {
     randomness: OnceCell<[u8; 32]>,
 
     /// This is "some" if the actor is currently a "zombie". I.e., it has selfdestructed, but the
-    /// current message is still executing.
+    /// current message is still executing. `System` cannot load a contracts state with a
     tombstone: Option<Tombstone>,
 }
 
