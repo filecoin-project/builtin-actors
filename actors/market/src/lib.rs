@@ -717,20 +717,17 @@ impl Actor {
                         }
 
                         // Delete the proposal (but not state, which doesn't exist).
-                        let _deleted =
-                            st.remove_proposal(rt.store(), deal_id)?.ok_or_else(|| {
-                                if deal_id < st.next_id {
-                                    ActorError::unchecked(
-                                        EX_DEAL_EXPIRED,
-                                        format!("deal {} expired", deal_id),
-                                    )
-                                } else {
-                                    ActorError::illegal_state(format!(
-                                        "failed to delete deal {} proposal {}: does not exist",
-                                        deal_id, dcid
-                                    ))
-                                }
-                            })?;
+                        let deleted = st.remove_proposal(rt.store(), deal_id)?;
+
+                        if deleted.is_none() {
+                            return Err(actor_error!(
+                                illegal_state,
+                                format!(
+                                    "failed to delete deal {} proposal {}: does not exist",
+                                    deal_id, dcid
+                                )
+                            ));
+                        }
 
                         // Delete pending deal CID
                         st.remove_pending_deal(rt.store(), dcid)?.ok_or_else(|| {
