@@ -576,11 +576,9 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
     }
 
     // Then handle the return value.
-    ret.map_or_else(
-        || NO_DATA_BLOCK_ID,
-        |ret_block| {
-            fvm::ipld::put_block(ret_block.codec, ret_block.data.as_slice())
-                .expect("failed to write result")
-        },
-    )
+    match ret {
+        None => NO_DATA_BLOCK_ID,
+        Some(ret_block) => fvm::ipld::put_block(ret_block.codec, ret_block.data.as_slice())
+            .expect("failed to write result"),
+    }
 }
