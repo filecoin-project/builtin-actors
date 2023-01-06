@@ -1,3 +1,4 @@
+use eam::ext::evm::RESURRECT_METHOD;
 use eam::ext::init::{Exec4Params, Exec4Return, EXEC4_METHOD};
 use eam::{
     compute_address_create, Create2Params, CreateParams, EthAddress, EvmConstructorParams, Return,
@@ -91,6 +92,56 @@ fn call_create() {
         rt.set_caller(*MULTISIG_ACTOR_CODE_ID, id_addr);
         test_create(&mut rt, eth_addr);
     }
+}
+
+#[test]
+fn call_resurrect() {
+    let mut rt = construct_and_verify();
+
+    let caller_id_addr = Address::new_id(110);
+    let caller_eth_addr =
+        eam::EthAddress(hex_literal::hex!("CAFEB0BA00000000000000000000000000000000"));
+    let caller_f4_eth_addr = Address::new_delegated(10, &caller_eth_addr.0).unwrap();
+    rt.add_delegated_address(caller_id_addr, caller_f4_eth_addr);
+
+    rt.set_caller(*EVM_ACTOR_CODE_ID, caller_id_addr);
+
+    let target_id_addr = Address::new_id(111);
+    let target_eth_addr = compute_address_create(&mut rt, &caller_eth_addr, 0);
+    let target_f4_eth_addr = Address::new_delegated(10, &target_eth_addr.0).unwrap();
+    rt.add_delegated_address(target_id_addr, target_f4_eth_addr);
+
+    rt.expect_validate_caller_any();
+
+    let initcode = vec![0xff];
+
+    let create_params = CreateParams { initcode: initcode.clone(), nonce: 0 };
+
+    let params = EvmConstructorParams { creator: caller_eth_addr, initcode: initcode.into() };
+
+    rt.expect_send(
+        target_id_addr,
+        RESURRECT_METHOD,
+        IpldBlock::serialize_cbor(&params).unwrap(),
+        TokenAmount::from_atto(0),
+        RawBytes::default(),
+        ExitCode::OK,
+    );
+
+    let result = rt
+        .call::<eam::EamActor>(
+            eam::Method::Create as u64,
+            IpldBlock::serialize_cbor(&create_params).unwrap(),
+        )
+        .unwrap()
+        .deserialize::<Return>()
+        .unwrap();
+
+    let expected_return =
+        Return { actor_id: 111, robust_address: None, eth_address: target_eth_addr };
+
+    assert_eq!(result, expected_return);
+    rt.verify();
 }
 
 #[test]
