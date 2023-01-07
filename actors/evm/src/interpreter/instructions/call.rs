@@ -200,14 +200,19 @@ pub fn call_generic<RT: Runtime>(
         if precompiles::Precompiles::<RT>::is_precompile(&dst) {
             let context =
                 PrecompileContext { call_type: kind, gas_limit: effective_gas_limit(system, gas) };
+            if log::log_enabled!(log::Level::Info) {
+                // log input to the precompile, but make sure we dont log _too_ much.
+                let mut input_hex = hex::encode(input_data);
+                input_hex.truncate(512);
+                log::info!(target: "evm", "Calling Precompile:\n\taddress: {:x?}\n\tcontext: {:?}\n\tinput: {}", EthAddress::try_from(dst).unwrap_or(EthAddress([0xff; 20])), context, input_hex);
+            }
 
-            match precompiles::Precompiles::call_precompile(system, dst, input_data, context)
-                .map_err(StatusCode::from)
-            {
+            match precompiles::Precompiles::call_precompile(system, dst, input_data, context) {
                 Ok(return_data) => (1, return_data),
-                Err(status) => {
-                    let msg = format!("{}", status);
-                    (0, msg.as_bytes().to_vec())
+                Err(err) => {
+                    log::error!(target: "evm", "Precompile failed: error {:?}", err);
+                    // precompile failed, exit with reverted and no output
+                    (0, vec![])
                 }
             }
         } else {
