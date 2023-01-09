@@ -5,6 +5,8 @@ use fvm_ipld_encoding::{serde, strict_bytes};
 use fvm_shared::address::Address;
 use fvm_shared::ActorID;
 
+use super::precompiles::is_reserved_precompile_address;
+
 /// A Filecoin address as represented in the FEVM runtime (also called EVM-form).
 ///
 /// TODO this type will eventually handle f4 address detection.
@@ -38,10 +40,10 @@ impl TryFrom<EthAddress> for Address {
 impl TryFrom<&EthAddress> for Address {
     type Error = StatusCode;
     fn try_from(addr: &EthAddress) -> Result<Self, Self::Error> {
-        if addr.0[..19] == [0; 19] {
+        if is_reserved_precompile_address(addr.0) {
             return Err(StatusCode::BadAddress(format!(
-                "cannot convert precompile {} to an f4 address",
-                addr.0[19]
+                "Cannot convert a precompile address: {:?} to an f4 address",
+                addr
             )));
         }
 
@@ -93,6 +95,8 @@ impl AsRef<[u8]> for EthAddress {
 
 #[cfg(test)]
 mod tests {
+    use fvm_shared::address::Address;
+
     use crate::interpreter::address::EthAddress;
     use crate::U256;
 
@@ -157,5 +161,28 @@ mod tests {
             &[0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01], // bad padding
             vec![0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01].as_slice() // ID address (u64 big endian) (8 bytes)
         ] => None,
+    }
+
+    #[test]
+    #[allow(unused)]
+    fn precompile_reserved_conversion() {
+        // in range precompile addresses
+        let addr = EthAddress(hex_literal::hex!("fe00000000000000000000000000000000000001"));
+        Address::try_from(addr).expect_err("can't convert precompile into f4!");
+        let addr = EthAddress(hex_literal::hex!("0000000000000000000000000000000000000001"));
+        Address::try_from(addr).expect_err("can't convert precompile into f4!");
+
+        // can convert null address
+        let addr = EthAddress(hex_literal::hex!("0000000000000000000000000000000000000000"));
+        let _: Address = addr.try_into().unwrap();
+        // can convert 0 index native prefix
+        let addr = EthAddress(hex_literal::hex!("fe00000000000000000000000000000000000000"));
+        let _: Address = addr.try_into().unwrap();
+
+        // out of range, but reserved
+        let addr = EthAddress(hex_literal::hex!("fe000000000000000000000000000000000000aa"));
+        Address::try_from(addr).expect_err("can't convert precompile into f4!");
+        let addr = EthAddress(hex_literal::hex!("00000000000000000000000000000000000000aa"));
+        Address::try_from(addr).expect_err("can't convert precompile into f4!");
     }
 }
