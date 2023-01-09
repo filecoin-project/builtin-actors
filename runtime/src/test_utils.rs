@@ -11,7 +11,7 @@ use cid::multihash::{Code, Multihash as OtherMultihash};
 use cid::Cid;
 use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::de::DeserializeOwned;
-use fvm_ipld_encoding::{CborStore, RawBytes};
+use fvm_ipld_encoding::CborStore;
 use fvm_shared::address::Payload;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::clock::ChainEpoch;
@@ -304,7 +304,7 @@ pub struct ExpectedMessage {
     pub value: TokenAmount,
 
     // returns from applying expectedMessage
-    pub send_return: RawBytes,
+    pub send_return: Option<IpldBlock>,
     pub exit_code: ExitCode,
 }
 
@@ -373,8 +373,8 @@ pub struct ExpectReplicaVerify {
     result: anyhow::Result<()>,
 }
 
-pub fn expect_empty(res: RawBytes) {
-    assert_eq!(res, RawBytes::default());
+pub fn expect_empty(res: Option<IpldBlock>) {
+    assert!(res.is_none());
 }
 
 pub fn expect_abort_contains_message<T: fmt::Debug>(
@@ -462,7 +462,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
         &mut self,
         method_num: MethodNum,
         params: Option<IpldBlock>,
-    ) -> Result<RawBytes, ActorError> {
+    ) -> Result<Option<IpldBlock>, ActorError> {
         self.in_call = true;
         let prev_state = self.state;
         let res = A::invoke_method(self, method_num, params);
@@ -552,7 +552,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
         method: MethodNum,
         params: Option<IpldBlock>,
         value: TokenAmount,
-        send_return: RawBytes,
+        send_return: Option<IpldBlock>,
         exit_code: ExitCode,
     ) {
         self.expectations.borrow_mut().expect_sends.push_back(ExpectedMessage {
@@ -911,7 +911,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         method: MethodNum,
         params: Option<IpldBlock>,
         value: TokenAmount,
-    ) -> Result<RawBytes, ActorError> {
+    ) -> Result<Option<IpldBlock>, ActorError> {
         self.require_in_call();
         if self.in_transaction {
             return Err(actor_error!(assertion_failed; "side-effect within transaction"));

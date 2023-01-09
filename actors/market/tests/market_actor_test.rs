@@ -63,7 +63,7 @@ fn simple_construction() {
     rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
 
-    assert_eq!(RawBytes::default(), rt.call::<MarketActor>(METHOD_CONSTRUCTOR, None).unwrap());
+    assert!(rt.call::<MarketActor>(METHOD_CONSTRUCTOR, None).unwrap().is_none());
 
     rt.verify();
 
@@ -197,14 +197,13 @@ fn adds_to_provider_escrow_funds() {
             rt.expect_validate_caller_any();
             expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
-            assert_eq!(
-                RawBytes::default(),
-                rt.call::<MarketActor>(
+            assert!(rt
+                .call::<MarketActor>(
                     Method::AddBalance as u64,
                     IpldBlock::serialize_cbor(&PROVIDER_ADDR).unwrap(),
                 )
                 .unwrap()
-            );
+                .is_none());
 
             rt.verify();
 
@@ -396,14 +395,13 @@ fn adds_to_non_provider_funds() {
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *caller_addr);
             rt.set_value(TokenAmount::from_atto(tc.delta));
             rt.expect_validate_caller_any();
-            assert_eq!(
-                RawBytes::default(),
-                rt.call::<MarketActor>(
+            assert!(rt
+                .call::<MarketActor>(
                     Method::AddBalance as u64,
                     IpldBlock::serialize_cbor(caller_addr).unwrap(),
                 )
                 .unwrap()
-            );
+                .is_none());
 
             rt.verify();
 
@@ -739,7 +737,7 @@ fn deal_expires() {
         METHOD_SEND,
         None,
         deal.provider_collateral,
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
     cron_tick(&mut rt);
@@ -814,14 +812,13 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     rt.expect_validate_caller_any();
     expect_provider_control_address(&mut rt, provider_resolved, OWNER_ADDR, WORKER_ADDR);
 
-    assert_eq!(
-        RawBytes::default(),
-        rt.call::<MarketActor>(
+    assert!(rt
+        .call::<MarketActor>(
             Method::AddBalance as u64,
             IpldBlock::serialize_cbor(&provider_bls).unwrap(),
         )
         .unwrap()
-    );
+        .is_none());
     rt.verify();
     rt.add_balance(deal.provider_collateral.clone());
     assert_eq!(deal.provider_collateral, get_balance(&mut rt, &provider_resolved).balance);
@@ -854,7 +851,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
         AUTHENTICATE_MESSAGE_METHOD,
         auth_param,
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
 
@@ -896,7 +893,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
         ext::datacap::TRANSFER_FROM_METHOD as u64,
         IpldBlock::serialize_cbor(&transfer_params).unwrap(),
         TokenAmount::zero(),
-        serialize(&transfer_return, "transfer from return").unwrap(),
+        IpldBlock::serialize_cbor(&transfer_return).unwrap(),
         ExitCode::OK,
     );
     let mut normalized_deal = deal;
@@ -914,7 +911,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
         MARKET_NOTIFY_DEAL_METHOD,
         notify_param,
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::USR_UNHANDLED_MESSAGE,
     );
 
@@ -923,6 +920,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
             Method::PublishStorageDeals as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
         )
+        .unwrap()
         .unwrap()
         .deserialize()
         .unwrap();
@@ -1361,7 +1359,7 @@ fn slash_a_deal_and_make_payment_for_another_deal_in_the_same_epoch() {
         METHOD_SEND,
         None,
         d1.provider_collateral.clone(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
     cron_tick(&mut rt);
@@ -1416,7 +1414,7 @@ fn cannot_publish_the_same_deal_twice_before_a_cron_tick() {
         AUTHENTICATE_MESSAGE_METHOD,
         auth_param,
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
 
@@ -1613,7 +1611,7 @@ fn locked_fund_tracking_states() {
         METHOD_SEND,
         None,
         d3.provider_collateral.clone(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
     cron_tick(&mut rt);
@@ -1654,7 +1652,7 @@ fn locked_fund_tracking_states() {
         METHOD_SEND,
         None,
         d1.provider_collateral,
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
     cron_tick(&mut rt);
@@ -1782,14 +1780,13 @@ fn insufficient_client_balance_in_a_batch() {
     rt.expect_validate_caller_any();
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
-    assert_eq!(
-        RawBytes::default(),
-        rt.call::<MarketActor>(
+    assert!(rt
+        .call::<MarketActor>(
             Method::AddBalance as u64,
             IpldBlock::serialize_cbor(&PROVIDER_ADDR).unwrap(),
         )
         .unwrap()
-    );
+        .is_none());
 
     rt.verify();
 
@@ -1831,7 +1828,7 @@ fn insufficient_client_balance_in_a_batch() {
         AUTHENTICATE_MESSAGE_METHOD as u64,
         authenticate_param1,
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
     rt.expect_send(
@@ -1839,7 +1836,7 @@ fn insufficient_client_balance_in_a_batch() {
         AUTHENTICATE_MESSAGE_METHOD as u64,
         authenticate_param2,
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
 
@@ -1854,7 +1851,7 @@ fn insufficient_client_balance_in_a_batch() {
         MARKET_NOTIFY_DEAL_METHOD,
         notify_param2,
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::USR_UNHANDLED_MESSAGE,
     );
 
@@ -1865,6 +1862,7 @@ fn insufficient_client_balance_in_a_batch() {
             Method::PublishStorageDeals as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
         )
+        .unwrap()
         .unwrap()
         .deserialize()
         .unwrap();
@@ -1912,14 +1910,13 @@ fn insufficient_provider_balance_in_a_batch() {
     rt.expect_validate_caller_any();
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
-    assert_eq!(
-        RawBytes::default(),
-        rt.call::<MarketActor>(
+    assert!(rt
+        .call::<MarketActor>(
             Method::AddBalance as u64,
             IpldBlock::serialize_cbor(&PROVIDER_ADDR).unwrap(),
         )
         .unwrap()
-    );
+        .is_none());
 
     rt.verify();
 
@@ -1965,7 +1962,7 @@ fn insufficient_provider_balance_in_a_batch() {
         AUTHENTICATE_MESSAGE_METHOD as u64,
         authenticate_param1,
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
     rt.expect_send(
@@ -1973,7 +1970,7 @@ fn insufficient_provider_balance_in_a_batch() {
         AUTHENTICATE_MESSAGE_METHOD as u64,
         authenticate_param2,
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
 
@@ -1988,7 +1985,7 @@ fn insufficient_provider_balance_in_a_batch() {
         MARKET_NOTIFY_DEAL_METHOD,
         notify_param2,
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::USR_UNHANDLED_MESSAGE,
     );
 
@@ -1999,6 +1996,7 @@ fn insufficient_provider_balance_in_a_batch() {
             Method::PublishStorageDeals as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
         )
+        .unwrap()
         .unwrap()
         .deserialize()
         .unwrap();
@@ -2063,14 +2061,13 @@ fn psd_restricted_correctly() {
     rt.expect_validate_caller_any();
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
-    assert_eq!(
-        RawBytes::default(),
-        rt.call::<MarketActor>(
+    assert!(rt
+        .call::<MarketActor>(
             Method::AddBalance as u64,
             IpldBlock::serialize_cbor(&PROVIDER_ADDR).unwrap(),
         )
         .unwrap()
-    );
+        .is_none());
 
     rt.verify();
 
@@ -2114,7 +2111,7 @@ fn psd_restricted_correctly() {
         AUTHENTICATE_MESSAGE_METHOD as u64,
         authenticate_param1,
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
 
@@ -2128,7 +2125,7 @@ fn psd_restricted_correctly() {
         MARKET_NOTIFY_DEAL_METHOD,
         notify_param,
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::USR_UNHANDLED_MESSAGE,
     );
 
@@ -2137,6 +2134,7 @@ fn psd_restricted_correctly() {
             Method::PublishStorageDealsExported as MethodNum,
             IpldBlock::serialize_cbor(&params).unwrap(),
         )
+        .unwrap()
         .unwrap()
         .deserialize()
         .unwrap();

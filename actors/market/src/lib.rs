@@ -6,11 +6,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use cid::multihash::{Code, MultihashDigest, MultihashGeneric};
 use cid::Cid;
-use fil_actors_runtime::FIRST_ACTOR_SPECIFIC_EXIT_CODE;
+use fil_actors_runtime::{restrict_internal_api, FIRST_ACTOR_SPECIFIC_EXIT_CODE};
 use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
@@ -32,11 +31,12 @@ use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, restrict_internal_api, ActorContext, ActorDowncast, ActorError,
+    actor_dispatch, actor_error, deserialize_block, ActorContext, ActorDowncast, ActorError,
     AsActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::RawBytes;
 
 use crate::ext::verifreg::{AllocationID, AllocationRequest};
 
@@ -343,7 +343,13 @@ impl Actor {
                         IpldBlock::serialize_cbor(&params)?,
                         TokenAmount::zero(),
                     )
-                    .and_then(|ret| datacap_transfer_response(&ret));
+                    .and_then(|ret| {
+                        datacap_transfer_response(
+                            ret.with_context_code(ExitCode::USR_ASSERTION_FAILED, || {
+                                "return expected".to_string()
+                            })?,
+                        )
+                    });
                 match alloc_ids {
                     Ok(ids) => {
                         // Note: when changing this to do anything other than expect complete success,
@@ -1109,8 +1115,8 @@ fn datacap_transfer_request(
 }
 
 // Parses allocation IDs from a TransferFromReturn
-fn datacap_transfer_response(ret: &RawBytes) -> Result<Vec<AllocationID>, ActorError> {
-    let ret: TransferFromReturn = deserialize(ret, "transfer from response")?;
+fn datacap_transfer_response(ret: IpldBlock) -> Result<Vec<AllocationID>, ActorError> {
+    let ret: TransferFromReturn = ret.deserialize()?;
     let allocs: ext::verifreg::AllocationsResponse =
         deserialize(&ret.recipient_data, "allocations response")?;
     Ok(allocs.new_allocations)
@@ -1295,13 +1301,12 @@ fn request_miner_control_addrs(
     rt: &mut impl Runtime,
     miner_id: ActorID,
 ) -> Result<(Address, Address, Vec<Address>), ActorError> {
-    let ret = rt.send(
+    let addrs: ext::miner::GetControlAddressesReturnParams = deserialize_block(rt.send(
         &Address::new_id(miner_id),
         ext::miner::CONTROL_ADDRESSES_METHOD,
         None,
         TokenAmount::zero(),
-    )?;
-    let addrs: ext::miner::GetControlAddressesReturnParams = ret.deserialize()?;
+    )?)?;
 
     Ok((addrs.owner, addrs.worker, addrs.control_addresses))
 }
@@ -1334,13 +1339,12 @@ fn escrow_address(
 
 /// Requests the current epoch target block reward from the reward actor.
 fn request_current_baseline_power(rt: &mut impl Runtime) -> Result<StoragePower, ActorError> {
-    let rwret = rt.send(
+    let ret: ThisEpochRewardReturn = deserialize_block(rt.send(
         &REWARD_ACTOR_ADDR,
         ext::reward::THIS_EPOCH_REWARD_METHOD,
         None,
         TokenAmount::zero(),
-    )?;
-    let ret: ThisEpochRewardReturn = rwret.deserialize()?;
+    )?)?;
     Ok(ret.this_epoch_baseline_power)
 }
 
@@ -1349,13 +1353,12 @@ fn request_current_baseline_power(rt: &mut impl Runtime) -> Result<StoragePower,
 fn request_current_network_power(
     rt: &mut impl Runtime,
 ) -> Result<(StoragePower, StoragePower), ActorError> {
-    let rwret = rt.send(
+    let ret: ext::power::CurrentTotalPowerReturnParams = deserialize_block(rt.send(
         &STORAGE_POWER_ACTOR_ADDR,
         ext::power::CURRENT_TOTAL_POWER_METHOD,
         None,
         TokenAmount::zero(),
-    )?;
-    let ret: ext::power::CurrentTotalPowerReturnParams = rwret.deserialize()?;
+    )?)?;
     Ok((ret.raw_byte_power, ret.quality_adj_power))
 }
 

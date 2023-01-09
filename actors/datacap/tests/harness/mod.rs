@@ -52,7 +52,7 @@ impl Harness {
             )
             .unwrap();
 
-        assert_eq!(RawBytes::default(), ret);
+        assert!(ret.is_none());
         rt.verify();
 
         let state: State = rt.get_state();
@@ -89,7 +89,7 @@ impl Harness {
             frc42_dispatch::method_hash!("Receive"),
             IpldBlock::serialize_cbor(&hook_params).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
@@ -101,7 +101,7 @@ impl Harness {
         )?;
 
         rt.verify();
-        Ok(ret.deserialize().unwrap())
+        Ok(ret.unwrap().deserialize().unwrap())
     }
 
     pub fn destroy(
@@ -121,7 +121,7 @@ impl Harness {
         )?;
 
         rt.verify();
-        Ok(ret.deserialize().unwrap())
+        Ok(ret.unwrap().deserialize().unwrap())
     }
 
     pub fn transfer(
@@ -156,7 +156,7 @@ impl Harness {
             frc42_dispatch::method_hash!("Receive"),
             IpldBlock::serialize_cbor(&hook_params).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
@@ -167,7 +167,7 @@ impl Harness {
         )?;
 
         rt.verify();
-        Ok(ret.deserialize().unwrap())
+        Ok(ret.unwrap().deserialize().unwrap())
     }
 
     pub fn transfer_from(
@@ -203,7 +203,7 @@ impl Harness {
             frc42_dispatch::method_hash!("Receive"),
             IpldBlock::serialize_cbor(&hook_params).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
@@ -215,7 +215,7 @@ impl Harness {
         )?;
 
         rt.verify();
-        Ok(ret.deserialize().unwrap())
+        Ok(ret.unwrap().deserialize().unwrap())
     }
 
     // Reads the total supply from state directly.
@@ -231,6 +231,7 @@ impl Harness {
                 Method::BalanceExported as MethodNum,
                 IpldBlock::serialize_cbor(&address).unwrap(),
             )
+            .unwrap()
             .unwrap()
             .deserialize()
             .unwrap();

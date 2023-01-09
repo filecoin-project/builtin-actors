@@ -1,3 +1,5 @@
+use fvm_ipld_encoding::de::DeserializeOwned;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use std::fmt::Display;
 
 use fvm_shared::error::ExitCode;
@@ -111,22 +113,6 @@ macro_rules! actor_error {
     };
 }
 
-/// Convenience macro for generating Actor Errors
-#[macro_export]
-macro_rules! decode_params {
-    // Error with only one stringable expression
-    ($args:ident) => {
-        $args
-            .with_context_code(fvm_shared::error::ExitCode::USR_ILLEGAL_ARGUMENT, || {
-                format!("method expected args")
-            })?
-            .deserialize()
-            .with_context_code(fvm_shared::error::ExitCode::USR_SERIALIZATION, || {
-                format!("failed to deserialize method params")
-            })?
-    };
-}
-
 // Adds context to an actor error's descriptive message.
 pub trait ActorContext<T> {
     fn context<C>(self, context: C) -> Result<T, ActorError>
@@ -217,4 +203,13 @@ impl<T> AsActorError<T> for Option<T> {
     {
         self.ok_or_else(|| ActorError { exit_code: code, msg: f().to_string() })
     }
+}
+
+pub fn deserialize_block<T>(ret: Option<IpldBlock>) -> Result<T, ActorError>
+where
+    T: DeserializeOwned,
+{
+    ret.context_code(ExitCode::USR_ASSERTION_FAILED, "return expected".to_string())?
+        .deserialize()
+        .exit_code(ExitCode::USR_SERIALIZATION)
 }

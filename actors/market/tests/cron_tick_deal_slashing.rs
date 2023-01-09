@@ -4,7 +4,6 @@
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -238,14 +237,7 @@ fn slash_multiple_deals_in_the_same_epoch() {
     let total_slashed = &deal_proposal1.provider_collateral
         + &deal_proposal2.provider_collateral
         + &deal_proposal3.provider_collateral;
-    rt.expect_send(
-        BURNT_FUNDS_ACTOR_ADDR,
-        METHOD_SEND,
-        None,
-        total_slashed,
-        RawBytes::default(),
-        ExitCode::OK,
-    );
+    rt.expect_send(BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, None, total_slashed, None, ExitCode::OK);
     cron_tick(&mut rt);
 
     assert_deal_deleted(&mut rt, deal_id1, deal_proposal1);

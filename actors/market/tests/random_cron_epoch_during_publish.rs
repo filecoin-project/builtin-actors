@@ -5,7 +5,6 @@ use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
@@ -182,7 +181,7 @@ fn cron_processing_of_deal_after_missed_activation_should_fail_and_slash() {
         METHOD_SEND,
         None,
         deal_proposal.provider_collateral.clone(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
     cron_tick(&mut rt);

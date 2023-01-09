@@ -23,9 +23,10 @@ use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, make_map_with_root_and_bitwidth, resolve_to_actor_id,
-    restrict_internal_api, ActorDowncast, ActorError, BatchReturn, Map, DATACAP_TOKEN_ACTOR_ADDR,
-    STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    actor_dispatch, actor_error, deserialize_block, make_map_with_root_and_bitwidth,
+    resolve_to_actor_id, restrict_internal_api, ActorDowncast, ActorError, BatchReturn, Map,
+    DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -721,15 +722,15 @@ fn is_verifier(rt: &impl Runtime, st: &State, address: Address) -> Result<bool, 
 // Invokes Balance on the data cap token actor, and converts the result to whole units of data cap.
 fn balance(rt: &mut impl Runtime, owner: &Address) -> Result<DataCap, ActorError> {
     let params = IpldBlock::serialize_cbor(owner)?;
-    let ret = rt
-        .send(
+    let x: TokenAmount = deserialize_block(
+        rt.send(
             &DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Balance as u64,
             params,
             TokenAmount::zero(),
         )
-        .context(format!("failed to query datacap balance of {}", owner))?;
-    let x: TokenAmount = deserialize(&ret, "balance result")?;
+        .context(format!("failed to query datacap balance of {}", owner))?,
+    )?;
     Ok(tokens_to_datacap(&x))
 }
 
@@ -1034,6 +1035,7 @@ fn check_miner_id(rt: &mut impl Runtime, id: ActorID) -> Result<(), ActorError> 
         rt.get_actor_code_cid(&id).with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
             format!("no code CID for provider {}", id)
         })?;
+
     let provider_type = rt
         .resolve_builtin_actor_type(&code_cid)
         .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {

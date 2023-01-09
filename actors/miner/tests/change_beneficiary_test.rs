@@ -463,6 +463,7 @@ fn get_beneficiary_correctly_restricted() {
     let beneficiary_return: GetBeneficiaryReturn = rt
         .call::<Actor>(Method::GetBeneficiaryExported as u64, None)
         .unwrap()
+        .unwrap()
         .deserialize()
         .unwrap();
     assert_eq!(h.owner, beneficiary_return.active.beneficiary);

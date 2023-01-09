@@ -3,7 +3,6 @@
 
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
@@ -133,7 +132,7 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
         method: MethodNum,
         params: Option<IpldBlock>,
         value: TokenAmount,
-    ) -> Result<RawBytes, ActorError>;
+    ) -> Result<Option<IpldBlock>, ActorError>;
 
     /// Computes an address for a new actor. The returned address is intended to uniquely refer to
     /// the actor even in the event of a chain re-org (whereas an ID-address might refer to a

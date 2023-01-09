@@ -44,8 +44,12 @@ fn successful_change() {
     // Set to non-builtin caller to confirm exported correctly
     rt.set_caller(make_identity_cid(b"1234"), OTHER_ADDRESS);
     rt.expect_validate_caller_any();
-    let ret: GetOwnerReturn =
-        rt.call::<Actor>(Method::GetOwnerExported as u64, None).unwrap().deserialize().unwrap();
+    let ret: GetOwnerReturn = rt
+        .call::<Actor>(Method::GetOwnerExported as u64, None)
+        .unwrap()
+        .unwrap()
+        .deserialize()
+        .unwrap();
 
     assert_eq!(h.owner, ret.owner);
     assert_eq!(NEW_ADDRESS, ret.proposed.unwrap());
