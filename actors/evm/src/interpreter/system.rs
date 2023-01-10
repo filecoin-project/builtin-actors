@@ -77,7 +77,7 @@ pub type StateKamt<BS> = Kamt<BS, U256, U256, StateHashAlgorithm>;
 
 /// Maximum allowed EVM bytecode size.
 /// The contract code size limit is 24kB.
-const MAX_CODE_SIZE: usize = 24 << 10;
+pub const MAX_CODE_SIZE: usize = 24 << 10;
 
 #[derive(Clone, Copy)]
 pub struct EvmBytecode {

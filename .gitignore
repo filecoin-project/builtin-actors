@@ -4,3 +4,4 @@ target
 .idea/
 **/.DS_Store
 output/*.car
+test_evm_eth_compliance/test-vectors/tests

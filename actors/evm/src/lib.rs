@@ -11,7 +11,7 @@ use interpreter::{address::EthAddress, system::load_bytecode};
 use crate::interpreter::output::Outcome;
 
 pub mod interpreter;
-mod state;
+pub mod state;
 
 use {
     crate::interpreter::{execute, Bytecode, ExecutionState, StatusCode, System, U256},
@@ -68,7 +68,7 @@ impl EvmContractActor {
         RT: Runtime,
         RT::Blockstore: Clone,
     {
-		trace!("Entering::constructor=>");
+        trace!("Entering::constructor=>");
         rt.validate_immediate_caller_is(iter::once(&INIT_ACTOR_ADDR))?;
 
         // Assert we are constructed with a delegated address from the EAM

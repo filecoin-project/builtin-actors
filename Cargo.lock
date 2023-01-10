@@ -4647,6 +4647,7 @@ name = "test_fevm_eth_compliance"
 version = "10.0.0-alpha.1"
 dependencies = [
  "bytes",
+ "cid 0.8.6",
  "derive_more",
  "fil_actor_eam",
  "fil_actor_evm",
@@ -4654,11 +4655,13 @@ dependencies = [
  "fixed-hash 0.8.0",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
+ "fvm_ipld_kamt",
  "fvm_shared",
  "hex",
  "hex-literal",
  "indicatif",
  "lazy_static",
+ "multihash 0.16.3",
  "num-traits",
  "num_cpus",
  "ruint",

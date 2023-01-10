@@ -2,9 +2,7 @@ use std::iter;
 
 use ext::init::{Exec4Params, Exec4Return};
 use fil_actors_runtime::{actor_dispatch_unrestricted, AsActorError};
-use fvm_ipld_encoding::{
-	ipld_block::IpldBlock, Cbor,
-};
+use fvm_ipld_encoding::{ipld_block::IpldBlock, Cbor};
 use fvm_shared::error::ExitCode;
 
 pub mod ext;
@@ -36,6 +34,7 @@ pub enum Method {
     // TODO: Do we want to use ExportedNums for all of these, per FRC-42?
     Create = 2,
     Create2 = 3,
+    CreateAccount = 4,
 }
 
 /// Compute the a new actor address using the EVM's CREATE rules.
@@ -93,6 +92,11 @@ pub struct CreateParams {
     #[serde(with = "strict_bytes")]
     pub initcode: Vec<u8>,
     pub nonce: u64,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct InitAccountParams {
+    pub eth_address: EthAddress,
 }
 
 impl Cbor for CreateParams {}
@@ -240,6 +244,16 @@ impl EamActor {
         // send to init actor
         create_actor(rt, caller_addr, eth_addr, params.initcode)
     }
+
+    pub fn create_account(
+        rt: &mut impl Runtime,
+        params: InitAccountParams,
+    ) -> Result<Return, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+
+        // Attempt to deploy an account there.
+        create_actor(rt, EthAddress([0u8; 20]), params.eth_address, Vec::new())
+    }
 }
 
 impl ActorCode for EamActor {
@@ -248,6 +262,7 @@ impl ActorCode for EamActor {
         Constructor => constructor,
         Create => create,
         Create2 => create2,
+        CreateAccount => create_account,
     }
 }
 

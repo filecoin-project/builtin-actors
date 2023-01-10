@@ -1,4 +1,3 @@
-use fvm_shared::econ::TokenAmount;
 use hex_literal::hex;
 use indicatif::ProgressBar;
 use num_traits::Zero;
@@ -15,14 +14,19 @@ use std::{
 use thiserror::Error;
 use tracing::{error, info, trace, warn};
 
+use cid::multihash::{Code, MultihashDigest};
+use fvm_shared::{address::Address, crypto::hash::SupportedHashes, econ::TokenAmount, IPLD_RAW};
+
 use fil_actor_eam::EthAddress;
 use fil_actors_runtime::{test_utils::EVM_ACTOR_CODE_ID, EAM_ACTOR_ADDR};
-use fvm_ipld_blockstore::MemoryBlockstore;
+use fvm_ipld_blockstore::{Block, Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::{strict_bytes, BytesDe, Cbor};
+use fvm_ipld_kamt::{AsHashedKey, Config as KamtConfig, Kamt};
 
-// use fil_actor_evm::{
-// 	interpreter::{uints::U256},
-// };
+use fil_actor_evm::{
+    interpreter::system::{StateKamt, MAX_CODE_SIZE},
+    state::State as EvmState,
+};
 
 use test_vm::{util::create_accounts, VM};
 
@@ -52,6 +56,34 @@ pub enum TestError {
 struct ContractParams(#[serde(with = "strict_bytes")] pub Vec<u8>);
 
 impl Cbor for ContractParams {}
+
+lazy_static::lazy_static! {
+    // The Solidity compiler creates contiguous array item keys.
+    // To prevent the tree from going very deep we use extensions,
+    // which the Kamt supports and does in all cases.
+    //
+    // There are maximum 32 levels in the tree with the default bit width of 8.
+    // The top few levels will have a higher level of overlap in their hashes.
+    // Intuitively these levels should be used for routing, not storing data.
+    //
+    // The only exception to this is the top level variables in the contract
+    // which solidity puts in the first few slots. There having to do extra
+    // lookups is burdensome, and they will always be accessed even for arrays
+    // because that's where the array length is stored.
+    //
+    // However, for Solidity, the size of the KV pairs is 2x256, which is
+    // comparable to a size of a CID pointer plus extension metadata.
+    // We can keep the root small either by force-pushing data down,
+    // or by not allowing many KV pairs in a slot.
+    //
+    // The following values have been set by looking at how the charts evolved
+    // with the test contract. They might not be the best for other contracts.
+    static ref KAMT_CONFIG: KamtConfig = KamtConfig {
+        min_data_depth: 0,
+        bit_width: 5,
+        max_array_width: 1
+    };
+}
 
 lazy_static::lazy_static! {
     pub static ref MAP_CALLER_KEYS: HashMap<B256, B160> = {
@@ -154,76 +186,43 @@ fn execute_test_suit(path: &Path, elapsed: &Arc<Mutex<Duration>>) -> Result<(), 
     let json_reader = std::fs::read(path).unwrap();
     let suit: TestSuit = serde_json::from_reader(&*json_reader)?;
 
-	let store = MemoryBlockstore::new();
-	let test_vm = VM::new_with_singletons(&store);
+    let store = MemoryBlockstore::new();
+    let test_vm = VM::new_with_singletons(&store);
+    let account = create_accounts(&test_vm, 1, TokenAmount::from_whole(10_000))[0];
+    let mut pre_contract_cache: HashMap<B160, Address> = HashMap::new();
 
     let timer = Instant::now();
 
     for (name, unit) in suit.0.iter() {
         // info!("{:#?}:{:#?}", name, unit);
 
-        // TODO :: Process env block
+        // TODO :: Process env block, is it needed for FEVM context ?
 
-        // Process the "pre" &  "transaction" block
-
-		for (test_id, (address, info)) in unit.pre.iter().enumerate() {
-
-			test_vm
-
-		}
-
-
+        // Process the "pre" block & deploy the contracts
         for (test_id, (address, info)) in unit.pre.iter().enumerate() {
-            // TODO :: type Address <-> EthAddress.
-            // let eth_addr = EthAddress::try_from(U256::from(address.as_slice())).unwrap();
+            assert!(
+                info.code.len() < MAX_CODE_SIZE,
+                "{}",
+                format!(
+                    "EVM byte code length ({}) is exceeding the maximum allowed of {MAX_CODE_SIZE}",
+                    info.code.len()
+                )
+            );
 
-            if skip_pre_test(name.as_ref(), address) {
-                continue;
-            }
-
-            let (do_sender_deployment, do_post_transaction) = if unit.transaction.to.is_some()
-                || unit.transaction.sender.is_some()
-            {
-                let do_post_transaction = if let Some(to_address) = unit.transaction.to {
-                    to_address == *address
-                } else {
-                    false
-                };
-
-                let do_sender_deployment = if let Some(sender_address) = unit.transaction.sender {
-                    sender_address == *address
-                } else {
-                    false
-                };
-
-                (do_sender_deployment, do_post_transaction)
-            } else {
-                (false, false)
-            };
-
-            warn!("Processing status sender:{} to:{}", do_sender_deployment, do_post_transaction);
-
-            if !do_sender_deployment && !do_post_transaction {
-                warn!("Ignoring test! not valid transaction sender or to_address");
-                continue;
-            }
-
-            info!("Pre Processing TestCase {:#?}::{:#?}::{:#?}", name, test_id + 1, address);
-
-            let store = MemoryBlockstore::new();
-            let test_vm = VM::new_with_singletons(&store);
-
-            let account = create_accounts(&test_vm, 1, TokenAmount::from_whole(10_000))[0];
-            // let initcode = hex::decode(info.code.clone()).unwrap();
+            assert!(
+                info.code.first() != Some(&0xEF),
+                "EIP-3541: Contract code starting with the 0xEF byte is disallowed.",
+            );
 
             let create_result = test_vm
                 .apply_message(
                     account,
                     EAM_ACTOR_ADDR,
-                    // TokenAmount::from_atto(info.balance.into()),
                     TokenAmount::zero(),
-                    fil_actor_eam::Method::Create as u64,
-                    Some(fil_actor_eam::CreateParams { initcode: info.code.to_vec(), nonce: info.nonce }),
+                    fil_actor_eam::Method::CreateAccount as u64,
+                    Some(fil_actor_eam::InitAccountParams {
+                        eth_address: EthAddress(address.as_bytes().try_into().unwrap()),
+                    }),
                 )
                 .unwrap();
 
@@ -237,53 +236,70 @@ fn execute_test_suit(path: &Path, elapsed: &Arc<Mutex<Duration>>) -> Result<(), 
             let create_return: fil_actor_eam::Create2Return =
                 create_result.ret.deserialize().expect("failed to decode results");
 
-            if !do_post_transaction {
-                continue;
-            }
+            let actor_address = Address::new_id(create_return.actor_id);
 
-            // Process the "transaction" block
-            for (spec_name, tests) in &unit.post {
-                for (id, test) in tests.iter().enumerate() {
-                    if skip_post_test(name.as_ref(), spec_name, id + 1) {
-                        continue;
-                    }
+            test_vm.mutate_state(actor_address, |st: &mut EvmState| {
+                let hasher = Code::try_from(SupportedHashes::Keccak256 as u64).unwrap(); // supported hashes are all implemented in multihash
+                let code_hash = multihash::Multihash::wrap(
+                    SupportedHashes::Keccak256 as u64,
+                    &hasher.digest(&info.code).to_bytes(),
+                )
+                .expect("failed to hash bytecode with keccak");
 
-                    info!(
-                        "Executing TestCase {:#?}::{:#?}::{:#?}::{:#?}",
-                        name, test_id, spec_name, id,
-                    );
+                let cid = store
+                    .put(Code::Blake2b256, &Block::new(IPLD_RAW, info.code.clone()))
+                    .expect("failed to write bytecode");
 
-                    let gas_limit = *unit.transaction.gas_limit.get(test.indexes.gas).unwrap();
-                    let gas_limit = u64::try_from(gas_limit).unwrap_or(u64::MAX);
-                    let tx_gas_limit = gas_limit;
-                    let tx_data = unit.transaction.data.get(test.indexes.data).unwrap().clone();
-                    let tx_value = *unit.transaction.value.get(test.indexes.value).unwrap();
+                let mut slots = StateKamt::new_with_config(store.clone(), KAMT_CONFIG.clone());
 
-                    // let tx_bytes = if let Some(txbytes) = test.txbytes.clone() {
-                    //     txbytes.to_vec()
-                    // } else {
-                    //     vec![]
-                    // };
+                st.bytecode = cid;
+                st.bytecode_hash = code_hash;
+                st.contract_state = slots.flush().expect("failed to flush contract state");
+                st.nonce = info.nonce;
+            });
 
-                    let call_result = test_vm
-                        .apply_message(
-                            account,
-                            create_return.robust_address,
-                            TokenAmount::zero(),
-                            fil_actor_evm::Method::InvokeContract as u64,
-                            Some(ContractParams(tx_data.to_vec())),
-                        )
-                        .unwrap();
+            pre_contract_cache.insert(*address, actor_address);
+        }
 
-                    assert!(
-                        call_result.code.is_success(),
-                        "failed to call the new actor {}",
-                        call_result.message
-                    );
-
-                    let BytesDe(return_value) =
-                        call_result.ret.deserialize().expect("failed to deserialize results");
+        // Process the "Post" & "transaction" block
+        for (spec_name, tests) in &unit.post {
+            for (id, test) in tests.iter().enumerate() {
+                if skip_post_test(name.as_ref(), spec_name, id + 1) {
+                    continue;
                 }
+
+                info!("Executing TestCase {:#?}::{:#?}::{:#?}", name, spec_name, id,);
+
+                let gas_limit = *unit.transaction.gas_limit.get(test.indexes.gas).unwrap();
+                let gas_limit = u64::try_from(gas_limit).unwrap_or(u64::MAX);
+                let tx_gas_limit = gas_limit;
+                let tx_data = unit.transaction.data.get(test.indexes.data).unwrap().clone();
+                let tx_value = *unit.transaction.value.get(test.indexes.value).unwrap();
+
+                if unit.transaction.to.is_none() {
+                    continue;
+                }
+
+                let actor_address = pre_contract_cache.get(&unit.transaction.to.unwrap()).unwrap();
+
+                let call_result = test_vm
+                    .apply_message(
+                        account,
+                        *actor_address,
+                        TokenAmount::zero(),
+                        fil_actor_evm::Method::InvokeContract as u64,
+                        Some(ContractParams(tx_data.to_vec())),
+                    )
+                    .unwrap();
+
+                assert!(
+                    call_result.code.is_success(),
+                    "failed to call the new actor {}",
+                    call_result.message
+                );
+
+                let BytesDe(return_value) =
+                    call_result.ret.deserialize().expect("failed to deserialize results");
             }
         }
     }

@@ -14,6 +14,7 @@ num-traits = "0.2"
 ruint = { version = "1.7.0", features = ["rlp", "serde"] }
 hex = { version = "0.4" }
 fixed-hash = { version = "0.8", default-features = false, features = ["rustc-hex"]}
+cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 hex-literal = "0.3"
 derive_more = "0.99"
 lazy_static = "1.4.0"
@@ -26,7 +27,9 @@ tracing-subscriber = "0.3"
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 walkdir = "2.3"
+multihash = { version = "0.16.1", default-features = false }
 
+fvm_ipld_kamt = { version = "0.1.0" }
 fvm_ipld_blockstore = { version = "0.1.1", default-features = false }
 fvm_ipld_encoding = { version = "0.3.0", default-features = false }
 fvm_shared = { version = "3.0.0-alpha.13", default-features = false }

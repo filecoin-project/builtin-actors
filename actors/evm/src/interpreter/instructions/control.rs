@@ -22,8 +22,8 @@ pub fn invalid(
     _system: &System<impl Runtime>,
 ) -> Result<(), StatusCode> {
     warn!("InvalidInstruction");
-    Ok(())
-    // Err(StatusCode::InvalidInstruction)
+    // Ok(())
+    Err(StatusCode::InvalidInstruction)
 }
 
 #[inline]
