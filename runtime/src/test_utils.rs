@@ -1069,10 +1069,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        log::trace!(target: "runtime", "get_randomness_from_tickets:\n\tdomain_separation: {:?}\n\tepoch: {}\n\tentropy: [{}]", tag, epoch, hex::encode(entropy));
-        let rand = self.user_get_randomness_from_chain(tag as i64, epoch, entropy);
-        log::trace!(target: "runtime", "get_randomness_from_tickets: {:?}", rand);
-        rand
+        self.user_get_randomness_from_chain(tag as i64, epoch, entropy)
     }
 
     fn get_randomness_from_beacon(
@@ -1081,10 +1078,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        log::trace!(target: "runtime", "get_randomness_from_beacon:\n\tdomain_separation: {:?}\n\tepoch: {}\n\tentropy: [{}]", tag, epoch, hex::encode(entropy));
-        let rand = self.user_get_randomness_from_beacon(tag as i64, epoch, entropy);
-        log::trace!(target: "runtime", "get_randomness_from_beacon: {:?}", rand);
-        rand
+        self.user_get_randomness_from_beacon(tag as i64, epoch, entropy)
     }
 
     fn create<T: Serialize>(&mut self, obj: &T) -> Result<(), ActorError> {
@@ -1307,6 +1301,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        log::trace!(target: "runtime", "user_get_randomness_from_tickets:\n\tpersonalization: {}\n\tepoch: {}\n\tentropy: [{}]", personalization, epoch, hex::encode(entropy));
         let expected = self
             .expectations
             .borrow_mut()
@@ -1340,6 +1335,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        log::trace!(target: "runtime", "user_get_randomness_from_beacon:\n\tpersonalization: {}\n\tepoch: {}\n\tentropy: [{}]", personalization, epoch, hex::encode(entropy));
         let expected = self
             .expectations
             .borrow_mut()
