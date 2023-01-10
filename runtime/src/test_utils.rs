@@ -1036,7 +1036,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
                 .and_then(|a| self.resolve_address(a));
         }
 
-        match self.get_id_address(address) {
+        let id = match self.get_id_address(address) {
             None => None,
             Some(addr) => {
                 if let &Payload::ID(id) = addr.payload() {
@@ -1044,17 +1044,23 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
                 }
                 None
             }
-        }
+        };
+        log::trace!(target: "runtime", "resolve_address: {} - {:?}", address, id);
+        id
     }
 
     fn lookup_delegated_address(&self, id: ActorID) -> Option<Address> {
         self.require_in_call();
-        self.delegated_addresses.get(&Address::new_id(id)).copied()
+        let addr = self.delegated_addresses.get(&Address::new_id(id)).copied();
+        log::trace!(target: "runtime", "lookup_delegated_address: f0{} - {:?}", id, addr.map(|a| format!("{}", a)));
+        addr
     }
 
     fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {
         self.require_in_call();
-        self.actor_code_cids.get(&Address::new_id(*id)).cloned()
+        let cid = self.actor_code_cids.get(&Address::new_id(*id)).cloned();
+        log::trace!(target: "runtime", "get_actor_code_cid: f0{:?} - {:?}", id, cid);
+        cid
     }
 
     fn get_randomness_from_tickets(
@@ -1063,7 +1069,10 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        self.user_get_randomness_from_chain(tag as i64, epoch, entropy)
+        log::trace!(target: "runtime", "get_randomness_from_tickets:\n\tdomain_separation: {:?}\n\tepoch: {}\n\tentropy: [{}]", tag, epoch, hex::encode(entropy));
+        let rand = self.user_get_randomness_from_chain(tag as i64, epoch, entropy);
+        log::trace!(target: "runtime", "get_randomness_from_tickets: {:?}", rand);
+        rand
     }
 
     fn get_randomness_from_beacon(
@@ -1072,7 +1081,10 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        self.user_get_randomness_from_beacon(tag as i64, epoch, entropy)
+        log::trace!(target: "runtime", "get_randomness_from_beacon:\n\tdomain_separation: {:?}\n\tepoch: {}\n\tentropy: [{}]", tag, epoch, hex::encode(entropy));
+        let rand = self.user_get_randomness_from_beacon(tag as i64, epoch, entropy);
+        log::trace!(target: "runtime", "get_randomness_from_beacon: {:?}", rand);
+        rand
     }
 
     fn create<T: Serialize>(&mut self, obj: &T) -> Result<(), ActorError> {
@@ -1092,6 +1104,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
     }
 
     fn set_state_root(&mut self, root: &Cid) -> Result<(), ActorError> {
+        log::debug!(target: "runtime", "set_state_root: {:?}", root);
         self.state = Some(*root);
         Ok(())
     }
@@ -1127,6 +1140,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         gas_limit: Option<u64>,
         send_flags: SendFlags,
     ) -> Result<RawBytes, ActorError> {
+        log::info!(target: "runtime", "send:\n\tto: {:?}\n\tmethod: {}\n\tparams: {:?}\n\tvalue: {}\n\tgas_limt: {:?}\n\tsend_flags: {:064}", to, method, params, value, gas_limit, send_flags.bits());
         // TODO gas_limit is currently ignored, what should we do about it?
         self.require_in_call();
         if self.in_transaction {
@@ -1203,6 +1217,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         actor_id: ActorID,
         predictable_address: Option<Address>,
     ) -> Result<(), ActorError> {
+        log::trace!(target: "runtime", "create_actor:\n\tid: {}\n\taddr: {:?}\n\tcode: {}", actor_id, predictable_address.map(|a| format!("{}", a)), code_id);
         self.require_in_call();
         if self.in_transaction {
             return Err(actor_error!(assertion_failed; "side-effect within transaction"));
@@ -1224,6 +1239,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
     }
 
     fn delete_actor(&mut self, addr: &Address) -> Result<(), ActorError> {
+        log::trace!(target: "runtime", "delete_actor: {}", addr);
         self.require_in_call();
         if self.in_transaction {
             return Err(actor_error!(assertion_failed; "side-effect within transaction"));
@@ -1256,7 +1272,8 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         self.circulating_supply.clone()
     }
 
-    fn charge_gas(&mut self, _: &'static str, value: i64) {
+    fn charge_gas(&mut self, reason: &'static str, value: i64) {
+        log::trace!(target: "runtime", "charge_gas: amount {}, reason {}", value, reason);
         let mut exs = self.expectations.borrow_mut();
         assert!(!exs.expect_gas_charge.is_empty(), "unexpected gas charge {:?}", value);
         let expected = exs.expect_gas_charge.pop_front().unwrap();
@@ -1351,6 +1368,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
     }
 
     fn emit_event(&self, event: &ActorEvent) -> Result<(), ActorError> {
+        log::trace!(target: "runtime", "emit_event: {:?}", event);
         let expected = self
             .expectations
             .borrow_mut()
@@ -1364,6 +1382,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
     }
 
     fn exit(&self, code: u32, data: RawBytes, msg: Option<&str>) -> ! {
+        log::trace!(target: "runtime", "exit:\n\texit_code: {}\n\tmessage {:?}\n\tdata: {:?}", code, msg, data);
         self.actor_exit.replace(Some(ActorExit { code, data, msg: msg.map(|s| s.to_owned()) }));
         std::panic::panic_any("actor exit");
     }
