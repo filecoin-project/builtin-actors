@@ -171,8 +171,10 @@ fn timed_out_and_verified_deals_are_slashed_deleted() {
         &mut rt,
         &MinerAddresses::default(),
         &[deal1.clone(), deal2.clone(), deal3.clone()],
+        TokenAmount::zero(),
         1,
     );
+    assert_eq!(3, deal_ids.len());
 
     // do a cron tick for it -> all should time out and get slashed
     // ONLY deal1 and deal2 should be sent to the Registry actor

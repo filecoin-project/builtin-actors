@@ -198,7 +198,7 @@ impl Actor {
         let mut total_client_lockup: BTreeMap<ActorID, TokenAmount> = BTreeMap::new();
         // Client datacap balance remaining after allocations for deals processed so far.
         let mut client_datacap_remaining: BTreeMap<ActorID, TokenAmount> = BTreeMap::new();
-        // Verified allocation requests to make for each client, paird with the proposal CID.
+        // Verified allocation requests to make for each client, paired with the proposal CID.
         let mut client_alloc_reqs: BTreeMap<ActorID, Vec<(Cid, AllocationRequest)>> =
             BTreeMap::new();
         let mut total_provider_lockup = TokenAmount::zero();
@@ -211,7 +211,7 @@ impl Actor {
         for (di, mut deal) in params.deals.into_iter().enumerate() {
             // drop malformed deals
             if let Err(e) = validate_deal(rt, &deal, &network_raw_power, &baseline_power) {
-                info!("invalid deal {}: {}", di, e.msg());
+                info!("invalid deal {}: {}", di, e);
                 continue;
             }
 
@@ -266,9 +266,10 @@ impl Actor {
             // Must happen after signature verification and before taking cid.
             deal.proposal.provider = Address::new_id(provider_id);
             deal.proposal.client = Address::new_id(client_id);
-            let pcid = rt_deal_cid(rt, &deal.proposal).map_err(
-                |e| actor_error!(illegal_argument; "failed to take cid of proposal {}: {}", di, e.msg()),
-            )?;
+            let pcid = rt_deal_cid(rt, &deal.proposal)
+                .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
+                    format!("failed take CID of proposal {}", di)
+                })?;
 
             // check proposalCids for duplication within message batch
             // check state PendingProposals for duplication across messages
@@ -331,7 +332,7 @@ impl Actor {
                 );
             }
             for ((cid, _), alloc_id) in cids_and_reqs.iter().zip(alloc_ids.iter()) {
-                deal_allocation_ids.insert(cid.clone(), *alloc_id);
+                deal_allocation_ids.insert(*cid, *alloc_id);
             }
         }
 
@@ -904,7 +905,7 @@ fn datacap_transfer_request(
     })
 }
 
-// Invokes transfer_from on a data cap token actor.
+// Invokes transfer_from on the data cap token actor.
 fn transfer_from(
     rt: &mut impl Runtime,
     params: TransferFromParams,
@@ -917,7 +918,7 @@ fn transfer_from(
             TokenAmount::zero(),
         )
         .context(format!("failed to send transfer to datacap {:?}", params))?;
-    Ok(datacap_transfer_response(&ret)?)
+    datacap_transfer_response(&ret)
 }
 
 // Invokes BalanceOf on the data cap token actor.

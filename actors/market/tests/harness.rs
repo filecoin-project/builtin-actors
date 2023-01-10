@@ -5,6 +5,7 @@ use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
 use num_traits::{FromPrimitive, Zero};
 use regex::Regex;
 use std::cmp::min;
+use std::collections::BTreeMap;
 use std::{cell::RefCell, collections::HashMap};
 
 use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
@@ -42,7 +43,7 @@ use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::{
-    address::Address, econ::TokenAmount, error::ExitCode, METHOD_CONSTRUCTOR, METHOD_SEND,
+    address::Address, econ::TokenAmount, error::ExitCode, ActorID, METHOD_CONSTRUCTOR, METHOD_SEND,
 };
 
 // Define common set of actor ids that will be used across all tests.
@@ -448,21 +449,22 @@ pub fn publish_deals(
     rt: &mut MockRuntime,
     addrs: &MinerAddresses,
     publish_deals: &[DealProposal],
+    clients_datacap_balance: TokenAmount,
     next_allocation_id: AllocationID,
 ) -> Vec<DealID> {
     rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
 
-    let return_value = GetControlAddressesReturnParams {
-        owner: addrs.owner,
-        worker: addrs.worker,
-        control_addresses: addrs.control.clone(),
-    };
     rt.expect_send(
         addrs.provider,
         ext::miner::CONTROL_ADDRESSES_METHOD,
         None,
         TokenAmount::zero(),
-        RawBytes::serialize(return_value).unwrap(),
+        RawBytes::serialize(GetControlAddressesReturnParams {
+            owner: addrs.owner,
+            worker: addrs.worker,
+            control_addresses: addrs.control.clone(),
+        })
+        .unwrap(),
         ExitCode::OK,
     );
 
@@ -470,6 +472,10 @@ pub fn publish_deals(
 
     let mut params: PublishStorageDealsParams = PublishStorageDealsParams { deals: vec![] };
 
+    // Accumulate proposals by client, so we can set expectations for the per-client calls
+    // and the per-deal calls. This matches flow in the market actor.
+    // Note the shortcut of not normalising the client/provider addresses in the proposal.
+    let mut client_verified_deals: BTreeMap<ActorID, Vec<DealProposal>> = BTreeMap::new();
     let mut alloc_id = next_allocation_id;
     for deal in publish_deals {
         // create a client proposal with a valid signature
@@ -479,76 +485,99 @@ pub fn publish_deals(
             ClientDealProposal { proposal: deal.clone(), client_signature: sig.clone() };
         params.deals.push(client_proposal);
 
-        // expect an invocation of authenticate_message to verify the above signature
-        let param = IpldBlock::serialize_cbor(&AuthenticateMessageParams {
-            signature: "does not matter".as_bytes().to_vec(),
-            message: buf.to_vec(),
-        })
-        .unwrap();
+        // Expect an invocation of authenticate_message to verify the signature.
         rt.expect_send(
             deal.client,
             ext::account::AUTHENTICATE_MESSAGE_METHOD as u64,
-            param,
+            IpldBlock::serialize_cbor(&AuthenticateMessageParams {
+                signature: "does not matter".as_bytes().to_vec(),
+                message: buf.to_vec(),
+            })
+            .unwrap(),
             TokenAmount::zero(),
             RawBytes::default(),
             ExitCode::OK,
         );
 
         if deal.verified_deal {
-            // Expect transfer of data cap to the verified registry, with spec for the allocation.
-            let curr_epoch = rt.epoch;
-            let alloc_req = ext::verifreg::AllocationRequests {
-                allocations: vec![AllocationRequest {
-                    provider: deal.provider.id().unwrap(),
-                    data: deal.piece_cid,
-                    size: deal.piece_size,
-                    term_min: deal.end_epoch - deal.start_epoch,
-                    term_max: (deal.end_epoch - deal.start_epoch) + 90 * EPOCHS_IN_DAY,
-                    expiration: min(deal.start_epoch, curr_epoch + 60 * EPOCHS_IN_DAY),
-                }],
-                extensions: vec![],
-            };
-            let balance_of_params = deal.client;
-            let balance_of_return = TokenAmount::from_whole(2048);
-            rt.expect_send(
-                DATACAP_TOKEN_ACTOR_ADDR,
-                ext::datacap::BALANCE_OF_METHOD as u64,
-                IpldBlock::serialize_cbor(&balance_of_params).unwrap(),
-                TokenAmount::zero(),
-                serialize(&balance_of_return, "transfer from return").unwrap(),
-                ExitCode::OK,
-            );
-            let datacap_amount = TokenAmount::from_whole(deal.piece_size.0 as i64);
-            let params = TransferFromParams {
-                from: deal.client,
-                to: VERIFIED_REGISTRY_ACTOR_ADDR,
-                amount: datacap_amount.clone(),
-                operator_data: serialize(&alloc_req, "allocation requests").unwrap(),
-            };
-            let alloc_ids = AllocationsResponse {
-                allocation_results: BatchReturn::ok(1),
-                extension_results: BatchReturn::empty(),
-                new_allocations: vec![alloc_id],
-            };
-            rt.expect_send(
-                DATACAP_TOKEN_ACTOR_ADDR,
-                ext::datacap::TRANSFER_FROM_METHOD as u64,
-                IpldBlock::serialize_cbor(&params).unwrap(),
-                TokenAmount::zero(),
-                serialize(
-                    &TransferFromReturn {
-                        from_balance: TokenAmount::zero(),
-                        to_balance: datacap_amount,
-                        allowance: TokenAmount::zero(),
-                        recipient_data: serialize(&alloc_ids, "allocation response").unwrap(),
-                    },
-                    "transfer from return",
-                )
-                .unwrap(),
-                ExitCode::OK,
-            );
-            alloc_id += 1
+            // Expect query for the client's datacap balance, just once per client.
+            let client_id = deal.client.id().unwrap();
+            if client_verified_deals.get(&client_id).is_none() {
+                rt.expect_send(
+                    DATACAP_TOKEN_ACTOR_ADDR,
+                    ext::datacap::BALANCE_OF_METHOD as u64,
+                    IpldBlock::serialize_cbor(&deal.client).unwrap(),
+                    TokenAmount::zero(),
+                    serialize(&clients_datacap_balance, "transfer from return").unwrap(),
+                    ExitCode::OK,
+                );
+            }
+
+            client_verified_deals.entry(client_id).or_default().push(deal.clone());
         }
+    }
+
+    let curr_epoch = rt.epoch;
+    let policy = Policy::default();
+    for (client, deals) in client_verified_deals {
+        // Expect transfer of data cap to the verified registry, with spec for the allocation.
+        let mut allocations = vec![];
+        let mut datacap_consumed = TokenAmount::zero();
+        for deal in deals {
+            if TokenAmount::from_whole(deal.piece_size.0)
+                > &clients_datacap_balance - &datacap_consumed
+            {
+                // Drop deals that exceed client's datacap balance.
+                break;
+            }
+            datacap_consumed += TokenAmount::from_whole(deal.piece_size.0);
+            let term_min = deal.end_epoch - deal.start_epoch;
+            let term_max = min(
+                term_min + policy.market_default_allocation_term_buffer,
+                policy.maximum_verified_allocation_term,
+            );
+            let expiration =
+                min(deal.start_epoch, curr_epoch + policy.maximum_verified_allocation_expiration);
+            allocations.push(AllocationRequest {
+                provider: deal.provider.id().unwrap(),
+                data: deal.piece_cid,
+                size: deal.piece_size,
+                term_min,
+                term_max,
+                expiration,
+            });
+        }
+
+        let alloc_req = ext::verifreg::AllocationRequests { allocations, extensions: vec![] };
+        let params = TransferFromParams {
+            from: Address::new_id(client),
+            to: VERIFIED_REGISTRY_ACTOR_ADDR,
+            amount: datacap_consumed.clone(),
+            operator_data: serialize(&alloc_req, "allocation requests").unwrap(),
+        };
+        let alloc_ids = AllocationsResponse {
+            allocation_results: BatchReturn::ok(alloc_req.allocations.len() as u32),
+            extension_results: BatchReturn::empty(),
+            new_allocations: (alloc_id..alloc_id + alloc_req.allocations.len() as u64).collect(),
+        };
+        rt.expect_send(
+            DATACAP_TOKEN_ACTOR_ADDR,
+            ext::datacap::TRANSFER_FROM_METHOD as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+            TokenAmount::zero(),
+            serialize(
+                &TransferFromReturn {
+                    from_balance: TokenAmount::zero(),
+                    to_balance: datacap_consumed,
+                    allowance: TokenAmount::zero(),
+                    recipient_data: serialize(&alloc_ids, "allocation response").unwrap(),
+                },
+                "transfer from return",
+            )
+            .unwrap(),
+            ExitCode::OK,
+        );
+        alloc_id += alloc_req.allocations.len() as AllocationID;
     }
 
     let ret: PublishStorageDealsReturn = rt
@@ -560,8 +589,6 @@ pub fn publish_deals(
         .deserialize()
         .unwrap();
     rt.verify();
-
-    assert_eq!(ret.ids.len(), publish_deals.len());
 
     // assert state after publishing the deals
     alloc_id = next_allocation_id;
@@ -825,7 +852,7 @@ pub fn publish_and_activate_deal(
 ) -> DealID {
     let deal = generate_deal_and_add_funds(rt, client, addrs, start_epoch, end_epoch);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.worker);
-    let deal_ids = publish_deals(rt, addrs, &[deal], NO_ALLOCATION_ID); // unverified deal
+    let deal_ids = publish_deals(rt, addrs, &[deal], TokenAmount::zero(), NO_ALLOCATION_ID); // unverified deal
     activate_deals(rt, sector_expiry, addrs.provider, current_epoch, &deal_ids);
     deal_ids[0]
 }
@@ -839,7 +866,7 @@ pub fn generate_and_publish_deal(
 ) -> DealID {
     let deal = generate_deal_and_add_funds(rt, client, addrs, start_epoch, end_epoch);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.worker);
-    let deal_ids = publish_deals(rt, addrs, &[deal], NO_ALLOCATION_ID); // unverified deal
+    let deal_ids = publish_deals(rt, addrs, &[deal], TokenAmount::zero(), NO_ALLOCATION_ID); // unverified deal
     deal_ids[0]
 }
 
@@ -854,7 +881,13 @@ pub fn generate_and_publish_verified_deal(
     let mut deal = generate_deal_and_add_funds(rt, client, addrs, start_epoch, end_epoch);
     deal.verified_deal = true;
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.worker);
-    let deal_ids = publish_deals(rt, addrs, &[deal], next_allocation_id);
+    let deal_ids = publish_deals(
+        rt,
+        addrs,
+        &[deal.clone()],
+        TokenAmount::from_whole(deal.piece_size.0),
+        next_allocation_id,
+    );
     deal_ids[0]
 }
 
@@ -892,7 +925,7 @@ pub fn generate_and_publish_deal_for_piece(
 
     // publish
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.worker);
-    let deal_ids = publish_deals(rt, addrs, &[deal], NO_ALLOCATION_ID); // unverified deal
+    let deal_ids = publish_deals(rt, addrs, &[deal], TokenAmount::zero(), NO_ALLOCATION_ID); // unverified deal
     deal_ids[0]
 }
 
