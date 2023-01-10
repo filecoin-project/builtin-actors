@@ -1882,6 +1882,7 @@ dependencies = [
  "etk-asm",
  "fil_actors_runtime",
  "fixed-hash 0.7.0",
+ "frc42_dispatch",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_ipld_kamt",

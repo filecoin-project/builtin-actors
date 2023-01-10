@@ -51,12 +51,14 @@ fn test_method_selector() {
 #[repr(u64)]
 pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
-    // TODO: Do we want to use ExportedNums for all of these, per FRC-42?
     InvokeContract = 2,
     GetBytecode = 3,
     GetStorageAt = 4,
     InvokeContractDelegate = 5,
     GetBytecodeHash = 6,
+    // FRC-42 method exports
+    InvokeContractExported = frc42_dispatch::method_hash!("InvokeContract"),
+    InvokeContractDelegateExported = frc42_dispatch::method_hash!("InvokeContractDelegate"),
 }
 
 pub struct EvmContractActor;
@@ -270,9 +272,15 @@ impl ActorCode for EvmContractActor {
         RT: Runtime,
         RT::Blockstore: Clone,
     {
+        fn is_exported_method(method: u64) -> bool {
+            method == Method::InvokeContractDelegateExported as u64
+                || method == Method::InvokeContractExported as u64
+            // TODO bytecode
+        }
+
         // We reserve all methods below EVM_MAX_RESERVED (<= 1023) method. This is a _subset_ of
         // those reserved by FRC0042.
-        if method > EVM_MAX_RESERVED_METHOD {
+        if method > EVM_MAX_RESERVED_METHOD && !is_exported_method(method) {
             return Self::handle_filecoin_method(rt, method, args).map(RawBytes::new);
         }
 
@@ -287,7 +295,7 @@ impl ActorCode for EvmContractActor {
                 )?;
                 Ok(RawBytes::default())
             }
-            Some(Method::InvokeContract) => {
+            Some(Method::InvokeContract | Method::InvokeContractExported) => {
                 let params = match args {
                     None => vec![],
                     Some(p) => {
@@ -296,6 +304,7 @@ impl ActorCode for EvmContractActor {
                     }
                 };
                 let value = Self::invoke_contract(rt, &params, None, None)?;
+                log::info!("traceee");
                 Ok(RawBytes::serialize(BytesSer(&value))?)
             }
             Some(Method::GetBytecode) => {
@@ -316,7 +325,7 @@ impl ActorCode for EvmContractActor {
                 )?;
                 Ok(RawBytes::serialize(value)?)
             }
-            Some(Method::InvokeContractDelegate) => {
+            Some(Method::InvokeContractDelegate | Method::InvokeContractDelegateExported) => {
                 let params: DelegateCallParams = args
                     .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
                         "method expects arguments".to_string()

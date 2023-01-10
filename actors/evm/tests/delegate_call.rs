@@ -119,7 +119,7 @@ fn test_delegate_call_caller() {
 
     rt.expect_send_generalized(
         target,
-        Method::InvokeContractDelegate as u64,
+        Method::InvokeContractDelegateExported as u64,
         proxy_call_input_data,
         TokenAmount::zero(),
         Some(0xffffffff),

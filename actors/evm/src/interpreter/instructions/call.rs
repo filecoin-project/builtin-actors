@@ -261,7 +261,7 @@ pub fn call_generic<RT: Runtime>(
                             (METHOD_SEND, None)
                         } else {
                             // Otherwise, invoke normally.
-                            (Method::InvokeContract as u64, Some(effective_gas_limit(system, gas)))
+                            (Method::InvokeContractExported as u64, Some(effective_gas_limit(system, gas)))
                         };
                         let params = if input_data.is_empty() {
                             None
@@ -287,7 +287,7 @@ pub fn call_generic<RT: Runtime>(
                             caller: state.caller, };
                         system.send(
                             &system.rt.message().receiver(),
-                            Method::InvokeContractDelegate as u64,
+                            Method::InvokeContractDelegateExported as u64,
                             IpldBlock::serialize_cbor(&params)?,
                             TokenAmount::from(&value),
                             Some(effective_gas_limit(system, gas)),

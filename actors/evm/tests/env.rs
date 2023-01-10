@@ -86,7 +86,7 @@ impl TestEnv {
 
         let BytesDe(result) = self
             .runtime
-            .call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, input)
+            .call::<evm::EvmContractActor>(evm::Method::InvokeContractExported as u64, input)
             .unwrap()
             .deserialize()
             .unwrap();

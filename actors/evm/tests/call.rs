@@ -185,7 +185,7 @@ fn test_call() {
     rt.expect_gas_available(10_000_000_000u64);
     rt.expect_send_generalized(
         f4_target,
-        evm::Method::InvokeContract as u64,
+        evm::Method::InvokeContractExported as u64,
         proxy_call_input_data,
         TokenAmount::zero(),
         Some(0xffffffff),

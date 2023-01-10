@@ -65,7 +65,7 @@ fn test_evm_lifecycle() {
             account,
             create_return.robust_address,
             TokenAmount::zero(),
-            fil_actor_evm::Method::InvokeContract as u64,
+            fil_actor_evm::Method::InvokeContractExported as u64,
             Some(ContractParams(contract_params.to_vec())),
         )
         .unwrap();
@@ -169,7 +169,7 @@ fn test_evm_staticcall() {
                 A_act,
                 A_robust_addr,
                 TokenAmount::zero(),
-                fil_actor_evm::Method::InvokeContract as u64,
+                fil_actor_evm::Method::InvokeContractExported as u64,
                 Some(ContractParams(params.to_vec())),
             )
             .unwrap();
@@ -197,7 +197,7 @@ fn test_evm_staticcall() {
                 A_act,
                 A_robust_addr,
                 TokenAmount::zero(),
-                fil_actor_evm::Method::InvokeContract as u64,
+                fil_actor_evm::Method::InvokeContractExported as u64,
                 Some(ContractParams(params.to_vec())),
             )
             .unwrap();
@@ -220,7 +220,7 @@ fn test_evm_staticcall() {
                 A_act,
                 A_robust_addr,
                 TokenAmount::zero(),
-                fil_actor_evm::Method::InvokeContract as u64,
+                fil_actor_evm::Method::InvokeContractExported as u64,
                 Some(ContractParams(params.to_vec())),
             )
             .unwrap();
@@ -250,7 +250,7 @@ fn test_evm_staticcall() {
                 A_act,
                 A_robust_addr,
                 TokenAmount::zero(),
-                fil_actor_evm::Method::InvokeContract as u64,
+                fil_actor_evm::Method::InvokeContractExported as u64,
                 Some(ContractParams(params.to_vec())),
             )
             .unwrap();
@@ -326,7 +326,7 @@ fn test_evm_delegatecall() {
                 A_act,
                 A_robust_addr,
                 TokenAmount::zero(),
-                fil_actor_evm::Method::InvokeContract as u64,
+                fil_actor_evm::Method::InvokeContractExported as u64,
                 Some(ContractParams(params.to_vec())),
             )
             .unwrap();
@@ -354,7 +354,7 @@ fn test_evm_delegatecall() {
                 A_act,
                 A_robust_addr,
                 TokenAmount::zero(),
-                fil_actor_evm::Method::InvokeContract as u64,
+                fil_actor_evm::Method::InvokeContractExported as u64,
                 Some(ContractParams(params.to_vec())),
             )
             .unwrap();
@@ -439,7 +439,7 @@ fn test_evm_staticcall_delegatecall() {
                 A_act,
                 A_robust_addr,
                 TokenAmount::zero(),
-                fil_actor_evm::Method::InvokeContract as u64,
+                fil_actor_evm::Method::InvokeContractExported as u64,
                 Some(ContractParams(params.to_vec())),
             )
             .unwrap();
@@ -470,7 +470,7 @@ fn test_evm_staticcall_delegatecall() {
                 A_act,
                 A_robust_addr,
                 TokenAmount::zero(),
-                fil_actor_evm::Method::InvokeContract as u64,
+                fil_actor_evm::Method::InvokeContractExported as u64,
                 Some(ContractParams(params.to_vec())),
             )
             .unwrap();

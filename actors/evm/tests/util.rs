@@ -64,7 +64,7 @@ pub fn invoke_contract(rt: &mut MockRuntime, input_data: &[u8]) -> Vec<u8> {
     rt.expect_validate_caller_any();
     let BytesDe(res) = rt
         .call::<evm::EvmContractActor>(
-            evm::Method::InvokeContract as u64,
+            evm::Method::InvokeContractExported as u64,
             IpldBlock::serialize_cbor(&BytesSer(input_data)).unwrap(),
         )
         .unwrap()
@@ -78,7 +78,7 @@ pub fn invoke_contract_expect_abort(rt: &mut MockRuntime, input_data: &[u8], exp
     rt.expect_validate_caller_any();
     let err = rt
         .call::<evm::EvmContractActor>(
-            evm::Method::InvokeContract as u64,
+            evm::Method::InvokeContractExported as u64,
             IpldBlock::serialize_cbor(&BytesSer(input_data)).unwrap(),
         )
         .expect_err(&format!("expected contract to fail with {}", expect));
