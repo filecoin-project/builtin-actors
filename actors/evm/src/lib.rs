@@ -59,6 +59,8 @@ pub enum Method {
     // FRC-42 method exports
     InvokeContractExported = frc42_dispatch::method_hash!("InvokeContract"),
     InvokeContractDelegateExported = frc42_dispatch::method_hash!("InvokeContractDelegate"),
+    GetBytecodeExported = frc42_dispatch::method_hash!("GetBytecode"),
+    GetBytecodeHashExported = frc42_dispatch::method_hash!("GetBytecodeHash"),
 }
 
 pub struct EvmContractActor;
@@ -275,6 +277,9 @@ impl ActorCode for EvmContractActor {
         fn is_exported_method(method: u64) -> bool {
             method == Method::InvokeContractDelegateExported as u64
                 || method == Method::InvokeContractExported as u64
+                || method == Method::GetBytecodeExported as u64
+                || method == Method::GetBytecodeHashExported as u64
+
             // TODO bytecode
         }
 
@@ -304,14 +309,13 @@ impl ActorCode for EvmContractActor {
                     }
                 };
                 let value = Self::invoke_contract(rt, &params, None, None)?;
-                log::info!("traceee");
                 Ok(RawBytes::serialize(BytesSer(&value))?)
             }
-            Some(Method::GetBytecode) => {
+            Some(Method::GetBytecode | Method::GetBytecodeExported) => {
                 let cid = Self::bytecode(rt)?;
                 Ok(RawBytes::serialize(cid)?)
             }
-            Some(Method::GetBytecodeHash) => {
+            Some(Method::GetBytecodeHash | Method::GetBytecodeHashExported) => {
                 let multihash = Self::bytecode_hash(rt)?;
                 Ok(RawBytes::serialize(multihash)?)
             }

@@ -108,7 +108,7 @@ fn test_delegate_call_caller() {
     rt.expect_gas_available(10_000_000_000u64);
     rt.expect_send_generalized(
         target,
-        Method::GetBytecode as u64,
+        Method::GetBytecodeExported as u64,
         None,
         TokenAmount::zero(),
         None,

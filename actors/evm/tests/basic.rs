@@ -78,7 +78,7 @@ return
     rt.reset();
     rt.expect_validate_caller_any();
     let returned_bytecode_cid: Cid = rt
-        .call::<evm::EvmContractActor>(evm::Method::GetBytecode as u64, None)
+        .call::<evm::EvmContractActor>(evm::Method::GetBytecodeExported as u64, None)
         .unwrap()
         .deserialize()
         .unwrap();
