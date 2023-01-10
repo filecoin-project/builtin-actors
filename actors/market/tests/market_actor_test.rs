@@ -986,7 +986,7 @@ fn datacap_transfers_batched() {
     let ids = publish_deals(
         &mut rt,
         &MinerAddresses::default(),
-        &[deal1.clone(), deal2.clone(), deal3.clone()],
+        &[deal1, deal2, deal3],
         datacap_balance,
         1,
     );
@@ -1025,7 +1025,7 @@ fn datacap_transfer_drops_deal_when_cap_insufficient() {
     let ids = publish_deals(
         &mut rt,
         &MinerAddresses::default(),
-        &[deal1.clone(), deal2.clone()],
+        &[deal1, deal2],
         datacap_balance,
         1, // Only 1
     );

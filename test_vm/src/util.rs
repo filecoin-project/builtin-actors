@@ -1152,6 +1152,13 @@ pub fn market_publish_deal(
         let alloc_expiration =
             min(deal.start_epoch, v.curr_epoch + MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION);
 
+        expect_publish_invocs.push(ExpectInvocation {
+            to: DATACAP_TOKEN_ACTOR_ADDR,
+            method: DataCapMethod::BalanceOf as u64,
+            params: Some(IpldBlock::serialize_cbor(&deal_client).unwrap()),
+            code: Some(ExitCode::OK),
+            ..Default::default()
+        });
         let alloc_reqs = AllocationRequests {
             allocations: vec![AllocationRequest {
                 provider: miner_id.id().unwrap(),
