@@ -256,6 +256,7 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
     pub fn execute(mut self) -> Result<Output, StatusCode> {
         while self.pc < self.bytecode.len() {
             // This is faster than the question mark operator, and speed counts here.
+            #[allow(clippy::question_mark)]
             if let Err(e) = self.step() {
                 return Err(e);
             }

@@ -11,6 +11,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
 
 mod harness;
+
 use harness::*;
 
 const START_EPOCH: ChainEpoch = 50;
@@ -179,7 +180,7 @@ fn cron_processing_of_deal_after_missed_activation_should_fail_and_slash() {
     rt.expect_send(
         BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
-        RawBytes::default(),
+        None,
         deal_proposal.provider_collateral.clone(),
         RawBytes::default(),
         ExitCode::OK,

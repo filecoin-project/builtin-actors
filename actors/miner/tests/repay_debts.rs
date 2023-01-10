@@ -72,7 +72,7 @@ fn repay_debt_restricted_correctly() {
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
         "must be built-in",
-        rt.call::<Actor>(Method::RepayDebt as u64, &RawBytes::default()),
+        rt.call::<Actor>(Method::RepayDebt as u64, None),
     );
 
     // can call the exported method
@@ -85,13 +85,13 @@ fn repay_debt_restricted_correctly() {
     rt.expect_send(
         BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
-        RawBytes::default(),
+        None,
         fee_debt,
         RawBytes::default(),
         ExitCode::OK,
     );
 
-    rt.call::<Actor>(Method::RepayDebtExported as u64, &RawBytes::default()).unwrap();
+    rt.call::<Actor>(Method::RepayDebtExported as u64, None).unwrap();
 
     rt.verify();
 
@@ -140,9 +140,9 @@ fn pay_debt_partially_from_vested_funds() {
     // send 1 FIL and repay all debt from vesting funds and balance
     h.repay_debts(
         &mut rt,
-        &*BIG_BALANCE,  // send 1 FIL
+        &BIG_BALANCE,   // send 1 FIL
         &amount_locked, // 3 FIL comes from vesting funds
-        &*BIG_BALANCE,  // 1 FIL sent from balance
+        &BIG_BALANCE,   // 1 FIL sent from balance
     )
     .unwrap();
 

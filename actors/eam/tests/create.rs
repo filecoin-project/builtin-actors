@@ -3,12 +3,12 @@ use eam::{
     compute_address_create, Create2Params, CreateParams, EthAddress, EvmConstructorParams, Return,
 };
 use fil_actor_eam as eam;
-use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::Primitives;
 use fil_actors_runtime::test_utils::{
-    expect_empty, MockRuntime, EVM_ACTOR_CODE_ID, INIT_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID,
+    expect_empty, MockRuntime, EVM_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID,
 };
-use fil_actors_runtime::INIT_ACTOR_ADDR;
+use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
@@ -41,7 +41,7 @@ fn call_create() {
         rt.expect_send(
             INIT_ACTOR_ADDR,
             EXEC4_METHOD,
-            RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
             TokenAmount::from_atto(0),
             send_return,
             ExitCode::OK,
@@ -50,7 +50,7 @@ fn call_create() {
         let result = rt
             .call::<eam::EamActor>(
                 eam::Method::Create as u64,
-                &RawBytes::serialize(create_params).unwrap(),
+                IpldBlock::serialize_cbor(&create_params).unwrap(),
             )
             .unwrap()
             .deserialize::<Return>()
@@ -130,7 +130,7 @@ fn call_create2() {
     rt.expect_send(
         INIT_ACTOR_ADDR,
         EXEC4_METHOD,
-        RawBytes::serialize(params).unwrap(),
+        IpldBlock::serialize_cbor(&params).unwrap(),
         TokenAmount::from_atto(0),
         send_return,
         ExitCode::OK,
@@ -139,7 +139,7 @@ fn call_create2() {
     let result = rt
         .call::<eam::EamActor>(
             eam::Method::Create2 as u64,
-            &RawBytes::serialize(create2_params).unwrap(),
+            IpldBlock::serialize_cbor(&create2_params).unwrap(),
         )
         .unwrap()
         .deserialize::<Return>()
@@ -159,12 +159,11 @@ pub fn construct_and_verify() -> MockRuntime {
     let mut rt = MockRuntime { receiver: Address::new_id(10), ..Default::default() };
 
     // construct EAM singleton actor
-    rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
+    rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
 
-    rt.expect_validate_caller_type(vec![Type::Init]);
+    rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
 
-    let result =
-        rt.call::<eam::EamActor>(eam::Method::Constructor as u64, &RawBytes::default()).unwrap();
+    let result = rt.call::<eam::EamActor>(eam::Method::Constructor as u64, None).unwrap();
     expect_empty(result);
     rt.verify();
     rt.reset();

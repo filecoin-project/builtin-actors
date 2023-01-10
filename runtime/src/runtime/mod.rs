@@ -3,7 +3,7 @@
 
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::{Cbor, CborStore, RawBytes};
+use fvm_ipld_encoding::{CborStore, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::chainid::ChainID;
 use fvm_shared::clock::ChainEpoch;
@@ -24,6 +24,8 @@ use fvm_shared::sys::SendFlags;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
 use multihash::Code;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 
 pub use self::actor_code::*;
 pub use self::policy::*;
@@ -44,7 +46,9 @@ pub mod fvm;
 pub(crate) mod hash_algorithm;
 
 pub(crate) mod empty;
+
 pub use empty::EMPTY_ARR_CID;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 
 /// Runtime is the VM's internal runtime object.
 /// this is everything that is accessible to actors, beyond parameters.
@@ -92,9 +96,9 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// If the argument is an ID address it is returned directly.
     fn resolve_address(&self, address: &Address) -> Option<ActorID>;
 
-    /// Looks-up the "predictable" address of an actor by ID, if any. Returns None if either the
-    /// target actor doesn't exist, or if the target actor doesn't have either a f2 or f4 address.
-    fn lookup_address(&self, id: ActorID) -> Option<Address>;
+    /// Looks-up the "delegated" address of an actor by ID, if any. Returns None if either the
+    /// target actor doesn't exist, or if the target actor doesn't have either an f4 address.
+    fn lookup_delegated_address(&self, id: ActorID) -> Option<Address>;
 
     /// Look up the code ID at an actor address.
     fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid>;
@@ -136,7 +140,7 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// Initializes the state object.
     /// This is only valid when the state has not yet been initialized.
     /// NOTE: we should also limit this to being invoked during the constructor method
-    fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
+    fn create<T: Serialize>(&mut self, obj: &T) -> Result<(), ActorError> {
         let root = self.get_state_root()?;
         if root != EMPTY_ARR_CID {
             return Err(
@@ -150,7 +154,7 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     }
 
     /// Loads a readonly copy of the state of the receiver into the argument.
-    fn state<C: Cbor>(&self) -> Result<C, ActorError> {
+    fn state<T: DeserializeOwned>(&self) -> Result<T, ActorError> {
         Ok(self
             .store()
             .get_cbor(&self.get_state_root()?)
@@ -171,10 +175,10 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// During the call to `f`, execution is protected from side-effects, (including message send).
     ///
     /// Returns the result of `f`.
-    fn transaction<C, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
+    fn transaction<S, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
     where
-        C: Cbor,
-        F: FnOnce(&mut C, &mut Self) -> Result<RT, ActorError>;
+        S: Serialize + DeserializeOwned,
+        F: FnOnce(&mut S, &mut Self) -> Result<RT, ActorError>;
 
     /// Returns reference to blockstore
     fn store(&self) -> &Self::Blockstore;
@@ -189,19 +193,19 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
         &self,
         to: &Address,
         method: MethodNum,
-        params: RawBytes,
+        params: Option<IpldBlock>,
         value: TokenAmount,
     ) -> Result<RawBytes, ActorError> {
         self.send_generalized(to, method, params, value, None, SendFlags::empty())
     }
 
-    /// Generailizes [`Runtime::send`] and [`Runtime::send_read_only`] to allow the caller to
+    /// Generalizes [`Runtime::send`] and [`Runtime::send_read_only`] to allow the caller to
     /// specify a gas limit and send flags.
     fn send_generalized(
         &self,
         to: &Address,
         method: MethodNum,
-        params: RawBytes,
+        params: Option<IpldBlock>,
         value: TokenAmount,
         gas_limit: Option<u64>,
         flags: SendFlags,

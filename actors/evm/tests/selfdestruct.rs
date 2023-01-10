@@ -21,7 +21,7 @@ fn test_selfdestruct() {
     rt.expect_send(
         beneficiary,
         METHOD_SEND,
-        RawBytes::default(),
+        None,
         rt.get_balance(),
         RawBytes::default(),
         ExitCode::OK,
@@ -49,7 +49,7 @@ fn test_selfdestruct_missing() {
     rt.expect_send(
         beneficiary,
         METHOD_SEND,
-        RawBytes::default(),
+        None,
         rt.get_balance(),
         RawBytes::default(),
         ExitCode::SYS_INVALID_RECEIVER,

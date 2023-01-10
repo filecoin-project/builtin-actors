@@ -1,9 +1,11 @@
 use std::iter;
 use tracing::trace;
 
-use fil_actors_runtime::{actor_error, runtime::builtins::Type, AsActorError, EAM_ACTOR_ID};
-use fvm_ipld_encoding::{strict_bytes, BytesDe, BytesSer, DAG_CBOR};
+use fil_actors_runtime::{actor_error, AsActorError, EAM_ACTOR_ID, INIT_ACTOR_ADDR};
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::{strict_bytes, BytesDe, BytesSer};
 use fvm_shared::address::{Address, Payload};
+use fvm_shared::error::ExitCode;
 use interpreter::{address::EthAddress, system::load_bytecode};
 
 use crate::interpreter::output::Outcome;
@@ -17,13 +19,11 @@ use {
     bytes::Bytes,
     cid::Cid,
     fil_actors_runtime::{
-        cbor,
         runtime::{ActorCode, Runtime},
         ActorError,
     },
     fvm_ipld_encoding::tuple::*,
     fvm_ipld_encoding::RawBytes,
-    fvm_shared::error::*,
     fvm_shared::{MethodNum, METHOD_CONSTRUCTOR},
     num_derive::FromPrimitive,
     num_traits::FromPrimitive,
@@ -52,6 +52,7 @@ fn test_method_selector() {
 #[repr(u64)]
 pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
+    // TODO: Do we want to use ExportedNums for all of these, per FRC-42?
     InvokeContract = 2,
     GetBytecode = 3,
     GetStorageAt = 4,
@@ -60,27 +61,25 @@ pub enum Method {
 }
 
 pub struct EvmContractActor;
+
 impl EvmContractActor {
     pub fn constructor<RT>(rt: &mut RT, params: ConstructorParams) -> Result<(), ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
     {
-        trace!("Entering::constructor=>");
-        // TODO ideally we would be checking that we are constructed by the EAM actor,
-        //   but instead we check for init and then assert that we have a delegated address.
-        //   https://github.com/filecoin-project/ref-fvm/issues/746
-        // rt.validate_immediate_caller_is(vec![&EAM_ACTOR_ADDR])?;
-        rt.validate_immediate_caller_type(iter::once(&Type::Init))?;
+		trace!("Entering::constructor=>");
+        rt.validate_immediate_caller_is(iter::once(&INIT_ACTOR_ADDR))?;
 
         // Assert we are constructed with a delegated address from the EAM
         let receiver = rt.message().receiver();
-        let delegated_addr = rt.lookup_address(receiver.id().unwrap()).ok_or_else(|| {
-            ActorError::assertion_failed(format!(
-                "EVM actor {} created without a delegated address",
-                receiver
-            ))
-        })?;
+        let delegated_addr =
+            rt.lookup_delegated_address(receiver.id().unwrap()).ok_or_else(|| {
+                ActorError::assertion_failed(format!(
+                    "EVM actor {} created without a delegated address",
+                    receiver
+                ))
+            })?;
         let delegated_addr = match delegated_addr.payload() {
             Payload::Delegated(delegated) if delegated.namespace() == EAM_ACTOR_ID => {
                 // sanity check
@@ -138,6 +137,7 @@ impl EvmContractActor {
         rt: &mut RT,
         input_data: &[u8],
         with_code: Option<Cid>,
+        with_caller: Option<EthAddress>,
     ) -> Result<Vec<u8>, ActorError>
     where
         RT: Runtime,
@@ -163,9 +163,12 @@ impl EvmContractActor {
             None => return Ok(Vec::new()),
         };
 
-        // Resolve the caller's ethereum address. If the caller doesn't have one, the caller's ID is used instead.
-        let caller_fil_addr = system.rt.message().caller();
-        let caller_eth_addr = system.resolve_ethereum_address(&caller_fil_addr).unwrap();
+        // Use passed Eth address (from delegate call).
+        // Otherwise resolve the caller's ethereum address. If the caller doesn't have one, the caller's Eth encoded ID is used instead.
+        let caller_eth_addr = match with_caller {
+            Some(addr) => addr,
+            None => system.resolve_ethereum_address(&system.rt.message().caller()).unwrap(),
+        };
 
         // Resolve the receiver's ethereum address.
         let receiver_fil_addr = system.rt.message().receiver();
@@ -196,15 +199,15 @@ impl EvmContractActor {
     pub fn handle_filecoin_method<RT>(
         rt: &mut RT,
         method: u64,
-        codec: u64,
-        params: &[u8],
+        args: Option<IpldBlock>,
     ) -> Result<Vec<u8>, ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
     {
-        let input = handle_filecoin_method_input(method, codec, params);
-        Self::invoke_contract(rt, &input, None)
+        let params = args.unwrap_or(IpldBlock { codec: 0, data: vec![] });
+        let input = handle_filecoin_method_input(method, params.codec, params.data.as_slice());
+        Self::invoke_contract(rt, &input, None, None)
     }
 
     pub fn bytecode(rt: &mut impl Runtime) -> Result<Cid, ActorError> {
@@ -259,10 +262,12 @@ fn handle_filecoin_method_input(method: u64, codec: u64, params: &[u8]) -> Vec<u
 }
 
 impl ActorCode for EvmContractActor {
+    type Methods = Method;
+    // TODO: Use actor_dispatch macros for this: https://github.com/filecoin-project/builtin-actors/issues/966
     fn invoke_method<RT>(
         rt: &mut RT,
         method: MethodNum,
-        params: &RawBytes,
+        args: Option<IpldBlock>,
     ) -> Result<RawBytes, ActorError>
     where
         RT: Runtime,
@@ -271,20 +276,29 @@ impl ActorCode for EvmContractActor {
         // We reserve all methods below EVM_MAX_RESERVED (<= 1023) method. This is a _subset_ of
         // those reserved by FRC0042.
         if method > EVM_MAX_RESERVED_METHOD {
-            // FIXME: we need the actual codec.
-            // See https://github.com/filecoin-project/ref-fvm/issues/987
-            let codec = if params.is_empty() { 0 } else { DAG_CBOR };
-            return Self::handle_filecoin_method(rt, method, codec, params).map(RawBytes::new);
+            return Self::handle_filecoin_method(rt, method, args).map(RawBytes::new);
         }
 
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
-                Self::constructor(rt, cbor::deserialize_params(params)?)?;
+                Self::constructor(
+                    rt,
+                    args.with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
+                        "method expects arguments".to_string()
+                    })?
+                    .deserialize()?,
+                )?;
                 Ok(RawBytes::default())
             }
             Some(Method::InvokeContract) => {
-                let BytesDe(params) = params.deserialize()?;
-                let value = Self::invoke_contract(rt, &params, None)?;
+                let params = match args {
+                    None => vec![],
+                    Some(p) => {
+                        let BytesDe(p) = p.deserialize()?;
+                        p
+                    }
+                };
+                let value = Self::invoke_contract(rt, &params, None, None)?;
                 Ok(RawBytes::serialize(BytesSer(&value))?)
             }
             Some(Method::GetBytecode) => {
@@ -292,16 +306,31 @@ impl ActorCode for EvmContractActor {
                 Ok(RawBytes::serialize(cid)?)
             }
             Some(Method::GetBytecodeHash) => {
-                let cid = Self::bytecode_hash(rt)?;
-                Ok(RawBytes::serialize(cid)?)
+                let multihash = Self::bytecode_hash(rt)?;
+                Ok(RawBytes::serialize(multihash)?)
             }
             Some(Method::GetStorageAt) => {
-                let value = Self::storage_at(rt, cbor::deserialize_params(params)?)?;
+                let value = Self::storage_at(
+                    rt,
+                    args.with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
+                        "method expects arguments".to_string()
+                    })?
+                    .deserialize()?,
+                )?;
                 Ok(RawBytes::serialize(value)?)
             }
             Some(Method::InvokeContractDelegate) => {
-                let params: DelegateCallParams = cbor::deserialize_params(params)?;
-                let value = Self::invoke_contract(rt, &params.input, Some(params.code))?;
+                let params: DelegateCallParams = args
+                    .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
+                        "method expects arguments".to_string()
+                    })?
+                    .deserialize()?;
+                let value = Self::invoke_contract(
+                    rt,
+                    &params.input,
+                    Some(params.code),
+                    Some(params.caller),
+                )?;
                 Ok(RawBytes::serialize(BytesSer(&value))?)
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
@@ -323,6 +352,8 @@ pub struct DelegateCallParams {
     /// The contract invocation parameters
     #[serde(with = "strict_bytes")]
     pub input: Vec<u8>,
+    /// The original caller's Eth address.
+    pub caller: EthAddress,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]

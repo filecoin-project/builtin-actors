@@ -1,22 +1,24 @@
 use std::iter;
 
 use ext::init::{Exec4Params, Exec4Return};
-use fil_actors_runtime::AsActorError;
-use fvm_ipld_encoding::Cbor;
+use fil_actors_runtime::{actor_dispatch_unrestricted, AsActorError};
+use fvm_ipld_encoding::{
+	ipld_block::IpldBlock, Cbor,
+};
 use fvm_shared::error::ExitCode;
 
 pub mod ext;
 
 use {
     fil_actors_runtime::{
-        actor_error, cbor,
+        actor_error,
         runtime::builtins::Type,
         runtime::{ActorCode, Runtime},
-        ActorError, EAM_ACTOR_ID, INIT_ACTOR_ADDR,
+        ActorError, EAM_ACTOR_ID, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     },
     fvm_ipld_encoding::{strict_bytes, tuple::*, RawBytes},
     fvm_shared::{
-        address::{Address, Payload, SECP_PUB_LEN},
+        address::{Address, Payload},
         crypto::hash::SupportedHashes,
         ActorID, MethodNum, METHOD_CONSTRUCTOR,
     },
@@ -31,9 +33,9 @@ fil_actors_runtime::wasm_trampoline!(EamActor);
 #[repr(u64)]
 pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
+    // TODO: Do we want to use ExportedNums for all of these, per FRC-42?
     Create = 2,
     Create2 = 3,
-    // CreateAccount = 4,
 }
 
 /// Compute the a new actor address using the EVM's CREATE rules.
@@ -58,10 +60,13 @@ pub fn compute_address_create2(
 pub struct EthAddress(#[serde(with = "strict_bytes")] pub [u8; 20]);
 
 impl EthAddress {
-    /// Returns true if the EthAddress refers to a precompile.
+    /// Returns true if the EthAddress refers to an address in the precompile range.
+    /// [reference](https://github.com/filecoin-project/ref-fvm/issues/1164#issuecomment-1371304676)
     #[inline]
     fn is_precompile(&self) -> bool {
-        self.0[..19].iter().all(|&i| i == 0)
+        // Exact index is not checked since it is unknown to the EAM what precompiles exist in the EVM actor.
+        let [prefix, middle @ .., _index] = self.0;
+        (prefix == 0xfe || prefix == 0x00) && middle == [0u8; 18]
     }
 
     /// Returns true if the EthAddress is an actor ID embedded in an eth address.
@@ -94,23 +99,12 @@ pub struct Create2Params {
     pub salt: [u8; 32],
 }
 
-impl Cbor for Create2Params {}
-
-#[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct InitAccountParams {
-    #[serde(with = "strict_bytes")]
-    pub pubkey: [u8; SECP_PUB_LEN],
-}
-impl Cbor for InitAccountParams {}
-
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, PartialEq, Eq)]
 pub struct Return {
     pub actor_id: ActorID,
     pub robust_address: Address,
     pub eth_address: EthAddress,
 }
-
-impl Cbor for Return {}
 
 pub type CreateReturn = Return;
 pub type Create2Return = Return;
@@ -163,7 +157,7 @@ fn create_actor(
         .send(
             &INIT_ACTOR_ADDR,
             ext::init::EXEC4_METHOD,
-            RawBytes::serialize(&init_params)?,
+            IpldBlock::serialize_cbor(&init_params)?,
             rt.message().value_received(),
         )?
         .deserialize()?;
@@ -173,7 +167,7 @@ fn create_actor(
 
 fn resolve_caller(rt: &mut impl Runtime) -> Result<EthAddress, ActorError> {
     let caller_id = rt.message().caller().id().unwrap();
-    Ok(match rt.lookup_address(caller_id).map(|a| *a.payload()) {
+    Ok(match rt.lookup_delegated_address(caller_id).map(|a| *a.payload()) {
         Some(Payload::Delegated(addr)) if addr.namespace() == EAM_ACTOR_ID => EthAddress(
             addr.subaddress()
                 .try_into()
@@ -189,6 +183,7 @@ fn resolve_caller(rt: &mut impl Runtime) -> Result<EthAddress, ActorError> {
 }
 
 pub struct EamActor;
+
 impl EamActor {
     pub fn constructor(rt: &mut impl Runtime) -> Result<(), ActorError> {
         let actor_id = rt.resolve_address(&rt.message().receiver()).unwrap();
@@ -197,7 +192,7 @@ impl EamActor {
                 "The Ethereum Address Manager must be deployed at {EAM_ACTOR_ID}, was deployed at {actor_id}"
             )));
         }
-        rt.validate_immediate_caller_type(std::iter::once(&Type::Init))
+        rt.validate_immediate_caller_is(iter::once(&SYSTEM_ACTOR_ADDR))
     }
 
     /// Create a new contract per the EVM's CREATE rules.
@@ -239,60 +234,14 @@ impl EamActor {
         // send to init actor
         create_actor(rt, caller_addr, eth_addr, params.initcode)
     }
-
-    pub fn create_account(
-        rt: &mut impl Runtime,
-        params: InitAccountParams,
-    ) -> Result<Return, ActorError> {
-        // First, validate that we're receiving this message from the filecoin account that maps to
-        // this ethereum account.
-        //
-        // We don't need to validate that the _key_ is well formed or anything, because the fact
-        // that we're receiving a message from the account proves that to be the case anyways.
-        //
-        // TODO: allow off-chain deployment!
-        let key_addr = Address::new_secp256k1(&params.pubkey)
-            .map_err(|e| ActorError::illegal_argument(format!("not a valid public key: {e}")))?;
-
-        rt.validate_immediate_caller_is(iter::once(&key_addr))?;
-
-        // Compute the equivalent eth address
-        let eth_address = EthAddress(hash_20(rt, &params.pubkey[1..]));
-
-        // TODO: Check reserved ranges (id, precompile, etc.).
-
-        // Attempt to deploy an account there.
-        // TODO
-        create_actor(rt, EthAddress([0u8; 20]), eth_address, Vec::new()).ok();
-        todo!()
-    }
 }
 
 impl ActorCode for EamActor {
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        params: &RawBytes,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-    {
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(rt)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::Create) => {
-                Ok(RawBytes::serialize(Self::create(rt, cbor::deserialize_params(params)?)?)?)
-            }
-            Some(Method::Create2) => {
-                Ok(RawBytes::serialize(Self::create2(rt, cbor::deserialize_params(params)?)?)?)
-            }
-            // Some(Method::CreateAccount) => {
-            //     Self::create_account(rt, cbor::deserialize_params(params)?)
-            // }
-            None => Err(actor_error!(unhandled_message; "Invalid method")),
-        }
+    type Methods = Method;
+    actor_dispatch_unrestricted! {
+        Constructor => constructor,
+        Create => create,
+        Create2 => create2,
     }
 }
 

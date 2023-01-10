@@ -1,7 +1,8 @@
 use bytes::Bytes;
 
 use fil_actors_runtime::{BURNT_FUNDS_ACTOR_ADDR, EAM_ACTOR_ADDR};
-use fvm_ipld_encoding::{strict_bytes, tuple::*, RawBytes};
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::{strict_bytes, tuple::*};
 use fvm_shared::sys::SendFlags;
 use fvm_shared::MethodNum;
 use fvm_shared::METHOD_SEND;
@@ -70,7 +71,7 @@ pub fn create(
 
     let nonce = system.increment_nonce();
     let params = CreateParams { code: input_data.to_vec(), nonce };
-    create_init(system, RawBytes::serialize(&params)?, CREATE_METHOD_NUM, value)
+    create_init(system, IpldBlock::serialize_cbor(&params)?, CREATE_METHOD_NUM, value)
 }
 
 pub fn create2(
@@ -107,14 +108,14 @@ pub fn create2(
     let params = Create2Params { code: input_data.to_vec(), salt };
 
     system.increment_nonce();
-    create_init(system, RawBytes::serialize(&params)?, CREATE2_METHOD_NUM, endowment)
+    create_init(system, IpldBlock::serialize_cbor(&params)?, CREATE2_METHOD_NUM, endowment)
 }
 
 /// call into Ethereum Address Manager to make the new account
 #[inline]
 fn create_init(
     system: &mut System<impl Runtime>,
-    params: RawBytes,
+    params: Option<IpldBlock>,
     method: MethodNum,
     value: TokenAmount,
 ) -> Result<U256, StatusCode> {
@@ -168,7 +169,7 @@ pub fn selfdestruct(
     // If we fail, we'll just burn the funds. Yes, this is what the EVM does.
     if let Ok(addr) = EthAddress::from(beneficiary).try_into() {
         let balance = system.rt.current_balance();
-        let _ = system.rt.send(&addr, METHOD_SEND, RawBytes::default(), balance);
+        let _ = system.rt.send(&addr, METHOD_SEND, None, balance);
     }
     // Now try to delete ourselves. If this fails, we abort execution.
     system.rt.delete_actor(&BURNT_FUNDS_ACTOR_ADDR)?;

@@ -154,6 +154,9 @@ fn execute_test_suit(path: &Path, elapsed: &Arc<Mutex<Duration>>) -> Result<(), 
     let json_reader = std::fs::read(path).unwrap();
     let suit: TestSuit = serde_json::from_reader(&*json_reader)?;
 
+	let store = MemoryBlockstore::new();
+	let test_vm = VM::new_with_singletons(&store);
+
     let timer = Instant::now();
 
     for (name, unit) in suit.0.iter() {
@@ -162,6 +165,13 @@ fn execute_test_suit(path: &Path, elapsed: &Arc<Mutex<Duration>>) -> Result<(), 
         // TODO :: Process env block
 
         // Process the "pre" &  "transaction" block
+
+		for (test_id, (address, info)) in unit.pre.iter().enumerate() {
+
+			test_vm
+
+		}
+
 
         for (test_id, (address, info)) in unit.pre.iter().enumerate() {
             // TODO :: type Address <-> EthAddress.
@@ -213,7 +223,7 @@ fn execute_test_suit(path: &Path, elapsed: &Arc<Mutex<Duration>>) -> Result<(), 
                     // TokenAmount::from_atto(info.balance.into()),
                     TokenAmount::zero(),
                     fil_actor_eam::Method::Create as u64,
-                    fil_actor_eam::CreateParams { initcode: info.code.to_vec(), nonce: info.nonce },
+                    Some(fil_actor_eam::CreateParams { initcode: info.code.to_vec(), nonce: info.nonce }),
                 )
                 .unwrap();
 
@@ -261,7 +271,7 @@ fn execute_test_suit(path: &Path, elapsed: &Arc<Mutex<Duration>>) -> Result<(), 
                             create_return.robust_address,
                             TokenAmount::zero(),
                             fil_actor_evm::Method::InvokeContract as u64,
-                            ContractParams(tx_data.to_vec()),
+                            Some(ContractParams(tx_data.to_vec())),
                         )
                         .unwrap();
 

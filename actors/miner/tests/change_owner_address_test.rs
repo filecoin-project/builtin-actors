@@ -3,7 +3,7 @@ use fil_actors_runtime::test_utils::{
     expect_abort, expect_abort_contains_message, new_bls_addr, MockRuntime, ACCOUNT_ACTOR_CODE_ID,
     EVM_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID,
 };
-use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::{address::Address, error::ExitCode};
 
@@ -44,11 +44,8 @@ fn successful_change() {
     // Set to non-builtin caller to confirm exported correctly
     rt.set_caller(*EVM_ACTOR_CODE_ID, OTHER_ADDRESS);
     rt.expect_validate_caller_any();
-    let ret: GetOwnerReturn = rt
-        .call::<Actor>(Method::GetOwnerExported as u64, &RawBytes::default())
-        .unwrap()
-        .deserialize()
-        .unwrap();
+    let ret: GetOwnerReturn =
+        rt.call::<Actor>(Method::GetOwnerExported as u64, None).unwrap().deserialize().unwrap();
 
     assert_eq!(h.owner, ret.owner);
     assert_eq!(NEW_ADDRESS, ret.proposed.unwrap());
@@ -68,7 +65,7 @@ fn successful_change() {
 fn change_owner_address_restricted_correctly() {
     let (h, mut rt) = setup();
 
-    let params = &RawBytes::serialize(NEW_ADDRESS).unwrap();
+    let params = IpldBlock::serialize_cbor(&NEW_ADDRESS).unwrap();
     rt.set_caller(*EVM_ACTOR_CODE_ID, h.owner);
 
     // fail to call the unexported method
@@ -76,13 +73,13 @@ fn change_owner_address_restricted_correctly() {
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
         "must be built-in",
-        rt.call::<Actor>(Method::ChangeOwnerAddress as u64, params),
+        rt.call::<Actor>(Method::ChangeOwnerAddress as u64, params.clone()),
     );
 
     // can call the exported method
 
     rt.expect_validate_caller_addr(vec![h.owner]);
-    rt.call::<Actor>(Method::ChangeOwnerAddressExported as u64, params).unwrap();
+    rt.call::<Actor>(Method::ChangeOwnerAddressExported as u64, params.clone()).unwrap();
 
     rt.verify();
 

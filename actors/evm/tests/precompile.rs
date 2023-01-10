@@ -3,14 +3,12 @@ mod asm;
 use evm::interpreter::U256;
 use fil_actor_evm as evm;
 use fil_actors_runtime::test_utils::{
-    MockRuntime, ACCOUNT_ACTOR_CODE_ID, EMBRYO_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID,
-    MINER_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID,
+    MockRuntime, ACCOUNT_ACTOR_CODE_ID, EAM_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID,
+    MULTISIG_ACTOR_CODE_ID, PLACEHOLDER_ACTOR_CODE_ID,
 };
 use fvm_shared::address::Address as FILAddress;
 
 mod util;
-
-use util::DUMMY_ACTOR_CODE_ID;
 
 #[allow(dead_code)]
 pub fn magic_precompile_contract() -> Vec<u8> {
@@ -91,7 +89,7 @@ push1 0x00
 push1 0x00
 
 # dst (get_actor_type precompile)
-push1 0x0c
+push20 0xfe00000000000000000000000000000000000004
 
 # gas
 push1 0x00
@@ -122,16 +120,16 @@ return
     rt.set_address_actor_type(evm_target, *EVM_ACTOR_CODE_ID);
 
     // f0 31 is a system actor
-    let system_target = FILAddress::new_id(31);
-    rt.set_address_actor_type(system_target, *DUMMY_ACTOR_CODE_ID);
+    let system_target = FILAddress::new_id(10);
+    rt.set_address_actor_type(system_target, *EAM_ACTOR_CODE_ID);
 
     // f0 101 is an account
     let account_target = FILAddress::new_id(101);
     rt.set_address_actor_type(account_target, *ACCOUNT_ACTOR_CODE_ID);
 
-    // f0 102 is an embryo
-    let embryo_target = FILAddress::new_id(102);
-    rt.set_address_actor_type(embryo_target, *EMBRYO_ACTOR_CODE_ID);
+    // f0 102 is a placeholder
+    let placeholder_target = FILAddress::new_id(102);
+    rt.set_address_actor_type(placeholder_target, *PLACEHOLDER_ACTOR_CODE_ID);
 
     // f0 103 is a storage provider
     let miner_target = FILAddress::new_id(103);
@@ -156,8 +154,85 @@ return
     test_type(&mut rt, evm_target, NativeType::EVMContract);
     test_type(&mut rt, system_target, NativeType::System);
     test_type(&mut rt, account_target, NativeType::Account);
-    test_type(&mut rt, embryo_target, NativeType::Embryo);
+    test_type(&mut rt, placeholder_target, NativeType::Placeholder);
     test_type(&mut rt, miner_target, NativeType::StorageProvider);
     test_type(&mut rt, other_target, NativeType::OtherTypes);
     test_type(&mut rt, FILAddress::new_id(10101), NativeType::NonExistent);
+
+    // invalid format address
+    rt.expect_gas_available(10_000_000_000u64);
+    let result = util::invoke_contract(&mut rt, &[0xff; 64]);
+    rt.verify();
+    assert!(result.is_empty());
+    rt.reset();
+}
+
+fn resolve_address_contract() -> Vec<u8> {
+    let init = "";
+    let body = r#"
+    
+# get call payload size
+calldatasize
+# store payload to mem 0x00
+push1 0x00
+push1 0x00
+calldatacopy
+
+# out size
+# out off
+push1 0x20
+push1 0xA0
+
+# in size
+# in off
+calldatasize
+push1 0x00
+
+# value
+push1 0x00
+
+# dst (resolve_address precompile)
+push20 0xfe00000000000000000000000000000000000001
+
+# gas
+push1 0x00
+
+call
+
+# write exit code memory
+push1 0x00 # offset
+mstore8
+
+returndatasize
+push1 0x00 # offset
+push1 0x01 # dest offset
+returndatacopy
+
+returndatasize
+push1 0x01
+add
+push1 0x00
+return
+"#;
+    asm::new_contract("native_precompiles", init, body).unwrap()
+}
+
+#[test]
+fn test_precompile_failure() {
+    let bytecode = resolve_address_contract();
+    let mut rt = util::construct_and_verify(bytecode);
+
+    // invalid input fails
+    rt.expect_gas_available(10_000_000_000u64);
+    let result = util::invoke_contract(&mut rt, &[0xff; 32]);
+    rt.verify();
+    assert_eq!(&[0u8], result.as_slice());
+    rt.reset();
+
+    // not found succeeds with empty
+    rt.expect_gas_available(10_000_000_000u64);
+    let result = util::invoke_contract(&mut rt, &U256::from(111).to_bytes());
+    rt.verify();
+    assert_eq!(&[1u8], result.as_slice());
+    rt.reset();
 }

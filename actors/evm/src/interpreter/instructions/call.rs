@@ -1,7 +1,8 @@
 #![allow(clippy::too_many_arguments)]
 
-use fvm_ipld_encoding::{BytesDe, BytesSer};
-use fvm_shared::{address::Address, sys::SendFlags, METHOD_SEND};
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::BytesDe;
+use fvm_shared::{address::Address, sys::SendFlags, IPLD_RAW, METHOD_SEND};
 
 use crate::interpreter::precompiles::PrecompileContext;
 
@@ -199,14 +200,19 @@ pub fn call_generic<RT: Runtime>(
         if precompiles::Precompiles::<RT>::is_precompile(&dst) {
             let context =
                 PrecompileContext { call_type: kind, gas_limit: effective_gas_limit(system, gas) };
+            if log::log_enabled!(log::Level::Info) {
+                // log input to the precompile, but make sure we dont log _too_ much.
+                let mut input_hex = hex::encode(input_data);
+                input_hex.truncate(512);
+                log::info!(target: "evm", "Calling Precompile:\n\taddress: {:x?}\n\tcontext: {:?}\n\tinput: {}", EthAddress::try_from(dst).unwrap_or(EthAddress([0xff; 20])), context, input_hex);
+            }
 
-            match precompiles::Precompiles::call_precompile(system, dst, input_data, context)
-                .map_err(StatusCode::from)
-            {
+            match precompiles::Precompiles::call_precompile(system, dst, input_data, context) {
                 Ok(return_data) => (1, return_data),
-                Err(status) => {
-                    let msg = format!("{}", status);
-                    (0, msg.as_bytes().to_vec())
+                Err(err) => {
+                    log::error!(target: "evm", "Precompile failed: error {:?}", err);
+                    // precompile failed, exit with reverted and no output
+                    (0, vec![])
                 }
             }
         } else {
@@ -215,8 +221,8 @@ pub fn call_generic<RT: Runtime>(
                     let dst_addr: EthAddress = dst.into();
                     let dst_addr: Address = dst_addr.try_into().expect("address is a precompile");
 
-                    // Special casing for account/embryo/non-existent actors: we just do a SEND (method 0)
-                    // which allows us to transfer funds (and create embryos)
+                    // Special casing for account/placeholder/non-existent actors: we just do a SEND (method 0)
+                    // which allows us to transfer funds (and create placeholders)
                     let target_actor_code = system
                         .rt
                         .resolve_address(&dst_addr)
@@ -235,15 +241,15 @@ pub fn call_generic<RT: Runtime>(
                         Ok(RawBytes::default())
                     } else {
                         let (method, gas_limit) = if !actor_exists
-                            || matches!(target_actor_type, Some(Type::Embryo | Type::Account))
-                        // See https://github.com/filecoin-project/ref-fvm/issues/980 for this
-                        // hocus pocus
+                            || matches!(target_actor_type, Some(Type::Placeholder | Type::Account | Type::EthAccount))
+                            // See https://github.com/filecoin-project/ref-fvm/issues/980 for this
+                            // hocus pocus
                             || (input_data.is_empty() && ((gas == 0 && value > 0) || (gas == 2300 && value == 0)))
                         {
                             // We switch to a bare send when:
                             //
-                            // 1. The target is an embryo/account or doesn't exist. Otherwise,
-                            // sendign funds to an account/embryo would fail when we try to call
+                            // 1. The target is a placeholder/account or doesn't exist. Otherwise,
+                            // sending funds to an account/placeholder would fail when we try to call
                             // InvokeContract.
                             // 2. The gas wouldn't let code execute anyways. This lets us support
                             // solidity's "transfer" method.
@@ -257,8 +263,11 @@ pub fn call_generic<RT: Runtime>(
                             // Otherwise, invoke normally.
                             (Method::InvokeContract as u64, Some(effective_gas_limit(system, gas)))
                         };
-                        // TODO: support IPLD codecs #758
-                        let params = RawBytes::serialize(BytesSer(input_data))?;
+                        let params = if input_data.is_empty() {
+                            None
+                        } else {
+                            Some(IpldBlock { codec: IPLD_RAW, data: input_data.into() })
+                        };
                         let value = TokenAmount::from(&value);
                         let send_flags = if kind == CallKind::StaticCall {
                             SendFlags::READ_ONLY
@@ -270,15 +279,16 @@ pub fn call_generic<RT: Runtime>(
                 }
                 CallKind::DelegateCall => match get_contract_type(system.rt, dst) {
                     ContractType::EVM(dst_addr) => {
-                        // If we're calling an actual EVM actor, get it's code.
-                        let code = get_evm_bytecode_cid(system.rt, &dst_addr)?;
+                        // If we're calling an actual EVM actor, get its code.
+                        let code = get_evm_bytecode_cid(system, &dst_addr)?;
 
                         // and then invoke self with delegate; readonly context is sticky
-                        let params = DelegateCallParams { code, input: input_data.into() };
+                        let params = DelegateCallParams { code, input: input_data.into(),
+                            caller: state.caller, };
                         system.send(
                             &system.rt.message().receiver(),
                             Method::InvokeContractDelegate as u64,
-                            RawBytes::serialize(&params)?,
+                            IpldBlock::serialize_cbor(&params)?,
                             TokenAmount::from(&value),
                             Some(effective_gas_limit(system, gas)),
                             SendFlags::default(),

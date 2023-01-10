@@ -1,7 +1,8 @@
 use fil_actors_runtime::test_utils::*;
 
 use fil_actor_miner::{Actor, ChangeMultiaddrsParams, GetMultiaddrsReturn, Method};
-use fvm_ipld_encoding::{BytesDe, RawBytes};
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::BytesDe;
 use fvm_shared::error::ExitCode;
 
 mod util;
@@ -121,9 +122,10 @@ fn get_and_change_multiaddrs_restricted_correctly() {
 
     let new_multiaddrs = vec![BytesDe(vec![1, 3, 3, 7])];
 
-    let params =
-        &RawBytes::serialize(ChangeMultiaddrsParams { new_multi_addrs: new_multiaddrs.clone() })
-            .unwrap();
+    let params = IpldBlock::serialize_cbor(&ChangeMultiaddrsParams {
+        new_multi_addrs: new_multiaddrs.clone(),
+    })
+    .unwrap();
 
     rt.set_caller(*EVM_ACTOR_CODE_ID, h.worker);
 
@@ -132,7 +134,7 @@ fn get_and_change_multiaddrs_restricted_correctly() {
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
         "must be built-in",
-        rt.call::<Actor>(Method::ChangeMultiaddrs as u64, params),
+        rt.call::<Actor>(Method::ChangeMultiaddrs as u64, params.clone()),
     );
 
     // call the exported setter
@@ -146,7 +148,7 @@ fn get_and_change_multiaddrs_restricted_correctly() {
 
     rt.expect_validate_caller_any();
     let ret: GetMultiaddrsReturn = rt
-        .call::<Actor>(Method::GetMultiaddrsExported as u64, &RawBytes::default())
+        .call::<Actor>(Method::GetMultiaddrsExported as u64, None)
         .unwrap()
         .deserialize()
         .unwrap();

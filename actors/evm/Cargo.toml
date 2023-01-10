@@ -25,7 +25,7 @@ cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] 
 anyhow = "1.0.65"
 log = "0.4.14"
 fvm_ipld_blockstore = "0.1.1"
-fvm_ipld_encoding = "0.3.0"
+fvm_ipld_encoding = "0.3.2"
 rlp = { version = "0.5.1", default-features = false }
 bytes = { version = "1.1.0", features = ["serde"], default-features = false }
 strum = "0.24"
@@ -47,7 +47,7 @@ tracing = "0.1"
 [dev-dependencies]
 fil_actors_runtime = { path = "../../runtime", features = ["test_utils", "sector-default"] }
 etk-asm = "^0.2.1"
-ethers = { version = "0.17.0", features = ["abigen"] }
+ethers = { version = "1.0.2", features = ["abigen"] }
 serde_json = "1.0"
 rand = "0.8.5"
 tracing-subscriber = "0.3"

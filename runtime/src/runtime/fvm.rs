@@ -2,7 +2,8 @@ use anyhow::{anyhow, Error};
 use cid::multihash::Code;
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::{Cbor, CborStore, RawBytes, DAG_CBOR};
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::{CborStore, RawBytes, DAG_CBOR};
 use fvm_sdk as fvm;
 use fvm_sdk::NO_DATA_BLOCK_ID;
 use fvm_shared::address::{Address, Payload};
@@ -25,6 +26,8 @@ use fvm_shared::sys::SendFlags;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
 use num_traits::FromPrimitive;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 #[cfg(feature = "fake-proofs")]
 use sha2::{Digest, Sha256};
 
@@ -151,7 +154,8 @@ where
     {
         self.assert_not_validated()?;
         let caller_addr = self.message().caller();
-        let caller_f4 = self.lookup_address(caller_addr.id().unwrap()).map(|a| *a.payload());
+        let caller_f4 =
+            self.lookup_delegated_address(caller_addr.id().unwrap()).map(|a| *a.payload());
         if addresses
             .into_iter()
             .any(|a| matches!(caller_f4, Some(Payload::Delegated(d)) if d.namespace() == a))
@@ -198,8 +202,8 @@ where
         fvm::actor::resolve_address(address)
     }
 
-    fn lookup_address(&self, id: ActorID) -> Option<Address> {
-        fvm::actor::lookup_address(id)
+    fn lookup_delegated_address(&self, id: ActorID) -> Option<Address> {
+        fvm::actor::lookup_delegated_address(id)
     }
 
     fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {
@@ -272,10 +276,10 @@ where
         Ok(fvm::sself::set_root(root)?)
     }
 
-    fn transaction<C, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
+    fn transaction<S, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
     where
-        C: Cbor,
-        F: FnOnce(&mut C, &mut Self) -> Result<RT, ActorError>,
+        S: Serialize + DeserializeOwned,
+        F: FnOnce(&mut S, &mut Self) -> Result<RT, ActorError>,
     {
         let state_cid = fvm::sself::root()
             .map_err(|_| actor_error!(illegal_argument; "failed to get actor root state CID"))?;
@@ -283,7 +287,7 @@ where
         log::debug!("getting cid: {}", state_cid);
 
         let mut state = ActorBlockstore
-            .get_cbor::<C>(&state_cid)
+            .get_cbor::<S>(&state_cid)
             .map_err(|_| actor_error!(illegal_argument; "failed to get actor state"))?
             .expect("State does not exist for actor state root");
 
@@ -306,7 +310,7 @@ where
         &self,
         to: &Address,
         method: MethodNum,
-        params: RawBytes,
+        params: Option<IpldBlock>,
         value: TokenAmount,
         gas_limit: Option<u64>,
         flags: SendFlags,
@@ -644,14 +648,12 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
 
     let method = fvm::message::method_number();
     log::debug!("fetching parameters block: {}", params);
-    let params = fvm::message::params_raw(params).expect("params block invalid").1;
-    let params = RawBytes::new(params);
-    log::debug!("input params: {:x?}", params.bytes());
+    let params = fvm::message::params_raw(params).expect("params block invalid");
 
     // Construct a new runtime.
     let mut rt = FvmRuntime::default();
     // Invoke the method, aborting if the actor returns an errored exit code.
-    let ret = C::invoke_method(&mut rt, method, &params).unwrap_or_else(|mut err| {
+    let ret = C::invoke_method(&mut rt, method, params).unwrap_or_else(|mut err| {
         fvm::vm::exit(err.exit_code().value(), err.take_data(), Some(err.msg()))
     });
 

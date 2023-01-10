@@ -6,28 +6,32 @@ use num_traits::FromPrimitive;
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_error, restrict_internal_api, ActorError, EAM_ACTOR_ID, SYSTEM_ACTOR_ADDR,
+    actor_dispatch, actor_error, restrict_internal_api, ActorError, EAM_ACTOR_ID, SYSTEM_ACTOR_ADDR,
 };
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(EthAccountActor);
 
-/// Ethereum Externally Owned Address actor methods.
+/// Ethereum Account actor methods.
 #[derive(FromPrimitive)]
 #[repr(u64)]
 pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
 }
 
-/// Ethereum Externally Owned Address actor.
+/// Ethereum Account actor.
 pub struct EthAccountActor;
 
 impl EthAccountActor {
-    /// Ethereum Externally Owned Address actor constructor.
+    /// Ethereum Account actor constructor.
+    /// NOTE: This method is NOT currently called from anywhere, instead the FVM just deploys EthAccounts.
     pub fn constructor(rt: &mut impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
-        match rt.lookup_address(rt.message().receiver().id().unwrap()).map(|a| *a.payload()) {
+        match rt
+            .lookup_delegated_address(rt.message().receiver().id().unwrap())
+            .map(|a| *a.payload())
+        {
             Some(Payload::Delegated(da)) if da.namespace() == EAM_ACTOR_ID => {}
             Some(_) => {
                 return Err(ActorError::illegal_argument(
@@ -46,29 +50,15 @@ impl EthAccountActor {
 }
 
 impl ActorCode for EthAccountActor {
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        _params: &RawBytes,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-    {
-        restrict_internal_api(rt, method)?;
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(rt)?;
-                Ok(RawBytes::default())
-            }
-            None => Err(actor_error!(unhandled_message; "Invalid method")),
-        }
+    type Methods = Method;
+    actor_dispatch! {
+        Constructor => constructor,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use fil_actors_runtime::EAM_ACTOR_ID;
-    use fvm_ipld_encoding::RawBytes;
     use fvm_shared::address::Address;
     use fvm_shared::error::ExitCode;
     use fvm_shared::MethodNum;
@@ -104,7 +94,7 @@ mod tests {
             )
             .unwrap(),
         );
-        rt.call::<EthAccountActor>(Method::Constructor as MethodNum, &RawBytes::default()).unwrap();
+        rt.call::<EthAccountActor>(Method::Constructor as MethodNum, None).unwrap();
         rt.verify();
     }
 
@@ -116,7 +106,7 @@ mod tests {
         expect_abort_contains_message(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             "receiver must have a predictable address",
-            rt.call::<EthAccountActor>(Method::Constructor as MethodNum, &RawBytes::default()),
+            rt.call::<EthAccountActor>(Method::Constructor as MethodNum, None),
         );
         rt.verify();
     }
