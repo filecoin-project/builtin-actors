@@ -36,6 +36,7 @@ fn construction() {
             let pk: Address = rt
                 .call::<AccountActor>(Method::PubkeyAddress as MethodNum, None)
                 .unwrap()
+                .unwrap()
                 .deserialize()
                 .unwrap();
             assert_eq!(pk, addr);
@@ -73,16 +74,17 @@ fn token_receiver() {
 
     rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(1000));
     rt.expect_validate_caller_any();
-    let ret = rt.call::<AccountActor>(
-        Method::UniversalReceiverHook as MethodNum,
-        IpldBlock::serialize_cbor(&UniversalReceiverParams {
-            type_: 0,
-            payload: RawBytes::new(vec![1, 2, 3]),
-        })
-        .unwrap(),
-    );
-    assert!(ret.is_ok());
-    assert_eq!(RawBytes::default(), ret.unwrap());
+    let ret = rt
+        .call::<AccountActor>(
+            Method::UniversalReceiverHook as MethodNum,
+            IpldBlock::serialize_cbor(&UniversalReceiverParams {
+                type_: 0,
+                payload: RawBytes::new(vec![1, 2, 3]),
+            })
+            .unwrap(),
+        )
+        .unwrap();
+    assert!(ret.is_none());
 }
 
 #[test]
@@ -116,11 +118,11 @@ fn authenticate_message() {
         result: Ok(()),
     });
 
-    assert_eq!(
-        RawBytes::default(),
-        rt.call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, params.clone())
-            .unwrap()
-    );
+    assert!(rt
+        .call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, params.clone())
+        .unwrap()
+        .is_none());
+
     rt.verify();
 
     // Invalid signature

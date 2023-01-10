@@ -31,6 +31,7 @@ mod construction {
         let ret: GranularityReturn = rt
             .call::<Actor>(Method::GranularityExported as MethodNum, None)
             .unwrap()
+            .unwrap()
             .deserialize()
             .unwrap();
         rt.verify();

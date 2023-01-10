@@ -3,7 +3,7 @@
 
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::{CborStore, RawBytes};
+use fvm_ipld_encoding::CborStore;
 use fvm_shared::address::Address;
 use fvm_shared::chainid::ChainID;
 use fvm_shared::clock::ChainEpoch;
@@ -195,7 +195,7 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
         method: MethodNum,
         params: Option<IpldBlock>,
         value: TokenAmount,
-    ) -> Result<RawBytes, ActorError> {
+    ) -> Result<Option<IpldBlock>, ActorError> {
         self.send_generalized(to, method, params, value, None, SendFlags::empty())
     }
 
@@ -209,7 +209,7 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
         value: TokenAmount,
         gas_limit: Option<u64>,
         flags: SendFlags,
-    ) -> Result<RawBytes, ActorError>;
+    ) -> Result<Option<IpldBlock>, ActorError>;
 
     /// Computes an address for a new actor. The returned address is intended to uniquely refer to
     /// the actor even in the event of a chain re-org (whereas an ID-address might refer to a
@@ -269,7 +269,7 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
 
     /// Exit the current computation with an error code and optionally data and a debugging
     /// message.
-    fn exit(&self, code: u32, data: RawBytes, msg: Option<&str>) -> !;
+    fn exit(&self, code: u32, data: Option<IpldBlock>, msg: Option<&str>) -> !;
 
     /// Returns true if the system is in read-only mode.
     fn read_only(&self) -> bool;

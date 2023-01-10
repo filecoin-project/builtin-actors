@@ -235,6 +235,7 @@ impl<'bs> VM<'bs> {
             )
             .unwrap()
             .ret
+            .unwrap()
             .deserialize()
             .unwrap();
         let root_msig_addr = msig_ctor_ret.id_address;
@@ -604,7 +605,7 @@ pub struct InvocationCtx<'invocation, 'bs> {
 
 struct ActorExit {
     code: u32,
-    data: RawBytes,
+    data: Option<IpldBlock>,
     msg: Option<String>,
 }
 
@@ -685,9 +686,12 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         Ok((self.v.get_actor(target_id_addr).unwrap(), target_id_addr))
     }
 
-    fn gather_trace(&mut self, invoke_result: Result<RawBytes, ActorError>) -> InvocationTrace {
+    fn gather_trace(
+        &mut self,
+        invoke_result: Result<Option<IpldBlock>, ActorError>,
+    ) -> InvocationTrace {
         let (ret, code) = match invoke_result {
-            Ok(rb) => (Some(rb), ExitCode::OK),
+            Ok(rb) => (rb, ExitCode::OK),
             Err(ae) => (None, ae.exit_code()),
         };
         let mut msg = self.msg.clone();
@@ -702,7 +706,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         self.resolve_target(&self.msg.to).unwrap().1
     }
 
-    fn invoke_actor(&mut self) -> Result<RawBytes, ActorError> {
+    fn invoke_actor(&mut self) -> Result<Option<IpldBlock>, ActorError> {
         std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.invoke())).unwrap_or_else(
             |panic| {
                 if self.actor_exit.borrow().is_some() {
@@ -723,7 +727,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         )
     }
 
-    fn invoke(&mut self) -> Result<RawBytes, ActorError> {
+    fn invoke(&mut self) -> Result<Option<IpldBlock>, ActorError> {
         let prior_root = self.v.checkpoint();
 
         // Transfer funds
@@ -759,7 +763,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
 
         // Exit early on send
         if self.msg.method == METHOD_SEND {
-            return Ok(RawBytes::default());
+            return Ok(None);
         }
 
         // call target actor
@@ -990,7 +994,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         value: TokenAmount,
         _gas_limit: Option<u64>,
         mut send_flags: SendFlags,
-    ) -> Result<RawBytes, ActorError> {
+    ) -> Result<Option<IpldBlock>, ActorError> {
         // replicate FVM by silently propagating read only flag to subcalls
         if self.read_only() {
             send_flags.set(SendFlags::READ_ONLY, true)
@@ -1164,7 +1168,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         Ok(())
     }
 
-    fn exit(&self, code: u32, data: RawBytes, msg: Option<&str>) -> ! {
+    fn exit(&self, code: u32, data: Option<IpldBlock>, msg: Option<&str>) -> ! {
         self.actor_exit.replace(Some(ActorExit { code, data, msg: msg.map(|s| s.to_owned()) }));
         std::panic::panic_any("actor exit");
     }
@@ -1329,7 +1333,7 @@ impl RuntimePolicy for InvocationCtx<'_, '_> {
 pub struct MessageResult {
     pub code: ExitCode,
     pub message: String,
-    pub ret: RawBytes,
+    pub ret: Option<IpldBlock>,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Eq, Debug)]
@@ -1355,7 +1359,7 @@ pub fn actor(
 pub struct InvocationTrace {
     pub msg: InternalMessage,
     pub code: ExitCode,
-    pub ret: Option<RawBytes>,
+    pub ret: Option<IpldBlock>,
     pub subinvocations: Vec<InvocationTrace>,
 }
 
@@ -1368,7 +1372,7 @@ pub struct ExpectInvocation {
     pub from: Option<Address>,
     pub value: Option<TokenAmount>,
     pub params: Option<Option<IpldBlock>>,
-    pub ret: Option<RawBytes>,
+    pub ret: Option<Option<IpldBlock>>,
     pub subinvocs: Option<Vec<ExpectInvocation>>,
 }
 
@@ -1406,9 +1410,11 @@ impl ExpectInvocation {
             );
         }
         if let Some(r) = &self.ret {
-            assert_ne!(None, invoc.ret, "{} unexpected ret: expected: {:x?}, was: None", id, r);
-            let ret = &invoc.ret.clone().unwrap();
-            assert_eq!(r, ret, "{} unexpected ret: expected: {:x?}, was: {:x?}", id, r, ret);
+            assert_eq!(
+                r, &invoc.ret,
+                "{} unexpected ret: expected: {:x?}, was: {:x?}",
+                id, r, invoc.ret
+            );
         }
         if let Some(expect_subinvocs) = &self.subinvocs {
             let subinvocs = &invoc.subinvocations;

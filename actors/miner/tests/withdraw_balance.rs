@@ -5,7 +5,6 @@ use fil_actors_runtime::test_utils::{
     expect_abort, expect_abort_contains_message, EVM_ACTOR_CODE_ID,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
@@ -61,17 +60,11 @@ fn withdraw_funds_restricted_correctly() {
     // call the exported method
 
     rt.expect_validate_caller_addr(vec![h.owner, h.beneficiary]);
-    rt.expect_send(
-        h.beneficiary,
-        METHOD_SEND,
-        None,
-        amount_requested.clone(),
-        RawBytes::default(),
-        ExitCode::OK,
-    );
+    rt.expect_send(h.beneficiary, METHOD_SEND, None, amount_requested.clone(), None, ExitCode::OK);
 
     let ret = rt
         .call::<Actor>(Method::WithdrawBalanceExported as u64, params)
+        .unwrap()
         .unwrap()
         .deserialize::<WithdrawBalanceReturn>()
         .unwrap();

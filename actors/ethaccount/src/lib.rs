@@ -1,4 +1,3 @@
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Payload;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;

@@ -70,7 +70,7 @@ impl TestEnv {
                 IpldBlock::serialize_cbor(&params).unwrap(),
             )
             .unwrap()
-            .is_empty());
+            .is_none());
 
         self.runtime.verify();
     }
@@ -87,6 +87,7 @@ impl TestEnv {
         let BytesDe(result) = self
             .runtime
             .call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, input)
+            .unwrap()
             .unwrap()
             .deserialize()
             .unwrap();

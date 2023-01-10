@@ -17,7 +17,6 @@ use {
     crate::interpreter::ExecutionState,
     crate::interpreter::System,
     crate::interpreter::U256,
-    crate::RawBytes,
     crate::{DelegateCallParams, Method, EVM_CONTRACT_EXECUTION_ERROR},
     fil_actors_runtime::runtime::builtins::Type,
     fil_actors_runtime::runtime::Runtime,
@@ -238,7 +237,7 @@ pub fn call_generic<RT: Runtime>(
                         //
                         // NOTE: this will also apply if we're in read-only mode, because we can't
                         // send value in read-only mode anyways.
-                        Ok(RawBytes::default())
+                        Ok(None)
                     } else {
                         let (method, gas_limit) = if !actor_exists
                             || matches!(target_actor_type, Some(Type::Placeholder | Type::Account | Type::EthAccount))
@@ -283,8 +282,11 @@ pub fn call_generic<RT: Runtime>(
                         let code = get_evm_bytecode_cid(system, &dst_addr)?;
 
                         // and then invoke self with delegate; readonly context is sticky
-                        let params = DelegateCallParams { code, input: input_data.into(),
-                            caller: state.caller, };
+                        let params = DelegateCallParams {
+                            code,
+                            input: input_data.into(),
+                            caller: state.caller,
+                        };
                         system.send(
                             &system.rt.message().receiver(),
                             Method::InvokeContractDelegate as u64,
@@ -296,7 +298,7 @@ pub fn call_generic<RT: Runtime>(
                     }
                     // If we're calling an account or a non-existent actor, return nothing because
                     // this is how the EVM behaves.
-                    ContractType::Account | ContractType::NotFound => Ok(RawBytes::default()),
+                    ContractType::Account | ContractType::NotFound => Ok(None),
                     // If we're calling a "native" actor, always revert.
                     ContractType::Native(_) => {
                         Err(ActorError::forbidden("cannot delegate-call to native actors".into()))
@@ -315,18 +317,22 @@ pub fn call_generic<RT: Runtime>(
                 Ok(result) => (1, result),
                 Err(mut ae) => (0, ae.take_data()),
             };
-            // Support the "empty" result. We often use this to mean "returned nothing" and
-            // it's important to support, e.g., sending to accounts.
-            if data.is_empty() {
-                (code, Vec::new())
-            } else {
-                // TODO: support IPLD codecs #758
-                // NOTE: If the user returns an invalid thing, we just the returned bytes as-is.
-                // We can't lie to the contract and say that the callee reverted, and we don't want
-                // to "abort".
-                let result = data.deserialize().map(|BytesDe(d)| d).unwrap_or_else(|_| data.into());
-                (code, result)
-            }
+
+            (
+                code,
+                match data {
+                    // Support the "empty" result. We often use this to mean "returned nothing" and
+                    // it's important to support, e.g., sending to accounts.
+                    None => Vec::new(),
+                    Some(r) =>
+                    // NOTE: If the user returns an invalid thing, we just the returned bytes as-is.
+                    // We can't lie to the contract and say that the callee reverted, and we don't want
+                    // to "abort".
+                    {
+                        r.deserialize().map(|BytesDe(d)| d).unwrap_or_else(|_| r.data)
+                    }
+                },
+            )
         }
     };
 

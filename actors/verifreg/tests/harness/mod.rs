@@ -73,7 +73,7 @@ impl Harness {
             )
             .unwrap();
 
-        assert_eq!(RawBytes::default(), ret);
+        assert!(ret.is_none());
         rt.verify();
 
         let empty_map = make_empty_map::<_, ()>(&rt.store, HAMT_BIT_WIDTH).flush().unwrap();
@@ -107,7 +107,7 @@ impl Harness {
             ext::datacap::Method::Balance as MethodNum,
             IpldBlock::serialize_cbor(&verifier_resolved).unwrap(),
             TokenAmount::zero(),
-            serialize(&BigIntSer(&(cap * TOKEN_PRECISION)), "").unwrap(),
+            IpldBlock::serialize_cbor(&BigIntSer(&(cap * TOKEN_PRECISION))).unwrap(),
             ExitCode::OK,
         );
 
@@ -116,7 +116,7 @@ impl Harness {
             Method::AddVerifier as MethodNum,
             IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
-        assert_eq!(RawBytes::default(), ret);
+        assert!(ret.is_none());
         rt.verify();
 
         self.assert_verifier_allowance(rt, verifier, allowance);
@@ -134,7 +134,7 @@ impl Harness {
             Method::RemoveVerifier as MethodNum,
             IpldBlock::serialize_cbor(verifier).unwrap(),
         )?;
-        assert_eq!(RawBytes::default(), ret);
+        assert!(ret.is_none());
         rt.verify();
 
         self.assert_verifier_removed(rt, verifier);
@@ -185,7 +185,7 @@ impl Harness {
             ext::datacap::Method::Mint as MethodNum,
             IpldBlock::serialize_cbor(&mint_params).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
@@ -194,7 +194,7 @@ impl Harness {
             Method::AddVerifiedClient as MethodNum,
             IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
-        assert_eq!(RawBytes::default(), ret);
+        assert!(ret.is_none());
         rt.verify();
 
         Ok(())
@@ -255,7 +255,7 @@ impl Harness {
                 })
                 .unwrap(),
                 TokenAmount::zero(),
-                RawBytes::serialize(&BurnReturn { balance: TokenAmount::zero() }).unwrap(),
+                IpldBlock::serialize_cbor(&BurnReturn { balance: TokenAmount::zero() }).unwrap(),
                 ExitCode::OK,
             );
         }
@@ -266,6 +266,7 @@ impl Harness {
                 Method::ClaimAllocations as MethodNum,
                 IpldBlock::serialize_cbor(&params).unwrap(),
             )?
+            .unwrap()
             .deserialize()
             .expect("failed to deserialize claim allocations return");
         rt.verify();
@@ -292,7 +293,7 @@ impl Harness {
             })
             .unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
@@ -302,6 +303,7 @@ impl Harness {
                 Method::RemoveExpiredAllocations as MethodNum,
                 IpldBlock::serialize_cbor(&params).unwrap(),
             )?
+            .unwrap()
             .deserialize()
             .expect("failed to deserialize remove expired allocations return");
         rt.verify();
@@ -323,6 +325,7 @@ impl Harness {
                 Method::RemoveExpiredClaims as MethodNum,
                 IpldBlock::serialize_cbor(&params).unwrap(),
             )?
+            .unwrap()
             .deserialize()
             .expect("failed to deserialize remove expired claims return");
         rt.verify();
@@ -364,7 +367,7 @@ impl Harness {
                 })
                 .unwrap(),
                 TokenAmount::zero(),
-                RawBytes::serialize(&BurnReturn { balance: TokenAmount::zero() }).unwrap(),
+                IpldBlock::serialize_cbor(&BurnReturn { balance: TokenAmount::zero() }).unwrap(),
                 ExitCode::OK,
             );
         }
@@ -375,13 +378,12 @@ impl Harness {
             IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
         assert_eq!(
-            RawBytes::serialize(AllocationsResponse {
+            AllocationsResponse {
                 allocation_results: expected_alloc_results,
                 extension_results: expected_extension_results,
                 new_allocations: expected_alloc_ids,
-            })
-            .unwrap(),
-            ret
+            },
+            ret.unwrap().deserialize().unwrap()
         );
         rt.verify();
         Ok(())
@@ -414,6 +416,7 @@ impl Harness {
                 Method::GetClaims as MethodNum,
                 IpldBlock::serialize_cbor(&params).unwrap(),
             )?
+            .unwrap()
             .deserialize()
             .expect("failed to deserialize get claims return");
         rt.verify();
@@ -431,6 +434,7 @@ impl Harness {
                 Method::ExtendClaimTerms as MethodNum,
                 IpldBlock::serialize_cbor(&params).unwrap(),
             )?
+            .unwrap()
             .deserialize()
             .expect("failed to deserialize extend claim terms return");
         rt.verify();

@@ -3,7 +3,7 @@ use cid::multihash::Code;
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::{CborStore, RawBytes, DAG_CBOR};
+use fvm_ipld_encoding::CborStore;
 use fvm_sdk as fvm;
 use fvm_sdk::NO_DATA_BLOCK_ID;
 use fvm_shared::address::{Address, Payload};
@@ -314,7 +314,7 @@ where
         value: TokenAmount,
         gas_limit: Option<u64>,
         flags: SendFlags,
-    ) -> Result<RawBytes, ActorError> {
+    ) -> Result<Option<IpldBlock>, ActorError> {
         if self.in_transaction {
             return Err(actor_error!(assertion_failed; "send is not allowed during transaction"));
         }
@@ -441,7 +441,7 @@ where
             .context_code(ExitCode::USR_ASSERTION_FAILED, "failed to emit event")
     }
 
-    fn exit(&self, code: u32, data: RawBytes, msg: Option<&str>) -> ! {
+    fn exit(&self, code: u32, data: Option<IpldBlock>, msg: Option<&str>) -> ! {
         fvm::vm::exit(code, data, msg)
     }
 
@@ -582,7 +582,7 @@ where
 
         hasher.update(info.randomness.0);
         for si in info.challenged_sectors {
-            hasher.update(RawBytes::serialize(si)?.bytes());
+            hasher.update(fvm_ipld_encoding::RawBytes::serialize(si)?.bytes());
         }
 
         let expected_proof = hasher.finalize();
@@ -665,9 +665,9 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
     }
 
     // Then handle the return value.
-    if ret.is_empty() {
-        NO_DATA_BLOCK_ID
-    } else {
-        fvm::ipld::put_block(DAG_CBOR, ret.bytes()).expect("failed to write result")
+    match ret {
+        None => NO_DATA_BLOCK_ID,
+        Some(ret_block) => fvm::ipld::put_block(ret_block.codec, ret_block.data.as_slice())
+            .expect("failed to write result"),
     }
 }

@@ -1,7 +1,7 @@
 use fil_actor_multisig::testing::check_state_invariants;
 use fil_actor_multisig::{
-    compute_proposal_hash, Actor as MultisigActor, ConstructorParams, Method, ProposeParams,
-    ProposeReturn, State, Transaction, TxnID, TxnIDParams, SIGNERS_MAX,
+    compute_proposal_hash, Actor as MultisigActor, ConstructorParams, Method, ProposeReturn, State,
+    Transaction, TxnID, TxnIDParams, SIGNERS_MAX,
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Runtime;
@@ -64,7 +64,7 @@ mod constructor_tests {
             Method::Constructor as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
         );
-        assert_eq!(RawBytes::default(), ret.unwrap());
+        assert!(ret.unwrap().is_none());
         rt.verify();
 
         let st: State = rt.get_state();
@@ -102,7 +102,7 @@ mod constructor_tests {
                 IpldBlock::serialize_cbor(&params).unwrap(),
             )
             .unwrap();
-        assert_eq!(ret, RawBytes::default());
+        assert!(ret.is_none());
         check_state(&rt);
     }
 
@@ -119,14 +119,13 @@ mod constructor_tests {
         };
         rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
-        assert_eq!(
-            RawBytes::default(),
-            rt.call::<MultisigActor>(
+        assert!(rt
+            .call::<MultisigActor>(
                 Method::Constructor as u64,
-                IpldBlock::serialize_cbor(&params).unwrap()
+                IpldBlock::serialize_cbor(&params).unwrap(),
             )
             .unwrap()
-        );
+            .is_none());
 
         let st: State = rt.get_state();
         assert_eq!(params.signers, st.signers);
@@ -220,14 +219,7 @@ mod constructor_tests {
             start_epoch: 0,
         };
         rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
-        rt.expect_send(
-            anne_non_id,
-            METHOD_SEND,
-            None,
-            TokenAmount::zero(),
-            RawBytes::default(),
-            ExitCode::OK,
-        );
+        rt.expect_send(anne_non_id, METHOD_SEND, None, TokenAmount::zero(), None, ExitCode::OK);
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -334,7 +326,7 @@ mod vesting_tests {
             METHOD_SEND,
             None,
             MSIG_INITIAL_BALANCE.clone(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
         assert_eq!(RawBytes::default(), h.approve_ok(&mut rt, TxnID(0), proposal_hash));
@@ -368,7 +360,7 @@ mod vesting_tests {
             METHOD_SEND,
             None,
             MSIG_INITIAL_BALANCE.div_floor(2),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
         h.approve_ok(&mut rt, TxnID(0), proposal_hash);
@@ -400,14 +392,7 @@ mod vesting_tests {
         rt.reset();
         rt.set_epoch(START_EPOCH + UNLOCK_DURATION / 10);
         let amount_out = MSIG_INITIAL_BALANCE.div_floor(10);
-        rt.expect_send(
-            DARLENE,
-            METHOD_SEND,
-            None,
-            amount_out.clone(),
-            RawBytes::default(),
-            ExitCode::OK,
-        );
+        rt.expect_send(DARLENE, METHOD_SEND, None, amount_out.clone(), None, ExitCode::OK);
         h.propose_ok(&mut rt, DARLENE, amount_out, METHOD_SEND, RawBytes::default());
 
         check_state(&rt);
@@ -467,7 +452,7 @@ mod vesting_tests {
 
         // expect 1 unit available after 2 epochs
         rt.set_epoch(START_EPOCH + 2);
-        rt.expect_send(ANNE, METHOD_SEND, None, one.clone(), RawBytes::default(), ExitCode::OK);
+        rt.expect_send(ANNE, METHOD_SEND, None, one.clone(), None, ExitCode::OK);
         h.propose_ok(&mut rt, ANNE, one.clone(), METHOD_SEND, RawBytes::default());
         rt.set_balance(locked_balance.clone());
 
@@ -485,7 +470,7 @@ mod vesting_tests {
             METHOD_SEND,
             None,
             locked_balance.clone() - one.clone(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
         h.propose_ok(&mut rt, ANNE, locked_balance.clone() - one, METHOD_SEND, RawBytes::default());
@@ -493,14 +478,7 @@ mod vesting_tests {
 
         // expect everything after exactly lock duration
         rt.set_epoch(START_EPOCH + UNLOCK_DURATION);
-        rt.expect_send(
-            ANNE,
-            METHOD_SEND,
-            None,
-            locked_balance.clone(),
-            RawBytes::default(),
-            ExitCode::OK,
-        );
+        rt.expect_send(ANNE, METHOD_SEND, None, locked_balance.clone(), None, ExitCode::OK);
         h.propose_ok(&mut rt, ANNE, locked_balance, METHOD_SEND, RawBytes::default());
         check_state(&rt);
     }
@@ -516,14 +494,7 @@ mod vesting_tests {
         rt.set_received(TokenAmount::zero());
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ANNE);
-        rt.expect_send(
-            BOB,
-            METHOD_SEND,
-            None,
-            TokenAmount::zero(),
-            RawBytes::default(),
-            ExitCode::OK,
-        );
+        rt.expect_send(BOB, METHOD_SEND, None, TokenAmount::zero(), None, ExitCode::OK);
         h.propose_ok(&mut rt, BOB, TokenAmount::zero(), METHOD_SEND, RawBytes::default());
         check_state(&rt);
     }
@@ -545,14 +516,7 @@ mod vesting_tests {
         // make a tx that transfers no value
         let send_amount = TokenAmount::zero();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ANNE);
-        rt.expect_send(
-            BOB,
-            METHOD_SEND,
-            None,
-            send_amount.clone(),
-            RawBytes::default(),
-            ExitCode::OK,
-        );
+        rt.expect_send(BOB, METHOD_SEND, None, send_amount.clone(), None, ExitCode::OK);
         h.propose_ok(&mut rt, BOB, send_amount, METHOD_SEND, RawBytes::default());
 
         // verify that sending any value is prevented
@@ -621,7 +585,7 @@ fn test_propose_with_threshold_met() {
         METHOD_SEND,
         to_ipld_block(fake_params.clone()),
         send_value.clone(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
@@ -669,12 +633,13 @@ fn test_propose_with_threshold_and_non_empty_return_value() {
         fake_method,
         to_ipld_block(fake_params.clone()),
         send_value.clone(),
-        inner_ret_bytes.clone(),
+        to_ipld_block(inner_ret_bytes.clone()),
         ExitCode::OK,
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
     let ret = h
         .propose(&mut rt, chuck, send_value, fake_method, fake_params)
+        .unwrap()
         .unwrap()
         .deserialize::<ProposeReturn>()
         .unwrap();
@@ -746,50 +711,6 @@ fn test_fail_propose_from_non_signer() {
     rt.reset();
     h.assert_transactions(&rt, vec![]);
     check_state(&rt);
-}
-
-#[test]
-fn test_propose_restricted_correctly() {
-    let msig = Address::new_id(1000);
-    let mut rt = construct_runtime(msig);
-    let h = util::ActorHarness::new();
-
-    let anne = Address::new_id(101);
-    // We will treat Bob as having code CID b"102"
-    let bob = Address::new_id(102);
-    let chuck = Address::new_id(103);
-    let no_unlock_duration = 0;
-    let start_epoch = 0;
-    let signers = vec![anne, bob];
-
-    let send_value = TokenAmount::from_atto(10u8);
-    h.construct_and_verify(&mut rt, 2, no_unlock_duration, start_epoch, signers);
-
-    // set caller to not-builtin
-    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(102));
-    let propose_params = IpldBlock::serialize_cbor(&ProposeParams {
-        to: chuck,
-        value: send_value,
-        method: METHOD_SEND,
-        params: RawBytes::default(),
-    })
-    .unwrap();
-
-    // cannot call the unexported method num
-
-    expect_abort_contains_message(
-        ExitCode::USR_FORBIDDEN,
-        "must be built-in",
-        rt.call::<MultisigActor>(Method::Propose as u64, propose_params.clone()),
-    );
-
-    rt.verify();
-
-    // can call the exported method num
-    rt.expect_validate_caller_any();
-    rt.call::<MultisigActor>(Method::ProposeExported as u64, propose_params).unwrap();
-
-    rt.verify();
 }
 
 // AddSigner
@@ -889,7 +810,7 @@ fn test_add_signer() {
         match tc.code {
             ExitCode::OK => {
                 let ret = h.add_signer(&mut rt, tc.add_signer, tc.increase).unwrap();
-                assert_eq!(RawBytes::default(), ret);
+                assert!(ret.is_none());
                 let st: State = rt.get_state();
                 assert_eq!(tc.expect_signers, st.signers);
                 assert_eq!(tc.expect_approvals, st.num_approvals_threshold);
@@ -1030,7 +951,7 @@ fn test_remove_signer() {
 
         match tc.code {
             ExitCode::OK => {
-                assert_eq!(RawBytes::default(), ret.unwrap());
+                assert!(ret.unwrap().is_none());
                 let st: State = rt.get_state();
                 assert_eq!(tc.expect_signers, st.signers);
                 assert_eq!(tc.expect_approvals, st.num_approvals_threshold);
@@ -1144,7 +1065,7 @@ fn test_signer_swap() {
         let ret = h.swap_signers(&mut rt, tc.swap_from, tc.swap_to);
         match tc.code {
             ExitCode::OK => {
-                assert_eq!(RawBytes::default(), ret.unwrap());
+                assert!(ret.unwrap().is_none());
                 let st: State = rt.get_state();
                 assert_eq!(tc.expect_signers, st.signers);
             }
@@ -1374,7 +1295,7 @@ mod approval_tests {
             fake_method,
             to_ipld_block(fake_params),
             send_value,
-            fake_ret,
+            to_ipld_block(fake_ret),
             ExitCode::OK,
         );
         h.approve_ok(&mut rt, TxnID(0), proposal_hash);
@@ -1409,7 +1330,7 @@ mod approval_tests {
             fake_method,
             to_ipld_block(fake_params),
             send_value,
-            fake_ret.clone(),
+            to_ipld_block(fake_ret.clone()),
             ExitCode::OK,
         );
         let ret = h.approve_ok(&mut rt, TxnID(0), proposal_hash);
@@ -1459,7 +1380,7 @@ mod approval_tests {
             fake_method,
             to_ipld_block(fake_params),
             send_value,
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
@@ -1604,7 +1525,7 @@ mod approval_tests {
             fake_method,
             to_ipld_block(fake_params),
             send_value,
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
         rt.expect_validate_caller_any();
@@ -1754,7 +1675,7 @@ mod approval_tests {
             fake_method,
             to_ipld_block(fake_params),
             send_value,
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
@@ -1798,7 +1719,7 @@ mod approval_tests {
             fake_method,
             to_ipld_block(fake_params),
             send_value,
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
@@ -1846,7 +1767,7 @@ mod approval_tests {
             fake_method,
             to_ipld_block(fake_params),
             send_value,
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
         h.approve_ok(&mut rt, TxnID(0), proposal_hash);
@@ -1882,7 +1803,7 @@ mod cancel_tests {
 
         // anne cancels the tx
         let ret = h.cancel(&mut rt, TxnID(0), proposal_hash).unwrap();
-        assert_eq!(RawBytes::default(), ret);
+        assert!(ret.is_none());
 
         // tx should be removed from actor state
         h.assert_transactions(&rt, vec![]);
@@ -2154,7 +2075,7 @@ mod change_threshold_tests {
             let ret = h.change_num_approvals_threshold(&mut rt, tc.set_threshold);
             match tc.code {
                 ExitCode::OK => {
-                    assert_eq!(RawBytes::default(), ret.unwrap());
+                    assert!(ret.unwrap().is_none());
                     let st: State = rt.get_state();
                     assert_eq!(tc.set_threshold, st.num_approvals_threshold);
                 }
@@ -2197,14 +2118,7 @@ mod change_threshold_tests {
         h.change_num_approvals_threshold(&mut rt, 1).unwrap();
 
         // anne may re-approve causing tx to be exected
-        rt.expect_send(
-            chuck,
-            fake_method,
-            None,
-            send_value.clone(),
-            RawBytes::default(),
-            ExitCode::OK,
-        );
+        rt.expect_send(chuck, fake_method, None, send_value.clone(), None, ExitCode::OK);
         rt.set_balance(send_value);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         h.approve_ok(&mut rt, TxnID(0), proposal_hash);
@@ -2265,7 +2179,7 @@ mod lock_balance_tests {
 
         // can fully spend the vested amount
         rt.set_balance(lock_amount.clone());
-        rt.expect_send(bob, METHOD_SEND, None, vested.clone(), RawBytes::default(), ExitCode::OK);
+        rt.expect_send(bob, METHOD_SEND, None, vested.clone(), None, ExitCode::OK);
         h.propose_ok(&mut rt, bob, vested.clone(), METHOD_SEND, RawBytes::default());
 
         // can't spend more
@@ -2279,7 +2193,7 @@ mod lock_balance_tests {
         // later can spend the rest
         rt.set_epoch(vest_start + vest_duration);
         let rested = TokenAmount::from_atto(70_000u32);
-        rt.expect_send(bob, METHOD_SEND, None, rested.clone(), RawBytes::default(), ExitCode::OK);
+        rt.expect_send(bob, METHOD_SEND, None, rested.clone(), None, ExitCode::OK);
         h.propose_ok(&mut rt, bob, rested, METHOD_SEND, RawBytes::default());
         check_state(&rt);
     }
@@ -2308,14 +2222,7 @@ mod lock_balance_tests {
         rt.set_epoch(300);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         rt.set_balance(lock_amount.clone() + TokenAmount::from_atto(1));
-        rt.expect_send(
-            bob,
-            METHOD_SEND,
-            None,
-            TokenAmount::from_atto(1),
-            RawBytes::default(),
-            ExitCode::OK,
-        );
+        rt.expect_send(bob, METHOD_SEND, None, TokenAmount::from_atto(1), None, ExitCode::OK);
         h.propose_ok(&mut rt, bob, TokenAmount::from_atto(1), METHOD_SEND, RawBytes::default());
 
         // fail to spend locked funds before vesting starts
@@ -2329,14 +2236,7 @@ mod lock_balance_tests {
         // can spend partially vested amount
         rt.set_epoch(vest_start + 200);
         let expect_vested = TokenAmount::from_atto(20_000);
-        rt.expect_send(
-            bob,
-            METHOD_SEND,
-            None,
-            expect_vested.clone(),
-            RawBytes::default(),
-            ExitCode::OK,
-        );
+        rt.expect_send(bob, METHOD_SEND, None, expect_vested.clone(), None, ExitCode::OK);
         h.propose_ok(&mut rt, bob, expect_vested.clone(), METHOD_SEND, RawBytes::default());
 
         // can't spend more
@@ -2349,7 +2249,7 @@ mod lock_balance_tests {
         // later, can spend the rest
         rt.set_epoch(vest_start + vest_duration);
         let rested = TokenAmount::from_atto(80_000);
-        rt.expect_send(bob, METHOD_SEND, None, rested.clone(), RawBytes::default(), ExitCode::OK);
+        rt.expect_send(bob, METHOD_SEND, None, rested.clone(), None, ExitCode::OK);
         h.propose_ok(&mut rt, bob, rested, METHOD_SEND, RawBytes::default());
         check_state(&rt);
     }
@@ -2462,16 +2362,17 @@ fn token_receiver() {
     h.construct_and_verify(&mut rt, 2, 0, 0, vec![anne, bob]);
 
     rt.expect_validate_caller_any();
-    let ret = rt.call::<MultisigActor>(
-        Method::UniversalReceiverHook as MethodNum,
-        IpldBlock::serialize_cbor(&UniversalReceiverParams {
-            type_: 0,
-            payload: RawBytes::new(vec![1, 2, 3]),
-        })
-        .unwrap(),
-    );
-    assert!(ret.is_ok());
-    assert_eq!(RawBytes::default(), ret.unwrap());
+    let ret = rt
+        .call::<MultisigActor>(
+            Method::UniversalReceiverHook as MethodNum,
+            IpldBlock::serialize_cbor(&UniversalReceiverParams {
+                type_: 0,
+                payload: RawBytes::new(vec![1, 2, 3]),
+            })
+            .unwrap(),
+        )
+        .unwrap();
+    assert!(ret.is_none());
 }
 
 fn to_ipld_block(p: RawBytes) -> Option<IpldBlock> {

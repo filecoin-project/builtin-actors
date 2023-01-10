@@ -2,7 +2,6 @@ use castaway::cast;
 use std::marker::PhantomData;
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::RawBytes;
 use serde::{Deserialize, Serialize};
 
 use crate::ActorError;
@@ -30,7 +29,7 @@ macro_rules! actor_dispatch {
             rt: &mut RT,
             method: MethodNum,
             args: Option<fvm_ipld_encoding::ipld_block::IpldBlock>,
-        ) -> Result<RawBytes, ActorError>
+        ) -> Result<Option<fvm_ipld_encoding::ipld_block::IpldBlock>, ActorError>
         where
             RT: Runtime,
             RT::Blockstore: Clone,
@@ -51,7 +50,7 @@ macro_rules! actor_dispatch_unrestricted {
             rt: &mut RT,
             method: MethodNum,
             args: Option<fvm_ipld_encoding::ipld_block::IpldBlock>,
-        ) -> Result<RawBytes, ActorError>
+        ) -> Result<Option<fvm_ipld_encoding::ipld_block::IpldBlock>, ActorError>
         where
             RT: Runtime,
             RT::Blockstore: Clone,
@@ -65,7 +64,11 @@ macro_rules! actor_dispatch_unrestricted {
 }
 
 pub trait Dispatch<'de, RT> {
-    fn call(self, rt: &mut RT, args: &'de Option<IpldBlock>) -> Result<RawBytes, ActorError>;
+    fn call(
+        self,
+        rt: &mut RT,
+        args: &'de Option<IpldBlock>,
+    ) -> Result<Option<IpldBlock>, ActorError>;
 }
 
 pub struct Dispatcher<F, A> {
@@ -89,7 +92,7 @@ pub fn dispatch<'de, F, A, RT>(
     rt: &mut RT,
     func: F,
     arg: &'de Option<IpldBlock>,
-) -> Result<RawBytes, ActorError>
+) -> Result<Option<IpldBlock>, ActorError>
 where
     Dispatcher<F, A>: Dispatch<'de, RT>,
 {
@@ -97,11 +100,11 @@ where
 }
 
 /// Convert the passed value into an IPLD Block, or None if it's `()`.
-fn maybe_into_block<T: Serialize>(v: T) -> Result<RawBytes, ActorError> {
+fn maybe_into_block<T: Serialize>(v: T) -> Result<Option<IpldBlock>, ActorError> {
     if cast!(&v, &()).is_ok() {
-        Ok(RawBytes::default())
+        Ok(None)
     } else {
-        Ok(RawBytes::serialize(&v)?)
+        Ok(IpldBlock::serialize_cbor(&v)?)
     }
 }
 
@@ -110,7 +113,11 @@ where
     F: FnOnce(&mut RT) -> Result<R, ActorError>,
     R: Serialize,
 {
-    fn call(self, rt: &mut RT, args: &'de Option<IpldBlock>) -> Result<RawBytes, ActorError> {
+    fn call(
+        self,
+        rt: &mut RT,
+        args: &'de Option<IpldBlock>,
+    ) -> Result<Option<IpldBlock>, ActorError> {
         match args {
             None => maybe_into_block((self.func)(rt)?),
             Some(_) => Err(ActorError::illegal_argument("method expects no arguments".into())),
@@ -124,7 +131,11 @@ where
     A: Deserialize<'de>,
     R: Serialize,
 {
-    fn call(self, rt: &mut RT, args: &'de Option<IpldBlock>) -> Result<RawBytes, ActorError> {
+    fn call(
+        self,
+        rt: &mut RT,
+        args: &'de Option<IpldBlock>,
+    ) -> Result<Option<IpldBlock>, ActorError> {
         match args {
             None => Err(ActorError::illegal_argument("method expects arguments".into())),
             Some(arg) => maybe_into_block((self.func)(rt, arg.deserialize()?)?),
@@ -165,12 +176,9 @@ fn test_dispatch() {
         .expect("failed to serialize arguments");
 
     // Correct dispatch
-    assert!(dispatch(&mut rt, with_arg, &arg).expect("failed to dispatch").is_empty());
-    assert!(dispatch(&mut rt, without_arg, &None).expect("failed to dispatch").is_empty());
-    assert_eq!(
-        dispatch(&mut rt, with_arg_ret, &arg).expect("failed to dispatch").to_vec(),
-        arg.clone().unwrap().data
-    );
+    assert!(dispatch(&mut rt, with_arg, &arg).expect("failed to dispatch").is_none());
+    assert!(dispatch(&mut rt, without_arg, &None).expect("failed to dispatch").is_none());
+    assert_eq!(dispatch(&mut rt, with_arg_ret, &arg).expect("failed to dispatch"), arg);
 
     // Incorrect dispatch
     let _ = dispatch(&mut rt, with_arg, &None).expect_err("should have required an argument");

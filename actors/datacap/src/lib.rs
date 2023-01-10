@@ -4,14 +4,13 @@ use frc46_token::token::types::{
     TransferFromParams, TransferFromReturn, TransferParams, TransferReturn,
 };
 use frc46_token::token::{Token, TokenError, TOKEN_PRECISION};
-use fvm_actor_utils::messaging::{Messaging, MessagingError};
+use fvm_actor_utils::messaging::{Messaging, MessagingError, Response};
 use fvm_actor_utils::receiver::ReceiverHookError;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
-use fvm_shared::receipt::Receipt;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use lazy_static::lazy_static;
 use log::info;
@@ -407,26 +406,15 @@ where
         method: MethodNum,
         params: Option<IpldBlock>,
         value: &TokenAmount,
-    ) -> fvm_actor_utils::messaging::Result<Receipt> {
+    ) -> fvm_actor_utils::messaging::Result<Response> {
         // The Runtime discards some of the information from the syscall :-(
-        let fake_gas_used = 0;
         let res = self.rt.send(to, method, params, value.clone());
 
         let rec = match res {
-            Ok(bytes) => Receipt {
-                exit_code: ExitCode::OK,
-                return_data: bytes,
-                gas_used: fake_gas_used,
-                events_root: None,
-            },
+            Ok(ret) => Response { exit_code: ExitCode::OK, return_data: ret },
             Err(ae) => {
                 info!("datacap messenger failed: {}", ae.msg());
-                Receipt {
-                    exit_code: ae.exit_code(),
-                    return_data: RawBytes::default(),
-                    gas_used: fake_gas_used,
-                    events_root: None,
-                }
+                Response { exit_code: ae.exit_code(), return_data: None }
             }
         };
         Ok(rec)

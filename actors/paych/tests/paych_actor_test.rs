@@ -41,7 +41,7 @@ struct LaneParams {
     nonce: u64,
 }
 
-fn call(rt: &mut MockRuntime, method_num: u64, ser: Option<IpldBlock>) -> RawBytes {
+fn call(rt: &mut MockRuntime, method_num: u64, ser: Option<IpldBlock>) -> Option<IpldBlock> {
     rt.call::<PaychActor>(method_num, ser).unwrap()
 }
 
@@ -272,7 +272,7 @@ mod create_lane_tests {
         let payee_addr = Address::new_id(PAYEE_ADDR);
         let paych_balance = TokenAmount::from_atto(PAYCH_BALANCE);
         let paych_non_id = Address::new_bls(&[201; fvm_shared::address::BLS_PUB_LEN]).unwrap();
-        let sig = Option::Some(Signature::new_bls("doesn't matter".as_bytes().to_vec()));
+        let sig = Some(Signature::new_bls("doesn't matter".as_bytes().to_vec()));
 
         let test_cases: Vec<TestCase> = vec![
             TestCase::builder()
@@ -323,7 +323,7 @@ mod create_lane_tests {
                 .unwrap(),
             TestCase::builder()
                 .desc("fails is signature is not valid".to_string())
-                .sig(Option::None)
+                .sig(None)
                 .build()
                 .unwrap(),
             TestCase::builder()
@@ -692,7 +692,7 @@ mod update_channel_state_extra {
             Method::UpdateChannelState as u64,
             Some(IpldBlock { codec: DAG_CBOR, data: fake_params.to_vec() }),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             exit_code,
         );
         (rt, sv)
@@ -945,7 +945,7 @@ mod actor_collect {
         rt.expect_validate_caller_addr(vec![st.from, st.to]);
         rt.expect_delete_actor(st.from);
         let res = call(&mut rt, Method::Collect as u64, None);
-        assert_eq!(res, RawBytes::default());
+        assert!(res.is_none());
         check_state(&rt);
     }
 
@@ -1136,7 +1136,7 @@ fn expect_authenticate_message(
         })
         .unwrap(),
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         exp_exit_code,
     )
 }

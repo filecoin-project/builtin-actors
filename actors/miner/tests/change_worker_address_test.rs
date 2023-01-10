@@ -7,7 +7,6 @@ use fil_actors_runtime::{
         ACCOUNT_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID,
     },
 };
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode};
 
 mod util;
@@ -108,7 +107,8 @@ fn change_and_confirm_worker_address_restricted_correctly() {
         AccountMethod::PubkeyAddress as u64,
         None,
         TokenAmount::zero(),
-        RawBytes::serialize(h.worker_key).unwrap(),
+        IpldBlock::serialize_cbor(&h.worker_key).unwrap(),
+        // RawBytes::serialize(h.worker_key).unwrap(),
         ExitCode::OK,
     );
 
@@ -355,7 +355,7 @@ fn fails_when_caller_is_not_the_owner() {
         AccountMethod::PubkeyAddress as u64,
         None,
         TokenAmount::zero(),
-        RawBytes::serialize(h.worker_key).unwrap(),
+        IpldBlock::serialize_cbor(&h.worker_key).unwrap(),
         ExitCode::OK,
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.worker);

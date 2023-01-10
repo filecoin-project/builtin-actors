@@ -79,7 +79,7 @@ fn placeholder_deploy() {
 
     let msig_ctor_res = deploy();
     assert_eq!(msig_ctor_res.code, ExitCode::OK);
-    let msig_ctor_ret: Exec4Return = msig_ctor_res.ret.deserialize().unwrap();
+    let msig_ctor_ret: Exec4Return = msig_ctor_res.ret.unwrap().deserialize().unwrap();
 
     assert_eq!(
         expect_id_addr, msig_ctor_ret.id_address,

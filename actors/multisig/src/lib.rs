@@ -44,15 +44,6 @@ pub enum Method {
     ChangeNumApprovalsThreshold = 8,
     LockBalance = 9,
     // Method numbers derived from FRC-0042 standards
-    ProposeExported = frc42_dispatch::method_hash!("Propose"),
-    ApproveExported = frc42_dispatch::method_hash!("Approve"),
-    CancelExported = frc42_dispatch::method_hash!("Cancel"),
-    AddSignerExported = frc42_dispatch::method_hash!("AddSigner"),
-    RemoveSignerExported = frc42_dispatch::method_hash!("RemoveSigner"),
-    SwapSignerExported = frc42_dispatch::method_hash!("SwapSigner"),
-    ChangeNumApprovalsThresholdExported =
-        frc42_dispatch::method_hash!("ChangeNumApprovalsThreshold"),
-    LockBalanceExported = frc42_dispatch::method_hash!("LockBalance"),
     UniversalReceiverHook = frc42_dispatch::method_hash!("Receive"),
 }
 
@@ -482,12 +473,13 @@ fn execute_transaction_if_approved(
         st.check_available(rt.current_balance(), &txn.value, rt.curr_epoch())?;
 
         match rt.send(&txn.to, txn.method, txn.params.clone().into(), txn.value.clone()) {
-            Ok(ser) => {
-                out = ser;
+            Ok(Some(r)) => {
+                out = RawBytes::new(r.data);
             }
             Err(e) => {
                 code = e.exit_code();
             }
+            _ => {}
         }
         applied = true;
 
@@ -562,23 +554,15 @@ pub fn compute_proposal_hash(txn: &Transaction, sys: &dyn Primitives) -> anyhow:
 impl ActorCode for Actor {
     type Methods = Method;
     actor_dispatch! {
-          Constructor => constructor,
-          Propose => propose,
-               ProposeExported => propose,
-     Approve => approve,
-            ApproveExported => approve,
-        Cancel => cancel,
-               CancelExported => cancel,
-     AddSigner => add_signer,
-            AddSignerExported => add_signer,
-        RemoveSigner => remove_signer,
-                RemoveSignerExported => remove_signer,
-    SwapSigner => swap_signer,
-               SwapSignerExported => swap_signer,
-     ChangeNumApprovalsThreshold => change_num_approvals_threshold,
-              ChangeNumApprovalsThresholdExported => change_num_approvals_threshold,
+      Constructor => constructor,
+      Propose => propose,
+      Approve => approve,
+      Cancel => cancel,
+      AddSigner => add_signer,
+      RemoveSigner => remove_signer,
+      SwapSigner => swap_signer,
+      ChangeNumApprovalsThreshold => change_num_approvals_threshold,
       LockBalance => lock_balance,
-          LockBalanceExported => lock_balance,
-          UniversalReceiverHook => universal_receiver_hook,
-      }
+      UniversalReceiverHook => universal_receiver_hook,
+    }
 }

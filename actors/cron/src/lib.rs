@@ -7,7 +7,6 @@ use fil_actors_runtime::{
 };
 
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::econ::TokenAmount;
 
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};

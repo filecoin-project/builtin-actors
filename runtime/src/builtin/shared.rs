@@ -11,6 +11,8 @@ use crate::runtime::Runtime;
 
 pub const HAMT_BIT_WIDTH: u32 = 5;
 
+pub const FIRST_ACTOR_SPECIFIC_EXIT_CODE: u32 = 32;
+
 /// ResolveToActorID resolves the given address to its actor ID.
 /// If an actor ID for the given address doesn't exist yet, it tries to create one by sending
 /// a zero balance to the given address.

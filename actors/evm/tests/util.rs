@@ -53,7 +53,7 @@ pub fn init_construct_and_verify<F: FnOnce(&mut MockRuntime)>(
             IpldBlock::serialize_cbor(&params).unwrap(),
         )
         .unwrap()
-        .is_empty());
+        .is_none());
     rt.verify();
 
     rt
@@ -67,6 +67,7 @@ pub fn invoke_contract(rt: &mut MockRuntime, input_data: &[u8]) -> Vec<u8> {
             evm::Method::InvokeContract as u64,
             IpldBlock::serialize_cbor(&BytesSer(input_data)).unwrap(),
         )
+        .unwrap()
         .unwrap()
         .deserialize()
         .unwrap();

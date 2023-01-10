@@ -1,7 +1,6 @@
 use {
     cid::Cid,
     fvm_ipld_encoding::tuple::*,
-    fvm_ipld_encoding::Cbor,
     serde_tuple::{Deserialize_tuple, Serialize_tuple},
 };
 
@@ -25,5 +24,3 @@ pub struct State {
     /// The EVM nonce used to track how many times CREATE or CREATE2 have been called.
     pub nonce: u64,
 }
-
-impl Cbor for State {}

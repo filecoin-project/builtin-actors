@@ -150,6 +150,7 @@ fn get_and_change_multiaddrs_restricted_correctly() {
     let ret: GetMultiaddrsReturn = rt
         .call::<Actor>(Method::GetMultiaddrsExported as u64, None)
         .unwrap()
+        .unwrap()
         .deserialize()
         .unwrap();
     rt.verify();

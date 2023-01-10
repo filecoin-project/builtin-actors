@@ -1,5 +1,4 @@
 use fil_actors_runtime::{test_utils::*, BURNT_FUNDS_ACTOR_ADDR};
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::{address::Address, error::ExitCode, METHOD_SEND};
 
 mod util;
@@ -18,14 +17,7 @@ fn test_selfdestruct() {
 
     let solidity_params = hex::decode("35f46994").unwrap();
     rt.expect_validate_caller_any();
-    rt.expect_send(
-        beneficiary,
-        METHOD_SEND,
-        None,
-        rt.get_balance(),
-        RawBytes::default(),
-        ExitCode::OK,
-    );
+    rt.expect_send(beneficiary, METHOD_SEND, None, rt.get_balance(), None, ExitCode::OK);
     rt.expect_delete_actor(BURNT_FUNDS_ACTOR_ADDR);
 
     assert!(util::invoke_contract(&mut rt, &solidity_params).is_empty());
@@ -51,7 +43,7 @@ fn test_selfdestruct_missing() {
         METHOD_SEND,
         None,
         rt.get_balance(),
-        RawBytes::default(),
+        None,
         ExitCode::SYS_INVALID_RECEIVER,
     );
     rt.expect_delete_actor(BURNT_FUNDS_ACTOR_ADDR);
