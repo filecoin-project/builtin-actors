@@ -68,6 +68,7 @@ impl<'de> serde::Deserialize<'de> for B256 {
 }
 
 // code optained from: https://docs.rs/impl-serde/0.4.0/impl_serde/
+#[allow(dead_code)]
 mod serialize {
 
     use core::{fmt, result::Result};

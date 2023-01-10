@@ -48,6 +48,7 @@ pub struct StateSkipPostTest {
     pub chain_spec: SpecName,
 }
 
+#[allow(dead_code)]
 impl SkipTests {
     /// Empty skip states.
     pub fn empty() -> Self {

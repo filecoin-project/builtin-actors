@@ -18,10 +18,10 @@ use cid::multihash::{Code, MultihashDigest};
 use fvm_shared::{address::Address, crypto::hash::SupportedHashes, econ::TokenAmount, IPLD_RAW};
 
 use fil_actor_eam::EthAddress;
-use fil_actors_runtime::{test_utils::EVM_ACTOR_CODE_ID, EAM_ACTOR_ADDR};
+use fil_actors_runtime::EAM_ACTOR_ADDR;
 use fvm_ipld_blockstore::{Block, Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::{strict_bytes, BytesDe, Cbor};
-use fvm_ipld_kamt::{AsHashedKey, Config as KamtConfig, Kamt};
+use fvm_ipld_kamt::Config as KamtConfig;
 
 use fil_actor_evm::{
     interpreter::system::{StateKamt, MAX_CODE_SIZE},
@@ -30,7 +30,7 @@ use fil_actor_evm::{
 
 use test_vm::{util::create_accounts, VM};
 
-use crate::common::{B160, B256, SKIP_TESTS, U256};
+use crate::common::{B160, B256, SKIP_TESTS};
 
 use super::models::{SpecName, TestSuit};
 
@@ -130,6 +130,7 @@ lazy_static::lazy_static! {
     };
 }
 
+#[allow(dead_code)]
 fn skip_pre_test(test_name: &str, owner_address: &B160) -> bool {
     let rval = SKIP_TESTS.state.iter().any(|state_test| {
         state_test.pre_tests.as_ref().map_or_else(
@@ -199,7 +200,7 @@ fn execute_test_suit(path: &Path, elapsed: &Arc<Mutex<Duration>>) -> Result<(), 
         // TODO :: Process env block, is it needed for FEVM context ?
 
         // Process the "pre" block & deploy the contracts
-        for (test_id, (address, info)) in unit.pre.iter().enumerate() {
+        for (_test_id, (address, info)) in unit.pre.iter().enumerate() {
             assert!(
                 info.code.len() < MAX_CODE_SIZE,
                 "{}",
@@ -272,9 +273,9 @@ fn execute_test_suit(path: &Path, elapsed: &Arc<Mutex<Duration>>) -> Result<(), 
 
                 let gas_limit = *unit.transaction.gas_limit.get(test.indexes.gas).unwrap();
                 let gas_limit = u64::try_from(gas_limit).unwrap_or(u64::MAX);
-                let tx_gas_limit = gas_limit;
+                let _tx_gas_limit = gas_limit;
                 let tx_data = unit.transaction.data.get(test.indexes.data).unwrap().clone();
-                let tx_value = *unit.transaction.value.get(test.indexes.value).unwrap();
+                let _tx_value = *unit.transaction.value.get(test.indexes.value).unwrap();
 
                 if unit.transaction.to.is_none() {
                     continue;
@@ -298,7 +299,7 @@ fn execute_test_suit(path: &Path, elapsed: &Arc<Mutex<Duration>>) -> Result<(), 
                     call_result.message
                 );
 
-                let BytesDe(return_value) =
+                let BytesDe(_return_value) =
                     call_result.ret.deserialize().expect("failed to deserialize results");
             }
         }
