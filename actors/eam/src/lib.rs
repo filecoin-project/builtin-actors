@@ -65,6 +65,7 @@ impl EthAddress {
     #[inline]
     fn is_precompile(&self) -> bool {
         // Exact index is not checked since it is unknown to the EAM what precompiles exist in the EVM actor.
+        // 0 indexes of both ranges are not assignable as well but are _not_ precompile address.
         let [prefix, middle @ .., _index] = self.0;
         (prefix == 0xfe || prefix == 0x00) && middle == [0u8; 18]
     }
@@ -75,10 +76,15 @@ impl EthAddress {
         self.0[0] == 0xff && self.0[1..12].iter().all(|&i| i == 0)
     }
 
+    #[inline]
+    fn is_null(&self) -> bool {
+        self.0 == [0; 20]
+    }
+
     /// Returns true if the EthAddress is "reserved" (cannot be assigned by the EAM).
     #[inline]
     fn is_reserved(&self) -> bool {
-        self.is_precompile() || self.is_id()
+        self.is_precompile() || self.is_id() || self.is_null()
     }
 }
 
@@ -271,9 +277,23 @@ mod test {
             create_actor(&mut rt, creator, new_addr, Vec::new()).unwrap_err().exit_code()
         );
 
-        // Reject Precompile.
+        // Reject EVM Precompile.
         let mut new_addr = EthAddress([0; 20]);
         new_addr.0[19] = 0x20;
+        assert_eq!(
+            ExitCode::USR_FORBIDDEN,
+            create_actor(&mut rt, creator, new_addr, Vec::new()).unwrap_err().exit_code()
+        );
+
+        // Reject Native Precompile.
+        new_addr.0[0] = 0xfe;
+        assert_eq!(
+            ExitCode::USR_FORBIDDEN,
+            create_actor(&mut rt, creator, new_addr, Vec::new()).unwrap_err().exit_code()
+        );
+
+        // Reject Null.
+        let new_addr = EthAddress([0; 20]);
         assert_eq!(
             ExitCode::USR_FORBIDDEN,
             create_actor(&mut rt, creator, new_addr, Vec::new()).unwrap_err().exit_code()
