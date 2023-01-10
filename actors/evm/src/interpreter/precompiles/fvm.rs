@@ -116,7 +116,7 @@ pub(super) fn get_randomness<RT: Runtime>(
 }
 
 /// Read BE encoded low u64 ID address from a u256 word
-/// Looks up and returns the encoded f4 addresses of an ID address, returning empty array if not found
+/// Looks up and returns the encoded f4 addresses of an ID address. Empty array if not found or `InvalidInput` input was larger 2^64.
 pub(super) fn lookup_delegated_address<RT: Runtime>(
     system: &mut System<RT>,
     input: &[u8],
@@ -133,9 +133,9 @@ pub(super) fn lookup_delegated_address<RT: Runtime>(
     Ok(ab)
 }
 
-/// Reads a FIL encoded address
-/// Resolves a FIL encoded address into an ID address
-/// returns BE encoded u64 or empty array if nothing found
+/// Reads a FIL encoded address.
+/// Resolves a FIL encoded address into an ID address.
+/// Returns BE encoded u256 (return will always be under 2^64). Empty array if nothing found or `InvalidInput` if length was larger 2^32.
 pub(super) fn resolve_address<RT: Runtime>(
     system: &mut System<RT>,
     input: &[u8],
@@ -148,7 +148,11 @@ pub(super) fn resolve_address<RT: Runtime>(
         Ok(o) => o,
         Err(_) => return Ok(Vec::new()),
     };
-    Ok(system.rt.resolve_address(&addr).map(|a| a.to_be_bytes().to_vec()).unwrap_or_default())
+    Ok(system
+        .rt
+        .resolve_address(&addr)
+        .map(|a| U256::from(a).to_bytes().to_vec())
+        .unwrap_or_default())
 }
 
 /// Errors:
