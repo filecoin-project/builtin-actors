@@ -143,7 +143,7 @@ fn create_miner_given_send_to_init_actor_fails_should_fail() {
         EXEC_METHOD,
         IpldBlock::serialize_cbor(&message_params).unwrap(),
         TokenAmount::from_atto(10),
-        RawBytes::default(),
+        None,
         ExitCode::SYS_INSUFFICIENT_FUNDS,
     );
 
@@ -643,7 +643,7 @@ mod cron_tests {
             RewardMethod::UpdateNetworkKPI as u64,
             IpldBlock::serialize_cbor(&BigIntSer(&expected_power)).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
         rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
@@ -731,7 +731,7 @@ mod cron_tests {
             ON_DEFERRED_CRON_EVENT_METHOD,
             IpldBlock::serialize_cbor(&params1).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
@@ -745,7 +745,7 @@ mod cron_tests {
             ON_DEFERRED_CRON_EVENT_METHOD,
             IpldBlock::serialize_cbor(&params2).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
@@ -754,7 +754,7 @@ mod cron_tests {
             UPDATE_NETWORK_KPI,
             IpldBlock::serialize_cbor(&BigIntSer(&expected_raw_byte_power)).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
         rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
@@ -782,7 +782,7 @@ mod cron_tests {
             UPDATE_NETWORK_KPI,
             IpldBlock::serialize_cbor(&BigIntSer(&expected_raw_byte_power)).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
         rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
@@ -813,7 +813,7 @@ mod cron_tests {
             ON_DEFERRED_CRON_EVENT_METHOD,
             IpldBlock::serialize_cbor(&input).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
         rt.expect_send(
@@ -821,7 +821,7 @@ mod cron_tests {
             UPDATE_NETWORK_KPI,
             IpldBlock::serialize_cbor(&BigIntSer(&expected_raw_byte_power)).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
         rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
@@ -888,7 +888,7 @@ mod cron_tests {
             ON_DEFERRED_CRON_EVENT_METHOD,
             IpldBlock::serialize_cbor(&input).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
@@ -898,7 +898,7 @@ mod cron_tests {
             UPDATE_NETWORK_KPI,
             IpldBlock::serialize_cbor(&BigIntSer(&BigInt::zero())).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
         rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
@@ -955,7 +955,7 @@ mod cron_tests {
             ON_DEFERRED_CRON_EVENT_METHOD,
             input.clone(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::USR_ILLEGAL_STATE,
         );
 
@@ -965,7 +965,7 @@ mod cron_tests {
             ON_DEFERRED_CRON_EVENT_METHOD,
             input,
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
         // reward actor is still invoked
@@ -975,7 +975,7 @@ mod cron_tests {
             UPDATE_NETWORK_KPI,
             IpldBlock::serialize_cbor(&BigIntSer(&BigInt::zero())).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
         rt.call::<PowerActor>(Method::OnEpochTickEnd as u64, None).unwrap();
@@ -1002,7 +1002,7 @@ mod cron_tests {
             UPDATE_NETWORK_KPI,
             IpldBlock::serialize_cbor(&BigIntSer(&BigInt::zero())).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
         rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
@@ -1236,7 +1236,7 @@ mod cron_batch_proof_verifies_tests {
             CONFIRM_SECTOR_PROOFS_VALID_METHOD,
             IpldBlock::serialize_cbor(&params).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
@@ -1248,7 +1248,7 @@ mod cron_batch_proof_verifies_tests {
             UPDATE_NETWORK_KPI,
             IpldBlock::serialize_cbor(&BigIntSer(&BigInt::zero())).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
@@ -1284,7 +1284,7 @@ mod cron_batch_proof_verifies_tests {
             UPDATE_NETWORK_KPI,
             IpldBlock::serialize_cbor(&BigIntSer(&BigInt::zero())).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
         rt.set_epoch(0);

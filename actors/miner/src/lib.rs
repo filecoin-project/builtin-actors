@@ -11,7 +11,7 @@ use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
 use cid::Cid;
 use fvm_ipld_bitfield::{BitField, Validate};
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::{from_slice, BytesDe, CborStore, RawBytes};
+use fvm_ipld_encoding::{from_slice, BytesDe, CborStore};
 use fvm_shared::address::{Address, Payload, Protocol};
 use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
@@ -36,13 +36,13 @@ pub use deadline_info::*;
 pub use deadline_state::*;
 pub use deadlines::*;
 pub use expiration_queue::*;
-use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
+use fil_actors_runtime::cbor::{serialize, serialize_vec};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, ActorContext, ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR,
-    CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
-    STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    actor_dispatch, actor_error, deserialize_block, ActorContext, ActorDowncast, ActorError,
+    BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 pub use monies::*;
@@ -4198,14 +4198,12 @@ fn request_deal_data(
         });
     }
 
-    let serialized = rt.send(
+    deserialize_block(rt.send(
         &STORAGE_MARKET_ACTOR_ADDR,
         ext::market::VERIFY_DEALS_FOR_ACTIVATION_METHOD,
         IpldBlock::serialize_cbor(&ext::market::VerifyDealsForActivationParamsRef { sectors })?,
         TokenAmount::zero(),
-    )?;
-
-    Ok(serialized.deserialize()?)
+    )?)
 }
 
 /// Requests the current epoch target block reward from the reward actor.
@@ -4213,34 +4211,30 @@ fn request_deal_data(
 fn request_current_epoch_block_reward(
     rt: &mut impl Runtime,
 ) -> Result<ThisEpochRewardReturn, ActorError> {
-    let ret = rt
-        .send(
+    deserialize_block(
+        rt.send(
             &REWARD_ACTOR_ADDR,
             ext::reward::THIS_EPOCH_REWARD_METHOD,
             Default::default(),
             TokenAmount::zero(),
         )
-        .map_err(|e| e.wrap("failed to check epoch baseline power"))?;
-
-    let ret: ThisEpochRewardReturn = deserialize(&ret, "epoch reward response")?;
-    Ok(ret)
+        .map_err(|e| e.wrap("failed to check epoch baseline power"))?,
+    )
 }
 
 /// Requests the current network total power and pledge from the power actor.
 fn request_current_total_power(
     rt: &mut impl Runtime,
 ) -> Result<ext::power::CurrentTotalPowerReturn, ActorError> {
-    let ret = rt
-        .send(
+    deserialize_block(
+        rt.send(
             &STORAGE_POWER_ACTOR_ADDR,
             ext::power::CURRENT_TOTAL_POWER_METHOD,
             Default::default(),
             TokenAmount::zero(),
         )
-        .map_err(|e| e.wrap("failed to check current power"))?;
-
-    let power: ext::power::CurrentTotalPowerReturn = deserialize(&ret, "total power response")?;
-    Ok(power)
+        .map_err(|e| e.wrap("failed to check current power"))?,
+    )
 }
 
 /// Resolves an address to an ID address and verifies that it is address of an account or multisig actor.
@@ -4289,13 +4283,12 @@ fn resolve_worker_address(rt: &mut impl Runtime, raw: Address) -> Result<Address
     }
 
     if raw.protocol() != Protocol::BLS {
-        let ret = rt.send(
+        let pub_key: Address = deserialize_block(rt.send(
             &Address::new_id(resolved),
             ext::account::PUBKEY_ADDRESS_METHOD,
             None,
             TokenAmount::zero(),
-        )?;
-        let pub_key: Address = deserialize(&ret, "address response")?;
+        )?)?;
         if pub_key.protocol() != Protocol::BLS {
             return Err(actor_error!(
                 illegal_argument,
@@ -4339,13 +4332,12 @@ fn get_claims(
         provider: rt.message().receiver().id().unwrap(),
         claim_ids: ids.clone(),
     };
-    let ret_raw = rt.send(
+    let claims_ret: ext::verifreg::GetClaimsReturn = deserialize_block(rt.send(
         &VERIFIED_REGISTRY_ACTOR_ADDR,
         ext::verifreg::GET_CLAIMS_METHOD as u64,
         IpldBlock::serialize_cbor(&params)?,
         TokenAmount::zero(),
-    )?;
-    let claims_ret: ext::verifreg::GetClaimsReturn = deserialize(&ret_raw, "get claims return")?;
+    )?)?;
     if (claims_ret.batch_info.success_count as usize) < ids.len() {
         return Err(actor_error!(illegal_argument, "invalid claims"));
     }
@@ -4787,7 +4779,7 @@ fn activate_deals_and_claim_allocations(
     deal_ids: Vec<DealID>,
     sector_expiry: ChainEpoch,
     sector_number: SectorNumber,
-) -> Result<Option<crate::ext::market::DealSpaces>, ActorError> {
+) -> Result<Option<ext::market::DealSpaces>, ActorError> {
     if deal_ids.is_empty() {
         return Ok(Some(ext::market::DealSpaces::default()));
     }
@@ -4799,7 +4791,7 @@ fn activate_deals_and_claim_allocations(
         TokenAmount::zero(),
     );
     let activate_res: ext::market::ActivateDealsResult = match activate_raw {
-        Ok(res) => res.deserialize()?,
+        Ok(res) => deserialize_block(res)?,
         Err(e) => {
             info!("error activating deals on sector {}: {}", sector_number, e.msg());
             return Ok(None);
@@ -4836,7 +4828,7 @@ fn activate_deals_and_claim_allocations(
         TokenAmount::zero(),
     );
     let claim_res: ext::verifreg::ClaimAllocationsReturn = match claim_raw {
-        Ok(res) => res.deserialize()?,
+        Ok(res) => deserialize_block(res)?,
         Err(e) => {
             info!("error claiming allocation on sector {}: {}", sector_number, e.msg());
             return Ok(None);

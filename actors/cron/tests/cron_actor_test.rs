@@ -6,7 +6,6 @@ use fil_actor_cron::{Actor as CronActor, ConstructorParams, Entry, State};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -85,7 +84,7 @@ fn epoch_tick_with_entries() {
         entry1.method_num,
         None,
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
     rt.expect_send(
@@ -93,7 +92,7 @@ fn epoch_tick_with_entries() {
         entry2.method_num,
         None,
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
     rt.expect_send(
@@ -101,7 +100,7 @@ fn epoch_tick_with_entries() {
         entry3.method_num,
         None,
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
     rt.expect_send(
@@ -109,7 +108,7 @@ fn epoch_tick_with_entries() {
         entry4.method_num,
         None,
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
 
@@ -119,14 +118,14 @@ fn epoch_tick_with_entries() {
 fn construct_and_verify(rt: &mut MockRuntime, params: &ConstructorParams) {
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
     let ret = rt.call::<CronActor>(1, IpldBlock::serialize_cbor(&params).unwrap()).unwrap();
-    assert_eq!(RawBytes::default(), ret);
+    assert!(ret.is_none());
     rt.verify();
 }
 
 fn epoch_tick_and_verify(rt: &mut MockRuntime) {
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
     let ret = rt.call::<CronActor>(2, None).unwrap();
-    assert_eq!(RawBytes::default(), ret);
+    assert!(ret.is_none());
     rt.verify();
     check_state(rt);
 }

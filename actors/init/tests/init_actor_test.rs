@@ -75,13 +75,14 @@ fn repeated_robust_address() {
             METHOD_CONSTRUCTOR,
             IpldBlock::serialize_cbor(&fake_params).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
         // Return should have been successful. Check the returned addresses
-        let exec_ret = exec_and_verify(&mut rt, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap();
-        let exec_ret: ExecReturn = RawBytes::deserialize(&exec_ret).unwrap();
+        let exec_ret =
+            exec_and_verify(&mut rt, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap().unwrap();
+        let exec_ret: ExecReturn = exec_ret.deserialize().unwrap();
         assert_eq!(unique_address, exec_ret.robust_address, "Robust address does not macth");
         assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
         check_state(&rt);
@@ -140,12 +141,13 @@ fn create_2_payment_channels() {
             METHOD_CONSTRUCTOR,
             IpldBlock::serialize_cbor(&fake_params).unwrap(),
             balance,
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
-        let exec_ret = exec_and_verify(&mut rt, *PAYCH_ACTOR_CODE_ID, &fake_params).unwrap();
-        let exec_ret: ExecReturn = RawBytes::deserialize(&exec_ret).unwrap();
+        let exec_ret =
+            exec_and_verify(&mut rt, *PAYCH_ACTOR_CODE_ID, &fake_params).unwrap().unwrap();
+        let exec_ret: ExecReturn = exec_ret.deserialize().unwrap();
         assert_eq!(unique_address, exec_ret.robust_address, "Robust Address does not match");
         assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
 
@@ -182,13 +184,13 @@ fn create_storage_miner() {
         METHOD_CONSTRUCTOR,
         IpldBlock::serialize_cbor(&fake_params).unwrap(),
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
 
-    let exec_ret = exec_and_verify(&mut rt, *MINER_ACTOR_CODE_ID, &fake_params).unwrap();
+    let exec_ret = exec_and_verify(&mut rt, *MINER_ACTOR_CODE_ID, &fake_params).unwrap().unwrap();
 
-    let exec_ret: ExecReturn = RawBytes::deserialize(&exec_ret).unwrap();
+    let exec_ret: ExecReturn = exec_ret.deserialize().unwrap();
     assert_eq!(unique_address, exec_ret.robust_address);
     assert_eq!(expected_id_addr, exec_ret.id_address);
 
@@ -233,13 +235,14 @@ fn create_multisig_actor() {
         METHOD_CONSTRUCTOR,
         IpldBlock::serialize_cbor(&fake_params).unwrap(),
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
 
     // Return should have been successful. Check the returned addresses
-    let exec_ret = exec_and_verify(&mut rt, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap();
-    let exec_ret: ExecReturn = RawBytes::deserialize(&exec_ret).unwrap();
+    let exec_ret =
+        exec_and_verify(&mut rt, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap().unwrap();
+    let exec_ret: ExecReturn = exec_ret.deserialize().unwrap();
     assert_eq!(unique_address, exec_ret.robust_address, "Robust address does not macth");
     assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
     check_state(&rt);
@@ -268,7 +271,7 @@ fn sending_constructor_failure() {
         METHOD_CONSTRUCTOR,
         IpldBlock::serialize_cbor(&fake_params).unwrap(),
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::USR_ILLEGAL_STATE,
     );
 
@@ -297,7 +300,8 @@ fn construct_and_verify(rt: &mut MockRuntime) {
         .call::<InitActor>(METHOD_CONSTRUCTOR, IpldBlock::serialize_cbor(&params).unwrap())
         .unwrap();
 
-    assert_eq!(RawBytes::default(), ret);
+    assert!(ret.is_none());
+
     rt.verify();
 
     let state_data: State = rt.get_state();
@@ -316,7 +320,7 @@ fn exec_and_verify<S: Serialize>(
     rt: &mut MockRuntime,
     code_id: Cid,
     params: &S,
-) -> Result<RawBytes, ActorError>
+) -> Result<Option<IpldBlock>, ActorError>
 where
     S: Serialize,
 {

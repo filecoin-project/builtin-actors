@@ -74,6 +74,7 @@ mod compute_data_commitment {
                 IpldBlock::serialize_cbor(&param).unwrap(),
             )
             .unwrap()
+            .unwrap()
             .deserialize()
             .unwrap();
 
@@ -106,6 +107,7 @@ mod compute_data_commitment {
                 Method::ComputeDataCommitment as u64,
                 IpldBlock::serialize_cbor(&param).unwrap(),
             )
+            .unwrap()
             .unwrap()
             .deserialize()
             .unwrap();
@@ -180,6 +182,7 @@ mod compute_data_commitment {
                 Method::ComputeDataCommitment as u64,
                 IpldBlock::serialize_cbor(&param).unwrap(),
             )
+            .unwrap()
             .unwrap()
             .deserialize()
             .unwrap();

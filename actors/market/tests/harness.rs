@@ -117,7 +117,7 @@ pub fn check_state_with_expected(rt: &MockRuntime, expected_patterns: &[Regex]) 
 
 pub fn construct_and_verify(rt: &mut MockRuntime) {
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
-    assert_eq!(RawBytes::default(), rt.call::<MarketActor>(METHOD_CONSTRUCTOR, None).unwrap());
+    assert!(rt.call::<MarketActor>(METHOD_CONSTRUCTOR, None).unwrap().is_none());
     rt.verify();
 }
 
@@ -144,7 +144,7 @@ pub fn expect_get_control_addresses(
         ext::miner::CONTROL_ADDRESSES_METHOD,
         None,
         TokenAmount::zero(),
-        RawBytes::serialize(result).unwrap(),
+        IpldBlock::serialize_cbor(&result).unwrap(),
         ExitCode::OK,
     )
 }
@@ -166,14 +166,13 @@ pub fn add_provider_funds(rt: &mut MockRuntime, amount: TokenAmount, addrs: &Min
 
     expect_provider_control_address(rt, addrs.provider, addrs.owner, addrs.worker);
 
-    assert_eq!(
-        RawBytes::default(),
-        rt.call::<MarketActor>(
+    assert!(rt
+        .call::<MarketActor>(
             Method::AddBalance as u64,
             IpldBlock::serialize_cbor(&addrs.provider).unwrap(),
         )
-        .unwrap(),
-    );
+        .unwrap()
+        .is_none(),);
     rt.verify();
     rt.add_balance(amount);
 }
@@ -208,19 +207,13 @@ pub fn withdraw_provider_balance(
 
     let params = WithdrawBalanceParams { provider_or_client: provider, amount: withdraw_amount };
 
-    rt.expect_send(
-        owner,
-        METHOD_SEND,
-        None,
-        expected_send.clone(),
-        RawBytes::default(),
-        ExitCode::OK,
-    );
+    rt.expect_send(owner, METHOD_SEND, None, expected_send.clone(), None, ExitCode::OK);
     let ret: WithdrawBalanceReturn = rt
         .call::<MarketActor>(
             Method::WithdrawBalance as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
         )
+        .unwrap()
         .unwrap()
         .deserialize()
         .unwrap();
@@ -240,14 +233,7 @@ pub fn withdraw_client_balance(
     client: Address,
 ) {
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, client);
-    rt.expect_send(
-        client,
-        METHOD_SEND,
-        None,
-        expected_send.clone(),
-        RawBytes::default(),
-        ExitCode::OK,
-    );
+    rt.expect_send(client, METHOD_SEND, None, expected_send.clone(), None, ExitCode::OK);
     rt.expect_validate_caller_addr(vec![client]);
 
     let params = WithdrawBalanceParams { provider_or_client: client, amount: withdraw_amount };
@@ -257,6 +243,7 @@ pub fn withdraw_client_balance(
             Method::WithdrawBalance as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
         )
+        .unwrap()
         .unwrap()
         .deserialize()
         .unwrap();
@@ -277,7 +264,7 @@ pub fn activate_deals(
     deal_ids: &[DealID],
 ) -> ActivateDealsResult {
     let ret = activate_deals_raw(rt, sector_expiry, provider, current_epoch, deal_ids).unwrap();
-    ret.deserialize().expect("VerifyDealsForActivation failed!")
+    ret.unwrap().deserialize().expect("VerifyDealsForActivation failed!")
 }
 
 pub fn activate_deals_raw(
@@ -286,7 +273,7 @@ pub fn activate_deals_raw(
     provider: Address,
     current_epoch: ChainEpoch,
     deal_ids: &[DealID],
-) -> Result<RawBytes, ActorError> {
+) -> Result<Option<IpldBlock>, ActorError> {
     rt.set_epoch(current_epoch);
     rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
     rt.expect_validate_caller_type(vec![Type::Miner]);
@@ -382,7 +369,7 @@ pub fn cron_tick_and_assert_balances(
             METHOD_SEND,
             None,
             d.provider_collateral.clone(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
         amount_slashed = d.provider_collateral;
@@ -459,7 +446,7 @@ pub fn publish_deals(
         ext::miner::CONTROL_ADDRESSES_METHOD,
         None,
         TokenAmount::zero(),
-        RawBytes::serialize(GetControlAddressesReturnParams {
+        IpldBlock::serialize_cbor(&GetControlAddressesReturnParams {
             owner: addrs.owner,
             worker: addrs.worker,
             control_addresses: addrs.control.clone(),
@@ -495,7 +482,7 @@ pub fn publish_deals(
             })
             .unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
@@ -508,7 +495,7 @@ pub fn publish_deals(
                     ext::datacap::BALANCE_OF_METHOD as u64,
                     IpldBlock::serialize_cbor(&deal.client).unwrap(),
                     TokenAmount::zero(),
-                    serialize(&clients_datacap_balance, "transfer from return").unwrap(),
+                    IpldBlock::serialize_cbor(&clients_datacap_balance).unwrap(),
                     ExitCode::OK,
                 );
             }
@@ -565,15 +552,12 @@ pub fn publish_deals(
             ext::datacap::TRANSFER_FROM_METHOD as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
             TokenAmount::zero(),
-            serialize(
-                &TransferFromReturn {
-                    from_balance: TokenAmount::zero(),
-                    to_balance: datacap_consumed,
-                    allowance: TokenAmount::zero(),
-                    recipient_data: serialize(&alloc_ids, "allocation response").unwrap(),
-                },
-                "transfer from return",
-            )
+            IpldBlock::serialize_cbor(&TransferFromReturn {
+                from_balance: TokenAmount::zero(),
+                to_balance: datacap_consumed,
+                allowance: TokenAmount::zero(),
+                recipient_data: serialize(&alloc_ids, "allocation response").unwrap(),
+            })
             .unwrap(),
             ExitCode::OK,
         );
@@ -585,6 +569,7 @@ pub fn publish_deals(
             Method::PublishStorageDeals as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
         )
+        .unwrap()
         .unwrap()
         .deserialize()
         .unwrap();
@@ -635,7 +620,7 @@ pub fn publish_deals_expect_abort(
         AUTHENTICATE_MESSAGE_METHOD,
         auth_param,
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
 
@@ -666,11 +651,11 @@ pub fn assert_deals_not_activated(rt: &mut MockRuntime, _epoch: ChainEpoch, deal
 }
 
 pub fn cron_tick(rt: &mut MockRuntime) {
-    assert_eq!(RawBytes::default(), cron_tick_raw(rt).unwrap());
+    assert!(cron_tick_raw(rt).unwrap().is_none());
     rt.verify()
 }
 
-pub fn cron_tick_raw(rt: &mut MockRuntime) -> Result<RawBytes, ActorError> {
+pub fn cron_tick_raw(rt: &mut MockRuntime) -> Result<Option<IpldBlock>, ActorError> {
     rt.expect_validate_caller_addr(vec![CRON_ACTOR_ADDR]);
     rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
 
@@ -699,7 +684,7 @@ pub fn expect_query_network_info(rt: &mut MockRuntime) {
         RewardMethod::ThisEpochReward as u64,
         None,
         TokenAmount::zero(),
-        RawBytes::serialize(current_reward).unwrap(),
+        IpldBlock::serialize_cbor(&current_reward).unwrap(),
         ExitCode::OK,
     );
     rt.expect_send(
@@ -707,7 +692,7 @@ pub fn expect_query_network_info(rt: &mut MockRuntime) {
         PowerMethod::CurrentTotalPower as u64,
         None,
         TokenAmount::zero(),
-        RawBytes::serialize(current_power).unwrap(),
+        IpldBlock::serialize_cbor(&current_power).unwrap(),
         ExitCode::OK,
     );
 }
@@ -812,7 +797,7 @@ where
         AUTHENTICATE_MESSAGE_METHOD,
         auth_param,
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         match sig_valid {
             true => ExitCode::OK,
             false => ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -1010,7 +995,7 @@ pub fn generate_deal_proposal(
 
 pub fn terminate_deals(rt: &mut MockRuntime, miner_addr: Address, deal_ids: &[DealID]) {
     let ret = terminate_deals_raw(rt, miner_addr, deal_ids).unwrap();
-    assert_eq!(ret, RawBytes::default());
+    assert!(ret.is_none());
     rt.verify();
 }
 
@@ -1018,7 +1003,7 @@ pub fn terminate_deals_raw(
     rt: &mut MockRuntime,
     miner_addr: Address,
     deal_ids: &[DealID],
-) -> Result<RawBytes, ActorError> {
+) -> Result<Option<IpldBlock>, ActorError> {
     rt.set_caller(*MINER_ACTOR_CODE_ID, miner_addr);
     rt.expect_validate_caller_type(vec![Type::Miner]);
 
@@ -1065,6 +1050,7 @@ where
             Method::VerifyDealsForActivation as u64,
             IpldBlock::serialize_cbor(&param).unwrap(),
         )
+        .unwrap()
         .unwrap()
         .deserialize()
         .expect("VerifyDealsForActivation failed!");
