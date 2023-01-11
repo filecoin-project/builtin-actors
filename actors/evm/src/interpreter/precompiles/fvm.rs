@@ -6,7 +6,7 @@ use num_traits::FromPrimitive;
 use crate::interpreter::{
     instructions::call::CallKind,
     precompiles::{
-        parameter::{read_right_pad, Parameter},
+        parameter::{pad_right, Parameter},
         NativeType,
     },
     System, U256,
@@ -23,7 +23,7 @@ pub(super) fn get_actor_type<RT: Runtime>(
     _: PrecompileContext,
 ) -> PrecompileResult {
     // should never panic, pad to 32 bytes then read exactly 32 bytes
-    let id_bytes: [u8; 32] = read_right_pad(input, 32)[..32].as_ref().try_into().unwrap();
+    let id_bytes: [u8; 32] = pad_right(input, 32)[..32].as_ref().try_into().unwrap();
     let id = match Parameter::<u64>::try_from(&id_bytes) {
         Ok(id) => id.0,
         Err(_) => return Ok(Vec::new()),
@@ -98,7 +98,7 @@ pub(super) fn get_randomness<RT: Runtime>(
 
     debug_assert_eq!(input_params.chunks_read(), 4);
 
-    let entropy = read_right_pad(input_params.remaining_slice(), entropy_len as usize);
+    let entropy = pad_right(input_params.remaining_slice(), entropy_len as usize);
 
     let randomness = match randomness_type {
         Some(RandomnessType::Chain) => system
@@ -144,14 +144,23 @@ pub(super) fn resolve_address<RT: Runtime>(
     let mut input_params = U256Reader::new(input);
 
     let len = input_params.next_param_padded::<u32>()? as usize;
-    let addr = match Address::from_bytes(&read_right_pad(input_params.remaining_slice(), len)) {
+    // pad right as needed
+    let padded = pad_right(input_params.remaining_slice(), len);
+    // return 0 size slice on array access fail to err with invalid size
+    let addr = match Address::from_bytes(padded.get(..len).unwrap_or(&[])) {
         Ok(o) => o,
-        Err(_) => return Ok(Vec::new()),
+        Err(e) => {
+            log::error!(target: "evm", "Address parsing failed: {e}");
+            return Ok(Vec::new());
+        }
     };
     Ok(system
         .rt
         .resolve_address(&addr)
-        .map(|a| U256::from(a).to_bytes().to_vec())
+        .map(|a| {
+            log::debug!(target: "evm", "{addr} resolved to {a}");
+            U256::from(a).to_bytes().to_vec()
+        })
         .unwrap_or_default())
 }
 
@@ -197,7 +206,7 @@ pub(super) fn call_actor<RT: Runtime>(
 
     let result = {
         let start = input_params.remaining_slice();
-        let bytes = read_right_pad(start, send_data_size + address_size);
+        let bytes = pad_right(start, send_data_size + address_size);
 
         let input_data = &bytes[..send_data_size];
         let address = &bytes[send_data_size..send_data_size + address_size];
