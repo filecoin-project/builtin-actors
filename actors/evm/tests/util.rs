@@ -1,4 +1,5 @@
 use cid::Cid;
+use evm::interpreter::U256;
 use evm::interpreter::{address::EthAddress, StatusCode};
 use fil_actor_evm as evm;
 use fil_actors_runtime::{
@@ -81,7 +82,7 @@ pub fn invoke_contract_expect_abort(rt: &mut MockRuntime, input_data: &[u8], exp
             evm::Method::InvokeContract as u64,
             IpldBlock::serialize_cbor(&BytesSer(input_data)).unwrap(),
         )
-        .expect_err(&format!("expected contract to fail with {}", expect));
+        .expect_err(&format!("expected contract to fail with {:?}", expect));
     rt.verify();
     // REMOVEME so this is jank... (just copies err creation from execute in lib.rs)
     assert_eq!(err, ActorError::unspecified(format!("EVM execution error: {expect:?}")))
@@ -92,6 +93,11 @@ pub fn dispatch_num_word(method_num: u8) -> [u8; 32] {
     let mut word = [0u8; 32];
     word[3] = method_num;
     word
+}
+
+#[allow(dead_code)]
+pub fn id_to_vec(src: &Address) -> Vec<u8> {
+    U256::from(src.id().unwrap()).to_bytes().to_vec()
 }
 
 lazy_static! {
