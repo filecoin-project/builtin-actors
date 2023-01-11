@@ -133,8 +133,8 @@ pub(super) fn lookup_delegated_address<RT: Runtime>(
     Ok(ab)
 }
 
-/// Reads a FIL encoded address.
-/// Resolves a FIL encoded address into an ID address.
+/// Reads a FIL (i.e. f0xxx, f4x1xxx) encoded address
+/// Resolves a FIL encoded address into an ID address
 /// Returns BE encoded u256 (return will always be under 2^64). Empty array if nothing found or `InvalidInput` if length was larger 2^32.
 pub(super) fn resolve_address<RT: Runtime>(
     system: &mut System<RT>,
