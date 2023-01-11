@@ -67,7 +67,7 @@ pub fn extcodehash(
     let bytecode_hash: Multihash = system
         .send(
             &addr,
-            crate::Method::GetBytecodeHashExported as u64,
+            crate::Method::GetBytecodeHash as u64,
             Default::default(),
             TokenAmount::zero(),
             None,

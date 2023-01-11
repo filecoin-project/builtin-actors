@@ -57,10 +57,8 @@ pub enum Method {
     InvokeContractDelegate = 5,
     GetBytecodeHash = 6,
     // FRC-42 method exports
-    InvokeContractExported = frc42_dispatch::method_hash!("InvokeContract"),
-    InvokeContractDelegateExported = frc42_dispatch::method_hash!("InvokeContractDelegate"),
+    InvokeContractExported = frc42_dispatch::method_hash!("InvokeEVM"),
     GetBytecodeExported = frc42_dispatch::method_hash!("GetBytecode"),
-    GetBytecodeHashExported = frc42_dispatch::method_hash!("GetBytecodeHash"),
 }
 
 pub struct EvmContractActor;
@@ -275,12 +273,8 @@ impl ActorCode for EvmContractActor {
         RT::Blockstore: Clone,
     {
         fn is_exported_method(method: u64) -> bool {
-            method == Method::InvokeContractDelegateExported as u64
-                || method == Method::InvokeContractExported as u64
+            method == Method::InvokeContractExported as u64
                 || method == Method::GetBytecodeExported as u64
-                || method == Method::GetBytecodeHashExported as u64
-
-            // TODO bytecode
         }
 
         // We reserve all methods below EVM_MAX_RESERVED (<= 1023) method. This is a _subset_ of
@@ -315,7 +309,7 @@ impl ActorCode for EvmContractActor {
                 let cid = Self::bytecode(rt)?;
                 Ok(RawBytes::serialize(cid)?)
             }
-            Some(Method::GetBytecodeHash | Method::GetBytecodeHashExported) => {
+            Some(Method::GetBytecodeHash) => {
                 let multihash = Self::bytecode_hash(rt)?;
                 Ok(RawBytes::serialize(multihash)?)
             }
@@ -329,7 +323,7 @@ impl ActorCode for EvmContractActor {
                 )?;
                 Ok(RawBytes::serialize(value)?)
             }
-            Some(Method::InvokeContractDelegate | Method::InvokeContractDelegateExported) => {
+            Some(Method::InvokeContractDelegate) => {
                 let params: DelegateCallParams = args
                     .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
                         "method expects arguments".to_string()

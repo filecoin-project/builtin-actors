@@ -287,7 +287,7 @@ pub fn call_generic<RT: Runtime>(
                             caller: state.caller, };
                         system.send(
                             &system.rt.message().receiver(),
-                            Method::InvokeContractDelegateExported as u64,
+                            Method::InvokeContractDelegate as u64,
                             IpldBlock::serialize_cbor(&params)?,
                             TokenAmount::from(&value),
                             Some(effective_gas_limit(system, gas)),

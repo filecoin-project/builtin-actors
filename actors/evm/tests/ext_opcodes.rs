@@ -210,7 +210,7 @@ account:
 
     rt.expect_send_generalized(
         evm_target,
-        evm::Method::GetBytecodeHashExported as u64,
+        evm::Method::GetBytecodeHash as u64,
         Default::default(),
         TokenAmount::zero(),
         None,
@@ -259,7 +259,7 @@ fn test_getbytecodehash_method() {
     rt.expect_validate_caller_any();
 
     let res: Multihash = rt
-        .call::<evm::EvmContractActor>(evm::Method::GetBytecodeHashExported as u64, None)
+        .call::<evm::EvmContractActor>(evm::Method::GetBytecodeHash as u64, None)
         .unwrap()
         .deserialize()
         .unwrap();
@@ -430,7 +430,7 @@ init_extsize:
     let mut rt = util::init_construct_and_verify(bytecode, |rt| {
         rt.expect_send_generalized(
             CONTRACT_ID,
-            evm::Method::GetBytecodeHashExported as u64,
+            evm::Method::GetBytecodeHash as u64,
             Default::default(),
             TokenAmount::zero(),
             None,
