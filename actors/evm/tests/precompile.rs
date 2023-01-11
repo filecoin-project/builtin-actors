@@ -262,7 +262,7 @@ return
     let unknown_del = FILAddress::new_delegated(1234, "foobarboxy".as_bytes()).unwrap();
     rt.add_delegated_address(unknown_target, unknown_del);
 
-    fn test_reslove(rt: &mut MockRuntime, id: FILAddress, expected: Vec<u8>) {
+    fn test_lookup(rt: &mut MockRuntime, id: FILAddress, expected: Vec<u8>) {
         rt.expect_gas_available(10_000_000_000u64);
         let result = util::invoke_contract(rt, &id_to_vec(&id));
         rt.verify();
@@ -270,15 +270,69 @@ return
         rt.reset();
     }
 
-    test_reslove(&mut rt, evm_target, evm_del.to_bytes());
-    test_reslove(&mut rt, unknown_target, unknown_del.to_bytes());
-    test_reslove(&mut rt, FILAddress::new_id(11111), Vec::new());
+    test_lookup(&mut rt, evm_target, evm_del.to_bytes());
+    test_lookup(&mut rt, unknown_target, unknown_del.to_bytes());
+    test_lookup(&mut rt, FILAddress::new_id(11111), Vec::new());
 
     // invalid input
     rt.expect_gas_available(10_000_000_000u64);
     let result = util::invoke_contract(&mut rt, &[0xff; 42]);
     rt.verify();
     assert_eq!(Vec::<u8>::new(), result);
+    rt.reset();
+}
+
+#[test]
+fn test_resolve_delegated() {
+    let bytecode = resolve_address_contract();
+    let mut rt = util::construct_and_verify(bytecode);
+
+    // f0 10101 is an EVM actor
+    let evm_target = FILAddress::new_id(10101);
+    let evm_del = EthAddress(util::CONTRACT_ADDRESS).try_into().unwrap();
+    rt.add_delegated_address(evm_target, evm_del);
+    // f0 10111 is an actor with a non-evm delegate address
+    let unknown_target = FILAddress::new_id(10111);
+    let unknown_del = FILAddress::new_delegated(1234, "foobarboxy".as_bytes()).unwrap();
+    rt.add_delegated_address(unknown_target, unknown_del);
+    // non-bound f4 address
+    let unbound_del = FILAddress::new_delegated(0xffff, "foobarboxybeef".as_bytes()).unwrap();
+
+    fn test_resolve(rt: &mut MockRuntime, f4: FILAddress, expected: Vec<u8>) {
+        rt.expect_gas_available(10_000_000_000u64);
+        let input = {
+            let addr = f4.to_bytes();
+            let mut v = U256::from(addr.len()).to_bytes().to_vec();
+            v.extend_from_slice(&addr);
+            v
+        };
+        let result = util::invoke_contract(rt, &input);
+        rt.verify();
+        assert_eq!(expected, &result[1..]);
+        assert_eq!(1, result[0]);
+        rt.reset();
+    }
+
+    test_resolve(&mut rt, evm_del, id_to_vec(&evm_target));
+    test_resolve(&mut rt, unknown_target, id_to_vec(&unknown_target));
+    test_resolve(&mut rt, unbound_del, vec![]);
+
+    // valid with extra padding
+    rt.expect_gas_available(10_000_000_000u64);
+    let input = {
+        let addr = evm_del.to_bytes();
+        // address length to read
+        let mut v = U256::from(addr.len()).to_bytes().to_vec();
+        // address itself
+        v.extend_from_slice(&addr);
+        // extra padding
+        v.extend_from_slice(&[0; 10]);
+        v
+    };
+    let result = util::invoke_contract(&mut rt, &input);
+    rt.verify();
+    assert_eq!(id_to_vec(&evm_target), &result[1..]);
+    assert_eq!(1, result[0]);
     rt.reset();
 }
 
