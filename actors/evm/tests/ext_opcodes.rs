@@ -1,8 +1,8 @@
 mod asm;
 
 use cid::Cid;
-use evm::interpreter::instructions::ext::EMPTY_EVM_HASH;
 use evm::interpreter::U256;
+use evm::BytecodeHash;
 use fil_actor_evm as evm;
 use fil_actors_runtime::runtime::{Primitives, Runtime, EMPTY_ARR_CID};
 use fil_actors_runtime::test_utils::*;
@@ -23,7 +23,7 @@ use util::{CONTRACT_ID, DUMMY_ACTOR_CODE_ID};
 fn test_extcodesize() {
     let bytecode = {
         let init = "";
-        let body = r#"        
+        let body = r#"
 %dispatch_begin()
 %dispatch(0x00, evm_size)
 %dispatch(0x01, native_size)
@@ -46,7 +46,7 @@ native_size:
     extcodesize
     %return_stack_word()
 
-evm_account: 
+evm_account:
     jumpdest
     # evm account
     push20 0xff00000000000000000000000000000000000101
@@ -151,7 +151,7 @@ fn test_extcodehash() {
 %dispatch(0x02, non_exist)
 %dispatch(0x03, account)
 %dispatch_end()
-        
+
 evm_contract:
     jumpdest
     # get code hash of address 0x88
@@ -203,11 +203,8 @@ account:
 
     // a random hash value
     let bytecode = b"foo bar boxy";
-    let bytecode_hash = Multihash::wrap(
-        SupportedHashes::Keccak256 as u64,
-        rt.hash(SupportedHashes::Keccak256, bytecode).as_slice(),
-    )
-    .unwrap();
+    let bytecode_hash =
+        BytecodeHash::try_from(rt.hash(SupportedHashes::Keccak256, bytecode).as_slice()).unwrap();
 
     rt.expect_send_generalized(
         evm_target,
@@ -223,7 +220,7 @@ account:
     // Evm code
     let result = util::invoke_contract(&mut rt, &util::dispatch_num_word(0));
     rt.verify();
-    assert_eq!(U256::from_big_endian(&result), U256::from(bytecode_hash.digest()));
+    assert_eq!(U256::from_big_endian(&result), U256::from(bytecode_hash));
     rt.reset();
 
     // Native code is keccak256([0xfe])
@@ -259,13 +256,13 @@ fn test_getbytecodehash_method() {
     let mut rt = util::construct_and_verify(Vec::new());
     rt.expect_validate_caller_any();
 
-    let res: Multihash = rt
+    let res: BytecodeHash = rt
         .call::<evm::EvmContractActor>(evm::Method::GetBytecodeHash as u64, None)
         .unwrap()
         .unwrap()
         .deserialize()
         .unwrap();
-    assert_eq!(res.digest(), empty_bytecode_hash(&mut rt))
+    assert_eq!(<[u8; 32]>::from(res), empty_bytecode_hash(&mut rt))
 }
 
 /// Keccak256 hash of &[]
@@ -393,13 +390,13 @@ fn test_ext_in_initcode() {
     let bytecode = {
         let init = "
 
-# code hash of self 
+# code hash of self
 push20 0xFEEDFACECAFEBEEF000000000000000000000000
 extcodehash
 push1 0x00 # key
 sstore     # store for later
- 
-# code size of self 
+
+# code size of self
 push20 0xFEEDFACECAFEBEEF000000000000000000000000
 extcodesize
 push1 0x01 # key
@@ -437,10 +434,7 @@ init_extsize:
             TokenAmount::zero(),
             None,
             SendFlags::READ_ONLY,
-            IpldBlock::serialize_cbor(
-                &Multihash::wrap(SupportedHashes::Keccak256 as u64, &EMPTY_EVM_HASH).unwrap(),
-            )
-            .unwrap(),
+            IpldBlock::serialize_cbor(&BytecodeHash::EMPTY).unwrap(),
             ExitCode::OK,
         );
 
@@ -460,7 +454,7 @@ init_extsize:
     // codehash
     let result = util::invoke_contract(&mut rt, &util::dispatch_num_word(0));
     rt.verify();
-    assert_eq!(EMPTY_EVM_HASH.as_slice(), result);
+    assert_eq!(BytecodeHash::EMPTY.as_slice(), result);
 
     // codesize
     let result = util::invoke_contract(&mut rt, &util::dispatch_num_word(1));
