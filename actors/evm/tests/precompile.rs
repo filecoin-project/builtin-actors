@@ -257,6 +257,11 @@ return
     let evm_del = EthAddress(util::CONTRACT_ADDRESS).try_into().unwrap();
     rt.add_delegated_address(evm_target, evm_del);
 
+    // f0 10111 is an actor with a non-evm delegate address
+    let unknown_target = FILAddress::new_id(10111);
+    let unknown_del = FILAddress::new_delegated(1234, "foobarboxy".as_bytes()).unwrap();
+    rt.add_delegated_address(unknown_target, unknown_del);
+
     fn test_reslove(rt: &mut MockRuntime, id: FILAddress, expected: Vec<u8>) {
         rt.expect_gas_available(10_000_000_000u64);
         let result = util::invoke_contract(rt, &id_to_vec(&id));
@@ -266,7 +271,15 @@ return
     }
 
     test_reslove(&mut rt, evm_target, evm_del.to_bytes());
+    test_reslove(&mut rt, unknown_target, unknown_del.to_bytes());
     test_reslove(&mut rt, FILAddress::new_id(11111), Vec::new());
+
+    // invalid input
+    rt.expect_gas_available(10_000_000_000u64);
+    let result = util::invoke_contract(&mut rt, &[0xff; 42]);
+    rt.verify();
+    assert_eq!(Vec::<u8>::new(), result);
+    rt.reset();
 }
 
 #[test]
