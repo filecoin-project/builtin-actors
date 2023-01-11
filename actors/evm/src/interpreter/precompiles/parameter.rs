@@ -227,11 +227,11 @@ mod test {
     }
 
     #[test]
-    fn remaining_slice() {
+    fn test_remaining() {
         let mut bytes = [0u8; 33];
         bytes[31] = 0xff;
         bytes[32] = 0xfe;
-        let mut r =U256Reader::new(&bytes);
+        let mut r = U256Reader::new(&bytes);
 
         let read = r.next_param::<u32>().unwrap();
         assert_eq!(0xff, read);
