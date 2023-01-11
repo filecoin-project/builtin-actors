@@ -3,7 +3,6 @@
 
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::MethodNum;
 
 use crate::{ActorError, Runtime};
@@ -17,7 +16,7 @@ pub trait ActorCode {
         rt: &mut RT,
         method: MethodNum,
         params: Option<IpldBlock>,
-    ) -> Result<RawBytes, ActorError>
+    ) -> Result<Option<IpldBlock>, ActorError>
     where
         // TODO: remove the clone requirement on the blockstore when we fix "replica update" to not
         // hold onto state between transactions.

@@ -31,8 +31,12 @@ fn info_getters() {
 
     // owner is good
     rt.expect_validate_caller_any();
-    let owner_ret: GetOwnerReturn =
-        rt.call::<Actor>(Method::GetOwnerExported as u64, None).unwrap().deserialize().unwrap();
+    let owner_ret: GetOwnerReturn = rt
+        .call::<Actor>(Method::GetOwnerExported as u64, None)
+        .unwrap()
+        .unwrap()
+        .deserialize()
+        .unwrap();
 
     rt.verify();
 
@@ -47,6 +51,7 @@ fn info_getters() {
                 IpldBlock::serialize_cbor(&IsControllingAddressParam { address: *control })
                     .unwrap(),
             )
+            .unwrap()
             .unwrap()
             .deserialize()
             .unwrap();
@@ -65,6 +70,7 @@ fn info_getters() {
                 .unwrap(),
         )
         .unwrap()
+        .unwrap()
         .deserialize()
         .unwrap();
     assert!(!is_control_ret.is_controlling);
@@ -75,6 +81,7 @@ fn info_getters() {
     rt.expect_validate_caller_any();
     let sector_size_ret: GetSectorSizeReturn = rt
         .call::<Actor>(Method::GetSectorSizeExported as u64, None)
+        .unwrap()
         .unwrap()
         .deserialize()
         .unwrap();
@@ -130,6 +137,7 @@ fn collateral_getters() {
     rt.expect_validate_caller_any();
     let available_balance_ret: GetAvailableBalanceReturn = rt
         .call::<Actor>(Method::GetAvailableBalanceExported as u64, None)
+        .unwrap()
         .unwrap()
         .deserialize()
         .unwrap();

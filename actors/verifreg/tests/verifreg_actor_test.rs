@@ -77,7 +77,6 @@ mod construction {
 }
 
 mod verifiers {
-    use fvm_ipld_encoding::RawBytes;
     use fvm_shared::address::{Address, BLS_PUB_LEN};
     use fvm_shared::econ::TokenAmount;
     use fvm_shared::error::ExitCode;
@@ -158,7 +157,7 @@ mod verifiers {
             METHOD_SEND,
             None,
             TokenAmount::default(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
@@ -241,7 +240,6 @@ mod verifiers {
 }
 
 mod clients {
-    use fvm_ipld_encoding::RawBytes;
     use fvm_shared::address::{Address, BLS_PUB_LEN};
     use fvm_shared::econ::TokenAmount;
     use fvm_shared::error::ExitCode;
@@ -339,14 +337,7 @@ mod clients {
         let client = Address::new_bls(&[7u8; BLS_PUB_LEN]).unwrap();
         // Expect runtime to attempt to create the actor, but don't add it to the mock's
         // address resolution table.
-        rt.expect_send(
-            client,
-            METHOD_SEND,
-            None,
-            TokenAmount::default(),
-            RawBytes::default(),
-            ExitCode::OK,
-        );
+        rt.expect_send(client, METHOD_SEND, None, TokenAmount::default(), None, ExitCode::OK);
 
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -429,7 +420,7 @@ mod clients {
             ext::datacap::Method::Mint as MethodNum,
             IpldBlock::serialize_cbor(&mint_params).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
@@ -1008,6 +999,7 @@ mod allocs_claims {
                 IpldBlock::serialize_cbor(&params).unwrap(),
             )
             .unwrap()
+            .unwrap()
             .deserialize()
             .expect("failed to deserialize extend claim terms return");
 
@@ -1038,6 +1030,7 @@ mod allocs_claims {
                 Method::GetClaimsExported as MethodNum,
                 IpldBlock::serialize_cbor(&params).unwrap(),
             )
+            .unwrap()
             .unwrap()
             .deserialize()
             .expect("failed to deserialize get claims return");
