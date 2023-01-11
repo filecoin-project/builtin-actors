@@ -135,7 +135,7 @@ pub(super) fn lookup_delegated_address<RT: Runtime>(
 
 /// Reads a FIL (i.e. f0xxx, f4x1xxx) encoded address
 /// Resolves a FIL encoded address into an ID address
-/// Returns BE encoded u256 (return will always be under 2^64). Empty array if nothing found or `InvalidInput` if length was larger 2^32.
+/// Returns BE encoded u256 (return will always be under 2^64). Empty array if nothing found or input length was larger 2^32.
 pub(super) fn resolve_address<RT: Runtime>(
     system: &mut System<RT>,
     input: &[u8],
@@ -146,12 +146,11 @@ pub(super) fn resolve_address<RT: Runtime>(
     let len = input_params.next_param_padded::<u32>()? as usize;
     // pad right as needed
     let padded = pad_right(input_params.remaining_slice(), len);
-    // return 0 size slice on array access fail to err with invalid size
-    let addr = match Address::from_bytes(padded.get(..len).unwrap_or(&[])) {
+    let addr = match Address::from_bytes(padded.get(..len).ok_or(PrecompileError::InternalErr)?) {
         Ok(o) => o,
         Err(e) => {
-            log::error!(target: "evm", "Address parsing failed: {e}");
-            return Ok(Vec::new());
+            log::debug!(target: "evm", "Address parsing failed: {e}");
+            return Err(PrecompileError::InvalidInput);
         }
     };
     Ok(system

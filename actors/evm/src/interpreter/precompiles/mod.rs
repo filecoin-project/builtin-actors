@@ -119,6 +119,7 @@ pub enum PrecompileError {
     IncorrectInputSize,
     OutOfGas,
     // FVM precompile errors
+    InternalErr,
     InvalidInput,
     CallForbidden,
 }
