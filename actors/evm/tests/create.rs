@@ -7,7 +7,6 @@ use evm::interpreter::instructions::lifecycle::{
 use fil_actor_evm as evm;
 use fil_actors_runtime::EAM_ACTOR_ADDR;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 
@@ -87,7 +86,7 @@ fn test_create() {
             CREATE_METHOD_NUM,
             IpldBlock::serialize_cbor(&create_params).unwrap(),
             TokenAmount::from_atto(1),
-            RawBytes::serialize(fake_ret).unwrap(),
+            IpldBlock::serialize_cbor(&fake_ret).unwrap(),
             ExitCode::OK,
         );
 
@@ -109,7 +108,7 @@ fn test_create() {
             CREATE_METHOD_NUM,
             IpldBlock::serialize_cbor(&create_params).unwrap(),
             TokenAmount::from_atto(1),
-            RawBytes::serialize(fake_ret).unwrap(),
+            IpldBlock::serialize_cbor(&fake_ret).unwrap(),
             ExitCode::OK,
         );
 
@@ -131,7 +130,7 @@ fn test_create() {
             CREATE2_METHOD_NUM,
             IpldBlock::serialize_cbor(&create2_params).unwrap(),
             TokenAmount::from_atto(1),
-            RawBytes::serialize(fake_ret).unwrap(),
+            IpldBlock::serialize_cbor(&fake_ret).unwrap(),
             ExitCode::OK,
         );
 

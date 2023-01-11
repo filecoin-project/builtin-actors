@@ -116,7 +116,7 @@ pub(super) fn get_randomness<RT: Runtime>(
 }
 
 /// Read BE encoded low u64 ID address from a u256 word
-/// Looks up and returns the encoded f4 addresses of an ID address, returning empty array if not found
+/// Looks up and returns the encoded f4 addresses of an ID address. Empty array if not found or `InvalidInput` input was larger 2^64.
 pub(super) fn lookup_delegated_address<RT: Runtime>(
     system: &mut System<RT>,
     input: &[u8],
@@ -133,9 +133,9 @@ pub(super) fn lookup_delegated_address<RT: Runtime>(
     Ok(ab)
 }
 
-/// Reads a FIL encoded address
+/// Reads a FIL (i.e. f0xxx, f4x1xxx) encoded address
 /// Resolves a FIL encoded address into an ID address
-/// returns BE encoded u64 or empty array if nothing found
+/// Returns BE encoded u256 (return will always be under 2^64). Empty array if nothing found or `InvalidInput` if length was larger 2^32.
 pub(super) fn resolve_address<RT: Runtime>(
     system: &mut System<RT>,
     input: &[u8],
@@ -148,7 +148,11 @@ pub(super) fn resolve_address<RT: Runtime>(
         Ok(o) => o,
         Err(_) => return Ok(Vec::new()),
     };
-    Ok(system.rt.resolve_address(&addr).map(|a| a.to_be_bytes().to_vec()).unwrap_or_default())
+    Ok(system
+        .rt
+        .resolve_address(&addr)
+        .map(|a| U256::from(a).to_bytes().to_vec())
+        .unwrap_or_default())
 }
 
 /// Errors:
@@ -229,21 +233,18 @@ pub(super) fn call_actor<RT: Runtime>(
 
         const NUM_OUTPUT_PARAMS: u32 = 4;
 
-        // codec of return data
-        // TODO hardcoded to CBOR for now
-        let codec = U256::from(fvm_ipld_encoding::DAG_CBOR);
-        let offset = U256::from(NUM_OUTPUT_PARAMS * 32);
-        let size = U256::from(data.len() as u32);
+        let ret_blk = data.unwrap_or(IpldBlock { codec: 0, data: vec![] });
+        let offset = NUM_OUTPUT_PARAMS * 32;
 
-        let mut output = Vec::with_capacity(NUM_OUTPUT_PARAMS as usize * 32 + data.len());
+        let mut output = Vec::with_capacity(NUM_OUTPUT_PARAMS as usize * 32 + ret_blk.data.len());
         output.extend_from_slice(&exit_code.to_bytes());
-        output.extend_from_slice(&codec.to_bytes());
-        output.extend_from_slice(&offset.to_bytes());
-        output.extend_from_slice(&size.to_bytes());
+        output.extend_from_slice(&U256::from(ret_blk.codec).to_bytes());
+        output.extend_from_slice(&U256::from(offset).to_bytes());
+        output.extend_from_slice(&U256::from(ret_blk.data.len()).to_bytes());
         // NOTE:
-        // we dont pad out to 32 bytes here, the idea being that users will already be in the "everythig is bytes" mode
+        // we dont pad out to 32 bytes here, the idea being that users will already be in the "everything is bytes" mode
         // and will want re-pack align and whatever else by themselves
-        output.extend_from_slice(data.bytes());
+        output.extend_from_slice(&ret_blk.data);
         output
     };
 

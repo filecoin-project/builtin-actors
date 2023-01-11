@@ -58,6 +58,8 @@ fn network_name() -> String {
         Some("devnet-wasm")
     } else if cfg!(feature = "wallaby") {
         Some("wallaby")
+    } else if cfg!(feature = "hyperspace") {
+        Some("hyperspace")
     } else if cfg!(feature = "testing") {
         Some("testing")
     } else if cfg!(feature = "testing-fake-proofs") {

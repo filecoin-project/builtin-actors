@@ -37,7 +37,7 @@ castaway = "0.2.2"
 sha2 = "0.10"
 
 # fil-actor
-fvm_sdk = { version = "3.0.0-alpha.19", optional = true }
+fvm_sdk = { version = "3.0.0-alpha.21", optional = true }
 
 # test_util
 rand = { version = "0.8.5", default-features = false, optional = true }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fvm_actor_utils::receiver::UniversalReceiverParams;
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::crypto::signature::SignatureType::{Secp256k1, BLS};
 use fvm_shared::crypto::signature::{Signature, SignatureType};

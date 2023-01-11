@@ -46,7 +46,7 @@ fn timed_out_deal_is_slashed_and_deleted() {
         METHOD_SEND,
         None,
         deal_proposal.provider_collateral.clone(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
     cron_tick(&mut rt);
@@ -100,7 +100,7 @@ fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_l
         AUTHENTICATE_MESSAGE_METHOD,
         auth_param,
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
 
@@ -120,7 +120,7 @@ fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_l
         METHOD_SEND,
         None,
         deal_proposal.provider_collateral.clone(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
     cron_tick(&mut rt);
@@ -180,14 +180,7 @@ fn timed_out_and_verified_deals_are_slashed_deleted() {
     rt.set_epoch(process_epoch(START_EPOCH, *deal_ids.last().unwrap()));
 
     let expected_burn = 3 * &deal1.provider_collateral;
-    rt.expect_send(
-        BURNT_FUNDS_ACTOR_ADDR,
-        METHOD_SEND,
-        None,
-        expected_burn,
-        RawBytes::default(),
-        ExitCode::OK,
-    );
+    rt.expect_send(BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, None, expected_burn, None, ExitCode::OK);
     cron_tick(&mut rt);
 
     // a second cron tick for the same epoch should not change anything

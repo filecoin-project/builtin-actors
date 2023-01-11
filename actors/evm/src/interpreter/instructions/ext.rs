@@ -2,6 +2,7 @@ use crate::interpreter::instructions::memory::copy_to_memory;
 use crate::interpreter::{address::EthAddress, precompiles::Precompiles};
 use crate::U256;
 use cid::Cid;
+use fil_actors_runtime::deserialize_block;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::ActorError;
 use fvm_ipld_blockstore::Blockstore;
@@ -64,16 +65,14 @@ pub fn extcodehash(
     };
 
     // multihash { keccak256(bytecode) }
-    let bytecode_hash: Multihash = system
-        .send(
-            &addr,
-            crate::Method::GetBytecodeHash as u64,
-            Default::default(),
-            TokenAmount::zero(),
-            None,
-            SendFlags::READ_ONLY,
-        )?
-        .deserialize()?;
+    let bytecode_hash: Multihash = deserialize_block(system.send(
+        &addr,
+        crate::Method::GetBytecodeHash as u64,
+        Default::default(),
+        TokenAmount::zero(),
+        None,
+        SendFlags::READ_ONLY,
+    )?)?;
 
     let digest = bytecode_hash.digest();
     debug_assert_eq!(SupportedHashes::Keccak256 as u64, bytecode_hash.code());
@@ -138,16 +137,14 @@ pub fn get_evm_bytecode_cid(
     system: &mut System<impl Runtime>,
     addr: &Address,
 ) -> Result<Option<Cid>, ActorError> {
-    Ok(system
-        .send(
-            addr,
-            crate::Method::GetBytecode as u64,
-            Default::default(),
-            TokenAmount::zero(),
-            None,
-            SendFlags::READ_ONLY,
-        )?
-        .deserialize()?)
+    deserialize_block(system.send(
+        addr,
+        crate::Method::GetBytecode as u64,
+        Default::default(),
+        TokenAmount::zero(),
+        None,
+        SendFlags::READ_ONLY,
+    )?)
 }
 
 pub fn get_evm_bytecode(

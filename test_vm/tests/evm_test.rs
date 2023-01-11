@@ -57,7 +57,7 @@ fn test_evm_lifecycle() {
     );
 
     let create_return: fil_actor_eam::Create2Return =
-        create_result.ret.deserialize().expect("failed to decode results");
+        create_result.ret.unwrap().deserialize().expect("failed to decode results");
 
     let contract_params = contract.enter().calldata().expect("should serialize");
     let call_result = v
@@ -71,7 +71,7 @@ fn test_evm_lifecycle() {
         .unwrap();
     assert!(call_result.code.is_success(), "failed to call the new actor {}", call_result.message);
     let BytesDe(return_value) =
-        call_result.ret.deserialize().expect("failed to deserialize results");
+        call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
     let evm_ret: u32 = contract
         .decode_output(&contract.enter().function.name, &return_value)
         .expect("failed to decode return");
@@ -143,7 +143,7 @@ fn test_evm_staticcall() {
             );
 
             let create_return: fil_actor_eam::Create2Return =
-                create_result.ret.deserialize().expect("failed to decode results");
+                create_result.ret.unwrap().deserialize().expect("failed to decode results");
 
             // Make sure we deployed an EVM actor.
             assert_eq!(
@@ -179,7 +179,7 @@ fn test_evm_staticcall() {
             call_result.message
         );
         let BytesDe(return_value) =
-            call_result.ret.deserialize().expect("failed to deserialize results");
+            call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
         assert_eq!(&return_value[12..], &created[1].eth_address.0);
     }
 
@@ -230,7 +230,7 @@ fn test_evm_staticcall() {
             call_result.message
         );
         let BytesDe(return_value) =
-            call_result.ret.deserialize().expect("failed to deserialize results");
+            call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
         assert_eq!(&return_value[12..], &created[2].eth_address.0);
     }
 
@@ -300,7 +300,7 @@ fn test_evm_delegatecall() {
             );
 
             let create_return: fil_actor_eam::Create2Return =
-                create_result.ret.deserialize().expect("failed to decode results");
+                create_result.ret.unwrap().deserialize().expect("failed to decode results");
 
             // Make sure we deployed an EVM actor.
             assert_eq!(
@@ -336,7 +336,7 @@ fn test_evm_delegatecall() {
             call_result.message
         );
         let BytesDe(return_value) =
-            call_result.ret.deserialize().expect("failed to deserialize results");
+            call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
         assert_eq!(&return_value[12..], &created[0].eth_address.0);
     }
 
@@ -364,7 +364,7 @@ fn test_evm_delegatecall() {
             call_result.message
         );
         let BytesDe(return_value) =
-            call_result.ret.deserialize().expect("failed to deserialize results");
+            call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
         assert_eq!(&return_value[28..], &[0xff, 0xff, 0xff, 0x42]);
     }
 }
@@ -411,7 +411,7 @@ fn test_evm_staticcall_delegatecall() {
             );
 
             let create_return: fil_actor_eam::Create2Return =
-                create_result.ret.deserialize().expect("failed to decode results");
+                create_result.ret.unwrap().deserialize().expect("failed to decode results");
 
             // Make sure we deployed an EVM actor.
             assert_eq!(
@@ -449,7 +449,7 @@ fn test_evm_staticcall_delegatecall() {
             call_result.message
         );
         let BytesDe(return_value) =
-            call_result.ret.deserialize().expect("failed to deserialize results");
+            call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
         //assert_eq!(&return_value[12..], &created[1].eth_address.0);
         println!("return {:?}", return_value)
     }

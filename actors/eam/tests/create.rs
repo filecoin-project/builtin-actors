@@ -33,7 +33,7 @@ fn call_create() {
             subaddress: new_eth_addr.0[..].to_owned().into(),
         };
 
-        let send_return = RawBytes::serialize(Exec4Return {
+        let send_return = IpldBlock::serialize_cbor(&Exec4Return {
             id_address: Address::new_id(111),
             robust_address: Address::new_id(0), // not a robust address but im hacking here and nobody checks
         })
@@ -53,6 +53,7 @@ fn call_create() {
                 eam::Method::Create as u64,
                 IpldBlock::serialize_cbor(&create_params).unwrap(),
             )
+            .unwrap()
             .unwrap()
             .deserialize::<Return>()
             .unwrap();
@@ -124,7 +125,7 @@ fn call_resurrect() {
         RESURRECT_METHOD,
         IpldBlock::serialize_cbor(&params).unwrap(),
         TokenAmount::from_atto(0),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
 
@@ -133,6 +134,7 @@ fn call_resurrect() {
             eam::Method::Create as u64,
             IpldBlock::serialize_cbor(&create_params).unwrap(),
         )
+        .unwrap()
         .unwrap()
         .deserialize::<Return>()
         .unwrap();
@@ -175,7 +177,7 @@ fn call_create2() {
         subaddress: subaddress.clone().into(),
     };
 
-    let send_return = RawBytes::serialize(Exec4Return {
+    let send_return = IpldBlock::serialize_cbor(&Exec4Return {
         id_address: Address::new_id(111),
         robust_address: Address::new_id(0), // not a robust address but im hacking here and nobody checks
     })
@@ -195,6 +197,7 @@ fn call_create2() {
             eam::Method::Create2 as u64,
             IpldBlock::serialize_cbor(&create2_params).unwrap(),
         )
+        .unwrap()
         .unwrap()
         .deserialize::<Return>()
         .unwrap();

@@ -1,6 +1,6 @@
 mod asm;
 
-use evm::interpreter::U256;
+use evm::interpreter::{address::EthAddress, U256};
 use fil_actor_evm as evm;
 use fil_actors_runtime::test_utils::{
     MockRuntime, ACCOUNT_ACTOR_CODE_ID, EAM_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID,
@@ -9,6 +9,7 @@ use fil_actors_runtime::test_utils::{
 use fvm_shared::address::Address as FILAddress;
 
 mod util;
+use util::id_to_vec;
 
 #[allow(dead_code)]
 pub fn magic_precompile_contract() -> Vec<u8> {
@@ -108,7 +109,7 @@ push1 0x00
 return
 "#;
 
-        asm::new_contract("native_precompiles", init, body).unwrap()
+        asm::new_contract("native_actor_type", init, body).unwrap()
     };
 
     use evm::interpreter::precompiles::NativeType;
@@ -139,10 +140,6 @@ return
     let other_target = FILAddress::new_id(104);
     rt.set_address_actor_type(other_target, *MULTISIG_ACTOR_CODE_ID);
 
-    fn id_to_vec(src: &FILAddress) -> Vec<u8> {
-        U256::from(src.id().unwrap()).to_bytes().to_vec()
-    }
-
     fn test_type(rt: &mut MockRuntime, id: FILAddress, expected: NativeType) {
         rt.expect_gas_available(10_000_000_000u64);
         let result = util::invoke_contract(rt, &id_to_vec(&id));
@@ -164,5 +161,143 @@ return
     let result = util::invoke_contract(&mut rt, &[0xff; 64]);
     rt.verify();
     assert!(result.is_empty());
+    rt.reset();
+}
+
+fn resolve_address_contract() -> Vec<u8> {
+    let init = "";
+    let body = r#"
+    
+# get call payload size
+calldatasize
+# store payload to mem 0x00
+push1 0x00
+push1 0x00
+calldatacopy
+
+# out size
+# out off
+push1 0x20
+push1 0xA0
+
+# in size
+# in off
+calldatasize
+push1 0x00
+
+# value
+push1 0x00
+
+# dst (resolve_address precompile)
+push20 0xfe00000000000000000000000000000000000001
+
+# gas
+push1 0x00
+
+call
+
+# write exit code memory
+push1 0x00 # offset
+mstore8
+
+returndatasize
+push1 0x00 # offset
+push1 0x01 # dest offset
+returndatacopy
+
+returndatasize
+push1 0x01
+add
+push1 0x00
+return
+"#;
+    asm::new_contract("native_precompiles", init, body).unwrap()
+}
+
+#[test]
+fn test_native_lookup_delegated_address() {
+    let bytecode = {
+        let init = "";
+        let body = r#"
+    
+# get call payload size
+calldatasize
+# store payload to mem 0x00
+push1 0x00
+push1 0x00
+calldatacopy
+
+push1 0x20   # out size
+push1 0xA0   # out off
+calldatasize # in size
+push1 0x00   # in off
+push1 0x00   # value
+# dst (lookup_delegated_address precompile)
+push20 0xfe00000000000000000000000000000000000002
+push1 0x00   # gas
+call
+
+# copy result to mem 0x00
+returndatasize
+push1 0x00
+push1 0x00
+returndatacopy
+# return
+returndatasize
+push1 0x00
+return
+"#;
+
+        asm::new_contract("native_lookup_delegated_address", init, body).unwrap()
+    };
+    let mut rt = util::construct_and_verify(bytecode);
+
+    // f0 10101 is an EVM actor
+    let evm_target = FILAddress::new_id(10101);
+    let evm_del = EthAddress(util::CONTRACT_ADDRESS).try_into().unwrap();
+    rt.add_delegated_address(evm_target, evm_del);
+
+    // f0 10111 is an actor with a non-evm delegate address
+    let unknown_target = FILAddress::new_id(10111);
+    let unknown_del = FILAddress::new_delegated(1234, "foobarboxy".as_bytes()).unwrap();
+    rt.add_delegated_address(unknown_target, unknown_del);
+
+    fn test_reslove(rt: &mut MockRuntime, id: FILAddress, expected: Vec<u8>) {
+        rt.expect_gas_available(10_000_000_000u64);
+        let result = util::invoke_contract(rt, &id_to_vec(&id));
+        rt.verify();
+        assert_eq!(expected, result.as_slice());
+        rt.reset();
+    }
+
+    test_reslove(&mut rt, evm_target, evm_del.to_bytes());
+    test_reslove(&mut rt, unknown_target, unknown_del.to_bytes());
+    test_reslove(&mut rt, FILAddress::new_id(11111), Vec::new());
+
+    // invalid input
+    rt.expect_gas_available(10_000_000_000u64);
+    let result = util::invoke_contract(&mut rt, &[0xff; 42]);
+    rt.verify();
+    assert_eq!(Vec::<u8>::new(), result);
+    rt.reset();
+}
+
+#[test]
+fn test_precompile_failure() {
+    let bytecode = resolve_address_contract();
+    let mut rt = util::construct_and_verify(bytecode);
+
+    // invalid input fails
+    rt.expect_gas_available(10_000_000_000u64);
+    let result = util::invoke_contract(&mut rt, &[0xff; 32]);
+    rt.verify();
+    assert_eq!(&[0u8], result.as_slice());
+    rt.reset();
+
+    // not found succeeds with empty
+    rt.expect_gas_available(10_000_000_000u64);
+    let result = util::invoke_contract(&mut rt, &U256::from(111).to_bytes());
+    rt.verify();
+    assert_eq!(&[1u8], result.as_slice());
     rt.reset();
 }

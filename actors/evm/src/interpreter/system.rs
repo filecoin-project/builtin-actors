@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use fil_actors_runtime::{actor_error, runtime::EMPTY_ARR_CID, AsActorError, EAM_ACTOR_ID};
 use fvm_ipld_blockstore::Block;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::{CborStore, RawBytes};
+use fvm_ipld_encoding::CborStore;
 use fvm_ipld_kamt::HashedKey;
 use fvm_shared::{
     address::{Address, Payload},
@@ -219,7 +219,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
         value: TokenAmount,
         gas_limit: Option<u64>,
         send_flags: SendFlags,
-    ) -> Result<RawBytes, ActorError> {
+    ) -> Result<Option<IpldBlock>, ActorError> {
         self.flush()?;
         let result = self.rt.send_generalized(to, method, params, value, gas_limit, send_flags)?;
         if !send_flags.read_only() {

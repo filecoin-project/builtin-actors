@@ -33,7 +33,7 @@ fn test_selfdestruct() {
     })
     .unwrap();
 
-    rt.expect_send(beneficiary, METHOD_SEND, None, token_amount, RawBytes::default(), ExitCode::OK);
+    rt.expect_send(beneficiary, METHOD_SEND, None, token_amount, None, ExitCode::OK);
 
     assert!(util::invoke_contract(&mut rt, &selfdestruct_params).is_empty());
     let state: State = rt.get_state();
@@ -63,14 +63,7 @@ fn test_selfdestruct() {
     // Selfdestruct should be callable multiple times, and it shouldn't do anything (but move
     // remaining funds, again).
     rt.expect_validate_caller_any();
-    rt.expect_send(
-        beneficiary,
-        METHOD_SEND,
-        None,
-        TokenAmount::zero(),
-        RawBytes::default(),
-        ExitCode::OK,
-    );
+    rt.expect_send(beneficiary, METHOD_SEND, None, TokenAmount::zero(), None, ExitCode::OK);
     assert!(util::invoke_contract(&mut rt, &selfdestruct_params).is_empty());
     rt.verify();
 
@@ -120,7 +113,7 @@ fn test_selfdestruct_missing_beneficiary() {
         METHOD_SEND,
         None,
         rt.get_balance(),
-        RawBytes::default(),
+        None,
         ExitCode::SYS_INVALID_RECEIVER,
     );
 

@@ -12,7 +12,6 @@ use fil_actors_runtime::{
     SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::clock::ChainEpoch;
@@ -78,7 +77,6 @@ mod construction_tests {
 
 mod test_award_block_reward {
     use fvm_ipld_encoding::ipld_block::IpldBlock;
-    use fvm_ipld_encoding::RawBytes;
     use fvm_shared::error::ExitCode;
     use fvm_shared::sector::StoragePower;
     use fvm_shared::METHOD_SEND;
@@ -168,7 +166,7 @@ mod test_award_block_reward {
             ext::miner::APPLY_REWARDS_METHOD,
             params,
             expected_reward,
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
         let inner_params = IpldBlock::serialize_cbor(&AwardBlockRewardParams {
@@ -204,7 +202,7 @@ mod test_award_block_reward {
             ext::miner::APPLY_REWARDS_METHOD,
             params,
             small_reward,
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
@@ -272,7 +270,7 @@ mod test_award_block_reward {
             ext::miner::APPLY_REWARDS_METHOD,
             params,
             expected_reward.clone(),
-            RawBytes::default(),
+            None,
             ExitCode::USR_FORBIDDEN,
         );
         rt.expect_send(
@@ -280,7 +278,7 @@ mod test_award_block_reward {
             METHOD_SEND,
             None,
             expected_reward,
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
@@ -341,7 +339,7 @@ fn construct_and_verify(curr_power: &StoragePower) -> MockRuntime {
         )
         .unwrap();
 
-    assert_eq!(RawBytes::default(), ret);
+    assert!(ret.is_none());
     rt.verify();
     rt
 }
@@ -353,7 +351,7 @@ fn award_block_reward(
     gas_reward: TokenAmount,
     win_count: i64,
     expected_payment: TokenAmount,
-) -> Result<RawBytes, ActorError> {
+) -> Result<Option<IpldBlock>, ActorError> {
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
     let miner_penalty = &penalty * PENALTY_MULTIPLIER;
     rt.expect_send(
@@ -365,7 +363,7 @@ fn award_block_reward(
         })
         .unwrap(),
         expected_payment.clone(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
 
@@ -375,7 +373,7 @@ fn award_block_reward(
             METHOD_SEND,
             None,
             expected_payment,
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
     }
@@ -397,7 +395,7 @@ fn award_block_reward(
 fn this_epoch_reward(rt: &mut MockRuntime) -> ThisEpochRewardReturn {
     rt.expect_validate_caller_any();
     let serialized_result = rt.call::<RewardActor>(Method::ThisEpochReward as u64, None).unwrap();
-    let resp: ThisEpochRewardReturn = RawBytes::deserialize(&serialized_result).unwrap();
+    let resp: ThisEpochRewardReturn = serialized_result.unwrap().deserialize().unwrap();
     rt.verify();
     resp
 }

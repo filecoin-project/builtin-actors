@@ -3,7 +3,6 @@ use fvm_shared::ActorID;
 use {
     cid::Cid,
     fvm_ipld_encoding::tuple::*,
-    fvm_ipld_encoding::Cbor,
     serde_tuple::{Deserialize_tuple, Serialize_tuple},
 };
 
@@ -55,5 +54,3 @@ pub struct State {
     /// See https://github.com/filecoin-project/ref-fvm/issues/1174 for some context.
     pub tombstone: Option<Tombstone>,
 }
-
-impl Cbor for State {}

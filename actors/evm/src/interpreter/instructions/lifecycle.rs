@@ -1,5 +1,6 @@
 use bytes::Bytes;
 
+use fil_actors_runtime::deserialize_block;
 use fil_actors_runtime::EAM_ACTOR_ADDR;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{strict_bytes, tuple::*};
@@ -143,7 +144,7 @@ fn create_init(
 
     Ok(match ret {
         Ok(eam_ret) => {
-            let ret: EamReturn = eam_ret.deserialize()?;
+            let ret: EamReturn = deserialize_block(eam_ret)?;
             ret.eth_address.as_evm_word()
         }
         Err(_) => U256::zero(),

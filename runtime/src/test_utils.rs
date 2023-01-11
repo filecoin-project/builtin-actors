@@ -11,7 +11,7 @@ use cid::multihash::{Code, Multihash as OtherMultihash};
 use cid::Cid;
 use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::de::DeserializeOwned;
-use fvm_ipld_encoding::{CborStore, RawBytes};
+use fvm_ipld_encoding::CborStore;
 use fvm_shared::address::{Address, Payload, Protocol};
 use fvm_shared::chainid::ChainID;
 use fvm_shared::clock::ChainEpoch;
@@ -130,7 +130,7 @@ pub fn init_logging() -> Result<(), log::SetLoggerError> {
 
 pub struct ActorExit {
     code: u32,
-    data: RawBytes,
+    data: Option<IpldBlock>,
     msg: Option<String>,
 }
 
@@ -384,7 +384,7 @@ pub struct ExpectedMessage {
     pub send_flags: SendFlags,
 
     // returns from applying expectedMessage
-    pub send_return: RawBytes,
+    pub send_return: Option<IpldBlock>,
     pub exit_code: ExitCode,
 }
 
@@ -453,8 +453,8 @@ pub struct ExpectReplicaVerify {
     result: anyhow::Result<()>,
 }
 
-pub fn expect_empty(res: RawBytes) {
-    assert_eq!(res, RawBytes::default());
+pub fn expect_empty(res: Option<IpldBlock>) {
+    assert!(res.is_none());
 }
 
 pub fn expect_abort_contains_message<T: fmt::Debug>(
@@ -557,10 +557,10 @@ impl<BS: Blockstore> MockRuntime<BS> {
         &mut self,
         method_num: MethodNum,
         params: Option<IpldBlock>,
-    ) -> Result<RawBytes, ActorError> {
+    ) -> Result<Option<IpldBlock>, ActorError> {
         self.in_call = true;
         let prev_state = self.state;
-        let res: Result<RawBytes, ActorError> =
+        let res: Result<Option<IpldBlock>, ActorError> =
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 A::invoke_method(self, method_num, params)
             }))
@@ -673,7 +673,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
         method: MethodNum,
         params: Option<IpldBlock>,
         value: TokenAmount,
-        send_return: RawBytes,
+        send_return: Option<IpldBlock>,
         exit_code: ExitCode,
     ) {
         self.expectations.borrow_mut().expect_sends.push_back(ExpectedMessage {
@@ -698,7 +698,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
         value: TokenAmount,
         gas_limit: Option<u64>,
         send_flags: SendFlags,
-        send_return: RawBytes,
+        send_return: Option<IpldBlock>,
         exit_code: ExitCode,
     ) {
         self.expectations.borrow_mut().expect_sends.push_back(ExpectedMessage {
@@ -1130,7 +1130,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         value: TokenAmount,
         gas_limit: Option<u64>,
         send_flags: SendFlags,
-    ) -> Result<RawBytes, ActorError> {
+    ) -> Result<Option<IpldBlock>, ActorError> {
         // TODO gas_limit is currently ignored, what should we do about it?
         self.require_in_call();
         if self.in_transaction {
@@ -1367,7 +1367,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         Ok(())
     }
 
-    fn exit(&self, code: u32, data: RawBytes, msg: Option<&str>) -> ! {
+    fn exit(&self, code: u32, data: Option<IpldBlock>, msg: Option<&str>) -> ! {
         self.actor_exit.replace(Some(ActorExit { code, data, msg: msg.map(|s| s.to_owned()) }));
         std::panic::panic_any("actor exit");
     }
