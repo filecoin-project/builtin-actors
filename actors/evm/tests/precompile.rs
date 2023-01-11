@@ -1,6 +1,6 @@
 mod asm;
 
-use evm::interpreter::{U256, address::EthAddress};
+use evm::interpreter::{address::EthAddress, U256};
 use fil_actor_evm as evm;
 use fil_actors_runtime::test_utils::{
     MockRuntime, ACCOUNT_ACTOR_CODE_ID, EAM_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID,
@@ -248,7 +248,7 @@ push1 0x00
 return
 "#;
 
-        asm::new_contract("native_actor_type", init, body).unwrap()
+        asm::new_contract("native_lookup_delegated_address", init, body).unwrap()
     };
     let mut rt = util::construct_and_verify(bytecode);
 
