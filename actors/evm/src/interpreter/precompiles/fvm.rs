@@ -141,13 +141,16 @@ pub(super) fn resolve_address<RT: Runtime>(
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    let mut input_params = U256Reader::new(input);
+    let input_params = U256Reader::new(input);
 
-    let len = input_params.next_param_padded::<u32>()? as usize;
-    let addr = match Address::from_bytes(&read_right_pad(input_params.remaining_slice(), len)) {
+    let addr = match Address::from_bytes(&read_right_pad(
+        input_params.remaining_slice(),
+        input_params.remaining_len(),
+    )) {
         Ok(o) => o,
         Err(_) => return Ok(Vec::new()),
     };
+
     Ok(system
         .rt
         .resolve_address(&addr)

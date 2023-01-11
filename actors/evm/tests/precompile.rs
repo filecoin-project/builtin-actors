@@ -9,6 +9,7 @@ use fil_actors_runtime::test_utils::{
 use fvm_shared::address::Address as FILAddress;
 
 mod util;
+
 use util::id_to_vec;
 
 #[allow(dead_code)]
@@ -299,5 +300,24 @@ fn test_precompile_failure() {
     let result = util::invoke_contract(&mut rt, &U256::from(111).to_bytes());
     rt.verify();
     assert_eq!(&[1u8], result.as_slice());
+    rt.reset();
+}
+
+#[test]
+fn test_successfully_resolve() {
+    let bytecode = resolve_address_contract();
+    let mut rt = util::construct_and_verify(bytecode);
+
+    // f0 10101 is an EVM actor
+    let evm_target = FILAddress::new_id(10101);
+    let evm_del = EthAddress(util::CONTRACT_ADDRESS).try_into().unwrap();
+
+    rt.expect_gas_available(10_000_000_000u64);
+    rt.add_delegated_address(evm_target, evm_del);
+    let result = util::invoke_contract(&mut rt, &evm_del.to_bytes());
+    rt.verify();
+    // TODO: Is this first byte because we're _returning_ the value, or would it need to be processed in a contract too?
+    let res_addr = U256::from_big_endian(&result[1..]);
+    assert_eq!(res_addr, evm_target.id().unwrap());
     rt.reset();
 }
