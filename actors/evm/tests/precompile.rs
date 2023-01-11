@@ -1,6 +1,6 @@
 mod asm;
 
-use evm::interpreter::U256;
+use evm::interpreter::{U256, address::EthAddress};
 use fil_actor_evm as evm;
 use fil_actors_runtime::test_utils::{
     MockRuntime, ACCOUNT_ACTOR_CODE_ID, EAM_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID,
@@ -212,6 +212,61 @@ push1 0x00
 return
 "#;
     asm::new_contract("native_precompiles", init, body).unwrap()
+}
+
+#[test]
+fn test_native_lookup_delegated_address() {
+    let bytecode = {
+        let init = "";
+        let body = r#"
+    
+# get call payload size
+calldatasize
+# store payload to mem 0x00
+push1 0x00
+push1 0x00
+calldatacopy
+
+push1 0x20   # out size
+push1 0xA0   # out off
+calldatasize # in size
+push1 0x00   # in off
+push1 0x00   # value
+# dst (lookup_delegated_address precompile)
+push20 0xfe00000000000000000000000000000000000002
+push1 0x00   # gas
+call
+
+# copy result to mem 0x00
+returndatasize
+push1 0x00
+push1 0x00
+returndatacopy
+# return
+returndatasize
+push1 0x00
+return
+"#;
+
+        asm::new_contract("native_actor_type", init, body).unwrap()
+    };
+    let mut rt = util::construct_and_verify(bytecode);
+
+    // f0 10101 is an EVM actor
+    let evm_target = FILAddress::new_id(10101);
+    let evm_del = EthAddress(util::CONTRACT_ADDRESS).try_into().unwrap();
+    rt.add_delegated_address(evm_target, evm_del);
+
+    fn test_reslove(rt: &mut MockRuntime, id: FILAddress, expected: Vec<u8>) {
+        rt.expect_gas_available(10_000_000_000u64);
+        let result = util::invoke_contract(rt, &id_to_vec(&id));
+        rt.verify();
+        assert_eq!(expected, result.as_slice());
+        rt.reset();
+    }
+
+    test_reslove(&mut rt, evm_target, evm_del.to_bytes());
+    test_reslove(&mut rt, FILAddress::new_id(11111), Vec::new());
 }
 
 #[test]
