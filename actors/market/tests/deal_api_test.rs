@@ -1,5 +1,4 @@
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
@@ -132,7 +131,7 @@ fn activation() {
         METHOD_SEND,
         None,
         proposal.provider_collateral,
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
     cron_tick(&mut rt);
@@ -151,10 +150,14 @@ fn activation() {
 }
 
 fn query_deal<T: DeserializeOwned>(rt: &mut MockRuntime, method: Method, id: u64) -> T {
-    query_deal_raw(rt, method, id).unwrap().deserialize().unwrap()
+    query_deal_raw(rt, method, id).unwrap().unwrap().deserialize().unwrap()
 }
 
-fn query_deal_raw(rt: &mut MockRuntime, method: Method, id: u64) -> Result<RawBytes, ActorError> {
+fn query_deal_raw(
+    rt: &mut MockRuntime,
+    method: Method,
+    id: u64,
+) -> Result<Option<IpldBlock>, ActorError> {
     let params = DealQueryParams { id };
     rt.expect_validate_caller_any();
     rt.call::<MarketActor>(method as u64, IpldBlock::serialize_cbor(&params).unwrap())

@@ -6,7 +6,7 @@ use evm::EVM_CONTRACT_REVERTED;
 use fil_actor_evm as evm;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::{BytesSer, RawBytes, DAG_CBOR, IPLD_RAW};
+use fvm_ipld_encoding::{BytesSer, DAG_CBOR, IPLD_RAW};
 use fvm_shared::address::Address as FILAddress;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
@@ -190,7 +190,8 @@ fn test_call() {
         TokenAmount::zero(),
         Some(0xffffffff),
         SendFlags::empty(),
-        RawBytes::serialize(BytesSer(&return_data)).expect("failed to serialize return data"),
+        IpldBlock::serialize_cbor(&BytesSer(&return_data))
+            .expect("failed to serialize return data"),
         ExitCode::OK,
     );
 
@@ -259,7 +260,8 @@ fn test_call_convert_to_send() {
             TokenAmount::zero(),
             None,
             SendFlags::empty(),
-            RawBytes::serialize(BytesSer(&return_data)).expect("failed to serialize return data"),
+            IpldBlock::serialize_cbor(&BytesSer(&return_data))
+                .expect("failed to serialize return data"),
             ExitCode::OK,
         );
 
@@ -296,7 +298,8 @@ fn test_call_convert_to_send2() {
         METHOD_SEND,
         None,
         TokenAmount::from_atto(0x42),
-        RawBytes::serialize(BytesSer(&return_data)).expect("failed to serialize return data"),
+        IpldBlock::serialize_cbor(&BytesSer(&return_data))
+            .expect("failed to serialize return data"),
         ExitCode::OK,
     );
 
@@ -332,7 +335,8 @@ fn test_call_convert_to_send3() {
         METHOD_SEND,
         None,
         TokenAmount::zero(),
-        RawBytes::serialize(BytesSer(&return_data)).expect("failed to serialize return data"),
+        IpldBlock::serialize_cbor(&BytesSer(&return_data))
+            .expect("failed to serialize return data"),
         ExitCode::OK,
     );
 
@@ -363,8 +367,8 @@ fn test_native_call() {
     // invoke the contract
     rt.expect_validate_caller_any();
 
-    let result = rt.call::<evm::EvmContractActor>(1024, None).unwrap();
-    assert_eq!(U256::from_big_endian(&result), U256::from(1024));
+    let result = rt.call::<evm::EvmContractActor>(1024, None).unwrap().unwrap();
+    assert_eq!(U256::from_big_endian(&result.data), U256::from(1024));
 }
 
 #[allow(dead_code)]
@@ -479,7 +483,7 @@ fn test_callactor_inner(exit_code: ExitCode) {
         TokenAmount::zero(),
         Some(0xffffffff),
         send_flags,
-        RawBytes::from(return_data),
+        Some(IpldBlock { codec: DAG_CBOR, data: return_data }),
         exit_code,
     );
 

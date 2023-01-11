@@ -7,7 +7,7 @@ use fil_actor_evm as evm;
 use fil_actors_runtime::runtime::{Primitives, Runtime, EMPTY_ARR_CID};
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address as FILAddress;
 use fvm_shared::bigint::Zero;
 use fvm_shared::crypto::hash::SupportedHashes;
@@ -15,6 +15,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 
 mod util;
+
 use fvm_shared::sys::SendFlags;
 use util::{CONTRACT_ID, DUMMY_ACTOR_CODE_ID};
 
@@ -98,7 +99,7 @@ native_account:
             TokenAmount::zero(),
             None,
             SendFlags::READ_ONLY,
-            RawBytes::serialize(&bytecode_cid).unwrap(),
+            IpldBlock::serialize_cbor(&bytecode_cid).unwrap(),
             ExitCode::OK,
         );
 
@@ -215,7 +216,7 @@ account:
         TokenAmount::zero(),
         None,
         SendFlags::READ_ONLY,
-        RawBytes::serialize(&bytecode_hash).unwrap(),
+        IpldBlock::serialize_cbor(&bytecode_hash).unwrap(),
         ExitCode::OK,
     );
 
@@ -260,6 +261,7 @@ fn test_getbytecodehash_method() {
 
     let res: Multihash = rt
         .call::<evm::EvmContractActor>(evm::Method::GetBytecodeHash as u64, None)
+        .unwrap()
         .unwrap()
         .deserialize()
         .unwrap();
@@ -360,7 +362,7 @@ precompile:
         TokenAmount::zero(),
         None,
         SendFlags::READ_ONLY,
-        RawBytes::serialize(&bytecode_cid).unwrap(),
+        IpldBlock::serialize_cbor(&bytecode_cid).unwrap(),
         ExitCode::OK,
     );
 
@@ -435,8 +437,8 @@ init_extsize:
             TokenAmount::zero(),
             None,
             SendFlags::READ_ONLY,
-            RawBytes::serialize(
-                Multihash::wrap(SupportedHashes::Keccak256 as u64, &EMPTY_EVM_HASH).unwrap(),
+            IpldBlock::serialize_cbor(
+                &Multihash::wrap(SupportedHashes::Keccak256 as u64, &EMPTY_EVM_HASH).unwrap(),
             )
             .unwrap(),
             ExitCode::OK,
@@ -450,7 +452,7 @@ init_extsize:
             TokenAmount::zero(),
             None,
             SendFlags::READ_ONLY,
-            RawBytes::serialize(&EMPTY_ARR_CID).unwrap(),
+            IpldBlock::serialize_cbor(&EMPTY_ARR_CID).unwrap(),
             ExitCode::OK,
         );
     });

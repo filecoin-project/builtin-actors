@@ -1,7 +1,7 @@
 use std::iter;
 
 use ext::init::{Exec4Params, Exec4Return};
-use fil_actors_runtime::{actor_dispatch_unrestricted, AsActorError};
+use fil_actors_runtime::{actor_dispatch_unrestricted, deserialize_block, AsActorError};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::error::ExitCode;
 
@@ -155,14 +155,12 @@ fn create_actor(
         subaddress: new_addr.0.to_vec().into(),
     };
 
-    let ret: ext::init::Exec4Return = rt
-        .send(
-            &INIT_ACTOR_ADDR,
-            ext::init::EXEC4_METHOD,
-            IpldBlock::serialize_cbor(&init_params)?,
-            rt.message().value_received(),
-        )?
-        .deserialize()?;
+    let ret: ext::init::Exec4Return = deserialize_block(rt.send(
+        &INIT_ACTOR_ADDR,
+        ext::init::EXEC4_METHOD,
+        IpldBlock::serialize_cbor(&init_params)?,
+        rt.message().value_received(),
+    )?)?;
 
     Ok(Return::from_exec4(ret, new_addr))
 }

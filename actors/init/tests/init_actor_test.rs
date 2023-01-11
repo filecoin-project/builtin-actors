@@ -76,7 +76,7 @@ fn repeated_robust_address() {
             METHOD_CONSTRUCTOR,
             IpldBlock::serialize_cbor(&fake_params).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
@@ -140,7 +140,7 @@ fn create_2_payment_channels() {
             METHOD_CONSTRUCTOR,
             IpldBlock::serialize_cbor(&fake_params).unwrap(),
             balance,
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
@@ -181,7 +181,7 @@ fn create_storage_miner() {
         METHOD_CONSTRUCTOR,
         IpldBlock::serialize_cbor(&fake_params).unwrap(),
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
 
@@ -230,7 +230,7 @@ fn create_multisig_actor() {
         METHOD_CONSTRUCTOR,
         IpldBlock::serialize_cbor(&fake_params).unwrap(),
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
 
@@ -264,7 +264,7 @@ fn sending_constructor_failure() {
         METHOD_CONSTRUCTOR,
         IpldBlock::serialize_cbor(&fake_params).unwrap(),
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::USR_ILLEGAL_STATE,
     );
 
@@ -329,7 +329,7 @@ fn exec_restricted_correctly() {
         METHOD_CONSTRUCTOR,
         IpldBlock::serialize_cbor(&fake_constructor_params).unwrap(),
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
 
@@ -340,8 +340,9 @@ fn exec_restricted_correctly() {
             Method::ExecExported as u64,
             IpldBlock::serialize_cbor(&exec_params).unwrap(),
         )
+        .unwrap()
         .unwrap();
-    let exec_ret: ExecReturn = RawBytes::deserialize(&ret).unwrap();
+    let exec_ret: ExecReturn = ret.deserialize().unwrap();
     assert_eq!(unique_address, exec_ret.robust_address, "Robust address does not macth");
     assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
     check_state(&rt);
@@ -373,7 +374,7 @@ fn call_exec4() {
         METHOD_CONSTRUCTOR,
         IpldBlock::serialize_cbor(&fake_params).unwrap(),
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
 
@@ -449,7 +450,7 @@ fn call_exec4_placeholder() {
         METHOD_CONSTRUCTOR,
         IpldBlock::serialize_cbor(&fake_params).unwrap(),
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
 
@@ -478,7 +479,8 @@ fn construct_and_verify(rt: &mut MockRuntime) {
         .call::<InitActor>(METHOD_CONSTRUCTOR, IpldBlock::serialize_cbor(&params).unwrap())
         .unwrap();
 
-    assert_eq!(RawBytes::default(), ret);
+    assert!(ret.is_none());
+
     rt.verify();
 
     let state_data: State = rt.get_state();
@@ -510,7 +512,7 @@ where
 
     rt.verify();
     check_state(rt);
-    ret.and_then(|v| v.deserialize().map_err(|e| e.into()))
+    ret.and_then(|v| v.unwrap().deserialize().map_err(|e| e.into()))
 }
 
 fn exec4_and_verify<S: Serialize>(
@@ -539,5 +541,5 @@ where
 
     rt.verify();
     check_state(rt);
-    ret.and_then(|v| v.deserialize().map_err(|e| e.into()))
+    ret.and_then(|v| v.unwrap().deserialize().map_err(|e| e.into()))
 }

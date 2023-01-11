@@ -44,7 +44,7 @@ impl ActorHarness {
         let result = rt
             .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
             .unwrap();
-        assert_eq!(result.bytes().len(), 0);
+        assert!(result.is_none());
         rt.verify();
     }
 
@@ -53,7 +53,7 @@ impl ActorHarness {
         rt: &mut MockRuntime,
         signer: Address,
         increase: bool,
-    ) -> Result<RawBytes, ActorError> {
+    ) -> Result<Option<IpldBlock>, ActorError> {
         rt.expect_validate_caller_addr(vec![rt.receiver]);
         let params = AddSignerParams { signer, increase };
         let ret =
@@ -67,7 +67,7 @@ impl ActorHarness {
         rt: &mut MockRuntime,
         signer: Address,
         decrease: bool,
-    ) -> Result<RawBytes, ActorError> {
+    ) -> Result<Option<IpldBlock>, ActorError> {
         rt.expect_validate_caller_addr(vec![rt.receiver]);
         let params = RemoveSignerParams { signer, decrease };
         let ret = rt.call::<Actor>(
@@ -83,7 +83,7 @@ impl ActorHarness {
         rt: &mut MockRuntime,
         old_signer: Address,
         new_signer: Address,
-    ) -> Result<RawBytes, ActorError> {
+    ) -> Result<Option<IpldBlock>, ActorError> {
         rt.expect_validate_caller_addr(vec![rt.receiver]);
         let params = SwapSignerParams { from: old_signer, to: new_signer };
         let ret = rt
@@ -101,7 +101,7 @@ impl ActorHarness {
         params: RawBytes,
     ) -> [u8; 32] {
         let ret = self.propose(rt, to, value.clone(), method, params.clone());
-        ret.unwrap().deserialize::<ProposeReturn>().unwrap();
+        ret.unwrap().unwrap().deserialize::<ProposeReturn>().unwrap();
         // compute proposal hash
         let txn = Transaction { to, value, method, params, approved: vec![rt.caller] };
         compute_proposal_hash(&txn, rt).unwrap()
@@ -116,7 +116,7 @@ impl ActorHarness {
         proposal_hash: [u8; 32],
     ) -> RawBytes {
         let ret = self.approve(rt, txn_id, proposal_hash).unwrap();
-        let approve_ret = ret.deserialize::<ApproveReturn>().unwrap();
+        let approve_ret = ret.unwrap().deserialize::<ApproveReturn>().unwrap();
         assert_eq!(ExitCode::OK, approve_ret.code);
         approve_ret.ret
     }
@@ -128,7 +128,7 @@ impl ActorHarness {
         value: TokenAmount,
         method: MethodNum,
         params: RawBytes,
-    ) -> Result<RawBytes, ActorError> {
+    ) -> Result<Option<IpldBlock>, ActorError> {
         rt.expect_validate_caller_any();
         let propose_params = ProposeParams { to, value, method, params };
         let ret = rt.call::<Actor>(
@@ -144,7 +144,7 @@ impl ActorHarness {
         rt: &mut MockRuntime,
         txn_id: TxnID,
         proposal_hash: [u8; 32],
-    ) -> Result<RawBytes, ActorError> {
+    ) -> Result<Option<IpldBlock>, ActorError> {
         rt.expect_validate_caller_any();
         let approve_params =
             TxnIDParams { id: txn_id, proposal_hash: Vec::<u8>::from(proposal_hash) };
@@ -161,7 +161,7 @@ impl ActorHarness {
         rt: &mut MockRuntime,
         txn_id: TxnID,
         proposal_hash: [u8; 32],
-    ) -> Result<RawBytes, ActorError> {
+    ) -> Result<Option<IpldBlock>, ActorError> {
         rt.expect_validate_caller_any();
         let cancel_params =
             TxnIDParams { id: txn_id, proposal_hash: Vec::<u8>::from(proposal_hash) };
@@ -179,7 +179,7 @@ impl ActorHarness {
         start: ChainEpoch,
         duration: ChainEpoch,
         amount: TokenAmount,
-    ) -> Result<RawBytes, ActorError> {
+    ) -> Result<Option<IpldBlock>, ActorError> {
         rt.expect_validate_caller_addr(vec![rt.receiver]);
         let lock_balance_params =
             LockBalanceParams { start_epoch: start, unlock_duration: duration, amount };
@@ -195,7 +195,7 @@ impl ActorHarness {
         &self,
         rt: &mut MockRuntime,
         new_threshold: u64,
-    ) -> Result<RawBytes, ActorError> {
+    ) -> Result<Option<IpldBlock>, ActorError> {
         rt.expect_validate_caller_addr(vec![rt.receiver]);
         let change_threshold_params = ChangeNumApprovalsThresholdParams { new_threshold };
         let ret = rt.call::<Actor>(

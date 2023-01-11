@@ -11,7 +11,6 @@ use fil_actors_runtime::{
     actor_dispatch, actor_error, restrict_internal_api, ActorContext, ActorError, AsActorError,
     EAM_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR};

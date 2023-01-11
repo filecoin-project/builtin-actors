@@ -113,7 +113,7 @@ fn test_delegate_call_caller() {
         TokenAmount::zero(),
         None,
         SendFlags::READ_ONLY,
-        RawBytes::serialize(EMPTY_ARR_CID).expect("failed to serialize bytecode hash"),
+        IpldBlock::serialize_cbor(&EMPTY_ARR_CID).expect("failed to serialize bytecode hash"),
         ExitCode::OK,
     );
 
@@ -124,7 +124,7 @@ fn test_delegate_call_caller() {
         TokenAmount::zero(),
         Some(0xffffffff),
         SendFlags::empty(),
-        RawBytes::serialize(BytesSer(&return_data.to_bytes()))
+        IpldBlock::serialize_cbor(&BytesSer(&return_data.to_bytes()))
             .expect("failed to serialize return data"),
         ExitCode::OK,
     );

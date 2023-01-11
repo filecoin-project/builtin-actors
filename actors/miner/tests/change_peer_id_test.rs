@@ -58,8 +58,12 @@ fn change_peer_id_restricted_correctly() {
     // call the exported getter
 
     rt.expect_validate_caller_any();
-    let ret: GetPeerIDReturn =
-        rt.call::<Actor>(Method::GetPeerIDExported as u64, None).unwrap().deserialize().unwrap();
+    let ret: GetPeerIDReturn = rt
+        .call::<Actor>(Method::GetPeerIDExported as u64, None)
+        .unwrap()
+        .unwrap()
+        .deserialize()
+        .unwrap();
     rt.verify();
 
     assert_eq!(new_id, ret.peer_id);

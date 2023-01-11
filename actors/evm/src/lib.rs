@@ -2,7 +2,7 @@ use std::iter;
 
 use fil_actors_runtime::{actor_error, AsActorError, EAM_ACTOR_ID, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::{strict_bytes, BytesDe, BytesSer};
+use fvm_ipld_encoding::{strict_bytes, BytesDe, BytesSer, DAG_CBOR};
 use fvm_shared::address::{Address, Payload};
 use fvm_shared::error::ExitCode;
 use interpreter::{address::EthAddress, system::load_bytecode};
@@ -125,7 +125,7 @@ impl EvmContractActor {
             Outcome::Revert => Err(ActorError::unchecked_with_data(
                 EVM_CONTRACT_REVERTED,
                 "constructor reverted".to_string(),
-                RawBytes::serialize(BytesSer(&output.return_data)).unwrap(),
+                IpldBlock::serialize_cbor(&BytesSer(&output.return_data)).unwrap(),
             )),
             Outcome::Delete => Ok(()),
         }
@@ -187,7 +187,7 @@ impl EvmContractActor {
             Outcome::Revert => Err(ActorError::unchecked_with_data(
                 EVM_CONTRACT_REVERTED,
                 "contract reverted".to_string(),
-                RawBytes::serialize(BytesSer(&output.return_data)).unwrap(),
+                IpldBlock::serialize_cbor(&BytesSer(&output.return_data)).unwrap(),
             )),
             Outcome::Delete => Ok(Vec::new()),
         }
@@ -265,7 +265,7 @@ impl ActorCode for EvmContractActor {
         rt: &mut RT,
         method: MethodNum,
         args: Option<IpldBlock>,
-    ) -> Result<RawBytes, ActorError>
+    ) -> Result<Option<IpldBlock>, ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
@@ -273,7 +273,14 @@ impl ActorCode for EvmContractActor {
         // We reserve all methods below EVM_MAX_RESERVED (<= 1023) method. This is a _subset_ of
         // those reserved by FRC0042.
         if method > EVM_MAX_RESERVED_METHOD {
-            return Self::handle_filecoin_method(rt, method, args).map(RawBytes::new);
+            return Self::handle_filecoin_method(rt, method, args).map(|d| {
+                if d.is_empty() {
+                    None
+                } else {
+                    // TODO: Pass the codec through to here? https://github.com/filecoin-project/ref-fvm/issues/1422
+                    Some(IpldBlock { codec: DAG_CBOR, data: d })
+                }
+            });
         }
 
         match FromPrimitive::from_u64(method) {
@@ -285,7 +292,7 @@ impl ActorCode for EvmContractActor {
                     })?
                     .deserialize()?,
                 )?;
-                Ok(RawBytes::default())
+                Ok(None)
             }
             Some(Method::InvokeContract) => {
                 let params = match args {
@@ -296,15 +303,15 @@ impl ActorCode for EvmContractActor {
                     }
                 };
                 let value = Self::invoke_contract(rt, &params, None, None)?;
-                Ok(RawBytes::serialize(BytesSer(&value))?)
+                Ok(IpldBlock::serialize_cbor(&BytesSer(&value))?)
             }
             Some(Method::GetBytecode) => {
                 let cid = Self::bytecode(rt)?;
-                Ok(RawBytes::serialize(cid)?)
+                Ok(IpldBlock::serialize_cbor(&cid)?)
             }
             Some(Method::GetBytecodeHash) => {
                 let multihash = Self::bytecode_hash(rt)?;
-                Ok(RawBytes::serialize(multihash)?)
+                Ok(IpldBlock::serialize_cbor(&multihash)?)
             }
             Some(Method::GetStorageAt) => {
                 let value = Self::storage_at(
@@ -314,7 +321,7 @@ impl ActorCode for EvmContractActor {
                     })?
                     .deserialize()?,
                 )?;
-                Ok(RawBytes::serialize(value)?)
+                Ok(IpldBlock::serialize_cbor(&value)?)
             }
             Some(Method::InvokeContractDelegate) => {
                 let params: DelegateCallParams = args
@@ -328,7 +335,7 @@ impl ActorCode for EvmContractActor {
                     Some(params.code),
                     Some(params.caller),
                 )?;
-                Ok(RawBytes::serialize(BytesSer(&value))?)
+                Ok(IpldBlock::serialize_cbor(&BytesSer(&value))?)
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }

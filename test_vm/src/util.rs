@@ -109,7 +109,7 @@ pub fn apply_code<S: Serialize>(
 ) -> RawBytes {
     let res = v.apply_message(from, to, value, method, params).unwrap();
     assert_eq!(code, res.code, "expected code {}, got {} ({})", code, res.code, res.message);
-    res.ret
+    res.ret.map_or(RawBytes::default(), |b| RawBytes::new(b.data))
 }
 
 pub fn cron_tick(v: &VM) {
@@ -150,6 +150,7 @@ pub fn create_miner(
         )
         .unwrap()
         .ret
+        .unwrap()
         .deserialize()
         .unwrap();
     (res.id_address, res.robust_address)

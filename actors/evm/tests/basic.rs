@@ -80,6 +80,7 @@ return
     let returned_bytecode_cid: Cid = rt
         .call::<evm::EvmContractActor>(evm::Method::GetBytecode as u64, None)
         .unwrap()
+        .unwrap()
         .deserialize()
         .unwrap();
     rt.verify();
@@ -120,6 +121,7 @@ sstore";
             IpldBlock::serialize_cbor(&params).unwrap(),
         )
         .unwrap()
+        .unwrap()
         .deserialize()
         .unwrap();
     rt.verify();
@@ -138,6 +140,7 @@ sstore";
             evm::Method::GetStorageAt as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
         )
+        .unwrap()
         .unwrap()
         .deserialize()
         .unwrap();
