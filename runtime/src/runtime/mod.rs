@@ -277,6 +277,9 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
 
 /// Message information available to the actor about executing message.
 pub trait MessageInfo {
+    /// The nonce of the currently executing message.
+    fn nonce(&self) -> u64;
+
     /// The address of the immediate calling actor. Always an ID-address.
     fn caller(&self) -> Address;
 

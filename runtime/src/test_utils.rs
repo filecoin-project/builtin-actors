@@ -872,6 +872,10 @@ impl<BS> MessageInfo for MockRuntime<BS> {
     fn gas_premium(&self) -> TokenAmount {
         self.gas_premium.clone()
     }
+
+    fn nonce(&self) -> u64 {
+        0
+    }
 }
 
 impl<BS: Blockstore> Runtime for MockRuntime<BS> {

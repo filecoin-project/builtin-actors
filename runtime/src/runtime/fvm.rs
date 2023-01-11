@@ -102,6 +102,10 @@ impl MessageInfo for FvmMessage {
     fn gas_premium(&self) -> TokenAmount {
         fvm::message::gas_premium()
     }
+
+    fn nonce(&self) -> u64 {
+        fvm::message::nonce()
+    }
 }
 
 impl<B> Runtime for FvmRuntime<B>

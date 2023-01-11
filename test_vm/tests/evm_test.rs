@@ -63,7 +63,7 @@ fn test_evm_lifecycle() {
     let call_result = v
         .apply_message(
             account,
-            create_return.robust_address,
+            create_return.robust_address.unwrap(),
             TokenAmount::zero(),
             fil_actor_evm::Method::InvokeContract as u64,
             Some(ContractParams(contract_params.to_vec())),
@@ -158,7 +158,7 @@ fn test_evm_staticcall() {
     // A -> staticcall -> B (read) OK
     {
         let A_act = accounts[0];
-        let A_robust_addr = created[0].robust_address;
+        let A_robust_addr = created[0].robust_address.unwrap();
         let B = id_to_eth(created[1].actor_id);
         let mut params = [0u8; 36];
         params[3] = 1;
@@ -186,7 +186,7 @@ fn test_evm_staticcall() {
     // A -> staticcall -> B (write) FAIL
     {
         let A_act = accounts[0];
-        let A_robust_addr = created[0].robust_address;
+        let A_robust_addr = created[0].robust_address.unwrap();
         let B = id_to_eth(created[1].actor_id);
         let mut params = [0u8; 36];
         params[3] = 3;
@@ -207,7 +207,7 @@ fn test_evm_staticcall() {
     // A -> staticcall -> B -> call -> C (read) OK
     {
         let A_act = accounts[0];
-        let A_robust_addr = created[0].robust_address;
+        let A_robust_addr = created[0].robust_address.unwrap();
         let B = id_to_eth(created[1].actor_id);
         let C = id_to_eth(created[2].actor_id);
         let mut params = [0u8; 68];
@@ -237,7 +237,7 @@ fn test_evm_staticcall() {
     // A -> staticcall -> B -> call -> C (write) FAIL
     {
         let A_act = accounts[0];
-        let A_robust_addr = created[0].robust_address;
+        let A_robust_addr = created[0].robust_address.unwrap();
         let B = id_to_eth(created[1].actor_id);
         let C = id_to_eth(created[2].actor_id);
         let mut params = [0u8; 68];
@@ -315,7 +315,7 @@ fn test_evm_delegatecall() {
     // A -> delegatecall -> B (read) OK
     {
         let A_act = accounts[0];
-        let A_robust_addr = created[0].robust_address;
+        let A_robust_addr = created[0].robust_address.unwrap();
         let B = id_to_eth(created[1].actor_id);
         let mut params = [0u8; 36];
         params[3] = 9;
@@ -343,7 +343,7 @@ fn test_evm_delegatecall() {
     // A -> delegatecall -> B (write) -> return (read) OK
     {
         let A_act = accounts[0];
-        let A_robust_addr = created[0].robust_address;
+        let A_robust_addr = created[0].robust_address.unwrap();
         let B = id_to_eth(created[1].actor_id);
         let mut params = [0u8; 36];
         params[3] = 10;
@@ -426,7 +426,7 @@ fn test_evm_staticcall_delegatecall() {
     // A -> staticcall -> B -> delegatecall -> C (read) OK
     {
         let A_act = accounts[0];
-        let A_robust_addr = created[0].robust_address;
+        let A_robust_addr = created[0].robust_address.unwrap();
         let B = id_to_eth(created[1].actor_id);
         let C = id_to_eth(created[2].actor_id);
         let mut params = [0u8; 68];
@@ -457,7 +457,7 @@ fn test_evm_staticcall_delegatecall() {
     // A -> staticcall -> B -> delegatecall -> C (write) FAIL
     {
         let A_act = accounts[0];
-        let A_robust_addr = created[0].robust_address;
+        let A_robust_addr = created[0].robust_address.unwrap();
         let B = id_to_eth(created[1].actor_id);
         let C = id_to_eth(created[2].actor_id);
         let mut params = [0u8; 68];

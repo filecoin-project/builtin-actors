@@ -6,7 +6,6 @@ pub enum Outcome {
     #[default]
     Return,
     Revert,
-    Delete,
 }
 
 /// Output of EVM execution.

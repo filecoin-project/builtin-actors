@@ -136,7 +136,7 @@ pub fn get_contract_type<RT: Runtime>(rt: &RT, addr: U256) -> ContractType {
 pub fn get_evm_bytecode_cid(
     system: &mut System<impl Runtime>,
     addr: &Address,
-) -> Result<Cid, ActorError> {
+) -> Result<Option<Cid>, ActorError> {
     deserialize_block(system.send(
         addr,
         crate::Method::GetBytecode as u64,
@@ -151,12 +151,17 @@ pub fn get_evm_bytecode(
     system: &mut System<impl Runtime>,
     addr: &Address,
 ) -> Result<Vec<u8>, StatusCode> {
-    let cid = get_evm_bytecode_cid(system, addr)?;
-    let raw_bytecode = system
-        .rt
-        .store()
-        .get(&cid) // TODO this is inefficient; should call stat here.
-        .map_err(|e| StatusCode::InternalError(format!("failed to get bytecode block: {}", &e)))?
-        .ok_or_else(|| ActorError::not_found("bytecode block not found".to_string()))?;
-    Ok(raw_bytecode)
+    if let Some(cid) = get_evm_bytecode_cid(system, addr)? {
+        let raw_bytecode = system
+            .rt
+            .store()
+            .get(&cid) // TODO this is inefficient; should call stat here.
+            .map_err(|e| {
+                StatusCode::InternalError(format!("failed to get bytecode block: {}", &e))
+            })?
+            .ok_or_else(|| ActorError::not_found("bytecode block not found".to_string()))?;
+        Ok(raw_bytecode)
+    } else {
+        Ok(Vec::new())
+    }
 }
