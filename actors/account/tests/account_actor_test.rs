@@ -136,19 +136,9 @@ fn authenticate_message() {
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "bad signature",
-        rt.call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, params.clone()),
+        rt.call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, params),
     );
     rt.verify();
-
-    // Ok to call exported method number
-    rt.expect_validate_caller_any();
-    rt.expect_verify_signature(ExpectedVerifySig {
-        sig: Signature::new_secp256k1(vec![]),
-        signer: addr,
-        plaintext: vec![],
-        result: Ok(()),
-    });
-    rt.call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, params).unwrap();
 }
 
 fn check_state(rt: &MockRuntime) {
