@@ -225,4 +225,18 @@ mod test {
         assert_eq!(reader.read_byte(), 0u8);
         assert_eq!(reader.read_byte(), 0u8);
     }
+
+    #[test]
+    fn remaining_slice() {
+        let mut bytes = [0u8; 33];
+        bytes[31] = 0xff;
+        bytes[32] = 0xfe;
+        let mut r =U256Reader::new(&bytes);
+
+        let read = r.next_param::<u32>().unwrap();
+        assert_eq!(0xff, read);
+
+        assert_eq!([0xfe], r.remaining_slice());
+        assert_eq!(1, r.remaining_len())
+    }
 }
