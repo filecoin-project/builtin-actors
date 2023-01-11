@@ -1,5 +1,5 @@
-use fvm_ipld_encoding::RawBytes;
-use fvm_shared::clock::ChainEpoch;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
 use serde::de::DeserializeOwned;
@@ -102,8 +102,8 @@ fn activation() {
 
     let activation: GetDealActivationReturn =
         query_deal(&mut rt, Method::GetDealActivationExported, id);
-    assert_eq!(-1, activation.activated);
-    assert_eq!(-1, activation.terminated);
+    assert_eq!(EPOCH_UNDEFINED, activation.activated);
+    assert_eq!(EPOCH_UNDEFINED, activation.terminated);
 
     // activate the deal
     let activate_epoch = start_epoch - 2;
@@ -112,7 +112,7 @@ fn activation() {
     let activation: GetDealActivationReturn =
         query_deal(&mut rt, Method::GetDealActivationExported, id);
     assert_eq!(activate_epoch, activation.activated);
-    assert_eq!(-1, activation.terminated);
+    assert_eq!(EPOCH_UNDEFINED, activation.terminated);
 
     // terminate early
     let terminate_epoch = activate_epoch + 100;

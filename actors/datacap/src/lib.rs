@@ -44,8 +44,6 @@ lazy_static! {
 }
 
 /// Datacap actor methods available
-/// Some methods are available under 2 method nums -- a static number for "private" builtin actor usage,
-/// and via FRC-0042 calling convention, with number determined by method name.
 #[derive(FromPrimitive)]
 #[repr(u64)]
 pub enum Method {
