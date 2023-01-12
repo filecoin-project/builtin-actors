@@ -208,8 +208,9 @@ fn resolve_caller(rt: &mut impl Runtime) -> Result<EthAddress, ActorError> {
 fn resolve_caller_external(rt: &mut impl Runtime) -> Result<(EthAddress, EthAddress), ActorError> {
     let caller = rt.message().caller();
     let caller_id = caller.id().unwrap();
-    if let Some(caller_code_cid) = rt.get_actor_code_cid(&caller_id) {
-        if caller_code_cid == rt.get_code_cid_for_type(Type::Account) {
+    let caller_cid = rt.get_actor_code_cid(&caller_id).expect("failed to lookup caller code");
+    match rt.resolve_builtin_actor_type(code_cid) {
+        Some(Type::Account) => {
             let result = rt.send(
                 &caller,
                 2, // PubkeyAddress
@@ -228,7 +229,8 @@ fn resolve_caller_external(rt: &mut impl Runtime) -> Result<(EthAddress, EthAddr
             id_bytes[12..].copy_from_slice(&caller_id.to_be_bytes());
 
             Ok((EthAddress(id_bytes), EthAddress(robust_eth_bytes_array)))
-        } else if caller_code_cid == rt.get_code_cid_for_type(Type::EthAccount) {
+        }
+        Some(Type::EthAccount) => {
             match rt.lookup_delegated_address(caller_id).map(|a| *a.payload()) {
                 Some(Payload::Delegated(addr)) if addr.namespace() == EAM_ACTOR_ID => {
                     let eth_addr = EthAddress(addr.subaddress().try_into().context_code(
@@ -242,11 +244,8 @@ fn resolve_caller_external(rt: &mut impl Runtime) -> Result<(EthAddress, EthAddr
                     caller_id
                 ))),
             }
-        } else {
-            Err(ActorError::forbidden(format!("disallowed caller code cid {}", caller_code_cid)))
         }
-    } else {
-        Err(ActorError::forbidden(format!("uknown caller code cid for {}", caller_id)))
+        _ => Err(ActorError::forbidden(format!("disallowed caller code cid {}", caller_code_cid))),
     }
 }
 
