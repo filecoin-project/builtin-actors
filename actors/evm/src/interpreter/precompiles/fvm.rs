@@ -6,7 +6,7 @@ use num_traits::FromPrimitive;
 use crate::interpreter::{
     instructions::call::CallKind,
     precompiles::{
-        parameter::{pad_right, Parameter},
+        parameter::{read_right_pad, Parameter},
         NativeType,
     },
     System, U256,
@@ -23,7 +23,7 @@ pub(super) fn get_actor_type<RT: Runtime>(
     _: PrecompileContext,
 ) -> PrecompileResult {
     // should never panic, pad to 32 bytes then read exactly 32 bytes
-    let id_bytes: [u8; 32] = pad_right(input, 32)[..32].as_ref().try_into().unwrap();
+    let id_bytes: [u8; 32] = read_right_pad(input, 32)[..32].as_ref().try_into().unwrap();
     let id = match Parameter::<u64>::try_from(&id_bytes) {
         Ok(id) => id.0,
         Err(_) => return Ok(Vec::new()),
@@ -98,7 +98,7 @@ pub(super) fn get_randomness<RT: Runtime>(
 
     debug_assert_eq!(input_params.chunks_read(), 4);
 
-    let entropy = pad_right(input_params.remaining_slice(), entropy_len as usize);
+    let entropy = read_right_pad(input_params.remaining_slice(), entropy_len as usize);
 
     let randomness = match randomness_type {
         Some(RandomnessType::Chain) => system
@@ -145,7 +145,7 @@ pub(super) fn resolve_address<RT: Runtime>(
 
     let len = input_params.next_param_padded::<u32>()? as usize;
     // pad right as needed
-    let padded = pad_right(input_params.remaining_slice(), len);
+    let padded = read_right_pad(input_params.remaining_slice(), len);
     let addr = match Address::from_bytes(padded.get(..len).ok_or(PrecompileError::InternalErr)?) {
         Ok(o) => o,
         Err(e) => {
@@ -205,7 +205,7 @@ pub(super) fn call_actor<RT: Runtime>(
 
     let result = {
         let start = input_params.remaining_slice();
-        let bytes = pad_right(start, send_data_size + address_size);
+        let bytes = read_right_pad(start, send_data_size + address_size);
 
         let input_data = &bytes[..send_data_size];
         let address = &bytes[send_data_size..send_data_size + address_size];
