@@ -148,7 +148,7 @@ pub(super) fn resolve_address<RT: Runtime>(
         Ok(o) => o,
         Err(e) => {
             log::debug!(target: "evm", "Address parsing failed: {e}");
-            return Err(PrecompileError::InvalidInput);
+            return Err(PrecompileError::InvalidInput)
         }
     };
     Ok(system
