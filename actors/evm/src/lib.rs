@@ -50,13 +50,12 @@ fn test_method_selector() {
 #[repr(u64)]
 pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
-    // TODO: Do we want to use ExportedNums for all of these, per FRC-42?
-    InvokeContract = 2,
+    Resurrect = 2,
     GetBytecode = 3,
-    GetStorageAt = 4,
-    InvokeContractDelegate = 5,
-    GetBytecodeHash = 6,
-    Resurrect = 7,
+    GetBytecodeHash = 4,
+    GetStorageAt = 5,
+    InvokeContractDelegate = 6,
+    InvokeContract = frc42_dispatch::method_hash!("InvokeEVM"),
 }
 
 pub struct EvmContractActor;
@@ -297,19 +296,6 @@ impl ActorCode for EvmContractActor {
         RT: Runtime,
         RT::Blockstore: Clone,
     {
-        // We reserve all methods below EVM_MAX_RESERVED (<= 1023) method. This is a _subset_ of
-        // those reserved by FRC0042.
-        if method > EVM_MAX_RESERVED_METHOD {
-            return Self::handle_filecoin_method(rt, method, args).map(|d| {
-                if d.is_empty() {
-                    None
-                } else {
-                    // TODO: Pass the codec through to here? https://github.com/filecoin-project/ref-fvm/issues/1422
-                    Some(IpldBlock { codec: DAG_CBOR, data: d })
-                }
-            });
-        }
-
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
                 Self::constructor(
@@ -373,6 +359,19 @@ impl ActorCode for EvmContractActor {
                     .deserialize()?,
                 )?;
                 Ok(None)
+            }
+            None if method > EVM_MAX_RESERVED_METHOD => {
+                // We reserve all methods below EVM_MAX_RESERVED (<= 1023) method. This is a
+                // _subset_ of those reserved by FRC0042.
+                Self::handle_filecoin_method(rt, method, args).map(|d| {
+                    if d.is_empty() {
+                        None
+                    } else {
+                        // TODO: Pass the codec through to here?
+                        // https://github.com/filecoin-project/ref-fvm/issues/1422
+                        Some(IpldBlock { codec: DAG_CBOR, data: d })
+                    }
+                })
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }
