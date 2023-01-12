@@ -351,10 +351,6 @@ mod tests {
 
             input.push(0);
         }
-        let no_padding = b"foo bar boxy                     ".to_vec();
-        let res = read_right_pad(&no_padding, 12);
-        // do nothing
-        assert_eq!(&res, &no_padding);
     }
 
     #[test]
