@@ -495,20 +495,14 @@ fn test_evm_init_revert_data() {
             // PUSH1 0x20; PUSH1 0x0; REVERT
             Some(fil_actor_eam::Create2Params {
                 initcode: vec![0x60, 0x42, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xfd],
-                salt: [0u8; 32]
+                salt: [0u8; 32],
             }),
         )
         .unwrap();
 
-    assert!(
-        !create_result.code.is_success(),
-        "new actor was successfully created!"
-    );
+    assert!(!create_result.code.is_success(), "new actor was successfully created!");
 
-    assert!(
-        create_result.ret.is_some(),
-        "missing return data!"
-    );
+    assert!(create_result.ret.is_some(), "missing return data!");
 
     let BytesDe(revert_data) =
         create_result.ret.unwrap().deserialize().expect("failed to deserialize revert data");
