@@ -696,8 +696,8 @@ impl Actor {
 
         // Save new allocations and updated claims.
         let ids = rt.transaction(|st: &mut State, rt| {
-            let ids = st.insert_allocations(rt.store(), client, new_allocs.into_iter())?;
-            st.put_claims(rt.store(), updated_claims.into_iter())?;
+            let ids = st.insert_allocations(rt.store(), client, new_allocs)?;
+            st.put_claims(rt.store(), updated_claims)?;
             Ok(ids)
         })?;
 

@@ -144,15 +144,15 @@ impl State {
 
     /// Inserts a batch of allocations under a single client address.
     /// The allocations are assigned sequential IDs starting from the next available.
-    pub fn insert_allocations<BS: Blockstore, I>(
+    pub fn insert_allocations<BS: Blockstore>(
         &mut self,
         store: &BS,
         client: ActorID,
-        new_allocs: I,
-    ) -> Result<Vec<AllocationID>, ActorError>
-    where
-        I: Iterator<Item = Allocation>,
-    {
+        new_allocs: Vec<Allocation>,
+    ) -> Result<Vec<AllocationID>, ActorError> {
+        if new_allocs.is_empty() {
+            return Ok(vec![]);
+        }
         let mut allocs = self.load_allocs(store)?;
         // These local variables allow the id-associating map closure to move the allocations
         // from the iterator rather than clone, without moving self.
@@ -162,7 +162,7 @@ impl State {
         allocs
             .put_many(
                 client,
-                new_allocs.map(move |a| {
+                new_allocs.into_iter().map(move |a| {
                     let id = first_id + *count_ref;
                     *count_ref += 1;
                     (id, a)
@@ -198,12 +198,16 @@ impl State {
         Ok(())
     }
 
-    pub fn put_claims<BS: Blockstore, I>(&mut self, store: &BS, claims: I) -> Result<(), ActorError>
-    where
-        I: Iterator<Item = (ClaimID, Claim)>,
-    {
+    pub fn put_claims<BS: Blockstore>(
+        &mut self,
+        store: &BS,
+        claims: Vec<(ClaimID, Claim)>,
+    ) -> Result<(), ActorError> {
+        if claims.is_empty() {
+            return Ok(());
+        }
         let mut st_claims = self.load_claims(store)?;
-        for (id, claim) in claims {
+        for (id, claim) in claims.into_iter() {
             st_claims
                 .put(claim.provider, id, claim)
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to put claim")?;
