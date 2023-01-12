@@ -2,11 +2,8 @@ use fil_actors_runtime::{actor_error, AsActorError, EAM_ACTOR_ADDR, INIT_ACTOR_A
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{strict_bytes, BytesDe, BytesSer, DAG_CBOR};
 use fvm_shared::address::Address;
-use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::error::ExitCode;
-use interpreter::instructions::ext::EMPTY_EVM_HASH;
 use interpreter::{address::EthAddress, system::load_bytecode};
-use multihash::Multihash;
 
 use crate::interpreter::output::Outcome;
 
@@ -240,14 +237,14 @@ impl EvmContractActor {
         }
     }
 
-    pub fn bytecode_hash(rt: &mut impl Runtime) -> Result<multihash::Multihash, ActorError> {
+    pub fn bytecode_hash(rt: &mut impl Runtime) -> Result<BytecodeHash, ActorError> {
         // Any caller can fetch the bytecode hash of a contract; this is where EXTCODEHASH gets it's value for EVM contracts.
         rt.validate_immediate_caller_accept_any()?;
 
         // return value must be either keccak("") or keccak(bytecode)
         let state: State = rt.state()?;
         if is_dead(rt, &state) {
-            Ok(Multihash::wrap(SupportedHashes::Keccak256 as u64, &EMPTY_EVM_HASH).unwrap())
+            Ok(BytecodeHash::EMPTY)
         } else {
             Ok(state.bytecode_hash)
         }
@@ -340,8 +337,8 @@ impl ActorCode for EvmContractActor {
                 Ok(IpldBlock::serialize_cbor(&ret)?)
             }
             Some(Method::GetBytecodeHash) => {
-                let multihash = Self::bytecode_hash(rt)?;
-                Ok(IpldBlock::serialize_cbor(&multihash)?)
+                let hash = Self::bytecode_hash(rt)?;
+                Ok(IpldBlock::serialize_cbor(&hash)?)
             }
             Some(Method::GetStorageAt) => {
                 let value = Self::storage_at(

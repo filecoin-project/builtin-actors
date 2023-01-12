@@ -1,28 +1,18 @@
 use crate::interpreter::instructions::memory::copy_to_memory;
 use crate::interpreter::{address::EthAddress, precompiles::Precompiles};
-use crate::U256;
+use crate::{BytecodeHash, U256};
 use cid::Cid;
 use fil_actors_runtime::deserialize_block;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::ActorError;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::sys::SendFlags;
 use fvm_shared::{address::Address, econ::TokenAmount};
-use multihash::Multihash;
 use num_traits::Zero;
 use {
     crate::interpreter::{ExecutionState, StatusCode, System},
     fil_actors_runtime::runtime::Runtime,
 };
-
-/// Keccak256 hash of `[0xfe]`, "native bytecode"
-pub const NATIVE_BYTECODE_HASH: [u8; 32] =
-    hex_literal::hex!("bcc90f2d6dada5b18e155c17a1c0a55920aae94f39857d39d0d8ed07ae8f228b");
-
-/// Keccak256 hash of `[]`, empty bytecode
-pub const EMPTY_EVM_HASH: [u8; 32] =
-    hex_literal::hex!("c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470");
 
 pub fn extcodesize(
     _state: &mut ExecutionState,
@@ -52,20 +42,20 @@ pub fn extcodehash(
     let addr = match get_contract_type(system.rt, addr) {
         ContractType::EVM(a) => a,
         // _Technically_ since we have native "bytecode" set as 0xfe this is valid, though we cant differentiate between different native actors.
-        ContractType::Native(_) => return Ok(NATIVE_BYTECODE_HASH.into()),
+        ContractType::Native(_) => return Ok(BytecodeHash::NATIVE_ACTOR.into()),
         // Precompiles "exist" and therefore aren't empty (although spec-wise they can be either 0 or keccak("") ).
-        ContractType::Precompile => return Ok(EMPTY_EVM_HASH.into()),
+        ContractType::Precompile => return Ok(BytecodeHash::EMPTY.into()),
         // NOTE: There may be accounts that in EVM would be considered "empty" (as defined in EIP-161) and give 0, but we will instead return keccak("").
         //      The FVM does not have chain state cleanup so contracts will never end up "empty" and be removed, they will either exist (in any state in the contract lifecycle)
         //      and return keccak(""), or not exist (where nothing has ever been deployed at that address) and return 0.
         // TODO: With account abstraction, this may be something other than an empty hash!
-        ContractType::Account => return Ok(EMPTY_EVM_HASH.into()),
+        ContractType::Account => return Ok(BytecodeHash::EMPTY.into()),
         // Not found
         ContractType::NotFound => return Ok(U256::zero()),
     };
 
     // multihash { keccak256(bytecode) }
-    let bytecode_hash: Multihash = deserialize_block(system.send(
+    let bytecode_hash: BytecodeHash = deserialize_block(system.send(
         &addr,
         crate::Method::GetBytecodeHash as u64,
         Default::default(),
@@ -73,13 +63,7 @@ pub fn extcodehash(
         None,
         SendFlags::READ_ONLY,
     )?)?;
-
-    let digest = bytecode_hash.digest();
-    debug_assert_eq!(SupportedHashes::Keccak256 as u64, bytecode_hash.code());
-
-    // Take the first 32 bytes of the Multihash
-    let digest_len = digest.len().min(32);
-    Ok(digest[..digest_len].into())
+    Ok(bytecode_hash.into())
 }
 
 pub fn extcodecopy(

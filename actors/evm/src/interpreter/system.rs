@@ -15,10 +15,11 @@ use fvm_shared::{
     sys::SendFlags,
     MethodNum, IPLD_RAW,
 };
-use multihash::{Code, Multihash};
+use multihash::Code;
 use once_cell::unsync::OnceCell;
 
 use crate::state::{State, Tombstone};
+use crate::BytecodeHash;
 
 use super::{address::EthAddress, Bytecode};
 
@@ -84,11 +85,11 @@ pub struct EvmBytecode {
     /// CID of the contract
     pub cid: Cid,
     /// Keccak256 hash of the contract
-    pub evm_hash: Multihash,
+    pub evm_hash: BytecodeHash,
 }
 
 impl EvmBytecode {
-    fn new(cid: Cid, evm_hash: Multihash) -> Self {
+    fn new(cid: Cid, evm_hash: BytecodeHash) -> Self {
         Self { cid, evm_hash }
     }
 }
@@ -318,11 +319,9 @@ impl<'r, RT: Runtime> System<'r, RT> {
             ));
         }
 
-        let code_hash = multihash::Multihash::wrap(
-            SupportedHashes::Keccak256 as u64,
-            &self.rt.hash(SupportedHashes::Keccak256, bytecode),
-        )
-        .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to hash bytecode with keccak")?;
+        let code_hash = self.rt.hash(SupportedHashes::Keccak256, bytecode)[..]
+            .try_into()
+            .context_code(ExitCode::USR_ASSERTION_FAILED, "expected a 32byte digest")?;
 
         let cid = self
             .rt

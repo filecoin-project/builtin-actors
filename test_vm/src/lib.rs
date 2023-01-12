@@ -1225,7 +1225,7 @@ impl Primitives for VM<'_> {
 
     fn hash(&self, hasher: SupportedHashes, data: &[u8]) -> Vec<u8> {
         let hasher = Code::try_from(hasher as u64).unwrap(); // supported hashes are all implemented in multihash
-        hasher.digest(data).to_bytes()
+        hasher.digest(data).digest().to_owned()
     }
 
     fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {

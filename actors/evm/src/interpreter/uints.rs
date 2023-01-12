@@ -6,6 +6,8 @@
 use serde::{Deserialize, Serialize};
 use substrate_bn::arith;
 
+use crate::BytecodeHash;
+
 use {
     fvm_shared::bigint::BigInt, fvm_shared::econ::TokenAmount, std::cmp::Ordering, std::fmt,
     uint::construct_uint,
@@ -106,6 +108,13 @@ impl From<&U256> for TokenAmount {
         let mut bits = [0u8; 32];
         ui.to_big_endian(&mut bits);
         TokenAmount::from_atto(BigInt::from_bytes_be(fvm_shared::bigint::Sign::Plus, &bits))
+    }
+}
+
+impl From<BytecodeHash> for U256 {
+    fn from(bytecode: BytecodeHash) -> Self {
+        let bytes: [u8; 32] = bytecode.into();
+        Self::from(bytes)
     }
 }
 
