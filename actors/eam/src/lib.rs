@@ -8,7 +8,7 @@ use ext::{
 };
 use fil_actors_runtime::{actor_dispatch_unrestricted, deserialize_block, AsActorError};
 
-use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::{ipld_block::IpldBlock, BytesDe};
 use fvm_shared::error::ExitCode;
 
 pub mod ext;
@@ -112,11 +112,7 @@ pub struct Create2Params {
     pub salt: [u8; 32],
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct Create3Params {
-    #[serde(with = "strict_bytes")]
-    pub initcode: Vec<u8>,
-}
+pub type CreateExternalParams = BytesDe;
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, PartialEq, Eq)]
 pub struct Return {
@@ -127,7 +123,7 @@ pub struct Return {
 
 pub type CreateReturn = Return;
 pub type Create2Return = Return;
-pub type Create3Return = Return;
+pub type CreateExternalReturn = Return;
 
 impl Return {
     fn from_exec4(exec4: Exec4Return, eth_address: EthAddress) -> Self {
@@ -304,14 +300,14 @@ impl EamActor {
 
     pub fn create_external(
         rt: &mut impl Runtime,
-        params: Create3Params,
-    ) -> Result<Create3Return, ActorError> {
+        params: CreateExternalParams,
+    ) -> Result<CreateExternalReturn, ActorError> {
         // we only allow accounts to call this
         rt.validate_immediate_caller_type(&[Type::Account, Type::EthAccount])?;
 
         let (owner_addr, stable_addr) = resolve_caller_external(rt)?;
         let eth_addr = compute_address_create_external(rt, &stable_addr);
-        create_actor(rt, owner_addr, eth_addr, params.initcode)
+        create_actor(rt, owner_addr, eth_addr, params.into_vec())
     }
 }
 
