@@ -246,7 +246,7 @@ impl EamActor {
 
     /// Create a new contract per the EVM's CREATE rules.
     ///
-    /// Permissions: May be called by any actor.
+    /// Permissions: May be called by the EVM.
     pub fn create(rt: &mut impl Runtime, params: CreateParams) -> Result<CreateReturn, ActorError> {
         // We only allow EVM actors to call this.
         rt.validate_immediate_caller_type(&[Type::EVM])?;
@@ -261,7 +261,7 @@ impl EamActor {
 
     /// Create a new contract per the EVM's CREATE2 rules.
     ///
-    /// Permissions: May be called by any actor.
+    /// Permissions: May be called by the EVM.
     pub fn create2(
         rt: &mut impl Runtime,
         params: Create2Params,
@@ -277,6 +277,13 @@ impl EamActor {
         create_actor(rt, caller_addr, eth_addr, params.initcode)
     }
 
+    /// Create a new contract from off-chain.
+    ///
+    /// When called by an EthAccount, this method will compute the new actor's address according to
+    /// the `CREATE` rules. When called by a "native" Account, this method will derive the address
+    /// from the _hash_ of the caller's key address.
+    ///
+    /// Permissions: May be called by builtin or eth accounts.
     pub fn create_external(
         rt: &mut impl Runtime,
         params: CreateExternalParams,
