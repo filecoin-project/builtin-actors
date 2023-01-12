@@ -109,6 +109,11 @@ impl Actor {
 
 impl ActorCode for Actor {
     type Methods = Method;
+
+    fn name() -> &'static str {
+        "Account"
+    }
+
     actor_dispatch! {
         Constructor => constructor,
         PubkeyAddress => pubkey_address,

@@ -217,6 +217,11 @@ impl Actor {
 
 impl ActorCode for Actor {
     type Methods = Method;
+
+    fn name() -> &'static str {
+        "Reward"
+    }
+
     actor_dispatch! {
         Constructor => constructor,
         AwardBlockReward => award_block_reward,

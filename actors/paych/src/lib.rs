@@ -319,6 +319,11 @@ where
 
 impl ActorCode for Actor {
     type Methods = Method;
+
+    fn name() -> &'static str {
+        "PaymentChannel"
+    }
+
     actor_dispatch! {
         Constructor => constructor,
         UpdateChannelState => update_channel_state,

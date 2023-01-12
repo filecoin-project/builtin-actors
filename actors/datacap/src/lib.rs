@@ -499,6 +499,11 @@ impl<T> AsActorResult<T> for Result<T, ReceiverHookError> {
 
 impl ActorCode for Actor {
     type Methods = Method;
+
+    fn name() -> &'static str {
+        "DataCap"
+    }
+
     actor_dispatch! {
         Constructor => constructor,
         MintExported => mint,

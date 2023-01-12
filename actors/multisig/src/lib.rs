@@ -546,6 +546,11 @@ pub fn compute_proposal_hash(txn: &Transaction, sys: &dyn Primitives) -> anyhow:
 
 impl ActorCode for Actor {
     type Methods = Method;
+
+    fn name() -> &'static str {
+        "Multisig"
+    }
+
     actor_dispatch! {
       Constructor => constructor,
       Propose => propose,

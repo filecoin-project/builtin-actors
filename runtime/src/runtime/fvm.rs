@@ -564,7 +564,7 @@ where
 /// 5a. In case of error, aborts the execution with the emitted exit code, or
 /// 5b. In case of success, stores the return data as a block and returns the latter.
 pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
-    init_logging();
+    init_logging(C::name());
 
     std::panic::set_hook(Box::new(|info| {
         fvm::vm::abort(ExitCode::USR_ASSERTION_FAILED.value(), Some(&format!("{}", info)))
@@ -604,8 +604,11 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
 ///
 /// Note: this is similar to fvm::debug::init_logging() from the FVM SDK, but
 /// that doesn't work (at FVM SDK v2.2).
-fn init_logging() {
-    struct Logger;
+fn init_logging(actor_name: &'static str) {
+    struct Logger {
+        actor_name: &'static str,
+        actor_id: ActorID,
+    }
 
     impl log::Log for Logger {
         fn enabled(&self, _: &log::Metadata) -> bool {
@@ -618,7 +621,13 @@ fn init_logging() {
             // But logging must have been enabled at initialisation time in order for
             // the logger to be installed.
             // There's currently no use for dynamically disabling logging, so just skip checking.
-            let msg = format!("[{}] {}", record.level(), record.args());
+            let msg = format!(
+                "[{}]<{}::{}> {}",
+                record.level(),
+                self.actor_name,
+                self.actor_id,
+                record.args()
+            );
             fvm::debug::log(msg);
         }
 
@@ -626,7 +635,8 @@ fn init_logging() {
     }
 
     if fvm::debug::enabled() {
-        log::set_logger(&Logger).expect("failed to enable logging");
+        let logger = Box::new(Logger { actor_name, actor_id: fvm::message::receiver() });
+        log::set_boxed_logger(logger).expect("failed to enable logging");
         log::set_max_level(log::LevelFilter::Trace);
     }
 }
