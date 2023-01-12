@@ -302,8 +302,9 @@ impl EamActor {
         rt: &mut impl Runtime,
         params: CreateExternalParams,
     ) -> Result<CreateExternalReturn, ActorError> {
-        // we only allow accounts to call this
-        rt.validate_immediate_caller_type(&[Type::Account, Type::EthAccount])?;
+        // We accept _any_ caller here, but explicitly check the caller type inside
+        // `resolve_caller_external`.
+        rt.validate_immediate_caller_accept_any();
 
         let (owner_addr, stable_addr) = resolve_caller_external(rt)?;
         let eth_addr = compute_address_create_external(rt, &stable_addr);
