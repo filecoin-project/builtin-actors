@@ -18,8 +18,8 @@ impl From<GroupError> for PrecompileError {
     }
 }
 
-// It is uncomfortable how much Eth pads everything...
-pub(super) fn read_right_pad<'a>(input: impl Into<Cow<'a, [u8]>>, len: usize) -> Cow<'a, [u8]> {
+/// Pad out to len as needed, but does not slice output to len
+pub(super) fn right_pad<'a>(input: impl Into<Cow<'a, [u8]>>, len: usize) -> Cow<'a, [u8]> {
     let mut input: Cow<[u8]> = input.into();
     let input_len = input.len();
     if len > input_len {

@@ -11,7 +11,7 @@ use substrate_bn::{pairing_batch, AffineG1, AffineG2, Fq, Fq2, Fr, Group, Gt, G1
 use uint::byteorder::{ByteOrder, LE};
 
 use crate::interpreter::{
-    precompiles::{parameter::read_right_pad, PrecompileError},
+    precompiles::{parameter::right_pad, PrecompileError},
     System, U256,
 };
 
@@ -112,7 +112,7 @@ pub(super) fn modexp<RT: Runtime>(
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    let input = read_right_pad(input, 96);
+    let input = right_pad(input, 96);
 
     // Follows go-ethereum by truncating bits to u64, ignoring other all other values in the first 24 bytes.
     // Since we don't have any complexity functions or specific gas measurements of modexp in FEVM,
@@ -140,7 +140,7 @@ pub(super) fn modexp<RT: Runtime>(
         return Ok(Vec::new());
     }
     let input = if input.len() > 96 { &input[96..] } else { &[] };
-    let input = read_right_pad(input, base_len + exponent_len + mod_len);
+    let input = right_pad(input, base_len + exponent_len + mod_len);
 
     let base = BigUint::from_bytes_be(&input[0..base_len]);
     let exponent = BigUint::from_bytes_be(&input[base_len..exponent_len + base_len]);
@@ -194,7 +194,7 @@ pub(super) fn ec_mul<RT: Runtime>(
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    let input = read_right_pad(input, 96);
+    let input = right_pad(input, 96);
     let mut input_params: PaddedChunks<u8, 64> = PaddedChunks::new(&input);
     let point = input_params.next_param_padded()?;
 
@@ -346,9 +346,13 @@ mod tests {
             let mut expected = input.clone();
             expected.resize(i, 0);
 
-            let res = read_right_pad(&input, i);
+            let res = right_pad(&input, i);
             assert_eq!(&*res, &expected);
 
+            let no_padding = b"foo bar boxy                     ".to_vec();
+            let res = right_pad(&no_padding, 12);
+            // do nothing
+            assert_eq!(&res, &no_padding);
             input.push(0);
         }
     }
