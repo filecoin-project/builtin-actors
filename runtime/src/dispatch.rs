@@ -34,6 +34,7 @@ macro_rules! actor_dispatch {
             RT: Runtime,
             RT::Blockstore: Clone,
         {
+            restrict_internal_api(rt, method)?;
             match FromPrimitive::from_u64(method) {
                 $(Some(Self::Methods::$method) => $crate::dispatch(rt, Self::$func, &args),)*
                 None => Err(actor_error!(unhandled_message; "invalid method: {}", method)),

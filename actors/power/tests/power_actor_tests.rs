@@ -2,10 +2,10 @@ use fil_actor_power::ext::init::{ExecParams, EXEC_METHOD};
 use fil_actor_power::ext::miner::MinerConstructorParams;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::test_utils::{
-    expect_abort, expect_abort_contains_message, ACCOUNT_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID,
-    SYSTEM_ACTOR_CODE_ID,
+    expect_abort, expect_abort_contains_message, make_identity_cid, ACCOUNT_ACTOR_CODE_ID,
+    MINER_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID,
 };
-use fil_actors_runtime::{runtime::Policy, CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR};
+use fil_actors_runtime::{runtime::Policy, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
@@ -13,13 +13,16 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredPoStProof, StoragePower};
+use fvm_shared::MethodNum;
 use num_traits::Zero;
 use std::ops::Neg;
 
 use fil_actor_power::{
-    consensus_miner_min_power, Actor as PowerActor, CreateMinerParams, EnrollCronEventParams,
-    Method, State, UpdateClaimedPowerParams, CONSENSUS_MINER_MIN_MINERS,
+    consensus_miner_min_power, Actor as PowerActor, Actor, CreateMinerParams, CreateMinerReturn,
+    EnrollCronEventParams, Method, MinerRawPowerParams, MinerRawPowerReturn, NetworkRawPowerReturn,
+    State, UpdateClaimedPowerParams, CONSENSUS_MINER_MIN_MINERS,
 };
+
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 
 use crate::harness::*;
@@ -77,34 +80,6 @@ fn create_miner() {
 }
 
 #[test]
-fn create_miner_given_caller_is_not_of_signable_type_should_fail() {
-    let (h, mut rt) = setup();
-
-    let peer = "miner".as_bytes().to_vec();
-    let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
-
-    let create_miner_params = CreateMinerParams {
-        owner: *OWNER,
-        worker: *OWNER,
-        window_post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1,
-        peer,
-        multiaddrs,
-    };
-
-    rt.set_caller(*MINER_ACTOR_CODE_ID, *OWNER);
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
-    expect_abort(
-        ExitCode::USR_FORBIDDEN,
-        rt.call::<PowerActor>(
-            Method::CreateMiner as u64,
-            IpldBlock::serialize_cbor(&&create_miner_params).unwrap(),
-        ),
-    );
-    rt.verify();
-    h.check_state(&rt);
-}
-
-#[test]
 fn create_miner_given_send_to_init_actor_fails_should_fail() {
     let (h, mut rt) = setup();
 
@@ -123,7 +98,7 @@ fn create_miner_given_send_to_init_actor_fails_should_fail() {
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *OWNER);
     rt.value_received = TokenAmount::from_atto(10);
     rt.set_balance(TokenAmount::from_atto(10));
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+    rt.expect_validate_caller_any();
 
     let message_params = ExecParams {
         code_cid: *MINER_ACTOR_CODE_ID,
@@ -353,8 +328,7 @@ fn new_miner_updates_miner_above_min_power_count() {
         h.window_post_proof = test.proof;
         h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER1).unwrap();
 
-        let st: State = rt.get_state();
-        assert_eq!(test.expected_miners, st.miner_above_min_power_count);
+        h.expect_miners_above_min_power(&mut rt, test.expected_miners);
         h.check_state(&rt);
     }
 }
@@ -399,8 +373,7 @@ fn power_accounting_crossing_threshold() {
     let expected_total_above = &(power_unit * 4);
     h.expect_total_power_eager(&mut rt, expected_total_above, &(expected_total_above * 10));
 
-    let st: State = rt.get_state();
-    assert_eq!(4, st.miner_above_min_power_count);
+    h.expect_miners_above_min_power(&mut rt, 4);
 
     // Less than 4 miners above threshold again small miner power is counted again
     h.update_claimed_power(&mut rt, MINER4, &delta.neg(), &(delta.neg() * 10));
@@ -587,6 +560,54 @@ fn claimed_power_is_externally_available() {
 
     assert_eq!(power_unit, &claim.raw_byte_power);
     assert_eq!(power_unit, &claim.quality_adj_power);
+    h.check_state(&rt);
+}
+
+#[test]
+fn get_network_and_miner_power() {
+    let power_unit = &consensus_miner_min_power(
+        &Policy::default(),
+        RegisteredPoStProof::StackedDRGWindow32GiBV1,
+    )
+    .unwrap();
+
+    let (mut h, mut rt) = setup();
+
+    h.create_miner_basic(&mut rt, *OWNER, *OWNER, MINER1).unwrap();
+    h.update_claimed_power(&mut rt, MINER1, power_unit, power_unit);
+
+    // manually update state in lieu of cron running
+    let mut state: State = rt.get_state();
+    state.this_epoch_raw_byte_power = power_unit.clone();
+    rt.replace_state(&state);
+
+    // set caller to not-builtin
+    rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1234));
+
+    rt.expect_validate_caller_any();
+    let network_power: NetworkRawPowerReturn = rt
+        .call::<Actor>(Method::NetworkRawPowerExported as u64, None)
+        .unwrap()
+        .unwrap()
+        .deserialize()
+        .unwrap();
+
+    assert_eq!(power_unit, &network_power.raw_byte_power);
+
+    rt.expect_validate_caller_any();
+    let miner_power: MinerRawPowerReturn = rt
+        .call::<Actor>(
+            Method::MinerRawPowerExported as u64,
+            IpldBlock::serialize_cbor(&MinerRawPowerParams { miner: MINER1.id().unwrap() })
+                .unwrap(),
+        )
+        .unwrap()
+        .unwrap()
+        .deserialize()
+        .unwrap();
+
+    assert_eq!(power_unit, &miner_power.raw_byte_power);
+
     h.check_state(&rt);
 }
 
@@ -989,7 +1010,7 @@ mod cron_tests {
         assert!(h.get_claim(&rt, &miner1).is_none());
 
         // miner count has been reduced to 1
-        assert_eq!(h.miner_count(&rt), 1);
+        assert_eq!(h.miner_count(&mut rt), 1);
 
         // next epoch, only the reward actor is invoked
         rt.set_epoch(3);
@@ -1418,4 +1439,68 @@ mod submit_porep_for_bulk_verify_tests {
         );
         h.check_state(&rt);
     }
+}
+
+#[test]
+fn create_miner_restricted_correctly() {
+    let (h, mut rt) = setup();
+
+    let peer = "miner".as_bytes().to_vec();
+    let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
+
+    let params = IpldBlock::serialize_cbor(&CreateMinerParams {
+        owner: *OWNER,
+        worker: *OWNER,
+        window_post_proof_type: RegisteredPoStProof::StackedDRGWinning2KiBV1,
+        peer: peer.clone(),
+        multiaddrs: multiaddrs.clone(),
+    })
+    .unwrap();
+
+    rt.set_caller(make_identity_cid(b"1234"), *OWNER);
+
+    // cannot call the unexported method
+    expect_abort_contains_message(
+        ExitCode::USR_FORBIDDEN,
+        "must be built-in",
+        rt.call::<PowerActor>(Method::CreateMiner as MethodNum, params.clone()),
+    );
+
+    // can call the exported method
+
+    rt.expect_validate_caller_any();
+    let expected_init_params = ExecParams {
+        code_cid: *MINER_ACTOR_CODE_ID,
+        constructor_params: RawBytes::serialize(MinerConstructorParams {
+            owner: *OWNER,
+            worker: *OWNER,
+            control_addresses: vec![],
+            window_post_proof_type: RegisteredPoStProof::StackedDRGWinning2KiBV1,
+            peer_id: peer,
+            multi_addresses: multiaddrs,
+        })
+        .unwrap(),
+    };
+    let create_miner_ret = CreateMinerReturn { id_address: *MINER, robust_address: *ACTOR };
+    rt.expect_send(
+        INIT_ACTOR_ADDR,
+        EXEC_METHOD,
+        IpldBlock::serialize_cbor(&expected_init_params).unwrap(),
+        TokenAmount::zero(),
+        IpldBlock::serialize_cbor(&create_miner_ret).unwrap(),
+        ExitCode::OK,
+    );
+
+    let ret: CreateMinerReturn = rt
+        .call::<PowerActor>(Method::CreateMinerExported as MethodNum, params)
+        .unwrap()
+        .unwrap()
+        .deserialize()
+        .unwrap();
+    rt.verify();
+
+    assert_eq!(ret.id_address, *MINER);
+    assert_eq!(ret.robust_address, *ACTOR);
+
+    h.check_state(&rt);
 }

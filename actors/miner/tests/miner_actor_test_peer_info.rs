@@ -1,6 +1,9 @@
 use fil_actors_runtime::test_utils::*;
 
+use fil_actor_miner::{Actor, ChangeMultiaddrsParams, GetMultiaddrsReturn, Method};
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::BytesDe;
+use fvm_shared::error::ExitCode;
 
 mod util;
 
@@ -106,6 +109,53 @@ fn cant_set_large_multiaddrs() {
 
     h.construct_and_verify(&mut rt);
     h.set_multiaddr_fail(&mut rt, maddrs);
+
+    h.check_state(&rt);
+}
+
+#[test]
+fn get_and_change_multiaddrs_restricted_correctly() {
+    let mut rt = MockRuntime::default();
+    let h = util::ActorHarness::new(0);
+
+    h.construct_and_verify(&mut rt);
+
+    let new_multiaddrs = vec![BytesDe(vec![1, 3, 3, 7])];
+
+    let params = IpldBlock::serialize_cbor(&ChangeMultiaddrsParams {
+        new_multi_addrs: new_multiaddrs.clone(),
+    })
+    .unwrap();
+
+    rt.set_caller(make_identity_cid(b"1234"), h.worker);
+
+    // fail to call the unexported setter
+
+    expect_abort_contains_message(
+        ExitCode::USR_FORBIDDEN,
+        "must be built-in",
+        rt.call::<Actor>(Method::ChangeMultiaddrs as u64, params.clone()),
+    );
+
+    // call the exported setter
+
+    rt.expect_validate_caller_addr(h.caller_addrs());
+
+    rt.call::<Actor>(Method::ChangeMultiaddrsExported as u64, params).unwrap();
+    rt.verify();
+
+    // call the exported getter
+
+    rt.expect_validate_caller_any();
+    let ret: GetMultiaddrsReturn = rt
+        .call::<Actor>(Method::GetMultiaddrsExported as u64, None)
+        .unwrap()
+        .unwrap()
+        .deserialize()
+        .unwrap();
+    rt.verify();
+
+    assert_eq!(new_multiaddrs, ret.multi_addrs);
 
     h.check_state(&rt);
 }

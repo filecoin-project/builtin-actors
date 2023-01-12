@@ -11,7 +11,9 @@ use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode};
 
 mod util;
 
+use fil_actors_runtime::test_utils::make_identity_cid;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+
 use itertools::Itertools;
 use num_traits::Zero;
 use util::*;
@@ -51,7 +53,7 @@ fn successfully_change_only_the_worker_address() {
     rt.set_epoch(deadline.period_end());
     assert!(deadline.period_end() < effective_epoch);
 
-    h.confirm_update_worker_key(&mut rt).unwrap();
+    h.confirm_change_worker_address(&mut rt).unwrap();
 
     let info = h.get_info(&rt);
     assert_eq!(info.pending_worker_key.unwrap().new_worker, new_worker);
@@ -61,7 +63,7 @@ fn successfully_change_only_the_worker_address() {
     rt.set_epoch(effective_epoch);
 
     // enact worker change
-    h.confirm_update_worker_key(&mut rt).unwrap();
+    h.confirm_change_worker_address(&mut rt).unwrap();
 
     // assert address has changed
     let info = h.get_info(&rt);
@@ -70,6 +72,77 @@ fn successfully_change_only_the_worker_address() {
     // assert control addresses are unchanged
     assert!(!info.control_addresses.is_empty());
     assert_eq!(original_control_addresses, info.control_addresses);
+
+    h.check_state(&rt);
+}
+
+#[test]
+fn change_and_confirm_worker_address_restricted_correctly() {
+    let (h, mut rt) = setup();
+
+    let original_control_addresses = h.control_addrs.clone();
+    let new_worker = Address::new_id(999);
+
+    rt.set_address_actor_type(new_worker, *ACCOUNT_ACTOR_CODE_ID);
+
+    let params = IpldBlock::serialize_cbor(&ChangeWorkerAddressParams {
+        new_worker,
+        new_control_addresses: original_control_addresses,
+    })
+    .unwrap();
+
+    rt.set_caller(make_identity_cid(b"1234"), h.owner);
+
+    // fail to call the unexported method
+
+    expect_abort_contains_message(
+        ExitCode::USR_FORBIDDEN,
+        "must be built-in",
+        rt.call::<Actor>(Method::ChangeWorkerAddress as u64, params.clone()),
+    );
+
+    // call the exported method
+    rt.expect_send(
+        new_worker,
+        AccountMethod::PubkeyAddress as u64,
+        None,
+        TokenAmount::zero(),
+        IpldBlock::serialize_cbor(&h.worker_key).unwrap(),
+        // RawBytes::serialize(h.worker_key).unwrap(),
+        ExitCode::OK,
+    );
+
+    rt.expect_validate_caller_addr(vec![h.owner]);
+
+    rt.call::<Actor>(Method::ChangeWorkerAddressExported as u64, params).unwrap();
+
+    rt.verify();
+
+    // assert change has been made in state
+    let pending_worker_key = h.get_info(&rt).pending_worker_key.unwrap();
+    assert_eq!(pending_worker_key.new_worker, new_worker);
+
+    // confirmation time
+
+    // move to deadline containing effective epoch
+    rt.set_epoch(rt.epoch + rt.policy.worker_key_change_delay);
+
+    // fail to call the unexported method
+
+    expect_abort_contains_message(
+        ExitCode::USR_FORBIDDEN,
+        "must be built-in",
+        rt.call::<Actor>(Method::ConfirmChangeWorkerAddress as u64, None),
+    );
+
+    // call the exported method
+    rt.expect_validate_caller_addr(vec![h.owner]);
+    rt.call::<Actor>(Method::ConfirmChangeWorkerAddressExported as u64, None).unwrap();
+    rt.verify();
+
+    // assert address has changed
+    let info = h.get_info(&rt);
+    assert_eq!(new_worker, info.worker);
 
     h.check_state(&rt);
 }
@@ -101,7 +174,7 @@ fn change_cannot_be_overridden() {
     assert_eq!(pending_worker_key.effective_at, effective_epoch);
 
     rt.set_epoch(effective_epoch);
-    h.confirm_update_worker_key(&mut rt).unwrap();
+    h.confirm_change_worker_address(&mut rt).unwrap();
 
     // assert original change is effected
     assert_eq!(new_worker_1, h.get_info(&rt).worker);
@@ -147,7 +220,7 @@ fn successfully_change_both_worker_and_control_addresses() {
 
     // set current epoch and update worker key
     rt.set_epoch(effective_epoch);
-    h.confirm_update_worker_key(&mut rt).unwrap();
+    h.confirm_change_worker_address(&mut rt).unwrap();
 
     // assert both worker and control addresses have changed
     let info = h.get_info(&rt);

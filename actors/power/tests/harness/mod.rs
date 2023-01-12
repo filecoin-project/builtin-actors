@@ -1,19 +1,18 @@
 use cid::Cid;
 use fil_actor_power::detail::GAS_ON_SUBMIT_VERIFY_SEAL;
-use fil_actor_power::epoch_key;
 use fil_actor_power::ext::miner::ConfirmSectorProofsParams;
 use fil_actor_power::ext::miner::CONFIRM_SECTOR_PROOFS_VALID_METHOD;
 use fil_actor_power::ext::reward::Method::ThisEpochReward;
 use fil_actor_power::ext::reward::UPDATE_NETWORK_KPI;
 use fil_actor_power::testing::check_state_invariants;
-use fil_actor_power::CronEvent;
 use fil_actor_power::EnrollCronEventParams;
 use fil_actor_power::CRON_QUEUE_AMT_BITWIDTH;
 use fil_actor_power::CRON_QUEUE_HAMT_BITWIDTH;
+use fil_actor_power::{epoch_key, MinerCountReturn};
+use fil_actor_power::{CronEvent, MinerConsensusCountReturn};
 use fil_actors_runtime::runtime::RuntimePolicy;
 use fil_actors_runtime::test_utils::CRON_ACTOR_CODE_ID;
 use fil_actors_runtime::Multimap;
-use fil_actors_runtime::CALLER_TYPES_SIGNABLE;
 use fil_actors_runtime::CRON_ACTOR_ADDR;
 use fil_actors_runtime::REWARD_ACTOR_ADDR;
 use fvm_ipld_blockstore::Blockstore;
@@ -102,6 +101,7 @@ pub struct Harness {
 
 impl Harness {
     pub fn construct(&self, rt: &mut MockRuntime) {
+        rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         rt.call::<PowerActor>(Method::Constructor as MethodNum, None).unwrap();
         rt.verify()
@@ -142,7 +142,7 @@ impl Harness {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *owner);
         rt.set_value(value.clone());
         rt.set_balance(value.clone());
-        rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+        rt.expect_validate_caller_any();
 
         let miner_ctor_params = MinerConstructorParams {
             owner: *owner,
@@ -211,9 +211,16 @@ impl Harness {
         keys.iter().map(|k| Address::from_bytes(k).unwrap()).collect::<Vec<_>>()
     }
 
-    pub fn miner_count(&self, rt: &MockRuntime) -> i64 {
-        let st: State = rt.get_state();
-        st.miner_count
+    pub fn miner_count(&self, rt: &mut MockRuntime) -> i64 {
+        rt.expect_validate_caller_any();
+        let ret: MinerCountReturn = rt
+            .call::<PowerActor>(Method::MinerCountExported as MethodNum, None)
+            .unwrap()
+            .unwrap()
+            .deserialize()
+            .unwrap();
+
+        ret.miner_count
     }
 
     pub fn this_epoch_baseline_power(&self) -> &StoragePower {
@@ -222,9 +229,7 @@ impl Harness {
 
     pub fn get_claim(&self, rt: &MockRuntime, miner: &Address) -> Option<Claim> {
         let st: State = rt.get_state();
-        let claims =
-            make_map_with_root_and_bitwidth(&st.claims, rt.store(), HAMT_BIT_WIDTH).unwrap();
-        claims.get(&miner.to_bytes()).unwrap().cloned()
+        st.get_claim(rt.store(), miner).unwrap()
     }
 
     pub fn delete_claim(&mut self, rt: &mut MockRuntime, miner: &Address) {
@@ -370,8 +375,15 @@ impl Harness {
     }
 
     pub fn expect_miners_above_min_power(&self, rt: &mut MockRuntime, count: i64) {
-        let st: State = rt.get_state();
-        assert_eq!(count, st.miner_above_min_power_count);
+        rt.expect_validate_caller_any();
+        let ret: MinerConsensusCountReturn = rt
+            .call::<PowerActor>(Method::MinerConsensusCountExported as MethodNum, None)
+            .unwrap()
+            .unwrap()
+            .deserialize()
+            .unwrap();
+
+        assert_eq!(count, ret.miner_consensus_count);
     }
 
     pub fn expect_query_network_info(&self, rt: &mut MockRuntime) {

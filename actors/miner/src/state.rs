@@ -24,7 +24,8 @@ use fvm_shared::clock::{ChainEpoch, QuantSpec, EPOCH_UNDEFINED};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, SectorSize, MAX_SECTOR_NUMBER};
-use fvm_shared::HAMT_BIT_WIDTH;
+use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
+use itertools::Itertools;
 use num_traits::Zero;
 
 use super::beneficiary::*;
@@ -981,7 +982,7 @@ impl State {
         &self,
         actor_balance: &TokenAmount,
     ) -> anyhow::Result<TokenAmount> {
-        // (actor_balance - &self.locked_funds) - &self.pre_commit_deposit
+        // (actor_balance - &self.locked_funds) - &self.pre_commit_deposit - &self.initial_pledge
         Ok(self.get_unlocked_balance(actor_balance)? - &self.fee_debt)
     }
 
@@ -1264,9 +1265,9 @@ pub struct MinerInfo {
 
 impl MinerInfo {
     pub fn new(
-        owner: Address,
-        worker: Address,
-        control_addresses: Vec<Address>,
+        owner: ActorID,
+        worker: ActorID,
+        control_addresses: Vec<ActorID>,
         peer_id: Vec<u8>,
         multi_address: Vec<BytesDe>,
         window_post_proof_type: RegisteredPoStProof,
@@ -1280,11 +1281,12 @@ impl MinerInfo {
             .map_err(|e| actor_error!(illegal_argument, "invalid partition sectors: {}", e))?;
 
         Ok(Self {
-            owner,
-            worker,
-            control_addresses,
+            owner: Address::new_id(owner),
+            worker: Address::new_id(worker),
+            control_addresses: control_addresses.into_iter().map(Address::new_id).collect_vec(),
+
             pending_worker_key: None,
-            beneficiary: owner,
+            beneficiary: Address::new_id(owner),
             beneficiary_term: BeneficiaryTerm::default(),
             pending_beneficiary_term: None,
             peer_id,

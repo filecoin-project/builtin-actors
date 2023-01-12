@@ -48,7 +48,7 @@ fn datacap_transfer_scenario() {
         operator,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::Mint as u64,
+        DataCapMethod::MintExported as u64,
         Some(mint_params.clone()),
         ExitCode::USR_FORBIDDEN,
     );
@@ -59,7 +59,7 @@ fn datacap_transfer_scenario() {
         VERIFIED_REGISTRY_ACTOR_ADDR,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::Mint as u64,
+        DataCapMethod::MintExported as u64,
         Some(mint_params),
     );
 
@@ -70,7 +70,7 @@ fn datacap_transfer_scenario() {
         owner,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::Allowance as u64,
+        DataCapMethod::AllowanceExported as u64,
         Some(GetAllowanceParams { owner: client, operator }),
     );
 
@@ -116,7 +116,7 @@ fn datacap_transfer_scenario() {
         operator,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::TransferFrom as u64,
+        DataCapMethod::TransferFromExported as u64,
         Some(params_piece_too_small),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
@@ -130,7 +130,7 @@ fn datacap_transfer_scenario() {
         operator,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::TransferFrom as u64,
+        DataCapMethod::TransferFromExported as u64,
         Some(params_mismatched_datacap),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
@@ -149,7 +149,7 @@ fn datacap_transfer_scenario() {
         operator,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::TransferFrom as u64,
+        DataCapMethod::TransferFromExported as u64,
         Some(params_bad_term),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
@@ -162,7 +162,7 @@ fn datacap_transfer_scenario() {
         owner,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::TransferFrom as u64,
+        DataCapMethod::TransferFromExported as u64,
         Some(clone_params(&params_bad_receiver)),
         ExitCode::USR_FORBIDDEN, // ExitCode(19) because non-operator has insufficient allowance
     );
@@ -173,7 +173,7 @@ fn datacap_transfer_scenario() {
         owner,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::TransferFrom as u64,
+        DataCapMethod::TransferFromExported as u64,
         Some(clone_params(&transfer_from_params)),
         ExitCode::USR_INSUFFICIENT_FUNDS, // ExitCode(19) because non-operator has insufficient allowance
     );
@@ -183,7 +183,7 @@ fn datacap_transfer_scenario() {
         operator,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::TransferFrom as u64,
+        DataCapMethod::TransferFromExported as u64,
         Some(clone_params(&transfer_from_params)),
     );
 
@@ -193,7 +193,7 @@ fn datacap_transfer_scenario() {
         operator,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::TransferFrom as u64,
+        DataCapMethod::TransferFromExported as u64,
         Some(transfer_from_params),
         ExitCode::USR_INSUFFICIENT_FUNDS,
     );
@@ -212,7 +212,7 @@ fn call_name_symbol() {
         sender,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::Name as u64,
+        DataCapMethod::NameExported as u64,
         None::<RawBytes>,
     )
     .deserialize()
@@ -224,7 +224,7 @@ fn call_name_symbol() {
         sender,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::Symbol as u64,
+        DataCapMethod::SymbolExported as u64,
         None::<RawBytes>,
     )
     .deserialize()

@@ -18,12 +18,8 @@ use fil_actors_runtime::test_utils::*;
 #[test]
 fn construction() {
     fn construct(addr: Address, exit_code: ExitCode) {
-        let mut rt = MockRuntime {
-            receiver: Address::new_id(100),
-            caller: SYSTEM_ACTOR_ADDR,
-            caller_type: *SYSTEM_ACTOR_CODE_ID,
-            ..Default::default()
-        };
+        let mut rt = MockRuntime { receiver: Address::new_id(100), ..Default::default() };
+        rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
 
         if exit_code.is_success() {
@@ -65,12 +61,8 @@ fn construction() {
 
 #[test]
 fn token_receiver() {
-    let mut rt = MockRuntime {
-        receiver: Address::new_id(100),
-        caller: SYSTEM_ACTOR_ADDR,
-        caller_type: *SYSTEM_ACTOR_CODE_ID,
-        ..Default::default()
-    };
+    let mut rt = MockRuntime { receiver: Address::new_id(100), ..Default::default() };
+    rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
 
     let param = Address::new_secp256k1(&[2; fvm_shared::address::SECP_PUB_LEN]).unwrap();
@@ -80,6 +72,7 @@ fn token_receiver() {
     )
     .unwrap();
 
+    rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1000));
     rt.expect_validate_caller_any();
     let ret = rt
         .call::<AccountActor>(
@@ -94,25 +87,18 @@ fn token_receiver() {
     assert!(ret.is_none());
 }
 
-fn check_state(rt: &MockRuntime) {
-    let test_address = Address::new_id(1000);
-    let (_, acc) = check_state_invariants(&rt.get_state(), &test_address);
-    acc.assert_empty();
-}
-
 #[test]
 fn authenticate_message() {
-    let mut rt = MockRuntime {
-        receiver: Address::new_id(100),
-        caller: SYSTEM_ACTOR_ADDR,
-        caller_type: *SYSTEM_ACTOR_CODE_ID,
-        ..Default::default()
-    };
+    let mut rt = MockRuntime { receiver: Address::new_id(100), ..Default::default() };
+    rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
 
     let addr = Address::new_secp256k1(&[2; fvm_shared::address::SECP_PUB_LEN]).unwrap();
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
-
-    rt.call::<AccountActor>(1, IpldBlock::serialize_cbor(&addr).unwrap()).unwrap();
+    rt.call::<AccountActor>(
+        Method::Constructor as MethodNum,
+        IpldBlock::serialize_cbor(&addr).unwrap(),
+    )
+    .unwrap();
 
     let state: State = rt.get_state();
     assert_eq!(state.address, addr);
@@ -123,6 +109,7 @@ fn authenticate_message() {
     })
     .unwrap();
 
+    // Valid signature
     rt.expect_validate_caller_any();
     rt.expect_verify_signature(ExpectedVerifySig {
         sig: Signature::new_secp256k1(vec![]),
@@ -130,8 +117,15 @@ fn authenticate_message() {
         plaintext: vec![],
         result: Ok(()),
     });
-    assert!(rt.call::<AccountActor>(3, params.clone()).unwrap().is_none());
 
+    assert!(rt
+        .call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, params.clone())
+        .unwrap()
+        .is_none());
+
+    rt.verify();
+
+    // Invalid signature
     rt.expect_validate_caller_any();
     rt.expect_verify_signature(ExpectedVerifySig {
         sig: Signature::new_secp256k1(vec![]),
@@ -139,10 +133,16 @@ fn authenticate_message() {
         plaintext: vec![],
         result: Err(anyhow!("bad signature")),
     });
-    assert_eq!(
+    expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
-        rt.call::<AccountActor>(3, params).unwrap_err().exit_code()
+        "bad signature",
+        rt.call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, params),
     );
-
     rt.verify();
+}
+
+fn check_state(rt: &MockRuntime) {
+    let test_address = Address::new_id(1000);
+    let (_, acc) = check_state_invariants(&rt.get_state(), &test_address);
+    acc.assert_empty();
 }

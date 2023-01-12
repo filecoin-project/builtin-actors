@@ -45,18 +45,18 @@ use crate::{actor_error, ActorError};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 
 lazy_static::lazy_static! {
-    pub static ref SYSTEM_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/system");
-    pub static ref INIT_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/init");
-    pub static ref CRON_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/cron");
-    pub static ref ACCOUNT_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/account");
-    pub static ref POWER_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/storagepower");
-    pub static ref MINER_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/storageminer");
-    pub static ref MARKET_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/storagemarket");
-    pub static ref PAYCH_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/paymentchannel");
-    pub static ref MULTISIG_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/multisig");
-    pub static ref REWARD_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/reward");
-    pub static ref VERIFREG_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/verifiedregistry");
-    pub static ref DATACAP_TOKEN_ACTOR_CODE_ID: Cid = make_builtin(b"fil/test/datacap");
+    pub static ref SYSTEM_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/system");
+    pub static ref INIT_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/init");
+    pub static ref CRON_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/cron");
+    pub static ref ACCOUNT_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/account");
+    pub static ref POWER_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/storagepower");
+    pub static ref MINER_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/storageminer");
+    pub static ref MARKET_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/storagemarket");
+    pub static ref PAYCH_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/paymentchannel");
+    pub static ref MULTISIG_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/multisig");
+    pub static ref REWARD_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/reward");
+    pub static ref VERIFREG_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/verifiedregistry");
+    pub static ref DATACAP_TOKEN_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/datacap");
     pub static ref ACTOR_TYPES: BTreeMap<Cid, Type> = {
         let mut map = BTreeMap::new();
         map.insert(*SYSTEM_ACTOR_CODE_ID, Type::System);
@@ -102,7 +102,7 @@ lazy_static::lazy_static! {
 const IPLD_RAW: u64 = 0x55;
 
 /// Returns an identity CID for bz.
-pub fn make_builtin(bz: &[u8]) -> Cid {
+pub fn make_identity_cid(bz: &[u8]) -> Cid {
     Cid::new_v1(IPLD_RAW, OtherMultihash::wrap(0, bz).expect("name too long"))
 }
 
@@ -435,6 +435,8 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 
     pub fn set_caller(&mut self, code_id: Cid, address: Address) {
+        // fail if called with a non-ID address, since the caller() method must always return an ID
+        address.id().unwrap();
         self.caller = address;
         self.caller_type = code_id;
         self.actor_code_cids.insert(address, code_id);
@@ -762,11 +764,12 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
             types, expected_caller_type,
         );
 
-        let call_type = self.resolve_builtin_actor_type(&self.caller_type).unwrap();
-        for expected in &types {
-            if &call_type == expected {
-                self.expectations.borrow_mut().expect_validate_caller_type = None;
-                return Ok(());
+        if let Some(call_type) = self.resolve_builtin_actor_type(&self.caller_type) {
+            for expected in &types {
+                if &call_type == expected {
+                    self.expectations.borrow_mut().expect_validate_caller_type = None;
+                    return Ok(());
+                }
             }
         }
 
@@ -930,17 +933,6 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
                 && expected_msg.method == method
                 && expected_msg.params == params
                 && expected_msg.value == value,
-            "message sent does not match expectation.\n\
-             message  - to: {:?}, method: {:?}, value: {:?}, params: {:?}\n\
-             expected - to: {:?}, method: {:?}, value: {:?}, params: {:?}",
-            to,
-            method,
-            value,
-            params,
-            expected_msg.to,
-            expected_msg.method,
-            expected_msg.value,
-            expected_msg.params,
         );
 
         {

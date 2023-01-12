@@ -6,7 +6,7 @@ use fil_actor_market::{
 };
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::{BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE};
+use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::signature::Signature;
@@ -37,7 +37,7 @@ fn timed_out_deal_is_slashed_and_deleted() {
     );
     let deal_proposal = get_deal_proposal(&mut rt, deal_id);
 
-    let c_escrow = get_escrow_balance(&rt, &CLIENT_ADDR).unwrap();
+    let c_escrow = get_balance(&mut rt, &CLIENT_ADDR).balance;
 
     // do a cron tick for it -> should time out and get slashed
     rt.set_epoch(process_epoch(START_EPOCH, deal_id));
@@ -51,8 +51,9 @@ fn timed_out_deal_is_slashed_and_deleted() {
     );
     cron_tick(&mut rt);
 
-    assert_eq!(c_escrow, get_escrow_balance(&rt, &CLIENT_ADDR).unwrap());
-    assert!(get_locked_balance(&mut rt, CLIENT_ADDR).is_zero());
+    let client_acct = get_balance(&mut rt, &CLIENT_ADDR);
+    assert_eq!(c_escrow, client_acct.balance);
+    assert!(client_acct.locked.is_zero());
     assert_account_zero(&mut rt, PROVIDER_ADDR);
     assert_deal_deleted(&mut rt, deal_id, deal_proposal);
     check_state(&rt);
@@ -84,7 +85,7 @@ fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_l
     let client_deal_proposal =
         ClientDealProposal { proposal: deal_proposal2.clone(), client_signature: sig };
     let params = PublishStorageDealsParams { deals: vec![client_deal_proposal] };
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+    rt.expect_validate_caller_any();
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
     expect_query_network_info(&mut rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);

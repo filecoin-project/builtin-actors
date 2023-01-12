@@ -1,7 +1,9 @@
-use fil_actor_miner::BeneficiaryTerm;
-use fil_actors_runtime::test_utils::{expect_abort, expect_abort_contains_message, MockRuntime};
+use fil_actor_miner::{Actor, BeneficiaryTerm, GetBeneficiaryReturn, Method};
+use fil_actors_runtime::test_utils::{
+    expect_abort, expect_abort_contains_message, make_identity_cid, MockRuntime,
+};
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode};
+use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode, MethodNum};
 use num_traits::Zero;
 
 mod util;
@@ -440,4 +442,32 @@ fn successfully_get_beneficiary() {
     info = h.get_info(&rt);
     assert_eq!(beneficiary_return.active.beneficiary, info.beneficiary);
     assert_eq!(beneficiary_return.active.term, info.beneficiary_term);
+}
+
+#[test]
+fn get_beneficiary_correctly_restricted() {
+    let (h, mut rt) = setup();
+
+    // set caller to not-builtin
+    rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1000));
+
+    // cannot call the unexported method num
+    expect_abort_contains_message(
+        ExitCode::USR_FORBIDDEN,
+        "must be built-in",
+        rt.call::<Actor>(Method::GetBeneficiary as MethodNum, None),
+    );
+
+    // can call the exported method num
+    rt.expect_validate_caller_any();
+    let beneficiary_return: GetBeneficiaryReturn = rt
+        .call::<Actor>(Method::GetBeneficiaryExported as u64, None)
+        .unwrap()
+        .unwrap()
+        .deserialize()
+        .unwrap();
+    assert_eq!(h.owner, beneficiary_return.active.beneficiary);
+    assert_eq!(BeneficiaryTerm::default(), beneficiary_return.active.term);
+
+    rt.verify();
 }
