@@ -9,7 +9,7 @@ use ext::{
 use fil_actors_runtime::{actor_dispatch_unrestricted, deserialize_block, AsActorError};
 
 use fvm_ipld_encoding::{ipld_block::IpldBlock, BytesDe};
-use fvm_shared::error::ExitCode;
+use fvm_shared::{error::ExitCode, sys::SendFlags};
 
 pub mod ext;
 
@@ -211,11 +211,13 @@ fn resolve_caller_external(rt: &mut impl Runtime) -> Result<(EthAddress, EthAddr
     let caller_cid = rt.get_actor_code_cid(&caller_id).expect("failed to lookup caller code");
     match rt.resolve_builtin_actor_type(code_cid) {
         Some(Type::Account) => {
-            let result = rt.send(
+            let result = rt.send_generalized(
                 &caller,
-                2, // PubkeyAddress
+                account::PUBKEY_ADDRESS_METHOD,
                 None,
                 Zero::zero(),
+                None,
+                SendFlags::READ_ONLY,
             )?;
 
             let robust_addr: Address =
