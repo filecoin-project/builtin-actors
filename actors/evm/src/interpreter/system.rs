@@ -222,11 +222,21 @@ impl<'r, RT: Runtime> System<'r, RT> {
         send_flags: SendFlags,
     ) -> Result<Option<IpldBlock>, ActorError> {
         self.flush()?;
-        let result = self.rt.send_generalized(to, method, params, value, gas_limit, send_flags)?;
+        let result = self
+            .rt
+            .send_generalized(to, method, params, value, gas_limit, send_flags)
+            .map_err(|err| actor_error!(unspecified; "send syscall failed: {}", err))?;
         if !send_flags.read_only() {
             self.reload()?;
         }
-        Ok(result)
+        match result.exit_code {
+            ExitCode::OK => Ok(result.return_data),
+            e => Err(ActorError::unchecked_with_data(
+                e,
+                "send failed".to_string(),
+                result.return_data,
+            )),
+        }
     }
 
     /// Flush the actor state (bytecode, nonce, and slots).

@@ -22,7 +22,7 @@ use fvm_shared::crypto::signature::{
     Signature, SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE,
 };
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
+use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
@@ -31,7 +31,7 @@ use fvm_shared::sector::{
 };
 use fvm_shared::sys::SendFlags;
 use fvm_shared::version::NetworkVersion;
-use fvm_shared::{ActorID, MethodNum};
+use fvm_shared::{ActorID, MethodNum, Response};
 
 use multihash::derive::Multihash;
 use multihash::MultihashDigest;
@@ -1130,11 +1130,11 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         value: TokenAmount,
         gas_limit: Option<u64>,
         send_flags: SendFlags,
-    ) -> Result<Option<IpldBlock>, ActorError> {
+    ) -> Result<Response, ErrorNumber> {
         // TODO gas_limit is currently ignored, what should we do about it?
         self.require_in_call();
         if self.in_transaction {
-            return Err(actor_error!(assertion_failed; "side-effect within transaction"));
+            return Ok(Response { exit_code: ExitCode::USR_ASSERTION_FAILED, return_data: None });
         }
 
         assert!(
@@ -1176,22 +1176,12 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         {
             let mut balance = self.balance.borrow_mut();
             if value > *balance {
-                return Err(ActorError::unchecked(
-                    ExitCode::SYS_SENDER_STATE_INVALID,
-                    format!("cannot send value: {:?} exceeds balance: {:?}", value, *balance),
-                ));
+                return Err(ErrorNumber::InsufficientFunds);
             }
             *balance -= value;
         }
 
-        match expected_msg.exit_code {
-            ExitCode::OK => Ok(expected_msg.send_return),
-            x => Err(ActorError::unchecked_with_data(
-                x,
-                "Expected message Fail".to_string(),
-                expected_msg.send_return,
-            )),
-        }
+        Ok(Response { exit_code: expected_msg.exit_code, return_data: expected_msg.send_return })
     }
 
     fn new_actor_address(&mut self) -> Result<Address, ActorError> {
