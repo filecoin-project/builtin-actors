@@ -349,6 +349,10 @@ mod tests {
             let res = right_pad(&input, i);
             assert_eq!(&*res, &expected);
 
+            let no_padding = b"foo bar boxy                     ".to_vec();
+            let res = right_pad(&no_padding, 12);
+            // do nothing
+            assert_eq!(&res, &no_padding);
             input.push(0);
         }
     }
