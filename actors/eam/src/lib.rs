@@ -188,9 +188,8 @@ fn create_actor(
     Ok(Return::from_exec4(ret, new_addr))
 }
 
-fn resolve_caller_evm(rt: &mut impl Runtime) -> Result<EthAddress, ActorError> {
-    let caller_id = rt.message().caller().id().unwrap();
-    Ok(match rt.lookup_delegated_address(caller_id).map(|a| *a.payload()) {
+fn resolve_eth_address(rt: &mut impl Runtime, actor_id: ActorID) -> Result<EthAddress, ActorError> {
+    Ok(match rt.lookup_delegated_address(actor_id).map(|a| *a.payload()) {
         Some(Payload::Delegated(addr)) if addr.namespace() == EAM_ACTOR_ID => EthAddress(
             addr.subaddress()
                 .try_into()
@@ -227,21 +226,7 @@ fn resolve_caller_external(rt: &mut impl Runtime) -> Result<(EthAddress, EthAddr
 
             Ok((EthAddress(id_bytes), EthAddress(robust_eth_bytes_array)))
         }
-        Some(Type::EthAccount) => {
-            match rt.lookup_delegated_address(caller_id).map(|a| *a.payload()) {
-                Some(Payload::Delegated(addr)) if addr.namespace() == EAM_ACTOR_ID => {
-                    let eth_addr = EthAddress(addr.subaddress().try_into().context_code(
-                        ExitCode::USR_FORBIDDEN,
-                        "caller's eth address isn't valid",
-                    )?);
-                    Ok((eth_addr.clone(), eth_addr.clone()))
-                }
-                _ => Err(ActorError::forbidden(format!(
-                    "no ETH delegated address for {}",
-                    caller_id
-                ))),
-            }
-        }
+        Some(Type::EthAccount) => resolve_eth_address(rt, caller_id),
         _ => Err(ActorError::forbidden(format!("disallowed caller code cid {}", caller_code_cid))),
     }
 }
@@ -263,9 +248,9 @@ impl EamActor {
     ///
     /// Permissions: May be called by any actor.
     pub fn create(rt: &mut impl Runtime, params: CreateParams) -> Result<CreateReturn, ActorError> {
-        // we only allow EVM actors t ocall this
+        // We only allow EVM actors to call this.
         rt.validate_immediate_caller_type(&[Type::EVM])?;
-        let caller_addr = resolve_caller_evm(rt)?;
+        let caller_addr = resolve_eth_address(rt, rt.caller().id().unwrap())?;
 
         // CREATE logic
         let eth_addr = compute_address_create(rt, &caller_addr, params.nonce);
@@ -281,11 +266,9 @@ impl EamActor {
         rt: &mut impl Runtime,
         params: Create2Params,
     ) -> Result<Create2Return, ActorError> {
-        // we only allow EVM actors t ocall this
+        // We only allow EVM actors to call this.
         rt.validate_immediate_caller_type(&[Type::EVM])?;
-
-        // Try to lookup the caller's EVM address, but otherwise derive one from the ID address.
-        let caller_addr = resolve_caller_evm(rt)?;
+        let caller_addr = resolve_eth_address(rt, rt.caller().id().unwrap())?;
 
         // Compute the CREATE2 address
         let eth_addr = compute_address_create2(rt, &caller_addr, &params.salt, &params.initcode);
