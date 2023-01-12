@@ -146,12 +146,18 @@ pub(super) fn resolve_address<RT: Runtime>(
     let len = input_params.next_param_padded::<u32>()? as usize;
     let addr = match Address::from_bytes(&right_pad(input_params.remaining_slice(), len)) {
         Ok(o) => o,
-        Err(_) => return Ok(Vec::new()),
+        Err(e) => {
+            log::debug!(target: "evm", "Address parsing failed: {e}");
+            return Err(PrecompileError::InvalidInput);
+        }
     };
     Ok(system
         .rt
         .resolve_address(&addr)
-        .map(|a| U256::from(a).to_bytes().to_vec())
+        .map(|a| {
+            log::debug!(target: "evm", "{addr} resolved to {a}");
+            U256::from(a).to_bytes().to_vec()
+        })
         .unwrap_or_default())
 }
 

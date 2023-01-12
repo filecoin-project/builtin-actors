@@ -296,7 +296,15 @@ fn test_precompile_failure() {
 
     // not found succeeds with empty
     rt.expect_gas_available(10_000_000_000u64);
-    let result = util::invoke_contract(&mut rt, &U256::from(111).to_bytes());
+    let input = {
+        let addr = FILAddress::new_delegated(111, b"foo").unwrap().to_bytes();
+        // first word is len
+        let mut v = U256::from(addr.len()).to_bytes().to_vec();
+        // then addr
+        v.extend_from_slice(&addr);
+        v
+    };
+    let result = util::invoke_contract(&mut rt, &input);
     rt.verify();
     assert_eq!(&[1u8], result.as_slice());
     rt.reset();
