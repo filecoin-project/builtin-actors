@@ -477,3 +477,42 @@ fn test_evm_staticcall_delegatecall() {
         assert_eq!(call_result.code.value(), 33, "static call mutation did not revert");
     }
 }
+
+#[test]
+fn test_evm_init_revert_data() {
+    let store = MemoryBlockstore::new();
+    let v = VM::new_with_singletons(&store);
+
+    let account = create_accounts(&v, 1, TokenAmount::from_whole(10_000))[0];
+    let create_result = v
+        .apply_message(
+            account,
+            EAM_ACTOR_ADDR,
+            TokenAmount::zero(),
+            fil_actor_eam::Method::Create2 as u64,
+            // init code:
+            // PUSH1 0x42; PUSH1 0x0; MSTORE;
+            // PUSH1 0x20; PUSH1 0x0; REVERT
+            Some(fil_actor_eam::Create2Params {
+                initcode: vec![0x60, 0x42, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xfd],
+                salt: [0u8; 32]
+            }),
+        )
+        .unwrap();
+
+    assert!(
+        !create_result.code.is_success(),
+        "new actor was successfully created!"
+    );
+
+    assert!(
+        create_result.ret.is_some(),
+        "missing return data!"
+    );
+
+    let BytesDe(revert_data) =
+        create_result.ret.unwrap().deserialize().expect("failed to deserialize revert data");
+    let mut expected = [0u8; 32];
+    expected[31] = 0x42;
+    assert_eq!(revert_data, expected);
+}
