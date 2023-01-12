@@ -140,65 +140,6 @@ mod paych_constructor {
     }
 
     #[test]
-    fn actor_constructor_fails() {
-        let paych_addr = Address::new_id(TEST_PAYCH_ADDR);
-        let payer_addr = Address::new_id(TEST_PAYER_ADDR);
-        let payee_addr = Address::new_id(TEST_PAYEE_ADDR);
-        let caller_addr = Address::new_id(TEST_CALLER_ADDR);
-
-        struct TestCase {
-            from_code: Cid,
-            from_addr: Address,
-            to_code: Cid,
-            to_addr: Address,
-            expected_exit_code: ExitCode,
-        }
-
-        let test_cases: Vec<TestCase> = vec![
-            // fails if target (to) is not account actor
-            TestCase {
-                from_code: *ACCOUNT_ACTOR_CODE_ID,
-                from_addr: payer_addr,
-                to_code: *MULTISIG_ACTOR_CODE_ID,
-                to_addr: payee_addr,
-                expected_exit_code: ExitCode::USR_FORBIDDEN,
-            },
-            // fails if sender (from) is not account actor
-            TestCase {
-                from_code: *MULTISIG_ACTOR_CODE_ID,
-                from_addr: payer_addr,
-                to_code: *ACCOUNT_ACTOR_CODE_ID,
-                to_addr: payee_addr,
-                expected_exit_code: ExitCode::USR_FORBIDDEN,
-            },
-        ];
-
-        for test_case in test_cases {
-            let mut actor_code_cids = HashMap::default();
-            actor_code_cids.insert(paych_addr, *PAYCH_ACTOR_CODE_ID);
-            actor_code_cids.insert(test_case.to_addr, test_case.to_code);
-            actor_code_cids.insert(test_case.from_addr, test_case.from_code);
-
-            let mut rt = MockRuntime {
-                receiver: paych_addr,
-                caller: caller_addr,
-                caller_type: *INIT_ACTOR_CODE_ID,
-                actor_code_cids,
-                ..Default::default()
-            };
-
-            rt.expect_validate_caller_type(vec![Type::Init]);
-            let params = ConstructorParams { to: test_case.to_addr, from: test_case.from_addr };
-            expect_abort(
-                &mut rt,
-                METHOD_CONSTRUCTOR,
-                IpldBlock::serialize_cbor(&params).unwrap(),
-                test_case.expected_exit_code,
-            );
-        }
-    }
-
-    #[test]
     fn sendr_addr_not_resolvable_to_id_addr() {
         const TO_ADDR: u64 = 101;
         let to_addr = Address::new_id(TO_ADDR);
@@ -821,12 +762,9 @@ fn update_channel_settling() {
     for tc in test_cases {
         ucp.sv.min_settle_height = tc.min_settle;
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
-        rt.expect_verify_signature(ExpectedVerifySig {
-            sig: sv.clone().signature.unwrap(),
-            signer: state.to,
-            plaintext: ucp.sv.signing_bytes().unwrap(),
-            result: Ok(()),
-        });
+
+        expect_authenticate_message(&mut rt, state.to, ucp.sv.clone(), ExitCode::OK);
+
         call(&mut rt, Method::UpdateChannelState as u64, IpldBlock::serialize_cbor(&ucp).unwrap());
         let new_state: PState = rt.get_state();
         assert_eq!(tc.exp_settling_at, new_state.settling_at);
@@ -927,12 +865,8 @@ mod actor_settle {
         let ucp = UpdateChannelStateParams::from(sv.clone());
 
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
-        rt.expect_verify_signature(ExpectedVerifySig {
-            sig: ucp.sv.signature.clone().unwrap(),
-            signer: state.to,
-            plaintext: sv.signing_bytes().unwrap(),
-            result: Ok(()),
-        });
+        expect_authenticate_message(&mut rt, state.to, sv, ExitCode::OK);
+
         call(&mut rt, Method::UpdateChannelState as u64, IpldBlock::serialize_cbor(&ucp).unwrap());
 
         state = rt.get_state();
@@ -1196,13 +1130,13 @@ fn expect_authenticate_message(
     rt.expect_send(
         payer_addr,
         AUTHENTICATE_MESSAGE_METHOD,
-        RawBytes::serialize(AuthenticateMessageParams {
+        IpldBlock::serialize_cbor(&AuthenticateMessageParams {
             signature: sv.clone().signature.unwrap().bytes,
             message: sv.signing_bytes().unwrap(),
         })
         .unwrap(),
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         exp_exit_code,
     )
 }

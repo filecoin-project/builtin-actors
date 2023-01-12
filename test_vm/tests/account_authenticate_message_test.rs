@@ -32,7 +32,7 @@ fn account_authenticate_message() {
         addr,
         addr,
         TokenAmount::zero(),
-        AuthenticateMessage as u64,
+        AuthenticateMessageExported as u64,
         Some(authenticate_message_params),
     );
 
@@ -44,7 +44,7 @@ fn account_authenticate_message() {
         addr,
         addr,
         TokenAmount::zero(),
-        AuthenticateMessage as u64,
+        AuthenticateMessageExported as u64,
         Some(authenticate_message_params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );

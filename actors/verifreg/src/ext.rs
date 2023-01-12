@@ -19,6 +19,21 @@ pub mod account {
     }
 }
 
+pub mod account {
+    use super::*;
+
+    pub const AUTHENTICATE_MESSAGE_METHOD: u64 =
+        frc42_dispatch::method_hash!("AuthenticateMessage");
+
+    #[derive(Serialize_tuple, Deserialize_tuple)]
+    pub struct AuthenticateMessageParams {
+        #[serde(with = "serde_bytes")]
+        pub signature: Vec<u8>,
+        #[serde(with = "serde_bytes")]
+        pub message: Vec<u8>,
+    }
+}
+
 pub mod datacap {
     use super::*;
 

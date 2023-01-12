@@ -878,7 +878,7 @@ pub fn verifreg_add_verifier(v: &VM, verifier: Address, data_cap: StoragePower) 
             params: Some(IpldBlock::serialize_cbor(&add_verifier_params).unwrap()),
             subinvocs: Some(vec![ExpectInvocation {
                 to: DATACAP_TOKEN_ACTOR_ADDR,
-                method: DataCapMethod::BalanceOf as u64,
+                method: DataCapMethod::BalanceExported as u64,
                 params: Some(IpldBlock::serialize_cbor(&verifier).unwrap()),
                 code: Some(ExitCode::OK),
                 ..Default::default()
@@ -993,7 +993,7 @@ pub fn datacap_get_balance(v: &VM, address: Address) -> TokenAmount {
         address,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::BalanceOf as u64,
+        DataCapMethod::BalanceExported as u64,
         Some(address),
     );
     deserialize(&ret, "balance of return value").unwrap()
@@ -1028,7 +1028,7 @@ pub fn datacap_extend_claim(
         client,
         DATACAP_TOKEN_ACTOR_ADDR,
         TokenAmount::zero(),
-        DataCapMethod::Transfer as u64,
+        DataCapMethod::TransferExported as u64,
         Some(transfer_params),
     );
 
@@ -1175,37 +1175,17 @@ pub fn market_publish_deal(
             }],
             extensions: vec![],
         };
-        expect_publish_invocs.push(ExpectInvocation {
-            to: DATACAP_TOKEN_ACTOR_ADDR,
-            method: DataCapMethod::TransferFrom as u64,
-            params: Some(
-                IpldBlock::serialize_cbor(&TransferFromParams {
-                    from: deal_client,
-                    to: VERIFIED_REGISTRY_ACTOR_ADDR,
-                    amount: token_amount.clone(),
-                    operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
-                })
-                .unwrap(),
-            ),
-            code: Some(ExitCode::OK),
-            subinvocs: Some(vec![ExpectInvocation {
-                to: VERIFIED_REGISTRY_ACTOR_ADDR,
-                method: VerifregMethod::UniversalReceiverHook as u64,
+        expect_publish_invocs.insert(
+            expect_publish_invocs.len() - 1,
+            ExpectInvocation {
+                to: DATACAP_TOKEN_ACTOR_ADDR,
+                method: DataCapMethod::TransferFromExported as u64,
                 params: Some(
-                    IpldBlock::serialize_cbor(&UniversalReceiverParams {
-                        type_: FRC46_TOKEN_TYPE,
-                        payload: serialize(
-                            &FRC46TokenReceived {
-                                from: deal_client.id().unwrap(),
-                                to: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
-                                operator: STORAGE_MARKET_ACTOR_ADDR.id().unwrap(),
-                                amount: token_amount,
-                                operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
-                                token_data: Default::default(),
-                            },
-                            "token received params",
-                        )
-                        .unwrap(),
+                    IpldBlock::serialize_cbor(&TransferFromParams {
+                        from: deal_client,
+                        to: VERIFIED_REGISTRY_ACTOR_ADDR,
+                        amount: token_amount.clone(),
+                        operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
                     })
                     .unwrap(),
                 ),
@@ -1214,16 +1194,19 @@ pub fn market_publish_deal(
                     to: VERIFIED_REGISTRY_ACTOR_ADDR,
                     method: VerifregMethod::UniversalReceiverHook as u64,
                     params: Some(
-                        RawBytes::serialize(&UniversalReceiverParams {
+                        IpldBlock::serialize_cbor(&UniversalReceiverParams {
                             type_: FRC46_TOKEN_TYPE,
-                            payload: RawBytes::serialize(&FRC46TokenReceived {
-                                from: deal_client.id().unwrap(),
-                                to: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
-                                operator: STORAGE_MARKET_ACTOR_ADDR.id().unwrap(),
-                                amount: token_amount,
-                                operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
-                                token_data: Default::default(),
-                            })
+                            payload: serialize(
+                                &FRC46TokenReceived {
+                                    from: deal_client.id().unwrap(),
+                                    to: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
+                                    operator: STORAGE_MARKET_ACTOR_ADDR.id().unwrap(),
+                                    amount: token_amount,
+                                    operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
+                                    token_data: Default::default(),
+                                },
+                                "token received params",
+                            )
                             .unwrap(),
                         })
                         .unwrap(),

@@ -4,7 +4,7 @@ use fil_actor_miner::{
 use fil_actors_runtime::test_utils::{
     expect_abort, expect_abort_contains_message, make_identity_cid,
 };
-use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
@@ -13,6 +13,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
 
 mod util;
+
 use util::*;
 
 const PERIOD_OFFSET: ChainEpoch = 100;
@@ -41,9 +42,10 @@ fn withdraw_funds_restricted_correctly() {
     rt.set_balance(BIG_BALANCE.clone());
     let amount_requested = ONE_PERCENT_BALANCE.clone();
 
-    let params =
-        &RawBytes::serialize(WithdrawBalanceParams { amount_requested: amount_requested.clone() })
-            .unwrap();
+    let params = IpldBlock::serialize_cbor(&WithdrawBalanceParams {
+        amount_requested: amount_requested.clone(),
+    })
+    .unwrap();
 
     rt.set_caller(make_identity_cid(b"1234"), h.owner);
 
@@ -52,23 +54,17 @@ fn withdraw_funds_restricted_correctly() {
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
         "must be built-in",
-        rt.call::<Actor>(Method::WithdrawBalance as u64, params),
+        rt.call::<Actor>(Method::WithdrawBalance as u64, params.clone()),
     );
 
     // call the exported method
 
     rt.expect_validate_caller_addr(vec![h.owner, h.beneficiary]);
-    rt.expect_send(
-        h.beneficiary,
-        METHOD_SEND,
-        RawBytes::default(),
-        amount_requested.clone(),
-        RawBytes::default(),
-        ExitCode::OK,
-    );
+    rt.expect_send(h.beneficiary, METHOD_SEND, None, amount_requested.clone(), None, ExitCode::OK);
 
     let ret = rt
         .call::<Actor>(Method::WithdrawBalanceExported as u64, params)
+        .unwrap()
         .unwrap()
         .deserialize::<WithdrawBalanceReturn>()
         .unwrap();

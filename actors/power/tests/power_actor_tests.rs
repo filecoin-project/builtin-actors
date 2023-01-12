@@ -22,6 +22,7 @@ use fil_actor_power::{
     EnrollCronEventParams, Method, MinerRawPowerParams, MinerRawPowerReturn, NetworkRawPowerReturn,
     State, UpdateClaimedPowerParams, CONSENSUS_MINER_MIN_MINERS,
 };
+
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 
 use crate::harness::*;
@@ -75,34 +76,6 @@ fn create_miner() {
     assert_eq!(0, st.miner_above_min_power_count);
 
     verify_empty_map(&rt, st.cron_event_queue);
-    h.check_state(&rt);
-}
-
-#[test]
-fn create_miner_given_caller_is_not_of_signable_type_should_fail() {
-    let (h, mut rt) = setup();
-
-    let peer = "miner".as_bytes().to_vec();
-    let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
-
-    let create_miner_params = CreateMinerParams {
-        owner: *OWNER,
-        worker: *OWNER,
-        window_post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1,
-        peer,
-        multiaddrs,
-    };
-
-    rt.set_caller(*MINER_ACTOR_CODE_ID, *OWNER);
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
-    expect_abort(
-        ExitCode::USR_FORBIDDEN,
-        rt.call::<PowerActor>(
-            Method::CreateMiner as u64,
-            IpldBlock::serialize_cbor(&&create_miner_params).unwrap(),
-        ),
-    );
-    rt.verify();
     h.check_state(&rt);
 }
 
@@ -613,7 +586,8 @@ fn get_network_and_miner_power() {
 
     rt.expect_validate_caller_any();
     let network_power: NetworkRawPowerReturn = rt
-        .call::<Actor>(Method::NetworkRawPowerExported as u64, &RawBytes::default())
+        .call::<Actor>(Method::NetworkRawPowerExported as u64, None)
+        .unwrap()
         .unwrap()
         .deserialize()
         .unwrap();
@@ -624,12 +598,10 @@ fn get_network_and_miner_power() {
     let miner_power: MinerRawPowerReturn = rt
         .call::<Actor>(
             Method::MinerRawPowerExported as u64,
-            &serialize(
-                &MinerRawPowerParams { miner: MINER1.id().unwrap() },
-                "serializing MinerRawPowerParams",
-            )
-            .unwrap(),
+            IpldBlock::serialize_cbor(&MinerRawPowerParams { miner: MINER1.id().unwrap() })
+                .unwrap(),
         )
+        .unwrap()
         .unwrap()
         .deserialize()
         .unwrap();
@@ -1476,16 +1448,13 @@ fn create_miner_restricted_correctly() {
     let peer = "miner".as_bytes().to_vec();
     let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
 
-    let params = serialize(
-        &CreateMinerParams {
-            owner: *OWNER,
-            worker: *OWNER,
-            window_post_proof_type: RegisteredPoStProof::StackedDRGWinning2KiBV1,
-            peer: peer.clone(),
-            multiaddrs: multiaddrs.clone(),
-        },
-        "create miner params",
-    )
+    let params = IpldBlock::serialize_cbor(&CreateMinerParams {
+        owner: *OWNER,
+        worker: *OWNER,
+        window_post_proof_type: RegisteredPoStProof::StackedDRGWinning2KiBV1,
+        peer: peer.clone(),
+        multiaddrs: multiaddrs.clone(),
+    })
     .unwrap();
 
     rt.set_caller(make_identity_cid(b"1234"), *OWNER);
@@ -1494,7 +1463,7 @@ fn create_miner_restricted_correctly() {
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
         "must be built-in",
-        rt.call::<PowerActor>(Method::CreateMiner as MethodNum, &params),
+        rt.call::<PowerActor>(Method::CreateMiner as MethodNum, params.clone()),
     );
 
     // can call the exported method
@@ -1502,31 +1471,29 @@ fn create_miner_restricted_correctly() {
     rt.expect_validate_caller_any();
     let expected_init_params = ExecParams {
         code_cid: *MINER_ACTOR_CODE_ID,
-        constructor_params: serialize(
-            &MinerConstructorParams {
-                owner: *OWNER,
-                worker: *OWNER,
-                control_addresses: vec![],
-                window_post_proof_type: RegisteredPoStProof::StackedDRGWinning2KiBV1,
-                peer_id: peer,
-                multi_addresses: multiaddrs,
-            },
-            "minerctor params",
-        )
+        constructor_params: RawBytes::serialize(MinerConstructorParams {
+            owner: *OWNER,
+            worker: *OWNER,
+            control_addresses: vec![],
+            window_post_proof_type: RegisteredPoStProof::StackedDRGWinning2KiBV1,
+            peer_id: peer,
+            multi_addresses: multiaddrs,
+        })
         .unwrap(),
     };
     let create_miner_ret = CreateMinerReturn { id_address: *MINER, robust_address: *ACTOR };
     rt.expect_send(
         INIT_ACTOR_ADDR,
         EXEC_METHOD,
-        RawBytes::serialize(expected_init_params).unwrap(),
+        IpldBlock::serialize_cbor(&expected_init_params).unwrap(),
         TokenAmount::zero(),
-        RawBytes::serialize(create_miner_ret).unwrap(),
+        IpldBlock::serialize_cbor(&create_miner_ret).unwrap(),
         ExitCode::OK,
     );
 
     let ret: CreateMinerReturn = rt
-        .call::<PowerActor>(Method::CreateMinerExported as MethodNum, &params)
+        .call::<PowerActor>(Method::CreateMinerExported as MethodNum, params)
+        .unwrap()
         .unwrap()
         .deserialize()
         .unwrap();

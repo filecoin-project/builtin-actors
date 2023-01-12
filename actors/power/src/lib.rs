@@ -9,9 +9,9 @@ use ext::init;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, deserialize_block, extract_send_result,
-    make_map_with_root_and_bitwidth, ActorDowncast, ActorError, Multimap, CRON_ACTOR_ADDR,
-    INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_dispatch, actor_error, deserialize_block, make_map_with_root_and_bitwidth,
+    restrict_internal_api, ActorDowncast, ActorError, Multimap, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR,
+    REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
@@ -677,11 +677,16 @@ impl ActorCode for Actor {
     actor_dispatch! {
         Constructor => constructor,
         CreateMiner => create_miner,
+        CreateMinerExported => create_miner,
         UpdateClaimedPower => update_claimed_power            ,
         EnrollCronEvent => enroll_cron_event,
         OnEpochTickEnd => on_epoch_tick_end,
         UpdatePledgeTotal => update_pledge_total,
         SubmitPoRepForBulkVerify => submit_porep_for_bulk_verify,
         CurrentTotalPower => current_total_power,
+        NetworkRawPowerExported => network_raw_power,
+        MinerRawPowerExported => miner_raw_power,
+        MinerCountExported => miner_count,
+        MinerConsensusCountExported => miner_consensus_count,
     }
 }

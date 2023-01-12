@@ -96,7 +96,7 @@ impl Harness {
         let params = MintParams { to: *to, amount: amount.clone(), operators };
         rt.set_caller(*VERIFREG_ACTOR_CODE_ID, VERIFIED_REGISTRY_ACTOR_ADDR);
         let ret = rt.call::<DataCapActor>(
-            Method::Mint as MethodNum,
+            Method::MintExported as MethodNum,
             IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
 
@@ -116,7 +116,7 @@ impl Harness {
 
         rt.set_caller(*VERIFREG_ACTOR_CODE_ID, VERIFIED_REGISTRY_ACTOR_ADDR);
         let ret = rt.call::<DataCapActor>(
-            Method::Destroy as MethodNum,
+            Method::DestroyExported as MethodNum,
             IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
 
@@ -162,7 +162,7 @@ impl Harness {
 
         let params = TransferParams { to: *to, amount: amount.clone(), operator_data };
         let ret = rt.call::<DataCapActor>(
-            Method::Transfer as MethodNum,
+            Method::TransferExported as MethodNum,
             IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
 
@@ -210,7 +210,7 @@ impl Harness {
         let params =
             TransferFromParams { to: *to, from: *from, amount: amount.clone(), operator_data };
         let ret = rt.call::<DataCapActor>(
-            Method::TransferFrom as MethodNum,
+            Method::TransferFromExported as MethodNum,
             IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
 
@@ -229,8 +229,9 @@ impl Harness {
         let ret = rt
             .call::<DataCapActor>(
                 Method::BalanceExported as MethodNum,
-                &serialize(&address, "params").unwrap(),
+                IpldBlock::serialize_cbor(&address).unwrap(),
             )
+            .unwrap()
             .unwrap()
             .deserialize()
             .unwrap();

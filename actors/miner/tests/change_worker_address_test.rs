@@ -11,7 +11,9 @@ use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode};
 
 mod util;
 
+use fil_actors_runtime::test_utils::make_identity_cid;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+
 use itertools::Itertools;
 use num_traits::Zero;
 use util::*;
@@ -83,7 +85,7 @@ fn change_and_confirm_worker_address_restricted_correctly() {
 
     rt.set_address_actor_type(new_worker, *ACCOUNT_ACTOR_CODE_ID);
 
-    let params = RawBytes::serialize(ChangeWorkerAddressParams {
+    let params = IpldBlock::serialize_cbor(&ChangeWorkerAddressParams {
         new_worker,
         new_control_addresses: original_control_addresses,
     })
@@ -96,22 +98,23 @@ fn change_and_confirm_worker_address_restricted_correctly() {
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
         "must be built-in",
-        rt.call::<Actor>(Method::ChangeWorkerAddress as u64, &params),
+        rt.call::<Actor>(Method::ChangeWorkerAddress as u64, params.clone()),
     );
 
     // call the exported method
     rt.expect_send(
         new_worker,
         AccountMethod::PubkeyAddress as u64,
-        RawBytes::default(),
+        None,
         TokenAmount::zero(),
-        RawBytes::serialize(h.worker_key).unwrap(),
+        IpldBlock::serialize_cbor(&h.worker_key).unwrap(),
+        // RawBytes::serialize(h.worker_key).unwrap(),
         ExitCode::OK,
     );
 
     rt.expect_validate_caller_addr(vec![h.owner]);
 
-    rt.call::<Actor>(Method::ChangeWorkerAddressExported as u64, &params).unwrap();
+    rt.call::<Actor>(Method::ChangeWorkerAddressExported as u64, params).unwrap();
 
     rt.verify();
 
@@ -129,13 +132,12 @@ fn change_and_confirm_worker_address_restricted_correctly() {
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
         "must be built-in",
-        rt.call::<Actor>(Method::ConfirmChangeWorkerAddress as u64, &RawBytes::default()),
+        rt.call::<Actor>(Method::ConfirmChangeWorkerAddress as u64, None),
     );
 
     // call the exported method
     rt.expect_validate_caller_addr(vec![h.owner]);
-    rt.call::<Actor>(Method::ConfirmChangeWorkerAddressExported as u64, &RawBytes::default())
-        .unwrap();
+    rt.call::<Actor>(Method::ConfirmChangeWorkerAddressExported as u64, None).unwrap();
     rt.verify();
 
     // assert address has changed

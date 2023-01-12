@@ -13,7 +13,7 @@ use num_traits::FromPrimitive;
 use crate::types::AuthenticateMessageParams;
 use fil_actors_runtime::builtin::singletons::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_dispatch, ActorDowncast};
+use fil_actors_runtime::{actor_dispatch, restrict_internal_api, ActorDowncast};
 use fil_actors_runtime::{actor_error, ActorError};
 
 pub use self::state::State;
@@ -106,7 +106,7 @@ impl ActorCode for Actor {
     actor_dispatch! {
         Constructor => constructor,
         PubkeyAddress => pubkey_address,
-        AuthenticateMessage => authenticate_message,
+        AuthenticateMessageExported => authenticate_message,
         UniversalReceiverHook => universal_receiver_hook,
     }
 }

@@ -250,6 +250,8 @@ mod clients {
         ext, Actor as VerifregActor, AddVerifiedClientParams, DataCap, Method,
     };
     use fil_actors_runtime::test_utils::*;
+    use fil_actors_runtime::{DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR};
+
     use fvm_ipld_encoding::ipld_block::IpldBlock;
     use harness::*;
     use num_traits::ToPrimitive;
@@ -400,7 +402,7 @@ mod clients {
             "must be built-in",
             rt.call::<VerifregActor>(
                 Method::AddVerifiedClient as MethodNum,
-                &RawBytes::serialize(params.clone()).unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             ),
         );
 
@@ -416,16 +418,16 @@ mod clients {
         rt.expect_send(
             DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Mint as MethodNum,
-            RawBytes::serialize(&mint_params).unwrap(),
+            IpldBlock::serialize_cbor(&mint_params).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
         rt.expect_validate_caller_any();
         rt.call::<VerifregActor>(
             Method::AddVerifiedClientExported as MethodNum,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )
         .unwrap();
 
@@ -487,6 +489,7 @@ mod clients {
 
 mod allocs_claims {
     use cid::Cid;
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_shared::bigint::BigInt;
     use fvm_shared::error::ExitCode;
     use fvm_shared::piece::PaddedPieceSize;
@@ -499,7 +502,6 @@ mod allocs_claims {
         GetClaimsReturn, Method, State,
     };
     use fil_actor_verifreg::{Claim, ExtendClaimTermsReturn};
-    use fil_actors_runtime::cbor::serialize;
     use fil_actors_runtime::runtime::policy_constants::{
         MAXIMUM_VERIFIED_ALLOCATION_TERM, MINIMUM_VERIFIED_ALLOCATION_SIZE,
         MINIMUM_VERIFIED_ALLOCATION_TERM,
@@ -994,8 +996,9 @@ mod allocs_claims {
         let ret: ExtendClaimTermsReturn = rt
             .call::<Actor>(
                 Method::ExtendClaimTermsExported as MethodNum,
-                &serialize(&params, "extend claim terms params").unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             )
+            .unwrap()
             .unwrap()
             .deserialize()
             .expect("failed to deserialize extend claim terms return");
@@ -1014,7 +1017,7 @@ mod allocs_claims {
             "must be built-in",
             rt.call::<Actor>(
                 Method::GetClaims as MethodNum,
-                &serialize(&params, "get claims params").unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             ),
         );
 
@@ -1025,8 +1028,9 @@ mod allocs_claims {
         let ret: GetClaimsReturn = rt
             .call::<Actor>(
                 Method::GetClaimsExported as MethodNum,
-                &serialize(&params, "get claims params").unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             )
+            .unwrap()
             .unwrap()
             .deserialize()
             .expect("failed to deserialize get claims return");

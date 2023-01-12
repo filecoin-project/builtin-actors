@@ -129,7 +129,7 @@ impl ActorHarness {
         method: MethodNum,
         params: RawBytes,
     ) -> Result<Option<IpldBlock>, ActorError> {
-        rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+        rt.expect_validate_caller_any();
         let propose_params = ProposeParams { to, value, method, params };
         let ret = rt.call::<Actor>(
             Method::Propose as u64,
@@ -145,7 +145,7 @@ impl ActorHarness {
         txn_id: TxnID,
         proposal_hash: [u8; 32],
     ) -> Result<Option<IpldBlock>, ActorError> {
-        rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+        rt.expect_validate_caller_any();
         let approve_params =
             TxnIDParams { id: txn_id, proposal_hash: Vec::<u8>::from(proposal_hash) };
         let ret = rt.call::<Actor>(
@@ -162,7 +162,7 @@ impl ActorHarness {
         txn_id: TxnID,
         proposal_hash: [u8; 32],
     ) -> Result<Option<IpldBlock>, ActorError> {
-        rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+        rt.expect_validate_caller_any();
         let cancel_params =
             TxnIDParams { id: txn_id, proposal_hash: Vec::<u8>::from(proposal_hash) };
         let ret = rt.call::<Actor>(

@@ -24,8 +24,9 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
     actor_dispatch, actor_error, deserialize_block, make_map_with_root_and_bitwidth,
-    resolve_to_actor_id, ActorDowncast, ActorError, BatchReturn, Map, DATACAP_TOKEN_ACTOR_ADDR,
-    STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    resolve_to_actor_id, restrict_internal_api, ActorDowncast, ActorError, BatchReturn, Map,
+    DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -1061,7 +1062,7 @@ fn remove_data_cap_request_is_valid(
     rt.send(
         &request.verifier,
         ext::account::AUTHENTICATE_MESSAGE_METHOD,
-        RawBytes::serialize(ext::account::AuthenticateMessageParams {
+        IpldBlock::serialize_cbor(&ext::account::AuthenticateMessageParams {
             signature: request.signature.bytes.clone(),
             message: payload,
         })?,
@@ -1217,6 +1218,7 @@ fn check_miner_id(rt: &mut impl Runtime, id: ActorID) -> Result<(), ActorError> 
         rt.get_actor_code_cid(&id).with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
             format!("no code CID for provider {}", id)
         })?;
+
     let provider_type = rt
         .resolve_builtin_actor_type(&code_cid)
         .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
@@ -1257,12 +1259,17 @@ impl ActorCode for Actor {
         AddVerifier => add_verifier,
         RemoveVerifier => remove_verifier,
         AddVerifiedClient => add_verified_client,
+        AddVerifiedClientExported => add_verified_client,
         RemoveVerifiedClientDataCap => remove_verified_client_data_cap,
         RemoveExpiredAllocations => remove_expired_allocations,
+        RemoveExpiredAllocationsExported => remove_expired_allocations,
         ClaimAllocations => claim_allocations,
         GetClaims => get_claims,
+        GetClaimsExported => get_claims,
         ExtendClaimTerms => extend_claim_terms,
+        ExtendClaimTermsExported => extend_claim_terms,
         RemoveExpiredClaims => remove_expired_claims,
+        RemoveExpiredClaimsExported => remove_expired_claims,
         UniversalReceiverHook => universal_receiver_hook,
     }
 }

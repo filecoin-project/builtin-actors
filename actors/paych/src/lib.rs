@@ -4,7 +4,8 @@
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, resolve_to_actor_id, ActorDowncast, ActorError, Array,
+    actor_dispatch, actor_error, resolve_to_actor_id, restrict_internal_api, ActorDowncast,
+    ActorError, Array, AsActorError,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::DAG_CBOR;
@@ -122,7 +123,7 @@ impl Actor {
         rt.send(
             &signer,
             ext::account::AUTHENTICATE_MESSAGE_METHOD,
-            RawBytes::serialize(ext::account::AuthenticateMessageParams {
+            IpldBlock::serialize_cbor(&ext::account::AuthenticateMessageParams {
                 signature: sig.to_vec(),
                 message: sv_bz,
             })?,

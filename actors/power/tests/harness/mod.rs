@@ -214,7 +214,8 @@ impl Harness {
     pub fn miner_count(&self, rt: &mut MockRuntime) -> i64 {
         rt.expect_validate_caller_any();
         let ret: MinerCountReturn = rt
-            .call::<PowerActor>(Method::MinerCountExported as MethodNum, &RawBytes::default())
+            .call::<PowerActor>(Method::MinerCountExported as MethodNum, None)
+            .unwrap()
             .unwrap()
             .deserialize()
             .unwrap();
@@ -376,10 +377,8 @@ impl Harness {
     pub fn expect_miners_above_min_power(&self, rt: &mut MockRuntime, count: i64) {
         rt.expect_validate_caller_any();
         let ret: MinerConsensusCountReturn = rt
-            .call::<PowerActor>(
-                Method::MinerConsensusCountExported as MethodNum,
-                &RawBytes::default(),
-            )
+            .call::<PowerActor>(Method::MinerConsensusCountExported as MethodNum, None)
+            .unwrap()
             .unwrap()
             .deserialize()
             .unwrap();

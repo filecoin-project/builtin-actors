@@ -125,7 +125,11 @@ pub fn get_balance(rt: &mut MockRuntime, addr: &Address) -> GetBalanceReturn {
     rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1234));
     rt.expect_validate_caller_any();
     let ret: GetBalanceReturn = rt
-        .call::<MarketActor>(Method::GetBalanceExported as u64, &RawBytes::serialize(addr).unwrap())
+        .call::<MarketActor>(
+            Method::GetBalanceExported as u64,
+            IpldBlock::serialize_cbor(addr).unwrap(),
+        )
+        .unwrap()
         .unwrap()
         .deserialize()
         .unwrap();
@@ -525,14 +529,14 @@ pub fn publish_deals(
     for deal in publish_deals {
         let buf = RawBytes::serialize(deal.clone()).expect("failed to marshal deal proposal");
         let params =
-            RawBytes::serialize(MarketNotifyDealParams { proposal: buf.to_vec(), deal_id })
+            IpldBlock::serialize_cbor(&MarketNotifyDealParams { proposal: buf.to_vec(), deal_id })
                 .unwrap();
         rt.expect_send(
             deal.client,
             MARKET_NOTIFY_DEAL_METHOD,
             params,
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::USR_UNHANDLED_MESSAGE,
         );
         deal_id += 1;

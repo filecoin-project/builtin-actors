@@ -6,8 +6,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use cid::multihash::{Code, MultihashDigest, MultihashGeneric};
 use cid::Cid;
-use fil_actors_runtime::{extract_send_result, FIRST_ACTOR_SPECIFIC_EXIT_CODE};
-use frc46_token::token::types::{BalanceReturn, TransferFromParams, TransferFromReturn};
+use fil_actors_runtime::{restrict_internal_api, FIRST_ACTOR_SPECIFIC_EXIT_CODE};
+use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_hamt::BytesKey;
@@ -316,7 +316,6 @@ impl Actor {
             // Must happen after signature verification and before taking cid.
             deal.proposal.provider = Address::new_id(provider_id);
             deal.proposal.client = Address::new_id(client_id);
-
             let serialized_proposal = serialize(&deal.proposal, "normalized deal proposal")
                 .context_code(ExitCode::USR_SERIALIZATION, "failed to serialize")?;
             let pcid = rt_serialized_deal_cid(rt, &serialized_proposal).map_err(
@@ -361,7 +360,12 @@ impl Actor {
             total_provider_lockup = provider_lockup;
             total_client_lockup.insert(client_id, client_lockup);
             proposal_cid_lookup.insert(pcid);
-            valid_deals.push(ValidDeal { proposal: deal.proposal, serialized_proposal, cid: pcid });
+            valid_deals.push(ValidDeal {
+                proposal: deal.proposal,
+                serialized_proposal,
+                cid: pcid,
+                allocation: allocation_id,
+            });
             valid_input_bf.set(di as u64)
         }
 
@@ -446,7 +450,7 @@ impl Actor {
 
         // notify clients ignoring any errors
         for (i, valid_deal) in valid_deals.iter().enumerate() {
-            _ = extract_send_result(rt.send_simple(
+            _ = rt.send(
                 &valid_deal.proposal.client,
                 MARKET_NOTIFY_DEAL_METHOD,
                 IpldBlock::serialize_cbor(&MarketNotifyDealParams {
@@ -454,7 +458,7 @@ impl Actor {
                     deal_id: new_deal_ids[i],
                 })?,
                 TokenAmount::zero(),
-            ));
+            );
         }
 
         Ok(PublishStorageDealsReturn { ids: new_deal_ids, valid_deals: valid_input_bf })

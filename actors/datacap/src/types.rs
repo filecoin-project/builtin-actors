@@ -18,3 +18,9 @@ pub struct DestroyParams {
     #[serde(with = "bigint_ser")]
     pub amount: BigInt,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct GranularityReturn {
+    pub granularity: u64,
+}

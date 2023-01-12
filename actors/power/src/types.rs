@@ -64,7 +64,7 @@ pub struct UpdatePledgeTotalParams {
     pub pledge_delta: TokenAmount,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, PartialEq)]
 pub struct CurrentTotalPowerReturn {
     #[serde(with = "bigint_ser")]
     pub raw_byte_power: StoragePower,
@@ -81,15 +81,11 @@ pub struct NetworkRawPowerReturn {
     pub raw_byte_power: StoragePower,
 }
 
-impl Cbor for NetworkRawPowerReturn {}
-
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 #[serde(transparent)]
 pub struct MinerRawPowerParams {
     pub miner: ActorID,
 }
-
-impl Cbor for MinerRawPowerParams {}
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 pub struct MinerRawPowerReturn {
@@ -97,8 +93,6 @@ pub struct MinerRawPowerReturn {
     pub raw_byte_power: StoragePower,
     pub meets_consensus_minimum: bool,
 }
-
-impl Cbor for MinerRawPowerReturn {}
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 #[serde(transparent)]

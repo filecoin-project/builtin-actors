@@ -93,8 +93,11 @@ fn authenticate_message() {
 
     let addr = Address::new_secp256k1(&[2; fvm_shared::address::SECP_PUB_LEN]).unwrap();
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
-
-    rt.call::<AccountActor>(1, IpldBlock::serialize_cbor(&addr).unwrap()).unwrap();
+    rt.call::<AccountActor>(
+        Method::Constructor as MethodNum,
+        IpldBlock::serialize_cbor(&addr).unwrap(),
+    )
+    .unwrap();
 
     let state: State = rt.get_state();
     assert_eq!(state.address, addr);
@@ -113,7 +116,13 @@ fn authenticate_message() {
         plaintext: vec![],
         result: Ok(()),
     });
-    assert!(rt.call::<AccountActor>(3, params.clone()).unwrap().is_none());
+
+    assert!(rt
+        .call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, params.clone())
+        .unwrap()
+        .is_none());
+
+    rt.verify();
 
     // Invalid signature
     rt.expect_validate_caller_any();

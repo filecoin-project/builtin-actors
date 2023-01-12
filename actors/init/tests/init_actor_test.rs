@@ -316,7 +316,7 @@ fn exec_restricted_correctly() {
         "must be built-in",
         rt.call::<InitActor>(
             Method::Exec as MethodNum,
-            &serialize(&exec_params, "params").unwrap(),
+            IpldBlock::serialize_cbor(&exec_params).unwrap(),
         ),
     );
 
@@ -335,18 +335,22 @@ fn exec_restricted_correctly() {
     rt.expect_send(
         expected_id_addr,
         METHOD_CONSTRUCTOR,
-        RawBytes::serialize(&fake_constructor_params).unwrap(),
+        IpldBlock::serialize_cbor(&fake_constructor_params).unwrap(),
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
 
     rt.expect_validate_caller_any();
 
     let ret = rt
-        .call::<InitActor>(Method::ExecExported as u64, &RawBytes::serialize(&exec_params).unwrap())
+        .call::<InitActor>(
+            Method::ExecExported as u64,
+            IpldBlock::serialize_cbor(&exec_params).unwrap(),
+        )
+        .unwrap()
         .unwrap();
-    let exec_ret: ExecReturn = RawBytes::deserialize(&ret).unwrap();
+    let exec_ret: ExecReturn = ret.deserialize().unwrap();
     assert_eq!(unique_address, exec_ret.robust_address, "Robust address does not macth");
     assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
     check_state(&rt);

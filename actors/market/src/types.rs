@@ -29,7 +29,7 @@ pub struct WithdrawBalanceParams {
     pub amount: TokenAmount,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 #[serde(transparent)]
 pub struct WithdrawBalanceReturn {
     pub amount_withdrawn: TokenAmount,
@@ -52,7 +52,7 @@ pub struct PublishStorageDealsParams {
     pub deals: Vec<ClientDealProposal>,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple, Debug)]
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, PartialEq)] // Add Eq when BitField does
 pub struct PublishStorageDealsReturn {
     pub ids: Vec<DealID>,
     pub valid_deals: BitField,

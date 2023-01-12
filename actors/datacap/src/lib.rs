@@ -19,7 +19,8 @@ use num_traits::{FromPrimitive, Zero};
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR,
+    actor_dispatch, actor_error, restrict_internal_api, ActorContext, ActorError, AsActorError,
+    SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 
@@ -107,6 +108,11 @@ impl Actor {
         Ok("DCAP".to_string())
     }
 
+    pub fn granularity(rt: &mut impl Runtime) -> Result<GranularityReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        Ok(GranularityReturn { granularity: DATACAP_GRANULARITY })
+    }
+
     pub fn total_supply(rt: &mut impl Runtime) -> Result<TokenAmount, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let mut st: State = rt.state()?;
@@ -115,7 +121,7 @@ impl Actor {
         Ok(token.total_supply())
     }
 
-    pub fn balance_of(rt: &mut impl Runtime, params: Address) -> Result<TokenAmount, ActorError> {
+    pub fn balance(rt: &mut impl Runtime, params: Address) -> Result<TokenAmount, ActorError> {
         // NOTE: mutability and method caller here are awkward for a read-only call
         rt.validate_immediate_caller_accept_any()?;
         let mut st: State = rt.state()?;
@@ -457,19 +463,20 @@ impl ActorCode for Actor {
     type Methods = Method;
     actor_dispatch! {
         Constructor => constructor,
-        Mint => mint,
-        Destroy => destroy,
-        Name => name,
-        Symbol => symbol,
-        TotalSupply => total_supply,
-        BalanceOf => balance_of,
-        Transfer => transfer,
-        TransferFrom => transfer_from,
-        IncreaseAllowance => increase_allowance,
-        DecreaseAllowance => decrease_allowance,
-        RevokeAllowance => revoke_allowance,
-        Burn => burn,
-        BurnFrom => burn_from,
-        Allowance => allowance,
+        MintExported => mint,
+        DestroyExported => destroy,
+        NameExported => name,
+        SymbolExported => symbol,
+        GranularityExported => granularity,
+        TotalSupplyExported => total_supply,
+        BalanceExported => balance,
+        TransferExported => transfer,
+        TransferFromExported => transfer_from,
+        IncreaseAllowanceExported => increase_allowance,
+        DecreaseAllowanceExported => decrease_allowance,
+        RevokeAllowanceExported => revoke_allowance,
+        BurnExported => burn,
+        BurnFromExported => burn_from,
+        AllowanceExported => allowance,
     }
 }

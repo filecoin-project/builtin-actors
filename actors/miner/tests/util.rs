@@ -293,7 +293,8 @@ impl ActorHarness {
 
         rt.expect_validate_caller_any();
         let ret: GetPeerIDReturn = rt
-            .call::<Actor>(Method::GetPeerIDExported as u64, &RawBytes::default())
+            .call::<Actor>(Method::GetPeerIDExported as u64, None)
+            .unwrap()
             .unwrap()
             .deserialize()
             .unwrap();
@@ -331,7 +332,8 @@ impl ActorHarness {
 
         rt.expect_validate_caller_any();
         let ret: GetMultiaddrsReturn = rt
-            .call::<Actor>(Method::GetMultiaddrsExported as u64, &RawBytes::default())
+            .call::<Actor>(Method::GetMultiaddrsExported as u64, None)
+            .unwrap()
             .unwrap()
             .deserialize()
             .unwrap();
@@ -2088,7 +2090,8 @@ impl ActorHarness {
 
         rt.expect_validate_caller_any();
         let ret: GetPeerIDReturn = rt
-            .call::<Actor>(Method::GetPeerIDExported as u64, &RawBytes::default())
+            .call::<Actor>(Method::GetPeerIDExported as u64, None)
+            .unwrap()
             .unwrap()
             .deserialize()
             .unwrap();
@@ -2258,7 +2261,7 @@ impl ActorHarness {
     pub fn confirm_change_worker_address(&self, rt: &mut MockRuntime) -> Result<(), ActorError> {
         rt.expect_validate_caller_addr(vec![self.owner]);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.owner);
-        rt.call::<Actor>(Method::ConfirmUpdateWorkerKey as u64, None)?;
+        rt.call::<Actor>(Method::ConfirmChangeWorkerAddress as u64, None)?;
         rt.verify();
 
         Ok(())
@@ -2555,7 +2558,8 @@ impl ActorHarness {
         rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1234));
         rt.expect_validate_caller_any();
         let available_balance_ret: GetAvailableBalanceReturn = rt
-            .call::<Actor>(Method::GetAvailableBalanceExported as u64, &RawBytes::default())?
+            .call::<Actor>(Method::GetAvailableBalanceExported as u64, None)?
+            .unwrap()
             .deserialize()?;
         rt.verify();
         Ok(available_balance_ret.available_balance)

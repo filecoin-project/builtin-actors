@@ -6,7 +6,7 @@ use fil_actor_multisig::{
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::{CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
 use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{RawBytes, DAG_CBOR};

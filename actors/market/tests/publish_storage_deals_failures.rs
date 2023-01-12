@@ -351,7 +351,7 @@ fn fail_when_deals_have_different_providers() {
     );
 
     // only valid deals are notified
-    let notify_param1 = RawBytes::serialize(MarketNotifyDealParams {
+    let notify_param1 = IpldBlock::serialize_cbor(&MarketNotifyDealParams {
         proposal: RawBytes::serialize(&deal1).expect("failed to marshal deal proposal").to_vec(),
         deal_id: next_deal_id,
     })
@@ -362,7 +362,7 @@ fn fail_when_deals_have_different_providers() {
         MARKET_NOTIFY_DEAL_METHOD,
         notify_param1,
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::USR_UNHANDLED_MESSAGE,
     );
 
@@ -380,30 +380,6 @@ fn fail_when_deals_have_different_providers() {
     assert_eq!(vec![0], valid);
 
     rt.verify();
-    check_state(&rt);
-}
-
-#[test]
-fn fail_when_caller_is_not_of_signable_type() {
-    let start_epoch = 10;
-    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
-
-    let mut rt = setup();
-    let deal = generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, start_epoch, end_epoch);
-    let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
-    let params = PublishStorageDealsParams {
-        deals: vec![ClientDealProposal { proposal: deal, client_signature: sig }],
-    };
-    let w = Address::new_id(1000);
-    rt.set_caller(*MINER_ACTOR_CODE_ID, w);
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
-    expect_abort(
-        ExitCode::USR_FORBIDDEN,
-        rt.call::<MarketActor>(
-            Method::PublishStorageDeals as u64,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-        ),
-    );
     check_state(&rt);
 }
 

@@ -442,3 +442,49 @@ pub struct GetBeneficiaryReturn {
     pub active: ActiveBeneficiary,
     pub proposed: Option<PendingBeneficiaryChange>,
 }
+
+#[derive(Debug, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
+pub struct GetOwnerReturn {
+    pub owner: Address,
+    pub proposed: Option<Address>,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct IsControllingAddressParam {
+    pub address: Address,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct IsControllingAddressReturn {
+    pub is_controlling: bool,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct GetSectorSizeReturn {
+    pub sector_size: SectorSize,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct GetAvailableBalanceReturn {
+    pub available_balance: TokenAmount,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct GetVestingFundsReturn {
+    pub vesting_funds: Vec<(ChainEpoch, TokenAmount)>,
+}
+
+#[derive(Debug, Default, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
+pub struct GetPeerIDReturn {
+    #[serde(with = "serde_bytes")]
+    pub peer_id: Vec<u8>,
+}
+
+#[derive(Debug, Default, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
+pub struct GetMultiaddrsReturn {
+    pub multi_addrs: Vec<BytesDe>,
+}

@@ -129,9 +129,9 @@ fn activation() {
     rt.expect_send(
         BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
-        RawBytes::default(),
+        None,
         proposal.provider_collateral,
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
     cron_tick(&mut rt);
@@ -150,11 +150,15 @@ fn activation() {
 }
 
 fn query_deal<T: DeserializeOwned>(rt: &mut MockRuntime, method: Method, id: u64) -> T {
-    query_deal_raw(rt, method, id).unwrap().deserialize().unwrap()
+    query_deal_raw(rt, method, id).unwrap().unwrap().deserialize().unwrap()
 }
 
-fn query_deal_raw(rt: &mut MockRuntime, method: Method, id: u64) -> Result<RawBytes, ActorError> {
+fn query_deal_raw(
+    rt: &mut MockRuntime,
+    method: Method,
+    id: u64,
+) -> Result<Option<IpldBlock>, ActorError> {
     let params = DealQueryParams { id };
     rt.expect_validate_caller_any();
-    rt.call::<MarketActor>(method as u64, &RawBytes::serialize(params).unwrap())
+    rt.call::<MarketActor>(method as u64, IpldBlock::serialize_cbor(&params).unwrap())
 }

@@ -1,7 +1,6 @@
 use fil_actor_miner::{locked_reward_from_reward, Actor, Method};
 use fil_actors_runtime::test_utils::{expect_abort_contains_message, make_identity_cid};
 use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
@@ -71,7 +70,7 @@ fn repay_debt_restricted_correctly() {
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
         "must be built-in",
-        rt.call::<Actor>(Method::RepayDebt as u64, &RawBytes::default()),
+        rt.call::<Actor>(Method::RepayDebt as u64, None),
     );
 
     // can call the exported method
@@ -81,16 +80,9 @@ fn repay_debt_restricted_correctly() {
     rt.add_balance(fee_debt.clone());
     rt.set_received(fee_debt.clone());
 
-    rt.expect_send(
-        BURNT_FUNDS_ACTOR_ADDR,
-        METHOD_SEND,
-        RawBytes::default(),
-        fee_debt,
-        RawBytes::default(),
-        ExitCode::OK,
-    );
+    rt.expect_send(BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, None, fee_debt, None, ExitCode::OK);
 
-    rt.call::<Actor>(Method::RepayDebtExported as u64, &RawBytes::default()).unwrap();
+    rt.call::<Actor>(Method::RepayDebtExported as u64, None).unwrap();
 
     rt.verify();
 

@@ -6,8 +6,8 @@ use fil_actor_market::policy::detail::DEAL_MAX_LABEL_SIZE;
 use fil_actor_market::{
     deal_id_key, ext, ActivateDealsParams, Actor as MarketActor, ClientDealProposal, DealArray,
     DealMetaArray, Label, MarketNotifyDealParams, Method, PublishStorageDealsParams,
-    PublishStorageDealsReturn, State, WithdrawBalanceParams, EX_DEAL_EXPIRED,
-    MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
+    PublishStorageDealsReturn, State, WithdrawBalanceParams, MARKET_NOTIFY_DEAL_METHOD,
+    NO_ALLOCATION_ID, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
 };
 use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
@@ -377,28 +377,6 @@ fn worker_balance_after_withdrawal_must_account_for_slashed_funds() {
 }
 
 #[test]
-fn fails_unless_called_by_an_account_actor() {
-    let mut rt = setup();
-
-    rt.set_value(TokenAmount::from_atto(10));
-    rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
-
-    rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
-    assert_eq!(
-        ExitCode::USR_FORBIDDEN,
-        rt.call::<MarketActor>(
-            Method::AddBalance as u64,
-            IpldBlock::serialize_cbor(&PROVIDER_ADDR).unwrap(),
-        )
-        .unwrap_err()
-        .exit_code()
-    );
-
-    rt.verify();
-    check_state(&rt);
-}
-
-#[test]
 fn adds_to_non_provider_funds() {
     struct TestCase {
         delta: u64,
@@ -416,8 +394,7 @@ fn adds_to_non_provider_funds() {
         for tc in &test_cases {
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *caller_addr);
             rt.set_value(TokenAmount::from_atto(tc.delta));
-            rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
-
+            rt.expect_validate_caller_any();
             assert!(rt
                 .call::<MarketActor>(
                     Method::AddBalance as u64,
@@ -819,7 +796,10 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, client_resolved);
     rt.expect_validate_caller_any();
     assert!(rt
-        .call::<MarketActor>(Method::AddBalance as u64, &RawBytes::serialize(client_bls).unwrap())
+        .call::<MarketActor>(
+            Method::AddBalanceExported as u64,
+            IpldBlock::serialize_cbor(&client_bls).unwrap()
+        )
         .is_ok());
     rt.verify();
     rt.add_balance(amount);
@@ -921,7 +901,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     normalized_deal.client = client_resolved;
     let normalized_proposal_bytes =
         RawBytes::serialize(&normalized_deal).expect("failed to marshal deal proposal");
-    let notify_param = RawBytes::serialize(MarketNotifyDealParams {
+    let notify_param = IpldBlock::serialize_cbor(&MarketNotifyDealParams {
         proposal: normalized_proposal_bytes.to_vec(),
         deal_id,
     })
@@ -931,7 +911,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
         MARKET_NOTIFY_DEAL_METHOD,
         notify_param,
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::USR_UNHANDLED_MESSAGE,
     );
 
@@ -1861,7 +1841,7 @@ fn insufficient_client_balance_in_a_batch() {
     );
 
     // only valid deals notified
-    let notify_param2 = RawBytes::serialize(MarketNotifyDealParams {
+    let notify_param2 = IpldBlock::serialize_cbor(&MarketNotifyDealParams {
         proposal: buf2.to_vec(),
         deal_id: next_deal_id,
     })
@@ -1871,7 +1851,7 @@ fn insufficient_client_balance_in_a_batch() {
         MARKET_NOTIFY_DEAL_METHOD,
         notify_param2,
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::USR_UNHANDLED_MESSAGE,
     );
 
@@ -1995,7 +1975,7 @@ fn insufficient_provider_balance_in_a_batch() {
     );
 
     // only valid deal notified
-    let notify_param2 = RawBytes::serialize(MarketNotifyDealParams {
+    let notify_param2 = IpldBlock::serialize_cbor(&MarketNotifyDealParams {
         proposal: buf2.to_vec(),
         deal_id: next_deal_id,
     })
@@ -2005,7 +1985,7 @@ fn insufficient_provider_balance_in_a_batch() {
         MARKET_NOTIFY_DEAL_METHOD,
         notify_param2,
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::USR_UNHANDLED_MESSAGE,
     );
 
@@ -2044,7 +2024,7 @@ fn add_balance_restricted_correctly() {
         "must be built-in",
         rt.call::<MarketActor>(
             Method::AddBalance as MethodNum,
-            &RawBytes::serialize(CLIENT_ADDR).unwrap(),
+            IpldBlock::serialize_cbor(&CLIENT_ADDR).unwrap(),
         ),
     );
 
@@ -2052,7 +2032,7 @@ fn add_balance_restricted_correctly() {
     rt.expect_validate_caller_any();
     rt.call::<MarketActor>(
         Method::AddBalanceExported as MethodNum,
-        &RawBytes::serialize(CLIENT_ADDR).unwrap(),
+        IpldBlock::serialize_cbor(&CLIENT_ADDR).unwrap(),
     )
     .unwrap();
 
@@ -2081,14 +2061,13 @@ fn psd_restricted_correctly() {
     rt.expect_validate_caller_any();
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
-    assert_eq!(
-        RawBytes::default(),
-        rt.call::<MarketActor>(
+    assert!(rt
+        .call::<MarketActor>(
             Method::AddBalance as u64,
-            &RawBytes::serialize(PROVIDER_ADDR).unwrap(),
+            IpldBlock::serialize_cbor(&PROVIDER_ADDR).unwrap(),
         )
         .unwrap()
-    );
+        .is_none());
 
     rt.verify();
 
@@ -2111,13 +2090,13 @@ fn psd_restricted_correctly() {
         "must be built-in",
         rt.call::<MarketActor>(
             Method::PublishStorageDeals as MethodNum,
-            &RawBytes::serialize(params.clone()).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         ),
     );
 
     // can call the exported method num
 
-    let authenticate_param1 = RawBytes::serialize(AuthenticateMessageParams {
+    let authenticate_param1 = IpldBlock::serialize_cbor(&AuthenticateMessageParams {
         signature: buf.to_vec(),
         message: buf.to_vec(),
     })
@@ -2132,11 +2111,11 @@ fn psd_restricted_correctly() {
         AUTHENTICATE_MESSAGE_METHOD as u64,
         authenticate_param1,
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
 
-    let notify_param = RawBytes::serialize(MarketNotifyDealParams {
+    let notify_param = IpldBlock::serialize_cbor(&MarketNotifyDealParams {
         proposal: buf.to_vec(),
         deal_id: next_deal_id,
     })
@@ -2146,15 +2125,16 @@ fn psd_restricted_correctly() {
         MARKET_NOTIFY_DEAL_METHOD,
         notify_param,
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::USR_UNHANDLED_MESSAGE,
     );
 
     let ret: PublishStorageDealsReturn = rt
         .call::<MarketActor>(
             Method::PublishStorageDealsExported as MethodNum,
-            &RawBytes::serialize(params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )
+        .unwrap()
         .unwrap()
         .deserialize()
         .unwrap();
