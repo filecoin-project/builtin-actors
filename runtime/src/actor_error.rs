@@ -29,6 +29,40 @@ impl ActorError {
         Self { exit_code: code, msg, data }
     }
 
+    /// Creates a new ActorError. This method checks if the exit code is within the allowed range,
+    /// and automatically converts it into a user code.
+    pub fn checked(code: ExitCode, msg: String) -> Self {
+        let exit_code = match code {
+            // This means the called actor did something wrong. We can't "make up" a
+            // reasonable exit code.
+            ExitCode::SYS_MISSING_RETURN
+            | ExitCode::SYS_ILLEGAL_INSTRUCTION
+            | ExitCode::SYS_ILLEGAL_EXIT_CODE => ExitCode::USR_UNSPECIFIED,
+            // We don't expect any other system errors.
+            code if code.is_system_error() => ExitCode::USR_ASSERTION_FAILED,
+            // Otherwise, pass it through.
+            code => code,
+        };
+        Self { exit_code, msg, data: None }
+    }
+
+    /// Creates a new ActorError. This method checks if the exit code is within the allowed range,
+    /// and automatically converts it into a user code.
+    pub fn checked_with_data(code: ExitCode, msg: String, data: Option<IpldBlock>) -> Self {
+        let exit_code = match code {
+            // This means the called actor did something wrong. We can't "make up" a
+            // reasonable exit code.
+            ExitCode::SYS_MISSING_RETURN
+            | ExitCode::SYS_ILLEGAL_INSTRUCTION
+            | ExitCode::SYS_ILLEGAL_EXIT_CODE => ExitCode::USR_UNSPECIFIED,
+            // We don't expect any other system errors.
+            code if code.is_system_error() => ExitCode::USR_ASSERTION_FAILED,
+            // Otherwise, pass it through.
+            code => code,
+        };
+        Self { exit_code, msg, data }
+    }
+
     pub fn illegal_argument(msg: String) -> Self {
         Self { exit_code: ExitCode::USR_ILLEGAL_ARGUMENT, msg, data: None }
     }

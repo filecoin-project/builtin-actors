@@ -226,17 +226,21 @@ impl<'r, RT: Runtime> System<'r, RT> {
             .rt
             .send_generalized(to, method, params, value, gas_limit, send_flags)
             .map_err(|err| actor_error!(unspecified; "send syscall failed: {}", err))?;
+
+        // Don't bother reloading on abort, just return the error.
+        if !result.exit_code.is_success() {
+            return Err(ActorError::checked_with_data(
+                result.exit_code,
+                format!("failed to call {to} on method {method}"),
+                result.return_data,
+            ));
+        }
+
         if !send_flags.read_only() {
             self.reload()?;
         }
-        match result.exit_code {
-            ExitCode::OK => Ok(result.return_data),
-            e => Err(ActorError::unchecked_with_data(
-                e,
-                "send failed".to_string(),
-                result.return_data,
-            )),
-        }
+
+        Ok(result.return_data)
     }
 
     /// Flush the actor state (bytecode, nonce, and slots).
