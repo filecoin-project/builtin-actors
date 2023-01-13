@@ -4,7 +4,7 @@ use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::BytesDe;
 use fvm_shared::{address::Address, sys::SendFlags, IPLD_RAW, METHOD_SEND};
 
-use crate::interpreter::precompiles::PrecompileContext;
+use crate::interpreter::precompiles::{is_reserved_precompile_address, PrecompileContext};
 
 use super::ext::{get_contract_type, get_evm_bytecode_cid, ContractType};
 
@@ -196,29 +196,37 @@ pub fn call_generic<RT: Runtime>(
             &[]
         };
 
-        if precompiles::Precompiles::<RT>::is_precompile(&dst) {
+        if is_reserved_precompile_address(&dst) {
             let context =
                 PrecompileContext { call_type: kind, gas_limit: effective_gas_limit(system, gas) };
             if log::log_enabled!(log::Level::Info) {
                 // log input to the precompile, but make sure we dont log _too_ much.
                 let mut input_hex = hex::encode(input_data);
                 input_hex.truncate(512);
-                log::info!(target: "evm", "Calling Precompile:\n\taddress: {:x?}\n\tcontext: {:?}\n\tinput: {}", EthAddress::try_from(dst).unwrap_or(EthAddress([0xff; 20])), context, input_hex);
+                log::info!(target: "evm", "Call Precompile:\n\taddress: {:x?}\n\tcontext: {:?}\n\tinput: {}", EthAddress::try_from(dst).unwrap_or(EthAddress([0xff; 20])), context, input_hex);
             }
 
-            match precompiles::Precompiles::call_precompile(system, dst, input_data, context) {
-                Ok(return_data) => (1, return_data),
-                Err(err) => {
-                    log::error!(target: "evm", "Precompile failed: error {:?}", err);
-                    // precompile failed, exit with reverted and no output
-                    (0, vec![])
+            if precompiles::Precompiles::<RT>::is_precompile(&dst) {
+                match precompiles::Precompiles::call_precompile(system, dst, input_data, context) {
+                    Ok(return_data) => (1, return_data),
+                    Err(err) => {
+                        log::error!(target: "evm", "Precompile failed: error {:?}", err);
+                        // precompile failed, exit with reverted and no output
+                        (0, vec![])
+                    }
                 }
+            } else {
+                // Invalid precompile address, but within reserved precompile range.
+                (0, vec![])
             }
         } else {
             let call_result = match kind {
                 CallKind::Call | CallKind::StaticCall => {
                     let dst_addr: EthAddress = dst.into();
-                    let dst_addr: Address = dst_addr.try_into().expect("address is a precompile");
+                    let dst_addr: Address = dst_addr.try_into().map_err(|_| ActorError::assertion_failed(
+                        "Reached a precompile address when a precompile should've been caught earlier in the system"
+                            .to_string(),
+                    ))?;
 
                     // Special casing for account/placeholder/non-existent actors: we just do a SEND (method 0)
                     // which allows us to transfer funds (and create placeholders)
@@ -307,7 +315,7 @@ pub fn call_generic<RT: Runtime>(
                         Err(ActorError::forbidden("cannot delegate-call to native actors".into()))
                     }
                     ContractType::Precompile => Err(ActorError::assertion_failed(
-                        "Reached a precompile address when a precompile should've been caught earlier in the system"
+                        "Reached a precompile address in DelegateCall when a precompile should've been caught earlier in the system"
                             .to_string(),
                     )),
                 },
