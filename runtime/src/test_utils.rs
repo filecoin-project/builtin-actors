@@ -66,6 +66,7 @@ lazy_static::lazy_static! {
     pub static ref PLACEHOLDER_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/placeholder");
     pub static ref EVM_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/evm");
     pub static ref EAM_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/eam");
+    pub static ref ETHACCOUNT_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/ethaccount");
     pub static ref ACTOR_TYPES: BTreeMap<Cid, Type> = {
         let mut map = BTreeMap::new();
         map.insert(*SYSTEM_ACTOR_CODE_ID, Type::System);
@@ -83,6 +84,7 @@ lazy_static::lazy_static! {
         map.insert(*PLACEHOLDER_ACTOR_CODE_ID, Type::Placeholder);
         map.insert(*EVM_ACTOR_CODE_ID, Type::EVM);
         map.insert(*EAM_ACTOR_CODE_ID, Type::EAM);
+        map.insert(*ETHACCOUNT_ACTOR_CODE_ID, Type::EthAccount);
         map
     };
     pub static ref ACTOR_CODES: BTreeMap<Type, Cid> = [
@@ -101,9 +103,12 @@ lazy_static::lazy_static! {
         (Type::Placeholder, *PLACEHOLDER_ACTOR_CODE_ID),
         (Type::EVM, *EVM_ACTOR_CODE_ID),
         (Type::EAM, *EAM_ACTOR_CODE_ID),
+        (Type::EthAccount, *ETHACCOUNT_ACTOR_CODE_ID),
     ]
     .into_iter()
     .collect();
+    // TODO this is the other way around and will not work for wasm actors; the singletons must
+    //      be in a map, not the nonsingletons .
     pub static ref NON_SINGLETON_CODES: BTreeMap<Cid, ()> = {
         let mut map = BTreeMap::new();
         map.insert(*ACCOUNT_ACTOR_CODE_ID, ());
@@ -112,6 +117,7 @@ lazy_static::lazy_static! {
         map.insert(*MINER_ACTOR_CODE_ID, ());
         map.insert(*PLACEHOLDER_ACTOR_CODE_ID, ());
         map.insert(*EVM_ACTOR_CODE_ID, ());
+        map.insert(*ETHACCOUNT_ACTOR_CODE_ID, ());
         map
     };
 }

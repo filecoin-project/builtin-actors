@@ -38,3 +38,7 @@ pub mod evm {
 
     pub const RESURRECT_METHOD: u64 = 2;
 }
+
+pub mod account {
+    pub const PUBKEY_ADDRESS_METHOD: u64 = 2;
+}

@@ -1,12 +1,17 @@
 use std::iter;
 
+use num_traits::Zero;
+
 use ext::{
+    account::PUBKEY_ADDRESS_METHOD,
     evm::RESURRECT_METHOD,
     init::{Exec4Params, Exec4Return},
 };
 use fil_actors_runtime::{actor_dispatch_unrestricted, deserialize_block, AsActorError};
+
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_shared::error::ExitCode;
+use fvm_shared::{error::ExitCode, sys::SendFlags};
+use serde::{Deserialize, Serialize};
 
 pub mod ext;
 
@@ -37,6 +42,7 @@ pub enum Method {
     // TODO: Do we want to use ExportedNums for all of these, per FRC-42?
     Create = 2,
     Create2 = 3,
+    CreateExternal = 4,
 }
 
 /// Compute the a new actor address using the EVM's CREATE rules.
@@ -55,6 +61,10 @@ pub fn compute_address_create2(
 ) -> EthAddress {
     let inithash = rt.hash(SupportedHashes::Keccak256, initcode);
     EthAddress(hash_20(rt, &[&[0xff], &from.0[..], salt, &inithash].concat()))
+}
+
+pub fn compute_address_create_external(rt: &impl Runtime, from: &EthAddress) -> EthAddress {
+    compute_address_create(rt, from, rt.message().nonce())
 }
 
 #[derive(serde::Deserialize, serde::Serialize, Debug, Clone, Copy, PartialEq, Eq)]
@@ -104,6 +114,10 @@ pub struct Create2Params {
     pub salt: [u8; 32],
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct CreateExternalParams(#[serde(with = "strict_bytes")] pub Vec<u8>);
+
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, PartialEq, Eq)]
 pub struct Return {
     pub actor_id: ActorID,
@@ -113,6 +127,7 @@ pub struct Return {
 
 pub type CreateReturn = Return;
 pub type Create2Return = Return;
+pub type CreateExternalReturn = Return;
 
 impl Return {
     fn from_exec4(exec4: Exec4Return, eth_address: EthAddress) -> Self {
@@ -177,21 +192,60 @@ fn create_actor(
     Ok(Return::from_exec4(ret, new_addr))
 }
 
-fn resolve_caller(rt: &mut impl Runtime) -> Result<EthAddress, ActorError> {
-    let caller_id = rt.message().caller().id().unwrap();
-    Ok(match rt.lookup_delegated_address(caller_id).map(|a| *a.payload()) {
-        Some(Payload::Delegated(addr)) if addr.namespace() == EAM_ACTOR_ID => EthAddress(
+fn resolve_eth_address(rt: &mut impl Runtime, actor_id: ActorID) -> Result<EthAddress, ActorError> {
+    match rt.lookup_delegated_address(actor_id).map(|a| *a.payload()) {
+        Some(Payload::Delegated(addr)) if addr.namespace() == EAM_ACTOR_ID => Ok(EthAddress(
             addr.subaddress()
                 .try_into()
                 .context_code(ExitCode::USR_FORBIDDEN, "caller's eth address isn't valid")?,
-        ),
-        _ => {
-            let mut bytes = [0u8; 20];
-            bytes[0] = 0xff;
-            bytes[12..].copy_from_slice(&caller_id.to_be_bytes());
-            EthAddress(bytes)
+        )),
+        _ => Err(actor_error!(forbidden; "caller doesn't have an eth address")),
+    }
+}
+
+fn resolve_caller_external(rt: &mut impl Runtime) -> Result<(EthAddress, EthAddress), ActorError> {
+    let caller = rt.message().caller();
+    let caller_id = caller.id().unwrap();
+    let caller_code_cid = rt.get_actor_code_cid(&caller_id).expect("failed to lookup caller code");
+    match rt.resolve_builtin_actor_type(&caller_code_cid) {
+        Some(Type::Account) => {
+            let result = rt
+                .send_generalized(
+                    &caller,
+                    PUBKEY_ADDRESS_METHOD,
+                    None,
+                    Zero::zero(),
+                    None,
+                    SendFlags::READ_ONLY,
+                )
+                .context_code(
+                    ExitCode::USR_ASSERTION_FAILED,
+                    "account failed to return its key address",
+                )?;
+
+            if !result.exit_code.is_success() {
+                // TODO: rebase on https://github.com/filecoin-project/builtin-actors/pull/1039
+                return Err(ActorError::unchecked(
+                    result.exit_code,
+                    "failed to retrieve account robust address".to_string(),
+                ));
+            }
+            let robust_addr: Address = deserialize_block(result.return_data)?;
+            let robust_eth_bytes = hash_20(rt, &robust_addr.to_bytes());
+
+            let mut id_bytes = [0u8; 20];
+            id_bytes[0] = 0xff;
+            id_bytes[12..].copy_from_slice(&caller_id.to_be_bytes());
+
+            Ok((EthAddress(id_bytes), EthAddress(robust_eth_bytes)))
         }
-    })
+        Some(Type::EthAccount) => {
+            let addr = resolve_eth_address(rt, caller_id)?;
+            Ok((addr, addr))
+        }
+        Some(t) => Err(ActorError::forbidden(format!("disallowed caller type {}", t.name()))),
+        None => Err(ActorError::forbidden(format!("disallowed caller code {caller_code_cid}"))),
+    }
 }
 
 pub struct EamActor;
@@ -209,17 +263,11 @@ impl EamActor {
 
     /// Create a new contract per the EVM's CREATE rules.
     ///
-    /// Permissions: May be called by any actor.
+    /// Permissions: May be called by the EVM.
     pub fn create(rt: &mut impl Runtime, params: CreateParams) -> Result<CreateReturn, ActorError> {
-        // TODO: this accepts a nonce from the user, so we _may_ want to limit it to specific
-        // actors. However, we won't deploy over another actor anyways (those constraints are
-        // enforced by the init actor and the FVM itself), so it shouldn't really be an issue in
-        // practice.
-        //
-        // This allows _any_ actor to behave like an Ethereum account, so we'd prefer to keep it
-        // open.
-        rt.validate_immediate_caller_accept_any()?;
-        let caller_addr = resolve_caller(rt)?;
+        // We only allow EVM actors to call this.
+        rt.validate_immediate_caller_type(&[Type::EVM])?;
+        let caller_addr = resolve_eth_address(rt, rt.message().caller().id().unwrap())?;
 
         // CREATE logic
         let eth_addr = compute_address_create(rt, &caller_addr, params.nonce);
@@ -230,21 +278,40 @@ impl EamActor {
 
     /// Create a new contract per the EVM's CREATE2 rules.
     ///
-    /// Permissions: May be called by any actor.
+    /// Permissions: May be called by the EVM.
     pub fn create2(
         rt: &mut impl Runtime,
         params: Create2Params,
     ) -> Result<Create2Return, ActorError> {
-        rt.validate_immediate_caller_accept_any()?;
-
-        // Try to lookup the caller's EVM address, but otherwise derive one from the ID address.
-        let caller_addr = resolve_caller(rt)?;
+        // We only allow EVM actors to call this.
+        rt.validate_immediate_caller_type(&[Type::EVM])?;
+        let caller_addr = resolve_eth_address(rt, rt.message().caller().id().unwrap())?;
 
         // Compute the CREATE2 address
         let eth_addr = compute_address_create2(rt, &caller_addr, &params.salt, &params.initcode);
 
         // send to init actor
         create_actor(rt, caller_addr, eth_addr, params.initcode)
+    }
+
+    /// Create a new contract from off-chain.
+    ///
+    /// When called by an EthAccount, this method will compute the new actor's address according to
+    /// the `CREATE` rules. When called by a "native" Account, this method will derive the address
+    /// from the _hash_ of the caller's key address.
+    ///
+    /// Permissions: May be called by builtin or eth accounts.
+    pub fn create_external(
+        rt: &mut impl Runtime,
+        params: CreateExternalParams,
+    ) -> Result<CreateExternalReturn, ActorError> {
+        // We only accept calls by top-level accounts.
+        // `resolve_caller_external` will check the actual types.
+        rt.validate_immediate_caller_is(&[rt.message().origin()])?;
+
+        let (owner_addr, stable_addr) = resolve_caller_external(rt)?;
+        let eth_addr = compute_address_create_external(rt, &stable_addr);
+        create_actor(rt, owner_addr, eth_addr, params.0)
     }
 }
 
@@ -254,6 +321,7 @@ impl ActorCode for EamActor {
         Constructor => constructor,
         Create => create,
         Create2 => create2,
+        CreateExternal => create_external,
     }
 }
 

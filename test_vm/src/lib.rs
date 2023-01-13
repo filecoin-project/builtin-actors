@@ -628,9 +628,9 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             // Validate that there's an actor at the target ID (we don't care what is there,
             // just that something is there).
             if self.v.get_actor(Address::new_id(da.namespace())).is_some() =>
-                {
-                    false
-                }
+            {
+                false
+            }
             _ => {
                 return Err(ActorError::unchecked(
                     ExitCode::SYS_INVALID_RECEIVER,

@@ -4,9 +4,10 @@ use eam::{
     compute_address_create, Create2Params, CreateParams, EthAddress, EvmConstructorParams, Return,
 };
 use fil_actor_eam as eam;
+use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::Primitives;
 use fil_actors_runtime::test_utils::{
-    expect_empty, MockRuntime, EVM_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID,
+    expect_empty, MockRuntime, EVM_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID,
 };
 use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -17,82 +18,63 @@ use fvm_shared::error::ExitCode;
 
 #[test]
 fn call_create() {
-    fn test_create(rt: &mut MockRuntime, eth_addr: eam::EthAddress) {
-        rt.expect_validate_caller_any();
+    let mut rt = construct_and_verify();
 
-        let initcode = vec![0xff];
+    let id_addr = Address::new_id(110);
+    let eth_addr = eam::EthAddress(hex_literal::hex!("CAFEB0BA00000000000000000000000000000000"));
+    let f4_eth_addr = Address::new_delegated(10, &eth_addr.0).unwrap();
+    rt.add_delegated_address(id_addr, f4_eth_addr);
 
-        let create_params = CreateParams { initcode: initcode.clone(), nonce: 0 };
+    rt.set_caller(*EVM_ACTOR_CODE_ID, id_addr);
 
-        let evm_params = EvmConstructorParams { creator: eth_addr, initcode: initcode.into() };
+    rt.expect_validate_caller_type(vec![Type::EVM]);
 
-        let new_eth_addr = compute_address_create(rt, &eth_addr, 0);
-        let params = Exec4Params {
-            code_cid: *EVM_ACTOR_CODE_ID,
-            constructor_params: RawBytes::serialize(evm_params).unwrap(),
-            subaddress: new_eth_addr.0[..].to_owned().into(),
-        };
+    let initcode = vec![0xff];
 
-        let send_return = IpldBlock::serialize_cbor(&Exec4Return {
-            id_address: Address::new_id(111),
-            robust_address: Address::new_id(0), // not a robust address but im hacking here and nobody checks
-        })
+    let create_params = CreateParams { initcode: initcode.clone(), nonce: 0 };
+
+    let evm_params = EvmConstructorParams { creator: eth_addr, initcode: initcode.into() };
+
+    let new_eth_addr = compute_address_create(&rt, &eth_addr, 0);
+    let params = Exec4Params {
+        code_cid: *EVM_ACTOR_CODE_ID,
+        constructor_params: RawBytes::serialize(evm_params).unwrap(),
+        subaddress: new_eth_addr.0[..].to_owned().into(),
+    };
+
+    let send_return = IpldBlock::serialize_cbor(&Exec4Return {
+        id_address: Address::new_id(111),
+        robust_address: Address::new_id(0), // not a robust address but im hacking here and nobody checks
+    })
+    .unwrap();
+
+    rt.expect_send(
+        INIT_ACTOR_ADDR,
+        EXEC4_METHOD,
+        IpldBlock::serialize_cbor(&params).unwrap(),
+        TokenAmount::from_atto(0),
+        send_return,
+        ExitCode::OK,
+    );
+
+    let result = rt
+        .call::<eam::EamActor>(
+            eam::Method::Create as u64,
+            IpldBlock::serialize_cbor(&create_params).unwrap(),
+        )
+        .unwrap()
+        .unwrap()
+        .deserialize::<Return>()
         .unwrap();
 
-        rt.expect_send(
-            INIT_ACTOR_ADDR,
-            EXEC4_METHOD,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-            TokenAmount::from_atto(0),
-            send_return,
-            ExitCode::OK,
-        );
+    let expected_return = Return {
+        actor_id: 111,
+        robust_address: Some(Address::new_id(0)),
+        eth_address: new_eth_addr,
+    };
 
-        let result = rt
-            .call::<eam::EamActor>(
-                eam::Method::Create as u64,
-                IpldBlock::serialize_cbor(&create_params).unwrap(),
-            )
-            .unwrap()
-            .unwrap()
-            .deserialize::<Return>()
-            .unwrap();
-
-        let expected_return = Return {
-            actor_id: 111,
-            robust_address: Some(Address::new_id(0)),
-            eth_address: new_eth_addr,
-        };
-
-        assert_eq!(result, expected_return);
-        rt.verify();
-    }
-
-    // From an EVM actor
-    {
-        let mut rt = construct_and_verify();
-
-        let id_addr = Address::new_id(110);
-        let eth_addr =
-            eam::EthAddress(hex_literal::hex!("CAFEB0BA00000000000000000000000000000000"));
-        let f4_eth_addr = Address::new_delegated(10, &eth_addr.0).unwrap();
-        rt.add_delegated_address(id_addr, f4_eth_addr);
-
-        rt.set_caller(*EVM_ACTOR_CODE_ID, id_addr);
-        test_create(&mut rt, eth_addr);
-    }
-
-    // From a non-evm actor.
-    {
-        let mut rt = construct_and_verify();
-
-        let id_addr = Address::new_id(110);
-        let eth_addr =
-            eam::EthAddress(hex_literal::hex!("FF0000000000000000000000000000000000006E"));
-
-        rt.set_caller(*MULTISIG_ACTOR_CODE_ID, id_addr);
-        test_create(&mut rt, eth_addr);
-    }
+    assert_eq!(result, expected_return);
+    rt.verify();
 }
 
 #[test]
@@ -112,7 +94,7 @@ fn call_resurrect() {
     let target_f4_eth_addr = Address::new_delegated(10, &target_eth_addr.0).unwrap();
     rt.add_delegated_address(target_id_addr, target_f4_eth_addr);
 
-    rt.expect_validate_caller_any();
+    rt.expect_validate_caller_type(vec![Type::EVM]);
 
     let initcode = vec![0xff];
 
@@ -156,7 +138,7 @@ fn call_create2() {
     rt.add_delegated_address(id_addr, f4_eth_addr);
 
     rt.set_caller(*EVM_ACTOR_CODE_ID, id_addr);
-    rt.expect_validate_caller_any();
+    rt.expect_validate_caller_type(vec![Type::EVM]);
 
     let initcode = vec![0xff];
 
