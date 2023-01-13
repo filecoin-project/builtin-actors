@@ -131,7 +131,7 @@ pub fn initialize_evm_contract(
     }
 }
 
-fn invoke_contract<RT>(
+fn invoke_contract_inner<RT>(
     system: &mut System<RT>,
     input_data: &[u8],
     bytecode_cid: &Cid,
@@ -142,7 +142,7 @@ where
     RT: Runtime,
     RT::Blockstore: Clone,
 {
-    let bytecode = match load_bytecode(system.rt.store(), &bytecode_cid)? {
+    let bytecode = match load_bytecode(system.rt.store(), bytecode_cid)? {
         Some(bytecode) => bytecode,
         // an EVM contract with no code returns immediately
         None => return Ok(Vec::new()),
@@ -205,7 +205,13 @@ impl EvmContractActor {
         let mut system = System::load(rt).map_err(|e| {
             ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
         })?;
-        invoke_contract(&mut system, &params.input, &params.code, &params.caller, params.value)
+        invoke_contract_inner(
+            &mut system,
+            &params.input,
+            &params.code,
+            &params.caller,
+            params.value,
+        )
     }
 
     pub fn invoke_contract<RT>(rt: &mut RT, input_data: &[u8]) -> Result<Vec<u8>, ActorError>
@@ -227,7 +233,7 @@ impl EvmContractActor {
 
         let received_value = system.rt.message().value_received();
         let caller = system.resolve_ethereum_address(&system.rt.message().caller()).unwrap();
-        invoke_contract(&mut system, input_data, &bytecode_cid, &caller, received_value)
+        invoke_contract_inner(&mut system, input_data, &bytecode_cid, &caller, received_value)
     }
 
     pub fn handle_filecoin_method<RT>(
