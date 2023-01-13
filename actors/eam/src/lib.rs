@@ -3,6 +3,7 @@ use std::iter;
 use num_traits::Zero;
 
 use ext::{
+    account::PUBKEY_ADDRESS_METHOD,
     evm::RESURRECT_METHOD,
     init::{Exec4Params, Exec4Return},
 };
@@ -189,25 +190,25 @@ fn create_actor(
 }
 
 fn resolve_eth_address(rt: &mut impl Runtime, actor_id: ActorID) -> Result<EthAddress, ActorError> {
-    Ok(match rt.lookup_delegated_address(actor_id).map(|a| *a.payload()) {
-        Some(Payload::Delegated(addr)) if addr.namespace() == EAM_ACTOR_ID => EthAddress(
+    match rt.lookup_delegated_address(actor_id).map(|a| *a.payload()) {
+        Some(Payload::Delegated(addr)) if addr.namespace() == EAM_ACTOR_ID => Ok(EthAddress(
             addr.subaddress()
                 .try_into()
                 .context_code(ExitCode::USR_FORBIDDEN, "caller's eth address isn't valid")?,
-        ),
-        _ => Err(actor_error!(Forbidden; "caller doesn't have an eth address")),
-    })
+        )),
+        _ => Err(actor_error!(forbidden; "caller doesn't have an eth address")),
+    }
 }
 
 fn resolve_caller_external(rt: &mut impl Runtime) -> Result<(EthAddress, EthAddress), ActorError> {
     let caller = rt.message().caller();
     let caller_id = caller.id().unwrap();
-    let caller_cid = rt.get_actor_code_cid(&caller_id).expect("failed to lookup caller code");
-    match rt.resolve_builtin_actor_type(code_cid) {
+    let caller_code_cid = rt.get_actor_code_cid(&caller_id).expect("failed to lookup caller code");
+    match rt.resolve_builtin_actor_type(&caller_code_cid) {
         Some(Type::Account) => {
             let result = rt.send_generalized(
                 &caller,
-                account::PUBKEY_ADDRESS_METHOD,
+                PUBKEY_ADDRESS_METHOD,
                 None,
                 Zero::zero(),
                 None,
@@ -226,7 +227,10 @@ fn resolve_caller_external(rt: &mut impl Runtime) -> Result<(EthAddress, EthAddr
 
             Ok((EthAddress(id_bytes), EthAddress(robust_eth_bytes_array)))
         }
-        Some(Type::EthAccount) => resolve_eth_address(rt, caller_id),
+        Some(Type::EthAccount) => {
+            let addr = resolve_eth_address(rt, caller_id)?;
+            Ok((addr, addr))
+        }
         _ => Err(ActorError::forbidden(format!("disallowed caller code cid {}", caller_code_cid))),
     }
 }
@@ -250,7 +254,7 @@ impl EamActor {
     pub fn create(rt: &mut impl Runtime, params: CreateParams) -> Result<CreateReturn, ActorError> {
         // We only allow EVM actors to call this.
         rt.validate_immediate_caller_type(&[Type::EVM])?;
-        let caller_addr = resolve_eth_address(rt, rt.caller().id().unwrap())?;
+        let caller_addr = resolve_eth_address(rt, rt.message().caller().id().unwrap())?;
 
         // CREATE logic
         let eth_addr = compute_address_create(rt, &caller_addr, params.nonce);
@@ -268,7 +272,7 @@ impl EamActor {
     ) -> Result<Create2Return, ActorError> {
         // We only allow EVM actors to call this.
         rt.validate_immediate_caller_type(&[Type::EVM])?;
-        let caller_addr = resolve_eth_address(rt, rt.caller().id().unwrap())?;
+        let caller_addr = resolve_eth_address(rt, rt.message().caller().id().unwrap())?;
 
         // Compute the CREATE2 address
         let eth_addr = compute_address_create2(rt, &caller_addr, &params.salt, &params.initcode);
@@ -290,7 +294,7 @@ impl EamActor {
     ) -> Result<CreateExternalReturn, ActorError> {
         // We only accept calls by top-level accounts.
         // `resolve_caller_external` will check the actual types.
-        rt.validate_immediate_caller_is(rt.message().origin());
+        rt.validate_immediate_caller_is(&[rt.message().origin()])?;
 
         let (owner_addr, stable_addr) = resolve_caller_external(rt)?;
         let eth_addr = compute_address_create_external(rt, &stable_addr);

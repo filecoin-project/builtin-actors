@@ -40,7 +40,5 @@ pub mod evm {
 }
 
 pub mod account {
-    use super::*;
-
     pub const PUBKEY_ADDRESS_METHOD: u64 = 2;
 }
