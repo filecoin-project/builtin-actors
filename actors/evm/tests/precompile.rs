@@ -65,16 +65,15 @@ fn test_precompile_hash() {
     );
 }
 
-struct PrecompileTest {
-    pub expected_return: Vec<u8>,
-    pub expected_exit_code: PrecompileExit,
-    pub precompile_number: u8,
-    pub output_size: u8,
-    pub input: Vec<u8>,
-    pub gas_avaliable: u64,
+fn precompile_address(prefix: u8, index: u8) -> EthAddress {
+    let mut buf = [0u8; 20];
+    buf[0] = prefix;
+    buf[19] = index;
+    EthAddress(buf)
 }
 
 #[repr(u8)]
+#[derive(Debug, PartialEq, Eq)]
 enum PrecompileExit {
     Reverted = 0,
     Success = 1,
@@ -89,15 +88,29 @@ pub enum NativePrecompile {
     GetActorType = 4,
 }
 
+impl NativePrecompile {
+    fn as_address(&self) -> EthAddress {
+        precompile_address(0xfe, *self as u8)
+    }
+}
+
+struct PrecompileTest {
+    pub expected_return: Vec<u8>,
+    pub expected_exit_code: PrecompileExit,
+    pub precompile_address: EthAddress,
+    pub output_size: u32,
+    pub input: Vec<u8>,
+    pub gas_avaliable: u64,
+}
+
 impl Debug for PrecompileTest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PrecompileTest")
-            .field("expected_return", &hex::encode(&self.expected_return))
-            .field("expected_exit_code", &(self.expected_exit_code as u8))
-            .field("precompile_number", &format!("{:x}", self.precompile_number))
-            .field("output_size", &self.output_size)
-            .field("precompile_number", &self.output_size)
+            .field("expected_exit_code", &self.expected_exit_code)
+            .field("precompile_address", &self.precompile_address)
             .field("input", &hex::encode(&self.input))
+            .field("expected_return", &hex::encode(&self.expected_return))
+            .field("output_size", &self.output_size)
             .field("gas_avaliable", &self.gas_avaliable)
             .finish()
     }
@@ -110,11 +123,22 @@ impl PrecompileTest {
         // first byte is precompile number, second is output buffer size, rest is input to precompile
         let result = util::invoke_contract(
             rt,
-            &[vec![self.precompile_number, self.output_size], self.input.clone()].concat(),
+            &[
+                self.precompile_address.as_evm_word().to_bytes().to_vec(),
+                U256::from(self.output_size).to_bytes().to_vec(),
+                self.input.clone(),
+            ]
+            .concat(),
         );
         log::trace!("returned: {:?}", hex::encode(&result));
         rt.verify();
-        assert_eq!(self.expected_exit_code as u8, result[0]);
+
+        let returned_exit = match result[0] {
+            0 => PrecompileExit::Reverted,
+            1 => PrecompileExit::Success,
+            _ => panic!("Expected call to give either 1 or 0, this is a bug!"),
+        };
+        assert_eq!(self.expected_exit_code, returned_exit);
         assert_eq!(&self.expected_return, &result[1..]);
         rt.reset();
     }
@@ -122,58 +146,46 @@ impl PrecompileTest {
     fn test_runner_bytecode() -> Vec<u8> {
         let init = "";
         let body = r#"
-# store payload to mem 0x00
+# store entire input to mem 0x00
 calldatasize
 push1 0x00 # input offset
 push1 0x00 # dst offset
 calldatacopy
 
 # out size
-push1 0x01 # second byte of input
+push1 0x20 # second word of input
 mload
-push1 0x08
-push1 0x1f
-mul # 31*8 bits
-shr
 
 # out off
-push2 0xA0
+push2 0xA000
 
 # in size
-push1 0x02
+push1 0x40 # two words
 calldatasize
 sub
 # in off
-push1 0x02
+push1 0x40 # two words
 
 # value
 push1 0x00
 
 # precompile address
-push20 0xfe00000000000000000000000000000000000000
-
-push1 0x00 # first byte of input is index
+push1 0x00 # first word of input is precompile
 mload
-push1 0x08
-push1 0x1f
-mul # 31*8 bits 
-shr
-
-add
 
 # gas
 push1 0x00
 
 call
 
-# write exit code memory
+# write exit code first byte of memory
 push1 0x00 # offset
 mstore8
 
 # write precompile return to memory
 returndatasize
 push1 0x00 # input offset
-push1 0x01 # dst offset
+push1 0x01 # dst offset (plus 1 to accommodate exit code)
 returndatacopy
 
 # size
@@ -225,7 +237,7 @@ fn test_native_actor_type() {
 
     fn test_type(rt: &mut MockRuntime, id: FILAddress, expected: NativeType) {
         let test = PrecompileTest {
-            precompile_number: NativePrecompile::GetActorType as u8,
+            precompile_address: NativePrecompile::GetActorType.as_address(),
             input: id_to_vec(&id),
             output_size: 32,
             expected_exit_code: PrecompileExit::Success,
@@ -247,7 +259,7 @@ fn test_native_actor_type() {
     // invalid id parameter (over)
     fn test_type_invalid(rt: &mut MockRuntime, input: Vec<u8>) {
         let test = PrecompileTest {
-            precompile_number: NativePrecompile::GetActorType as u8,
+            precompile_address: NativePrecompile::GetActorType.as_address(),
             input,
             output_size: 32,
             expected_exit_code: PrecompileExit::Reverted,
@@ -340,9 +352,9 @@ fn test_native_lookup_delegated_address() {
     let unknown_del = FILAddress::new_delegated(1234, "foobarboxy".as_bytes()).unwrap();
     rt.add_delegated_address(unknown_target, unknown_del);
 
-    fn test_reslove(rt: &mut MockRuntime, id: FILAddress, expected: Vec<u8>) {
+    fn test_lookup_address(rt: &mut MockRuntime, id: FILAddress, expected: Vec<u8>) {
         let test = PrecompileTest {
-            precompile_number: 2,
+            precompile_address: NativePrecompile::LookupDelegatedAddress.as_address(),
             input: id_to_vec(&id),
             output_size: 32,
             expected_exit_code: PrecompileExit::Success,
@@ -353,9 +365,11 @@ fn test_native_lookup_delegated_address() {
         test.run_test(rt);
     }
 
-    test_reslove(&mut rt, evm_target, evm_del.to_bytes());
-    test_reslove(&mut rt, unknown_target, unknown_del.to_bytes());
-    test_reslove(&mut rt, FILAddress::new_id(11111), Vec::new());
+    println!("{}", "0000000000000000000000000000000000000000000000000000000000002775".len());
+
+    test_lookup_address(&mut rt, evm_target, evm_del.to_bytes());
+    test_lookup_address(&mut rt, unknown_target, unknown_del.to_bytes());
+    test_lookup_address(&mut rt, FILAddress::new_id(11111), Vec::new());
 }
 
 #[test]
@@ -477,17 +491,25 @@ fn test_resolve_delegated() {
 fn test_precompile_failure() {
     let mut rt = util::construct_and_verify(PrecompileTest::test_runner_bytecode());
 
-    // test invalid (native) precompile address
-    let test = PrecompileTest {
-        precompile_number: 0xff, // precompile does not exist
-        input: vec![0xff; 32],
-        output_size: 32,
-        expected_exit_code: PrecompileExit::Reverted,
-        expected_return: vec![],
-        gas_avaliable: 10_000_000_000,
-    };
+    // test invalid precompile address
+    fn invalid_address(rt: &mut MockRuntime, prefix: u8, index: u8) {
+        let test = PrecompileTest {
+            precompile_address: precompile_address(prefix, index), // precompile does not exist
+            input: vec![0xff; 32], // garbage input should change nothing
+            output_size: 32,
+            expected_exit_code: PrecompileExit::Reverted,
+            expected_return: vec![],
+            gas_avaliable: 10_000_000_000,
+        };
+        test.run_test(rt);
+    }
 
-    test.run_test(&mut rt);
+    // invalid evm precompile
+    invalid_address(&mut rt, 0x00, 0xff);
+    // invalid fvm precompile
+    invalid_address(&mut rt, 0xfe, 0xff);
+
+    // TODO above test can be used to test CALL normally
 
     // TODO: refactor these to be more clear
 
