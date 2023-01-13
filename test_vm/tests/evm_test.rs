@@ -45,8 +45,8 @@ fn test_evm_lifecycle() {
             account,
             EAM_ACTOR_ADDR,
             TokenAmount::zero(),
-            fil_actor_eam::Method::Create2 as u64,
-            Some(fil_actor_eam::Create2Params { initcode: bytecode, salt: [0u8; 32] }),
+            fil_actor_eam::Method::CreateExternal as u64,
+            Some(fil_actor_eam::CreateExternalParams(bytecode)),
         )
         .unwrap();
 
@@ -56,7 +56,7 @@ fn test_evm_lifecycle() {
         create_result.message
     );
 
-    let create_return: fil_actor_eam::Create2Return =
+    let create_return: fil_actor_eam::CreateExternalReturn =
         create_result.ret.unwrap().deserialize().expect("failed to decode results");
 
     let contract_params = contract.enter().calldata().expect("should serialize");
@@ -89,8 +89,8 @@ fn test_evm_empty_initcode() {
             account,
             EAM_ACTOR_ADDR,
             TokenAmount::zero(),
-            fil_actor_eam::Method::Create2 as u64,
-            Some(fil_actor_eam::Create2Params { initcode: vec![], salt: [0u8; 32] }),
+            fil_actor_eam::Method::CreateExternal as u64,
+            Some(fil_actor_eam::CreateExternalParams(vec![])),
         )
         .unwrap();
 
@@ -128,11 +128,8 @@ fn test_evm_staticcall() {
                     *account,
                     EAM_ACTOR_ADDR,
                     TokenAmount::zero(),
-                    fil_actor_eam::Method::Create2 as u64,
-                    Some(fil_actor_eam::Create2Params {
-                        initcode: bytecode.clone(),
-                        salt: [0u8; 32],
-                    }),
+                    fil_actor_eam::Method::CreateExternal as u64,
+                    Some(fil_actor_eam::CreateExternalParams(bytecode.clone())),
                 )
                 .unwrap();
 
@@ -142,7 +139,7 @@ fn test_evm_staticcall() {
                 create_result.message
             );
 
-            let create_return: fil_actor_eam::Create2Return =
+            let create_return: fil_actor_eam::CreateExternalReturn =
                 create_result.ret.unwrap().deserialize().expect("failed to decode results");
 
             // Make sure we deployed an EVM actor.
@@ -285,11 +282,8 @@ fn test_evm_delegatecall() {
                     *account,
                     EAM_ACTOR_ADDR,
                     TokenAmount::zero(),
-                    fil_actor_eam::Method::Create2 as u64,
-                    Some(fil_actor_eam::Create2Params {
-                        initcode: bytecode.clone(),
-                        salt: [0u8; 32],
-                    }),
+                    fil_actor_eam::Method::CreateExternal as u64,
+                    Some(fil_actor_eam::CreateExternalParams(bytecode.clone())),
                 )
                 .unwrap();
 
@@ -299,7 +293,7 @@ fn test_evm_delegatecall() {
                 create_result.message
             );
 
-            let create_return: fil_actor_eam::Create2Return =
+            let create_return: fil_actor_eam::CreateExternalReturn =
                 create_result.ret.unwrap().deserialize().expect("failed to decode results");
 
             // Make sure we deployed an EVM actor.
@@ -396,11 +390,8 @@ fn test_evm_staticcall_delegatecall() {
                     *account,
                     EAM_ACTOR_ADDR,
                     TokenAmount::zero(),
-                    fil_actor_eam::Method::Create2 as u64,
-                    Some(fil_actor_eam::Create2Params {
-                        initcode: bytecode.clone(),
-                        salt: [0u8; 32],
-                    }),
+                    fil_actor_eam::Method::CreateExternal as u64,
+                    Some(fil_actor_eam::CreateExternalParams(bytecode.clone())),
                 )
                 .unwrap();
 
@@ -410,7 +401,7 @@ fn test_evm_staticcall_delegatecall() {
                 create_result.message
             );
 
-            let create_return: fil_actor_eam::Create2Return =
+            let create_return: fil_actor_eam::CreateExternalReturn =
                 create_result.ret.unwrap().deserialize().expect("failed to decode results");
 
             // Make sure we deployed an EVM actor.
