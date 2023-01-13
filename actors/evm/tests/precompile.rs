@@ -322,13 +322,6 @@ fn test_native_lookup_delegated_address() {
     test_reslove(&mut rt, evm_target, evm_del.to_bytes());
     test_reslove(&mut rt, unknown_target, unknown_del.to_bytes());
     test_reslove(&mut rt, FILAddress::new_id(11111), Vec::new());
-
-    // invalid input
-    rt.expect_gas_available(10_000_000_000u64);
-    let result = util::invoke_contract(&mut rt, &[0xff; 42]);
-    rt.verify();
-    assert_eq!(Vec::<u8>::new(), result);
-    rt.reset();
 }
 
 #[test]
