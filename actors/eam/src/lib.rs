@@ -225,7 +225,10 @@ fn resolve_caller_external(rt: &mut impl Runtime) -> Result<(EthAddress, EthAddr
 
             if !result.exit_code.is_success() {
                 // TODO: rebase on https://github.com/filecoin-project/builtin-actors/pull/1039
-                return Err(ActorError::unchecked(result.exit_code, format!("failed to call foo")));
+                return Err(ActorError::unchecked(
+                    result.exit_code,
+                    "failed to retrieve account robust address".to_string(),
+                ));
             }
             let robust_addr: Address = deserialize_block(result.return_data)?;
             let robust_eth_bytes = hash_20(rt, &robust_addr.to_bytes());
