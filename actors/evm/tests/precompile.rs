@@ -3,8 +3,8 @@ mod asm;
 use evm::interpreter::{address::EthAddress, U256};
 use fil_actor_evm as evm;
 use fil_actors_runtime::test_utils::{
-    MockRuntime, ACCOUNT_ACTOR_CODE_ID, EAM_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID,
-    MULTISIG_ACTOR_CODE_ID, PLACEHOLDER_ACTOR_CODE_ID,
+    new_bls_addr, MockRuntime, ACCOUNT_ACTOR_CODE_ID, EAM_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID,
+    MINER_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID, PLACEHOLDER_ACTOR_CODE_ID,
 };
 use fvm_shared::address::Address as FILAddress;
 
@@ -287,16 +287,32 @@ fn test_resolve_delegated() {
     let bytecode = resolve_address_contract();
     let mut rt = util::construct_and_verify(bytecode);
 
-    // f0 10101 is an EVM actor
+    // EVM actor
     let evm_target = FILAddress::new_id(10101);
     let evm_del = EthAddress(util::CONTRACT_ADDRESS).try_into().unwrap();
     rt.add_delegated_address(evm_target, evm_del);
-    // f0 10111 is an actor with a non-evm delegate address
+
+    // Actor with a non-evm delegate address
     let unknown_target = FILAddress::new_id(10111);
     let unknown_del = FILAddress::new_delegated(1234, "foobarboxy".as_bytes()).unwrap();
     rt.add_delegated_address(unknown_target, unknown_del);
-    // non-bound f4 address
+
+    // Non-bound f4 address
     let unbound_del = FILAddress::new_delegated(0xffff, "foobarboxybeef".as_bytes()).unwrap();
+
+    // Actor with a secp address (lookup should not find this)
+    let secp_target = FILAddress::new_id(10112);
+    let secp = {
+        let mut protocol = vec![1u8];
+        let payload = [0xff; 20];
+        protocol.extend_from_slice(&payload);
+        FILAddress::from_bytes(&protocol).unwrap()
+    };
+    rt.add_id_address(secp, secp_target);
+
+    let bls_target = FILAddress::new_id(10113);
+    let bls = new_bls_addr(123);
+    rt.add_id_address(bls, bls_target);
 
     fn test_resolve(rt: &mut MockRuntime, f4: FILAddress, expected: Vec<u8>) {
         rt.expect_gas_available(10_000_000_000u64);
@@ -314,19 +330,43 @@ fn test_resolve_delegated() {
     }
 
     test_resolve(&mut rt, evm_del, id_to_vec(&evm_target));
-    test_resolve(&mut rt, unknown_target, id_to_vec(&unknown_target));
+    test_resolve(&mut rt, unknown_del, id_to_vec(&unknown_target));
+    test_resolve(&mut rt, secp, id_to_vec(&secp_target));
+    test_resolve(&mut rt, bls, id_to_vec(&bls_target));
+    // not found
     test_resolve(&mut rt, unbound_del, vec![]);
 
-    // valid with extra padding
+    // UNCOMMENT AFTER https://github.com/filecoin-project/builtin-actors/pull/1016
+    // // valid with extra padding
+    // rt.expect_gas_available(10_000_000_000u64);
+    // let input = {
+    //     let addr = evm_del.to_bytes();
+    //     // address length to read
+    //     let mut v = U256::from(addr.len()).to_bytes().to_vec();
+    //     // address itself
+    //     v.extend_from_slice(&addr);
+    //     // extra padding
+    //     v.extend_from_slice(&[0; 10]);
+    //     v
+    // };
+    // let result = util::invoke_contract(&mut rt, &input);
+    // rt.verify();
+    // assert_eq!(id_to_vec(&evm_target), &result[1..]);
+    // assert_eq!(1, result[0]);
+    // rt.reset();
+
+    // valid but needs padding
     rt.expect_gas_available(10_000_000_000u64);
     let input = {
-        let addr = evm_del.to_bytes();
-        // address length to read
-        let mut v = U256::from(addr.len()).to_bytes().to_vec();
+        // EVM f4 but subaddress len is 12 bytes
+        // FEEDFACECAFEBEEF00000000
+        let addr = FILAddress::new_delegated(10, &util::CONTRACT_ADDRESS[..12]).unwrap();
+        let addr = addr.to_bytes();
+
+        let read_len = addr.len() + 8;
+        let mut v = U256::from(read_len).to_bytes().to_vec();
         // address itself
         v.extend_from_slice(&addr);
-        // extra padding
-        v.extend_from_slice(&[0; 10]);
         v
     };
     let result = util::invoke_contract(&mut rt, &input);
