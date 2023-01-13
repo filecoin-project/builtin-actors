@@ -40,7 +40,7 @@ impl TryFrom<EthAddress> for Address {
 impl TryFrom<&EthAddress> for Address {
     type Error = StatusCode;
     fn try_from(addr: &EthAddress) -> Result<Self, Self::Error> {
-        if is_reserved_precompile_address(addr.0) {
+        if is_reserved_precompile_address(addr) {
             return Err(StatusCode::BadAddress(format!(
                 "Cannot convert a precompile address: {:?} to an f4 address",
                 addr
