@@ -119,11 +119,11 @@ fn create_miner_given_send_to_init_actor_fails_should_fail() {
         IpldBlock::serialize_cbor(&message_params).unwrap(),
         TokenAmount::from_atto(10),
         None,
-        ExitCode::SYS_INSUFFICIENT_FUNDS,
+        ExitCode::USR_INSUFFICIENT_FUNDS,
     );
 
     expect_abort(
-        ExitCode::SYS_INSUFFICIENT_FUNDS,
+        ExitCode::USR_INSUFFICIENT_FUNDS,
         rt.call::<PowerActor>(
             Method::CreateMiner as u64,
             IpldBlock::serialize_cbor(&create_miner_params).unwrap(),

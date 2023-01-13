@@ -49,7 +49,7 @@ use fvm_shared::crypto::signature::{
     Signature, SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE,
 };
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
+use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::event::ActorEvent;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::Randomness;
@@ -61,7 +61,7 @@ use fvm_shared::sector::{
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::sys::SendFlags;
 use fvm_shared::version::NetworkVersion;
-use fvm_shared::{ActorID, MethodNum, IPLD_RAW, METHOD_CONSTRUCTOR, METHOD_SEND};
+use fvm_shared::{ActorID, MethodNum, Response, IPLD_RAW, METHOD_CONSTRUCTOR, METHOD_SEND};
 use regex::Regex;
 use serde::de::DeserializeOwned;
 use serde::{ser, Serialize};
@@ -998,7 +998,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         value: TokenAmount,
         _gas_limit: Option<u64>,
         mut send_flags: SendFlags,
-    ) -> Result<Option<IpldBlock>, ActorError> {
+    ) -> Result<Response, ErrorNumber> {
         // replicate FVM by silently propagating read only flag to subcalls
         if self.read_only() {
             send_flags.set(SendFlags::READ_ONLY, true)
@@ -1006,10 +1006,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
 
         // TODO gas_limit is current ignored, what should we do about it?
         if !self.allow_side_effects {
-            return Err(ActorError::unchecked(
-                ExitCode::SYS_ASSERTION_FAILED,
-                "Calling send is not allowed during side-effect lock".to_string(),
-            ));
+            return Ok(Response { exit_code: ExitCode::SYS_ASSERTION_FAILED, return_data: None });
         }
 
         let new_actor_msg = InternalMessage { from: self.to(), to: *to, value, method, params };
@@ -1030,7 +1027,11 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
             subinvocs.push(invoc);
             subinvocs
         });
-        res
+
+        Ok(Response {
+            exit_code: res.as_ref().err().map(|e| e.exit_code()).unwrap_or(ExitCode::OK),
+            return_data: res.unwrap_or_else(|mut e| e.take_data()),
+        })
     }
 
     fn get_randomness_from_tickets(
