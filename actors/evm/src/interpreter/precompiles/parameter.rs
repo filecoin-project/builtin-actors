@@ -141,12 +141,18 @@ impl<'a> ParameterReader<'a> {
 
     /// Read a bigint from the input, and pad up to `len`.
     pub fn read_biguint(&mut self, len: usize) -> BigUint {
+        // We read the bigint in two steps:
+        // 1. We read any bytes that are actually present in the input.
+        // 2. Then we pad by _shifting_ the integer by the number of missing bits.
         let split = len.min(self.slice.len());
         let (a, b) = self.slice.split_at(split);
         self.slice = b;
+
+        // Start with the existing bytes.
         let mut int = BigUint::from_bytes_be(a);
+        // Then shift, if necessary.
         if split < len {
-            int <<= (len - split) * 8;
+            int <<= ((len - split) as u32) * u8::BITS;
         }
         int
     }
@@ -200,7 +206,7 @@ mod test {
     fn test_big_int() {
         let mut reader = ParameterReader::new(&[1, 2]);
         assert_eq!(reader.read_biguint(1), 1u64.into());
-        assert_eq!(reader.read_biguint(3), (2u64 << (2 * 8)).into());
+        assert_eq!(reader.read_biguint(3), 0x02_00_00u64.into());
         assert_eq!(reader.read_biguint(5), 0u32.into());
     }
 
