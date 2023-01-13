@@ -22,7 +22,7 @@ pub fn extcodesize(
     // TODO (M2.2) we're fetching the entire block here just to get its size. We should instead use
     //  the ipld::block_stat syscall, but the Runtime nor the Blockstore expose it.
     //  Tracked in https://github.com/filecoin-project/ref-fvm/issues/867
-    let len = match get_contract_type(system.rt, addr) {
+    let len = match get_contract_type(system.rt, &addr.into()) {
         ContractType::EVM(addr) => {
             get_evm_bytecode(system, &addr).map(|bytecode| bytecode.len())?
         }
@@ -39,7 +39,7 @@ pub fn extcodehash(
     system: &mut System<impl Runtime>,
     addr: U256,
 ) -> Result<U256, StatusCode> {
-    let addr = match get_contract_type(system.rt, addr) {
+    let addr = match get_contract_type(system.rt, &addr.into()) {
         ContractType::EVM(a) => a,
         // _Technically_ since we have native "bytecode" set as 0xfe this is valid, though we cant differentiate between different native actors.
         ContractType::Native(_) => return Ok(BytecodeHash::NATIVE_ACTOR.into()),
@@ -74,7 +74,7 @@ pub fn extcodecopy(
     data_offset: U256,
     size: U256,
 ) -> Result<(), StatusCode> {
-    let bytecode = match get_contract_type(system.rt, addr) {
+    let bytecode = match get_contract_type(system.rt, &addr.into()) {
         ContractType::EVM(addr) => get_evm_bytecode(system, &addr)?,
         ContractType::NotFound | ContractType::Account | ContractType::Precompile => Vec::new(),
         // calling EXTCODECOPY on native actors results with a single byte 0xFE which solidtiy uses for its `assert`/`throw` methods
@@ -96,11 +96,10 @@ pub enum ContractType {
 }
 
 /// Resolves an address to the address type
-pub fn get_contract_type<RT: Runtime>(rt: &RT, addr: U256) -> ContractType {
-    let addr: EthAddress = addr.into();
+pub fn get_contract_type<RT: Runtime>(rt: &RT, addr: &EthAddress) -> ContractType {
     // precompiles cant be resolved by the FVM
     // addresses passed in precompile range will be returned as NotFound; EAM asserts that no actors can be deployed in the precompile reserved range
-    if Precompiles::<RT>::is_precompile(addr.as_evm_word()) {
+    if Precompiles::<RT>::is_precompile(addr) {
         return ContractType::Precompile;
     }
 

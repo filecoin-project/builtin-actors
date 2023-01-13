@@ -175,16 +175,17 @@ pub fn call_generic<RT: Runtime>(
             &[]
         };
 
-        if is_reserved_precompile_address(&dst.into()) {
+        let dst: EthAddress = dst.into();
+        if is_reserved_precompile_address(&dst) {
             let context =
                 PrecompileContext { call_type: kind, gas_limit: effective_gas_limit(system, gas) };
-            match precompiles::Precompiles::call_precompile(system, dst, input_data, context) {
+            match precompiles::Precompiles::call_precompile(system, &dst, input_data, context) {
                 Some(res) => {
                     if log::log_enabled!(log::Level::Info) {
                         // log input to the precompile, but make sure we dont log _too_ much.
                         let mut input_hex = hex::encode(input_data);
                         input_hex.truncate(512);
-                        log::info!(target: "evm", "Call Precompile:\n\taddress: {:x?}\n\tcontext: {:?}\n\tinput: {}", EthAddress::try_from(dst).unwrap_or(EthAddress([0xff; 20])), context, input_hex);
+                        log::info!(target: "evm", "Call Precompile:\n\taddress: {:x?}\n\tcontext: {:?}\n\tinput: {}", dst, context, input_hex);
                     }
 
                     match res {
@@ -197,15 +198,14 @@ pub fn call_generic<RT: Runtime>(
                     }
                 }
                 None => {
-                    log::warn!(target: "evm", "Non-existing precompile address: {:?}", EthAddress::from(dst));
+                    log::warn!(target: "evm", "Non-existing precompile address: {:?}", dst);
                     (0, vec![])
                 }
             }
         } else {
             let call_result = match kind {
                 CallKind::Call | CallKind::StaticCall => {
-                    let dst_addr: EthAddress = dst.into();
-                    let dst_addr: Address = dst_addr.try_into().map_err(|_| ActorError::assertion_failed(
+                    let dst_addr: Address = dst.try_into().map_err(|_| ActorError::assertion_failed(
                         "Reached a precompile address when a precompile should've been caught earlier in the system"
                             .to_string(),
                     ))?;
@@ -266,7 +266,7 @@ pub fn call_generic<RT: Runtime>(
                         system.send(&dst_addr, method, params, value, gas_limit, send_flags)
                     }
                 }
-                CallKind::DelegateCall => match get_contract_type(system.rt, dst) {
+                CallKind::DelegateCall => match get_contract_type(system.rt, &dst) {
                     ContractType::EVM(dst_addr) => {
                         // If we're calling an actual EVM actor, get its code.
                         if let Some(code) = get_evm_bytecode_cid(system, &dst_addr)? {

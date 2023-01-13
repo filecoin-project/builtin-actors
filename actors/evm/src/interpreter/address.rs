@@ -85,6 +85,11 @@ impl EthAddress {
     pub fn as_evm_word(&self) -> U256 {
         U256::from_big_endian(&self.0)
     }
+
+    /// Returns true if this is the null/zero EthAddress.
+    pub fn is_null(&self) -> bool {
+        self.0 == [0; 20]
+    }
 }
 
 impl AsRef<[u8]> for EthAddress {
