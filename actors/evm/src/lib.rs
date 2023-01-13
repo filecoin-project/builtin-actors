@@ -2,6 +2,7 @@ use fil_actors_runtime::{actor_error, AsActorError, EAM_ACTOR_ADDR, INIT_ACTOR_A
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{strict_bytes, BytesDe, BytesSer, DAG_CBOR};
 use fvm_shared::address::Address;
+use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use interpreter::{address::EthAddress, system::load_bytecode};
 
@@ -104,7 +105,9 @@ pub fn initialize_evm_contract(
     }
 
     // create a new execution context
-    let mut exec_state = ExecutionState::new(caller, receiver_eth_addr, Bytes::new());
+    let value_received = system.rt.message().value_received();
+    let mut exec_state =
+        ExecutionState::new(caller, receiver_eth_addr, value_received, Bytes::new());
 
     // identify bytecode valid jump destinations
     let initcode = Bytecode::new(initcode);
@@ -123,6 +126,48 @@ pub fn initialize_evm_contract(
         Outcome::Revert => Err(ActorError::unchecked_with_data(
             EVM_CONTRACT_REVERTED,
             "constructor reverted".to_string(),
+            IpldBlock::serialize_cbor(&BytesSer(&output.return_data)).unwrap(),
+        )),
+    }
+}
+
+fn invoke_contract_inner<RT>(
+    system: &mut System<RT>,
+    input_data: &[u8],
+    bytecode_cid: &Cid,
+    caller: &EthAddress,
+    value_received: TokenAmount,
+) -> Result<Vec<u8>, ActorError>
+where
+    RT: Runtime,
+    RT::Blockstore: Clone,
+{
+    let bytecode = match load_bytecode(system.rt.store(), bytecode_cid)? {
+        Some(bytecode) => bytecode,
+        // an EVM contract with no code returns immediately
+        None => return Ok(Vec::new()),
+    };
+
+    // Resolve the receiver's ethereum address.
+    let receiver_fil_addr = system.rt.message().receiver();
+    let receiver_eth_addr = system.resolve_ethereum_address(&receiver_fil_addr).unwrap();
+
+    let mut exec_state =
+        ExecutionState::new(*caller, receiver_eth_addr, value_received, input_data.to_vec().into());
+
+    let output = execute(&bytecode, &mut exec_state, system).map_err(|e| match e {
+        StatusCode::ActorError(e) => e,
+        _ => ActorError::unspecified(format!("EVM execution error: {e:?}")),
+    })?;
+
+    match output.outcome {
+        Outcome::Return => {
+            system.flush()?;
+            Ok(output.return_data.to_vec())
+        }
+        Outcome::Revert => Err(ActorError::unchecked_with_data(
+            EVM_CONTRACT_REVERTED,
+            "contract reverted".to_string(),
             IpldBlock::serialize_cbor(&BytesSer(&output.return_data)).unwrap(),
         )),
     }
@@ -147,65 +192,48 @@ impl EvmContractActor {
         initialize_evm_contract(&mut System::resurrect(rt)?, params.creator, params.initcode.into())
     }
 
-    pub fn invoke_contract<RT>(
+    pub fn invoke_contract_delegate<RT>(
         rt: &mut RT,
-        input_data: &[u8],
-        with_code: Option<Cid>,
-        with_caller: Option<EthAddress>,
+        params: DelegateCallParams,
     ) -> Result<Vec<u8>, ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
     {
-        if with_code.is_some() {
-            rt.validate_immediate_caller_is(&[rt.message().receiver()])?;
-        } else {
-            rt.validate_immediate_caller_accept_any()?;
-        }
+        rt.validate_immediate_caller_is(&[rt.message().receiver()])?;
+
+        let mut system = System::load(rt).map_err(|e| {
+            ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
+        })?;
+        invoke_contract_inner(
+            &mut system,
+            &params.input,
+            &params.code,
+            &params.caller,
+            params.value,
+        )
+    }
+
+    pub fn invoke_contract<RT>(rt: &mut RT, input_data: &[u8]) -> Result<Vec<u8>, ActorError>
+    where
+        RT: Runtime,
+        RT::Blockstore: Clone,
+    {
+        rt.validate_immediate_caller_accept_any()?;
 
         let mut system = System::load(rt).map_err(|e| {
             ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
         })?;
 
-        let bytecode = match match with_code {
-            Some(cid) => load_bytecode(system.rt.store(), &cid),
-            None => system.load_bytecode(),
-        }? {
-            Some(bytecode) => bytecode,
+        let bytecode_cid = match system.get_bytecode() {
+            Some(bytecode_cid) => bytecode_cid,
             // an EVM contract with no code returns immediately
             None => return Ok(Vec::new()),
         };
 
-        // Use passed Eth address (from delegate call).
-        // Otherwise resolve the caller's ethereum address. If the caller doesn't have one, the caller's Eth encoded ID is used instead.
-        let caller_eth_addr = match with_caller {
-            Some(addr) => addr,
-            None => system.resolve_ethereum_address(&system.rt.message().caller()).unwrap(),
-        };
-
-        // Resolve the receiver's ethereum address.
-        let receiver_fil_addr = system.rt.message().receiver();
-        let receiver_eth_addr = system.resolve_ethereum_address(&receiver_fil_addr).unwrap();
-
-        let mut exec_state =
-            ExecutionState::new(caller_eth_addr, receiver_eth_addr, input_data.to_vec().into());
-
-        let output = execute(&bytecode, &mut exec_state, &mut system).map_err(|e| match e {
-            StatusCode::ActorError(e) => e,
-            _ => ActorError::unspecified(format!("EVM execution error: {e:?}")),
-        })?;
-
-        match output.outcome {
-            Outcome::Return => {
-                system.flush()?;
-                Ok(output.return_data.to_vec())
-            }
-            Outcome::Revert => Err(ActorError::unchecked_with_data(
-                EVM_CONTRACT_REVERTED,
-                "contract reverted".to_string(),
-                IpldBlock::serialize_cbor(&BytesSer(&output.return_data)).unwrap(),
-            )),
-        }
+        let received_value = system.rt.message().value_received();
+        let caller = system.resolve_ethereum_address(&system.rt.message().caller()).unwrap();
+        invoke_contract_inner(&mut system, input_data, &bytecode_cid, &caller, received_value)
     }
 
     pub fn handle_filecoin_method<RT>(
@@ -219,7 +247,7 @@ impl EvmContractActor {
     {
         let params = args.unwrap_or(IpldBlock { codec: 0, data: vec![] });
         let input = handle_filecoin_method_input(method, params.codec, params.data.as_slice());
-        Self::invoke_contract(rt, &input, None, None)
+        Self::invoke_contract(rt, &input)
     }
 
     /// Returns the contract's EVM bytecode, or `None` if the contract has been deleted (has called
@@ -315,7 +343,7 @@ impl ActorCode for EvmContractActor {
                         p
                     }
                 };
-                let value = Self::invoke_contract(rt, &params, None, None)?;
+                let value = Self::invoke_contract(rt, &params)?;
                 Ok(IpldBlock::serialize_cbor(&BytesSer(&value))?)
             }
             Some(Method::GetBytecode) => {
@@ -342,12 +370,7 @@ impl ActorCode for EvmContractActor {
                         "method expects arguments".to_string()
                     })?
                     .deserialize()?;
-                let value = Self::invoke_contract(
-                    rt,
-                    &params.input,
-                    Some(params.code),
-                    Some(params.caller),
-                )?;
+                let value = Self::invoke_contract_delegate(rt, params)?;
                 Ok(IpldBlock::serialize_cbor(&BytesSer(&value))?)
             }
             Some(Method::Resurrect) => {
@@ -396,6 +419,8 @@ pub struct DelegateCallParams {
     pub input: Vec<u8>,
     /// The original caller's Eth address.
     pub caller: EthAddress,
+    /// The value passed in the original call.
+    pub value: TokenAmount,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]

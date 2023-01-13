@@ -275,6 +275,7 @@ pub fn call_generic<RT: Runtime>(
                                 code,
                                 input: input_data.into(),
                                 caller: state.caller,
+                                value: state.value_received.clone(),
                             };
                             system.send(
                                 &system.rt.message().receiver(),
