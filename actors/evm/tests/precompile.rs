@@ -294,41 +294,8 @@ return
 
 #[test]
 fn test_native_lookup_delegated_address() {
-    let bytecode = {
-        let init = "";
-        let body = r#"
-    
-# get call payload size
-calldatasize
-# store payload to mem 0x00
-push1 0x00
-push1 0x00
-calldatacopy
 
-push1 0x20   # out size
-push1 0xA0   # out off
-calldatasize # in size
-push1 0x00   # in off
-push1 0x00   # value
-# dst (lookup_delegated_address precompile)
-push20 0xfe00000000000000000000000000000000000002
-push1 0x00   # gas
-call
-
-# copy result to mem 0x00
-returndatasize
-push1 0x00
-push1 0x00
-returndatacopy
-# return
-returndatasize
-push1 0x00
-return
-"#;
-
-        asm::new_contract("native_lookup_delegated_address", init, body).unwrap()
-    };
-    let mut rt = util::construct_and_verify(bytecode);
+    let mut rt = util::construct_and_verify(PrecompileTest::test_runner_bytecode());
 
     // f0 10101 is an EVM actor
     let evm_target = FILAddress::new_id(10101);
@@ -341,11 +308,16 @@ return
     rt.add_delegated_address(unknown_target, unknown_del);
 
     fn test_reslove(rt: &mut MockRuntime, id: FILAddress, expected: Vec<u8>) {
-        rt.expect_gas_available(10_000_000_000u64);
-        let result = util::invoke_contract(rt, &id_to_vec(&id));
-        rt.verify();
-        assert_eq!(expected, result.as_slice());
-        rt.reset();
+        let test = PrecompileTest {
+            precompile_number: 2,
+            input: id_to_vec(&id),
+            output_size: 32,
+            expected_exit_code: PrecompileExit::Success,
+            expected_return: expected,
+            gas_avaliable: 10_000_000_000,
+        };
+
+        test.run_test(rt);
     }
 
     test_reslove(&mut rt, evm_target, evm_del.to_bytes());
