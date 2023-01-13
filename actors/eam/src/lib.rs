@@ -224,8 +224,7 @@ fn resolve_caller_external(rt: &mut impl Runtime) -> Result<(EthAddress, EthAddr
                 )?;
 
             if !result.exit_code.is_success() {
-                // TODO: rebase on https://github.com/filecoin-project/builtin-actors/pull/1039
-                return Err(ActorError::unchecked(
+                return Err(ActorError::checked(
                     result.exit_code,
                     "failed to retrieve account robust address".to_string(),
                 ));
