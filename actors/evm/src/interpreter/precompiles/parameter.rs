@@ -1,6 +1,7 @@
-use std::{borrow::Cow, slice::ChunksExact};
+use std::borrow::Cow;
 
-use substrate_bn::{AffineG1, FieldError, Fq, Group, GroupError, G1};
+use fvm_shared::bigint::BigUint;
+use substrate_bn::{AffineG1, FieldError, Fq, Fr, Group, GroupError, G1};
 
 use crate::interpreter::U256;
 
@@ -18,199 +19,158 @@ impl From<GroupError> for PrecompileError {
     }
 }
 
-/// Pad out to len as needed, but does not slice output to len
-pub(super) fn right_pad<'a>(input: impl Into<Cow<'a, [u8]>>, len: usize) -> Cow<'a, [u8]> {
-    let mut input: Cow<[u8]> = input.into();
-    let input_len = input.len();
-    if len > input_len {
-        input.to_mut().resize(len, 0);
-    }
-    input
+pub(super) trait Parameter: Sized {
+    fn read(reader: &mut ParameterReader) -> Result<Self, PrecompileError>;
 }
 
-/// ensures top bits are zeroed
-pub fn assert_zero_bytes<const S: usize>(src: &[u8]) -> Result<(), PrecompileError> {
-    if src[..S] != [0u8; S] {
-        Err(PrecompileError::InvalidInput)
-    } else {
-        Ok(())
+impl Parameter for G1 {
+    fn read(reader: &mut ParameterReader) -> Result<Self, PrecompileError> {
+        let x: Fq = reader.read_param()?;
+        let y: Fq = reader.read_param()?;
+
+        Ok(if x.is_zero() && y.is_zero() { G1::zero() } else { AffineG1::new(x, y)?.into() })
     }
 }
 
-pub(super) struct Parameter<T>(pub T);
+impl Parameter for Fq {
+    fn read(reader: &mut ParameterReader) -> Result<Self, PrecompileError> {
+        Ok(Fq::from_slice(&reader.read_fixed::<32>())?)
+    }
+}
 
-impl<'a> TryFrom<&'a [u8; 64]> for Parameter<G1> {
-    type Error = PrecompileError;
+impl Parameter for Fr {
+    fn read(reader: &mut ParameterReader) -> Result<Self, PrecompileError> {
+        Ok(Fr::from_slice(&reader.read_fixed::<32>())?)
+    }
+}
 
-    fn try_from(value: &'a [u8; 64]) -> Result<Self, Self::Error> {
-        let x = Fq::from_u256(U256::from_big_endian(&value[0..32]).into())?;
-        let y = Fq::from_u256(U256::from_big_endian(&value[32..64]).into())?;
+impl Parameter for U256 {
+    fn read(reader: &mut ParameterReader) -> Result<Self, PrecompileError> {
+        Ok(U256::from(reader.read_fixed::<32>()))
+    }
+}
 
-        Ok(if x.is_zero() && y.is_zero() {
-            Parameter(G1::zero())
+impl Parameter for [u8; 32] {
+    fn read(reader: &mut ParameterReader) -> Result<Self, PrecompileError> {
+        Ok(reader.read_fixed())
+    }
+}
+
+impl Parameter for u8 {
+    fn read(reader: &mut ParameterReader) -> Result<Self, PrecompileError> {
+        reader.drop_zeros::<31>()?;
+        Ok(reader.read_byte())
+    }
+}
+
+macro_rules! impl_param_int {
+    ($($t:ty)*) => {
+        $(
+            impl Parameter for $t {
+                fn read(reader: &mut ParameterReader) -> Result<Self, PrecompileError> {
+                    const ZEROS: usize = 32 - ((<$t>::BITS as usize) / 8);
+
+                    reader.drop_zeros::<ZEROS>()?;
+                    // Type ensures our remaining len
+                    Ok(<$t>::from_be_bytes(reader.read_fixed()))
+                }
+            }
+        )*
+    };
+}
+
+impl_param_int!(u16 i16 u32 i32 u64 i64);
+
+/// Provides a nice API interface for reading Parameters from input. This API treats the input as if
+/// it is followed by infinite zeros.
+pub(super) struct ParameterReader<'a> {
+    slice: &'a [u8],
+}
+
+impl<'a> ParameterReader<'a> {
+    pub(super) fn new(slice: &'a [u8]) -> Self {
+        ParameterReader { slice }
+    }
+
+    /// Drop a fixed number of bytes, and return an error if said bytes are not zeros.
+    pub fn drop_zeros<const S: usize>(&mut self) -> Result<(), PrecompileError> {
+        let split = S.min(self.slice.len());
+        let (a, b) = self.slice.split_at(split);
+        self.slice = b;
+        if a.iter().all(|&i| i == 0) {
+            Ok(())
         } else {
-            Parameter(AffineG1::new(x, y)?.into())
-        })
-    }
-}
-
-impl<'a> From<&'a [u8; 32]> for Parameter<[u8; 32]> {
-    fn from(value: &'a [u8; 32]) -> Self {
-        Self(*value)
-    }
-}
-
-impl<'a> TryFrom<&'a [u8; 32]> for Parameter<u32> {
-    type Error = PrecompileError;
-
-    fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
-        assert_zero_bytes::<28>(value)?;
-        // Type ensures our remaining len == 4
-        Ok(Self(u32::from_be_bytes(value[28..].try_into().unwrap())))
-    }
-}
-
-impl<'a> TryFrom<&'a [u8; 32]> for Parameter<i32> {
-    type Error = PrecompileError;
-
-    fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
-        assert_zero_bytes::<28>(value)?;
-        // Type ensures our remaining len == 4
-        Ok(Self(i32::from_be_bytes(value[28..].try_into().unwrap())))
-    }
-}
-
-impl<'a> TryFrom<&'a [u8; 32]> for Parameter<u8> {
-    type Error = PrecompileError;
-
-    fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
-        assert_zero_bytes::<31>(value)?;
-        Ok(Self(value[31]))
-    }
-}
-
-impl<'a> TryFrom<&'a [u8; 32]> for Parameter<u64> {
-    type Error = PrecompileError;
-
-    fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
-        assert_zero_bytes::<24>(value)?;
-        // Type ensures our remaining len == 8
-        Ok(Self(u64::from_be_bytes(value[24..].try_into().unwrap())))
-    }
-}
-
-impl<'a> TryFrom<&'a [u8; 32]> for Parameter<i64> {
-    type Error = PrecompileError;
-
-    fn try_from(value: &'a [u8; 32]) -> Result<Self, Self::Error> {
-        assert_zero_bytes::<24>(value)?;
-        // Type ensures our remaining len == 8
-        Ok(Self(i64::from_be_bytes(value[24..].try_into().unwrap())))
-    }
-}
-
-impl<'a> From<&'a [u8; 32]> for Parameter<U256> {
-    fn from(value: &'a [u8; 32]) -> Self {
-        Self(U256::from_big_endian(value))
-    }
-}
-
-pub(super) type U256Reader<'a> = PaddedChunks<'a, u8, 32>;
-
-// will be nicer with https://github.com/rust-lang/rust/issues/74985
-/// Wrapper around `ChunksExact` that pads instead of overflowing.
-/// Also provides a nice API interface for reading Parameters from input
-pub(super) struct PaddedChunks<'a, T: Sized + Copy, const CHUNK_SIZE: usize> {
-    slice: &'a [T],
-    chunks: ChunksExact<'a, T>,
-    exhausted: bool,
-}
-
-impl<'a, T: Sized + Copy, const CHUNK_SIZE: usize> PaddedChunks<'a, T, CHUNK_SIZE> {
-    pub(super) fn new(slice: &'a [T]) -> Self {
-        Self { slice, chunks: slice.chunks_exact(CHUNK_SIZE), exhausted: false }
-    }
-
-    pub fn next(&mut self) -> Option<&[T; CHUNK_SIZE]> {
-        self.chunks.next().map(|s| s.try_into().unwrap())
-    }
-
-    pub fn next_padded(&mut self) -> [T; CHUNK_SIZE]
-    where
-        T: Default,
-    {
-        if self.chunks.len() > 0 {
-            self.next().copied().unwrap_or([T::default(); CHUNK_SIZE])
-        } else if self.exhausted() {
-            [T::default(); CHUNK_SIZE]
-        } else {
-            self.exhausted = true;
-            let mut buf = [T::default(); CHUNK_SIZE];
-            let remainder = self.chunks.remainder();
-            buf[..remainder.len()].copy_from_slice(remainder);
-            buf
+            Err(PrecompileError::InvalidInput)
         }
     }
 
-    pub fn exhausted(&self) -> bool {
-        self.exhausted
-    }
-
-    pub fn remaining_len(&self) -> usize {
-        if self.exhausted {
+    /// Read a single byte, or 0 if there's no remaining input.
+    ///
+    /// NOTE: This won't read 32 bytes, it'll just read a _single_ byte.
+    pub fn read_byte(&mut self) -> u8 {
+        if let Some((&first, rest)) = self.slice.split_first() {
+            self.slice = rest;
+            first
+        } else {
             0
-        } else {
-            self.chunks.len() * CHUNK_SIZE + self.chunks.remainder().len()
         }
     }
 
-    pub fn chunks_read(&self) -> usize {
-        let total_chunks = self.slice.len() / CHUNK_SIZE;
-        let unread_chunks = self.chunks.len();
-        total_chunks - unread_chunks
+    /// Read a fixed number of bytes from the input, zero-padding as necessary.
+    ///
+    /// NOTE: this won't read in 32byte chunks, it'll read the specified number of bytes exactly.
+    pub fn read_fixed<const S: usize>(&mut self) -> [u8; S] {
+        let mut out = [0u8; S];
+        let split = S.min(self.slice.len());
+        let (a, b) = self.slice.split_at(split);
+        self.slice = b;
+        out[..split].copy_from_slice(a);
+        out
     }
 
-    // remaining unpadded slice of unread items
-    pub fn remaining_slice(&self) -> &[T] {
-        let start = self.slice.len() - self.remaining_len();
-        &self.slice[start..]
+    /// Read input and pad up to `len`.
+    pub fn read_padded(&mut self, len: usize) -> Cow<'a, [u8]> {
+        if len <= self.slice.len() {
+            let (a, b) = self.slice.split_at(len);
+            self.slice = b;
+            Cow::Borrowed(a)
+        } else {
+            let mut buf = Vec::with_capacity(len);
+            buf.extend_from_slice(self.slice);
+            buf.resize(len, 0);
+            self.slice = &[];
+            Cow::Owned(buf)
+        }
     }
 
-    // // tries to read an unpadded and exact (aligned) parameter
-    #[allow(unused)]
-    pub fn next_param<V>(&mut self) -> Result<V, PrecompileError>
+    /// Read a bigint from the input, and pad up to `len`.
+    pub fn read_biguint(&mut self, len: usize) -> BigUint {
+        // We read the bigint in two steps:
+        // 1. We read any bytes that are actually present in the input.
+        // 2. Then we pad by _shifting_ the integer by the number of missing bits.
+        let split = len.min(self.slice.len());
+        let (a, b) = self.slice.split_at(split);
+        self.slice = b;
+
+        // Start with the existing bytes.
+        let mut int = BigUint::from_bytes_be(a);
+        // Then shift, if necessary.
+        if split < len {
+            int <<= ((len - split) as u32) * u8::BITS;
+        }
+        int
+    }
+
+    /// Read a single parameter from the input. The parameter's type decides how much input it needs
+    /// to read.
+    ///
+    /// Most parameters will read in 32 byte chunks, but that's up to the parameter's
+    /// implementation.
+    pub fn read_param<V>(&mut self) -> Result<V, PrecompileError>
     where
-        Parameter<V>: for<'from> TryFrom<&'from [T; CHUNK_SIZE], Error = PrecompileError>,
+        V: Parameter,
     {
-        Parameter::<V>::try_from(self.next().ok_or(PrecompileError::IncorrectInputSize)?)
-            .map(|a| a.0)
-    }
-
-    // tries to read a parameter with padding
-    pub fn next_param_padded<V>(&mut self) -> Result<V, PrecompileError>
-    where
-        T: Default,
-        Parameter<V>: for<'from> TryFrom<&'from [T; CHUNK_SIZE], Error = PrecompileError>,
-    {
-        Parameter::<V>::try_from(&self.next_padded()).map(|a| a.0)
-    }
-
-    #[allow(unused)]
-    pub fn next_into_param_padded<V>(&mut self) -> V
-    where
-        T: Default,
-        Parameter<V>: for<'from> From<&'from [T; CHUNK_SIZE]>,
-    {
-        Parameter::<V>::from(&self.next_padded()).0
-    }
-
-    // read a parameter with padding
-    pub fn next_into_param<V>(&mut self) -> Result<V, PrecompileError>
-    where
-        T: Default,
-        Parameter<V>: for<'from> From<&'from [T; CHUNK_SIZE]>,
-    {
-        self.next().map(|p| Parameter::<V>::from(p).0).ok_or(PrecompileError::IncorrectInputSize)
+        Parameter::read(self)
     }
 }
 
@@ -219,11 +179,50 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_assert_zero_bytes() {
-        let mut bytes = [0u8; 32];
-        assert_zero_bytes::<32>(&bytes).unwrap();
-        bytes[31] = 1;
-        assert_zero_bytes::<31>(&bytes).unwrap();
-        assert_zero_bytes::<32>(&bytes).expect_err("expected error from nonzero byte");
+    fn test_read_fixed() {
+        let mut reader = ParameterReader::new(&[1, 2, 3]);
+        assert_eq!(reader.read_fixed::<2>(), [1, 2]);
+        assert_eq!(reader.read_fixed::<0>(), []);
+        assert_eq!(reader.read_fixed::<5>(), [3u8, 0, 0, 0, 0]);
+        assert_eq!(reader.read_fixed::<3>(), [0, 0, 0]);
+    }
+
+    #[test]
+    fn test_right_pad() {
+        let mut reader = ParameterReader::new(&[1, 2, 3]);
+        assert_eq!(reader.read_padded(2), &[1, 2][..]);
+        assert_eq!(reader.read_padded(2), &[3, 0][..]);
+        assert_eq!(reader.read_padded(2), &[0, 0][..]);
+    }
+
+    #[test]
+    fn test_int() {
+        let mut data = vec![0u8; 37];
+        data[31] = 1;
+        let mut reader = ParameterReader::new(&data);
+        assert_eq!(reader.read_param::<u64>().unwrap(), 1);
+        assert_eq!(reader.read_param::<u64>().unwrap(), 0);
+
+        // Expect this to overflow now.
+        data[0] = 1;
+        let mut reader = ParameterReader::new(&data);
+        assert!(matches!(reader.read_param::<u64>().unwrap_err(), PrecompileError::InvalidInput));
+    }
+
+    #[test]
+    fn test_big_int() {
+        let mut reader = ParameterReader::new(&[1, 2]);
+        assert_eq!(reader.read_biguint(1), 1u64.into());
+        assert_eq!(reader.read_biguint(3), 0x02_00_00u64.into());
+        assert_eq!(reader.read_biguint(5), 0u32.into());
+    }
+
+    #[test]
+    fn test_byte() {
+        let mut reader = ParameterReader::new(&[1, 2]);
+        assert_eq!(reader.read_byte(), 1u8);
+        assert_eq!(reader.read_byte(), 2u8);
+        assert_eq!(reader.read_byte(), 0u8);
+        assert_eq!(reader.read_byte(), 0u8);
     }
 }

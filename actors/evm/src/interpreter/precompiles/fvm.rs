@@ -3,16 +3,9 @@ use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::{address::Address, econ::TokenAmount, sys::SendFlags};
 use num_traits::FromPrimitive;
 
-use crate::interpreter::{
-    instructions::call::CallKind,
-    precompiles::{
-        parameter::{right_pad, Parameter},
-        NativeType,
-    },
-    System, U256,
-};
+use crate::interpreter::{instructions::call::CallKind, precompiles::NativeType, System, U256};
 
-use super::{parameter::U256Reader, PrecompileContext, PrecompileError, PrecompileResult};
+use super::{parameter::ParameterReader, PrecompileContext, PrecompileError, PrecompileResult};
 
 /// Read right padded BE encoded low u64 ID address from a u256 word.
 /// Returns variant of [`BuiltinType`] encoded as a u256 word.
@@ -22,15 +15,8 @@ pub(super) fn get_actor_type<RT: Runtime>(
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    // should never panic, pad to 32 bytes then read exactly 32 bytes
-    let id_bytes: [u8; 32] = right_pad(input, 32)[..32].as_ref().try_into().unwrap();
-    let id = match Parameter::<u64>::try_from(&id_bytes) {
-        Ok(id) => id.0,
-        Err(_) => {
-            log::debug!(target: "evm", "ID address parsing failed: {}", hex::encode(id_bytes));
-            return Err(PrecompileError::InvalidInput);
-        }
-    };
+    let mut reader = ParameterReader::new(input);
+    let id: u64 = reader.read_param()?;
 
     // resolve type from code CID
     let builtin_type = system
@@ -85,7 +71,7 @@ pub(super) fn get_randomness<RT: Runtime>(
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    let mut input_params = U256Reader::new(input);
+    let mut input_params = ParameterReader::new(input);
 
     #[derive(num_derive::FromPrimitive)]
     #[repr(i32)]
@@ -94,14 +80,12 @@ pub(super) fn get_randomness<RT: Runtime>(
         Beacon = 1,
     }
 
-    let randomness_type = RandomnessType::from_i32(input_params.next_param_padded::<i32>()?);
-    let personalization = input_params.next_param_padded::<i64>()?;
-    let rand_epoch = input_params.next_param_padded::<i64>()?;
-    let entropy_len = input_params.next_param_padded::<u32>()?;
+    let randomness_type = RandomnessType::from_i32(input_params.read_param::<i32>()?);
+    let personalization = input_params.read_param::<i64>()?;
+    let rand_epoch = input_params.read_param::<i64>()?;
+    let entropy_len = input_params.read_param::<u32>()? as usize;
 
-    debug_assert_eq!(input_params.chunks_read(), 4);
-
-    let entropy = right_pad(input_params.remaining_slice(), entropy_len as usize);
+    let entropy = input_params.read_padded(entropy_len);
 
     let randomness = match randomness_type {
         Some(RandomnessType::Chain) => system
@@ -125,8 +109,8 @@ pub(super) fn lookup_delegated_address<RT: Runtime>(
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    let mut id_bytes = U256Reader::new(input);
-    let id = id_bytes.next_param_padded::<u64>()?;
+    let mut id_bytes = ParameterReader::new(input);
+    let id = id_bytes.read_param::<u64>()?;
 
     let address = system.rt.lookup_delegated_address(id);
     let ab = match address {
@@ -144,10 +128,11 @@ pub(super) fn resolve_address<RT: Runtime>(
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    let mut input_params = U256Reader::new(input);
+    let mut input_params = ParameterReader::new(input);
 
-    let len = input_params.next_param_padded::<u32>()? as usize;
-    let addr = match Address::from_bytes(&right_pad(input_params.remaining_slice(), len)) {
+    let len = input_params.read_param::<u32>()? as usize;
+    let addr_bytes = input_params.read_padded(len);
+    let addr = match Address::from_bytes(&addr_bytes) {
         Ok(o) => o,
         Err(e) => {
             log::debug!(target: "evm", "Address parsing failed: {e}");
@@ -188,29 +173,26 @@ pub(super) fn call_actor<RT: Runtime>(
         return Err(PrecompileError::CallForbidden);
     }
 
-    let mut input_params = U256Reader::new(input);
+    let mut input_params = ParameterReader::new(input);
 
-    let method: u64 = input_params.next_param_padded()?;
+    let method: u64 = input_params.read_param()?;
 
-    let value: U256 = input_params.next_padded().into();
+    let value: U256 = input_params.read_param()?;
 
-    let flags: u64 = input_params.next_param_padded()?;
+    let flags: u64 = input_params.read_param()?;
     let flags = SendFlags::from_bits(flags).ok_or(PrecompileError::InvalidInput)?;
 
-    let codec: u64 = input_params.next_param_padded()?;
+    let codec: u64 = input_params.read_param()?;
 
-    let send_data_size = input_params.next_param_padded::<u32>()? as usize;
-    let address_size = input_params.next_param_padded::<u32>()? as usize;
+    let send_data_size = input_params.read_param::<u32>()? as usize;
+    let address_size = input_params.read_param::<u32>()? as usize;
 
     // ------ Begin Call -------
 
     let result = {
-        let start = input_params.remaining_slice();
-        let bytes = right_pad(start, send_data_size + address_size);
-
-        let input_data = &bytes[..send_data_size];
-        let address = &bytes[send_data_size..send_data_size + address_size];
-        let address = Address::from_bytes(address).map_err(|_| PrecompileError::InvalidInput)?;
+        let input_data = input_params.read_padded(send_data_size);
+        let address = input_params.read_padded(address_size);
+        let address = Address::from_bytes(&address).map_err(|_| PrecompileError::InvalidInput)?;
 
         // TODO only CBOR or "nothing" for now
         let params = match codec {
