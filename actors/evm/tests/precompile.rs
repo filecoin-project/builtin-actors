@@ -365,8 +365,6 @@ fn test_native_lookup_delegated_address() {
         test.run_test(rt);
     }
 
-    println!("{}", "0000000000000000000000000000000000000000000000000000000000002775".len());
-
     test_lookup_address(&mut rt, evm_target, evm_del.to_bytes());
     test_lookup_address(&mut rt, unknown_target, unknown_del.to_bytes());
     test_lookup_address(&mut rt, FILAddress::new_id(11111), Vec::new());
