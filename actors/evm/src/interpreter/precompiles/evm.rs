@@ -1,4 +1,4 @@
-use std::ops::RangeInclusive;
+use std::ops::Range;
 
 use fil_actors_runtime::runtime::Runtime;
 use fvm_shared::crypto::{
@@ -13,11 +13,17 @@ use crate::interpreter::{precompiles::PrecompileError, System, U256};
 
 use super::{parameter::ParameterReader, PrecompileContext, PrecompileResult};
 
-const SECP256K1_RANGE: RangeInclusive<U256> = U256::from_u64(2)
-    ..=U256::from_u128_words(
-        0xfffffffffffffffffffffffffffffffe,
-        0xbaaedce6af48a03bbfd25e8cd0364141,
-    );
+const SECP256K1_N: U256 =
+    U256::from_u128_words(0xfffffffffffffffffffffffffffffffe, 0xbaaedce6af48a03bbfd25e8cd0364141);
+
+const SECP256K1_RANGE: Range<U256> = U256::ONE..SECP256K1_N;
+
+#[test]
+fn test_secp_range() {
+    assert!(SECP256K1_RANGE.contains(&U256::ONE));
+    assert!(!SECP256K1_RANGE.contains(&U256::ZERO));
+    assert!(!SECP256K1_RANGE.contains(&SECP256K1_N));
+}
 
 fn ec_recover_internal<RT: Runtime>(system: &mut System<RT>, input: &[u8]) -> PrecompileResult {
     let mut input_params = ParameterReader::new(input);
@@ -29,6 +35,7 @@ fn ec_recover_internal<RT: Runtime>(system: &mut System<RT>, input: &[u8]) -> Pr
     // Must be either 27 or 28
     let v = recovery_byte.checked_sub(27).ok_or(PrecompileError::InvalidInput)?;
 
+    // SECP256K1_HALF_N check in evm was disabled after homestead, both r and s can be in full range of N
     if v > 1 || !SECP256K1_RANGE.contains(&r) || !SECP256K1_RANGE.contains(&s) {
         return Err(PrecompileError::InvalidInput);
     }
