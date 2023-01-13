@@ -434,6 +434,12 @@ fn test_callactor_revert() {
     test_callactor_inner(2048, EVM_CONTRACT_REVERTED, true)
 }
 
+#[test]
+fn test_callactor_restrict() {
+    // Should propagate the return value if the called actor fails.
+    test_callactor_inner(2, EVM_CONTRACT_REVERTED, false)
+}
+
 fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_input: bool) {
     let contract = callactor_proxy_contract();
 

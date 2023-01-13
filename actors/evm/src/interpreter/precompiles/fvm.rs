@@ -1,3 +1,4 @@
+use crate::EVM_MAX_RESERVED_METHOD;
 use fil_actors_runtime::runtime::{builtins::Type, Runtime};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::{address::Address, econ::TokenAmount, sys::SendFlags};
@@ -187,6 +188,10 @@ pub(super) fn call_actor<RT: Runtime>(
 
     let send_data_size = input_params.read_param::<u32>()? as usize;
     let address_size = input_params.read_param::<u32>()? as usize;
+
+    if method <= EVM_MAX_RESERVED_METHOD {
+        return Err(PrecompileError::InvalidInput);
+    }
 
     // ------ Begin Call -------
 
