@@ -206,7 +206,7 @@ mod test {
         // Expect this to overflow now.
         data[0] = 1;
         let mut reader = ParameterReader::new(&data);
-        reader.read_param::<u64>().unwrap_err();
+        assert_eq!(reader.read_param::<u64>().unwrap_err(), PrecompileError::InvalidInput);
     }
 
     #[test]
