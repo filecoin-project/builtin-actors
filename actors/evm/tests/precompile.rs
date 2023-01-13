@@ -300,7 +300,7 @@ fn test_resolve_delegated() {
     // Non-bound f4 address
     let unbound_del = FILAddress::new_delegated(0xffff, "foobarboxybeef".as_bytes()).unwrap();
 
-    // Actor with a secp address (lookup should not find this)
+    // Actor with a secp address
     let secp_target = FILAddress::new_id(10112);
     let secp = {
         let mut protocol = vec![1u8];
@@ -310,14 +310,15 @@ fn test_resolve_delegated() {
     };
     rt.add_id_address(secp, secp_target);
 
+    // Actor with a bls address
     let bls_target = FILAddress::new_id(10113);
     let bls = new_bls_addr(123);
     rt.add_id_address(bls, bls_target);
 
-    fn test_resolve(rt: &mut MockRuntime, f4: FILAddress, expected: Vec<u8>) {
+    fn test_resolve(rt: &mut MockRuntime, addr: FILAddress, expected: Vec<u8>) {
         rt.expect_gas_available(10_000_000_000u64);
         let input = {
-            let addr = f4.to_bytes();
+            let addr = addr.to_bytes();
             let mut v = U256::from(addr.len()).to_bytes().to_vec();
             v.extend_from_slice(&addr);
             v
@@ -336,24 +337,23 @@ fn test_resolve_delegated() {
     // not found
     test_resolve(&mut rt, unbound_del, vec![]);
 
-    // UNCOMMENT AFTER https://github.com/filecoin-project/builtin-actors/pull/1016
-    // // valid with extra padding
-    // rt.expect_gas_available(10_000_000_000u64);
-    // let input = {
-    //     let addr = evm_del.to_bytes();
-    //     // address length to read
-    //     let mut v = U256::from(addr.len()).to_bytes().to_vec();
-    //     // address itself
-    //     v.extend_from_slice(&addr);
-    //     // extra padding
-    //     v.extend_from_slice(&[0; 10]);
-    //     v
-    // };
-    // let result = util::invoke_contract(&mut rt, &input);
-    // rt.verify();
-    // assert_eq!(id_to_vec(&evm_target), &result[1..]);
-    // assert_eq!(1, result[0]);
-    // rt.reset();
+    // valid with extra padding
+    rt.expect_gas_available(10_000_000_000u64);
+    let input = {
+        let addr = evm_del.to_bytes();
+        // address length to read
+        let mut v = U256::from(addr.len()).to_bytes().to_vec();
+        // address itself
+        v.extend_from_slice(&addr);
+        // extra padding
+        v.extend_from_slice(&[0; 10]);
+        v
+    };
+    let result = util::invoke_contract(&mut rt, &input);
+    rt.verify();
+    assert_eq!(id_to_vec(&evm_target), &result[1..]);
+    assert_eq!(1, result[0]);
+    rt.reset();
 
     // valid but needs padding
     rt.expect_gas_available(10_000_000_000u64);
@@ -373,6 +373,27 @@ fn test_resolve_delegated() {
     rt.verify();
     assert_eq!(id_to_vec(&evm_target), &result[1..]);
     assert_eq!(1, result[0]);
+    rt.reset();
+
+    // invalid first param fails
+    rt.expect_gas_available(10_000_000_000u64);
+    let result = util::invoke_contract(&mut rt, &[0xff; 1]);
+    rt.verify();
+    assert_eq!(&[0u8], result.as_slice());
+    rt.reset();
+
+    // invalid second param fails
+    rt.expect_gas_available(10_000_000_000u64);
+    let input = {
+        // first word is len
+        let mut v = U256::from(5).to_bytes().to_vec();
+        // then addr
+        v.extend_from_slice(&[0, 0, 0xff]);
+        v
+    };
+    let result = util::invoke_contract(&mut rt, &input);
+    rt.verify();
+    assert_eq!(&[0u8], result.as_slice());
     rt.reset();
 }
 
