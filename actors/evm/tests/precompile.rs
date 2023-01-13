@@ -6,7 +6,7 @@ use evm::interpreter::{address::EthAddress, U256};
 use fil_actor_evm as evm;
 use fil_actors_runtime::test_utils::{
     new_bls_addr, MockRuntime, ACCOUNT_ACTOR_CODE_ID, EAM_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID,
-    MINER_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID, PLACEHOLDER_ACTOR_CODE_ID,
+    MARKET_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID, PLACEHOLDER_ACTOR_CODE_ID,
 };
 use fvm_shared::address::Address as FILAddress;
 
@@ -78,6 +78,15 @@ struct PrecompileTest {
 enum PrecompileExit {
     Reverted = 0,
     Success = 1,
+}
+
+#[repr(u8)]
+#[derive(Debug)]
+pub enum NativePrecompile {
+    ResolveAddress = 1,
+    LookupDelegatedAddress = 2,
+    CallActor = 3,
+    GetActorType = 4,
 }
 
 impl Debug for PrecompileTest {
@@ -190,9 +199,13 @@ fn test_native_actor_type() {
     let evm_target = FILAddress::new_id(0x88);
     rt.set_address_actor_type(evm_target, *EVM_ACTOR_CODE_ID);
 
-    // f0 31 is a system actor
-    let system_target = FILAddress::new_id(10);
-    rt.set_address_actor_type(system_target, *EAM_ACTOR_CODE_ID);
+    // f0 10 is the EAM actor (System)
+    let eam_target = FILAddress::new_id(10);
+    rt.set_address_actor_type(eam_target, *EAM_ACTOR_CODE_ID);
+
+    // f0 7 is the Market actor (System)
+    let market_target = FILAddress::new_id(7);
+    rt.set_address_actor_type(market_target, *MARKET_ACTOR_CODE_ID);
 
     // f0 101 is an account
     let account_target = FILAddress::new_id(101);
@@ -212,7 +225,7 @@ fn test_native_actor_type() {
 
     fn test_type(rt: &mut MockRuntime, id: FILAddress, expected: NativeType) {
         let test = PrecompileTest {
-            precompile_number: 4,
+            precompile_number: NativePrecompile::GetActorType as u8,
             input: id_to_vec(&id),
             output_size: 32,
             expected_exit_code: PrecompileExit::Success,
@@ -223,23 +236,44 @@ fn test_native_actor_type() {
     }
 
     test_type(&mut rt, evm_target, NativeType::EVMContract);
-    test_type(&mut rt, system_target, NativeType::System);
+    test_type(&mut rt, eam_target, NativeType::System);
+    test_type(&mut rt, market_target, NativeType::System);
     test_type(&mut rt, account_target, NativeType::Account);
     test_type(&mut rt, placeholder_target, NativeType::Placeholder);
     test_type(&mut rt, miner_target, NativeType::StorageProvider);
     test_type(&mut rt, other_target, NativeType::OtherTypes);
     test_type(&mut rt, FILAddress::new_id(10101), NativeType::NonExistent);
 
-    // invalid format address
-    let test = PrecompileTest {
-        precompile_number: 4,
-        input: vec![0xff; 64],
-        output_size: 32,
-        expected_exit_code: PrecompileExit::Reverted,
-        expected_return: vec![],
-        gas_avaliable: 10_000_000_000,
-    };
-    test.run_test(&mut rt);
+    // invalid id parameter (over)
+    fn test_type_invalid(rt: &mut MockRuntime, input: Vec<u8>) {
+        let test = PrecompileTest {
+            precompile_number: NativePrecompile::GetActorType as u8,
+            input,
+            output_size: 32,
+            expected_exit_code: PrecompileExit::Reverted,
+            expected_return: vec![],
+            gas_avaliable: 10_000_000_000,
+        };
+        test.run_test(rt);
+    }
+
+    // extra bytes
+    test_type_invalid(&mut rt, vec![0xff; 64]);
+    // single byte get padded and is invalid
+    test_type_invalid(&mut rt, vec![0xff]);
+
+    // VERY weird and NOBODY should depend on this, but this is expected behavior soo
+    // ¯\_(ツ)_/¯
+    {
+        // f0 (0xff00)
+        let padded_target = FILAddress::new_id(0xff00);
+        rt.set_address_actor_type(padded_target, *EVM_ACTOR_CODE_ID);
+
+        // not enough bytes (but still valid id when padded)
+        let mut input = vec![0u8; 31];
+        input[30] = 0xff; // will get padded to 0xff00
+        test_type(&mut rt, evm_target, NativeType::EVMContract);
+    }
 }
 
 fn resolve_address_contract() -> Vec<u8> {
@@ -441,6 +475,22 @@ fn test_resolve_delegated() {
 
 #[test]
 fn test_precompile_failure() {
+    let mut rt = util::construct_and_verify(PrecompileTest::test_runner_bytecode());
+
+    // test invalid (native) precompile address
+    let test = PrecompileTest {
+        precompile_number: 0xff, // precompile does not exist
+        input: vec![0xff; 32],
+        output_size: 32,
+        expected_exit_code: PrecompileExit::Reverted,
+        expected_return: vec![],
+        gas_avaliable: 10_000_000_000,
+    };
+
+    test.run_test(&mut rt);
+
+    // TODO: refactor these to be more clear
+
     let bytecode = resolve_address_contract();
     let mut rt = util::construct_and_verify(bytecode);
 
