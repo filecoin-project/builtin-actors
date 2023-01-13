@@ -1,10 +1,11 @@
 #![allow(clippy::too_many_arguments)]
 
+use fil_actors_runtime::EAM_ACTOR_ID;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::BytesDe;
 use fvm_shared::{address::Address, sys::SendFlags, IPLD_RAW, METHOD_SEND};
 
-use crate::interpreter::precompiles::{is_reserved_precompile_address, PrecompileContext};
+use crate::interpreter::{precompiles::{is_reserved_precompile_address, PrecompileContext}, address::ETH_NULL_ADDRESS};
 
 use super::ext::{get_contract_type, get_evm_bytecode_cid, ContractType};
 
@@ -176,9 +177,33 @@ pub fn call_generic<RT: Runtime>(
         };
 
         let dst: EthAddress = dst.into();
-        if is_reserved_precompile_address(&dst) {
+        if dst.is_reserved() {
+
+            // value sends to a reserved address will go through even though they don't exist since it is expected to burn
+            if !value.is_zero() {
+                // construct manually to skip checks done normally
+                let send_dst = Address::new_delegated(EAM_ACTOR_ID, &dst.0)
+                // replace with null address if failed somehow
+                    .unwrap_or_else(ETH_NULL_ADDRESS.try_into().expect("Eth null address must always be a valid f4 address"));
+
+                system
+                    .rt
+                    .send_generalized(
+                        &send_dst,
+                        0,
+                        None,
+                        TokenAmount::from(&value),
+                        None,
+                        SendFlags::empty(),
+                    )
+                    // ignore any exit code or return value, this is gross
+                    .map(|_| (1, vec![]))
+                    .unwrap_or((0, vec![]));
+            }
+
             let context =
                 PrecompileContext { call_type: kind, gas_limit: effective_gas_limit(system, gas) };
+                
             match precompiles::Precompiles::call_precompile(system, &dst, input_data, context) {
                 Some(res) => {
                     if log::log_enabled!(log::Level::Info) {

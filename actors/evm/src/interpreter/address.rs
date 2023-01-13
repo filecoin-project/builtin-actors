@@ -5,6 +5,7 @@ use fvm_ipld_encoding::{serde, strict_bytes};
 use fvm_shared::address::Address;
 use fvm_shared::ActorID;
 
+use super::precompiles::NATIVE_PRECOMPILE_ADDRESS_PREFIX;
 use super::precompiles::is_reserved_precompile_address;
 
 /// A Filecoin address as represented in the FEVM runtime (also called EVM-form).
@@ -12,6 +13,13 @@ use super::precompiles::is_reserved_precompile_address;
 /// TODO this type will eventually handle f4 address detection.
 #[derive(serde::Deserialize, serde::Serialize, PartialEq, Eq, Clone, Copy)]
 pub struct EthAddress(#[serde(with = "strict_bytes")] pub [u8; 20]);
+
+const ETH_NULL_ADDRESS: EthAddress = EthAddress([0; 20]); 
+const NATIVE_PRECOMPILE_ZERO_ADDRESS: EthAddress = {
+    let mut addr = [0; 20];
+    addr[0] = NATIVE_PRECOMPILE_ADDRESS_PREFIX;
+    EthAddress(addr)
+}; 
 
 /// Converts a U256 to an EthAddress by taking the lower 20 bytes.
 ///
@@ -88,7 +96,21 @@ impl EthAddress {
 
     /// Returns true if this is the null/zero EthAddress.
     pub fn is_null(&self) -> bool {
-        self.0 == [0; 20]
+        self == &ETH_NULL_ADDRESS
+    }
+
+    /// Returns true if this is the zero precompile address (0xfe00..00).
+    pub fn is_native_precompile_zero(&self) -> bool {
+        self == &NATIVE_PRECOMPILE_ZERO_ADDRESS
+    }
+
+    /// Returns true if this address is reserved by the system. 
+    /// Includes: 
+    /// - Eth Null address
+    /// - Native Precompile zero address
+    /// - Inside precompile address range [ref](https://github.com/filecoin-project/ref-fvm/issues/1164#issuecomment-1371304676)
+    pub fn is_reserved(&self) -> bool {
+        self.is_null() || self.is_native_precompile_zero() || is_reserved_precompile_address(&self) 
     }
 }
 
@@ -174,6 +196,7 @@ mod tests {
         // in range precompile addresses
         let addr = EthAddress(hex_literal::hex!("fe00000000000000000000000000000000000001"));
         Address::try_from(addr).expect_err("can't convert precompile into f4!");
+        assert!(!addr.is_native_precompile_zero());
         let addr = EthAddress(hex_literal::hex!("0000000000000000000000000000000000000001"));
         Address::try_from(addr).expect_err("can't convert precompile into f4!");
 
