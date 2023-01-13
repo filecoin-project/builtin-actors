@@ -26,7 +26,10 @@ pub(super) fn get_actor_type<RT: Runtime>(
     let id_bytes: [u8; 32] = right_pad(input, 32)[..32].as_ref().try_into().unwrap();
     let id = match Parameter::<u64>::try_from(&id_bytes) {
         Ok(id) => id.0,
-        Err(_) => return Ok(Vec::new()),
+        Err(_) => {
+            log::debug!(target: "evm", "ID address parsing failed: {}", hex::encode(id_bytes));
+            return Err(PrecompileError::InvalidInput);
+        }
     };
 
     // resolve type from code CID
