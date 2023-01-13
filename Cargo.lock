@@ -4517,6 +4517,7 @@ dependencies = [
  "fvm_ipld_hamt",
  "fvm_shared",
  "hex",
+ "hex-literal",
  "indexmap",
  "integer-encoding",
  "lazy_static",

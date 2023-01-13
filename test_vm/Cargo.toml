@@ -58,6 +58,7 @@ multihash = { version = "0.16.1", default-features = false }
 test-case = "2.2.1"
 ethers = { version = "0.17.0", features = ["abigen"] }
 hex = "0.4.3"
+hex-literal = "0.3.4"
 
 [features]
 m2-native = []

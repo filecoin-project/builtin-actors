@@ -3,14 +3,20 @@ use std::sync::Arc;
 use ethers::core::types::Address as EthAddress;
 use ethers::prelude::abigen;
 use ethers::providers::Provider;
-use fil_actors_runtime::{test_utils::EVM_ACTOR_CODE_ID, EAM_ACTOR_ADDR};
+use fil_actors_runtime::{
+    test_utils::{ETHACCOUNT_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID},
+    EAM_ACTOR_ADDR, EAM_ACTOR_ID,
+};
 use fvm_ipld_blockstore::MemoryBlockstore;
-use fvm_ipld_encoding::{strict_bytes, BytesDe};
-use fvm_shared::ActorID;
+use fvm_ipld_encoding::{strict_bytes, BytesDe, RawBytes};
 use fvm_shared::{address::Address, econ::TokenAmount};
+use fvm_shared::{ActorID, METHOD_SEND};
 use num_traits::Zero;
 use serde::{Deserialize, Serialize};
-use test_vm::{util::create_accounts, VM};
+use test_vm::{
+    util::{apply_ok, create_accounts},
+    TEST_FAUCET_ADDR, VM,
+};
 
 // Generate a statically typed interface for the contract.
 abigen!(Recursive, "../actors/evm/tests/contracts/Recursive.abi");
@@ -76,6 +82,62 @@ fn test_evm_lifecycle() {
         .decode_output(&contract.enter().function.name, &return_value)
         .expect("failed to decode return");
     assert_eq!(0, evm_ret, "expected contract to return 0 on success");
+}
+
+#[test]
+fn test_evm_eth_create_external() {
+    let store = MemoryBlockstore::new();
+    let v = VM::new_with_singletons(&store);
+
+    // create the EthAccount
+    let eth_bits = hex_literal::hex!("FEEDFACECAFEBEEF000000000000000000000000");
+    let eth_addr = Address::new_delegated(EAM_ACTOR_ID, &eth_bits).unwrap();
+    apply_ok(
+        &v,
+        TEST_FAUCET_ADDR,
+        eth_addr,
+        TokenAmount::from_whole(10_000),
+        METHOD_SEND,
+        None::<RawBytes>,
+    );
+    let account = v.normalize_address(&eth_addr).unwrap();
+    let mut actor = v.get_actor(account.clone()).unwrap();
+    actor.code = *ETHACCOUNT_ACTOR_CODE_ID;
+    v.set_actor(account.clone(), actor);
+
+    // now create an empty contract
+    let create_result = v
+        .apply_message(
+            account,
+            EAM_ACTOR_ADDR,
+            TokenAmount::zero(),
+            fil_actor_eam::Method::CreateExternal as u64,
+            Some(fil_actor_eam::CreateExternalParams(vec![])),
+        )
+        .unwrap();
+
+    assert!(
+        create_result.code.is_success(),
+        "failed to create the new actor {}",
+        create_result.message
+    );
+
+    // and call it
+    let create_return: fil_actor_eam::CreateExternalReturn =
+        create_result.ret.unwrap().deserialize().expect("failed to decode results");
+
+    let robust_addr = create_return.robust_address.unwrap();
+
+    let call_result = v
+        .apply_message(
+            account,
+            robust_addr,
+            TokenAmount::zero(),
+            fil_actor_evm::Method::InvokeContract as u64,
+            Some(ContractParams(vec![])),
+        )
+        .unwrap();
+    assert!(call_result.code.is_success(), "failed to call the new actor {}", call_result.message);
 }
 
 #[test]
@@ -480,14 +542,13 @@ fn test_evm_init_revert_data() {
             account,
             EAM_ACTOR_ADDR,
             TokenAmount::zero(),
-            fil_actor_eam::Method::Create2 as u64,
+            fil_actor_eam::Method::CreateExternal as u64,
             // init code:
             // PUSH1 0x42; PUSH1 0x0; MSTORE;
             // PUSH1 0x20; PUSH1 0x0; REVERT
-            Some(fil_actor_eam::Create2Params {
-                initcode: vec![0x60, 0x42, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xfd],
-                salt: [0u8; 32],
-            }),
+            Some(fil_actor_eam::CreateExternalParams(vec![
+                0x60, 0x42, 0x60, 0x00, 0x52, 0x60, 0x20, 0x60, 0x00, 0xfd,
+            ])),
         )
         .unwrap();
 
