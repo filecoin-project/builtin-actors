@@ -344,7 +344,6 @@ def_stdlog! { LOG2(2, (topic1, topic2)) }
 def_stdlog! { LOG3(3, (topic1, topic2, topic3)) }
 def_stdlog! { LOG4(4, (topic1, topic2, topic3, topic4)) }
 def_stdfun! { CALL(gas, dst, value, ioff, isz, ooff, osz) => call::call_call }
-def_stdfun! { CALLCODE(gas, dst, value, ioff, isz, ooff, osz) => call::call_callcode }
 def_stdfun! { DELEGATECALL(gas, dst, ioff, isz, ooff, osz) => call::call_delegatecall }
 def_stdfun! { STATICCALL(gas, dst, ioff, isz, ooff, osz) => call::call_staticcall }
 def_stdfun_code! { CODESIZE() => call::codesize }
