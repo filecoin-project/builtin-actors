@@ -35,7 +35,7 @@ fn call_create() {
 
     let evm_params = EvmConstructorParams { creator: eth_addr, initcode: initcode.into() };
 
-    let new_eth_addr = compute_address_create(&mut rt, &eth_addr, 0);
+    let new_eth_addr = compute_address_create(&rt, &eth_addr, 0);
     let params = Exec4Params {
         code_cid: *EVM_ACTOR_CODE_ID,
         constructor_params: RawBytes::serialize(evm_params).unwrap(),
