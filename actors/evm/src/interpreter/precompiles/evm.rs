@@ -1,4 +1,4 @@
-use std::ops::RangeInclusive;
+use std::ops::Range;
 
 use fil_actors_runtime::runtime::Runtime;
 use fvm_shared::crypto::{
@@ -13,16 +13,16 @@ use crate::interpreter::{precompiles::PrecompileError, System, U256};
 
 use super::{parameter::ParameterReader, PrecompileContext, PrecompileResult};
 
-const SECP256K1_RANGE: RangeInclusive<U256> = U256::ONE
-    ..=U256::from_u128_words(
-        0xfffffffffffffffffffffffffffffffe,
-        0xbaaedce6af48a03bbfd25e8cd0364141,
-    );
+const SECP256K1_N: U256 =
+    U256::from_u128_words(0xfffffffffffffffffffffffffffffffe, 0xbaaedce6af48a03bbfd25e8cd0364141);
+
+const SECP256K1_RANGE: Range<U256> = U256::ONE..SECP256K1_N;
 
 #[test]
 fn test_secp_range() {
     assert!(SECP256K1_RANGE.contains(&U256::ONE));
     assert!(!SECP256K1_RANGE.contains(&U256::ZERO));
+    assert!(!SECP256K1_RANGE.contains(&SECP256K1_N));
 }
 
 fn ec_recover_internal<RT: Runtime>(system: &mut System<RT>, input: &[u8]) -> PrecompileResult {
