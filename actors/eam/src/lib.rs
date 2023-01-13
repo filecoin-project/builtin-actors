@@ -209,17 +209,25 @@ fn resolve_caller_external(rt: &mut impl Runtime) -> Result<(EthAddress, EthAddr
     let caller_code_cid = rt.get_actor_code_cid(&caller_id).expect("failed to lookup caller code");
     match rt.resolve_builtin_actor_type(&caller_code_cid) {
         Some(Type::Account) => {
-            let result = rt.send_generalized(
-                &caller,
-                PUBKEY_ADDRESS_METHOD,
-                None,
-                Zero::zero(),
-                None,
-                SendFlags::READ_ONLY,
-            )?;
+            let result = rt
+                .send_generalized(
+                    &caller,
+                    PUBKEY_ADDRESS_METHOD,
+                    None,
+                    Zero::zero(),
+                    None,
+                    SendFlags::READ_ONLY,
+                )
+                .context_code(
+                    ExitCode::USR_ASSERTION_FAILED,
+                    "account failed to return its key address",
+                )?;
 
-            let robust_addr: Address =
-                result.unwrap().deserialize().expect("failed to deserialize account address");
+            if !result.exit_code.is_success() {
+                // TODO: rebase on https://github.com/filecoin-project/builtin-actors/pull/1039
+                return Err(ActorError::unchecked(result.exit_code, format!("failed to call foo")));
+            }
+            let robust_addr: Address = deserialize_block(result.return_data)?;
             let robust_eth_bytes = hash_20(rt, &robust_addr.to_bytes());
 
             let mut id_bytes = [0u8; 20];
