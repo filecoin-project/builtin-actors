@@ -105,6 +105,8 @@ impl<'a> ParameterReader<'a> {
     }
 
     /// Read a single byte, or 0 if there's no remaining input.
+    ///
+    /// NOTE: This won't read 32 bytes, it'll just read a _single_ byte.
     pub fn read_byte(&mut self) -> u8 {
         if let Some((&first, rest)) = self.slice.split_first() {
             self.slice = rest;
@@ -115,6 +117,8 @@ impl<'a> ParameterReader<'a> {
     }
 
     /// Read a fixed number of bytes from the input, zero-padding as necessary.
+    ///
+    /// NOTE: this won't read in 32byte chunks, it'll read the specified number of bytes exactly.
     pub fn read_fixed<const S: usize>(&mut self) -> [u8; S] {
         let mut out = [0u8; S];
         let split = S.min(self.slice.len());
@@ -159,6 +163,9 @@ impl<'a> ParameterReader<'a> {
 
     /// Read a single parameter from the input. The parameter's type decides how much input it needs
     /// to read.
+    ///
+    /// Most parameters will read in 32 byte chunks, but that's up to the parameter's
+    /// implementation.
     pub fn read_param<V>(&mut self) -> Result<V, PrecompileError>
     where
         V: Parameter,
