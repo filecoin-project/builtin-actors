@@ -6,13 +6,13 @@ use evm::EVM_CONTRACT_REVERTED;
 use fil_actor_evm as evm;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::{BytesSer, DAG_CBOR, IPLD_RAW};
+use fvm_ipld_encoding::{BytesSer, IPLD_RAW};
 use fvm_shared::address::Address as FILAddress;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sys::SendFlags;
-use fvm_shared::METHOD_SEND;
+use fvm_shared::{MethodNum, METHOD_SEND};
 
 mod util;
 
@@ -403,14 +403,18 @@ push4 0xffffffff
 # call_actor must be from delegatecall
 delegatecall
 
-# copy result to mem 0x00 (overwrites input data)
+# write exit code memory
+push1 0x00 # offset
+mstore8
+
 returndatasize
-push1 0x00
-push1 0x00
+push1 0x00 # offset
+push1 0x01 # dest offset (we have already written the exit code of the call)
 returndatacopy
 
-# return
-returndatasize
+returndatasize 
+push1 0x01 # (add 1 to the returndatasize to accommodate for the exitcode)
+add
 push1 0x00
 return
 "#;
@@ -421,16 +425,16 @@ return
 #[test]
 fn test_callactor_success() {
     // Should work if the called actor succeeds.
-    test_callactor_inner(ExitCode::OK)
+    test_callactor_inner(2048, ExitCode::OK, true)
 }
 
 #[test]
 fn test_callactor_revert() {
-    // Should propegate the return value if the called actor fails.
-    test_callactor_inner(EVM_CONTRACT_REVERTED)
+    // Should propagate the return value if the called actor fails.
+    test_callactor_inner(2048, EVM_CONTRACT_REVERTED, true)
 }
 
-fn test_callactor_inner(exit_code: ExitCode) {
+fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_input: bool) {
     let contract = callactor_proxy_contract();
 
     const CALLACTOR_NUM_PARAMS: usize = 6;
@@ -442,10 +446,10 @@ fn test_callactor_inner(exit_code: ExitCode) {
     let target = FILAddress::new_id(target_id);
     rt.actor_code_cids.insert(target, *EVM_ACTOR_CODE_ID);
 
-    // dest + method 0x42 with no data
+    // dest + method with no data
     let mut contract_params = Vec::new();
 
-    let method = U256::from(0x42);
+    let method = U256::from(method_num);
     let value = U256::from(0);
     let send_flags = SendFlags::default();
     let codec = U256::from(0);
@@ -472,85 +476,103 @@ fn test_callactor_inner(exit_code: ExitCode) {
     );
 
     // expected return data
-    let mut return_data = vec![0u8; 32];
-    return_data[31] = 0x42;
+    // Test with a codec _other_ than DAG_CBOR, to make sure we are actually passing the returned codec
+    let some_codec = 0x42;
+    let send_return = IpldBlock { codec: some_codec, data: vec![0xde, 0xad, 0xbe, 0xef] };
 
     rt.expect_gas_available(10_000_000_000u64);
-    rt.expect_send_generalized(
-        target,
-        0x42,
-        make_raw_params(proxy_call_input_data),
-        TokenAmount::zero(),
-        Some(0xffffffff),
-        send_flags,
-        Some(IpldBlock { codec: DAG_CBOR, data: return_data }),
-        exit_code,
-    );
+    if valid_call_input {
+        // We only get to the send_generalized if the call params were valid
+        rt.expect_send_generalized(
+            target,
+            method_num,
+            make_raw_params(proxy_call_input_data),
+            TokenAmount::zero(),
+            Some(0xffffffff),
+            send_flags,
+            Some(send_return.clone()),
+            exit_code,
+        );
+    }
 
     /// ensures top bits are zeroed
-    pub fn assert_zero_bytes<const S: usize>(src: &[u8]) {
+    fn assert_zero_bytes<const S: usize>(src: &[u8]) {
         assert_eq!(src[..S], [0u8; S]);
     }
 
     // invoke
 
-    let result = util::invoke_contract(&mut rt, &contract_params);
-
-    // assert return
-
-    #[derive(Debug, PartialEq, Eq)]
-    struct CallActorReturn {
-        exit_code: ExitCode,
-        codec: u64,
-        data_offset: u32,
-        data_size: u32,
-        data: Vec<u8>,
-    }
-
-    impl CallActorReturn {
-        pub fn read(src: &[u8]) -> Self {
-            assert!(src.len() >= 4 * 32, "expected to read at least 4 U256 values, got {:?}", src);
-
-            let bytes = &src[..32];
-            let exit_code = {
-                assert_zero_bytes::<4>(bytes);
-                ExitCode::new(u32::from_be_bytes(bytes[28..32].try_into().unwrap()))
-            };
-
-            let bytes = &src[32..64];
-            let codec = {
-                assert_zero_bytes::<8>(bytes);
-                u64::from_be_bytes(bytes[24..32].try_into().unwrap())
-            };
-
-            let bytes = &src[64..96];
-            let offset = {
-                assert_zero_bytes::<4>(bytes);
-                u32::from_be_bytes(bytes[28..32].try_into().unwrap())
-            };
-
-            let bytes = &src[96..128];
-            let size = {
-                assert_zero_bytes::<4>(bytes);
-                u32::from_be_bytes(bytes[28..32].try_into().unwrap())
-            };
-            let data = Vec::from(&src[offset as usize..(offset + size) as usize]);
-
-            Self { exit_code, codec, data_offset: offset, data_size: size, data }
-        }
-    }
-
-    let result = CallActorReturn::read(&result);
-    let expected = CallActorReturn {
-        exit_code,
-        codec: DAG_CBOR,
-        data_offset: 128,
-        data_size: 32,
-        data: U256::from(0x42).to_bytes().to_vec(),
-    };
+    let mut result = util::invoke_contract(&mut rt, &contract_params);
     rt.verify();
-    assert_eq!(result, expected);
     rt.reset();
+
+    let call_result = result.remove(0);
+    if !valid_call_input {
+        // 0 is failure
+        assert_eq!(call_result, 0);
+    } else {
+        // 1 is success
+        assert_eq!(call_result, 1);
+
+        // if call succeeded, we should have a return that we assert over
+
+        #[derive(Debug, PartialEq, Eq)]
+        struct CallActorReturn {
+            exit_code: ExitCode,
+            codec: u64,
+            data_offset: u32,
+            data_size: u32,
+            data: Vec<u8>,
+        }
+
+        impl CallActorReturn {
+            pub fn read(src: &[u8]) -> Self {
+                assert!(
+                    src.len() >= 4 * 32,
+                    "expected to read at least 4 U256 values, got {:?}",
+                    src
+                );
+
+                let bytes = &src[..32];
+                let exit_code = {
+                    assert_zero_bytes::<4>(bytes);
+                    ExitCode::new(u32::from_be_bytes(bytes[28..32].try_into().unwrap()))
+                };
+
+                let bytes = &src[32..64];
+                let codec = {
+                    assert_zero_bytes::<8>(bytes);
+                    u64::from_be_bytes(bytes[24..32].try_into().unwrap())
+                };
+
+                let bytes = &src[64..96];
+                let offset = {
+                    assert_zero_bytes::<4>(bytes);
+                    u32::from_be_bytes(bytes[28..32].try_into().unwrap())
+                };
+
+                let bytes = &src[96..128];
+                let size = {
+                    assert_zero_bytes::<4>(bytes);
+                    u32::from_be_bytes(bytes[28..32].try_into().unwrap())
+                };
+                let data = Vec::from(&src[offset as usize..(offset + size) as usize]);
+
+                Self { exit_code, codec, data_offset: offset, data_size: size, data }
+            }
+        }
+
+        let result = CallActorReturn::read(&result);
+        let expected = CallActorReturn {
+            exit_code,
+            codec: send_return.clone().codec,
+            data_offset: 128,
+            data_size: send_return.clone().data.len() as u32,
+            data: send_return.data,
+        };
+
+        assert_eq!(result, expected);
+    }
 }
 
 fn make_raw_params(bytes: Vec<u8>) -> Option<IpldBlock> {
