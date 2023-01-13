@@ -74,7 +74,11 @@ pub(super) fn ripemd160<RT: Runtime>(
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    Ok(system.rt.hash(SupportedHashes::Ripemd160, input))
+    let mut out = vec![0; 12];
+    let hash = system.rt.hash(SupportedHashes::Ripemd160, input);
+    out.extend_from_slice(&hash);
+    debug_assert_eq!(out.len(), 32);
+    Ok(out)
 }
 
 /// data copy
@@ -358,7 +362,7 @@ mod tests {
         let mut rt = MockRuntime::default();
         let mut system = System::create(&mut rt).unwrap();
 
-        let expected = hex!("4cd7a0452bd3d682e4cbd5fa90f446d7285b156a");
+        let expected = hex!("0000000000000000000000004cd7a0452bd3d682e4cbd5fa90f446d7285b156a");
         let res = hash(&mut system, input, PrecompileContext::default()).unwrap();
         assert_eq!(&res, &expected);
     }
