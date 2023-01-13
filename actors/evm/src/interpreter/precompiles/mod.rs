@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{marker::PhantomData, num::TryFromIntError};
 
 use fil_actors_runtime::runtime::Runtime;
 use substrate_bn::{CurveError, GroupError};
@@ -10,7 +10,7 @@ mod fvm;
 pub mod parameter;
 
 use evm::{blake2f, ec_add, ec_mul, ec_pairing, ec_recover, identity, modexp, ripemd160, sha256};
-use fvm::{call_actor, get_actor_type, lookup_delegated_address, resolve_address};
+use fvm::{call_actor, call_actor_id, get_actor_type, lookup_delegated_address, resolve_address};
 
 // really I'd want to have context as a type parameter, but since the table we generate must have the same types (or dyn) its messy
 type PrecompileFn<RT> = unsafe fn(*mut System<RT>, &[u8], PrecompileContext) -> PrecompileResult;
@@ -52,12 +52,13 @@ const fn gen_evm_precompiles<RT: Runtime>() -> [PrecompileFn<RT>; 9] {
     }
 }
 
-const fn gen_native_precompiles<RT: Runtime>() -> [PrecompileFn<RT>; 4] {
+const fn gen_native_precompiles<RT: Runtime>() -> [PrecompileFn<RT>; 5] {
     precompiles! {
         resolve_address,            // 0xfe00..01 resolve_address
         lookup_delegated_address,   // 0xfe00..02 lookup_delegated_address
         call_actor,                 // 0xfe00..03 call_actor
         get_actor_type,             // 0xfe00..04 get_actor_type
+        call_actor_id,              // 0xfe00..05 call_actor_id
     }
 }
 
@@ -72,7 +73,7 @@ pub struct Precompiles<RT>(PhantomData<RT>);
 
 impl<RT: Runtime> Precompiles<RT> {
     const EVM_PRECOMPILES: [PrecompileFn<RT>; 9] = gen_evm_precompiles();
-    const NATIVE_PRECOMPILES: [PrecompileFn<RT>; 4] = gen_native_precompiles();
+    const NATIVE_PRECOMPILES: [PrecompileFn<RT>; 5] = gen_native_precompiles();
 
     fn lookup_precompile(addr: &EthAddress) -> Option<PrecompileFn<RT>> {
         let [prefix, _m @ .., index] = addr.0;
@@ -118,6 +119,12 @@ pub enum PrecompileError {
     // FVM precompile errors
     InvalidInput,
     CallForbidden,
+}
+
+impl From<TryFromIntError> for PrecompileError {
+    fn from(_: TryFromIntError) -> Self {
+        Self::InvalidInput
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]

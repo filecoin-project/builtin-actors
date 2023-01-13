@@ -130,11 +130,7 @@ pub(super) fn resolve_address<RT: Runtime>(
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    let mut input_params = ParameterReader::new(input);
-
-    let len = input_params.read_param::<u32>()? as usize;
-    let addr_bytes = input_params.read_padded(len);
-    let addr = match Address::from_bytes(&addr_bytes) {
+    let addr = match Address::from_bytes(&input) {
         Ok(o) => o,
         Err(e) => {
             log::debug!(target: "evm", "Address parsing failed: {e}");
@@ -151,14 +147,26 @@ pub(super) fn resolve_address<RT: Runtime>(
         .unwrap_or_default())
 }
 
-/// Errors:
-///    TODO should just give 0s?
-/// - `IncorrectInputSize` if offset is larger than total input length
-/// - `InvalidInput` if supplied address bytes isnt a filecoin address
+/// Calls an actor by address.
 ///
-/// Returns:
+/// Parameters are encoded according to the solidity ABI, with no function selector:
+///
+/// ```text
+/// bytes address
+/// u64   method
+/// u256  value
+/// u64   flags (1 for read-only, 0 otherwise)
+/// u64   codec (0x71 for "dag-cbor", or `0` for "nothing")
+/// u64   input (must be empty if the codec is 0x0)
+/// ```
+///
+/// Returns (also solidity ABI encoded):
 ///
 /// `[int256 exit_code, uint codec, uint offset, uint size, []bytes <actor return value>]`
+/// ```
+/// i256  exit_code
+/// u64   codec
+/// bytes return_value
 ///
 /// for exit_code:
 /// - negative values are system errors
@@ -168,6 +176,48 @@ pub(super) fn call_actor<RT: Runtime>(
     system: &mut System<RT>,
     input: &[u8],
     ctx: PrecompileContext,
+) -> PrecompileResult {
+    call_actor_shared(system, input, ctx, false)
+}
+
+/// Calls an actor by the actor's actor ID.
+///
+/// Parameters are encoded according to the solidity ABI, with no function selector:
+///
+/// ```text
+/// u64   actor_id
+/// u64   method
+/// u256  value
+/// u64   flags (1 for read-only, 0 otherwise)
+/// u64   codec (0x71 for "dag-cbor", or `0` for "nothing")
+/// u64   input (must be empty if the codec is 0x0)
+/// ```
+///
+/// Returns (also solidity ABI encoded):
+///
+/// `[int256 exit_code, uint codec, uint offset, uint size, []bytes <actor return value>]`
+/// ```
+/// i256  exit_code
+/// u64   codec
+/// bytes return_value
+///
+/// for exit_code:
+/// - negative values are system errors
+/// - positive are user errors (from the called actor)
+/// - 0 is success
+pub(super) fn call_actor_id<RT: Runtime>(
+    system: &mut System<RT>,
+    input: &[u8],
+    ctx: PrecompileContext,
+) -> PrecompileResult {
+    call_actor_shared(system, input, ctx, true)
+}
+
+pub(super) fn call_actor_shared<RT: Runtime>(
+    system: &mut System<RT>,
+    input: &[u8],
+    ctx: PrecompileContext,
+    by_id: bool,
 ) -> PrecompileResult {
     // ----- Input Parameters -------
 
@@ -186,8 +236,22 @@ pub(super) fn call_actor<RT: Runtime>(
 
     let codec: u64 = input_params.read_param()?;
 
-    let send_data_size = input_params.read_param::<u32>()? as usize;
-    let address_size = input_params.read_param::<u32>()? as usize;
+    let params_off: u32 = input_params.read_param()?;
+    let id_or_addr_off: u64 = input_params.read_param()?;
+
+    input_params.seek(params_off.try_into()?);
+    let params_len: u32 = input_params.read_param()?;
+    let params = input_params.read_padded(params_len.try_into()?);
+
+    let address = if by_id {
+        Address::new_id(id_or_addr_off)
+    } else {
+        input_params.seek(id_or_addr_off.try_into()?);
+        let addr_len: u32 = input_params.read_param()?;
+        let addr_bytes = input_params
+            .read_padded(addr_len.try_into().map_err(|_| PrecompileError::InvalidInput)?);
+        Address::from_bytes(&addr_bytes).map_err(|_| PrecompileError::InvalidInput)?
+    };
 
     if method <= EVM_MAX_RESERVED_METHOD {
         return Err(PrecompileError::InvalidInput);
@@ -196,14 +260,10 @@ pub(super) fn call_actor<RT: Runtime>(
     // ------ Begin Call -------
 
     let result = {
-        let input_data = input_params.read_padded(send_data_size);
-        let address = input_params.read_padded(address_size);
-        let address = Address::from_bytes(&address).map_err(|_| PrecompileError::InvalidInput)?;
-
         // TODO only CBOR or "nothing" for now
         let params = match codec {
-            fvm_ipld_encoding::DAG_CBOR => Some(IpldBlock { codec, data: input_data.into() }),
-            0 if input_data.is_empty() => None,
+            fvm_ipld_encoding::DAG_CBOR => Some(IpldBlock { codec, data: params.into() }),
+            0 if params.is_empty() => None,
             _ => return Err(PrecompileError::InvalidInput),
         };
         system.send(&address, method, params, TokenAmount::from(&value), Some(ctx.gas_limit), flags)
@@ -228,20 +288,19 @@ pub(super) fn call_actor<RT: Runtime>(
             Ok(ret) => (U256::zero(), ret),
         };
 
-        const NUM_OUTPUT_PARAMS: u32 = 4;
-
         let ret_blk = data.unwrap_or(IpldBlock { codec: 0, data: vec![] });
-        let offset = NUM_OUTPUT_PARAMS * 32;
 
-        let mut output = Vec::with_capacity(NUM_OUTPUT_PARAMS as usize * 32 + ret_blk.data.len());
+        let mut output = Vec::with_capacity(4 * 32 + ret_blk.data.len());
         output.extend_from_slice(&exit_code.to_bytes());
         output.extend_from_slice(&U256::from(ret_blk.codec).to_bytes());
-        output.extend_from_slice(&U256::from(offset).to_bytes());
+        output.extend_from_slice(&U256::from(output.len() + 32).to_bytes());
         output.extend_from_slice(&U256::from(ret_blk.data.len()).to_bytes());
-        // NOTE:
-        // we dont pad out to 32 bytes here, the idea being that users will already be in the "everything is bytes" mode
-        // and will want re-pack align and whatever else by themselves
         output.extend_from_slice(&ret_blk.data);
+        // Pad out to the next increment of 32 bytes for solidity compatibility.
+        let offset = output.len() % 32;
+        if offset > 0 {
+            output.resize(output.len() - offset - 32, 0);
+        }
         output
     };
 
