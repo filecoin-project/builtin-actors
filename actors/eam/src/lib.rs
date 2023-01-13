@@ -243,7 +243,7 @@ fn resolve_caller_external(rt: &mut impl Runtime) -> Result<(EthAddress, EthAddr
             let addr = resolve_eth_address(rt, caller_id)?;
             Ok((addr, addr))
         }
-        Some(t) => Err(ActorError::forbidden(format!("disallowed caller type {t}"))),
+        Some(t) => Err(ActorError::forbidden(format!("disallowed caller type {}", t.name()))),
         None => Err(ActorError::forbidden(format!("disallowed caller code {caller_code_cid}"))),
     }
 }
