@@ -1,27 +1,52 @@
+use std::ops::RangeInclusive;
+
 use fil_actors_runtime::runtime::Runtime;
-use fvm_shared::{
-    bigint::BigUint,
-    crypto::{
-        hash::SupportedHashes,
-        signature::{SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE},
-    },
+use fvm_shared::crypto::{
+    hash::SupportedHashes,
+    signature::{SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE},
 };
 use num_traits::{One, Zero};
 use substrate_bn::{pairing_batch, AffineG1, AffineG2, Fq, Fq2, Fr, Group, Gt, G1, G2};
 use uint::byteorder::{ByteOrder, LE};
 
-use crate::interpreter::{
-    precompiles::{parameter::right_pad, PrecompileError},
-    System, U256,
-};
+use crate::interpreter::{precompiles::PrecompileError, System, U256};
 
-use super::{
-    parameter::{PaddedChunks, U256Reader},
-    PrecompileContext, PrecompileResult,
-};
+use super::{parameter::ParameterReader, PrecompileContext, PrecompileResult};
 
-lazy_static::lazy_static! {
-    pub(crate) static ref SECP256K1: BigUint = BigUint::from_bytes_be(&hex_literal::hex!("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141"));
+const SECP256K1_RANGE: RangeInclusive<U256> = U256::from_u64(2)
+    ..=U256::from_u128_words(
+        0xfffffffffffffffffffffffffffffffe,
+        0xbaaedce6af48a03bbfd25e8cd0364141,
+    );
+
+fn ec_recover_internal<RT: Runtime>(system: &mut System<RT>, input: &[u8]) -> PrecompileResult {
+    let mut input_params = ParameterReader::new(input);
+    let hash: [u8; SECP_SIG_MESSAGE_HASH_SIZE] = input_params.read_fixed();
+    let recovery_byte: u8 = input_params.read_param()?;
+    let r: U256 = input_params.read_param()?;
+    let s: U256 = input_params.read_param()?;
+
+    // Must be either 27 or 28
+    let v = recovery_byte.checked_sub(27).ok_or(PrecompileError::InvalidInput)?;
+
+    if v > 1 || !SECP256K1_RANGE.contains(&r) || !SECP256K1_RANGE.contains(&s) {
+        return Err(PrecompileError::InvalidInput);
+    }
+
+    let mut sig: [u8; SECP_SIG_LEN] = [0u8; 65];
+    r.to_big_endian(&mut sig[..32]);
+    s.to_big_endian(&mut sig[32..64]);
+    sig[64] = v;
+
+    let pubkey = system
+        .rt
+        .recover_secp_public_key(&hash, &sig)
+        .map_err(|_| PrecompileError::InvalidInput)?;
+
+    let mut address = system.rt.hash(SupportedHashes::Keccak256, &pubkey[1..]);
+    address[..12].copy_from_slice(&[0u8; 12]);
+
+    Ok(address)
 }
 
 /// recover a secp256k1 pubkey from a hash, recovery byte, and a signature
@@ -30,52 +55,8 @@ pub(super) fn ec_recover<RT: Runtime>(
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    let mut input_params = U256Reader::new(input);
-
-    let hash: [u8; SECP_SIG_MESSAGE_HASH_SIZE] = input_params.next_padded();
-    let recovery_byte = input_params.next_param_padded::<u8>();
-    let r = input_params.next_padded();
-    let s = input_params.next_padded();
-    let big_r = BigUint::from_bytes_be(&r);
-    let big_s = BigUint::from_bytes_be(&s);
-
-    // recovery byte is a single byte value but is represented with 32 bytes, sad
-    let v = match recovery_byte {
-        Ok(re) => {
-            if matches!(re, 27 | 28) {
-                re - 27
-            } else {
-                return Ok(Vec::new());
-            }
-        }
-        _ => return Ok(Vec::new()),
-    };
-
-    let valid = if big_r <= BigUint::one() || big_s <= BigUint::one() {
-        false
-    } else {
-        big_r <= *SECP256K1 && big_s <= *SECP256K1 && (v == 0 || v == 1)
-    };
-
-    if !valid {
-        return Ok(Vec::new());
-    }
-
-    let mut sig: [u8; SECP_SIG_LEN] = [0u8; 65];
-    sig[..32].copy_from_slice(&r);
-    sig[32..64].copy_from_slice(&s);
-    sig[64] = v;
-
-    let pubkey = if let Ok(key) = system.rt.recover_secp_public_key(&hash, &sig) {
-        key
-    } else {
-        return Ok(Vec::new());
-    };
-
-    let mut address = system.rt.hash(SupportedHashes::Keccak256, &pubkey[1..]);
-    address[..12].copy_from_slice(&[0u8; 12]);
-
-    Ok(address)
+    // This precompile is weird and never fails. So we just turn errors into empty results.
+    Ok(ec_recover_internal(system, input).unwrap_or_default())
 }
 
 /// hash with sha2-256
@@ -112,40 +93,21 @@ pub(super) fn modexp<RT: Runtime>(
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    let input = right_pad(input, 96);
+    let mut reader = ParameterReader::new(input);
 
-    // Follows go-ethereum by truncating bits to u64, ignoring other all other values in the first 24 bytes.
-    // Since we don't have any complexity functions or specific gas measurements of modexp in FEVM,
-    // we let values be whatever and have FEVM gas accounting be the one responsible for keeping things within reasonable limits.
-    // We _also_ will default with 0 (though this is already done with right padding above) since that is expected to be fine.
-    // Eth really relies heavily on gas checking being correct and safe for client nodes...
-    fn read_bigint_len(input: &[u8], start: usize) -> Result<usize, PrecompileError> {
-        let digits = BigUint::from_bytes_be(&input[start..start + 32]);
-        let mut digits = digits.iter_u64_digits();
-        // truncate to 64 bits
-        digits
-            .next()
-            .or(Some(0))
-            // wont ever error here, just a type conversion
-            .ok_or(PrecompileError::OutOfGas)
-            .and_then(|d| u32::try_from(d).map_err(|_| PrecompileError::OutOfGas))
-            .map(|d| d as usize)
-    }
-
-    let base_len = read_bigint_len(&input, 0)?;
-    let exponent_len = read_bigint_len(&input, 32)?;
-    let mod_len = read_bigint_len(&input, 64)?;
+    // This will error out if the user passes values greater than u32, but that's fine. The user
+    // would run out of gas anyways.
+    let base_len = reader.read_param::<u32>()? as usize;
+    let exponent_len = reader.read_param::<u32>()? as usize;
+    let mod_len = reader.read_param::<u32>()? as usize;
 
     if base_len == 0 && mod_len == 0 {
         return Ok(Vec::new());
     }
-    let input = if input.len() > 96 { &input[96..] } else { &[] };
-    let input = right_pad(input, base_len + exponent_len + mod_len);
 
-    let base = BigUint::from_bytes_be(&input[0..base_len]);
-    let exponent = BigUint::from_bytes_be(&input[base_len..exponent_len + base_len]);
-    let modulus =
-        BigUint::from_bytes_be(&input[base_len + exponent_len..mod_len + base_len + exponent_len]);
+    let base = reader.read_biguint(base_len);
+    let exponent = reader.read_biguint(exponent_len);
+    let modulus = reader.read_biguint(mod_len);
 
     if modulus.is_zero() || modulus.is_one() {
         // mod 0 is undefined: 0, base mod 1 is always 0
@@ -181,9 +143,9 @@ pub(super) fn ec_add<RT: Runtime>(
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    let mut input_params: PaddedChunks<u8, 64> = PaddedChunks::new(input);
-    let point1 = input_params.next_param_padded()?;
-    let point2 = input_params.next_param_padded()?;
+    let mut input_params = ParameterReader::new(input);
+    let point1: G1 = input_params.read_param()?;
+    let point2: G1 = input_params.read_param()?;
 
     curve_to_vec(point1 + point2)
 }
@@ -194,14 +156,9 @@ pub(super) fn ec_mul<RT: Runtime>(
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    let input = right_pad(input, 96);
-    let mut input_params: PaddedChunks<u8, 64> = PaddedChunks::new(&input);
-    let point = input_params.next_param_padded()?;
-
-    let scalar = {
-        let data = U256::from_big_endian(&input_params.remaining_slice()[..32]);
-        Fr::new_mul_factor(data.into())
-    };
+    let mut input_params = ParameterReader::new(input);
+    let point: G1 = input_params.read_param()?;
+    let scalar: Fr = input_params.read_param()?;
 
     curve_to_vec(point * scalar)
 }
@@ -213,19 +170,19 @@ pub(super) fn ec_pairing<RT: Runtime>(
     _: PrecompileContext,
 ) -> PrecompileResult {
     fn read_group(input: &[u8]) -> Result<(G1, G2), PrecompileError> {
-        let mut i_in = U256Reader::new(input);
+        let mut reader = ParameterReader::new(input);
 
-        let x = Fq::from_u256(i_in.next_into_param::<U256>()?.into())?;
-        let y = Fq::from_u256(i_in.next_into_param::<U256>()?.into())?;
+        let x: Fq = reader.read_param()?;
+        let y: Fq = reader.read_param()?;
 
         let twisted_x = {
-            let b = Fq::from_u256(i_in.next_into_param::<U256>()?.into())?;
-            let a = Fq::from_u256(i_in.next_into_param::<U256>()?.into())?;
+            let b: Fq = reader.read_param()?;
+            let a: Fq = reader.read_param()?;
             Fq2::new(a, b)
         };
         let twisted_y = {
-            let b = Fq::from_u256(i_in.next_into_param::<U256>()?.into())?;
-            let a = Fq::from_u256(i_in.next_into_param::<U256>()?.into())?;
+            let b: Fq = reader.read_param()?;
+            let a: Fq = reader.read_param()?;
             Fq2::new(a, b)
         };
 
@@ -250,6 +207,8 @@ pub(super) fn ec_pairing<RT: Runtime>(
 
     const GROUP_BYTE_LEN: usize = 192;
 
+    // This precompile is strange in that it doesn't automatically "pad" the input.
+    // So we have to check the sizes.
     if input.len() % GROUP_BYTE_LEN != 0 {
         return Err(PrecompileError::IncorrectInputSize);
     }
@@ -335,25 +294,6 @@ mod tests {
     impl Default for PrecompileContext {
         fn default() -> Self {
             Self { call_type: CallKind::Call, gas_limit: u64::MAX }
-        }
-    }
-
-    #[test]
-    fn padding() {
-        let input = b"foo bar boxy";
-        let mut input = Vec::from(*input);
-        for i in 12..64 {
-            let mut expected = input.clone();
-            expected.resize(i, 0);
-
-            let res = right_pad(&input, i);
-            assert_eq!(&*res, &expected);
-
-            let no_padding = b"foo bar boxy                     ".to_vec();
-            let res = right_pad(&no_padding, 12);
-            // do nothing
-            assert_eq!(&res, &no_padding);
-            input.push(0);
         }
     }
 

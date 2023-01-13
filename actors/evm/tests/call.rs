@@ -487,6 +487,11 @@ fn test_callactor_inner(exit_code: ExitCode) {
         exit_code,
     );
 
+    /// ensures top bits are zeroed
+    pub fn assert_zero_bytes<const S: usize>(src: &[u8]) {
+        assert_eq!(src[..S], [0u8; S]);
+    }
+
     // invoke
 
     let result = util::invoke_contract(&mut rt, &contract_params);
@@ -504,30 +509,29 @@ fn test_callactor_inner(exit_code: ExitCode) {
 
     impl CallActorReturn {
         pub fn read(src: &[u8]) -> Self {
-            use fil_actor_evm::interpreter::precompiles::parameter::assert_zero_bytes;
             assert!(src.len() >= 4 * 32, "expected to read at least 4 U256 values, got {:?}", src);
 
             let bytes = &src[..32];
             let exit_code = {
-                assert_zero_bytes::<4>(bytes).unwrap();
+                assert_zero_bytes::<4>(bytes);
                 ExitCode::new(u32::from_be_bytes(bytes[28..32].try_into().unwrap()))
             };
 
             let bytes = &src[32..64];
             let codec = {
-                assert_zero_bytes::<8>(bytes).unwrap();
+                assert_zero_bytes::<8>(bytes);
                 u64::from_be_bytes(bytes[24..32].try_into().unwrap())
             };
 
             let bytes = &src[64..96];
             let offset = {
-                assert_zero_bytes::<4>(bytes).unwrap();
+                assert_zero_bytes::<4>(bytes);
                 u32::from_be_bytes(bytes[28..32].try_into().unwrap())
             };
 
             let bytes = &src[96..128];
             let size = {
-                assert_zero_bytes::<4>(bytes).unwrap();
+                assert_zero_bytes::<4>(bytes);
                 u32::from_be_bytes(bytes[28..32].try_into().unwrap())
             };
             let data = Vec::from(&src[offset as usize..(offset + size) as usize]);
