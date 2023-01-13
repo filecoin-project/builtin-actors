@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use fil_actors_runtime::runtime::Runtime;
 use substrate_bn::{CurveError, GroupError};
 
-use super::{instructions::call::CallKind, System, U256};
+use super::{address::EthAddress, instructions::call::CallKind, System, U256};
 
 mod evm;
 mod fvm;
@@ -61,8 +61,8 @@ const fn gen_native_precompiles<RT: Runtime>() -> [PrecompileFn<RT>; 4] {
     }
 }
 
-pub fn is_reserved_precompile_address(addr: &U256) -> bool {
-    let [prefix, middle @ .., index] = addr.to_address_bytes();
+pub fn is_reserved_precompile_address(addr: &EthAddress) -> bool {
+    let [prefix, middle @ .., index] = addr.0;
     (prefix == 0x00 || prefix == NATIVE_PRECOMPILE_ADDRESS_PREFIX)
         && middle == [0u8; 18]
         && index > 0
@@ -74,10 +74,10 @@ impl<RT: Runtime> Precompiles<RT> {
     const EVM_PRECOMPILES: [PrecompileFn<RT>; 9] = gen_evm_precompiles();
     const NATIVE_PRECOMPILES: [PrecompileFn<RT>; 4] = gen_native_precompiles();
 
-    fn lookup_precompile(addr: &U256) -> Option<PrecompileFn<RT>> {
-        let split_addr = addr.to_address_bytes();
-        let [prefix, _m @ .., index] = split_addr;
-        if is_reserved_precompile_address(addr) {
+    fn lookup_precompile(addr: U256) -> Option<PrecompileFn<RT>> {
+        let addr: EthAddress = addr.into();
+        let [prefix, _m @ .., index] = addr.0;
+        if is_reserved_precompile_address(&addr) {
             let index = index as usize - 1;
             match prefix {
                 NATIVE_PRECOMPILE_ADDRESS_PREFIX => Self::NATIVE_PRECOMPILES.get(index),
@@ -91,19 +91,20 @@ impl<RT: Runtime> Precompiles<RT> {
     }
 
     /// Precompile Context will be flattened to None if not calling the call_actor precompile.
-    /// Panics if address is not a precompile.
+    /// Returns `None` if precompile does not exist at the address provided.
     pub fn call_precompile(
         system: &mut System<RT>,
         precompile_addr: U256,
         input: &[u8],
         context: PrecompileContext,
-    ) -> PrecompileResult {
-        unsafe { Self::lookup_precompile(&precompile_addr).unwrap()(system, input, context) }
+    ) -> Option<PrecompileResult> {
+        Self::lookup_precompile(precompile_addr)
+            .map(|precompile_fn| unsafe { precompile_fn(system, input, context) })
     }
 
-    /// Checks if word is an actual precompile
+    /// Checks if word is an existing precompile
     #[inline]
-    pub fn is_precompile(addr: &U256) -> bool {
+    pub fn is_precompile(addr: U256) -> bool {
         !addr.is_zero() && Self::lookup_precompile(addr).is_some()
     }
 }
@@ -120,7 +121,7 @@ pub enum PrecompileError {
     CallForbidden,
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct PrecompileContext {
     pub call_type: CallKind,
     pub gas_limit: u64,
@@ -157,49 +158,49 @@ mod test {
     #[test]
     fn is_native_precompile() {
         let addr = EthAddress(hex_literal::hex!("fe00000000000000000000000000000000000001"));
-        assert!(Precompiles::<MockRuntime>::is_precompile(&addr.as_evm_word()));
-        assert!(is_reserved_precompile_address(&addr.as_evm_word()));
+        assert!(Precompiles::<MockRuntime>::is_precompile(addr.as_evm_word()));
+        assert!(is_reserved_precompile_address(&addr));
     }
 
     #[test]
     fn is_evm_precompile() {
         let addr = EthAddress(hex_literal::hex!("0000000000000000000000000000000000000001"));
-        assert!(Precompiles::<MockRuntime>::is_precompile(&addr.as_evm_word()));
-        assert!(is_reserved_precompile_address(&addr.as_evm_word()));
+        assert!(Precompiles::<MockRuntime>::is_precompile(addr.as_evm_word()));
+        assert!(is_reserved_precompile_address(&addr));
     }
 
     #[test]
     fn is_over_precompile() {
         let addr = EthAddress(hex_literal::hex!("ff00000000000000000000000000000000000001"));
-        assert!(!Precompiles::<MockRuntime>::is_precompile(&addr.as_evm_word()));
-        assert!(!is_reserved_precompile_address(&addr.as_evm_word()));
+        assert!(!Precompiles::<MockRuntime>::is_precompile(addr.as_evm_word()));
+        assert!(!is_reserved_precompile_address(&addr));
     }
 
     #[test]
     fn zero_addr_precompile() {
         let eth_addr = EthAddress(hex_literal::hex!("fe00000000000000000000000000000000000000"));
         let native_addr = EthAddress(hex_literal::hex!("0000000000000000000000000000000000000000"));
-        assert!(!Precompiles::<MockRuntime>::is_precompile(&eth_addr.as_evm_word()));
-        assert!(!Precompiles::<MockRuntime>::is_precompile(&native_addr.as_evm_word()));
-        assert!(!is_reserved_precompile_address(&eth_addr.as_evm_word()));
-        assert!(!is_reserved_precompile_address(&native_addr.as_evm_word()));
+        assert!(!Precompiles::<MockRuntime>::is_precompile(eth_addr.as_evm_word()));
+        assert!(!Precompiles::<MockRuntime>::is_precompile(native_addr.as_evm_word()));
+        assert!(!is_reserved_precompile_address(&eth_addr));
+        assert!(!is_reserved_precompile_address(&native_addr));
     }
 
     #[test]
     fn between_precompile() {
         let addr = EthAddress(hex_literal::hex!("a000000000000000000000000000000000000001"));
-        assert!(!Precompiles::<MockRuntime>::is_precompile(&addr.as_evm_word()));
-        assert!(!is_reserved_precompile_address(&addr.as_evm_word()));
+        assert!(!Precompiles::<MockRuntime>::is_precompile(addr.as_evm_word()));
+        assert!(!is_reserved_precompile_address(&addr));
     }
 
     #[test]
     fn bad_index() {
         let eth_addr = EthAddress(hex_literal::hex!("fe00000000000000000000000000000000000020"));
         let native_addr = EthAddress(hex_literal::hex!("0000000000000000000000000000000000000020"));
-        assert!(!Precompiles::<MockRuntime>::is_precompile(&eth_addr.as_evm_word()));
-        assert!(!Precompiles::<MockRuntime>::is_precompile(&native_addr.as_evm_word()));
+        assert!(!Precompiles::<MockRuntime>::is_precompile(eth_addr.as_evm_word()));
+        assert!(!Precompiles::<MockRuntime>::is_precompile(native_addr.as_evm_word()));
         // reserved doesn't check index is within range
-        assert!(is_reserved_precompile_address(&eth_addr.as_evm_word()));
-        assert!(is_reserved_precompile_address(&native_addr.as_evm_word()));
+        assert!(is_reserved_precompile_address(&eth_addr));
+        assert!(is_reserved_precompile_address(&native_addr));
     }
 }

@@ -66,12 +66,6 @@ impl U256 {
         buf
     }
 
-    /// Returns bottom 20 bytes
-    pub fn to_address_bytes(&self) -> [u8; 20] {
-        // unrwap will never panic, 32 - 12 = 20
-        self.to_bytes()[12..].try_into().unwrap()
-    }
-
     /// Returns the low 64 bits, saturating the value to u64 max if it is larger
     pub fn to_u64_saturating(&self) -> u64 {
         if self.bits() > 64 {

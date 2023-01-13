@@ -100,7 +100,7 @@ pub fn get_contract_type<RT: Runtime>(rt: &RT, addr: U256) -> ContractType {
     let addr: EthAddress = addr.into();
     // precompiles cant be resolved by the FVM
     // addresses passed in precompile range will be returned as NotFound; EAM asserts that no actors can be deployed in the precompile reserved range
-    if Precompiles::<RT>::is_precompile(&addr.as_evm_word()) {
+    if Precompiles::<RT>::is_precompile(addr.as_evm_word()) {
         return ContractType::Precompile;
     }
 
