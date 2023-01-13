@@ -101,9 +101,9 @@ fn test_evm_eth_create_external() {
         None::<RawBytes>,
     );
     let account = v.normalize_address(&eth_addr).unwrap();
-    let mut actor = v.get_actor(account.clone()).unwrap();
+    let mut actor = v.get_actor(account).unwrap();
     actor.code = *ETHACCOUNT_ACTOR_CODE_ID;
-    v.set_actor(account.clone(), actor);
+    v.set_actor(account, actor);
 
     // now create an empty contract
     let create_result = v
