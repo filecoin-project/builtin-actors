@@ -294,7 +294,6 @@ return
 
 #[test]
 fn test_native_lookup_delegated_address() {
-
     let mut rt = util::construct_and_verify(PrecompileTest::test_runner_bytecode());
 
     // f0 10101 is an EVM actor
