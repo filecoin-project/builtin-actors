@@ -60,10 +60,10 @@ pub fn origin(
 
 #[inline]
 pub fn call_value(
-    _state: &mut ExecutionState,
-    system: &System<impl Runtime>,
+    state: &mut ExecutionState,
+    _system: &System<impl Runtime>,
 ) -> Result<U256, StatusCode> {
-    Ok(U256::from(&system.rt.message().value_received()))
+    Ok(U256::from(&state.value_received))
 }
 
 #[inline]

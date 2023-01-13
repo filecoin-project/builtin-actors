@@ -3,6 +3,7 @@ use std::sync::Arc;
 use ethers::core::types::Address as EthAddress;
 use ethers::prelude::abigen;
 use ethers::providers::Provider;
+use fil_actor_evm::interpreter::U256;
 use fil_actors_runtime::{
     test_utils::{ETHACCOUNT_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID},
     EAM_ACTOR_ADDR, EAM_ACTOR_ID,
@@ -422,6 +423,36 @@ fn test_evm_delegatecall() {
         let BytesDe(return_value) =
             call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
         assert_eq!(&return_value[28..], &[0xff, 0xff, 0xff, 0x42]);
+    }
+
+    // A -> delegatecall -> B (return value received) OK
+    {
+        let A_act = accounts[0];
+        let A_robust_addr = created[0].robust_address.unwrap();
+        let B = id_to_eth(created[1].actor_id);
+        let mut params = [0u8; 36];
+        params[3] = 16;
+        params[16..].copy_from_slice(B.as_ref());
+
+        let value = TokenAmount::from_whole(123);
+
+        let call_result = v
+            .apply_message(
+                A_act,
+                A_robust_addr,
+                value.clone(),
+                fil_actor_evm::Method::InvokeContract as u64,
+                Some(ContractParams(params.to_vec())),
+            )
+            .unwrap();
+        assert!(
+            call_result.code.is_success(),
+            "failed to call the new actor {}",
+            call_result.message
+        );
+        let BytesDe(return_value) =
+            call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
+        assert_eq!(&return_value, &U256::from(&value).to_bytes()[..]);
     }
 }
 

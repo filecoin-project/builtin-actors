@@ -308,14 +308,9 @@ impl<'r, RT: Runtime> System<'r, RT> {
         Ok(())
     }
 
-    /// Load the bytecode.
-    pub fn load_bytecode(&self) -> Result<Option<Bytecode>, ActorError> {
-        Ok(self
-            .bytecode
-            .as_ref()
-            .map(|EvmBytecode { cid, .. }| load_bytecode(self.rt.store(), cid))
-            .transpose()?
-            .flatten())
+    /// Get the bytecode, if any.
+    pub fn get_bytecode(&self) -> Option<Cid> {
+        self.bytecode.as_ref().map(|b| b.cid)
     }
 
     /// Set the bytecode.

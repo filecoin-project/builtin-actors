@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use fvm_shared::econ::TokenAmount;
+
 use super::address::EthAddress;
 use {
     super::instructions,
@@ -22,10 +24,17 @@ pub struct ExecutionState {
     pub caller: EthAddress,
     /// The EVM address of the receiver.
     pub receiver: EthAddress,
+    /// The value received in this call.
+    pub value_received: TokenAmount,
 }
 
 impl ExecutionState {
-    pub fn new(caller: EthAddress, receiver: EthAddress, input_data: Bytes) -> Self {
+    pub fn new(
+        caller: EthAddress,
+        receiver: EthAddress,
+        value_received: TokenAmount,
+        input_data: Bytes,
+    ) -> Self {
         Self {
             stack: Stack::new(),
             memory: Memory::default(),
@@ -33,6 +42,7 @@ impl ExecutionState {
             return_data: Default::default(),
             caller,
             receiver,
+            value_received,
         }
     }
 }

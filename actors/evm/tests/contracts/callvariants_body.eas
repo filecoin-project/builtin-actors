@@ -63,6 +63,10 @@
 %dispatch(13, do_staticcall14)
 %dispatch(14, do_delegatecall4)
 
+# A -> delegatecall -> B (check value)
+%dispatch(15, do_delegatecall3)
+%dispatch(16, check_value_received)
+
 %dispatch_end()
 
 #### CALLERS
@@ -203,12 +207,35 @@ push1 0x20    # ret length
 push1 0x00    # ret offset
 return
 
-# do_delegatecall10(address)
+# do_delegatecall2(address)
 do_delegatecall2:
 jumpdest
+
 push1 0x20   # delegate ret length
 push1 0x00   # delegate ret offset
 push1 0x02   # arg: method
+push1 0xe0   # shift 224 bits (28 bytes)
+shl
+push1 0x00    # arg: offset
+mstore        # args
+push1 0x04    # delegate args length
+push1 0x00    # delegate args offset
+push1 0x04    # input (dest) offset
+calldataload  # delegate dest
+gas
+delegatecall  # do it!
+%check()
+push1 0x20    # ret length
+push1 0x00    # ret offset
+return
+
+# do_delegatecall3(address)
+do_delegatecall3:
+jumpdest
+
+push1 0x20   # delegate ret length
+push1 0x00   # delegate ret offset
+push1 0x10   # arg: method
 push1 0xe0   # shift 224 bits (28 bytes)
 shl
 push1 0x00    # arg: offset
@@ -336,3 +363,13 @@ mstore
 push1 0x04
 push1 0x1c
 revert
+
+# return the value received
+check_value_received:
+jumpdest
+callvalue
+push1 0x00
+mstore
+push1 0x20
+push1 0x00
+return
