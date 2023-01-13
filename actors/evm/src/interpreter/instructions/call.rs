@@ -17,7 +17,7 @@ use {
     crate::interpreter::ExecutionState,
     crate::interpreter::System,
     crate::interpreter::U256,
-    crate::{DelegateCallParams, Method, EVM_CONTRACT_EXECUTION_ERROR},
+    crate::{DelegateCallParams, Method},
     fil_actors_runtime::runtime::builtins::Type,
     fil_actors_runtime::runtime::Runtime,
     fil_actors_runtime::ActorError,
@@ -30,7 +30,6 @@ pub enum CallKind {
     Call,
     DelegateCall,
     StaticCall,
-    CallCode,
 }
 
 pub fn calldataload(
@@ -108,26 +107,6 @@ pub fn call_call<RT: Runtime>(
         state,
         system,
         CallKind::Call,
-        (gas, dst, value, input_offset, input_size, output_offset, output_size),
-    )
-}
-
-#[inline]
-pub fn call_callcode<RT: Runtime>(
-    state: &mut ExecutionState,
-    system: &mut System<RT>,
-    gas: U256,
-    dst: U256,
-    value: U256,
-    input_offset: U256,
-    input_size: U256,
-    output_offset: U256,
-    output_size: U256,
-) -> Result<U256, StatusCode> {
-    call_generic(
-        state,
-        system,
-        CallKind::CallCode,
         (gas, dst, value, input_offset, input_size, output_offset, output_size),
     )
 }
@@ -311,10 +290,6 @@ pub fn call_generic<RT: Runtime>(
                             .to_string(),
                     )),
                 },
-                CallKind::CallCode => Err(ActorError::unchecked(
-                    EVM_CONTRACT_EXECUTION_ERROR,
-                    "unsupported opcode".to_string(),
-                )),
             };
             let (code, data) = match call_result {
                 Ok(result) => (1, result),

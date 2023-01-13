@@ -225,7 +225,6 @@ pub mod opcodes {
         // 0xEF Reserved for EIP-3541
         0xf0: CREATE,
         0xf1: CALL,
-        0xf2: CALLCODE,
         0xf3: RETURN,
         0xf4: DELEGATECALL,
         0xf5: CREATE2,
