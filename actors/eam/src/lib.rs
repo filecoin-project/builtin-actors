@@ -9,8 +9,9 @@ use ext::{
 };
 use fil_actors_runtime::{actor_dispatch_unrestricted, deserialize_block, AsActorError};
 
-use fvm_ipld_encoding::{ipld_block::IpldBlock, BytesDe};
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::{error::ExitCode, sys::SendFlags};
+use serde::{Deserialize, Serialize};
 
 pub mod ext;
 
@@ -113,7 +114,9 @@ pub struct Create2Params {
     pub salt: [u8; 32],
 }
 
-pub type CreateExternalParams = BytesDe;
+#[derive(Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct CreateExternalParams(#[serde(with = "strict_bytes")] pub Vec<u8>);
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, PartialEq, Eq)]
 pub struct Return {
@@ -217,15 +220,13 @@ fn resolve_caller_external(rt: &mut impl Runtime) -> Result<(EthAddress, EthAddr
 
             let robust_addr: Address =
                 result.unwrap().deserialize().expect("failed to deserialize account address");
-            let robust_eth_bytes = rt.hash(SupportedHashes::Keccak256, &robust_addr.to_bytes());
-            let mut robust_eth_bytes_array = [0u8; 20];
-            robust_eth_bytes_array.copy_from_slice(&robust_eth_bytes);
+            let robust_eth_bytes = hash_20(rt, &robust_addr.to_bytes());
 
             let mut id_bytes = [0u8; 20];
             id_bytes[0] = 0xff;
             id_bytes[12..].copy_from_slice(&caller_id.to_be_bytes());
 
-            Ok((EthAddress(id_bytes), EthAddress(robust_eth_bytes_array)))
+            Ok((EthAddress(id_bytes), EthAddress(robust_eth_bytes)))
         }
         Some(Type::EthAccount) => {
             let addr = resolve_eth_address(rt, caller_id)?;
@@ -298,7 +299,7 @@ impl EamActor {
 
         let (owner_addr, stable_addr) = resolve_caller_external(rt)?;
         let eth_addr = compute_address_create_external(rt, &stable_addr);
-        create_actor(rt, owner_addr, eth_addr, params.into_vec())
+        create_actor(rt, owner_addr, eth_addr, params.0)
     }
 }
 
