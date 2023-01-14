@@ -1,7 +1,10 @@
 mod asm;
 
+use std::fmt::Debug;
 use std::sync::Arc;
 
+use ethers::abi::Detokenize;
+use ethers::prelude::builders::ContractCall;
 use ethers::prelude::*;
 use ethers::providers::{MockProvider, Provider};
 use ethers::types::Bytes;
@@ -9,7 +12,7 @@ use evm::interpreter::address::EthAddress;
 use evm::interpreter::U256;
 use evm::EVM_CONTRACT_REVERTED;
 use fil_actor_evm as evm;
-use fil_actors_runtime::{test_utils::*, INIT_ACTOR_ADDR};
+use fil_actors_runtime::{test_utils::*, EAM_ACTOR_ID, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{BytesDe, BytesSer, IPLD_RAW};
 use fvm_shared::address::Address as FILAddress;
@@ -387,7 +390,7 @@ fn test_native_call() {
     rt.expect_validate_caller_any();
     let err = rt.call::<evm::EvmContractActor>(1026, None).unwrap_err();
     assert_eq!(err.exit_code().value(), 42);
-    assert_eq!(err.data(), &[]);
+    assert!(err.data().is_empty());
 
     rt.expect_validate_caller_any();
     let err = rt.call::<evm::EvmContractActor>(1027, None).unwrap_err();
@@ -458,6 +461,7 @@ fn test_callactor_revert() {
     test_callactor_inner(2048, EVM_CONTRACT_REVERTED, true)
 }
 
+// Much taken from tests/env.rs
 abigen!(CallActorPrecompile, "./tests/contracts/CallActorPrecompile.abi");
 
 const OWNER_ID: ActorID = 1001;
@@ -471,6 +475,8 @@ static CONTRACT: Lazy<CallActorPrecompile<Provider<MockProvider>>> = Lazy::new(|
     let (client, _mock) = Provider::mocked();
     CallActorPrecompile::new(address, Arc::new(client))
 });
+
+pub type TestContractCall<R> = ContractCall<Provider<MockProvider>, R>;
 
 #[test]
 fn test_callactor_restrict() {
@@ -635,75 +641,136 @@ fn make_raw_params(bytes: Vec<u8>) -> Option<IpldBlock> {
 
 #[test]
 fn call_actor_solidity() {
-    init_logging().ok();
     // solidity
-    let mut contract_rt = new_call_actor_contract();
-    let params =
-        CONTRACT.call_actor_id(0, ethers::types::U256::zero(), 0, 0, Bytes::default(), 101);
-    let input: Bytes = params.calldata().expect("should");
-
-    let input =
-        IpldBlock::serialize_cbor(&BytesSer(&input)).expect("failed to serialize input data");
-    contract_rt.expect_validate_caller_any();
-    contract_rt.expect_gas_available(10_000_000);
-    contract_rt.expect_gas_available(10_000_000);
-
-    let expected_return = vec![0xff, 0xfe];
-    contract_rt.expect_send_generalized(
-        Address::new_id(101),
-        0,
-        None,
-        TokenAmount::from_atto(0),
-        Some(9843750),
-        SendFlags::empty(),
-        Some(IpldBlock { codec: 0, data: expected_return.clone() }),
-        ExitCode::OK,
-    );
-
-    let BytesDe(result) = contract_rt
-        .call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, input)
-        .unwrap()
-        .unwrap()
-        .deserialize()
-        .unwrap();
-
-    let (success, exit, codec, ret_val): (bool, ethers::types::I256, u64, Vec<u8>) =
-        decode_function_data(&params.function, result, false).unwrap();
-    assert!(success);
-    assert_eq!(exit, I256::from(0));
-    assert_eq!(codec, 0);
-    assert_eq!(&ret_val, &expected_return, "got {}", hex::encode(&ret_val));
-}
-fn new_call_actor_contract() -> MockRuntime {
-    let mut rt = MockRuntime::default();
     let contract_hex = include_str!("contracts/CallActorPrecompile.hex");
+    // let mut contract_rt = new_call_actor_contract();
+    let contract_address = EthAddress(util::CONTRACT_ADDRESS);
+    let mut tester = ContractTester::new(contract_address, contract_hex);
 
-    let params = evm::ConstructorParams {
-        creator: EthAddress::from_id(fil_actors_runtime::EAM_ACTOR_ADDR.id().unwrap()),
-        initcode: hex::decode(contract_hex).unwrap().into(),
-    };
-    // invoke constructor
-    rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
-    rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
+    // call_actor_id
+    {
+        let params =
+            CONTRACT.call_actor_id(0, ethers::types::U256::zero(), 0, 0, Bytes::default(), 101);
 
-    // TODO checK?
-    rt.set_origin(FILAddress::new_id(0));
-    // first actor created is 0
-    rt.add_delegated_address(
-        Address::new_id(0),
-        Address::new_delegated(10, &hex_literal::hex!("FEEDFACECAFEBEEF000000000000000000000000"))
-            .unwrap(),
-    );
+        let expected_return = vec![0xff, 0xfe];
+        tester.rt.expect_send_generalized(
+            Address::new_id(101),
+            0,
+            None,
+            TokenAmount::from_atto(0),
+            Some(9843750),
+            SendFlags::empty(),
+            Some(IpldBlock { codec: 0, data: expected_return.clone() }),
+            ExitCode::OK,
+        );
 
-    assert!(rt
-        .call::<evm::EvmContractActor>(
-            evm::Method::Constructor as u64,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-        )
-        .unwrap()
-        .is_none());
+        let (success, exit, codec, ret_val): (bool, ethers::types::I256, u64, Bytes) =
+            tester.call(params);
 
-    rt.verify();
-    rt.reset();
-    rt
+        assert!(success);
+        assert_eq!(exit, I256::from(0));
+        assert_eq!(codec, 0);
+        assert_eq!(&ret_val, &expected_return, "got {}", hex::encode(&ret_val));
+    }
+    tester.rt.reset();
+    // call_actor
+    {
+        log::warn!("new test");
+        // EVM actor
+        let evm_target = FILAddress::new_id(10101);
+        let evm_del = EthAddress(util::CONTRACT_ADDRESS).try_into().unwrap();
+        tester.rt.add_delegated_address(evm_target, evm_del);
+
+        let to_address = {
+            let subaddr = hex_literal::hex!("b0ba000000000000000000000000000000000000");
+            Address::new_delegated(EAM_ACTOR_ID, &subaddr).unwrap()
+        };
+        let params = CONTRACT.call_actor_address(
+            0,
+            ethers::types::U256::zero(),
+            0,
+            0,
+            Bytes::default(),
+            to_address.to_bytes().into(),
+        );
+
+        let expected_return = vec![0xff, 0xfe];
+        tester.rt.expect_send_generalized(
+            to_address,
+            0,
+            None,
+            TokenAmount::from_atto(0),
+            Some(9843750),
+            SendFlags::empty(),
+            Some(IpldBlock { codec: 0, data: expected_return.clone() }),
+            ExitCode::OK,
+        );
+
+        let (success, exit, codec, ret_val): (bool, ethers::types::I256, u64, Bytes) =
+            tester.call(params);
+
+        assert!(success);
+        assert_eq!(exit, I256::from(0));
+        assert_eq!(codec, 0);
+        assert_eq!(&ret_val, &expected_return, "got {}", hex::encode(&ret_val));
+    }
+}
+
+pub(crate) struct ContractTester {
+    rt: MockRuntime,
+    _address: EthAddress,
+}
+
+impl ContractTester {
+    fn new(addr: EthAddress, contract_hex: &str) -> Self {
+        init_logging().ok();
+
+        let mut rt = MockRuntime::default();
+        let params = evm::ConstructorParams {
+            creator: EthAddress::from_id(EAM_ACTOR_ID),
+            initcode: hex::decode(contract_hex).unwrap().into(),
+        };
+        // invoke constructor
+        rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
+        rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
+
+        rt.set_origin(FILAddress::new_id(0));
+        // first actor created is 0
+        rt.add_delegated_address(
+            Address::new_id(0),
+            Address::new_delegated(EAM_ACTOR_ID, &addr.0).unwrap(),
+        );
+
+        assert!(rt
+            .call::<evm::EvmContractActor>(
+                evm::Method::Constructor as u64,
+                IpldBlock::serialize_cbor(&params).unwrap(),
+            )
+            .unwrap()
+            .is_none());
+
+        rt.verify();
+        rt.reset();
+        Self { rt, _address: addr }
+    }
+
+    fn call<Returns: Detokenize>(&mut self, call: TestContractCall<Returns>) -> Returns {
+        let input = call.calldata().expect("Should have calldata.");
+        let input =
+            IpldBlock::serialize_cbor(&BytesSer(&input)).expect("failed to serialize input data");
+
+        self.rt.expect_validate_caller_any();
+        self.rt.expect_gas_available(10_000_000);
+        self.rt.expect_gas_available(10_000_000);
+
+        let BytesDe(result) = self
+            .rt
+            .call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, input)
+            .unwrap()
+            .unwrap()
+            .deserialize()
+            .unwrap();
+
+        decode_function_data(&call.function, result, false).unwrap()
+    }
 }
