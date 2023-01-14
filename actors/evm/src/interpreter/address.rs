@@ -146,6 +146,7 @@ impl AsRef<[u8]> for EthAddress {
 mod tests {
     use fvm_shared::address::Address;
 
+    use crate::interpreter::StatusCode;
     use crate::interpreter::address::EthAddress;
     use crate::U256;
 
@@ -213,26 +214,42 @@ mod tests {
     }
 
     #[test]
-    #[allow(unused)]
     fn precompile_reserved_conversion() {
         // in range precompile addresses
         let addr = EthAddress(hex_literal::hex!("fe00000000000000000000000000000000000001"));
-        Address::try_from(addr).expect_err("can't convert precompile into f4!");
+        assert!(matches!(Address::try_from(addr).unwrap_err(), StatusCode::BadAddress(_)));
         assert!(!addr.is_native_precompile_zero());
+        assert!(addr.is_reserved());
+
         let addr = EthAddress(hex_literal::hex!("0000000000000000000000000000000000000001"));
-        Address::try_from(addr).expect_err("can't convert precompile into f4!");
+        assert!(matches!(Address::try_from(addr).unwrap_err(), StatusCode::BadAddress(_)));
+        assert!(addr.is_reserved());
 
         // can convert null address
         let addr = EthAddress(hex_literal::hex!("0000000000000000000000000000000000000000"));
         let _: Address = addr.try_into().unwrap();
+        assert!(addr.is_reserved());
+        assert!(addr.is_null());
+
         // can convert 0 index native prefix
         let addr = EthAddress(hex_literal::hex!("fe00000000000000000000000000000000000000"));
         let _: Address = addr.try_into().unwrap();
+        assert!(addr.is_reserved());
+        assert!(addr.is_native_precompile_zero());
+
+        // can convert eth burn address
+        let addr = EthAddress(hex_literal::hex!("000000000000000000000000000000000000dead"));
+        let _: Address = addr.try_into().unwrap();
+        assert!(addr.is_reserved());
+        assert!(addr.is_eth_burn());
 
         // out of range, but reserved
         let addr = EthAddress(hex_literal::hex!("fe000000000000000000000000000000000000aa"));
-        Address::try_from(addr).expect_err("can't convert precompile into f4!");
+        let _ = Address::try_from(addr).expect_err("can't convert precompile into f4!");
+        assert!(addr.is_reserved());
+        
         let addr = EthAddress(hex_literal::hex!("00000000000000000000000000000000000000aa"));
-        Address::try_from(addr).expect_err("can't convert precompile into f4!");
+        let _ = Address::try_from(addr).expect_err("can't convert precompile into f4!");
+        assert!(addr.is_reserved());
     }
 }
