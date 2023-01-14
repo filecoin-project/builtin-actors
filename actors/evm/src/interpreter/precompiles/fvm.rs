@@ -1,7 +1,7 @@
 use crate::EVM_MAX_RESERVED_METHOD;
 use fil_actors_runtime::runtime::{builtins::Type, Runtime};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_shared::{address::Address, econ::TokenAmount, sys::SendFlags};
+use fvm_shared::{address::Address, econ::TokenAmount, sys::SendFlags, METHOD_SEND};
 use num_traits::FromPrimitive;
 
 use crate::interpreter::{instructions::call::CallKind, precompiles::NativeType, System, U256};
@@ -254,7 +254,7 @@ pub(super) fn call_actor_shared<RT: Runtime>(
         Address::from_bytes(&addr_bytes).map_err(|_| PrecompileError::InvalidInput)?
     };
 
-    if method <= EVM_MAX_RESERVED_METHOD {
+    if method <= EVM_MAX_RESERVED_METHOD && method != METHOD_SEND {
         return Err(PrecompileError::InvalidInput);
     }
 
