@@ -9,8 +9,8 @@ use crate::interpreter::{instructions::call::CallKind, precompiles::NativeType, 
 use super::{parameter::ParameterReader, PrecompileContext, PrecompileError, PrecompileResult};
 
 /// Read right padded BE encoded low u64 ID address from a u256 word.
-/// Returns variant of [`BuiltinType`] encoded as a u256 word.
-/// Returns nothing inputs >2^65
+/// - Reverts if the input is greater than `MAX::u64`.
+/// - Returns variant of [`BuiltinType`] encoded as a u256 word.
 pub(super) fn get_actor_type<RT: Runtime>(
     system: &mut System<RT>,
     input: &[u8],
