@@ -32,14 +32,14 @@ impl Value for G1 {
 impl Value for Fq {
     type Error = FieldError;
     fn read(reader: &mut ValueReader) -> Result<Self, Self::Error> {
-        Ok(Fq::from_slice(&reader.read_fixed::<32>())?)
+        Fq::from_slice(&reader.read_fixed::<32>())
     }
 }
 
 impl Value for Fr {
     type Error = FieldError;
     fn read(reader: &mut ValueReader) -> Result<Self, Self::Error> {
-        Ok(Fr::from_slice(&reader.read_fixed::<32>())?)
+        Fr::from_slice(&reader.read_fixed::<32>())
     }
 }
 
