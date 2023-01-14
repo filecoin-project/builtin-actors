@@ -92,10 +92,15 @@ impl EthAddress {
         self.0 == [0; 20]
     }
 
+    #[inline]
+    fn is_burn(&self) -> bool {
+        self.0 == hex_literal::hex!("000000000000000000000000000000000000dead")
+    }
+
     /// Returns true if the EthAddress is "reserved" (cannot be assigned by the EAM).
     #[inline]
     fn is_reserved(&self) -> bool {
-        self.is_precompile() || self.is_id() || self.is_null()
+        self.is_precompile() || self.is_id() || self.is_null() || self.is_burn()
     }
 }
 
