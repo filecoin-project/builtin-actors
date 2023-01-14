@@ -157,7 +157,7 @@ pub(super) fn resolve_address<RT: Runtime>(
 /// u256  value
 /// u64   flags (1 for read-only, 0 otherwise)
 /// u64   codec (0x71 for "dag-cbor", or `0` for "nothing")
-/// u64   input (must be empty if the codec is 0x0)
+/// bytes params (must be empty if the codec is 0x0)
 /// ```
 ///
 /// Returns (also solidity ABI encoded):
@@ -190,7 +190,7 @@ pub(super) fn call_actor<RT: Runtime>(
 /// u256  value
 /// u64   flags (1 for read-only, 0 otherwise)
 /// u64   codec (0x71 for "dag-cbor", or `0` for "nothing")
-/// u64   input (must be empty if the codec is 0x0)
+/// bytes params (must be empty if the codec is 0x0)
 /// ```
 ///
 /// Returns (also solidity ABI encoded):
