@@ -162,11 +162,11 @@ pub(super) fn resolve_address<RT: Runtime>(
 ///
 /// Returns (also solidity ABI encoded):
 ///
-/// `[int256 exit_code, uint codec, uint offset, uint size, []bytes <actor return value>]`
-/// ```
+/// ```text
 /// i256  exit_code
 /// u64   codec
 /// bytes return_value
+/// ```
 ///
 /// for exit_code:
 /// - negative values are system errors
@@ -195,11 +195,11 @@ pub(super) fn call_actor<RT: Runtime>(
 ///
 /// Returns (also solidity ABI encoded):
 ///
-/// `[int256 exit_code, uint codec, uint offset, uint size, []bytes <actor return value>]`
-/// ```
+/// ```text
 /// i256  exit_code
 /// u64   codec
 /// bytes return_value
+/// ```
 ///
 /// for exit_code:
 /// - negative values are system errors
