@@ -130,7 +130,7 @@ pub(super) fn resolve_address<RT: Runtime>(
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    let addr = match Address::from_bytes(&input) {
+    let addr = match Address::from_bytes(input) {
         Ok(o) => o,
         Err(e) => {
             log::debug!(target: "evm", "Address parsing failed: {e}");
