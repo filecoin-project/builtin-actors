@@ -37,7 +37,7 @@ fil_actors_runtime = { path = "../../runtime", features = ["test_utils", "sector
 fil_actor_power = { path = "../power" }
 fil_actor_reward = { path = "../reward" }
 fil_actor_verifreg = { path = "../verifreg" }
-fvm_ipld_amt = { version = "0.5.0", features = ["go-interop"] }
+fvm_ipld_amt = { version = "0.5.1", features = ["go-interop"] }
 multihash = { version = "0.16.1", default-features = false }
 regex = "1"
 itertools = "0.10"

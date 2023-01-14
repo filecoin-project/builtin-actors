@@ -9,7 +9,7 @@ repository = "https://github.com/filecoin-project/builtin-actors"
 
 [dependencies]
 fvm_ipld_hamt = "0.6.1"
-fvm_ipld_amt = { version = "0.5.0", features = ["go-interop"] }
+fvm_ipld_amt = { version = "0.5.1", features = ["go-interop"] }
 fvm_shared = { version = "3.0.0-alpha.16", default-features = false }
 num = { version = "0.4", features = ["serde"] }
 num-traits = "0.2.14"
