@@ -364,11 +364,23 @@ fn test_native_call() {
     let contract = filecoin_fallback_contract();
     let mut rt = util::construct_and_verify(contract);
 
-    // invoke the contract
     rt.expect_validate_caller_any();
+    let result = rt.call::<evm::EvmContractActor>(1024, None).unwrap();
+    assert_eq!(result, None);
 
-    let result = rt.call::<evm::EvmContractActor>(1024, None).unwrap().unwrap();
-    assert_eq!(U256::from_big_endian(&result.data), U256::from(1024));
+    rt.expect_validate_caller_any();
+    let result = rt.call::<evm::EvmContractActor>(1025, None).unwrap();
+    assert_eq!(result, Some(IpldBlock { codec: 0x71, data: "foobar".into() }));
+
+    rt.expect_validate_caller_any();
+    let err = rt.call::<evm::EvmContractActor>(1026, None).unwrap_err();
+    assert_eq!(err.exit_code().value(), 42);
+    assert_eq!(err.data(), &[]);
+
+    rt.expect_validate_caller_any();
+    let err = rt.call::<evm::EvmContractActor>(1027, None).unwrap_err();
+    assert_eq!(err.exit_code().value(), 42);
+    assert_eq!(err.data(), &b"foobar"[..]);
 }
 
 #[allow(dead_code)]

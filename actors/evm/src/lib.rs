@@ -241,14 +241,15 @@ impl EvmContractActor {
         rt: &mut RT,
         method: u64,
         args: Option<IpldBlock>,
-    ) -> Result<Vec<u8>, ActorError>
+    ) -> Result<Option<IpldBlock>, ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
     {
         let params = args.unwrap_or(IpldBlock { codec: 0, data: vec![] });
         let input = handle_filecoin_method_input(method, params.codec, params.data.as_slice());
-        Self::invoke_contract(rt, &input)
+        let output = Self::invoke_contract(rt, &input)?;
+        handle_filecoin_method_output(output)
     }
 
     /// Returns the contract's EVM bytecode, or `None` if the contract has been deleted (has called
@@ -311,6 +312,80 @@ fn handle_filecoin_method_input(method: u64, codec: u64, params: &[u8]) -> Vec<u
     buf.extend_from_slice(params);
     buf.resize(len, 0);
     buf
+}
+
+/// Decode the response from "filecoin_native_method". We expect:
+///
+/// 1. The exit code (u32).
+/// 2. The codec (u64).
+/// 3. The data (bytes).
+///
+/// According to the solidity ABI.
+fn handle_filecoin_method_output(mut output: Vec<u8>) -> Result<Option<IpldBlock>, ActorError> {
+    // Short-circuit if empty.
+    if output.is_empty() {
+        return Ok(None);
+    }
+
+    // TODO: This should use the "parameter" reader. But we need to move it and likely refactor
+    // something.
+    const NUM_PARAMS: usize = 3;
+    const MIN_OUTPUT: usize = 32 * NUM_PARAMS;
+    if output.len() < MIN_OUTPUT {
+        output.resize(MIN_OUTPUT, 0);
+    }
+    let exit_code: u32 = U256::from_big_endian(&output[0..32])
+        .try_into()
+        .context_code(ExitCode::USR_SERIALIZATION, "exit code not a u32")?;
+    let exit_code = ExitCode::new(exit_code);
+    let codec: u64 = U256::from_big_endian(&output[32..64])
+        .try_into()
+        .context_code(ExitCode::USR_SERIALIZATION, "returned codec not a u64")?;
+    let len_offset: usize = U256::from_big_endian(&output[64..96])
+        .try_into()
+        .context_code(ExitCode::USR_SERIALIZATION, "invalid return value offset")?;
+    let len_offset_end = len_offset
+        .checked_add(32)
+        .context_code(ExitCode::USR_SERIALIZATION, "return value offset is too large")?;
+    if len_offset_end > output.len() {
+        output.resize(len_offset_end, 0);
+    }
+    let length: usize = U256::from_big_endian(&output[len_offset..len_offset_end])
+        .try_into()
+        .context_code(ExitCode::USR_SERIALIZATION, "return length is too large")?;
+
+    let end = len_offset_end
+        .checked_add(length)
+        .context_code(ExitCode::USR_SERIALIZATION, "return length is too large")?;
+
+    if end > output.len() {
+        output.resize(end, 0);
+    }
+
+    let return_data = output[len_offset_end..end].into();
+    let return_block = match codec {
+        // Empty return values.
+        0 if length == 0 => None,
+        0 => {
+            return Err(ActorError::serialization(format!(
+                "codec 0 is only valid for empty returns, got a return value of length {length}"
+            )))
+        }
+        // Supported codecs.
+        DAG_CBOR => Some(IpldBlock { codec, data: return_data }),
+        // Everything else.
+        _ => return Err(ActorError::serialization(format!("unsupported codec: {codec}"))),
+    };
+
+    if exit_code.is_success() {
+        Ok(return_block)
+    } else {
+        Err(ActorError::unchecked_with_data(
+            exit_code,
+            format!("EVM contract explicitly exited with a non-zero exit code"),
+            return_block,
+        ))
+    }
 }
 
 impl ActorCode for EvmContractActor {
@@ -387,15 +462,7 @@ impl ActorCode for EvmContractActor {
             None if method > EVM_MAX_RESERVED_METHOD => {
                 // We reserve all methods below EVM_MAX_RESERVED (<= 1023) method. This is a
                 // _subset_ of those reserved by FRC0042.
-                Self::handle_filecoin_method(rt, method, args).map(|d| {
-                    if d.is_empty() {
-                        None
-                    } else {
-                        // TODO: Pass the codec through to here?
-                        // https://github.com/filecoin-project/ref-fvm/issues/1422
-                        Some(IpldBlock { codec: DAG_CBOR, data: d })
-                    }
-                })
+                Self::handle_filecoin_method(rt, method, args)
             }
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }
