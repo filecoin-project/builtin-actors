@@ -11,7 +11,8 @@ use uint::byteorder::{ByteOrder, LE};
 
 use crate::interpreter::{precompiles::PrecompileError, System, U256};
 
-use super::{parameter::ParameterReader, PrecompileContext, PrecompileResult};
+use super::{PrecompileContext, PrecompileResult};
+use crate::reader::ValueReader;
 
 const SECP256K1_N: U256 =
     U256::from_u128_words(0xfffffffffffffffffffffffffffffffe, 0xbaaedce6af48a03bbfd25e8cd0364141);
@@ -26,11 +27,11 @@ fn test_secp_range() {
 }
 
 fn ec_recover_internal<RT: Runtime>(system: &mut System<RT>, input: &[u8]) -> PrecompileResult {
-    let mut input_params = ParameterReader::new(input);
+    let mut input_params = ValueReader::new(input);
     let hash: [u8; SECP_SIG_MESSAGE_HASH_SIZE] = input_params.read_fixed();
-    let recovery_byte: u8 = input_params.read_param()?;
-    let r: U256 = input_params.read_param()?;
-    let s: U256 = input_params.read_param()?;
+    let recovery_byte: u8 = input_params.read_value()?;
+    let r: U256 = input_params.read_value()?;
+    let s: U256 = input_params.read_value()?;
 
     // Must be either 27 or 28
     let v = recovery_byte.checked_sub(27).ok_or(PrecompileError::InvalidInput)?;
@@ -104,13 +105,13 @@ pub(super) fn modexp<RT: Runtime>(
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    let mut reader = ParameterReader::new(input);
+    let mut reader = ValueReader::new(input);
 
     // This will error out if the user passes values greater than u32, but that's fine. The user
     // would run out of gas anyways.
-    let base_len = reader.read_param::<u32>()? as usize;
-    let exponent_len = reader.read_param::<u32>()? as usize;
-    let mod_len = reader.read_param::<u32>()? as usize;
+    let base_len = reader.read_value::<u32>()? as usize;
+    let exponent_len = reader.read_value::<u32>()? as usize;
+    let mod_len = reader.read_value::<u32>()? as usize;
 
     if base_len == 0 && mod_len == 0 {
         return Ok(Vec::new());
@@ -154,9 +155,9 @@ pub(super) fn ec_add<RT: Runtime>(
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    let mut input_params = ParameterReader::new(input);
-    let point1: G1 = input_params.read_param()?;
-    let point2: G1 = input_params.read_param()?;
+    let mut input_params = ValueReader::new(input);
+    let point1: G1 = input_params.read_value()?;
+    let point2: G1 = input_params.read_value()?;
 
     curve_to_vec(point1 + point2)
 }
@@ -167,9 +168,9 @@ pub(super) fn ec_mul<RT: Runtime>(
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    let mut input_params = ParameterReader::new(input);
-    let point: G1 = input_params.read_param()?;
-    let scalar: Fr = input_params.read_param()?;
+    let mut input_params = ValueReader::new(input);
+    let point: G1 = input_params.read_value()?;
+    let scalar: Fr = input_params.read_value()?;
 
     curve_to_vec(point * scalar)
 }
@@ -181,19 +182,19 @@ pub(super) fn ec_pairing<RT: Runtime>(
     _: PrecompileContext,
 ) -> PrecompileResult {
     fn read_group(input: &[u8]) -> Result<(G1, G2), PrecompileError> {
-        let mut reader = ParameterReader::new(input);
+        let mut reader = ValueReader::new(input);
 
-        let x: Fq = reader.read_param()?;
-        let y: Fq = reader.read_param()?;
+        let x: Fq = reader.read_value()?;
+        let y: Fq = reader.read_value()?;
 
         let twisted_x = {
-            let b: Fq = reader.read_param()?;
-            let a: Fq = reader.read_param()?;
+            let b: Fq = reader.read_value()?;
+            let a: Fq = reader.read_value()?;
             Fq2::new(a, b)
         };
         let twisted_y = {
-            let b: Fq = reader.read_param()?;
-            let a: Fq = reader.read_param()?;
+            let b: Fq = reader.read_value()?;
+            let a: Fq = reader.read_value()?;
             Fq2::new(a, b)
         };
 
@@ -431,8 +432,6 @@ mod tests {
 
     // bn tests borrowed from https://github.com/bluealloy/revm/blob/26540bf5b29de6e7c8020c4c1880f8a97d1eadc9/crates/revm_precompiles/src/bn128.rs
     mod bn {
-        use substrate_bn::GroupError;
-
         use super::MockRuntime;
 
         use crate::interpreter::{
@@ -494,7 +493,10 @@ mod tests {
             )
             .unwrap();
             let res = ec_add(&mut system, &input, PrecompileContext::default());
-            assert!(matches!(res, Err(PrecompileError::EcGroupErr(GroupError::NotOnCurve))));
+            assert!(matches!(
+                res,
+                Err(PrecompileError::EcErr(substrate_bn::CurveError::NotMember))
+            ));
         }
 
         #[test]
@@ -549,7 +551,10 @@ mod tests {
             )
             .unwrap();
             let res = ec_mul(&mut system, &input, PrecompileContext::default());
-            assert!(matches!(res, Err(PrecompileError::EcGroupErr(GroupError::NotOnCurve))));
+            assert!(matches!(
+                res,
+                Err(PrecompileError::EcErr(substrate_bn::CurveError::NotMember))
+            ));
         }
 
         #[test]
@@ -619,7 +624,10 @@ mod tests {
             )
             .unwrap();
             let res = ec_pairing(&mut system, &input, PrecompileContext::default());
-            assert!(matches!(res, Err(PrecompileError::EcGroupErr(GroupError::NotOnCurve))));
+            assert!(matches!(
+                res,
+                Err(PrecompileError::EcErr(substrate_bn::CurveError::NotMember))
+            ));
             // invalid input length
             let input = hex::decode(
                 "\

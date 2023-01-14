@@ -1,73 +1,76 @@
 use std::borrow::Cow;
 
 use fvm_shared::bigint::BigUint;
-use substrate_bn::{AffineG1, FieldError, Fq, Fr, Group, GroupError, G1};
+use substrate_bn::{AffineG1, CurveError, FieldError, Fq, Fr, Group, G1};
 
 use crate::interpreter::U256;
 
-use super::PrecompileError;
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub struct OverflowError;
 
-impl From<FieldError> for PrecompileError {
-    fn from(src: FieldError) -> Self {
-        PrecompileError::EcErr(src.into())
+/// A `Value` is a type that can be read from a `ValueReader`. These values are usually used in
+/// solidity inputs/outputs.
+pub(crate) trait Value: Sized {
+    type Error;
+    fn read(reader: &mut ValueReader) -> Result<Self, Self::Error>;
+}
+
+impl Value for G1 {
+    type Error = CurveError;
+    fn read(reader: &mut ValueReader) -> Result<Self, Self::Error> {
+        let x: Fq = reader.read_value()?;
+        let y: Fq = reader.read_value()?;
+
+        Ok(if x.is_zero() && y.is_zero() {
+            G1::zero()
+        } else {
+            AffineG1::new(x, y).map_err(|_| CurveError::NotMember)?.into()
+        })
     }
 }
 
-impl From<GroupError> for PrecompileError {
-    fn from(src: GroupError) -> Self {
-        PrecompileError::EcGroupErr(src)
+impl Value for Fq {
+    type Error = FieldError;
+    fn read(reader: &mut ValueReader) -> Result<Self, Self::Error> {
+        Fq::from_slice(&reader.read_fixed::<32>())
     }
 }
 
-pub(super) trait Parameter: Sized {
-    fn read(reader: &mut ParameterReader) -> Result<Self, PrecompileError>;
-}
-
-impl Parameter for G1 {
-    fn read(reader: &mut ParameterReader) -> Result<Self, PrecompileError> {
-        let x: Fq = reader.read_param()?;
-        let y: Fq = reader.read_param()?;
-
-        Ok(if x.is_zero() && y.is_zero() { G1::zero() } else { AffineG1::new(x, y)?.into() })
+impl Value for Fr {
+    type Error = FieldError;
+    fn read(reader: &mut ValueReader) -> Result<Self, Self::Error> {
+        Fr::from_slice(&reader.read_fixed::<32>())
     }
 }
 
-impl Parameter for Fq {
-    fn read(reader: &mut ParameterReader) -> Result<Self, PrecompileError> {
-        Ok(Fq::from_slice(&reader.read_fixed::<32>())?)
-    }
-}
-
-impl Parameter for Fr {
-    fn read(reader: &mut ParameterReader) -> Result<Self, PrecompileError> {
-        Ok(Fr::from_slice(&reader.read_fixed::<32>())?)
-    }
-}
-
-impl Parameter for U256 {
-    fn read(reader: &mut ParameterReader) -> Result<Self, PrecompileError> {
+impl Value for U256 {
+    type Error = FieldError;
+    fn read(reader: &mut ValueReader) -> Result<Self, Self::Error> {
         Ok(U256::from(reader.read_fixed::<32>()))
     }
 }
 
-impl Parameter for [u8; 32] {
-    fn read(reader: &mut ParameterReader) -> Result<Self, PrecompileError> {
+impl Value for [u8; 32] {
+    type Error = std::convert::Infallible;
+    fn read(reader: &mut ValueReader) -> Result<Self, Self::Error> {
         Ok(reader.read_fixed())
     }
 }
 
-impl Parameter for u8 {
-    fn read(reader: &mut ParameterReader) -> Result<Self, PrecompileError> {
+impl Value for u8 {
+    type Error = OverflowError;
+    fn read(reader: &mut ValueReader) -> Result<Self, Self::Error> {
         reader.drop_zeros::<31>()?;
         Ok(reader.read_byte())
     }
 }
 
-macro_rules! impl_param_int {
+macro_rules! impl_value_int {
     ($($t:ty)*) => {
         $(
-            impl Parameter for $t {
-                fn read(reader: &mut ParameterReader) -> Result<Self, PrecompileError> {
+            impl Value for $t {
+                type Error = OverflowError;
+                fn read(reader: &mut ValueReader) -> Result<Self, Self::Error> {
                     const ZEROS: usize = 32 - ((<$t>::BITS as usize) / 8);
 
                     reader.drop_zeros::<ZEROS>()?;
@@ -79,18 +82,18 @@ macro_rules! impl_param_int {
     };
 }
 
-impl_param_int!(u16 i16 u32 i32 u64 i64);
+impl_value_int!(u16 i16 u32 i32 u64 i64);
 
-/// Provides a nice API interface for reading Parameters from input. This API treats the input as if
-/// it is followed by infinite zeros.
-pub(super) struct ParameterReader<'a> {
+/// Provides a nice API interface for reading Values from input. This API treats the input as if it
+/// is followed by infinite zeros.
+pub(crate) struct ValueReader<'a> {
     full: &'a [u8],
     slice: &'a [u8],
 }
 
-impl<'a> ParameterReader<'a> {
-    pub(super) fn new(slice: &'a [u8]) -> Self {
-        ParameterReader { full: slice, slice }
+impl<'a> ValueReader<'a> {
+    pub fn new(slice: &'a [u8]) -> Self {
+        ValueReader { full: slice, slice }
     }
 
     /// Seek to an offset from the beginning of the input.
@@ -103,14 +106,14 @@ impl<'a> ParameterReader<'a> {
     }
 
     /// Drop a fixed number of bytes, and return an error if said bytes are not zeros.
-    pub fn drop_zeros<const S: usize>(&mut self) -> Result<(), PrecompileError> {
+    pub fn drop_zeros<const S: usize>(&mut self) -> Result<(), OverflowError> {
         let split = S.min(self.slice.len());
         let (a, b) = self.slice.split_at(split);
         self.slice = b;
         if a.iter().all(|&i| i == 0) {
             Ok(())
         } else {
-            Err(PrecompileError::InvalidInput)
+            Err(OverflowError)
         }
     }
 
@@ -171,16 +174,15 @@ impl<'a> ParameterReader<'a> {
         int
     }
 
-    /// Read a single parameter from the input. The parameter's type decides how much input it needs
+    /// Read a single value from the input. The value's type decides how much input it needs
     /// to read.
     ///
-    /// Most parameters will read in 32 byte chunks, but that's up to the parameter's
-    /// implementation.
-    pub fn read_param<V>(&mut self) -> Result<V, PrecompileError>
+    /// Most values will be read in 32 byte chunks, but that's up to the value's implementation.
+    pub fn read_value<V>(&mut self) -> Result<V, V::Error>
     where
-        V: Parameter,
+        V: Value,
     {
-        Parameter::read(self)
+        Value::read(self)
     }
 }
 
@@ -190,7 +192,7 @@ mod test {
 
     #[test]
     fn test_read_fixed() {
-        let mut reader = ParameterReader::new(&[1, 2, 3]);
+        let mut reader = ValueReader::new(&[1, 2, 3]);
         assert_eq!(reader.read_fixed::<2>(), [1, 2]);
         assert_eq!(reader.read_fixed::<0>(), []);
         assert_eq!(reader.read_fixed::<5>(), [3u8, 0, 0, 0, 0]);
@@ -199,7 +201,7 @@ mod test {
 
     #[test]
     fn test_right_pad() {
-        let mut reader = ParameterReader::new(&[1, 2, 3]);
+        let mut reader = ValueReader::new(&[1, 2, 3]);
         assert_eq!(reader.read_padded(2), &[1, 2][..]);
         assert_eq!(reader.read_padded(2), &[3, 0][..]);
         assert_eq!(reader.read_padded(2), &[0, 0][..]);
@@ -209,19 +211,19 @@ mod test {
     fn test_int() {
         let mut data = vec![0u8; 37];
         data[31] = 1;
-        let mut reader = ParameterReader::new(&data);
-        assert_eq!(reader.read_param::<u64>().unwrap(), 1);
-        assert_eq!(reader.read_param::<u64>().unwrap(), 0);
+        let mut reader = ValueReader::new(&data);
+        assert_eq!(reader.read_value::<u64>().unwrap(), 1);
+        assert_eq!(reader.read_value::<u64>().unwrap(), 0);
 
         // Expect this to overflow now.
         data[0] = 1;
-        let mut reader = ParameterReader::new(&data);
-        assert!(matches!(reader.read_param::<u64>().unwrap_err(), PrecompileError::InvalidInput));
+        let mut reader = ValueReader::new(&data);
+        assert_eq!(reader.read_value::<u64>().unwrap_err(), OverflowError);
     }
 
     #[test]
     fn test_big_int() {
-        let mut reader = ParameterReader::new(&[1, 2]);
+        let mut reader = ValueReader::new(&[1, 2]);
         assert_eq!(reader.read_biguint(1), 1u64.into());
         assert_eq!(reader.read_biguint(3), 0x02_00_00u64.into());
         assert_eq!(reader.read_biguint(5), 0u32.into());
@@ -229,7 +231,7 @@ mod test {
 
     #[test]
     fn test_byte() {
-        let mut reader = ParameterReader::new(&[1, 2]);
+        let mut reader = ValueReader::new(&[1, 2]);
         assert_eq!(reader.read_byte(), 1u8);
         assert_eq!(reader.read_byte(), 2u8);
         assert_eq!(reader.read_byte(), 0u8);
