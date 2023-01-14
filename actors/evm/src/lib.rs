@@ -7,6 +7,7 @@ use fvm_shared::error::ExitCode;
 use interpreter::{address::EthAddress, system::load_bytecode};
 
 use crate::interpreter::output::Outcome;
+use crate::reader::ValueReader;
 
 pub mod interpreter;
 pub(crate) mod reader;
@@ -249,7 +250,7 @@ impl EvmContractActor {
         let params = args.unwrap_or(IpldBlock { codec: 0, data: vec![] });
         let input = handle_filecoin_method_input(method, params.codec, params.data.as_slice());
         let output = Self::invoke_contract(rt, &input)?;
-        handle_filecoin_method_output(output)
+        handle_filecoin_method_output(&output)
     }
 
     /// Returns the contract's EVM bytecode, or `None` if the contract has been deleted (has called
@@ -321,48 +322,28 @@ fn handle_filecoin_method_input(method: u64, codec: u64, params: &[u8]) -> Vec<u
 /// 3. The data (bytes).
 ///
 /// According to the solidity ABI.
-fn handle_filecoin_method_output(mut output: Vec<u8>) -> Result<Option<IpldBlock>, ActorError> {
+fn handle_filecoin_method_output(output: &[u8]) -> Result<Option<IpldBlock>, ActorError> {
     // Short-circuit if empty.
     if output.is_empty() {
         return Ok(None);
     }
+    let mut output = ValueReader::new(output);
 
-    // TODO: This should use the "parameter" reader. But we need to move it and likely refactor
-    // something.
-    const NUM_PARAMS: usize = 3;
-    const MIN_OUTPUT: usize = 32 * NUM_PARAMS;
-    if output.len() < MIN_OUTPUT {
-        output.resize(MIN_OUTPUT, 0);
-    }
-    let exit_code: u32 = U256::from_big_endian(&output[0..32])
-        .try_into()
-        .context_code(ExitCode::USR_SERIALIZATION, "exit code not a u32")?;
-    let exit_code = ExitCode::new(exit_code);
-    let codec: u64 = U256::from_big_endian(&output[32..64])
-        .try_into()
+    let exit_code: ExitCode =
+        output.read_value().context_code(ExitCode::USR_SERIALIZATION, "exit code not a u32")?;
+    let codec: u64 = output
+        .read_value()
         .context_code(ExitCode::USR_SERIALIZATION, "returned codec not a u64")?;
-    let len_offset: usize = U256::from_big_endian(&output[64..96])
-        .try_into()
+    let len_offset: u32 = output
+        .read_value()
         .context_code(ExitCode::USR_SERIALIZATION, "invalid return value offset")?;
-    let len_offset_end = len_offset
-        .checked_add(32)
-        .context_code(ExitCode::USR_SERIALIZATION, "return value offset is too large")?;
-    if len_offset_end > output.len() {
-        output.resize(len_offset_end, 0);
-    }
-    let length: usize = U256::from_big_endian(&output[len_offset..len_offset_end])
-        .try_into()
+
+    output.seek(len_offset as usize);
+    let length: u32 = output
+        .read_value()
         .context_code(ExitCode::USR_SERIALIZATION, "return length is too large")?;
+    let return_data = output.read_padded(length as usize);
 
-    let end = len_offset_end
-        .checked_add(length)
-        .context_code(ExitCode::USR_SERIALIZATION, "return length is too large")?;
-
-    if end > output.len() {
-        output.resize(end, 0);
-    }
-
-    let return_data = output[len_offset_end..end].into();
     let return_block = match codec {
         // Empty return values.
         0 if length == 0 => None,
@@ -372,7 +353,7 @@ fn handle_filecoin_method_output(mut output: Vec<u8>) -> Result<Option<IpldBlock
             )))
         }
         // Supported codecs.
-        DAG_CBOR => Some(IpldBlock { codec, data: return_data }),
+        DAG_CBOR => Some(IpldBlock { codec, data: return_data.into() }),
         // Everything else.
         _ => return Err(ActorError::serialization(format!("unsupported codec: {codec}"))),
     };

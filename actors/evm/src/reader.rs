@@ -1,12 +1,18 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, fmt::Display};
 
-use fvm_shared::bigint::BigUint;
+use fvm_shared::{bigint::BigUint, error::ExitCode};
 use substrate_bn::{AffineG1, CurveError, FieldError, Fq, Fr, Group, G1};
 
 use crate::interpreter::U256;
 
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct OverflowError;
+
+impl Display for OverflowError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("value overflowed")
+    }
+}
 
 /// A `Value` is a type that can be read from a `ValueReader`. These values are usually used in
 /// solidity inputs/outputs.
@@ -40,6 +46,14 @@ impl Value for Fr {
     type Error = FieldError;
     fn read(reader: &mut ValueReader) -> Result<Self, Self::Error> {
         Fr::from_slice(&reader.read_fixed::<32>())
+    }
+}
+
+impl Value for ExitCode {
+    type Error = OverflowError;
+
+    fn read(reader: &mut ValueReader) -> Result<Self, Self::Error> {
+        Ok(ExitCode::new(reader.read_value()?))
     }
 }
 
