@@ -509,7 +509,7 @@ fn test_precompile_transfer() {
             expected_return: vec![],
             gas_avaliable: 10_000_000_000,
         };
-        let fil_addr = FILAddress::new_delegated(EAM_ACTOR_ID, &addr.as_ref()).unwrap();
+        let fil_addr = FILAddress::new_delegated(EAM_ACTOR_ID, addr.as_ref()).unwrap();
         rt.expect_send(fil_addr, METHOD_SEND, None, TokenAmount::from_atto(1), None, ExitCode::OK);
         test.run_test(&mut rt);
     }
