@@ -9,6 +9,7 @@ use interpreter::{address::EthAddress, system::load_bytecode};
 use crate::interpreter::output::Outcome;
 
 pub mod interpreter;
+pub(crate) mod reader;
 mod state;
 
 use {

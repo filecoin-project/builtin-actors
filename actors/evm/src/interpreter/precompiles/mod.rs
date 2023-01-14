@@ -2,13 +2,14 @@ use std::{marker::PhantomData, num::TryFromIntError};
 
 use fil_actors_runtime::{runtime::Runtime, EAM_ACTOR_ID};
 use fvm_shared::{address::Address, econ::TokenAmount};
-use substrate_bn::{CurveError, GroupError};
+use substrate_bn::{CurveError, FieldError, GroupError};
+
+use crate::reader::OverflowError;
 
 use super::{address::EthAddress, instructions::call::CallKind, System, U256};
 
 mod evm;
 mod fvm;
-pub mod parameter;
 
 use evm::{blake2f, ec_add, ec_mul, ec_pairing, ec_recover, identity, modexp, ripemd160, sha256};
 use fvm::{call_actor, call_actor_id, get_actor_type, lookup_delegated_address, resolve_address};
@@ -132,7 +133,6 @@ impl<RT: Runtime> Precompiles<RT> {
 pub enum PrecompileError {
     // EVM precompile errors
     EcErr(CurveError),
-    EcGroupErr(GroupError),
     IncorrectInputSize,
     OutOfGas,
     // FVM precompile errors
@@ -144,6 +144,30 @@ pub enum PrecompileError {
 impl From<TryFromIntError> for PrecompileError {
     fn from(_: TryFromIntError) -> Self {
         Self::InvalidInput
+    }
+}
+
+impl From<OverflowError> for PrecompileError {
+    fn from(_: OverflowError) -> Self {
+        PrecompileError::InvalidInput
+    }
+}
+
+impl From<FieldError> for PrecompileError {
+    fn from(src: FieldError) -> Self {
+        PrecompileError::EcErr(src.into())
+    }
+}
+
+impl From<CurveError> for PrecompileError {
+    fn from(src: CurveError) -> Self {
+        PrecompileError::EcErr(src)
+    }
+}
+
+impl From<GroupError> for PrecompileError {
+    fn from(_: GroupError) -> Self {
+        PrecompileError::EcErr(CurveError::NotMember)
     }
 }
 

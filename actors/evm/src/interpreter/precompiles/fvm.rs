@@ -6,7 +6,8 @@ use num_traits::FromPrimitive;
 
 use crate::interpreter::{instructions::call::CallKind, precompiles::NativeType, System, U256};
 
-use super::{parameter::ParameterReader, PrecompileContext, PrecompileError, PrecompileResult};
+use super::{PrecompileContext, PrecompileError, PrecompileResult};
+use crate::reader::ValueReader;
 
 /// Read right padded BE encoded low u64 ID address from a u256 word.
 /// - Reverts if the input is greater than `MAX::u64`.
@@ -16,8 +17,8 @@ pub(super) fn get_actor_type<RT: Runtime>(
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    let mut reader = ParameterReader::new(input);
-    let id: u64 = reader.read_param()?;
+    let mut reader = ValueReader::new(input);
+    let id: u64 = reader.read_value()?;
 
     // resolve type from code CID
     let builtin_type = system
@@ -72,7 +73,7 @@ pub(super) fn get_randomness<RT: Runtime>(
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    let mut input_params = ParameterReader::new(input);
+    let mut input_params = ValueReader::new(input);
 
     #[derive(num_derive::FromPrimitive)]
     #[repr(i32)]
@@ -81,10 +82,10 @@ pub(super) fn get_randomness<RT: Runtime>(
         Beacon = 1,
     }
 
-    let randomness_type = RandomnessType::from_i32(input_params.read_param::<i32>()?);
-    let personalization = input_params.read_param::<i64>()?;
-    let rand_epoch = input_params.read_param::<i64>()?;
-    let entropy_len = input_params.read_param::<u32>()? as usize;
+    let randomness_type = RandomnessType::from_i32(input_params.read_value::<i32>()?);
+    let personalization = input_params.read_value::<i64>()?;
+    let rand_epoch = input_params.read_value::<i64>()?;
+    let entropy_len = input_params.read_value::<u32>()? as usize;
 
     let entropy = input_params.read_padded(entropy_len);
 
@@ -110,8 +111,8 @@ pub(super) fn lookup_delegated_address<RT: Runtime>(
     input: &[u8],
     _: PrecompileContext,
 ) -> PrecompileResult {
-    let mut id_bytes = ParameterReader::new(input);
-    let id = id_bytes.read_param::<u64>()?;
+    let mut id_bytes = ValueReader::new(input);
+    let id = id_bytes.read_value::<u64>()?;
 
     let address = system.rt.lookup_delegated_address(id);
     let ab = match address {
@@ -225,29 +226,29 @@ pub(super) fn call_actor_shared<RT: Runtime>(
         return Err(PrecompileError::CallForbidden);
     }
 
-    let mut input_params = ParameterReader::new(input);
+    let mut input_params = ValueReader::new(input);
 
-    let method: u64 = input_params.read_param()?;
+    let method: u64 = input_params.read_value()?;
 
-    let value: U256 = input_params.read_param()?;
+    let value: U256 = input_params.read_value()?;
 
-    let flags: u64 = input_params.read_param()?;
+    let flags: u64 = input_params.read_value()?;
     let flags = SendFlags::from_bits(flags).ok_or(PrecompileError::InvalidInput)?;
 
-    let codec: u64 = input_params.read_param()?;
+    let codec: u64 = input_params.read_value()?;
 
-    let params_off: u32 = input_params.read_param()?;
-    let id_or_addr_off: u64 = input_params.read_param()?;
+    let params_off: u32 = input_params.read_value()?;
+    let id_or_addr_off: u64 = input_params.read_value()?;
 
     input_params.seek(params_off.try_into()?);
-    let params_len: u32 = input_params.read_param()?;
+    let params_len: u32 = input_params.read_value()?;
     let params = input_params.read_padded(params_len.try_into()?);
 
     let address = if by_id {
         Address::new_id(id_or_addr_off)
     } else {
         input_params.seek(id_or_addr_off.try_into()?);
-        let addr_len: u32 = input_params.read_param()?;
+        let addr_len: u32 = input_params.read_value()?;
         let addr_bytes = input_params
             .read_padded(addr_len.try_into().map_err(|_| PrecompileError::InvalidInput)?);
         Address::from_bytes(&addr_bytes).map_err(|_| PrecompileError::InvalidInput)?
