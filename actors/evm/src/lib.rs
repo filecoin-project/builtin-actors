@@ -382,7 +382,7 @@ fn handle_filecoin_method_output(mut output: Vec<u8>) -> Result<Option<IpldBlock
     } else {
         Err(ActorError::unchecked_with_data(
             exit_code,
-            format!("EVM contract explicitly exited with a non-zero exit code"),
+            "EVM contract explicitly exited with a non-zero exit code".to_string(),
             return_block,
         ))
     }
