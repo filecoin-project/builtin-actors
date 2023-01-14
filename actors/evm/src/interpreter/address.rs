@@ -1,3 +1,4 @@
+use crate::interpreter::precompiles::NATIVE_PRECOMPILE_ADDRESS_PREFIX;
 use crate::StatusCode;
 use crate::U256;
 use fil_actors_runtime::EAM_ACTOR_ID;
@@ -5,7 +6,6 @@ use fvm_ipld_encoding::{serde, strict_bytes};
 use fvm_shared::address::Address;
 use fvm_shared::ActorID;
 
-use super::precompiles::NATIVE_PRECOMPILE_ADDRESS_PREFIX;
 use super::precompiles::is_reserved_precompile_address;
 
 /// A Filecoin address as represented in the FEVM runtime (also called EVM-form).
@@ -14,12 +14,18 @@ use super::precompiles::is_reserved_precompile_address;
 #[derive(serde::Deserialize, serde::Serialize, PartialEq, Eq, Clone, Copy)]
 pub struct EthAddress(#[serde(with = "strict_bytes")] pub [u8; 20]);
 
-const ETH_NULL_ADDRESS: EthAddress = EthAddress([0; 20]); 
+const ETH_NULL_ADDRESS: EthAddress = EthAddress([0; 20]);
+const ETH_BURN_ADDRESS: EthAddress =
+    EthAddress(hex_literal::hex!("000000000000000000000000000000000000dead"));
+
 const NATIVE_PRECOMPILE_ZERO_ADDRESS: EthAddress = {
-    let mut addr = [0; 20];
-    addr[0] = NATIVE_PRECOMPILE_ADDRESS_PREFIX;
+    let addr = hex_literal::hex!("fe00000000000000000000000000000000000000");
+    // assert is compile-time
+    if NATIVE_PRECOMPILE_ADDRESS_PREFIX != addr[0] {
+        panic!("Native precompile prefix does not match native precompile zero address")
+    }
     EthAddress(addr)
-}; 
+};
 
 /// Converts a U256 to an EthAddress by taking the lower 20 bytes.
 ///
@@ -94,9 +100,21 @@ impl EthAddress {
         U256::from_big_endian(&self.0)
     }
 
+    /// Returns null/zero Eth address as an f4
+    pub fn null_f4_address() -> Address {
+        ETH_NULL_ADDRESS
+            .try_into()
+            .expect("Eth null address MUST be able to convert into an f4 address. This is a bug.")
+    }
+
     /// Returns true if this is the null/zero EthAddress.
     pub fn is_null(&self) -> bool {
         self == &ETH_NULL_ADDRESS
+    }
+
+    /// Returns true if this is the null/zero EthAddress.
+    pub fn is_eth_burn(&self) -> bool {
+        self == &ETH_BURN_ADDRESS
     }
 
     /// Returns true if this is the zero precompile address (0xfe00..00).
@@ -104,13 +122,17 @@ impl EthAddress {
         self == &NATIVE_PRECOMPILE_ZERO_ADDRESS
     }
 
-    /// Returns true if this address is reserved by the system. 
-    /// Includes: 
+    /// Returns true if this address is reserved by the system.
+    /// Includes:
     /// - Eth Null address
+    /// - Eth Burn address
     /// - Native Precompile zero address
     /// - Inside precompile address range [ref](https://github.com/filecoin-project/ref-fvm/issues/1164#issuecomment-1371304676)
     pub fn is_reserved(&self) -> bool {
-        self.is_null() || self.is_native_precompile_zero() || is_reserved_precompile_address(&self) 
+        self.is_null()
+            || self.is_eth_burn()
+            || self.is_native_precompile_zero()
+            || is_reserved_precompile_address(self)
     }
 }
 
