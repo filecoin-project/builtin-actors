@@ -169,13 +169,19 @@ fn create_actor(
         RawBytes::serialize(EvmConstructorParams { creator, initcode: initcode.into() })?;
     let value = rt.message().value_received();
 
-    // Try to resurrect it if it already exists.
     let f4_addr = Address::new_delegated(EAM_ACTOR_ID, &new_addr.0).unwrap();
+
     if let Some(id) = rt.resolve_address(&f4_addr) {
-        rt.send(&Address::new_id(id), RESURRECT_METHOD, constructor_params.into(), value)?;
-        return Ok(Return { actor_id: id, robust_address: None, eth_address: new_addr });
+        // Try to resurrect it if it is already an EVM actor (must be "dead")
+        let caller_code_cid = rt.get_actor_code_cid(&id).expect("failed to lookup actor code");
+        if let Some(Type::EVM) = rt.resolve_builtin_actor_type(&caller_code_cid) {
+            rt.send(&Address::new_id(id), RESURRECT_METHOD, constructor_params.into(), value)?;
+            return Ok(Return { actor_id: id, robust_address: None, eth_address: new_addr });
+        }
     }
 
+    // If the f4 address wasn't resolved, or resolved to something other than an EVM actor, we try
+    // to construct it "normally".
     let init_params = Exec4Params {
         code_cid: rt.get_code_cid_for_type(Type::EVM),
         constructor_params,
