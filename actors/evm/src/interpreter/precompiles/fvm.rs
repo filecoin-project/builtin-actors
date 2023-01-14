@@ -299,7 +299,7 @@ pub(super) fn call_actor_shared<RT: Runtime>(
         // Pad out to the next increment of 32 bytes for solidity compatibility.
         let offset = output.len() % 32;
         if offset > 0 {
-            output.resize(output.len() - offset - 32, 0);
+            output.resize(output.len() - offset + 32, 0);
         }
         output
     };
