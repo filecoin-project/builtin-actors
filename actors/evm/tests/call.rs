@@ -1,18 +1,27 @@
 mod asm;
 
+use std::sync::Arc;
+
+use ethers::abi::Abi;
+use ethers::contract::Contract;
+use ethers::prelude::*;
+use ethers::providers::{Provider, MockProvider};
+use ethers::types::Bytes;
 use evm::interpreter::address::EthAddress;
 use evm::interpreter::U256;
 use evm::EVM_CONTRACT_REVERTED;
 use fil_actor_evm as evm;
-use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::{test_utils::*, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::{BytesSer, IPLD_RAW};
+use fvm_ipld_encoding::{BytesSer, IPLD_RAW, BytesDe};
 use fvm_shared::address::Address as FILAddress;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sys::SendFlags;
-use fvm_shared::{MethodNum, METHOD_SEND};
+use fvm_shared::{MethodNum, METHOD_SEND, ActorID};
+use once_cell::sync::Lazy;
+use fvm_shared::address::Address;
 
 mod util;
 
@@ -350,6 +359,11 @@ pub fn filecoin_fallback_contract() -> Vec<u8> {
     hex::decode(include_str!("contracts/FilecoinFallback.hex")).unwrap()
 }
 
+#[allow(dead_code)]
+pub fn filecoin_call_actor_contract() -> Vec<u8> {
+    hex::decode(include_str!("contracts/CallActorPrecompile.hex")).unwrap()
+}
+
 #[test]
 fn test_reserved_method() {
     let contract = filecoin_fallback_contract();
@@ -446,6 +460,20 @@ fn test_callactor_revert() {
     test_callactor_inner(2048, EVM_CONTRACT_REVERTED, true)
 }
 
+abigen!(CallActorPrecompile, "./tests/contracts/CallActorPrecompile.abi");
+
+const OWNER_ID: ActorID = 1001;
+const OWNER: Address = Address::new_id(OWNER_ID);
+static CONTRACT: Lazy<CallActorPrecompile<Provider<MockProvider>>> = Lazy::new(|| {
+    // The owner of the contract is expected to be the 160 bit hash used on Ethereum.
+    // We're not going to use it during the tests.
+    let address = EthAddress::from_id(OWNER_ID);
+    let address = ethers::core::types::Address::from_slice(address.as_ref());
+    // A dummy client that we don't intend to use to call the contract or send transactions.
+    let (client, _mock) = Provider::mocked();
+    CallActorPrecompile::new(address, Arc::new(client))
+});
+
 #[test]
 fn test_callactor_restrict() {
     // Should propagate the return value if the called actor fails.
@@ -459,6 +487,7 @@ fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_i
 
     // construct the proxy
     let mut rt = util::construct_and_verify(contract);
+
     // create a mock target and proxy a call through the proxy
     let target_id = 0x100;
     let target = FILAddress::new_id(target_id);
@@ -603,6 +632,69 @@ fn make_raw_params(bytes: Vec<u8>) -> Option<IpldBlock> {
     if bytes.is_empty() {
         return None;
     }
-
     Some(IpldBlock { codec: IPLD_RAW, data: bytes })
+}
+
+#[test]
+fn call_actor_solidity() {
+        
+    // solidity
+    let mut contract_rt = new_call_actor_contract();
+    let params = CONTRACT.call_actor_id(0, ethers::types::U256::zero(), 0, 0, Bytes::default(), 101);
+    let input: Bytes = params.calldata().expect("should");
+    
+    let input =
+        IpldBlock::serialize_cbor(&BytesSer(&input)).expect("failed to serialize input data");
+    contract_rt.expect_validate_caller_any();
+    contract_rt.expect_gas_available(10_000_000);
+    contract_rt.expect_gas_available(10_000_000);
+
+    let BytesDe(result) = 
+        contract_rt
+        .call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, input)
+        .unwrap()
+        .unwrap()
+        .deserialize()
+        .unwrap();
+
+    decode_function_data(&params.function, result, false).unwrap()
+    
+}
+fn new_call_actor_contract() -> MockRuntime {
+    let mut rt = MockRuntime::default();
+    let contract_hex = include_str!("contracts/CallActorPrecompile.hex");
+
+
+    let params = evm::ConstructorParams {
+        creator: EthAddress::from_id(fil_actors_runtime::EAM_ACTOR_ADDR.id().unwrap()),
+        initcode: hex::decode(contract_hex).unwrap().into(),
+    };
+    // invoke constructor
+    rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
+    rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
+
+    // TODO checK?
+    rt.set_origin(FILAddress::new_id(0));
+    // first actor created is 0
+    rt.add_delegated_address(
+        Address::new_id(0),
+        Address::new_delegated(
+            10,
+            &hex_literal::hex!("FEEDFACECAFEBEEF000000000000000000000000"),
+        )
+        .unwrap(),
+    );
+
+    assert!(
+        rt
+        .call::<evm::EvmContractActor>(
+            evm::Method::Constructor as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )
+        .unwrap()
+        .is_none());
+
+    rt.verify();
+    rt.reset();
+    rt
 }
