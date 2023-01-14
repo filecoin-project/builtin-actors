@@ -23,7 +23,7 @@ frc46_token = "3.1.0"
 fvm_ipld_bitfield = "0.5.2"
 fvm_ipld_blockstore = "0.1.1"
 fvm_ipld_encoding = "0.2.3"
-fvm_ipld_hamt = "0.5.1"
+fvm_ipld_hamt = "0.6.1"
 fvm_shared = { version = "2.0.0-alpha.2", default-features = false }
 integer-encoding = { version = "3.0.3", default-features = false }
 libipld-core = { version = "0.13.1", features = ["serde-codec"] }
@@ -37,7 +37,7 @@ fil_actors_runtime = { version = "10.0.0-alpha.1", path = "../../runtime", featu
 fil_actor_power = { path = "../power" }
 fil_actor_reward = { path = "../reward" }
 fil_actor_verifreg = { path = "../verifreg" }
-fvm_ipld_amt = { version = "0.4.2", features = ["go-interop"] }
+fvm_ipld_amt = { version = "0.5.1", features = ["go-interop"] }
 multihash = { version = "0.16.1", default-features = false }
 regex = "1"
 itertools = "0.10"
