@@ -152,12 +152,12 @@ pub(super) fn resolve_address<RT: Runtime>(
 /// Parameters are encoded according to the solidity ABI, with no function selector:
 ///
 /// ```text
-/// bytes address
 /// u64   method
 /// u256  value
 /// u64   flags (1 for read-only, 0 otherwise)
 /// u64   codec (0x71 for "dag-cbor", or `0` for "nothing")
 /// bytes params (must be empty if the codec is 0x0)
+/// bytes address
 /// ```
 ///
 /// Returns (also solidity ABI encoded):
@@ -185,12 +185,12 @@ pub(super) fn call_actor<RT: Runtime>(
 /// Parameters are encoded according to the solidity ABI, with no function selector:
 ///
 /// ```text
-/// u64   actor_id
 /// u64   method
 /// u256  value
 /// u64   flags (1 for read-only, 0 otherwise)
 /// u64   codec (0x71 for "dag-cbor", or `0` for "nothing")
 /// bytes params (must be empty if the codec is 0x0)
+/// u64   actor_id
 /// ```
 ///
 /// Returns (also solidity ABI encoded):
