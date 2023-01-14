@@ -2,10 +2,8 @@ mod asm;
 
 use std::sync::Arc;
 
-use ethers::abi::Abi;
-use ethers::contract::Contract;
 use ethers::prelude::*;
-use ethers::providers::{Provider, MockProvider};
+use ethers::providers::{MockProvider, Provider};
 use ethers::types::Bytes;
 use evm::interpreter::address::EthAddress;
 use evm::interpreter::U256;
@@ -13,15 +11,15 @@ use evm::EVM_CONTRACT_REVERTED;
 use fil_actor_evm as evm;
 use fil_actors_runtime::{test_utils::*, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::{BytesSer, IPLD_RAW, BytesDe};
+use fvm_ipld_encoding::{BytesDe, BytesSer, IPLD_RAW};
 use fvm_shared::address::Address as FILAddress;
+use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sys::SendFlags;
-use fvm_shared::{MethodNum, METHOD_SEND, ActorID};
+use fvm_shared::{ActorID, MethodNum, METHOD_SEND};
 use once_cell::sync::Lazy;
-use fvm_shared::address::Address;
 
 mod util;
 
@@ -463,7 +461,7 @@ fn test_callactor_revert() {
 abigen!(CallActorPrecompile, "./tests/contracts/CallActorPrecompile.abi");
 
 const OWNER_ID: ActorID = 1001;
-const OWNER: Address = Address::new_id(OWNER_ID);
+const _OWNER: Address = Address::new_id(OWNER_ID);
 static CONTRACT: Lazy<CallActorPrecompile<Provider<MockProvider>>> = Lazy::new(|| {
     // The owner of the contract is expected to be the 160 bit hash used on Ethereum.
     // We're not going to use it during the tests.
@@ -637,33 +635,48 @@ fn make_raw_params(bytes: Vec<u8>) -> Option<IpldBlock> {
 
 #[test]
 fn call_actor_solidity() {
-        
+    init_logging().ok();
     // solidity
     let mut contract_rt = new_call_actor_contract();
-    let params = CONTRACT.call_actor_id(0, ethers::types::U256::zero(), 0, 0, Bytes::default(), 101);
+    let params =
+        CONTRACT.call_actor_id(0, ethers::types::U256::zero(), 0, 0, Bytes::default(), 101);
     let input: Bytes = params.calldata().expect("should");
-    
+
     let input =
         IpldBlock::serialize_cbor(&BytesSer(&input)).expect("failed to serialize input data");
     contract_rt.expect_validate_caller_any();
     contract_rt.expect_gas_available(10_000_000);
     contract_rt.expect_gas_available(10_000_000);
 
-    let BytesDe(result) = 
-        contract_rt
+    let expected_return = vec![0xff, 0xfe];
+    contract_rt.expect_send_generalized(
+        Address::new_id(101),
+        0,
+        None,
+        TokenAmount::from_atto(0),
+        Some(9843750),
+        SendFlags::empty(),
+        Some(IpldBlock { codec: 0, data: expected_return.clone() }),
+        ExitCode::OK,
+    );
+
+    let BytesDe(result) = contract_rt
         .call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, input)
         .unwrap()
         .unwrap()
         .deserialize()
         .unwrap();
 
-    decode_function_data(&params.function, result, false).unwrap()
-    
+    let (success, exit, codec, ret_val): (bool, ethers::types::I256, u64, Vec<u8>) =
+        decode_function_data(&params.function, result, false).unwrap();
+    assert!(success);
+    assert_eq!(exit, I256::from(0));
+    assert_eq!(codec, 0);
+    assert_eq!(&ret_val, &expected_return, "got {}", hex::encode(&ret_val));
 }
 fn new_call_actor_contract() -> MockRuntime {
     let mut rt = MockRuntime::default();
     let contract_hex = include_str!("contracts/CallActorPrecompile.hex");
-
 
     let params = evm::ConstructorParams {
         creator: EthAddress::from_id(fil_actors_runtime::EAM_ACTOR_ADDR.id().unwrap()),
@@ -678,15 +691,11 @@ fn new_call_actor_contract() -> MockRuntime {
     // first actor created is 0
     rt.add_delegated_address(
         Address::new_id(0),
-        Address::new_delegated(
-            10,
-            &hex_literal::hex!("FEEDFACECAFEBEEF000000000000000000000000"),
-        )
-        .unwrap(),
+        Address::new_delegated(10, &hex_literal::hex!("FEEDFACECAFEBEEF000000000000000000000000"))
+            .unwrap(),
     );
 
-    assert!(
-        rt
+    assert!(rt
         .call::<evm::EvmContractActor>(
             evm::Method::Constructor as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),

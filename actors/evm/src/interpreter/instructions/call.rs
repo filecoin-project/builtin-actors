@@ -177,6 +177,7 @@ pub fn call_generic<RT: Runtime>(
 
         let dst: EthAddress = dst.into();
         if is_reserved_precompile_address(&dst) {
+            log::trace!("evm gas {}", gas);
             let context = PrecompileContext {
                 call_type: kind,
                 gas_limit: effective_gas_limit(system, gas),
