@@ -4,11 +4,15 @@ use std::fmt::Debug;
 
 use evm::interpreter::{address::EthAddress, U256};
 use fil_actor_evm as evm;
-use fil_actors_runtime::test_utils::{
-    new_bls_addr, MockRuntime, ACCOUNT_ACTOR_CODE_ID, EAM_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID,
-    MARKET_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID, PLACEHOLDER_ACTOR_CODE_ID,
+use fil_actors_runtime::{
+    test_utils::{
+        new_bls_addr, MockRuntime, ACCOUNT_ACTOR_CODE_ID, EAM_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID,
+        MARKET_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID,
+        PLACEHOLDER_ACTOR_CODE_ID,
+    },
+    EAM_ACTOR_ID,
 };
-use fvm_shared::address::Address as FILAddress;
+use fvm_shared::{address::Address as FILAddress, econ::TokenAmount, error::ExitCode, METHOD_SEND};
 
 mod util;
 use util::id_to_vec;
@@ -144,8 +148,12 @@ impl PrecompileTest {
     }
 
     fn test_runner_bytecode() -> Vec<u8> {
+        Self::test_runner_bytecode_transfer_value(0)
+    }
+    fn test_runner_bytecode_transfer_value(value: u64) -> Vec<u8> {
         let init = "";
-        let body = r#"
+        let body = format!(
+            r#"
 # store entire input to mem 0x00
 calldatasize
 push1 0x00 # input offset
@@ -167,7 +175,7 @@ sub
 push1 0x40 # two words
 
 # value
-push1 0x00
+%push({value})
 
 # precompile address
 push1 0x00 # first word of input is precompile
@@ -195,9 +203,10 @@ add
 # offset
 push1 0x00
 return
-"#;
+"#
+        );
 
-        asm::new_contract("precompile_tester", init, body).unwrap()
+        asm::new_contract("precompile_tester", init, &body).unwrap()
     }
 }
 
@@ -291,7 +300,7 @@ fn test_native_actor_type() {
 fn resolve_address_contract() -> Vec<u8> {
     let init = "";
     let body = r#"
-    
+
 # get call payload size
 calldatasize
 # store payload to mem 0x00
@@ -486,29 +495,29 @@ fn test_resolve_delegated() {
 }
 
 #[test]
-fn test_precompile_failure() {
-    let mut rt = util::construct_and_verify(PrecompileTest::test_runner_bytecode());
-
+fn test_precompile_transfer() {
+    let mut rt = util::construct_and_verify(PrecompileTest::test_runner_bytecode_transfer_value(1));
+    rt.set_balance(TokenAmount::from_atto(100));
     // test invalid precompile address
-    fn invalid_address(rt: &mut MockRuntime, prefix: u8, index: u8) {
+    for (prefix, index) in [(0x00, 0xff), (0xfe, 0xff)] {
+        let addr = precompile_address(prefix, index);
         let test = PrecompileTest {
-            precompile_address: precompile_address(prefix, index), // precompile does not exist
+            precompile_address: addr,
             input: vec![0xff; 32], // garbage input should change nothing
             output_size: 32,
-            expected_exit_code: PrecompileExit::Reverted,
+            expected_exit_code: PrecompileExit::Success,
             expected_return: vec![],
             gas_avaliable: 10_000_000_000,
         };
-        test.run_test(rt);
+        let fil_addr = FILAddress::new_delegated(EAM_ACTOR_ID, &addr.as_ref()).unwrap();
+        rt.expect_send(fil_addr, METHOD_SEND, None, TokenAmount::from_atto(1), None, ExitCode::OK);
+        test.run_test(&mut rt);
     }
+    assert_eq!(rt.get_balance(), TokenAmount::from_atto(98));
+}
 
-    // invalid evm precompile
-    invalid_address(&mut rt, 0x00, 0xff);
-    // invalid fvm precompile
-    invalid_address(&mut rt, 0xfe, 0xff);
-
-    // TODO above test can be used to test CALL normally
-
+#[test]
+fn test_precompile_failure() {
     // TODO: refactor these to be more clear
 
     let bytecode = resolve_address_contract();
