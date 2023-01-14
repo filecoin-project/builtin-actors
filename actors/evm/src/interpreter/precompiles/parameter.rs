@@ -84,12 +84,22 @@ impl_param_int!(u16 i16 u32 i32 u64 i64);
 /// Provides a nice API interface for reading Parameters from input. This API treats the input as if
 /// it is followed by infinite zeros.
 pub(super) struct ParameterReader<'a> {
+    full: &'a [u8],
     slice: &'a [u8],
 }
 
 impl<'a> ParameterReader<'a> {
     pub(super) fn new(slice: &'a [u8]) -> Self {
-        ParameterReader { slice }
+        ParameterReader { full: slice, slice }
+    }
+
+    /// Seek to an offset from the beginning of the input.
+    pub fn seek(&mut self, offset: usize) {
+        if offset > self.full.len() {
+            self.slice = &[];
+        } else {
+            self.slice = &self.full[offset..];
+        }
     }
 
     /// Drop a fixed number of bytes, and return an error if said bytes are not zeros.
