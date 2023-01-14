@@ -13,7 +13,7 @@ use fvm_shared::{
     econ::TokenAmount,
     error::ExitCode,
     sys::SendFlags,
-    MethodNum, IPLD_RAW,
+    MethodNum, IPLD_RAW, METHOD_SEND,
 };
 use multihash::Code;
 use once_cell::unsync::OnceCell;
@@ -209,6 +209,12 @@ impl<'r, RT: Runtime> System<'r, RT> {
         let nonce = self.nonce;
         self.nonce = self.nonce.checked_add(1).unwrap();
         nonce
+    }
+
+    /// Transfers funds to the receiver. This doesn't bother saving/reloading state.
+    pub fn transfer(&mut self, to: &Address, value: TokenAmount) -> Result<(), ActorError> {
+        self.rt.send(to, METHOD_SEND, None, value)?;
+        Ok(())
     }
 
     /// Generalized send
