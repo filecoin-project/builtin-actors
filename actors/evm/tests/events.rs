@@ -76,8 +76,8 @@ fn test_events() {
     let mut contract_params = vec![0u8; 32];
     rt.expect_emitted_event(ActorEvent {
         entries: vec![Entry {
-            flags: Flags::FLAG_INDEXED_VALUE,
-            key: "data".to_string(),
+            flags: Flags::FLAG_INDEXED_ALL,
+            key: "d".to_string(),
             value: to_vec(&RawBytes::from(
                 [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88].to_vec(),
             ))
@@ -97,28 +97,28 @@ fn test_events() {
     rt.expect_emitted_event(ActorEvent {
         entries: vec![
             Entry {
-                flags: Flags::FLAG_INDEXED_VALUE,
-                key: "topic1".to_string(),
+                flags: Flags::FLAG_INDEXED_ALL,
+                key: "t1".to_string(),
                 value: to_vec(&RawBytes::from([0x11, 0x11].to_vec())).unwrap().into(),
             },
             Entry {
-                flags: Flags::FLAG_INDEXED_VALUE,
-                key: "topic2".to_string(),
+                flags: Flags::FLAG_INDEXED_ALL,
+                key: "t2".to_string(),
                 value: to_vec(&RawBytes::from([0x22, 0x22].to_vec())).unwrap().into(),
             },
             Entry {
-                flags: Flags::FLAG_INDEXED_VALUE,
-                key: "topic3".to_string(),
+                flags: Flags::FLAG_INDEXED_ALL,
+                key: "t3".to_string(),
                 value: to_vec(&RawBytes::from([0x33, 0x33].to_vec())).unwrap().into(),
             },
             Entry {
-                flags: Flags::FLAG_INDEXED_VALUE,
-                key: "topic4".to_string(),
+                flags: Flags::FLAG_INDEXED_ALL,
+                key: "t4".to_string(),
                 value: to_vec(&RawBytes::from([0x44, 0x44].to_vec())).unwrap().into(),
             },
             Entry {
-                flags: Flags::FLAG_INDEXED_VALUE,
-                key: "data".to_string(),
+                flags: Flags::FLAG_INDEXED_ALL,
+                key: "d".to_string(),
                 value: to_vec(&RawBytes::from(
                     [0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88].to_vec(),
                 ))
