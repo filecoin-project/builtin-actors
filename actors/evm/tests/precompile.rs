@@ -291,7 +291,7 @@ fn test_native_actor_type() {
 fn resolve_address_contract() -> Vec<u8> {
     let init = "";
     let body = r#"
-    
+
 # get call payload size
 calldatasize
 # store payload to mem 0x00
@@ -405,12 +405,7 @@ fn test_resolve_delegated() {
 
     fn test_resolve(rt: &mut MockRuntime, addr: FILAddress, expected: Vec<u8>) {
         rt.expect_gas_available(10_000_000_000u64);
-        let input = {
-            let addr = addr.to_bytes();
-            let mut v = U256::from(addr.len()).to_bytes().to_vec();
-            v.extend_from_slice(&addr);
-            v
-        };
+        let input = addr.to_bytes();
         let result = util::invoke_contract(rt, &input);
         rt.verify();
         assert_eq!(expected, &result[1..]);
@@ -424,44 +419,6 @@ fn test_resolve_delegated() {
     test_resolve(&mut rt, bls, id_to_vec(&bls_target));
     // not found
     test_resolve(&mut rt, unbound_del, vec![]);
-
-    // valid with extra padding
-    rt.expect_gas_available(10_000_000_000u64);
-    let input = {
-        let addr = evm_del.to_bytes();
-        // address length to read
-        let mut v = U256::from(addr.len()).to_bytes().to_vec();
-        // address itself
-        v.extend_from_slice(&addr);
-        // extra padding
-        v.extend_from_slice(&[0; 10]);
-        v
-    };
-    let result = util::invoke_contract(&mut rt, &input);
-    rt.verify();
-    assert_eq!(id_to_vec(&evm_target), &result[1..]);
-    assert_eq!(1, result[0]);
-    rt.reset();
-
-    // valid but needs padding
-    rt.expect_gas_available(10_000_000_000u64);
-    let input = {
-        // EVM f4 but subaddress len is 12 bytes
-        // FEEDFACECAFEBEEF00000000
-        let addr = FILAddress::new_delegated(10, &util::CONTRACT_ADDRESS[..12]).unwrap();
-        let addr = addr.to_bytes();
-
-        let read_len = addr.len() + 8;
-        let mut v = U256::from(read_len).to_bytes().to_vec();
-        // address itself
-        v.extend_from_slice(&addr);
-        v
-    };
-    let result = util::invoke_contract(&mut rt, &input);
-    rt.verify();
-    assert_eq!(id_to_vec(&evm_target), &result[1..]);
-    assert_eq!(1, result[0]);
-    rt.reset();
 
     // invalid first param fails
     rt.expect_gas_available(10_000_000_000u64);
@@ -523,14 +480,7 @@ fn test_precompile_failure() {
 
     // not found succeeds with empty
     rt.expect_gas_available(10_000_000_000u64);
-    let input = {
-        let addr = FILAddress::new_delegated(111, b"foo").unwrap().to_bytes();
-        // first word is len
-        let mut v = U256::from(addr.len()).to_bytes().to_vec();
-        // then addr
-        v.extend_from_slice(&addr);
-        v
-    };
+    let input = FILAddress::new_delegated(111, b"foo").unwrap().to_bytes();
     let result = util::invoke_contract(&mut rt, &input);
     rt.verify();
     assert_eq!(&[1u8], result.as_slice());

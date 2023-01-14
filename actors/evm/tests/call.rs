@@ -412,7 +412,7 @@ push1 0x00 # offset
 push1 0x01 # dest offset (we have already written the exit code of the call)
 returndatacopy
 
-returndatasize 
+returndatasize
 push1 0x01 # (add 1 to the returndatasize to accommodate for the exitcode)
 add
 push1 0x00
@@ -443,7 +443,7 @@ fn test_callactor_restrict() {
 fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_input: bool) {
     let contract = callactor_proxy_contract();
 
-    const CALLACTOR_NUM_PARAMS: usize = 6;
+    const CALLACTOR_NUM_PARAMS: usize = 8;
 
     // construct the proxy
     let mut rt = util::construct_and_verify(contract);
@@ -460,20 +460,25 @@ fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_i
     let send_flags = SendFlags::default();
     let codec = U256::from(0);
 
+    let proxy_call_input_data = vec![];
+    let data_size = U256::from(proxy_call_input_data.len());
+
     let target_bytes = target.to_bytes();
     let target_size = U256::from(target_bytes.len());
 
-    let proxy_call_input_data = vec![];
-    let data_size = U256::from(proxy_call_input_data.len());
+    let data_off = U256::from(6 * 32);
+    let target_off = data_off + 32 + data_size;
 
     contract_params.extend_from_slice(&method.to_bytes());
     contract_params.extend_from_slice(&value.to_bytes());
     contract_params.extend_from_slice(&U256::from(send_flags.bits()).to_bytes());
     contract_params.extend_from_slice(&codec.to_bytes());
+    contract_params.extend_from_slice(&data_off.to_bytes());
+    contract_params.extend_from_slice(&target_off.to_bytes());
     contract_params.extend_from_slice(&data_size.to_bytes());
+    contract_params.extend_from_slice(&proxy_call_input_data);
     contract_params.extend_from_slice(&target_size.to_bytes());
     contract_params.extend_from_slice(&target_bytes);
-    contract_params.extend_from_slice(&proxy_call_input_data);
 
     assert_eq!(
         32 * CALLACTOR_NUM_PARAMS + target_bytes.len() + proxy_call_input_data.len(),
@@ -562,7 +567,8 @@ fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_i
                     assert_zero_bytes::<4>(bytes);
                     u32::from_be_bytes(bytes[28..32].try_into().unwrap())
                 };
-                let data = Vec::from(&src[offset as usize..(offset + size) as usize]);
+
+                let data = Vec::from(&src[128..128 + size as usize]);
 
                 Self { exit_code, codec, data_offset: offset, data_size: size, data }
             }
@@ -572,7 +578,7 @@ fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_i
         let expected = CallActorReturn {
             exit_code,
             codec: send_return.clone().codec,
-            data_offset: 128,
+            data_offset: 96,
             data_size: send_return.clone().data.len() as u32,
             data: send_return.data,
         };
