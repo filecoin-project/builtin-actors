@@ -254,7 +254,7 @@ pub(super) fn call_actor_shared<RT: Runtime>(
         Address::from_bytes(&addr_bytes).map_err(|_| PrecompileError::InvalidInput)?
     };
 
-    if method <= EVM_MAX_RESERVED_METHOD || method == METHOD_SEND {
+    if method <= EVM_MAX_RESERVED_METHOD && method != METHOD_SEND {
         return Err(PrecompileError::InvalidInput);
     }
 
