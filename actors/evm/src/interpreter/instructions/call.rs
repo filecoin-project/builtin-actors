@@ -198,7 +198,7 @@ pub fn call_generic<RT: Runtime>(
                     Ok(res) => {
                         // log error if we get something unexpected, but otherwise do nothing
                         if res.exit_code != ExitCode::OK || res.return_data.is_some() {
-                            log::error!( 
+                            log::error!(
                                 target: "evm",
                                 "Unexpected return from reserved address {:?}: {:?}",
                                 dst,

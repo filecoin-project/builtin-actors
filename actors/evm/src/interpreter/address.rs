@@ -146,8 +146,8 @@ impl AsRef<[u8]> for EthAddress {
 mod tests {
     use fvm_shared::address::Address;
 
-    use crate::interpreter::StatusCode;
     use crate::interpreter::address::EthAddress;
+    use crate::interpreter::StatusCode;
     use crate::U256;
 
     const TYPE_PADDING: &[u8] = &[0; 12]; // padding (12 bytes)
@@ -247,7 +247,7 @@ mod tests {
         let addr = EthAddress(hex_literal::hex!("fe000000000000000000000000000000000000aa"));
         let _ = Address::try_from(addr).expect_err("can't convert precompile into f4!");
         assert!(addr.is_reserved());
-        
+
         let addr = EthAddress(hex_literal::hex!("00000000000000000000000000000000000000aa"));
         let _ = Address::try_from(addr).expect_err("can't convert precompile into f4!");
         assert!(addr.is_reserved());
