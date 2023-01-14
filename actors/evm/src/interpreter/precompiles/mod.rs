@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 
-use fil_actors_runtime::runtime::Runtime;
+use fil_actors_runtime::{runtime::Runtime, EAM_ACTOR_ID};
+use fvm_shared::{address::Address, econ::TokenAmount};
 use substrate_bn::{CurveError, GroupError};
 
 use super::{address::EthAddress, instructions::call::CallKind, System, U256};
@@ -89,16 +90,34 @@ impl<RT: Runtime> Precompiles<RT> {
         }
     }
 
-    /// Precompile Context will be flattened to None if not calling the call_actor precompile.
-    /// Returns `None` if precompile does not exist at the address provided.
+    /// Call the specified precompile. This will automatically transfer any value (if non-zero) to
+    /// the target contract.
     pub fn call_precompile(
         system: &mut System<RT>,
         precompile_addr: &EthAddress,
         input: &[u8],
         context: PrecompileContext,
-    ) -> Option<PrecompileResult> {
-        Self::lookup_precompile(precompile_addr)
+    ) -> PrecompileResult {
+        // First, try to call the precompile, if defined.
+        let result = Self::lookup_precompile(precompile_addr)
             .map(|precompile_fn| unsafe { precompile_fn(system, input, context) })
+            .transpose()?
+            .unwrap_or_default();
+        // Then transfer the value. We do this second because we don't want to transfer if the
+        // precompile reverts.
+        //
+        // This shouldn't be observable as the only precompile with side-effects is the call_actor
+        // precompile, and that precompile can only be called with delegatecall.
+        if !context.value.is_zero() {
+            // Explicitly construct the precompile addr. We forbid this in the usual try_into for
+            // safety.
+            let fil_addr = Address::new_delegated(EAM_ACTOR_ID, precompile_addr.as_ref())
+                .expect("incorrect address size");
+            system
+                .transfer(&fil_addr, TokenAmount::from(&context.value))
+                .map_err(|_| PrecompileError::TransferFailed)?;
+        }
+        Ok(result)
     }
 
     /// Checks if word is an existing precompile
@@ -118,12 +137,14 @@ pub enum PrecompileError {
     // FVM precompile errors
     InvalidInput,
     CallForbidden,
+    TransferFailed,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct PrecompileContext {
     pub call_type: CallKind,
     pub gas_limit: u64,
+    pub value: U256,
 }
 
 /// Native Type of a given contract
