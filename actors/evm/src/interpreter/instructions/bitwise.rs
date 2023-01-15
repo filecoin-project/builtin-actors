@@ -40,7 +40,7 @@ pub fn sar(shift: U256, mut value: U256) -> U256 {
             U256::MAX
         } else {
             // value is >= 0, pushing 0
-            U256::ONE
+            U256::ZERO
         }
     } else {
         let shift = shift.low_u32();
@@ -58,6 +58,70 @@ pub fn sar(shift: U256, mut value: U256) -> U256 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_shl() {
+        // Basic shift
+        assert_eq!(shl(U256::from(2), U256::from(13)), U256::from(52));
+
+        // 0/1 shifts.
+        assert_eq!(shl(U256::ONE, U256::ONE), U256::from(2));
+        assert_eq!(shl(U256::ONE, U256::ZERO), U256::ZERO);
+        assert_eq!(shl(U256::ZERO, U256::ONE), U256::ONE);
+        assert_eq!(shl(U256::ZERO, U256::ZERO), U256::ZERO);
+
+        // shift max bits
+        assert_eq!(shl(U256::ONE, U256::MAX), U256::MAX - U256::ONE);
+        assert_eq!(shl(U256::from(2), U256::MAX), U256::MAX - U256::from(3));
+
+        // shift by max
+        assert_eq!(shl(U256::from(255), U256::MAX), U256::from_u128_words(i128::MIN as u128, 0));
+        assert_eq!(shl(U256::from(256), U256::MAX), U256::ZERO);
+        assert_eq!(shl(U256::from(257), U256::MAX), U256::ZERO);
+    }
+
+    #[test]
+    fn test_shr() {
+        // Basic shift
+        assert_eq!(shr(U256::from(2), U256::from(13)), U256::from(3));
+
+        // 0/1 shifts.
+        assert_eq!(shr(U256::ONE, U256::ONE), U256::ZERO);
+        assert_eq!(shr(U256::ONE, U256::ZERO), U256::ZERO);
+        assert_eq!(shr(U256::ZERO, U256::ONE), U256::ONE);
+        assert_eq!(shr(U256::ZERO, U256::ZERO), U256::ZERO);
+
+        // shift max
+        assert_eq!(shr(U256::from(255), U256::MAX), U256::ONE);
+        assert_eq!(shr(U256::from(256), U256::MAX), U256::ZERO);
+        assert_eq!(shr(U256::from(257), U256::MAX), U256::ZERO);
+    }
+
+    #[test]
+    fn test_sar() {
+        let pos_max = shr(U256::ONE, U256::MAX);
+
+        // Basic shift
+        assert_eq!(sar(U256::from(2), U256::from(13)), U256::from(3));
+        assert_eq!(sar(U256::from(2), U256::from(13).i256_neg()), U256::from(4).i256_neg());
+
+        // 0/1 shifts.
+        assert_eq!(sar(U256::ONE, U256::ONE), U256::ZERO);
+        assert_eq!(sar(U256::ONE, U256::ZERO), U256::ZERO);
+        assert_eq!(sar(U256::ZERO, U256::ONE), U256::ONE);
+        assert_eq!(sar(U256::ZERO, U256::ZERO), U256::ZERO);
+
+        // shift max negative
+        assert_eq!(sar(U256::from(255), U256::MAX), U256::MAX); // sign extends.
+        assert_eq!(sar(U256::from(256), U256::MAX), U256::MAX);
+        assert_eq!(sar(U256::from(257), U256::MAX), U256::MAX);
+
+        // shift max positive.
+        assert_eq!(sar(U256::from(254), pos_max), U256::ONE);
+        assert_eq!(sar(U256::from(255), pos_max), U256::ZERO);
+        assert_eq!(sar(U256::from(256), pos_max), U256::ZERO);
+        assert_eq!(sar(U256::from(257), pos_max), U256::ZERO);
+    }
 
     #[test]
     fn test_instruction_byte() {
