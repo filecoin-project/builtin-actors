@@ -26,6 +26,7 @@ pub(crate) fn push<const LEN: usize>(stack: &mut Stack, code: &[u8]) -> Result<u
     } else {
         stack.push(match LEN {
             // explicitly unroll up to u64 (single limb) pushes
+            0 => U256::ZERO,
             1 => U256::from_u64(be_u64! {code[0]}),
             2 => U256::from_u64(be_u64! {code[0], code[1]}),
             3 => U256::from_u64(be_u64! {code[0], code[1], code[2]}),
@@ -65,4 +66,12 @@ fn test_push_pad_right() {
     assert_eq!(push::<4>(&mut stack, &[0xde, 0xad]).unwrap(), 4);
     assert_eq!(stack.len(), 1);
     assert_eq!(stack.pop().unwrap(), U256::from(0xdead0000u64));
+}
+
+#[test]
+fn test_push0() {
+    let mut stack = Stack::new();
+    assert_eq!(push::<0>(&mut stack, &[0x1]).unwrap(), 0);
+    assert_eq!(stack.len(), 1);
+    assert_eq!(stack.pop().unwrap(), U256::ZERO);
 }

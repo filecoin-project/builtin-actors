@@ -274,6 +274,7 @@ def_stackop! { SWAP16 => stack::swap::<16> }
 // pop
 def_stackop! { POP => stack::pop }
 // push
+def_push! { PUSH0 => stack::push::<0> }
 def_push! { PUSH1 => stack::push::<1> }
 def_push! { PUSH2 => stack::push::<2> }
 def_push! { PUSH3 => stack::push::<3> }
