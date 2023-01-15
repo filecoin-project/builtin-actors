@@ -2,10 +2,13 @@ use cid::Cid;
 use evm::interpreter::U256;
 use evm::interpreter::{address::EthAddress, StatusCode};
 use fil_actor_evm as evm;
+use fil_actor_evm::State;
+use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::{
     test_utils::{self, *},
     ActorError, EAM_ACTOR_ID, INIT_ACTOR_ADDR,
 };
+use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{BytesDe, BytesSer};
 use fvm_shared::{address::Address, IDENTITY_HASH, IPLD_RAW};
@@ -55,6 +58,9 @@ pub fn init_construct_and_verify<F: FnOnce(&mut MockRuntime)>(
         )
         .unwrap()
         .is_none());
+    let evm_st: State = rt.state().unwrap();
+    let evm_code = rt.store.get(&evm_st.bytecode).unwrap().unwrap();
+    println!("{:?}", evm_code);
     rt.verify();
 
     rt
