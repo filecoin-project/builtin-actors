@@ -44,7 +44,6 @@ pub fn new_contract(name: &str, init: &str, body: &str) -> Result<Vec<u8>, etk_a
     // the contract code
     let mut body_code = Vec::new();
     let mut ingest_body = Ingest::new(&mut body_code);
-    let body = with_fevm_extensions(body);
     let body_with_prelude = PRELUDE.to_owned() + &body;
     ingest_body.ingest(name, body_with_prelude.as_str())?;
     // the initialization code
@@ -91,18 +90,4 @@ pub fn new_contract(name: &str, init: &str, body: &str) -> Result<Vec<u8>, etk_a
     contract_code.append(&mut constructor_code);
     contract_code.append(&mut body_code);
     Ok(contract_code)
-}
-
-// this is a hack to support mnemonics for the FEVM extension opcodes
-// it is really ugly, but the etk assmebler doesn't currently support any way to
-// directly embed (otherwise invalid) asm instructions in the stream... sigh.
-// Ideally we would just do them as macros like
-// %macro methodnum()
-//   0xb1
-// %end
-// Note that to add insult to injury, macros cannot %include_hex... double sigh.
-// So f*ck it, we'll just hack this until there is support.
-// See also https://github.com/quilt/etk/issues/110
-fn with_fevm_extensions(body: &str) -> String {
-    body.to_owned().replace("@callactor", "%include_hex(\"tests/opcodes/callactor.hex\")")
 }
