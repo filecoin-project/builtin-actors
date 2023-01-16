@@ -74,4 +74,8 @@ fn test_push0() {
     assert_eq!(push::<0>(&mut stack, &[0x1]).unwrap(), 0);
     assert_eq!(stack.len(), 1);
     assert_eq!(stack.pop().unwrap(), U256::ZERO);
+
+    assert_eq!(push::<0>(&mut stack, &[0xff; 100]).unwrap(), 0);
+    assert_eq!(stack.len(), 1);
+    assert_eq!(stack.pop().unwrap(), U256::ZERO);
 }
