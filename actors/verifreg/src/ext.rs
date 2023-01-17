@@ -1,6 +1,22 @@
+use fvm_ipld_encoding::serde_bytes;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::tuple::{Deserialize_tuple, Serialize_tuple};
 use fvm_shared::address::Address;
+
+pub mod account {
+    use super::*;
+
+    pub const AUTHENTICATE_MESSAGE_METHOD: u64 =
+        frc42_dispatch::method_hash!("AuthenticateMessage");
+
+    #[derive(Serialize_tuple, Deserialize_tuple)]
+    pub struct AuthenticateMessageParams {
+        #[serde(with = "serde_bytes")]
+        pub signature: Vec<u8>,
+        #[serde(with = "serde_bytes")]
+        pub message: Vec<u8>,
+    }
+}
 
 pub mod datacap {
     use super::*;
@@ -8,21 +24,11 @@ pub mod datacap {
 
     #[repr(u64)]
     pub enum Method {
-        // Non-standard.
-        Mint = 2,
-        Destroy = 3,
-        // Static method numbers for token standard methods, for private use.
-        // Name = 10,
-        // Symbol = 11,
-        // TotalSupply = 12,
-        BalanceOf = 13,
-        Transfer = 14,
-        // TransferFrom = 15,
-        // IncreaseAllowance = 16,
-        // DecreaseAllowance = 17,
-        // RevokeAllowance = 18,
-        Burn = 19,
-        // BurnFrom = 20,
+        Mint = frc42_dispatch::method_hash!("Mint"),
+        Destroy = frc42_dispatch::method_hash!("Destroy"),
+        Balance = frc42_dispatch::method_hash!("Balance"),
+        Transfer = frc42_dispatch::method_hash!("Transfer"),
+        Burn = frc42_dispatch::method_hash!("Burn"),
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]

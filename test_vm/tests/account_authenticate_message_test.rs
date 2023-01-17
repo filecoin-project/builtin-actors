@@ -1,5 +1,5 @@
 use fil_actor_account::types::AuthenticateMessageParams;
-use fil_actor_account::Method::AuthenticateMessage;
+use fil_actor_account::Method::AuthenticateMessageExported;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::Zero;
@@ -32,7 +32,7 @@ fn account_authenticate_message() {
         addr,
         addr,
         TokenAmount::zero(),
-        AuthenticateMessage as u64,
+        AuthenticateMessageExported as u64,
         Some(authenticate_message_params),
     );
 
@@ -44,7 +44,7 @@ fn account_authenticate_message() {
         addr,
         addr,
         TokenAmount::zero(),
-        AuthenticateMessage as u64,
+        AuthenticateMessageExported as u64,
         Some(authenticate_message_params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );

@@ -17,3 +17,9 @@ pub struct DestroyParams {
     pub owner: Address,
     pub amount: TokenAmount,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct GranularityReturn {
+    pub granularity: u64,
+}

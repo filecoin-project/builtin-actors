@@ -24,8 +24,9 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
     actor_dispatch, actor_error, deserialize_block, make_map_with_root_and_bitwidth,
-    resolve_to_actor_id, ActorDowncast, ActorError, BatchReturn, Map, DATACAP_TOKEN_ACTOR_ADDR,
-    STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    resolve_to_actor_id, restrict_internal_api, ActorDowncast, ActorError, BatchReturn, Map,
+    DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -62,6 +63,12 @@ pub enum Method {
     GetClaims = 10,
     ExtendClaimTerms = 11,
     RemoveExpiredClaims = 12,
+    // Method numbers derived from FRC-0042 standards
+    AddVerifiedClientExported = frc42_dispatch::method_hash!("AddVerifiedClient"),
+    RemoveExpiredAllocationsExported = frc42_dispatch::method_hash!("RemoveExpiredAllocations"),
+    GetClaimsExported = frc42_dispatch::method_hash!("GetClaims"),
+    ExtendClaimTermsExported = frc42_dispatch::method_hash!("ExtendClaimTerms"),
+    RemoveExpiredClaimsExported = frc42_dispatch::method_hash!("RemoveExpiredClaims"),
     UniversalReceiverHook = frc42_dispatch::method_hash!("Receive"),
 }
 
@@ -110,7 +117,7 @@ impl Actor {
         }
 
         // Disallow existing clients as verifiers.
-        let token_balance = balance_of(rt, &verifier)?;
+        let token_balance = balance(rt, &verifier)?;
         if token_balance.is_positive() {
             return Err(actor_error!(
                 illegal_argument,
@@ -140,7 +147,7 @@ impl Actor {
 
     pub fn add_verified_client(
         rt: &mut impl Runtime,
-        params: AddVerifierClientParams,
+        params: AddVerifiedClientParams,
     ) -> Result<(), ActorError> {
         // The caller will be verified by checking table below
         rt.validate_immediate_caller_accept_any()?;
@@ -224,8 +231,7 @@ impl Actor {
             ));
         }
 
-        // Validate and then remove the proposal.
-        rt.transaction(|st: &mut State, rt| {
+        let (verifier_1_id, verifier_2_id) = rt.transaction(|st: &mut State, rt| {
             rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
 
             if params.verified_client_to_remove == VERIFIED_REGISTRY_ACTOR_ADDR {
@@ -259,29 +265,34 @@ impl Actor {
             let verifier_1_id = use_proposal_id(&mut proposal_ids, verifier_1, client)?;
             let verifier_2_id = use_proposal_id(&mut proposal_ids, verifier_2, client)?;
 
-            remove_data_cap_request_is_valid(
-                rt,
-                &params.verifier_request_1,
-                verifier_1_id,
-                &params.data_cap_amount_to_remove,
-                client,
-            )?;
-            remove_data_cap_request_is_valid(
-                rt,
-                &params.verifier_request_2,
-                verifier_2_id,
-                &params.data_cap_amount_to_remove,
-                client,
-            )?;
-
+            // Assume proposal ids are valid and increment them
             st.remove_data_cap_proposal_ids = proposal_ids
                 .flush()
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush proposal ids")?;
-            Ok(())
+            Ok((verifier_1_id, verifier_2_id))
         })?;
 
+        // Now make sure the proposals were actually valid. We had to increment them first in case
+        // re-entrant calls do anything funny.
+        //
+        // If this fails, we'll revert and the proposals will be restored.
+        remove_data_cap_request_is_valid(
+            rt,
+            &params.verifier_request_1,
+            verifier_1_id,
+            &params.data_cap_amount_to_remove,
+            client,
+        )?;
+        remove_data_cap_request_is_valid(
+            rt,
+            &params.verifier_request_2,
+            verifier_2_id,
+            &params.data_cap_amount_to_remove,
+            client,
+        )?;
+
         // Burn the client's data cap tokens.
-        let balance = balance_of(rt, &client).context("failed to fetch balance")?;
+        let balance = balance(rt, &client).context("failed to fetch balance")?;
         let burnt = std::cmp::min(balance, params.data_cap_amount_to_remove);
         destroy(rt, &client, &burnt)
             .context(format!("failed to destroy {} from allowance for {}", &burnt, &client))?;
@@ -708,13 +719,13 @@ fn is_verifier(rt: &impl Runtime, st: &State, address: Address) -> Result<bool, 
     Ok(found)
 }
 
-// Invokes BalanceOf on the data cap token actor, and converts the result to whole units of data cap.
-fn balance_of(rt: &mut impl Runtime, owner: &Address) -> Result<DataCap, ActorError> {
+// Invokes Balance on the data cap token actor, and converts the result to whole units of data cap.
+fn balance(rt: &mut impl Runtime, owner: &Address) -> Result<DataCap, ActorError> {
     let params = IpldBlock::serialize_cbor(owner)?;
     let x: TokenAmount = deserialize_block(
         rt.send(
             &DATACAP_TOKEN_ACTOR_ADDR,
-            ext::datacap::Method::BalanceOf as u64,
+            ext::datacap::Method::Balance as u64,
             params,
             TokenAmount::zero(),
         )
@@ -865,10 +876,17 @@ fn remove_data_cap_request_is_valid(
 
     let payload = [SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP, b.bytes()].concat();
 
-    // verify signature of proposal
-    rt.verify_signature(&request.signature, &request.verifier, &payload).map_err(
-        |e| actor_error!(illegal_argument; "invalid signature for datacap removal request: {}", e),
+    rt.send(
+        &request.verifier,
+        ext::account::AUTHENTICATE_MESSAGE_METHOD,
+        IpldBlock::serialize_cbor(&ext::account::AuthenticateMessageParams {
+            signature: request.signature.bytes.clone(),
+            message: payload,
+        })?,
+        TokenAmount::zero(),
     )
+    .map_err(|e| e.wrap("proposal authentication failed"))?;
+    Ok(())
 }
 
 // Deserializes and validates a receiver hook payload, expecting only an FRC-46 transfer.
@@ -1017,6 +1035,7 @@ fn check_miner_id(rt: &mut impl Runtime, id: ActorID) -> Result<(), ActorError> 
         rt.get_actor_code_cid(&id).with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
             format!("no code CID for provider {}", id)
         })?;
+
     let provider_type = rt
         .resolve_builtin_actor_type(&code_cid)
         .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
@@ -1057,12 +1076,17 @@ impl ActorCode for Actor {
         AddVerifier => add_verifier,
         RemoveVerifier => remove_verifier,
         AddVerifiedClient => add_verified_client,
+        AddVerifiedClientExported => add_verified_client,
         RemoveVerifiedClientDataCap => remove_verified_client_data_cap,
         RemoveExpiredAllocations => remove_expired_allocations,
+        RemoveExpiredAllocationsExported => remove_expired_allocations,
         ClaimAllocations => claim_allocations,
         GetClaims => get_claims,
+        GetClaimsExported => get_claims,
         ExtendClaimTerms => extend_claim_terms,
+        ExtendClaimTermsExported => extend_claim_terms,
         RemoveExpiredClaims => remove_expired_claims,
+        RemoveExpiredClaimsExported => remove_expired_claims,
         UniversalReceiverHook => universal_receiver_hook,
     }
 }

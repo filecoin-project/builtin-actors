@@ -128,7 +128,7 @@ fn recovery_fails_during_active_consensus_fault() {
         h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION as u64, vec![], true);
 
     // consensus fault
-    let test_addr = Address::new_actor("satoshi".as_bytes());
+    let test_addr = Address::new_id(1234);
     let epoch = rt.epoch;
     h.report_consensus_fault(
         &mut rt,

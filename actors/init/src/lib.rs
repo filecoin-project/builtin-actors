@@ -6,7 +6,7 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, ActorContext, ActorError, SYSTEM_ACTOR_ADDR,
+    actor_dispatch, actor_error, restrict_internal_api, ActorContext, ActorError, SYSTEM_ACTOR_ADDR,
 };
 use fvm_shared::address::Address;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR};
@@ -29,6 +29,8 @@ fil_actors_runtime::wasm_trampoline!(Actor);
 pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
     Exec = 2,
+    // Method numbers derived from FRC-0042 standards
+    ExecExported = frc42_dispatch::method_hash!("Exec"),
 }
 
 /// Init actor
@@ -101,6 +103,7 @@ impl ActorCode for Actor {
     actor_dispatch! {
         Constructor => constructor,
         Exec => exec,
+        ExecExported => exec,
     }
 }
 

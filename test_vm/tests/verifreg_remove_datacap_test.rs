@@ -1,7 +1,9 @@
 use std::ops::{Div, Sub};
 
+use fil_actor_account::types::AuthenticateMessageParams;
+use fil_actor_account::Method as AccountMethod;
 use fvm_ipld_blockstore::MemoryBlockstore;
-use fvm_ipld_encoding::to_vec;
+use fvm_ipld_encoding::{to_vec, RawBytes};
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::bigint::{BigInt, Zero};
 use fvm_shared::crypto::signature::{Signature, SignatureType};
@@ -15,7 +17,7 @@ use fil_actor_datacap::{
     DestroyParams, Method as DataCapMethod, MintParams, State as DataCapState,
 };
 use fil_actor_verifreg::{
-    AddVerifierClientParams, DataCap, RemoveDataCapParams, RemoveDataCapRequest,
+    AddVerifiedClientParams, DataCap, RemoveDataCapParams, RemoveDataCapRequest,
     RemoveDataCapReturn, SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP,
 };
 use fil_actor_verifreg::{AddrPairKey, Method as VerifregMethod};
@@ -47,7 +49,7 @@ fn remove_datacap_simple_successful_path() {
 
     // register the verified client
     let add_verified_client_params =
-        AddVerifierClientParams { address: verified_client, allowance: verifier_allowance.clone() };
+        AddVerifiedClientParams { address: verified_client, allowance: verifier_allowance.clone() };
     let mint_params = MintParams {
         to: verified_client,
         amount: TokenAmount::from_whole(verifier_allowance.to_i64().unwrap()),
@@ -68,7 +70,7 @@ fn remove_datacap_simple_successful_path() {
         params: Some(IpldBlock::serialize_cbor(&add_verified_client_params).unwrap()),
         subinvocs: Some(vec![ExpectInvocation {
             to: DATACAP_TOKEN_ACTOR_ADDR,
-            method: DataCapMethod::Mint as u64,
+            method: DataCapMethod::MintExported as u64,
             params: Some(IpldBlock::serialize_cbor(&mint_params).unwrap()),
             subinvocs: None,
             ..Default::default()
@@ -157,7 +159,12 @@ fn remove_datacap_simple_successful_path() {
     .deserialize()
     .unwrap();
 
-    expect_remove_datacap(&remove_datacap_params).matches(v.take_invocations().last().unwrap());
+    expect_remove_datacap(
+        &remove_datacap_params,
+        RemoveDataCapProposalID { id: 0 },
+        RemoveDataCapProposalID { id: 0 },
+    )
+    .matches(v.take_invocations().last().unwrap());
 
     assert_eq!(verified_client_id_addr, remove_datacap_ret.verified_client);
     assert_eq!(allowance_to_remove, remove_datacap_ret.data_cap_removed);
@@ -236,7 +243,12 @@ fn remove_datacap_simple_successful_path() {
     .deserialize()
     .unwrap();
 
-    expect_remove_datacap(&remove_datacap_params).matches(v.take_invocations().last().unwrap());
+    expect_remove_datacap(
+        &remove_datacap_params,
+        RemoveDataCapProposalID { id: 1 },
+        RemoveDataCapProposalID { id: 1 },
+    )
+    .matches(v.take_invocations().last().unwrap());
 
     assert_eq!(verified_client_id_addr, remove_datacap_ret.verified_client);
     assert_eq!(allowance_to_remove, remove_datacap_ret.data_cap_removed);
@@ -326,7 +338,33 @@ fn remove_datacap_fails_on_verifreg() {
     v.assert_state_invariants();
 }
 
-fn expect_remove_datacap(params: &RemoveDataCapParams) -> ExpectInvocation {
+fn expect_remove_datacap(
+    params: &RemoveDataCapParams,
+    proposal_id1: RemoveDataCapProposalID,
+    proposal_id2: RemoveDataCapProposalID,
+) -> ExpectInvocation {
+    let payload1 = [
+        SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP,
+        RawBytes::serialize(&RemoveDataCapProposal {
+            removal_proposal_id: proposal_id1,
+            data_cap_amount: params.data_cap_amount_to_remove.clone(),
+            verified_client: params.verified_client_to_remove,
+        })
+        .unwrap()
+        .bytes(),
+    ]
+    .concat();
+    let payload2 = [
+        SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP,
+        RawBytes::serialize(&RemoveDataCapProposal {
+            removal_proposal_id: proposal_id2,
+            data_cap_amount: params.data_cap_amount_to_remove.clone(),
+            verified_client: params.verified_client_to_remove,
+        })
+        .unwrap()
+        .bytes(),
+    ]
+    .concat();
     ExpectInvocation {
         to: VERIFIED_REGISTRY_ACTOR_ADDR,
         method: VerifregMethod::RemoveVerifiedClientDataCap as u64,
@@ -334,8 +372,36 @@ fn expect_remove_datacap(params: &RemoveDataCapParams) -> ExpectInvocation {
         code: Some(ExitCode::OK),
         subinvocs: Some(vec![
             ExpectInvocation {
+                to: params.verifier_request_1.verifier,
+                method: AccountMethod::AuthenticateMessageExported as u64,
+                params: Some(
+                    IpldBlock::serialize_cbor(&AuthenticateMessageParams {
+                        signature: payload1.clone(),
+                        message: payload1,
+                    })
+                    .unwrap(),
+                ),
+                code: Some(ExitCode::OK),
+                subinvocs: None,
+                ..Default::default()
+            },
+            ExpectInvocation {
+                to: params.verifier_request_2.verifier,
+                method: AccountMethod::AuthenticateMessageExported as u64,
+                params: Some(
+                    IpldBlock::serialize_cbor(&AuthenticateMessageParams {
+                        signature: payload2.clone(),
+                        message: payload2,
+                    })
+                    .unwrap(),
+                ),
+                code: Some(ExitCode::OK),
+                subinvocs: None,
+                ..Default::default()
+            },
+            ExpectInvocation {
                 to: DATACAP_TOKEN_ACTOR_ADDR,
-                method: DataCapMethod::BalanceOf as u64,
+                method: DataCapMethod::BalanceExported as u64,
                 params: Some(IpldBlock::serialize_cbor(&params.verified_client_to_remove).unwrap()),
                 code: Some(ExitCode::OK),
                 subinvocs: None,
@@ -343,7 +409,7 @@ fn expect_remove_datacap(params: &RemoveDataCapParams) -> ExpectInvocation {
             },
             ExpectInvocation {
                 to: DATACAP_TOKEN_ACTOR_ADDR,
-                method: DataCapMethod::Destroy as u64,
+                method: DataCapMethod::DestroyExported as u64,
                 params: Some(
                     IpldBlock::serialize_cbor(&DestroyParams {
                         owner: params.verified_client_to_remove,

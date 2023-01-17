@@ -43,6 +43,7 @@ pub struct Harness {
 
 impl Harness {
     pub fn construct_and_verify(&self, rt: &mut MockRuntime, registry: &Address) {
+        rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         let ret = rt
             .call::<DataCapActor>(
@@ -95,7 +96,7 @@ impl Harness {
         let params = MintParams { to: *to, amount: amount.clone(), operators };
         rt.set_caller(*VERIFREG_ACTOR_CODE_ID, VERIFIED_REGISTRY_ACTOR_ADDR);
         let ret = rt.call::<DataCapActor>(
-            Method::Mint as MethodNum,
+            Method::MintExported as MethodNum,
             IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
 
@@ -115,7 +116,7 @@ impl Harness {
 
         rt.set_caller(*VERIFREG_ACTOR_CODE_ID, VERIFIED_REGISTRY_ACTOR_ADDR);
         let ret = rt.call::<DataCapActor>(
-            Method::Destroy as MethodNum,
+            Method::DestroyExported as MethodNum,
             IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
 
@@ -161,7 +162,7 @@ impl Harness {
 
         let params = TransferParams { to: *to, amount: amount.clone(), operator_data };
         let ret = rt.call::<DataCapActor>(
-            Method::Transfer as MethodNum,
+            Method::TransferExported as MethodNum,
             IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
 
@@ -209,7 +210,7 @@ impl Harness {
         let params =
             TransferFromParams { to: *to, from: *from, amount: amount.clone(), operator_data };
         let ret = rt.call::<DataCapActor>(
-            Method::TransferFrom as MethodNum,
+            Method::TransferFromExported as MethodNum,
             IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
 
@@ -223,8 +224,19 @@ impl Harness {
     }
 
     // Reads a balance from state directly.
-    pub fn get_balance(&self, rt: &MockRuntime, address: &Address) -> TokenAmount {
-        rt.get_state::<State>().token.get_balance(rt.store(), address.id().unwrap()).unwrap()
+    pub fn get_balance(&self, rt: &mut MockRuntime, address: &Address) -> TokenAmount {
+        rt.expect_validate_caller_any();
+        let ret = rt
+            .call::<DataCapActor>(
+                Method::BalanceExported as MethodNum,
+                IpldBlock::serialize_cbor(&address).unwrap(),
+            )
+            .unwrap()
+            .unwrap()
+            .deserialize()
+            .unwrap();
+        rt.verify();
+        ret
     }
 
     // Reads allowance from state directly

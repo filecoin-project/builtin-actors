@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use cid::multihash::{Code, MultihashDigest, MultihashGeneric};
 use cid::Cid;
+use fil_actors_runtime::{restrict_internal_api, FIRST_ACTOR_SPECIFIC_EXIT_CODE};
 use frc46_token::token::types::{BalanceReturn, TransferFromParams, TransferFromReturn};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
@@ -25,16 +26,17 @@ use log::info;
 use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Zero};
 
-use fil_actors_runtime::cbor::{deserialize, serialize, serialize_vec};
+use crate::balance_table::BalanceTable;
+use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
     actor_dispatch, actor_error, deserialize_block, ActorContext, ActorDowncast, ActorError,
-    AsActorError, BURNT_FUNDS_ACTOR_ADDR, CALLER_TYPES_SIGNABLE, CRON_ACTOR_ADDR,
-    DATACAP_TOKEN_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
+    AsActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR,
+    REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::RawBytes;
 
 use crate::ext::verifreg::{AllocationID, AllocationRequest};
 
@@ -59,6 +61,9 @@ fil_actors_runtime::wasm_trampoline!(Actor);
 
 pub const NO_ALLOCATION_ID: u64 = 0;
 
+// An exit code indicating that information about a past deal is no longer available.
+pub const EX_DEAL_EXPIRED: ExitCode = ExitCode::new(FIRST_ACTOR_SPECIFIC_EXIT_CODE);
+
 /// Market actor methods available
 #[derive(FromPrimitive)]
 #[repr(u64)]
@@ -72,6 +77,21 @@ pub enum Method {
     OnMinerSectorsTerminate = 7,
     ComputeDataCommitment = 8,
     CronTick = 9,
+    // Method numbers derived from FRC-0042 standards
+    AddBalanceExported = frc42_dispatch::method_hash!("AddBalance"),
+    WithdrawBalanceExported = frc42_dispatch::method_hash!("WithdrawBalance"),
+    PublishStorageDealsExported = frc42_dispatch::method_hash!("PublishStorageDeals"),
+    GetBalanceExported = frc42_dispatch::method_hash!("GetBalance"),
+    GetDealDataCommitmentExported = frc42_dispatch::method_hash!("GetDealDataCommitment"),
+    GetDealClientExported = frc42_dispatch::method_hash!("GetDealClient"),
+    GetDealProviderExported = frc42_dispatch::method_hash!("GetDealProvider"),
+    GetDealLabelExported = frc42_dispatch::method_hash!("GetDealLabel"),
+    GetDealTermExported = frc42_dispatch::method_hash!("GetDealTerm"),
+    GetDealTotalPriceExported = frc42_dispatch::method_hash!("GetDealTotalPrice"),
+    GetDealClientCollateralExported = frc42_dispatch::method_hash!("GetDealClientCollateral"),
+    GetDealProviderCollateralExported = frc42_dispatch::method_hash!("GetDealProviderCollateral"),
+    GetDealVerifiedExported = frc42_dispatch::method_hash!("GetDealVerified"),
+    GetDealActivationExported = frc42_dispatch::method_hash!("GetDealActivation"),
 }
 
 /// Market Actor
@@ -98,8 +118,7 @@ impl Actor {
             ));
         }
 
-        // only signing parties can add balance for client AND provider.
-        rt.validate_immediate_caller_type(CALLER_TYPES_SIGNABLE.iter())?;
+        rt.validate_immediate_caller_accept_any()?;
 
         let (nominal, _, _) = escrow_address(rt, &provider_or_client)?;
 
@@ -137,14 +156,39 @@ impl Actor {
         Ok(WithdrawBalanceReturn { amount_withdrawn: amount_extracted })
     }
 
+    /// Returns the escrow balance and locked amount for an address.
+    fn get_balance(
+        rt: &mut impl Runtime,
+        account: Address,
+    ) -> Result<GetBalanceReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let nominal = rt.resolve_address(&account).ok_or_else(|| {
+            actor_error!(illegal_argument, "failed to resolve address {}", account)
+        })?;
+        let account = Address::new_id(nominal);
+
+        let store = rt.store();
+        let st: State = rt.state()?;
+        let balances = BalanceTable::from_root(store, &st.escrow_table)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load escrow table")?;
+        let locks = BalanceTable::from_root(store, &st.locked_table)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load locked table")?;
+        let balance = balances
+            .get(&account)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get escrow balance")?;
+        let locked = locks
+            .get(&account)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get locked balance")?;
+
+        Ok(GetBalanceReturn { balance, locked })
+    }
+
     /// Publish a new set of storage deals (not yet included in a sector).
     fn publish_storage_deals(
         rt: &mut impl Runtime,
         params: PublishStorageDealsParams,
     ) -> Result<PublishStorageDealsReturn, ActorError> {
-        // Deal message must have a From field identical to the provider of all the deals.
-        // This allows us to retain and verify only the client's signature in each deal proposal itself.
-        rt.validate_immediate_caller_type(CALLER_TYPES_SIGNABLE.iter())?;
+        rt.validate_immediate_caller_accept_any()?;
         if params.deals.is_empty() {
             return Err(actor_error!(illegal_argument, "Empty deals parameter"));
         }
@@ -189,6 +233,7 @@ impl Actor {
 
         struct ValidDeal {
             proposal: DealProposal,
+            serialized_proposal: RawBytes,
             cid: Cid,
         }
         // Deals that passed validation.
@@ -209,7 +254,6 @@ impl Actor {
         let state: State = rt.state()?;
 
         for (di, mut deal) in params.deals.into_iter().enumerate() {
-            // drop malformed deals
             if let Err(e) = validate_deal(rt, &deal, &network_raw_power, &baseline_power) {
                 info!("invalid deal {}: {}", di, e);
                 continue;
@@ -266,10 +310,12 @@ impl Actor {
             // Must happen after signature verification and before taking cid.
             deal.proposal.provider = Address::new_id(provider_id);
             deal.proposal.client = Address::new_id(client_id);
-            let pcid = rt_deal_cid(rt, &deal.proposal)
-                .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
-                    format!("failed take CID of proposal {}", di)
-                })?;
+
+            let serialized_proposal = serialize(&deal.proposal, "normalized deal proposal")
+                .context_code(ExitCode::USR_SERIALIZATION, "failed to serialize")?;
+            let pcid = rt_serialized_deal_cid(rt, &serialized_proposal).map_err(
+                |e| actor_error!(illegal_argument; "failed to take cid of proposal {}: {}", di, e),
+            )?;
 
             // check proposalCids for duplication within message batch
             // check state PendingProposals for duplication across messages
@@ -308,7 +354,7 @@ impl Actor {
             total_provider_lockup = provider_lockup;
             total_client_lockup.insert(client_id, client_lockup);
             proposal_cid_lookup.insert(pcid);
-            valid_deals.push(ValidDeal { proposal: deal.proposal, cid: pcid });
+            valid_deals.push(ValidDeal { proposal: deal.proposal, serialized_proposal, cid: pcid });
             valid_input_bf.set(di as u64)
         }
 
@@ -390,6 +436,19 @@ impl Actor {
             st.put_deals_by_epoch(rt.store(), &deals_by_epoch)?;
             Ok(())
         })?;
+
+        // notify clients ignoring any errors
+        for (i, valid_deal) in valid_deals.iter().enumerate() {
+            _ = rt.send(
+                &valid_deal.proposal.client,
+                MARKET_NOTIFY_DEAL_METHOD,
+                IpldBlock::serialize_cbor(&MarketNotifyDealParams {
+                    proposal: valid_deal.serialized_proposal.to_vec(),
+                    deal_id: new_deal_ids[i],
+                })?,
+                TokenAmount::zero(),
+            );
+        }
 
         Ok(PublishStorageDealsReturn { ids: new_deal_ids, valid_deals: valid_input_bf })
     }
@@ -787,6 +846,147 @@ impl Actor {
         }
         Ok(())
     }
+
+    /// Returns the data commitment and size of a deal proposal.
+    /// This will be available after the deal is published (whether or not is is activated)
+    /// and up until some undefined period after it is terminated.
+    fn get_deal_data_commitment(
+        rt: &mut impl Runtime,
+        params: GetDealDataCommitmentParams,
+    ) -> Result<GetDealDataCommitmentReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+        Ok(GetDealDataCommitmentReturn { data: found.piece_cid, size: found.piece_size })
+    }
+
+    /// Returns the client of a deal proposal.
+    fn get_deal_client(
+        rt: &mut impl Runtime,
+        params: GetDealClientParams,
+    ) -> Result<GetDealClientReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+        Ok(GetDealClientReturn { client: found.client.id().unwrap() })
+    }
+
+    /// Returns the provider of a deal proposal.
+    fn get_deal_provider(
+        rt: &mut impl Runtime,
+        params: GetDealProviderParams,
+    ) -> Result<GetDealProviderReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+        Ok(GetDealProviderReturn { provider: found.provider.id().unwrap() })
+    }
+
+    /// Returns the label of a deal proposal.
+    fn get_deal_label(
+        rt: &mut impl Runtime,
+        params: GetDealLabelParams,
+    ) -> Result<GetDealLabelReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+        Ok(GetDealLabelReturn { label: found.label })
+    }
+
+    /// Returns the start epoch and duration (in epochs) of a deal proposal.
+    fn get_deal_term(
+        rt: &mut impl Runtime,
+        params: GetDealTermParams,
+    ) -> Result<GetDealTermReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+        Ok(GetDealTermReturn { start: found.start_epoch, duration: found.duration() })
+    }
+
+    /// Returns the total price that will be paid from the client to the provider for this deal.
+    fn get_deal_total_price(
+        rt: &mut impl Runtime,
+        params: GetDealTotalPriceParams,
+    ) -> Result<GetDealTotalPriceReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+        Ok(GetDealTotalPriceReturn { total_price: found.total_storage_fee() })
+    }
+
+    /// Returns the client collateral requirement for a deal proposal.
+    fn get_deal_client_collateral(
+        rt: &mut impl Runtime,
+        params: GetDealClientCollateralParams,
+    ) -> Result<GetDealClientCollateralReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+        Ok(GetDealClientCollateralReturn { collateral: found.client_collateral })
+    }
+
+    /// Returns the provider collateral requirement for a deal proposal.
+    fn get_deal_provider_collateral(
+        rt: &mut impl Runtime,
+        params: GetDealProviderCollateralParams,
+    ) -> Result<GetDealProviderCollateralReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+        Ok(GetDealProviderCollateralReturn { collateral: found.provider_collateral })
+    }
+
+    /// Returns the verified flag for a deal proposal.
+    /// Note that the source of truth for verified allocations and claims is
+    /// the verified registry actor.
+    fn get_deal_verified(
+        rt: &mut impl Runtime,
+        params: GetDealVerifiedParams,
+    ) -> Result<GetDealVerifiedReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+        Ok(GetDealVerifiedReturn { verified: found.verified_deal })
+    }
+
+    /// Fetches activation state for a deal.
+    /// This will be available from when the proposal is published until an undefined period after
+    /// the deal finishes (either normally or by termination).
+    /// Returns USR_NOT_FOUND if the deal doesn't exist (yet), or EX_DEAL_EXPIRED if the deal
+    /// has been removed from state.
+    fn get_deal_activation(
+        rt: &mut impl Runtime,
+        params: GetDealActivationParams,
+    ) -> Result<GetDealActivationReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let st = rt.state::<State>()?;
+        let found = st.find_deal_state(rt.store(), params.id)?;
+        match found {
+            Some(state) => Ok(GetDealActivationReturn {
+                // If we have state, the deal has been activated.
+                // It may also have completed normally, or been terminated,
+                // but not yet been cleaned up.
+                activated: state.sector_start_epoch,
+                terminated: state.slash_epoch,
+            }),
+            None => {
+                // State::get_proposal will fail with USR_NOT_FOUND in either case.
+                let maybe_proposal = st.find_proposal(rt.store(), params.id)?;
+                match maybe_proposal {
+                    Some(_) => Ok(GetDealActivationReturn {
+                        // The proposal has been published, but not activated.
+                        activated: EPOCH_UNDEFINED,
+                        terminated: EPOCH_UNDEFINED,
+                    }),
+                    None => {
+                        if params.id < st.next_id {
+                            // If the deal ID has been used, it must have been cleaned up.
+                            Err(ActorError::unchecked(
+                                EX_DEAL_EXPIRED,
+                                format!("deal {} expired", params.id),
+                            ))
+                        } else {
+                            // We can't distinguish between failing to activate, or having been
+                            // cleaned up after completion/termination.
+                            Err(ActorError::not_found(format!("no such deal {}", params.id)))
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn compute_data_commitment<BS: Blockstore>(
@@ -1077,14 +1277,14 @@ fn deal_proposal_is_internally_valid(
 ) -> Result<(), ActorError> {
     let signature_bytes = proposal.client_signature.bytes.clone();
     // Generate unsigned bytes
-    let proposal_bytes = serialize_vec(&proposal.proposal, "deal proposal")?;
+    let proposal_bytes = serialize(&proposal.proposal, "deal proposal")?;
 
     rt.send(
         &proposal.proposal.client,
         ext::account::AUTHENTICATE_MESSAGE_METHOD,
         IpldBlock::serialize_cbor(&ext::account::AuthenticateMessageParams {
             signature: signature_bytes,
-            message: proposal_bytes,
+            message: proposal_bytes.to_vec(),
         })?,
         TokenAmount::zero(),
     )
@@ -1096,9 +1296,14 @@ pub const DAG_CBOR: u64 = 0x71; // TODO is there a better place to get this?
 
 /// Compute a deal CID using the runtime.
 pub(crate) fn rt_deal_cid(rt: &impl Runtime, proposal: &DealProposal) -> Result<Cid, ActorError> {
-    const DIGEST_SIZE: u32 = 32;
     let data = serialize(proposal, "deal proposal")?;
-    let hash = MultihashGeneric::wrap(Code::Blake2b256.into(), &rt.hash_blake2b(data.bytes()))
+    rt_serialized_deal_cid(rt, data.bytes())
+}
+
+/// Compute a deal CID from serialized proposal using the runtime
+pub(crate) fn rt_serialized_deal_cid(rt: &impl Runtime, data: &[u8]) -> Result<Cid, ActorError> {
+    const DIGEST_SIZE: u32 = 32;
+    let hash = MultihashGeneric::wrap(Code::Blake2b256.into(), &rt.hash_blake2b(data))
         .map_err(|e| actor_error!(illegal_argument; "failed to take cid of proposal {}", e))?;
     debug_assert_eq!(u32::from(hash.size()), DIGEST_SIZE, "expected 32byte digest");
     Ok(Cid::new_v1(DAG_CBOR, hash))
@@ -1188,12 +1393,26 @@ impl ActorCode for Actor {
     actor_dispatch! {
         Constructor => constructor,
         AddBalance => add_balance,
+        AddBalanceExported => add_balance,
         WithdrawBalance => withdraw_balance,
+        WithdrawBalanceExported => withdraw_balance,
         PublishStorageDeals => publish_storage_deals,
+        PublishStorageDealsExported => publish_storage_deals,
         VerifyDealsForActivation => verify_deals_for_activation,
         ActivateDeals => activate_deals,
         OnMinerSectorsTerminate => on_miner_sectors_terminate,
         ComputeDataCommitment => compute_data_commitment,
         CronTick => cron_tick,
+        GetBalanceExported => get_balance,
+        GetDealDataCommitmentExported => get_deal_data_commitment,
+        GetDealClientExported => get_deal_client,
+        GetDealProviderExported => get_deal_provider,
+        GetDealLabelExported => get_deal_label,
+        GetDealTermExported => get_deal_term,
+        GetDealTotalPriceExported => get_deal_total_price,
+        GetDealClientCollateralExported => get_deal_client_collateral,
+        GetDealProviderCollateralExported => get_deal_provider_collateral,
+        GetDealVerifiedExported => get_deal_verified,
+        GetDealActivationExported => get_deal_activation,
     }
 }
