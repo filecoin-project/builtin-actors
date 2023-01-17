@@ -84,7 +84,7 @@ enum PrecompileExit {
 }
 
 #[repr(u8)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum NativePrecompile {
     ResolveAddress = 1,
     LookupDelegatedAddress = 2,
