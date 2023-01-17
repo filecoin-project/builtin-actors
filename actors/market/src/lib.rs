@@ -341,6 +341,8 @@ impl Actor {
                 let piece_datacap_required =
                     TokenAmount::from_whole(deal.proposal.piece_size.0 as i64);
                 if remaining_datacap < piece_datacap_required {
+                    client_datacap_remaining
+                        .insert(client_id, remaining_datacap);
                     continue; // Drop the deal
                 }
                 client_datacap_remaining
