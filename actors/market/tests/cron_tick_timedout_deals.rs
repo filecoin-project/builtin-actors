@@ -172,7 +172,7 @@ fn timed_out_and_verified_deals_are_slashed_deleted() {
         &mut rt,
         &MinerAddresses::default(),
         &[deal1.clone(), deal2.clone(), deal3.clone()],
-        TokenAmount::zero(),
+        TokenAmount::from_whole(deal1.piece_size.0 * 10),
         1,
     );
     assert_eq!(3, deal_ids.len());
