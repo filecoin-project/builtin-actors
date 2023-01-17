@@ -14,10 +14,10 @@ use num_derive::FromPrimitive;
 use num_traits::{FromPrimitive, Zero};
 
 use fil_actors_runtime::cbor::serialize_vec;
-use fil_actors_runtime::runtime::{builtins::Type, ActorCode, Primitives, Runtime};
+use fil_actors_runtime::runtime::{ActorCode, Primitives, Runtime};
 use fil_actors_runtime::{
     actor_dispatch, actor_error, make_empty_map, make_map_with_root, resolve_to_actor_id,
-    ActorContext, ActorError, AsActorError, Map, INIT_ACTOR_ADDR,
+    restrict_internal_api, ActorContext, ActorError, AsActorError, Map, INIT_ACTOR_ADDR,
 };
 
 pub use self::state::*;
@@ -43,6 +43,7 @@ pub enum Method {
     SwapSigner = 7,
     ChangeNumApprovalsThreshold = 8,
     LockBalance = 9,
+    // Method numbers derived from FRC-0042 standards
     UniversalReceiverHook = frc42_dispatch::method_hash!("Receive"),
 }
 
@@ -124,7 +125,7 @@ impl Actor {
         rt: &mut impl Runtime,
         params: ProposeParams,
     ) -> Result<ProposeReturn, ActorError> {
-        rt.validate_immediate_caller_type(&[Type::Account, Type::Multisig])?;
+        rt.validate_immediate_caller_accept_any()?;
         let proposer: Address = rt.message().caller();
 
         if params.value.is_negative() {
@@ -177,7 +178,7 @@ impl Actor {
         rt: &mut impl Runtime,
         params: TxnIDParams,
     ) -> Result<ApproveReturn, ActorError> {
-        rt.validate_immediate_caller_type(&[Type::Account, Type::Multisig])?;
+        rt.validate_immediate_caller_accept_any()?;
         let approver: Address = rt.message().caller();
 
         let id = params.id;
@@ -209,7 +210,7 @@ impl Actor {
 
     /// Multisig actor cancel function
     pub fn cancel(rt: &mut impl Runtime, params: TxnIDParams) -> Result<(), ActorError> {
-        rt.validate_immediate_caller_type(&[Type::Account, Type::Multisig])?;
+        rt.validate_immediate_caller_accept_any()?;
         let caller_addr: Address = rt.message().caller();
 
         rt.transaction(|st: &mut State, rt| {
@@ -553,15 +554,15 @@ pub fn compute_proposal_hash(txn: &Transaction, sys: &dyn Primitives) -> anyhow:
 impl ActorCode for Actor {
     type Methods = Method;
     actor_dispatch! {
-        Constructor => constructor,
-        Propose => propose,
-        Approve => approve,
-        Cancel => cancel,
-        AddSigner => add_signer,
-        RemoveSigner => remove_signer,
-        SwapSigner => swap_signer,
-        ChangeNumApprovalsThreshold => change_num_approvals_threshold,
-        LockBalance => lock_balance,
-        UniversalReceiverHook => universal_receiver_hook,
+      Constructor => constructor,
+      Propose => propose,
+      Approve => approve,
+      Cancel => cancel,
+      AddSigner => add_signer,
+      RemoveSigner => remove_signer,
+      SwapSigner => swap_signer,
+      ChangeNumApprovalsThreshold => change_num_approvals_threshold,
+      LockBalance => lock_balance,
+      UniversalReceiverHook => universal_receiver_hook,
     }
 }

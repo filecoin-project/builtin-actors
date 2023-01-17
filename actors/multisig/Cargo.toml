@@ -22,7 +22,7 @@ frc42_dispatch = "3.0.0"
 fvm_actor_utils = "3.0.0"
 fvm_ipld_blockstore = "0.1.1"
 fvm_ipld_encoding = "0.2.3"
-fvm_ipld_hamt = "0.5.1"
+fvm_ipld_hamt = "0.6.1"
 fvm_shared = { version = "2.0.0-alpha.2", default-features = false }
 indexmap = { version = "1.8.0", features = ["serde-1"] }
 integer-encoding = { version = "3.0.3", default-features = false }

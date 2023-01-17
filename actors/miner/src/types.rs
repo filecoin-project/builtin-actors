@@ -13,7 +13,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
     PoStProof, RegisteredPoStProof, RegisteredSealProof, RegisteredUpdateProof, SectorNumber,
-    StoragePower,
+    SectorSize, StoragePower,
 };
 use fvm_shared::smooth::FilterEstimate;
 
@@ -160,7 +160,8 @@ pub struct SectorClaim {
 pub struct ExpirationExtension2 {
     pub deadline: u64,
     pub partition: u64,
-    pub sectors: BitField, // IDs of sectors without FIL+ claims
+    // IDs of sectors without FIL+ claims
+    pub sectors: BitField,
     pub sectors_with_claims: Vec<SectorClaim>,
     pub new_expiration: ChainEpoch,
 }
@@ -442,4 +443,50 @@ pub struct ActiveBeneficiary {
 pub struct GetBeneficiaryReturn {
     pub active: ActiveBeneficiary,
     pub proposed: Option<PendingBeneficiaryChange>,
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
+pub struct GetOwnerReturn {
+    pub owner: Address,
+    pub proposed: Option<Address>,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct IsControllingAddressParam {
+    pub address: Address,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct IsControllingAddressReturn {
+    pub is_controlling: bool,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct GetSectorSizeReturn {
+    pub sector_size: SectorSize,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct GetAvailableBalanceReturn {
+    pub available_balance: TokenAmount,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct GetVestingFundsReturn {
+    pub vesting_funds: Vec<(ChainEpoch, TokenAmount)>,
+}
+
+#[derive(Debug, Default, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
+pub struct GetPeerIDReturn {
+    #[serde(with = "serde_bytes")]
+    pub peer_id: Vec<u8>,
+}
+
+#[derive(Debug, Default, PartialEq, Clone, Serialize_tuple, Deserialize_tuple)]
+pub struct GetMultiaddrsReturn {
+    pub multi_addrs: Vec<BytesDe>,
 }

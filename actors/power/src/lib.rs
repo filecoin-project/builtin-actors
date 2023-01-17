@@ -9,8 +9,9 @@ use ext::init;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, deserialize_block, make_map_with_root_and_bitwidth, ActorDowncast,
-    ActorError, Multimap, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_dispatch, actor_error, deserialize_block, make_map_with_root_and_bitwidth,
+    restrict_internal_api, ActorDowncast, ActorError, Multimap, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR,
+    REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
@@ -62,6 +63,12 @@ pub enum Method {
     // OnConsensusFault = 7,
     SubmitPoRepForBulkVerify = 8,
     CurrentTotalPower = 9,
+    // Method numbers derived from FRC-0042 standards
+    CreateMinerExported = frc42_dispatch::method_hash!("CreateMiner"),
+    NetworkRawPowerExported = frc42_dispatch::method_hash!("NetworkRawPower"),
+    MinerRawPowerExported = frc42_dispatch::method_hash!("MinerRawPower"),
+    MinerCountExported = frc42_dispatch::method_hash!("MinerCount"),
+    MinerConsensusCountExported = frc42_dispatch::method_hash!("MinerConsensusCount"),
 }
 
 pub const ERR_TOO_MANY_PROVE_COMMITS: ExitCode = ExitCode::new(32);
@@ -85,7 +92,7 @@ impl Actor {
         rt: &mut impl Runtime,
         params: CreateMinerParams,
     ) -> Result<CreateMinerReturn, ActorError> {
-        rt.validate_immediate_caller_type(&[Type::Account, Type::Multisig])?;
+        rt.validate_immediate_caller_accept_any()?;
         let value = rt.message().value_received();
 
         let constructor_params = RawBytes::serialize(ext::miner::MinerConstructorParams {
@@ -365,6 +372,54 @@ impl Actor {
         })
     }
 
+    /// Returns the total raw power of the network.
+    /// This is defined as the sum of the active (i.e. non-faulty) byte commitments
+    /// of all miners that have more than the consensus minimum amount of storage active.
+    /// This value is static over an epoch, and does NOT get updated as messages are executed.
+    /// It is recalculated after all messages at an epoch have been executed.
+    fn network_raw_power(rt: &mut impl Runtime) -> Result<NetworkRawPowerReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let st: State = rt.state()?;
+
+        Ok(NetworkRawPowerReturn { raw_byte_power: st.this_epoch_raw_byte_power })
+    }
+
+    /// Returns the raw power claimed by the specified miner,
+    /// and whether the miner has more than the consensus minimum amount of storage active.
+    /// The raw power is defined as the active (i.e. non-faulty) byte commitments of the miner.
+    fn miner_raw_power(
+        rt: &mut impl Runtime,
+        params: MinerRawPowerParams,
+    ) -> Result<MinerRawPowerReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let st: State = rt.state()?;
+
+        let (raw_byte_power, meets_consensus_minimum) =
+            st.miner_nominal_power_meets_consensus_minimum(rt.policy(), rt.store(), params.miner)?;
+
+        Ok(MinerRawPowerReturn { raw_byte_power, meets_consensus_minimum })
+    }
+
+    /// Returns the total number of miners created, regardless of whether or not
+    /// they have any pledged storage.
+    fn miner_count(rt: &mut impl Runtime) -> Result<MinerCountReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let st: State = rt.state()?;
+
+        Ok(MinerCountReturn { miner_count: st.miner_count })
+    }
+
+    /// Returns the total number of miners that have more than the consensus minimum amount of storage active.
+    /// Active means that the storage must not be faulty.
+    fn miner_consensus_count(
+        rt: &mut impl Runtime,
+    ) -> Result<MinerConsensusCountReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let st: State = rt.state()?;
+
+        Ok(MinerConsensusCountReturn { miner_consensus_count: st.miner_above_min_power_count })
+    }
+
     fn process_batch_proof_verifies(
         rt: &mut impl Runtime,
         rewret: &ThisEpochRewardReturn,
@@ -622,11 +677,16 @@ impl ActorCode for Actor {
     actor_dispatch! {
         Constructor => constructor,
         CreateMiner => create_miner,
+        CreateMinerExported => create_miner,
         UpdateClaimedPower => update_claimed_power            ,
         EnrollCronEvent => enroll_cron_event,
         OnEpochTickEnd => on_epoch_tick_end,
         UpdatePledgeTotal => update_pledge_total,
         SubmitPoRepForBulkVerify => submit_porep_for_bulk_verify,
         CurrentTotalPower => current_total_power,
+        NetworkRawPowerExported => network_raw_power,
+        MinerRawPowerExported => miner_raw_power,
+        MinerCountExported => miner_count,
+        MinerConsensusCountExported => miner_consensus_count,
     }
 }

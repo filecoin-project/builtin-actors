@@ -12,7 +12,7 @@ use num_traits::FromPrimitive;
 
 use fil_actors_runtime::builtin::singletons::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_dispatch, ActorDowncast};
+use fil_actors_runtime::{actor_dispatch, restrict_internal_api, ActorDowncast};
 use fil_actors_runtime::{actor_error, ActorError};
 
 use crate::types::AuthenticateMessageParams;
@@ -32,7 +32,9 @@ fil_actors_runtime::wasm_trampoline!(Actor);
 pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
     PubkeyAddress = 2,
-    AuthenticateMessage = 3,
+    // Deprecated in v10
+    // AuthenticateMessage = 3,
+    AuthenticateMessageExported = frc42_dispatch::method_hash!("AuthenticateMessage"),
     UniversalReceiverHook = frc42_dispatch::method_hash!("Receive"),
 }
 
@@ -105,7 +107,7 @@ impl ActorCode for Actor {
     actor_dispatch! {
         Constructor => constructor,
         PubkeyAddress => pubkey_address,
-        AuthenticateMessage => authenticate_message,
+        AuthenticateMessageExported => authenticate_message,
         UniversalReceiverHook => universal_receiver_hook,
     }
 }

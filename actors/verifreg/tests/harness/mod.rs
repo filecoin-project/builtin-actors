@@ -15,7 +15,7 @@ use num_traits::{ToPrimitive, Zero};
 
 use fil_actor_verifreg::testing::check_state_invariants;
 use fil_actor_verifreg::{
-    ext, Actor as VerifregActor, AddVerifierClientParams, AddVerifierParams, Allocation,
+    ext, Actor as VerifregActor, AddVerifiedClientParams, AddVerifierParams, Allocation,
     AllocationID, AllocationRequest, AllocationRequests, AllocationsResponse, Claim,
     ClaimAllocationsParams, ClaimAllocationsReturn, ClaimExtensionRequest, ClaimID, DataCap,
     ExtendClaimTermsParams, ExtendClaimTermsReturn, GetClaimsParams, GetClaimsReturn, Method,
@@ -64,6 +64,7 @@ pub struct Harness {
 
 impl Harness {
     pub fn construct_and_verify(&self, rt: &mut MockRuntime, root_param: &Address) {
+        rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         let ret = rt
             .call::<VerifregActor>(
@@ -103,7 +104,7 @@ impl Harness {
         // Expect checking the verifier's token balance.
         rt.expect_send(
             DATACAP_TOKEN_ACTOR_ADDR,
-            ext::datacap::Method::BalanceOf as MethodNum,
+            ext::datacap::Method::Balance as MethodNum,
             IpldBlock::serialize_cbor(&verifier_resolved).unwrap(),
             TokenAmount::zero(),
             IpldBlock::serialize_cbor(&BigIntSer(&(cap * TOKEN_PRECISION))).unwrap(),
@@ -188,7 +189,7 @@ impl Harness {
             ExitCode::OK,
         );
 
-        let params = AddVerifierClientParams { address: *client, allowance: allowance.clone() };
+        let params = AddVerifiedClientParams { address: *client, allowance: allowance.clone() };
         let ret = rt.call::<VerifregActor>(
             Method::AddVerifiedClient as MethodNum,
             IpldBlock::serialize_cbor(&params).unwrap(),

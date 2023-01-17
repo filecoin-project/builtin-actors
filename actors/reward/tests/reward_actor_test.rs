@@ -330,6 +330,7 @@ fn construct_and_verify(curr_power: &StoragePower) -> MockRuntime {
         caller_type: *SYSTEM_ACTOR_CODE_ID,
         ..Default::default()
     };
+    rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
     let ret = rt
         .call::<RewardActor>(

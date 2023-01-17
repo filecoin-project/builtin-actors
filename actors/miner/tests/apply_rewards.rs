@@ -160,11 +160,12 @@ fn rewards_pay_back_fee_debt() {
     assert!(st.locked_funds.is_zero());
 
     let amt = rt.get_balance();
-    let available_before = st.get_available_balance(&amt).unwrap();
+    let available_before = h.get_available_balance(&mut rt).unwrap();
     assert!(available_before.is_positive());
     let init_fee_debt: TokenAmount = 2 * &amt; // FeeDebt twice total balance
     st.fee_debt = init_fee_debt.clone();
-    let available_after = st.get_available_balance(&amt).unwrap();
+    rt.replace_state(&st);
+    let available_after = h.get_available_balance(&mut rt).unwrap();
     assert!(available_after.is_negative());
 
     rt.replace_state(&st);
@@ -173,7 +174,7 @@ fn rewards_pay_back_fee_debt() {
     let penalty = TokenAmount::zero();
     // manually update actor balance to include the added funds from outside
     let new_balance = &amt + &reward;
-    rt.set_balance(new_balance.clone());
+    rt.set_balance(new_balance);
 
     // pledge change is new reward - reward taken for fee debt
     // 3*LockedRewardFactor*amt - 2*amt = remainingLocked
@@ -194,27 +195,17 @@ fn rewards_pay_back_fee_debt() {
     );
 
     let expect_burnt = st.fee_debt;
-    rt.expect_send(
-        BURNT_FUNDS_ACTOR_ADDR,
-        METHOD_SEND,
-        None,
-        expect_burnt.clone(),
-        None,
-        ExitCode::OK,
-    );
+    rt.expect_send(BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, None, expect_burnt, None, ExitCode::OK);
 
     let params = ApplyRewardParams { reward: reward.clone(), penalty };
     rt.call::<Actor>(Method::ApplyRewards as u64, IpldBlock::serialize_cbor(&params).unwrap())
         .unwrap();
     rt.verify();
 
-    // Set balance to deduct fee
-    let final_balance = &new_balance - &expect_burnt;
-
     let st = h.get_state(&rt);
     // balance funds used to pay off fee debt
     // available balance should be 2
-    let available_balance = st.get_available_balance(&final_balance).unwrap();
+    let available_balance = h.get_available_balance(&mut rt).unwrap();
     assert_eq!(available_before + reward - init_fee_debt - &remaining_locked, available_balance);
     assert!(!st.fee_debt.is_positive());
     // remaining funds locked in vesting table

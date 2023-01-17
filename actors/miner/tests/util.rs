@@ -22,14 +22,15 @@ use fil_actor_miner::{
     CronEventPayload, Deadline, DeadlineInfo, Deadlines, DeclareFaultsParams,
     DeclareFaultsRecoveredParams, DeferredCronEventParams, DisputeWindowedPoStParams,
     ExpirationQueue, ExpirationSet, ExtendSectorExpiration2Params, ExtendSectorExpirationParams,
-    FaultDeclaration, GetBeneficiaryReturn, GetControlAddressesReturn, Method,
-    MinerConstructorParams as ConstructorParams, MinerInfo, Partition, PendingBeneficiaryChange,
-    PoStPartition, PowerPair, PreCommitSectorBatchParams, PreCommitSectorBatchParams2,
-    PreCommitSectorParams, ProveCommitSectorParams, RecoveryDeclaration,
-    ReportConsensusFaultParams, SectorOnChainInfo, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
-    Sectors, State, SubmitWindowedPoStParams, TerminateSectorsParams, TerminationDeclaration,
-    VestingFunds, WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn,
-    CRON_EVENT_PROVING_DEADLINE, SECTORS_AMT_BITWIDTH,
+    FaultDeclaration, GetAvailableBalanceReturn, GetBeneficiaryReturn, GetControlAddressesReturn,
+    GetMultiaddrsReturn, GetPeerIDReturn, Method, MinerConstructorParams as ConstructorParams,
+    MinerInfo, Partition, PendingBeneficiaryChange, PoStPartition, PowerPair,
+    PreCommitSectorBatchParams, PreCommitSectorBatchParams2, PreCommitSectorParams,
+    ProveCommitSectorParams, RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo,
+    SectorPreCommitInfo, SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams,
+    TerminateSectorsParams, TerminationDeclaration, VestingFunds, WindowedPoSt,
+    WithdrawBalanceParams, WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE,
+    SECTORS_AMT_BITWIDTH,
 };
 use fil_actor_miner::{Method as MinerMethod, ProveCommitAggregateParams};
 use fil_actor_power::{
@@ -45,8 +46,8 @@ use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime, RuntimeP
 use fil_actors_runtime::{test_utils::*, BatchReturn, BatchReturnGen};
 use fil_actors_runtime::{
     ActorDowncast, ActorError, Array, DealWeight, MessageAccumulator, BURNT_FUNDS_ACTOR_ADDR,
-    CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
-    STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_amt::Amt;
 use fvm_shared::bigint::Zero;
@@ -290,10 +291,16 @@ impl ActorHarness {
         expect_empty(result);
         rt.verify();
 
-        let state = self.get_state(rt);
-        let info = state.get_info(&rt.store).unwrap();
+        rt.expect_validate_caller_any();
+        let ret: GetPeerIDReturn = rt
+            .call::<Actor>(Method::GetPeerIDExported as u64, None)
+            .unwrap()
+            .unwrap()
+            .deserialize()
+            .unwrap();
+        rt.verify();
 
-        assert_eq!(new_id, info.peer_id);
+        assert_eq!(new_id, ret.peer_id);
     }
 
     pub fn set_peer_id_fail(&self, rt: &mut MockRuntime, new_id: Vec<u8>) {
@@ -323,10 +330,16 @@ impl ActorHarness {
         expect_empty(result);
         rt.verify();
 
-        let state = self.get_state(rt);
-        let info = state.get_info(&rt.store).unwrap();
+        rt.expect_validate_caller_any();
+        let ret: GetMultiaddrsReturn = rt
+            .call::<Actor>(Method::GetMultiaddrsExported as u64, None)
+            .unwrap()
+            .unwrap()
+            .deserialize()
+            .unwrap();
+        rt.verify();
 
-        assert_eq!(new_multiaddrs, info.multi_address);
+        assert_eq!(new_multiaddrs, ret.multi_addrs);
     }
 
     pub fn set_multiaddr_fail(&self, rt: &mut MockRuntime, new_multiaddrs: Vec<BytesDe>) {
@@ -870,6 +883,7 @@ impl ActorHarness {
         pc: &SectorPreCommitOnChainInfo,
         params: ProveCommitSectorParams,
     ) -> Result<(), ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         let seal_rand = TEST_RANDOMNESS_ARRAY_FROM_ONE;
         let seal_int_rand = TEST_RANDOMNESS_ARRAY_FROM_TWO;
         let interactive_epoch = pc.pre_commit_epoch + rt.policy.pre_commit_challenge_delay;
@@ -1443,7 +1457,7 @@ impl ActorHarness {
         expect_success: Option<PoStDisputeResult>,
     ) {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
-        rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+        rt.expect_validate_caller_any();
 
         self.expect_query_network_info(rt);
 
@@ -1876,7 +1890,7 @@ impl ActorHarness {
         from: Address,
         fault: Option<ConsensusFault>,
     ) -> Result<(), ActorError> {
-        rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+        rt.expect_validate_caller_any();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, from);
         let params =
             ReportConsensusFaultParams { header1: vec![], header2: vec![], header_extra: vec![] };
@@ -2074,10 +2088,16 @@ impl ActorHarness {
             .unwrap();
         rt.verify();
 
-        let state: State = rt.get_state();
-        let info = state.get_info(rt.store()).unwrap();
+        rt.expect_validate_caller_any();
+        let ret: GetPeerIDReturn = rt
+            .call::<Actor>(Method::GetPeerIDExported as u64, None)
+            .unwrap()
+            .unwrap()
+            .deserialize()
+            .unwrap();
+        rt.verify();
 
-        assert_eq!(new_id, info.peer_id);
+        assert_eq!(new_id, ret.peer_id);
     }
 
     pub fn repay_debts(
@@ -2238,10 +2258,10 @@ impl ActorHarness {
         ret
     }
 
-    pub fn confirm_update_worker_key(&self, rt: &mut MockRuntime) -> Result<(), ActorError> {
+    pub fn confirm_change_worker_address(&self, rt: &mut MockRuntime) -> Result<(), ActorError> {
         rt.expect_validate_caller_addr(vec![self.owner]);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.owner);
-        rt.call::<Actor>(Method::ConfirmUpdateWorkerKey as u64, None)?;
+        rt.call::<Actor>(Method::ConfirmChangeWorkerAddress as u64, None)?;
         rt.verify();
 
         Ok(())
@@ -2531,6 +2551,18 @@ impl ActorHarness {
             rt.reset();
         }
         ret
+    }
+
+    pub fn get_available_balance(&self, rt: &mut MockRuntime) -> Result<TokenAmount, ActorError> {
+        // set caller to non-builtin
+        rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1234));
+        rt.expect_validate_caller_any();
+        let available_balance_ret: GetAvailableBalanceReturn = rt
+            .call::<Actor>(Method::GetAvailableBalanceExported as u64, None)?
+            .unwrap()
+            .deserialize()?;
+        rt.verify();
+        Ok(available_balance_ret.available_balance)
     }
 }
 
