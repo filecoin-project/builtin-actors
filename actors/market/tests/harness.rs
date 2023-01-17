@@ -441,7 +441,7 @@ pub fn publish_deals(
     let st: State = rt.get_state();
     let next_deal_id = st.next_id;
     rt.expect_validate_caller_any();
-    let return_value = GetControlAddressesReturnParams {
+    let _return_value = GetControlAddressesReturnParams {
         owner: addrs.owner,
         worker: addrs.worker,
         control_addresses: addrs.control.clone(),
