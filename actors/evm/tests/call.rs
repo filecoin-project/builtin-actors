@@ -399,7 +399,8 @@ fn test_native_call() {
 }
 
 #[allow(dead_code)]
-pub fn callactor_proxy_contract() -> Vec<u8> {
+/// call_actor precompile in assembly
+pub fn callactor_proxy_assembly() -> Vec<u8> {
     let init = "";
     let body = r#"
 # get call payload size
@@ -485,7 +486,7 @@ fn test_callactor_restrict() {
 }
 
 fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_input: bool) {
-    let contract = callactor_proxy_contract();
+    let contract = callactor_proxy_assembly();
 
     const CALLACTOR_NUM_PARAMS: usize = 8;
 
