@@ -398,57 +398,6 @@ fn test_native_call() {
     assert_eq!(err.data(), &b"foobar"[..]);
 }
 
-#[allow(dead_code)]
-pub fn callactor_proxy_contract() -> Vec<u8> {
-    let init = "";
-    let body = r#"
-# get call payload size
-calldatasize
-# store payload to mem 0x00
-push1 0x00
-push1 0x00
-calldatacopy
-
-# prepare the proxy call
-
-# out size
-# out off
-push1 0x20
-push1 0xa0
-
-# in size
-# in off
-calldatasize
-push1 0x00
-
-# dst (callactor precompile)
-push20 0xfe00000000000000000000000000000000000003
-
-# gas
-push4 0xffffffff
-
-# call_actor must be from delegatecall
-delegatecall
-
-# write exit code memory
-push1 0x00 # offset
-mstore8
-
-returndatasize
-push1 0x00 # offset
-push1 0x01 # dest offset (we have already written the exit code of the call)
-returndatacopy
-
-returndatasize
-push1 0x01 # (add 1 to the returndatasize to accommodate for the exitcode)
-add
-push1 0x00
-return
-"#;
-
-    asm::new_contract("callactor-proxy", init, body).unwrap()
-}
-
 #[test]
 fn test_callactor_success() {
     // Should work if the called actor succeeds.
@@ -485,7 +434,10 @@ fn test_callactor_restrict() {
 }
 
 fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_input: bool) {
-    let contract = callactor_proxy_contract();
+    let contract = {
+        let (init, body) = util::PrecompileTest::test_runner_assembly();
+        asm::new_contract("call_actor-precompile-test", &init, &body).unwrap()
+    };
 
     const CALLACTOR_NUM_PARAMS: usize = 8;
 
@@ -534,9 +486,9 @@ fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_i
     // expected return data
     // Test with a codec _other_ than DAG_CBOR, to make sure we are actually passing the returned codec
     let some_codec = 0x42;
-    let send_return = IpldBlock { codec: some_codec, data: vec![0xde, 0xad, 0xbe, 0xef] };
+    let data = vec![0xde, 0xad, 0xbe, 0xef];
+    let send_return = IpldBlock { codec: some_codec, data };
 
-    rt.expect_gas_available(10_000_000_000u64);
     if valid_call_input {
         // We only get to the send_generalized if the call params were valid
         rt.expect_send_generalized(
@@ -544,91 +496,70 @@ fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_i
             method_num,
             make_raw_params(proxy_call_input_data),
             TokenAmount::zero(),
-            Some(0xffffffff),
+            Some(0),
             send_flags,
             Some(send_return.clone()),
             exit_code,
         );
     }
 
-    /// ensures top bits are zeroed
-    fn assert_zero_bytes<const S: usize>(src: &[u8]) {
-        assert_eq!(src[..S], [0u8; S]);
-    }
+    // output bytes are padded to nearest 32 byte
+    let mut v = vec![0; 32];
+    v[..4].copy_from_slice(&send_return.data);
+
+    let expect = CallActorReturn {
+        exit_code,
+        codec: send_return.codec,
+        data_offset: 96,
+        data_size: send_return.data.len() as u32,
+        data: v,
+    };
+
+    let (expected_exit, expected_out) = if valid_call_input {
+        (util::PrecompileExit::Success, expect.into_vec())
+    } else {
+        (util::PrecompileExit::Reverted, vec![])
+    };
+
+    let test = util::PrecompileTest {
+        expected_exit_code: expected_exit,
+        precompile_address: util::NativePrecompile::CallActor.eth_address(),
+        output_size: 32,
+        gas_avaliable: 10_000_000_000u64,
+        expected_return: expected_out,
+        call_op: util::PrecompileCallOpcode::DelegateCall,
+        input: contract_params,
+    };
 
     // invoke
+    test.run_test(&mut rt);
+}
 
-    let mut result = util::invoke_contract(&mut rt, &contract_params);
-    rt.verify();
-    rt.reset();
+#[derive(Debug, PartialEq, Eq)]
+struct CallActorReturn {
+    exit_code: ExitCode,
+    codec: u64,
+    data_offset: u32,
+    data_size: u32,
+    data: Vec<u8>,
+}
 
-    let call_result = result.remove(0);
-    if !valid_call_input {
-        // 0 is failure
-        assert_eq!(call_result, 0);
-    } else {
-        // 1 is success
-        assert_eq!(call_result, 1);
+impl CallActorReturn {
+    fn into_vec(self) -> Vec<u8> {
+        assert_eq!(self.data.len() % 32, 0);
 
-        // if call succeeded, we should have a return that we assert over
+        let exit = U256::from(self.exit_code.value());
+        let codec = U256::from(self.codec);
+        let data_offset = U256::from(self.data_offset);
+        let data_size = U256::from(self.data_size);
 
-        #[derive(Debug, PartialEq, Eq)]
-        struct CallActorReturn {
-            exit_code: ExitCode,
-            codec: u64,
-            data_offset: u32,
-            data_size: u32,
-            data: Vec<u8>,
-        }
-
-        impl CallActorReturn {
-            pub fn read(src: &[u8]) -> Self {
-                assert!(
-                    src.len() >= 4 * 32,
-                    "expected to read at least 4 U256 values, got {:?}",
-                    src
-                );
-
-                let bytes = &src[..32];
-                let exit_code = {
-                    assert_zero_bytes::<4>(bytes);
-                    ExitCode::new(u32::from_be_bytes(bytes[28..32].try_into().unwrap()))
-                };
-
-                let bytes = &src[32..64];
-                let codec = {
-                    assert_zero_bytes::<8>(bytes);
-                    u64::from_be_bytes(bytes[24..32].try_into().unwrap())
-                };
-
-                let bytes = &src[64..96];
-                let offset = {
-                    assert_zero_bytes::<4>(bytes);
-                    u32::from_be_bytes(bytes[28..32].try_into().unwrap())
-                };
-
-                let bytes = &src[96..128];
-                let size = {
-                    assert_zero_bytes::<4>(bytes);
-                    u32::from_be_bytes(bytes[28..32].try_into().unwrap())
-                };
-
-                let data = Vec::from(&src[128..128 + size as usize]);
-
-                Self { exit_code, codec, data_offset: offset, data_size: size, data }
-            }
-        }
-
-        let result = CallActorReturn::read(&result);
-        let expected = CallActorReturn {
-            exit_code,
-            codec: send_return.clone().codec,
-            data_offset: 96,
-            data_size: send_return.clone().data.len() as u32,
-            data: send_return.data,
-        };
-
-        assert_eq!(result, expected);
+        let mut out = [exit, codec, data_offset, data_size]
+            .iter()
+            .map(|p| p.to_bytes().to_vec())
+            .collect::<Vec<Vec<u8>>>()
+            .concat();
+        out.extend_from_slice(&self.data);
+        out
     }
 }
 
@@ -645,7 +576,7 @@ fn call_actor_solidity() {
     let contract_hex = include_str!("contracts/CallActorPrecompile.hex");
     // let mut contract_rt = new_call_actor_contract();
     let contract_address = EthAddress(util::CONTRACT_ADDRESS);
-    let mut tester = ContractTester::new(contract_address, contract_hex);
+    let mut tester = ContractTester::new(contract_address, 111, contract_hex);
 
     // call_actor_id
     {
@@ -722,7 +653,7 @@ pub(crate) struct ContractTester {
 }
 
 impl ContractTester {
-    fn new(addr: EthAddress, contract_hex: &str) -> Self {
+    fn new(addr: EthAddress, id: u64, contract_hex: &str) -> Self {
         init_logging().ok();
 
         let mut rt = MockRuntime::default();
@@ -730,6 +661,8 @@ impl ContractTester {
             creator: EthAddress::from_id(EAM_ACTOR_ID),
             initcode: hex::decode(contract_hex).unwrap().into(),
         };
+        rt.add_id_address(addr.try_into().unwrap(), FILAddress::new_id(id));
+
         // invoke constructor
         rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
@@ -755,7 +688,7 @@ impl ContractTester {
     }
 
     fn call<Returns: Detokenize>(&mut self, call: TestContractCall<Returns>) -> Returns {
-        let input = call.calldata().expect("Should have calldata.");
+        let input = call.calldata().expect("Should have calldata.").to_vec();
         let input =
             IpldBlock::serialize_cbor(&BytesSer(&input)).expect("failed to serialize input data");
 
