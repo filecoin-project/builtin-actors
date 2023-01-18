@@ -1159,7 +1159,7 @@ pub fn market_publish_deal(
 
         expect_publish_invocs.push(ExpectInvocation {
             to: DATACAP_TOKEN_ACTOR_ADDR,
-            method: DataCapMethod::BalanceOf as u64,
+            method: DataCapMethod::BalanceExported as u64,
             params: Some(IpldBlock::serialize_cbor(&deal_client).unwrap()),
             code: Some(ExitCode::OK),
             ..Default::default()
