@@ -540,11 +540,7 @@ fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_i
 
     let (expected_exit, expected_out) = if valid_call_input {
         (util::PrecompileExit::Success, expect.into_vec())
-    let (expected_exit, expected_out) = if valid_call_input {
-        (util::PrecompileExit::Success, expect.into_vec())
     } else {
-        (util::PrecompileExit::Reverted, vec![])
-    };
         (util::PrecompileExit::Reverted, vec![])
     };
 
