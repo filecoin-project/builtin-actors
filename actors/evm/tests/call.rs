@@ -899,25 +899,6 @@ impl From<CallActorReturn> for Vec<u8> {
     }
 }
 
-impl CallActorReturn {
-    fn into_vec(self) -> Vec<u8> {
-        assert_eq!(self.data.len() % 32, 0);
-
-        let exit = U256::from(self.exit_code.value());
-        let codec = U256::from(self.codec);
-        let data_offset = U256::from(self.data_offset);
-        let data_size = U256::from(self.data_size);
-
-        let mut out = [exit, codec, data_offset, data_size]
-            .iter()
-            .map(|p| p.to_bytes().to_vec())
-            .collect::<Vec<Vec<u8>>>()
-            .concat();
-        out.extend_from_slice(&self.data);
-        out
-    }
-}
-
 fn make_raw_params(bytes: Vec<u8>) -> Option<IpldBlock> {
     if bytes.is_empty() {
         return None;
