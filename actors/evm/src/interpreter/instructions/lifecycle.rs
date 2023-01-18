@@ -33,6 +33,7 @@ pub struct CreateParams {
 pub struct Create2Params {
     #[serde(with = "strict_bytes")]
     pub code: Vec<u8>,
+    #[serde(with = "strict_bytes")]
     pub salt: [u8; 32],
 }
 
