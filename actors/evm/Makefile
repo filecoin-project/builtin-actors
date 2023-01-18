@@ -21,7 +21,7 @@ test-contracts: $(TEST_CONTRACTS_HEX)
 $(TEST_CONTRACTS_DIR)/%.hex: $(TEST_CONTRACTS_DIR)/%.sol | solc
 	@# Generate the .hex file which is the same as the .bin, but .bin would be renamed by solc to use CamelCase.
 	@# We could use just the .bin files in the test, but this is a way to stick to the existing pattern.
-	solc --bin $< | tail -n +4 | tr -d '\n' > $@
+	solc --bin $< | sed '4q;d' | tr -d '\n' > $@
 	solc --bin --abi --storage-layout --hashes --overwrite $< -o $(TEST_CONTRACTS_DIR)
 
 

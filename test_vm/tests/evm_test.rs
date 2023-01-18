@@ -19,8 +19,10 @@ use test_vm::{
     TEST_FAUCET_ADDR, VM,
 };
 
-// Generate a statically typed interface for the contract.
+// Generate a statically typed interface for the contracts.
 abigen!(Recursive, "../actors/evm/tests/contracts/Recursive.abi");
+abigen!(Factory, "../actors/evm/tests/contracts/Factory.abi");
+abigen!(FactoryChild, "../actors/evm/tests/contracts/FactoryChild.abi");
 
 fn id_to_eth(id: ActorID) -> EthAddress {
     let mut addr = [0u8; 20];
@@ -34,7 +36,7 @@ fn id_to_eth(id: ActorID) -> EthAddress {
 struct ContractParams(#[serde(with = "strict_bytes")] pub Vec<u8>);
 
 #[test]
-fn test_evm_lifecycle() {
+fn test_evm_call() {
     let store = MemoryBlockstore::new();
     let v = VM::new_with_singletons(&store);
 
@@ -83,6 +85,91 @@ fn test_evm_lifecycle() {
         .decode_output(&contract.enter().function.name, &return_value)
         .expect("failed to decode return");
     assert_eq!(0, evm_ret, "expected contract to return 0 on success");
+}
+
+#[test]
+fn test_evm_create() {
+    let store = MemoryBlockstore::new();
+    let v = VM::new_with_singletons(&store);
+
+    let account = create_accounts(&v, 1, TokenAmount::from_whole(10_000))[0];
+
+    let address = id_to_eth(account.id().unwrap());
+    let (client, _mock) = Provider::mocked();
+    let client = Arc::new(client);
+    let factory = Factory::new(address, client.clone());
+    let factory_child = FactoryChild::new(address, client);
+
+    let bytecode =
+        hex::decode(include_str!("../../actors/evm/tests/contracts/Lifecycle.hex")).unwrap();
+
+    let create_result = v
+        .apply_message(
+            account,
+            EAM_ACTOR_ADDR,
+            TokenAmount::zero(),
+            fil_actor_eam::Method::CreateExternal as u64,
+            Some(fil_actor_eam::CreateExternalParams(bytecode)),
+        )
+        .unwrap();
+
+    assert!(
+        create_result.code.is_success(),
+        "failed to create the new actor {}",
+        create_result.message
+    );
+
+    let create_return: fil_actor_eam::CreateExternalReturn =
+        create_result.ret.unwrap().deserialize().expect("failed to decode results");
+
+    let child_addr: EthAddress = {
+        let func = factory.create_2([0; 32], 42);
+        let call_params = func.calldata().expect("should serialize");
+        let call_result = v
+            .apply_message(
+                account,
+                create_return.robust_address.unwrap(),
+                TokenAmount::zero(),
+                fil_actor_evm::Method::InvokeContract as u64,
+                Some(ContractParams(call_params.to_vec())),
+            )
+            .unwrap();
+        assert!(
+            call_result.code.is_success(),
+            "failed to call the new actor {}",
+            call_result.message
+        );
+        let BytesDe(return_value) =
+            call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
+        factory.decode_output(&func.function.name, &return_value).expect("failed to decode return")
+    };
+
+    let child_addr = Address::new_delegated(EAM_ACTOR_ID, &child_addr.0[..]).unwrap();
+
+    {
+        let func = factory_child.get_value();
+        let call_params = func.calldata().expect("should serialize");
+        let call_result = v
+            .apply_message(
+                account,
+                child_addr,
+                TokenAmount::zero(),
+                fil_actor_evm::Method::InvokeContract as u64,
+                Some(ContractParams(call_params.to_vec())),
+            )
+            .unwrap();
+        assert!(
+            call_result.code.is_success(),
+            "failed to call the new actor {}",
+            call_result.message
+        );
+        let BytesDe(return_value) =
+            call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
+        let res: u32 = factory_child
+            .decode_output(&func.function.name, &return_value)
+            .expect("failed to decode return");
+        assert_eq!(res, 42);
+    };
 }
 
 #[test]
