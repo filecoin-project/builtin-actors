@@ -466,6 +466,21 @@ fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_i
     let data_off = U256::from(6 * 32);
     let target_off = data_off + 32 + data_size;
 
+    // a bit messy but a "test" for CallActorParams
+    let params: Vec<u8> = CallActorParams {
+        method: method_num,
+        value: U256::from(0),
+        flags: SendFlags::empty(),
+        codec: 0,
+        param_offset: data_off.as_u32(),
+        addr_offset: target_off.as_u32(),
+        param_len: data_size.as_u32(),
+        params: proxy_call_input_data.clone(),
+        addr_len: target_size.as_u32(),
+        addr: target_bytes.clone(),
+    }
+    .into();
+
     contract_params.extend_from_slice(&method.to_bytes());
     contract_params.extend_from_slice(&value.to_bytes());
     contract_params.extend_from_slice(&U256::from(send_flags.bits()).to_bytes());
@@ -476,6 +491,14 @@ fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_i
     contract_params.extend_from_slice(&proxy_call_input_data);
     contract_params.extend_from_slice(&target_size.to_bytes());
     contract_params.extend_from_slice(&target_bytes);
+
+    assert_eq!(
+        params,
+        contract_params,
+        "{}\n{}",
+        hex::encode(&params),
+        hex::encode(&contract_params)
+    );
 
     assert_eq!(
         32 * CALLACTOR_NUM_PARAMS + target_bytes.len() + proxy_call_input_data.len(),
@@ -535,6 +558,118 @@ fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_i
     test.run_test(&mut rt);
 }
 
+#[test]
+fn call_actor_weird_offset() {
+    let contract = {
+        let (init, body) = util::PrecompileTest::test_runner_assembly();
+        asm::new_contract("call_actor-precompile-test", &init, &body).unwrap()
+    };
+    let mut rt = util::construct_and_verify(contract);
+
+    let addr = Address::new_delegated(1234, b"foobarboxy").unwrap();
+    let addr_bytes = addr.to_bytes();
+    let params = CallActorParams {
+        method: 0,
+        value: U256::from(0),
+        flags: SendFlags::empty(),
+        codec: 0,
+        param_offset: 200,
+        addr_offset: 300,
+        param_len: 0,
+        params: vec![],
+        addr_len: addr_bytes.len() as u32,
+        addr: addr_bytes,
+    };
+
+    let input: Vec<u8> = params.into();
+
+    let mut test = util::PrecompileTest {
+        expected_exit_code: util::PrecompileExit::Success,
+        precompile_address: util::NativePrecompile::CallActor.eth_address(),
+        output_size: 32,
+        gas_avaliable: 10_000_000_000u64,
+        expected_return: vec![],
+        call_op: util::PrecompileCallOpcode::DelegateCall,
+        input,
+    };
+
+    rt.expect_send_generalized(
+        addr,
+        0,
+        None,
+        TokenAmount::zero(),
+        Some(0),
+        SendFlags::empty(),
+        None,
+        ExitCode::OK,
+    );
+
+    let precompile_return = CallActorReturn::default();
+
+    test.run_test_expecting(&mut rt, precompile_return, util::PrecompileExit::Success);
+}
+
+#[derive(Debug)]
+struct CallActorParams {
+    method: MethodNum,
+    value: U256,
+    flags: SendFlags,
+    codec: u64,
+    param_offset: u32,
+    addr_offset: u32,
+    param_len: u32,
+    params: Vec<u8>,
+    addr_len: u32,
+    addr: Vec<u8>,
+}
+
+impl From<CallActorParams> for Vec<u8> {
+    fn from(src: CallActorParams) -> Self {
+        let method = U256::from(src.method);
+        let value = src.value;
+        let flags = U256::from(src.flags.bits());
+        let codec = U256::from(src.codec);
+        let param_offset = U256::from(src.param_offset);
+        let data_offset = U256::from(src.addr_offset);
+
+        let mut out = [method, value, flags, codec, param_offset, data_offset]
+            .iter()
+            .map(|p| p.to_bytes().to_vec())
+            .collect::<Vec<Vec<u8>>>()
+            .concat();
+
+        assert!(src.param_offset >= out.len() as u32);
+        assert!(src.addr_offset >= src.param_offset + src.param_len);
+
+        let addr_len_offset = src.addr_offset as usize;
+        let addr_begin = (addr_len_offset + 32) as usize;
+        let addr_end = addr_begin + src.addr_len as usize;
+
+        let param_len_offset = src.param_offset as usize;
+        let param_begin = (param_len_offset + 32) as usize;
+        let param_end = param_begin + src.param_len as usize;
+
+        out.resize_with(addr_end, || 0);
+
+        let param_len = U256::from(src.param_len).to_bytes();
+        let addr_len = U256::from(src.addr_len).to_bytes();
+
+        out[param_len_offset as usize..param_len_offset + 32].copy_from_slice(&param_len);
+        out[addr_len_offset as usize..addr_len_offset + 32].copy_from_slice(&addr_len);
+
+        out[param_begin..param_end].copy_from_slice(&src.params);
+        out[addr_begin..addr_end].copy_from_slice(&src.addr);
+
+        out
+    }
+}
+
+impl Default for CallActorReturn {
+    fn default() -> Self {
+        Self { exit_code: ExitCode::OK, codec: 0, data_offset: 3 * 32, data_size: 0, data: vec![] }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 struct CallActorReturn {
     exit_code: ExitCode,
@@ -542,6 +677,25 @@ struct CallActorReturn {
     data_offset: u32,
     data_size: u32,
     data: Vec<u8>,
+}
+
+impl From<CallActorReturn> for Vec<u8> {
+    fn from(src: CallActorReturn) -> Self {
+        let exit_code = U256::from(src.exit_code.value());
+        let codec = U256::from(src.codec);
+        let offset = U256::from(src.data_offset);
+        let len = U256::from(src.data_size);
+
+        let mut out = [exit_code, codec, offset, len]
+            .iter()
+            .map(|p| p.to_bytes().to_vec())
+            .collect::<Vec<Vec<u8>>>()
+            .concat();
+
+        assert_eq!(src.data.len(), src.data_size as usize);
+        out.extend_from_slice(&src.data);
+        out
+    }
 }
 
 impl CallActorReturn {
@@ -644,6 +798,49 @@ fn call_actor_solidity() {
         assert_eq!(exit, I256::from(0));
         assert_eq!(codec, 0);
         assert_eq!(&ret_val, &expected_return, "got {}", hex::encode(&ret_val));
+    }
+}
+
+#[test]
+fn call_actor_send_solidity() {
+    // solidity
+    let contract_hex = include_str!("contracts/CallActorPrecompile.hex");
+    // let mut contract_rt = new_call_actor_contract();
+    let contract_address = EthAddress(util::CONTRACT_ADDRESS);
+    let mut tester = ContractTester::new(contract_address, 111, contract_hex);
+
+    // send 1 atto Fil (this should be a full integration tests rly)
+    {
+        let params =
+            CONTRACT.call_actor_id(0, ethers::types::U256::from(1), 0, 0, Bytes::default(), 101);
+
+        tester.rt.add_id_address(
+            Address::new_delegated(12345, b"foobarboxy").unwrap(),
+            Address::new_id(101),
+        );
+
+        tester.rt.add_balance(TokenAmount::from_atto(100));
+
+        let expected_return = vec![0xff, 0xfe];
+        tester.rt.expect_send_generalized(
+            Address::new_id(101),
+            0,
+            None,
+            TokenAmount::from_atto(1),
+            Some(9843750),
+            SendFlags::empty(),
+            Some(IpldBlock { codec: 0, data: expected_return.clone() }),
+            ExitCode::OK,
+        );
+
+        let (success, exit, codec, ret_val): (bool, ethers::types::I256, u64, Bytes) =
+            tester.call(params);
+
+        assert!(success);
+        assert_eq!(exit, I256::from(0));
+        assert_eq!(codec, 0);
+        assert_eq!(&ret_val, &expected_return, "got {}", hex::encode(&ret_val));
+        assert_eq!(tester.rt.get_balance(), TokenAmount::from_atto(99));
     }
 }
 
