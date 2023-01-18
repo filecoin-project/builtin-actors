@@ -1,11 +1,18 @@
-use fvm_shared::address::Payload;
+pub mod types;
+
+use fvm_actor_utils::receiver::UniversalReceiverParams;
+use fvm_shared::address::{Payload, Protocol};
+use fvm_shared::crypto::hash::SupportedHashes::Keccak256;
+use fvm_shared::error::ExitCode;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
 use num_traits::FromPrimitive;
 
+use crate::types::AuthenticateMessageParams;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, restrict_internal_api, ActorError, EAM_ACTOR_ID, SYSTEM_ACTOR_ADDR,
+    actor_dispatch, actor_error, restrict_internal_api, ActorDowncast, ActorError, AsActorError,
+    EAM_ACTOR_ID, SYSTEM_ACTOR_ADDR,
 };
 
 #[cfg(feature = "fil-actor")]
@@ -16,6 +23,8 @@ fil_actors_runtime::wasm_trampoline!(EthAccountActor);
 #[repr(u64)]
 pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
+    AuthenticateMessageExported = frc42_dispatch::method_hash!("AuthenticateMessage"),
+    UniversalReceiverHook = frc42_dispatch::method_hash!("Receive"),
 }
 
 /// Ethereum Account actor.
@@ -46,67 +55,93 @@ impl EthAccountActor {
 
         Ok(())
     }
+
+    /// Authenticates whether the provided signature is valid for the provided message.
+    /// Should be called with the raw bytes of a signature, NOT a serialized Signature object that includes a SignatureType.
+    /// Errors with USR_ILLEGAL_ARGUMENT if the authentication is invalid.
+    pub fn authenticate_message(
+        rt: &mut impl Runtime,
+        params: AuthenticateMessageParams,
+    ) -> Result<(), ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let msg_hash = rt.hash_blake2b(&params.message);
+
+        let signer_pk = rt
+            .recover_secp_public_key(
+                &msg_hash,
+                params
+                    .signature
+                    .as_slice()
+                    .try_into()
+                    .map_err(|_| actor_error!(illegal_argument; "invalid signature length"))?,
+            )
+            .map_err(|e| {
+                e.downcast_default(
+                    ExitCode::USR_ILLEGAL_ARGUMENT,
+                    "failed to recover signer public key",
+                )
+            })?;
+
+        // 0x04 to indicate uncompressed point
+        if signer_pk[0] != 0x04 {
+            return Err(actor_error!(assertion_failed; "pubkey should start with 0x04, not {}",
+                signer_pk[0]));
+        }
+
+        // The subaddress is the last 20 bytes of the keccak hash of the public key
+        let signer_pk_hash = rt.hash(Keccak256, &signer_pk[1..]);
+        if signer_pk_hash.len() < 20 {
+            return Err(
+                actor_error!(assertion_failed; "invalid keccak hash length {}", signer_pk_hash.len()),
+            );
+        }
+
+        let signer_subaddress_bytes = &signer_pk_hash[signer_pk_hash.len() - 20..];
+
+        let self_address = rt
+            .lookup_delegated_address(
+                rt.message().receiver().id().expect("receiver must be ID address"),
+            )
+            .context_code(
+                ExitCode::USR_ILLEGAL_STATE,
+                "ethaccount should always have delegated address",
+            )?;
+
+        let self_address_bytes = self_address.to_bytes();
+        if self_address_bytes[0] != Protocol::Delegated as u8
+            || self_address_bytes[1] != EAM_ACTOR_ID as u8
+        {
+            return Err(actor_error!(illegal_state;
+                    "first 2 bytes of f4 address payload weren't Delegated protocol {} and EAM address {}",
+                    self_address_bytes[0],
+                    self_address_bytes[1]));
+        }
+
+        // drop the first 2 bytes (protocol and EAM namespace)
+        let self_subaddress_bytes = &self_address_bytes[2..];
+
+        if self_subaddress_bytes != signer_subaddress_bytes {
+            return Err(actor_error!(illegal_argument; "invalid signature for {}", self_address));
+        }
+
+        Ok(())
+    }
+
+    // Always succeeds, accepting any transfers.
+    pub fn universal_receiver_hook(
+        rt: &mut impl Runtime,
+        _params: UniversalReceiverParams,
+    ) -> Result<(), ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        Ok(())
+    }
 }
 
 impl ActorCode for EthAccountActor {
     type Methods = Method;
     actor_dispatch! {
         Constructor => constructor,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use fil_actors_runtime::EAM_ACTOR_ID;
-    use fvm_shared::address::Address;
-    use fvm_shared::error::ExitCode;
-    use fvm_shared::MethodNum;
-
-    use fil_actors_runtime::test_utils::{
-        expect_abort_contains_message, MockRuntime, SYSTEM_ACTOR_CODE_ID,
-    };
-    use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
-
-    use crate::{EthAccountActor, Method};
-
-    const EOA: Address = Address::new_id(1000);
-
-    pub fn new_runtime() -> MockRuntime {
-        MockRuntime {
-            receiver: EOA,
-            caller: SYSTEM_ACTOR_ADDR,
-            caller_type: *SYSTEM_ACTOR_CODE_ID,
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn construct_from_system() {
-        let mut rt = new_runtime();
-        rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
-        rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
-        rt.add_delegated_address(
-            EOA,
-            Address::new_delegated(
-                EAM_ACTOR_ID,
-                &hex_literal::hex!("FEEDFACECAFEBEEF000000000000000000000000"),
-            )
-            .unwrap(),
-        );
-        rt.call::<EthAccountActor>(Method::Constructor as MethodNum, None).unwrap();
-        rt.verify();
-    }
-
-    #[test]
-    fn no_delegated_cant_deploy() {
-        let mut rt = new_runtime();
-        rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
-        rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
-        expect_abort_contains_message(
-            ExitCode::USR_ILLEGAL_ARGUMENT,
-            "receiver must have a predictable address",
-            rt.call::<EthAccountActor>(Method::Constructor as MethodNum, None),
-        );
-        rt.verify();
+        AuthenticateMessageExported => authenticate_message,
+        UniversalReceiverHook => universal_receiver_hook,
     }
 }
