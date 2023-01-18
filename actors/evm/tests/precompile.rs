@@ -343,6 +343,30 @@ fn test_precompile_transfer() {
 }
 
 #[test]
+fn test_precompile_transfer_nothing() {
+    let (init, body) = util::PrecompileTest::test_runner_assembly();
+
+    let mut rt =
+        util::construct_and_verify(asm::new_contract("precompile-tester", &init, &body).unwrap());
+    rt.set_balance(TokenAmount::from_atto(100));
+    // test invalid precompile address
+    for (prefix, index) in [(0x00, 0xff), (0xfe, 0xff), (0xfe, 0xef)] {
+        let addr = util::precompile_address(prefix, index);
+        let test = PrecompileTest {
+            precompile_address: addr,
+            output_size: 32,
+            expected_exit_code: PrecompileExit::Success,
+            gas_avaliable: 10_000_000_000,
+            call_op: util::PrecompileCallOpcode::Call(0),
+            input: vec![0xff; 32],
+            expected_return: vec![],
+        };
+        test.run_test(&mut rt);
+    }
+    assert_eq!(rt.get_balance(), TokenAmount::from_atto(100));
+}
+
+#[test]
 fn test_precompile_failure() {
     // TODO: refactor these to be more clear
 
