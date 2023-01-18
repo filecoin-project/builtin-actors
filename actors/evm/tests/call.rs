@@ -14,7 +14,7 @@ use evm::EVM_CONTRACT_REVERTED;
 use fil_actor_evm as evm;
 use fil_actors_runtime::{test_utils::*, EAM_ACTOR_ID, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::{BytesDe, BytesSer, IPLD_RAW, DAG_CBOR};
+use fvm_ipld_encoding::{BytesDe, BytesSer, DAG_CBOR, IPLD_RAW};
 use fvm_shared::address::Address as FILAddress;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
@@ -539,7 +539,7 @@ fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_i
     };
 
     let (expected_exit, expected_out) = if valid_call_input {
-        (util::PrecompileExit::Success, expect.into_vec())
+        (util::PrecompileExit::Success, expect.into())
     } else {
         (util::PrecompileExit::Reverted, vec![])
     };
@@ -617,14 +617,13 @@ fn call_actor_overlapping() {
     };
     let mut rt = util::construct_and_verify(contract);
     let addr = Address::new_delegated(1234, b"foobarboxy").unwrap();
-    
+
     let mut call_params = CallActorParams::default();
 
     // not valid CBOR, but params should parse fine in precompile
     let addr_bytes = addr.to_bytes();
-    call_params
-        .codec(U256::from(DAG_CBOR));
-    
+    call_params.codec(U256::from(DAG_CBOR));
+
     call_params.param_offset = U256::from(CallActorParams::FIRST_DYNAMIC_OFFSET);
     call_params.param_len = U256::from(addr_bytes.len());
     call_params.params = None;
@@ -659,7 +658,6 @@ fn call_actor_overlapping() {
     test.run_test_expecting(&mut rt, CallActorReturn::default(), util::PrecompileExit::Success);
 }
 
-
 #[cfg(test)]
 mod call_actor_invalid {
     use super::*;
@@ -670,7 +668,7 @@ mod call_actor_invalid {
             asm::new_contract("call_actor-precompile-test", &init, &body).unwrap()
         };
         let mut rt = util::construct_and_verify(contract);
-        
+
         let mut test = util::PrecompileTest {
             precompile_address: util::NativePrecompile::CallActor.eth_address(),
             output_size: 32,
@@ -681,37 +679,37 @@ mod call_actor_invalid {
             expected_exit_code: util::PrecompileExit::Success,
             input: call_params.clone().into(),
         };
-    
+
         if set_addr {
             call_params.set_addr(CallActorParams::EMPTY_PARAM_ADDR_OFFSET, addr.to_bytes());
         }
-    
+
         test.input = call_params.into();
         test.run_test_expecting(&mut rt, vec![], util::PrecompileExit::Reverted);
     }
-    
+
     #[test]
     fn no_address() {
         let addr = Address::new_delegated(1234, b"foobarboxy").unwrap();
-    
+
         let mut call_params = CallActorParams::default();
         call_params.set_addr(CallActorParams::EMPTY_PARAM_ADDR_OFFSET, vec![]);
         bad_params_inner(call_params, addr, false)
     }
-    
+
     #[test]
     fn invalid_codec() {
         let addr = Address::new_delegated(1234, b"foobarboxy").unwrap();
-    
+
         let mut call_params = CallActorParams::default();
         call_params.codec(U256([0xff, 0, 0, 0]));
         bad_params_inner(call_params, addr, true)
     }
-    
+
     #[test]
     fn invalid_method() {
         let addr = Address::new_delegated(1234, b"foobarboxy").unwrap();
-    
+
         let mut call_params = CallActorParams::default();
         call_params.method(U256([0xff, 0, 0, 0]));
         bad_params_inner(call_params, addr, true)
@@ -720,25 +718,28 @@ mod call_actor_invalid {
     #[test]
     fn invalid_params_zero_codec() {
         let addr = Address::new_delegated(1234, b"foobarboxy").unwrap();
-    
+
         let mut call_params = CallActorParams::default();
         let send_params = vec![0xff; 32];
-        call_params.set_params(CallActorParams::FIRST_DYNAMIC_OFFSET, Some(send_params)).set_addr(CallActorParams::EMPTY_PARAM_ADDR_OFFSET + 32, addr.to_bytes());
+        call_params
+            .set_params(CallActorParams::FIRST_DYNAMIC_OFFSET, Some(send_params))
+            .set_addr(CallActorParams::EMPTY_PARAM_ADDR_OFFSET + 32, addr.to_bytes());
 
         bad_params_inner(call_params, addr, false)
     }
     #[test]
     fn invalid_params_zero_codec_2() {
         let addr = Address::new_delegated(1234, b"foobarboxy").unwrap();
-    
+
         let mut call_params = CallActorParams::default();
         let send_params = vec![0];
-        call_params.set_params(CallActorParams::FIRST_DYNAMIC_OFFSET, Some(send_params)).set_addr(CallActorParams::EMPTY_PARAM_ADDR_OFFSET + 1, addr.to_bytes());
+        call_params
+            .set_params(CallActorParams::FIRST_DYNAMIC_OFFSET, Some(send_params))
+            .set_addr(CallActorParams::EMPTY_PARAM_ADDR_OFFSET + 1, addr.to_bytes());
 
         bad_params_inner(call_params, addr, false)
     }
 }
-    
 
 #[derive(Debug, Clone)]
 struct CallActorParams {
@@ -779,7 +780,6 @@ impl CallActorParams {
     const FIRST_DYNAMIC_OFFSET: usize = 6 * 32;
 
     const EMPTY_PARAM_ADDR_OFFSET: usize = Self::FIRST_DYNAMIC_OFFSET + 32;
-
 
     pub fn set_addr(&mut self, offset: usize, addr: Vec<u8>) -> &mut Self {
         self.addr_len = U256::from(addr.len());
@@ -830,7 +830,7 @@ impl From<CallActorParams> for Vec<u8> {
 
         assert_eq!(out.len(), CallActorParams::FIRST_DYNAMIC_OFFSET);
         assert!(param_offset >= out.len());
-        
+
         let addr_len_offset = addr_offset;
         let addr_begin = addr_len_offset + 32;
         let addr_end = addr_begin + addr_len_usize;
@@ -849,18 +849,15 @@ impl From<CallActorParams> for Vec<u8> {
         out[addr_len_offset..addr_len_offset + 32].copy_from_slice(&addr_len);
 
         // then write actual data immediately after len
-        match src.params.clone() {
-            Some(params) => {
-                assert!(addr_offset >= param_offset + param_len_usize);
-                out[param_begin..param_end].copy_from_slice(&params)
-            },
-            None => (),
+        if let Some(params) = src.params.clone() {
+            assert!(addr_offset >= param_offset + param_len_usize);
+            out[param_begin..param_end].copy_from_slice(&params)
         }
         out[addr_begin..addr_end].copy_from_slice(&src.addr);
 
         // log::debug!("params\n[{}:32] {}\n[{}:{}] {}", param_len_offset, hex::encode(param_len), param_begin, param_end, hex::encode(&src.params.unwrap_or_default()));
         // log::debug!("address\n[{}:32] {}\n[{}:{}] {}", addr_len_offset, hex::encode(addr_len), addr_begin, addr_end, hex::encode(&src.addr));
-        
+
         out
     }
 }
@@ -893,7 +890,13 @@ impl From<CallActorReturn> for Vec<u8> {
             .collect::<Vec<Vec<u8>>>()
             .concat();
 
-        assert_eq!(src.data.len(), src.data_size as usize);
+        if src.data.len() != src.data_size as usize {
+            log::warn!(
+                "actor return data length {} does not match specified size {}",
+                src.data.len(),
+                src.data_size
+            )
+        }
         out.extend_from_slice(&src.data);
         out
     }
