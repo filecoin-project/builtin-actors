@@ -204,10 +204,7 @@ pub fn call_generic<RT: Runtime>(
         } else {
             let call_result = match kind {
                 CallKind::Call | CallKind::StaticCall => {
-                    let dst_addr: Address = dst.try_into().map_err(|_| ActorError::assertion_failed(
-                        "Reached a precompile address when a precompile should've been caught earlier in the system"
-                            .to_string(),
-                    ))?;
+                    let dst_addr: Address = dst.into();
 
                     // Special casing for account/placeholder/non-existent actors: we just do a SEND (method 0)
                     // which allows us to transfer funds (and create placeholders)
