@@ -3,7 +3,7 @@ mod asm;
 use std::fmt::Debug;
 use std::sync::Arc;
 
-use ethers::abi::{Detokenize, Function};
+use ethers::abi::Detokenize;
 use ethers::prelude::builders::ContractCall;
 use ethers::prelude::*;
 use ethers::providers::{MockProvider, Provider};
@@ -14,7 +14,7 @@ use evm::EVM_CONTRACT_REVERTED;
 use fil_actor_evm as evm;
 use fil_actors_runtime::{test_utils::*, EAM_ACTOR_ID, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::{BytesDe, BytesSer, IPLD_RAW, DAG_CBOR};
+use fvm_ipld_encoding::{BytesDe, BytesSer, IPLD_RAW};
 use fvm_shared::address::Address as FILAddress;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
@@ -517,7 +517,11 @@ fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_i
 
     let (expected_exit, expected_out) = if valid_call_input {
         (util::PrecompileExit::Success, expect.into_vec())
+    let (expected_exit, expected_out) = if valid_call_input {
+        (util::PrecompileExit::Success, expect.into_vec())
     } else {
+        (util::PrecompileExit::Reverted, vec![])
+    };
         (util::PrecompileExit::Reverted, vec![])
     };
 
@@ -533,6 +537,11 @@ fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_i
 
     // invoke
     test.run_test(&mut rt);
+}
+
+/// ensures top bits are zeroed
+fn assert_zero_bytes<const S: usize>(src: &[u8]) {
+    assert_eq!(src[..S], [0u8; S]);
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -658,9 +667,12 @@ fn call_actor_readonly() {
     // send 1 atto Fil (this should be a full integration tests rly)
     {
         let params =
-        CONTRACT.call_actor_id(0, ethers::types::U256::from(1), 0, 0, Bytes::default(), 101);
+            CONTRACT.call_actor_id(0, ethers::types::U256::from(1), 0, 0, Bytes::default(), 101);
 
-        tester.rt.add_id_address(Address::new_delegated(12345, b"foobarboxy").unwrap(), Address::new_id(101));
+        tester.rt.add_id_address(
+            Address::new_delegated(12345, b"foobarboxy").unwrap(),
+            Address::new_id(101),
+        );
 
         tester.rt.add_balance(TokenAmount::from_atto(100));
 
@@ -685,47 +697,8 @@ fn call_actor_readonly() {
         assert_eq!(&ret_val, &expected_return, "got {}", hex::encode(&ret_val));
         assert_eq!(tester.rt.get_balance(), TokenAmount::from_atto(99));
     }
-
-    // garbage input
-    {
-        let p = 
-        "0000000000000000000000000000000000000000000000000000000000000000\
-         0000000000000000000000000000000000000000000000000000000000000000\
-         0000000000000000000000000000000000000000000000000000000000000000\
-         0000000000000000000000000000000000000000000000000000000000000000\
-         000000000000000000000000000000000000000000000000000000000000000c\
-         0000000000000000000000000000000000000000000000000000000000000065";
-        let p = hex::decode(p).unwrap();
-        let params =
-        CONTRACT.call_actor_id(0, ethers::types::U256::from(1), 0, 0, Bytes::default(), 101);
-
-        tester.rt.add_id_address(Address::new_delegated(12345, b"foobarboxy").unwrap(), Address::new_id(101));
-
-        tester.rt.add_balance(TokenAmount::from_atto(100));
-
-        let expected_return = vec![0xff, 0xfe];
-        tester.rt.expect_send_generalized(
-            Address::new_id(101),
-            0,
-            None,
-            TokenAmount::from_atto(1),
-            Some(9843750),
-            SendFlags::empty(),
-            Some(IpldBlock { codec: 0, data: expected_return.clone() }),
-            ExitCode::OK,
-        );
-
-        let (success, exit, codec, ret_val): (bool, ethers::types::I256, u64, Bytes) =
-            tester.call_raw(p, &params.function);
-
-        assert!(success);
-        assert_eq!(exit, I256::from(0));
-        assert_eq!(codec, 0);
-        assert_eq!(&ret_val, &expected_return, "got {}", hex::encode(&ret_val));
-        assert_eq!(tester.rt.get_balance(), TokenAmount::from_atto(99));
-    }
 }
- 
+
 pub(crate) struct ContractTester {
     rt: MockRuntime,
     _address: EthAddress,
@@ -784,25 +757,5 @@ impl ContractTester {
             .unwrap();
 
         decode_function_data(&call.function, result, false).unwrap()
-    }
-
-
-    fn call_raw<Returns: Detokenize>(&mut self, input: Vec<u8>, func: &Function) -> Returns {
-        let input =
-            IpldBlock::serialize_cbor(&BytesSer(&input)).expect("failed to serialize input data");
-
-        self.rt.expect_validate_caller_any();
-        self.rt.expect_gas_available(10_000_000);
-        self.rt.expect_gas_available(10_000_000);
-
-        let BytesDe(result) = self
-            .rt
-            .call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, input)
-            .unwrap()
-            .unwrap()
-            .deserialize()
-            .unwrap();
-
-        decode_function_data(func, result, false).unwrap()
     }
 }

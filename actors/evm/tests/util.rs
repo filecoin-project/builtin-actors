@@ -109,7 +109,7 @@ pub enum PrecompileExit {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 #[allow(dead_code)]
 pub enum NativePrecompile {
     ResolveAddress = 1,
