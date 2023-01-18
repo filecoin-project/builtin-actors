@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use cid::multihash::{Code, MultihashDigest, MultihashGeneric};
 use cid::Cid;
 use fil_actors_runtime::{restrict_internal_api, FIRST_ACTOR_SPECIFIC_EXIT_CODE};
-use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
+use frc46_token::token::types::{BalanceReturn, TransferFromParams, TransferFromReturn};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_hamt::BytesKey;
@@ -316,6 +316,7 @@ impl Actor {
             // Must happen after signature verification and before taking cid.
             deal.proposal.provider = Address::new_id(provider_id);
             deal.proposal.client = Address::new_id(client_id);
+
             let serialized_proposal = serialize(&deal.proposal, "normalized deal proposal")
                 .context_code(ExitCode::USR_SERIALIZATION, "failed to serialize")?;
             let pcid = rt_serialized_deal_cid(rt, &serialized_proposal).map_err(
@@ -360,12 +361,7 @@ impl Actor {
             total_provider_lockup = provider_lockup;
             total_client_lockup.insert(client_id, client_lockup);
             proposal_cid_lookup.insert(pcid);
-            valid_deals.push(ValidDeal {
-                proposal: deal.proposal,
-                serialized_proposal,
-                cid: pcid,
-                allocation: allocation_id,
-            });
+            valid_deals.push(ValidDeal { proposal: deal.proposal, serialized_proposal, cid: pcid });
             valid_input_bf.set(di as u64)
         }
 
@@ -1126,13 +1122,14 @@ fn transfer_from(
     rt: &mut impl Runtime,
     params: TransferFromParams,
 ) -> Result<Vec<AllocationID>, ActorError> {
-    let ret = extract_send_result(rt.send_simple(
-        &DATACAP_TOKEN_ACTOR_ADDR,
-        ext::datacap::TRANSFER_FROM_METHOD as u64,
-        IpldBlock::serialize_cbor(&params)?,
-        TokenAmount::zero(),
-    ))
-    .context(format!("failed to send transfer to datacap {:?}", params))?;
+    let ret = rt
+        .send(
+            &DATACAP_TOKEN_ACTOR_ADDR,
+            ext::datacap::TRANSFER_FROM_METHOD as u64,
+            IpldBlock::serialize_cbor(&params)?,
+            TokenAmount::zero(),
+        )
+        .context(format!("failed to send transfer to datacap {:?}", params))?;
     let ret: TransferFromReturn = ret
         .with_context_code(ExitCode::USR_ASSERTION_FAILED, || "return expected".to_string())?
         .deserialize()?;
@@ -1144,13 +1141,14 @@ fn transfer_from(
 // Invokes BalanceOf on the data cap token actor.
 fn balance_of(rt: &mut impl Runtime, owner: &Address) -> Result<TokenAmount, ActorError> {
     let params = IpldBlock::serialize_cbor(owner)?;
-    let ret = extract_send_result(rt.send_simple(
-        &DATACAP_TOKEN_ACTOR_ADDR,
-        ext::datacap::BALANCE_OF_METHOD as u64,
-        params,
-        TokenAmount::zero(),
-    ))
-    .context(format!("failed to query datacap balance of {}", owner))?;
+    let ret = rt
+        .send(
+            &DATACAP_TOKEN_ACTOR_ADDR,
+            ext::datacap::BALANCE_OF_METHOD as u64,
+            params,
+            TokenAmount::zero(),
+        )
+        .context(format!("failed to query datacap balance of {}", owner))?;
     let ret: BalanceReturn = ret
         .with_context_code(ExitCode::USR_ASSERTION_FAILED, || "return expected".to_string())?
         .deserialize()?;

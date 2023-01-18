@@ -81,6 +81,7 @@ pub mod verifreg {
 }
 
 pub mod datacap {
+    pub const BALANCE_OF_METHOD: u64 = frc42_dispatch::method_hash!("Balance");
     pub const TRANSFER_FROM_METHOD: u64 = frc42_dispatch::method_hash!("TransferFrom");
 }
 
