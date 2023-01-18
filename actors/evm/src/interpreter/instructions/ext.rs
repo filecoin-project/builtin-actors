@@ -103,9 +103,8 @@ pub fn get_contract_type<RT: Runtime>(rt: &RT, addr: &EthAddress) -> ContractTyp
         return ContractType::Precompile;
     }
 
-    addr.try_into()
-        .ok() // into filecoin address
-        .and_then(|addr| rt.resolve_address(&addr)) // resolve actor id
+    let addr: Address = addr.into();
+    rt.resolve_address(&addr) // resolve actor id
         .and_then(|id| rt.get_actor_code_cid(&id).map(|cid| (id, cid))) // resolve code cid
         .map(|(id, cid)| match rt.resolve_builtin_actor_type(&cid) {
             // TODO part of current account abstraction hack where placeholders are accounts

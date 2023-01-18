@@ -1,6 +1,6 @@
 use std::{marker::PhantomData, num::TryFromIntError};
 
-use fil_actors_runtime::{runtime::Runtime, EAM_ACTOR_ID};
+use fil_actors_runtime::runtime::Runtime;
 use fvm_shared::{address::Address, econ::TokenAmount};
 use substrate_bn::{CurveError, FieldError, GroupError};
 
@@ -111,10 +111,7 @@ impl<RT: Runtime> Precompiles<RT> {
         // This shouldn't be observable as the only precompile with side-effects is the call_actor
         // precompile, and that precompile can only be called with delegatecall.
         if !context.value.is_zero() {
-            // Explicitly construct the precompile addr. We forbid this in the usual try_into for
-            // safety.
-            let fil_addr = Address::new_delegated(EAM_ACTOR_ID, precompile_addr.as_ref())
-                .expect("incorrect address size");
+            let fil_addr: Address = precompile_addr.into();
             system
                 .transfer(&fil_addr, TokenAmount::from(&context.value))
                 .map_err(|_| PrecompileError::TransferFailed)?;

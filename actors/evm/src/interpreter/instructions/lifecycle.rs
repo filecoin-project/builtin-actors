@@ -165,10 +165,10 @@ pub fn selfdestruct(
     }
 
     // Try to give funds to the beneficiary. If this fails, we just keep them.
-    if let Ok(addr) = EthAddress::from(beneficiary).try_into() {
-        let balance = system.rt.current_balance();
-        let _ = system.rt.send(&addr, METHOD_SEND, None, balance);
-    }
+    let beneficiary: EthAddress = beneficiary.into();
+    let beneficiary: Address = beneficiary.into();
+    let balance = system.rt.current_balance();
+    let _ = system.rt.send(&beneficiary, METHOD_SEND, None, balance);
 
     // Now mark ourselves as deleted.
     system.mark_selfdestructed();
