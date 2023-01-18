@@ -201,7 +201,7 @@ impl PrecompileTest {
             ]
             .concat(),
         );
-        log::trace!("returned: {:?}", hex::encode(&result));
+        log::trace!("exit [{}] returned: {:?}", result[0], hex::encode(&result[1..]));
         rt.verify();
 
         let returned_exit = match result[0] {
@@ -213,6 +213,18 @@ impl PrecompileTest {
         assert_eq!(self.expected_return, &result[1..]);
 
         rt.reset();
+    }
+
+    #[allow(dead_code)]
+    pub fn run_test_expecting<T: Into<Vec<u8>>>(
+        &mut self,
+        rt: &mut MockRuntime,
+        expecting: T,
+        call_exit: PrecompileExit,
+    ) {
+        self.expected_return = expecting.into();
+        self.expected_exit_code = call_exit;
+        self.run_test(rt);
     }
 
     #[allow(dead_code)]
