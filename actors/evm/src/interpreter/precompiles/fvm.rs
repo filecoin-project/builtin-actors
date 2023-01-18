@@ -282,7 +282,7 @@ pub(super) fn call_actor_shared<RT: Runtime>(
                 // TODO https://github.com/filecoin-project/ref-fvm/issues/1020
                 // put error number from call into revert
                 let exit_code = U256::from(ae.exit_code().value());
-                log::debug!(target: "evm", "{}", ae);
+
                 // no return only exit code
                 (exit_code, ae.take_data())
             }
