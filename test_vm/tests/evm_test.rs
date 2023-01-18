@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use ethers::core::types::Address as EthAddress;
 use ethers::prelude::abigen;
 use ethers::providers::Provider;
+use ethers::{core::types::Address as EthAddress, prelude::builders::ContractCall};
 use fil_actor_evm::interpreter::U256;
 use fil_actors_runtime::{
     test_utils::{ETHACCOUNT_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID},
@@ -122,54 +122,112 @@ fn test_evm_create() {
     let create_return: fil_actor_eam::CreateExternalReturn =
         create_result.ret.unwrap().deserialize().expect("failed to decode results");
 
-    let child_addr: EthAddress = {
-        let func = factory.create_2([0; 32], 42);
-        let call_params = func.calldata().expect("should serialize");
-        let call_result = v
-            .apply_message(
-                account,
-                create_return.robust_address.unwrap(),
-                TokenAmount::zero(),
-                fil_actor_evm::Method::InvokeContract as u64,
-                Some(ContractParams(call_params.to_vec())),
-            )
-            .unwrap();
-        assert!(
-            call_result.code.is_success(),
-            "failed to call the new actor {}",
-            call_result.message
-        );
-        let BytesDe(return_value) =
-            call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
-        factory.decode_output(&func.function.name, &return_value).expect("failed to decode return")
+    let test_func = |create_func: ContractCall<_, EthAddress>| {
+        let child_addr_eth: EthAddress = {
+            let call_params = create_func.calldata().expect("should serialize");
+            let call_result = v
+                .apply_message(
+                    account,
+                    create_return.robust_address.unwrap(),
+                    TokenAmount::zero(),
+                    fil_actor_evm::Method::InvokeContract as u64,
+                    Some(ContractParams(call_params.to_vec())),
+                )
+                .unwrap();
+            assert!(
+                call_result.code.is_success(),
+                "failed to call the new actor {}",
+                call_result.message,
+            );
+            let BytesDe(return_value) =
+                call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
+            factory
+                .decode_output(&create_func.function.name, &return_value)
+                .expect("failed to decode return")
+        };
+
+        let child_addr = Address::new_delegated(EAM_ACTOR_ID, &child_addr_eth.0[..]).unwrap();
+
+        // Verify the child.
+        {
+            let func = factory_child.get_value();
+            let call_params = func.calldata().expect("should serialize");
+            let call_result = v
+                .apply_message(
+                    account,
+                    child_addr,
+                    TokenAmount::zero(),
+                    fil_actor_evm::Method::InvokeContract as u64,
+                    Some(ContractParams(call_params.to_vec())),
+                )
+                .unwrap();
+            assert!(
+                call_result.code.is_success(),
+                "failed to call the new actor {}",
+                call_result.message
+            );
+            let BytesDe(return_value) =
+                call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
+            let res: u32 = factory_child
+                .decode_output(&func.function.name, &return_value)
+                .expect("failed to decode return");
+            assert_eq!(res, 42);
+        }
+
+        // Kill it.
+        {
+            let func = factory_child.die();
+            let call_params = func.calldata().expect("should serialize");
+            let call_result = v
+                .apply_message(
+                    account,
+                    child_addr,
+                    TokenAmount::zero(),
+                    fil_actor_evm::Method::InvokeContract as u64,
+                    Some(ContractParams(call_params.to_vec())),
+                )
+                .unwrap();
+            assert!(
+                call_result.code.is_success(),
+                "failed to call the new actor {}",
+                call_result.message
+            );
+        }
+
+        // It should now be dead.
+        {
+            let func = factory_child.get_value();
+            let call_params = func.calldata().expect("should serialize");
+            let call_result = v
+                .apply_message(
+                    account,
+                    child_addr,
+                    TokenAmount::zero(),
+                    fil_actor_evm::Method::InvokeContract as u64,
+                    Some(ContractParams(call_params.to_vec())),
+                )
+                .unwrap();
+            assert!(
+                call_result.code.is_success(),
+                "failed to call the new actor {}",
+                call_result.message
+            );
+            let BytesDe(return_value) =
+                call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
+            assert!(return_value.is_empty());
+        }
+        child_addr_eth
     };
 
-    let child_addr = Address::new_delegated(EAM_ACTOR_ID, &child_addr.0[..]).unwrap();
+    // Test CREATE2 twice because we should be able to deploy over an existing contract.
+    let eth_addr1 = test_func(factory.create_2([0; 32], 42));
+    let eth_addr2 = test_func(factory.create_2([0; 32], 42));
+    assert_eq!(eth_addr1, eth_addr2);
 
-    {
-        let func = factory_child.get_value();
-        let call_params = func.calldata().expect("should serialize");
-        let call_result = v
-            .apply_message(
-                account,
-                child_addr,
-                TokenAmount::zero(),
-                fil_actor_evm::Method::InvokeContract as u64,
-                Some(ContractParams(call_params.to_vec())),
-            )
-            .unwrap();
-        assert!(
-            call_result.code.is_success(),
-            "failed to call the new actor {}",
-            call_result.message
-        );
-        let BytesDe(return_value) =
-            call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
-        let res: u32 = factory_child
-            .decode_output(&func.function.name, &return_value)
-            .expect("failed to decode return");
-        assert_eq!(res, 42);
-    };
+    // Then test create and expect two different addrs.
+    let eth_addr1 = test_func(factory.create(42));
+    let eth_addr2 = test_func(factory.create(42));
+    assert_ne!(eth_addr1, eth_addr2);
 }
 
 #[test]

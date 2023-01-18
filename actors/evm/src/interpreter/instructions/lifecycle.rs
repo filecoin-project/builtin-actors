@@ -40,7 +40,7 @@ pub struct Create2Params {
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EamReturn {
     pub actor_id: u64,
-    pub robust_address: Address,
+    pub robust_address: Option<Address>,
     pub eth_address: EthAddress,
 }
 
