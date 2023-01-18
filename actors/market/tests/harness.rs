@@ -441,11 +441,6 @@ pub fn publish_deals(
     let st: State = rt.get_state();
     let next_deal_id = st.next_id;
     rt.expect_validate_caller_any();
-    let _return_value = GetControlAddressesReturnParams {
-        owner: addrs.owner,
-        worker: addrs.worker,
-        control_addresses: addrs.control.clone(),
-    };
     rt.expect_send(
         addrs.provider,
         ext::miner::CONTROL_ADDRESSES_METHOD,
@@ -467,8 +462,13 @@ pub fn publish_deals(
     // Accumulate proposals by client, so we can set expectations for the per-client calls
     // and the per-deal calls. This matches flow in the market actor.
     // Note the shortcut of not normalising the client/provider addresses in the proposal.
-    let mut client_verified_deals: BTreeMap<ActorID, Vec<DealProposal>> = BTreeMap::new();
+    struct ClientVerifiedDeals {
+        deals: Vec<DealProposal>,
+        datacap_consumed: TokenAmount,
+    }
+    let mut client_verified_deals: BTreeMap<ActorID, ClientVerifiedDeals> = BTreeMap::new();
     let mut alloc_id = next_allocation_id;
+    let mut valid_deals = vec![];
     for deal in publish_deals {
         // create a client proposal with a valid signature
         let buf = RawBytes::serialize(deal.clone()).expect("failed to marshal deal proposal");
@@ -505,24 +505,29 @@ pub fn publish_deals(
                 );
             }
 
-            client_verified_deals.entry(client_id).or_default().push(deal.clone());
+            let cvd = client_verified_deals.entry(client_id).or_insert(ClientVerifiedDeals {
+                deals: vec![],
+                datacap_consumed: TokenAmount::zero(),
+            });
+            let piece_datacap = TokenAmount::from_whole(deal.piece_size.0);
+            if piece_datacap > &clients_datacap_balance - &cvd.datacap_consumed {
+                continue; // Drop deal
+            }
+            cvd.deals.push(deal.clone());
+            cvd.datacap_consumed += piece_datacap;
         }
+        valid_deals.push(deal);
     }
 
     let curr_epoch = rt.epoch;
     let policy = Policy::default();
-    for (client, deals) in client_verified_deals {
+    for (client, cvd) in client_verified_deals {
+        if cvd.deals.is_empty() {
+            continue;
+        }
         // Expect transfer of data cap to the verified registry, with spec for the allocation.
         let mut allocations = vec![];
-        let mut datacap_consumed = TokenAmount::zero();
-        for deal in deals {
-            if TokenAmount::from_whole(deal.piece_size.0)
-                > &clients_datacap_balance - &datacap_consumed
-            {
-                // Drop deals that exceed client's datacap balance.
-                break;
-            }
-            datacap_consumed += TokenAmount::from_whole(deal.piece_size.0);
+        for deal in cvd.deals {
             let term_min = deal.end_epoch - deal.start_epoch;
             let term_max = min(
                 term_min + policy.market_default_allocation_term_buffer,
@@ -544,7 +549,7 @@ pub fn publish_deals(
         let params = TransferFromParams {
             from: Address::new_id(client),
             to: VERIFIED_REGISTRY_ACTOR_ADDR,
-            amount: datacap_consumed.clone(),
+            amount: cvd.datacap_consumed.clone(),
             operator_data: serialize(&alloc_req, "allocation requests").unwrap(),
         };
         let alloc_ids = AllocationsResponse {
@@ -559,7 +564,7 @@ pub fn publish_deals(
             TokenAmount::zero(),
             IpldBlock::serialize_cbor(&TransferFromReturn {
                 from_balance: TokenAmount::zero(),
-                to_balance: datacap_consumed,
+                to_balance: cvd.datacap_consumed,
                 allowance: TokenAmount::zero(),
                 recipient_data: serialize(&alloc_ids, "allocation response").unwrap(),
             })
@@ -570,7 +575,7 @@ pub fn publish_deals(
     }
 
     let mut deal_id = next_deal_id;
-    for deal in publish_deals {
+    for deal in valid_deals {
         let buf = RawBytes::serialize(deal.clone()).expect("failed to marshal deal proposal");
         let params =
             IpldBlock::serialize_cbor(&MarketNotifyDealParams { proposal: buf.to_vec(), deal_id })
