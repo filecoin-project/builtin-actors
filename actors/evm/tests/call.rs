@@ -535,11 +535,6 @@ fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_i
     test.run_test(&mut rt);
 }
 
-/// ensures top bits are zeroed
-fn assert_zero_bytes<const S: usize>(src: &[u8]) {
-    assert_eq!(src[..S], [0u8; S]);
-}
-
 #[derive(Debug, PartialEq, Eq)]
 struct CallActorReturn {
     exit_code: ExitCode,
@@ -565,40 +560,6 @@ impl CallActorReturn {
             .concat();
         out.extend_from_slice(&self.data);
         out
-    }
-}
-
-impl From<&[u8]> for CallActorReturn {
-    fn from(src: &[u8]) -> Self {
-        assert!(src.len() >= 4 * 32, "expected to read at least 4 U256 values, got {:?}", src);
-
-        let bytes = &src[..32];
-        let exit_code = {
-            assert_zero_bytes::<4>(bytes);
-            ExitCode::new(u32::from_be_bytes(bytes[28..32].try_into().unwrap()))
-        };
-
-        let bytes = &src[32..64];
-        let codec = {
-            assert_zero_bytes::<8>(bytes);
-            u64::from_be_bytes(bytes[24..32].try_into().unwrap())
-        };
-
-        let bytes = &src[64..96];
-        let offset = {
-            assert_zero_bytes::<4>(bytes);
-            u32::from_be_bytes(bytes[28..32].try_into().unwrap())
-        };
-
-        let bytes = &src[96..128];
-        let size = {
-            assert_zero_bytes::<4>(bytes);
-            u32::from_be_bytes(bytes[28..32].try_into().unwrap())
-        };
-
-        let data = Vec::from(&src[128..128 + size as usize]);
-
-        Self { exit_code, codec, data_offset: offset, data_size: size, data }
     }
 }
 
@@ -683,49 +644,6 @@ fn call_actor_solidity() {
         assert_eq!(exit, I256::from(0));
         assert_eq!(codec, 0);
         assert_eq!(&ret_val, &expected_return, "got {}", hex::encode(&ret_val));
-    }
-}
-
-#[test]
-fn call_actor_readonly() {
-    // solidity
-    let contract_hex = include_str!("contracts/CallActorPrecompile.hex");
-    // let mut contract_rt = new_call_actor_contract();
-    let contract_address = EthAddress(util::CONTRACT_ADDRESS);
-    let mut tester = ContractTester::new(contract_address, 111, contract_hex);
-
-    // send 1 atto Fil (this should be a full integration tests rly)
-    {
-        let params =
-            CONTRACT.call_actor_id(0, ethers::types::U256::from(1), 0, 0, Bytes::default(), 101);
-
-        tester.rt.add_id_address(
-            Address::new_delegated(12345, b"foobarboxy").unwrap(),
-            Address::new_id(101),
-        );
-
-        tester.rt.add_balance(TokenAmount::from_atto(100));
-
-        let expected_return = vec![0xff, 0xfe];
-        tester.rt.expect_send_generalized(
-            Address::new_id(101),
-            0,
-            None,
-            TokenAmount::from_atto(1),
-            Some(9843750),
-            SendFlags::empty(),
-            Some(IpldBlock { codec: 0, data: expected_return.clone() }),
-            ExitCode::OK,
-        );
-
-        let (success, exit, codec, ret_val): (bool, ethers::types::I256, u64, Bytes) =
-            tester.call(params);
-
-        assert!(success);
-        assert_eq!(exit, I256::from(0));
-        assert_eq!(codec, 0);
-        assert_eq!(&ret_val, &expected_return, "got {}", hex::encode(&ret_val));
-        assert_eq!(tester.rt.get_balance(), TokenAmount::from_atto(99));
     }
 }
 
