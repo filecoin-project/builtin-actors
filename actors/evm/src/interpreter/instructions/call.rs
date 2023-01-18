@@ -186,7 +186,10 @@ pub fn call_generic<RT: Runtime>(
             if log::log_enabled!(log::Level::Info) {
                 // log input to the precompile, but make sure we dont log _too_ much.
                 let mut input_hex = hex::encode(input_data);
-                input_hex.truncate(512);
+                input_hex.truncate(1024);
+                if input_data.len() > 512 {
+                    input_hex.push_str("[..]")
+                }
                 log::info!(target: "evm", "Call Precompile:\n\taddress: {:x?}\n\tcontext: {:?}\n\tinput: {}", dst, context, input_hex);
             }
 
