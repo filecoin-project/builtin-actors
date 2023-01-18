@@ -1,7 +1,9 @@
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
+use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
+use num_traits::Zero;
 use serde::de::DeserializeOwned;
 
 use fil_actor_market::{
@@ -39,9 +41,13 @@ fn proposal_data() {
         end_epoch,
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let id =
-        publish_deals(&mut rt, &MinerAddresses::default(), &[proposal.clone()], next_allocation_id)
-            [0];
+    let id = publish_deals(
+        &mut rt,
+        &MinerAddresses::default(),
+        &[proposal.clone()],
+        TokenAmount::zero(),
+        next_allocation_id,
+    )[0];
 
     let data: GetDealDataCommitmentReturn =
         query_deal(&mut rt, Method::GetDealDataCommitmentExported, id);
@@ -96,9 +102,13 @@ fn activation() {
         end_epoch,
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let id =
-        publish_deals(&mut rt, &MinerAddresses::default(), &[proposal.clone()], next_allocation_id)
-            [0];
+    let id = publish_deals(
+        &mut rt,
+        &MinerAddresses::default(),
+        &[proposal.clone()],
+        TokenAmount::zero(),
+        next_allocation_id,
+    )[0];
 
     let activation: GetDealActivationReturn =
         query_deal(&mut rt, Method::GetDealActivationExported, id);
