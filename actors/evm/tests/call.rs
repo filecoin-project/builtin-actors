@@ -10,7 +10,7 @@ use ethers::providers::{MockProvider, Provider};
 use ethers::types::Bytes;
 use evm::interpreter::address::EthAddress;
 use evm::interpreter::U256;
-use evm::{EVM_CONTRACT_REVERTED, Method};
+use evm::{Method, EVM_CONTRACT_REVERTED};
 use fil_actor_evm as evm;
 use fil_actors_runtime::{test_utils::*, EAM_ACTOR_ID, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -395,10 +395,7 @@ return
     let address = EthAddress(util::CONTRACT_ADDRESS);
 
     // large set of data
-    let large_ret = IpldBlock {
-        codec: DAG_CBOR,
-        data: vec![0xff; 2048]
-    };
+    let large_ret = IpldBlock { codec: DAG_CBOR, data: vec![0xff; 2048] };
 
     let cases = [(32, 64), (64, 64), (1024, 1025)];
     for (output_size, return_size) in cases {
@@ -428,7 +425,13 @@ return
         expected.extend_from_slice(&vec![0u8; return_size - output_size]);
 
         rt.verify();
-        assert_eq!(expected, out, "expect: {}\n   got: {}", hex::encode(&expected), hex::encode(&out));
+        assert_eq!(
+            expected,
+            out,
+            "expect: {}\n   got: {}",
+            hex::encode(&expected),
+            hex::encode(&out)
+        );
         rt.reset();
     }
 }
