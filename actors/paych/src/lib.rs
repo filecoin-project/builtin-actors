@@ -8,7 +8,7 @@ use fil_actors_runtime::{
     ActorError, Array, AsActorError,
 };
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::DAG_CBOR;
+use fvm_ipld_encoding::CBOR;
 use fvm_shared::address::Address;
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -169,7 +169,7 @@ impl Actor {
             rt.send(
                 &extra.actor,
                 extra.method,
-                Some(IpldBlock { codec: DAG_CBOR, data: extra.data.to_vec() }),
+                Some(IpldBlock { codec: CBOR, data: extra.data.to_vec() }),
                 TokenAmount::zero(),
             )
             .map_err(|e| e.wrap("spend voucher verification failed"))?;

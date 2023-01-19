@@ -14,7 +14,7 @@ use evm::{Method, EVM_CONTRACT_REVERTED};
 use fil_actor_evm as evm;
 use fil_actors_runtime::{test_utils::*, EAM_ACTOR_ID, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::{BytesDe, BytesSer, DAG_CBOR, IPLD_RAW};
+use fvm_ipld_encoding::{BytesDe, BytesSer, CBOR, IPLD_RAW};
 use fvm_shared::address::Address as FILAddress;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
@@ -395,7 +395,7 @@ return
     let address = EthAddress(util::CONTRACT_ADDRESS);
 
     // large set of data
-    let large_ret = IpldBlock { codec: DAG_CBOR, data: vec![0xff; 2048] };
+    let large_ret = IpldBlock { codec: CBOR, data: vec![0xff; 2048] };
 
     let cases = [(32, 64), (64, 64), (1024, 1025)];
     for (output_size, return_size) in cases {
@@ -466,7 +466,7 @@ fn test_native_call() {
 
     rt.expect_validate_caller_any();
     let result = rt.call::<evm::EvmContractActor>(1025, None).unwrap();
-    assert_eq!(result, Some(IpldBlock { codec: 0x71, data: "foobar".into() }));
+    assert_eq!(result, Some(IpldBlock { codec: CBOR, data: "foobar".into() }));
 
     rt.expect_validate_caller_any();
     let err = rt.call::<evm::EvmContractActor>(1026, None).unwrap_err();
@@ -588,7 +588,7 @@ fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_i
     );
 
     // expected return data
-    // Test with a codec _other_ than DAG_CBOR, to make sure we are actually passing the returned codec
+    // Test with a codec _other_ than CBOR/DAG_CBOR, to make sure we are actually passing the returned codec
     let some_codec = 0x42;
     let data = vec![0xde, 0xad, 0xbe, 0xef];
     let send_return = IpldBlock { codec: some_codec, data };
@@ -703,7 +703,7 @@ fn call_actor_overlapping() {
 
     // not valid CBOR, but params should parse fine in precompile
     let addr_bytes = addr.to_bytes();
-    call_params.codec(U256::from(DAG_CBOR));
+    call_params.codec(U256::from(CBOR));
 
     call_params.param_offset = U256::from(CallActorParams::FIRST_DYNAMIC_OFFSET);
     call_params.param_len = U256::from(addr_bytes.len());
@@ -727,7 +727,7 @@ fn call_actor_overlapping() {
     rt.expect_send_generalized(
         addr,
         0,
-        Some(IpldBlock { codec: DAG_CBOR, data: addr_bytes }),
+        Some(IpldBlock { codec: CBOR, data: addr_bytes }),
         TokenAmount::zero(),
         Some(0),
         SendFlags::empty(),
@@ -850,6 +850,7 @@ mod call_actor_invalid {
 
         bad_params_inner(call_params, addr, false)
     }
+
     #[test]
     fn invalid_params_zero_codec_2() {
         let addr = Address::new_delegated(1234, b"foobarboxy").unwrap();

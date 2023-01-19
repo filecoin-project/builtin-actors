@@ -30,7 +30,7 @@ byteorder = "1.4.3"
 anyhow = "1.0.65"
 itertools = "0.10.3"
 fvm_ipld_blockstore = "0.1.1"
-fvm_ipld_encoding = "0.3.2"
+fvm_ipld_encoding = "0.3.3"
 multihash = { version = "0.16.2", default-features = false }
 
 [dev-dependencies]

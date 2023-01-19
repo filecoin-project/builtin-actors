@@ -1,6 +1,6 @@
 use fil_actors_runtime::{actor_error, AsActorError, EAM_ACTOR_ADDR, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::{strict_bytes, BytesDe, BytesSer, DAG_CBOR};
+use fvm_ipld_encoding::{strict_bytes, BytesDe, BytesSer};
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -350,10 +350,12 @@ fn handle_filecoin_method_output(output: &[u8]) -> Result<Option<IpldBlock>, Act
         0 => {
             return Err(ActorError::serialization(format!(
                 "codec 0 is only valid for empty returns, got a return value of length {length}"
-            )))
+            )));
         }
         // Supported codecs.
-        DAG_CBOR => Some(IpldBlock { codec, data: return_data.into() }),
+        fvm_ipld_encoding::CBOR => Some(IpldBlock { codec, data: return_data.into() }),
+        #[cfg(feature = "hyperspace")]
+        fvm_ipld_encoding::DAG_CBOR => Some(IpldBlock { codec, data: return_data.into() }),
         // Everything else.
         _ => return Err(ActorError::serialization(format!("unsupported codec: {codec}"))),
     };
@@ -405,7 +407,7 @@ impl ActorCode for EvmContractActor {
             }
             Some(Method::GetBytecode) => {
                 let ret = Self::bytecode(rt)?;
-                Ok(IpldBlock::serialize_cbor(&ret)?)
+                Ok(IpldBlock::serialize_dag_cbor(&ret)?)
             }
             Some(Method::GetBytecodeHash) => {
                 let hash = Self::bytecode_hash(rt)?;
