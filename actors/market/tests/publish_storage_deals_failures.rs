@@ -256,7 +256,7 @@ fn fail_when_provider_has_some_funds_but_not_enough_for_a_deal() {
     };
 
     rt.expect_validate_caller_any();
-    expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
+    expect_provider_is_control_address(&mut rt, PROVIDER_ADDR, WORKER_ADDR, true);
     expect_query_network_info(&mut rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
 
@@ -319,7 +319,7 @@ fn fail_when_deals_have_different_providers() {
     };
 
     rt.expect_validate_caller_any();
-    expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
+    expect_provider_is_control_address(&mut rt, PROVIDER_ADDR, WORKER_ADDR, true);
     expect_query_network_info(&mut rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     let authenticate_param1 = IpldBlock::serialize_cbor(&AuthenticateMessageParams {
@@ -437,7 +437,7 @@ fn caller_is_not_the_same_as_the_worker_address_for_miner() {
     };
 
     rt.expect_validate_caller_any();
-    expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
+    expect_provider_is_control_address(&mut rt, PROVIDER_ADDR, Address::new_id(999), false);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(999));
     expect_abort(
         ExitCode::USR_FORBIDDEN,
