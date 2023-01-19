@@ -62,7 +62,7 @@ pub fn init_construct_and_verify<F: FnOnce(&mut MockRuntime)>(
         .is_none());
     let evm_st: State = rt.state().unwrap();
     let evm_code = rt.store.get(&evm_st.bytecode).unwrap().unwrap();
-    log::trace!("{:?}", evm_code);
+    log::trace!("bytecode constructed: {}", hex::encode(evm_code));
     rt.verify();
 
     rt
@@ -102,7 +102,7 @@ lazy_static! {
 }
 
 #[repr(u8)]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PrecompileExit {
     Reverted = 0,
     Success = 1,
@@ -116,6 +116,7 @@ pub enum NativePrecompile {
     LookupDelegatedAddress = 2,
     CallActor = 3,
     GetActorType = 4,
+    CallActorId = 5,
 }
 
 #[allow(dead_code)]
@@ -157,6 +158,7 @@ impl NativePrecompile {
     }
 }
 
+#[derive(Clone)]
 pub struct PrecompileTest {
     pub expected_exit_code: PrecompileExit,
     pub precompile_address: EthAddress,
