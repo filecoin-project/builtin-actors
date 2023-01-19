@@ -123,3 +123,36 @@ fn test_selfdestruct_missing_beneficiary() {
     assert_eq!(state.tombstone, Some(Tombstone { origin: 100, nonce: 0 }));
     rt.verify();
 }
+
+#[test]
+fn test_selfdestruct_during_constructor() {
+    let bytecode = hex::decode(include_str!("contracts/AutoSelfDestruct.hex")).unwrap();
+
+    let contract = Address::new_id(100);
+
+    let mut rt = util::init_construct_and_verify(bytecode, |rt| {
+
+        rt.set_balance(TokenAmount::from_whole(1));
+
+        rt.actor_code_cids.insert(contract, *EVM_ACTOR_CODE_ID);
+        rt.set_origin(contract);
+
+        // test util uses EAM address for constructor
+        rt.expect_send(
+            Address::new_id(10),
+            METHOD_SEND,
+            None,
+            rt.get_balance(),
+            None,
+            ExitCode::OK,
+        );
+    });
+
+    let solidity_params = hex::decode("83197ef0").unwrap();
+    rt.expect_validate_caller_any();
+
+    assert!(util::invoke_contract(&mut rt, &solidity_params).is_empty());
+    let state: State = rt.get_state();
+    assert_eq!(state.tombstone, Some(Tombstone { origin: 100, nonce: 0 }));
+    rt.verify();
+}
