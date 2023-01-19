@@ -43,7 +43,7 @@ impl<RT: Runtime> Precompiles<RT> {
         Some(resolve_address::<RT>),          // 0xfe00..01
         Some(lookup_delegated_address::<RT>), // 0xfe00..02
         Some(call_actor::<RT>),               // 0xfe00..03
-        None,                                            // 0xfe00..04 DISABLED
+        None,                                 // 0xfe00..04 DISABLED
         Some(call_actor_id::<RT>),            // 0xfe00..05
     ]);
 
