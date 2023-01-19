@@ -210,15 +210,14 @@ impl Actor {
             ));
         }
 
-        let (_, worker, controllers) = request_miner_control_addrs(rt, provider_id)?;
         let caller = rt.message().caller();
-        let mut caller_ok = caller == worker;
-        for controller in controllers.iter() {
-            if caller_ok {
-                break;
-            }
-            caller_ok = caller == *controller;
-        }
+        let res: ext::miner::IsControllingAddressReturn = deserialize_block(rt.send(
+            &Address::new_id(provider_id),
+            ext::miner::IS_CONTROLLING_ADDRESS_EXPORTED,
+            IpldBlock::serialize_cbor(&ext::miner::IsControllingAddressParam { address: caller })?,
+            TokenAmount::zero(),
+        )?)?;
+        let caller_ok = res.is_controlling;
         if !caller_ok {
             return Err(actor_error!(
                 forbidden,
