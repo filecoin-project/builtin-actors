@@ -16,24 +16,15 @@ use fvm::{call_actor, call_actor_id, lookup_delegated_address, resolve_address};
 type PrecompileFn<RT> = fn(&mut System<RT>, &[u8], PrecompileContext) -> PrecompileResult;
 pub type PrecompileResult = Result<Vec<u8>, PrecompileError>;
 
-// Work-around to have mutable fn pointers in a const.
-// https://github.com/rust-lang/rust/issues/100136
-#[derive(Clone, Copy)]
-struct WrappedFn<RT: Runtime>(fn(&mut System<RT>, &[u8], PrecompileContext) -> PrecompileResult);
-
 pub const NATIVE_PRECOMPILE_ADDRESS_PREFIX: u8 = 0xFE;
 
-struct PrecompileTable<RT: Runtime, const N: usize>([Option<WrappedFn<RT>>; N]);
+struct PrecompileTable<RT: Runtime, const N: usize>([Option<PrecompileFn<RT>>; N]);
 
 impl<RT: Runtime, const N: usize> PrecompileTable<RT, N> {
     /// Tries to lookup Precompile, None if empty slot or out of bounds.
     /// Last byte of precompile address - 1 is the index.
     fn get(&self, index: usize) -> Option<PrecompileFn<RT>> {
-        self.0.get(index).and_then(|i| i.as_ref()).map(|f| f.0)
-    }
-
-    const fn init(src: [Option<WrappedFn<RT>>; N]) -> Self {
-        Self(src)
+        self.0.get(index).and_then(|i| i.as_ref()).copied()
     }
 }
 
@@ -48,28 +39,27 @@ pub struct Precompiles<RT>(PhantomData<RT>);
 
 impl<RT: Runtime> Precompiles<RT> {
     /// FEVM specific precompiles (0xfe prefix)
-    const NATIVE_PRECOMPILES: PrecompileTable<RT, 5> = PrecompileTable::init([
-        Some(WrappedFn(resolve_address::<RT>)),          // 0xfe00..01
-        Some(WrappedFn(lookup_delegated_address::<RT>)), // 0xfe00..02
-        Some(WrappedFn(call_actor::<RT>)),               // 0xfe00..03
+    const NATIVE_PRECOMPILES: PrecompileTable<RT, 5> = PrecompileTable([
+        Some(resolve_address::<RT>),          // 0xfe00..01
+        Some(lookup_delegated_address::<RT>), // 0xfe00..02
+        Some(call_actor::<RT>),               // 0xfe00..03
         None,                                            // 0xfe00..04 DISABLED
-        Some(WrappedFn(call_actor_id::<RT>)),            // 0xfe00..05
+        Some(call_actor_id::<RT>),            // 0xfe00..05
     ]);
 
     /// EVM specific precompiles
-    const EVM_PRECOMPILES: PrecompileTable<RT, 9> = PrecompileTable::init([
-        Some(WrappedFn(ec_recover::<RT>)), // 0x01 ecrecover
-        Some(WrappedFn(sha256::<RT>)),     // 0x02 SHA2-256
-        Some(WrappedFn(ripemd160::<RT>)),  // 0x03 ripemd160
-        Some(WrappedFn(identity::<RT>)),   // 0x04 identity
-        Some(WrappedFn(modexp::<RT>)),     // 0x05 modexp
-        Some(WrappedFn(ec_add::<RT>)),     // 0x06 ecAdd
-        Some(WrappedFn(ec_mul::<RT>)),     // 0x07 ecMul
-        Some(WrappedFn(ec_pairing::<RT>)), // 0x08 ecPairing
-        Some(WrappedFn(blake2f::<RT>)),    // 0x09 blake2f
+    const EVM_PRECOMPILES: PrecompileTable<RT, 9> = PrecompileTable([
+        Some(ec_recover::<RT>), // 0x01 ecrecover
+        Some(sha256::<RT>),     // 0x02 SHA2-256
+        Some(ripemd160::<RT>),  // 0x03 ripemd160
+        Some(identity::<RT>),   // 0x04 identity
+        Some(modexp::<RT>),     // 0x05 modexp
+        Some(ec_add::<RT>),     // 0x06 ecAdd
+        Some(ec_mul::<RT>),     // 0x07 ecMul
+        Some(ec_pairing::<RT>), // 0x08 ecPairing
+        Some(blake2f::<RT>),    // 0x09 blake2f
     ]);
 
-    // again these are not interior mutable
     fn lookup_precompile(addr: &EthAddress) -> Option<PrecompileFn<RT>> {
         let [prefix, _m @ .., index] = addr.0;
         if is_reserved_precompile_address(addr) {
