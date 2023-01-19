@@ -1,59 +1,13 @@
 use crate::EVM_MAX_RESERVED_METHOD;
-use fil_actors_runtime::runtime::{builtins::Type, Runtime};
+use fil_actors_runtime::runtime::Runtime;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::{address::Address, econ::TokenAmount, sys::SendFlags, METHOD_SEND};
 use num_traits::FromPrimitive;
 
-use crate::interpreter::{instructions::call::CallKind, precompiles::NativeType, System, U256};
+use crate::interpreter::{instructions::call::CallKind, System, U256};
 
 use super::{PrecompileContext, PrecompileError, PrecompileResult};
 use crate::reader::ValueReader;
-
-/// Read right padded BE encoded low u64 ID address from a u256 word.
-/// - Reverts if the input is greater than `MAX::u64`.
-/// - Returns variant of [`BuiltinType`] encoded as a u256 word.
-pub(super) fn get_actor_type<RT: Runtime>(
-    system: &mut System<RT>,
-    input: &[u8],
-    _: PrecompileContext,
-) -> PrecompileResult {
-    let mut reader = ValueReader::new(input);
-    let id: u64 = reader.read_value()?;
-
-    // resolve type from code CID
-    let builtin_type = system
-        .rt
-        .get_actor_code_cid(&id)
-        .and_then(|cid| system.rt.resolve_builtin_actor_type(&cid));
-
-    let builtin_type = match builtin_type {
-        Some(t) => match t {
-            Type::Account | Type::EthAccount => NativeType::Account,
-            Type::Placeholder => NativeType::Placeholder,
-            Type::EVM => NativeType::EVMContract,
-            Type::Miner => NativeType::StorageProvider,
-            // Others
-            Type::PaymentChannel | Type::Multisig => NativeType::OtherTypes,
-            // Singletons (this should be caught earlier, but we are being exhaustive)
-            Type::Market
-            | Type::Power
-            | Type::Init
-            | Type::Cron
-            | Type::Reward
-            | Type::VerifiedRegistry
-            | Type::DataCap
-            | Type::EAM
-            | Type::System => NativeType::System,
-        },
-        None => NativeType::NonExistent,
-    };
-
-    fn word_vec(src: NativeType) -> Vec<u8> {
-        U256::from(src as u32).to_bytes().to_vec()
-    }
-
-    Ok(word_vec(builtin_type))
-}
 
 /// !! DISABLED !!
 ///

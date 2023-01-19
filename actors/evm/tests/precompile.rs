@@ -3,11 +3,7 @@ mod asm;
 use evm::interpreter::{address::EthAddress, U256};
 use fil_actor_evm as evm;
 use fil_actors_runtime::{
-    test_utils::{
-        new_bls_addr, MockRuntime, ACCOUNT_ACTOR_CODE_ID, EAM_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID,
-        MARKET_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID,
-        PLACEHOLDER_ACTOR_CODE_ID,
-    },
+    test_utils::{new_bls_addr, MockRuntime},
     EAM_ACTOR_ID,
 };
 use fvm_shared::{address::Address as FILAddress, econ::TokenAmount, error::ExitCode, METHOD_SEND};
@@ -70,96 +66,6 @@ fn test_precompile_hash() {
 fn tester_bytecode() -> Vec<u8> {
     let (init, body) = util::PrecompileTest::test_runner_assembly();
     asm::new_contract("precompile-tester", &init, &body).unwrap()
-}
-
-#[test]
-#[ignore = "this precompile disabled"]
-fn test_native_actor_type() {
-    use evm::interpreter::precompiles::NativeType;
-
-    let mut rt = util::construct_and_verify(tester_bytecode());
-
-    // 0x88 is an EVM actor
-    let evm_target = FILAddress::new_id(0x88);
-    rt.set_address_actor_type(evm_target, *EVM_ACTOR_CODE_ID);
-
-    // f0 10 is the EAM actor (System)
-    let eam_target = FILAddress::new_id(10);
-    rt.set_address_actor_type(eam_target, *EAM_ACTOR_CODE_ID);
-
-    // f0 7 is the Market actor (System)
-    let market_target = FILAddress::new_id(7);
-    rt.set_address_actor_type(market_target, *MARKET_ACTOR_CODE_ID);
-
-    // f0 101 is an account
-    let account_target = FILAddress::new_id(101);
-    rt.set_address_actor_type(account_target, *ACCOUNT_ACTOR_CODE_ID);
-
-    // f0 102 is a placeholder
-    let placeholder_target = FILAddress::new_id(102);
-    rt.set_address_actor_type(placeholder_target, *PLACEHOLDER_ACTOR_CODE_ID);
-
-    // f0 103 is a storage provider
-    let miner_target = FILAddress::new_id(103);
-    rt.set_address_actor_type(miner_target, *MINER_ACTOR_CODE_ID);
-
-    // f0 104 is a multisig
-    let other_target = FILAddress::new_id(104);
-    rt.set_address_actor_type(other_target, *MULTISIG_ACTOR_CODE_ID);
-
-    fn test_type(rt: &mut MockRuntime, id: FILAddress, expected: NativeType) {
-        let test = PrecompileTest {
-            precompile_address: NativePrecompile::GetActorType.eth_address(),
-            output_size: 32,
-            expected_exit_code: PrecompileExit::Success,
-            gas_avaliable: 10_000_000_000,
-            call_op: util::PrecompileCallOpcode::Call(0),
-            input: id_to_vec(&id),
-            expected_return: U256::from(expected as u32).to_bytes().to_vec(),
-        };
-        test.run_test(rt);
-    }
-
-    test_type(&mut rt, evm_target, NativeType::EVMContract);
-    test_type(&mut rt, eam_target, NativeType::System);
-    test_type(&mut rt, market_target, NativeType::System);
-    test_type(&mut rt, account_target, NativeType::Account);
-    test_type(&mut rt, placeholder_target, NativeType::Placeholder);
-    test_type(&mut rt, miner_target, NativeType::StorageProvider);
-    test_type(&mut rt, other_target, NativeType::OtherTypes);
-    test_type(&mut rt, FILAddress::new_id(10101), NativeType::NonExistent);
-
-    // invalid id parameter (over)
-    fn test_type_invalid(rt: &mut MockRuntime, input: Vec<u8>) {
-        let test = PrecompileTest {
-            precompile_address: NativePrecompile::GetActorType.eth_address(),
-            output_size: 32,
-            expected_exit_code: PrecompileExit::Reverted,
-            gas_avaliable: 10_000_000_000,
-            call_op: util::PrecompileCallOpcode::Call(0),
-            expected_return: vec![],
-            input,
-        };
-        test.run_test(rt);
-    }
-
-    // extra bytes
-    test_type_invalid(&mut rt, vec![0xff; 64]);
-    // single byte get padded and is invalid
-    test_type_invalid(&mut rt, vec![0xff]);
-
-    // VERY weird and NOBODY should depend on this, but this is expected behavior soo
-    // ¯\_(ツ)_/¯
-    {
-        // f0 (0xff00)
-        let padded_target = FILAddress::new_id(0xff00);
-        rt.set_address_actor_type(padded_target, *EVM_ACTOR_CODE_ID);
-
-        // not enough bytes (but still valid id when padded)
-        let mut input = vec![0u8; 31];
-        input[30] = 0xff; // will get padded to 0xff00
-        test_type(&mut rt, evm_target, NativeType::EVMContract);
-    }
 }
 
 fn resolve_address_contract() -> Vec<u8> {

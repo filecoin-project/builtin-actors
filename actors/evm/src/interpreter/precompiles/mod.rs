@@ -8,6 +8,8 @@ use crate::reader::OverflowError;
 
 use super::{address::EthAddress, instructions::call::CallKind, System, U256};
 
+use once_cell::unsync::Lazy;
+
 mod evm;
 mod fvm;
 
@@ -19,13 +21,13 @@ pub type PrecompileResult = Result<Vec<u8>, PrecompileError>;
 
 pub const NATIVE_PRECOMPILE_ADDRESS_PREFIX: u8 = 0xFE;
 
-struct PrecompileTable<RT: Runtime, const N: usize> ([Option<PrecompileFn<RT>>; N]);
+struct PrecompileTable<RT: Runtime, const N: usize>([Option<PrecompileFn<RT>>; N]);
 
 impl<RT: Runtime, const N: usize> PrecompileTable<RT, N> {
     /// Tries to lookup Precompile, None if empty slot or out of bounds.
     /// Last byte of precompile address - 1 is the index.
     fn get(&self, index: usize) -> Option<PrecompileFn<RT>> {
-        self.0.get(index).map(|i| i.as_ref()).flatten().map(|f| *f)
+        self.0.get(index).and_then(|i| i.as_ref()).copied()
     }
 
     fn init(src: [Option<PrecompileFn<RT>>; N]) -> Self {
@@ -33,7 +35,7 @@ impl<RT: Runtime, const N: usize> PrecompileTable<RT, N> {
     }
 }
 
-fn n_gen_evm_precompiles<RT: Runtime>() -> PrecompileTable<RT, 9> {
+fn gen_evm_precompiles<RT: Runtime>() -> PrecompileTable<RT, 9> {
     PrecompileTable::init([
         Some(ec_recover::<RT>), // 0x01 ecrecover
         Some(sha256::<RT>),     // 0x02 SHA2-256
@@ -47,13 +49,13 @@ fn n_gen_evm_precompiles<RT: Runtime>() -> PrecompileTable<RT, 9> {
     ])
 }
 
-fn n_gen_native_precompiles<RT: Runtime>() -> PrecompileTable<RT, 5> {
+fn gen_native_precompiles<RT: Runtime>() -> PrecompileTable<RT, 5> {
     PrecompileTable::init([
-        Some(resolve_address::<RT>),            // 0xfe00..01 resolve_address
-        Some(lookup_delegated_address::<RT>),   // 0xfe00..02 lookup_delegated_address
-        Some(call_actor::<RT>),                 // 0xfe00..03 call_actor
-        None,                                   // DISABLED 0xfe00..04 get_actor_type
-        Some(call_actor_id::<RT>),              // 0xfe00..05 call_actor_id
+        Some(resolve_address::<RT>),          // 0xfe00..01 resolve_address
+        Some(lookup_delegated_address::<RT>), // 0xfe00..02 lookup_delegated_address
+        Some(call_actor::<RT>),               // 0xfe00..03 call_actor
+        None,                                 // DISABLED 0xfe00..04 get_actor_type
+        Some(call_actor_id::<RT>),            // 0xfe00..05 call_actor_id
     ])
 }
 
@@ -66,11 +68,15 @@ pub fn is_reserved_precompile_address(addr: &EthAddress) -> bool {
 
 pub struct Precompiles<RT>(PhantomData<RT>);
 
-use once_cell::unsync::Lazy;
 impl<RT: Runtime> Precompiles<RT> {
-    const EVM_PRECOMPILES: Lazy<PrecompileTable<RT, 9>> = Lazy::new(|| n_gen_evm_precompiles());
-    const NATIVE_PRECOMPILES: Lazy<PrecompileTable<RT, 5>> = Lazy::new(|| n_gen_native_precompiles());
+    // These are _not_ interior mutable, they just have mutable references in fn pointers.
+    #[allow(clippy::declare_interior_mutable_const)]
+    const EVM_PRECOMPILES: Lazy<PrecompileTable<RT, 9>> = Lazy::new(|| gen_evm_precompiles());
+    #[allow(clippy::declare_interior_mutable_const)]
+    const NATIVE_PRECOMPILES: Lazy<PrecompileTable<RT, 5>> = Lazy::new(|| gen_native_precompiles());
 
+    // again these are not interior mutable
+    #[allow(clippy::borrow_interior_mutable_const)]
     fn lookup_precompile(addr: &EthAddress) -> Option<PrecompileFn<RT>> {
         let [prefix, _m @ .., index] = addr.0;
         if is_reserved_precompile_address(addr) {
