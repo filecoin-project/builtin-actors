@@ -10,7 +10,7 @@ use ethers::providers::{MockProvider, Provider};
 use ethers::types::Bytes;
 use evm::interpreter::address::EthAddress;
 use evm::interpreter::U256;
-use evm::EVM_CONTRACT_REVERTED;
+use evm::{EVM_CONTRACT_REVERTED, Method};
 use fil_actor_evm as evm;
 use fil_actors_runtime::{test_utils::*, EAM_ACTOR_ID, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -353,6 +353,84 @@ fn test_call_convert_to_send3() {
     let result = util::invoke_contract(&mut rt, &contract_params);
     assert_eq!(U256::from_big_endian(&result), U256::from(0));
     rt.verify();
+}
+
+#[test]
+pub fn test_call_output_region() {
+    let init = "";
+    let body = r#"
+# this contract truncates return from send to output length
+
+# prepare the proxy call
+push1 0x00 
+calldataload # size from first word
+push1 0x00 # offset
+
+# input offset and size
+push1 0x00
+push1 0x00
+
+# value
+push1 0x00
+
+# dest address
+push1 0x20
+calldataload # address from second word
+
+# gas
+push1 0x00
+
+# do the call
+call
+
+push1 0x40
+calldataload # return size from third word
+push1 0x00 # offset
+return
+"#;
+
+    let contract = asm::new_contract("call-output-region", init, body).unwrap();
+    let mut rt = util::construct_and_verify(contract);
+
+    let address = EthAddress(util::CONTRACT_ADDRESS);
+
+    // large set of data
+    let large_ret = IpldBlock {
+        codec: DAG_CBOR,
+        data: vec![0xff; 2048]
+    };
+
+    let cases = [(32, 64), (64, 64), (1024, 1025)];
+    for (output_size, return_size) in cases {
+        rt.expect_send_generalized(
+            (&address).try_into().unwrap(),
+            Method::InvokeContract as u64,
+            None,
+            TokenAmount::zero(),
+            Some(0),
+            SendFlags::empty(),
+            Some(large_ret.clone()),
+            ExitCode::OK,
+        );
+
+        rt.expect_gas_available(10_000_000_000);
+
+        let out = util::invoke_contract(
+            &mut rt,
+            &[
+                U256::from(output_size).to_bytes().to_vec(),
+                address.as_evm_word().to_bytes().to_vec(),
+                U256::from(return_size).to_bytes().to_vec(),
+            ]
+            .concat(),
+        );
+        let mut expected = vec![0xff; output_size];
+        expected.extend_from_slice(&vec![0u8; return_size - output_size]);
+
+        rt.verify();
+        assert_eq!(expected, out, "expect: {}\n   got: {}", hex::encode(&expected), hex::encode(&out));
+        rt.reset();
+    }
 }
 
 #[allow(dead_code)]
