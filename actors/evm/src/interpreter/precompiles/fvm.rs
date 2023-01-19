@@ -2,65 +2,11 @@ use crate::EVM_MAX_RESERVED_METHOD;
 use fil_actors_runtime::runtime::Runtime;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::{address::Address, econ::TokenAmount, sys::SendFlags, METHOD_SEND};
-use num_traits::FromPrimitive;
 
 use crate::interpreter::{instructions::call::CallKind, System, U256};
 
 use super::{PrecompileContext, PrecompileError, PrecompileResult};
 use crate::reader::ValueReader;
-
-/// !! DISABLED !!
-///
-/// Params:
-///
-/// | Param            | Value                     |
-/// |------------------|---------------------------|
-/// | randomness_type  | U256 - low i32: `Chain`(0) OR `Beacon`(1) |
-/// | personalization  | U256 - low i64             |
-/// | randomness_epoch | U256 - low i64             |
-/// | entropy_length   | U256 - low u32             |
-/// | entropy          | input\[32..] (right padded)|
-///
-/// any bytes in between values are ignored
-///
-/// Returns empty array if invalid randomness type
-/// Errors if unable to fetch randomness
-#[allow(unused)]
-pub(super) fn get_randomness<RT: Runtime>(
-    system: &mut System<RT>,
-    input: &[u8],
-    _: PrecompileContext,
-) -> PrecompileResult {
-    let mut input_params = ValueReader::new(input);
-
-    #[derive(num_derive::FromPrimitive)]
-    #[repr(i32)]
-    enum RandomnessType {
-        Chain = 0,
-        Beacon = 1,
-    }
-
-    let randomness_type = RandomnessType::from_i32(input_params.read_value::<i32>()?);
-    let personalization = input_params.read_value::<i64>()?;
-    let rand_epoch = input_params.read_value::<i64>()?;
-    let entropy_len = input_params.read_value::<u32>()? as usize;
-
-    let entropy = input_params.read_padded(entropy_len);
-
-    let randomness = match randomness_type {
-        Some(RandomnessType::Chain) => system
-            .rt
-            .user_get_randomness_from_chain(personalization, rand_epoch, &entropy)
-            .map(|a| a.to_vec()),
-        Some(RandomnessType::Beacon) => system
-            .rt
-            .user_get_randomness_from_beacon(personalization, rand_epoch, &entropy)
-            .map(|a| a.to_vec()),
-        None => Ok(Vec::new()),
-    };
-
-    randomness.map_err(|_| PrecompileError::InvalidInput)
-}
 
 /// Read BE encoded low u64 ID address from a u256 word
 /// Looks up and returns the encoded f4 addresses of an ID address. Empty array if not found or `InvalidInput` input was larger 2^64.
