@@ -7,9 +7,6 @@ use substrate_bn::{CurveError, FieldError, GroupError};
 use crate::reader::OverflowError;
 
 use super::{address::EthAddress, instructions::call::CallKind, System, U256};
-
-use once_cell::unsync::Lazy;
-
 mod evm;
 mod fvm;
 
@@ -19,44 +16,25 @@ use fvm::{call_actor, call_actor_id, lookup_delegated_address, resolve_address};
 type PrecompileFn<RT> = fn(&mut System<RT>, &[u8], PrecompileContext) -> PrecompileResult;
 pub type PrecompileResult = Result<Vec<u8>, PrecompileError>;
 
+// Work-around to have mutable fn pointers in a const.
+// https://github.com/rust-lang/rust/issues/100136
+#[derive(Clone, Copy)]
+struct WrappedFn<RT: Runtime>(fn(&mut System<RT>, &[u8], PrecompileContext) -> PrecompileResult);
+
 pub const NATIVE_PRECOMPILE_ADDRESS_PREFIX: u8 = 0xFE;
 
-struct PrecompileTable<RT: Runtime, const N: usize>([Option<PrecompileFn<RT>>; N]);
+struct PrecompileTable<RT: Runtime, const N: usize>([Option<WrappedFn<RT>>; N]);
 
 impl<RT: Runtime, const N: usize> PrecompileTable<RT, N> {
     /// Tries to lookup Precompile, None if empty slot or out of bounds.
     /// Last byte of precompile address - 1 is the index.
     fn get(&self, index: usize) -> Option<PrecompileFn<RT>> {
-        self.0.get(index).and_then(|i| i.as_ref()).copied()
+        self.0.get(index).and_then(|i| i.as_ref()).map(|f| f.0)
     }
 
-    fn init(src: [Option<PrecompileFn<RT>>; N]) -> Self {
+    const fn init(src: [Option<WrappedFn<RT>>; N]) -> Self {
         Self(src)
     }
-}
-
-fn gen_evm_precompiles<RT: Runtime>() -> PrecompileTable<RT, 9> {
-    PrecompileTable::init([
-        Some(ec_recover::<RT>), // 0x01 ecrecover
-        Some(sha256::<RT>),     // 0x02 SHA2-256
-        Some(ripemd160::<RT>),  // 0x03 ripemd160
-        Some(identity::<RT>),   // 0x04 identity
-        Some(modexp::<RT>),     // 0x05 modexp
-        Some(ec_add::<RT>),     // 0x06 ecAdd
-        Some(ec_mul::<RT>),     // 0x07 ecMul
-        Some(ec_pairing::<RT>), // 0x08 ecPairing
-        Some(blake2f::<RT>),    // 0x09 blake2f
-    ])
-}
-
-fn gen_native_precompiles<RT: Runtime>() -> PrecompileTable<RT, 5> {
-    PrecompileTable::init([
-        Some(resolve_address::<RT>),          // 0xfe00..01 resolve_address
-        Some(lookup_delegated_address::<RT>), // 0xfe00..02 lookup_delegated_address
-        Some(call_actor::<RT>),               // 0xfe00..03 call_actor
-        None,                                 // DISABLED 0xfe00..04 get_actor_type
-        Some(call_actor_id::<RT>),            // 0xfe00..05 call_actor_id
-    ])
 }
 
 pub fn is_reserved_precompile_address(addr: &EthAddress) -> bool {
@@ -69,14 +47,29 @@ pub fn is_reserved_precompile_address(addr: &EthAddress) -> bool {
 pub struct Precompiles<RT>(PhantomData<RT>);
 
 impl<RT: Runtime> Precompiles<RT> {
-    // These are _not_ interior mutable, they just have mutable references in fn pointers.
-    #[allow(clippy::declare_interior_mutable_const)]
-    const EVM_PRECOMPILES: Lazy<PrecompileTable<RT, 9>> = Lazy::new(|| gen_evm_precompiles());
-    #[allow(clippy::declare_interior_mutable_const)]
-    const NATIVE_PRECOMPILES: Lazy<PrecompileTable<RT, 5>> = Lazy::new(|| gen_native_precompiles());
+    /// FEVM specific precompiles (0xfe prefix)
+    const NATIVE_PRECOMPILES: PrecompileTable<RT, 5> = PrecompileTable::init([
+        Some(WrappedFn(resolve_address::<RT>)), // 0xfe00..01 resolve_address
+        Some(WrappedFn(lookup_delegated_address::<RT>)), // 0xfe00..02 lookup_delegated_address
+        Some(WrappedFn(call_actor::<RT>)),      // 0xfe00..03 call_actor
+        None,                                   // DISABLED 0xfe00..04 get_actor_type
+        Some(WrappedFn(call_actor_id::<RT>)),   // 0xfe00..05 call_actor_id
+    ]);
+
+    /// EVM specific precompiles
+    const EVM_PRECOMPILES: PrecompileTable<RT, 9> = PrecompileTable::init([
+        Some(WrappedFn(ec_recover::<RT>)), // 0x01 ecrecover
+        Some(WrappedFn(sha256::<RT>)),     // 0x02 SHA2-256
+        Some(WrappedFn(ripemd160::<RT>)),  // 0x03 ripemd160
+        Some(WrappedFn(identity::<RT>)),   // 0x04 identity
+        Some(WrappedFn(modexp::<RT>)),     // 0x05 modexp
+        Some(WrappedFn(ec_add::<RT>)),     // 0x06 ecAdd
+        Some(WrappedFn(ec_mul::<RT>)),     // 0x07 ecMul
+        Some(WrappedFn(ec_pairing::<RT>)), // 0x08 ecPairing
+        Some(WrappedFn(blake2f::<RT>)),    // 0x09 blake2f
+    ]);
 
     // again these are not interior mutable
-    #[allow(clippy::borrow_interior_mutable_const)]
     fn lookup_precompile(addr: &EthAddress) -> Option<PrecompileFn<RT>> {
         let [prefix, _m @ .., index] = addr.0;
         if is_reserved_precompile_address(addr) {
