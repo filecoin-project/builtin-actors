@@ -116,6 +116,7 @@ pub enum NativePrecompile {
     LookupDelegatedAddress = 2,
     CallActor = 3,
     GetActorType = 4,
+    CallActorId = 5,
 }
 
 #[allow(dead_code)]

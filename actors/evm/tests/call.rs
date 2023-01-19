@@ -658,6 +658,48 @@ fn call_actor_overlapping() {
     test.run_test_expecting(&mut rt, CallActorReturn::default(), util::PrecompileExit::Success);
 }
 
+#[test]
+fn call_actor_id_with_full_address() {
+    let contract = {
+        let (init, body) = util::PrecompileTest::test_runner_assembly();
+        asm::new_contract("call_actor-precompile-test", &init, &body).unwrap()
+    };
+    let mut rt = util::construct_and_verify(contract);
+    let addr = Address::new_delegated(1234, b"foobarboxy").unwrap();
+    let actual_id_addr = 1234;
+
+    let mut call_params = CallActorParams::default();
+    // garbage bytes
+    call_params.set_addr(CallActorParams::EMPTY_PARAM_ADDR_OFFSET, addr.to_bytes());
+    // id address
+    call_params.addr_offset = U256::from(actual_id_addr);
+
+    let mut test = util::PrecompileTest {
+        precompile_address: util::NativePrecompile::CallActorId.eth_address(),
+        output_size: 32,
+        gas_avaliable: 10_000_000_000u64,
+        call_op: util::PrecompileCallOpcode::DelegateCall,
+        // overwritten in tests
+        expected_return: vec![],
+        expected_exit_code: util::PrecompileExit::Success,
+        input: call_params.clone().into(),
+    };
+
+    rt.expect_send_generalized(
+        Address::new_id(actual_id_addr),
+        0,
+        None,
+        TokenAmount::zero(),
+        Some(0),
+        SendFlags::empty(),
+        None,
+        ExitCode::OK,
+    );
+
+    test.input = call_params.into();
+    test.run_test_expecting(&mut rt, CallActorReturn::default(), util::PrecompileExit::Success);
+}
+
 #[cfg(test)]
 mod call_actor_invalid {
     use super::*;
