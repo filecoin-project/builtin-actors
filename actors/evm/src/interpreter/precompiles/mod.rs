@@ -16,13 +16,39 @@ use fvm::{call_actor, call_actor_id, get_actor_type, lookup_delegated_address, r
 
 // really I'd want to have context as a type parameter, but since the table we generate must have the same types (or dyn) its messy
 type PrecompileFn<RT> = unsafe fn(*mut System<RT>, &[u8], PrecompileContext) -> PrecompileResult;
+
+type NewPrecompileFn<RT> = fn(&mut System<RT>, &[u8], PrecompileContext) -> PrecompileResult;
+
 pub type PrecompileResult = Result<Vec<u8>, PrecompileError>;
 
 pub const NATIVE_PRECOMPILE_ADDRESS_PREFIX: u8 = 0xFE;
 
+struct SlotArray<T, const N: usize> ([Option<T>; N]);
+
+type PrecompileTable<RT, const N: usize> = SlotArray<NewPrecompileFn<RT>, N>;
+
+impl<T, const N: usize> SlotArray<T, N> {
+    /// Err(err) if out of range
+    /// Ok(None) for empty slot
+    fn try_get<E>(&self, index: usize, err: E) -> Result<Option<&T>, E> {
+        self.0.get(index).map(|i| i.as_ref()).ok_or(err)
+    }
+
+    const fn init(src: [Option<T>; N]) -> Self {
+        Self(src)
+    }
+}
+
+impl<RT: Runtime, const N: usize> PrecompileTable<RT, N> {
+    /// Tries to lookup Precompile, None if empty slot or out of bounds
+    fn get(&self, index: usize) -> Option<NewPrecompileFn<RT>> {
+        self.try_get(index, ()).ok().flatten().map(|f| *f)
+    }
+}
+
 macro_rules! precompiles {
     ($($precompile:ident,)*) => {
-        mod trampolines {
+        pub(super) mod trampolines {
             use fil_actors_runtime::runtime::Runtime;
             use crate::System;
             use super::{PrecompileContext, PrecompileResult};
@@ -37,6 +63,30 @@ macro_rules! precompiles {
             $(trampolines::$precompile,)*
         ]
     }
+}
+
+fn n_gen_evm_precompiles<RT: Runtime>() -> PrecompileTable<RT, 9> {
+    PrecompileTable::init([
+        Some(ec_recover::<RT>), // 0x01 ecrecover
+        Some(sha256::<RT>),     // 0x02 SHA2-256
+        Some(ripemd160::<RT>),  // 0x03 ripemd160
+        Some(identity::<RT>),   // 0x04 identity
+        Some(modexp::<RT>),     // 0x05 modexp
+        Some(ec_add::<RT>),     // 0x06 ecAdd
+        Some(ec_mul::<RT>),     // 0x07 ecMul
+        Some(ec_pairing::<RT>), // 0x08 ecPairing
+        Some(blake2f::<RT>),    // 0x09 blake2f
+    ])
+}
+
+fn n_gen_native_precompiles<RT: Runtime>() -> PrecompileTable<RT, 5> {
+    PrecompileTable::init([
+        Some(resolve_address::<RT>),            // 0xfe00..01 resolve_address
+        Some(lookup_delegated_address::<RT>),   // 0xfe00..02 lookup_delegated_address
+        Some(call_actor::<RT>),                 // 0xfe00..03 call_actor
+        None,                                   // DISABLED 0xfe00..04 get_actor_type
+        Some(call_actor_id::<RT>),              // 0xfe00..05 call_actor_id
+    ])
 }
 
 /// Generates a list of precompile smart contracts, index + 1 is the address.
@@ -73,11 +123,12 @@ pub fn is_reserved_precompile_address(addr: &EthAddress) -> bool {
 
 pub struct Precompiles<RT>(PhantomData<RT>);
 
+use once_cell::unsync::Lazy;
 impl<RT: Runtime> Precompiles<RT> {
-    const EVM_PRECOMPILES: [PrecompileFn<RT>; 9] = gen_evm_precompiles();
-    const NATIVE_PRECOMPILES: [PrecompileFn<RT>; 5] = gen_native_precompiles();
+    const EVM_PRECOMPILES: Lazy<PrecompileTable<RT, 9>> = Lazy::new(|| n_gen_evm_precompiles());
+    const NATIVE_PRECOMPILES: Lazy<PrecompileTable<RT, 5>> = Lazy::new(|| n_gen_native_precompiles());
 
-    fn lookup_precompile(addr: &EthAddress) -> Option<PrecompileFn<RT>> {
+    fn lookup_precompile(addr: &EthAddress) -> Option<NewPrecompileFn<RT>> {
         let [prefix, _m @ .., index] = addr.0;
         if is_reserved_precompile_address(addr) {
             let index = index as usize - 1;
@@ -86,7 +137,6 @@ impl<RT: Runtime> Precompiles<RT> {
                 0x00 => Self::EVM_PRECOMPILES.get(index),
                 _ => None,
             }
-            .copied()
         } else {
             None
         }
@@ -102,7 +152,7 @@ impl<RT: Runtime> Precompiles<RT> {
     ) -> PrecompileResult {
         // First, try to call the precompile, if defined.
         let result = Self::lookup_precompile(precompile_addr)
-            .map(|precompile_fn| unsafe { precompile_fn(system, input, context) })
+            .map(|precompile_fn| precompile_fn(system, input, context))
             .transpose()?
             .unwrap_or_default();
         // Then transfer the value. We do this second because we don't want to transfer if the

@@ -73,6 +73,7 @@ fn tester_bytecode() -> Vec<u8> {
 }
 
 #[test]
+#[ignore = "removing this later PR"]
 fn test_native_actor_type() {
     use evm::interpreter::precompiles::NativeType;
 
