@@ -49,11 +49,11 @@ pub struct Precompiles<RT>(PhantomData<RT>);
 impl<RT: Runtime> Precompiles<RT> {
     /// FEVM specific precompiles (0xfe prefix)
     const NATIVE_PRECOMPILES: PrecompileTable<RT, 5> = PrecompileTable::init([
-        Some(WrappedFn(resolve_address::<RT>)), // 0xfe00..01 resolve_address
-        Some(WrappedFn(lookup_delegated_address::<RT>)), // 0xfe00..02 lookup_delegated_address
-        Some(WrappedFn(call_actor::<RT>)),      // 0xfe00..03 call_actor
-        None,                                   // DISABLED 0xfe00..04 get_actor_type
-        Some(WrappedFn(call_actor_id::<RT>)),   // 0xfe00..05 call_actor_id
+        Some(WrappedFn(resolve_address::<RT>)),          // 0xfe00..01
+        Some(WrappedFn(lookup_delegated_address::<RT>)), // 0xfe00..02
+        Some(WrappedFn(call_actor::<RT>)),               // 0xfe00..03
+        None,                                            // 0xfe00..04 DISABLED
+        Some(WrappedFn(call_actor_id::<RT>)),            // 0xfe00..05
     ]);
 
     /// EVM specific precompiles
