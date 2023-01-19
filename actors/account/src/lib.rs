@@ -1,7 +1,6 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::crypto::signature::SignatureType::{Secp256k1, BLS};
 use fvm_shared::crypto::signature::{Signature, SignatureType};
@@ -36,6 +35,7 @@ pub enum Method {
     // AuthenticateMessage = 3,
     AuthenticateMessageExported = frc42_dispatch::method_hash!("AuthenticateMessage"),
     UniversalReceiverHook = frc42_dispatch::method_hash!("Receive"),
+    InvokeEVM = frc42_dispatch::method_hash!("InvokeEVM"),
 }
 
 /// Account Actor
@@ -91,15 +91,6 @@ impl Actor {
 
         Ok(())
     }
-
-    // Always succeeds, accepting any transfers.
-    pub fn universal_receiver_hook(
-        rt: &mut impl Runtime,
-        _params: UniversalReceiverParams,
-    ) -> Result<(), ActorError> {
-        rt.validate_immediate_caller_accept_any()?;
-        Ok(())
-    }
 }
 
 impl ActorCode for Actor {
@@ -108,6 +99,7 @@ impl ActorCode for Actor {
         Constructor => constructor,
         PubkeyAddress => pubkey_address,
         AuthenticateMessageExported => authenticate_message,
-        UniversalReceiverHook => universal_receiver_hook,
+        UniversalReceiverHook => (),
+        InvokeEVM => (),
     }
 }

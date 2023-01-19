@@ -24,7 +24,7 @@ use crate::ActorError;
 /// ```
 #[macro_export]
 macro_rules! actor_dispatch {
-    ($($(#[$m:meta])* $method:ident => $func:ident,)*) => {
+    ($($(#[$m:meta])* $method:ident => $func:tt,)*) => {
         fn invoke_method<RT>(
             rt: &mut RT,
             method: MethodNum,
@@ -36,16 +36,25 @@ macro_rules! actor_dispatch {
         {
             restrict_internal_api(rt, method)?;
             match FromPrimitive::from_u64(method) {
-                $($(#[$m])* Some(Self::Methods::$method) => $crate::dispatch(rt, Self::$func, &args),)*
+                $($(#[$m])* Some(Self::Methods::$method) => {
+                    $crate::actor_dispatch!(@dispatch (rt args) $func)
+                }),*
                 None => Err(actor_error!(unhandled_message; "invalid method: {}", method)),
             }
         }
+    };
+    (@dispatch ($rt:ident $args:ident) ()) => {{
+        $rt.validate_immediate_caller_accept_any()?;
+        Ok(None)
+    }};
+    (@dispatch ($rt:ident $args:ident) $func:ident) => {
+        $crate::dispatch($rt, Self::$func, &$args)
     };
 }
 
 #[macro_export]
 macro_rules! actor_dispatch_unrestricted {
-    ($($(#[$m:meta])* $method:ident => $func:ident,)*) => {
+    ($($(#[$m:meta])* $method:ident => $func:tt,)*) => {
         fn invoke_method<RT>(
             rt: &mut RT,
             method: MethodNum,
@@ -56,10 +65,19 @@ macro_rules! actor_dispatch_unrestricted {
             RT::Blockstore: Clone,
         {
             match FromPrimitive::from_u64(method) {
-                $($(#[$m])* Some(Self::Methods::$method) => $crate::dispatch(rt, Self::$func, &args),)*
+                $($(#[$m])* Some(Self::Methods::$method) => {
+                    $crate::actor_dispatch!(@dispatch (rt args) $func)
+                }),*
                 None => Err(actor_error!(unhandled_message; "invalid method: {}", method)),
             }
         }
+    };
+    (@dispatch ($rt:ident $args:ident) ()) => {{
+        $rt.validate_immediate_caller_accept_any()?;
+        Ok(None)
+    }};
+    (@dispatch ($rt:ident $args:ident) $func:ident) => {
+        $crate::dispatch($rt, Self::$func, &$args)
     };
 }
 

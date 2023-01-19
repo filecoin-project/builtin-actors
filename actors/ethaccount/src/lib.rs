@@ -1,6 +1,5 @@
 pub mod types;
 
-use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_shared::address::{Payload, Protocol};
 use fvm_shared::crypto::hash::SupportedHashes::Keccak256;
 use fvm_shared::error::ExitCode;
@@ -25,6 +24,7 @@ pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
     AuthenticateMessageExported = frc42_dispatch::method_hash!("AuthenticateMessage"),
     UniversalReceiverHook = frc42_dispatch::method_hash!("Receive"),
+    InvokeEVM = frc42_dispatch::method_hash!("InvokeEVM"),
 }
 
 /// Ethereum Account actor.
@@ -126,15 +126,6 @@ impl EthAccountActor {
 
         Ok(())
     }
-
-    // Always succeeds, accepting any transfers.
-    pub fn universal_receiver_hook(
-        rt: &mut impl Runtime,
-        _params: UniversalReceiverParams,
-    ) -> Result<(), ActorError> {
-        rt.validate_immediate_caller_accept_any()?;
-        Ok(())
-    }
 }
 
 impl ActorCode for EthAccountActor {
@@ -142,6 +133,7 @@ impl ActorCode for EthAccountActor {
     actor_dispatch! {
         Constructor => constructor,
         AuthenticateMessageExported => authenticate_message,
-        UniversalReceiverHook => universal_receiver_hook,
+        UniversalReceiverHook => (),
+        InvokeEVM => (),
     }
 }
