@@ -48,7 +48,11 @@ pub(super) fn get_actor_type<RT: Runtime>(
         None => NativeType::NonExistent,
     };
 
-    Ok(builtin_type.word_vec())
+    fn word_vec(src: NativeType) -> Vec<u8> {
+        U256::from(src as u32).to_bytes().to_vec()
+    }
+
+    Ok(word_vec(builtin_type))
 }
 
 /// !! DISABLED !!
