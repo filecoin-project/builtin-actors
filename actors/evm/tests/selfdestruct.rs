@@ -131,7 +131,6 @@ fn test_selfdestruct_during_constructor() {
     let contract = Address::new_id(100);
 
     let mut rt = util::init_construct_and_verify(bytecode, |rt| {
-
         rt.set_balance(TokenAmount::from_whole(1));
 
         rt.actor_code_cids.insert(contract, *EVM_ACTOR_CODE_ID);
