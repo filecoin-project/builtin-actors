@@ -137,12 +137,6 @@ fn create_init(
     //
     // However these errors are flattened to a 0 pushed on the stack.
 
-    // TODO revert state if error was returned (revert nonce bump)
-    // https://github.com/filecoin-project/ref-fvm/issues/956
-
-    // TODO Exit with revert if sys out of gas when subcall gas limits are introduced
-    // https://github.com/filecoin-project/ref-fvm/issues/966
-
     Ok(match ret {
         Ok(eam_ret) => {
             let ret: EamReturn = deserialize_block(eam_ret)?;
