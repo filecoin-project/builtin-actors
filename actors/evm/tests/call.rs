@@ -781,6 +781,49 @@ fn call_actor_id_with_full_address() {
     test.run_test_expecting(&mut rt, CallActorReturn::default(), util::PrecompileExit::Success);
 }
 
+
+#[test]
+fn call_actor_syscall_error() {
+    let contract = {
+        let (init, body) = util::PrecompileTest::test_runner_assembly();
+        asm::new_contract("call_actor-precompile-test", &init, &body).unwrap()
+    };
+    let mut rt = util::construct_and_verify(contract);
+    let addr = Address::new_delegated(1234, b"foobarboxy").unwrap();
+
+    let call_params = CallActorParams::default();
+
+    let mut test = util::PrecompileTest {
+        precompile_address: util::NativePrecompile::CallActor.eth_address(),
+        output_size: 32,
+        gas_avaliable: 10_000_000_000u64,
+        call_op: util::PrecompileCallOpcode::DelegateCall,
+        // overwritten in tests
+        expected_return: vec![],
+        expected_exit_code: util::PrecompileExit::Success,
+        input: call_params.clone().into(),
+    };
+
+    let syscall_exit = ExitCode::SYS_INVALID_RECEIVER;
+
+    let mut expect = CallActorReturn::default();
+    expect.exit_code = syscall_exit;
+
+    rt.expect_send_generalized(
+        addr,
+        0,
+        None,
+        TokenAmount::zero(),
+        None,
+        SendFlags::empty(),
+        None,
+        syscall_exit,
+    );
+
+    test.input = call_params.into();
+    test.run_test_expecting(&mut rt, expect, util::PrecompileExit::Success);
+}
+
 #[cfg(test)]
 mod call_actor_invalid {
     use super::*;
@@ -1003,7 +1046,14 @@ struct CallActorReturn {
 
 impl From<CallActorReturn> for Vec<u8> {
     fn from(src: CallActorReturn) -> Self {
-        let exit_code = U256::from(src.exit_code.value());
+
+        // precompile will return negative number for system/syscall errors
+        let exit_code = if src.exit_code.is_system_error() && !src.exit_code.is_success() {
+            U256::from(src.exit_code.value()).i256_neg()
+        } else {
+            U256::from(src.exit_code.value())
+        };
+         
         let codec = U256::from(src.codec);
         let offset = U256::from(src.data_offset);
         let len = U256::from(src.data_size);
