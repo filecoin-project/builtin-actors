@@ -1,17 +1,17 @@
 pub mod types;
 
-use fvm_actor_utils::receiver::UniversalReceiverParams;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::{Payload, Protocol};
 use fvm_shared::crypto::hash::SupportedHashes::Keccak256;
 use fvm_shared::error::ExitCode;
-use fvm_shared::METHOD_CONSTRUCTOR;
+use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
 
 use crate::types::AuthenticateMessageParams;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
     actor_dispatch, actor_error, ActorDowncast, ActorError, AsActorError, EAM_ACTOR_ID,
-    SYSTEM_ACTOR_ADDR,
+    FIRST_EXPORTED_METHOD_NUMBER, SYSTEM_ACTOR_ADDR,
 };
 
 #[cfg(feature = "fil-actor")]
@@ -23,7 +23,6 @@ fil_actors_runtime::wasm_trampoline!(EthAccountActor);
 pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
     AuthenticateMessageExported = frc42_dispatch::method_hash!("AuthenticateMessage"),
-    UniversalReceiverHook = frc42_dispatch::method_hash!("Receive"),
 }
 
 /// Ethereum Account actor.
@@ -127,12 +126,17 @@ impl EthAccountActor {
     }
 
     // Always succeeds, accepting any transfers.
-    pub fn universal_receiver_hook(
+    pub fn fallback(
         rt: &mut impl Runtime,
-        _params: UniversalReceiverParams,
-    ) -> Result<(), ActorError> {
+        method: MethodNum,
+        _: Option<IpldBlock>,
+    ) -> Result<Option<IpldBlock>, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        Ok(())
+        if method >= FIRST_EXPORTED_METHOD_NUMBER {
+            Ok(None)
+        } else {
+            Err(actor_error!(unhandled_message; "invalid method: {}", method))
+        }
     }
 }
 
@@ -141,6 +145,6 @@ impl ActorCode for EthAccountActor {
     actor_dispatch! {
         Constructor => constructor,
         AuthenticateMessageExported => authenticate_message,
-        UniversalReceiverHook => universal_receiver_hook,
+        _ => fallback [raw],
     }
 }
