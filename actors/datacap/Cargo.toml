@@ -21,7 +21,7 @@ frc42_dispatch = "3.0.0"
 frc46_token = "3.1.0"
 fvm_actor_utils = "3.0.0"
 fvm_ipld_blockstore = "0.1.1"
-fvm_ipld_encoding = "0.3.2"
+fvm_ipld_encoding = "0.3.3"
 fvm_ipld_hamt = "0.6.1"
 fvm_shared = { version = "3.0.0-alpha.16", default-features = false }
 lazy_static = "1.4.0"
