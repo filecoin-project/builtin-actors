@@ -57,7 +57,11 @@ impl U256 {
     /// turns a i256 value to negative
     #[inline(always)]
     pub fn i256_neg(&self) -> U256 {
-        !*self + U256::ONE
+        if self.is_zero() {
+            U256::ZERO
+        } else {
+            !*self + U256::ONE
+        }   
     }
 
     pub fn to_bytes(&self) -> [u8; 32] {
