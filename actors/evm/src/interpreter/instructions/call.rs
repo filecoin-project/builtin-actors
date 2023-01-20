@@ -12,7 +12,6 @@ use {
     super::memory::{copy_to_memory, get_memory_region},
     crate::interpreter::address::EthAddress,
     crate::interpreter::instructions::memory::MemoryRegion,
-    crate::interpreter::output::StatusCode,
     crate::interpreter::precompiles,
     crate::interpreter::ExecutionState,
     crate::interpreter::System,
@@ -36,7 +35,7 @@ pub fn calldataload(
     state: &mut ExecutionState,
     _: &System<impl Runtime>,
     index: U256,
-) -> Result<U256, StatusCode> {
+) -> Result<U256, ActorError> {
     let input_len = state.input_data.len();
     Ok(index
         .try_into()
@@ -55,7 +54,7 @@ pub fn calldataload(
 pub fn calldatasize(
     state: &mut ExecutionState,
     _: &System<impl Runtime>,
-) -> Result<U256, StatusCode> {
+) -> Result<U256, ActorError> {
     Ok(u128::try_from(state.input_data.len()).unwrap().into())
 }
 
@@ -66,7 +65,7 @@ pub fn calldatacopy(
     mem_index: U256,
     input_index: U256,
     size: U256,
-) -> Result<(), StatusCode> {
+) -> Result<(), ActorError> {
     copy_to_memory(&mut state.memory, mem_index, size, input_index, &state.input_data, true)
 }
 
@@ -75,7 +74,7 @@ pub fn codesize(
     _state: &mut ExecutionState,
     _: &System<impl Runtime>,
     code: &[u8],
-) -> Result<U256, StatusCode> {
+) -> Result<U256, ActorError> {
     Ok(U256::from(code.len()))
 }
 
@@ -87,7 +86,7 @@ pub fn codecopy(
     mem_index: U256,
     input_index: U256,
     size: U256,
-) -> Result<(), StatusCode> {
+) -> Result<(), ActorError> {
     copy_to_memory(&mut state.memory, mem_index, size, input_index, code, true)
 }
 
@@ -102,7 +101,7 @@ pub fn call_call<RT: Runtime>(
     input_size: U256,
     output_offset: U256,
     output_size: U256,
-) -> Result<U256, StatusCode> {
+) -> Result<U256, ActorError> {
     call_generic(
         state,
         system,
@@ -121,7 +120,7 @@ pub fn call_delegatecall<RT: Runtime>(
     input_size: U256,
     output_offset: U256,
     output_size: U256,
-) -> Result<U256, StatusCode> {
+) -> Result<U256, ActorError> {
     call_generic(
         state,
         system,
@@ -140,7 +139,7 @@ pub fn call_staticcall<RT: Runtime>(
     input_size: U256,
     output_offset: U256,
     output_size: U256,
-) -> Result<U256, StatusCode> {
+) -> Result<U256, ActorError> {
     call_generic(
         state,
         system,
@@ -154,18 +153,17 @@ pub fn call_generic<RT: Runtime>(
     system: &mut System<RT>,
     kind: CallKind,
     params: (U256, U256, U256, U256, U256, U256, U256),
-) -> Result<U256, StatusCode> {
+) -> Result<U256, ActorError> {
     let ExecutionState { stack: _, memory, .. } = state;
 
     let (gas, dst, value, input_offset, input_size, output_offset, output_size) = params;
 
     if system.readonly && value > U256::zero() {
         // non-zero sends are side-effects and hence a static mode violation
-        return Err(StatusCode::StaticModeViolation);
+        return Err(ActorError::read_only("cannot transfer value when read-only".into()));
     }
 
-    let input_region = get_memory_region(memory, input_offset, input_size)
-        .map_err(|_| StatusCode::InvalidMemoryAccess)?;
+    let input_region = get_memory_region(memory, input_offset, input_size)?;
 
     let (call_result, return_data) = {
         // ref to memory is dropped after calling so we can mutate it on output later

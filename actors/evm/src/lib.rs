@@ -14,7 +14,7 @@ pub(crate) mod reader;
 mod state;
 
 use {
-    crate::interpreter::{execute, Bytecode, ExecutionState, StatusCode, System, U256},
+    crate::interpreter::{execute, Bytecode, ExecutionState, System, U256},
     bytes::Bytes,
     cid::Cid,
     fil_actors_runtime::{
@@ -34,7 +34,12 @@ pub use state::*;
 fil_actors_runtime::wasm_trampoline!(EvmContractActor);
 
 pub const EVM_CONTRACT_REVERTED: ExitCode = ExitCode::new(33);
-pub const EVM_CONTRACT_EXECUTION_ERROR: ExitCode = ExitCode::new(34);
+pub const EVM_CONTRACT_INVALID_INSTRUCTION: ExitCode = ExitCode::new(34);
+pub const EVM_CONTRACT_UNDEFINED_INSTRUCTION: ExitCode = ExitCode::new(35);
+pub const EVM_CONTRACT_STACK_UNDERFLOW: ExitCode = ExitCode::new(36);
+pub const EVM_CONTRACT_STACK_OVERFLOW: ExitCode = ExitCode::new(37);
+pub const EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS: ExitCode = ExitCode::new(38);
+pub const EVM_CONTRACT_BAD_JUMPDEST: ExitCode = ExitCode::new(39);
 
 const EVM_MAX_RESERVED_METHOD: u64 = 1023;
 pub const NATIVE_METHOD_SIGNATURE: &str = "handle_filecoin_method(uint64,uint64,bytes)";
@@ -115,10 +120,7 @@ pub fn initialize_evm_contract(
     let initcode = Bytecode::new(initcode);
 
     // invoke the contract constructor
-    let output = execute(&initcode, &mut exec_state, system).map_err(|e| match e {
-        StatusCode::ActorError(e) => e,
-        _ => ActorError::unspecified(format!("EVM execution error: {e:?}")),
-    })?;
+    let output = execute(&initcode, &mut exec_state, system)?;
 
     match output.outcome {
         Outcome::Return => {
@@ -157,10 +159,7 @@ where
     let mut exec_state =
         ExecutionState::new(*caller, receiver_eth_addr, value_received, input_data.to_vec().into());
 
-    let output = execute(&bytecode, &mut exec_state, system).map_err(|e| match e {
-        StatusCode::ActorError(e) => e,
-        _ => ActorError::unspecified(format!("EVM execution error: {e:?}")),
-    })?;
+    let output = execute(&bytecode, &mut exec_state, system)?;
 
     match output.outcome {
         Outcome::Return => {

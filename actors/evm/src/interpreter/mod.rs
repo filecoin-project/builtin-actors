@@ -12,7 +12,7 @@ pub mod uints;
 pub use {
     bytecode::Bytecode,
     execution::{execute, ExecutionState},
-    output::{Output, StatusCode},
+    output::Output,
     system::System,
     uints::{U256, U512},
 };

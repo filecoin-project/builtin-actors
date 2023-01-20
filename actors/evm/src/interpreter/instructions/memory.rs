@@ -1,8 +1,12 @@
 #!allow[clippy::result-unit-err]
 
+use fil_actors_runtime::{ActorError, AsActorError};
+
+use crate::EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS;
+
 use {
     crate::interpreter::memory::Memory,
-    crate::interpreter::{ExecutionState, StatusCode, System, U256},
+    crate::interpreter::{ExecutionState, System, U256},
     fil_actors_runtime::runtime::Runtime,
     std::num::NonZeroUsize,
 };
@@ -17,7 +21,7 @@ pub struct MemoryRegion {
 }
 
 #[inline]
-fn grow_memory(mem: &mut Memory, mut new_size: usize) -> Result<(), ()> {
+fn grow_memory(mem: &mut Memory, mut new_size: usize) {
     // Align to the next u256.
     // Guaranteed to not overflow.
     let alignment = new_size % WORD_SIZE;
@@ -25,28 +29,38 @@ fn grow_memory(mem: &mut Memory, mut new_size: usize) -> Result<(), ()> {
         new_size += WORD_SIZE - alignment;
     }
     mem.grow(new_size);
-    Ok(())
 }
 
 #[inline]
-#[allow(clippy::result_unit_err)]
 pub fn get_memory_region(
     mem: &mut Memory,
     offset: impl TryInto<u32>,
     size: impl TryInto<u32>,
-) -> Result<Option<MemoryRegion>, ()> {
+) -> Result<Option<MemoryRegion>, ActorError> {
     // We use u32 because we don't support more than 4GiB of memory anyways.
     // Also, explicitly check math so we don't panic and/or wrap around.
-    let size: u32 = size.try_into().map_err(|_| ())?;
+    let size: u32 = size.try_into().map_err(|_| {
+        ActorError::unchecked(
+            EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS,
+            "size must be less than max u32".into(),
+        )
+    })?;
     if size == 0 {
         return Ok(None);
     }
-    let offset: u32 = offset.try_into().map_err(|_| ())?;
-    let new_size: u32 = offset.checked_add(size).ok_or(())?;
+    let offset: u32 = offset.try_into().map_err(|_| {
+        ActorError::unchecked(
+            EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS,
+            "offset must be less than max u32".into(),
+        )
+    })?;
+    let new_size: u32 = offset
+        .checked_add(size)
+        .context_code(EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS, "new memory size exceeds max u32")?;
 
     let current_size = mem.len();
     if new_size as usize > current_size {
-        grow_memory(mem, new_size as usize)?;
+        grow_memory(mem, new_size as usize);
     }
 
     Ok(Some(MemoryRegion {
@@ -62,9 +76,8 @@ pub fn copy_to_memory(
     data_offset: U256,
     data: &[u8],
     zero_fill: bool,
-) -> Result<(), StatusCode> {
-    let region = get_memory_region(memory, dest_offset, dest_size)
-        .map_err(|_| StatusCode::InvalidMemoryAccess)?;
+) -> Result<(), ActorError> {
+    let region = get_memory_region(memory, dest_offset, dest_size)?;
 
     #[inline(always)]
     fn min(a: U256, b: usize) -> usize {
@@ -98,10 +111,8 @@ pub fn mload(
     state: &mut ExecutionState,
     _system: &System<impl Runtime>,
     index: U256,
-) -> Result<U256, StatusCode> {
-    let region = get_memory_region(&mut state.memory, index, WORD_SIZE)
-        .map_err(|_| StatusCode::InvalidMemoryAccess)?
-        .expect("empty region");
+) -> Result<U256, ActorError> {
+    let region = get_memory_region(&mut state.memory, index, WORD_SIZE)?.expect("empty region");
     let value =
         U256::from_big_endian(&state.memory[region.offset..region.offset + region.size.get()]);
 
@@ -114,10 +125,8 @@ pub fn mstore(
     _system: &System<impl Runtime>,
     index: U256,
     value: U256,
-) -> Result<(), StatusCode> {
-    let region = get_memory_region(&mut state.memory, index, WORD_SIZE)
-        .map_err(|_| StatusCode::InvalidMemoryAccess)?
-        .expect("empty region");
+) -> Result<(), ActorError> {
+    let region = get_memory_region(&mut state.memory, index, WORD_SIZE)?.expect("empty region");
 
     let mut bytes = [0u8; WORD_SIZE];
     value.to_big_endian(&mut bytes);
@@ -132,10 +141,8 @@ pub fn mstore8(
     _system: &System<impl Runtime>,
     index: U256,
     value: U256,
-) -> Result<(), StatusCode> {
-    let region = get_memory_region(&mut state.memory, index, 1)
-        .map_err(|_| StatusCode::InvalidMemoryAccess)?
-        .expect("empty region");
+) -> Result<(), ActorError> {
+    let region = get_memory_region(&mut state.memory, index, 1)?.expect("empty region");
 
     let value = (value.low_u32() & 0xff) as u8;
     state.memory[region.offset] = value;
@@ -147,7 +154,7 @@ pub fn mstore8(
 pub fn msize(
     state: &mut ExecutionState,
     _system: &System<impl Runtime>,
-) -> Result<U256, StatusCode> {
+) -> Result<U256, ActorError> {
     Ok(u64::try_from(state.memory.len()).unwrap().into())
 }
 
@@ -167,7 +174,7 @@ mod tests {
             &[],
             true,
         );
-        assert_eq!(result, Err(StatusCode::InvalidMemoryAccess));
+        assert_eq!(result.unwrap_err().exit_code(), EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS);
     }
 
     #[test]

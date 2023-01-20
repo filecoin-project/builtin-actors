@@ -16,9 +16,9 @@ pub mod state;
 pub mod storage;
 
 use crate::interpreter::execution::Machine;
-use crate::interpreter::output::StatusCode;
 use crate::interpreter::U256;
 use fil_actors_runtime::runtime::Runtime;
+use fil_actors_runtime::ActorError;
 
 macro_rules! rev {
     ($($args:ident),*) => {
@@ -36,7 +36,7 @@ macro_rules! def_op {
     ($op:ident ($m:ident) => { $($body:tt)* }) => {
         #[allow(non_snake_case)]
         #[inline(always)]
-        pub fn $op<'r, 'a, RT: Runtime + 'a>($m: &mut Machine<'r, 'a, RT> ) -> Result<(), StatusCode> {
+        pub fn $op<'r, 'a, RT: Runtime + 'a>($m: &mut Machine<'r, 'a, RT> ) -> Result<(), ActorError> {
             $($body)*
         }
     }

@@ -1,8 +1,8 @@
 #![allow(dead_code, clippy::missing_safety_doc)]
 
-use crate::interpreter::U256;
+use fil_actors_runtime::{ActorError, AsActorError};
 
-use super::StatusCode;
+use crate::{interpreter::U256, EVM_CONTRACT_STACK_OVERFLOW, EVM_CONTRACT_STACK_UNDERFLOW};
 
 /// Ethereum Yellow Paper (9.1)
 pub const STACK_SIZE: usize = 1024;
@@ -37,9 +37,9 @@ impl Stack {
     }
 
     #[inline(always)]
-    pub fn push(&mut self, value: U256) -> Result<(), StatusCode> {
+    pub fn push(&mut self, value: U256) -> Result<(), ActorError> {
         if self.stack.len() >= STACK_SIZE {
-            Err(StatusCode::StackOverflow)
+            Err(ActorError::unchecked(EVM_CONTRACT_STACK_OVERFLOW, "stack overflow".into()))
         } else {
             self.stack.push(value);
             Ok(())
@@ -47,9 +47,12 @@ impl Stack {
     }
 
     #[inline]
-    pub fn pop_many<const S: usize>(&mut self) -> Result<&[U256; S], StatusCode> {
+    pub fn pop_many<const S: usize>(&mut self) -> Result<&[U256; S], ActorError> {
         if self.len() < S {
-            return Err(StatusCode::StackUnderflow);
+            return Err(ActorError::unchecked(
+                EVM_CONTRACT_STACK_UNDERFLOW,
+                "stack underflow".into(),
+            ));
         }
         let new_len = self.len() - S;
         unsafe {
@@ -66,21 +69,21 @@ impl Stack {
 
     #[inline(always)]
     /// Ensures at least one more item is able to be allocated on the stack.
-    pub fn ensure_one(&self) -> Result<(), StatusCode> {
+    pub fn ensure_one(&self) -> Result<(), ActorError> {
         if self.stack.len() >= STACK_SIZE {
-            Err(StatusCode::StackOverflow)
+            Err(ActorError::unchecked(EVM_CONTRACT_STACK_OVERFLOW, "stack overflow".into()))
         } else {
             Ok(())
         }
     }
 
     #[inline]
-    pub fn dup(&mut self, i: usize) -> Result<(), StatusCode> {
+    pub fn dup(&mut self, i: usize) -> Result<(), ActorError> {
         let len = self.stack.len();
         if len >= STACK_SIZE {
-            Err(StatusCode::StackOverflow)
+            Err(ActorError::unchecked(EVM_CONTRACT_STACK_OVERFLOW, "stack overflow".into()))
         } else if i > len {
-            Err(StatusCode::StackUnderflow)
+            Err(ActorError::unchecked(EVM_CONTRACT_STACK_UNDERFLOW, "stack underflow".into()))
         } else {
             unsafe {
                 // This is safe because we're careful not to alias. We're _basically_ implementing
@@ -96,26 +99,29 @@ impl Stack {
     }
 
     #[inline]
-    pub fn swap_top(&mut self, i: usize) -> Result<(), StatusCode> {
+    pub fn swap_top(&mut self, i: usize) -> Result<(), ActorError> {
         let len = self.stack.len();
         if len <= i {
-            return Err(StatusCode::StackUnderflow);
+            return Err(ActorError::unchecked(
+                EVM_CONTRACT_STACK_UNDERFLOW,
+                "stack underflow".into(),
+            ));
         }
         self.stack.swap(len - i - 1, len - 1);
         Ok(())
     }
 
     #[inline]
-    pub fn pop(&mut self) -> Result<U256, StatusCode> {
-        self.stack.pop().ok_or(StatusCode::StackUnderflow)
+    pub fn pop(&mut self) -> Result<U256, ActorError> {
+        self.stack.pop().context_code(EVM_CONTRACT_STACK_UNDERFLOW, "stack underflow")
     }
 
     #[inline]
-    pub fn drop(&mut self) -> Result<(), StatusCode> {
+    pub fn drop(&mut self) -> Result<(), ActorError> {
         if self.stack.pop().is_some() {
             Ok(())
         } else {
-            Err(StatusCode::StackUnderflow)
+            Err(ActorError::unchecked(EVM_CONTRACT_STACK_UNDERFLOW, "stack underflow".into()))
         }
     }
 }
@@ -157,13 +163,13 @@ fn test_stack_swap() {
 #[test]
 fn test_stack_swap_underflow() {
     let mut stack = Stack::new();
-    assert_eq!(stack.swap_top(1).unwrap_err(), StatusCode::StackUnderflow);
+    assert_eq!(stack.swap_top(1).unwrap_err().exit_code(), EVM_CONTRACT_STACK_UNDERFLOW);
 
     stack.push(1.into()).unwrap();
-    assert_eq!(stack.swap_top(1).unwrap_err(), StatusCode::StackUnderflow);
+    assert_eq!(stack.swap_top(1).unwrap_err().exit_code(), EVM_CONTRACT_STACK_UNDERFLOW);
 
     stack.push(2.into()).unwrap();
-    assert_eq!(stack.swap_top(2).unwrap_err(), StatusCode::StackUnderflow);
+    assert_eq!(stack.swap_top(2).unwrap_err().exit_code(), EVM_CONTRACT_STACK_UNDERFLOW);
 }
 
 #[test]
@@ -182,9 +188,9 @@ fn test_stack_dup() {
 #[test]
 fn test_stack_dup_underflow() {
     let mut stack = Stack::new();
-    assert_eq!(stack.dup(1).unwrap_err(), StatusCode::StackUnderflow);
+    assert_eq!(stack.dup(1).unwrap_err().exit_code(), EVM_CONTRACT_STACK_UNDERFLOW);
     stack.push(1.into()).unwrap();
-    assert_eq!(stack.dup(2).unwrap_err(), StatusCode::StackUnderflow);
+    assert_eq!(stack.dup(2).unwrap_err().exit_code(), EVM_CONTRACT_STACK_UNDERFLOW);
 }
 
 #[test]
@@ -194,8 +200,8 @@ fn test_stack_overflow() {
         stack.push(i.into()).unwrap();
     }
 
-    assert_eq!(stack.push(1024.into()).unwrap_err(), StatusCode::StackOverflow);
-    assert_eq!(stack.dup(1).unwrap_err(), StatusCode::StackOverflow);
+    assert_eq!(stack.push(1024.into()).unwrap_err().exit_code(), EVM_CONTRACT_STACK_OVERFLOW);
+    assert_eq!(stack.dup(1).unwrap_err().exit_code(), EVM_CONTRACT_STACK_OVERFLOW);
     stack.swap_top(1).unwrap();
     assert_eq!(stack.pop().unwrap(), 1022);
 }
