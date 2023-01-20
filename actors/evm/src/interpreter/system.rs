@@ -227,26 +227,37 @@ impl<'r, RT: Runtime> System<'r, RT> {
         gas_limit: Option<u64>,
         send_flags: SendFlags,
     ) -> Result<Option<IpldBlock>, ActorError> {
+        self.send_raw(to, method, params, value, gas_limit, send_flags).and_then(|response| {
+            response.map_err(|exit| ActorError::checked(exit, format!("send exited with: {exit}")))
+        })
+    }
+
+    /// Outer Result is the Syscall Error, Inner Result is non-zero exit code from the return value
+    pub fn send_raw(
+        &mut self,
+        to: &Address,
+        method: MethodNum,
+        params: Option<IpldBlock>,
+        value: TokenAmount,
+        gas_limit: Option<u64>,
+        send_flags: SendFlags,
+    ) -> Result<Result<Option<IpldBlock>, ExitCode>, ActorError> {
         self.flush()?;
         let result = self
             .rt
             .send_generalized(to, method, params, value, gas_limit, send_flags)
-            .map_err(|err| actor_error!(unspecified; "send syscall failed: {}", err))?;
+            .map_err(|err| actor_error!(unspecified; "syscall failed: {}", err))?;
 
-        // Don't bother reloading on abort, just return the error.
+        // Don't bother reloading on abort, just return the exit error.
         if !result.exit_code.is_success() {
-            return Err(ActorError::checked_with_data(
-                result.exit_code,
-                format!("failed to call {to} on method {method}"),
-                result.return_data,
-            ));
+            return Ok(Err(result.exit_code));
         }
 
         if !send_flags.read_only() {
             self.reload()?;
         }
 
-        Ok(result.return_data)
+        Ok(Ok(result.return_data))
     }
 
     /// Flush the actor state (bytecode, nonce, and slots).
