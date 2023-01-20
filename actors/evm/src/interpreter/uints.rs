@@ -61,7 +61,7 @@ impl U256 {
             U256::ZERO
         } else {
             !*self + U256::ONE
-        }   
+        }
     }
 
     pub fn to_bytes(&self) -> [u8; 32] {
