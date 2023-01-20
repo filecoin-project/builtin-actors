@@ -186,7 +186,7 @@ fn create_actor(
             _ => {
                 return Err(
                     actor_error!(forbidden; "cannot deploy contract over existing contract at address {new_addr}"),
-                )
+                );
             }
         }
     }

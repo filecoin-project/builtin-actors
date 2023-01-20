@@ -679,8 +679,13 @@ fn simple_deal() {
     );
     deal1.verified_deal = false;
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal1_id =
-        publish_deals(&mut rt, &MinerAddresses::default(), &[deal1], next_allocation_id)[0];
+    let deal1_id = publish_deals(
+        &mut rt,
+        &MinerAddresses::default(),
+        &[deal1],
+        TokenAmount::zero(),
+        next_allocation_id,
+    )[0];
 
     // Publish from miner control address.
     let mut deal2 = generate_deal_and_add_funds(
@@ -692,8 +697,13 @@ fn simple_deal() {
     );
     deal2.verified_deal = true;
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, CONTROL_ADDR);
-    let deal2_id =
-        publish_deals(&mut rt, &MinerAddresses::default(), &[deal2], next_allocation_id)[0];
+    let deal2_id = publish_deals(
+        &mut rt,
+        &MinerAddresses::default(),
+        &[deal2.clone()],
+        TokenAmount::from_whole(deal2.piece_size.0),
+        next_allocation_id,
+    )[0];
 
     // activate the deal
     activate_deals(&mut rt, end_epoch + 1, PROVIDER_ADDR, publish_epoch, &[deal1_id, deal2_id]);
@@ -728,8 +738,13 @@ fn deal_expires() {
     );
     deal.verified_deal = true;
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal_id =
-        publish_deals(&mut rt, &MinerAddresses::default(), &[deal.clone()], next_allocation_id)[0];
+    let deal_id = publish_deals(
+        &mut rt,
+        &MinerAddresses::default(),
+        &[deal.clone()],
+        TokenAmount::from_whole(deal.piece_size.0),
+        next_allocation_id,
+    )[0];
 
     rt.set_epoch(start_epoch + EPOCHS_IN_DAY + 1);
     rt.expect_send(
@@ -798,7 +813,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     assert!(rt
         .call::<MarketActor>(
             Method::AddBalanceExported as u64,
-            IpldBlock::serialize_cbor(&client_bls).unwrap()
+            IpldBlock::serialize_cbor(&client_bls).unwrap(),
         )
         .is_ok());
     rt.verify();
@@ -867,6 +882,17 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
         }],
         extensions: vec![],
     };
+    let balance_of_params = client_resolved;
+    let balance_of_return = TokenAmount::from_whole(2048);
+    rt.expect_send(
+        DATACAP_TOKEN_ACTOR_ADDR,
+        ext::datacap::BALANCE_OF_METHOD as u64,
+        IpldBlock::serialize_cbor(&balance_of_params).unwrap(),
+        TokenAmount::zero(),
+        IpldBlock::serialize_cbor(&balance_of_return).unwrap(),
+        ExitCode::OK,
+    );
+
     let datacap_amount = TokenAmount::from_whole(deal.piece_size.0 as i64);
     let transfer_params = TransferFromParams {
         from: client_resolved,
@@ -931,6 +957,95 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     let prop = get_deal_proposal(&mut rt, deal_id);
     assert_eq!(client_resolved, prop.client);
     assert_eq!(provider_resolved, prop.provider);
+
+    check_state(&rt);
+}
+
+#[test]
+fn datacap_transfers_batched() {
+    let mut rt = setup();
+    let start_epoch = 42;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    rt.set_epoch(start_epoch);
+
+    let client1_addr = Address::new_id(900);
+    let client2_addr = Address::new_id(901);
+
+    // Propose two deals for client1, and one for client2.
+    let mut deal1 = generate_deal_and_add_funds(
+        &mut rt,
+        client1_addr,
+        &MinerAddresses::default(),
+        start_epoch,
+        end_epoch,
+    );
+    let mut deal2 = generate_deal_and_add_funds(
+        &mut rt,
+        client1_addr,
+        &MinerAddresses::default(),
+        start_epoch,
+        end_epoch + 1,
+    );
+    let mut deal3 = generate_deal_and_add_funds(
+        &mut rt,
+        client2_addr,
+        &MinerAddresses::default(),
+        start_epoch,
+        end_epoch,
+    );
+    deal1.verified_deal = true;
+    deal2.verified_deal = true;
+    deal3.verified_deal = true;
+    let datacap_balance = TokenAmount::from_whole(deal1.piece_size.0 * 10);
+
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+    let ids = publish_deals(
+        &mut rt,
+        &MinerAddresses::default(),
+        &[deal1, deal2, deal3],
+        datacap_balance,
+        1,
+    );
+    assert_eq!(3, ids.len());
+
+    check_state(&rt);
+}
+
+#[test]
+fn datacap_transfer_drops_deal_when_cap_insufficient() {
+    let mut rt = setup();
+    let start_epoch = 42;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let client1_addr = Address::new_id(900);
+    rt.set_epoch(start_epoch);
+
+    let mut deal1 = generate_deal_and_add_funds(
+        &mut rt,
+        client1_addr,
+        &MinerAddresses::default(),
+        start_epoch,
+        end_epoch,
+    );
+    let mut deal2 = generate_deal_and_add_funds(
+        &mut rt,
+        client1_addr,
+        &MinerAddresses::default(),
+        start_epoch,
+        end_epoch + 1,
+    );
+    deal1.verified_deal = true;
+    deal2.verified_deal = true;
+    let datacap_balance = TokenAmount::from_whole(deal1.piece_size.0); // Enough for 1 deal
+
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+    let ids = publish_deals(
+        &mut rt,
+        &MinerAddresses::default(),
+        &[deal1, deal2],
+        datacap_balance,
+        1, // Only 1
+    );
+    assert_eq!(1, ids.len());
 
     check_state(&rt);
 }
@@ -1004,7 +1119,8 @@ fn publish_a_deal_with_enough_collateral_when_circulating_supply_is_superior_to_
     // publish the deal successfully
     rt.set_epoch(publish_epoch);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    publish_deals(&mut rt, &MinerAddresses::default(), &[deal], 1);
+    let ids = publish_deals(&mut rt, &MinerAddresses::default(), &[deal], TokenAmount::zero(), 1);
+    assert_eq!(1, ids.len());
     check_state(&rt);
 }
 
@@ -1047,12 +1163,14 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
     );
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    publish_deals(
+    let ids = publish_deals(
         &mut rt,
         &MinerAddresses::default(),
         &[deal1.clone(), deal2.clone(), deal3.clone()],
+        TokenAmount::zero(),
         1,
     );
+    assert_eq!(3, ids.len());
 
     // assert locked balance for all clients and provider
     let provider_locked_expected =
@@ -1091,7 +1209,14 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
         100 + 200 * EPOCHS_IN_DAY,
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    publish_deals(&mut rt, &MinerAddresses::default(), &[deal4.clone(), deal5.clone()], 1);
+    let ids = publish_deals(
+        &mut rt,
+        &MinerAddresses::default(),
+        &[deal4.clone(), deal5.clone()],
+        TokenAmount::zero(),
+        1,
+    );
+    assert_eq!(2, ids.len());
 
     // assert locked balances for clients and provider
     let provider_locked_expected =
@@ -1134,7 +1259,9 @@ fn publish_multiple_deals_for_different_clients_and_ensure_balances_are_correct(
 
     // publish both the deals for the second provider
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    publish_deals(&mut rt, &addrs, &[deal6.clone(), deal7.clone()], 1);
+    let ids =
+        publish_deals(&mut rt, &addrs, &[deal6.clone(), deal7.clone()], TokenAmount::zero(), 1);
+    assert_eq!(2, ids.len());
 
     // assertions
     let st: State = rt.get_state();
@@ -1694,7 +1821,9 @@ fn market_actor_deals() {
 
     // First attempt at publishing the deal should work
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    publish_deals(&mut rt, &miner_addresses, &[deal_proposal.clone()], 1);
+    let ids =
+        publish_deals(&mut rt, &miner_addresses, &[deal_proposal.clone()], TokenAmount::zero(), 1);
+    assert_eq!(1, ids.len());
 
     // Second attempt at publishing the same deal should fail
     publish_deals_expect_abort(
@@ -1707,7 +1836,8 @@ fn market_actor_deals() {
     // Same deal with a different label should work
     deal_proposal.label = Label::String("Cthulhu".to_owned());
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    publish_deals(&mut rt, &miner_addresses, &[deal_proposal], 1);
+    let ids = publish_deals(&mut rt, &miner_addresses, &[deal_proposal], TokenAmount::zero(), 1);
+    assert_eq!(1, ids.len());
     check_state(&rt);
 }
 
@@ -1733,7 +1863,9 @@ fn max_deal_label_size() {
     // DealLabel at max size should work.
     deal_proposal.label = Label::String("s".repeat(DEAL_MAX_LABEL_SIZE));
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    publish_deals(&mut rt, &miner_addresses, &[deal_proposal.clone()], 1);
+    let ids =
+        publish_deals(&mut rt, &miner_addresses, &[deal_proposal.clone()], TokenAmount::zero(), 1);
+    assert_eq!(1, ids.len());
 
     // over max should fail
     deal_proposal.label = Label::String("s".repeat(DEAL_MAX_LABEL_SIZE + 1));

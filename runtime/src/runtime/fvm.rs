@@ -289,8 +289,6 @@ where
         let state_cid = fvm::sself::root()
             .map_err(|_| actor_error!(illegal_argument; "failed to get actor root state CID"))?;
 
-        log::debug!("getting cid: {}", state_cid);
-
         let mut state = ActorBlockstore
             .get_cbor::<S>(&state_cid)
             .map_err(|_| actor_error!(illegal_argument; "failed to get actor state"))?
@@ -588,14 +586,13 @@ where
 /// 5a. In case of error, aborts the execution with the emitted exit code, or
 /// 5b. In case of success, stores the return data as a block and returns the latter.
 pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
-    fvm::debug::init_logging();
+    init_logging();
 
     std::panic::set_hook(Box::new(|info| {
         fvm::vm::abort(ExitCode::USR_ASSERTION_FAILED.value(), Some(&format!("{}", info)))
     }));
 
     let method = fvm::message::method_number();
-    log::debug!("fetching parameters block: {}", params);
     let params = fvm::message::params_raw(params).expect("params block invalid");
 
     // Construct a new runtime.
@@ -617,5 +614,41 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
         None => NO_DATA_BLOCK_ID,
         Some(ret_block) => fvm::ipld::put_block(ret_block.codec, ret_block.data.as_slice())
             .expect("failed to write result"),
+    }
+}
+
+/// If debugging is enabled in the VM, installs a logger that sends messages to the FVM log syscall.
+/// Messages are prefixed with "[LEVEL] ".
+/// If debugging is not enabled, no logger will be installed which means that log!() and
+/// similar calls will be dropped without either formatting args or making a syscall.
+/// Note that, when debugging, the log syscalls will charge gas that wouldn't be charged
+/// when debugging is not enabled.
+///
+/// Note: this is similar to fvm::debug::init_logging() from the FVM SDK, but
+/// that doesn't work (at FVM SDK v2.2).
+fn init_logging() {
+    struct Logger;
+
+    impl log::Log for Logger {
+        fn enabled(&self, _: &log::Metadata) -> bool {
+            true
+        }
+
+        fn log(&self, record: &log::Record) {
+            // Note the log system won't automatically call enabled() before this,
+            // so it's canonical to check it here.
+            // But logging must have been enabled at initialisation time in order for
+            // the logger to be installed.
+            // There's currently no use for dynamically disabling logging, so just skip checking.
+            let msg = format!("[{}] {}", record.level(), record.args());
+            fvm::debug::log(msg);
+        }
+
+        fn flush(&self) {}
+    }
+
+    if fvm::debug::enabled() {
+        log::set_logger(&Logger).expect("failed to enable logging");
+        log::set_max_level(log::LevelFilter::Trace);
     }
 }

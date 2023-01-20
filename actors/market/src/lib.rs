@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use cid::multihash::{Code, MultihashDigest, MultihashGeneric};
 use cid::Cid;
 use fil_actors_runtime::{restrict_internal_api, FIRST_ACTOR_SPECIFIC_EXIT_CODE};
-use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
+use frc46_token::token::types::{BalanceReturn, TransferFromParams, TransferFromReturn};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_hamt::BytesKey;
@@ -235,14 +235,17 @@ impl Actor {
             proposal: DealProposal,
             serialized_proposal: RawBytes,
             cid: Cid,
-            allocation: AllocationID,
         }
-
         // Deals that passed validation.
         let mut valid_deals: Vec<ValidDeal> = Vec::with_capacity(params.deals.len());
         // CIDs of valid proposals.
         let mut proposal_cid_lookup = BTreeSet::new();
         let mut total_client_lockup: BTreeMap<ActorID, TokenAmount> = BTreeMap::new();
+        // Client datacap balance remaining after allocations for deals processed so far.
+        let mut client_datacap_remaining: BTreeMap<ActorID, TokenAmount> = BTreeMap::new();
+        // Verified allocation requests to make for each client, paired with the proposal CID.
+        let mut client_alloc_reqs: BTreeMap<ActorID, Vec<(Cid, AllocationRequest)>> =
+            BTreeMap::new();
         let mut total_provider_lockup = TokenAmount::zero();
 
         let mut valid_input_bf = BitField::default();
@@ -307,6 +310,7 @@ impl Actor {
             // Must happen after signature verification and before taking cid.
             deal.proposal.provider = Address::new_id(provider_id);
             deal.proposal.client = Address::new_id(client_id);
+
             let serialized_proposal = serialize(&deal.proposal, "normalized deal proposal")
                 .context_code(ExitCode::USR_SERIALIZATION, "failed to serialize")?;
             let pcid = rt_serialized_deal_cid(rt, &serialized_proposal).map_err(
@@ -323,68 +327,60 @@ impl Actor {
                 continue;
             }
 
-            // For verified deals, transfer datacap tokens from the client
-            // to the verified registry actor along with a specification for the allocation.
-            // Drop deal if the transfer fails.
-            // This could be done in a batch, but one-at-a-time allows dropping of only
-            // some deals if the client's balance is insufficient, rather than dropping them all.
-            // An alternative could first fetch the available balance/allowance, and then make
-            // a batch transfer for an amount known to be available.
-            // https://github.com/filecoin-project/builtin-actors/issues/662
-            let allocation_id = if deal.proposal.verified_deal {
-                let params = datacap_transfer_request(
-                    &Address::new_id(client_id),
-                    vec![alloc_request_for_deal(&deal, rt.policy(), curr_epoch)],
-                )?;
-                let alloc_ids = rt
-                    .send(
-                        &DATACAP_TOKEN_ACTOR_ADDR,
-                        ext::datacap::TRANSFER_FROM_METHOD as u64,
-                        IpldBlock::serialize_cbor(&params)?,
-                        TokenAmount::zero(),
-                    )
-                    .and_then(|ret| {
-                        datacap_transfer_response(
-                            ret.with_context_code(ExitCode::USR_ASSERTION_FAILED, || {
-                                "return expected".to_string()
-                            })?,
-                        )
-                    });
-                match alloc_ids {
-                    Ok(ids) => {
-                        // Note: when changing this to do anything other than expect complete success,
-                        // inspect the BatchReturn values to determine which deals succeeded and which failed.
-                        if ids.len() != 1 {
-                            return Err(actor_error!(
-                                unspecified,
-                                "expected 1 allocation ID, got {:?}",
-                                ids
-                            ));
-                        }
-                        ids[0]
-                    }
-                    Err(e) => {
-                        info!(
-                            "invalid deal {}: failed to allocate datacap for verified deal: {}",
-                            di, e
-                        );
-                        continue;
-                    }
+            // Fetch each client's datacap balance and calculate the amount of datacap required for
+            // each client's verified deals.
+            // Drop any verified deals for which the client has insufficient datacap.
+            if deal.proposal.verified_deal {
+                let remaining_datacap = match client_datacap_remaining.get(&client_id).cloned() {
+                    None => balance_of(rt, &Address::new_id(client_id))
+                        .with_context_code(ExitCode::USR_NOT_FOUND, || {
+                            format!("failed to get datacap balance for client {}", client_id)
+                        })?,
+                    Some(client_data) => client_data,
+                };
+                let piece_datacap_required =
+                    TokenAmount::from_whole(deal.proposal.piece_size.0 as i64);
+                if remaining_datacap < piece_datacap_required {
+                    client_datacap_remaining.insert(client_id, remaining_datacap);
+                    continue; // Drop the deal
                 }
-            } else {
-                NO_ALLOCATION_ID
-            };
+                client_datacap_remaining
+                    .insert(client_id, remaining_datacap - piece_datacap_required);
+                client_alloc_reqs
+                    .entry(client_id)
+                    .or_default()
+                    .push((pcid, alloc_request_for_deal(&deal, rt.policy(), curr_epoch)));
+            }
 
             total_provider_lockup = provider_lockup;
             total_client_lockup.insert(client_id, client_lockup);
             proposal_cid_lookup.insert(pcid);
-            valid_deals.push(ValidDeal {
-                proposal: deal.proposal,
-                serialized_proposal,
-                cid: pcid,
-                allocation: allocation_id,
-            });
+            valid_deals.push(ValidDeal { proposal: deal.proposal, serialized_proposal, cid: pcid });
             valid_input_bf.set(di as u64)
+        }
+
+        // Make datacap allocation requests by transferring datacap tokens, once per client.
+        // Record the allocation ID for each deal proposal CID.
+        let mut deal_allocation_ids: BTreeMap<Cid, AllocationID> = BTreeMap::new();
+        for (client_id, cids_and_reqs) in client_alloc_reqs.iter() {
+            let reqs: Vec<AllocationRequest> =
+                cids_and_reqs.iter().map(|(_, req)| req.clone()).collect();
+            let params = datacap_transfer_request(&Address::new_id(*client_id), reqs)?;
+            // A datacap transfer is all-or-nothing.
+            // We expect it to succeed because we checked the client's balance earlier.
+            let alloc_ids = transfer_from(rt, params)
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to transfer datacap from client {}", *client_id)
+                })?;
+            if alloc_ids.len() != cids_and_reqs.len() {
+                return Err(
+                    actor_error!(illegal_state; "datacap transfer returned {} allocation IDs for {} requests",
+                        alloc_ids.len(), cids_and_reqs.len()),
+                );
+            }
+            for ((cid, _), alloc_id) in cids_and_reqs.iter().zip(alloc_ids.iter()) {
+                deal_allocation_ids.insert(*cid, *alloc_id);
+            }
         }
 
         let valid_deal_count = valid_input_bf.len();
@@ -421,8 +417,8 @@ impl Actor {
 
                 // Store verified allocation (if any) in the pending allocation IDs map.
                 // It will be removed when the deal is activated or expires.
-                if valid_deal.allocation != NO_ALLOCATION_ID {
-                    pending_deal_allocation_ids.push((deal_id_key(deal_id), valid_deal.allocation));
+                if let Some(alloc_id) = deal_allocation_ids.get(&valid_deal.cid) {
+                    pending_deal_allocation_ids.push((deal_id_key(deal_id), *alloc_id));
                 }
 
                 // Randomize the first epoch for when the deal will be processed so an attacker isn't able to
@@ -436,13 +432,9 @@ impl Actor {
             }
 
             st.put_pending_deals(rt.store(), &pending_deals)?;
-
             st.put_deal_proposals(rt.store(), &deal_proposals)?;
-
             st.put_pending_deal_allocation_ids(rt.store(), &pending_deal_allocation_ids)?;
-
             st.put_deals_by_epoch(rt.store(), &deals_by_epoch)?;
-
             Ok(())
         })?;
 
@@ -1114,12 +1106,42 @@ fn datacap_transfer_request(
     })
 }
 
-// Parses allocation IDs from a TransferFromReturn
-fn datacap_transfer_response(ret: IpldBlock) -> Result<Vec<AllocationID>, ActorError> {
-    let ret: TransferFromReturn = ret.deserialize()?;
+// Invokes transfer_from on the data cap token actor.
+fn transfer_from(
+    rt: &mut impl Runtime,
+    params: TransferFromParams,
+) -> Result<Vec<AllocationID>, ActorError> {
+    let ret = rt
+        .send(
+            &DATACAP_TOKEN_ACTOR_ADDR,
+            ext::datacap::TRANSFER_FROM_METHOD as u64,
+            IpldBlock::serialize_cbor(&params)?,
+            TokenAmount::zero(),
+        )
+        .context(format!("failed to send transfer to datacap {:?}", params))?;
+    let ret: TransferFromReturn = ret
+        .with_context_code(ExitCode::USR_ASSERTION_FAILED, || "return expected".to_string())?
+        .deserialize()?;
     let allocs: ext::verifreg::AllocationsResponse =
         deserialize(&ret.recipient_data, "allocations response")?;
     Ok(allocs.new_allocations)
+}
+
+// Invokes BalanceOf on the data cap token actor.
+fn balance_of(rt: &mut impl Runtime, owner: &Address) -> Result<TokenAmount, ActorError> {
+    let params = IpldBlock::serialize_cbor(owner)?;
+    let ret = rt
+        .send(
+            &DATACAP_TOKEN_ACTOR_ADDR,
+            ext::datacap::BALANCE_OF_METHOD as u64,
+            params,
+            TokenAmount::zero(),
+        )
+        .context(format!("failed to query datacap balance of {}", owner))?;
+    let ret: BalanceReturn = ret
+        .with_context_code(ExitCode::USR_ASSERTION_FAILED, || "return expected".to_string())?
+        .deserialize()?;
+    Ok(ret)
 }
 
 pub fn gen_rand_next_epoch(
