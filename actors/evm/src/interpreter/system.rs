@@ -13,7 +13,7 @@ use fvm_shared::{
     econ::TokenAmount,
     error::ExitCode,
     sys::SendFlags,
-    MethodNum, IPLD_RAW, METHOD_SEND,
+    MethodNum, Response, IPLD_RAW, METHOD_SEND,
 };
 use multihash::Code;
 use once_cell::unsync::OnceCell;
@@ -228,7 +228,13 @@ impl<'r, RT: Runtime> System<'r, RT> {
         send_flags: SendFlags,
     ) -> Result<Option<IpldBlock>, ActorError> {
         self.send_raw(to, method, params, value, gas_limit, send_flags).and_then(|response| {
-            response.map_err(|exit| ActorError::checked(exit, format!("send exited with: {exit}")))
+            response.map_err(|response| {
+                ActorError::checked_with_data(
+                    response.exit_code,
+                    format!("failed to call {to} on method {method}"),
+                    response.return_data,
+                )
+            })
         })
     }
 
@@ -241,23 +247,22 @@ impl<'r, RT: Runtime> System<'r, RT> {
         value: TokenAmount,
         gas_limit: Option<u64>,
         send_flags: SendFlags,
-    ) -> Result<Result<Option<IpldBlock>, ExitCode>, ActorError> {
+    ) -> Result<Result<Option<IpldBlock>, Response>, ActorError> {
         self.flush()?;
         let result = self
             .rt
             .send_generalized(to, method, params, value, gas_limit, send_flags)
             .map_err(|err| actor_error!(unspecified; "syscall failed: {}", err))?;
 
-        // Don't bother reloading on abort, just return the exit error.
-        if !result.exit_code.is_success() {
-            return Ok(Err(result.exit_code));
-        }
-
         if !send_flags.read_only() {
             self.reload()?;
         }
 
-        Ok(Ok(result.return_data))
+        if !result.exit_code.is_success() {
+            Ok(Err(result))
+        } else {
+            Ok(Ok(result.return_data))
+        }
     }
 
     /// Flush the actor state (bytecode, nonce, and slots).
