@@ -3,7 +3,7 @@ use fil_actor_evm::{
     DelegateCallParams, Method,
 };
 use fil_actors_runtime::{runtime::EMPTY_ARR_CID, test_utils::EVM_ACTOR_CODE_ID};
-use fvm_ipld_encoding::{ipld_block::IpldBlock, BytesSer, RawBytes, CBOR};
+use fvm_ipld_encoding::{ipld_block::IpldBlock, BytesSer, RawBytes, DAG_CBOR};
 use fvm_shared::{
     address::Address as FILAddress, econ::TokenAmount, error::ExitCode, sys::SendFlags,
 };
@@ -97,7 +97,7 @@ fn test_delegate_call_caller() {
         value: TokenAmount::from_whole(123),
     };
     let proxy_call_input_data = Some(IpldBlock {
-        codec: CBOR,
+        codec: DAG_CBOR,
         data: RawBytes::serialize(proxy_call_contract_params)
             .expect("failed to serialize delegate call params")
             .to_vec(),
