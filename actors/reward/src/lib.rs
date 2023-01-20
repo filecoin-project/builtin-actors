@@ -3,18 +3,17 @@
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, restrict_internal_api, ActorError, BURNT_FUNDS_ACTOR_ADDR,
-    EXPECTED_LEADERS_PER_EPOCH, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_dispatch, actor_error, ActorError, BURNT_FUNDS_ACTOR_ADDR, EXPECTED_LEADERS_PER_EPOCH,
+    STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
+use fvm_shared::{METHOD_CONSTRUCTOR, METHOD_SEND};
 use log::{error, warn};
 use num_derive::FromPrimitive;
-use num_traits::FromPrimitive;
 
 pub use self::logic::*;
 pub use self::state::{Reward, State, VestingFunction};

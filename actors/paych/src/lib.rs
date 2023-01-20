@@ -4,8 +4,8 @@
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, resolve_to_actor_id, restrict_internal_api, ActorDowncast,
-    ActorError, Array, AsActorError,
+    actor_dispatch, actor_error, resolve_to_actor_id, ActorDowncast, ActorError, Array,
+    AsActorError,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::CBOR;
@@ -14,9 +14,9 @@ use fvm_shared::address::Address;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
+use fvm_shared::{METHOD_CONSTRUCTOR, METHOD_SEND};
 use num_derive::FromPrimitive;
-use num_traits::{FromPrimitive, Zero};
+use num_traits::Zero;
 
 pub use self::state::{LaneState, Merge, State};
 pub use self::types::*;

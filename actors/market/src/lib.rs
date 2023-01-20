@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use cid::multihash::{Code, MultihashDigest, MultihashGeneric};
 use cid::Cid;
-use fil_actors_runtime::{restrict_internal_api, FIRST_ACTOR_SPECIFIC_EXIT_CODE};
+use fil_actors_runtime::FIRST_ACTOR_SPECIFIC_EXIT_CODE;
 use frc46_token::token::types::{BalanceReturn, TransferFromParams, TransferFromReturn};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
@@ -20,11 +20,11 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::{RegisteredSealProof, SectorSize, StoragePower};
-use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
+use fvm_shared::{ActorID, METHOD_CONSTRUCTOR, METHOD_SEND};
 use integer_encoding::VarInt;
 use log::info;
 use num_derive::FromPrimitive;
-use num_traits::{FromPrimitive, Zero};
+use num_traits::Zero;
 
 use crate::balance_table::BalanceTable;
 use fil_actors_runtime::cbor::{deserialize, serialize};

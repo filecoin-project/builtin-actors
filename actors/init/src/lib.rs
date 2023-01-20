@@ -8,14 +8,13 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, restrict_internal_api, ActorContext, ActorError, AsActorError,
-    EAM_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_dispatch, actor_error, ActorContext, ActorError, AsActorError, EAM_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR,
 };
 use fvm_shared::address::Address;
 use fvm_shared::error::ExitCode;
-use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR};
+use fvm_shared::{ActorID, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
-use num_traits::FromPrimitive;
 
 pub use self::state::State;
 pub use self::types::*;

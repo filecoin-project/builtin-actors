@@ -26,10 +26,9 @@ use {
     fvm_shared::{
         address::{Address, Payload},
         crypto::hash::SupportedHashes,
-        ActorID, MethodNum, METHOD_CONSTRUCTOR,
+        ActorID, METHOD_CONSTRUCTOR,
     },
     num_derive::FromPrimitive,
-    num_traits::FromPrimitive,
 };
 
 #[cfg(feature = "fil-actor")]

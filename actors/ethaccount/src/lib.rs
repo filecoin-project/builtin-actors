@@ -4,15 +4,14 @@ use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_shared::address::{Payload, Protocol};
 use fvm_shared::crypto::hash::SupportedHashes::Keccak256;
 use fvm_shared::error::ExitCode;
-use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
+use fvm_shared::METHOD_CONSTRUCTOR;
 use num_derive::FromPrimitive;
-use num_traits::FromPrimitive;
 
 use crate::types::AuthenticateMessageParams;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, restrict_internal_api, ActorDowncast, ActorError, AsActorError,
-    EAM_ACTOR_ID, SYSTEM_ACTOR_ADDR,
+    actor_dispatch, actor_error, ActorDowncast, ActorError, AsActorError, EAM_ACTOR_ID,
+    SYSTEM_ACTOR_ADDR,
 };
 
 #[cfg(feature = "fil-actor")]
