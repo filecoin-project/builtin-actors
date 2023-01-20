@@ -1,7 +1,9 @@
 #![allow(clippy::missing_safety_doc)]
 
-use crate::interpreter::StatusCode;
-use {crate::interpreter::stack::Stack, crate::interpreter::U256};
+use fil_actors_runtime::ActorError;
+
+use crate::interpreter::stack::Stack;
+use crate::interpreter::U256;
 
 macro_rules! be_u64 {
     ($byte:expr) => {$byte as u64};
@@ -16,7 +18,7 @@ macro_rules! be_shift {
 }
 
 #[inline]
-pub(crate) fn push<const LEN: usize>(stack: &mut Stack, code: &[u8]) -> Result<usize, StatusCode> {
+pub(crate) fn push<const LEN: usize>(stack: &mut Stack, code: &[u8]) -> Result<usize, ActorError> {
     if code.len() < LEN {
         // this is a pathological edge case, as the contract will immediately stop execution.
         // we still handle it for correctness sake (and obviously avoid crashing out of bounds)
@@ -46,17 +48,17 @@ pub(crate) fn push<const LEN: usize>(stack: &mut Stack, code: &[u8]) -> Result<u
 }
 
 #[inline]
-pub(crate) fn dup<const HEIGHT: usize>(stack: &mut Stack) -> Result<(), StatusCode> {
+pub(crate) fn dup<const HEIGHT: usize>(stack: &mut Stack) -> Result<(), ActorError> {
     stack.dup(HEIGHT)
 }
 
 #[inline]
-pub(crate) fn swap<const HEIGHT: usize>(stack: &mut Stack) -> Result<(), StatusCode> {
+pub(crate) fn swap<const HEIGHT: usize>(stack: &mut Stack) -> Result<(), ActorError> {
     stack.swap_top(HEIGHT)
 }
 
 #[inline]
-pub(crate) fn pop(stack: &mut Stack) -> Result<(), StatusCode> {
+pub(crate) fn pop(stack: &mut Stack) -> Result<(), ActorError> {
     stack.drop()
 }
 

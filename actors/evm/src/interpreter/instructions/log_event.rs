@@ -1,8 +1,9 @@
 use crate::interpreter::instructions::memory::get_memory_region;
+use fil_actors_runtime::ActorError;
 use fvm_ipld_encoding::{to_vec, BytesSer, RawBytes};
 use fvm_shared::event::{Entry, Flags};
 use {
-    crate::interpreter::{ExecutionState, StatusCode, System, U256},
+    crate::interpreter::{ExecutionState, System, U256},
     fil_actors_runtime::runtime::Runtime,
 };
 
@@ -20,17 +21,16 @@ pub fn log(
     mem_index: U256,
     size: U256,
     topics: &[U256],
-) -> Result<(), StatusCode> {
+) -> Result<(), ActorError> {
     if system.readonly {
-        return Err(StatusCode::StaticModeViolation);
+        return Err(ActorError::read_only("log called while read-only".into()));
     }
 
     // Handle the data.
     // Passing in a zero-sized memory region omits the data key entirely.
     // LOG0 + a zero-sized memory region emits an event with no entries whatsoever. In this case,
     // the FVM will record a hollow event carrying only the emitter actor ID.
-    let region = get_memory_region(&mut state.memory, mem_index, size)
-        .map_err(|_| StatusCode::InvalidMemoryAccess)?;
+    let region = get_memory_region(&mut state.memory, mem_index, size)?;
 
     // Extract the topics. Prefer to allocate an extra item than to incur in the cost of a
     // decision based on the size of the data.

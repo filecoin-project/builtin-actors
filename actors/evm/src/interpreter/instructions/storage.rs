@@ -1,5 +1,7 @@
+use fil_actors_runtime::ActorError;
+
 use {
-    crate::interpreter::{ExecutionState, StatusCode, System, U256},
+    crate::interpreter::{ExecutionState, System, U256},
     fil_actors_runtime::runtime::Runtime,
 };
 
@@ -8,7 +10,7 @@ pub fn sload(
     _state: &mut ExecutionState,
     system: &mut System<impl Runtime>,
     location: U256,
-) -> Result<U256, StatusCode> {
+) -> Result<U256, ActorError> {
     // get from storage and place on stack
     system.get_storage(location)
 }
@@ -19,9 +21,9 @@ pub fn sstore(
     system: &mut System<impl Runtime>,
     key: U256,
     value: U256,
-) -> Result<(), StatusCode> {
+) -> Result<(), ActorError> {
     if system.readonly {
-        return Err(StatusCode::StaticModeViolation);
+        return Err(ActorError::read_only("store called while read-only".into()));
     }
 
     system.set_storage(key, value)

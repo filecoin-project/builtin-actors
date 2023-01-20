@@ -1,6 +1,8 @@
+use fil_actors_runtime::ActorError;
+
 use {
     super::memory::get_memory_region,
-    crate::interpreter::{ExecutionState, StatusCode, System, U256},
+    crate::interpreter::{ExecutionState, System, U256},
     fil_actors_runtime::runtime::Runtime,
     fvm_shared::crypto::hash::SupportedHashes,
 };
@@ -10,9 +12,8 @@ pub fn keccak256(
     system: &System<impl Runtime>,
     index: U256,
     size: U256,
-) -> Result<U256, StatusCode> {
-    let region = get_memory_region(&mut state.memory, index, size) //
-        .map_err(|_| StatusCode::InvalidMemoryAccess)?;
+) -> Result<U256, ActorError> {
+    let region = get_memory_region(&mut state.memory, index, size)?;
 
     let (buf, size) = system.rt.hash_64(
         SupportedHashes::Keccak256,

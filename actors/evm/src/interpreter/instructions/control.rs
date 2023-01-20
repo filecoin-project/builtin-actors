@@ -1,17 +1,21 @@
 use bytes::Bytes;
+use fil_actors_runtime::{ActorError, AsActorError};
 
-use crate::interpreter::{memory::Memory, output::Outcome, Output};
+use crate::{
+    interpreter::{memory::Memory, output::Outcome, Output},
+    EVM_CONTRACT_BAD_JUMPDEST, EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS,
+    EVM_CONTRACT_INVALID_INSTRUCTION,
+};
 
 use {
     super::memory::get_memory_region,
-    crate::interpreter::output::StatusCode,
     crate::interpreter::Bytecode,
     crate::interpreter::{ExecutionState, System, U256},
     fil_actors_runtime::runtime::Runtime,
 };
 
 #[inline]
-pub fn nop(_state: &mut ExecutionState, _system: &System<impl Runtime>) -> Result<(), StatusCode> {
+pub fn nop(_state: &mut ExecutionState, _system: &System<impl Runtime>) -> Result<(), ActorError> {
     Ok(())
 }
 
@@ -19,8 +23,8 @@ pub fn nop(_state: &mut ExecutionState, _system: &System<impl Runtime>) -> Resul
 pub fn invalid(
     _state: &mut ExecutionState,
     _system: &System<impl Runtime>,
-) -> Result<(), StatusCode> {
-    Err(StatusCode::InvalidInstruction)
+) -> Result<(), ActorError> {
+    Err(ActorError::unchecked(EVM_CONTRACT_INVALID_INSTRUCTION, "invalid instruction".into()))
 }
 
 #[inline]
@@ -29,7 +33,7 @@ pub fn ret(
     _system: &System<impl Runtime>,
     offset: U256,
     size: U256,
-) -> Result<Output, StatusCode> {
+) -> Result<Output, ActorError> {
     exit(&mut state.memory, offset, size, Outcome::Return)
 }
 
@@ -39,7 +43,7 @@ pub fn revert(
     _system: &System<impl Runtime>,
     offset: U256,
     size: U256,
-) -> Result<Output, StatusCode> {
+) -> Result<Output, ActorError> {
     exit(&mut state.memory, offset, size, Outcome::Revert)
 }
 
@@ -47,7 +51,7 @@ pub fn revert(
 pub fn stop(
     _state: &mut ExecutionState,
     _system: &System<impl Runtime>,
-) -> Result<Output, StatusCode> {
+) -> Result<Output, ActorError> {
     Ok(Output { return_data: Bytes::new(), outcome: Outcome::Return })
 }
 
@@ -57,11 +61,10 @@ fn exit(
     offset: U256,
     size: U256,
     status: Outcome,
-) -> Result<Output, StatusCode> {
+) -> Result<Output, ActorError> {
     Ok(Output {
         outcome: status,
-        return_data: super::memory::get_memory_region(memory, offset, size)
-            .map_err(|_| StatusCode::InvalidMemoryAccess)?
+        return_data: super::memory::get_memory_region(memory, offset, size)?
             .map(|region| memory[region.offset..region.offset + region.size.get()].to_vec().into())
             .unwrap_or_default(),
     })
@@ -71,7 +74,7 @@ fn exit(
 pub fn returndatasize(
     state: &mut ExecutionState,
     _system: &System<impl Runtime>,
-) -> Result<U256, StatusCode> {
+) -> Result<U256, ActorError> {
     Ok(U256::from(state.return_data.len()))
 }
 
@@ -82,17 +85,36 @@ pub fn returndatacopy(
     mem_index: U256,
     input_index: U256,
     size: U256,
-) -> Result<(), StatusCode> {
-    let region = get_memory_region(&mut state.memory, mem_index, size)
-        .map_err(|_| StatusCode::InvalidMemoryAccess)?;
+) -> Result<(), ActorError> {
+    let region = get_memory_region(&mut state.memory, mem_index, size)?;
 
-    let src = input_index.try_into().map_err(|_| StatusCode::InvalidMemoryAccess)?;
+    let src: usize = input_index
+        .try_into()
+        .context_code(EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS, "returndatacopy index exceeds max u32")?;
     if src > state.return_data.len() {
-        return Err(StatusCode::InvalidMemoryAccess);
+        return Err(ActorError::unchecked(
+            EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS,
+            format!(
+                "returndatacopy start {} exceeds return-data length {}",
+                src,
+                state.return_data.len()
+            ),
+        ));
     }
 
-    if src + region.as_ref().map(|r| r.size.get()).unwrap_or(0) > state.return_data.len() {
-        return Err(StatusCode::InvalidMemoryAccess);
+    let end = src
+        .checked_add(region.as_ref().map(|r| r.size.get()).unwrap_or(0))
+        .context_code(EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS, "returndatacopy end exceeds max u32")?;
+
+    if end > state.return_data.len() {
+        return Err(ActorError::unchecked(
+            EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS,
+            format!(
+                "returndatacopy end {} exceeds return-data length {}",
+                src,
+                state.return_data.len()
+            ),
+        ));
     }
 
     if let Some(region) = region {
@@ -104,21 +126,28 @@ pub fn returndatacopy(
 }
 
 #[inline]
-pub fn jump(bytecode: &Bytecode, _pc: usize, dest: U256) -> Result<usize, StatusCode> {
-    let dst = dest.try_into().map_err(|_| StatusCode::BadJumpDestination)?;
+pub fn jump(bytecode: &Bytecode, _pc: usize, dest: U256) -> Result<usize, ActorError> {
+    let dst = dest.try_into().context_code(EVM_CONTRACT_BAD_JUMPDEST, "jumpdest exceeds u32")?;
     if !bytecode.valid_jump_destination(dst) {
-        return Err(StatusCode::BadJumpDestination);
+        return Err(ActorError::unchecked(
+            EVM_CONTRACT_BAD_JUMPDEST,
+            format!("jumpdest {dst} is invalid"),
+        ));
     }
     // skip the JMPDEST noop sled
     Ok(dst + 1)
 }
 
 #[inline]
-pub fn jumpi(bytecode: &Bytecode, pc: usize, dest: U256, test: U256) -> Result<usize, StatusCode> {
+pub fn jumpi(bytecode: &Bytecode, pc: usize, dest: U256, test: U256) -> Result<usize, ActorError> {
     if !test.is_zero() {
-        let dst = dest.try_into().map_err(|_| StatusCode::BadJumpDestination)?;
+        let dst =
+            dest.try_into().context_code(EVM_CONTRACT_BAD_JUMPDEST, "jumpdest exceeds u32")?;
         if !bytecode.valid_jump_destination(dst) {
-            return Err(StatusCode::BadJumpDestination);
+            return Err(ActorError::unchecked(
+                EVM_CONTRACT_BAD_JUMPDEST,
+                format!("jumpdest {dst} is invalid"),
+            ));
         }
         // skip the JMPDEST noop sled
         Ok(dst + 1)
