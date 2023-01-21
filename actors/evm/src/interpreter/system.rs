@@ -252,17 +252,20 @@ impl<'r, RT: Runtime> System<'r, RT> {
         let result = self
             .rt
             .send_generalized(to, method, params, value, gas_limit, send_flags)
-            .map_err(|err| actor_error!(unspecified; "syscall failed: {}", err))?;
+            .map_err(|err| {
+                let exit = ExitCode::new(err as u32);
+                ActorError::checked(exit, format!("send failed: {}", err))
+            })?;
 
         if !send_flags.read_only() {
             self.reload()?;
         }
 
-        if !result.exit_code.is_success() {
-            Ok(Err(result))
+        Ok(if !result.exit_code.is_success() {
+            Err(result)
         } else {
-            Ok(Ok(result.return_data))
-        }
+            Ok(result.return_data)
+        })
     }
 
     /// Flush the actor state (bytecode, nonce, and slots).

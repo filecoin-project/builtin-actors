@@ -791,8 +791,9 @@ fn call_actor_syscall_error() {
     let mut rt = util::construct_and_verify(contract);
     let addr = Address::new_delegated(1234, b"foobarboxy").unwrap();
 
-    let call_params = CallActorParams::default();
-
+    let mut call_params = CallActorParams::default();
+    call_params.set_addr(CallActorParams::EMPTY_PARAM_ADDR_OFFSET, addr.to_bytes());
+    
     let mut test = util::PrecompileTest {
         precompile_address: util::NativePrecompile::CallActor.eth_address(),
         output_size: 32,
@@ -814,7 +815,7 @@ fn call_actor_syscall_error() {
         0,
         None,
         TokenAmount::zero(),
-        None,
+        Some(0),
         SendFlags::empty(),
         None,
         syscall_exit,
@@ -1073,6 +1074,61 @@ impl From<CallActorReturn> for Vec<u8> {
         }
         out.extend_from_slice(&src.data);
         out
+    }
+}
+
+#[test]
+fn aaab() {
+    let a = "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffb000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000000";
+    let a = hex::decode(a).unwrap();
+    let a = CallActorReturn::from(a.as_slice());
+    println!("{:?}", a);
+}
+
+impl From<&[u8]> for CallActorReturn {
+    fn from(src: &[u8]) -> Self {
+        fn assert_zero_bytes<const S: usize>(src: &[u8]) {
+            assert_eq!(src[..S], [0u8; S]);
+        }
+
+        assert!(
+            src.len() >= 4 * 32,
+            "expected to read at least 4 U256 values, got {:?}",
+            src
+        );
+
+        let bytes = &src[..32];
+        let exit_code = {
+            let code = U256::from_big_endian(bytes);
+            let code = if code.i256_is_negative() {
+                code.i256_neg()
+            } else {
+                code
+            };
+            ExitCode::new(code.as_u32())
+        };
+
+        let bytes = &src[32..64];
+        let codec = {
+            assert_zero_bytes::<28>(bytes);
+            u64::from_be_bytes(bytes[24..32].try_into().unwrap())
+        };
+
+        let bytes = &src[64..96];
+        let offset = {
+            assert_zero_bytes::<24>(bytes);
+            u32::from_be_bytes(bytes[28..32].try_into().unwrap())
+        };
+
+        let bytes = &src[96..128];
+        let size = {
+            assert_zero_bytes::<24>(bytes);
+            u32::from_be_bytes(bytes[28..32].try_into().unwrap())
+        };
+
+        let data = Vec::from(&src[128..128 + size as usize]);
+
+        Self { exit_code, codec, data_offset: offset, data_size: size, data }
     }
 }
 
