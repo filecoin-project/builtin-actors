@@ -296,6 +296,18 @@ mod tests {
     }
 
     #[test]
+    fn negative_i256() {
+        assert_eq!(U256::ZERO.i256_neg(), U256::ZERO);
+
+        let one = U256::ONE.i256_neg();
+        assert!(one.i256_is_negative());
+
+        let neg_one = U256::from(&[0xff; 32]);
+        let pos_one = neg_one.i256_neg();
+        assert_eq!(pos_one, U256::ONE);
+    }
+
+    #[test]
     fn u256_serde() {
         let encoded = RawBytes::serialize(U256::from(0x4d2)).unwrap();
         let BytesDe(bytes) = encoded.deserialize().unwrap();
