@@ -183,8 +183,6 @@ pub(super) fn call_actor_shared<RT: Runtime>(
         )
     };
 
-    log::debug!("{:?}", result);
-
     // ------ Build Output -------
 
     let output = {

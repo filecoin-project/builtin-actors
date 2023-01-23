@@ -1074,14 +1074,6 @@ impl From<CallActorReturn> for Vec<u8> {
     }
 }
 
-#[test]
-fn aaab() {
-    let a = "fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffb000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000600000000000000000000000000000000000000000000000000000000000000000";
-    let a = hex::decode(a).unwrap();
-    let a = CallActorReturn::from(a.as_slice());
-    println!("{:?}", a);
-}
-
 impl From<&[u8]> for CallActorReturn {
     fn from(src: &[u8]) -> Self {
         fn assert_zero_bytes<const S: usize>(src: &[u8]) {
