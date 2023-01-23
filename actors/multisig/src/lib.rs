@@ -71,7 +71,7 @@ impl Actor {
         let mut resolved_signers = Vec::with_capacity(params.signers.len());
         let mut dedup_signers = BTreeSet::new();
         for signer in &params.signers {
-            let resolved = resolve_to_actor_id(rt, signer)?;
+            let resolved = resolve_to_actor_id(rt, signer, false)?;
             if !dedup_signers.insert(resolved) {
                 return Err(
                     actor_error!(illegal_argument; "duplicate signer not allowed: {}", signer),
@@ -257,7 +257,7 @@ impl Actor {
     pub fn add_signer(rt: &mut impl Runtime, params: AddSignerParams) -> Result<(), ActorError> {
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
-        let resolved_new_signer = resolve_to_actor_id(rt, &params.signer)?;
+        let resolved_new_signer = resolve_to_actor_id(rt, &params.signer, false)?;
 
         rt.transaction(|st: &mut State, _| {
             if st.signers.len() >= SIGNERS_MAX {
@@ -288,7 +288,7 @@ impl Actor {
     ) -> Result<(), ActorError> {
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
-        let resolved_old_signer = resolve_to_actor_id(rt, &params.signer)?;
+        let resolved_old_signer = resolve_to_actor_id(rt, &params.signer, false)?;
 
         rt.transaction(|st: &mut State, rt| {
             if !st.is_signer(&Address::new_id(resolved_old_signer)) {
@@ -335,8 +335,8 @@ impl Actor {
     pub fn swap_signer(rt: &mut impl Runtime, params: SwapSignerParams) -> Result<(), ActorError> {
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
-        let from_resolved = resolve_to_actor_id(rt, &params.from)?;
-        let to_resolved = resolve_to_actor_id(rt, &params.to)?;
+        let from_resolved = resolve_to_actor_id(rt, &params.from, false)?;
+        let to_resolved = resolve_to_actor_id(rt, &params.to, false)?;
 
         rt.transaction(|st: &mut State, rt| {
             if !st.is_signer(&Address::new_id(from_resolved)) {

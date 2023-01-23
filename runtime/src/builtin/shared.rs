@@ -18,17 +18,28 @@ pub const FIRST_ACTOR_SPECIFIC_EXIT_CODE: u32 = 32;
 pub fn resolve_to_actor_id(
     rt: &mut impl Runtime,
     address: &Address,
+    check_existence: bool,
 ) -> Result<ActorID, ActorError> {
+    let mut actor_id = None;
     // if we are able to resolve it to an ID address, return the resolved address
     if let Some(id) = rt.resolve_address(address) {
-        return Ok(id);
+        actor_id = Some(id)
+    } else {
+        // send 0 balance to the account so an ID address for it is created and then try to resolve
+        rt.send(address, METHOD_SEND, Default::default(), Default::default())
+            .with_context(|| format!("failed to send zero balance to address {}", address))?;
+
+        if let Some(id) = rt.resolve_address(address) {
+            actor_id = Some(id)
+        }
     }
 
-    // send 0 balance to the account so an ID address for it is created and then try to resolve
-    rt.send(address, METHOD_SEND, Default::default(), Default::default())
-        .with_context(|| format!("failed to send zero balance to address {}", address))?;
-
-    if let Some(id) = rt.resolve_address(address) {
+    if let Some(id) = actor_id {
+        // check for actor existence
+        if check_existence {
+            rt.get_actor_code_cid(&id)
+                .ok_or_else(|| actor_error!(not_found, "no code for address {}", address))?;
+        }
         return Ok(id);
     }
 

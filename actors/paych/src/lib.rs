@@ -77,7 +77,7 @@ impl Actor {
 
     /// Resolves an address to a canonical ID address and confirms it exists in the state tree.
     fn resolve_address(rt: &mut impl Runtime, raw: &Address) -> Result<Address, ActorError> {
-        let resolved = resolve_to_actor_id(rt, raw)?;
+        let resolved = resolve_to_actor_id(rt, raw, false)?;
 
         // so long as we can find code for this, return `resolved`
         rt.get_actor_code_cid(&resolved)

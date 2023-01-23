@@ -103,7 +103,7 @@ impl Actor {
             ));
         }
 
-        let verifier = resolve_to_actor_id(rt, &params.address)?;
+        let verifier = resolve_to_actor_id(rt, &params.address, false)?;
 
         let verifier = Address::new_id(verifier);
 
@@ -133,7 +133,7 @@ impl Actor {
     }
 
     pub fn remove_verifier(rt: &mut impl Runtime, params: Address) -> Result<(), ActorError> {
-        let verifier = resolve_to_actor_id(rt, &params)?;
+        let verifier = resolve_to_actor_id(rt, &params, false)?;
         let verifier = Address::new_id(verifier);
 
         let state: State = rt.state()?;
@@ -160,7 +160,7 @@ impl Actor {
             ));
         }
 
-        let client = resolve_to_actor_id(rt, &params.address)?;
+        let client = resolve_to_actor_id(rt, &params.address, false)?;
         let client = Address::new_id(client);
 
         let st: State = rt.state()?;
@@ -214,13 +214,13 @@ impl Actor {
         rt: &mut impl Runtime,
         params: RemoveDataCapParams,
     ) -> Result<RemoveDataCapReturn, ActorError> {
-        let client = resolve_to_actor_id(rt, &params.verified_client_to_remove)?;
+        let client = resolve_to_actor_id(rt, &params.verified_client_to_remove, false)?;
         let client = Address::new_id(client);
 
-        let verifier_1 = resolve_to_actor_id(rt, &params.verifier_request_1.verifier)?;
+        let verifier_1 = resolve_to_actor_id(rt, &params.verifier_request_1.verifier, false)?;
         let verifier_1 = Address::new_id(verifier_1);
 
-        let verifier_2 = resolve_to_actor_id(rt, &params.verifier_request_2.verifier)?;
+        let verifier_2 = resolve_to_actor_id(rt, &params.verifier_request_2.verifier, false)?;
         let verifier_2 = Address::new_id(verifier_2);
 
         if verifier_1 == verifier_2 {
