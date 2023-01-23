@@ -781,7 +781,6 @@ fn call_actor_id_with_full_address() {
     test.run_test_expecting(&mut rt, CallActorReturn::default(), util::PrecompileExit::Success);
 }
 
-
 #[test]
 fn call_actor_syscall_error() {
     let contract = {
@@ -793,7 +792,7 @@ fn call_actor_syscall_error() {
 
     let mut call_params = CallActorParams::default();
     call_params.set_addr(CallActorParams::EMPTY_PARAM_ADDR_OFFSET, addr.to_bytes());
-    
+
     let mut test = util::PrecompileTest {
         precompile_address: util::NativePrecompile::CallActor.eth_address(),
         output_size: 32,
@@ -807,8 +806,7 @@ fn call_actor_syscall_error() {
 
     let syscall_exit = ExitCode::SYS_INVALID_RECEIVER;
 
-    let mut expect = CallActorReturn::default();
-    expect.exit_code = syscall_exit;
+    let expect = CallActorReturn { exit_code: syscall_exit, ..Default::default() };
 
     rt.expect_send_generalized(
         addr,
@@ -1047,14 +1045,13 @@ struct CallActorReturn {
 
 impl From<CallActorReturn> for Vec<u8> {
     fn from(src: CallActorReturn) -> Self {
-
         // precompile will return negative number for system/syscall errors
         let exit_code = if src.exit_code.is_system_error() && !src.exit_code.is_success() {
             U256::from(src.exit_code.value()).i256_neg()
         } else {
             U256::from(src.exit_code.value())
         };
-         
+
         let codec = U256::from(src.codec);
         let offset = U256::from(src.data_offset);
         let len = U256::from(src.data_size);
@@ -1091,20 +1088,12 @@ impl From<&[u8]> for CallActorReturn {
             assert_eq!(src[..S], [0u8; S]);
         }
 
-        assert!(
-            src.len() >= 4 * 32,
-            "expected to read at least 4 U256 values, got {:?}",
-            src
-        );
+        assert!(src.len() >= 4 * 32, "expected to read at least 4 U256 values, got {:?}", src);
 
         let bytes = &src[..32];
         let exit_code = {
             let code = U256::from_big_endian(bytes);
-            let code = if code.i256_is_negative() {
-                code.i256_neg()
-            } else {
-                code
-            };
+            let code = if code.i256_is_negative() { code.i256_neg() } else { code };
             ExitCode::new(code.as_u32())
         };
 

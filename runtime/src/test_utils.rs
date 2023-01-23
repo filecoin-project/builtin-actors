@@ -708,7 +708,11 @@ impl<BS: Blockstore> MockRuntime<BS> {
         send_return: Option<IpldBlock>,
         exit_code: ExitCode,
     ) {
-        assert!(exit_code.is_system_error() && send_return.is_none(), "system errors are not expected to have return value");
+        // let in_range = !exit_code.is_success() && exit_code.is_system_error();
+        assert!(
+            !((!exit_code.is_success() && exit_code.is_system_error()) && send_return.is_some()),
+            "system errors are not expected to have return value"
+        );
         self.expectations.borrow_mut().expect_sends.push_back(ExpectedMessage {
             to,
             method,
@@ -1182,7 +1186,9 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         );
 
         if expected_msg.exit_code.is_system_error() {
-            return Err(ErrorNumber::from_u32(expected_msg.exit_code.value()).expect("system exit code must be valid"))
+            if let Some(e) = ErrorNumber::from_u32(expected_msg.exit_code.value()) {
+                return Err(e);
+            }
         }
 
         {

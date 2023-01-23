@@ -254,18 +254,14 @@ impl<'r, RT: Runtime> System<'r, RT> {
             .send_generalized(to, method, params, value, gas_limit, send_flags)
             .map_err(|err| {
                 let exit = ExitCode::new(err as u32);
-                ActorError::checked(exit, format!("send failed: {}", err))
+                ActorError::unchecked(exit, format!("send failed: {}", err))
             })?;
 
         if !send_flags.read_only() {
             self.reload()?;
         }
 
-        Ok(if !result.exit_code.is_success() {
-            Err(result)
-        } else {
-            Ok(result.return_data)
-        })
+        Ok(if !result.exit_code.is_success() { Err(result) } else { Ok(result.return_data) })
     }
 
     /// Flush the actor state (bytecode, nonce, and slots).
