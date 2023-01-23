@@ -76,7 +76,7 @@ fn token_receiver() {
     rt.expect_validate_caller_any();
     let ret = rt
         .call::<AccountActor>(
-            Method::UniversalReceiverHook as MethodNum,
+            frc42_dispatch::method_hash!("Receive"),
             IpldBlock::serialize_cbor(&UniversalReceiverParams {
                 type_: 0,
                 payload: RawBytes::new(vec![1, 2, 3]),
