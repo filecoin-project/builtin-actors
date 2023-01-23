@@ -186,12 +186,12 @@ pub(super) fn call_actor_shared<RT: Runtime>(
     // ------ Build Output -------
 
     let output = {
-        // negative values are syscall errors
+        // negative values are syscall/system errors
         // positive values are user/actor errors
         // success is 0
         let (exit_code, data) = match result {
             Err(syscall_err) => {
-                let exit_code = U256::from(syscall_err.exit_code().value());
+                let exit_code = U256::from(syscall_err.value());
                 (exit_code.i256_neg(), None)
             }
             Ok(ret) => match ret {

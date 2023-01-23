@@ -227,15 +227,17 @@ impl<'r, RT: Runtime> System<'r, RT> {
         gas_limit: Option<u64>,
         send_flags: SendFlags,
     ) -> Result<Option<IpldBlock>, ActorError> {
-        self.send_raw(to, method, params, value, gas_limit, send_flags).and_then(|response| {
-            response.map_err(|response| {
-                ActorError::checked_with_data(
-                    response.exit_code,
-                    format!("failed to call {to} on method {method}"),
-                    response.return_data,
-                )
+        self.send_raw(to, method, params, value, gas_limit, send_flags)
+            .map_err(|exit| ActorError::checked(exit, format!("syscall error: {exit}")))
+            .and_then(|res| {
+                res.map_err(|response| {
+                    ActorError::checked_with_data(
+                        response.exit_code,
+                        format!("failed to call {to} on method {method}"),
+                        response.return_data,
+                    )
+                })
             })
-        })
     }
 
     /// Outer Result is the Syscall Error, Inner Result is non-zero exit code from the return value
@@ -247,18 +249,15 @@ impl<'r, RT: Runtime> System<'r, RT> {
         value: TokenAmount,
         gas_limit: Option<u64>,
         send_flags: SendFlags,
-    ) -> Result<Result<Option<IpldBlock>, Response>, ActorError> {
-        self.flush()?;
+    ) -> Result<Result<Option<IpldBlock>, Response>, ExitCode> {
+        self.flush().map_err(|e| e.exit_code())?;
         let result = self
             .rt
             .send_generalized(to, method, params, value, gas_limit, send_flags)
-            .map_err(|err| {
-                let exit = ExitCode::new(err as u32);
-                ActorError::unchecked(exit, format!("send failed: {}", err))
-            })?;
+            .map_err(|e| ExitCode::new(e as u32))?;
 
         if !send_flags.read_only() {
-            self.reload()?;
+            self.reload().map_err(|e| e.exit_code())?;
         }
 
         Ok(if !result.exit_code.is_success() { Err(result) } else { Ok(result.return_data) })
