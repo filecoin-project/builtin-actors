@@ -161,6 +161,14 @@ fn test_stack_swap() {
 }
 
 #[test]
+fn test_swap_top_zero() {
+    let mut stack = Stack::new();
+    stack.push(1.into()).unwrap();
+    // do nothing
+    stack.swap_top(0).unwrap();
+}
+
+#[test]
 fn test_stack_swap_underflow() {
     let mut stack = Stack::new();
     assert_eq!(stack.swap_top(1).unwrap_err().exit_code(), EVM_CONTRACT_STACK_UNDERFLOW);
