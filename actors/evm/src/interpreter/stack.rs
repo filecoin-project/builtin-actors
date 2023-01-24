@@ -78,7 +78,11 @@ impl Stack {
     }
 
     #[inline]
-    // Panics if `i == 0`.
+    /// Duplicates and pushes value of index `i - 1` to the top of the stack.
+    /// 
+    /// Returns error if there is a stack underflow/overflow.
+    /// 
+    /// Panics if `i == 0`, -1 is not a valid index.
     pub fn dup(&mut self, i: usize) -> Result<(), ActorError> {
         assert!(i > 0);
         let len = self.stack.len();
