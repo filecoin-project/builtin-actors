@@ -12,10 +12,10 @@ pub struct ActorError {
     /// The exit code for this invocation.
     /// Codes less than `FIRST_USER_EXIT_CODE` are prohibited and will be overwritten by the VM.
     exit_code: ExitCode,
-    /// Message for debugging purposes,
-    msg: String,
     /// Optional exit data
     data: Option<IpldBlock>,
+    /// Message for debugging purposes,
+    msg: String,
 }
 
 impl ActorError {
@@ -31,24 +31,7 @@ impl ActorError {
 
     /// Creates a new ActorError. This method checks if the exit code is within the allowed range,
     /// and automatically converts it into a user code.
-    pub fn checked(code: ExitCode, msg: String) -> Self {
-        let exit_code = match code {
-            // This means the called actor did something wrong. We can't "make up" a
-            // reasonable exit code.
-            ExitCode::SYS_MISSING_RETURN
-            | ExitCode::SYS_ILLEGAL_INSTRUCTION
-            | ExitCode::SYS_ILLEGAL_EXIT_CODE => ExitCode::USR_UNSPECIFIED,
-            // We don't expect any other system errors.
-            code if code.is_system_error() => ExitCode::USR_ASSERTION_FAILED,
-            // Otherwise, pass it through.
-            code => code,
-        };
-        Self { exit_code, msg, data: None }
-    }
-
-    /// Creates a new ActorError. This method checks if the exit code is within the allowed range,
-    /// and automatically converts it into a user code.
-    pub fn checked_with_data(code: ExitCode, msg: String, data: Option<IpldBlock>) -> Self {
+    pub fn checked(code: ExitCode, msg: String, data: Option<IpldBlock>) -> Self {
         let exit_code = match code {
             // This means the called actor did something wrong. We can't "make up" a
             // reasonable exit code.
@@ -99,11 +82,6 @@ impl ActorError {
     /// Error message of the actor error.
     pub fn msg(&self) -> &str {
         &self.msg
-    }
-
-    /// Returns the optional data that might be associated with the error
-    pub fn data(&self) -> &[u8] {
-        self.data.as_ref().map_or(&[] as &[u8], |d| d.data.as_slice())
     }
 
     /// Extracts the optional associated data without copying.
