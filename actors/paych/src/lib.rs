@@ -5,7 +5,6 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
     actor_dispatch, actor_error, resolve_to_actor_id, ActorDowncast, ActorError, Array,
-    AsActorError,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::DAG_CBOR;
@@ -53,16 +52,10 @@ impl Actor {
         // behalf of the payer/payee.
         rt.validate_immediate_caller_type(std::iter::once(&Type::Init))?;
 
-        // Resolve both parties, confirming they exist in the state tree.
-        let to = Self::resolve_address(rt, &params.to)
-            .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
-                format!("to address not found {}", params.to)
-            })?;
+        // Check both parties are capable of signing vouchers
+        let to = Self::resolve_account(rt, &params.to)?;
 
-        let from = Self::resolve_address(rt, &params.from)
-            .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
-                format!("from address not found {}", params.to)
-            })?;
+        let from = Self::resolve_account(rt, &params.from)?;
 
         let empty_arr_cid =
             Array::<(), _>::new_with_bit_width(rt.store(), LANE_STATES_AMT_BITWIDTH)
@@ -75,14 +68,26 @@ impl Actor {
         Ok(())
     }
 
-    /// Resolves an address to a canonical ID address and confirms it exists in the state tree.
-    fn resolve_address(rt: &mut impl Runtime, raw: &Address) -> Result<Address, ActorError> {
+    /// Resolves an address to a canonical ID address and requires it to address an account actor.
+    fn resolve_account(rt: &mut impl Runtime, raw: &Address) -> Result<Address, ActorError> {
         let resolved = resolve_to_actor_id(rt, raw, false)?;
 
-        // so long as we can find code for this, return `resolved`
-        rt.get_actor_code_cid(&resolved)
-            .map(|_| Address::new_id(resolved))
-            .ok_or_else(|| actor_error!(illegal_argument, "no code for address {}", resolved))
+        let code_cid = rt
+            .get_actor_code_cid(&resolved)
+            .ok_or_else(|| actor_error!(illegal_argument, "no code for address {}", resolved))?;
+
+        let typ = rt.resolve_builtin_actor_type(&code_cid);
+        if typ != Some(Type::Account) {
+            Err(actor_error!(
+                forbidden,
+                "actor {} must be an account, was {} ({:?})",
+                raw,
+                code_cid,
+                typ
+            ))
+        } else {
+            Ok(Address::new_id(resolved))
+        }
     }
 
     pub fn update_channel_state(
