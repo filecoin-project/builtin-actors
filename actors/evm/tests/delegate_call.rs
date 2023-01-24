@@ -117,6 +117,7 @@ fn test_delegate_call_caller() {
         SendFlags::READ_ONLY,
         IpldBlock::serialize_cbor(&EMPTY_ARR_CID).expect("failed to serialize bytecode hash"),
         ExitCode::OK,
+        None,
     );
 
     rt.expect_send_generalized(
@@ -129,6 +130,7 @@ fn test_delegate_call_caller() {
         IpldBlock::serialize_cbor(&BytesSer(&return_data.to_bytes()))
             .expect("failed to serialize return data"),
         ExitCode::OK,
+        None,
     );
 
     let result = util::invoke_contract(&mut rt, &contract_params);

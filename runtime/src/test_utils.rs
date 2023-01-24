@@ -393,6 +393,7 @@ pub struct ExpectedMessage {
     // returns from applying expectedMessage
     pub send_return: Option<IpldBlock>,
     pub exit_code: ExitCode,
+    pub send_error: Option<ErrorNumber>,
 }
 
 #[derive(Debug)]
@@ -692,6 +693,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
             exit_code,
             send_flags: SendFlags::default(),
             gas_limit: None,
+            send_error: None
         })
     }
 
@@ -707,6 +709,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
         send_flags: SendFlags,
         send_return: Option<IpldBlock>,
         exit_code: ExitCode,
+        send_error: Option<ErrorNumber>,
     ) {
         assert!(exit_code.is_system_error() && send_return.is_none(), "system errors are not expected to have return value");
         self.expectations.borrow_mut().expect_sends.push_back(ExpectedMessage {
@@ -718,6 +721,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
             value,
             send_flags,
             gas_limit,
+            send_error,
         })
     }
 
