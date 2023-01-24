@@ -34,8 +34,8 @@ use super::policy::*;
 use super::types::*;
 use super::{
     assign_deadlines, deadline_is_mutable, new_deadline_info_from_offset_and_epoch,
-    quant_spec_for_deadline, BitFieldQueue, Deadline, DeadlineInfo, DeadlineSectorMap, Deadlines,
-    PowerPair, Sectors, TerminationResult, VestingFunds,
+    quant_spec_for_deadline, BitFieldQueue, Deadline, DeadlineInfo, Deadlines, PowerPair, Sectors,
+    TerminationResult, VestingFunds,
 };
 
 const PRECOMMIT_EXPIRY_AMT_BITWIDTH: u32 = 6;
@@ -442,56 +442,6 @@ impl State {
     ) -> anyhow::Result<(u64, u64)> {
         let deadlines = self.load_deadlines(store)?;
         deadlines.find_sector(policy, store, sector_number)
-    }
-
-    /// Schedules each sector to expire at its next deadline end. If it can't find
-    /// any given sector, it skips it.
-    ///
-    /// This method assumes that each sector's power has not changed, despite the rescheduling.
-    ///
-    /// Note: this method is used to "upgrade" sectors, rescheduling the now-replaced
-    /// sectors to expire at the end of the next deadline. Given the expense of
-    /// sealing a sector, this function skips missing/faulty/terminated "upgraded"
-    /// sectors instead of failing. That way, the new sectors can still be proved.
-    pub fn reschedule_sector_expirations<BS: Blockstore>(
-        &mut self,
-        policy: &Policy,
-        store: &BS,
-        current_epoch: ChainEpoch,
-        sector_size: SectorSize,
-        mut deadline_sectors: DeadlineSectorMap,
-    ) -> anyhow::Result<Vec<SectorOnChainInfo>> {
-        let mut deadlines = self.load_deadlines(store)?;
-        let sectors = Sectors::load(store, &self.sectors)?;
-
-        let mut all_replaced = Vec::new();
-        for (deadline_idx, partition_sectors) in deadline_sectors.iter() {
-            let deadline_info = new_deadline_info(
-                policy,
-                self.current_proving_period_start(policy, current_epoch),
-                deadline_idx,
-                current_epoch,
-            )
-            .next_not_elapsed();
-            let new_expiration = deadline_info.last();
-            let mut deadline = deadlines.load_deadline(policy, store, deadline_idx)?;
-
-            let replaced = deadline.reschedule_sector_expirations(
-                store,
-                &sectors,
-                new_expiration,
-                partition_sectors,
-                sector_size,
-                deadline_info.quant_spec(),
-            )?;
-            all_replaced.extend(replaced);
-
-            deadlines.update_deadline(policy, store, deadline_idx, &deadline)?;
-        }
-
-        self.save_deadlines(store, deadlines)?;
-
-        Ok(all_replaced)
     }
 
     /// Assign new sectors to deadlines.
@@ -1151,7 +1101,8 @@ impl State {
         // Faulty power has already been lost, so the amount expiring can be excluded from the delta.
         power_delta -= &expired.active_power;
 
-        let no_early_terminations = expired.early_sectors.is_empty();
+        let no_early_terminations =
+            expired.faulty_sectors.is_empty() && expired.proof_expiring_sectors.is_empty();
         if !no_early_terminations {
             self.early_terminations.set(dl_info.index);
         }

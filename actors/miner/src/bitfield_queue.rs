@@ -84,7 +84,7 @@ impl<'db, BS: Blockstore> BitFieldQueue<'db, BS> {
 
     pub fn add_many_to_queue_values(
         &mut self,
-        values: impl IntoIterator<Item = (ChainEpoch, u64)>,
+        values: impl IntoIterator<Item = (ChainEpoch, u64 /* sector number */)>,
     ) -> anyhow::Result<()> {
         // Pre-quantize to reduce the number of updates.
         let mut quantized_values: Vec<_> = values
@@ -96,13 +96,8 @@ impl<'db, BS: Blockstore> BitFieldQueue<'db, BS> {
         quantized_values.sort_unstable();
         quantized_values.dedup();
 
-        // Add to queue.
-        let mut iter = quantized_values.into_iter().peekable();
-        while let Some(&(epoch, _)) = iter.peek() {
-            self.add_to_queue_values(
-                epoch,
-                iter.peeking_take_while(|&(e, _)| e == epoch).map(|(_, v)| v),
-            )?;
+        for (epoch, group) in &quantized_values.into_iter().group_by(|(epoch, _)| *epoch) {
+            self.add_to_queue_values(epoch, group.map(|(_, sector)| sector))?;
         }
 
         Ok(())

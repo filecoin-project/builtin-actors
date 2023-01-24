@@ -286,7 +286,7 @@ impl Partition {
 
         // Reschedule recovered
         let power = queue
-            .reschedule_recovered(recovered_sectors, sector_size)
+            .reschedule_recovered(&recovered_sectors, sector_size)
             .map_err(|e| e.downcast_wrap("failed to reschedule faults in partition queue"))?;
 
         // Save expiration queue
@@ -401,8 +401,7 @@ impl Partition {
 
     /// Replaces a number of "old" sectors with new ones.
     /// The old sectors must not be faulty or terminated.
-    /// If the same sector is both removed and added, this permits rescheduling *with a change in power*,
-    /// unlike RescheduleExpirations.
+    /// If the same sector is both removed and added, this permits rescheduling *with a change in power*.
     /// Returns the delta to power and pledge requirement.
     pub fn replace_sectors<BS: Blockstore>(
         &mut self,
@@ -504,7 +503,7 @@ impl Partition {
             .flush()
             .map_err(|e| e.downcast_wrap("failed to save sector expirations"))?;
 
-        let removed_sectors = &removed.on_time_sectors | &removed.early_sectors;
+        let removed_sectors = removed.all();
 
         // Record early termination.
         self.record_early_termination(store, epoch, &removed_sectors)
@@ -557,7 +556,7 @@ impl Partition {
         })?;
         self.expirations_epochs = expirations.amt.flush()?;
 
-        let expired_sectors = &popped.on_time_sectors | &popped.early_sectors;
+        let expired_sectors = popped.all();
 
         // There shouldn't be any recovering sectors or power if this is invoked at deadline end.
         // Either the partition was PoSted and the recovering became recovered, or the partition was not PoSted
@@ -582,7 +581,8 @@ impl Partition {
         self.faulty_power -= &popped.faulty_power;
 
         // Record the epoch of any sectors expiring early, for termination fee calculation later.
-        self.record_early_termination(store, until, &popped.early_sectors)
+        let expired_early = &popped.faulty_sectors | &popped.proof_expiring_sectors;
+        self.record_early_termination(store, until, &expired_early)
             .map_err(|e| e.downcast_wrap("failed to record early terminations"))?;
 
         // check invariants

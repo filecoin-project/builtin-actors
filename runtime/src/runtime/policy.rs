@@ -105,12 +105,18 @@ pub struct Policy {
     pub worker_key_change_delay: ChainEpoch,
 
     /// Minimum number of epochs past the current epoch a sector may be set to expire.
-    pub min_sector_expiration: i64,
+    pub min_sector_commitment: i64,
 
     /// Maximum number of epochs past the current epoch a sector may be set to expire.
     /// The actual maximum extension will be the minimum of CurrEpoch + MaximumSectorExpirationExtension
     /// and sector.ActivationEpoch+sealProof.SectorMaximumLifetime()
-    pub max_sector_expiration_extension: i64,
+    pub max_sector_commitment_extension: i64,
+
+    /// Maximum number of epochs the proof can be valid since activation or latest refresh
+    pub max_proof_validity: i64,
+
+    /// A number of epochs before proof expiration during which the proof can be extended
+    pub proof_refresh_window: i64,
 
     /// Ratio of sector size to maximum deals per sector.
     /// The maximum number of deals is the sector size divided by this number (2^27)
@@ -198,8 +204,10 @@ impl Default for Policy {
             fault_declaration_cutoff: policy_constants::FAULT_DECLARATION_CUTOFF,
             fault_max_age: policy_constants::FAULT_MAX_AGE,
             worker_key_change_delay: policy_constants::WORKER_KEY_CHANGE_DELAY,
-            min_sector_expiration: policy_constants::MIN_SECTOR_EXPIRATION,
-            max_sector_expiration_extension: policy_constants::MAX_SECTOR_EXPIRATION_EXTENSION,
+            min_sector_commitment: policy_constants::MIN_SECTOR_COMMITMENT,
+            max_sector_commitment_extension: policy_constants::MAX_SECTOR_COMMITMENT_EXTENSION,
+            max_proof_validity: policy_constants::MAX_PROOF_VALIDITY,
+            proof_refresh_window: policy_constants::PROOF_REFRESH_WINDOW,
             deal_limit_denominator: policy_constants::DEAL_LIMIT_DENOMINATOR,
             consensus_fault_ineligibility_duration:
                 policy_constants::CONSENSUS_FAULT_INELIGIBILITY_DURATION,
@@ -356,12 +364,22 @@ pub mod policy_constants {
     pub const WORKER_KEY_CHANGE_DELAY: ChainEpoch = CHAIN_FINALITY;
 
     /// Minimum number of epochs past the current epoch a sector may be set to expire.
-    pub const MIN_SECTOR_EXPIRATION: i64 = 180 * EPOCHS_IN_DAY;
+    pub const MIN_SECTOR_COMMITMENT: i64 = 180 * EPOCHS_IN_DAY;
 
     /// Maximum number of epochs past the current epoch a sector may be set to expire.
     /// The actual maximum extension will be the minimum of CurrEpoch + MaximumSectorExpirationExtension
     /// and sector.ActivationEpoch+sealProof.SectorMaximumLifetime()
-    pub const MAX_SECTOR_EXPIRATION_EXTENSION: i64 = 540 * EPOCHS_IN_DAY;
+    pub const MAX_SECTOR_COMMITMENT_EXTENSION: i64 = 540 * EPOCHS_IN_DAY;
+
+    /// Maximum number of epochs the proof can be valid since activation or latest refresh
+    /// Slightly larger than existing (v16) MAX_SECTOR_COMMITMENT_EXTENSION.
+    pub const MAX_PROOF_VALIDITY: i64 = 545 * EPOCHS_IN_DAY;
+
+    /// A number of epochs before proof expiration during which the proof can be extended
+    /// Derived as:
+    ///     MAX_PROOF_VALIDITY - (MAX_SECTOR_LIFE - MAX_PROOF_VALIDITY) / 3
+    /// for 3 refreshes during max life of a sector
+    pub const PROOF_REFRESH_WINDOW: i64 = 117 * EPOCHS_IN_DAY; // ~ 4mo
 
     /// Ratio of sector size to maximum deals per sector.
     /// The maximum number of deals is the sector size divided by this number (2^27)

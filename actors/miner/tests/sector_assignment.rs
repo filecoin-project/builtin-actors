@@ -3,7 +3,7 @@
 
 use cid::Cid;
 use fil_actor_miner::{power_for_sectors, Deadline, PoStPartition, PowerPair, SectorOnChainInfo};
-use fil_actors_runtime::{runtime::Policy, test_utils::make_sealed_cid};
+use fil_actors_runtime::{runtime::Policy, test_utils::make_sealed_cid, EPOCHS_IN_YEAR};
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
@@ -29,7 +29,8 @@ fn new_sector_on_chain_info(
         seal_proof: RegisteredSealProof::StackedDRG32GiBV1P1,
         sealed_cid,
         activation,
-        expiration: 1,
+        commitment_expiration: 1,
+        proof_expiration: 5 * EPOCHS_IN_YEAR,
         deal_weight: weight.clone(),
         verified_deal_weight: weight,
         ..SectorOnChainInfo::default()

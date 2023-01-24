@@ -14,10 +14,9 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::CborStore;
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
-use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{PoStProof, SectorSize};
-use num_traits::{Signed, Zero};
+use num_traits::Signed;
 
 use super::{
     BitFieldQueue, ExpirationSet, Partition, PartitionSectorMap, PoStPartition, PowerPair,
@@ -323,11 +322,7 @@ impl Deadline {
 
         let mut partitions = self.partitions_amt(store)?;
 
-        let mut on_time_sectors = Vec::<BitField>::new();
-        let mut early_sectors = Vec::<BitField>::new();
-        let mut all_on_time_pledge = TokenAmount::zero();
-        let mut all_active_power = PowerPair::zero();
-        let mut all_faulty_power = PowerPair::zero();
+        let mut all_expirations = ExpirationSet::empty();
         let mut partitions_with_early_terminations = Vec::<u64>::new();
 
         // For each partition with an expiry, remove and collect expirations from the partition queue.
@@ -346,16 +341,13 @@ impl Deadline {
                     ))
                 })?;
 
-            if !partition_expiration.early_sectors.is_empty() {
+            if (!partition_expiration.faulty_sectors.is_empty())
+                || (!partition_expiration.proof_expiring_sectors.is_empty())
+            {
                 partitions_with_early_terminations.push(partition_idx);
             }
 
-            on_time_sectors.push(partition_expiration.on_time_sectors);
-            early_sectors.push(partition_expiration.early_sectors);
-            all_active_power += &partition_expiration.active_power;
-            all_faulty_power += &partition_expiration.faulty_power;
-            all_on_time_pledge += &partition_expiration.on_time_pledge;
-
+            all_expirations.combine(&partition_expiration)?;
             partitions.set(partition_idx, partition)?;
         }
 
@@ -366,23 +358,13 @@ impl Deadline {
             .map_err(|_| actor_error!(illegal_state; "partition index out of bitfield range"))?;
         self.early_terminations |= &new_early_terminations;
 
-        let all_on_time_sectors = BitField::union(&on_time_sectors);
-        let all_early_sectors = BitField::union(&early_sectors);
-
         // Update live sector count.
-        let on_time_count = all_on_time_sectors.len();
-        let early_count = all_early_sectors.len();
+        let on_time_count = all_expirations.on_time_sectors.len();
+        let early_count = all_expirations.faulty_sectors.len();
         self.live_sectors -= on_time_count + early_count;
 
-        self.faulty_power -= &all_faulty_power;
-
-        Ok(ExpirationSet {
-            on_time_sectors: all_on_time_sectors,
-            early_sectors: all_early_sectors,
-            on_time_pledge: all_on_time_pledge,
-            active_power: all_active_power,
-            faulty_power: all_faulty_power,
-        })
+        self.faulty_power -= &all_expirations.faulty_power;
+        Ok(all_expirations)
     }
 
     /// Adds sectors to a deadline. It's the caller's responsibility to make sure
@@ -449,7 +431,7 @@ impl Deadline {
 
             // Record deadline -> partition mapping so we can later update the deadlines.
             partition_deadline_updates
-                .extend(partition_new_sectors.iter().map(|s| (s.expiration, partition_idx)))
+                .extend(partition_new_sectors.iter().map(|s| (s.expires_at(), partition_idx)))
         }
 
         // Save partitions back.
@@ -1287,80 +1269,5 @@ impl Deadline {
         let root = proof_arr.flush().map_err(|e| e.downcast_wrap("failed to save proofs"))?;
         self.optimistic_post_submissions_snapshot = root;
         Ok((post.partitions, post.proofs))
-    }
-
-    /// RescheduleSectorExpirations reschedules the expirations of the given sectors
-    /// to the target epoch, skipping any sectors it can't find.
-    ///
-    /// The power of the rescheduled sectors is assumed to have not changed since
-    /// initial scheduling.
-    ///
-    /// Note: see the docs on State.RescheduleSectorExpirations for details on why we
-    /// skip sectors/partitions we can't find.
-    pub fn reschedule_sector_expirations<BS: Blockstore>(
-        &mut self,
-        store: &BS,
-        sectors: &Sectors<'_, BS>,
-        expiration: ChainEpoch,
-        partition_sectors: &mut PartitionSectorMap,
-        sector_size: SectorSize,
-        quant: QuantSpec,
-    ) -> anyhow::Result<Vec<SectorOnChainInfo>> {
-        let mut partitions = self.partitions_amt(store)?;
-
-        // track partitions with moved expirations.
-        let mut rescheduled_partitions = Vec::<u64>::new();
-
-        let mut all_replaced = Vec::new();
-        for (partition_idx, sector_numbers) in partition_sectors.iter() {
-            let mut partition = match partitions.get(partition_idx).map_err(|e| {
-                e.downcast_wrap(format!("failed to load partition {}", partition_idx))
-            })? {
-                Some(partition) => partition.clone(),
-                None => {
-                    // We failed to find the partition, it could have moved
-                    // due to compaction. This function is only reschedules
-                    // sectors it can find so we'll just skip it.
-                    continue;
-                }
-            };
-
-            let replaced = partition
-                .reschedule_expirations(
-                    store,
-                    sectors,
-                    expiration,
-                    sector_numbers,
-                    sector_size,
-                    quant,
-                )
-                .map_err(|e| {
-                    e.downcast_wrap(format!(
-                        "failed to reschedule expirations in partition {}",
-                        partition_idx
-                    ))
-                })?;
-
-            if replaced.is_empty() {
-                // nothing moved.
-                continue;
-            }
-            all_replaced.extend(replaced);
-
-            rescheduled_partitions.push(partition_idx);
-            partitions.set(partition_idx, partition).map_err(|e| {
-                e.downcast_wrap(format!("failed to store partition {}", partition_idx))
-            })?;
-        }
-
-        if !rescheduled_partitions.is_empty() {
-            self.partitions =
-                partitions.flush().map_err(|e| e.downcast_wrap("failed to save partitions"))?;
-
-            self.add_expiration_partitions(store, expiration, &rescheduled_partitions, quant)
-                .map_err(|e| e.downcast_wrap("failed to reschedule partition expirations"))?;
-        }
-
-        Ok(all_replaced)
     }
 }

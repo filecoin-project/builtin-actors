@@ -80,7 +80,7 @@ pub fn check_state_invariants<BS: Blockstore>(
                         deal,
                         DealSummary {
                             sector_start: sector.activation,
-                            sector_expiration: sector.expiration,
+                            sector_expiration: sector.commitment_expiration,
                         },
                     );
                 });
@@ -547,8 +547,11 @@ impl PartitionStateSummary {
 
                 expiration_epochs = queue_summary.expiration_epochs;
                 // check the queue is compatible with partition fields
-                let queue_sectors =
-                    BitField::union([&queue_summary.on_time_sectors, &queue_summary.early_sectors]);
+                let queue_sectors = BitField::union([
+                    &queue_summary.on_time_sectors,
+                    &queue_summary.early_sectors,
+                    &queue_summary.faulty_sectors,
+                ]);
                 require_equal(&live, &queue_sectors, acc, "live does not equal all expirations");
             }
             Err(err) => {
@@ -588,6 +591,7 @@ impl PartitionStateSummary {
 struct ExpirationQueueStateSummary {
     pub on_time_sectors: BitField,
     pub early_sectors: BitField,
+    pub faulty_sectors: BitField,
     #[allow(dead_code)]
     pub active_power: PowerPair,
     #[allow(dead_code)]
@@ -610,6 +614,7 @@ impl ExpirationQueueStateSummary {
         let mut seen_sectors: HashSet<SectorNumber> = HashSet::new();
         let mut all_on_time: Vec<BitField> = Vec::new();
         let mut all_early: Vec<BitField> = Vec::new();
+        let mut all_faulty: Vec<BitField> = Vec::new();
         let mut expiration_epochs: Vec<ChainEpoch> = Vec::new();
         let mut all_active_power = PowerPair::zero();
         let mut all_faulty_power = PowerPair::zero();
@@ -631,28 +636,47 @@ impl ExpirationQueueStateSummary {
                 }
 
                 // check expiring sectors are still alive
+                // check sectors is not early
                 if let Some(sector) = live_sectors.get(&sector_number) {
-                    let target = quant.quantize_up(sector.expiration);
+                    let target = quant.quantize_up(sector.commitment_expiration);
                     acc.require(epoch == target, format!("invalid expiration {epoch} for sector {sector_number}, expected {target}"));
                     on_time_sectors_pledge += sector.initial_pledge.clone();
+                    acc.require(!sector.expires_early(), format!("sector {sector_number} which expires early in on_time queue"))
                 } else {
                     acc.add(format!("on time expiration sector {sector_number} isn't live"));
                 }
             }
 
-            for sector_number in expiration_set.early_sectors.iter() {
+            for sector_number in expiration_set.proof_expiring_sectors.iter() {
+                // check sectors are present only once
+                if !seen_sectors.insert(sector_number) {
+                    acc.add(format!("sector {sector_number} in expiration queue twice"));
+                }
+
+                // check expiring sectors are still alive
+                if let Some(sector) = live_sectors.get(&sector_number) {
+                    let target = quant.quantize_up(sector.proof_expiration);
+                    acc.require(epoch == target, format!("invalid early expiration {epoch} for sector {sector_number}, expected  {target}"));
+                    acc.require(sector.expires_early(), format!("sector {sector_number} which expires on time in early queue"))
+                } else {
+                    acc.add(format!("early expiration sector {sector_number} isn't live"));
+                }
+            }
+
+
+            for sector_number in expiration_set.faulty_sectors.iter() {
                 // check sectors are present only once
                 if !seen_sectors.insert(sector_number) {
                     acc.add(format!("sector {sector_number} in expiration queue twice"));
                 }
 
                 // check early sectors are faulty
-                acc.require(partition_faults.get(sector_number), format!("sector {sector_number} expiring early but not faulty"));
+                acc.require(partition_faults.get(sector_number), format!("sector {sector_number} expiring as faulty but not faulty"));
 
                 // check expiring sectors are still alive
                 if let Some(sector) = live_sectors.get(&sector_number) {
-                    let target = quant.quantize_up(sector.expiration);
-                    acc.require(epoch < target, format!("invalid early expiration {epoch} for sector {sector_number}, expected < {target}"));
+                    let target = quant.quantize_up(sector.expires_at());
+                    acc.require(epoch < target, format!("invalid faulty expiration {epoch} for sector {sector_number}, expected < {target}"));
                 } else {
                     acc.add(format!("on time expiration sector {sector_number} isn't live"));
                 }
@@ -660,13 +684,13 @@ impl ExpirationQueueStateSummary {
 
 
             // validate power and pledge
-            let all = BitField::union([&expiration_set.on_time_sectors, &expiration_set.early_sectors]);
-            let all_active = &all - partition_faults;
+            let all = expiration_set.all(); //BitField::union([&expiration_set.on_time_sectors, &expiration_set.faulty_sectors]);
+            let all_active = &all - partition_faults ;
             let (active_sectors, missing) = select_sectors_map(live_sectors, &all_active);
             acc.require(missing.is_empty(), format!("active sectors missing from live: {missing:?}"));
 
-            let all_faulty = &all & partition_faults;
-            let (faulty_sectors, missing) = select_sectors_map(live_sectors, &all_faulty);
+            let all_faulty_bf = &all & partition_faults;
+            let (faulty_sectors, missing) = select_sectors_map(live_sectors, &all_faulty_bf);
             acc.require(missing.is_empty(), format!("faulty sectors missing from live: {missing:?}"));
 
             let active_sectors_power = power_for_sectors(sector_size, &active_sectors.values().cloned().collect::<Vec<_>>());
@@ -678,7 +702,8 @@ impl ExpirationQueueStateSummary {
             acc.require(expiration_set.on_time_pledge == on_time_sectors_pledge, format!("on time pledge recorded {} doesn't match computed: {on_time_sectors_pledge}", expiration_set.on_time_pledge));
 
             all_on_time.push(expiration_set.on_time_sectors.clone());
-            all_early.push(expiration_set.early_sectors.clone());
+            all_early.push(expiration_set.proof_expiring_sectors.clone());
+            all_faulty.push(expiration_set.faulty_sectors.clone());
             all_active_power += &expiration_set.active_power;
             all_faulty_power += &expiration_set.faulty_power;
             all_on_time_pledge += &expiration_set.on_time_pledge;
@@ -689,10 +714,12 @@ impl ExpirationQueueStateSummary {
 
         let union_on_time = BitField::union(&all_on_time);
         let union_early = BitField::union(&all_early);
+        let union_faulty = BitField::union(&all_faulty);
 
         Self {
             on_time_sectors: union_on_time,
             early_sectors: union_early,
+            faulty_sectors: union_faulty,
             active_power: all_active_power,
             faulty_power: all_faulty_power,
             on_time_pledge: all_on_time_pledge,
@@ -820,7 +847,7 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
             );
             partition_count += 1;
 
-            let acc = acc.with_prefix(format!("partition {index}"));
+            let acc = acc.with_prefix(format!("partition {index}: "));
             let summary = PartitionStateSummary::check_partition_state_invariants(
                 partition,
                 store,
@@ -874,7 +901,7 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
     match deadline.partitions_snapshot_amt(store) {
         Ok(partition_snapshot) => {
             let ret = partition_snapshot.for_each(|i, partition| {
-                let acc = acc.with_prefix(format!("partition snapshot {i}"));
+                let acc = acc.with_prefix(format!("partition snapshot {i}: "));
                 acc.require(
                     partition.recovering_power.is_zero(),
                     "snapshot partition has recovering power",

@@ -178,7 +178,7 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
 
     let mut miner_state = v.get_state::<MinerState>(miner_id).unwrap();
     let mut sector_info = miner_state.get_sector(&store, sector_number).unwrap().unwrap();
-    assert_eq!(180 * EPOCHS_IN_DAY, sector_info.expiration - sector_info.activation);
+    assert_eq!(180 * EPOCHS_IN_DAY, sector_info.commitment_expiration - sector_info.activation);
     assert_eq!(StoragePower::zero(), sector_info.deal_weight); // 0 space time
     assert_eq!(
         DealWeight::from(180 * EPOCHS_IN_DAY * (32i64 << 30)),
@@ -293,7 +293,7 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
 
     miner_state = v.get_state::<MinerState>(miner_id).unwrap();
     sector_info = miner_state.get_sector(&store, sector_number).unwrap().unwrap();
-    assert_eq!(180 * 3 * EPOCHS_IN_DAY, sector_info.expiration - sector_info.activation);
+    assert_eq!(180 * 3 * EPOCHS_IN_DAY, sector_info.commitment_expiration - sector_info.activation);
     assert_eq!(initial_deal_weight, sector_info.deal_weight); // 0 space time, unchanged
     assert_eq!(initial_verified_deal_weight / 4, sector_info.verified_deal_weight);
     // two halvings => 1/4 initial verified deal weight

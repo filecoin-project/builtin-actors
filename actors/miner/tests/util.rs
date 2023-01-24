@@ -46,8 +46,8 @@ use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime, RuntimeP
 use fil_actors_runtime::{test_utils::*, BatchReturn, BatchReturnGen};
 use fil_actors_runtime::{
     ActorDowncast, ActorError, Array, DealWeight, MessageAccumulator, BURNT_FUNDS_ACTOR_ADDR,
-    INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
+    EPOCHS_IN_YEAR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_amt::Amt;
 use fvm_shared::bigint::Zero;
@@ -1132,7 +1132,7 @@ impl ActorHarness {
                 let duration = pc.info.expiration - rt.epoch;
                 let deal_weight = spaces.deal_space * duration;
                 let verified_deal_weight = spaces.verified_deal_space * duration;
-                if duration >= rt.policy.min_sector_expiration {
+                if duration >= rt.policy.min_sector_commitment {
                     let qa_power_delta = qa_power_for_weight(
                         self.sector_size,
                         duration,
@@ -2369,7 +2369,7 @@ impl ActorHarness {
             for sector_nr in extension.sectors.validate().unwrap().iter() {
                 let sector = self.get_sector(&rt, sector_nr);
                 let mut new_sector = sector.clone();
-                new_sector.expiration = extension.new_expiration;
+                new_sector.commitment_expiration = extension.new_expiration;
                 qa_delta += qa_power_for_sector(self.sector_size, &new_sector)
                     - qa_power_for_sector(self.sector_size, &sector);
             }
@@ -2452,7 +2452,7 @@ impl ActorHarness {
             for sector_nr in extension.sectors.validate().unwrap().iter() {
                 let sector = self.get_sector(&rt, sector_nr);
                 let mut new_sector = sector.clone();
-                new_sector.expiration = extension.new_expiration;
+                new_sector.commitment_expiration = extension.new_expiration;
                 qa_delta += qa_power_for_sector(self.sector_size, &new_sector)
                     - qa_power_for_sector(self.sector_size, &sector);
             }
@@ -2465,13 +2465,13 @@ impl ActorHarness {
                     }
                 }
                 let sector = self.get_sector(&rt, sector_claim.sector_number);
-                let old_duration = sector.expiration - sector.activation;
+                let old_duration = sector.commitment_expiration - sector.activation;
                 let old_verified_deal_space = &sector.verified_deal_weight / old_duration;
                 let new_verified_deal_space = old_verified_deal_space - dropped_space;
                 let mut new_sector = sector.clone();
-                new_sector.expiration = extension.new_expiration;
+                new_sector.commitment_expiration = extension.new_expiration;
                 new_sector.verified_deal_weight = BigInt::from(new_verified_deal_space)
-                    * (new_sector.expiration - new_sector.activation);
+                    * (new_sector.commitment_expiration - new_sector.activation);
                 qa_delta += qa_power_for_sector(self.sector_size, &new_sector)
                     - qa_power_for_sector(self.sector_size, &sector);
             }
@@ -2767,7 +2767,7 @@ pub fn assert_bitfield_equals(bf: &BitField, bits: &[u64]) {
     for bit in bits {
         rbf.set(*bit);
     }
-    assert!(bf == &rbf);
+    assert_eq!(bf, &rbf);
 }
 
 #[allow(dead_code)]
@@ -2923,15 +2923,37 @@ fn fixed_hasher(offset: ChainEpoch) -> Box<dyn Fn(&[u8]) -> [u8; 32]> {
 }
 
 #[allow(dead_code)]
-pub fn test_sector(
-    expiration: ChainEpoch,
+pub fn test_sector_no_proof_exp(
+    commitment_expiration: ChainEpoch,
     sector_number: SectorNumber,
     deal_weight: u64,
     verified_deal_weight: u64,
     pledge: u64,
 ) -> SectorOnChainInfo {
     SectorOnChainInfo {
-        expiration,
+        commitment_expiration,
+        proof_expiration: commitment_expiration + EPOCHS_IN_YEAR,
+        sector_number,
+        deal_weight: DealWeight::from(deal_weight),
+        verified_deal_weight: DealWeight::from(verified_deal_weight),
+        initial_pledge: TokenAmount::from_atto(pledge),
+        sealed_cid: make_sealed_cid(format!("commR-{sector_number}").as_bytes()),
+        ..Default::default()
+    }
+}
+
+#[allow(dead_code)]
+pub fn test_sector(
+    commitment_expiration: ChainEpoch,
+    proof_expiration: ChainEpoch,
+    sector_number: SectorNumber,
+    deal_weight: u64,
+    verified_deal_weight: u64,
+    pledge: u64,
+) -> SectorOnChainInfo {
+    SectorOnChainInfo {
+        commitment_expiration,
+        proof_expiration,
         sector_number,
         deal_weight: DealWeight::from(deal_weight),
         verified_deal_weight: DealWeight::from(verified_deal_weight),
@@ -3277,7 +3299,7 @@ pub fn require_no_expiration_groups_before(
     queue.amt.flush().unwrap();
 
     let set = queue.pop_until(epoch - 1).unwrap();
-    assert!(set.is_empty());
+    assert!(set.is_empty(), "{:?}", set);
 }
 
 pub fn check_state_invariants_from_mock_runtime(rt: &MockRuntime) {

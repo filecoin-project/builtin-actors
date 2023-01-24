@@ -1,7 +1,9 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use super::beneficiary::*;
 use cid::Cid;
+use fil_actors_runtime::DealWeight;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{serde_bytes, BytesDe};
@@ -16,13 +18,10 @@ use fvm_shared::sector::{
     SectorSize, StoragePower,
 };
 use fvm_shared::smooth::FilterEstimate;
-
-use fil_actors_runtime::DealWeight;
+use std::cmp::min;
 
 use crate::commd::CompactCommD;
 use crate::ext::verifreg::ClaimID;
-
-use super::beneficiary::*;
 
 pub type CronEvent = i64;
 
@@ -332,7 +331,9 @@ pub struct SectorOnChainInfo {
     /// Epoch during which the sector proof was accepted
     pub activation: ChainEpoch,
     /// Epoch during which the sector expires
-    pub expiration: ChainEpoch,
+    pub commitment_expiration: ChainEpoch,
+    /// Epoch during which the sector proof validity expires
+    pub proof_expiration: ChainEpoch,
     /// Integral of active deals over sector lifetime
     #[serde(with = "bigint_ser")]
     pub deal_weight: DealWeight,
@@ -353,6 +354,16 @@ pub struct SectorOnChainInfo {
     pub sector_key_cid: Option<Cid>,
     // Flag for QA power mechanism introduced in fip 0045
     pub simple_qa_power: bool,
+}
+
+impl SectorOnChainInfo {
+    pub fn expires_early(&self) -> bool {
+        self.proof_expiration < self.commitment_expiration
+    }
+
+    pub fn expires_at(&self) -> ChainEpoch {
+        min(self.proof_expiration, self.commitment_expiration)
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, Serialize_tuple, Deserialize_tuple)]

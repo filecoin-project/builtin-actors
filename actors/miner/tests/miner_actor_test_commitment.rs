@@ -304,7 +304,7 @@ mod miner_actor_test_commitment {
 
         // Expires too early
         {
-            let early_expiration = rt.policy.min_sector_expiration - EPOCHS_IN_DAY;
+            let early_expiration = rt.policy.min_sector_commitment - EPOCHS_IN_DAY;
             let precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, early_expiration, vec![]);
             let ret = h.pre_commit_sector(
@@ -320,7 +320,7 @@ mod miner_actor_test_commitment {
         // Expires before min duration + max seal duration
         {
             let expiration = rt.epoch
-                + rt.policy.min_sector_expiration
+                + rt.policy.min_sector_commitment
                 + max_prove_commit_duration(&rt.policy, h.seal_proof_type).unwrap()
                 - 1;
             let precommit_params =
@@ -340,7 +340,7 @@ mod miner_actor_test_commitment {
             rt.set_epoch(precommit_epoch);
             let expiration = deadline.period_end()
                 + rt.policy.wpost_proving_period
-                    * (rt.policy.max_sector_expiration_extension / rt.policy.wpost_proving_period
+                    * (rt.policy.max_sector_commitment_extension / rt.policy.wpost_proving_period
                         + 1);
             let precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, expiration, vec![]);
@@ -361,7 +361,7 @@ mod miner_actor_test_commitment {
         // Errors when expiry too far in the future (bis)
         {
             rt.set_epoch(precommit_epoch);
-            let expiration = rt.epoch + rt.policy.max_sector_expiration_extension + 1;
+            let expiration = rt.epoch + rt.policy.max_sector_commitment_extension + 1;
             let precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, expiration, vec![]);
             let ret = h.pre_commit_sector(

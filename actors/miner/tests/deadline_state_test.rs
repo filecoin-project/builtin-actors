@@ -22,20 +22,20 @@ const QUANT_SPEC: QuantSpec = QuantSpec { unit: 4, offset: 1 };
 
 fn sectors() -> Vec<SectorOnChainInfo> {
     vec![
-        test_sector(2, 1, 50, 60, 1000),
-        test_sector(3, 2, 51, 61, 1001),
-        test_sector(7, 3, 52, 62, 1002),
-        test_sector(8, 4, 53, 63, 1003),
-        test_sector(8, 5, 54, 64, 1004),
-        test_sector(11, 6, 55, 65, 1005),
-        test_sector(13, 7, 56, 66, 1006),
-        test_sector(8, 8, 57, 67, 1007),
-        test_sector(8, 9, 58, 68, 1008),
+        test_sector_no_proof_exp(2, 1, 50, 60, 1000),
+        test_sector_no_proof_exp(3, 2, 51, 61, 1001),
+        test_sector_no_proof_exp(7, 3, 52, 62, 1002),
+        test_sector_no_proof_exp(8, 4, 53, 63, 1003),
+        test_sector_no_proof_exp(8, 5, 54, 64, 1004),
+        test_sector_no_proof_exp(11, 6, 55, 65, 1005),
+        test_sector_no_proof_exp(13, 7, 56, 66, 1006),
+        test_sector_no_proof_exp(8, 8, 57, 67, 1007),
+        test_sector_no_proof_exp(8, 9, 58, 68, 1008),
     ]
 }
 
 fn extra_sectors() -> Vec<SectorOnChainInfo> {
-    vec![test_sector(8, 10, 58, 68, 1008)]
+    vec![test_sector_no_proof_exp(8, 10, 58, 68, 1008)]
 }
 
 fn all_sectors() -> Vec<SectorOnChainInfo> {
@@ -598,7 +598,7 @@ fn faulty_sectors_expire() {
         .expect("failed to pop expired sectors");
 
     assert_bitfield_equals(&expired.on_time_sectors, &[1, 2, 3, 4, 5, 8, 9]);
-    assert_bitfield_equals(&expired.early_sectors, &[6]);
+    assert_bitfield_equals(&expired.faulty_sectors, &[6]);
 
     deadline_state()
         .with_terminations(&[1, 2, 3, 4, 5, 6, 8, 9])
