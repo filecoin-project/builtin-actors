@@ -19,7 +19,7 @@ use fvm_shared::address::Address as FILAddress;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
+use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::sys::SendFlags;
 use fvm_shared::{ActorID, MethodNum, METHOD_SEND};
 use once_cell::sync::Lazy;
@@ -203,6 +203,7 @@ fn test_call() {
         IpldBlock::serialize_cbor(&BytesSer(&return_data))
             .expect("failed to serialize return data"),
         ExitCode::OK,
+        None,
     );
 
     let result = util::invoke_contract(&mut rt, &contract_params);
@@ -273,6 +274,7 @@ fn test_call_convert_to_send() {
             IpldBlock::serialize_cbor(&BytesSer(&return_data))
                 .expect("failed to serialize return data"),
             ExitCode::OK,
+            None,
         );
 
         let result = util::invoke_contract(&mut rt, &contract_params);
@@ -408,6 +410,7 @@ return
             SendFlags::empty(),
             Some(large_ret.clone()),
             ExitCode::OK,
+            None,
         );
 
         rt.expect_gas_available(10_000_000_000);
@@ -604,6 +607,7 @@ fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_i
             send_flags,
             Some(send_return.clone()),
             exit_code,
+            None,
         );
     }
 
@@ -612,7 +616,7 @@ fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_i
     v[..4].copy_from_slice(&send_return.data);
 
     let expect = CallActorReturn {
-        exit_code,
+        send_exit_code: U256::from(exit_code.value()),
         codec: send_return.codec,
         data_offset: 96,
         data_size: send_return.data.len() as u32,
@@ -683,6 +687,7 @@ fn call_actor_weird_offset() {
         SendFlags::empty(),
         None,
         ExitCode::OK,
+        None,
     );
 
     let precompile_return = CallActorReturn::default();
@@ -733,6 +738,7 @@ fn call_actor_overlapping() {
         SendFlags::empty(),
         None,
         ExitCode::OK,
+        None,
     );
 
     test.input = call_params.into();
@@ -775,10 +781,57 @@ fn call_actor_id_with_full_address() {
         SendFlags::empty(),
         None,
         ExitCode::OK,
+        None,
     );
 
     test.input = call_params.into();
     test.run_test_expecting(&mut rt, CallActorReturn::default(), util::PrecompileExit::Success);
+}
+
+#[test]
+fn call_actor_syscall_error() {
+    let contract = {
+        let (init, body) = util::PrecompileTest::test_runner_assembly();
+        asm::new_contract("call_actor-precompile-test", &init, &body).unwrap()
+    };
+    let mut rt = util::construct_and_verify(contract);
+    let addr = Address::new_delegated(1234, b"foobarboxy").unwrap();
+
+    let mut call_params = CallActorParams::default();
+    call_params.set_addr(CallActorParams::EMPTY_PARAM_ADDR_OFFSET, addr.to_bytes());
+
+    let mut test = util::PrecompileTest {
+        precompile_address: util::NativePrecompile::CallActor.eth_address(),
+        output_size: 32,
+        gas_avaliable: 10_000_000_000u64,
+        call_op: util::PrecompileCallOpcode::DelegateCall,
+        // overwritten in tests
+        expected_return: vec![],
+        expected_exit_code: util::PrecompileExit::Success,
+        input: call_params.clone().into(),
+    };
+
+    let syscall_exit = ErrorNumber::NotFound;
+
+    let expect = CallActorReturn {
+        send_exit_code: U256::from(syscall_exit as u32).i256_neg(),
+        ..Default::default()
+    };
+
+    rt.expect_send_generalized(
+        addr,
+        0,
+        None,
+        TokenAmount::zero(),
+        Some(0),
+        SendFlags::empty(),
+        None,
+        ExitCode::new(0xffff),
+        Some(syscall_exit),
+    );
+
+    test.input = call_params.into();
+    test.run_test_expecting(&mut rt, expect, util::PrecompileExit::Success);
 }
 
 #[cfg(test)]
@@ -988,13 +1041,19 @@ impl From<CallActorParams> for Vec<u8> {
 
 impl Default for CallActorReturn {
     fn default() -> Self {
-        Self { exit_code: ExitCode::OK, codec: 0, data_offset: 3 * 32, data_size: 0, data: vec![] }
+        Self {
+            send_exit_code: U256::from(ExitCode::OK.value()),
+            codec: 0,
+            data_offset: 3 * 32,
+            data_size: 0,
+            data: vec![],
+        }
     }
 }
 
 #[derive(Debug, PartialEq, Eq)]
 struct CallActorReturn {
-    exit_code: ExitCode,
+    send_exit_code: U256,
     codec: u64,
     data_offset: u32,
     data_size: u32,
@@ -1003,7 +1062,9 @@ struct CallActorReturn {
 
 impl From<CallActorReturn> for Vec<u8> {
     fn from(src: CallActorReturn) -> Self {
-        let exit_code = U256::from(src.exit_code.value());
+        // precompile will return negative number for send errors
+        let exit_code = src.send_exit_code;
+
         let codec = U256::from(src.codec);
         let offset = U256::from(src.data_offset);
         let len = U256::from(src.data_size);
@@ -1056,6 +1117,7 @@ fn call_actor_solidity() {
             SendFlags::empty(),
             Some(IpldBlock { codec: 0, data: expected_return.clone() }),
             ExitCode::OK,
+            None,
         );
 
         let (success, exit, codec, ret_val): (bool, ethers::types::I256, u64, Bytes) =
@@ -1098,6 +1160,7 @@ fn call_actor_solidity() {
             SendFlags::empty(),
             Some(IpldBlock { codec: 0, data: expected_return.clone() }),
             ExitCode::OK,
+            None,
         );
 
         let (success, exit, codec, ret_val): (bool, ethers::types::I256, u64, Bytes) =
@@ -1140,6 +1203,7 @@ fn call_actor_send_solidity() {
             SendFlags::empty(),
             Some(IpldBlock { codec: 0, data: expected_return.clone() }),
             ExitCode::OK,
+            None,
         );
 
         let (success, exit, codec, ret_val): (bool, ethers::types::I256, u64, Bytes) =

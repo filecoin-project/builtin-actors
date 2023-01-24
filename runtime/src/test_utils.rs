@@ -392,6 +392,7 @@ pub struct ExpectedMessage {
     // returns from applying expectedMessage
     pub send_return: Option<IpldBlock>,
     pub exit_code: ExitCode,
+    pub send_error: Option<ErrorNumber>,
 }
 
 #[derive(Debug)]
@@ -691,6 +692,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
             exit_code,
             send_flags: SendFlags::default(),
             gas_limit: None,
+            send_error: None,
         })
     }
 
@@ -706,6 +708,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
         send_flags: SendFlags,
         send_return: Option<IpldBlock>,
         exit_code: ExitCode,
+        send_error: Option<ErrorNumber>,
     ) {
         self.expectations.borrow_mut().expect_sends.push_back(ExpectedMessage {
             to,
@@ -716,6 +719,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
             value,
             send_flags,
             gas_limit,
+            send_error,
         })
     }
 
@@ -1178,6 +1182,10 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
             expected_msg.params == params,
             expected_msg.value == value,
         );
+
+        if let Some(e) = expected_msg.send_error {
+            return Err(e);
+        }
 
         {
             let mut balance = self.balance.borrow_mut();

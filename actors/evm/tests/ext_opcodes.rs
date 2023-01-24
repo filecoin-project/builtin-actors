@@ -122,6 +122,7 @@ non_existent:
             SendFlags::READ_ONLY,
             IpldBlock::serialize_cbor(&bytecode_cid).unwrap(),
             ExitCode::OK,
+            None,
         );
 
         let result = util::invoke_contract(&mut rt, &method);
@@ -256,6 +257,7 @@ account:
         SendFlags::READ_ONLY,
         IpldBlock::serialize_cbor(&bytecode_hash).unwrap(),
         ExitCode::OK,
+        None,
     );
 
     // Evm code
@@ -402,6 +404,7 @@ precompile:
         SendFlags::READ_ONLY,
         IpldBlock::serialize_cbor(&bytecode_cid).unwrap(),
         ExitCode::OK,
+        None,
     );
 
     let result = util::invoke_contract(&mut rt, &util::dispatch_num_word(0));
@@ -477,6 +480,7 @@ init_extsize:
             SendFlags::READ_ONLY,
             IpldBlock::serialize_cbor(&BytecodeHash::EMPTY).unwrap(),
             ExitCode::OK,
+            None,
         );
 
         rt.store.put_keyed(&EMPTY_ARR_CID, &[]).unwrap();
@@ -489,6 +493,7 @@ init_extsize:
             SendFlags::READ_ONLY,
             IpldBlock::serialize_cbor(&EMPTY_ARR_CID).unwrap(),
             ExitCode::OK,
+            None,
         );
     });
 
