@@ -211,14 +211,13 @@ impl Actor {
         }
 
         let caller = rt.message().caller();
-        let res: ext::miner::IsControllingAddressReturn = deserialize_block(rt.send(
+        let caller_status: ext::miner::IsControllingAddressReturn = deserialize_block(rt.send(
             &Address::new_id(provider_id),
             ext::miner::IS_CONTROLLING_ADDRESS_EXPORTED,
             IpldBlock::serialize_cbor(&ext::miner::IsControllingAddressParam { address: caller })?,
             TokenAmount::zero(),
         )?)?;
-        let caller_ok = res.is_controlling;
-        if !caller_ok {
+        if !caller_status.is_controlling {
             return Err(actor_error!(
                 forbidden,
                 "caller {} is not worker or control address of provider {}",

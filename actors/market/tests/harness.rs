@@ -166,7 +166,7 @@ pub fn expect_provider_control_address(
     expect_get_control_addresses(rt, provider, owner, worker, vec![])
 }
 
-pub fn expect_get_is_control_addresses(
+pub fn expect_provider_is_control_address(
     rt: &mut MockRuntime,
     provider: Address,
     caller: Address,
@@ -183,15 +183,6 @@ pub fn expect_get_is_control_addresses(
         IpldBlock::serialize_cbor(&result).unwrap(),
         ExitCode::OK,
     )
-}
-
-pub fn expect_provider_is_control_address(
-    rt: &mut MockRuntime,
-    provider: Address,
-    caller: Address,
-    is_controlling: bool,
-) {
-    expect_get_is_control_addresses(rt, provider, caller, is_controlling)
 }
 
 pub fn add_provider_funds(rt: &mut MockRuntime, amount: TokenAmount, addrs: &MinerAddresses) {
