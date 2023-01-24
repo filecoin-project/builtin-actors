@@ -700,7 +700,14 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         let mut expiration_set = self.may_get(epoch)?;
 
         expiration_set
-            .add(on_time_sectors, proof_expiring_sectors, faulty_sectors, pledge, active_power, faulty_power)
+            .add(
+                on_time_sectors,
+                proof_expiring_sectors,
+                faulty_sectors,
+                pledge,
+                active_power,
+                faulty_power,
+            )
             .map_err(|e| anyhow!("failed to add expiration values for epoch {}: {}", epoch, e))?;
 
         self.must_update(epoch, expiration_set)?;
@@ -755,8 +762,9 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         for group in groups {
             let on_time_sectors =
                 BitField::try_from_bits(group.sector_epoch_set.on_time_sectors.iter().copied())?;
-            let early_sectors =
-                BitField::try_from_bits(group.sector_epoch_set.proof_expiring_sectors.iter().copied())?;
+            let early_sectors = BitField::try_from_bits(
+                group.sector_epoch_set.proof_expiring_sectors.iter().copied(),
+            )?;
 
             self.remove(
                 group.sector_epoch_set.epoch,
