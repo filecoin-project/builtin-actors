@@ -85,11 +85,11 @@ fn test_push0() {
 #[test]
 fn test_dup_n() {
     let mut stack = Stack::new();
-    
+
     stack.push(U256::from(0xff)).unwrap();
     dup::<1>(&mut stack).unwrap();
     assert_eq!(stack.pop(), stack.pop());
-    
+
     stack.push(U256::from(0xff)).unwrap();
     dup::<2>(&mut stack).expect_err("stack underflow");
 
