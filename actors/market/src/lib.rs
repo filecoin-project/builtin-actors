@@ -216,15 +216,12 @@ impl Actor {
         }
 
         let caller = rt.message().caller();
-        let caller_status: ext::miner::IsControllingAddressReturn =
-            deserialize_block(extract_send_result(rt.send_simple(
-                &Address::new_id(provider_id),
-                ext::miner::IS_CONTROLLING_ADDRESS_EXPORTED,
-                IpldBlock::serialize_cbor(&ext::miner::IsControllingAddressParam {
-                    address: caller,
-                })?,
-                TokenAmount::zero(),
-            ))?)?;
+        let caller_status: ext::miner::IsControllingAddressReturn = deserialize_block(rt.send(
+            &Address::new_id(provider_id),
+            ext::miner::IS_CONTROLLING_ADDRESS_EXPORTED,
+            IpldBlock::serialize_cbor(&ext::miner::IsControllingAddressParam { address: caller })?,
+            TokenAmount::zero(),
+        )?)?;
         if !caller_status.is_controlling {
             return Err(actor_error!(
                 forbidden,

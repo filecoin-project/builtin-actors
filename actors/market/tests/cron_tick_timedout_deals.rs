@@ -86,7 +86,7 @@ fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_l
         ClientDealProposal { proposal: deal_proposal2.clone(), client_signature: sig };
     let params = PublishStorageDealsParams { deals: vec![client_deal_proposal] };
     rt.expect_validate_caller_any();
-    expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
+    expect_provider_is_control_address(&mut rt, PROVIDER_ADDR, WORKER_ADDR, true);
     expect_query_network_info(&mut rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     let auth_param = IpldBlock::serialize_cbor(&AuthenticateMessageParams {

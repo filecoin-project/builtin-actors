@@ -1134,7 +1134,7 @@ pub fn market_publish_deal(
     let mut expect_publish_invocs = vec![
         ExpectInvocation {
             to: miner_id,
-            method: MinerMethod::ControlAddresses as u64,
+            method: MinerMethod::IsControllingAddressExported as u64,
             ..Default::default()
         },
         ExpectInvocation {

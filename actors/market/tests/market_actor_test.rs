@@ -842,7 +842,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     rt.expect_validate_caller_any();
 
-    expect_provider_control_address(&mut rt, provider_resolved, OWNER_ADDR, WORKER_ADDR);
+    expect_provider_is_control_address(&mut rt, provider_resolved, WORKER_ADDR, true);
     expect_query_network_info(&mut rt);
 
     //  create a client proposal with a valid signature
@@ -1526,7 +1526,7 @@ fn cannot_publish_the_same_deal_twice_before_a_cron_tick() {
         deals: vec![ClientDealProposal { proposal: d2.clone(), client_signature: sig }],
     };
     rt.expect_validate_caller_any();
-    expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
+    expect_provider_is_control_address(&mut rt, PROVIDER_ADDR, WORKER_ADDR, true);
     expect_query_network_info(&mut rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
 
@@ -1941,7 +1941,7 @@ fn insufficient_client_balance_in_a_batch() {
     };
 
     rt.expect_validate_caller_any();
-    expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
+    expect_provider_is_control_address(&mut rt, PROVIDER_ADDR, WORKER_ADDR, true);
     expect_query_network_info(&mut rt);
 
     let authenticate_param1 = IpldBlock::serialize_cbor(&AuthenticateMessageParams {
@@ -2075,7 +2075,7 @@ fn insufficient_provider_balance_in_a_batch() {
     };
 
     rt.expect_validate_caller_any();
-    expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
+    expect_provider_is_control_address(&mut rt, PROVIDER_ADDR, WORKER_ADDR, true);
     expect_query_network_info(&mut rt);
 
     let authenticate_param1 = IpldBlock::serialize_cbor(&AuthenticateMessageParams {
@@ -2235,7 +2235,7 @@ fn psd_restricted_correctly() {
     .unwrap();
 
     rt.expect_validate_caller_any();
-    expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
+    expect_provider_is_control_address(&mut rt, PROVIDER_ADDR, WORKER_ADDR, true);
     expect_query_network_info(&mut rt);
 
     rt.expect_send(
