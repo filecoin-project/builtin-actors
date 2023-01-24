@@ -173,7 +173,18 @@ pub(super) fn call_actor_shared<RT: Runtime>(
             0 if params.is_empty() => None,
             _ => return Err(PrecompileError::InvalidInput),
         };
-        system.send(&address, method, params, TokenAmount::from(&value), Some(ctx.gas_limit), flags)
+        // This method returns two results. If the outer result is an error, we consider the
+        // precompile to have completely failed.
+        //
+        // If get `Ok(anything)`, we expose `anything` to the user.
+        system.send_raw(
+            &address,
+            method,
+            params,
+            TokenAmount::from(&value),
+            Some(ctx.gas_limit),
+            flags,
+        )?
     };
 
     // ------ Build Output -------
@@ -183,16 +194,13 @@ pub(super) fn call_actor_shared<RT: Runtime>(
         // positive values are user/actor errors
         // success is 0
         let (exit_code, data) = match result {
-            Err(mut ae) => {
-                // TODO handle revert
-                // TODO https://github.com/filecoin-project/ref-fvm/issues/1020
-                // put error number from call into revert
-                let exit_code = U256::from(ae.exit_code().value());
+            Err(errno) => {
+                let exit_code = U256::from(errno as u32).i256_neg();
 
                 // no return only exit code
-                (exit_code, ae.take_data())
+                (exit_code, None)
             }
-            Ok(ret) => (U256::zero(), ret),
+            Ok(resp) => (U256::from(resp.exit_code.value()), resp.return_data),
         };
 
         let ret_blk = data.unwrap_or(IpldBlock { codec: 0, data: vec![] });

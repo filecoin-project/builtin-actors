@@ -1,6 +1,6 @@
 use std::{marker::PhantomData, num::TryFromIntError};
 
-use fil_actors_runtime::runtime::Runtime;
+use fil_actors_runtime::{runtime::Runtime, ActorError};
 use fvm_shared::{address::Address, econ::TokenAmount};
 use substrate_bn::{CurveError, FieldError, GroupError};
 
@@ -118,8 +118,14 @@ pub enum PrecompileError {
     InvalidInput,
     CallForbidden,
     TransferFailed,
+    VMError(ActorError),
 }
 
+impl From<ActorError> for PrecompileError {
+    fn from(e: ActorError) -> Self {
+        Self::VMError(e)
+    }
+}
 impl From<TryFromIntError> for PrecompileError {
     fn from(_: TryFromIntError) -> Self {
         Self::InvalidInput

@@ -11,9 +11,9 @@ use fvm_shared::{
     address::{Address, Payload},
     crypto::hash::SupportedHashes,
     econ::TokenAmount,
-    error::ExitCode,
+    error::{ErrorNumber, ExitCode},
     sys::SendFlags,
-    MethodNum, IPLD_RAW, METHOD_SEND,
+    MethodNum, Response, IPLD_RAW, METHOD_SEND,
 };
 use multihash::Code;
 use once_cell::unsync::OnceCell;
@@ -227,11 +227,9 @@ impl<'r, RT: Runtime> System<'r, RT> {
         gas_limit: Option<u64>,
         send_flags: SendFlags,
     ) -> Result<Option<IpldBlock>, ActorError> {
-        self.flush()?;
-        let result = self
-            .rt
-            .send_generalized(to, method, params, value, gas_limit, send_flags)
-            .map_err(|err| actor_error!(unspecified; "send syscall failed: {}", err))?;
+        let result = self.send_raw(to, method, params, value, gas_limit, send_flags)?.map_err(|err| {
+            actor_error!(unspecified; "send syscall to {to} on method {method} failed: {}", err)
+        })?;
 
         // Don't bother reloading on abort, just return the error.
         if !result.exit_code.is_success() {
@@ -242,11 +240,34 @@ impl<'r, RT: Runtime> System<'r, RT> {
             ));
         }
 
-        if !send_flags.read_only() {
-            self.reload()?;
+        Ok(result.return_data)
+    }
+
+    /// Send, but get back the raw syscall error failure without interpreting it as an actor error.
+    /// This method has a really funky return type because:
+    /// 1. It can fail with an outer "actor error". In that case, the EVM is expected to abort with
+    ///    the specified exit code.
+    /// 2. It can fail with an inner syscall error.
+    /// 3. It can successfully call into the other actor, and return a response with a non-zero exit code.
+    pub fn send_raw(
+        &mut self,
+        to: &Address,
+        method: MethodNum,
+        params: Option<IpldBlock>,
+        value: TokenAmount,
+        gas_limit: Option<u64>,
+        send_flags: SendFlags,
+    ) -> Result<Result<Response, ErrorNumber>, ActorError> {
+        self.flush()?;
+        let result = self.rt.send_generalized(to, method, params, value, gas_limit, send_flags);
+
+        // Reload on success, and only on success.
+        match &result {
+            Ok(r) if r.exit_code.is_success() => self.reload()?,
+            _ => {}
         }
 
-        Ok(result.return_data)
+        Ok(result)
     }
 
     /// Flush the actor state (bytecode, nonce, and slots).
