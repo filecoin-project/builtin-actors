@@ -1,21 +1,24 @@
+use cid::Cid;
 use frc46_token::token::types::{
     BurnFromParams, BurnFromReturn, BurnParams, BurnReturn, DecreaseAllowanceParams,
     GetAllowanceParams, IncreaseAllowanceParams, MintReturn, RevokeAllowanceParams,
     TransferFromParams, TransferFromReturn, TransferParams, TransferReturn,
 };
 use frc46_token::token::{Token, TokenError, TOKEN_PRECISION};
-use fvm_actor_utils::messaging::{Messaging, MessagingError, Response};
+use fvm_actor_utils::messaging::Messaging;
 use fvm_actor_utils::receiver::ReceiverHookError;
+use fvm_actor_utils::syscalls::{NoStateError, Syscalls};
+use fvm_actor_utils::util::ActorRuntime;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
-use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
+use fvm_shared::Response;
+use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR};
 use lazy_static::lazy_static;
 use log::info;
 use num_derive::FromPrimitive;
-use num_traits::Zero;
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
@@ -388,12 +391,6 @@ impl<'a, RT> Messaging for &Messenger<'a, RT>
 where
     RT: Runtime,
 {
-    fn actor_id(&self) -> ActorID {
-        // The Runtime unhelpfully wraps receiver in an address, while the Messaging trait
-        // is closer to the syscall interface.
-        self.rt.message().receiver().id().unwrap()
-    }
-
     // This never returns an Err.  However we could return an error if the
     // Runtime send method passed through the underlying syscall error
     // instead of hiding it behind a client-side chosen exit code.
@@ -402,10 +399,48 @@ where
         to: &Address,
         method: MethodNum,
         params: Option<IpldBlock>,
-        value: &TokenAmount,
+        value: TokenAmount,
     ) -> fvm_actor_utils::messaging::Result<Response> {
         // The Runtime discards some of the information from the syscall :-(
-        let res = self.rt.send(to, method, params, value.clone());
+        let res = self.rt.send(to, method, params, value);
+
+        let rec = match res {
+            Ok(ret) => Response { exit_code: ExitCode::OK, return_data: ret },
+            Err(ae) => {
+                info!("datacap messenger failed: {}", ae.msg());
+                Response { exit_code: ae.exit_code(), return_data: None }
+            }
+        };
+        Ok(rec)
+    }
+}
+
+impl<'a, RT> Syscalls for &Messenger<'a, RT>
+where
+    RT: Runtime,
+{
+    fn root(&self) -> Result<Cid, NoStateError> {
+        self.rt.get_state_root().map_err(|_| NoStateError)
+    }
+
+    fn receiver(&self) -> ActorID {
+        self.rt.message().receiver().id().unwrap()
+    }
+
+    // TODO: What's the best way to avoid this duplication?
+    // Create a trait that combines Syscalls and Messaging and impl that?
+    // This never returns an Err.  However we could return an error if the
+    // Runtime send method passed through the underlying syscall error
+    // instead of hiding it behind a client-side chosen exit code.
+    fn send(
+        &self,
+        to: &Address,
+        method: MethodNum,
+        params: Option<IpldBlock>,
+        value: TokenAmount,
+    ) -> Result<Response, ErrorNumber> {
+        // The Runtime discards some of the information from the syscall :-(
+        let res = self.rt.send(to, method, params, value);
 
         let rec = match res {
             Ok(ret) => Response { exit_code: ExitCode::OK, return_data: ret },
@@ -417,16 +452,8 @@ where
         Ok(rec)
     }
 
-    fn resolve_id(&self, address: &Address) -> fvm_actor_utils::messaging::Result<ActorID> {
-        self.rt.resolve_address(address).ok_or(MessagingError::AddressNotInitialized(*address))
-    }
-
-    fn initialize_account(&self, address: &Address) -> fvm_actor_utils::messaging::Result<ActorID> {
-        let fake_syscall_error_number = ErrorNumber::NotFound;
-        if self.rt.send(address, METHOD_SEND, Default::default(), TokenAmount::zero()).is_err() {
-            return Err(MessagingError::Syscall(fake_syscall_error_number));
-        }
-        self.resolve_id(address)
+    fn resolve_address(&self, addr: &Address) -> Option<ActorID> {
+        self.rt.resolve_address(addr)
     }
 }
 
@@ -434,11 +461,11 @@ where
 fn as_token<'st, RT>(
     st: &'st mut State,
     msg: &'st Messenger<'st, RT>,
-) -> Token<'st, &'st RT::Blockstore, &'st Messenger<'st, RT>>
+) -> Token<'st, &'st Messenger<'st, RT>, &'st RT::Blockstore>
 where
     RT: Runtime,
 {
-    Token::wrap(msg.rt.store(), msg, DATACAP_GRANULARITY, &mut st.token)
+    Token::wrap(ActorRuntime::new(msg, msg.rt.store()), DATACAP_GRANULARITY, &mut st.token)
 }
 
 trait AsActorResult<T> {
