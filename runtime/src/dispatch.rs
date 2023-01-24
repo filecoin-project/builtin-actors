@@ -24,22 +24,70 @@ use crate::ActorError;
 /// ```
 #[macro_export]
 macro_rules! actor_dispatch {
-    ($($method:ident => $func:ident,)*) => {
+    ($($(#[$m:meta])* $(_)? $($method:ident)? => $func:ident $([$tag:ident])?,)*) => {
         fn invoke_method<RT>(
             rt: &mut RT,
-            method: MethodNum,
+            method: fvm_shared::MethodNum,
             args: Option<fvm_ipld_encoding::ipld_block::IpldBlock>,
-        ) -> Result<Option<fvm_ipld_encoding::ipld_block::IpldBlock>, ActorError>
+        ) -> Result<Option<fvm_ipld_encoding::ipld_block::IpldBlock>, $crate::ActorError>
         where
-            RT: Runtime,
+            RT: $crate::runtime::Runtime,
             RT::Blockstore: Clone,
         {
-            restrict_internal_api(rt, method)?;
-            match FromPrimitive::from_u64(method) {
-                $(Some(Self::Methods::$method) => $crate::dispatch(rt, Self::$func, &args),)*
+            $crate::builtin::shared::restrict_internal_api(rt, method)?;
+            match <Self::Methods as num_traits::FromPrimitive>::from_u64(method) {
+                $($(#[$m])*
+                  $crate::actor_dispatch!(@pattern $($method)?) =>
+                  $crate::actor_dispatch!(@target rt args method $func $($tag)?),)*
                 None => Err(actor_error!(unhandled_message; "invalid method: {}", method)),
             }
         }
+    };
+    (@pattern) => {
+        None
+    };
+    (@pattern $method:ident) => {
+        Some(Self::Methods::$method)
+    };
+    (@target $rt:ident $args:ident $method:ident $func:ident raw) => {
+        Self::$func($rt, $method, $args)
+    };
+    (@target $rt:ident $args:ident $method:ident $func:ident) => {
+        $crate::dispatch($rt, Self::$func, &$args)
+    };
+}
+
+#[macro_export]
+macro_rules! actor_dispatch_unrestricted {
+    ($($(#[$m:meta])* $(_)? $($method:ident)? => $func:ident $([$tag:ident])?,)*) => {
+        fn invoke_method<RT>(
+            rt: &mut RT,
+            method: fvm_shared::MethodNum,
+            args: Option<fvm_ipld_encoding::ipld_block::IpldBlock>,
+        ) -> Result<Option<fvm_ipld_encoding::ipld_block::IpldBlock>, $crate::ActorError>
+        where
+            RT: $crate::runtime::Runtime,
+            RT::Blockstore: Clone,
+        {
+            match <Self::Methods as num_traits::FromPrimitive>::from_u64(method) {
+                $($(#[$m])*
+                  $crate::actor_dispatch!(@pattern $($method)?) =>
+                  $crate::actor_dispatch!(@target rt args method $func $($tag)?),)*
+                None => Err(actor_error!(unhandled_message; "invalid method: {}", method)),
+            }
+        }
+    };
+    (@pattern) => {
+        None
+    };
+    (@pattern $method:ident) => {
+        Some(Self::Methods::$method)
+    };
+    (@target $rt:ident $args:ident $method:ident $func:ident raw) => {
+        Self::$func($rt, $method, $args)
+    };
+    (@target $rt:ident $args:ident $method:ident $func:ident) => {
+        $crate::dispatch($rt, Self::$func, &$args)
     };
 }
 
