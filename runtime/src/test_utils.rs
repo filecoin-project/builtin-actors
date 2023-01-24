@@ -36,7 +36,6 @@ use fvm_shared::{ActorID, MethodNum, Response};
 use multihash::derive::Multihash;
 use multihash::MultihashDigest;
 
-use num_traits::FromPrimitive;
 use rand::prelude::*;
 use serde::Serialize;
 
@@ -693,7 +692,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
             exit_code,
             send_flags: SendFlags::default(),
             gas_limit: None,
-            send_error: None
+            send_error: None,
         })
     }
 
@@ -711,7 +710,6 @@ impl<BS: Blockstore> MockRuntime<BS> {
         exit_code: ExitCode,
         send_error: Option<ErrorNumber>,
     ) {
-        assert!(exit_code.is_system_error() && send_return.is_none(), "system errors are not expected to have return value");
         self.expectations.borrow_mut().expect_sends.push_back(ExpectedMessage {
             to,
             method,
@@ -1185,8 +1183,8 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
             expected_msg.value == value,
         );
 
-        if expected_msg.exit_code.is_system_error() {
-            return Err(ErrorNumber::from_u32(expected_msg.exit_code.value()).expect("system exit code must be valid"))
+        if let Some(e) = expected_msg.send_error {
+            return Err(e);
         }
 
         {

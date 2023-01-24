@@ -19,7 +19,7 @@ use fvm_shared::address::Address as FILAddress;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::{ExitCode, ErrorNumber};
+use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::sys::SendFlags;
 use fvm_shared::{ActorID, MethodNum, METHOD_SEND};
 use once_cell::sync::Lazy;
@@ -616,7 +616,7 @@ fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_i
     v[..4].copy_from_slice(&send_return.data);
 
     let expect = CallActorReturn {
-        send_exit_code,
+        send_exit_code: U256::from(exit_code.value()),
         codec: send_return.codec,
         data_offset: 96,
         data_size: send_return.data.len() as u32,
@@ -788,7 +788,6 @@ fn call_actor_id_with_full_address() {
     test.run_test_expecting(&mut rt, CallActorReturn::default(), util::PrecompileExit::Success);
 }
 
-
 #[test]
 fn call_actor_syscall_error() {
     let contract = {
@@ -798,7 +797,8 @@ fn call_actor_syscall_error() {
     let mut rt = util::construct_and_verify(contract);
     let addr = Address::new_delegated(1234, b"foobarboxy").unwrap();
 
-    let call_params = CallActorParams::default();
+    let mut call_params = CallActorParams::default();
+    call_params.set_addr(CallActorParams::EMPTY_PARAM_ADDR_OFFSET, addr.to_bytes());
 
     let mut test = util::PrecompileTest {
         precompile_address: util::NativePrecompile::CallActor.eth_address(),
@@ -813,19 +813,21 @@ fn call_actor_syscall_error() {
 
     let syscall_exit = ErrorNumber::NotFound;
 
-    let mut expect = CallActorReturn::default();
-    expect.send_exit_code = U256::from(syscall_exit as u32).i256_neg();
+    let expect = CallActorReturn {
+        send_exit_code: U256::from(syscall_exit as u32).i256_neg(),
+        ..Default::default()
+    };
 
     rt.expect_send_generalized(
         addr,
         0,
         None,
         TokenAmount::zero(),
-        None,
+        Some(0),
         SendFlags::empty(),
         None,
-        syscall_exit,
-        None,
+        ExitCode::new(0xffff),
+        Some(syscall_exit),
     );
 
     test.input = call_params.into();
@@ -1039,7 +1041,13 @@ impl From<CallActorParams> for Vec<u8> {
 
 impl Default for CallActorReturn {
     fn default() -> Self {
-        Self { send_exit_code: U256::from(ExitCode::OK.value()), codec: 0, data_offset: 3 * 32, data_size: 0, data: vec![] }
+        Self {
+            send_exit_code: U256::from(ExitCode::OK.value()),
+            codec: 0,
+            data_offset: 3 * 32,
+            data_size: 0,
+            data: vec![],
+        }
     }
 }
 
@@ -1054,10 +1062,9 @@ struct CallActorReturn {
 
 impl From<CallActorReturn> for Vec<u8> {
     fn from(src: CallActorReturn) -> Self {
-
         // precompile will return negative number for system/syscall errors
         let exit_code = src.send_exit_code;
-         
+
         let codec = U256::from(src.codec);
         let offset = U256::from(src.data_offset);
         let len = U256::from(src.data_size);
