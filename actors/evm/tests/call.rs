@@ -1062,7 +1062,7 @@ struct CallActorReturn {
 
 impl From<CallActorReturn> for Vec<u8> {
     fn from(src: CallActorReturn) -> Self {
-        // precompile will return negative number for system/syscall errors
+        // precompile will return negative number for send errors
         let exit_code = src.send_exit_code;
 
         let codec = U256::from(src.codec);
