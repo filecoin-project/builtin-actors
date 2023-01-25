@@ -78,7 +78,13 @@ impl Stack {
     }
 
     #[inline]
+    /// Duplicates and pushes value of index `i - 1` to the top of the stack.
+    ///
+    /// Returns error if there is a stack underflow/overflow.
+    ///
+    /// Panics if `i == 0`, -1 is not a valid index.
     pub fn dup(&mut self, i: usize) -> Result<(), ActorError> {
+        assert!(i > 0);
         let len = self.stack.len();
         if len >= STACK_SIZE {
             Err(ActorError::unchecked(EVM_CONTRACT_STACK_OVERFLOW, "stack overflow".into()))
@@ -183,6 +189,26 @@ fn test_stack_dup() {
     assert_eq!(stack.pop().unwrap(), 1);
     assert_eq!(stack.pop().unwrap(), 2);
     assert_eq!(stack.pop().unwrap(), 1);
+}
+
+#[test]
+#[should_panic]
+fn test_stack_dup_zero() {
+    let mut stack = Stack::new();
+    stack.dup(0).unwrap();
+}
+
+#[test]
+fn test_stack_dup_len() {
+    let mut stack = Stack::new();
+    for i in 1..=6 {
+        stack.push(U256::from(i)).unwrap()
+    }
+    stack.dup(stack.len()).unwrap();
+    let a = stack.pop();
+    stack.pop_many::<5>().unwrap();
+    assert_eq!(stack.pop(), a);
+    assert_eq!(a.unwrap(), U256::ONE);
 }
 
 #[test]
