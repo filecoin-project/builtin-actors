@@ -40,6 +40,7 @@ pub const EVM_CONTRACT_STACK_UNDERFLOW: ExitCode = ExitCode::new(36);
 pub const EVM_CONTRACT_STACK_OVERFLOW: ExitCode = ExitCode::new(37);
 pub const EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS: ExitCode = ExitCode::new(38);
 pub const EVM_CONTRACT_BAD_JUMPDEST: ExitCode = ExitCode::new(39);
+pub const EVM_CONTRACT_SELFDESTRUCT_FAILED: ExitCode = ExitCode::new(40);
 
 const EVM_MAX_RESERVED_METHOD: u64 = 1023;
 pub const NATIVE_METHOD_SIGNATURE: &str = "handle_filecoin_method(uint64,uint64,bytes)";

@@ -13,6 +13,7 @@ use serde_tuple::{Deserialize_tuple, Serialize_tuple};
 
 use crate::interpreter::Output;
 use crate::interpreter::{address::EthAddress, U256};
+use crate::EVM_CONTRACT_SELFDESTRUCT_FAILED;
 
 use super::memory::{get_memory_region, MemoryRegion};
 use {
@@ -163,11 +164,21 @@ pub fn selfdestruct(
         return Err(ActorError::read_only("selfdestruct called while read-only".into()));
     }
 
-    // Try to give funds to the beneficiary. If this fails, we just keep them.
+    // Try to give funds to the beneficiary. If this fails, we abort the entire call. This can only
+    // fail if:
+    //
+    // 1. The target address is an embedded ID address and said actor doesn't exist.
+    // 2. We're at the maximum call depth.
+    // 3. This call would cause us to exceed some system limit (e.g., a memory limit).
     let beneficiary: EthAddress = beneficiary.into();
     let beneficiary: Address = beneficiary.into();
     let balance = system.rt.current_balance();
-    let _ = system.rt.send(&beneficiary, METHOD_SEND, None, balance);
+    system.rt.send(&beneficiary, METHOD_SEND, None, balance).map_err(|e| {
+        ActorError::unchecked(
+            EVM_CONTRACT_SELFDESTRUCT_FAILED,
+            format!("failed to transfer funds to beneficiary {beneficiary} on SELFDESTRUCT: {e}"),
+        )
+    })?;
 
     // Now mark ourselves as deleted.
     system.mark_selfdestructed();
