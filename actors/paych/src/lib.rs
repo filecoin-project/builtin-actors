@@ -53,9 +53,9 @@ impl Actor {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Init))?;
 
         // Check both parties are capable of signing vouchers
-        let to = Self::resolve_account(rt, &params.to)?;
+        let to = resolve_to_actor_id(rt, &params.to, true).map(|val| Address::new_id(val))?;
 
-        let from = Self::resolve_account(rt, &params.from)?;
+        let from = resolve_to_actor_id(rt, &params.from, true).map(|val| Address::new_id(val))?;
 
         let empty_arr_cid =
             Array::<(), _>::new_with_bit_width(rt.store(), LANE_STATES_AMT_BITWIDTH)
@@ -66,28 +66,6 @@ impl Actor {
 
         rt.create(&State::new(from, to, empty_arr_cid))?;
         Ok(())
-    }
-
-    /// Resolves an address to a canonical ID address and requires it to address an account actor.
-    fn resolve_account(rt: &mut impl Runtime, raw: &Address) -> Result<Address, ActorError> {
-        let resolved = resolve_to_actor_id(rt, raw, false)?;
-
-        let code_cid = rt
-            .get_actor_code_cid(&resolved)
-            .ok_or_else(|| actor_error!(illegal_argument, "no code for address {}", resolved))?;
-
-        let typ = rt.resolve_builtin_actor_type(&code_cid);
-        if typ != Some(Type::Account) {
-            Err(actor_error!(
-                forbidden,
-                "actor {} must be an account, was {} ({:?})",
-                raw,
-                code_cid,
-                typ
-            ))
-        } else {
-            Ok(Address::new_id(resolved))
-        }
     }
 
     pub fn update_channel_state(
