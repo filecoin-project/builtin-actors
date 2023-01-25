@@ -53,9 +53,9 @@ impl Actor {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Init))?;
 
         // Check both parties are capable of signing vouchers
-        let to = resolve_to_actor_id(rt, &params.to, true).map(|val| Address::new_id(val))?;
+        let to = resolve_to_actor_id(rt, &params.to, true).map(Address::new_id)?;
 
-        let from = resolve_to_actor_id(rt, &params.from, true).map(|val| Address::new_id(val))?;
+        let from = resolve_to_actor_id(rt, &params.from, true).map(Address::new_id)?;
 
         let empty_arr_cid =
             Array::<(), _>::new_with_bit_width(rt.store(), LANE_STATES_AMT_BITWIDTH)
