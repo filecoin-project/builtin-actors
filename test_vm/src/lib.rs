@@ -892,6 +892,25 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         }
     }
 
+    fn get_state_root(&self) -> Result<Cid, ActorError> {
+        Ok(self.v.get_actor(self.to()).unwrap().head)
+    }
+
+    fn set_state_root(&mut self, root: &Cid) -> Result<(), ActorError> {
+        let maybe_act = self.v.get_actor(self.to());
+        match maybe_act {
+            None => Err(ActorError::unchecked(
+                ExitCode::SYS_ASSERTION_FAILED,
+                "actor does not exist".to_string(),
+            )),
+            Some(mut act) => {
+                act.head = *root;
+                self.v.set_actor(self.to(), act);
+                Ok(())
+            }
+        }
+    }
+
     fn state<T: DeserializeOwned>(&self) -> Result<T, ActorError> {
         Ok(self.v.get_state::<T>(self.to()).unwrap())
     }

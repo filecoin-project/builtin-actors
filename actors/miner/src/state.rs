@@ -1207,7 +1207,7 @@ pub struct AdvanceDeadlineResult {
 }
 
 /// Static information about miner
-#[derive(Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct MinerInfo {
     /// Account that owns this miner
     /// - Income and returned collateral are paid to this address
