@@ -148,6 +148,16 @@ fn test_stack_push_pop() {
 }
 
 #[test]
+fn test_stack_drop() {
+    let mut stack = Stack::new();
+    stack.push(1.into()).unwrap();
+    stack.push(2.into()).unwrap();
+    assert_eq!(stack.drop().unwrap(), ());
+    assert_eq!(stack.drop().unwrap(), ());
+    assert_eq!(stack.drop().expect_err("expect underflow"), ActorError::unchecked(EVM_CONTRACT_STACK_UNDERFLOW, "stack underflow".into()));
+}
+
+#[test]
 fn test_stack_swap() {
     let mut stack = Stack::new();
     stack.push(1.into()).unwrap();
