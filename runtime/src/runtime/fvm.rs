@@ -19,6 +19,7 @@ use fvm_shared::sector::{
     AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
     WindowPoStVerifyInfo,
 };
+use fvm_shared::sys::SendFlags;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum};
 use num_traits::FromPrimitive;
@@ -251,6 +252,14 @@ where
             .expect("State does not exist for actor state root"))
     }
 
+    fn get_state_root(&self) -> Result<Cid, ActorError> {
+        Ok(fvm::sself::root()?)
+    }
+
+    fn set_state_root(&mut self, root: &Cid) -> Result<(), ActorError> {
+        Ok(fvm::sself::set_root(root)?)
+    }
+
     fn transaction<S, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
     where
         S: Serialize + DeserializeOwned,
@@ -289,7 +298,7 @@ where
         if self.in_transaction {
             return Err(actor_error!(assertion_failed; "send is not allowed during transaction"));
         }
-        match fvm::send::send(to, method, params, value) {
+        match fvm::send::send(to, method, params, value, None, SendFlags::empty()) {
             Ok(ret) => {
                 if ret.exit_code.is_success() {
                     Ok(ret.return_data)
@@ -332,7 +341,7 @@ where
     }
 
     fn new_actor_address(&mut self) -> Result<Address, ActorError> {
-        Ok(fvm::actor::new_actor_address())
+        Ok(fvm::actor::next_actor_address())
     }
 
     fn create_actor(&mut self, code_id: Cid, actor_id: ActorID) -> Result<(), ActorError> {
@@ -341,7 +350,7 @@ where
                 actor_error!(assertion_failed; "create_actor is not allowed during transaction"),
             );
         }
-        fvm::actor::create_actor(actor_id, &code_id).map_err(|e| match e {
+        fvm::actor::create_actor(actor_id, &code_id, None).map_err(|e| match e {
             ErrorNumber::IllegalArgument => {
                 ActorError::illegal_argument("failed to create actor".into())
             }

@@ -38,7 +38,7 @@ use serde::Serialize;
 use crate::runtime::builtins::Type;
 use crate::runtime::{
     ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
-    Verifier,
+    Verifier, EMPTY_ARR_CID,
 };
 use crate::{actor_error, ActorError};
 
@@ -883,6 +883,15 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         Ok(self.store_get(self.state.as_ref().unwrap()))
     }
 
+    fn get_state_root(&self) -> Result<Cid, ActorError> {
+        Ok(self.state.unwrap_or(EMPTY_ARR_CID))
+    }
+
+    fn set_state_root(&mut self, root: &Cid) -> Result<(), ActorError> {
+        self.state = Some(*root);
+        Ok(())
+    }
+
     fn transaction<S, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
     where
         S: Serialize + DeserializeOwned,
@@ -928,12 +937,10 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
 
         let expected_msg = self.expectations.borrow_mut().expect_sends.pop_front().unwrap();
 
-        assert!(
-            expected_msg.to == *to
-                && expected_msg.method == method
-                && expected_msg.params == params
-                && expected_msg.value == value,
-        );
+        assert_eq!(expected_msg.to, *to);
+        assert_eq!(expected_msg.method, method);
+        assert_eq!(expected_msg.params, params);
+        assert_eq!(expected_msg.value, value);
 
         {
             let mut balance = self.balance.borrow_mut();

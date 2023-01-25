@@ -105,6 +105,12 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// Loads a readonly copy of the state of the receiver into the argument.
     fn state<T: DeserializeOwned>(&self) -> Result<T, ActorError>;
 
+    /// Gets the state-root.
+    fn get_state_root(&self) -> Result<Cid, ActorError>;
+
+    /// Sets the state-root.
+    fn set_state_root(&mut self, root: &Cid) -> Result<(), ActorError>;
+
     /// Loads a mutable copy of the state of the receiver, passes it to `f`,
     /// and after `f` completes puts the state object back to the store and sets it as
     /// the receiver's state root.

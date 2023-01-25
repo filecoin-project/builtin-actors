@@ -26,7 +26,7 @@ pub const CRON_QUEUE_HAMT_BITWIDTH: u32 = 6;
 pub const CRON_QUEUE_AMT_BITWIDTH: u32 = 6;
 pub const PROOF_VALIDATION_BATCH_AMT_BITWIDTH: u32 = 4;
 
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, PartialEq)]
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 pub struct CreateMinerParams {
     pub owner: Address,
     pub worker: Address,
@@ -64,7 +64,7 @@ pub struct UpdatePledgeTotalParams {
     pub pledge_delta: TokenAmount,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, PartialEq)]
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 pub struct CurrentTotalPowerReturn {
     #[serde(with = "bigint_ser")]
     pub raw_byte_power: StoragePower,

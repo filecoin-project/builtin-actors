@@ -9,7 +9,7 @@ use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
 use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{RawBytes, DAG_CBOR};
+use fvm_ipld_encoding::{RawBytes, CBOR};
 use fvm_shared::address::{Address, BLS_PUB_LEN};
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -2376,5 +2376,5 @@ fn token_receiver() {
 }
 
 fn to_ipld_block(p: RawBytes) -> Option<IpldBlock> {
-    Some(IpldBlock { codec: DAG_CBOR, data: p.to_vec() })
+    Some(IpldBlock { codec: CBOR, data: p.to_vec() })
 }
