@@ -1,6 +1,6 @@
 use fil_actor_evm::{
     interpreter::{address::EthAddress, U256},
-    EvmContractActor, Method, ResurrectParams, State, Tombstone,
+    EvmContractActor, Method, ResurrectParams, State, Tombstone, EVM_CONTRACT_SELFDESTRUCT_FAILED,
 };
 use fil_actors_runtime::{test_utils::*, EAM_ACTOR_ADDR, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::{ipld_block::IpldBlock, BytesSer, RawBytes};
@@ -135,7 +135,7 @@ fn test_selfdestruct_missing_beneficiary() {
         )
         .expect_err("call should have failed")
         .exit_code(),
-        ExitCode::USR_UNSPECIFIED,
+        EVM_CONTRACT_SELFDESTRUCT_FAILED,
     );
     let state: State = rt.get_state();
     assert_eq!(state.tombstone, None);

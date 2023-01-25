@@ -13,6 +13,7 @@ use serde_tuple::{Deserialize_tuple, Serialize_tuple};
 
 use crate::interpreter::Output;
 use crate::interpreter::{address::EthAddress, U256};
+use crate::EVM_CONTRACT_SELFDESTRUCT_FAILED;
 
 use super::memory::{get_memory_region, MemoryRegion};
 use {
@@ -172,7 +173,12 @@ pub fn selfdestruct(
     let beneficiary: EthAddress = beneficiary.into();
     let beneficiary: Address = beneficiary.into();
     let balance = system.rt.current_balance();
-    system.rt.send(&beneficiary, METHOD_SEND, None, balance)?;
+    system.rt.send(&beneficiary, METHOD_SEND, None, balance).map_err(|e| {
+        ActorError::unchecked(
+            EVM_CONTRACT_SELFDESTRUCT_FAILED,
+            format!("failed to transfer funds to beneficiary {beneficiary} on SELFDESTRUCT: {e}"),
+        )
+    })?;
 
     // Now mark ourselves as deleted.
     system.mark_selfdestructed();
