@@ -162,7 +162,6 @@ mod tests {
 
     use crate::do_test;
     use crate::interpreter::test_util::Tester;
-    use crate::interpreter::Bytecode;
     use crate::interpreter::U256;
 
     #[test]
