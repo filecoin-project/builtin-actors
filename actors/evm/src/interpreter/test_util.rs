@@ -50,3 +50,13 @@ pub fn machine<'a, 'r>(env: &'a mut TestEnv<'r>) -> TestMachine<'a, 'r> {
         output: Output::default(),
     }
 }
+
+#[macro_export]
+macro_rules! do_test {
+    ($rt:ident, $env:ident, $m:ident, $code:expr, $body:block) => {
+        let mut $rt = test_util::rt();
+        let mut $env = test_util::env(&mut $rt, $code);
+        let mut $m = test_util::machine(&mut $env);
+        $body
+    };
+}

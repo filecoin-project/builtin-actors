@@ -158,6 +158,7 @@ pub fn jumpi(bytecode: &Bytecode, pc: usize, dest: U256, test: U256) -> Result<u
 
 #[cfg(test)]
 mod tests {
+    use crate::do_test;
     use crate::interpreter::test_util;
     use crate::interpreter::U256;
 
@@ -173,18 +174,20 @@ mod tests {
 
     #[test]
     fn test_pc() {
-        let mut rt = test_util::rt();
-        let mut env = test_util::env(
-            &mut rt,
+        do_test!(
+            rt,
+            env,
+            m,
             vec![
                 0x58, // PC
                 0x5b, // JMPDEST -- noop
             ],
+            {
+                let result = m.step();
+                assert!(result.is_ok(), "execution stop failed");
+                assert_eq!(m.state.stack.pop().unwrap(), U256::zero());
+                assert_eq!(m.pc, 1, "pc has advanced");
+            }
         );
-        let mut m = test_util::machine(&mut env);
-        let result = m.step();
-        assert!(result.is_ok(), "execution stop failed");
-        assert_eq!(m.state.stack.pop().unwrap(), U256::zero());
-        assert_eq!(m.pc, 1, "pc has advanced");
     }
 }
