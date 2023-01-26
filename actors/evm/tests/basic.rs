@@ -162,22 +162,22 @@ fn test_push_last_byte() {
     // 7f    # (bytecode)
 
     // // Inputs[1] { @000A  memory[0x00:0x01] }
-	// 0000    60  PUSH1 0x01
-	// 0002    80  DUP1
-	// 0003    60  PUSH1 0x0b
-	// 0005    60  PUSH1 0x00
-	// 0007    39  CODECOPY
-	// 0008    60  PUSH1 0x00
-	// 000A    F3  *RETURN
-	// // Stack delta = +0
-	// // Outputs[2]
-	// // {
-	// //     @0007  memory[0x00:0x01] = code[0x0b:0x0c]
-	// //     @000A  return memory[0x00:0x01];
-	// // }
-	// // Block terminates
+    // 0000    60  PUSH1 0x01
+    // 0002    80  DUP1
+    // 0003    60  PUSH1 0x0b
+    // 0005    60  PUSH1 0x00
+    // 0007    39  CODECOPY
+    // 0008    60  PUSH1 0x00
+    // 000A    F3  *RETURN
+    // // Stack delta = +0
+    // // Outputs[2]
+    // // {
+    // //     @0007  memory[0x00:0x01] = code[0x0b:0x0c]
+    // //     @000A  return memory[0x00:0x01];
+    // // }
+    // // Block terminates
 
-	// 000B    7F    PUSH32 0x
+    // 000B    7F    PUSH32 0x
 
     // function main() {
     //     memory[0x00:0x01] = code[0x0b:0x0c];

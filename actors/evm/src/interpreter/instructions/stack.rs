@@ -18,10 +18,10 @@ macro_rules! be_shift {
 }
 
 #[inline]
-/// Pushes code[..LEN] right padded bytes as a single word to the stack. 
-/// 
+/// Pushes code[..LEN] right padded bytes as a single word to the stack.
+///
 /// Returns error on stack overflow.
-/// 
+///
 /// Panics if `LEN` > 32.
 pub(crate) fn push<const LEN: usize>(stack: &mut Stack, code: &[u8]) -> Result<usize, ActorError> {
     if code.len() < LEN {
@@ -104,7 +104,6 @@ fn test_push_33() {
     let mut stack = Stack::new();
     push::<33>(&mut stack, &[0xff; 100]).unwrap();
 }
-
 
 #[test]
 fn test_dup_n() {
