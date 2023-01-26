@@ -77,8 +77,9 @@ macro_rules! def_stackop {
     };
 }
 
-// pusho variants: push stuff on the stack taken as input from bytecode; the kind of thing that
+// push variants: push stuff on the stack taken as input from bytecode; the kind of thing that
 // makes you want to cry because it really is a stack op.
+// Takes subslice of bytecode starting at pc. Advances pc by number of bytes read.
 macro_rules! def_push {
     ($op:ident => $impl:path) => {
         def_op! { $op (m) => {
