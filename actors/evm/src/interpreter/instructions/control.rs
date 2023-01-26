@@ -177,24 +177,6 @@ mod tests {
 
     #[test]
     fn test_pc() {
-        let v = vec![
-            0x58, // PC
-            0x5b, // JMPDEST -- noop
-        ];
-
-        let mut rt = MockRuntime::default();
-        let mut m = Tester::init(&mut rt);
-        let bytes = Bytecode::new(v);
-        let mut m = m.machine(&bytes);
-
-        let result = m.step();
-        assert!(result.is_ok(), "execution stop failed");
-        assert_eq!(m.state.stack.pop().unwrap(), U256::zero());
-        assert_eq!(m.pc, 1, "pc has advanced");
-    }
-
-    #[test]
-    fn test_pc_() {
         do_test!(
             tester,
             m,
