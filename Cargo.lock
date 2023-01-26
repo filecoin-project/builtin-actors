@@ -2021,10 +2021,6 @@ dependencies = [
 [[package]]
 name = "fil_actor_placeholder"
 version = "10.0.0-alpha.1"
-dependencies = [
- "fvm_sdk 3.0.0-alpha.22",
- "fvm_shared 3.0.0-alpha.17",
-]
 
 [[package]]
 name = "fil_actor_power"
