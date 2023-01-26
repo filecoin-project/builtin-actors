@@ -18,6 +18,11 @@ macro_rules! be_shift {
 }
 
 #[inline]
+/// Pushes code[..LEN] right padded bytes as a single word to the stack. 
+/// 
+/// Returns error on stack overflow.
+/// 
+/// Panics if `LEN` > 32.
 pub(crate) fn push<const LEN: usize>(stack: &mut Stack, code: &[u8]) -> Result<usize, ActorError> {
     if code.len() < LEN {
         // this is a pathological edge case, as the contract will immediately stop execution.
@@ -81,6 +86,25 @@ fn test_push0() {
     assert_eq!(stack.len(), 1);
     assert_eq!(stack.pop().unwrap(), U256::ZERO);
 }
+
+#[test]
+fn test_push_n() {
+    let mut stack = Stack::new();
+    assert_eq!(push::<1>(&mut stack, &[0x1]).unwrap(), 1);
+    assert_eq!(stack.len(), 1);
+    assert_eq!(stack.pop().unwrap(), U256::ONE);
+
+    assert_eq!(push::<32>(&mut stack, &[0xff; 100]).unwrap(), 32);
+    assert_eq!(stack.len(), 1);
+    assert_eq!(stack.pop().unwrap(), U256::MAX);
+}
+#[test]
+#[should_panic]
+fn test_push_33() {
+    let mut stack = Stack::new();
+    push::<33>(&mut stack, &[0xff; 100]).unwrap();
+}
+
 
 #[test]
 fn test_dup_n() {
