@@ -679,7 +679,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 read_only: false,
             };
             if is_account {
-                new_ctx.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id, Some(*target)).unwrap();
+                new_ctx.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id, None).unwrap();
                 let res = new_ctx.invoke();
                 let invoc = new_ctx.gather_trace(res);
                 RefMut::map(self.subinvocations.borrow_mut(), |subinvocs| {
