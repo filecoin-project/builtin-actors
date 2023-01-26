@@ -1,0 +1,33 @@
+struct Transfer {
+    #indexed
+    pub from: address
+    #indexed
+    pub to: address
+    pub value: u256
+}
+
+contract FeSimplecoin {
+    balances: Map<address, u256>
+
+    pub fn __init__(mut self, ctx: Context, name: String<100>, symbol: String<100>) {
+        self.balances[ctx.tx_origin()] = 10000;
+    }
+
+    pub fn sendCoin(mut self, mut ctx: Context, receiver: address, amount: u256) -> bool {
+        if self.balances[ctx.msg_sender()] < amount {
+            return false
+        }
+        self.balances[ctx.msg_sender()] -= amount;
+        self.balances[receiver] += amount;
+        ctx.emit(Transfer(from: ctx.msg_sender(), to: receiver, value: amount));
+        return true
+    }
+
+    pub fn getBalanceInEth(self, addr: address) -> u256 {
+        return self.getBalance(addr) * 2;
+    }
+
+    pub fn getBalance(self, addr: address) -> u256 {
+        return self.balances[addr];
+    }
+}
