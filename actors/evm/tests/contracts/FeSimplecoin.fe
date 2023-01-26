@@ -9,7 +9,7 @@ struct Transfer {
 contract FeSimplecoin {
     balances: Map<address, u256>
 
-    pub fn __init__(mut self, ctx: Context, name: String<100>, symbol: String<100>) {
+    pub fn __init__(mut self, ctx: Context) {
         self.balances[ctx.tx_origin()] = 10000;
     }
 
