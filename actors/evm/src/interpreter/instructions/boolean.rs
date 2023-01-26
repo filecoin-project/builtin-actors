@@ -49,3 +49,69 @@ pub(crate) fn xor(a: U256, b: U256) -> U256 {
 pub(crate) fn not(v: U256) -> U256 {
     !v
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+
+    #[test]
+    fn test_and() {
+        for i in 0..u8::MAX {
+            for j in 0..u8::MAX {
+                let a = U256::from(i);
+                let b = U256::from(j);
+                assert_eq!(and(a, b), U256::from(i & j))
+            }
+        } 
+
+        assert_eq!(and(U256::MAX, U256::ZERO), U256::ZERO);
+        assert_eq!(and(U256::ZERO, U256::MAX), U256::ZERO);
+        assert_eq!(and(U256::MAX, U256::MAX), U256::MAX);
+        assert_eq!(and(U256::ZERO, U256::ZERO), U256::ZERO);
+    }
+
+    #[test]
+    fn test_or() {
+        for i in 0..u8::MAX {
+            for j in 0..u8::MAX {
+                let a = U256::from(i);
+                let b = U256::from(j);
+                assert_eq!(or(a, b), U256::from(i | j))
+            }
+        } 
+
+        assert_eq!(or(U256::MAX, U256::ZERO), U256::MAX);
+        assert_eq!(or(U256::ZERO, U256::MAX), U256::MAX);
+        assert_eq!(or(U256::MAX, U256::MAX), U256::MAX);
+        assert_eq!(or(U256::ZERO, U256::ZERO), U256::ZERO);
+    }
+
+    #[test]
+    fn test_xor() {
+        for i in 0..u8::MAX {
+            for j in 0..u8::MAX {
+                let a = U256::from(i);
+                let b = U256::from(j);
+                assert_eq!(xor(a, b), U256::from(i ^ j))
+            }
+        } 
+
+        assert_eq!(xor(U256::MAX, U256::ZERO), U256::MAX);
+        assert_eq!(xor(U256::ZERO, U256::MAX), U256::MAX);
+        assert_eq!(xor(U256::MAX, U256::MAX), U256::ZERO);
+        assert_eq!(xor(U256::ZERO, U256::ZERO), U256::ZERO);
+    }
+
+    #[test]
+    fn test_not() {
+        for i in 0..u8::MAX {
+            let mut expect = [0xff; 32];
+            expect[31] = !i;
+            assert_eq!(not(U256::from(i)), U256::from(expect))
+        } 
+
+        assert_eq!(not(U256::MAX), U256::ZERO);
+        assert_eq!(not(U256::ZERO), U256::MAX);
+    }
+}
