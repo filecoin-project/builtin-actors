@@ -155,8 +155,8 @@ fn test_stack_drop() {
     stack.drop().unwrap();
     stack.drop().unwrap();
     assert_eq!(
-        stack.drop().expect_err("expect underflow"),
-        ActorError::unchecked(EVM_CONTRACT_STACK_UNDERFLOW, "stack underflow".into())
+        stack.drop().expect_err("expect underflow").exit_code(),
+        EVM_CONTRACT_STACK_UNDERFLOW
     );
 }
 
