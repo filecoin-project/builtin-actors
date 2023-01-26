@@ -243,6 +243,7 @@ fn resolve_caller_external(rt: &mut impl Runtime) -> Result<(EthAddress, EthAddr
                 return Err(ActorError::checked(
                     result.exit_code,
                     "failed to retrieve account robust address".to_string(),
+                    None,
                 ));
             }
             let robust_addr: Address = deserialize_block(result.return_data)?;

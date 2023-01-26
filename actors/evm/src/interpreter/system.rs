@@ -233,7 +233,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
 
         // Don't bother reloading on abort, just return the error.
         if !result.exit_code.is_success() {
-            return Err(ActorError::checked_with_data(
+            return Err(ActorError::checked(
                 result.exit_code,
                 format!("failed to call {to} on method {method}"),
                 result.return_data,

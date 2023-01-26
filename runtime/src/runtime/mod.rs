@@ -203,7 +203,7 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
                 if ret.exit_code.is_success() {
                     Ok(ret.return_data)
                 } else {
-                    Err(ActorError::checked_with_data(
+                    Err(ActorError::checked(
                         ret.exit_code,
                         format!(
                             "send to {} method {} aborted with code {}",

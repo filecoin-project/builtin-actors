@@ -30,7 +30,7 @@ fil_actor_system = { version = "10.0.0-alpha.1", path = "./actors/system", featu
 fil_actor_verifreg = { version = "10.0.0-alpha.1", path = "./actors/verifreg", features = ["fil-actor"] }
 
 [build-dependencies]
-fil_actor_bundler = "4.1.0"
+fil_actor_bundler = "5.0.0"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 fil_actors_runtime = { version = "10.0.0-alpha.1", path = "runtime" }
 num-traits = "0.2.15"
@@ -53,17 +53,16 @@ m2-native = []
 members = ["actors/*", "state", "runtime", "test_vm"]
 
 [patch.crates-io]
-frc42_dispatch = { git = "https://github.com/filecoin-project/filecoin-actor-utils", branch = "feat/fvm-m2" }
-frc46_token = { git = "https://github.com/filecoin-project/filecoin-actor-utils", branch = "feat/fvm-m2" }
-fvm_actor_utils = { git = "https://github.com/filecoin-project/filecoin-actor-utils", branch = "feat/fvm-m2" }
 #fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
 #fvm_sdk = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
 #fvm_ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
-#fvm_ipld_kamt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
 #fvm_ipld_amt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
 #fvm_ipld_bitfield = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
 #fvm_ipld_encoding = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
 #fvm_ipld_blockstore = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+#fvm_actor_utils = { git = "https://github.com/helix-onchain/filecoin", branch = "main" }
+#frc42_dispatch = { git = "https://github.com/helix-onchain/filecoin", branch = "main" }
+#frc46_token = { git = "https://github.com/helix-onchain/filecoin", branch = "main" }
 
 ## Uncomment when working locally on ref-fvm and this repo simultaneously.
 ## Assumes the ref-fvm checkout is in a sibling directory with the same name.

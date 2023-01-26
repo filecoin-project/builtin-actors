@@ -166,6 +166,25 @@ pub fn expect_provider_control_address(
     expect_get_control_addresses(rt, provider, owner, worker, vec![])
 }
 
+pub fn expect_provider_is_control_address(
+    rt: &mut MockRuntime,
+    provider: Address,
+    caller: Address,
+    is_controlling: bool,
+) {
+    let result = ext::miner::IsControllingAddressReturn { is_controlling };
+
+    rt.expect_send(
+        provider,
+        ext::miner::IS_CONTROLLING_ADDRESS_EXPORTED,
+        IpldBlock::serialize_cbor(&ext::miner::IsControllingAddressParam { address: caller })
+            .unwrap(),
+        TokenAmount::zero(),
+        IpldBlock::serialize_cbor(&result).unwrap(),
+        ExitCode::OK,
+    )
+}
+
 pub fn add_provider_funds(rt: &mut MockRuntime, amount: TokenAmount, addrs: &MinerAddresses) {
     rt.set_value(amount.clone());
     rt.set_address_actor_type(addrs.provider, *MINER_ACTOR_CODE_ID);
@@ -441,17 +460,14 @@ pub fn publish_deals(
     let st: State = rt.get_state();
     let next_deal_id = st.next_id;
     rt.expect_validate_caller_any();
+    let return_value = ext::miner::IsControllingAddressReturn { is_controlling: true };
     rt.expect_send(
         addrs.provider,
-        ext::miner::CONTROL_ADDRESSES_METHOD,
-        None,
+        ext::miner::IS_CONTROLLING_ADDRESS_EXPORTED,
+        IpldBlock::serialize_cbor(&ext::miner::IsControllingAddressParam { address: rt.caller })
+            .unwrap(),
         TokenAmount::zero(),
-        IpldBlock::serialize_cbor(&GetControlAddressesReturnParams {
-            owner: addrs.owner,
-            worker: addrs.worker,
-            control_addresses: addrs.control.clone(),
-        })
-        .unwrap(),
+        IpldBlock::serialize_cbor(&return_value).unwrap(),
         ExitCode::OK,
     );
 
@@ -624,12 +640,7 @@ pub fn publish_deals_expect_abort(
     expected_exit_code: ExitCode,
 ) {
     rt.expect_validate_caller_any();
-    expect_provider_control_address(
-        rt,
-        miner_addresses.provider,
-        miner_addresses.owner,
-        miner_addresses.worker,
-    );
+    expect_provider_is_control_address(rt, miner_addresses.provider, WORKER_ADDR, true);
 
     let deal_serialized =
         RawBytes::serialize(proposal.clone()).expect("Failed to marshal deal proposal");
@@ -807,7 +818,7 @@ where
     post_setup(&mut rt, &mut deal_proposal);
 
     rt.expect_validate_caller_any();
-    expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
+    expect_provider_is_control_address(&mut rt, PROVIDER_ADDR, WORKER_ADDR, true);
     expect_query_network_info(&mut rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
 

@@ -472,14 +472,14 @@ fn test_native_call() {
     assert_eq!(result, Some(IpldBlock { codec: CBOR, data: "foobar".into() }));
 
     rt.expect_validate_caller_any();
-    let err = rt.call::<evm::EvmContractActor>(1026, None).unwrap_err();
+    let mut err = rt.call::<evm::EvmContractActor>(1026, None).unwrap_err();
     assert_eq!(err.exit_code().value(), 42);
-    assert!(err.data().is_empty());
+    assert!(err.take_data().is_none());
 
     rt.expect_validate_caller_any();
-    let err = rt.call::<evm::EvmContractActor>(1027, None).unwrap_err();
+    let mut err = rt.call::<evm::EvmContractActor>(1027, None).unwrap_err();
     assert_eq!(err.exit_code().value(), 42);
-    assert_eq!(err.data(), &b"foobar"[..]);
+    assert_eq!(err.take_data().unwrap().data, &b"foobar"[..]);
 }
 
 #[test]
