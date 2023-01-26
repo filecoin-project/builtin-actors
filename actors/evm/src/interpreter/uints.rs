@@ -302,7 +302,7 @@ mod tests {
         let one_hundred = U256::from(100);
         let two = U256::from(2);
         let three = U256::from(3);
-                
+
         let neg_one_hundred = U256::from(100).i256_neg();
         let minus_one = U256::from(1).i256_neg();
         let neg_three = U256::from(3).i256_neg();
