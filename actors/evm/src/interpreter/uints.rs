@@ -94,6 +94,12 @@ impl From<&TokenAmount> for U256 {
     }
 }
 
+impl From<TokenAmount> for U256 {
+    fn from(amount: TokenAmount) -> U256 {
+        U256::from(&amount)
+    }
+}
+
 impl From<U256> for arith::U256 {
     fn from(src: U256) -> arith::U256 {
         arith::U256::from(src.0)
@@ -112,6 +118,12 @@ impl From<&U256> for TokenAmount {
         let mut bits = [0u8; 32];
         ui.to_big_endian(&mut bits);
         TokenAmount::from_atto(BigInt::from_bytes_be(fvm_shared::bigint::Sign::Plus, &bits))
+    }
+}
+
+impl From<U256> for TokenAmount {
+    fn from(ui: U256) -> TokenAmount {
+        TokenAmount::from(&ui)
     }
 }
 

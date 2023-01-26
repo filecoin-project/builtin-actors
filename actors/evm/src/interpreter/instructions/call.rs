@@ -2,7 +2,8 @@
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::BytesDe;
-use fvm_shared::{address::Address, sys::SendFlags, MethodNum, IPLD_RAW};
+use fvm_shared::{address::Address, sys::SendFlags, MethodNum, IPLD_RAW, METHOD_SEND};
+use num_traits::Zero;
 
 use crate::interpreter::precompiles::{is_reserved_precompile_address, PrecompileContext};
 
@@ -30,6 +31,13 @@ pub enum CallKind {
     DelegateCall,
     StaticCall,
 }
+
+/// For "transfers", we give 2M gas.
+///
+/// The actual call is expected to coss less than 1M gas, so we give it two to cover other
+/// overheads. We can tune this number later (but it depends on integration testing with final gas
+/// values).
+const TRANSFER_GAS_LIMIT: u64 = 2_000_000;
 
 pub fn calldataload(
     state: &mut ExecutionState,
@@ -156,7 +164,7 @@ pub fn call_generic<RT: Runtime>(
 ) -> Result<U256, ActorError> {
     let ExecutionState { stack: _, memory, .. } = state;
 
-    let (mut gas, dst, value, input_offset, input_size, output_offset, output_size) = params;
+    let (gas, dst, value, input_offset, input_size, output_offset, output_size) = params;
 
     if system.readonly && value > U256::zero() {
         // non-zero sends are side-effects and hence a static mode violation
@@ -165,7 +173,7 @@ pub fn call_generic<RT: Runtime>(
 
     let input_region = get_memory_region(memory, input_offset, input_size)?;
 
-    let (call_result, return_data) = {
+    let (success, return_data) = {
         // ref to memory is dropped after calling so we can mutate it on output later
         let input_data = if let Some(MemoryRegion { offset, size }) = input_region {
             &memory[offset..][..size.get()]
@@ -177,7 +185,7 @@ pub fn call_generic<RT: Runtime>(
         if is_reserved_precompile_address(&dst) {
             let context = PrecompileContext {
                 call_type: kind,
-                gas_limit: effective_gas_limit(system, gas),
+                gas_limit: effective_gas_limit(system, gas.to_u64_saturating()),
                 value,
             };
 
@@ -192,79 +200,23 @@ pub fn call_generic<RT: Runtime>(
             }
 
             match precompiles::Precompiles::call_precompile(system, &dst, input_data, context) {
-                Ok(return_data) => (1, return_data),
+                Ok(return_data) => (true, return_data),
                 Err(err) => {
                     log::warn!(target: "evm", "Precompile failed: error {:?}", err);
                     // precompile failed, exit with reverted and no output
-                    (0, vec![])
+                    (false, vec![])
                 }
             }
         } else {
-            let call_result = match kind {
-                CallKind::Call | CallKind::StaticCall => {
-                    let dst_addr: Address = dst.into();
-                    if (gas == 0 && value > 0) || (gas == 2300 && value == 0) {
-                        // Don't set a gas limit (well, let the EVM compute one according to the
-                        // 63/64 rule).
-                        gas = U256::MAX;
-                    }
-                    let gas_limit = Some(effective_gas_limit(system, gas));
-                    let params = if input_data.is_empty() {
-                        None
-                    } else {
-                        Some(IpldBlock { codec: IPLD_RAW, data: input_data.into() })
-                    };
-                    let value = TokenAmount::from(&value);
-                    let send_flags = if kind == CallKind::StaticCall {
-                        SendFlags::READ_ONLY
-                    } else {
-                        SendFlags::default()
-                    };
-                    // Error cases:
-                    //
-                    // 1. If the outer result fails, it means we failed to flush/restore state and
-                    // there is a bug. We exit with an actor error and abort.
-                    match system.send_raw(
-                        &dst_addr,
-                        Method::InvokeContract as MethodNum,
-                        params,
-                        value,
-                        gas_limit,
-                        send_flags,
-                    )? {
-                        Ok(resp) => {
-                            if resp.exit_code.is_success() {
-                                Ok(resp.return_data)
-                            } else {
-                                Err(resp.return_data)
-                            }
-                        }
-                        Err(e) => match e {
-                            // The target actor doesn't exist. To match EVM behavior, we walk away.
-                            ErrorNumber::NotFound => Ok(None),
-                            // If we hit this case, we must have tried to auto-deploy an actor
-                            // while read-only. We've already checked that we aren't trying to
-                            // transfer funds.
-                            //
-                            // To match EVM behavior, we treat this case as "success" and
-                            // walk away.
-                            ErrorNumber::ReadOnly
-                                if system.readonly || kind == CallKind::StaticCall =>
-                            {
-                                Ok(None)
-                            }
-                            ErrorNumber::InsufficientFunds => Err(None),
-                            ErrorNumber::LimitExceeded => Err(None),
-                            // Nothing else is expected in this case. This likely indicates a bug, but
-                            // it doesn't indicate that there's an issue with _this_ EVM actor, so we
-                            // might as log and well continue.
-                            e => {
-                                log::error!("unexpected syscall error on CALL to {dst_addr}: {e}");
-                                Err(None)
-                            }
-                        },
-                    }
-                }
+            let (success, data) = match kind {
+                CallKind::Call | CallKind::StaticCall => call_contract(
+                    system,
+                    &dst,
+                    value.into(),
+                    input_data,
+                    gas.to_u64_saturating(),
+                    kind == CallKind::StaticCall,
+                )?,
                 CallKind::DelegateCall => match get_contract_type(system.rt, &dst) {
                     ContractType::EVM(dst_addr) => {
                         // If we're calling an actual EVM actor, get its code.
@@ -276,42 +228,39 @@ pub fn call_generic<RT: Runtime>(
                                 caller: state.caller,
                                 value: state.value_received.clone(),
                             };
-                            system
-                                .send(
-                                    &system.rt.message().receiver(),
-                                    Method::InvokeContractDelegate as u64,
-                                    IpldBlock::serialize_dag_cbor(&params)?,
-                                    TokenAmount::from(&value),
-                                    Some(effective_gas_limit(system, gas)),
-                                    SendFlags::default(),
-                                )
-                                .map_err(|mut ae| ae.take_data())
+                            match system.send(
+                                &system.rt.message().receiver(),
+                                Method::InvokeContractDelegate as u64,
+                                IpldBlock::serialize_dag_cbor(&params)?,
+                                TokenAmount::from(&value),
+                                Some(effective_gas_limit(system, gas.to_u64_saturating())),
+                                SendFlags::default(),
+                            ) {
+                                Ok(ret) => (true, ret),
+                                Err(mut ae) => (false, ae.take_data()),
+                            }
                         } else {
                             // If it doesn't have code, short-circuit and return immediately.
-                            Ok(None)
+                            (true, None)
                         }
                     }
                     // If we're calling an account or a non-existent actor, return nothing because
                     // this is how the EVM behaves.
-                    ContractType::Account | ContractType::NotFound => Ok(None),
+                    ContractType::Account | ContractType::NotFound => (true, None),
                     // If we're calling a "native" actor, always revert.
                     ContractType::Native(_) => {
                         log::info!("attempted to delegatecall a native actor at {dst:?}");
-                        Err(None)
+                        (false, None)
                     }
                     ContractType::Precompile => {
                         log::error!("reached a precompile address in DelegateCall when a precompile should've been caught earlier in the system");
-                        Err(None)
+                        (false, None)
                     }
                 },
             };
-            let (code, data) = match call_result {
-                Ok(result) => (1, result),
-                Err(result) => (0, result),
-            };
 
             (
-                code,
+                success,
                 match data {
                     // Support the "empty" result. We often use this to mean "returned nothing" and
                     // it's important to support, e.g., sending to accounts.
@@ -333,11 +282,120 @@ pub fn call_generic<RT: Runtime>(
     // copy return data to output region if it is non-zero
     copy_to_memory(memory, output_offset, output_size, U256::zero(), &state.return_data, false)?;
 
-    Ok(U256::from(call_result))
+    Ok(U256::from(success as u8))
 }
 
-fn effective_gas_limit<RT: Runtime>(system: &System<RT>, gas: U256) -> u64 {
+/// Actually call another contract.
+fn call_contract(
+    system: &mut System<impl Runtime>,
+    to: &EthAddress,
+    value: TokenAmount,
+    input_data: &[u8],
+    mut gas: u64,
+    call_readonly: bool,
+) -> Result<(bool, Option<IpldBlock>), ActorError> {
+    let dst: Address = to.into();
+    let send_flags = if call_readonly { SendFlags::READ_ONLY } else { SendFlags::default() };
+
+    let params = if input_data.is_empty() {
+        None
+    } else {
+        Some(IpldBlock { codec: IPLD_RAW, data: input_data.into() })
+    };
+
+    // Solidity "transfer" hack. If this looks like a solidity transfer, we fixup the gas values so
+    // they work.
+    if (gas == 0 && value.is_positive()) || (gas == 2300 && value.is_zero()) {
+        // Ideally we'd just pick a reasonable gas value, but we can't quite do that because the
+        // required gas varies based on whether or not the target actor exists, its address is warm,
+        // its state is warm, etc... We'd have to reserve at least 6-7M gas.
+        //
+        // So we take some steps to "pre-warm" some things before we do the actual transfer.
+
+        // First, we resolve the address (not cheap).
+        if let Some(id) = system.rt.resolve_address(&dst) {
+            // If that works, we look up the target actor's code CID. That:
+            //
+            // 1. Lets us check if it exists.
+            // 2. Warms it.
+            if system.rt.get_actor_code_cid(&id).is_none() {
+                // If it doesn't exist but we successfully resolved the address, we might as well
+                // fail now. Either:
+                //
+                // 1. The address is an ID address (i.e., an embedded ID address).
+                // 2. The target actor existed at one point but no longer exists. Any sends would
+                // fail in that case as well.
+                return Ok((false, None));
+            }
+            gas = TRANSFER_GAS_LIMIT;
+        } else if call_readonly || system.readonly {
+            // If we're making a staticcall and the target actor doesn't exist, we don't want to
+            // auto-create the target actor. Just return success (this is what the EVM would do).
+            debug_assert!(
+                value.is_zero(),
+                "this method cannot be called with value and when read-only is set"
+            );
+            return Ok((true, None));
+        } else {
+            // Finally, we get here if:
+            //
+            // 1. The target actor doesn't exist.
+            // 2. We're not performing a static call.
+            // 3. Sending _might_ create the target actor (i.e., we don't have an ID address).
+            //
+            // So we just do a bare send and return.
+            return match system.send(&dst, METHOD_SEND, None, TokenAmount::zero(), None, send_flags)
+            {
+                Ok(res) => Ok((true, res)),
+                Err(mut ae) => Ok((false, ae.take_data())),
+            };
+        }
+    }
+
+    // Now apply the 63/64 rule.
+    gas = effective_gas_limit(system, gas);
+
+    // Error cases:
+    //
+    // 1. If the outer result fails, it means we failed to flush/restore state and
+    // there is a bug. We exit with an actor error and abort.
+    // 2. If the syscall fails, we have to carefully consider the error cases.
+    match system.send_raw(
+        &dst,
+        Method::InvokeContract as MethodNum,
+        params,
+        value,
+        Some(gas),
+        send_flags,
+    )? {
+        Ok(resp) => Ok((resp.exit_code.is_success(), resp.return_data)),
+        Err(e) => Ok((
+            match e {
+                // The target actor doesn't exist. To match EVM behavior, we call this success.
+                ErrorNumber::NotFound => true,
+                // If we hit this case, we must have tried to auto-deploy an actor
+                // while read-only. We've already checked that we aren't trying to
+                // transfer funds.
+                //
+                // To match EVM behavior, we treat this case as "success" and
+                // walk away.
+                ErrorNumber::ReadOnly if system.readonly || call_readonly => true,
+                ErrorNumber::InsufficientFunds => false,
+                ErrorNumber::LimitExceeded => false,
+                // Nothing else is expected in this case. This likely indicates a bug, but
+                // it doesn't indicate that there's an issue with _this_ EVM actor, so we
+                // might as log and well continue.
+                e => {
+                    log::error!("unexpected syscall error on CALL to {dst}: {e}");
+                    false
+                }
+            },
+            None,
+        )),
+    }
+}
+
+fn effective_gas_limit<RT: Runtime>(system: &System<RT>, gas: u64) -> u64 {
     let gas_rsvp = (63 * system.rt.gas_available()) / 64;
-    let gas = gas.to_u64_saturating();
     std::cmp::min(gas, gas_rsvp)
 }
