@@ -75,14 +75,20 @@ impl Actor {
         log::trace!("robust address: {:?}", &robust_address);
 
         // Allocate an ID for this actor.
-        // Store mapping of pubkey or actor address to actor ID
-        let id_address: ActorID = rt.transaction(|s: &mut State, rt| {
-            s.map_address_to_new_id(rt.store(), &robust_address)
+        // Store mapping of actor addresses to the actor ID.
+        let (id_address, existing): (ActorID, bool) = rt.transaction(|s: &mut State, rt| {
+            s.map_addresses_to_id(rt.store(), &robust_address, None)
                 .context("failed to allocate ID address")
         })?;
 
+        if existing {
+            // NOTE: this case should be impossible, but we check it anyways just in case something
+            // changes.
+            return Err(ActorError::forbidden("cannot exec over an existing actor".into()));
+        }
+
         // Create an empty actor
-        rt.create_actor(params.code_cid, id_address)?;
+        rt.create_actor(params.code_cid, id_address, None)?;
 
         // Invoke constructor
         rt.send(

@@ -74,6 +74,10 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// If the argument is an ID address it is returned directly.
     fn resolve_address(&self, address: &Address) -> Option<ActorID>;
 
+    /// Looks-up the "delegated" address of an actor by ID, if any. Returns None if either the
+    /// target actor doesn't exist, or if the target actor doesn't have either an f4 address.
+    fn lookup_delegated_address(&self, id: ActorID) -> Option<Address>;
+
     /// Look up the code ID at an actor address.
     fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid>;
 
@@ -146,9 +150,14 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// Always an ActorExec address.
     fn new_actor_address(&mut self) -> Result<Address, ActorError>;
 
-    /// Creates an actor with code `codeID` and address `address`, with empty state.
+    /// Creates an actor with code `codeID`, an empty state, id `actor_id`, and an optional predictable address.
     /// May only be called by Init actor.
-    fn create_actor(&mut self, code_id: Cid, address: ActorID) -> Result<(), ActorError>;
+    fn create_actor(
+        &mut self,
+        code_id: Cid,
+        actor_id: ActorID,
+        predictable_address: Option<Address>,
+    ) -> Result<(), ActorError>;
 
     /// Deletes the executing actor from the state tree, transferring any balance to beneficiary.
     /// Aborts if the beneficiary does not exist.

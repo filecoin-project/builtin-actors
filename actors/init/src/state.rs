@@ -28,36 +28,58 @@ impl State {
         Ok(Self { address_map: empty_map, next_id: FIRST_NON_SINGLETON_ADDR, network_name })
     }
 
-    /// Allocates a new ID address and stores a mapping of the argument address to it.
-    /// Fails if the argument address is already present in the map to facilitate a tombstone
-    /// for when the predictable robust address generation is implemented.
-    /// Returns the newly-allocated address.
-    pub fn map_address_to_new_id<BS: Blockstore>(
+    /// Maps argument addresses to to a new or existing actor ID.
+    /// With no delegated address, or if the delegated address is not already mapped,
+    /// allocates a new ID address and maps both to it.
+    /// If the delegated address is already present, maps the robust address to that actor ID.
+    /// Fails if the robust address is already mapped, providing tombstone.
+    ///
+    /// Returns the actor ID and a boolean indicating whether or not the actor already exists.
+    pub fn map_addresses_to_id<BS: Blockstore>(
         &mut self,
         store: &BS,
-        addr: &Address,
-    ) -> Result<ActorID, ActorError> {
-        let id = self.next_id;
-        self.next_id += 1;
-
+        robust_addr: &Address,
+        delegated_addr: Option<&Address>,
+    ) -> Result<(ActorID, bool), ActorError> {
         let mut map = make_map_with_root_and_bitwidth(&self.address_map, store, HAMT_BIT_WIDTH)
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load address map")?;
+        let (id, existing) = if let Some(delegated_addr) = delegated_addr {
+            // If there's a delegated address, either recall the already-mapped actor ID or
+            // create and map a new one.
+            let delegated_key = delegated_addr.to_bytes().into();
+            if let Some(existing_id) = map
+                .get(&delegated_key)
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to lookup delegated address")?
+            {
+                (*existing_id, true)
+            } else {
+                let new_id = self.next_id;
+                self.next_id += 1;
+                map.set(delegated_key, new_id)
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to map delegated address")?;
+                (new_id, false)
+            }
+        } else {
+            // With no delegated address, always create a new actor ID.
+            let new_id = self.next_id;
+            self.next_id += 1;
+            (new_id, false)
+        };
+
+        // Map the robust address to the ID, failing if it's already mapped to anything.
         let is_new = map
-            .set_if_absent(addr.to_bytes().into(), id)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to set map key")?;
+            .set_if_absent(robust_addr.to_bytes().into(), id)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to map robust address")?;
         if !is_new {
-            // this is impossible today as the robust address is a hash of unique inputs
-            // but in close future predictable address generation will make this possible
             return Err(actor_error!(
                 forbidden,
                 "robust address {} is already allocated in the address map",
-                addr
+                robust_addr
             ));
         }
         self.address_map =
             map.flush().context_code(ExitCode::USR_ILLEGAL_STATE, "failed to store address map")?;
-
-        Ok(id)
+        Ok((id, existing))
     }
 
     /// ResolveAddress resolves an address to an ID-address, if possible.
