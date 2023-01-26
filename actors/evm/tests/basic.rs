@@ -11,8 +11,19 @@ use fvm_shared::address::Address;
 mod util;
 
 #[test]
+fn basic_contract_construction_and_invocation_fe_lang() {
+    let bytecode =
+        hex::decode(include_str!("contracts/output/FeSimplecoin/FeSimplecoin.bin")).unwrap();
+    simplecoin_test(bytecode);
+}
+
+#[test]
 fn basic_contract_construction_and_invocation() {
     let bytecode = hex::decode(include_str!("contracts/simplecoin.hex")).unwrap();
+    simplecoin_test(bytecode);
+}
+
+fn simplecoin_test(bytecode: Vec<u8>) {
     let contract = Address::new_id(100);
 
     let mut rt = util::init_construct_and_verify(bytecode, |rt| {
