@@ -199,6 +199,23 @@ mod test {
         }
 
         #[test]
+        fn test_modulo() {
+            assert_eq!(modulo(0.into(), 0.into()), 0, "nothing mod nothing is nothing");
+            assert_eq!(modulo(4.into(), 1.into()), 0, "4 mod 1 is 0");
+            assert_eq!(
+                modulo((u128::MAX).into(), 2.into()),
+                U256::from(u128::MAX % 2),
+                "2^128 mod 2"
+            );
+
+            assert_eq!(
+                modulo((u128::MAX).into(), 7.into()),
+                U256::from(u128::MAX % 7),
+                "2^128 mod 7"
+            );
+        }
+
+        #[test]
         fn test_signextend() {
             macro_rules! assert_exp {
                 ($num:expr, $byte:expr, $result:expr) => {
