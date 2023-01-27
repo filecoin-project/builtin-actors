@@ -303,7 +303,7 @@ mod tests {
                 MSTORE8;
             }
             // index has garbage
-            m.state.memory.grow(3);
+            m.state.memory.grow(32);
             m.state.memory[0] = 0xab;
             m.state.memory[1] = 0xff;
             m.state.memory[2] = 0xfe;
@@ -430,10 +430,10 @@ mod tests {
                 PUSH0;
                 MSTORE;
             }
-            m.state.memory.grow(33);
+            m.state.memory.grow(64);
             m.state.memory[..32].copy_from_slice(&[0xff; 32]);
             // single byte outside expected overwritten area
-            m.state.memory[32] = 0xfe; 
+            m.state.memory[32] = 0xfe;
 
             m.step().expect("execution step failed");
             m.step().expect("execution step failed");
@@ -445,6 +445,52 @@ mod tests {
             assert_eq!(&m.state.memory[..30], &[0; 30]);
             // nothing written outside of word
             assert_eq!(m.state.memory[32], 0xfe);
+        };
+    }
+
+    #[test]
+    fn test_mszie_multiple_mstore8() {
+        evm_unit_test! {
+            (rt, m) {
+                PUSH1;
+                0xff;
+                PUSH1;
+                {42}; // offset of 42
+                MSTORE8;
+                MSIZE;
+            }
+
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+
+            assert_eq!(m.state.stack.len(), 1);
+            // msize is always a multiple of 32
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(64));
+        };
+    }
+
+    #[test]
+    fn test_mszie_multiple_mstore() {
+        evm_unit_test! {
+            (rt, m) {
+                PUSH1;
+                0xff;
+                PUSH1;
+                {12}; // offset of 12
+                MSTORE;
+                MSIZE;
+            }
+
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+
+            assert_eq!(m.state.stack.len(), 1);
+            // msize is always a multiple of 32. 12 + 32 = 42, round to 64
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(64));
         };
     }
 }
