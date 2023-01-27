@@ -161,7 +161,6 @@ mod tests {
     use fil_actors_runtime::test_utils::MockRuntime;
 
     use crate::do_test;
-    use crate::interpreter::test_util::Tester;
     use crate::interpreter::U256;
 
     #[test]
@@ -177,7 +176,7 @@ mod tests {
     #[test]
     fn test_pc() {
         do_test!(
-            tester,
+            rt,
             m,
             vec![
                 0x58, // PC
