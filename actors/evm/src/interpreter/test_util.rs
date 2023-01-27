@@ -3,9 +3,9 @@
 #[macro_export]
 macro_rules! do_test {
     ($rt:ident, $machine:ident, $code:expr, $body:block) => {
-        use crate::{EthAddress, Bytes, Bytecode, ExecutionState};
-        use crate::interpreter::{system::System, execution::Machine, Output};
         use ::fvm_shared::econ::TokenAmount;
+        use $crate::interpreter::{execution::Machine, system::System, Output};
+        use $crate::{Bytecode, Bytes, EthAddress, ExecutionState};
 
         let mut $rt = MockRuntime::default();
         let mut state = ExecutionState::new(
@@ -25,6 +25,6 @@ macro_rules! do_test {
             output: Output::default(),
         };
 
-        (|| {$body})()
+        $body
     };
 }
