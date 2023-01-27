@@ -271,7 +271,8 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
     }
 
     #[inline(always)]
-    fn step(&mut self) -> Result<(), ActorError> {
+    // Note: pub only for unit test steps.
+    pub(crate) fn step(&mut self) -> Result<(), ActorError> {
         let op = self.bytecode[self.pc];
         unsafe { Self::JMPTABLE[op as usize](self) }
     }

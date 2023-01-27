@@ -155,3 +155,158 @@ pub fn jumpi(bytecode: &Bytecode, pc: usize, dest: U256, test: U256) -> Result<u
         Ok(pc + 1)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::evm_unit_test;
+    use crate::interpreter::U256;
+    use crate::EVM_CONTRACT_BAD_JUMPDEST;
+
+    #[test]
+    fn test_jump() {
+        evm_unit_test! {
+            (rt, m) {
+                JUMP;
+                JUMPDEST;
+                JUMPDEST;
+                JUMPDEST;
+                JUMPDEST;
+            }
+            m.state.stack.push(U256::from(2)).unwrap();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 0);
+            assert_eq!(m.pc, 3, "pc has not advanced to 3");
+        };
+    }
+
+    #[test]
+    fn test_jump_err() {
+        evm_unit_test!(
+            (rt, m) {
+                JUMP; // JUMP
+                PUSH4; // PUSH4 -- garbage
+                0x01; // garbage
+                0x02; // garbage
+                0x03; // garbage
+                0x04; // garbage
+            }
+            m.state.stack.push(U256::from(2)).unwrap();
+            let result = m.step();
+            assert_eq!(m.state.stack.len(), 0);
+            assert!(result.is_err(), "execution step succeeded");
+            assert_eq!(result.err().unwrap().exit_code(), EVM_CONTRACT_BAD_JUMPDEST);
+        );
+    }
+
+    #[test]
+    fn test_jump_err2() {
+        evm_unit_test! {
+            (rt, m) {
+                JUMP;  // JUMP
+                PUSH4; // PUSH4 -- garbage
+                0x01;  // garbage
+                0x02;  // garbage
+                0x03;  // garbage
+                0x04;  // garbage
+            }
+
+            m.state.stack.push(U256::from(123)).unwrap();
+            let result = m.step();
+            assert_eq!(m.state.stack.len(), 0);
+            assert!(result.is_err(), "execution step succeeded");
+            assert_eq!(result.err().unwrap().exit_code(), EVM_CONTRACT_BAD_JUMPDEST);
+        };
+    }
+
+    #[test]
+    fn test_jump_err3() {
+        evm_unit_test! {
+            (rt, m) {
+                JUMP;
+                PUSH4;
+                JUMPDEST;
+                JUMPDEST;
+                JUMPDEST;
+                JUMPDEST;
+            }
+            m.state.stack.push(U256::from(2)).unwrap();
+            let result = m.step();
+            assert_eq!(m.state.stack.len(), 0);
+            assert!(result.is_err(), "execution step succeeded");
+            assert_eq!(result.err().unwrap().exit_code(), EVM_CONTRACT_BAD_JUMPDEST);
+        };
+    }
+
+    #[test]
+    fn test_jumpi_t() {
+        evm_unit_test! {
+            (rt, m) {
+                JUMPI;
+                JUMPDEST;
+                JUMPDEST;
+                JUMPDEST;
+                JUMPDEST;
+            }
+            m.state.stack.push(U256::from(1)).unwrap();
+            m.state.stack.push(U256::from(2)).unwrap();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 0);
+            assert_eq!(m.pc, 3, "pc has not advanced to 3");
+        }
+    }
+
+    #[test]
+    fn test_jumpi_f() {
+        evm_unit_test! {
+            (rt, m) {
+                JUMPI;
+                JUMPDEST;
+                JUMPDEST;
+                JUMPDEST;
+                JUMPDEST;
+            }
+            m.state.stack.push(U256::from(0)).unwrap();
+            m.state.stack.push(U256::from(2)).unwrap();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 0);
+            assert_eq!(m.pc, 1, "pc has not advanced to 1");
+        };
+    }
+
+    #[test]
+    fn test_jumpi_err() {
+        evm_unit_test! {
+            (rt, m) {
+                JUMPI;
+                JUMPDEST;
+                JUMPDEST;
+                JUMPDEST;
+                JUMPDEST;
+            }
+            m.state.stack.push(U256::from(1)).unwrap();
+            m.state.stack.push(U256::from(123)).unwrap();
+            let result = m.step();
+            assert_eq!(m.state.stack.len(), 0);
+            assert!(result.is_err(), "execution step succeeded");
+            assert_eq!(result.err().unwrap().exit_code(), EVM_CONTRACT_BAD_JUMPDEST);
+        };
+    }
+
+    #[test]
+    fn test_pc() {
+        evm_unit_test! {
+            (rt, m) {
+                PC;
+                JUMPDEST;
+            }
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::zero());
+            assert_eq!(m.pc, 1, "pc has not advanced to 1");
+        }
+    }
+}

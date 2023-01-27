@@ -119,7 +119,7 @@ pub struct System<'r, RT: Runtime> {
 }
 
 impl<'r, RT: Runtime> System<'r, RT> {
-    fn new(rt: &'r mut RT, readonly: bool) -> Self
+    pub(crate) fn new(rt: &'r mut RT, readonly: bool) -> Self
     where
         RT::Blockstore: Clone,
     {
