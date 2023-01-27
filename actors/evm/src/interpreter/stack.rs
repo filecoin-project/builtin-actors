@@ -148,6 +148,19 @@ fn test_stack_push_pop() {
 }
 
 #[test]
+fn test_stack_drop() {
+    let mut stack = Stack::new();
+    stack.push(1.into()).unwrap();
+    stack.push(2.into()).unwrap();
+    stack.drop().unwrap();
+    stack.drop().unwrap();
+    assert_eq!(
+        stack.drop().expect_err("expect underflow").exit_code(),
+        EVM_CONTRACT_STACK_UNDERFLOW
+    );
+}
+
+#[test]
 fn test_stack_swap() {
     let mut stack = Stack::new();
     stack.push(1.into()).unwrap();
