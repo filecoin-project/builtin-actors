@@ -1,8 +1,18 @@
 #![cfg(test)]
 
 #[macro_export]
-macro_rules! do_test {
-    ($rt:ident, $machine:ident, $code:expr, $body:block) => {
+macro_rules! evm_instruction {
+    ($i:ident) => {
+        $crate::interpreter::execution::opcodes::$i
+    };
+    ($i:literal) => {
+        $i
+    };
+}
+
+#[macro_export]
+macro_rules! evm_unit_test {
+    (($rt:ident, $machine:ident) { $($inst:tt;)* } $($body:tt)*) => {
         use ::fil_actors_runtime::test_utils::MockRuntime;
         use ::fvm_shared::econ::TokenAmount;
         use $crate::interpreter::{execution::Machine, system::System, Output};
@@ -16,8 +26,10 @@ macro_rules! do_test {
             Bytes::default(),
         );
 
+        let code = vec![$($crate::evm_instruction!($inst)),*];
+
         let mut system = System::new(&mut $rt, false);
-        let bytecode = Bytecode::new($code);
+        let bytecode = Bytecode::new(code);
         let mut $machine = Machine {
             system: &mut system,
             state: &mut state,
@@ -26,6 +38,6 @@ macro_rules! do_test {
             output: Output::default(),
         };
 
-        $body
+        $($body)*
     };
 }
