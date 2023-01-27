@@ -359,9 +359,7 @@ impl Deadline {
         self.early_terminations |= &new_early_terminations;
 
         // Update live sector count.
-        let on_time_count = all_expirations.on_time_sectors.len();
-        let early_count = all_expirations.faulty_sectors.len();
-        self.live_sectors -= on_time_count + early_count;
+        self.live_sectors -= all_expirations.len();
 
         self.faulty_power -= &all_expirations.faulty_power;
         Ok(all_expirations)

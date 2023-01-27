@@ -21,6 +21,9 @@ use fvm_shared::{
     sector::{RegisteredSealProof, SectorNumber},
     ActorID,
 };
+use fvm_shared::econ::TokenAmount;
+use fvm_shared::bigint::Zero;
+
 use std::collections::HashMap;
 
 mod util;
@@ -137,16 +140,47 @@ fn proof_extension_happy_path() {
 #[test]
 fn proof_extension_validation_checks() {
     // expiration must be set to 0
+    let (mut h, mut rt) = setup();
+    let sector = commit_sector(&mut h, &mut rt);
+    // and prove it once to activate it.
+    h.advance_and_submit_posts(&mut rt, &vec![sector.clone()]);
 
-    // can't extend invalid proof types (maybe too hard to test)
+    let state: State = rt.get_state();
+    let (deadline_index, partition_index) =
+        state.find_sector(rt.policy(), rt.store(), sector.sector_number).unwrap();
 
+    // sector lifetime out of bounds for proof refresh
+    let params = ExtendSectorExpirationParams {
+        extensions: vec![ExpirationExtension {
+            deadline: deadline_index,
+            partition: partition_index,
+            sectors: make_bitfield(&[sector.sector_number]),
+            new_expiration: 0, 
+        }],
+    };
+    expect_abort_contains_message(ExitCode::USR_FORBIDDEN, &format!("proof validity beyond {} epochs in the future", rt.policy().max_proof_validity).to_string(), h.refresh_proof_expiration(& mut rt, params));
+    rt.reset();
+
+    // sector lifetime is within bounds but the params are invalid        
+    if rt.epoch < sector.proof_expiration - rt.policy().proof_refresh_window {
+        rt.set_epoch(sector.proof_expiration - rt.policy().proof_refresh_window);
+    }
+
+    let params = ExtendSectorExpirationParams {
+        extensions: vec![ExpirationExtension {
+            deadline: deadline_index,
+            partition: partition_index,
+            sectors: make_bitfield(&[sector.sector_number]),
+            new_expiration: sector.proof_expiration + rt.policy().max_proof_validity, 
+        }],
+    };
+    expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "new_expiration should be zero for refreshing proof expiration", h.refresh_proof_expiration(& mut rt, params));
+    rt.reset();
     // can't extend beyond policy limits into the future
-
-    // faulty sector cannot have proof extension refreshed
 }
 
 #[test]
-fn proof_extension_early_sector_pays_fee() {
+fn proof_extension_early_sector_terminates_with_penalty() {
     let (mut h, mut rt) = setup();
     let sector = commit_sector(&mut h, &mut rt);
     // and prove it once to activate it.
@@ -196,21 +230,22 @@ fn proof_extension_early_sector_pays_fee() {
     );
 
     // Handle proving deadline. No missed PoSt fees are charged. Termination fee charged. Total power and pledge are lowered.
-    let power = -power_for_sector(h.sector_size, &new_sector);
+    let power = -power_for_sector(h.sector_size, &new_sector.clone());
     let mut cron_config = CronConfig::empty();
-    cron_config.no_enrollment = true;
+    // edge case alert: cron halting will wait until **next** deadline if it needs to process terminations since we check pledge before processing terminations
+    cron_config.expected_enrollment = exp_dlinfo.last() + rt.policy.wpost_challenge_window;;
     cron_config.expired_sectors_power_delta = Some(power);
-    cron_config.expired_sectors_pledge_delta = -new_sector.initial_pledge;
+    cron_config.terminated_sectors_pledge_delta = -new_sector.clone().initial_pledge;
+    // from setup all funds are in actor balance
+    cron_config.termination_penalty = PenaltyConfig::new_from_tranches(TokenAmount::zero(), TokenAmount::zero(), h.termination_fee_calc(&mut rt, new_sector));
     rt.set_epoch(exp_dlinfo.last());
+    println!("expect terminated sectors pledge: {}",  cron_config.terminated_sectors_pledge_delta );
+    println!("expected termination penalty pledge delta: {}", cron_config.termination_penalty.from_locked);
 
     h.on_deadline_cron(&mut rt, cron_config);
 
     h.check_state(&rt);
 
-
-    // extend the sector so that it now expires early from proof expiration
-
-    // check that it expires with fee and state is correct
 }
 #[test]
 fn fault_proof_expiring_sector() {

@@ -30,8 +30,9 @@ use fil_actor_miner::{
     SectorPreCommitInfo, SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams,
     TerminateSectorsParams, TerminationDeclaration, VestingFunds, WindowedPoSt,
     WithdrawBalanceParams, WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE,
-    SECTORS_AMT_BITWIDTH,
+    SECTORS_AMT_BITWIDTH, pledge_penalty_for_termination
 };
+
 use fil_actor_miner::{Method as MinerMethod, ProveCommitAggregateParams};
 use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
@@ -1276,6 +1277,34 @@ impl ActorHarness {
                 STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::EnrollCronEvent as u64,
                 IpldBlock::serialize_cbor(&params).unwrap(),
+                TokenAmount::zero(),
+                None,
+                ExitCode::OK,
+            );
+        }
+
+        // Process early terminations, check on termination pledge refund over termination fee
+        // to burn because termination fee burn could be zero in the case it is all added to fee debt
+        if !cfg.terminated_sectors_pledge_delta.is_zero() {
+            // Assuming no deals in sector, to add this feature:
+            //  1. Add deal ids or early terminated sectors to cron config
+            //  2. Expect send to OnMinerSectorsTerminate
+            let terminate_burn = cfg.termination_penalty.burn_amount();
+            if terminate_burn.clone().is_positive() {
+                rt.expect_send(
+                    BURNT_FUNDS_ACTOR_ADDR,
+                    METHOD_SEND,
+                    None,
+                    terminate_burn,
+                    None,
+                    ExitCode::OK,
+                );
+            }
+            let total_termination_pledge_delta  = cfg.terminated_sectors_pledge_delta + cfg.termination_penalty.pledge_delta();
+            rt.expect_send(
+                STORAGE_POWER_ACTOR_ADDR,
+                PowerMethod::UpdatePledgeTotal as u64,
+                IpldBlock::serialize_cbor(&total_termination_pledge_delta).unwrap(),
                 TokenAmount::zero(),
                 None,
                 ExitCode::OK,
@@ -2590,6 +2619,25 @@ impl ActorHarness {
             ExpirationKind::Fault => assert!(expiration_set.faulty_sectors.get(sector_number)),
         }
     }
+
+    pub fn termination_fee_calc(&self, rt: &mut MockRuntime, sector: SectorOnChainInfo) -> TokenAmount {
+        let state: State = rt.get_state();
+    
+        let sector_size = sector.seal_proof.sector_size().unwrap();
+        let sector_power = qa_power_for_sector(sector_size, &sector);
+
+        let sector_age = rt.epoch - sector.activation;
+        pledge_penalty_for_termination(
+            &sector.expected_day_reward,
+            sector_age,
+            &sector.expected_storage_pledge,
+            &self.epoch_qa_power_smooth,
+            &sector_power,
+            &self.epoch_reward_smooth,
+            &TokenAmount::zero(),
+            0,
+        )
+    }
 }
 
 pub enum ExpirationKind  {
@@ -2739,18 +2787,14 @@ pub struct CronConfig {
     pub detected_faults_power_delta: Option<PowerPair>,
     pub expired_sectors_power_delta: Option<PowerPair>,
     pub expired_sectors_pledge_delta: TokenAmount,
-    pub continued_faults_penalty_deprecated: TokenAmount,
-    // Expected amount burnt to pay continued fault penalties.
-    pub expired_precommit_penalty_deprecated: TokenAmount,
-    // Expected amount burnt to repay fee debt
-    pub repaid_fee_debt_deprecated: TokenAmount,
-    // Expected reduction in unlocked balance from penalties exceeding vesting funds.
-    pub penalty_from_unlocked_deprecated: TokenAmount,
+    pub terminated_sectors_pledge_delta: TokenAmount,
 
-    // Expected amount burnt to pay continued fault penalties.
+    // Expected penalty to pay continued fault penalties.
     pub expired_precommit_penalty: PenaltyConfig,
-    // Expected amount burnt to pay continued fault penalties.
+    // Expected penalty to pay continued fault penalties.
     pub continued_faults_penalty: PenaltyConfig,
+    // Expected penalty to pay termination processing, including proof expiring and fault terminated sectors.
+    pub termination_penalty: PenaltyConfig,
 }
 
 #[allow(dead_code)]
@@ -2762,17 +2806,12 @@ impl CronConfig {
             detected_faults_power_delta: None,
             expired_sectors_power_delta: None,
             expired_sectors_pledge_delta: TokenAmount::zero(),
-            continued_faults_penalty_deprecated: TokenAmount::zero(),
-            expired_precommit_penalty_deprecated: TokenAmount::zero(),
-            repaid_fee_debt_deprecated: TokenAmount::zero(),
-            penalty_from_unlocked_deprecated: TokenAmount::zero(),
             ..Default::default()
         }
     }
 
     pub fn with_continued_faults_penalty(fault_fee: TokenAmount) -> CronConfig {
         let mut cfg = CronConfig::empty();
-        cfg.continued_faults_penalty_deprecated = fault_fee.clone();
         cfg.continued_faults_penalty = PenaltyConfig::new(fault_fee);
         cfg
     }
@@ -2783,7 +2822,6 @@ impl CronConfig {
     ) -> CronConfig {
         let mut cfg = CronConfig::empty();
         cfg.detected_faults_power_delta = Some(pwr_delta.clone());
-        cfg.continued_faults_penalty_deprecated = fault_fee.clone();
         cfg.continued_faults_penalty = PenaltyConfig::new(fault_fee);
         cfg
     }
@@ -3288,7 +3326,6 @@ impl CronControl {
             rt,
             CronConfig {
                 no_enrollment: true,
-                expired_precommit_penalty_deprecated: st.pre_commit_deposits.clone(),
                 expired_precommit_penalty: PenaltyConfig::new_from_tranches(TokenAmount::zero(), TokenAmount::zero(), st.pre_commit_deposits),
                 ..CronConfig::empty()
             },
