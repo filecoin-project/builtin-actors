@@ -489,8 +489,22 @@ mod tests {
             m.step().expect("execution step failed");
 
             assert_eq!(m.state.stack.len(), 1);
-            // msize is always a multiple of 32. 12 + 32 = 42, round to 64
+            // 12 + 32 = 42, round up to nearest 32 = 64
             assert_eq!(m.state.stack.pop().unwrap(), U256::from(64));
+        };
+    }
+    #[test]
+    #[should_panic]
+    fn test_mszie_debug_panic() {
+        // Demonstrate that MSIZE depends on memory.len()
+        // Normally this should never happen and we wont panic from it.  
+        evm_unit_test! {
+            (rt, m) {
+                MSIZE;
+            }
+
+            m.state.memory.grow(12);
+            m.step().expect("execution step failed");
         };
     }
 }
