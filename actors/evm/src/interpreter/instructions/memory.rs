@@ -368,4 +368,53 @@ mod tests {
             assert_eq!(&m.state.memory[1..32], &[0; 31]);
         };
     }
+
+    #[test]
+    fn test_mstore_basic() {
+        evm_unit_test! {
+            (rt, m) {
+                PUSH2;
+                0xff;
+                0xfe;
+                PUSH0;
+                MSTORE;
+            }
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+
+            assert_eq!(m.state.stack.len(), 0);
+            assert_eq!(m.state.memory[30..32], [0xff, 0xfe]);
+            // nothing else is written to memory
+            assert_eq!(&m.state.memory[..30], &[0; 30]);
+        };
+    }
+
+    #[test]
+    fn test_mstore_overwrite() {
+        evm_unit_test! {
+            (rt, m) {
+                PUSH2;
+                0xff;
+                0xfe;
+                PUSH0;
+                MSTORE;
+            }
+            m.state.memory.grow(33);
+            m.state.memory[..32].copy_from_slice(&[0xff; 32]);
+            // single byte outside expected overwritten area
+            m.state.memory[32] = 0xfe; 
+
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+
+            assert_eq!(m.state.stack.len(), 0);
+            assert_eq!(m.state.memory[30..32], [0xff, 0xfe]);
+            // zeroes fill remaining word
+            assert_eq!(&m.state.memory[..30], &[0; 30]);
+            // nothing written outside of word
+            assert_eq!(m.state.memory[32], 0xfe);
+        };
+    }
 }
