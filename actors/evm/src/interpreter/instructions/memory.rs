@@ -161,7 +161,7 @@ pub fn msize(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::interpreter::memory::Memory;
+    use crate::{interpreter::memory::Memory, evm_unit_test};
 
     #[test]
     fn copy_to_memory_big() {
@@ -214,5 +214,63 @@ mod tests {
         assert_eq!(result, Ok(()));
         assert_eq!(mem.len(), 32);
         assert_eq!(&mem[0..4], result_data);
+    }
+
+    #[test]
+    fn test_mload_nothing() {
+        evm_unit_test! {
+            (rt, m) {
+                PUSH0;
+                MLOAD;
+            }
+
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::zero());
+        };
+    }
+
+    #[test]
+    fn test_mload_large_offset() {
+        evm_unit_test! {
+            (rt, m) {
+                PUSH4; // garbage offset
+                0x01;
+                0x02;
+                0x03;
+                0x04;
+                MLOAD;
+            }
+
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::zero());
+        };
+    }
+
+    #[test]
+    fn test_mload_word() {
+        evm_unit_test! {
+            (rt, m) {
+                PUSH0;
+                MLOAD;
+            }
+
+            m.state.memory.grow(32);
+            m.state.memory[..32].copy_from_slice(&U256::MAX.to_bytes());
+
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::MAX);
+        };
     }
 }
