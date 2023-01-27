@@ -60,7 +60,7 @@ fn declare_fault_pays_fee_at_window_post() {
     );
     h.advance_deadline(
         &mut rt,
-        CronConfig { continued_faults_penalty: ongoing_penalty, ..Default::default() },
+        CronConfig { continued_faults_penalty_deprecated: ongoing_penalty.clone(), continued_faults_penalty: PenaltyConfig::new(ongoing_penalty), ..Default::default() },
     );
     h.check_state(&rt);
 }

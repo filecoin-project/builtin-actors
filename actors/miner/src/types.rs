@@ -130,12 +130,12 @@ pub struct CheckSectorProvenParams {
     pub sector_number: SectorNumber,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
 pub struct ExtendSectorExpirationParams {
     pub extensions: Vec<ExpirationExtension>,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
 pub struct ExpirationExtension {
     pub deadline: u64,
     pub partition: u64,

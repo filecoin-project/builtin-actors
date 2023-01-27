@@ -80,7 +80,7 @@ fn recovery_must_pay_back_fee_debt() {
     h.advance_deadline(
         &mut rt,
         CronConfig {
-            continued_faults_penalty: TokenAmount::zero(), // fee is instead added to debt
+             // continued faults penalty is all 0s, fee is instead added to debt
             ..Default::default()
         },
     );

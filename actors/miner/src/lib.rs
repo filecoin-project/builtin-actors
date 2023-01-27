@@ -4176,6 +4176,7 @@ fn validate_commitment_expiration(
     let max_lifetime = seal_proof_sector_maximum_lifetime(seal_proof).ok_or_else(|| {
         actor_error!(illegal_argument, "unrecognized seal proof type {:?}", seal_proof)
     })?;
+
     if expiration - activation > max_lifetime {
         return Err(actor_error!(
         illegal_argument,

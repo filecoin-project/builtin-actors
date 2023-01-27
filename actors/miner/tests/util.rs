@@ -1239,9 +1239,8 @@ impl ActorHarness {
         let mut penalty_total = TokenAmount::zero();
         let mut pledge_delta = TokenAmount::zero();
 
-        penalty_total += cfg.continued_faults_penalty.clone();
-        penalty_total += cfg.repaid_fee_debt.clone();
-        penalty_total += cfg.expired_precommit_penalty.clone();
+        penalty_total += cfg.continued_faults_penalty.burn_amount();
+        penalty_total += cfg.expired_precommit_penalty.burn_amount();
 
         if !penalty_total.is_zero() {
             rt.expect_send(
@@ -1253,15 +1252,7 @@ impl ActorHarness {
                 ExitCode::OK,
             );
 
-            let mut penalty_from_vesting = penalty_total.clone();
-            // Outstanding fee debt is only repaid from unlocked balance, not vesting funds.
-            penalty_from_vesting -= cfg.repaid_fee_debt.clone();
-            // Precommit deposit burns are repaid from PCD account
-            penalty_from_vesting -= cfg.expired_precommit_penalty.clone();
-            // New penalties are paid first from vesting funds but, if exhausted, overflow to unlocked balance.
-            penalty_from_vesting -= cfg.penalty_from_unlocked.clone();
-
-            pledge_delta -= penalty_from_vesting;
+            pledge_delta += cfg.continued_faults_penalty.pledge_delta() + cfg.expired_precommit_penalty.pledge_delta();
         }
 
         pledge_delta += cfg.expired_sectors_pledge_delta;
@@ -2553,6 +2544,19 @@ impl ActorHarness {
         ret
     }
 
+    pub fn refresh_proof_expiration(&self, rt: &mut MockRuntime, params: ExtendSectorExpirationParams) ->Result<Option<IpldBlock>, ActorError> {
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+        rt.expect_validate_caller_addr(self.caller_addrs());
+
+        let ret = rt.call::<Actor>(
+            Method::RefreshProofExpiration as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )?;
+
+        rt.verify();
+        Ok(ret)
+    }
+
     pub fn get_available_balance(&self, rt: &mut MockRuntime) -> Result<TokenAmount, ActorError> {
         // set caller to non-builtin
         rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1234));
@@ -2564,7 +2568,36 @@ impl ActorHarness {
         rt.verify();
         Ok(available_balance_ret.available_balance)
     }
+
+
+    // assert that a single sector in a specified state is expiring alone at the provided expiration
+    pub fn assert_queue_state(&self, rt: & mut MockRuntime, sector_number: u64, dlidx: u64, pidx: u64, expiration: ChainEpoch, kind: ExpirationKind) {
+        // assert that new expiration exists
+        let (_, mut partition) = self.get_deadline_and_partition(&rt, dlidx, pidx);
+        let state: State = rt.get_state();
+        let quant = state.quant_spec_for_deadline(rt.policy(), dlidx);
+        let expiration_set =
+            partition.pop_expired_sectors(rt.store(), expiration - 1, quant).unwrap();
+        assert!(expiration_set.is_empty());
+    
+        let expiration_set = partition
+            .pop_expired_sectors(rt.store(), quant.quantize_up(expiration), quant)
+            .unwrap();
+        assert_eq!(expiration_set.len(), 1);
+        match kind {
+            ExpirationKind::OnTime => assert!(expiration_set.on_time_sectors.get(sector_number)),
+            ExpirationKind::Proof => assert!(expiration_set.proof_expiring_sectors.get(sector_number)),
+            ExpirationKind::Fault => assert!(expiration_set.faulty_sectors.get(sector_number)),
+        }
+    }
 }
+
+pub enum ExpirationKind  {
+    OnTime,
+    Proof,
+    Fault,
+}
+
 
 #[allow(dead_code)]
 pub struct PoStConfig {
@@ -2671,6 +2704,34 @@ pub struct PreCommitBatchConfig {
 }
 
 #[derive(Default)]
+pub struct PenaltyConfig {
+    pub penalty: TokenAmount,
+    pub from_locked: TokenAmount,
+    pub repaid_fee_debt: TokenAmount,
+}
+
+impl PenaltyConfig {
+    // Default all from locked balance, no additional fee debt
+    pub fn new(penalty: TokenAmount) -> Self {
+        Self { penalty: penalty.clone(), from_locked: penalty.clone(), repaid_fee_debt: TokenAmount::zero() }
+    }
+    pub fn new_from_tranches(from_locked: TokenAmount, repaid_fee_debt: TokenAmount, from_other: TokenAmount) -> Self {
+        Self {
+            penalty: from_locked.clone()+ from_other,
+            from_locked,
+            repaid_fee_debt,
+        }
+    }
+    pub fn burn_amount(&self) -> TokenAmount {
+        self.penalty.clone() + self.repaid_fee_debt.clone()
+    }
+    pub fn pledge_delta(&self) -> TokenAmount {
+        -1 * (self.from_locked.clone())
+    }
+}
+
+
+#[derive(Default)]
 pub struct CronConfig {
     pub no_enrollment: bool,
     // true if expect not to continue enrollment false otherwise
@@ -2678,13 +2739,18 @@ pub struct CronConfig {
     pub detected_faults_power_delta: Option<PowerPair>,
     pub expired_sectors_power_delta: Option<PowerPair>,
     pub expired_sectors_pledge_delta: TokenAmount,
-    pub continued_faults_penalty: TokenAmount,
+    pub continued_faults_penalty_deprecated: TokenAmount,
     // Expected amount burnt to pay continued fault penalties.
-    pub expired_precommit_penalty: TokenAmount,
-    // Expected amount burnt to pay for expired precommits
-    pub repaid_fee_debt: TokenAmount,
-    // Expected amount burnt to repay fee debt.
-    pub penalty_from_unlocked: TokenAmount, // Expected reduction in unlocked balance from penalties exceeding vesting funds.
+    pub expired_precommit_penalty_deprecated: TokenAmount,
+    // Expected amount burnt to repay fee debt
+    pub repaid_fee_debt_deprecated: TokenAmount,
+    // Expected reduction in unlocked balance from penalties exceeding vesting funds.
+    pub penalty_from_unlocked_deprecated: TokenAmount,
+
+    // Expected amount burnt to pay continued fault penalties.
+    pub expired_precommit_penalty: PenaltyConfig,
+    // Expected amount burnt to pay continued fault penalties.
+    pub continued_faults_penalty: PenaltyConfig,
 }
 
 #[allow(dead_code)]
@@ -2696,16 +2762,18 @@ impl CronConfig {
             detected_faults_power_delta: None,
             expired_sectors_power_delta: None,
             expired_sectors_pledge_delta: TokenAmount::zero(),
-            continued_faults_penalty: TokenAmount::zero(),
-            expired_precommit_penalty: TokenAmount::zero(),
-            repaid_fee_debt: TokenAmount::zero(),
-            penalty_from_unlocked: TokenAmount::zero(),
+            continued_faults_penalty_deprecated: TokenAmount::zero(),
+            expired_precommit_penalty_deprecated: TokenAmount::zero(),
+            repaid_fee_debt_deprecated: TokenAmount::zero(),
+            penalty_from_unlocked_deprecated: TokenAmount::zero(),
+            ..Default::default()
         }
     }
 
     pub fn with_continued_faults_penalty(fault_fee: TokenAmount) -> CronConfig {
         let mut cfg = CronConfig::empty();
-        cfg.continued_faults_penalty = fault_fee;
+        cfg.continued_faults_penalty_deprecated = fault_fee.clone();
+        cfg.continued_faults_penalty = PenaltyConfig::new(fault_fee);
         cfg
     }
 
@@ -2715,7 +2783,8 @@ impl CronConfig {
     ) -> CronConfig {
         let mut cfg = CronConfig::empty();
         cfg.detected_faults_power_delta = Some(pwr_delta.clone());
-        cfg.continued_faults_penalty = fault_fee;
+        cfg.continued_faults_penalty_deprecated = fault_fee.clone();
+        cfg.continued_faults_penalty = PenaltyConfig::new(fault_fee);
         cfg
     }
 }
@@ -3219,7 +3288,8 @@ impl CronControl {
             rt,
             CronConfig {
                 no_enrollment: true,
-                expired_precommit_penalty: st.pre_commit_deposits,
+                expired_precommit_penalty_deprecated: st.pre_commit_deposits.clone(),
+                expired_precommit_penalty: PenaltyConfig::new_from_tranches(TokenAmount::zero(), TokenAmount::zero(), st.pre_commit_deposits),
                 ..CronConfig::empty()
             },
         );

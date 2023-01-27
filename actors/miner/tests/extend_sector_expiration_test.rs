@@ -1,3 +1,4 @@
+use anyhow::Chain;
 use fil_actor_market::VerifiedDealInfo;
 use fil_actor_miner::ext::verifreg::Claim as FILPlusClaim;
 use fil_actor_miner::{
@@ -38,7 +39,7 @@ fn setup() -> (ActorHarness, MockRuntime) {
     let mut h = ActorHarness::new(period_offset);
     // reduce the partition size
     // if changed to V1P1 the rejects_extension_past_max_for_seal_proof test fails
-    h.set_proof_type(RegisteredSealProof::StackedDRG512MiBV1);
+    h.set_proof_type(RegisteredSealProof::StackedDRG512MiBV1P1);
     let mut rt = h.new_runtime();
     rt.balance.replace(BIG_BALANCE.clone());
     rt.set_epoch(precommit_epoch);
@@ -52,6 +53,178 @@ fn commit_sector(h: &mut ActorHarness, rt: &mut MockRuntime) -> SectorOnChainInf
     h.commit_and_prove_sectors(rt, 1, DEFAULT_SECTOR_EXPIRATION as u64, Vec::new(), true)[0]
         .to_owned()
 }
+
+#[test]
+fn proof_extension_happy_path() {
+    let (mut h, mut rt) = setup();
+    let sector = commit_sector(&mut h, &mut rt);
+    // and prove it once to activate it.
+    h.advance_and_submit_posts(&mut rt, &vec![sector.clone()]);
+
+    // extend the sector so that it now expires early from proof expiration
+    let new_expiration = sector.proof_expiration + 1;
+
+    // advance in time so extension passes policy limits
+    if rt.epoch + rt.policy().max_sector_commitment_extension < new_expiration {
+        rt.set_epoch(new_expiration - rt.policy().max_sector_commitment_extension);
+    }
+    let state: State = rt.get_state();
+    let (deadline_index, partition_index) =
+        state.find_sector(rt.policy(), rt.store(), sector.sector_number).unwrap();
+    
+    let params = ExtendSectorExpirationParams {
+        extensions: vec![ExpirationExtension {
+            deadline: deadline_index,
+            partition: partition_index,
+            sectors: make_bitfield(&[sector.sector_number]),
+            new_expiration,
+        }],
+    };
+
+    h.extend_sectors_versioned(&mut rt, params, true).unwrap();
+    h.assert_queue_state(&mut rt, sector.sector_number, deadline_index, partition_index, sector.proof_expiration, ExpirationKind::Proof);
+
+    // extend proof expiration so that it now expires on time
+    if rt.epoch < sector.proof_expiration - rt.policy().proof_refresh_window {
+        rt.set_epoch(sector.proof_expiration - rt.policy().proof_refresh_window);
+    }
+    let params = ExtendSectorExpirationParams {
+        extensions: vec![ExpirationExtension {
+            deadline: deadline_index,
+            partition: partition_index,
+            sectors: make_bitfield(&[sector.sector_number]),
+            new_expiration: 0, 
+        }],
+    };
+    h.refresh_proof_expiration(& mut rt, params).unwrap();
+    h.assert_queue_state(&mut rt, sector.sector_number, deadline_index, partition_index, new_expiration, ExpirationKind::OnTime);
+
+    let new_sector = h.get_sector(&rt, sector.sector_number);
+    assert_eq!(new_sector.proof_expiration, sector.proof_expiration + rt.policy().max_proof_validity - rt.policy().proof_refresh_window);
+
+    // check that it expires happily with no termination fee 
+
+    // Go to start of expiration deadline
+    let st = h.get_state(&rt);
+    let q_exp = st.quant_spec_for_deadline(rt.policy(), deadline_index).quantize_up(new_expiration);
+    let exp_dlinfo = st.deadline_info(rt.policy(), q_exp);
+    rt.set_epoch(exp_dlinfo.open);
+
+    // PoSt for this deadline so we're expiring without faulting
+    let partitions = vec![PoStPartition { index: partition_index, skipped: BitField::default() }];
+    h.submit_window_post(
+        &mut rt,
+        &exp_dlinfo,
+        partitions,
+        vec![new_sector.clone()],
+        PoStConfig::empty(),
+    );
+
+    // Handle proving deadline. No missed PoSt fees are charged. Total power and pledge are lowered.
+    let power = -power_for_sector(h.sector_size, &new_sector);
+    let mut cron_config = CronConfig::empty();
+    cron_config.no_enrollment = true;
+    cron_config.expired_sectors_power_delta = Some(power);
+    cron_config.expired_sectors_pledge_delta = -new_sector.initial_pledge;
+    rt.set_epoch(exp_dlinfo.last());
+
+    h.on_deadline_cron(&mut rt, cron_config);
+
+    h.check_state(&rt);
+
+}
+
+#[test]
+fn proof_extension_validation_checks() {
+    // expiration must be set to 0
+
+    // can't extend invalid proof types (maybe too hard to test)
+
+    // can't extend beyond policy limits into the future
+
+    // faulty sector cannot have proof extension refreshed
+}
+
+#[test]
+fn proof_extension_early_sector_pays_fee() {
+    let (mut h, mut rt) = setup();
+    let sector = commit_sector(&mut h, &mut rt);
+    // and prove it once to activate it.
+    h.advance_and_submit_posts(&mut rt, &vec![sector.clone()]);
+
+    // extend the sector so that it now expires early from proof expiration
+    let new_expiration = sector.proof_expiration + 1;
+
+    // advance in time so extension passes policy limits
+    if rt.epoch + rt.policy().max_sector_commitment_extension < new_expiration {
+        rt.set_epoch(new_expiration - rt.policy().max_sector_commitment_extension);
+    }
+    let state: State = rt.get_state();
+    let (deadline_index, partition_index) =
+        state.find_sector(rt.policy(), rt.store(), sector.sector_number).unwrap();
+    
+    let params = ExtendSectorExpirationParams {
+        extensions: vec![ExpirationExtension {
+            deadline: deadline_index,
+            partition: partition_index,
+            sectors: make_bitfield(&[sector.sector_number]),
+            new_expiration,
+        }],
+    };
+
+    h.extend_sectors_versioned(&mut rt, params, true).unwrap();
+    h.assert_queue_state(&mut rt, sector.sector_number, deadline_index, partition_index, sector.proof_expiration, ExpirationKind::Proof);
+
+    let new_sector = h.get_sector(&rt, sector.sector_number);
+
+    // check that it expires early with termination fee
+
+    // Go to start of expiration deadline
+    let st = h.get_state(&rt);
+    let q_exp = st.quant_spec_for_deadline(rt.policy(), deadline_index).quantize_up(sector.proof_expiration);
+    let exp_dlinfo = st.deadline_info(rt.policy(), q_exp);
+    rt.set_epoch(exp_dlinfo.open);
+
+    // PoSt for this deadline so we're expiring without faulting
+    let partitions = vec![PoStPartition { index: partition_index, skipped: BitField::default() }];
+    h.submit_window_post(
+        &mut rt,
+        &exp_dlinfo,
+        partitions,
+        vec![new_sector.clone()],
+        PoStConfig::empty(),
+    );
+
+    // Handle proving deadline. No missed PoSt fees are charged. Termination fee charged. Total power and pledge are lowered.
+    let power = -power_for_sector(h.sector_size, &new_sector);
+    let mut cron_config = CronConfig::empty();
+    cron_config.no_enrollment = true;
+    cron_config.expired_sectors_power_delta = Some(power);
+    cron_config.expired_sectors_pledge_delta = -new_sector.initial_pledge;
+    rt.set_epoch(exp_dlinfo.last());
+
+    h.on_deadline_cron(&mut rt, cron_config);
+
+    h.check_state(&rt);
+
+
+    // extend the sector so that it now expires early from proof expiration
+
+    // check that it expires with fee and state is correct
+}
+#[test]
+fn fault_proof_expiring_sector() {
+    // extend sector so it now expires early from proof expiration
+
+    // fault
+
+    // recover
+
+    // fault again and let it terminate with fault fees 
+}
+
+
+
 
 #[test_case(false; "v1")]
 #[test_case(true; "v2")]
@@ -135,12 +308,12 @@ fn rejects_extension_past_max_for_seal_proof(v2: bool) {
     let state: State = rt.get_state();
     let (deadline_index, partition_index) =
         state.find_sector(rt.policy(), rt.store(), sector.sector_number).unwrap();
-
     // extend sector until just below threshold
     rt.set_epoch(sector.commitment_expiration);
     let extension = rt.policy().min_sector_commitment;
 
     let mut expiration = sector.commitment_expiration + extension;
+
     while expiration - sector.activation < max_lifetime {
         let params = ExtendSectorExpirationParams {
             extensions: vec![ExpirationExtension {
@@ -150,10 +323,29 @@ fn rejects_extension_past_max_for_seal_proof(v2: bool) {
                 new_expiration: expiration,
             }],
         };
-        h.extend_sectors(&mut rt, params).unwrap();
+        h.extend_sectors(&mut rt, params.clone()).unwrap();
         sector.commitment_expiration = expiration;
-
         expiration += extension;
+        rt.set_epoch(rt.epoch + extension);
+
+        if sector.commitment_expiration > sector.proof_expiration {
+            // advance to proof refresh window if needed 
+            if rt.epoch < sector.proof_expiration - rt.policy().proof_refresh_window {
+                rt.set_epoch(sector.proof_expiration - rt.policy().proof_refresh_window)
+            }
+            let refresh_params = ExtendSectorExpirationParams {
+                extensions: vec![ExpirationExtension {
+                    deadline: deadline_index,
+                    partition: partition_index,
+                    sectors: make_bitfield(&[sector.sector_number]),
+                    new_expiration: 0,
+                }],
+            };
+        
+            h.refresh_proof_expiration(&mut rt, refresh_params).unwrap();
+            sector.proof_expiration = sector.proof_expiration + (rt.policy().max_proof_validity - rt.policy().proof_refresh_window);
+        }
+        h.assert_queue_state(&mut rt, sector.sector_number, deadline_index, partition_index, sector.commitment_expiration, ExpirationKind::OnTime);
     }
 
     // next extension fails because it extends sector past max lifetime
@@ -931,18 +1123,9 @@ fn check_for_expiration(
 ) {
     let new_sector = h.get_sector(rt, sector_number);
     assert_eq!(expiration, new_sector.commitment_expiration);
-    let state: State = rt.get_state();
-    let quant = state.quant_spec_for_deadline(rt.policy(), deadline_index);
 
     // assert that new expiration exists
-    let (_, mut partition) = h.get_deadline_and_partition(rt, deadline_index, partition_index);
-    let expiration_set = partition.pop_expired_sectors(rt.store(), expiration - 1, quant).unwrap();
-    assert!(expiration_set.is_empty());
-
-    let expiration_set =
-        partition.pop_expired_sectors(rt.store(), quant.quantize_up(expiration), quant).unwrap();
-    assert_eq!(expiration_set.len(), 1);
-    assert!(expiration_set.on_time_sectors.get(sector_number));
+    h.assert_queue_state(rt, sector_number, deadline_index, partition_index, expiration, ExpirationKind::OnTime);
 
     h.check_state(rt);
 }

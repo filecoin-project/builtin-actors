@@ -933,7 +933,10 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
                 && expected_msg.method == method
                 && expected_msg.params == params
                 && expected_msg.value == value,
-        );
+            "\nexpected \n    msg to: {}, method: {}, params: {:?}, value: {}\nfound\n    msg to: {}, method: {}, params: {:?}, value: {}",
+             expected_msg.to, expected_msg.method, expected_msg.params, expected_msg.value,
+            to, method, params, value
+            );
 
         {
             let mut balance = self.balance.borrow_mut();
