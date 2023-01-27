@@ -112,8 +112,7 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
     pub miner: Address,
     pub base_fee: TokenAmount,
     pub id_addresses: HashMap<Address, Address>,
-    pub delegated_addresses: HashMap<Address, Address>,
-    pub delegated_addresses_source: HashMap<Address, Address>,
+    pub delegated_addresses: HashMap<ActorID, Address>,
     pub actor_code_cids: HashMap<Address, Cid>,
     pub new_actor_addr: Option<Address>,
     pub receiver: Address,
@@ -274,7 +273,6 @@ impl<BS> MockRuntime<BS> {
             base_fee: Default::default(),
             id_addresses: Default::default(),
             delegated_addresses: Default::default(),
-            delegated_addresses_source: Default::default(),
             actor_code_cids: Default::default(),
             new_actor_addr: Default::default(),
             receiver: Address::new_id(0),
@@ -464,15 +462,14 @@ impl<BS: Blockstore> MockRuntime<BS> {
         self.id_addresses.insert(source, target);
     }
 
-    pub fn add_delegated_address(&mut self, source: Address, target: Address) {
+    pub fn set_delegated_address(&mut self, source: ActorID, target: Address) {
         assert_eq!(
             target.protocol(),
             Protocol::Delegated,
             "target must use Delegated address protocol"
         );
-        assert_eq!(source.protocol(), Protocol::ID, "source must use ID address protocol");
         self.delegated_addresses.insert(source, target);
-        self.delegated_addresses_source.insert(target, source);
+        self.id_addresses.insert(target, Address::new_id(source));
     }
 
     pub fn call<A: ActorCode>(
@@ -810,12 +807,6 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         if let &Payload::ID(id) = address.payload() {
             return Some(id);
         }
-        if Protocol::Delegated == address.protocol() {
-            return self
-                .delegated_addresses_source
-                .get(address)
-                .and_then(|a| self.resolve_address(a));
-        }
 
         match self.get_id_address(address) {
             None => None,
@@ -830,7 +821,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
 
     fn lookup_delegated_address(&self, id: ActorID) -> Option<Address> {
         self.require_in_call();
-        self.delegated_addresses.get(&Address::new_id(id)).copied()
+        self.delegated_addresses.get(&id).copied()
     }
 
     fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {

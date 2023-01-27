@@ -74,8 +74,8 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// If the argument is an ID address it is returned directly.
     fn resolve_address(&self, address: &Address) -> Option<ActorID>;
 
-    /// Looks-up the "delegated" address of an actor by ID, if any. Returns None if either the
-    /// target actor doesn't exist, or if the target actor doesn't have either an f4 address.
+    /// Looks up the "delegated" address of an actor by ID, if any. Returns None if either the
+    /// target actor doesn't exist, or doesn't have an f4 address.
     fn lookup_delegated_address(&self, id: ActorID) -> Option<Address>;
 
     /// Look up the code ID at an actor address.

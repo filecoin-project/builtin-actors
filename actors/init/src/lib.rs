@@ -84,7 +84,11 @@ impl Actor {
         if existing {
             // NOTE: this case should be impossible, but we check it anyways just in case something
             // changes.
-            return Err(ActorError::forbidden("cannot exec over an existing actor".into()));
+            return Err(actor_error!(
+                forbidden,
+                "cannot exec over an existing actor {}",
+                id_address
+            ));
         }
 
         // Create an empty actor

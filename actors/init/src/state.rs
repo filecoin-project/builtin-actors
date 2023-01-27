@@ -32,8 +32,7 @@ impl State {
     /// With no delegated address, or if the delegated address is not already mapped,
     /// allocates a new ID address and maps both to it.
     /// If the delegated address is already present, maps the robust address to that actor ID.
-    /// Fails if the robust address is already mapped, providing tombstone.
-    ///
+    /// Fails if the robust address is already mapped. The assignment of an ID to an address is one-time-only, even if the actor at that ID is deleted.
     /// Returns the actor ID and a boolean indicating whether or not the actor already exists.
     pub fn map_addresses_to_id<BS: Blockstore>(
         &mut self,
