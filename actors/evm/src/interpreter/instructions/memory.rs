@@ -256,20 +256,24 @@ mod tests {
 
     #[test]
     fn test_mload_word() {
-        evm_unit_test! {
-            (rt, m) {
-                PUSH0;
-                MLOAD;
-            }
+        for sh in 0..32 {
+            evm_unit_test! {
+                (rt, m) {
+                    PUSH1;
+                    {sh};
+                    MLOAD;
+                }
+    
+                m.state.memory.grow(32);
+                m.state.memory[..32].copy_from_slice(&U256::MAX.to_bytes());
+    
+                m.step().expect("execution step failed");
+                m.step().expect("execution step failed");
 
-            m.state.memory.grow(32);
-            m.state.memory[..32].copy_from_slice(&U256::MAX.to_bytes());
-
-            m.step().expect("execution step failed");
-            m.step().expect("execution step failed");
-            assert_eq!(m.state.stack.len(), 1);
-            assert_eq!(m.state.stack.pop().unwrap(), U256::MAX);
-        };
+                assert_eq!(m.state.stack.len(), 1);
+                assert_eq!(m.state.stack.pop().unwrap(), U256::MAX << (8 * sh));
+            };
+        }
     }
 
     #[test]
