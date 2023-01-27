@@ -14,11 +14,12 @@ use fil_actor_miner::ext::verifreg::{
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee, consensus_fault_penalty,
     initial_pledge_for_power, locked_reward_from_reward, max_prove_commit_duration,
-    new_deadline_info_from_offset_and_epoch, pledge_penalty_for_continued_fault, power_for_sectors,
-    qa_power_for_sector, qa_power_for_weight, reward_for_consensus_slash_report, ActiveBeneficiary,
-    Actor, ApplyRewardParams, BeneficiaryTerm, BitFieldQueue, ChangeBeneficiaryParams,
-    ChangeMultiaddrsParams, ChangePeerIDParams, ChangeWorkerAddressParams, CheckSectorProvenParams,
-    CompactCommD, CompactPartitionsParams, CompactSectorNumbersParams, ConfirmSectorProofsParams,
+    new_deadline_info_from_offset_and_epoch, pledge_penalty_for_continued_fault,
+    pledge_penalty_for_termination, power_for_sectors, qa_power_for_sector, qa_power_for_weight,
+    reward_for_consensus_slash_report, ActiveBeneficiary, Actor, ApplyRewardParams,
+    BeneficiaryTerm, BitFieldQueue, ChangeBeneficiaryParams, ChangeMultiaddrsParams,
+    ChangePeerIDParams, ChangeWorkerAddressParams, CheckSectorProvenParams, CompactCommD,
+    CompactPartitionsParams, CompactSectorNumbersParams, ConfirmSectorProofsParams,
     CronEventPayload, Deadline, DeadlineInfo, Deadlines, DeclareFaultsParams,
     DeclareFaultsRecoveredParams, DeferredCronEventParams, DisputeWindowedPoStParams,
     ExpirationQueue, ExpirationSet, ExtendSectorExpiration2Params, ExtendSectorExpirationParams,
@@ -30,7 +31,7 @@ use fil_actor_miner::{
     SectorPreCommitInfo, SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams,
     TerminateSectorsParams, TerminationDeclaration, VestingFunds, WindowedPoSt,
     WithdrawBalanceParams, WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE,
-    SECTORS_AMT_BITWIDTH, pledge_penalty_for_termination
+    SECTORS_AMT_BITWIDTH,
 };
 
 use fil_actor_miner::{Method as MinerMethod, ProveCommitAggregateParams};
@@ -1253,7 +1254,8 @@ impl ActorHarness {
                 ExitCode::OK,
             );
 
-            pledge_delta += cfg.continued_faults_penalty.pledge_delta() + cfg.expired_precommit_penalty.pledge_delta();
+            pledge_delta += cfg.continued_faults_penalty.pledge_delta()
+                + cfg.expired_precommit_penalty.pledge_delta();
         }
 
         pledge_delta += cfg.expired_sectors_pledge_delta;
@@ -1300,7 +1302,8 @@ impl ActorHarness {
                     ExitCode::OK,
                 );
             }
-            let total_termination_pledge_delta  = cfg.terminated_sectors_pledge_delta + cfg.termination_penalty.pledge_delta();
+            let total_termination_pledge_delta =
+                cfg.terminated_sectors_pledge_delta + cfg.termination_penalty.pledge_delta();
             rt.expect_send(
                 STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::UpdatePledgeTotal as u64,
@@ -2573,7 +2576,11 @@ impl ActorHarness {
         ret
     }
 
-    pub fn refresh_proof_expiration(&self, rt: &mut MockRuntime, params: ExtendSectorExpirationParams) ->Result<Option<IpldBlock>, ActorError> {
+    pub fn refresh_proof_expiration(
+        &self,
+        rt: &mut MockRuntime,
+        params: ExtendSectorExpirationParams,
+    ) -> Result<Option<IpldBlock>, ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
 
@@ -2598,9 +2605,16 @@ impl ActorHarness {
         Ok(available_balance_ret.available_balance)
     }
 
-
     // assert that a single sector in a specified state is expiring alone at the provided expiration
-    pub fn assert_queue_state(&self, rt: & mut MockRuntime, sector_number: u64, dlidx: u64, pidx: u64, expiration: ChainEpoch, kind: ExpirationKind) {
+    pub fn assert_queue_state(
+        &self,
+        rt: &mut MockRuntime,
+        sector_number: u64,
+        dlidx: u64,
+        pidx: u64,
+        expiration: ChainEpoch,
+        kind: ExpirationKind,
+    ) {
         // assert that new expiration exists
         let (_, mut partition) = self.get_deadline_and_partition(&rt, dlidx, pidx);
         let state: State = rt.get_state();
@@ -2608,21 +2622,27 @@ impl ActorHarness {
         let expiration_set =
             partition.pop_expired_sectors(rt.store(), expiration - 1, quant).unwrap();
         assert!(expiration_set.is_empty());
-    
+
         let expiration_set = partition
             .pop_expired_sectors(rt.store(), quant.quantize_up(expiration), quant)
             .unwrap();
         assert_eq!(expiration_set.len(), 1);
         match kind {
             ExpirationKind::OnTime => assert!(expiration_set.on_time_sectors.get(sector_number)),
-            ExpirationKind::Proof => assert!(expiration_set.proof_expiring_sectors.get(sector_number)),
+            ExpirationKind::Proof => {
+                assert!(expiration_set.proof_expiring_sectors.get(sector_number))
+            }
             ExpirationKind::Fault => assert!(expiration_set.faulty_sectors.get(sector_number)),
         }
     }
 
-    pub fn termination_fee_calc(&self, rt: &mut MockRuntime, sector: SectorOnChainInfo) -> TokenAmount {
+    pub fn termination_fee_calc(
+        &self,
+        rt: &mut MockRuntime,
+        sector: SectorOnChainInfo,
+    ) -> TokenAmount {
         let state: State = rt.get_state();
-    
+
         let sector_size = sector.seal_proof.sector_size().unwrap();
         let sector_power = qa_power_for_sector(sector_size, &sector);
 
@@ -2640,12 +2660,11 @@ impl ActorHarness {
     }
 }
 
-pub enum ExpirationKind  {
+pub enum ExpirationKind {
     OnTime,
     Proof,
     Fault,
 }
-
 
 #[allow(dead_code)]
 pub struct PoStConfig {
@@ -2761,14 +2780,18 @@ pub struct PenaltyConfig {
 impl PenaltyConfig {
     // Default all from locked balance, no additional fee debt
     pub fn new(penalty: TokenAmount) -> Self {
-        Self { penalty: penalty.clone(), from_locked: penalty.clone(), repaid_fee_debt: TokenAmount::zero() }
-    }
-    pub fn new_from_tranches(from_locked: TokenAmount, repaid_fee_debt: TokenAmount, from_other: TokenAmount) -> Self {
         Self {
-            penalty: from_locked.clone()+ from_other,
-            from_locked,
-            repaid_fee_debt,
+            penalty: penalty.clone(),
+            from_locked: penalty.clone(),
+            repaid_fee_debt: TokenAmount::zero(),
         }
+    }
+    pub fn new_from_tranches(
+        from_locked: TokenAmount,
+        repaid_fee_debt: TokenAmount,
+        from_other: TokenAmount,
+    ) -> Self {
+        Self { penalty: from_locked.clone() + from_other, from_locked, repaid_fee_debt }
     }
     pub fn burn_amount(&self) -> TokenAmount {
         self.penalty.clone() + self.repaid_fee_debt.clone()
@@ -2777,7 +2800,6 @@ impl PenaltyConfig {
         -1 * (self.from_locked.clone())
     }
 }
-
 
 #[derive(Default)]
 pub struct CronConfig {
@@ -3326,7 +3348,11 @@ impl CronControl {
             rt,
             CronConfig {
                 no_enrollment: true,
-                expired_precommit_penalty: PenaltyConfig::new_from_tranches(TokenAmount::zero(), TokenAmount::zero(), st.pre_commit_deposits),
+                expired_precommit_penalty: PenaltyConfig::new_from_tranches(
+                    TokenAmount::zero(),
+                    TokenAmount::zero(),
+                    st.pre_commit_deposits,
+                ),
                 ..CronConfig::empty()
             },
         );

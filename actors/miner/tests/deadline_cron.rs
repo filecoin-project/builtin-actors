@@ -134,7 +134,11 @@ fn sector_expires_and_repays_fee_debt() {
             no_enrollment: true,
             expired_sectors_power_delta: Some(power_delta),
             expired_sectors_pledge_delta: initial_pledge.neg(),
-            continued_faults_penalty: PenaltyConfig::new_from_tranches(TokenAmount::zero(), initial_pledge.clone(), TokenAmount::zero()),
+            continued_faults_penalty: PenaltyConfig::new_from_tranches(
+                TokenAmount::zero(),
+                initial_pledge.clone(),
+                TokenAmount::zero(),
+            ),
             ..CronConfig::default()
         },
     );
@@ -216,7 +220,10 @@ fn detects_and_penalizes_faults() {
 
     h.advance_deadline(
         &mut rt,
-        CronConfig { continued_faults_penalty: PenaltyConfig::new(ongoing_penalty), ..Default::default() },
+        CronConfig {
+            continued_faults_penalty: PenaltyConfig::new(ongoing_penalty),
+            ..Default::default()
+        },
     );
 
     // recorded faulty power is unchanged
