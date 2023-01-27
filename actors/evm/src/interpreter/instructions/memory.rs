@@ -226,7 +226,7 @@ mod tests {
 
             m.step().expect("execution step failed");
             m.step().expect("execution step failed");
-            
+
             assert_eq!(m.state.stack.len(), 1);
             assert_eq!(m.state.stack.pop().unwrap(), U256::zero());
         };
@@ -261,10 +261,10 @@ mod tests {
                     {sh};
                     MLOAD;
                 }
-    
+
                 m.state.memory.grow(32);
                 m.state.memory[..32].copy_from_slice(&U256::MAX.to_bytes());
-    
+
                 m.step().expect("execution step failed");
                 m.step().expect("execution step failed");
 
