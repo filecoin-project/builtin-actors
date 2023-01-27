@@ -161,7 +161,7 @@ pub fn msize(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{interpreter::memory::Memory, evm_unit_test};
+    use crate::{evm_unit_test, interpreter::memory::Memory};
 
     #[test]
     fn copy_to_memory_big() {
@@ -265,12 +265,107 @@ mod tests {
             m.state.memory.grow(32);
             m.state.memory[..32].copy_from_slice(&U256::MAX.to_bytes());
 
-            let result = m.step();
-            assert!(result.is_ok(), "execution step failed");
-            let result = m.step();
-            assert!(result.is_ok(), "execution step failed");
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
             assert_eq!(m.state.stack.len(), 1);
             assert_eq!(m.state.stack.pop().unwrap(), U256::MAX);
+        };
+    }
+
+    #[test]
+    fn test_mstore8_basic() {
+        for i in 0..=u8::MAX {
+            evm_unit_test! {
+                (rt, m) {
+                    PUSH1;
+                    {i};
+                    PUSH0;
+                    MSTORE8;
+                }
+                m.step().expect("execution step failed");
+                m.step().expect("execution step failed");
+                m.step().expect("execution step failed");
+
+                assert_eq!(m.state.stack.len(), 0);
+                assert_eq!(m.state.memory[0], i);
+            };
+        }
+    }
+
+    #[test]
+    fn test_mstore8_large_offset() {
+        for sh in 0..16 {
+            let i = 1u16 << sh;
+            let [a, b] = i.to_be_bytes();
+            evm_unit_test! {
+                (rt, m) {
+                    PUSH1;
+                    0xff;
+                    PUSH2;
+                    {a};
+                    {b};
+                    MSTORE8;
+                }
+                m.step().expect("execution step failed");
+                m.step().expect("execution step failed");
+                m.step().expect("execution step failed");
+
+                assert_eq!(m.state.stack.len(), 0);
+                assert_eq!(m.state.memory[i as usize], 0xff);
+                // leading memory is zeroed
+                assert_eq!(&m.state.memory[..i as usize], &vec![0; i as usize]);
+            };
+        }
+    }
+
+    #[test]
+    fn test_mstore8_garbage() {
+        evm_unit_test! {
+            (rt, m) {
+                PUSH32;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0x01;
+                PUSH0;
+                MSTORE8;
+            }
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+
+            assert_eq!(m.state.stack.len(), 0);
+            assert_eq!(m.state.memory[0], 0x01);
+            // garbage is not written alongside byte
+            assert_eq!(&m.state.memory[1..32], &[0; 31]);
         };
     }
 }

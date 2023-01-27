@@ -6,6 +6,9 @@ macro_rules! evm_instruction {
     ($i:literal) => {
         $i
     };
+    ($i:expr) => {
+        $i
+    };
 }
 
 #[macro_export]
