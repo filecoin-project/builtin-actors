@@ -293,6 +293,36 @@ mod tests {
     }
 
     #[test]
+    fn test_mstore8_overwrite() {
+        evm_unit_test! {
+            (rt, m) {
+                PUSH1;
+                0x01;
+                PUSH1;
+                0x01;
+                MSTORE8;
+            }
+            // index has garbage
+            m.state.memory.grow(3);
+            m.state.memory[0] = 0xab;
+            m.state.memory[1] = 0xff;
+            m.state.memory[2] = 0xfe;
+
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+
+            assert_eq!(m.state.stack.len(), 0);
+            // overwritten
+            assert_eq!(m.state.memory[1], 0x01);
+            // byte after isn't touched
+            assert_eq!(m.state.memory[2], 0xfe);
+            // byte before isn't touched
+            assert_eq!(m.state.memory[0], 0xab);
+        };
+    }
+
+    #[test]
     fn test_mstore8_large_offset() {
         for sh in 0..16 {
             let i = 1u16 << sh;
