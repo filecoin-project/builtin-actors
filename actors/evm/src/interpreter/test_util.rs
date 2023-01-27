@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 #[macro_export]
 macro_rules! evm_instruction {
     ($i:ident) => {
