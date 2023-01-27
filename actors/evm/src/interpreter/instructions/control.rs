@@ -158,8 +158,6 @@ pub fn jumpi(bytecode: &Bytecode, pc: usize, dest: U256, test: U256) -> Result<u
 
 #[cfg(test)]
 mod tests {
-    use fil_actors_runtime::test_utils::MockRuntime;
-
     use crate::do_test;
     use crate::interpreter::U256;
 

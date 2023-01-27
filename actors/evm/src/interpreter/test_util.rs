@@ -3,6 +3,7 @@
 #[macro_export]
 macro_rules! do_test {
     ($rt:ident, $machine:ident, $code:expr, $body:block) => {
+        use ::fil_actors_runtime::test_utils::MockRuntime;
         use ::fvm_shared::econ::TokenAmount;
         use $crate::interpreter::{execution::Machine, system::System, Output};
         use $crate::{Bytecode, Bytes, EthAddress, ExecutionState};
