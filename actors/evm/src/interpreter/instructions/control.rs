@@ -159,7 +159,6 @@ pub fn jumpi(bytecode: &Bytecode, pc: usize, dest: U256, test: U256) -> Result<u
 #[cfg(test)]
 mod tests {
     use crate::do_test;
-    use crate::interpreter::test_util;
     use crate::interpreter::U256;
 
     #[test]
@@ -176,7 +175,6 @@ mod tests {
     fn test_pc() {
         do_test!(
             rt,
-            env,
             m,
             vec![
                 0x58, // PC
