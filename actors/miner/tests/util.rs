@@ -128,6 +128,12 @@ pub fn setup() -> (ActorHarness, MockRuntime) {
     h.construct_and_verify(&mut rt);
     (h, rt)
 }
+#[allow(dead_code)]
+pub enum ExpirationKind {
+    OnTime,
+    Proof,
+    Fault,
+}
 
 pub struct ActorHarness {
     pub receiver: Address,
@@ -2641,8 +2647,6 @@ impl ActorHarness {
         rt: &mut MockRuntime,
         sector: SectorOnChainInfo,
     ) -> TokenAmount {
-        let state: State = rt.get_state();
-
         let sector_size = sector.seal_proof.sector_size().unwrap();
         let sector_power = qa_power_for_sector(sector_size, &sector);
 
@@ -2658,12 +2662,6 @@ impl ActorHarness {
             0,
         )
     }
-}
-
-pub enum ExpirationKind {
-    OnTime,
-    Proof,
-    Fault,
 }
 
 #[allow(dead_code)]

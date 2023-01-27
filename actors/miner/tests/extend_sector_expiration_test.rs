@@ -1,4 +1,3 @@
-use anyhow::Chain;
 use fil_actor_market::VerifiedDealInfo;
 use fil_actor_miner::ext::verifreg::Claim as FILPlusClaim;
 use fil_actor_miner::{
@@ -176,8 +175,8 @@ fn proof_extension_validation_checks() {
     };
     expect_abort_contains_message(
         ExitCode::USR_FORBIDDEN,
-        &format!("proof validity beyond {} epochs in the future", rt.policy().max_proof_validity)
-            .to_string(),
+        format!("proof validity beyond {} epochs in the future", rt.policy().max_proof_validity)
+            .as_str(),
         h.refresh_proof_expiration(&mut rt, params),
     );
     rt.reset();
@@ -264,7 +263,7 @@ fn proof_extension_early_sector_terminates_with_penalty() {
     );
 
     // Handle proving deadline. No missed PoSt fees are charged. Termination fee charged. Total power and pledge are lowered.
-    let power = -power_for_sector(h.sector_size, &new_sector.clone());
+    let power = -power_for_sector(h.sector_size, &new_sector);
     let mut cron_config = CronConfig::empty();
     // edge case alert: cron halting will wait until **next** deadline if it needs to process terminations since we check pledge before processing terminations
     cron_config.expected_enrollment = exp_dlinfo.last() + rt.policy.wpost_challenge_window;
@@ -415,8 +414,8 @@ fn rejects_extension_past_max_for_seal_proof(v2: bool) {
             };
 
             h.refresh_proof_expiration(&mut rt, refresh_params).unwrap();
-            sector.proof_expiration = sector.proof_expiration
-                + (rt.policy().max_proof_validity - rt.policy().proof_refresh_window);
+            sector.proof_expiration +=
+                rt.policy().max_proof_validity - rt.policy().proof_refresh_window;
         }
         h.assert_queue_state(
             &mut rt,
