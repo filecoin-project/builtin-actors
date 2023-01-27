@@ -224,10 +224,9 @@ mod tests {
                 MLOAD;
             }
 
-            let result = m.step();
-            assert!(result.is_ok(), "execution step failed");
-            let result = m.step();
-            assert!(result.is_ok(), "execution step failed");
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+            
             assert_eq!(m.state.stack.len(), 1);
             assert_eq!(m.state.stack.pop().unwrap(), U256::zero());
         };
@@ -245,10 +244,9 @@ mod tests {
                 MLOAD;
             }
 
-            let result = m.step();
-            assert!(result.is_ok(), "execution step failed");
-            let result = m.step();
-            assert!(result.is_ok(), "execution step failed");
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+
             assert_eq!(m.state.stack.len(), 1);
             assert_eq!(m.state.stack.pop().unwrap(), U256::zero());
         };
