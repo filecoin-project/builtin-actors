@@ -3965,7 +3965,7 @@ fn process_early_terminations(
                 })?;
 
             penalty = &penalty_from_vesting + penalty_from_balance;
-            pledge_delta -= penalty_from_vesting.clone();
+            pledge_delta -= penalty_from_vesting;
 
             Ok((result, more, deals_to_terminate, penalty, pledge_delta))
         })?;
