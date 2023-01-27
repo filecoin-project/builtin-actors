@@ -497,7 +497,7 @@ mod tests {
     #[should_panic]
     fn test_mszie_debug_panic() {
         // Demonstrate that MSIZE depends on memory.len()
-        // Normally this should never happen and we wont panic from it.  
+        // Normally this should never happen and we wont panic from it.
         evm_unit_test! {
             (rt, m) {
                 MSIZE;

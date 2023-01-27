@@ -16,7 +16,7 @@ impl Default for Memory {
 
 impl Memory {
     #[inline]
-    /// Resizes memory to `size` length, reserving extra WASM pages as-needed. 
+    /// Resizes memory to `size` length, reserving extra WASM pages as-needed.
     /// TODO this should be renamed resize since it can also shrink memory.
     pub fn grow(&mut self, size: usize) {
         let cap = self.0.capacity();
