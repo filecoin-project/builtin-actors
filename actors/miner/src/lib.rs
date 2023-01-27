@@ -3940,7 +3940,6 @@ fn process_early_terminations(
 
                 let params = ext::market::OnMinerSectorsTerminateParams { epoch, deal_ids };
                 deals_to_terminate.push(params);
-                println!("total pledge released at termination: {}", total_initial_pledge);
             }
 
             // Pay penalty
@@ -3967,9 +3966,6 @@ fn process_early_terminations(
 
             penalty = &penalty_from_vesting + penalty_from_balance;
             pledge_delta -= penalty_from_vesting.clone();
-            println!("total penalty {}", penalty);
-            println!("total pledge from vesting penalty: {}", penalty_from_vesting);
-            println!("total pledge delta: {}", pledge_delta);
 
             Ok((result, more, deals_to_terminate, penalty, pledge_delta))
         })?;

@@ -361,44 +361,6 @@ impl Partition {
         // No change to unproven power.
     }
 
-    /// RescheduleExpirations moves expiring sectors to the target expiration,
-    /// skipping any sectors it can't find.
-    ///
-    /// The power of the rescheduled sectors is assumed to have not changed since
-    /// initial scheduling.
-    ///
-    /// Note: see the docs on State.RescheduleSectorExpirations for details on why we
-    /// skip sectors/partitions we can't find.
-    pub fn reschedule_expirations<BS: Blockstore>(
-        &mut self,
-        store: &BS,
-        sectors: &Sectors<'_, BS>,
-        new_expiration: ChainEpoch,
-        sector_numbers: &BitField,
-        sector_size: SectorSize,
-        quant: QuantSpec,
-    ) -> anyhow::Result<Vec<SectorOnChainInfo>> {
-        // Ensure these sectors actually belong to this partition.
-        let present = sector_numbers & &self.sectors;
-
-        // Filter out terminated sectors.
-        let live = &present - &self.terminated;
-
-        // Filter out faulty sectors.
-        let active = &live - &self.faults;
-
-        let sector_infos = sectors.load_sector(&active)?;
-        let mut expirations = ExpirationQueue::new(store, &self.expirations_epochs, quant)
-            .map_err(|e| e.downcast_wrap("failed to load sector expirations"))?;
-        expirations.reschedule_expirations(new_expiration, &sector_infos, sector_size)?;
-        self.expirations_epochs = expirations.amt.flush()?;
-
-        // check invariants
-        self.validate_state()?;
-
-        Ok(sector_infos)
-    }
-
     /// Replaces a number of "old" sectors with new ones.
     /// The old sectors must not be faulty or terminated.
     /// If the same sector is both removed and added, this permits rescheduling *with a change in power*.
