@@ -43,7 +43,7 @@ use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtim
 use fil_actors_runtime::{
     actor_dispatch, actor_error, deserialize_block, extract_send_result, ActorContext,
     ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
-    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR, CRON_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 pub use monies::*;
@@ -4184,9 +4184,8 @@ fn request_terminate_deals(
     deal_ids: Vec<DealID>,
 ) -> Result<(), ActorError> {
     const MAX_LENGTH: usize = 8192;
-
     for chunk in deal_ids.chunks(MAX_LENGTH) {
-        extract_send_result(rt.send_simple(
+        let res = extract_send_result(rt.send_simple(
             &STORAGE_MARKET_ACTOR_ADDR,
             ext::market::ON_MINER_SECTORS_TERMINATE_METHOD,
             IpldBlock::serialize_cbor(&ext::market::OnMinerSectorsTerminateParamsRef {
@@ -4194,7 +4193,17 @@ fn request_terminate_deals(
                 deal_ids: chunk,
             })?,
             TokenAmount::zero(),
-        ))?;
+        ));
+        // Intentionally swallow this error to prevent frozen market cron corruption from also freezing this miner cron.
+        // This is safe from a malicious caller perspective because this method's callstack should always originate with the trusted system caller.
+        if rt.message().origin() == CRON_ACTOR_ADDR {
+            match res {
+                Err(e) => error!("OnSectorsTerminate event failed from cron caller {}", e),
+                _ => (), 
+            };
+        } else {
+            res?;
+        }
     }
 
     Ok(())
