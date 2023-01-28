@@ -2,7 +2,7 @@
 
 use fil_actors_runtime::{ActorError, AsActorError};
 
-use crate::EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS;
+use crate::{EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS, EVM_WORD_SIZE};
 
 use {
     crate::interpreter::memory::Memory,
@@ -11,24 +11,10 @@ use {
     std::num::NonZeroUsize,
 };
 
-/// The size of the EVM 256-bit word in bytes.
-const WORD_SIZE: usize = 32;
-
 #[derive(Debug)]
 pub struct MemoryRegion {
     pub offset: usize,
     pub size: NonZeroUsize,
-}
-
-#[inline]
-fn grow_memory(mem: &mut Memory, mut new_size: usize) {
-    // Align to the next u256.
-    // Guaranteed to not overflow.
-    let alignment = new_size % WORD_SIZE;
-    if alignment > 0 {
-        new_size += WORD_SIZE - alignment;
-    }
-    mem.grow(new_size);
 }
 
 #[inline]
@@ -60,7 +46,7 @@ pub fn get_memory_region(
 
     let current_size = mem.len();
     if new_size as usize > current_size {
-        grow_memory(mem, new_size as usize);
+        mem.grow(new_size as usize);
     }
 
     Ok(Some(MemoryRegion {
@@ -112,7 +98,7 @@ pub fn mload(
     _system: &System<impl Runtime>,
     index: U256,
 ) -> Result<U256, ActorError> {
-    let region = get_memory_region(&mut state.memory, index, WORD_SIZE)?.expect("empty region");
+    let region = get_memory_region(&mut state.memory, index, EVM_WORD_SIZE)?.expect("empty region");
     let value =
         U256::from_big_endian(&state.memory[region.offset..region.offset + region.size.get()]);
 
@@ -126,11 +112,11 @@ pub fn mstore(
     index: U256,
     value: U256,
 ) -> Result<(), ActorError> {
-    let region = get_memory_region(&mut state.memory, index, WORD_SIZE)?.expect("empty region");
+    let region = get_memory_region(&mut state.memory, index, EVM_WORD_SIZE)?.expect("empty region");
 
-    let mut bytes = [0u8; WORD_SIZE];
+    let mut bytes = [0u8; EVM_WORD_SIZE];
     value.to_big_endian(&mut bytes);
-    state.memory[region.offset..region.offset + WORD_SIZE].copy_from_slice(&bytes);
+    state.memory[region.offset..region.offset + EVM_WORD_SIZE].copy_from_slice(&bytes);
 
     Ok(())
 }
@@ -451,7 +437,7 @@ mod tests {
     }
 
     #[test]
-    fn test_mszie_multiple_mstore8() {
+    fn test_msize_multiple_mstore8() {
         evm_unit_test! {
             (rt, m) {
                 PUSH1;
@@ -474,7 +460,7 @@ mod tests {
     }
 
     #[test]
-    fn test_mszie_multiple_mstore() {
+    fn test_msize_multiple_mstore() {
         evm_unit_test! {
             (rt, m) {
                 PUSH1;
@@ -496,8 +482,7 @@ mod tests {
         };
     }
     #[test]
-    #[should_panic]
-    fn test_mszie_debug_panic() {
+    fn test_msize_basic() {
         // Demonstrate that MSIZE depends on memory.len()
         // Normally this should never happen and we wont panic from it.
         evm_unit_test! {
@@ -507,6 +492,7 @@ mod tests {
 
             m.state.memory.grow(12);
             m.step().expect("execution step failed");
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(32));
         };
     }
 }
