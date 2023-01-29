@@ -353,6 +353,10 @@ where
     fn base_fee(&self) -> TokenAmount {
         fvm::network::base_fee()
     }
+
+    fn read_only(&self) -> bool {
+        fvm::vm::read_only()
+    }
 }
 
 impl<B> Primitives for FvmRuntime<B>

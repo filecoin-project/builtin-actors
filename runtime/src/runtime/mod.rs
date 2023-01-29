@@ -199,6 +199,10 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
 
     /// Returns the gas base fee (cost per unit) for the current epoch.
     fn base_fee(&self) -> TokenAmount;
+
+    /// Returns true if the call is read_only.
+    /// All state updates, including actor creation and balance transfers, are rejected in read_only calls.
+    fn read_only(&self) -> bool;
 }
 
 /// Message information available to the actor about executing message.
