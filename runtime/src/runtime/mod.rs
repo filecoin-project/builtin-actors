@@ -15,7 +15,7 @@ use fvm_shared::sector::{
     WindowPoStVerifyInfo,
 };
 use fvm_shared::version::NetworkVersion;
-use fvm_shared::{ActorID, MethodNum};
+use fvm_shared::{ActorID, MethodNum, Response};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
@@ -23,7 +23,7 @@ pub use self::actor_code::*;
 pub use self::policy::*;
 pub use self::randomness::DomainSeparationTag;
 use crate::runtime::builtins::Type;
-use crate::ActorError;
+use crate::{actor_error, ActorError};
 
 mod actor_code;
 pub mod builtins;
@@ -41,6 +41,8 @@ pub(crate) mod empty;
 
 pub use empty::EMPTY_ARR_CID;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::error::{ErrorNumber, ExitCode};
+use fvm_shared::sys::SendFlags;
 
 /// Runtime is the VM's internal runtime object.
 /// this is everything that is accessible to actors, beyond parameters.
@@ -142,7 +144,63 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
         method: MethodNum,
         params: Option<IpldBlock>,
         value: TokenAmount,
-    ) -> Result<Option<IpldBlock>, ActorError>;
+    ) -> Result<Option<IpldBlock>, ActorError> {
+        match self.send_generalized(to, method, params, value, None, SendFlags::empty()) {
+            Ok(ret) => {
+                if ret.exit_code.is_success() {
+                    Ok(ret.return_data)
+                } else {
+                    Err(ActorError::checked(
+                        ret.exit_code,
+                        format!(
+                            "send to {} method {} aborted with code {}",
+                            to, method, ret.exit_code
+                        ),
+                        ret.return_data,
+                    ))
+                }
+            }
+            Err(err) => Err(match err {
+                // Some of these errors are from operations in the Runtime or SDK layer
+                // before or after the underlying VM send syscall.
+                ErrorNumber::NotFound => {
+                    // This means that the receiving actor doesn't exist.
+                    // TODO: we can't reasonably determine the correct "exit code" here.
+                    actor_error!(unspecified; "receiver not found")
+                }
+                ErrorNumber::InsufficientFunds => {
+                    // This means that the send failed because we have insufficient funds. We will
+                    // get a _syscall error_, not an exit code, because the target actor will not
+                    // run (and therefore will not exit).
+                    actor_error!(insufficient_funds; "not enough funds")
+                }
+                ErrorNumber::LimitExceeded => {
+                    // This means we've exceeded the recursion limit.
+                    // TODO: Define a better exit code.
+                    actor_error!(assertion_failed; "recursion limit exceeded")
+                }
+                ErrorNumber::ReadOnly => ActorError::unchecked(
+                    ExitCode::USR_READ_ONLY,
+                    "attempted to mutate state while in readonly mode".into(),
+                ),
+                err => {
+                    // We don't expect any other syscall exit codes.
+                    actor_error!(assertion_failed; "unexpected error: {}", err)
+                }
+            }),
+        }
+    }
+
+    /// Generalization of [`Runtime::send`] that allows the caller to specify a gas limit and send flags.
+    fn send_generalized(
+        &self,
+        to: &Address,
+        method: MethodNum,
+        params: Option<IpldBlock>,
+        value: TokenAmount,
+        gas_limit: Option<u64>,
+        flags: SendFlags,
+    ) -> Result<Response, ErrorNumber>;
 
     /// Computes an address for a new actor. The returned address is intended to uniquely refer to
     /// the actor even in the event of a chain re-org (whereas an ID-address might refer to a

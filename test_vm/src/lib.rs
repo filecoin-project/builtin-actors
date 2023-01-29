@@ -42,7 +42,7 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
+use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::randomness::RANDOMNESS_LENGTH;
@@ -51,8 +51,9 @@ use fvm_shared::sector::{
     StoragePower, WindowPoStVerifyInfo,
 };
 use fvm_shared::smooth::FilterEstimate;
+use fvm_shared::sys::SendFlags;
 use fvm_shared::version::NetworkVersion;
-use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
+use fvm_shared::{ActorID, MethodNum, Response, METHOD_CONSTRUCTOR, METHOD_SEND};
 use regex::Regex;
 use serde::de::DeserializeOwned;
 use serde::{ser, Serialize};
@@ -445,17 +446,23 @@ impl<'bs> VM<'bs> {
             caller_validated: false,
             policy: &Policy::default(),
             subinvocations: RefCell::new(vec![]),
+            actor_exit: RefCell::new(None),
         };
-        let res = new_ctx.invoke();
+        let res = new_ctx.invoke_actor();
+
         let invoc = new_ctx.gather_trace(res.clone());
         RefMut::map(self.invocations.borrow_mut(), |invocs| {
             invocs.push(invoc);
             invocs
         });
         match res {
-            Err(ae) => {
+            Err(mut ae) => {
                 self.rollback(prior_root);
-                Ok(MessageResult { code: ae.exit_code(), message: ae.msg().to_string(), ret: None })
+                Ok(MessageResult {
+                    code: ae.exit_code(),
+                    message: ae.msg().to_string(),
+                    ret: ae.take_data(),
+                })
             }
             Ok(ret) => {
                 self.checkpoint();
@@ -571,6 +578,13 @@ pub struct InvocationCtx<'invocation, 'bs> {
     caller_validated: bool,
     policy: &'invocation Policy,
     subinvocations: RefCell<Vec<InvocationTrace>>,
+    actor_exit: RefCell<Option<ActorExit>>,
+}
+
+struct ActorExit {
+    code: u32,
+    data: Option<IpldBlock>,
+    msg: Option<String>,
 }
 
 impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
@@ -623,6 +637,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 caller_validated: false,
                 policy: self.policy,
                 subinvocations: RefCell::new(vec![]),
+                actor_exit: RefCell::new(None),
             };
             if is_account {
                 new_ctx.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id, None).unwrap();
@@ -658,6 +673,27 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
 
     fn to(&'_ self) -> Address {
         self.resolve_target(&self.msg.to).unwrap().1
+    }
+
+    fn invoke_actor(&mut self) -> Result<Option<IpldBlock>, ActorError> {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.invoke())).unwrap_or_else(
+            |panic| {
+                if self.actor_exit.borrow().is_some() {
+                    let exit = self.actor_exit.take().unwrap();
+                    if exit.code == 0 {
+                        Ok(exit.data)
+                    } else {
+                        Err(ActorError::unchecked_with_data(
+                            ExitCode::new(exit.code),
+                            exit.msg.unwrap_or_else(|| "actor exited".to_owned()),
+                            exit.data,
+                        ))
+                    }
+                } else {
+                    std::panic::resume_unwind(panic)
+                }
+            },
+        )
     }
 
     fn invoke(&mut self) -> Result<Option<IpldBlock>, ActorError> {
@@ -849,18 +885,17 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         self.v.get_actor(Address::new_id(id)).and_then(|act| act.predictable_address)
     }
 
-    fn send(
+    fn send_generalized(
         &self,
         to: &Address,
         method: MethodNum,
         params: Option<IpldBlock>,
         value: TokenAmount,
-    ) -> Result<Option<IpldBlock>, ActorError> {
+        _gas_limit: Option<u64>,
+        _send_flags: SendFlags,
+    ) -> Result<Response, ErrorNumber> {
         if !self.allow_side_effects {
-            return Err(ActorError::unchecked(
-                ExitCode::SYS_ASSERTION_FAILED,
-                "Calling send is not allowed during side-effect lock".to_string(),
-            ));
+            return Ok(Response { exit_code: ExitCode::SYS_ASSERTION_FAILED, return_data: None });
         }
 
         let new_actor_msg = InternalMessage { from: self.to(), to: *to, value, method, params };
@@ -872,15 +907,19 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
             caller_validated: false,
             policy: self.policy,
             subinvocations: RefCell::new(vec![]),
+            actor_exit: RefCell::new(None),
         };
-        let res = new_ctx.invoke();
-
+        let res = new_ctx.invoke_actor();
         let invoc = new_ctx.gather_trace(res.clone());
         RefMut::map(self.subinvocations.borrow_mut(), |subinvocs| {
             subinvocs.push(invoc);
             subinvocs
         });
-        res
+
+        Ok(Response {
+            exit_code: res.as_ref().err().map(|e| e.exit_code()).unwrap_or(ExitCode::OK),
+            return_data: res.unwrap_or_else(|mut e| e.take_data()),
+        })
     }
 
     fn get_randomness_from_tickets(
