@@ -302,6 +302,8 @@ where
         flags: SendFlags,
     ) -> Result<Response, ErrorNumber> {
         if self.in_transaction {
+            // Note: It's slightly improper to call this ErrorNumber::IllegalOperation,
+            // since the error arises before getting to the VM.
             return Err(ErrorNumber::IllegalOperation);
         }
 

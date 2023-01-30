@@ -578,10 +578,10 @@ impl<BS: Blockstore> MockRuntime<BS> {
             method,
             params,
             value,
+            gas_limit: None,
+            send_flags: SendFlags::default(),
             send_return,
             exit_code,
-            send_flags: SendFlags::default(),
-            gas_limit: None,
             send_error: None,
         })
     }
