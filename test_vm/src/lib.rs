@@ -765,13 +765,17 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
             }
         }
         let addr = Address::new_id(actor_id);
-        if self.v.get_actor(addr).is_some() {
-            return Err(ActorError::unchecked(
-                ExitCode::SYS_ASSERTION_FAILED,
-                "attempt to create new actor at existing address".to_string(),
-            ));
-        }
-        let a = actor(code_id, EMPTY_ARR_CID, 0, TokenAmount::zero(), predictable_address);
+        let actor = match self.v.get_actor(addr) {
+            Some(mut act) if act.code == *PLACEHOLDER_ACTOR_CODE_ID => {
+                act.code = code_id;
+                act
+            }
+            None => actor(code_id, EMPTY_ARR_CID, 0, TokenAmount::zero(), predictable_address),
+            _ => {
+                return Err(actor_error!(forbidden;
+                    "attempt to create new actor at existing address {}", addr));
+            }
+        };
 
         if self.read_only() {
             return Err(ActorError::unchecked(
@@ -781,7 +785,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         }
 
         self.top.new_actor_addr_count.replace_with(|old| *old + 1);
-        self.v.set_actor(addr, a);
+        self.v.set_actor(addr, actor);
         Ok(())
     }
 
