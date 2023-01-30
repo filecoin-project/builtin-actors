@@ -25,14 +25,20 @@ fn state_control() {
         make_identity_cid(b"a1-head"),
         42,
         TokenAmount::from_atto(10u8),
+        None,
     );
     v.set_actor(addr1, a1.clone());
     let out = v.get_actor(addr1).unwrap();
     assert_eq!(out, a1);
     let check = v.checkpoint();
 
-    let a2 =
-        actor(*PAYCH_ACTOR_CODE_ID, make_identity_cid(b"a2-head"), 88, TokenAmount::from_atto(1u8));
+    let a2 = actor(
+        *PAYCH_ACTOR_CODE_ID,
+        make_identity_cid(b"a2-head"),
+        88,
+        TokenAmount::from_atto(1u8),
+        None,
+    );
     v.set_actor(addr2, a2.clone());
     assert_eq!(v.get_actor(addr2).unwrap(), a2);
     // rollback removes a2 but not a1

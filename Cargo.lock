@@ -728,6 +728,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "fil_actor_placeholder"
+version = "10.0.0-alpha.1"
+
+[[package]]
 name = "fil_actor_power"
 version = "10.0.0-alpha.1"
 dependencies = [
@@ -855,6 +859,7 @@ dependencies = [
  "fil_actor_miner",
  "fil_actor_multisig",
  "fil_actor_paych",
+ "fil_actor_placeholder",
  "fil_actor_power",
  "fil_actor_reward",
  "fil_actor_system",
