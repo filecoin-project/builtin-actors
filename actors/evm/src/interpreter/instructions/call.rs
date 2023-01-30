@@ -337,3 +337,25 @@ fn effective_gas_limit<RT: Runtime>(system: &System<RT>, gas: U256) -> u64 {
     let gas = gas.to_u64_saturating();
     std::cmp::min(gas, gas_rsvp)
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::evm_unit_test;
+    use crate::interpreter::U256;
+
+    #[test]
+    fn test_calldataload() {
+        evm_unit_test! {
+            (rt, m) {
+                CALLDATALOAD;
+            }
+            m.state.input_data = vec![0x00, 0x01, 0x02].into();
+            m.state.stack.push(U256::from(1)).unwrap();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(0x0102) << 240);
+        };
+
+    }
+}
