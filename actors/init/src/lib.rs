@@ -6,7 +6,7 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, ActorContext, ActorError, SYSTEM_ACTOR_ADDR,
+    actor_dispatch, actor_error, extract_send_result, ActorContext, ActorError, SYSTEM_ACTOR_ADDR,
 };
 use fvm_shared::address::Address;
 use fvm_shared::{ActorID, METHOD_CONSTRUCTOR};
@@ -95,12 +95,12 @@ impl Actor {
         rt.create_actor(params.code_cid, id_address, None)?;
 
         // Invoke constructor
-        rt.send(
+        extract_send_result(rt.send_simple(
             &Address::new_id(id_address),
             METHOD_CONSTRUCTOR,
             params.constructor_params.into(),
             rt.message().value_received(),
-        )
+        ))
         .context("constructor failed")?;
 
         Ok(ExecReturn { id_address: Address::new_id(id_address), robust_address })

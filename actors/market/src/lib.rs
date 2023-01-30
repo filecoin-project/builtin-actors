@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use cid::multihash::{Code, MultihashDigest, MultihashGeneric};
 use cid::Cid;
-use fil_actors_runtime::FIRST_ACTOR_SPECIFIC_EXIT_CODE;
+use fil_actors_runtime::{extract_send_result, FIRST_ACTOR_SPECIFIC_EXIT_CODE};
 use frc46_token::token::types::{BalanceReturn, TransferFromParams, TransferFromReturn};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
@@ -216,12 +216,15 @@ impl Actor {
         }
 
         let caller = rt.message().caller();
-        let caller_status: ext::miner::IsControllingAddressReturn = deserialize_block(rt.send(
-            &Address::new_id(provider_id),
-            ext::miner::IS_CONTROLLING_ADDRESS_EXPORTED,
-            IpldBlock::serialize_cbor(&ext::miner::IsControllingAddressParam { address: caller })?,
-            TokenAmount::zero(),
-        )?)?;
+        let caller_status: ext::miner::IsControllingAddressReturn =
+            deserialize_block(extract_send_result(rt.send_simple(
+                &Address::new_id(provider_id),
+                ext::miner::IS_CONTROLLING_ADDRESS_EXPORTED,
+                IpldBlock::serialize_cbor(&ext::miner::IsControllingAddressParam {
+                    address: caller,
+                })?,
+                TokenAmount::zero(),
+            ))?)?;
         if !caller_status.is_controlling {
             return Err(actor_error!(
                 forbidden,
@@ -443,7 +446,7 @@ impl Actor {
 
         // notify clients ignoring any errors
         for (i, valid_deal) in valid_deals.iter().enumerate() {
-            _ = rt.send(
+            _ = extract_send_result(rt.send_simple(
                 &valid_deal.proposal.client,
                 MARKET_NOTIFY_DEAL_METHOD,
                 IpldBlock::serialize_cbor(&MarketNotifyDealParams {
@@ -451,7 +454,7 @@ impl Actor {
                     deal_id: new_deal_ids[i],
                 })?,
                 TokenAmount::zero(),
-            );
+            ));
         }
 
         Ok(PublishStorageDealsReturn { ids: new_deal_ids, valid_deals: valid_input_bf })
@@ -1119,14 +1122,13 @@ fn transfer_from(
     rt: &mut impl Runtime,
     params: TransferFromParams,
 ) -> Result<Vec<AllocationID>, ActorError> {
-    let ret = rt
-        .send(
-            &DATACAP_TOKEN_ACTOR_ADDR,
-            ext::datacap::TRANSFER_FROM_METHOD as u64,
-            IpldBlock::serialize_cbor(&params)?,
-            TokenAmount::zero(),
-        )
-        .context(format!("failed to send transfer to datacap {:?}", params))?;
+    let ret = extract_send_result(rt.send_simple(
+        &DATACAP_TOKEN_ACTOR_ADDR,
+        ext::datacap::TRANSFER_FROM_METHOD as u64,
+        IpldBlock::serialize_cbor(&params)?,
+        TokenAmount::zero(),
+    ))
+    .context(format!("failed to send transfer to datacap {:?}", params))?;
     let ret: TransferFromReturn = ret
         .with_context_code(ExitCode::USR_ASSERTION_FAILED, || "return expected".to_string())?
         .deserialize()?;
@@ -1138,14 +1140,13 @@ fn transfer_from(
 // Invokes BalanceOf on the data cap token actor.
 fn balance_of(rt: &mut impl Runtime, owner: &Address) -> Result<TokenAmount, ActorError> {
     let params = IpldBlock::serialize_cbor(owner)?;
-    let ret = rt
-        .send(
-            &DATACAP_TOKEN_ACTOR_ADDR,
-            ext::datacap::BALANCE_OF_METHOD as u64,
-            params,
-            TokenAmount::zero(),
-        )
-        .context(format!("failed to query datacap balance of {}", owner))?;
+    let ret = extract_send_result(rt.send_simple(
+        &DATACAP_TOKEN_ACTOR_ADDR,
+        ext::datacap::BALANCE_OF_METHOD as u64,
+        params,
+        TokenAmount::zero(),
+    ))
+    .context(format!("failed to query datacap balance of {}", owner))?;
     let ret: BalanceReturn = ret
         .with_context_code(ExitCode::USR_ASSERTION_FAILED, || "return expected".to_string())?
         .deserialize()?;

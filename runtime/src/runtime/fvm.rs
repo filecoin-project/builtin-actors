@@ -21,7 +21,7 @@ use fvm_shared::sector::{
 };
 use fvm_shared::sys::SendFlags;
 use fvm_shared::version::NetworkVersion;
-use fvm_shared::{ActorID, MethodNum};
+use fvm_shared::{ActorID, MethodNum, Response};
 use num_traits::FromPrimitive;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -298,50 +298,16 @@ where
         method: MethodNum,
         params: Option<IpldBlock>,
         value: TokenAmount,
-    ) -> Result<Option<IpldBlock>, ActorError> {
+        gas_limit: Option<u64>,
+        flags: SendFlags,
+    ) -> Result<Response, ErrorNumber> {
         if self.in_transaction {
-            return Err(actor_error!(assertion_failed; "send is not allowed during transaction"));
+            // Note: It's slightly improper to call this ErrorNumber::IllegalOperation,
+            // since the error arises before getting to the VM.
+            return Err(ErrorNumber::IllegalOperation);
         }
-        match fvm::send::send(to, method, params, value, None, SendFlags::empty()) {
-            Ok(ret) => {
-                if ret.exit_code.is_success() {
-                    Ok(ret.return_data)
-                } else {
-                    Err(ActorError::checked(
-                        ret.exit_code,
-                        format!(
-                            "send to {} method {} aborted with code {}",
-                            to, method, ret.exit_code
-                        ),
-                        ret.return_data,
-                    ))
-                }
-            }
-            Err(err) => Err(match err {
-                // Some of these errors are from operations in the Runtime or SDK layer
-                // before or after the underlying VM send syscall.
-                ErrorNumber::NotFound => {
-                    // This means that the receiving actor doesn't exist.
-                    // TODO: we can't reasonably determine the correct "exit code" here.
-                    actor_error!(unspecified; "receiver not found")
-                }
-                ErrorNumber::InsufficientFunds => {
-                    // This means that the send failed because we have insufficient funds. We will
-                    // get a _syscall error_, not an exit code, because the target actor will not
-                    // run (and therefore will not exit).
-                    actor_error!(insufficient_funds; "not enough funds")
-                }
-                ErrorNumber::LimitExceeded => {
-                    // This means we've exceeded the recursion limit.
-                    // TODO: Define a better exit code.
-                    actor_error!(assertion_failed; "recursion limit exceeded")
-                }
-                err => {
-                    // We don't expect any other syscall exit codes.
-                    actor_error!(assertion_failed; "unexpected error: {}", err)
-                }
-            }),
-        }
+
+        fvm::send::send(to, method, params, value, gas_limit, flags)
     }
 
     fn new_actor_address(&mut self) -> Result<Address, ActorError> {

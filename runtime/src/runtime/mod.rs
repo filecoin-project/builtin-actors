@@ -15,7 +15,7 @@ use fvm_shared::sector::{
     WindowPoStVerifyInfo,
 };
 use fvm_shared::version::NetworkVersion;
-use fvm_shared::{ActorID, MethodNum};
+use fvm_shared::{ActorID, MethodNum, Response};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
@@ -41,6 +41,8 @@ pub(crate) mod empty;
 
 pub use empty::EMPTY_ARR_CID;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::error::ErrorNumber;
+use fvm_shared::sys::SendFlags;
 
 /// Runtime is the VM's internal runtime object.
 /// this is everything that is accessible to actors, beyond parameters.
@@ -133,16 +135,26 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// Sends a message to another actor, returning the exit code and return value envelope.
     /// If the invoked method does not return successfully, its state changes
     /// (and that of any messages it sent in turn) will be rolled back.
-    /// Note that the current return type cannot distinguish between a successful invocation
-    /// that returns an error code, and an error originating from the syscall prior to
-    /// invoking the target actor/method.
     fn send(
         &self,
         to: &Address,
         method: MethodNum,
         params: Option<IpldBlock>,
         value: TokenAmount,
-    ) -> Result<Option<IpldBlock>, ActorError>;
+        gas_limit: Option<u64>,
+        flags: SendFlags,
+    ) -> Result<Response, ErrorNumber>;
+
+    /// Simplified version of [`Runtime::send`] that does not specify a gas limit, nor any send flags.
+    fn send_simple(
+        &self,
+        to: &Address,
+        method: MethodNum,
+        params: Option<IpldBlock>,
+        value: TokenAmount,
+    ) -> Result<Response, ErrorNumber> {
+        self.send(to, method, params, value, None, SendFlags::empty())
+    }
 
     /// Computes an address for a new actor. The returned address is intended to uniquely refer to
     /// the actor even in the event of a chain re-org (whereas an ID-address might refer to a
