@@ -5,7 +5,6 @@ use {
 
 use crate::EVM_WORD_SIZE;
 
-// REMOVEME actuall wasm page is 64Kib no?
 const PAGE_SIZE: usize = 4 * 1024;
 
 #[derive(Clone, Debug, Deref, DerefMut)]
