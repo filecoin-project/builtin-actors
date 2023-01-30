@@ -57,6 +57,7 @@ lazy_static::lazy_static! {
     pub static ref REWARD_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/reward");
     pub static ref VERIFREG_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/verifiedregistry");
     pub static ref DATACAP_TOKEN_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/datacap");
+    pub static ref PLACEHOLDER_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/placeholder");
     pub static ref ACTOR_TYPES: BTreeMap<Cid, Type> = {
         let mut map = BTreeMap::new();
         map.insert(*SYSTEM_ACTOR_CODE_ID, Type::System);
@@ -111,6 +112,7 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
     pub miner: Address,
     pub base_fee: TokenAmount,
     pub id_addresses: HashMap<Address, Address>,
+    pub delegated_addresses: HashMap<ActorID, Address>,
     pub actor_code_cids: HashMap<Address, Cid>,
     pub new_actor_addr: Option<Address>,
     pub receiver: Address,
@@ -270,6 +272,7 @@ impl<BS> MockRuntime<BS> {
             miner: Address::new_id(0),
             base_fee: Default::default(),
             id_addresses: Default::default(),
+            delegated_addresses: Default::default(),
             actor_code_cids: Default::default(),
             new_actor_addr: Default::default(),
             receiver: Address::new_id(0),
@@ -290,10 +293,11 @@ impl<BS> MockRuntime<BS> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct ExpectCreateActor {
     pub code_id: Cid,
     pub actor_id: ActorID,
+    pub predictable_address: Option<Address>,
 }
 
 #[derive(Clone, Debug)]
@@ -458,6 +462,16 @@ impl<BS: Blockstore> MockRuntime<BS> {
         self.id_addresses.insert(source, target);
     }
 
+    pub fn set_delegated_address(&mut self, source: ActorID, target: Address) {
+        assert_eq!(
+            target.protocol(),
+            Protocol::Delegated,
+            "target must use Delegated address protocol"
+        );
+        self.delegated_addresses.insert(source, target);
+        self.id_addresses.insert(target, Address::new_id(source));
+    }
+
     pub fn call<A: ActorCode>(
         &mut self,
         method_num: MethodNum,
@@ -566,8 +580,13 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 
     #[allow(dead_code)]
-    pub fn expect_create_actor(&mut self, code_id: Cid, actor_id: ActorID) {
-        let a = ExpectCreateActor { code_id, actor_id };
+    pub fn expect_create_actor(
+        &mut self,
+        code_id: Cid,
+        actor_id: ActorID,
+        predictable_address: Option<Address>,
+    ) {
+        let a = ExpectCreateActor { code_id, actor_id, predictable_address };
         self.expectations.borrow_mut().expect_create_actor = Some(a);
     }
 
@@ -800,6 +819,11 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         }
     }
 
+    fn lookup_delegated_address(&self, id: ActorID) -> Option<Address> {
+        self.require_in_call();
+        self.delegated_addresses.get(&id).copied()
+    }
+
     fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {
         self.require_in_call();
         self.actor_code_cids.get(&Address::new_id(*id)).cloned()
@@ -966,7 +990,12 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         Ok(ret)
     }
 
-    fn create_actor(&mut self, code_id: Cid, actor_id: ActorID) -> Result<(), ActorError> {
+    fn create_actor(
+        &mut self,
+        code_id: Cid,
+        actor_id: ActorID,
+        predictable_address: Option<Address>,
+    ) -> Result<(), ActorError> {
         self.require_in_call();
         if self.in_transaction {
             return Err(actor_error!(assertion_failed; "side-effect within transaction"));
@@ -978,7 +1007,12 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
             .take()
             .expect("unexpected call to create actor");
 
-        assert!(expect_create_actor.code_id == code_id && expect_create_actor.actor_id == actor_id, "unexpected actor being created, expected code: {:?} address: {:?}, actual code: {:?} address: {:?}", expect_create_actor.code_id, expect_create_actor.actor_id, code_id, actor_id);
+        assert_eq!(
+            expect_create_actor,
+            ExpectCreateActor { code_id, actor_id, predictable_address },
+            "unexpected actor being created"
+        );
+        self.set_address_actor_type(Address::new_id(actor_id), code_id);
         Ok(())
     }
 

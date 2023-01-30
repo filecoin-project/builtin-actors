@@ -68,7 +68,7 @@ fn repeated_robust_address() {
         // Next id
         let expected_id = 100;
         let expected_id_addr = Address::new_id(expected_id);
-        rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id);
+        rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id, None);
 
         // Expect a send to the multisig actor constructor
         rt.expect_send(
@@ -130,7 +130,7 @@ fn create_2_payment_channels() {
 
         let expected_id = 100 + n;
         let expected_id_addr = Address::new_id(expected_id);
-        rt.expect_create_actor(*PAYCH_ACTOR_CODE_ID, expected_id);
+        rt.expect_create_actor(*PAYCH_ACTOR_CODE_ID, expected_id, None);
 
         let fake_params = ConstructorParams { network_name: String::from("fake_param") };
 
@@ -176,7 +176,7 @@ fn create_storage_miner() {
 
     let expected_id = 100;
     let expected_id_addr = Address::new_id(expected_id);
-    rt.expect_create_actor(*MINER_ACTOR_CODE_ID, expected_id);
+    rt.expect_create_actor(*MINER_ACTOR_CODE_ID, expected_id, None);
 
     let fake_params = ConstructorParams { network_name: String::from("fake_param") };
 
@@ -227,7 +227,7 @@ fn create_multisig_actor() {
     // Next id
     let expected_id = 100;
     let expected_id_addr = Address::new_id(expected_id);
-    rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id);
+    rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id, None);
 
     let fake_params = ConstructorParams { network_name: String::from("fake_param") };
     // Expect a send to the multisig actor constructor
@@ -264,7 +264,7 @@ fn sending_constructor_failure() {
     // Create the next id address
     let expected_id = 100;
     let expected_id_addr = Address::new_id(expected_id);
-    rt.expect_create_actor(*MINER_ACTOR_CODE_ID, expected_id);
+    rt.expect_create_actor(*MINER_ACTOR_CODE_ID, expected_id, None);
 
     let fake_params = ConstructorParams { network_name: String::from("fake_param") };
     rt.expect_send(
@@ -329,7 +329,7 @@ fn exec_restricted_correctly() {
     // Next id
     let expected_id = 100;
     let expected_id_addr = Address::new_id(expected_id);
-    rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id);
+    rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id, None);
 
     // Expect a send to the multisig actor constructor
     rt.expect_send(

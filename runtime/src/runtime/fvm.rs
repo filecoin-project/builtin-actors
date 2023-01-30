@@ -164,6 +164,10 @@ where
         fvm::actor::resolve_address(address)
     }
 
+    fn lookup_delegated_address(&self, id: ActorID) -> Option<Address> {
+        fvm::actor::lookup_delegated_address(id)
+    }
+
     fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {
         fvm::actor::get_actor_code_cid(&Address::new_id(*id))
     }
@@ -344,13 +348,18 @@ where
         Ok(fvm::actor::next_actor_address())
     }
 
-    fn create_actor(&mut self, code_id: Cid, actor_id: ActorID) -> Result<(), ActorError> {
+    fn create_actor(
+        &mut self,
+        code_id: Cid,
+        actor_id: ActorID,
+        predictable_address: Option<Address>,
+    ) -> Result<(), ActorError> {
         if self.in_transaction {
             return Err(
                 actor_error!(assertion_failed; "create_actor is not allowed during transaction"),
             );
         }
-        fvm::actor::create_actor(actor_id, &code_id, None).map_err(|e| match e {
+        fvm::actor::create_actor(actor_id, &code_id, predictable_address).map_err(|e| match e {
             ErrorNumber::IllegalArgument => {
                 ActorError::illegal_argument("failed to create actor".into())
             }

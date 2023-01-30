@@ -35,8 +35,8 @@ use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{CborStore, RawBytes};
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
+use fvm_shared::address::Address;
 use fvm_shared::address::Payload;
-use fvm_shared::address::{Address, Protocol};
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
@@ -140,17 +140,23 @@ impl<'bs> VM<'bs> {
         let sys_st = SystemState::new(store).unwrap();
         let sys_head = v.put_store(&sys_st);
         let sys_value = faucet_total.clone(); // delegate faucet funds to system so we can construct faucet by sending to bls addr
-        v.set_actor(SYSTEM_ACTOR_ADDR, actor(*SYSTEM_ACTOR_CODE_ID, sys_head, 0, sys_value));
+        v.set_actor(SYSTEM_ACTOR_ADDR, actor(*SYSTEM_ACTOR_CODE_ID, sys_head, 0, sys_value, None));
 
         // init
         let init_st = InitState::new(store, "integration-test".to_string()).unwrap();
         let init_head = v.put_store(&init_st);
-        v.set_actor(INIT_ACTOR_ADDR, actor(*INIT_ACTOR_CODE_ID, init_head, 0, TokenAmount::zero()));
+        v.set_actor(
+            INIT_ACTOR_ADDR,
+            actor(*INIT_ACTOR_CODE_ID, init_head, 0, TokenAmount::zero(), None),
+        );
 
         // reward
 
         let reward_head = v.put_store(&RewardState::new(StoragePower::zero()));
-        v.set_actor(REWARD_ACTOR_ADDR, actor(*REWARD_ACTOR_CODE_ID, reward_head, 0, reward_total));
+        v.set_actor(
+            REWARD_ACTOR_ADDR,
+            actor(*REWARD_ACTOR_CODE_ID, reward_head, 0, reward_total, None),
+        );
 
         // cron
         let builtin_entries = vec![
@@ -164,20 +170,23 @@ impl<'bs> VM<'bs> {
             },
         ];
         let cron_head = v.put_store(&CronState { entries: builtin_entries });
-        v.set_actor(CRON_ACTOR_ADDR, actor(*CRON_ACTOR_CODE_ID, cron_head, 0, TokenAmount::zero()));
+        v.set_actor(
+            CRON_ACTOR_ADDR,
+            actor(*CRON_ACTOR_CODE_ID, cron_head, 0, TokenAmount::zero(), None),
+        );
 
         // power
         let power_head = v.put_store(&PowerState::new(&v.store).unwrap());
         v.set_actor(
             STORAGE_POWER_ACTOR_ADDR,
-            actor(*POWER_ACTOR_CODE_ID, power_head, 0, TokenAmount::zero()),
+            actor(*POWER_ACTOR_CODE_ID, power_head, 0, TokenAmount::zero(), None),
         );
 
         // market
         let market_head = v.put_store(&MarketState::new(&v.store).unwrap());
         v.set_actor(
             STORAGE_MARKET_ACTOR_ADDR,
-            actor(*MARKET_ACTOR_CODE_ID, market_head, 0, TokenAmount::zero()),
+            actor(*MARKET_ACTOR_CODE_ID, market_head, 0, TokenAmount::zero(), None),
         );
 
         // verifreg
@@ -226,22 +235,22 @@ impl<'bs> VM<'bs> {
         let verifreg_head = v.put_store(&VerifRegState::new(&v.store, root_msig_addr).unwrap());
         v.set_actor(
             VERIFIED_REGISTRY_ACTOR_ADDR,
-            actor(*VERIFREG_ACTOR_CODE_ID, verifreg_head, 0, TokenAmount::zero()),
+            actor(*VERIFREG_ACTOR_CODE_ID, verifreg_head, 0, TokenAmount::zero(), None),
         );
 
         // datacap
         let datacap_head =
             v.put_store(&DataCapState::new(&v.store, *VERIFIED_REGISTRY_ACTOR_ADDR).unwrap());
         v.set_actor(
-            *DATACAP_TOKEN_ACTOR_ADDR,
-            actor(*DATACAP_TOKEN_ACTOR_CODE_ID, datacap_head, 0, TokenAmount::zero()),
+            DATACAP_TOKEN_ACTOR_ADDR,
+            actor(*DATACAP_TOKEN_ACTOR_CODE_ID, datacap_head, 0, TokenAmount::zero(), None),
         );
 
         // burnt funds
         let burnt_funds_head = v.put_store(&AccountState { address: BURNT_FUNDS_ACTOR_ADDR });
         v.set_actor(
             BURNT_FUNDS_ACTOR_ADDR,
-            actor(*ACCOUNT_ACTOR_CODE_ID, burnt_funds_head, 0, TokenAmount::zero()),
+            actor(*ACCOUNT_ACTOR_CODE_ID, burnt_funds_head, 0, TokenAmount::zero(), None),
         );
 
         // create a faucet with 1 billion FIL for setting up test accounts
@@ -571,19 +580,28 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 return Ok((act, a));
             }
         };
+
         // Address does not yet exist, create it
-        let protocol = target.protocol();
-        match protocol {
-            Protocol::Actor | Protocol::ID => {
+        let is_account = match target.payload() {
+            Payload::Secp256k1(_) | Payload::BLS(_) => true,
+            Payload::Delegated(da)
+            // Validate that there's an actor at the target ID (we don't care what is there,
+            // just that something is there).
+            if self.v.get_actor(Address::new_id(da.namespace())).is_some() =>
+                {
+                    false
+                }
+            _ => {
                 return Err(ActorError::unchecked(
                     ExitCode::SYS_INVALID_RECEIVER,
-                    format!("cannot create account for address {} type {}", target, protocol),
+                    format!("cannot create account for address {} type {}", target, target.protocol()),
                 ));
             }
-            _ => (),
-        }
+        };
+
         let mut st = self.v.get_state::<InitState>(INIT_ACTOR_ADDR).unwrap();
-        let target_id = st.map_address_to_new_id(self.v.store, target).unwrap();
+        let (target_id, existing) = st.map_addresses_to_id(self.v.store, target, None).unwrap();
+        assert!(!existing, "should never have existing actor when no f4 address is specified");
         let target_id_addr = Address::new_id(target_id);
         let mut init_actor = self.v.get_actor(INIT_ACTOR_ADDR).unwrap();
         init_actor.head = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
@@ -606,13 +624,17 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 policy: self.policy,
                 subinvocations: RefCell::new(vec![]),
             };
-            new_ctx.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id).unwrap();
-            let res = new_ctx.invoke();
-            let invoc = new_ctx.gather_trace(res);
-            RefMut::map(self.subinvocations.borrow_mut(), |subinvocs| {
-                subinvocs.push(invoc);
-                subinvocs
-            });
+            if is_account {
+                new_ctx.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id, None).unwrap();
+                let res = new_ctx.invoke();
+                let invoc = new_ctx.gather_trace(res);
+                RefMut::map(self.subinvocations.borrow_mut(), |subinvocs| {
+                    subinvocs.push(invoc);
+                    subinvocs
+                });
+            } else {
+                new_ctx.create_actor(*PLACEHOLDER_ACTOR_CODE_ID, target_id, Some(*target)).unwrap();
+            }
         }
 
         Ok((self.v.get_actor(target_id_addr).unwrap(), target_id_addr))
@@ -704,7 +726,12 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
 impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
     type Blockstore = &'bs MemoryBlockstore;
 
-    fn create_actor(&mut self, code_id: Cid, actor_id: ActorID) -> Result<(), ActorError> {
+    fn create_actor(
+        &mut self,
+        code_id: Cid,
+        actor_id: ActorID,
+        predictable_address: Option<Address>,
+    ) -> Result<(), ActorError> {
         match NON_SINGLETON_CODES.get(&code_id) {
             Some(_) => (),
             None => {
@@ -721,7 +748,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
                 "attempt to create new actor at existing address".to_string(),
             ));
         }
-        let a = actor(code_id, EMPTY_ARR_CID, 0, TokenAmount::zero());
+        let a = actor(code_id, EMPTY_ARR_CID, 0, TokenAmount::zero(), predictable_address);
         self.v.set_actor(addr, a);
         Ok(())
     }
@@ -816,6 +843,10 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
             None => None,
             Some(act) => Some(act.code),
         }
+    }
+
+    fn lookup_delegated_address(&self, id: ActorID) -> Option<Address> {
+        self.v.get_actor(Address::new_id(id)).and_then(|act| act.predictable_address)
     }
 
     fn send(
@@ -1082,10 +1113,17 @@ pub struct Actor {
     pub head: Cid,
     pub call_seq_num: u64,
     pub balance: TokenAmount,
+    pub predictable_address: Option<Address>,
 }
 
-pub fn actor(code: Cid, head: Cid, seq: u64, bal: TokenAmount) -> Actor {
-    Actor { code, head, call_seq_num: seq, balance: bal }
+pub fn actor(
+    code: Cid,
+    head: Cid,
+    call_seq_num: u64,
+    balance: TokenAmount,
+    predictable_address: Option<Address>,
+) -> Actor {
+    Actor { code, head, call_seq_num, balance, predictable_address }
 }
 
 #[derive(Clone)]
