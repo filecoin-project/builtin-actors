@@ -44,10 +44,7 @@ pub fn get_memory_region(
         .checked_add(size)
         .context_code(EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS, "new memory size exceeds max u32")?;
 
-    let current_size = mem.len();
-    if new_size as usize > current_size {
-        mem.grow(new_size as usize);
-    }
+    mem.grow(new_size as usize);
 
     Ok(Some(MemoryRegion {
         offset: offset as usize,
