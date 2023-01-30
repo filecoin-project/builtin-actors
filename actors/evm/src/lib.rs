@@ -46,6 +46,8 @@ const EVM_MAX_RESERVED_METHOD: u64 = 1023;
 pub const NATIVE_METHOD_SIGNATURE: &str = "handle_filecoin_method(uint64,uint64,bytes)";
 pub const NATIVE_METHOD_SELECTOR: [u8; 4] = [0x86, 0x8e, 0x10, 0xc4];
 
+const EVM_WORD_SIZE: usize = 32;
+
 #[test]
 fn test_method_selector() {
     // We could just _generate_ this method selector with a proc macro, but this is easier.
