@@ -21,7 +21,8 @@ use num_derive::FromPrimitive;
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR,
+    actor_dispatch, actor_error, extract_send_result, ActorContext, ActorError, AsActorError,
+    SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 
@@ -406,7 +407,7 @@ where
         value: TokenAmount,
     ) -> Result<Response, ErrorNumber> {
         // The Runtime discards some of the information from the syscall :-(
-        let res = self.rt.send(to, method, params, value);
+        let res = extract_send_result(self.rt.send_simple(to, method, params, value));
 
         let rec = match res {
             Ok(ret) => Response { exit_code: ExitCode::OK, return_data: ret },

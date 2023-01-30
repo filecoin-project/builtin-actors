@@ -4,8 +4,8 @@
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, resolve_to_actor_id, ActorDowncast, ActorError, Array,
-    AsActorError,
+    actor_dispatch, actor_error, extract_send_result, resolve_to_actor_id, ActorDowncast,
+    ActorError, Array, AsActorError,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::DAG_CBOR;
@@ -120,7 +120,7 @@ impl Actor {
 
         // Validate signature
 
-        rt.send(
+        extract_send_result(rt.send_simple(
             &signer,
             ext::account::AUTHENTICATE_MESSAGE_METHOD,
             IpldBlock::serialize_cbor(&ext::account::AuthenticateMessageParams {
@@ -128,7 +128,7 @@ impl Actor {
                 message: sv_bz,
             })?,
             TokenAmount::zero(),
-        )
+        ))
         .map_err(|e| e.wrap("voucher sig authentication failed"))?;
 
         let pch_addr = rt.message().receiver();
@@ -166,12 +166,12 @@ impl Actor {
         }
 
         if let Some(extra) = &sv.extra {
-            rt.send(
+            extract_send_result(rt.send_simple(
                 &extra.actor,
                 extra.method,
                 Some(IpldBlock { codec: DAG_CBOR, data: extra.data.to_vec() }),
                 TokenAmount::zero(),
-            )
+            ))
             .map_err(|e| e.wrap("spend voucher verification failed"))?;
         }
 
@@ -300,7 +300,7 @@ impl Actor {
         }
 
         // send ToSend to `to`
-        rt.send(&st.to, METHOD_SEND, None, st.to_send)
+        extract_send_result(rt.send_simple(&st.to, METHOD_SEND, None, st.to_send))
             .map_err(|e| e.wrap("Failed to send funds to `to` address"))?;
 
         // the remaining balance will be returned to "From" upon deletion.

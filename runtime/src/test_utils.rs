@@ -945,7 +945,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         &self.store
     }
 
-    fn send_generalized(
+    fn send(
         &self,
         to: &Address,
         method: MethodNum,

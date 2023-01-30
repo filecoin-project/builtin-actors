@@ -292,7 +292,7 @@ where
         &self.blockstore
     }
 
-    fn send_generalized(
+    fn send(
         &self,
         to: &Address,
         method: MethodNum,
