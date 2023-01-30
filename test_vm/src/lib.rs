@@ -444,6 +444,7 @@ impl<'bs> VM<'bs> {
             msg,
             allow_side_effects: true,
             caller_validated: false,
+            read_only: false,
             policy: &Policy::default(),
             subinvocations: RefCell::new(vec![]),
         };
@@ -575,6 +576,7 @@ pub struct InvocationCtx<'invocation, 'bs> {
     msg: InternalMessage,
     allow_side_effects: bool,
     caller_validated: bool,
+    read_only: bool,
     policy: &'invocation Policy,
     subinvocations: RefCell<Vec<InvocationTrace>>,
 }
@@ -605,6 +607,14 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             }
         };
 
+        // But only if we're not in read-only mode.
+        if self.read_only() {
+            return Err(ActorError::unchecked(
+                ExitCode::USR_READ_ONLY,
+                format!("cannot create actor {target} in read-only mode"),
+            ));
+        }
+
         let mut st = self.v.get_state::<InitState>(INIT_ACTOR_ADDR).unwrap();
         let (target_id, existing) = st.map_addresses_to_id(self.v.store, target, None).unwrap();
         assert!(!existing, "should never have existing actor when no f4 address is specified");
@@ -627,6 +637,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 msg: new_actor_msg,
                 allow_side_effects: true,
                 caller_validated: false,
+                read_only: false,
                 policy: self.policy,
                 subinvocations: RefCell::new(vec![]),
             };
@@ -682,6 +693,12 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 return Err(ActorError::unchecked(
                     ExitCode::SYS_INSUFFICIENT_FUNDS,
                     "insufficient balance to transfer".to_string(),
+                ));
+            }
+            if self.read_only() {
+                return Err(ActorError::unchecked(
+                    ExitCode::USR_READ_ONLY,
+                    "cannot transfer value in read-only mode".to_string(),
                 ));
             }
         }
@@ -755,6 +772,15 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
             ));
         }
         let a = actor(code_id, EMPTY_ARR_CID, 0, TokenAmount::zero(), predictable_address);
+
+        if self.read_only() {
+            return Err(ActorError::unchecked(
+                ExitCode::USR_READ_ONLY,
+                "cannot create actor in read-only mode".into(),
+            ));
+        }
+
+        self.top.new_actor_addr_count.replace_with(|old| *old + 1);
         self.v.set_actor(addr, a);
         Ok(())
     }
@@ -862,8 +888,13 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         params: Option<IpldBlock>,
         value: TokenAmount,
         _gas_limit: Option<u64>,
-        _send_flags: SendFlags,
+        mut send_flags: SendFlags,
     ) -> Result<Response, ErrorNumber> {
+        // replicate FVM by silently propagating read only flag to subcalls
+        if self.read_only() {
+            send_flags.set(SendFlags::READ_ONLY, true)
+        }
+
         if !self.allow_side_effects {
             return Ok(Response { exit_code: ExitCode::SYS_ASSERTION_FAILED, return_data: None });
         }
@@ -875,6 +906,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
             msg: new_actor_msg,
             allow_side_effects: true,
             caller_validated: false,
+            read_only: send_flags.read_only(),
             policy: self.policy,
             subinvocations: RefCell::new(vec![]),
         };
@@ -910,6 +942,13 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
     }
 
     fn create<T: Serialize>(&mut self, obj: &T) -> Result<(), ActorError> {
+        if self.read_only {
+            return Err(ActorError::unchecked(
+                ExitCode::USR_READ_ONLY,
+                "cannot create state in read-only".to_string(),
+            ));
+        }
+
         let maybe_act = self.v.get_actor(self.to());
         match maybe_act {
             None => Err(ActorError::unchecked(
@@ -942,11 +981,15 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
                 ExitCode::SYS_ASSERTION_FAILED,
                 "actor does not exist".to_string(),
             )),
-            Some(mut act) => {
+            Some(mut act) if !self.read_only() => {
                 act.head = *root;
                 self.v.set_actor(self.to(), act);
                 Ok(())
             }
+            _ => Err(ActorError::unchecked(
+                ExitCode::USR_READ_ONLY,
+                "actor is read-only".to_string(),
+            )),
         }
     }
 
@@ -966,6 +1009,14 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         let ret = result?;
         let mut act = self.v.get_actor(self.to()).unwrap();
         act.head = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
+
+        if self.read_only {
+            return Err(ActorError::unchecked(
+                ExitCode::USR_READ_ONLY,
+                "actor is read-only".to_string(),
+            ));
+        }
+
         self.v.set_actor(self.to(), act);
         Ok(ret)
     }
@@ -973,9 +1024,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
     fn new_actor_address(&mut self) -> Result<Address, ActorError> {
         let mut b = self.top.originator_stable_addr.to_bytes();
         b.extend_from_slice(&self.top.originator_call_seq.to_be_bytes());
-        b.extend_from_slice(
-            &self.top.new_actor_addr_count.replace_with(|old| *old + 1).to_be_bytes(),
-        );
+        b.extend_from_slice(&self.top.new_actor_addr_count.borrow().to_be_bytes());
         Ok(Address::new_actor(&b))
     }
 
@@ -999,6 +1048,10 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
 
     fn base_fee(&self) -> TokenAmount {
         TokenAmount::zero()
+    }
+
+    fn read_only(&self) -> bool {
+        self.read_only
     }
 }
 
