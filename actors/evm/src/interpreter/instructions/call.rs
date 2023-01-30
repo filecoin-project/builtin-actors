@@ -374,4 +374,25 @@ mod tests {
 
     }
 
+    #[test]
+    fn test_calldatacopy() {
+        evm_unit_test! {
+            (rt, m) {
+                CALLDATACOPY;
+            }
+            m.state.input_data = vec![0x00, 0x01, 0x02].into();
+            m.state.stack.push(U256::from(2)).unwrap();  // length
+            m.state.stack.push(U256::from(1)).unwrap();  // offset
+            m.state.stack.push(U256::from(0)).unwrap();  // dest-offset
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 0);
+            let mut expected = [0u8; 32];
+            expected[0] = 0x01;
+            expected[1] = 0x02;
+            assert_eq!(m.state.memory.as_ref(), &expected);
+        };
+
+    }
+
 }
