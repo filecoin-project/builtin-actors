@@ -3,6 +3,7 @@
 
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::CborStore;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
@@ -23,7 +24,7 @@ pub use self::actor_code::*;
 pub use self::policy::*;
 pub use self::randomness::DomainSeparationTag;
 use crate::runtime::builtins::Type;
-use crate::ActorError;
+use crate::{actor_error, ActorError};
 
 mod actor_code;
 pub mod builtins;
@@ -43,6 +44,7 @@ pub use empty::EMPTY_ARR_CID;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::error::ErrorNumber;
 use fvm_shared::sys::SendFlags;
+use multihash::Code;
 
 /// Runtime is the VM's internal runtime object.
 /// this is everything that is accessible to actors, beyond parameters.
@@ -106,10 +108,27 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// Initializes the state object.
     /// This is only valid when the state has not yet been initialized.
     /// NOTE: we should also limit this to being invoked during the constructor method
-    fn create<T: Serialize>(&mut self, obj: &T) -> Result<(), ActorError>;
+    fn create<T: Serialize>(&mut self, obj: &T) -> Result<(), ActorError> {
+        let root = self.get_state_root()?;
+        if root != EMPTY_ARR_CID {
+            return Err(
+                actor_error!(illegal_state; "failed to create state; expected empty array CID, got: {}", root),
+            );
+        }
+        let new_root = self.store().put_cbor(obj, Code::Blake2b256)
+            .map_err(|e| actor_error!(illegal_argument; "failed to write actor state during creation: {}", e.to_string()))?;
+        self.set_state_root(&new_root)?;
+        Ok(())
+    }
 
     /// Loads a readonly copy of the state of the receiver into the argument.
-    fn state<T: DeserializeOwned>(&self) -> Result<T, ActorError>;
+    fn state<T: DeserializeOwned>(&self) -> Result<T, ActorError> {
+        Ok(self
+            .store()
+            .get_cbor(&self.get_state_root()?)
+            .map_err(|_| actor_error!(illegal_argument; "failed to get actor for Readonly state"))?
+            .expect("State does not exist for actor state root"))
+    }
 
     /// Gets the state-root.
     fn get_state_root(&self) -> Result<Cid, ActorError>;
