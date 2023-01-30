@@ -358,4 +358,20 @@ mod tests {
         };
 
     }
+
+    #[test]
+    fn test_calldatasize() {
+        evm_unit_test! {
+            (rt, m) {
+                CALLDATASIZE;
+            }
+            m.state.input_data = vec![0x00, 0x01, 0x02].into();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(3));
+        };
+
+    }
+
 }
