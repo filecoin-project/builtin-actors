@@ -941,35 +941,6 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         Ok(TEST_VM_RAND_ARRAY)
     }
 
-    fn create<T: Serialize>(&mut self, obj: &T) -> Result<(), ActorError> {
-        if self.read_only {
-            return Err(ActorError::unchecked(
-                ExitCode::USR_READ_ONLY,
-                "cannot create state in read-only".to_string(),
-            ));
-        }
-
-        let maybe_act = self.v.get_actor(self.to());
-        match maybe_act {
-            None => Err(ActorError::unchecked(
-                ExitCode::SYS_ASSERTION_FAILED,
-                "failed to create state".to_string(),
-            )),
-            Some(mut act) => {
-                if act.head != EMPTY_ARR_CID {
-                    Err(ActorError::unchecked(
-                        ExitCode::SYS_ASSERTION_FAILED,
-                        "failed to construct state: already initialized".to_string(),
-                    ))
-                } else {
-                    act.head = self.v.store.put_cbor(obj, Code::Blake2b256).unwrap();
-                    self.v.set_actor(self.to(), act);
-                    Ok(())
-                }
-            }
-        }
-    }
-
     fn get_state_root(&self) -> Result<Cid, ActorError> {
         Ok(self.v.get_actor(self.to()).unwrap().head)
     }
@@ -991,10 +962,6 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
                 "actor is read-only".to_string(),
             )),
         }
-    }
-
-    fn state<T: DeserializeOwned>(&self) -> Result<T, ActorError> {
-        Ok(self.v.get_state::<T>(self.to()).unwrap())
     }
 
     fn transaction<S, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
