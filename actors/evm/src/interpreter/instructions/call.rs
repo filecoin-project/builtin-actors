@@ -356,7 +356,6 @@ mod tests {
             assert_eq!(m.state.stack.len(), 1);
             assert_eq!(m.state.stack.pop().unwrap(), U256::from(0x0102) << 240);
         };
-
     }
 
     #[test]
@@ -371,7 +370,6 @@ mod tests {
             assert_eq!(m.state.stack.len(), 1);
             assert_eq!(m.state.stack.pop().unwrap(), U256::from(3));
         };
-
     }
 
     #[test]
@@ -392,7 +390,5 @@ mod tests {
             expected[1] = 0x02;
             assert_eq!(m.state.memory.as_ref(), &expected);
         };
-
     }
-
 }

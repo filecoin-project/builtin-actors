@@ -164,6 +164,5 @@ mod tests {
             assert_eq!(m.state.stack.len(), 1);
             assert_eq!(m.state.stack.pop().unwrap(), U256::from(123));
         };
-
     }
 }
