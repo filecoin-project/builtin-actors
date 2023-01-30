@@ -1068,6 +1068,11 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
     fn base_fee(&self) -> TokenAmount {
         self.base_fee.clone()
     }
+
+    fn read_only(&self) -> bool {
+        // Unsupported for unit tests
+        unimplemented!()
+    }
 }
 
 impl<BS> Primitives for MockRuntime<BS> {
