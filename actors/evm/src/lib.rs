@@ -300,15 +300,17 @@ impl EvmContractActor {
 
 /// Format "filecoin_native_method" input parameters.
 fn handle_filecoin_method_input(method: u64, codec: u64, params: &[u8]) -> Vec<u8> {
-    let static_args = [method, codec, 32 * 3 /* start of params */, params.len() as u64];
-    let total_words = static_args.len() + (params.len() / 32) + (params.len() % 32 > 0) as usize;
-    let len = 4 + total_words * 32;
+    let static_args =
+        [method, codec, EVM_WORD_SIZE as u64 * 3 /* start of params */, params.len() as u64];
+    let total_words =
+        static_args.len() + (params.len() / EVM_WORD_SIZE) + (params.len() % 32 > 0) as usize;
+    let len = 4 + total_words * EVM_WORD_SIZE;
     let mut buf = Vec::with_capacity(len);
     buf.extend_from_slice(&NATIVE_METHOD_SELECTOR);
     for n in static_args {
         // Left-pad to 32 bytes, then be-encode the value.
         let encoded = n.to_be_bytes();
-        buf.resize(buf.len() + (32 - encoded.len()), 0);
+        buf.resize(buf.len() + (EVM_WORD_SIZE - encoded.len()), 0);
         buf.extend_from_slice(&encoded);
     }
     // Extend with the params, then right-pad with zeros.

@@ -416,7 +416,7 @@ mod tests {
                 MSTORE;
             }
             m.state.memory.grow(64);
-            m.state.memory[..32].copy_from_slice(&[0xff; 32]);
+            m.state.memory[..EVM_WORD_SIZE].copy_from_slice(&[0xff; EVM_WORD_SIZE]);
             // single byte outside expected overwritten area
             m.state.memory[32] = 0xfe;
 

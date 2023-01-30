@@ -1,4 +1,4 @@
-use crate::EVM_MAX_RESERVED_METHOD;
+use crate::{EVM_MAX_RESERVED_METHOD, EVM_WORD_SIZE};
 use fil_actors_runtime::runtime::Runtime;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::{address::Address, econ::TokenAmount, sys::SendFlags, METHOD_SEND};
@@ -205,16 +205,16 @@ pub(super) fn call_actor_shared<RT: Runtime>(
 
         let ret_blk = data.unwrap_or(IpldBlock { codec: 0, data: vec![] });
 
-        let mut output = Vec::with_capacity(4 * 32 + ret_blk.data.len());
+        let mut output = Vec::with_capacity(4 * EVM_WORD_SIZE + ret_blk.data.len());
         output.extend_from_slice(&exit_code.to_bytes());
         output.extend_from_slice(&U256::from(ret_blk.codec).to_bytes());
-        output.extend_from_slice(&U256::from(output.len() + 32).to_bytes());
+        output.extend_from_slice(&U256::from(output.len() + EVM_WORD_SIZE).to_bytes());
         output.extend_from_slice(&U256::from(ret_blk.data.len()).to_bytes());
         output.extend_from_slice(&ret_blk.data);
         // Pad out to the next increment of 32 bytes for solidity compatibility.
-        let offset = output.len() % 32;
+        let offset = output.len() % EVM_WORD_SIZE;
         if offset > 0 {
-            output.resize(output.len() - offset + 32, 0);
+            output.resize(output.len() - offset + EVM_WORD_SIZE, 0);
         }
         output
     };
