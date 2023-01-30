@@ -45,8 +45,8 @@ pub fn calldataload(
         .ok()
         .filter(|&start| start < input_len)
         .map(|start: usize| {
-            let end = core::cmp::min(start.saturating_add(32usize), input_len);
-            let mut data = [0; 32];
+            let end = core::cmp::min(start.saturating_add(crate::EVM_WORD_SIZE), input_len);
+            let mut data = [0; crate::EVM_WORD_SIZE];
             data[..end - start].copy_from_slice(&state.input_data[start..end]);
             U256::from_big_endian(&data)
         })

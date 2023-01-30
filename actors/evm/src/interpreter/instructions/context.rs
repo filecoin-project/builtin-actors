@@ -1,6 +1,8 @@
 use fil_actors_runtime::ActorError;
 use fvm_shared::clock::ChainEpoch;
 
+use crate::EVM_WORD_SIZE;
+
 use {
     crate::interpreter::{ExecutionState, System, U256},
     fil_actors_runtime::runtime::Runtime,
@@ -26,8 +28,8 @@ pub fn blockhash(
         .and_then(|height| system.rt.tipset_cid(height))
         .map(|cid| {
             let mut hash = cid.hash().digest();
-            if hash.len() > 32 {
-                hash = &hash[..32]
+            if hash.len() > EVM_WORD_SIZE {
+                hash = &hash[..EVM_WORD_SIZE]
             }
             U256::from_big_endian(hash)
         })
