@@ -15,8 +15,6 @@ use fvm_shared::sector::{
     PoStProof, RegisteredPoStProof, RegisteredSealProof, RegisteredUpdateProof, SectorNumber,
     SectorSize, StoragePower,
 };
-
-use crate::ext::verifreg::ClaimID;
 use fvm_shared::smooth::FilterEstimate;
 
 use fil_actors_runtime::DealWeight;

@@ -6,7 +6,6 @@ use fil_actor_init::testing::check_state_invariants;
 use fil_actor_init::{
     Actor as InitActor, ConstructorParams, ExecParams, ExecReturn, Method, State,
 };
-use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{

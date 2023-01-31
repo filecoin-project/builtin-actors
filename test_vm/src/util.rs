@@ -862,13 +862,6 @@ pub fn verifreg_add_verifier(v: &VM, verifier: Address, data_cap: StoragePower) 
         MultisigMethod::Propose as u64,
         Some(proposal),
     );
-    let verifreg_invoc = ExpectInvocation {
-        to: VERIFIED_REGISTRY_ACTOR_ADDR,
-        method: VerifregMethod::AddVerifier as u64,
-        params: Some(serialize(&add_verifier_params, "verifreg add verifier params").unwrap()),
-        subinvocs: Some(vec![]),
-        ..Default::default()
-    };
     ExpectInvocation {
         to: TEST_VERIFREG_ROOT_ADDR,
         method: MultisigMethod::Propose as u64,
@@ -1194,42 +1187,28 @@ pub fn market_publish_deal(
                 to: VERIFIED_REGISTRY_ACTOR_ADDR,
                 method: VerifregMethod::UniversalReceiverHook as u64,
                 params: Some(
-                    IpldBlock::serialize_cbor(&TransferFromParams {
-                        from: deal_client,
-                        to: VERIFIED_REGISTRY_ACTOR_ADDR,
-                        amount: token_amount.clone(),
-                        operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
+                    IpldBlock::serialize_cbor(&UniversalReceiverParams {
+                        type_: FRC46_TOKEN_TYPE,
+                        payload: serialize(
+                            &FRC46TokenReceived {
+                                from: deal_client.id().unwrap(),
+                                to: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
+                                operator: STORAGE_MARKET_ACTOR_ADDR.id().unwrap(),
+                                amount: token_amount,
+                                operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
+                                token_data: Default::default(),
+                            },
+                            "token received params",
+                        )
+                        .unwrap(),
                     })
                     .unwrap(),
                 ),
                 code: Some(ExitCode::OK),
-                subinvocs: Some(vec![ExpectInvocation {
-                    to: VERIFIED_REGISTRY_ACTOR_ADDR,
-                    method: VerifregMethod::UniversalReceiverHook as u64,
-                    params: Some(
-                        IpldBlock::serialize_cbor(&UniversalReceiverParams {
-                            type_: FRC46_TOKEN_TYPE,
-                            payload: serialize(
-                                &FRC46TokenReceived {
-                                    from: deal_client.id().unwrap(),
-                                    to: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
-                                    operator: STORAGE_MARKET_ACTOR_ADDR.id().unwrap(),
-                                    amount: token_amount,
-                                    operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
-                                    token_data: Default::default(),
-                                },
-                                "token received params",
-                            )
-                            .unwrap(),
-                        })
-                        .unwrap(),
-                    ),
-                    code: Some(ExitCode::OK),
-                    ..Default::default()
-                }]),
                 ..Default::default()
-            },
-        )
+            }]),
+            ..Default::default()
+        })
     }
     expect_publish_invocs.push(ExpectInvocation {
         to: deal_client,

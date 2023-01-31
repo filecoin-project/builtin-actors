@@ -169,8 +169,6 @@ fn remove_datacap_simple_successful_path() {
     assert_eq!(verified_client_id_addr, remove_datacap_ret.verified_client);
     assert_eq!(allowance_to_remove, remove_datacap_ret.data_cap_removed);
 
-    v_st = v.get_state::<VerifregState>(VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
-
     // confirm client's allowance has fallen by half
     let token_st = v.get_state::<DataCapState>(DATACAP_TOKEN_ACTOR_ADDR).unwrap();
     let balance = token_st.balance(&store, verified_client_id_addr.id().unwrap()).unwrap();
