@@ -573,16 +573,43 @@ impl<BS: Blockstore> MockRuntime<BS> {
         send_return: Option<IpldBlock>,
         exit_code: ExitCode,
     ) {
+        self.expect_send(
+            to,
+            method,
+            params,
+            value,
+            None,
+            SendFlags::default(),
+            send_return,
+            exit_code,
+            None,
+        )
+    }
+
+    #[allow(dead_code)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn expect_send(
+        &mut self,
+        to: Address,
+        method: MethodNum,
+        params: Option<IpldBlock>,
+        value: TokenAmount,
+        gas_limit: Option<u64>,
+        send_flags: SendFlags,
+        send_return: Option<IpldBlock>,
+        exit_code: ExitCode,
+        send_error: Option<ErrorNumber>,
+    ) {
         self.expectations.borrow_mut().expect_sends.push_back(ExpectedMessage {
             to,
             method,
             params,
             value,
-            gas_limit: None,
-            send_flags: SendFlags::default(),
+            gas_limit,
+            send_flags,
             send_return,
             exit_code,
-            send_error: None,
+            send_error,
         })
     }
 
