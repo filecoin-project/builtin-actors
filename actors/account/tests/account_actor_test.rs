@@ -10,6 +10,7 @@ use fvm_shared::crypto::signature::Signature;
 use fvm_shared::error::ExitCode;
 use fvm_shared::MethodNum;
 
+use fil_actor_account::types::AuthenticateMessageParams;
 use fil_actor_account::{testing::check_state_invariants, Actor as AccountActor, Method, State};
 use fil_actors_runtime::builtin::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::test_utils::*;

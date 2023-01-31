@@ -2429,7 +2429,7 @@ impl ActorHarness {
                 }
 
                 rt.expect_send(
-                    *VERIFIED_REGISTRY_ACTOR_ADDR,
+                    VERIFIED_REGISTRY_ACTOR_ADDR,
                     fil_actor_miner::ext::verifreg::GET_CLAIMS_METHOD as u64,
                     IpldBlock::serialize_cbor(&GetClaimsParams {
                         provider: self.receiver.id().unwrap(),
@@ -2483,7 +2483,7 @@ impl ActorHarness {
                 quality_adjusted_delta: qa_delta,
             };
             rt.expect_send(
-                *STORAGE_POWER_ACTOR_ADDR,
+                STORAGE_POWER_ACTOR_ADDR,
                 UPDATE_CLAIMED_POWER_METHOD,
                 IpldBlock::serialize_cbor(&params).unwrap(),
                 TokenAmount::zero(),

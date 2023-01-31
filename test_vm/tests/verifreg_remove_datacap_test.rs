@@ -11,11 +11,11 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::HAMT_BIT_WIDTH;
+use num_traits::ToPrimitive;
 
 use fil_actor_datacap::{
     DestroyParams, Method as DataCapMethod, MintParams, State as DataCapState,
 };
-use fil_actor_verifreg::ext::datacap::TOKEN_PRECISION;
 use fil_actor_verifreg::{
     AddVerifiedClientParams, DataCap, RemoveDataCapParams, RemoveDataCapRequest,
     RemoveDataCapReturn, SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP,
@@ -53,7 +53,7 @@ fn remove_datacap_simple_successful_path() {
     let mint_params = MintParams {
         to: verified_client,
         amount: TokenAmount::from_whole(verifier_allowance.to_i64().unwrap()),
-        operators: vec![*STORAGE_MARKET_ACTOR_ADDR],
+        operators: vec![STORAGE_MARKET_ACTOR_ADDR],
     };
     apply_ok(
         &v,
@@ -93,9 +93,9 @@ fn remove_datacap_simple_successful_path() {
         verifiers.get(&verifier2_id_addr.to_bytes()).unwrap().unwrap();
     assert_eq!(verifier_allowance, *verifier2_data_cap);
 
-    let token_st = v.get_state::<DataCapState>(*DATACAP_TOKEN_ACTOR_ADDR).unwrap();
+    let token_st = v.get_state::<DataCapState>(DATACAP_TOKEN_ACTOR_ADDR).unwrap();
     let balance = token_st.balance(&store, verified_client_id_addr.id().unwrap()).unwrap();
-    assert_eq!(balance, &verifier_allowance * TOKEN_PRECISION);
+    assert_eq!(balance, TokenAmount::from_whole(verifier_allowance.to_i64().unwrap()));
 
     let mut proposal_ids = make_map_with_root_and_bitwidth::<_, RemoveDataCapProposalID>(
         &v_st.remove_data_cap_proposal_ids,
@@ -172,11 +172,14 @@ fn remove_datacap_simple_successful_path() {
     v_st = v.get_state::<VerifregState>(VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
 
     // confirm client's allowance has fallen by half
-    let token_st = v.get_state::<DataCapState>(*DATACAP_TOKEN_ACTOR_ADDR).unwrap();
+    let token_st = v.get_state::<DataCapState>(DATACAP_TOKEN_ACTOR_ADDR).unwrap();
     let balance = token_st.balance(&store, verified_client_id_addr.id().unwrap()).unwrap();
-    assert_eq!(balance, verifier_allowance.sub(&allowance_to_remove) * TOKEN_PRECISION);
+    assert_eq!(
+        balance,
+        TokenAmount::from_whole(verifier_allowance.sub(&allowance_to_remove).to_i64().unwrap())
+    );
 
-    v_st = v.get_state::<VerifregState>(*VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
+    v_st = v.get_state::<VerifregState>(VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
     // confirm proposalIds has changed as expected
     proposal_ids =
         make_map_with_root_and_bitwidth(&v_st.remove_data_cap_proposal_ids, &store, HAMT_BIT_WIDTH)
@@ -252,20 +255,13 @@ fn remove_datacap_simple_successful_path() {
     assert_eq!(verified_client_id_addr, remove_datacap_ret.verified_client);
     assert_eq!(allowance_to_remove, remove_datacap_ret.data_cap_removed);
 
-    // confirm client has been removed entirely
-
-    v_st = v.get_state::<VerifregState>(VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
-    verified_clients = make_map_with_root_and_bitwidth::<_, BigIntDe>(
-        &v_st.verified_clients,
-        &store,
-        HAMT_BIT_WIDTH,
-    )
-    .unwrap();
-
-    assert!(verified_clients.get(&verified_client_id_addr.to_bytes()).unwrap().is_none());
+    // confirm client has no balance
+    let token_st = v.get_state::<DataCapState>(DATACAP_TOKEN_ACTOR_ADDR).unwrap();
+    let balance = token_st.balance(&store, verified_client_id_addr.id().unwrap()).unwrap();
+    assert_eq!(balance, TokenAmount::zero());
 
     // confirm proposalIds has changed as expected
-    v_st = v.get_state::<VerifregState>(*VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
+    v_st = v.get_state::<VerifregState>(VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
     proposal_ids =
         make_map_with_root_and_bitwidth(&v_st.remove_data_cap_proposal_ids, &store, HAMT_BIT_WIDTH)
             .unwrap();
@@ -372,7 +368,7 @@ fn expect_remove_datacap(
     ]
     .concat();
     ExpectInvocation {
-        to: *VERIFIED_REGISTRY_ACTOR_ADDR,
+        to: VERIFIED_REGISTRY_ACTOR_ADDR,
         method: VerifregMethod::RemoveVerifiedClientDataCap as u64,
         params: Some(IpldBlock::serialize_cbor(&params).unwrap()),
         code: Some(ExitCode::OK),

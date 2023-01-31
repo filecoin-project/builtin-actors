@@ -33,4 +33,4 @@ log = "0.4.14"
 [dev-dependencies]
 fil_actors_runtime = { path = "../../runtime", features = ["test_utils", "sector-default"] }
 [features]
-fil-actor = []
+fil-actor = ["fil_actors_runtime/fil-actor"]

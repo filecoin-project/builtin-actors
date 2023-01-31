@@ -2,22 +2,6 @@ use fvm_ipld_encoding::serde_bytes;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::tuple::{Deserialize_tuple, Serialize_tuple};
 use fvm_shared::address::Address;
-use fvm_shared::bigint::{bigint_ser, BigInt};
-
-pub mod account {
-    use super::*;
-
-    pub const AUTHENTICATE_MESSAGE_METHOD: u64 =
-        frc42_dispatch::method_hash!("AuthenticateMessage");
-
-    #[derive(Serialize_tuple, Deserialize_tuple)]
-    pub struct AuthenticateMessageParams {
-        #[serde(with = "serde_bytes")]
-        pub signature: Vec<u8>,
-        #[serde(with = "serde_bytes")]
-        pub message: Vec<u8>,
-    }
-}
 
 pub mod account {
     use super::*;
@@ -36,9 +20,7 @@ pub mod account {
 
 pub mod datacap {
     use super::*;
-
-    // TODO: This constant should be imported from FVM once available there.
-    pub const TOKEN_PRECISION: u64 = 1_000_000_000_000_000_000;
+    use fvm_shared::econ::TokenAmount;
 
     #[repr(u64)]
     pub enum Method {
@@ -59,7 +41,6 @@ pub mod datacap {
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
     pub struct DestroyParams {
         pub owner: Address,
-        #[serde(with = "bigint_ser")]
-        pub amount: BigInt,
+        pub amount: TokenAmount,
     }
 }

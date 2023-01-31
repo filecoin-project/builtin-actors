@@ -216,6 +216,7 @@ impl Actor {
         let to = rt
             .resolve_address(&params.to)
             .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "to must be ID address")?;
+        let to_address = Address::new_id(to);
 
         let mut hook = rt
             .transaction(|st: &mut State, rt| {
@@ -235,7 +236,7 @@ impl Actor {
                 token
                     .transfer(
                         from,
-                        to,
+                        &to_address,
                         &params.amount,
                         params.operator_data.clone(),
                         RawBytes::default(),
@@ -264,6 +265,7 @@ impl Actor {
         let to = rt
             .resolve_address(&params.to)
             .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "to must be an ID address")?;
+        let to_address = Address::new_id(to);
 
         let mut hook = rt
             .transaction(|st: &mut State, rt| {
@@ -284,7 +286,7 @@ impl Actor {
                     .transfer_from(
                         &operator,
                         &from,
-                        &to,
+                        &to_address,
                         &params.amount,
                         params.operator_data.clone(),
                         RawBytes::default(),
@@ -449,10 +451,7 @@ trait AsActorResult<T> {
 
 impl<T> AsActorResult<T> for Result<T, TokenError> {
     fn actor_result(self) -> Result<T, ActorError> {
-        self.map_err(|e| {
-            let msg = e.to_string();
-            ActorError::unchecked(ExitCode::from(e), msg)
-        })
+        self.map_err(|e| ActorError::unchecked(ExitCode::from(&e), e.to_string()))
     }
 }
 

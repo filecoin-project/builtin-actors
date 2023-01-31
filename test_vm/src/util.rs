@@ -873,7 +873,7 @@ pub fn verifreg_add_verifier(v: &VM, verifier: Address, data_cap: StoragePower) 
         to: TEST_VERIFREG_ROOT_ADDR,
         method: MultisigMethod::Propose as u64,
         subinvocs: Some(vec![ExpectInvocation {
-            to: *VERIFIED_REGISTRY_ACTOR_ADDR,
+            to: VERIFIED_REGISTRY_ACTOR_ADDR,
             method: VerifregMethod::AddVerifier as u64,
             params: Some(IpldBlock::serialize_cbor(&add_verifier_params).unwrap()),
             subinvocs: Some(vec![ExpectInvocation {
@@ -1122,7 +1122,7 @@ pub fn market_publish_deal(
     };
     let ret: PublishStorageDealsReturn = apply_ok(
         v,
-        provider,
+        worker,
         STORAGE_MARKET_ACTOR_ADDR,
         TokenAmount::zero(),
         MarketMethod::PublishStorageDeals as u64,

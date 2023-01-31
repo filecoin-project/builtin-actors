@@ -241,7 +241,7 @@ impl<'bs> VM<'bs> {
 
         // datacap
         let datacap_head =
-            v.put_store(&DataCapState::new(&v.store, *VERIFIED_REGISTRY_ACTOR_ADDR).unwrap());
+            v.put_store(&DataCapState::new(&v.store, VERIFIED_REGISTRY_ACTOR_ADDR).unwrap());
         v.set_actor(
             DATACAP_TOKEN_ACTOR_ADDR,
             actor(*DATACAP_TOKEN_ACTOR_CODE_ID, datacap_head, 0, TokenAmount::zero(), None),

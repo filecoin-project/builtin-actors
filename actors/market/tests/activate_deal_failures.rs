@@ -7,7 +7,6 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::deal::DealID;
 use fvm_shared::error::ExitCode;
@@ -137,7 +136,7 @@ fn fail_when_deal_has_already_been_expired() {
         METHOD_SEND,
         None,
         deal_proposal.provider_collateral.clone(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
 

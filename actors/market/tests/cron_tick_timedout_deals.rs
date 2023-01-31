@@ -181,33 +181,6 @@ fn timed_out_and_verified_deals_are_slashed_deleted() {
     // ONLY deal1 and deal2 should be sent to the Registry actor
     rt.set_epoch(process_epoch(START_EPOCH, *deal_ids.last().unwrap()));
 
-    // expected sends to the registry actor
-    let param1 = RestoreBytesParams {
-        address: deal1.client,
-        deal_size: StoragePower::from(deal1.piece_size.0),
-    };
-    let param2 = RestoreBytesParams {
-        address: deal2.client,
-        deal_size: StoragePower::from(deal2.piece_size.0),
-    };
-
-    rt.expect_send(
-        VERIFIED_REGISTRY_ACTOR_ADDR,
-        ext::verifreg::RESTORE_BYTES_METHOD as u64,
-        RawBytes::serialize(param1).unwrap(),
-        TokenAmount::zero(),
-        RawBytes::default(),
-        ExitCode::OK,
-    );
-    rt.expect_send(
-        VERIFIED_REGISTRY_ACTOR_ADDR,
-        ext::verifreg::RESTORE_BYTES_METHOD as u64,
-        RawBytes::serialize(param2).unwrap(),
-        TokenAmount::zero(),
-        RawBytes::default(),
-        ExitCode::OK,
-    );
-
     let expected_burn = 3 * &deal1.provider_collateral;
     rt.expect_send(BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, None, expected_burn, None, ExitCode::OK);
     cron_tick(&mut rt);

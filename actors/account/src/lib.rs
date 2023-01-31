@@ -15,6 +15,8 @@ use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{actor_dispatch, ActorDowncast};
 use fil_actors_runtime::{actor_error, ActorError};
 
+use crate::types::AuthenticateMessageParams;
+
 pub use self::state::State;
 
 mod state;

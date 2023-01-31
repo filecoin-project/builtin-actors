@@ -6,8 +6,8 @@ use fil_actor_market::policy::detail::DEAL_MAX_LABEL_SIZE;
 use fil_actor_market::{
     deal_id_key, ext, ActivateDealsParams, Actor as MarketActor, ClientDealProposal, DealArray,
     DealMetaArray, Label, MarketNotifyDealParams, Method, PublishStorageDealsParams,
-    PublishStorageDealsReturn, State, WithdrawBalanceParams, MARKET_NOTIFY_DEAL_METHOD,
-    NO_ALLOCATION_ID, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
+    PublishStorageDealsReturn, State, WithdrawBalanceParams, EX_DEAL_EXPIRED,
+    MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
 };
 use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
@@ -748,7 +748,7 @@ fn deal_expires() {
 
     rt.set_epoch(start_epoch + EPOCHS_IN_DAY + 1);
     rt.expect_send(
-        *BURNT_FUNDS_ACTOR_ADDR,
+        BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
         None,
         deal.provider_collateral,
@@ -896,7 +896,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     let datacap_amount = TokenAmount::from_whole(deal.piece_size.0 as i64);
     let transfer_params = TransferFromParams {
         from: client_resolved,
-        to: *VERIFIED_REGISTRY_ACTOR_ADDR,
+        to: VERIFIED_REGISTRY_ACTOR_ADDR,
         amount: datacap_amount.clone(),
         operator_data: serialize(&alloc_req, "allocation requests").unwrap(),
     };

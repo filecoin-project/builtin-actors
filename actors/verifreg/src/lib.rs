@@ -175,101 +175,8 @@ impl Actor {
             .get_verifier_cap(rt.store(), &verifier)?
             .ok_or_else(|| actor_error!(not_found, "caller {} is not a verifier", verifier))?;
 
-            // Validate caller is one of the verifiers.
-            let verifier = rt.message().caller();
-            let BigIntDe(verifier_cap) = verifiers
-                .get(&verifier.to_bytes())
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to get Verifier {}", verifier),
-                    )
-                })?
-                .ok_or_else(|| actor_error!(not_found, format!("no such Verifier {}", verifier)))?;
-
-            // Validate client to be added isn't a verifier
-            let found = verifiers.contains_key(&client.to_bytes()).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get verifier")
-            })?;
-            if found {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "verifier {} cannot be added as a verified client",
-                    client
-                ));
-            }
-
-            // Compute new verifier cap and update.
-            if verifier_cap < &params.allowance {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "Add more DataCap {} for VerifiedClient than allocated {}",
-                    params.allowance,
-                    verifier_cap
-                ));
-            }
-            let new_verifier_cap = verifier_cap - &params.allowance;
-
-            verifiers.set(verifier.to_bytes().into(), BigIntDe(new_verifier_cap)).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("Failed to update new verifier cap for {}", verifier),
-                )
-            })?;
-
-            let client_cap = verified_clients.get(&client.to_bytes()).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("Failed to get verified client {}", client),
-                )
-            })?;
-            // if verified client exists, add allowance to existing cap
-            // otherwise, create new client with allownace
-            let client_cap = if let Some(BigIntDe(client_cap)) = client_cap {
-                client_cap + params.allowance
-            } else {
-                params.allowance
-            };
-
-            verified_clients.set(client.to_bytes().into(), BigIntDe(client_cap.clone())).map_err(
-                |e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!(
-                            "Failed to add verified client {} with cap {}",
-                            client, client_cap,
-                        ),
-                    )
-                },
-            )?;
-
-            st.verifiers = verifiers.flush().map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush verifiers")
-            })?;
-            st.verified_clients = verified_clients.flush().map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush verified clients")
-            })?;
-
-            Ok(())
-        })?;
-
-        Ok(())
-    }
-
-    /// Called by StorageMarketActor during PublishStorageDeals.
-    /// Do not allow partially verified deals (DealSize must be greater than equal to allowed cap).
-    /// Delete VerifiedClient if remaining DataCap is smaller than minimum VerifiedDealSize.
-    pub fn use_bytes<BS, RT>(rt: &mut RT, params: UseBytesParams) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
-        rt.validate_immediate_caller_is(std::iter::once(&STORAGE_MARKET_ACTOR_ADDR))?;
-
-        let client = resolve_to_actor_id(rt, &params.address)?;
-        let client = Address::new_id(client);
-
-        if params.deal_size < rt.policy().minimum_verified_deal_size {
+        // Disallow existing verifiers as clients.
+        if st.get_verifier_cap(rt.store(), &client)?.is_some() {
             return Err(actor_error!(
                 illegal_argument,
                 "verifier {} cannot be added as a verified client",
@@ -277,92 +184,8 @@ impl Actor {
             ));
         }
 
-        rt.transaction(|st: &mut State, rt| {
-            let mut verified_clients =
-                make_map_with_root_and_bitwidth(&st.verified_clients, rt.store(), HAMT_BIT_WIDTH)
-                    .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        "failed to load verified clients",
-                    )
-                })?;
-
-            let BigIntDe(vc_cap) = verified_clients
-                .get(&client.to_bytes())
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to get verified client {}", &client),
-                    )
-                })?
-                .ok_or_else(|| actor_error!(not_found, "no such verified client {}", client))?;
-            if vc_cap.is_negative() {
-                return Err(actor_error!(
-                    illegal_state,
-                    "negative cap for client {}: {}",
-                    client,
-                    vc_cap
-                ));
-            }
-
-            if &params.deal_size > vc_cap {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "Deal size of {} is greater than verifier_cap {} for verified client {}",
-                    params.deal_size,
-                    vc_cap,
-                    client
-                ));
-            };
-
-            let new_vc_cap = vc_cap - &params.deal_size;
-            if new_vc_cap < rt.policy().minimum_verified_deal_size {
-                // Delete entry if remaining DataCap is less than MinVerifiedDealSize.
-                // Will be restored later if the deal did not get activated with a ProvenSector.
-                verified_clients
-                    .delete(&client.to_bytes())
-                    .map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("Failed to delete verified client {}", client),
-                        )
-                    })?
-                    .ok_or_else(|| {
-                        actor_error!(
-                            illegal_state,
-                            "Failed to delete verified client {}: not found",
-                            client
-                        )
-                    })?;
-            } else {
-                verified_clients.set(client.to_bytes().into(), BigIntDe(new_vc_cap)).map_err(
-                    |e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("Failed to update verified client {}", client),
-                        )
-                    },
-                )?;
-            }
-
-            st.verified_clients = verified_clients.flush().map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush verified clients")
-            })?;
-            Ok(())
-        })?;
-
-        Ok(())
-    }
-
-    /// Called by HandleInitTimeoutDeals from StorageMarketActor when a VerifiedDeal fails to init.
-    /// Restore allowable cap for the client, creating new entry if the client has been deleted.
-    pub fn restore_bytes<BS, RT>(rt: &mut RT, params: RestoreBytesParams) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-        RT: Runtime<BS>,
-    {
-        rt.validate_immediate_caller_is(std::iter::once(&STORAGE_MARKET_ACTOR_ADDR))?;
-        if params.deal_size < rt.policy().minimum_verified_deal_size {
+        // Compute new verifier allowance.
+        if verifier_cap < params.allowance {
             return Err(actor_error!(
                 illegal_argument,
                 "add more DataCap {} for client than allocated {}",
@@ -371,21 +194,15 @@ impl Actor {
             ));
         }
 
-        let client = resolve_to_actor_id(rt, &params.address)?;
-        let client = Address::new_id(client);
-
-        let st: State = rt.state()?;
-        if client == st.root_key {
-            return Err(actor_error!(illegal_argument, "Cannot restore allowance for Rootkey"));
-        }
-
+        // Reduce verifier's cap.
+        let new_verifier_cap = verifier_cap - &params.allowance;
         rt.transaction(|st: &mut State, rt| {
             st.put_verifier(rt.store(), &verifier, &new_verifier_cap)
                 .context("failed to update verifier allowance")
         })?;
 
         // Credit client token allowance.
-        let operators = vec![*STORAGE_MARKET_ACTOR_ADDR];
+        let operators = vec![STORAGE_MARKET_ACTOR_ADDR];
         mint(rt, &client, &params.allowance, operators).context(format!(
             "failed to mint {} data cap to client {}",
             &params.allowance, client
@@ -804,7 +621,7 @@ impl Actor {
         params: UniversalReceiverParams,
     ) -> Result<AllocationsResponse, ActorError> {
         // Accept only the data cap token.
-        rt.validate_immediate_caller_is(&[*DATACAP_TOKEN_ACTOR_ADDR])?;
+        rt.validate_immediate_caller_is(&[DATACAP_TOKEN_ACTOR_ADDR])?;
 
         let my_id = rt.message().receiver().id().unwrap();
         let curr_epoch = rt.curr_epoch();
@@ -992,11 +809,11 @@ fn transfer(rt: &mut impl Runtime, to: ActorID, amount: &DataCap) -> Result<(), 
 }
 
 fn datacap_to_tokens(amount: &DataCap) -> TokenAmount {
-    amount * TOKEN_PRECISION
+    TokenAmount::from_atto(amount.clone()) * TOKEN_PRECISION
 }
 
-fn tokens_to_datacap(amount: &BigInt) -> BigInt {
-    amount / TOKEN_PRECISION
+fn tokens_to_datacap(amount: &TokenAmount) -> BigInt {
+    amount.atto() / TOKEN_PRECISION
 }
 
 fn use_proposal_id<BS>(

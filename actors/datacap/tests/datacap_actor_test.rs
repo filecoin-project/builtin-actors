@@ -100,8 +100,8 @@ mod mint {
         let amt = TokenAmount::from_whole(1);
         let params = MintParams { to: *ALICE, amount: amt, operators: vec![] };
 
-        rt.expect_validate_caller_addr(vec![*VERIFIED_REGISTRY_ACTOR_ADDR]);
-        rt.set_caller(*MARKET_ACTOR_CODE_ID, *STORAGE_MARKET_ACTOR_ADDR);
+        rt.expect_validate_caller_addr(vec![VERIFIED_REGISTRY_ACTOR_ADDR]);
+        rt.set_caller(*MARKET_ACTOR_CODE_ID, STORAGE_MARKET_ACTOR_ADDR);
         expect_abort_contains_message(
             ExitCode::USR_FORBIDDEN,
             "caller address",

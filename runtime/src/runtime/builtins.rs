@@ -36,6 +36,7 @@ impl Type {
             Type::Multisig => "multisig",
             Type::Reward => "reward",
             Type::VerifiedRegistry => "verifiedregistry",
+            Type::DataCap => "datacap",
         }
     }
 }

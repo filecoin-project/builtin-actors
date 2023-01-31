@@ -22,8 +22,8 @@ use fvm_ipld_encoding::ipld_block::IpldBlock;
 
 pub fn new_runtime() -> MockRuntime {
     MockRuntime {
-        receiver: *DATACAP_TOKEN_ACTOR_ADDR,
-        caller: *SYSTEM_ACTOR_ADDR,
+        receiver: DATACAP_TOKEN_ACTOR_ADDR,
+        caller: SYSTEM_ACTOR_ADDR,
         caller_type: *SYSTEM_ACTOR_CODE_ID,
         ..Default::default()
     }
@@ -66,7 +66,7 @@ impl Harness {
         amount: &TokenAmount,
         operators: Vec<Address>,
     ) -> Result<MintReturn, ActorError> {
-        rt.expect_validate_caller_addr(vec![*VERIFIED_REGISTRY_ACTOR_ADDR]);
+        rt.expect_validate_caller_addr(vec![VERIFIED_REGISTRY_ACTOR_ADDR]);
 
         // Expect the token receiver hook to be called.
         let hook_params = UniversalReceiverParams {

@@ -4,10 +4,15 @@ use frc46_token::token::TOKEN_PRECISION;
 use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser::BigIntDe;
-use fvm_shared::{MethodNum, HAMT_BIT_WIDTH};
+use fvm_shared::bigint::bigint_ser::{BigIntDe, BigIntSer};
+use fvm_shared::clock::ChainEpoch;
+use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
+use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::sector::SectorNumber;
+use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH};
+use num_traits::{ToPrimitive, Zero};
 
-use fil_actor_verifreg::ext::datacap::TOKEN_PRECISION;
 use fil_actor_verifreg::testing::check_state_invariants;
 use fil_actor_verifreg::{
     ext, Actor as VerifregActor, AddVerifiedClientParams, AddVerifierParams, Allocation,
@@ -18,6 +23,7 @@ use fil_actor_verifreg::{
     RemoveExpiredClaimsReturn, SectorAllocationClaim, State,
 };
 use fil_actors_runtime::cbor::serialize;
+use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::policy_constants::{
     MAXIMUM_VERIFIED_ALLOCATION_TERM, MINIMUM_VERIFIED_ALLOCATION_TERM,
 };
@@ -33,7 +39,7 @@ pub const ROOT_ADDR: Address = Address::new_id(101);
 
 pub fn new_runtime() -> MockRuntime {
     MockRuntime {
-        receiver: ROOT_ADDR,
+        receiver: VERIFIED_REGISTRY_ACTOR_ADDR,
         caller: SYSTEM_ACTOR_ADDR,
         caller_type: *SYSTEM_ACTOR_CODE_ID,
         ..Default::default()
@@ -172,10 +178,10 @@ impl Harness {
         let mint_params = ext::datacap::MintParams {
             to: client_resolved,
             amount: TokenAmount::from_whole(allowance.to_i64().unwrap()),
-            operators: vec![*STORAGE_MARKET_ACTOR_ADDR],
+            operators: vec![STORAGE_MARKET_ACTOR_ADDR],
         };
         rt.expect_send(
-            *DATACAP_TOKEN_ACTOR_ADDR,
+            DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Mint as MethodNum,
             IpldBlock::serialize_cbor(&mint_params).unwrap(),
             TokenAmount::zero(),
@@ -191,73 +197,6 @@ impl Harness {
         assert!(ret.is_none());
         rt.verify();
 
-        // Confirm the verifier was added to state.
-        self.assert_client_allowance(rt, client, expected_allowance);
-        Ok(())
-    }
-
-    pub fn assert_client_allowance(&self, rt: &MockRuntime, client: &Address, allowance: &DataCap) {
-        let client_id_addr = rt.get_id_address(client).unwrap();
-        assert_eq!(*allowance, self.get_client_allowance(rt, &client_id_addr));
-    }
-
-    pub fn get_client_allowance(&self, rt: &MockRuntime, client: &Address) -> DataCap {
-        let clients = load_clients(rt);
-        let BigIntDe(allowance) = clients.get(&client.to_bytes()).unwrap().unwrap();
-        allowance.clone()
-    }
-
-    pub fn assert_client_removed(&self, rt: &MockRuntime, client: &Address) {
-        let client_id_addr = rt.get_id_address(client).unwrap();
-        let clients = load_clients(rt);
-        assert!(!clients.contains_key(&client_id_addr.to_bytes()).unwrap())
-    }
-
-    pub fn add_verifier_and_client(
-        &self,
-        rt: &mut MockRuntime,
-        verifier: &Address,
-        client: &Address,
-        verifier_allowance: &DataCap,
-        client_allowance: &DataCap,
-    ) {
-        self.add_verifier(rt, verifier, verifier_allowance).unwrap();
-        self.add_client(rt, verifier, client, client_allowance, client_allowance).unwrap();
-    }
-
-    pub fn use_bytes(
-        &self,
-        rt: &mut MockRuntime,
-        client: &Address,
-        amount: &DataCap,
-    ) -> Result<(), ActorError> {
-        rt.expect_validate_caller_addr(vec![STORAGE_MARKET_ACTOR_ADDR]);
-        rt.set_caller(*MARKET_ACTOR_CODE_ID, STORAGE_MARKET_ACTOR_ADDR);
-        let params = UseBytesParams { address: *client, deal_size: amount.clone() };
-        let ret = rt.call::<VerifregActor>(
-            Method::UseBytes as MethodNum,
-            &RawBytes::serialize(params).unwrap(),
-        )?;
-        assert_eq!(RawBytes::default(), ret);
-        rt.verify();
-        Ok(())
-    }
-
-    pub fn restore_bytes(
-        &self,
-        rt: &mut MockRuntime,
-        client: &Address,
-        amount: &DataCap,
-    ) -> Result<(), ActorError> {
-        rt.expect_validate_caller_addr(vec![STORAGE_MARKET_ACTOR_ADDR]);
-        rt.set_caller(*MARKET_ACTOR_CODE_ID, STORAGE_MARKET_ACTOR_ADDR);
-        let params = RestoreBytesParams { address: *client, deal_size: amount.clone() };
-        let ret = rt.call::<VerifregActor>(
-            Method::RestoreBytes as MethodNum,
-            &RawBytes::serialize(params).unwrap(),
-        )?;
-        assert_eq!(RawBytes::default(), ret);
-        rt.verify();
         Ok(())
     }
 
@@ -304,7 +243,7 @@ impl Harness {
         datacap_burnt: u64,
         all_or_nothing: bool,
     ) -> Result<ClaimAllocationsReturn, ActorError> {
-        rt.expect_validate_caller_type(vec![*MINER_ACTOR_CODE_ID]);
+        rt.expect_validate_caller_type(vec![Type::Miner]);
         rt.set_caller(*MINER_ACTOR_CODE_ID, Address::new_id(provider));
 
         if datacap_burnt > 0 {
@@ -345,7 +284,7 @@ impl Harness {
         rt.expect_validate_caller_any();
 
         rt.expect_send(
-            *DATACAP_TOKEN_ACTOR_ADDR,
+            DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Transfer as MethodNum,
             IpldBlock::serialize_cbor(&TransferParams {
                 to: Address::new_id(client),
@@ -413,7 +352,7 @@ impl Harness {
         expected_alloc_ids: Vec<AllocationID>,
         expected_burn: u64,
     ) -> Result<(), ActorError> {
-        rt.set_caller(*DATACAP_TOKEN_ACTOR_CODE_ID, *DATACAP_TOKEN_ACTOR_ADDR);
+        rt.set_caller(*DATACAP_TOKEN_ACTOR_CODE_ID, DATACAP_TOKEN_ACTOR_ADDR);
         let params = UniversalReceiverParams {
             type_: FRC46_TOKEN_TYPE,
             payload: serialize(&payload, "payload").unwrap(),
