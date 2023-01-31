@@ -1,1 +1,1 @@
-{"storage":[]}
+{"storage":[{"astId":3,"contract":"tests/contracts/Lifecycle.sol:SelfDestruct","label":"value","offset":0,"slot":"0","type":"t_int32"}],"types":{"t_int32":{"encoding":"inplace","label":"int32","numberOfBytes":"4"}}}
