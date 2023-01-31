@@ -506,7 +506,9 @@ pub fn publish_deals(
             None,
             ExitCode::OK,
         );
+    }
 
+    for deal in publish_deals {
         if deal.verified_deal {
             // Expect query for the client's datacap balance, just once per client.
             let client_id = deal.client.id().unwrap();

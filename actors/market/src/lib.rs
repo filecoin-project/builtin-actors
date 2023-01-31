@@ -234,14 +234,29 @@ impl Actor {
             ));
         }
 
+        // Deals that passed `AuthenticateMessage` and other state-less checks.
+        let mut validity_index: Vec<bool> = Vec::with_capacity(params.deals.len());
+
         let baseline_power = request_current_baseline_power(rt)?;
         let (network_raw_power, _) = request_current_network_power(rt)?;
+
+        // We perform these checks before loading state since the call to `AuthenticateMessage` could recurse
+        for (di, deal) in params.deals.iter().enumerate() {
+            let mut valid = true;
+            if let Err(e) = validate_deal(rt, &deal, &network_raw_power, &baseline_power) {
+                info!("invalid deal {}: {}", di, e);
+                valid = false;
+            }
+
+            validity_index.push(valid);
+        }
 
         struct ValidDeal {
             proposal: DealProposal,
             serialized_proposal: RawBytes,
             cid: Cid,
         }
+
         // Deals that passed validation.
         let mut valid_deals: Vec<ValidDeal> = Vec::with_capacity(params.deals.len());
         // CIDs of valid proposals.
@@ -260,8 +275,10 @@ impl Actor {
         let state: State = rt.state()?;
 
         for (di, mut deal) in params.deals.into_iter().enumerate() {
-            if let Err(e) = validate_deal(rt, &deal, &network_raw_power, &baseline_power) {
-                info!("invalid deal {}: {}", di, e);
+            if !*validity_index.get(di).context_code(
+                ExitCode::USR_ASSERTION_FAILED,
+                "validity index has incorrect length",
+            )? {
                 continue;
             }
 
@@ -355,7 +372,7 @@ impl Actor {
                 client_alloc_reqs
                     .entry(client_id)
                     .or_default()
-                    .push((pcid, alloc_request_for_deal(&deal, rt.policy(), curr_epoch)));
+                    .push((pcid, alloc_request_for_deal(&deal.proposal, rt.policy(), curr_epoch)));
             }
 
             total_provider_lockup = provider_lockup;
@@ -444,7 +461,9 @@ impl Actor {
             Ok(())
         })?;
 
-        // notify clients ignoring any errors
+        // notify clients, any failures cause the entire publish_storage_deals method to fail
+        // it's unsafe to ignore errors here, since that could be used to attack storage contract clients
+        // that might be unaware they're making storage deals
         for (i, valid_deal) in valid_deals.iter().enumerate() {
             _ = extract_send_result(rt.send_simple(
                 &valid_deal.proposal.client,
@@ -1083,21 +1102,21 @@ pub fn validate_and_return_deal_space<BS: Blockstore>(
 
 fn alloc_request_for_deal(
     // Deal proposal must have ID addresses
-    deal: &ClientDealProposal,
+    deal: &DealProposal,
     policy: &Policy,
     curr_epoch: ChainEpoch,
 ) -> ext::verifreg::AllocationRequest {
-    let alloc_term_min = deal.proposal.end_epoch - deal.proposal.start_epoch;
+    let alloc_term_min = deal.end_epoch - deal.start_epoch;
     let alloc_term_max = min(
         alloc_term_min + policy.market_default_allocation_term_buffer,
         policy.maximum_verified_allocation_term,
     );
     let alloc_expiration =
-        min(deal.proposal.start_epoch, curr_epoch + policy.maximum_verified_allocation_expiration);
+        min(deal.start_epoch, curr_epoch + policy.maximum_verified_allocation_expiration);
     ext::verifreg::AllocationRequest {
-        provider: deal.proposal.provider.id().unwrap(),
-        data: deal.proposal.piece_cid,
-        size: deal.proposal.piece_size,
+        provider: deal.provider.id().unwrap(),
+        data: deal.piece_cid,
+        size: deal.piece_size,
         term_min: alloc_term_min,
         term_max: alloc_term_max,
         expiration: alloc_expiration,
