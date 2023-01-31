@@ -113,7 +113,7 @@ non_existent:
     let method = util::dispatch_num_word(0);
     let expected = U256::from(0x04);
     {
-        rt.expect_send_generalized(
+        rt.expect_send(
             evm_contract,
             evm::Method::GetBytecode as u64,
             Default::default(),
@@ -248,7 +248,7 @@ account:
     let bytecode_hash =
         BytecodeHash::try_from(rt.hash(SupportedHashes::Keccak256, bytecode).as_slice()).unwrap();
 
-    rt.expect_send_generalized(
+    rt.expect_send(
         evm_target,
         evm::Method::GetBytecodeHash as u64,
         Default::default(),
@@ -395,7 +395,7 @@ precompile:
     let other_bytecode = vec![0x01, 0x02, 0x03, 0x04];
     rt.store.put_keyed(&bytecode_cid, other_bytecode.as_slice()).unwrap();
 
-    rt.expect_send_generalized(
+    rt.expect_send(
         evm_target,
         evm::Method::GetBytecode as u64,
         Default::default(),
@@ -471,7 +471,7 @@ init_extsize:
     };
 
     let mut rt = util::init_construct_and_verify(bytecode, |rt| {
-        rt.expect_send_generalized(
+        rt.expect_send(
             CONTRACT_ID,
             evm::Method::GetBytecodeHash as u64,
             Default::default(),
@@ -484,7 +484,7 @@ init_extsize:
         );
 
         rt.store.put_keyed(&EMPTY_ARR_CID, &[]).unwrap();
-        rt.expect_send_generalized(
+        rt.expect_send(
             CONTRACT_ID,
             evm::Method::GetBytecode as u64,
             Default::default(),

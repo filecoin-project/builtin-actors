@@ -71,14 +71,14 @@ fn test_delegate_call_caller() {
     let evm_target = EthAddress(hex_literal::hex!("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"));
     let f4_target: FILAddress = evm_target.try_into().unwrap();
     rt.actor_code_cids.insert(target, *EVM_ACTOR_CODE_ID);
-    rt.add_delegated_address(target, f4_target);
+    rt.set_delegated_address(target.id().unwrap(), f4_target);
     rt.receiver = target;
 
     // set caller that is expected to persist through to subcall
     let caller = FILAddress::new_id(0x111);
     let evm_caller = EthAddress(util::CONTRACT_ADDRESS);
     let f4_caller = evm_caller.try_into().unwrap();
-    rt.add_delegated_address(caller, f4_caller);
+    rt.set_delegated_address(caller.id().unwrap(), f4_caller);
     rt.caller = caller;
 
     let evm_target_word = evm_target.as_evm_word();
@@ -108,7 +108,7 @@ fn test_delegate_call_caller() {
 
     rt.set_value(TokenAmount::from_whole(123));
     rt.expect_gas_available(10_000_000_000u64);
-    rt.expect_send_generalized(
+    rt.expect_send(
         target,
         Method::GetBytecode as u64,
         None,
@@ -120,7 +120,7 @@ fn test_delegate_call_caller() {
         None,
     );
 
-    rt.expect_send_generalized(
+    rt.expect_send(
         target,
         Method::InvokeContractDelegate as u64,
         proxy_call_input_data,

@@ -37,9 +37,10 @@ use fil_builtin_actors_state::check::Tree;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{CborStore, RawBytes};
+use fvm_ipld_encoding::{CborStore, RawBytes, IPLD_RAW};
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
-use fvm_shared::address::{Address, Payload};
+use fvm_shared::address::Address;
+use fvm_shared::address::Payload;
 use fvm_shared::bigint::Zero;
 use fvm_shared::chainid::ChainID;
 use fvm_shared::clock::ChainEpoch;
@@ -61,7 +62,7 @@ use fvm_shared::sector::{
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::sys::SendFlags;
 use fvm_shared::version::NetworkVersion;
-use fvm_shared::{ActorID, MethodNum, Response, IPLD_RAW, METHOD_CONSTRUCTOR, METHOD_SEND};
+use fvm_shared::{ActorID, MethodNum, Response, METHOD_CONSTRUCTOR, METHOD_SEND};
 use regex::Regex;
 use serde::de::DeserializeOwned;
 use serde::{ser, Serialize};
@@ -253,19 +254,19 @@ impl<'bs> VM<'bs> {
             actor(*EAM_ACTOR_CODE_ID, EMPTY_ARR_CID, 0, TokenAmount::zero(), None),
         );
 
-        // burnt funds
-        let burnt_funds_head = v.put_store(&AccountState { address: BURNT_FUNDS_ACTOR_ADDR });
-        v.set_actor(
-            BURNT_FUNDS_ACTOR_ADDR,
-            actor(*ACCOUNT_ACTOR_CODE_ID, burnt_funds_head, 0, TokenAmount::zero(), None),
-        );
-
         // datacap
         let datacap_head =
             v.put_store(&DataCapState::new(&v.store, VERIFIED_REGISTRY_ACTOR_ADDR).unwrap());
         v.set_actor(
             DATACAP_TOKEN_ACTOR_ADDR,
             actor(*DATACAP_TOKEN_ACTOR_CODE_ID, datacap_head, 0, TokenAmount::zero(), None),
+        );
+
+        // burnt funds
+        let burnt_funds_head = v.put_store(&AccountState { address: BURNT_FUNDS_ACTOR_ADDR });
+        v.set_actor(
+            BURNT_FUNDS_ACTOR_ADDR,
+            actor(*ACCOUNT_ACTOR_CODE_ID, burnt_funds_head, 0, TokenAmount::zero(), None),
         );
 
         // create a faucet with 1 billion FIL for setting up test accounts
@@ -462,10 +463,10 @@ impl<'bs> VM<'bs> {
             msg,
             allow_side_effects: true,
             caller_validated: false,
+            read_only: false,
             policy: &Policy::default(),
             subinvocations: RefCell::new(vec![]),
             actor_exit: RefCell::new(None),
-            read_only: false,
         };
         let res = new_ctx.invoke_actor();
 
@@ -673,10 +674,10 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 msg: new_actor_msg,
                 allow_side_effects: true,
                 caller_validated: false,
+                read_only: false,
                 policy: self.policy,
                 subinvocations: RefCell::new(vec![]),
                 actor_exit: RefCell::new(None),
-                read_only: false,
             };
             if is_account {
                 new_ctx.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id, None).unwrap();
@@ -994,7 +995,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         self.v.get_actor(Address::new_id(id)).and_then(|act| act.predictable_address)
     }
 
-    fn send_generalized(
+    fn send(
         &self,
         to: &Address,
         method: MethodNum,
@@ -1008,7 +1009,6 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
             send_flags.set(SendFlags::READ_ONLY, true)
         }
 
-        // TODO gas_limit is current ignored, what should we do about it?
         if !self.allow_side_effects {
             return Ok(Response { exit_code: ExitCode::SYS_ASSERTION_FAILED, return_data: None });
         }
@@ -1020,10 +1020,10 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
             msg: new_actor_msg,
             allow_side_effects: true,
             caller_validated: false,
+            read_only: send_flags.read_only(),
             policy: self.policy,
             subinvocations: RefCell::new(vec![]),
             actor_exit: RefCell::new(None),
-            read_only: send_flags.read_only(),
         };
         let res = new_ctx.invoke_actor();
         let invoc = new_ctx.gather_trace(res.clone());
@@ -1097,10 +1097,6 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         }
     }
 
-    fn state<T: DeserializeOwned>(&self) -> Result<T, ActorError> {
-        Ok(self.v.get_state::<T>(self.to()).unwrap())
-    }
-
     fn transaction<S, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
     where
         S: Serialize + DeserializeOwned,
@@ -1128,9 +1124,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
     fn new_actor_address(&mut self) -> Result<Address, ActorError> {
         let mut b = self.top.originator_stable_addr.to_bytes();
         b.extend_from_slice(&self.top.originator_call_seq.to_be_bytes());
-        b.extend_from_slice(
-            &self.top.new_actor_addr_count.replace_with(|old| *old + 1).to_be_bytes(),
-        );
+        b.extend_from_slice(&self.top.new_actor_addr_count.borrow().to_be_bytes());
         Ok(Address::new_actor(&b))
     }
 

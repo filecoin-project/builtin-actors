@@ -1,8 +1,8 @@
 use bytes::Bytes;
 
-use fil_actors_runtime::deserialize_block;
 use fil_actors_runtime::ActorError;
 use fil_actors_runtime::EAM_ACTOR_ADDR;
+use fil_actors_runtime::{deserialize_block, extract_send_result};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{strict_bytes, tuple::*};
 use fvm_shared::sys::SendFlags;
@@ -173,12 +173,16 @@ pub fn selfdestruct(
     let beneficiary: EthAddress = beneficiary.into();
     let beneficiary: Address = beneficiary.into();
     let balance = system.rt.current_balance();
-    system.rt.send(&beneficiary, METHOD_SEND, None, balance).map_err(|e| {
-        ActorError::unchecked(
-            EVM_CONTRACT_SELFDESTRUCT_FAILED,
-            format!("failed to transfer funds to beneficiary {beneficiary} on SELFDESTRUCT: {e}"),
-        )
-    })?;
+    extract_send_result(system.rt.send_simple(&beneficiary, METHOD_SEND, None, balance)).map_err(
+        |e| {
+            ActorError::unchecked(
+                EVM_CONTRACT_SELFDESTRUCT_FAILED,
+                format!(
+                    "failed to transfer funds to beneficiary {beneficiary} on SELFDESTRUCT: {e}"
+                ),
+            )
+        },
+    )?;
 
     // Now mark ourselves as deleted.
     system.mark_selfdestructed();

@@ -81,7 +81,7 @@ fn test_create() {
     {
         rt.add_balance(TokenAmount::from_atto(1));
 
-        rt.expect_send(
+        rt.expect_send_simple(
             EAM_ACTOR_ADDR,
             CREATE_METHOD_NUM,
             IpldBlock::serialize_cbor(&create_params).unwrap(),
@@ -103,7 +103,7 @@ fn test_create() {
 
         rt.add_balance(TokenAmount::from_atto(1));
 
-        rt.expect_send(
+        rt.expect_send_simple(
             EAM_ACTOR_ADDR,
             CREATE_METHOD_NUM,
             IpldBlock::serialize_cbor(&create_params).unwrap(),
@@ -125,7 +125,7 @@ fn test_create() {
     {
         rt.add_balance(TokenAmount::from_atto(1));
 
-        rt.expect_send(
+        rt.expect_send_simple(
             EAM_ACTOR_ADDR,
             CREATE2_METHOD_NUM,
             IpldBlock::serialize_cbor(&create2_params).unwrap(),

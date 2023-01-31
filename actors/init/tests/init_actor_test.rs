@@ -71,7 +71,7 @@ fn repeated_robust_address() {
         rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id, None);
 
         // Expect a send to the multisig actor constructor
-        rt.expect_send(
+        rt.expect_send_simple(
             expected_id_addr,
             METHOD_CONSTRUCTOR,
             IpldBlock::serialize_cbor(&fake_params).unwrap(),
@@ -135,7 +135,7 @@ fn create_2_payment_channels() {
         // expect anne creating a payment channel to trigger a send to the payment channels constructor
         let balance = TokenAmount::from_atto(100);
 
-        rt.expect_send(
+        rt.expect_send_simple(
             expected_id_addr,
             METHOD_CONSTRUCTOR,
             IpldBlock::serialize_cbor(&fake_params).unwrap(),
@@ -176,7 +176,7 @@ fn create_storage_miner() {
 
     let fake_params = ConstructorParams { network_name: String::from("fake_param") };
 
-    rt.expect_send(
+    rt.expect_send_simple(
         expected_id_addr,
         METHOD_CONSTRUCTOR,
         IpldBlock::serialize_cbor(&fake_params).unwrap(),
@@ -225,7 +225,7 @@ fn create_multisig_actor() {
 
     let fake_params = ConstructorParams { network_name: String::from("fake_param") };
     // Expect a send to the multisig actor constructor
-    rt.expect_send(
+    rt.expect_send_simple(
         expected_id_addr,
         METHOD_CONSTRUCTOR,
         IpldBlock::serialize_cbor(&fake_params).unwrap(),
@@ -259,7 +259,7 @@ fn sending_constructor_failure() {
     rt.expect_create_actor(*MINER_ACTOR_CODE_ID, expected_id, None);
 
     let fake_params = ConstructorParams { network_name: String::from("fake_param") };
-    rt.expect_send(
+    rt.expect_send_simple(
         expected_id_addr,
         METHOD_CONSTRUCTOR,
         IpldBlock::serialize_cbor(&fake_params).unwrap(),
@@ -324,7 +324,7 @@ fn exec_restricted_correctly() {
     rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id, None);
 
     // Expect a send to the multisig actor constructor
-    rt.expect_send(
+    rt.expect_send_simple(
         expected_id_addr,
         METHOD_CONSTRUCTOR,
         IpldBlock::serialize_cbor(&fake_constructor_params).unwrap(),
@@ -369,7 +369,7 @@ fn call_exec4() {
 
     let fake_params = ConstructorParams { network_name: String::from("fake_param") };
     // Expect a send to the multisig actor constructor
-    rt.expect_send(
+    rt.expect_send_simple(
         expected_id_addr,
         METHOD_CONSTRUCTOR,
         IpldBlock::serialize_cbor(&fake_params).unwrap(),
@@ -438,14 +438,14 @@ fn call_exec4_placeholder() {
     // Register it in the state-tree.
     let expected_id_addr = Address::new_id(expected_id);
     rt.set_address_actor_type(expected_id_addr, *PLACEHOLDER_ACTOR_CODE_ID);
-    rt.add_delegated_address(expected_id_addr, f4_addr);
+    rt.set_delegated_address(expected_id, f4_addr);
 
     // Now try to create it.
     rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id, Some(f4_addr));
 
     let fake_params = ConstructorParams { network_name: String::from("fake_param") };
     // Expect a send to the multisig actor constructor
-    rt.expect_send(
+    rt.expect_send_simple(
         expected_id_addr,
         METHOD_CONSTRUCTOR,
         IpldBlock::serialize_cbor(&fake_params).unwrap(),

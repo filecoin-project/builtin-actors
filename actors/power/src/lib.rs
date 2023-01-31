@@ -9,8 +9,9 @@ use ext::init;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, deserialize_block, make_map_with_root_and_bitwidth, ActorDowncast,
-    ActorError, Multimap, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_dispatch, actor_error, deserialize_block, extract_send_result,
+    make_map_with_root_and_bitwidth, ActorDowncast, ActorError, Multimap, CRON_ACTOR_ADDR,
+    INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
@@ -104,15 +105,16 @@ impl Actor {
         })?;
 
         let miner_actor_code_cid = rt.get_code_cid_for_type(Type::Miner);
-        let ext::init::ExecReturn { id_address, robust_address } = deserialize_block(rt.send(
-            &INIT_ACTOR_ADDR,
-            ext::init::EXEC_METHOD,
-            IpldBlock::serialize_cbor(&init::ExecParams {
-                code_cid: miner_actor_code_cid,
-                constructor_params,
-            })?,
-            value,
-        )?)?;
+        let ext::init::ExecReturn { id_address, robust_address } =
+            deserialize_block(extract_send_result(rt.send_simple(
+                &INIT_ACTOR_ADDR,
+                ext::init::EXEC_METHOD,
+                IpldBlock::serialize_cbor(&init::ExecParams {
+                    code_cid: miner_actor_code_cid,
+                    constructor_params,
+                })?,
+                value,
+            ))?)?;
 
         let window_post_proof_type = params.window_post_proof_type;
         rt.transaction(|st: &mut State, rt| {
@@ -238,12 +240,12 @@ impl Actor {
         rt.validate_immediate_caller_is(std::iter::once(&CRON_ACTOR_ADDR))?;
 
         let rewret: ThisEpochRewardReturn = deserialize_block(
-            rt.send(
+            extract_send_result(rt.send_simple(
                 &REWARD_ACTOR_ADDR,
                 ext::reward::Method::ThisEpochReward as MethodNum,
                 None,
                 TokenAmount::zero(),
-            )
+            ))
             .map_err(|e| e.wrap("failed to check epoch baseline power"))?,
         )?;
 
@@ -264,12 +266,12 @@ impl Actor {
         })?;
 
         // Update network KPA in reward actor
-        rt.send(
+        extract_send_result(rt.send_simple(
             &REWARD_ACTOR_ADDR,
             ext::reward::UPDATE_NETWORK_KPI,
             this_epoch_raw_byte_power,
             TokenAmount::zero(),
-        )
+        ))
         .map_err(|e| e.wrap("failed to update network KPI with reward actor"))?;
 
         Ok(())
@@ -533,17 +535,19 @@ impl Actor {
             if successful.is_empty() {
                 continue;
             }
-            if let Err(e) = rt.send(
-                &m,
-                ext::miner::CONFIRM_SECTOR_PROOFS_VALID_METHOD,
-                IpldBlock::serialize_cbor(&ext::miner::ConfirmSectorProofsParams {
-                    sectors: successful,
-                    reward_smoothed: rewret.this_epoch_reward_smoothed.clone(),
-                    reward_baseline_power: rewret.this_epoch_baseline_power.clone(),
-                    quality_adj_power_smoothed: this_epoch_qa_power_smoothed.clone(),
-                })
-                .map_err(|e| format!("failed to serialize ConfirmSectorProofsParams: {}", e))?,
-                Default::default(),
+            if let Err(e) = extract_send_result(
+                rt.send_simple(
+                    &m,
+                    ext::miner::CONFIRM_SECTOR_PROOFS_VALID_METHOD,
+                    IpldBlock::serialize_cbor(&ext::miner::ConfirmSectorProofsParams {
+                        sectors: successful,
+                        reward_smoothed: rewret.this_epoch_reward_smoothed.clone(),
+                        reward_baseline_power: rewret.this_epoch_baseline_power.clone(),
+                        quality_adj_power_smoothed: this_epoch_qa_power_smoothed.clone(),
+                    })
+                    .map_err(|e| format!("failed to serialize ConfirmSectorProofsParams: {}", e))?,
+                    Default::default(),
+                ),
             ) {
                 error!("failed to confirm sector proof validity to {}, error code {}", m, e);
             }
@@ -624,12 +628,12 @@ impl Actor {
                 reward_smoothed: rewret.this_epoch_reward_smoothed.clone(),
                 quality_adj_power_smoothed: st.this_epoch_qa_power_smoothed.clone(),
             })?;
-            let res = rt.send(
+            let res = extract_send_result(rt.send_simple(
                 &event.miner_addr,
                 ext::miner::ON_DEFERRED_CRON_EVENT_METHOD,
                 params,
                 Default::default(),
-            );
+            ));
             // If a callback fails, this actor continues to invoke other callbacks
             // and persists state removing the failed event from the event queue. It won't be tried again.
             // Failures are unexpected here but will result in removal of miner power

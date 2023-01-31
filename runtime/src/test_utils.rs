@@ -29,7 +29,6 @@ use fvm_shared::sector::{
     AggregateSealVerifyInfo, AggregateSealVerifyProofAndInfos, RegisteredSealProof,
     ReplicaUpdateInfo, SealVerifyInfo, WindowPoStVerifyInfo,
 };
-use fvm_shared::sys::SendFlags;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum, Response};
 
@@ -49,6 +48,7 @@ use fvm_shared::event::ActorEvent;
 use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::sys::SendFlags;
 
 lazy_static::lazy_static! {
     pub static ref SYSTEM_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/system");
@@ -146,8 +146,7 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
     pub base_fee: TokenAmount,
     pub chain_id: ChainID,
     pub id_addresses: HashMap<Address, Address>,
-    pub delegated_addresses: HashMap<Address, Address>,
-    pub delegated_addresses_source: HashMap<Address, Address>,
+    pub delegated_addresses: HashMap<ActorID, Address>,
     pub actor_code_cids: HashMap<Address, Cid>,
     pub new_actor_addr: Option<Address>,
     pub receiver: Address,
@@ -344,7 +343,6 @@ impl<BS> MockRuntime<BS> {
             chain_id: ChainID::from(0),
             id_addresses: Default::default(),
             delegated_addresses: Default::default(),
-            delegated_addresses_source: Default::default(),
             actor_code_cids: Default::default(),
             new_actor_addr: Default::default(),
             receiver: Address::new_id(0),
@@ -549,15 +547,14 @@ impl<BS: Blockstore> MockRuntime<BS> {
         self.id_addresses.insert(source, target);
     }
 
-    pub fn add_delegated_address(&mut self, source: Address, target: Address) {
+    pub fn set_delegated_address(&mut self, source: ActorID, target: Address) {
         assert_eq!(
             target.protocol(),
             Protocol::Delegated,
             "target must use Delegated address protocol"
         );
-        assert_eq!(source.protocol(), Protocol::ID, "source must use ID address protocol");
         self.delegated_addresses.insert(source, target);
-        self.delegated_addresses_source.insert(target, source);
+        self.id_addresses.insert(target, Address::new_id(source));
     }
 
     pub fn call<A: ActorCode>(
@@ -674,7 +671,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 
     #[allow(dead_code)]
-    pub fn expect_send(
+    pub fn expect_send_simple(
         &mut self,
         to: Address,
         method: MethodNum,
@@ -688,17 +685,17 @@ impl<BS: Blockstore> MockRuntime<BS> {
             method,
             params,
             value,
+            gas_limit: None,
+            send_flags: SendFlags::default(),
             send_return,
             exit_code,
-            send_flags: SendFlags::default(),
-            gas_limit: None,
             send_error: None,
         })
     }
 
     #[allow(dead_code)]
     #[allow(clippy::too_many_arguments)]
-    pub fn expect_send_generalized(
+    pub fn expect_send(
         &mut self,
         to: Address,
         method: MethodNum,
@@ -1043,12 +1040,6 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         if let &Payload::ID(id) = address.payload() {
             return Some(id);
         }
-        if Protocol::Delegated == address.protocol() {
-            return self
-                .delegated_addresses_source
-                .get(address)
-                .and_then(|a| self.resolve_address(a));
-        }
 
         match self.get_id_address(address) {
             None => None,
@@ -1063,7 +1054,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
 
     fn lookup_delegated_address(&self, id: ActorID) -> Option<Address> {
         self.require_in_call();
-        self.delegated_addresses.get(&Address::new_id(id)).copied()
+        self.delegated_addresses.get(&id).copied()
     }
 
     fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {
@@ -1132,7 +1123,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         &self.store
     }
 
-    fn send_generalized(
+    fn send(
         &self,
         to: &Address,
         method: MethodNum,
@@ -1141,7 +1132,6 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         gas_limit: Option<u64>,
         send_flags: SendFlags,
     ) -> Result<Response, ErrorNumber> {
-        // TODO gas_limit is currently ignored, what should we do about it?
         self.require_in_call();
         if self.in_transaction {
             return Ok(Response { exit_code: ExitCode::USR_ASSERTION_FAILED, return_data: None });
@@ -1358,12 +1348,12 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         std::panic::panic_any("actor exit");
     }
 
-    fn read_only(&self) -> bool {
-        false
-    }
-
     fn chain_id(&self) -> ChainID {
         self.chain_id
+    }
+
+    fn read_only(&self) -> bool {
+        false
     }
 }
 

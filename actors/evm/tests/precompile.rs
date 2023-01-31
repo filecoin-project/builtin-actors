@@ -9,6 +9,7 @@ use fil_actors_runtime::{
 use fvm_shared::{address::Address as FILAddress, econ::TokenAmount, error::ExitCode, METHOD_SEND};
 
 mod util;
+
 use util::{id_to_vec, NativePrecompile, PrecompileExit, PrecompileTest};
 
 #[allow(dead_code)]
@@ -125,12 +126,12 @@ fn test_native_lookup_delegated_address() {
     // f0 10101 is an EVM actor
     let evm_target = FILAddress::new_id(10101);
     let evm_del = EthAddress(util::CONTRACT_ADDRESS).try_into().unwrap();
-    rt.add_delegated_address(evm_target, evm_del);
+    rt.set_delegated_address(evm_target.id().unwrap(), evm_del);
 
     // f0 10111 is an actor with a non-evm delegate address
     let unknown_target = FILAddress::new_id(10111);
     let unknown_del = FILAddress::new_delegated(1234, "foobarboxy".as_bytes()).unwrap();
-    rt.add_delegated_address(unknown_target, unknown_del);
+    rt.set_delegated_address(unknown_target.id().unwrap(), unknown_del);
 
     fn test_lookup_address(rt: &mut MockRuntime, id: FILAddress, expected: Vec<u8>) {
         let test = PrecompileTest {
@@ -159,12 +160,12 @@ fn test_resolve_delegated() {
     // EVM actor
     let evm_target = FILAddress::new_id(10101);
     let evm_del = EthAddress(util::CONTRACT_ADDRESS).try_into().unwrap();
-    rt.add_delegated_address(evm_target, evm_del);
+    rt.set_delegated_address(evm_target.id().unwrap(), evm_del);
 
     // Actor with a non-evm delegate address
     let unknown_target = FILAddress::new_id(10111);
     let unknown_del = FILAddress::new_delegated(1234, "foobarboxy".as_bytes()).unwrap();
-    rt.add_delegated_address(unknown_target, unknown_del);
+    rt.set_delegated_address(unknown_target.id().unwrap(), unknown_del);
 
     // Non-bound f4 address
     let unbound_del = FILAddress::new_delegated(0xffff, "foobarboxybeef".as_bytes()).unwrap();
@@ -243,7 +244,14 @@ fn test_precompile_transfer() {
             expected_return: vec![],
         };
         let fil_addr = FILAddress::new_delegated(EAM_ACTOR_ID, addr.as_ref()).unwrap();
-        rt.expect_send(fil_addr, METHOD_SEND, None, TokenAmount::from_atto(1), None, ExitCode::OK);
+        rt.expect_send_simple(
+            fil_addr,
+            METHOD_SEND,
+            None,
+            TokenAmount::from_atto(1),
+            None,
+            ExitCode::OK,
+        );
         test.run_test(&mut rt);
     }
     assert_eq!(rt.get_balance(), TokenAmount::from_atto(98));

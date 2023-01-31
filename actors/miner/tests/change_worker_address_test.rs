@@ -102,7 +102,7 @@ fn change_and_confirm_worker_address_restricted_correctly() {
     );
 
     // call the exported method
-    rt.expect_send(
+    rt.expect_send_simple(
         new_worker,
         AccountMethod::PubkeyAddress as u64,
         None,
@@ -350,7 +350,7 @@ fn fails_when_caller_is_not_the_owner() {
     let new_worker = Address::new_id(999);
     rt.set_address_actor_type(new_worker, *ACCOUNT_ACTOR_CODE_ID);
     rt.expect_validate_caller_addr(vec![h.owner]);
-    rt.expect_send(
+    rt.expect_send_simple(
         new_worker,
         AccountMethod::PubkeyAddress as u64,
         None,

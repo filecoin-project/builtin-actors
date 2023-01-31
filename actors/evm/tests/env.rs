@@ -54,8 +54,8 @@ impl TestEnv {
 
         self.runtime.set_origin(self.evm_address);
         // first actor created is 0
-        self.runtime.add_delegated_address(
-            Address::new_id(0),
+        self.runtime.set_delegated_address(
+            0,
             Address::new_delegated(
                 10,
                 &hex_literal::hex!("FEEDFACECAFEBEEF000000000000000000000000"),

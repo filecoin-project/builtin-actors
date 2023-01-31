@@ -266,7 +266,7 @@ fn fail_when_provider_has_some_funds_but_not_enough_for_a_deal() {
     })
     .unwrap();
 
-    rt.expect_send(
+    rt.expect_send_simple(
         deal1.client,
         AUTHENTICATE_MESSAGE_METHOD,
         auth_param,
@@ -333,7 +333,7 @@ fn fail_when_deals_have_different_providers() {
     })
     .unwrap();
 
-    rt.expect_send(
+    rt.expect_send_simple(
         deal1.client,
         AUTHENTICATE_MESSAGE_METHOD as u64,
         authenticate_param1,
@@ -341,7 +341,7 @@ fn fail_when_deals_have_different_providers() {
         None,
         ExitCode::OK,
     );
-    rt.expect_send(
+    rt.expect_send_simple(
         deal2.client,
         AUTHENTICATE_MESSAGE_METHOD as u64,
         authenticate_param2,
@@ -357,7 +357,7 @@ fn fail_when_deals_have_different_providers() {
     })
     .unwrap();
 
-    rt.expect_send(
+    rt.expect_send_simple(
         deal1.client,
         MARKET_NOTIFY_DEAL_METHOD,
         notify_param1,

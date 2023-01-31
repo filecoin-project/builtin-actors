@@ -24,8 +24,7 @@ use fvm_shared::sector::{
 };
 use fvm_shared::sys::SendFlags;
 use fvm_shared::version::NetworkVersion;
-use fvm_shared::Response;
-use fvm_shared::{ActorID, MethodNum};
+use fvm_shared::{ActorID, MethodNum, Response};
 use num_traits::FromPrimitive;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -309,7 +308,7 @@ where
         &self.blockstore
     }
 
-    fn send_generalized(
+    fn send(
         &self,
         to: &Address,
         method: MethodNum,
@@ -319,6 +318,8 @@ where
         flags: SendFlags,
     ) -> Result<Response, ErrorNumber> {
         if self.in_transaction {
+            // Note: It's slightly improper to call this ErrorNumber::IllegalOperation,
+            // since the error arises before getting to the VM.
             return Err(ErrorNumber::IllegalOperation);
         }
 

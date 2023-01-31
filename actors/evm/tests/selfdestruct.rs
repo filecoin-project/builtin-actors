@@ -39,7 +39,7 @@ fn test_selfdestruct() {
     })
     .unwrap();
 
-    rt.expect_send(beneficiary, METHOD_SEND, None, token_amount, None, ExitCode::OK);
+    rt.expect_send_simple(beneficiary, METHOD_SEND, None, token_amount, None, ExitCode::OK);
 
     assert!(util::invoke_contract(&mut rt, &selfdestruct_params).is_empty());
     let state: State = rt.get_state();
@@ -57,7 +57,7 @@ fn test_selfdestruct() {
     rt.set_caller(*EAM_ACTOR_CODE_ID, EAM_ACTOR_ADDR);
     rt.expect_validate_caller_addr(vec![EAM_ACTOR_ADDR]);
     assert_eq!(
-        rt.call::<EvmContractActor>(Method::Resurrect as MethodNum, resurrect_params.clone(),)
+        rt.call::<EvmContractActor>(Method::Resurrect as MethodNum, resurrect_params.clone())
             .unwrap_err()
             .exit_code(),
         ExitCode::USR_FORBIDDEN
@@ -69,7 +69,7 @@ fn test_selfdestruct() {
     // Selfdestruct should be callable multiple times, and it shouldn't do anything (but move
     // remaining funds, again).
     rt.expect_validate_caller_any();
-    rt.expect_send(beneficiary, METHOD_SEND, None, TokenAmount::zero(), None, ExitCode::OK);
+    rt.expect_send_simple(beneficiary, METHOD_SEND, None, TokenAmount::zero(), None, ExitCode::OK);
     assert!(util::invoke_contract(&mut rt, &selfdestruct_params).is_empty());
     rt.verify();
 
@@ -114,7 +114,7 @@ fn test_selfdestruct_missing_beneficiary() {
 
     let solidity_params = hex::decode("35f46994").unwrap();
     rt.expect_validate_caller_any();
-    rt.expect_send_generalized(
+    rt.expect_send(
         beneficiary,
         METHOD_SEND,
         None,

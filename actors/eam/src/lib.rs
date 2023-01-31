@@ -7,7 +7,9 @@ use ext::{
     evm::RESURRECT_METHOD,
     init::{Exec4Params, Exec4Return},
 };
-use fil_actors_runtime::{actor_dispatch_unrestricted, deserialize_block, AsActorError};
+use fil_actors_runtime::{
+    actor_dispatch_unrestricted, deserialize_block, extract_send_result, AsActorError,
+};
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::{error::ExitCode, sys::SendFlags};
@@ -176,7 +178,12 @@ fn create_actor(
         match rt.resolve_builtin_actor_type(&caller_code_cid) {
             // If it's an EVM actor, resurrect it.
             Some(Type::EVM) => {
-                rt.send(&Address::new_id(id), RESURRECT_METHOD, constructor_params.into(), value)?;
+                extract_send_result(rt.send_simple(
+                    &Address::new_id(id),
+                    RESURRECT_METHOD,
+                    constructor_params.into(),
+                    value,
+                ))?;
                 return Ok(Return { actor_id: id, robust_address: None, eth_address: new_addr });
             }
             // If it's a Placeholder, continue on to create it.
@@ -198,12 +205,12 @@ fn create_actor(
         subaddress: new_addr.0.to_vec().into(),
     };
 
-    let ret: ext::init::Exec4Return = deserialize_block(rt.send(
+    let ret: ext::init::Exec4Return = deserialize_block(extract_send_result(rt.send_simple(
         &INIT_ACTOR_ADDR,
         ext::init::EXEC4_METHOD,
         IpldBlock::serialize_cbor(&init_params)?,
         value,
-    )?)?;
+    ))?)?;
 
     Ok(Return::from_exec4(ret, new_addr))
 }
@@ -226,7 +233,7 @@ fn resolve_caller_external(rt: &mut impl Runtime) -> Result<(EthAddress, EthAddr
     match rt.resolve_builtin_actor_type(&caller_code_cid) {
         Some(Type::Account) => {
             let result = rt
-                .send_generalized(
+                .send(
                     &caller,
                     PUBKEY_ADDRESS_METHOD,
                     None,
