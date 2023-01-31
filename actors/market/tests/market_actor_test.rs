@@ -36,6 +36,7 @@ use std::ops::Add;
 use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
 use fil_actor_market::ext::verifreg::{AllocationID, AllocationRequest, AllocationsResponse};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::sys::SendFlags;
 use num_traits::{FromPrimitive, Zero};
 
 mod harness;
@@ -861,13 +862,16 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     })
     .unwrap();
 
-    rt.expect_send_simple(
+    rt.expect_send(
         deal.client,
         AUTHENTICATE_MESSAGE_METHOD,
         auth_param,
         TokenAmount::zero(),
         None,
+        SendFlags::READ_ONLY,
+        None,
         ExitCode::OK,
+        None,
     );
 
     // Data cap transfer is requested using the resolved address (not that it matters).
@@ -1536,13 +1540,16 @@ fn cannot_publish_the_same_deal_twice_before_a_cron_tick() {
     })
     .unwrap();
 
-    rt.expect_send_simple(
+    rt.expect_send(
         d2.client,
         AUTHENTICATE_MESSAGE_METHOD,
         auth_param,
         TokenAmount::zero(),
         None,
+        SendFlags::READ_ONLY,
+        None,
         ExitCode::OK,
+        None,
     );
 
     expect_abort(
@@ -1955,21 +1962,27 @@ fn insufficient_client_balance_in_a_batch() {
     })
     .unwrap();
 
-    rt.expect_send_simple(
+    rt.expect_send(
         deal1.client,
         AUTHENTICATE_MESSAGE_METHOD as u64,
         authenticate_param1,
         TokenAmount::zero(),
         None,
+        SendFlags::READ_ONLY,
+        None,
         ExitCode::OK,
+        None,
     );
-    rt.expect_send_simple(
+    rt.expect_send(
         deal2.client,
         AUTHENTICATE_MESSAGE_METHOD as u64,
         authenticate_param2,
         TokenAmount::zero(),
         None,
+        SendFlags::READ_ONLY,
+        None,
         ExitCode::OK,
+        None,
     );
 
     // only valid deals notified
@@ -2089,21 +2102,27 @@ fn insufficient_provider_balance_in_a_batch() {
     })
     .unwrap();
 
-    rt.expect_send_simple(
+    rt.expect_send(
         deal1.client,
         AUTHENTICATE_MESSAGE_METHOD as u64,
         authenticate_param1,
         TokenAmount::zero(),
         None,
+        SendFlags::READ_ONLY,
+        None,
         ExitCode::OK,
+        None,
     );
-    rt.expect_send_simple(
+    rt.expect_send(
         deal2.client,
         AUTHENTICATE_MESSAGE_METHOD as u64,
         authenticate_param2,
         TokenAmount::zero(),
         None,
+        SendFlags::READ_ONLY,
+        None,
         ExitCode::OK,
+        None,
     );
 
     // only valid deal notified
@@ -2238,13 +2257,16 @@ fn psd_restricted_correctly() {
     expect_provider_is_control_address(&mut rt, PROVIDER_ADDR, WORKER_ADDR, true);
     expect_query_network_info(&mut rt);
 
-    rt.expect_send_simple(
+    rt.expect_send(
         deal.client,
         AUTHENTICATE_MESSAGE_METHOD as u64,
         authenticate_param1,
         TokenAmount::zero(),
         None,
+        SendFlags::READ_ONLY,
+        None,
         ExitCode::OK,
+        None,
     );
 
     let notify_param = IpldBlock::serialize_cbor(&MarketNotifyDealParams {

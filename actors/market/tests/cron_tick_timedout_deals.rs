@@ -16,6 +16,7 @@ use fvm_shared::METHOD_SEND;
 
 use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::sys::SendFlags;
 use num_traits::Zero;
 
 mod harness;
@@ -95,13 +96,16 @@ fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_l
     })
     .unwrap();
 
-    rt.expect_send_simple(
+    rt.expect_send(
         deal_proposal2.client,
         AUTHENTICATE_MESSAGE_METHOD,
         auth_param,
         TokenAmount::zero(),
         None,
+        SendFlags::READ_ONLY,
+        None,
         ExitCode::OK,
+        None,
     );
 
     expect_abort(

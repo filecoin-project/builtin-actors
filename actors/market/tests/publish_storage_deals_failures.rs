@@ -26,6 +26,7 @@ use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MES
 mod harness;
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::sys::SendFlags;
 use harness::*;
 use num_traits::Zero;
 
@@ -266,13 +267,16 @@ fn fail_when_provider_has_some_funds_but_not_enough_for_a_deal() {
     })
     .unwrap();
 
-    rt.expect_send_simple(
+    rt.expect_send(
         deal1.client,
         AUTHENTICATE_MESSAGE_METHOD,
         auth_param,
         TokenAmount::zero(),
         None,
+        SendFlags::READ_ONLY,
+        None,
         ExitCode::OK,
+        None,
     );
 
     expect_abort(
@@ -333,21 +337,27 @@ fn fail_when_deals_have_different_providers() {
     })
     .unwrap();
 
-    rt.expect_send_simple(
+    rt.expect_send(
         deal1.client,
         AUTHENTICATE_MESSAGE_METHOD as u64,
         authenticate_param1,
         TokenAmount::zero(),
         None,
+        SendFlags::READ_ONLY,
+        None,
         ExitCode::OK,
+        None,
     );
-    rt.expect_send_simple(
+    rt.expect_send(
         deal2.client,
         AUTHENTICATE_MESSAGE_METHOD as u64,
         authenticate_param2,
         TokenAmount::zero(),
         None,
+        SendFlags::READ_ONLY,
+        None,
         ExitCode::OK,
+        None,
     );
 
     // only valid deals are notified

@@ -14,6 +14,7 @@ use fvm_shared::address::Address;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::sys::SendFlags;
 use fvm_shared::{METHOD_CONSTRUCTOR, METHOD_SEND};
 use num_derive::FromPrimitive;
 use num_traits::Zero;
@@ -120,7 +121,7 @@ impl Actor {
 
         // Validate signature
 
-        extract_send_result(rt.send_simple(
+        extract_send_result(rt.send(
             &signer,
             ext::account::AUTHENTICATE_MESSAGE_METHOD,
             IpldBlock::serialize_cbor(&ext::account::AuthenticateMessageParams {
@@ -128,6 +129,8 @@ impl Actor {
                 message: sv_bz,
             })?,
             TokenAmount::zero(),
+            None,
+            SendFlags::READ_ONLY,
         ))
         .map_err(|e| e.wrap("voucher sig authentication failed"))?;
 

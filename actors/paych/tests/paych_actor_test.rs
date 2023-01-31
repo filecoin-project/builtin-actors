@@ -25,6 +25,7 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::sys::SendFlags;
 use fvm_shared::METHOD_CONSTRUCTOR;
 use num_traits::Zero;
 
@@ -1127,7 +1128,7 @@ fn expect_authenticate_message(
     sv: SignedVoucher,
     exp_exit_code: ExitCode,
 ) {
-    rt.expect_send_simple(
+    rt.expect_send(
         payer_addr,
         AUTHENTICATE_MESSAGE_METHOD,
         IpldBlock::serialize_cbor(&AuthenticateMessageParams {
@@ -1137,6 +1138,9 @@ fn expect_authenticate_message(
         .unwrap(),
         TokenAmount::zero(),
         None,
+        SendFlags::READ_ONLY,
+        None,
         exp_exit_code,
+        None,
     )
 }
