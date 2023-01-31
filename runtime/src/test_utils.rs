@@ -40,7 +40,7 @@ use crate::runtime::{
     ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
     Verifier, EMPTY_ARR_CID,
 };
-use crate::{actor_error, ActorError};
+use crate::{actor_error, ActorError, SendError};
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::sys::SendFlags;
@@ -953,7 +953,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         value: TokenAmount,
         gas_limit: Option<u64>,
         send_flags: SendFlags,
-    ) -> Result<Response, ErrorNumber> {
+    ) -> Result<Response, SendError> {
         self.require_in_call();
         if self.in_transaction {
             return Ok(Response { exit_code: ExitCode::USR_ASSERTION_FAILED, return_data: None });
@@ -978,13 +978,13 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         assert_eq!(expected_msg.send_flags, send_flags, "send flags did not match expectation");
 
         if let Some(e) = expected_msg.send_error {
-            return Err(e);
+            return Err(SendError(e));
         }
 
         {
             let mut balance = self.balance.borrow_mut();
             if value > *balance {
-                return Err(ErrorNumber::InsufficientFunds);
+                return Err(SendError(ErrorNumber::InsufficientFunds));
             }
             *balance -= value;
         }
