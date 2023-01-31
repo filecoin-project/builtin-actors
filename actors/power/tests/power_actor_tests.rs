@@ -113,7 +113,7 @@ fn create_miner_given_send_to_init_actor_fails_should_fail() {
         .unwrap(),
     };
 
-    rt.expect_send(
+    rt.expect_send_simple(
         INIT_ACTOR_ADDR,
         EXEC_METHOD,
         IpldBlock::serialize_cbor(&message_params).unwrap(),
@@ -659,7 +659,7 @@ mod cron_tests {
         rt.expect_validate_caller_addr(vec![CRON_ACTOR_ADDR]);
 
         h.expect_query_network_info(&mut rt);
-        rt.expect_send(
+        rt.expect_send_simple(
             REWARD_ACTOR_ADDR,
             RewardMethod::UpdateNetworkKPI as u64,
             IpldBlock::serialize_cbor(&BigIntSer(&expected_power)).unwrap(),
@@ -747,7 +747,7 @@ mod cron_tests {
             reward_smoothed: h.this_epoch_reward_smoothed.clone(),
             quality_adj_power_smoothed: state.this_epoch_qa_power_smoothed.clone(),
         };
-        rt.expect_send(
+        rt.expect_send_simple(
             miner1,
             ON_DEFERRED_CRON_EVENT_METHOD,
             IpldBlock::serialize_cbor(&params1).unwrap(),
@@ -761,7 +761,7 @@ mod cron_tests {
             reward_smoothed: h.this_epoch_reward_smoothed.clone(),
             quality_adj_power_smoothed: state.this_epoch_qa_power_smoothed,
         };
-        rt.expect_send(
+        rt.expect_send_simple(
             miner2,
             ON_DEFERRED_CRON_EVENT_METHOD,
             IpldBlock::serialize_cbor(&params2).unwrap(),
@@ -770,7 +770,7 @@ mod cron_tests {
             ExitCode::OK,
         );
 
-        rt.expect_send(
+        rt.expect_send_simple(
             REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
             IpldBlock::serialize_cbor(&BigIntSer(&expected_raw_byte_power)).unwrap(),
@@ -798,7 +798,7 @@ mod cron_tests {
         rt.set_epoch(4);
         rt.expect_validate_caller_addr(vec![CRON_ACTOR_ADDR]);
         h.expect_query_network_info(&mut rt);
-        rt.expect_send(
+        rt.expect_send_simple(
             REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
             IpldBlock::serialize_cbor(&BigIntSer(&expected_raw_byte_power)).unwrap(),
@@ -829,7 +829,7 @@ mod cron_tests {
             reward_smoothed: h.this_epoch_reward_smoothed.clone(),
             quality_adj_power_smoothed: state.this_epoch_qa_power_smoothed,
         };
-        rt.expect_send(
+        rt.expect_send_simple(
             miner_addr,
             ON_DEFERRED_CRON_EVENT_METHOD,
             IpldBlock::serialize_cbor(&input).unwrap(),
@@ -837,7 +837,7 @@ mod cron_tests {
             None,
             ExitCode::OK,
         );
-        rt.expect_send(
+        rt.expect_send_simple(
             REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
             IpldBlock::serialize_cbor(&BigIntSer(&expected_raw_byte_power)).unwrap(),
@@ -904,7 +904,7 @@ mod cron_tests {
         };
 
         // only expect second deferred cron event call
-        rt.expect_send(
+        rt.expect_send_simple(
             miner2,
             ON_DEFERRED_CRON_EVENT_METHOD,
             IpldBlock::serialize_cbor(&input).unwrap(),
@@ -914,7 +914,7 @@ mod cron_tests {
         );
 
         // reward actor is still invoked
-        rt.expect_send(
+        rt.expect_send_simple(
             REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
             IpldBlock::serialize_cbor(&BigIntSer(&BigInt::zero())).unwrap(),
@@ -971,7 +971,7 @@ mod cron_tests {
         .unwrap();
 
         // first send fails
-        rt.expect_send(
+        rt.expect_send_simple(
             miner1,
             ON_DEFERRED_CRON_EVENT_METHOD,
             input.clone(),
@@ -981,7 +981,7 @@ mod cron_tests {
         );
 
         // subsequent one still invoked
-        rt.expect_send(
+        rt.expect_send_simple(
             miner2,
             ON_DEFERRED_CRON_EVENT_METHOD,
             input,
@@ -991,7 +991,7 @@ mod cron_tests {
         );
         // reward actor is still invoked
         rt.set_caller(*CRON_ACTOR_CODE_ID, CRON_ACTOR_ADDR);
-        rt.expect_send(
+        rt.expect_send_simple(
             REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
             IpldBlock::serialize_cbor(&BigIntSer(&BigInt::zero())).unwrap(),
@@ -1018,7 +1018,7 @@ mod cron_tests {
 
         h.expect_query_network_info(&mut rt);
 
-        rt.expect_send(
+        rt.expect_send_simple(
             REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
             IpldBlock::serialize_cbor(&BigIntSer(&BigInt::zero())).unwrap(),
@@ -1252,7 +1252,7 @@ mod cron_batch_proof_verifies_tests {
             quality_adj_power_smoothed: state.this_epoch_qa_power_smoothed,
         };
 
-        rt.expect_send(
+        rt.expect_send_simple(
             cs.miner,
             CONFIRM_SECTOR_PROOFS_VALID_METHOD,
             IpldBlock::serialize_cbor(&params).unwrap(),
@@ -1264,7 +1264,7 @@ mod cron_batch_proof_verifies_tests {
         rt.expect_batch_verify_seals(infos, res);
 
         // expect power sends to reward actor
-        rt.expect_send(
+        rt.expect_send_simple(
             REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
             IpldBlock::serialize_cbor(&BigIntSer(&BigInt::zero())).unwrap(),
@@ -1300,7 +1300,7 @@ mod cron_batch_proof_verifies_tests {
         rt.expect_validate_caller_addr(vec![CRON_ACTOR_ADDR]);
 
         // expect power sends to reward actor
-        rt.expect_send(
+        rt.expect_send_simple(
             REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
             IpldBlock::serialize_cbor(&BigIntSer(&BigInt::zero())).unwrap(),
@@ -1482,7 +1482,7 @@ fn create_miner_restricted_correctly() {
         .unwrap(),
     };
     let create_miner_ret = CreateMinerReturn { id_address: *MINER, robust_address: *ACTOR };
-    rt.expect_send(
+    rt.expect_send_simple(
         INIT_ACTOR_ADDR,
         EXEC_METHOD,
         IpldBlock::serialize_cbor(&expected_init_params).unwrap(),

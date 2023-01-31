@@ -16,7 +16,6 @@ publish = false
 fil_actor_account = { version = "10.0.0-alpha.1", path = "./actors/account", features = ["fil-actor"] }
 fil_actor_cron = { version = "10.0.0-alpha.1", path = "./actors/cron", features = ["fil-actor"] }
 fil_actor_datacap = { version = "10.0.0-alpha.1", path = "./actors/datacap", features = ["fil-actor"] }
-fil_actor_placeholder = { version = "10.0.0-alpha.1", path = "./actors/placeholder", features = ["fil-actor"] }
 fil_actor_ethaccount = { version = "10.0.0-alpha.1", path = "actors/ethaccount", features = ["fil-actor"] }
 fil_actor_evm = { version = "10.0.0-alpha.1", path = "./actors/evm", features = ["fil-actor"] }
 fil_actor_init = { version = "10.0.0-alpha.1", path = "./actors/init", features = ["fil-actor"] }
@@ -24,6 +23,7 @@ fil_actor_market = { version = "10.0.0-alpha.1", path = "./actors/market", featu
 fil_actor_miner = { version = "10.0.0-alpha.1", path = "./actors/miner", features = ["fil-actor"] }
 fil_actor_multisig = { version = "10.0.0-alpha.1", path = "./actors/multisig", features = ["fil-actor"] }
 fil_actor_paych = { version = "10.0.0-alpha.1", path = "./actors/paych", features = ["fil-actor"] }
+fil_actor_placeholder = { version = "10.0.0-alpha.1", path = "./actors/placeholder", features = ["fil-actor"] }
 fil_actor_power = { version = "10.0.0-alpha.1", path = "./actors/power", features = ["fil-actor"] }
 fil_actor_reward = { version = "10.0.0-alpha.1", path = "./actors/reward", features = ["fil-actor"] }
 fil_actor_system = { version = "10.0.0-alpha.1", path = "./actors/system", features = ["fil-actor"] }

@@ -2,7 +2,9 @@
 
 use std::borrow::Cow;
 
-use fil_actors_runtime::{actor_error, runtime::EMPTY_ARR_CID, AsActorError, EAM_ACTOR_ID};
+use fil_actors_runtime::{
+    actor_error, extract_send_result, runtime::EMPTY_ARR_CID, AsActorError, EAM_ACTOR_ID,
+};
 use fvm_ipld_blockstore::Block;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::CborStore;
@@ -213,7 +215,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
 
     /// Transfers funds to the receiver. This doesn't bother saving/reloading state.
     pub fn transfer(&mut self, to: &Address, value: TokenAmount) -> Result<(), ActorError> {
-        self.rt.send(to, METHOD_SEND, None, value)?;
+        extract_send_result(self.rt.send_simple(to, METHOD_SEND, None, value))?;
         Ok(())
     }
 
@@ -259,7 +261,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
         send_flags: SendFlags,
     ) -> Result<Result<Response, ErrorNumber>, ActorError> {
         self.flush()?;
-        let result = self.rt.send_generalized(to, method, params, value, gas_limit, send_flags);
+        let result = self.rt.send(to, method, params, value, gas_limit, send_flags);
 
         // Reload on success, and only on success.
         match &result {

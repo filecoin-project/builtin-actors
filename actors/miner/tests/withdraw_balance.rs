@@ -60,7 +60,14 @@ fn withdraw_funds_restricted_correctly() {
     // call the exported method
 
     rt.expect_validate_caller_addr(vec![h.owner, h.beneficiary]);
-    rt.expect_send(h.beneficiary, METHOD_SEND, None, amount_requested.clone(), None, ExitCode::OK);
+    rt.expect_send_simple(
+        h.beneficiary,
+        METHOD_SEND,
+        None,
+        amount_requested.clone(),
+        None,
+        ExitCode::OK,
+    );
 
     let ret = rt
         .call::<Actor>(Method::WithdrawBalanceExported as u64, params)

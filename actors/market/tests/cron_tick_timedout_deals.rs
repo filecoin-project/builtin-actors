@@ -41,7 +41,7 @@ fn timed_out_deal_is_slashed_and_deleted() {
 
     // do a cron tick for it -> should time out and get slashed
     rt.set_epoch(process_epoch(START_EPOCH, deal_id));
-    rt.expect_send(
+    rt.expect_send_simple(
         BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
         None,
@@ -95,7 +95,7 @@ fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_l
     })
     .unwrap();
 
-    rt.expect_send(
+    rt.expect_send_simple(
         deal_proposal2.client,
         AUTHENTICATE_MESSAGE_METHOD,
         auth_param,
@@ -115,7 +115,7 @@ fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_l
 
     // do a cron tick for it -> should time out and get slashed
     rt.set_epoch(process_epoch(START_EPOCH, deal_id));
-    rt.expect_send(
+    rt.expect_send_simple(
         BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
         None,
@@ -182,7 +182,14 @@ fn timed_out_and_verified_deals_are_slashed_deleted() {
     rt.set_epoch(process_epoch(START_EPOCH, *deal_ids.last().unwrap()));
 
     let expected_burn = 3 * &deal1.provider_collateral;
-    rt.expect_send(BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, None, expected_burn, None, ExitCode::OK);
+    rt.expect_send_simple(
+        BURNT_FUNDS_ACTOR_ADDR,
+        METHOD_SEND,
+        None,
+        expected_burn,
+        None,
+        ExitCode::OK,
+    );
     cron_tick(&mut rt);
 
     // a second cron tick for the same epoch should not change anything

@@ -102,7 +102,7 @@ impl Harness {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.root);
         let verifier_resolved = rt.get_id_address(verifier).unwrap_or(*verifier);
         // Expect checking the verifier's token balance.
-        rt.expect_send(
+        rt.expect_send_simple(
             DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Balance as MethodNum,
             IpldBlock::serialize_cbor(&verifier_resolved).unwrap(),
@@ -180,7 +180,7 @@ impl Harness {
             amount: TokenAmount::from_whole(allowance.to_i64().unwrap()),
             operators: vec![STORAGE_MARKET_ACTOR_ADDR],
         };
-        rt.expect_send(
+        rt.expect_send_simple(
             DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Mint as MethodNum,
             IpldBlock::serialize_cbor(&mint_params).unwrap(),
@@ -247,7 +247,7 @@ impl Harness {
         rt.set_caller(*MINER_ACTOR_CODE_ID, Address::new_id(provider));
 
         if datacap_burnt > 0 {
-            rt.expect_send(
+            rt.expect_send_simple(
                 DATACAP_TOKEN_ACTOR_ADDR,
                 ext::datacap::Method::Burn as MethodNum,
                 IpldBlock::serialize_cbor(&BurnParams {
@@ -283,7 +283,7 @@ impl Harness {
     ) -> Result<RemoveExpiredAllocationsReturn, ActorError> {
         rt.expect_validate_caller_any();
 
-        rt.expect_send(
+        rt.expect_send_simple(
             DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Transfer as MethodNum,
             IpldBlock::serialize_cbor(&TransferParams {
@@ -359,7 +359,7 @@ impl Harness {
         };
 
         if !expected_burn.is_zero() {
-            rt.expect_send(
+            rt.expect_send_simple(
                 DATACAP_TOKEN_ACTOR_ADDR,
                 ext::datacap::Method::Burn as MethodNum,
                 IpldBlock::serialize_cbor(&BurnParams {

@@ -177,7 +177,7 @@ fn test_call() {
     let evm_target = EthAddress(hex_literal::hex!("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"));
     let f4_target: FILAddress = evm_target.try_into().unwrap();
     rt.actor_code_cids.insert(target, *EVM_ACTOR_CODE_ID);
-    rt.add_delegated_address(target, f4_target);
+    rt.set_delegated_address(target.id().unwrap(), f4_target);
 
     let evm_target_word = evm_target.as_evm_word();
 
@@ -193,7 +193,7 @@ fn test_call() {
     return_data[31] = 0x42;
 
     rt.expect_gas_available(10_000_000_000u64);
-    rt.expect_send_generalized(
+    rt.expect_send(
         f4_target,
         evm::Method::InvokeContract as u64,
         proxy_call_input_data,
@@ -235,7 +235,7 @@ fn test_transfer_nogas() {
     let return_data = vec![];
 
     rt.expect_gas_available(TRANSFER_GAS_VALUE * 10);
-    rt.expect_send_generalized(
+    rt.expect_send(
         target,
         Method::InvokeContract as u64,
         None,
@@ -276,7 +276,7 @@ fn test_transfer_2300() {
     let return_data = vec![];
 
     rt.expect_gas_available(TRANSFER_GAS_VALUE * 10);
-    rt.expect_send_generalized(
+    rt.expect_send(
         target,
         Method::InvokeContract as u64,
         None,
@@ -338,7 +338,7 @@ return
 
     let cases = [(32, 64), (64, 64), (1024, 1025)];
     for (output_size, return_size) in cases {
-        rt.expect_send_generalized(
+        rt.expect_send(
             (&address).try_into().unwrap(),
             Method::InvokeContract as u64,
             None,
@@ -535,7 +535,7 @@ fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_i
 
     if valid_call_input {
         // We only get to the send_generalized if the call params were valid
-        rt.expect_send_generalized(
+        rt.expect_send(
             target,
             method_num,
             make_raw_params(proxy_call_input_data),
@@ -615,7 +615,7 @@ fn call_actor_weird_offset() {
         input,
     };
 
-    rt.expect_send_generalized(
+    rt.expect_send(
         addr,
         0,
         None,
@@ -666,7 +666,7 @@ fn call_actor_overlapping() {
         input: call_params.clone().into(),
     };
 
-    rt.expect_send_generalized(
+    rt.expect_send(
         addr,
         0,
         Some(IpldBlock { codec: CBOR, data: addr_bytes }),
@@ -709,7 +709,7 @@ fn call_actor_id_with_full_address() {
         input: call_params.clone().into(),
     };
 
-    rt.expect_send_generalized(
+    rt.expect_send(
         Address::new_id(actual_id_addr),
         0,
         None,
@@ -755,7 +755,7 @@ fn call_actor_syscall_error() {
         ..Default::default()
     };
 
-    rt.expect_send_generalized(
+    rt.expect_send(
         addr,
         0,
         None,
@@ -1045,7 +1045,7 @@ fn call_actor_solidity() {
             CONTRACT.call_actor_id(0, ethers::types::U256::zero(), 0, 0, Bytes::default(), 101);
 
         let expected_return = vec![0xff, 0xfe];
-        tester.rt.expect_send_generalized(
+        tester.rt.expect_send(
             Address::new_id(101),
             0,
             None,
@@ -1070,9 +1070,9 @@ fn call_actor_solidity() {
     {
         log::warn!("new test");
         // EVM actor
-        let evm_target = FILAddress::new_id(10101);
+        let evm_target = 10101;
         let evm_del = EthAddress(util::CONTRACT_ADDRESS).try_into().unwrap();
-        tester.rt.add_delegated_address(evm_target, evm_del);
+        tester.rt.set_delegated_address(evm_target, evm_del);
 
         let to_address = {
             let subaddr = hex_literal::hex!("b0ba000000000000000000000000000000000000");
@@ -1088,7 +1088,7 @@ fn call_actor_solidity() {
         );
 
         let expected_return = vec![0xff, 0xfe];
-        tester.rt.expect_send_generalized(
+        tester.rt.expect_send(
             to_address,
             0,
             None,
@@ -1131,7 +1131,7 @@ fn call_actor_send_solidity() {
         tester.rt.add_balance(TokenAmount::from_atto(100));
 
         let expected_return = vec![0xff, 0xfe];
-        tester.rt.expect_send_generalized(
+        tester.rt.expect_send(
             Address::new_id(101),
             0,
             None,
@@ -1176,10 +1176,7 @@ impl ContractTester {
 
         rt.set_origin(FILAddress::new_id(0));
         // first actor created is 0
-        rt.add_delegated_address(
-            Address::new_id(0),
-            Address::new_delegated(EAM_ACTOR_ID, &addr.0).unwrap(),
-        );
+        rt.set_delegated_address(0, Address::new_delegated(EAM_ACTOR_ID, &addr.0).unwrap());
 
         assert!(rt
             .call::<evm::EvmContractActor>(

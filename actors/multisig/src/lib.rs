@@ -16,8 +16,8 @@ use num_traits::Zero;
 use fil_actors_runtime::cbor::serialize_vec;
 use fil_actors_runtime::runtime::{ActorCode, Primitives, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, make_empty_map, make_map_with_root, resolve_to_actor_id,
-    ActorContext, ActorError, AsActorError, Map, INIT_ACTOR_ADDR,
+    actor_dispatch, actor_error, extract_send_result, make_empty_map, make_map_with_root,
+    resolve_to_actor_id, ActorContext, ActorError, AsActorError, Map, INIT_ACTOR_ADDR,
 };
 
 pub use self::state::*;
@@ -472,7 +472,12 @@ fn execute_transaction_if_approved(
     if threshold_met {
         st.check_available(rt.current_balance(), &txn.value, rt.curr_epoch())?;
 
-        match rt.send(&txn.to, txn.method, txn.params.clone().into(), txn.value.clone()) {
+        match extract_send_result(rt.send_simple(
+            &txn.to,
+            txn.method,
+            txn.params.clone().into(),
+            txn.value.clone(),
+        )) {
             Ok(Some(r)) => {
                 out = RawBytes::new(r.data);
             }

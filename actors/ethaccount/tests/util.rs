@@ -21,8 +21,8 @@ pub fn setup() -> MockRuntime {
     let mut rt = new_runtime();
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
     rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
-    rt.add_delegated_address(
-        EOA,
+    rt.set_delegated_address(
+        EOA.id().unwrap(),
         Address::new_delegated(
             EAM_ACTOR_ID,
             &hex_literal::hex!("FEEDFACECAFEBEEF000000000000000000000000"),
