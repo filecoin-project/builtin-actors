@@ -3432,7 +3432,8 @@ impl Actor {
     // and to abstract the state representation for clients.
     fn get_beneficiary(rt: &mut impl Runtime) -> Result<GetBeneficiaryReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        let info = rt.transaction(|state: &mut State, rt| get_miner_info(rt.store(), state))?;
+        let st: State = rt.state()?;
+        let info = get_miner_info(rt.store(), &st)?;
 
         Ok(GetBeneficiaryReturn {
             active: ActiveBeneficiary {
