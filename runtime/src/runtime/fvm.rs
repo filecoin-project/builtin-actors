@@ -34,7 +34,7 @@ use crate::runtime::{
     ActorCode, ConsensusFault, DomainSeparationTag, MessageInfo, Policy, Primitives, RuntimePolicy,
     Verifier,
 };
-use crate::{actor_error, ActorError, Runtime};
+use crate::{actor_error, ActorError, Runtime, SendError};
 
 /// A runtime that bridges to the FVM environment through the FVM SDK.
 pub struct FvmRuntime<B = ActorBlockstore> {
@@ -277,14 +277,14 @@ where
         value: TokenAmount,
         gas_limit: Option<u64>,
         flags: SendFlags,
-    ) -> Result<Response, ErrorNumber> {
+    ) -> Result<Response, SendError> {
         if self.in_transaction {
             // Note: It's slightly improper to call this ErrorNumber::IllegalOperation,
             // since the error arises before getting to the VM.
-            return Err(ErrorNumber::IllegalOperation);
+            return Err(SendError(ErrorNumber::IllegalOperation));
         }
 
-        fvm::send::send(to, method, params, value, gas_limit, flags)
+        fvm::send::send(to, method, params, value, gas_limit, flags).map_err(SendError)
     }
 
     fn new_actor_address(&mut self) -> Result<Address, ActorError> {
