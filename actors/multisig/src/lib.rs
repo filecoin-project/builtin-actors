@@ -14,7 +14,7 @@ use num_derive::FromPrimitive;
 use num_traits::Zero;
 
 use fil_actors_runtime::cbor::serialize_vec;
-use fil_actors_runtime::runtime::{builtins::Type, ActorCode, Primitives, Runtime};
+use fil_actors_runtime::runtime::{ActorCode, Primitives, Runtime};
 use fil_actors_runtime::{
     actor_dispatch, actor_error, extract_send_result, make_empty_map, make_map_with_root,
     resolve_to_actor_id, ActorContext, ActorError, AsActorError, Map, INIT_ACTOR_ADDR,

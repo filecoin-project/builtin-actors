@@ -139,6 +139,22 @@ fn authenticate_message() {
         rt.call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, params),
     );
     rt.verify();
+
+    // Ok to call exported method number
+    rt.expect_validate_caller_any();
+    rt.expect_verify_signature(ExpectedVerifySig {
+        sig: Signature::new_secp256k1(vec![]),
+        signer: addr,
+        plaintext: vec![],
+        result: Ok(()),
+    });
+    rt.call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, params).unwrap();
+}
+
+fn check_state(rt: &MockRuntime) {
+    let test_address = Address::new_id(1000);
+    let (_, acc) = check_state_invariants(&rt.get_state(), &test_address);
+    acc.assert_empty();
 }
 
 fn check_state(rt: &MockRuntime) {

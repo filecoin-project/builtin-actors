@@ -12,7 +12,7 @@ use num_derive::FromPrimitive;
 use crate::types::AuthenticateMessageParams;
 use fil_actors_runtime::builtin::singletons::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_dispatch, ActorDowncast};
+use fil_actors_runtime::{actor_dispatch, restrict_internal_api, ActorDowncast};
 use fil_actors_runtime::{actor_error, ActorError};
 
 use crate::types::AuthenticateMessageParams;

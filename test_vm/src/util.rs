@@ -1194,28 +1194,42 @@ pub fn market_publish_deal(
                 to: VERIFIED_REGISTRY_ACTOR_ADDR,
                 method: VerifregMethod::UniversalReceiverHook as u64,
                 params: Some(
-                    IpldBlock::serialize_cbor(&UniversalReceiverParams {
-                        type_: FRC46_TOKEN_TYPE,
-                        payload: serialize(
-                            &FRC46TokenReceived {
-                                from: deal_client.id().unwrap(),
-                                to: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
-                                operator: STORAGE_MARKET_ACTOR_ADDR.id().unwrap(),
-                                amount: token_amount,
-                                operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
-                                token_data: Default::default(),
-                            },
-                            "token received params",
-                        )
-                        .unwrap(),
+                    IpldBlock::serialize_cbor(&TransferFromParams {
+                        from: deal_client,
+                        to: VERIFIED_REGISTRY_ACTOR_ADDR,
+                        amount: token_amount.clone(),
+                        operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
                     })
                     .unwrap(),
                 ),
                 code: Some(ExitCode::OK),
+                subinvocs: Some(vec![ExpectInvocation {
+                    to: VERIFIED_REGISTRY_ACTOR_ADDR,
+                    method: VerifregMethod::UniversalReceiverHook as u64,
+                    params: Some(
+                        IpldBlock::serialize_cbor(&UniversalReceiverParams {
+                            type_: FRC46_TOKEN_TYPE,
+                            payload: serialize(
+                                &FRC46TokenReceived {
+                                    from: deal_client.id().unwrap(),
+                                    to: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
+                                    operator: STORAGE_MARKET_ACTOR_ADDR.id().unwrap(),
+                                    amount: token_amount,
+                                    operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
+                                    token_data: Default::default(),
+                                },
+                                "token received params",
+                            )
+                            .unwrap(),
+                        })
+                        .unwrap(),
+                    ),
+                    code: Some(ExitCode::OK),
+                    ..Default::default()
+                }]),
                 ..Default::default()
-            }]),
-            ..Default::default()
-        })
+            },
+        )
     }
     expect_publish_invocs.push(ExpectInvocation {
         to: deal_client,

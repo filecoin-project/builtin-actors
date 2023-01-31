@@ -607,6 +607,23 @@ pub fn publish_deals(
         deal_id += 1;
     }
 
+    let mut deal_id = next_deal_id;
+    for deal in publish_deals {
+        let buf = RawBytes::serialize(deal.clone()).expect("failed to marshal deal proposal");
+        let params =
+            IpldBlock::serialize_cbor(&MarketNotifyDealParams { proposal: buf.to_vec(), deal_id })
+                .unwrap();
+        rt.expect_send(
+            deal.client,
+            MARKET_NOTIFY_DEAL_METHOD,
+            params,
+            TokenAmount::zero(),
+            None,
+            ExitCode::USR_UNHANDLED_MESSAGE,
+        );
+        deal_id += 1;
+    }
+
     let ret: PublishStorageDealsReturn = rt
         .call::<MarketActor>(
             Method::PublishStorageDeals as u64,

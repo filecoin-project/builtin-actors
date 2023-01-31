@@ -316,7 +316,6 @@ impl Actor {
             // Must happen after signature verification and before taking cid.
             deal.proposal.provider = Address::new_id(provider_id);
             deal.proposal.client = Address::new_id(client_id);
-
             let serialized_proposal = serialize(&deal.proposal, "normalized deal proposal")
                 .context_code(ExitCode::USR_SERIALIZATION, "failed to serialize")?;
             let pcid = rt_serialized_deal_cid(rt, &serialized_proposal).map_err(
@@ -544,9 +543,7 @@ impl Actor {
                     ));
                 }
 
-                let proposal = st
-                    .find_proposal(rt.store(), deal_id)?
-                    .ok_or_else(|| actor_error!(not_found, "no such deal_id: {}", deal_id))?;
+                let proposal = st.get_proposal(rt.store(), deal_id)?;
 
                 let propc = rt_deal_cid(rt, &proposal)?;
 
