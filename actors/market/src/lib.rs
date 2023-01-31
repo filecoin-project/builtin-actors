@@ -698,9 +698,7 @@ impl Actor {
                 let deal_ids = st.get_deals_for_epoch(rt.store(), i)?;
 
                 for deal_id in deal_ids {
-                    let deal = st.find_proposal(rt.store(), deal_id)?.ok_or_else(|| {
-                        actor_error!(not_found, "proposal doesn't exist ({})", deal_id)
-                    })?;
+                    let deal = st.get_proposal(rt.store(), deal_id)?;
 
                     let dcid = rt_deal_cid(rt, &deal)?;
 
@@ -976,7 +974,7 @@ impl Actor {
                 terminated: state.slash_epoch,
             }),
             None => {
-                // State::get_proposal will fail with USR_NOT_FOUND in either case.
+                // State::find_proposal will fail with USR_NOT_FOUND or EX_DEAL_EXPIRED in either case.
                 let maybe_proposal = st.find_proposal(rt.store(), params.id)?;
                 match maybe_proposal {
                     Some(_) => Ok(GetDealActivationReturn {

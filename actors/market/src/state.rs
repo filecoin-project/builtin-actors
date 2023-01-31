@@ -215,6 +215,7 @@ impl State {
     ) -> Result<DealProposal, ActorError> {
         let found = self.find_proposal(store, id)?.ok_or_else(|| {
             if id < self.next_id {
+                // If the deal ID has been used, it must have been cleaned up.
                 ActorError::unchecked(EX_DEAL_EXPIRED, format!("deal {} expired", id))
             } else {
                 ActorError::not_found(format!("no such deal {}", id))
