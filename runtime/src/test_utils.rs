@@ -564,7 +564,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 
     #[allow(dead_code)]
-    pub fn expect_send(
+    pub fn expect_send_simple(
         &mut self,
         to: Address,
         method: MethodNum,

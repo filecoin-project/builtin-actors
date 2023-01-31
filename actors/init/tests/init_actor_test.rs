@@ -70,7 +70,7 @@ fn repeated_robust_address() {
         rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id, None);
 
         // Expect a send to the multisig actor constructor
-        rt.expect_send(
+        rt.expect_send_simple(
             expected_id_addr,
             METHOD_CONSTRUCTOR,
             IpldBlock::serialize_cbor(&fake_params).unwrap(),
@@ -136,7 +136,7 @@ fn create_2_payment_channels() {
         // expect anne creating a payment channel to trigger a send to the payment channels constructor
         let balance = TokenAmount::from_atto(100u8);
 
-        rt.expect_send(
+        rt.expect_send_simple(
             expected_id_addr,
             METHOD_CONSTRUCTOR,
             IpldBlock::serialize_cbor(&fake_params).unwrap(),
@@ -179,7 +179,7 @@ fn create_storage_miner() {
 
     let fake_params = ConstructorParams { network_name: String::from("fake_param") };
 
-    rt.expect_send(
+    rt.expect_send_simple(
         expected_id_addr,
         METHOD_CONSTRUCTOR,
         IpldBlock::serialize_cbor(&fake_params).unwrap(),
@@ -230,7 +230,7 @@ fn create_multisig_actor() {
 
     let fake_params = ConstructorParams { network_name: String::from("fake_param") };
     // Expect a send to the multisig actor constructor
-    rt.expect_send(
+    rt.expect_send_simple(
         expected_id_addr,
         METHOD_CONSTRUCTOR,
         IpldBlock::serialize_cbor(&fake_params).unwrap(),
@@ -266,7 +266,7 @@ fn sending_constructor_failure() {
     rt.expect_create_actor(*MINER_ACTOR_CODE_ID, expected_id, None);
 
     let fake_params = ConstructorParams { network_name: String::from("fake_param") };
-    rt.expect_send(
+    rt.expect_send_simple(
         expected_id_addr,
         METHOD_CONSTRUCTOR,
         IpldBlock::serialize_cbor(&fake_params).unwrap(),
@@ -331,7 +331,7 @@ fn exec_restricted_correctly() {
     rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id, None);
 
     // Expect a send to the multisig actor constructor
-    rt.expect_send(
+    rt.expect_send_simple(
         expected_id_addr,
         METHOD_CONSTRUCTOR,
         IpldBlock::serialize_cbor(&fake_constructor_params).unwrap(),

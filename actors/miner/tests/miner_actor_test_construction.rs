@@ -71,7 +71,7 @@ fn simple_construction() {
 
     env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
     env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
-    env.rt.expect_send(
+    env.rt.expect_send_simple(
         env.worker,
         AccountMethod::PubkeyAddress as u64,
         None,
@@ -145,7 +145,7 @@ fn control_addresses_are_resolved_during_construction() {
     let params = constructor_params(&env);
     env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
     env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
-    env.rt.expect_send(
+    env.rt.expect_send_simple(
         env.worker,
         AccountMethod::PubkeyAddress as u64,
         None,

@@ -152,7 +152,7 @@ mod verifiers {
         let allowance = verifier_allowance(&rt);
         // Expect runtime to attempt to create the actor, but don't add it to the mock's
         // address resolution table.
-        rt.expect_send(
+        rt.expect_send_simple(
             verifier_key_address,
             METHOD_SEND,
             None,
@@ -337,7 +337,14 @@ mod clients {
         let client = Address::new_bls(&[7u8; BLS_PUB_LEN]).unwrap();
         // Expect runtime to attempt to create the actor, but don't add it to the mock's
         // address resolution table.
-        rt.expect_send(client, METHOD_SEND, None, TokenAmount::default(), None, ExitCode::OK);
+        rt.expect_send_simple(
+            client,
+            METHOD_SEND,
+            None,
+            TokenAmount::default(),
+            None,
+            ExitCode::OK,
+        );
 
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -415,7 +422,7 @@ mod clients {
             amount: TokenAmount::from_whole(allowance_client.to_i64().unwrap()),
             operators: vec![STORAGE_MARKET_ACTOR_ADDR],
         };
-        rt.expect_send(
+        rt.expect_send_simple(
             DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Mint as MethodNum,
             IpldBlock::serialize_cbor(&mint_params).unwrap(),

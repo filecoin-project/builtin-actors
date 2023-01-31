@@ -158,7 +158,7 @@ mod paych_constructor {
             ..Default::default()
         };
 
-        rt.expect_send(
+        rt.expect_send_simple(
             non_id_addr,
             METHOD_SEND,
             Default::default(),
@@ -196,7 +196,7 @@ mod paych_constructor {
             ..Default::default()
         };
 
-        rt.expect_send(
+        rt.expect_send_simple(
             non_id_addr,
             METHOD_SEND,
             Default::default(),
@@ -687,7 +687,7 @@ mod update_channel_state_extra {
         });
         expect_authenticate_message(&mut rt, state.to, sv.clone(), ExitCode::OK);
 
-        rt.expect_send(
+        rt.expect_send_simple(
             other_addr,
             Method::UpdateChannelState as u64,
             Some(IpldBlock { codec: DAG_CBOR, data: fake_params.to_vec() }),
@@ -931,7 +931,7 @@ mod actor_collect {
         // wait for settlingat epoch
         rt.epoch = st.settling_at + 1;
 
-        rt.expect_send(
+        rt.expect_send_simple(
             st.to,
             METHOD_SEND,
             Default::default(),
@@ -989,7 +989,7 @@ mod actor_collect {
             rt.epoch = state.settling_at + 1;
 
             if !tc.dont_settle {
-                rt.expect_send(
+                rt.expect_send_simple(
                     state.to,
                     METHOD_SEND,
                     Default::default(),
@@ -1127,7 +1127,7 @@ fn expect_authenticate_message(
     sv: SignedVoucher,
     exp_exit_code: ExitCode,
 ) {
-    rt.expect_send(
+    rt.expect_send_simple(
         payer_addr,
         AUTHENTICATE_MESSAGE_METHOD,
         IpldBlock::serialize_cbor(&AuthenticateMessageParams {
