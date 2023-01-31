@@ -24,7 +24,7 @@ pub use self::actor_code::*;
 pub use self::policy::*;
 pub use self::randomness::DomainSeparationTag;
 use crate::runtime::builtins::Type;
-use crate::{actor_error, ActorError};
+use crate::{actor_error, ActorError, SendError};
 
 mod actor_code;
 pub mod builtins;
@@ -42,7 +42,6 @@ pub(crate) mod empty;
 
 pub use empty::EMPTY_ARR_CID;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_shared::error::ErrorNumber;
 use fvm_shared::sys::SendFlags;
 use multihash::Code;
 
@@ -162,7 +161,7 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
         value: TokenAmount,
         gas_limit: Option<u64>,
         flags: SendFlags,
-    ) -> Result<Response, ErrorNumber>;
+    ) -> Result<Response, SendError>;
 
     /// Simplified version of [`Runtime::send`] that does not specify a gas limit, nor any send flags.
     fn send_simple(
@@ -171,7 +170,7 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
         method: MethodNum,
         params: Option<IpldBlock>,
         value: TokenAmount,
-    ) -> Result<Response, ErrorNumber> {
+    ) -> Result<Response, SendError> {
         self.send(to, method, params, value, None, SendFlags::empty())
     }
 

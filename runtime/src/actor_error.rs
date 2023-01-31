@@ -169,12 +169,16 @@ pub trait ActorContext<T> {
         F: FnOnce() -> C;
 }
 
-impl<T> ActorContext<T> for Result<T, ActorError> {
+impl<T, E> ActorContext<T> for Result<T, E>
+where
+    E: Into<ActorError>,
+{
     fn context<C>(self, context: C) -> Result<T, ActorError>
     where
         C: Display + 'static,
     {
-        self.map_err(|mut err| {
+        self.map_err(|err| {
+            let mut err = err.into();
             err.msg = format!("{}: {}", context, err.msg);
             err
         })
@@ -185,7 +189,8 @@ impl<T> ActorContext<T> for Result<T, ActorError> {
         C: Display + 'static,
         F: FnOnce() -> C,
     {
-        self.map_err(|mut err| {
+        self.map_err(|err| {
+            let mut err = err.into();
             err.msg = format!("{}: {}", f(), err.msg);
             err
         })
