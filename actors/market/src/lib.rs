@@ -972,7 +972,6 @@ impl Actor {
                 terminated: state.slash_epoch,
             }),
             None => {
-                // State::find_proposal will fail with USR_NOT_FOUND or EX_DEAL_EXPIRED in either case.
                 let maybe_proposal = st.find_proposal(rt.store(), params.id)?;
                 match maybe_proposal {
                     Some(_) => Ok(GetDealActivationReturn {
