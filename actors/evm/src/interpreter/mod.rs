@@ -9,10 +9,13 @@ pub mod stack;
 pub mod system;
 pub mod uints;
 
+#[cfg(test)]
+pub mod test_util;
+
 pub use {
     bytecode::Bytecode,
     execution::{execute, ExecutionState},
-    output::{Output, StatusCode},
+    output::Output,
     system::System,
     uints::{U256, U512},
 };

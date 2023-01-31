@@ -1127,7 +1127,7 @@ pub fn market_publish_deal(
     let mut expect_publish_invocs = vec![
         ExpectInvocation {
             to: miner_id,
-            method: MinerMethod::ControlAddresses as u64,
+            method: MinerMethod::IsControllingAddressExported as u64,
             ..Default::default()
         },
         ExpectInvocation {
@@ -1145,11 +1145,6 @@ pub fn market_publish_deal(
             method: AccountMethod::AuthenticateMessageExported as u64,
             ..Default::default()
         },
-        ExpectInvocation {
-            to: deal_client,
-            method: MARKET_NOTIFY_DEAL_METHOD,
-            ..Default::default()
-        },
     ];
     if verified_deal {
         let deal_term = deal.end_epoch - deal.start_epoch;
@@ -1157,6 +1152,13 @@ pub fn market_publish_deal(
         let alloc_expiration =
             min(deal.start_epoch, v.curr_epoch + MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION);
 
+        expect_publish_invocs.push(ExpectInvocation {
+            to: DATACAP_TOKEN_ACTOR_ADDR,
+            method: DataCapMethod::BalanceExported as u64,
+            params: Some(IpldBlock::serialize_cbor(&deal_client).unwrap()),
+            code: Some(ExitCode::OK),
+            ..Default::default()
+        });
         let alloc_reqs = AllocationRequests {
             allocations: vec![AllocationRequest {
                 provider: miner_id.id().unwrap(),
@@ -1168,49 +1170,51 @@ pub fn market_publish_deal(
             }],
             extensions: vec![],
         };
-        expect_publish_invocs.insert(
-            expect_publish_invocs.len() - 1,
-            ExpectInvocation {
-                to: DATACAP_TOKEN_ACTOR_ADDR,
-                method: DataCapMethod::TransferFromExported as u64,
+        expect_publish_invocs.push(ExpectInvocation {
+            to: DATACAP_TOKEN_ACTOR_ADDR,
+            method: DataCapMethod::TransferFromExported as u64,
+            params: Some(
+                IpldBlock::serialize_cbor(&TransferFromParams {
+                    from: deal_client,
+                    to: VERIFIED_REGISTRY_ACTOR_ADDR,
+                    amount: token_amount.clone(),
+                    operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
+                })
+                .unwrap(),
+            ),
+            code: Some(ExitCode::OK),
+            subinvocs: Some(vec![ExpectInvocation {
+                to: VERIFIED_REGISTRY_ACTOR_ADDR,
+                method: VerifregMethod::UniversalReceiverHook as u64,
                 params: Some(
-                    IpldBlock::serialize_cbor(&TransferFromParams {
-                        from: deal_client,
-                        to: VERIFIED_REGISTRY_ACTOR_ADDR,
-                        amount: token_amount.clone(),
-                        operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
+                    IpldBlock::serialize_cbor(&UniversalReceiverParams {
+                        type_: FRC46_TOKEN_TYPE,
+                        payload: serialize(
+                            &FRC46TokenReceived {
+                                from: deal_client.id().unwrap(),
+                                to: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
+                                operator: STORAGE_MARKET_ACTOR_ADDR.id().unwrap(),
+                                amount: token_amount,
+                                operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
+                                token_data: Default::default(),
+                            },
+                            "token received params",
+                        )
+                        .unwrap(),
                     })
                     .unwrap(),
                 ),
                 code: Some(ExitCode::OK),
-                subinvocs: Some(vec![ExpectInvocation {
-                    to: VERIFIED_REGISTRY_ACTOR_ADDR,
-                    method: VerifregMethod::UniversalReceiverHook as u64,
-                    params: Some(
-                        IpldBlock::serialize_cbor(&UniversalReceiverParams {
-                            type_: FRC46_TOKEN_TYPE,
-                            payload: serialize(
-                                &FRC46TokenReceived {
-                                    from: deal_client.id().unwrap(),
-                                    to: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
-                                    operator: STORAGE_MARKET_ACTOR_ADDR.id().unwrap(),
-                                    amount: token_amount,
-                                    operator_data: RawBytes::serialize(&alloc_reqs).unwrap(),
-                                    token_data: Default::default(),
-                                },
-                                "token received params",
-                            )
-                            .unwrap(),
-                        })
-                        .unwrap(),
-                    ),
-                    code: Some(ExitCode::OK),
-                    ..Default::default()
-                }]),
                 ..Default::default()
-            },
-        )
+            }]),
+            ..Default::default()
+        })
     }
+    expect_publish_invocs.push(ExpectInvocation {
+        to: deal_client,
+        method: MARKET_NOTIFY_DEAL_METHOD,
+        ..Default::default()
+    });
     ExpectInvocation {
         to: STORAGE_MARKET_ACTOR_ADDR,
         method: MarketMethod::PublishStorageDeals as u64,

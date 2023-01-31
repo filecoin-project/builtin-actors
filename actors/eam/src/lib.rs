@@ -26,10 +26,9 @@ use {
     fvm_shared::{
         address::{Address, Payload},
         crypto::hash::SupportedHashes,
-        ActorID, MethodNum, METHOD_CONSTRUCTOR,
+        ActorID, METHOD_CONSTRUCTOR,
     },
     num_derive::FromPrimitive,
-    num_traits::FromPrimitive,
 };
 
 #[cfg(feature = "fil-actor")]
@@ -174,9 +173,20 @@ fn create_actor(
     if let Some(id) = rt.resolve_address(&f4_addr) {
         // Try to resurrect it if it is already an EVM actor (must be "dead")
         let caller_code_cid = rt.get_actor_code_cid(&id).expect("failed to lookup actor code");
-        if let Some(Type::EVM) = rt.resolve_builtin_actor_type(&caller_code_cid) {
-            rt.send(&Address::new_id(id), RESURRECT_METHOD, constructor_params.into(), value)?;
-            return Ok(Return { actor_id: id, robust_address: None, eth_address: new_addr });
+        match rt.resolve_builtin_actor_type(&caller_code_cid) {
+            // If it's an EVM actor, resurrect it.
+            Some(Type::EVM) => {
+                rt.send(&Address::new_id(id), RESURRECT_METHOD, constructor_params.into(), value)?;
+                return Ok(Return { actor_id: id, robust_address: None, eth_address: new_addr });
+            }
+            // If it's a Placeholder, continue on to create it.
+            Some(Type::Placeholder) => {}
+            // Otherwise, return an error.
+            _ => {
+                return Err(
+                    actor_error!(forbidden; "cannot deploy contract over existing contract at address {new_addr}"),
+                );
+            }
         }
     }
 
@@ -233,6 +243,7 @@ fn resolve_caller_external(rt: &mut impl Runtime) -> Result<(EthAddress, EthAddr
                 return Err(ActorError::checked(
                     result.exit_code,
                     "failed to retrieve account robust address".to_string(),
+                    None,
                 ));
             }
             let robust_addr: Address = deserialize_block(result.return_data)?;

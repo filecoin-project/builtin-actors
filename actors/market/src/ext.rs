@@ -26,12 +26,26 @@ pub mod miner {
     use super::*;
 
     pub const CONTROL_ADDRESSES_METHOD: u64 = 2;
+    pub const IS_CONTROLLING_ADDRESS_EXPORTED: u64 =
+        frc42_dispatch::method_hash!("IsControllingAddress");
 
     #[derive(Serialize_tuple, Deserialize_tuple)]
     pub struct GetControlAddressesReturnParams {
         pub owner: Address,
         pub worker: Address,
         pub control_addresses: Vec<Address>,
+    }
+
+    #[derive(Serialize_tuple, Deserialize_tuple)]
+    #[serde(transparent)]
+    pub struct IsControllingAddressReturn {
+        pub is_controlling: bool,
+    }
+
+    #[derive(Serialize_tuple, Deserialize_tuple)]
+    #[serde(transparent)]
+    pub struct IsControllingAddressParam {
+        pub address: Address,
     }
 }
 
@@ -81,6 +95,7 @@ pub mod verifreg {
 }
 
 pub mod datacap {
+    pub const BALANCE_OF_METHOD: u64 = frc42_dispatch::method_hash!("Balance");
     pub const TRANSFER_FROM_METHOD: u64 = frc42_dispatch::method_hash!("TransferFrom");
 }
 

@@ -1,11 +1,11 @@
 #![allow(dead_code)]
 
+use fil_actors_runtime::ActorError;
 use fvm_shared::econ::TokenAmount;
 
 use super::address::EthAddress;
 use {
     super::instructions,
-    super::StatusCode,
     crate::interpreter::memory::Memory,
     crate::interpreter::stack::Stack,
     crate::interpreter::{Bytecode, Output, System},
@@ -60,7 +60,10 @@ macro_rules! def_opcodes {
         pub const fn jumptable<'r, 'a, RT: Runtime>() -> [Instruction<'r, 'a, RT>; 256] {
             def_ins_raw! {
                 UNDEFINED(_m) {
-                    Err(StatusCode::UndefinedInstruction)
+                    Err(ActorError::unchecked(
+                        crate::EVM_CONTRACT_UNDEFINED_INSTRUCTION,
+                        "undefined instruction".into()
+                    ))
                 }
             }
             $(def_ins_raw! {
@@ -80,7 +83,7 @@ macro_rules! def_opcodes {
 macro_rules! def_ins_raw {
     ($ins:ident ($arg:ident) $body:block) => {
         #[allow(non_snake_case)]
-        unsafe fn $ins<'r, 'a, RT: Runtime>(p: *mut Machine<'r, 'a, RT>) -> Result<(), StatusCode> {
+        unsafe fn $ins<'r, 'a, RT: Runtime>(p: *mut Machine<'r, 'a, RT>) -> Result<(), ActorError> {
             // SAFETY: macro ensures that mut pointer is taken directly from a mutable borrow, used
             // once, then goes out of scope immediately after
             let $arg: &mut Machine<'r, 'a, RT> = &mut *p;
@@ -92,11 +95,11 @@ macro_rules! def_ins_raw {
 pub mod opcodes {
     use super::instructions;
     use super::Machine;
-    use crate::interpreter::StatusCode;
     use fil_actors_runtime::runtime::Runtime;
+    use fil_actors_runtime::ActorError;
 
     pub type Instruction<'r, 'a, RT> =
-        unsafe fn(*mut Machine<'r, 'a, RT>) -> Result<(), StatusCode>;
+        unsafe fn(*mut Machine<'r, 'a, RT>) -> Result<(), ActorError>;
 
     def_opcodes! {
         0x00: STOP,
@@ -163,6 +166,7 @@ pub mod opcodes {
         0x59: MSIZE,
         0x5a: GAS,
         0x5b: JUMPDEST,
+        0x5F: PUSH0,
         0x60: PUSH1,
         0x61: PUSH2,
         0x62: PUSH3,
@@ -254,12 +258,12 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         Machine { system, state, bytecode, pc: 0, output: Output::default() }
     }
 
-    pub fn execute(mut self) -> Result<Output, StatusCode> {
+    pub fn execute(mut self) -> Result<Output, ActorError> {
         while self.pc < self.bytecode.len() {
             // This is faster than the question mark operator, and speed counts here.
             #[allow(clippy::question_mark)]
             if let Err(e) = self.step() {
-                return Err(e);
+                return Err(e.wrap(format!("ABORT(pc={})", self.pc)));
             }
         }
 
@@ -267,7 +271,8 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
     }
 
     #[inline(always)]
-    fn step(&mut self) -> Result<(), StatusCode> {
+    // Note: pub only for unit test steps.
+    pub(crate) fn step(&mut self) -> Result<(), ActorError> {
         let op = self.bytecode[self.pc];
         unsafe { Self::JMPTABLE[op as usize](self) }
     }
@@ -279,6 +284,6 @@ pub fn execute(
     bytecode: &Bytecode,
     runtime: &mut ExecutionState,
     system: &mut System<impl Runtime>,
-) -> Result<Output, StatusCode> {
+) -> Result<Output, ActorError> {
     Machine::new(system, runtime, bytecode).execute()
 }

@@ -57,7 +57,11 @@ impl U256 {
     /// turns a i256 value to negative
     #[inline(always)]
     pub fn i256_neg(&self) -> U256 {
-        !*self + U256::ONE
+        if self.is_zero() {
+            U256::ZERO
+        } else {
+            !*self + U256::ONE
+        }
     }
 
     pub fn to_bytes(&self) -> [u8; 32] {
@@ -289,6 +293,53 @@ mod tests {
         assert_eq!(i256_div(zero, zero), zero);
         assert_eq!(i256_div(one, zero), zero);
         assert_eq!(i256_div(zero, one), zero);
+    }
+
+    #[test]
+    fn mod_i256() {
+        let zero = U256::ZERO;
+        let one = U256::ONE;
+        let one_hundred = U256::from(100);
+        let two = U256::from(2);
+        let three = U256::from(3);
+
+        let neg_one_hundred = U256::from(100).i256_neg();
+        let minus_one = U256::from(1).i256_neg();
+        let neg_three = U256::from(3).i256_neg();
+        let max_value = U256::from(2).pow(255.into()) - 1;
+
+        // zero
+        assert_eq!(i256_mod(minus_one, U256::ZERO), U256::ZERO);
+        assert_eq!(i256_mod(max_value, U256::ZERO), U256::ZERO);
+        assert_eq!(i256_mod(U256::ZERO, U256::ZERO), U256::ZERO);
+
+        assert_eq!(i256_mod(minus_one, two), minus_one);
+        assert_eq!(i256_mod(U256::I128_MIN, one), 0);
+        assert_eq!(i256_mod(one, U256::I128_MIN), one);
+        assert_eq!(i256_mod(one, U256::from(i128::MAX)), one);
+
+        assert_eq!(i256_mod(max_value, minus_one), zero);
+        assert_eq!(i256_mod(neg_one_hundred, minus_one), zero);
+        assert_eq!(i256_mod(one_hundred, two), zero);
+        assert_eq!(i256_mod(one_hundred, neg_three), one);
+
+        assert_eq!(i256_mod(neg_one_hundred, three), minus_one);
+
+        let a = U256::from(95).i256_neg();
+        let b = U256::from(256);
+        assert_eq!(a % b, U256::from(161))
+    }
+
+    #[test]
+    fn negative_i256() {
+        assert_eq!(U256::ZERO.i256_neg(), U256::ZERO);
+
+        let one = U256::ONE.i256_neg();
+        assert!(one.i256_is_negative());
+
+        let neg_one = U256::from(&[0xff; 32]);
+        let pos_one = neg_one.i256_neg();
+        assert_eq!(pos_one, U256::ONE);
     }
 
     #[test]

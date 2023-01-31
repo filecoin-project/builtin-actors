@@ -1,18 +1,17 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fvm_actor_utils::receiver::UniversalReceiverParams;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::crypto::signature::SignatureType::{Secp256k1, BLS};
 use fvm_shared::crypto::signature::{Signature, SignatureType};
 use fvm_shared::error::ExitCode;
 use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
-use num_traits::FromPrimitive;
 
 use fil_actors_runtime::builtin::singletons::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_dispatch, restrict_internal_api, ActorDowncast};
+use fil_actors_runtime::{actor_dispatch, ActorDowncast, FIRST_EXPORTED_METHOD_NUMBER};
 use fil_actors_runtime::{actor_error, ActorError};
 
 use crate::types::AuthenticateMessageParams;
@@ -35,7 +34,6 @@ pub enum Method {
     // Deprecated in v10
     // AuthenticateMessage = 3,
     AuthenticateMessageExported = frc42_dispatch::method_hash!("AuthenticateMessage"),
-    UniversalReceiverHook = frc42_dispatch::method_hash!("Receive"),
 }
 
 /// Account Actor
@@ -92,13 +90,18 @@ impl Actor {
         Ok(())
     }
 
-    // Always succeeds, accepting any transfers.
-    pub fn universal_receiver_hook(
+    /// Fallback method for unimplemented method numbers.
+    pub fn fallback(
         rt: &mut impl Runtime,
-        _params: UniversalReceiverParams,
-    ) -> Result<(), ActorError> {
+        method: MethodNum,
+        _: Option<IpldBlock>,
+    ) -> Result<Option<IpldBlock>, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        Ok(())
+        if method >= FIRST_EXPORTED_METHOD_NUMBER {
+            Ok(None)
+        } else {
+            Err(actor_error!(unhandled_message; "invalid method: {}", method))
+        }
     }
 }
 
@@ -108,6 +111,6 @@ impl ActorCode for Actor {
         Constructor => constructor,
         PubkeyAddress => pubkey_address,
         AuthenticateMessageExported => authenticate_message,
-        UniversalReceiverHook => universal_receiver_hook,
+        _ => fallback [raw],
     }
 }

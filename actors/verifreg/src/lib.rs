@@ -14,19 +14,18 @@ use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
+use fvm_shared::{ActorID, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
 use log::info;
 use num_derive::FromPrimitive;
-use num_traits::{FromPrimitive, Signed, Zero};
+use num_traits::{Signed, Zero};
 
 use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
     actor_dispatch, actor_error, deserialize_block, make_map_with_root_and_bitwidth,
-    resolve_to_actor_id, restrict_internal_api, ActorDowncast, ActorError, BatchReturn, Map,
-    DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
+    resolve_to_actor_id, ActorDowncast, ActorError, BatchReturn, Map, DATACAP_TOKEN_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -696,8 +695,8 @@ impl Actor {
 
         // Save new allocations and updated claims.
         let ids = rt.transaction(|st: &mut State, rt| {
-            let ids = st.insert_allocations(rt.store(), client, new_allocs.into_iter())?;
-            st.put_claims(rt.store(), updated_claims.into_iter())?;
+            let ids = st.insert_allocations(rt.store(), client, new_allocs)?;
+            st.put_claims(rt.store(), updated_claims)?;
             Ok(ids)
         })?;
 

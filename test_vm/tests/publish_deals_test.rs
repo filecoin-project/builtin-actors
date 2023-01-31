@@ -539,7 +539,7 @@ fn psd_bad_sig() {
         subinvocs: Some(vec![
             ExpectInvocation {
                 to: a.maddr,
-                method: MinerMethod::ControlAddresses as u64,
+                method: MinerMethod::IsControllingAddressExported as u64,
                 ..Default::default()
             },
             ExpectInvocation {

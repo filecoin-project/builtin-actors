@@ -1,10 +1,16 @@
 use fil_actor_evm::{
     interpreter::{address::EthAddress, U256},
-    EvmContractActor, Method, ResurrectParams, State, Tombstone,
+    EvmContractActor, Method, ResurrectParams, State, Tombstone, EVM_CONTRACT_SELFDESTRUCT_FAILED,
 };
 use fil_actors_runtime::{test_utils::*, EAM_ACTOR_ADDR, INIT_ACTOR_ADDR};
-use fvm_ipld_encoding::{ipld_block::IpldBlock, RawBytes};
-use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode, MethodNum, METHOD_SEND};
+use fvm_ipld_encoding::{ipld_block::IpldBlock, BytesSer, RawBytes};
+use fvm_shared::{
+    address::Address,
+    econ::TokenAmount,
+    error::{ErrorNumber, ExitCode},
+    sys::SendFlags,
+    MethodNum, METHOD_SEND,
+};
 use num_traits::Zero;
 
 mod util;
@@ -108,18 +114,30 @@ fn test_selfdestruct_missing_beneficiary() {
 
     let solidity_params = hex::decode("35f46994").unwrap();
     rt.expect_validate_caller_any();
-    rt.expect_send(
+    rt.expect_send_generalized(
         beneficiary,
         METHOD_SEND,
         None,
         rt.get_balance(),
         None,
-        ExitCode::SYS_INVALID_RECEIVER,
+        SendFlags::default(),
+        None,
+        ExitCode::OK, // doesn't matter
+        Some(ErrorNumber::NotFound),
     );
 
     // It still works even if the beneficiary doesn't exist.
-    assert!(util::invoke_contract(&mut rt, &solidity_params).is_empty());
+
+    assert_eq!(
+        rt.call::<EvmContractActor>(
+            Method::InvokeContract as u64,
+            IpldBlock::serialize_cbor(&BytesSer(&solidity_params)).unwrap(),
+        )
+        .expect_err("call should have failed")
+        .exit_code(),
+        EVM_CONTRACT_SELFDESTRUCT_FAILED,
+    );
     let state: State = rt.get_state();
-    assert_eq!(state.tombstone, Some(Tombstone { origin: 100, nonce: 0 }));
+    assert_eq!(state.tombstone, None);
     rt.verify();
 }

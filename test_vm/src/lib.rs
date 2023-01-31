@@ -433,6 +433,10 @@ impl<'bs> VM<'bs> {
         let mut a = self.get_actor(from_id).unwrap();
         let call_seq = a.call_seq_num;
         a.call_seq_num = call_seq + 1;
+        // EthAccount abstractions turns Placeholders into EthAccounts
+        if a.code == *PLACEHOLDER_ACTOR_CODE_ID {
+            a.code = *ETHACCOUNT_ACTOR_CODE_ID;
+        }
         self.set_actor(from_id, a);
 
         let prior_root = self.checkpoint();
@@ -628,9 +632,9 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             // Validate that there's an actor at the target ID (we don't care what is there,
             // just that something is there).
             if self.v.get_actor(Address::new_id(da.namespace())).is_some() =>
-            {
-                false
-            }
+                {
+                    false
+                }
             _ => {
                 return Err(ActorError::unchecked(
                     ExitCode::SYS_INVALID_RECEIVER,
@@ -675,7 +679,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 read_only: false,
             };
             if is_account {
-                new_ctx.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id, Some(*target)).unwrap();
+                new_ctx.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id, None).unwrap();
                 let res = new_ctx.invoke();
                 let invoc = new_ctx.gather_trace(res);
                 RefMut::map(self.subinvocations.borrow_mut(), |subinvocs| {

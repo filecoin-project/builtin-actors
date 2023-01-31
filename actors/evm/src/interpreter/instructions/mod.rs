@@ -16,9 +16,9 @@ pub mod state;
 pub mod storage;
 
 use crate::interpreter::execution::Machine;
-use crate::interpreter::output::StatusCode;
 use crate::interpreter::U256;
 use fil_actors_runtime::runtime::Runtime;
+use fil_actors_runtime::ActorError;
 
 macro_rules! rev {
     ($($args:ident),*) => {
@@ -36,7 +36,7 @@ macro_rules! def_op {
     ($op:ident ($m:ident) => { $($body:tt)* }) => {
         #[allow(non_snake_case)]
         #[inline(always)]
-        pub fn $op<'r, 'a, RT: Runtime + 'a>($m: &mut Machine<'r, 'a, RT> ) -> Result<(), StatusCode> {
+        pub fn $op<'r, 'a, RT: Runtime + 'a>($m: &mut Machine<'r, 'a, RT> ) -> Result<(), ActorError> {
             $($body)*
         }
     }
@@ -77,8 +77,9 @@ macro_rules! def_stackop {
     };
 }
 
-// pusho variants: push stuff on the stack taken as input from bytecode; the kind of thing that
+// push variants: push stuff on the stack taken as input from bytecode; the kind of thing that
 // makes you want to cry because it really is a stack op.
+// Takes subslice of bytecode starting at pc. Advances pc by number of bytes read.
 macro_rules! def_push {
     ($op:ident => $impl:path) => {
         def_op! { $op (m) => {
@@ -274,6 +275,7 @@ def_stackop! { SWAP16 => stack::swap::<16> }
 // pop
 def_stackop! { POP => stack::pop }
 // push
+def_push! { PUSH0 => stack::push::<0> }
 def_push! { PUSH1 => stack::push::<1> }
 def_push! { PUSH2 => stack::push::<2> }
 def_push! { PUSH3 => stack::push::<3> }

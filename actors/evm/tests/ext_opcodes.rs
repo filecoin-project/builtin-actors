@@ -30,6 +30,8 @@ fn test_extcodesize() {
 # TODO update after real account abstraction lands
 %dispatch(0x02, evm_account)
 %dispatch(0x03, native_account)
+%dispatch(0x04, placeholder)
+%dispatch(0x05, non_existent)
 %dispatch_end()
 
 evm_size:
@@ -59,6 +61,21 @@ native_account:
     push20 0xff00000000000000000000000000000000000102
     extcodesize
     %return_stack_word()
+
+placeholder:
+    jumpdest
+    # non-existent account ID
+    push20 0xff00000000000000000000000000000000000103
+    extcodesize
+    %return_stack_word()
+
+non_existent:
+    jumpdest
+    # non-existent account ID
+    push20 0xff00000000000000000000000000000000000104
+    extcodesize
+    %return_stack_word()
+
 "#;
 
         asm::new_contract("extcodesize", init, body).unwrap()
@@ -88,6 +105,10 @@ native_account:
     let native_account = FILAddress::new_id(0x0102);
     rt.set_address_actor_type(native_account, *ACCOUNT_ACTOR_CODE_ID);
 
+    // 0x0103 is a placeholder account
+    let placeholder = FILAddress::new_id(0x0102);
+    rt.set_address_actor_type(placeholder, *PLACEHOLDER_ACTOR_CODE_ID);
+
     // evm actor
     let method = util::dispatch_num_word(0);
     let expected = U256::from(0x04);
@@ -101,6 +122,7 @@ native_account:
             SendFlags::READ_ONLY,
             IpldBlock::serialize_cbor(&bytecode_cid).unwrap(),
             ExitCode::OK,
+            None,
         );
 
         let result = util::invoke_contract(&mut rt, &method);
@@ -131,6 +153,26 @@ native_account:
 
     // native account
     let method = util::dispatch_num_word(3);
+    let expected = U256::from(0x00);
+    {
+        let result = util::invoke_contract(&mut rt, &method);
+        rt.verify();
+        assert_eq!(U256::from_big_endian(&result), expected);
+        rt.reset();
+    }
+
+    // placeholder
+    let method = util::dispatch_num_word(5);
+    let expected = U256::from(0x00);
+    {
+        let result = util::invoke_contract(&mut rt, &method);
+        rt.verify();
+        assert_eq!(U256::from_big_endian(&result), expected);
+        rt.reset();
+    }
+
+    // non existent
+    let method = util::dispatch_num_word(4);
     let expected = U256::from(0x00);
     {
         let result = util::invoke_contract(&mut rt, &method);
@@ -215,6 +257,7 @@ account:
         SendFlags::READ_ONLY,
         IpldBlock::serialize_cbor(&bytecode_hash).unwrap(),
         ExitCode::OK,
+        None,
     );
 
     // Evm code
@@ -361,6 +404,7 @@ precompile:
         SendFlags::READ_ONLY,
         IpldBlock::serialize_cbor(&bytecode_cid).unwrap(),
         ExitCode::OK,
+        None,
     );
 
     let result = util::invoke_contract(&mut rt, &util::dispatch_num_word(0));
@@ -436,6 +480,7 @@ init_extsize:
             SendFlags::READ_ONLY,
             IpldBlock::serialize_cbor(&BytecodeHash::EMPTY).unwrap(),
             ExitCode::OK,
+            None,
         );
 
         rt.store.put_keyed(&EMPTY_ARR_CID, &[]).unwrap();
@@ -448,6 +493,7 @@ init_extsize:
             SendFlags::READ_ONLY,
             IpldBlock::serialize_cbor(&EMPTY_ARR_CID).unwrap(),
             ExitCode::OK,
+            None,
         );
     });
 

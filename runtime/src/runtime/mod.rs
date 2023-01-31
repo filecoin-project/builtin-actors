@@ -203,7 +203,7 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
                 if ret.exit_code.is_success() {
                     Ok(ret.return_data)
                 } else {
-                    Err(ActorError::checked_with_data(
+                    Err(ActorError::checked(
                         ret.exit_code,
                         format!(
                             "send to {} method {} aborted with code {}",
@@ -297,7 +297,7 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// `name` provides information about gas charging point
     fn charge_gas(&mut self, name: &'static str, compute: i64);
 
-    /// The current network base fee
+    /// Returns the gas base fee (cost per unit) for the current epoch.
     fn base_fee(&self) -> TokenAmount;
 
     /// The gas still available for computation

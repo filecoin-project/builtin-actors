@@ -52,7 +52,7 @@ pub fn addmod(a: U256, b: U256, c: U256) -> U256 {
         let bl: U512 = b.into();
         let cl: U512 = c.into();
 
-        (al + bl % cl).low_u256()
+        ((al + bl) % cl).low_u256()
     } else {
         c
     }
@@ -64,7 +64,7 @@ pub fn mulmod(a: U256, b: U256, c: U256) -> U256 {
         let al: U512 = a.into();
         let bl: U512 = b.into();
         let cl: U512 = c.into();
-        (al * bl % cl).low_u256()
+        ((al * bl) % cl).low_u256()
     } else {
         c
     }
@@ -113,6 +113,28 @@ mod test {
     mod basic {
         use crate::interpreter::instructions::arithmetic::*;
         use crate::interpreter::U256;
+
+        #[test]
+        fn test_addmod() {
+            assert_eq!(addmod(4.into(), 5.into(), 3.into()), 0, "4 + 5 % 3 = 0");
+            assert_eq!(addmod(0.into(), 5.into(), 3.into()), 2, "0 + 5 % 3 = 2");
+            assert_eq!(addmod(0.into(), 0.into(), 3.into()), 0, "0 + 0 % 3 = 0");
+            // per evm, mod 0 is 0
+            assert_eq!(addmod(1.into(), 2.into(), 0.into()), 0, "1 + 2 % 0 = 0");
+
+            assert_eq!(addmod(U256::MAX, U256::MAX, 4.into()), 2, "max + max % 4 = 2");
+        }
+
+        #[test]
+        fn test_mulmod() {
+            assert_eq!(mulmod(4.into(), 5.into(), 3.into()), 2, "4 * 5 % 3 = 2");
+            assert_eq!(mulmod(0.into(), 5.into(), 3.into()), 0, "0 * 5 % 3 = 0");
+            assert_eq!(mulmod(0.into(), 0.into(), 3.into()), 0, "0 * 0 % 3 = 0");
+            // per evm, mod 0 is 0
+            assert_eq!(mulmod(1.into(), 2.into(), 0.into()), 0, "1 * 2 % 0 = 0");
+
+            assert_eq!(mulmod(U256::MAX, U256::MAX, 2.into()), 1, "max * max % 2 = 1");
+        }
 
         #[test]
         fn test_add() {
@@ -173,6 +195,23 @@ mod test {
                 div((u128::MAX).into(), 2.into()),
                 U256::from(u128::MAX / 2),
                 "divide 2^128 by 2 (uses >1 limb)"
+            );
+        }
+
+        #[test]
+        fn test_modulo() {
+            assert_eq!(modulo(0.into(), 0.into()), 0, "nothing mod nothing is nothing");
+            assert_eq!(modulo(4.into(), 1.into()), 0, "4 mod 1 is 0");
+            assert_eq!(
+                modulo((u128::MAX).into(), 2.into()),
+                U256::from(u128::MAX % 2),
+                "2^128 mod 2"
+            );
+
+            assert_eq!(
+                modulo((u128::MAX).into(), 7.into()),
+                U256::from(u128::MAX % 7),
+                "2^128 mod 7"
             );
         }
 

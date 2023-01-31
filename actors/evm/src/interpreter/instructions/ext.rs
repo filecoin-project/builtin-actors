@@ -2,15 +2,16 @@ use crate::interpreter::instructions::memory::copy_to_memory;
 use crate::interpreter::{address::EthAddress, precompiles::Precompiles};
 use crate::{BytecodeHash, U256};
 use cid::Cid;
-use fil_actors_runtime::deserialize_block;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::ActorError;
+use fil_actors_runtime::{deserialize_block, AsActorError};
 use fvm_ipld_blockstore::Blockstore;
+use fvm_shared::error::ExitCode;
 use fvm_shared::sys::SendFlags;
 use fvm_shared::{address::Address, econ::TokenAmount};
 use num_traits::Zero;
 use {
-    crate::interpreter::{ExecutionState, StatusCode, System},
+    crate::interpreter::{ExecutionState, System},
     fil_actors_runtime::runtime::Runtime,
 };
 
@@ -18,7 +19,7 @@ pub fn extcodesize(
     _state: &mut ExecutionState,
     system: &mut System<impl Runtime>,
     addr: U256,
-) -> Result<U256, StatusCode> {
+) -> Result<U256, ActorError> {
     // TODO (M2.2) we're fetching the entire block here just to get its size. We should instead use
     //  the ipld::block_stat syscall, but the Runtime nor the Blockstore expose it.
     //  Tracked in https://github.com/filecoin-project/ref-fvm/issues/867
@@ -38,7 +39,7 @@ pub fn extcodehash(
     _state: &mut ExecutionState,
     system: &mut System<impl Runtime>,
     addr: U256,
-) -> Result<U256, StatusCode> {
+) -> Result<U256, ActorError> {
     let addr = match get_contract_type(system.rt, &addr.into()) {
         ContractType::EVM(a) => a,
         // _Technically_ since we have native "bytecode" set as 0xfe this is valid, though we cant differentiate between different native actors.
@@ -73,7 +74,7 @@ pub fn extcodecopy(
     dest_offset: U256,
     data_offset: U256,
     size: U256,
-) -> Result<(), StatusCode> {
+) -> Result<(), ActorError> {
     let bytecode = match get_contract_type(system.rt, &addr.into()) {
         ContractType::EVM(addr) => get_evm_bytecode(system, &addr)?,
         ContractType::NotFound | ContractType::Account | ContractType::Precompile => Vec::new(),
@@ -103,9 +104,8 @@ pub fn get_contract_type<RT: Runtime>(rt: &RT, addr: &EthAddress) -> ContractTyp
         return ContractType::Precompile;
     }
 
-    addr.try_into()
-        .ok() // into filecoin address
-        .and_then(|addr| rt.resolve_address(&addr)) // resolve actor id
+    let addr: Address = addr.into();
+    rt.resolve_address(&addr) // resolve actor id
         .and_then(|id| rt.get_actor_code_cid(&id).map(|cid| (id, cid))) // resolve code cid
         .map(|(id, cid)| match rt.resolve_builtin_actor_type(&cid) {
             // TODO part of current account abstraction hack where placeholders are accounts
@@ -134,16 +134,14 @@ pub fn get_evm_bytecode_cid(
 pub fn get_evm_bytecode(
     system: &mut System<impl Runtime>,
     addr: &Address,
-) -> Result<Vec<u8>, StatusCode> {
+) -> Result<Vec<u8>, ActorError> {
     if let Some(cid) = get_evm_bytecode_cid(system, addr)? {
         let raw_bytecode = system
             .rt
             .store()
             .get(&cid) // TODO this is inefficient; should call stat here.
-            .map_err(|e| {
-                StatusCode::InternalError(format!("failed to get bytecode block: {}", &e))
-            })?
-            .ok_or_else(|| ActorError::not_found("bytecode block not found".to_string()))?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get bytecode block")?
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "bytecode block not found")?;
         Ok(raw_bytecode)
     } else {
         Ok(Vec::new())

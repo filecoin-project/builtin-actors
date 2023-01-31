@@ -1,6 +1,7 @@
 use bytes::Bytes;
 
 use fil_actors_runtime::deserialize_block;
+use fil_actors_runtime::ActorError;
 use fil_actors_runtime::EAM_ACTOR_ADDR;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{strict_bytes, tuple::*};
@@ -12,10 +13,11 @@ use serde_tuple::{Deserialize_tuple, Serialize_tuple};
 
 use crate::interpreter::Output;
 use crate::interpreter::{address::EthAddress, U256};
+use crate::EVM_CONTRACT_SELFDESTRUCT_FAILED;
 
 use super::memory::{get_memory_region, MemoryRegion};
 use {
-    crate::interpreter::{ExecutionState, StatusCode, System},
+    crate::interpreter::{ExecutionState, System},
     fil_actors_runtime::runtime::Runtime,
 };
 
@@ -33,13 +35,14 @@ pub struct CreateParams {
 pub struct Create2Params {
     #[serde(with = "strict_bytes")]
     pub code: Vec<u8>,
+    #[serde(with = "strict_bytes")]
     pub salt: [u8; 32],
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EamReturn {
     pub actor_id: u64,
-    pub robust_address: Address,
+    pub robust_address: Option<Address>,
     pub eth_address: EthAddress,
 }
 
@@ -50,9 +53,9 @@ pub fn create(
     value: U256,
     offset: U256,
     size: U256,
-) -> Result<U256, StatusCode> {
+) -> Result<U256, ActorError> {
     if system.readonly {
-        return Err(StatusCode::StaticModeViolation);
+        return Err(ActorError::read_only("create called while read-only".into()));
     }
 
     let ExecutionState { stack: _, memory, .. } = state;
@@ -61,8 +64,7 @@ pub fn create(
     if value > system.rt.current_balance() {
         return Ok(U256::zero());
     }
-    let input_region =
-        get_memory_region(memory, offset, size).map_err(|_| StatusCode::InvalidMemoryAccess)?;
+    let input_region = get_memory_region(memory, offset, size)?;
 
     let input_data = if let Some(MemoryRegion { offset, size }) = input_region {
         &memory[offset..][..size.get()]
@@ -82,9 +84,9 @@ pub fn create2(
     offset: U256,
     size: U256,
     salt: U256,
-) -> Result<U256, StatusCode> {
+) -> Result<U256, ActorError> {
     if system.readonly {
-        return Err(StatusCode::StaticModeViolation);
+        return Err(ActorError::read_only("create2 called while read-only".into()));
     }
 
     let ExecutionState { stack: _, memory, .. } = state;
@@ -95,8 +97,7 @@ pub fn create2(
         return Ok(U256::zero());
     }
 
-    let input_region =
-        get_memory_region(memory, offset, size).map_err(|_| StatusCode::InvalidMemoryAccess)?;
+    let input_region = get_memory_region(memory, offset, size)?;
 
     // BE encoded array
     let salt: [u8; 32] = salt.into();
@@ -119,7 +120,7 @@ fn create_init(
     params: Option<IpldBlock>,
     method: MethodNum,
     value: TokenAmount,
-) -> Result<U256, StatusCode> {
+) -> Result<U256, ActorError> {
     // send bytecode & params to EAM to generate the address and contract
     let ret = system.send(&EAM_ACTOR_ADDR, method, params, value, None, SendFlags::default());
 
@@ -156,18 +157,28 @@ pub fn selfdestruct(
     _state: &mut ExecutionState,
     system: &mut System<impl Runtime>,
     beneficiary: U256,
-) -> Result<Output, StatusCode> {
+) -> Result<Output, ActorError> {
     use crate::interpreter::output::Outcome;
 
     if system.readonly {
-        return Err(StatusCode::StaticModeViolation);
+        return Err(ActorError::read_only("selfdestruct called while read-only".into()));
     }
 
-    // Try to give funds to the beneficiary. If this fails, we just keep them.
-    if let Ok(addr) = EthAddress::from(beneficiary).try_into() {
-        let balance = system.rt.current_balance();
-        let _ = system.rt.send(&addr, METHOD_SEND, None, balance);
-    }
+    // Try to give funds to the beneficiary. If this fails, we abort the entire call. This can only
+    // fail if:
+    //
+    // 1. The target address is an embedded ID address and said actor doesn't exist.
+    // 2. We're at the maximum call depth.
+    // 3. This call would cause us to exceed some system limit (e.g., a memory limit).
+    let beneficiary: EthAddress = beneficiary.into();
+    let beneficiary: Address = beneficiary.into();
+    let balance = system.rt.current_balance();
+    system.rt.send(&beneficiary, METHOD_SEND, None, balance).map_err(|e| {
+        ActorError::unchecked(
+            EVM_CONTRACT_SELFDESTRUCT_FAILED,
+            format!("failed to transfer funds to beneficiary {beneficiary} on SELFDESTRUCT: {e}"),
+        )
+    })?;
 
     // Now mark ourselves as deleted.
     system.mark_selfdestructed();

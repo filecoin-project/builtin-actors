@@ -25,7 +25,10 @@ revert
 
     let result = rt.call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, None);
     assert!(result.is_err());
-    let e = result.unwrap_err();
+    let mut e = result.unwrap_err();
     assert_eq!(e.exit_code(), evm::EVM_CONTRACT_REVERTED);
-    assert_eq!(e.data(), RawBytes::serialize(BytesSer(&[0xde, 0xad, 0xbe, 0xef])).unwrap().bytes());
+    assert_eq!(
+        e.take_data().unwrap().data,
+        RawBytes::serialize(BytesSer(&[0xde, 0xad, 0xbe, 0xef])).unwrap().bytes()
+    );
 }

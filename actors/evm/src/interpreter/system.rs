@@ -11,9 +11,9 @@ use fvm_shared::{
     address::{Address, Payload},
     crypto::hash::SupportedHashes,
     econ::TokenAmount,
-    error::ExitCode,
+    error::{ErrorNumber, ExitCode},
     sys::SendFlags,
-    MethodNum, IPLD_RAW, METHOD_SEND,
+    MethodNum, Response, IPLD_RAW, METHOD_SEND,
 };
 use multihash::Code;
 use once_cell::unsync::OnceCell;
@@ -24,7 +24,7 @@ use crate::BytecodeHash;
 use super::{address::EthAddress, Bytecode};
 
 use {
-    crate::interpreter::{StatusCode, U256},
+    crate::interpreter::U256,
     cid::Cid,
     fil_actors_runtime::{runtime::Runtime, ActorError},
     fvm_ipld_blockstore::Blockstore,
@@ -119,7 +119,7 @@ pub struct System<'r, RT: Runtime> {
 }
 
 impl<'r, RT: Runtime> System<'r, RT> {
-    fn new(rt: &'r mut RT, readonly: bool) -> Self
+    pub(crate) fn new(rt: &'r mut RT, readonly: bool) -> Self
     where
         RT::Blockstore: Clone,
     {
@@ -227,26 +227,47 @@ impl<'r, RT: Runtime> System<'r, RT> {
         gas_limit: Option<u64>,
         send_flags: SendFlags,
     ) -> Result<Option<IpldBlock>, ActorError> {
-        self.flush()?;
-        let result = self
-            .rt
-            .send_generalized(to, method, params, value, gas_limit, send_flags)
-            .map_err(|err| actor_error!(unspecified; "send syscall failed: {}", err))?;
+        let result = self.send_raw(to, method, params, value, gas_limit, send_flags)?.map_err(|err| {
+            actor_error!(unspecified; "send syscall to {to} on method {method} failed: {}", err)
+        })?;
 
         // Don't bother reloading on abort, just return the error.
         if !result.exit_code.is_success() {
-            return Err(ActorError::checked_with_data(
+            return Err(ActorError::checked(
                 result.exit_code,
                 format!("failed to call {to} on method {method}"),
                 result.return_data,
             ));
         }
 
-        if !send_flags.read_only() {
-            self.reload()?;
+        Ok(result.return_data)
+    }
+
+    /// Send, but get back the raw syscall error failure without interpreting it as an actor error.
+    /// This method has a really funky return type because:
+    /// 1. It can fail with an outer "actor error". In that case, the EVM is expected to abort with
+    ///    the specified exit code.
+    /// 2. It can fail with an inner syscall error.
+    /// 3. It can successfully call into the other actor, and return a response with a non-zero exit code.
+    pub fn send_raw(
+        &mut self,
+        to: &Address,
+        method: MethodNum,
+        params: Option<IpldBlock>,
+        value: TokenAmount,
+        gas_limit: Option<u64>,
+        send_flags: SendFlags,
+    ) -> Result<Result<Response, ErrorNumber>, ActorError> {
+        self.flush()?;
+        let result = self.rt.send_generalized(to, method, params, value, gas_limit, send_flags);
+
+        // Reload on success, and only on success.
+        match &result {
+            Ok(r) if r.exit_code.is_success() => self.reload()?,
+            _ => {}
         }
 
-        Ok(result.return_data)
+        Ok(result)
     }
 
     /// Flush the actor state (bytecode, nonce, and slots).
@@ -349,23 +370,28 @@ impl<'r, RT: Runtime> System<'r, RT> {
     }
 
     /// Get value of a storage key.
-    pub fn get_storage(&mut self, key: U256) -> Result<U256, StatusCode> {
+    pub fn get_storage(&mut self, key: U256) -> Result<U256, ActorError> {
         Ok(self
             .slots
             .get(&key)
-            .map_err(|e| StatusCode::InternalError(e.to_string()))?
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to clear storage slot")?
             .cloned()
             .unwrap_or_default())
     }
 
     /// Set value of a storage key.
-    pub fn set_storage(&mut self, key: U256, value: U256) -> Result<(), StatusCode> {
+    pub fn set_storage(&mut self, key: U256, value: U256) -> Result<(), ActorError> {
         let changed = if value.is_zero() {
-            self.slots.delete(&key).map(|v| v.is_some())
+            self.slots
+                .delete(&key)
+                .map(|v| v.is_some())
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to clear storage slot")?
         } else {
-            self.slots.set(key, value).map(|v| v != Some(value))
-        }
-        .map_err(|e| StatusCode::InternalError(e.to_string()))?;
+            self.slots
+                .set(key, value)
+                .map(|v| v != Some(value))
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to update storage slot")?
+        };
 
         if changed {
             self.saved_state_root = None; // dirty.
@@ -379,35 +405,34 @@ impl<'r, RT: Runtime> System<'r, RT> {
     /// - f3, f2, and f1, addresses will resolve to ID address then...
     /// - Attempt to lookup Eth f4 address from ID address.
     /// - Otherwise encode ID address into Eth address (0xff....\<id>)
-    pub fn resolve_ethereum_address(&self, addr: &Address) -> Result<EthAddress, StatusCode> {
+    pub fn resolve_ethereum_address(&self, addr: &Address) -> Result<EthAddress, ActorError> {
         // Short-circuit if we already have an EVM actor.
         match addr.payload() {
             Payload::Delegated(delegated) if delegated.namespace() == EAM_ACTOR_ID => {
-                let subaddr: [u8; 20] = delegated.subaddress().try_into().map_err(|_| {
-                    StatusCode::BadAddress("invalid ethereum address length".into())
-                })?;
+                let subaddr: [u8; 20] = delegated
+                    .subaddress()
+                    .try_into()
+                    .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                        format!("invalid ethereum address length: {addr}")
+                    })?;
                 return Ok(EthAddress(subaddr));
             }
             _ => {}
         }
 
         // Otherwise, resolve to an ID address.
-        let actor_id = self.rt.resolve_address(addr).ok_or_else(|| {
-            StatusCode::BadAddress(format!(
-                "non-ethereum address {addr} cannot be resolved to an ID address"
-            ))
-        })?;
+        let actor_id = self.rt.resolve_address(addr).context_code(
+            ExitCode::USR_ILLEGAL_STATE,
+            "non-ethereum address {addr} cannot be resolved to an ID address",
+        )?;
 
         // Then attempt to resolve back into an EVM address.
-        //
-        // TODO: this method doesn't differentiate between "actor doesn't have a delegated
-        // address" and "actor doesn't exist". We should probably fix that and return an error if
-        // the actor doesn't exist.
         match self.rt.lookup_delegated_address(actor_id).map(|a| a.into_payload()) {
             Some(Payload::Delegated(delegated)) if delegated.namespace() == EAM_ACTOR_ID => {
-                let subaddr: [u8; 20] = delegated.subaddress().try_into().map_err(|_| {
-                    StatusCode::BadAddress("invalid ethereum address length".into())
-                })?;
+                let subaddr: [u8; 20] = delegated.subaddress().try_into().context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "invalid ethereum address length: {addr}",
+                )?;
                 Ok(EthAddress(subaddr))
             }
             // But use an EVM address as the fallback.
@@ -416,15 +441,15 @@ impl<'r, RT: Runtime> System<'r, RT> {
     }
 
     /// Gets the cached EVM randomness seed of the current epoch
-    pub fn get_randomness(&mut self) -> Result<&[u8; 32], StatusCode> {
+    pub fn get_randomness(&mut self) -> Result<&[u8; 32], ActorError> {
         const ENTROPY: &[u8] = b"prevrandao";
         self.randomness.get_or_try_init(|| {
             // get randomness from current beacon epoch with entropy of "prevrandao"
-            Ok(self.rt.get_randomness_from_beacon(
+            self.rt.get_randomness_from_beacon(
                 fil_actors_runtime::runtime::DomainSeparationTag::EvmPrevRandao,
                 self.rt.curr_epoch(),
                 ENTROPY,
-            )?)
+            )
         })
     }
 
