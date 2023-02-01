@@ -3,7 +3,7 @@ use fil_actors_runtime::runtime::Runtime;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::{address::Address, econ::TokenAmount, sys::SendFlags, METHOD_SEND};
 
-use crate::interpreter::{instructions::call::CallKind, System, U256};
+use crate::interpreter::{CallKind, System, U256};
 
 use super::{PrecompileContext, PrecompileError, PrecompileResult};
 use crate::reader::ValueReader;

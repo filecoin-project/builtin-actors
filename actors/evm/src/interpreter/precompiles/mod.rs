@@ -6,7 +6,7 @@ use substrate_bn::{CurveError, FieldError, GroupError};
 
 use crate::reader::OverflowError;
 
-use super::{address::EthAddress, instructions::call::CallKind, System, U256};
+use super::{address::EthAddress, CallKind, System, U256};
 mod evm;
 mod fvm;
 
@@ -113,7 +113,6 @@ pub enum PrecompileError {
     // EVM precompile errors
     EcErr(CurveError),
     IncorrectInputSize,
-    OutOfGas,
     // FVM precompile errors
     InvalidInput,
     CallForbidden,
@@ -161,20 +160,6 @@ pub struct PrecompileContext {
     pub call_type: CallKind,
     pub gas_limit: u64,
     pub value: U256,
-}
-
-/// Native Type of a given contract
-#[repr(u32)]
-pub enum NativeType {
-    NonExistent = 0,
-    // user actors are flattened to "system"
-    /// System includes any singletons not otherwise defined.
-    System = 1,
-    Placeholder = 2,
-    Account = 3,
-    StorageProvider = 4,
-    EVMContract = 5,
-    OtherTypes = 6,
 }
 
 #[cfg(test)]

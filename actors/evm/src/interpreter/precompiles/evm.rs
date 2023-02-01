@@ -300,7 +300,7 @@ pub(super) fn blake2f<RT: Runtime>(
 
 #[cfg(test)]
 mod tests {
-    use crate::interpreter::instructions::call::CallKind;
+    use crate::interpreter::CallKind;
 
     use super::*;
     use fil_actors_runtime::test_utils::MockRuntime;

@@ -23,7 +23,7 @@ use once_cell::unsync::OnceCell;
 use crate::state::{State, Tombstone};
 use crate::BytecodeHash;
 
-use super::{address::EthAddress, Bytecode};
+use super::address::EthAddress;
 
 use {
     crate::interpreter::U256,
@@ -459,17 +459,5 @@ impl<'r, RT: Runtime> System<'r, RT> {
     pub fn mark_selfdestructed(&mut self) {
         self.saved_state_root = None;
         self.tombstone = Some(crate::current_tombstone(self.rt));
-    }
-}
-
-pub fn load_bytecode<BS: Blockstore>(bs: &BS, cid: &Cid) -> Result<Option<Bytecode>, ActorError> {
-    let bytecode = bs
-        .get(cid)
-        .context_code(ExitCode::USR_NOT_FOUND, "failed to read bytecode")?
-        .expect("bytecode not in state tree");
-    if bytecode.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(Bytecode::new(bytecode)))
     }
 }

@@ -1,14 +1,17 @@
 use fil_actors_runtime::{actor_error, AsActorError, EAM_ACTOR_ADDR, INIT_ACTOR_ADDR};
+use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{strict_bytes, BytesDe, BytesSer};
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use interpreter::{address::EthAddress, system::load_bytecode};
+use interpreter::address::EthAddress;
 
-use crate::interpreter::output::Outcome;
+use crate::interpreter::Outcome;
 use crate::reader::ValueReader;
 
+#[doc(hidden)]
+pub mod ext;
 pub mod interpreter;
 pub(crate) mod reader;
 mod state;
@@ -88,7 +91,19 @@ pub(crate) fn is_dead(rt: &impl Runtime, state: &State) -> bool {
     state.tombstone.map_or(false, |t| t != current_tombstone(rt))
 }
 
-pub fn initialize_evm_contract(
+fn load_bytecode(bs: &impl Blockstore, cid: &Cid) -> Result<Option<Bytecode>, ActorError> {
+    let bytecode = bs
+        .get(cid)
+        .context_code(ExitCode::USR_NOT_FOUND, "failed to read bytecode")?
+        .expect("bytecode not in state tree");
+    if bytecode.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(Bytecode::new(bytecode)))
+    }
+}
+
+fn initialize_evm_contract(
     system: &mut System<impl Runtime>,
     caller: EthAddress,
     initcode: Vec<u8>,

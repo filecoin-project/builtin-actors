@@ -4,7 +4,10 @@ use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::BytesDe;
 use fvm_shared::{address::Address, sys::SendFlags, MethodNum, IPLD_RAW};
 
-use crate::interpreter::precompiles::{is_reserved_precompile_address, PrecompileContext};
+use crate::interpreter::{
+    precompiles::{is_reserved_precompile_address, PrecompileContext},
+    CallKind,
+};
 
 use super::ext::{get_contract_type, get_evm_bytecode_cid, ContractType};
 
@@ -25,14 +28,6 @@ use {
 
 /// The gas granted on bare "transfers".
 const TRANSFER_GAS_LIMIT: U256 = U256::from_u64(10_000_000);
-
-/// The kind of call-like instruction.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CallKind {
-    Call,
-    DelegateCall,
-    StaticCall,
-}
 
 pub fn calldataload(
     state: &mut ExecutionState,
