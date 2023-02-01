@@ -1,4 +1,4 @@
-#![allow(dead_code, clippy::missing_safety_doc)]
+#![allow(clippy::missing_safety_doc)]
 
 use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::{ActorError, AsActorError};

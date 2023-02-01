@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::borrow::Cow;
 
 use fil_actors_evm_shared::{address::EthAddress, uints::U256};

@@ -172,14 +172,6 @@ impl From<&TokenAmount> for U256 {
     }
 }
 
-/*
-impl From<U256> for arith::U256 {
-    fn from(src: U256) -> arith::U256 {
-        arith::U256::from(src.0)
-    }
-}
-*/
-
 impl From<U256> for U512 {
     fn from(v: U256) -> Self {
         let [a, b, c, d] = v.0;
@@ -237,33 +229,6 @@ fn zeroless_view(v: &impl AsRef<[u8]>) -> &[u8] {
     let v = v.as_ref();
     &v[v.iter().take_while(|&&b| b == 0).count()..]
 }
-
-/*
-macro_rules! impl_rlp_codec_uint {
-serde = { version = "1.0.136", features = ["derive"] }
-  ($type:ident, $bytes_len: expr) => {
-    impl rlp::Encodable for $type {
-      fn rlp_append(&self, s: &mut rlp::RlpStream) {
-        let mut bytes = [0u8; $bytes_len];
-        self.to_big_endian(&mut bytes);
-        let zbytes = zeroless_view(&bytes);
-        s.encoder().encode_value(&zbytes);
-      }
-    }
-    impl rlp::Decodable for $type {
-      fn decode(rlp: &rlp::Rlp) -> Result<Self, rlp::DecoderError> {
-        rlp
-          .decoder()
-          .decode_value(|bytes| Ok($type::from_big_endian(bytes)))
-      }
-    }
-  };
-}
-
-// RLP Support
-impl_rlp_codec_uint!(U256, 32);
-impl_rlp_codec_uint!(U512, 64);
-*/
 
 #[cfg(test)]
 mod tests {
