@@ -1,8 +1,8 @@
 mod asm;
 
 use evm::ext::eam;
-use fil_actors_evm_shared::address::EthAddress;
 use fil_actor_evm as evm;
+use fil_actors_evm_shared::address::EthAddress;
 use fil_actors_runtime::EAM_ACTOR_ADDR;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::econ::TokenAmount;

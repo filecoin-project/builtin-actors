@@ -3,8 +3,8 @@ use ethers::{
     prelude::{builders::ContractCall, decode_function_data},
     providers::{MockProvider, Provider},
 };
-use fil_actors_evm_shared::address::EthAddress;
 use fil_actor_evm as evm;
+use fil_actors_evm_shared::address::EthAddress;
 use fil_actors_runtime::{
     test_utils::{MockRuntime, EVM_ACTOR_CODE_ID, INIT_ACTOR_CODE_ID},
     INIT_ACTOR_ADDR,
