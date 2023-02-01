@@ -44,6 +44,11 @@ impl From<&EthAddress> for Address {
 }
 
 impl EthAddress {
+    /// Returns a "null" address.
+    pub const fn null() -> Self {
+        Self([0u8; 20])
+    }
+
     /// Returns an EVM-form ID address from actor ID.
     pub fn from_id(id: u64) -> EthAddress {
         let mut bytes = [0u8; 20];
@@ -61,20 +66,38 @@ impl EthAddress {
     /// 0    1-11       12
     /// 0xff \[0x00...] [id address...]
     pub fn as_id(&self) -> Option<ActorID> {
-        if (self.0[0] != 0xff) || !self.0[1..12].iter().all(|&byte| byte == 0) {
+        if !self.is_id() {
             return None;
         }
         Some(u64::from_be_bytes(self.0[12..].try_into().unwrap()))
     }
 
     /// Returns this Address as an EVM word.
+    #[inline]
     pub fn as_evm_word(&self) -> U256 {
         U256::from_big_endian(&self.0)
     }
 
     /// Returns true if this is the null/zero EthAddress.
+    #[inline]
     pub fn is_null(&self) -> bool {
         self.0 == [0; 20]
+    }
+
+    /// Returns true if the EthAddress refers to an address in the precompile range.
+    /// [reference](https://github.com/filecoin-project/ref-fvm/issues/1164#issuecomment-1371304676)
+    #[inline]
+    pub fn is_precompile(&self) -> bool {
+        // Exact index is not checked since it is unknown to the EAM what precompiles exist in the EVM actor.
+        // 0 indexes of both ranges are not assignable as well but are _not_ precompile address.
+        let [prefix, middle @ .., _index] = self.0;
+        (prefix == 0xfe || prefix == 0x00) && middle == [0u8; 18]
+    }
+
+    /// Returns true if the EthAddress is an actor ID embedded in an eth address.
+    #[inline]
+    pub fn is_id(&self) -> bool {
+        self.0[0] == 0xff && self.0[1..12].iter().all(|&i| i == 0)
     }
 }
 

@@ -1,10 +1,9 @@
 use eam::ext::evm::RESURRECT_METHOD;
 use eam::ext::init::{Exec4Params, Exec4Return, EXEC4_METHOD};
-use eam::{
-    compute_address_create, Create2Params, CreateParams, EthAddress, EvmConstructorParams, Return,
-};
+use eam::{compute_address_create, Create2Params, CreateParams, EvmConstructorParams, Return};
 use fil_actor_eam as eam;
 use fil_actor_eam::CreateExternalParams;
+use fil_actors_evm_shared::address::EthAddress;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::Primitives;
 use fil_actors_runtime::test_utils::{
@@ -23,7 +22,7 @@ fn call_create_new() {
     let mut rt = construct_and_verify();
 
     let id_addr = Address::new_id(110);
-    let eth_addr = eam::EthAddress(hex_literal::hex!("CAFEB0BA00000000000000000000000000000000"));
+    let eth_addr = EthAddress(hex_literal::hex!("CAFEB0BA00000000000000000000000000000000"));
     let f4_eth_addr = Address::new_delegated(10, &eth_addr.0).unwrap();
     rt.set_delegated_address(id_addr.id().unwrap(), f4_eth_addr);
 
@@ -84,8 +83,7 @@ fn call_create_external_over_placeholder() {
     let mut rt = construct_and_verify();
 
     let caller_id_addr = Address::new_id(110);
-    let caller_eth_addr =
-        eam::EthAddress(hex_literal::hex!("CAFEB0BA00000000000000000000000000000000"));
+    let caller_eth_addr = EthAddress(hex_literal::hex!("CAFEB0BA00000000000000000000000000000000"));
     let caller_f4_eth_addr = Address::new_delegated(10, &caller_eth_addr.0).unwrap();
     rt.set_delegated_address(caller_id_addr.id().unwrap(), caller_f4_eth_addr);
 
@@ -152,8 +150,7 @@ fn call_resurrect() {
     let mut rt = construct_and_verify();
 
     let caller_id_addr = Address::new_id(110);
-    let caller_eth_addr =
-        eam::EthAddress(hex_literal::hex!("CAFEB0BA00000000000000000000000000000000"));
+    let caller_eth_addr = EthAddress(hex_literal::hex!("CAFEB0BA00000000000000000000000000000000"));
     let caller_f4_eth_addr = Address::new_delegated(10, &caller_eth_addr.0).unwrap();
     rt.set_delegated_address(caller_id_addr.id().unwrap(), caller_f4_eth_addr);
 
@@ -204,7 +201,7 @@ fn call_create2() {
     let mut rt = construct_and_verify();
 
     let id_addr = Address::new_id(110);
-    let eth_addr = eam::EthAddress(hex_literal::hex!("CAFEB0BA00000000000000000000000000000000"));
+    let eth_addr = EthAddress(hex_literal::hex!("CAFEB0BA00000000000000000000000000000000"));
     let f4_eth_addr = Address::new_delegated(10, &eth_addr.0).unwrap();
     rt.set_delegated_address(id_addr.id().unwrap(), f4_eth_addr);
 
