@@ -131,7 +131,7 @@ fn fail_when_deal_has_already_been_expired() {
 
     let current = end_epoch + 25;
     rt.set_epoch(current);
-    rt.expect_send(
+    rt.expect_send_simple(
         BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
         None,

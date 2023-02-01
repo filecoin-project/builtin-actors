@@ -161,7 +161,7 @@ mod test_award_block_reward {
             penalty: miner_penalty,
         })
         .unwrap();
-        rt.expect_send(
+        rt.expect_send_simple(
             *WINNER,
             ext::miner::APPLY_REWARDS_METHOD,
             params,
@@ -197,7 +197,7 @@ mod test_award_block_reward {
             penalty: miner_penalty,
         })
         .unwrap();
-        rt.expect_send(
+        rt.expect_send_simple(
             *WINNER,
             ext::miner::APPLY_REWARDS_METHOD,
             params,
@@ -265,7 +265,7 @@ mod test_award_block_reward {
             penalty: miner_penalty,
         })
         .unwrap();
-        rt.expect_send(
+        rt.expect_send_simple(
             *WINNER,
             ext::miner::APPLY_REWARDS_METHOD,
             params,
@@ -273,7 +273,7 @@ mod test_award_block_reward {
             None,
             ExitCode::USR_FORBIDDEN,
         );
-        rt.expect_send(
+        rt.expect_send_simple(
             BURNT_FUNDS_ACTOR_ADDR,
             METHOD_SEND,
             None,
@@ -354,7 +354,7 @@ fn award_block_reward(
 ) -> Result<Option<IpldBlock>, ActorError> {
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
     let miner_penalty = &penalty * PENALTY_MULTIPLIER;
-    rt.expect_send(
+    rt.expect_send_simple(
         miner,
         ext::miner::APPLY_REWARDS_METHOD,
         IpldBlock::serialize_cbor(&ext::miner::ApplyRewardParams {
@@ -368,7 +368,7 @@ fn award_block_reward(
     );
 
     if penalty.is_positive() {
-        rt.expect_send(
+        rt.expect_send_simple(
             BURNT_FUNDS_ACTOR_ADDR,
             METHOD_SEND,
             None,

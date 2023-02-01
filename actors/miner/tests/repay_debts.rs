@@ -8,6 +8,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
 
 mod util;
+
 use util::*;
 
 const PERIOD_OFFSET: ChainEpoch = 100;
@@ -80,7 +81,7 @@ fn repay_debt_restricted_correctly() {
     rt.add_balance(fee_debt.clone());
     rt.set_received(fee_debt.clone());
 
-    rt.expect_send(BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, None, fee_debt, None, ExitCode::OK);
+    rt.expect_send_simple(BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, None, fee_debt, None, ExitCode::OK);
 
     rt.call::<Actor>(Method::RepayDebtExported as u64, None).unwrap();
 
