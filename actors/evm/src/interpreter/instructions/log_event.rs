@@ -1,9 +1,10 @@
 use crate::interpreter::instructions::memory::get_memory_region;
+use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::ActorError;
 use fvm_ipld_encoding::{to_vec, BytesSer, RawBytes};
 use fvm_shared::event::{Entry, Flags};
 use {
-    crate::interpreter::{ExecutionState, System, U256},
+    crate::interpreter::{ExecutionState, System},
     fil_actors_runtime::runtime::Runtime,
 };
 

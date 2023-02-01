@@ -1,4 +1,4 @@
-use crate::U256;
+use crate::uints::U256;
 use fil_actors_runtime::EAM_ACTOR_ID;
 use fvm_ipld_encoding::{serde, strict_bytes};
 use fvm_shared::address::Address;
@@ -86,8 +86,8 @@ impl AsRef<[u8]> for EthAddress {
 
 #[cfg(test)]
 mod tests {
-    use crate::interpreter::address::EthAddress;
-    use crate::U256;
+    use super::EthAddress;
+    use crate::uints::U256;
 
     const TYPE_PADDING: &[u8] = &[0; 12]; // padding (12 bytes)
     const ID_ADDRESS_MARKER: &[u8] = &[0xff]; // ID address marker (1 byte)

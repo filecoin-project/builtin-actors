@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::ops::Deref;
 
 use super::opcodes;

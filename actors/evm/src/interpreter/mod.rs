@@ -1,5 +1,4 @@
-pub mod address;
-pub mod bytecode;
+mod bytecode;
 mod execution;
 mod instructions;
 mod memory;
@@ -7,7 +6,6 @@ mod output;
 mod precompiles;
 mod stack;
 mod system;
-mod uints;
 
 #[cfg(test)]
 pub mod test_util;
@@ -17,7 +15,6 @@ pub use {
     execution::{execute, opcodes, ExecutionState},
     output::{Outcome, Output},
     system::System,
-    uints::{U256, U512},
 };
 
 /// The kind of call-like instruction.

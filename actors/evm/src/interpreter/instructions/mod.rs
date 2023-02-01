@@ -16,7 +16,7 @@ mod state;
 mod storage;
 
 use crate::interpreter::execution::Machine;
-use crate::interpreter::U256;
+use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::ActorError;
 

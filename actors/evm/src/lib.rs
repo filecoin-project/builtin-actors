@@ -1,3 +1,5 @@
+use fil_actors_evm_shared::address::EthAddress;
+use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::{actor_error, AsActorError, EAM_ACTOR_ADDR, INIT_ACTOR_ADDR};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -5,7 +7,6 @@ use fvm_ipld_encoding::{strict_bytes, BytesDe, BytesSer};
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use interpreter::address::EthAddress;
 
 use crate::interpreter::Outcome;
 use crate::reader::ValueReader;
@@ -17,7 +18,7 @@ pub(crate) mod reader;
 mod state;
 
 use {
-    crate::interpreter::{execute, Bytecode, ExecutionState, System, U256},
+    crate::interpreter::{execute, Bytecode, ExecutionState, System},
     bytes::Bytes,
     cid::Cid,
     fil_actors_runtime::{

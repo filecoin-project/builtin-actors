@@ -1,5 +1,7 @@
 use bytes::Bytes;
 
+use fil_actors_evm_shared::address::EthAddress;
+use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::ActorError;
 use fil_actors_runtime::EAM_ACTOR_ADDR;
 use fil_actors_runtime::{deserialize_block, extract_send_result};
@@ -11,7 +13,6 @@ use fvm_shared::{address::Address, econ::TokenAmount};
 
 use crate::ext::eam;
 use crate::interpreter::Output;
-use crate::interpreter::{address::EthAddress, U256};
 use crate::EVM_CONTRACT_SELFDESTRUCT_FAILED;
 
 use super::memory::{get_memory_region, MemoryRegion};

@@ -1,5 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
+use fil_actors_evm_shared::{address::EthAddress, uints::U256};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::BytesDe;
 use fvm_shared::{address::Address, sys::SendFlags, MethodNum, IPLD_RAW};
@@ -13,12 +14,10 @@ use super::ext::{get_contract_type, get_evm_bytecode_cid, ContractType};
 
 use {
     super::memory::{copy_to_memory, get_memory_region},
-    crate::interpreter::address::EthAddress,
     crate::interpreter::instructions::memory::MemoryRegion,
     crate::interpreter::precompiles,
     crate::interpreter::ExecutionState,
     crate::interpreter::System,
-    crate::interpreter::U256,
     crate::{DelegateCallParams, Method},
     fil_actors_runtime::runtime::Runtime,
     fil_actors_runtime::ActorError,

@@ -1,4 +1,6 @@
-use {crate::interpreter::uints::*, crate::interpreter::U256, std::cmp::Ordering};
+use std::cmp::Ordering;
+
+use fil_actors_evm_shared::uints::U256;
 
 #[inline]
 pub fn lt(a: U256, b: U256) -> U256 {
@@ -12,12 +14,12 @@ pub fn gt(a: U256, b: U256) -> U256 {
 
 #[inline]
 pub(crate) fn slt(a: U256, b: U256) -> U256 {
-    U256::from_u64((i256_cmp(a, b) == Ordering::Less).into())
+    U256::from_u64((a.i256_cmp(&b) == Ordering::Less).into())
 }
 
 #[inline]
 pub(crate) fn sgt(a: U256, b: U256) -> U256 {
-    U256::from_u64((i256_cmp(a, b) == Ordering::Greater).into())
+    U256::from_u64((a.i256_cmp(&b) == Ordering::Greater).into())
 }
 
 #[inline]

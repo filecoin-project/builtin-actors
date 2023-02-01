@@ -1,5 +1,6 @@
 use std::array::TryFromSliceError;
 
+use fil_actors_evm_shared::uints::U256;
 use fvm_shared::ActorID;
 
 use {
@@ -73,6 +74,13 @@ impl From<BytecodeHash> for [u8; 32] {
 impl From<BytecodeHash> for Vec<u8> {
     fn from(digest: BytecodeHash) -> Self {
         digest.0.into()
+    }
+}
+
+impl From<BytecodeHash> for U256 {
+    fn from(bytecode: BytecodeHash) -> Self {
+        let bytes: [u8; 32] = bytecode.into();
+        Self::from(bytes)
     }
 }
 

@@ -1,8 +1,9 @@
 #![allow(dead_code, clippy::missing_safety_doc)]
 
+use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::{ActorError, AsActorError};
 
-use crate::{interpreter::U256, EVM_CONTRACT_STACK_OVERFLOW, EVM_CONTRACT_STACK_UNDERFLOW};
+use crate::{EVM_CONTRACT_STACK_OVERFLOW, EVM_CONTRACT_STACK_UNDERFLOW};
 
 /// Ethereum Yellow Paper (9.1)
 pub const STACK_SIZE: usize = 1024;

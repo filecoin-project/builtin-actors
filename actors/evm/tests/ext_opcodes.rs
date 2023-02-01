@@ -1,7 +1,7 @@
 mod asm;
 
 use cid::Cid;
-use evm::interpreter::U256;
+use fil_actors_evm_shared::uints::U256;
 use evm::BytecodeHash;
 use fil_actor_evm as evm;
 use fil_actors_runtime::runtime::{Primitives, Runtime, EMPTY_ARR_CID};

@@ -1,9 +1,9 @@
 #![allow(clippy::missing_safety_doc)]
 
+use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::ActorError;
 
 use crate::interpreter::stack::Stack;
-use crate::interpreter::U256;
 
 macro_rules! be_u64 {
     ($byte:expr) => {$byte as u64};

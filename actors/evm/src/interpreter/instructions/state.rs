@@ -1,9 +1,8 @@
+use fil_actors_evm_shared::{address::EthAddress, uints::U256};
 use fil_actors_runtime::ActorError;
 use fvm_shared::address::Address;
 
-use crate::U256;
 use {
-    crate::interpreter::address::EthAddress,
     crate::interpreter::{ExecutionState, System},
     fil_actors_runtime::runtime::Runtime,
 };
@@ -38,12 +37,10 @@ pub fn selfbalance(
 
 #[cfg(test)]
 mod test {
+    use fil_actors_evm_shared::{address::EthAddress, uints::U256};
     use fvm_shared::address::Address;
 
-    use crate::{
-        evm_unit_test,
-        interpreter::{address::EthAddress, U256},
-    };
+    use crate::evm_unit_test;
 
     #[test]
     fn balance_basic() {

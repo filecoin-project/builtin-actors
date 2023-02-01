@@ -1,7 +1,9 @@
 use crate::interpreter::instructions::memory::copy_to_memory;
-use crate::interpreter::{address::EthAddress, precompiles::Precompiles};
-use crate::{BytecodeHash, U256};
+use crate::interpreter::precompiles::Precompiles;
+use crate::BytecodeHash;
 use cid::Cid;
+use fil_actors_evm_shared::address::EthAddress;
+use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::ActorError;
 use fil_actors_runtime::{deserialize_block, AsActorError};

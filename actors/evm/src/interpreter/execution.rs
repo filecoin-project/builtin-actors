@@ -1,14 +1,12 @@
-#![allow(dead_code)]
-
+use fil_actors_evm_shared::address::EthAddress;
 use fil_actors_runtime::ActorError;
 use fvm_shared::econ::TokenAmount;
 
-use super::address::EthAddress;
 use {
     super::instructions,
-    crate::interpreter::memory::Memory,
-    crate::interpreter::stack::Stack,
-    crate::interpreter::{Bytecode, Output, System},
+    super::memory::Memory,
+    super::stack::Stack,
+    super::{Bytecode, Output, System},
     bytes::Bytes,
     fil_actors_runtime::runtime::Runtime,
 };

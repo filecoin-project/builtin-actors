@@ -1,5 +1,5 @@
 pub mod eam {
-    use crate::interpreter::address::EthAddress;
+    use fil_actors_evm_shared::address::EthAddress;
     use fvm_ipld_encoding::{strict_bytes, tuple::*};
     use fvm_shared::address::Address;
 

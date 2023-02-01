@@ -3,7 +3,7 @@ use std::sync::Arc;
 use ethers::prelude::abigen;
 use ethers::providers::Provider;
 use ethers::{core::types::Address as EthAddress, prelude::builders::ContractCall};
-use fil_actor_evm::interpreter::U256;
+use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::{
     test_utils::{ETHACCOUNT_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID},
     EAM_ACTOR_ADDR, EAM_ACTOR_ID,
