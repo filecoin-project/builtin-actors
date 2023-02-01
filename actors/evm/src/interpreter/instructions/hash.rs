@@ -43,7 +43,7 @@ mod test {
             let v = vec![0xff; len];
             let [a, b] = u16::try_from(len).unwrap().to_be_bytes();
             evm_unit_test! {
-                (rt, m) {
+                (m) {
                     PUSH2;
                     {a};
                     {b};
@@ -70,7 +70,7 @@ mod test {
             [([0xfe].as_slice(), BytecodeHash::NATIVE_ACTOR), (&[], BytecodeHash::EMPTY)]
         {
             evm_unit_test! {
-                (rt, m) {
+                (m) {
                     PUSH1;
                     {input.len() as u8};
                     PUSH0;

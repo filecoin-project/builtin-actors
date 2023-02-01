@@ -203,7 +203,7 @@ mod tests {
     #[test]
     fn test_mload_nothing() {
         evm_unit_test! {
-            (rt, m) {
+            (m) {
                 PUSH0;
                 MLOAD;
             }
@@ -219,7 +219,7 @@ mod tests {
     #[test]
     fn test_mload_large_offset() {
         evm_unit_test! {
-            (rt, m) {
+            (m) {
                 PUSH4; // garbage offset
                 0x01;
                 0x02;
@@ -240,7 +240,7 @@ mod tests {
     fn test_mload_word() {
         for sh in 0..32 {
             evm_unit_test! {
-                (rt, m) {
+                (m) {
                     PUSH1;
                     {sh};
                     MLOAD;
@@ -262,7 +262,7 @@ mod tests {
     fn test_mstore8_basic() {
         for i in 0..=u8::MAX {
             evm_unit_test! {
-                (rt, m) {
+                (m) {
                     PUSH1;
                     {i};
                     PUSH0;
@@ -281,7 +281,7 @@ mod tests {
     #[test]
     fn test_mstore8_overwrite() {
         evm_unit_test! {
-            (rt, m) {
+            (m) {
                 PUSH1;
                 0x01;
                 PUSH1;
@@ -314,7 +314,7 @@ mod tests {
             let i = 1u16 << sh;
             let [a, b] = i.to_be_bytes();
             evm_unit_test! {
-                (rt, m) {
+                (m) {
                     PUSH1;
                     0xff;
                     PUSH2;
@@ -337,7 +337,7 @@ mod tests {
     #[test]
     fn test_mstore8_garbage() {
         evm_unit_test! {
-            (rt, m) {
+            (m) {
                 PUSH32;
                 0xff;
                 0xff;
@@ -388,7 +388,7 @@ mod tests {
     #[test]
     fn test_mstore_basic() {
         evm_unit_test! {
-            (rt, m) {
+            (m) {
                 PUSH2;
                 0xff;
                 0xfe;
@@ -409,7 +409,7 @@ mod tests {
     #[test]
     fn test_mstore_overwrite() {
         evm_unit_test! {
-            (rt, m) {
+            (m) {
                 PUSH2;
                 0xff;
                 0xfe;
@@ -437,7 +437,7 @@ mod tests {
     #[test]
     fn test_msize_multiple_mstore8() {
         evm_unit_test! {
-            (rt, m) {
+            (m) {
                 PUSH1;
                 0xff;
                 PUSH1;
@@ -460,7 +460,7 @@ mod tests {
     #[test]
     fn test_msize_multiple_mstore() {
         evm_unit_test! {
-            (rt, m) {
+            (m) {
                 PUSH1;
                 0xff;
                 PUSH1;
@@ -484,7 +484,7 @@ mod tests {
         // Demonstrate that MSIZE depends on memory.len()
         // Normally this should never happen and we wont panic from it.
         evm_unit_test! {
-            (rt, m) {
+            (m) {
                 MSIZE;
             }
 

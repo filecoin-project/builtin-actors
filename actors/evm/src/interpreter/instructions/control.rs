@@ -167,7 +167,7 @@ mod tests {
     #[test]
     fn test_jump() {
         evm_unit_test! {
-            (rt, m) {
+            (m) {
                 JUMP;
                 JUMPDEST;
                 JUMPDEST;
@@ -185,7 +185,7 @@ mod tests {
     #[test]
     fn test_jump_err() {
         evm_unit_test!(
-            (rt, m) {
+            (m) {
                 JUMP; // JUMP
                 PUSH4; // PUSH4 -- garbage
                 0x01; // garbage
@@ -204,7 +204,7 @@ mod tests {
     #[test]
     fn test_jump_err2() {
         evm_unit_test! {
-            (rt, m) {
+            (m) {
                 JUMP;  // JUMP
                 PUSH4; // PUSH4 -- garbage
                 0x01;  // garbage
@@ -224,7 +224,7 @@ mod tests {
     #[test]
     fn test_jump_err3() {
         evm_unit_test! {
-            (rt, m) {
+            (m) {
                 JUMP;
                 PUSH4;
                 JUMPDEST;
@@ -243,7 +243,7 @@ mod tests {
     #[test]
     fn test_jumpi_t() {
         evm_unit_test! {
-            (rt, m) {
+            (m) {
                 JUMPI;
                 JUMPDEST;
                 JUMPDEST;
@@ -262,7 +262,7 @@ mod tests {
     #[test]
     fn test_jumpi_f() {
         evm_unit_test! {
-            (rt, m) {
+            (m) {
                 JUMPI;
                 JUMPDEST;
                 JUMPDEST;
@@ -281,7 +281,7 @@ mod tests {
     #[test]
     fn test_jumpi_err() {
         evm_unit_test! {
-            (rt, m) {
+            (m) {
                 JUMPI;
                 JUMPDEST;
                 JUMPDEST;
@@ -300,7 +300,7 @@ mod tests {
     #[test]
     fn test_pc() {
         evm_unit_test! {
-            (rt, m) {
+            (m) {
                 PC;
                 JUMPDEST;
             }

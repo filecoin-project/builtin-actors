@@ -54,20 +54,21 @@ mod test {
                 (false, U256::MAX),
             ] {
                 evm_unit_test! {
-                    (rt, m) {
+                    (rt) {
+                        rt.in_call = true;
+
+                        let id_address = 1111;
+                        if has_id {
+                            let addr: EthAddress = addr.into();
+                            rt.add_id_address(addr.into(), Address::new_id(id_address))
+                        }
+                        rt.actor_balances.insert(id_address, TokenAmount::from_atto(balance));
+                    }
+                    (m) {
                         PUSH0;
                         MLOAD;
                         BALANCE;
                     }
-
-                    m.system.rt.in_call = true;
-
-                    let id_address = 1111;
-                    if has_id {
-                        let addr: EthAddress = addr.into();
-                        m.system.rt.add_id_address(addr.into(), Address::new_id(id_address))
-                    }
-                    m.system.rt.actor_balances.insert(id_address, TokenAmount::from_atto(balance));
 
                     m.state.memory.grow(32);
                     m.state.memory[..32].copy_from_slice(&addr.to_bytes());
@@ -98,16 +99,17 @@ mod test {
         let addr = U256::from(buf);
 
         evm_unit_test! {
-            (rt, m) {
+            (rt) {
+                rt.in_call = true;
+
+                // 0xff id address gets balance
+                rt.actor_balances.insert(id as u64, TokenAmount::from_atto(balance));
+            }
+            (m) {
                 PUSH0;
                 MLOAD;
                 BALANCE;
             }
-
-            m.system.rt.in_call = true;
-
-            // 0xff id address gets balance
-            m.system.rt.actor_balances.insert(id as u64, TokenAmount::from_atto(balance));
 
             m.state.memory.grow(32);
             m.state.memory[..32].copy_from_slice(&addr.to_bytes());
@@ -127,12 +129,13 @@ mod test {
         for i in 0..256 {
             let balance = U256::ONE << i;
             evm_unit_test! {
-                (rt, m) {
+                (rt) {
+                    rt.in_call = true;
+                    rt.add_balance(TokenAmount::from(&balance));
+                }
+                (m) {
                     SELFBALANCE;
                 }
-
-                m.system.rt.in_call = true;
-                m.system.rt.add_balance(TokenAmount::from(&balance));
 
                 m.step().expect("execution step failed");
 
