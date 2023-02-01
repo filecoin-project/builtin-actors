@@ -124,4 +124,24 @@ mod test {
             assert_eq!(m.state.stack.pop().unwrap(), U256::from(balance));
         };
     }
+
+    #[test]
+    fn selfbalance_basic() {
+        for i in 0..256 {
+            let balance = U256::ONE << i;
+            evm_unit_test! {
+                (rt, m) {
+                    SELFBALANCE;
+                }
+    
+                m.system.rt.in_call = true;
+                m.system.rt.add_balance(TokenAmount::from(&balance));
+    
+                m.step().expect("execution step failed");
+    
+                assert_eq!(m.state.stack.len(), 1);
+                assert_eq!(m.state.stack.pop().unwrap(), balance);
+            };
+        }
+    }
 }
