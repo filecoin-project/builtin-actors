@@ -6,6 +6,7 @@ use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::METHOD_SEND;
 use fvm_shared::{ActorID, MethodNum};
+use std::fmt::{Display, Formatter};
 
 use crate::runtime::Runtime;
 
@@ -114,6 +115,12 @@ impl From<SendError> for ActorError {
                 actor_error!(assertion_failed; "unexpected error: {}", err)
             }
         }
+    }
+}
+
+impl Display for SendError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "send failed with error number {}", self.0)
     }
 }
 
