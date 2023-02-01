@@ -30,18 +30,15 @@ pub fn keccak256(
 #[cfg(test)]
 mod test {
     use fil_actors_runtime::runtime::Primitives;
-    use rand::{distributions::Standard, Rng};
 
     use crate::{evm_unit_test, interpreter::U256, BytecodeHash};
 
     #[test]
-    fn keccak256_rand() {
-        let r = &mut rand::thread_rng();
-
-        for _ in 0..32 {
-            let data_max = 0x1000; // 4Kib
-            let len = r.gen_range(32..data_max);
-            let v: Vec<u8> = r.sample_iter(Standard).take(len).collect();
+    fn keccak256_large() {
+        for i in 0..12 {
+            let len = 1 << i; // 1 through 2^11 bytes length
+            println!("{}", len);
+            let v = vec![0xff; len];
             let [a, b] = u16::try_from(len).unwrap().to_be_bytes();
             evm_unit_test! {
                 (rt, m) {
