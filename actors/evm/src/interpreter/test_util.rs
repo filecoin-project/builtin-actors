@@ -13,7 +13,38 @@ macro_rules! evm_instruction {
 
 #[macro_export]
 macro_rules! evm_unit_test {
-    (($machine:ident) [ $($inst:tt;)* ] $($body:tt)*) => {
+    (($rt:ident) $init:block ($machine:ident) { $($inst:tt;)* } $($body:tt)*) => {
+        use ::fil_actors_runtime::test_utils::MockRuntime;
+        use ::fvm_shared::econ::TokenAmount;
+        use $crate::interpreter::{execution::Machine, system::System, Output};
+        use $crate::{Bytecode, Bytes, EthAddress, ExecutionState};
+
+        let mut $rt = MockRuntime::default();
+        $init
+
+        let mut state = ExecutionState::new(
+            EthAddress::from_id(1000),
+            EthAddress::from_id(1000),
+            TokenAmount::from_atto(0),
+            Bytes::default(),
+        );
+
+        let code = vec![$($crate::evm_instruction!($inst)),*];
+
+        let mut system = System::new(&mut $rt, false);
+        let bytecode = Bytecode::new(code);
+        let mut $machine = Machine {
+            system: &mut system,
+            state: &mut state,
+            bytecode: &bytecode,
+            pc: 0,
+            output: Output::default(),
+        };
+
+        $($body)*
+    };
+
+    (($machine:ident) { $($inst:tt;)* } $($body:tt)*) => {
         use ::fil_actors_runtime::test_utils::MockRuntime;
         use ::fvm_shared::econ::TokenAmount;
         use $crate::interpreter::{execution::Machine, system::System, Output};
@@ -30,36 +61,6 @@ macro_rules! evm_unit_test {
         let code = vec![$($crate::evm_instruction!($inst)),*];
 
         let mut system = System::new(&mut rt, false);
-        let bytecode = Bytecode::new(code);
-        let mut $machine = Machine {
-            system: &mut system,
-            state: &mut state,
-            bytecode: &bytecode,
-            pc: 0,
-            output: Output::default(),
-        };
-
-        $($body)*
-    };
-    (($rt:ident: $($init:tt)*) ($machine:ident) [ $($inst:tt;)* ] $($body:tt)*) => {
-        use ::fil_actors_runtime::test_utils::MockRuntime;
-        use ::fvm_shared::econ::TokenAmount;
-        use $crate::interpreter::{execution::Machine, system::System, Output};
-        use $crate::{Bytecode, Bytes, EthAddress, ExecutionState};
-
-        let mut $rt = MockRuntime::default();
-        $($init)*
-
-        let mut state = ExecutionState::new(
-            EthAddress::from_id(1000),
-            EthAddress::from_id(1000),
-            TokenAmount::from_atto(0),
-            Bytes::default(),
-        );
-
-        let code = vec![$($crate::evm_instruction!($inst)),*];
-
-        let mut system = System::new(&mut $rt, false);
         let bytecode = Bytecode::new(code);
         let mut $machine = Machine {
             system: &mut system,

@@ -57,7 +57,7 @@ mod test {
                 (false, U256::MAX),
             ] {
                 evm_unit_test! {
-                    (rt:
+                    (rt) {
                         rt.in_call = true;
 
                         let id_address = 1111;
@@ -66,12 +66,12 @@ mod test {
                             rt.add_id_address(addr.into(), Address::new_id(id_address))
                         }
                         rt.actor_balances.insert(id_address, TokenAmount::from_atto(balance));
-                    )
-                    (m) [
+                    }
+                    (m) {
                         PUSH0;
                         MLOAD;
                         BALANCE;
-                    ]
+                    }
 
                     m.state.memory.grow(32);
                     m.state.memory[..32].copy_from_slice(&addr.to_bytes());
@@ -102,17 +102,17 @@ mod test {
         let addr = U256::from(buf);
 
         evm_unit_test! {
-            (rt:
+            (rt) {
                 rt.in_call = true;
 
                 // 0xff id address gets balance
                 rt.actor_balances.insert(id as u64, TokenAmount::from_atto(balance));
-            )
-            (m) [
+            }
+            (m) {
                 PUSH0;
                 MLOAD;
                 BALANCE;
-            ]
+            }
 
             m.state.memory.grow(32);
             m.state.memory[..32].copy_from_slice(&addr.to_bytes());
@@ -132,13 +132,13 @@ mod test {
         for i in 0..256 {
             let balance = U256::ONE << i;
             evm_unit_test! {
-                (rt:
+                (rt) {
                     rt.in_call = true;
                     rt.add_balance(TokenAmount::from(&balance));
-                )
-                (m) [
+                }
+                (m) {
                     SELFBALANCE;
-                ]
+                }
 
                 m.step().expect("execution step failed");
 
