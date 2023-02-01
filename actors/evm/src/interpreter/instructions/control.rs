@@ -165,13 +165,13 @@ mod tests {
     #[test]
     fn test_jump() {
         evm_unit_test! {
-            (m) [
+            (m) {
                 JUMP;
                 JUMPDEST;
                 JUMPDEST;
                 JUMPDEST;
                 JUMPDEST;
-            ]
+            }
             m.state.stack.push(U256::from(2)).unwrap();
             let result = m.step();
             assert!(result.is_ok(), "execution step failed");
@@ -183,14 +183,14 @@ mod tests {
     #[test]
     fn test_jump_err() {
         evm_unit_test!(
-            (m) [
+            (m) {
                 JUMP; // JUMP
                 PUSH4; // PUSH4 -- garbage
                 0x01; // garbage
                 0x02; // garbage
                 0x03; // garbage
                 0x04; // garbage
-            ]
+            }
             m.state.stack.push(U256::from(2)).unwrap();
             let result = m.step();
             assert_eq!(m.state.stack.len(), 0);
@@ -202,14 +202,14 @@ mod tests {
     #[test]
     fn test_jump_err2() {
         evm_unit_test! {
-            (m) [
+            (m) {
                 JUMP;  // JUMP
                 PUSH4; // PUSH4 -- garbage
                 0x01;  // garbage
                 0x02;  // garbage
                 0x03;  // garbage
                 0x04;  // garbage
-            ]
+            }
 
             m.state.stack.push(U256::from(123)).unwrap();
             let result = m.step();
@@ -222,14 +222,14 @@ mod tests {
     #[test]
     fn test_jump_err3() {
         evm_unit_test! {
-            (m) [
+            (m) {
                 JUMP;
                 PUSH4;
                 JUMPDEST;
                 JUMPDEST;
                 JUMPDEST;
                 JUMPDEST;
-            ]
+            }
             m.state.stack.push(U256::from(2)).unwrap();
             let result = m.step();
             assert_eq!(m.state.stack.len(), 0);
@@ -241,13 +241,13 @@ mod tests {
     #[test]
     fn test_jumpi_t() {
         evm_unit_test! {
-            (m) [
+            (m) {
                 JUMPI;
                 JUMPDEST;
                 JUMPDEST;
                 JUMPDEST;
                 JUMPDEST;
-            ]
+            }
             m.state.stack.push(U256::from(1)).unwrap();
             m.state.stack.push(U256::from(2)).unwrap();
             let result = m.step();
@@ -260,13 +260,13 @@ mod tests {
     #[test]
     fn test_jumpi_f() {
         evm_unit_test! {
-            (m) [
+            (m) {
                 JUMPI;
                 JUMPDEST;
                 JUMPDEST;
                 JUMPDEST;
                 JUMPDEST;
-            ]
+            }
             m.state.stack.push(U256::from(0)).unwrap();
             m.state.stack.push(U256::from(2)).unwrap();
             let result = m.step();
@@ -279,13 +279,13 @@ mod tests {
     #[test]
     fn test_jumpi_err() {
         evm_unit_test! {
-            (m) [
+            (m) {
                 JUMPI;
                 JUMPDEST;
                 JUMPDEST;
                 JUMPDEST;
                 JUMPDEST;
-            ]
+            }
             m.state.stack.push(U256::from(1)).unwrap();
             m.state.stack.push(U256::from(123)).unwrap();
             let result = m.step();
@@ -298,10 +298,10 @@ mod tests {
     #[test]
     fn test_pc() {
         evm_unit_test! {
-            (m) [
+            (m) {
                 PC;
                 JUMPDEST;
-            ]
+            }
             let result = m.step();
             assert!(result.is_ok(), "execution step failed");
             assert_eq!(m.state.stack.len(), 1);

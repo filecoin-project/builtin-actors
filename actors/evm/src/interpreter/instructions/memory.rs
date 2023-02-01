@@ -202,10 +202,10 @@ mod tests {
     #[test]
     fn test_mload_nothing() {
         evm_unit_test! {
-            (m) [
+            (m) {
                 PUSH0;
                 MLOAD;
-            ]
+            }
 
             m.step().expect("execution step failed");
             m.step().expect("execution step failed");
@@ -218,14 +218,14 @@ mod tests {
     #[test]
     fn test_mload_large_offset() {
         evm_unit_test! {
-            (m) [
+            (m) {
                 PUSH4; // garbage offset
                 0x01;
                 0x02;
                 0x03;
                 0x04;
                 MLOAD;
-            ]
+            }
 
             m.step().expect("execution step failed");
             m.step().expect("execution step failed");
@@ -239,11 +239,11 @@ mod tests {
     fn test_mload_word() {
         for sh in 0..32 {
             evm_unit_test! {
-                (m) [
+                (m) {
                     PUSH1;
                     {sh};
                     MLOAD;
-                ]
+                }
 
                 m.state.memory.grow(32);
                 m.state.memory[..32].copy_from_slice(&U256::MAX.to_bytes());
@@ -261,12 +261,12 @@ mod tests {
     fn test_mstore8_basic() {
         for i in 0..=u8::MAX {
             evm_unit_test! {
-                (m) [
+                (m) {
                     PUSH1;
                     {i};
                     PUSH0;
                     MSTORE8;
-                ]
+                }
                 m.step().expect("execution step failed");
                 m.step().expect("execution step failed");
                 m.step().expect("execution step failed");
@@ -280,13 +280,13 @@ mod tests {
     #[test]
     fn test_mstore8_overwrite() {
         evm_unit_test! {
-            (m) [
+            (m) {
                 PUSH1;
                 0x01;
                 PUSH1;
                 0x01;
                 MSTORE8;
-            ]
+            }
             // index has garbage
             m.state.memory.grow(32);
             m.state.memory[0] = 0xab;
@@ -313,14 +313,14 @@ mod tests {
             let i = 1u16 << sh;
             let [a, b] = i.to_be_bytes();
             evm_unit_test! {
-                (m) [
+                (m) {
                     PUSH1;
                     0xff;
                     PUSH2;
                     {a};
                     {b};
                     MSTORE8;
-                ]
+                }
                 m.step().expect("execution step failed");
                 m.step().expect("execution step failed");
                 m.step().expect("execution step failed");
@@ -336,7 +336,7 @@ mod tests {
     #[test]
     fn test_mstore8_garbage() {
         evm_unit_test! {
-            (m) [
+            (m) {
                 PUSH32;
                 0xff;
                 0xff;
@@ -372,7 +372,7 @@ mod tests {
                 0x01;
                 PUSH0;
                 MSTORE8;
-            ]
+            }
             m.step().expect("execution step failed");
             m.step().expect("execution step failed");
             m.step().expect("execution step failed");
@@ -387,13 +387,13 @@ mod tests {
     #[test]
     fn test_mstore_basic() {
         evm_unit_test! {
-            (m) [
+            (m) {
                 PUSH2;
                 0xff;
                 0xfe;
                 PUSH0;
                 MSTORE;
-            ]
+            }
             m.step().expect("execution step failed");
             m.step().expect("execution step failed");
             m.step().expect("execution step failed");
@@ -408,13 +408,13 @@ mod tests {
     #[test]
     fn test_mstore_overwrite() {
         evm_unit_test! {
-            (m) [
+            (m) {
                 PUSH2;
                 0xff;
                 0xfe;
                 PUSH0;
                 MSTORE;
-            ]
+            }
             m.state.memory.grow(64);
             m.state.memory[..EVM_WORD_SIZE].copy_from_slice(&[0xff; EVM_WORD_SIZE]);
             // single byte outside expected overwritten area
@@ -436,14 +436,14 @@ mod tests {
     #[test]
     fn test_msize_multiple_mstore8() {
         evm_unit_test! {
-            (m) [
+            (m) {
                 PUSH1;
                 0xff;
                 PUSH1;
                 {42}; // offset of 42
                 MSTORE8;
                 MSIZE;
-            ]
+            }
 
             m.step().expect("execution step failed");
             m.step().expect("execution step failed");
@@ -459,14 +459,14 @@ mod tests {
     #[test]
     fn test_msize_multiple_mstore() {
         evm_unit_test! {
-            (m) [
+            (m) {
                 PUSH1;
                 0xff;
                 PUSH1;
                 {12}; // offset of 12
                 MSTORE;
                 MSIZE;
-            ]
+            }
 
             m.step().expect("execution step failed");
             m.step().expect("execution step failed");
@@ -483,9 +483,9 @@ mod tests {
         // Demonstrate that MSIZE depends on memory.len()
         // Normally this should never happen and we wont panic from it.
         evm_unit_test! {
-            (m) [
+            (m) {
                 MSIZE;
-            ]
+            }
 
             m.state.memory.grow(12);
             m.step().expect("execution step failed");

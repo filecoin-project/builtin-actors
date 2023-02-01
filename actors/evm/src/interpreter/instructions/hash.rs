@@ -41,13 +41,13 @@ mod test {
             let v = vec![0xff; len];
             let [a, b] = u16::try_from(len).unwrap().to_be_bytes();
             evm_unit_test! {
-                (m) [
+                (m) {
                     PUSH2;
                     {a};
                     {b};
                     PUSH0;
                     KECCAK256;
-                ]
+                }
 
                 let expect = &m.system.rt.hash_64(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &v).0[..32];
 
@@ -68,12 +68,12 @@ mod test {
             [([0xfe].as_slice(), BytecodeHash::NATIVE_ACTOR), (&[], BytecodeHash::EMPTY)]
         {
             evm_unit_test! {
-                (m) [
+                (m) {
                     PUSH1;
                     {input.len() as u8};
                     PUSH0;
                     KECCAK256;
-                ]
+                }
                 m.state.memory.grow(input.len());
                 m.state.memory[..input.len()].copy_from_slice(input);
                 m.step().expect("execution step failed");
