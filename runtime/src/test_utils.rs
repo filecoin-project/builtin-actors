@@ -43,7 +43,7 @@ use crate::runtime::{
     ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
     Verifier, EMPTY_ARR_CID,
 };
-use crate::{actor_error, ActorError};
+use crate::{actor_error, ActorError, SendError};
 use fvm_shared::event::ActorEvent;
 use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
 
@@ -680,17 +680,17 @@ impl<BS: Blockstore> MockRuntime<BS> {
         send_return: Option<IpldBlock>,
         exit_code: ExitCode,
     ) {
-        self.expectations.borrow_mut().expect_sends.push_back(ExpectedMessage {
+        self.expect_send(
             to,
             method,
             params,
             value,
-            gas_limit: None,
-            send_flags: SendFlags::default(),
+            None,
+            SendFlags::default(),
             send_return,
             exit_code,
-            send_error: None,
-        })
+            None,
+        )
     }
 
     #[allow(dead_code)]
@@ -711,11 +711,11 @@ impl<BS: Blockstore> MockRuntime<BS> {
             to,
             method,
             params,
+            value,
+            gas_limit,
+            send_flags,
             send_return,
             exit_code,
-            value,
-            send_flags,
-            gas_limit,
             send_error,
         })
     }
@@ -1131,7 +1131,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         value: TokenAmount,
         gas_limit: Option<u64>,
         send_flags: SendFlags,
-    ) -> Result<Response, ErrorNumber> {
+    ) -> Result<Response, SendError> {
         self.require_in_call();
         if self.in_transaction {
             return Ok(Response { exit_code: ExitCode::USR_ASSERTION_FAILED, return_data: None });
@@ -1156,13 +1156,13 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         assert_eq!(expected_msg.send_flags, send_flags, "send flags did not match expectation");
 
         if let Some(e) = expected_msg.send_error {
-            return Err(e);
+            return Err(SendError(e));
         }
 
         {
             let mut balance = self.balance.borrow_mut();
             if value > *balance {
-                return Err(ErrorNumber::InsufficientFunds);
+                return Err(SendError(ErrorNumber::InsufficientFunds));
             }
             *balance -= value;
         }

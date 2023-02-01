@@ -269,7 +269,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
             _ => {}
         }
 
-        Ok(result)
+        Ok(result.map_err(|e| e.0))
     }
 
     /// Flush the actor state (bytecode, nonce, and slots).
