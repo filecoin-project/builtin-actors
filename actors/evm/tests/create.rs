@@ -7,6 +7,7 @@ use fil_actors_runtime::EAM_ACTOR_ADDR;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::sys::SendFlags;
 
 mod util;
 
@@ -49,6 +50,9 @@ test_create2:
 
 #[test]
 fn test_create() {
+    const GAS_AVAILABLE: u64 = 64_000_000;
+    const GAS_SUBCALL: u64 = 63_000_000;
+
     let contract = magic_precompile_contract();
     let mut rt = util::construct_and_verify(contract);
 
@@ -79,13 +83,17 @@ fn test_create() {
     {
         rt.add_balance(TokenAmount::from_atto(1));
 
-        rt.expect_send_simple(
+        rt.expect_gas_available(GAS_AVAILABLE);
+        rt.expect_send(
             EAM_ACTOR_ADDR,
             eam::CREATE_METHOD_NUM,
             IpldBlock::serialize_cbor(&create_params).unwrap(),
             TokenAmount::from_atto(1),
+            Some(GAS_SUBCALL),
+            SendFlags::empty(),
             IpldBlock::serialize_cbor(&fake_ret).unwrap(),
             ExitCode::OK,
+            None,
         );
 
         let result = util::invoke_contract(&mut rt, &contract_params);
@@ -101,13 +109,17 @@ fn test_create() {
 
         rt.add_balance(TokenAmount::from_atto(1));
 
-        rt.expect_send_simple(
+        rt.expect_gas_available(GAS_AVAILABLE);
+        rt.expect_send(
             EAM_ACTOR_ADDR,
             eam::CREATE_METHOD_NUM,
             IpldBlock::serialize_cbor(&create_params).unwrap(),
             TokenAmount::from_atto(1),
+            Some(GAS_SUBCALL),
+            SendFlags::empty(),
             IpldBlock::serialize_cbor(&fake_ret).unwrap(),
             ExitCode::OK,
+            None,
         );
 
         let result = util::invoke_contract(&mut rt, &contract_params);
@@ -123,13 +135,17 @@ fn test_create() {
     {
         rt.add_balance(TokenAmount::from_atto(1));
 
-        rt.expect_send_simple(
+        rt.expect_gas_available(GAS_AVAILABLE);
+        rt.expect_send(
             EAM_ACTOR_ADDR,
             eam::CREATE2_METHOD_NUM,
             IpldBlock::serialize_cbor(&create2_params).unwrap(),
             TokenAmount::from_atto(1),
+            Some(GAS_SUBCALL),
+            SendFlags::empty(),
             IpldBlock::serialize_cbor(&fake_ret).unwrap(),
             ExitCode::OK,
+            None,
         );
 
         let result = util::invoke_contract(&mut rt, &contract_params);

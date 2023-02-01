@@ -96,8 +96,12 @@ fn create_init(
     method: MethodNum,
     value: TokenAmount,
 ) -> Result<U256, ActorError> {
+    // Apply EIP-150
+    let gas_limit = (63 * system.rt.gas_available()) / 64;
+
     // send bytecode & params to EAM to generate the address and contract
-    let ret = system.send(&EAM_ACTOR_ADDR, method, params, value, None, SendFlags::default());
+    let ret =
+        system.send(&EAM_ACTOR_ADDR, method, params, value, Some(gas_limit), SendFlags::default());
 
     // https://github.com/ethereum/go-ethereum/blob/fb75f11e87420ec25ff72f7eeeb741fa8974e87e/core/vm/evm.go#L406-L496
     // Normally EVM will do some checks here to ensure that a contract has the capability
