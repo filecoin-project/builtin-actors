@@ -92,14 +92,14 @@ mod test {
 
     #[test]
     fn balance_invalid_input() {
-        let id = 0xad;        
+        let id = 0xad;
         let balance = 1234;
 
         let mut buf = EthAddress::from_id(id).as_evm_word().to_bytes();
         // first bytes should be ignored silently
         buf[..12].copy_from_slice(&[0xff; 12]);
         let addr = U256::from(buf);
-        
+
         evm_unit_test! {
             (rt, m) {
                 PUSH0;
@@ -133,12 +133,12 @@ mod test {
                 (rt, m) {
                     SELFBALANCE;
                 }
-    
+
                 m.system.rt.in_call = true;
                 m.system.rt.add_balance(TokenAmount::from(&balance));
-    
+
                 m.step().expect("execution step failed");
-    
+
                 assert_eq!(m.state.stack.len(), 1);
                 assert_eq!(m.state.stack.pop().unwrap(), balance);
             };
