@@ -225,49 +225,31 @@ where
     fn get_randomness_from_tickets(
         &self,
         personalization: DomainSeparationTag,
-        rand_epoch: ChainEpoch,
-        entropy: &[u8],
-    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        self.user_get_randomness_from_chain(personalization as i64, rand_epoch, entropy)
-    }
-
-    fn get_randomness_from_beacon(
-        &self,
-        personalization: DomainSeparationTag,
-        rand_epoch: ChainEpoch,
-        entropy: &[u8],
-    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        self.user_get_randomness_from_beacon(personalization as i64, rand_epoch, entropy)
-    }
-
-    fn user_get_randomness_from_beacon(
-        &self,
-        personalization: i64,
         epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        fvm::rand::get_beacon_randomness(personalization, epoch, entropy).map_err(|e| {
-            match e {
-                ErrorNumber::LimitExceeded => {
-                    actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
-                }
-                e => actor_error!(assertion_failed; "get beacon randomness failed with an unexpected error: {}", e),
-            }
-        })
-    }
-
-    fn user_get_randomness_from_chain(
-        &self,
-        personalization: i64,
-        epoch: ChainEpoch,
-        entropy: &[u8],
-    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        fvm::rand::get_chain_randomness(personalization, epoch, entropy).map_err(|e| {
+        fvm::rand::get_chain_randomness(personalization as i64, epoch, entropy).map_err(|e| {
             match e {
                 ErrorNumber::LimitExceeded => {
                     actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
                 }
                 e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
+            }
+        })
+    }
+
+    fn get_randomness_from_beacon(
+        &self,
+        personalization: DomainSeparationTag,
+        epoch: ChainEpoch,
+        entropy: &[u8],
+    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
+        fvm::rand::get_beacon_randomness(personalization as i64, epoch, entropy).map_err(|e| {
+            match e {
+                ErrorNumber::LimitExceeded => {
+                    actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
+                }
+                e => actor_error!(assertion_failed; "get beacon randomness failed with an unexpected error: {}", e),
             }
         })
     }

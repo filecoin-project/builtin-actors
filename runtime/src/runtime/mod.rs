@@ -123,20 +123,6 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError>;
 
-    fn user_get_randomness_from_chain(
-        &self,
-        personalization: i64,
-        epoch: ChainEpoch,
-        entropy: &[u8],
-    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError>;
-
-    fn user_get_randomness_from_beacon(
-        &self,
-        personalization: i64,
-        epoch: ChainEpoch,
-        entropy: &[u8],
-    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError>;
-
     /// Initializes the state object.
     /// This is only valid when the state has not yet been initialized.
     /// NOTE: we should also limit this to being invoked during the constructor method
