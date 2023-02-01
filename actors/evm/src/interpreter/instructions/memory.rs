@@ -1,12 +1,13 @@
 #!allow[clippy::result-unit-err]
 
+use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::{ActorError, AsActorError};
 
 use crate::{EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS, EVM_WORD_SIZE};
 
 use {
     crate::interpreter::memory::Memory,
-    crate::interpreter::{ExecutionState, System, U256},
+    crate::interpreter::{ExecutionState, System},
     fil_actors_runtime::runtime::Runtime,
     std::num::NonZeroUsize,
 };

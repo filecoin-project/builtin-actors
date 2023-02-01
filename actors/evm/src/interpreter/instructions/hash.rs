@@ -1,8 +1,9 @@
+use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::ActorError;
 
 use {
     super::memory::get_memory_region,
-    crate::interpreter::{ExecutionState, System, U256},
+    crate::interpreter::{ExecutionState, System},
     fil_actors_runtime::runtime::Runtime,
     fvm_shared::crypto::hash::SupportedHashes,
 };
@@ -29,9 +30,10 @@ pub fn keccak256(
 
 #[cfg(test)]
 mod test {
+    use fil_actors_evm_shared::uints::U256;
     use fil_actors_runtime::runtime::Primitives;
 
-    use crate::{evm_unit_test, interpreter::U256, BytecodeHash};
+    use crate::{evm_unit_test, BytecodeHash};
 
     #[test]
     fn keccak256_large() {

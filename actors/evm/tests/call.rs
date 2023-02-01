@@ -8,10 +8,10 @@ use ethers::prelude::builders::ContractCall;
 use ethers::prelude::*;
 use ethers::providers::{MockProvider, Provider};
 use ethers::types::Bytes;
-use evm::interpreter::address::EthAddress;
-use evm::interpreter::U256;
 use evm::{Method, EVM_CONTRACT_REVERTED};
 use fil_actor_evm as evm;
+use fil_actors_evm_shared::address::EthAddress;
+use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::{test_utils::*, EAM_ACTOR_ID, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{BytesDe, BytesSer, CBOR, IPLD_RAW};
@@ -301,7 +301,7 @@ pub fn test_call_output_region() {
 # this contract truncates return from send to output length
 
 # prepare the proxy call
-push1 0x00 
+push1 0x00
 calldataload # size from first word
 push1 0x00 # offset
 

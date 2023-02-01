@@ -50,7 +50,7 @@ testing-fake-proofs = []
 m2-native = []
 
 [workspace]
-members = ["actors/*", "state", "runtime", "test_vm"]
+members = ["actors/*", "state", "runtime", "test_vm", "actors/evm/shared"]
 
 [patch.crates-io]
 #fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }

@@ -1,4 +1,4 @@
-use {crate::interpreter::uints::*, crate::interpreter::U256};
+use fil_actors_evm_shared::uints::{U256, U512};
 
 #[inline]
 pub fn add(a: U256, b: U256) -> U256 {
@@ -28,7 +28,7 @@ pub fn div(a: U256, b: U256) -> U256 {
 
 #[inline]
 pub fn sdiv(a: U256, b: U256) -> U256 {
-    i256_div(a, b)
+    a.i256_div(&b)
 }
 
 #[inline]
@@ -42,7 +42,7 @@ pub fn modulo(a: U256, b: U256) -> U256 {
 
 #[inline]
 pub fn smod(a: U256, b: U256) -> U256 {
-    i256_mod(a, b)
+    a.i256_mod(&b)
 }
 
 #[inline]
@@ -111,8 +111,8 @@ pub fn exp(mut base: U256, power: U256) -> U256 {
 #[cfg(test)]
 mod test {
     mod basic {
-        use crate::interpreter::instructions::arithmetic::*;
-        use crate::interpreter::U256;
+        use super::super::*;
+        use fil_actors_evm_shared::uints::U256;
 
         #[test]
         fn test_addmod() {

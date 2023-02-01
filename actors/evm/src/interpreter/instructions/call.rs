@@ -1,21 +1,23 @@
 #![allow(clippy::too_many_arguments)]
 
+use fil_actors_evm_shared::{address::EthAddress, uints::U256};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::BytesDe;
 use fvm_shared::{address::Address, sys::SendFlags, MethodNum, IPLD_RAW};
 
-use crate::interpreter::precompiles::{is_reserved_precompile_address, PrecompileContext};
+use crate::interpreter::{
+    precompiles::{is_reserved_precompile_address, PrecompileContext},
+    CallKind,
+};
 
 use super::ext::{get_contract_type, get_evm_bytecode_cid, ContractType};
 
 use {
     super::memory::{copy_to_memory, get_memory_region},
-    crate::interpreter::address::EthAddress,
     crate::interpreter::instructions::memory::MemoryRegion,
     crate::interpreter::precompiles,
     crate::interpreter::ExecutionState,
     crate::interpreter::System,
-    crate::interpreter::U256,
     crate::{DelegateCallParams, Method},
     fil_actors_runtime::runtime::Runtime,
     fil_actors_runtime::ActorError,
@@ -25,14 +27,6 @@ use {
 
 /// The gas granted on bare "transfers".
 const TRANSFER_GAS_LIMIT: U256 = U256::from_u64(10_000_000);
-
-/// The kind of call-like instruction.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CallKind {
-    Call,
-    DelegateCall,
-    StaticCall,
-}
 
 pub fn calldataload(
     state: &mut ExecutionState,

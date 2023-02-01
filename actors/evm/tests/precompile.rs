@@ -1,7 +1,6 @@
 mod asm;
 
-use evm::interpreter::{address::EthAddress, U256};
-use fil_actor_evm as evm;
+use fil_actors_evm_shared::{address::EthAddress, uints::U256};
 use fil_actors_runtime::{
     test_utils::{new_bls_addr, MockRuntime},
     EAM_ACTOR_ID,

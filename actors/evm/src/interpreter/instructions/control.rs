@@ -1,4 +1,5 @@
 use bytes::Bytes;
+use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::{ActorError, AsActorError};
 
 use crate::{
@@ -10,7 +11,7 @@ use crate::{
 use {
     super::memory::get_memory_region,
     crate::interpreter::Bytecode,
-    crate::interpreter::{ExecutionState, System, U256},
+    crate::interpreter::{ExecutionState, System},
     fil_actors_runtime::runtime::Runtime,
 };
 
@@ -158,8 +159,9 @@ pub fn jumpi(bytecode: &Bytecode, pc: usize, dest: U256, test: U256) -> Result<u
 
 #[cfg(test)]
 mod tests {
+    use fil_actors_evm_shared::uints::U256;
+
     use crate::evm_unit_test;
-    use crate::interpreter::U256;
     use crate::EVM_CONTRACT_BAD_JUMPDEST;
 
     #[test]

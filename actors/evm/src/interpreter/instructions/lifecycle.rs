@@ -1,18 +1,18 @@
 use bytes::Bytes;
 
+use fil_actors_evm_shared::address::EthAddress;
+use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::ActorError;
 use fil_actors_runtime::EAM_ACTOR_ADDR;
 use fil_actors_runtime::{deserialize_block, extract_send_result};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::{strict_bytes, tuple::*};
 use fvm_shared::sys::SendFlags;
 use fvm_shared::MethodNum;
 use fvm_shared::METHOD_SEND;
 use fvm_shared::{address::Address, econ::TokenAmount};
-use serde_tuple::{Deserialize_tuple, Serialize_tuple};
 
+use crate::ext::eam;
 use crate::interpreter::Output;
-use crate::interpreter::{address::EthAddress, U256};
 use crate::EVM_CONTRACT_SELFDESTRUCT_FAILED;
 
 use super::memory::{get_memory_region, MemoryRegion};
@@ -20,31 +20,6 @@ use {
     crate::interpreter::{ExecutionState, System},
     fil_actors_runtime::runtime::Runtime,
 };
-
-pub const CREATE_METHOD_NUM: u64 = 2;
-pub const CREATE2_METHOD_NUM: u64 = 3;
-
-#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
-pub struct CreateParams {
-    #[serde(with = "strict_bytes")]
-    pub code: Vec<u8>,
-    pub nonce: u64,
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
-pub struct Create2Params {
-    #[serde(with = "strict_bytes")]
-    pub code: Vec<u8>,
-    #[serde(with = "strict_bytes")]
-    pub salt: [u8; 32],
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Copy, PartialEq, Eq)]
-pub struct EamReturn {
-    pub actor_id: u64,
-    pub robust_address: Option<Address>,
-    pub eth_address: EthAddress,
-}
 
 #[inline]
 pub fn create(
@@ -73,8 +48,8 @@ pub fn create(
     };
 
     let nonce = system.increment_nonce();
-    let params = CreateParams { code: input_data.to_vec(), nonce };
-    create_init(system, IpldBlock::serialize_cbor(&params)?, CREATE_METHOD_NUM, value)
+    let params = eam::CreateParams { code: input_data.to_vec(), nonce };
+    create_init(system, IpldBlock::serialize_cbor(&params)?, eam::CREATE_METHOD_NUM, value)
 }
 
 pub fn create2(
@@ -107,10 +82,10 @@ pub fn create2(
     } else {
         &[]
     };
-    let params = Create2Params { code: input_data.to_vec(), salt };
+    let params = eam::Create2Params { code: input_data.to_vec(), salt };
 
     system.increment_nonce();
-    create_init(system, IpldBlock::serialize_cbor(&params)?, CREATE2_METHOD_NUM, endowment)
+    create_init(system, IpldBlock::serialize_cbor(&params)?, eam::CREATE2_METHOD_NUM, endowment)
 }
 
 /// call into Ethereum Address Manager to make the new account
@@ -145,7 +120,7 @@ fn create_init(
 
     Ok(match ret {
         Ok(eam_ret) => {
-            let ret: EamReturn = deserialize_block(eam_ret)?;
+            let ret: eam::CreateReturn = deserialize_block(eam_ret)?;
             ret.eth_address.as_evm_word()
         }
         Err(_) => U256::zero(),

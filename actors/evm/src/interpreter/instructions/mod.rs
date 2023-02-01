@@ -1,22 +1,22 @@
 #![allow(clippy::unnecessary_mut_passed)]
 
-pub mod arithmetic;
-pub mod bitwise;
-pub mod boolean;
-pub mod call;
-pub mod context;
-pub mod control;
-pub mod ext;
-pub mod hash;
-pub mod lifecycle;
-pub mod log_event;
-pub mod memory;
-pub mod stack;
-pub mod state;
-pub mod storage;
+mod arithmetic;
+mod bitwise;
+mod boolean;
+mod call;
+mod context;
+mod control;
+mod ext;
+mod hash;
+mod lifecycle;
+mod log_event;
+mod memory;
+mod stack;
+mod state;
+mod storage;
 
 use crate::interpreter::execution::Machine;
-use crate::interpreter::U256;
+use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::ActorError;
 

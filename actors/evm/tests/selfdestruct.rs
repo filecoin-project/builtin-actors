@@ -1,7 +1,7 @@
 use fil_actor_evm::{
-    interpreter::{address::EthAddress, U256},
     EvmContractActor, Method, ResurrectParams, State, Tombstone, EVM_CONTRACT_SELFDESTRUCT_FAILED,
 };
+use fil_actors_evm_shared::{address::EthAddress, uints::U256};
 use fil_actors_runtime::{test_utils::*, EAM_ACTOR_ADDR, INIT_ACTOR_ADDR};
 use fvm_ipld_encoding::{ipld_block::IpldBlock, BytesSer, RawBytes};
 use fvm_shared::{

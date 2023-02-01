@@ -1,10 +1,11 @@
+use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::ActorError;
 use fvm_shared::clock::ChainEpoch;
 
 use crate::EVM_WORD_SIZE;
 
 use {
-    crate::interpreter::{ExecutionState, System, U256},
+    crate::interpreter::{ExecutionState, System},
     fil_actors_runtime::runtime::Runtime,
 };
 

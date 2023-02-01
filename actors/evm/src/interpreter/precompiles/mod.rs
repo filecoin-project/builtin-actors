@@ -1,12 +1,13 @@
 use std::{marker::PhantomData, num::TryFromIntError};
 
+use fil_actors_evm_shared::{address::EthAddress, uints::U256};
 use fil_actors_runtime::{runtime::Runtime, ActorError};
 use fvm_shared::{address::Address, econ::TokenAmount};
 use substrate_bn::{CurveError, FieldError, GroupError};
 
 use crate::reader::OverflowError;
 
-use super::{address::EthAddress, instructions::call::CallKind, System, U256};
+use super::{CallKind, System};
 mod evm;
 mod fvm;
 
@@ -113,7 +114,6 @@ pub enum PrecompileError {
     // EVM precompile errors
     EcErr(CurveError),
     IncorrectInputSize,
-    OutOfGas,
     // FVM precompile errors
     InvalidInput,
     CallForbidden,
@@ -163,25 +163,12 @@ pub struct PrecompileContext {
     pub value: U256,
 }
 
-/// Native Type of a given contract
-#[repr(u32)]
-pub enum NativeType {
-    NonExistent = 0,
-    // user actors are flattened to "system"
-    /// System includes any singletons not otherwise defined.
-    System = 1,
-    Placeholder = 2,
-    Account = 3,
-    StorageProvider = 4,
-    EVMContract = 5,
-    OtherTypes = 6,
-}
-
 #[cfg(test)]
 mod test {
+    use fil_actors_evm_shared::address::EthAddress;
     use fil_actors_runtime::test_utils::MockRuntime;
 
-    use crate::interpreter::{address::EthAddress, precompiles::is_reserved_precompile_address};
+    use crate::interpreter::precompiles::is_reserved_precompile_address;
 
     use super::Precompiles;
 

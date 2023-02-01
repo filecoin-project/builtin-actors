@@ -1874,6 +1874,7 @@ dependencies = [
  "derive_more",
  "ethers 1.0.2",
  "etk-asm",
+ "fil_actors_evm_shared",
  "fil_actors_runtime",
  "fixed-hash 0.7.0",
  "frc42_dispatch",
@@ -1899,7 +1900,6 @@ dependencies = [
  "strum",
  "strum_macros",
  "substrate-bn",
- "uint",
 ]
 
 [[package]]
@@ -2094,6 +2094,18 @@ dependencies = [
  "num-derive",
  "num-traits",
  "serde",
+]
+
+[[package]]
+name = "fil_actors_evm_shared"
+version = "10.0.0-alpha.1"
+dependencies = [
+ "fil_actors_runtime",
+ "fvm_ipld_encoding 0.3.3",
+ "fvm_shared 3.0.0-alpha.17",
+ "hex",
+ "serde",
+ "uint",
 ]
 
 [[package]]
@@ -4552,6 +4564,7 @@ dependencies = [
  "fil_actor_reward",
  "fil_actor_system",
  "fil_actor_verifreg",
+ "fil_actors_evm_shared",
  "fil_actors_runtime",
  "fil_builtin_actors_state",
  "frc46_token",
