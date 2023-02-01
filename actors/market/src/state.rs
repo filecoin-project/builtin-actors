@@ -23,7 +23,7 @@ use std::collections::BTreeMap;
 
 use super::policy::*;
 use super::types::*;
-use super::{DealProposal, DealState};
+use super::{DealProposal, DealState, EX_DEAL_EXPIRED};
 
 pub enum Reason {
     ClientCollateral,
@@ -213,9 +213,14 @@ impl State {
         store: &BS,
         id: DealID,
     ) -> Result<DealProposal, ActorError> {
-        let found = self
-            .find_proposal(store, id)?
-            .with_context_code(ExitCode::USR_NOT_FOUND, || format!("no such deal {}", id))?;
+        let found = self.find_proposal(store, id)?.ok_or_else(|| {
+            if id < self.next_id {
+                // If the deal ID has been used, it must have been cleaned up.
+                ActorError::unchecked(EX_DEAL_EXPIRED, format!("deal {} expired", id))
+            } else {
+                ActorError::not_found(format!("no such deal {}", id))
+            }
+        })?;
         Ok(found)
     }
 
