@@ -1285,12 +1285,17 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
     }
 
     fn tipset_cid(&self, epoch: i64) -> Result<Cid, ActorError> {
-        if epoch > self.epoch || epoch < 0 {
+        let offset = self.epoch - epoch;
+        // Can't get tipset for epochs:
+        // - not current or future epoch
+        // - not negative
+        // - before current finality
+        if offset <= 0 || epoch < 0 || offset > 256 {
             return Err(
                 actor_error!(illegal_argument; "invalid epoch to fetch tipset_cid {}", epoch),
             );
         }
-        Ok(*self.tipset_cids.get((self.epoch - epoch) as usize).unwrap())
+        Ok(*self.tipset_cids.get(epoch as usize).unwrap())
     }
 
     fn emit_event(&self, event: &ActorEvent) -> Result<(), ActorError> {
