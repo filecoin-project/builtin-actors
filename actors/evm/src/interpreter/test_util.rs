@@ -20,6 +20,7 @@ macro_rules! evm_unit_test {
         use $crate::{Bytecode, Bytes, EthAddress, ExecutionState};
 
         let mut $rt = MockRuntime::default();
+        $rt.in_call = true;
         $init
 
         let mut state = ExecutionState::new(

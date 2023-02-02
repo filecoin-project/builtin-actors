@@ -75,7 +75,7 @@ pub fn coinbase(
     _state: &mut ExecutionState,
     _system: &System<impl Runtime>,
 ) -> Result<U256, ActorError> {
-    // TODO do we want to return the zero ID address, or just a plain 0?
+    // Eth zero address, there is no beneficiary TODO
     Ok(U256::zero())
 }
 
@@ -106,6 +106,7 @@ pub fn block_number(
     _state: &mut ExecutionState,
     system: &System<impl Runtime>,
 ) -> Result<U256, ActorError> {
+    // NOTE: Panics if current epoch is negative, which should never happen in the network
     Ok(U256::from(system.rt.curr_epoch()))
 }
 
@@ -150,7 +151,10 @@ pub fn base_fee(
 #[cfg(test)]
 mod tests {
     use crate::evm_unit_test;
+    use cid::Cid;
     use fil_actors_evm_shared::uints::U256;
+    use fvm_ipld_encoding::DAG_CBOR;
+    use fvm_shared::IPLD_RAW;
 
     #[test]
     fn test_callvalue() {
@@ -164,5 +168,111 @@ mod tests {
             assert_eq!(m.state.stack.len(), 1);
             assert_eq!(m.state.stack.pop().unwrap(), U256::from(123));
         };
+    }
+
+    #[test]
+    fn test_number() {
+        for epoch in [1234, i64::MAX, 0, 1] {
+            evm_unit_test! {
+                (rt) {
+                    rt.set_epoch(epoch);
+                }
+                (m) {
+                    NUMBER;
+                }
+                m.step().expect("execution step failed");
+                assert_eq!(m.state.stack.len(), 1);
+                assert_eq!(m.state.stack.pop().unwrap(), U256::from(epoch));
+            };
+        }
+    }
+
+    #[test]
+    fn test_chainid() {
+        for chainid in [31415, 3141, 0, 1] {
+            evm_unit_test! {
+                (rt) {
+                    rt.chain_id = chainid.into();
+                }
+                (m) {
+                    CHAINID;
+                }
+                m.step().expect("execution step failed");
+                assert_eq!(m.state.stack.len(), 1);
+                assert_eq!(m.state.stack.pop().unwrap(), U256::from(chainid));
+            };
+        }
+    }
+
+    #[test]
+    fn test_basefee() {
+        for basefee in [12345, u128::MAX, 0, 1].map(|i| U256::from(i)) {
+            evm_unit_test! {
+                (rt) {
+                    rt.base_fee = TokenAmount::from(&basefee);
+                }
+                (m) {
+                    BASEFEE;
+                }
+                m.step().expect("execution step failed");
+                assert_eq!(m.state.stack.len(), 1);
+                assert_eq!(m.state.stack.pop().unwrap(), basefee);
+            };
+        }
+    }
+
+    #[test]
+    fn test_coinbase() {
+        evm_unit_test! {
+            (m) {
+                COINBASE;
+            }
+            m.step().expect("execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::ZERO);
+        };
+    }
+
+    #[test]
+    fn test_blockhash() {
+        // truncate to 32 bytes
+        // TODO up counter to assert it is the _last_ 32 bytes
+        let long_unknown =
+            Cid::new_v1(IPLD_RAW, multihash::Multihash::wrap(0, &[0xff; 40]).unwrap());
+        let long_expect = [0xff; 32];
+        // multihash code ignored
+        let cbor_odd_hash =
+            Cid::new_v1(DAG_CBOR, multihash::Multihash::wrap(123, &[0xfe; 32]).unwrap());
+        let cbor_odd_expect = [0xfe; 32];
+
+        let nothing = [0; 32];
+
+        for (current, getting, insert, expect, test) in [
+            (12345, 12340u16, Some(long_unknown), long_expect, "truncated tipset"),
+            (1234, 1230u16, Some(cbor_odd_hash), cbor_odd_expect, "normal-ish tipset"),
+            (123, 222u16, None, nothing, "future tipset"),
+            (1234, 123u16, None, nothing, "older than 256 finality"),
+        ] {
+            let [a, b] = getting.to_be_bytes();
+            evm_unit_test! {
+                (rt) {
+                    rt.set_epoch(current);
+                    rt.tipset_cids.resize(current as usize, Cid::default());
+                    if insert.is_some() {
+                        rt.tipset_cids[getting as usize] = insert.unwrap();
+                    }
+                }
+                (m) {
+                    PUSH2;
+                    {a};
+                    {b};
+                    BLOCKHASH;
+                }
+                m.step().expect("execution step failed");
+                m.step().expect("execution step failed");
+                assert_eq!(m.state.stack.len(), 1);
+                assert_eq!(m.state.stack.pop().unwrap(), U256::from(expect), "{}", test);
+            };
+        }
     }
 }
