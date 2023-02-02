@@ -225,10 +225,10 @@ where
     fn get_randomness_from_tickets(
         &self,
         personalization: DomainSeparationTag,
-        epoch: ChainEpoch,
+        rand_epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        fvm::rand::get_chain_randomness(personalization as i64, epoch, entropy).map_err(|e| {
+        fvm::rand::get_chain_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
             match e {
                 ErrorNumber::LimitExceeded => {
                     actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
@@ -241,10 +241,10 @@ where
     fn get_randomness_from_beacon(
         &self,
         personalization: DomainSeparationTag,
-        epoch: ChainEpoch,
+        rand_epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        fvm::rand::get_beacon_randomness(personalization as i64, epoch, entropy).map_err(|e| {
+        fvm::rand::get_beacon_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
             match e {
                 ErrorNumber::LimitExceeded => {
                     actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)

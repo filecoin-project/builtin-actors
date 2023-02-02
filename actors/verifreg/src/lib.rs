@@ -474,26 +474,23 @@ impl Actor {
     ) -> Result<GetClaimsReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let mut batch_gen = BatchReturnGen::new(params.claim_ids.len());
-        let claims = rt
-            .transaction(|st: &mut State, rt| {
-                let mut st_claims = st.load_claims(rt.store())?;
-                let mut ret_claims = Vec::new();
-                for id in params.claim_ids {
-                    let maybe_claim = state::get_claim(&mut st_claims, params.provider, id)?;
-                    match maybe_claim {
-                        None => {
-                            batch_gen.add_fail(ExitCode::USR_NOT_FOUND);
-                            info!("no claim {} for provider {}", id, params.provider,);
-                        }
-                        Some(claim) => {
-                            batch_gen.add_success();
-                            ret_claims.push(claim.clone());
-                        }
-                    };
+        let st: State = rt.state()?;
+        let mut st_claims = st.load_claims(rt.store())?;
+        let mut claims = Vec::new();
+        for id in params.claim_ids {
+            let maybe_claim = state::get_claim(&mut st_claims, params.provider, id)?;
+            match maybe_claim {
+                None => {
+                    batch_gen.add_fail(ExitCode::USR_NOT_FOUND);
+                    info!("no claim {} for provider {}", id, params.provider,);
                 }
-                Ok(ret_claims)
-            })
-            .context("state transaction failed")?;
+                Some(claim) => {
+                    batch_gen.add_success();
+                    claims.push(claim.clone());
+                }
+            };
+        }
+
         Ok(GetClaimsReturn { batch_info: batch_gen.gen(), claims })
     }
 

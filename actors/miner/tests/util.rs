@@ -64,7 +64,6 @@ use fvm_shared::clock::QuantSpec;
 use fvm_shared::clock::{ChainEpoch, NO_QUANTIZATION};
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
 use fvm_shared::consensus::ConsensusFault;
-use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -89,6 +88,7 @@ use fil_actor_miner::testing::{
 };
 use fil_actors_runtime::cbor::serialize;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::crypto::hash::SupportedHashes;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::TryInto;
 use std::iter;
