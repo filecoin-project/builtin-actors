@@ -336,8 +336,9 @@ where
         fvm::network::tipset_timestamp()
     }
 
-    fn tipset_cid(&self, epoch: i64) -> Option<Cid> {
-        fvm::network::tipset_cid(epoch).ok()
+    fn tipset_cid(&self, epoch: i64) -> Result<Cid, ActorError> {
+        fvm::network::tipset_cid(epoch)
+            .map_err(|_| actor_error!(illegal_argument; "invalid epoch to query tipset_cid"))
     }
 
     fn read_only(&self) -> bool {
