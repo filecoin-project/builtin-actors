@@ -345,6 +345,7 @@ mod tests {
 
     #[test]
     fn test_calldataload() {
+        // happy path
         evm_unit_test! {
             (m) {
                 CALLDATALOAD;
@@ -359,7 +360,8 @@ mod tests {
     }
 
     #[test]
-    fn test_calldataload2() {
+    fn test_calldataload_oob() {
+        // tsests admissibility of out of bounds reads (as 0s)
         evm_unit_test! {
             (m) {
                 CALLDATALOAD;
@@ -374,7 +376,8 @@ mod tests {
     }
 
     #[test]
-    fn test_calldataload3() {
+    fn test_calldataload_large_input() {
+        // tests admissibility of subset of data reads
         evm_unit_test! {
             (m) {
                 CALLDATALOAD;
@@ -406,6 +409,7 @@ mod tests {
 
     #[test]
     fn test_calldatacopy() {
+        // happy path
         evm_unit_test! {
             (m) {
                 CALLDATACOPY;
@@ -425,7 +429,8 @@ mod tests {
     }
 
     #[test]
-    fn test_calldatacopy2() {
+    fn test_calldatacopy_oob() {
+        // tests admissibility of large (oob) lengths; should give zeros.
         evm_unit_test! {
             (m) {
                 CALLDATACOPY;
@@ -445,7 +450,8 @@ mod tests {
     }
 
     #[test]
-    fn test_calldatacopy3() {
+    fn test_calldatacopy_oob2() {
+        // test admissibility of large (oob) offsetes -- should give zeros.
         evm_unit_test! {
             (m) {
                 CALLDATACOPY;

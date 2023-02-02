@@ -328,6 +328,7 @@ mod tests {
 
     #[test]
     fn test_returndatacopy() {
+        // happy path
         evm_unit_test! {
             (m) {
                 RETURNDATACOPY;
@@ -348,14 +349,15 @@ mod tests {
 
     #[test]
     fn test_returndatacopy_err() {
+        // error condition 1: length too large
         evm_unit_test! {
             (m) {
                 RETURNDATACOPY;
             }
             m.state.return_data = vec![0x00, 0x01, 0x02].into();
             m.state.stack.push(U256::from(10)).unwrap();  // length
-            m.state.stack.push(U256::from(1)).unwrap();  // offset
-            m.state.stack.push(U256::from(0)).unwrap();  // dest-offset
+            m.state.stack.push(U256::from(1)).unwrap();   // offset
+            m.state.stack.push(U256::from(0)).unwrap();   // dest-offset
             let result = m.step();
             assert!(!result.is_ok(), "execution step succeeded");
             assert_eq!(result.err().unwrap().exit_code(), EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS);
@@ -364,13 +366,31 @@ mod tests {
 
     #[test]
     fn test_returndatacopy_err2() {
+        // error condition 2 -- offset too large
         evm_unit_test! {
             (m) {
                 RETURNDATACOPY;
             }
             m.state.return_data = vec![0x00, 0x01, 0x02].into();
-            m.state.stack.push(U256::from(2)).unwrap();  // length
+            m.state.stack.push(U256::from(2)).unwrap();   // length
             m.state.stack.push(U256::from(10)).unwrap();  // offset
+            m.state.stack.push(U256::from(0)).unwrap();   // dest-offset
+            let result = m.step();
+            assert!(!result.is_ok(), "execution step succeeded");
+            assert_eq!(result.err().unwrap().exit_code(), EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS);
+        };
+    }
+
+    #[test]
+    fn test_returndatacopy_err3() {
+        // error condition 3 -- offset+length too large
+        evm_unit_test! {
+            (m) {
+                RETURNDATACOPY;
+            }
+            m.state.return_data = vec![0x00, 0x01, 0x02].into();
+            m.state.stack.push(U256::from(2)).unwrap();   // length
+            m.state.stack.push(U256::from(2)).unwrap();  // offset
             m.state.stack.push(U256::from(0)).unwrap();  // dest-offset
             let result = m.step();
             assert!(!result.is_ok(), "execution step succeeded");
