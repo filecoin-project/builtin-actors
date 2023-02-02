@@ -146,3 +146,23 @@ pub fn base_fee(
 ) -> Result<U256, ActorError> {
     Ok(U256::from(&system.rt.base_fee()))
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::evm_unit_test;
+    use fil_actors_evm_shared::uints::U256;
+
+    #[test]
+    fn test_callvalue() {
+        evm_unit_test! {
+            (m) {
+                CALLVALUE;
+            }
+            m.state.value_received = TokenAmount::from_atto(123);
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(123));
+        };
+    }
+}

@@ -162,7 +162,7 @@ mod tests {
     use fil_actors_evm_shared::uints::U256;
 
     use crate::evm_unit_test;
-    use crate::EVM_CONTRACT_BAD_JUMPDEST;
+    use crate::{EVM_CONTRACT_BAD_JUMPDEST, EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS};
 
     #[test]
     fn test_jump() {
@@ -310,5 +310,91 @@ mod tests {
             assert_eq!(m.state.stack.pop().unwrap(), U256::zero());
             assert_eq!(m.pc, 1, "pc has not advanced to 1");
         }
+    }
+
+    #[test]
+    fn test_returndatasize() {
+        evm_unit_test! {
+            (m) {
+                RETURNDATASIZE;
+            }
+            m.state.return_data = vec![0x00, 0x01, 0x02].into();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(3));
+        };
+    }
+
+    #[test]
+    fn test_returndatacopy() {
+        // happy path
+        evm_unit_test! {
+            (m) {
+                RETURNDATACOPY;
+            }
+            m.state.return_data = vec![0x00, 0x01, 0x02].into();
+            m.state.stack.push(U256::from(2)).unwrap();  // length
+            m.state.stack.push(U256::from(1)).unwrap();  // offset
+            m.state.stack.push(U256::from(0)).unwrap();  // dest-offset
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 0);
+            let mut expected = [0u8; 32];
+            expected[0] = 0x01;
+            expected[1] = 0x02;
+            assert_eq!(m.state.memory.as_ref(), &expected);
+        };
+    }
+
+    #[test]
+    fn test_returndatacopy_err() {
+        // error condition 1: length too large
+        evm_unit_test! {
+            (m) {
+                RETURNDATACOPY;
+            }
+            m.state.return_data = vec![0x00, 0x01, 0x02].into();
+            m.state.stack.push(U256::from(10)).unwrap();  // length
+            m.state.stack.push(U256::from(1)).unwrap();   // offset
+            m.state.stack.push(U256::from(0)).unwrap();   // dest-offset
+            let result = m.step();
+            assert!(result.is_err(), "execution step succeeded");
+            assert_eq!(result.err().unwrap().exit_code(), EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS);
+        };
+    }
+
+    #[test]
+    fn test_returndatacopy_err2() {
+        // error condition 2 -- offset too large
+        evm_unit_test! {
+            (m) {
+                RETURNDATACOPY;
+            }
+            m.state.return_data = vec![0x00, 0x01, 0x02].into();
+            m.state.stack.push(U256::from(2)).unwrap();   // length
+            m.state.stack.push(U256::from(10)).unwrap();  // offset
+            m.state.stack.push(U256::from(0)).unwrap();   // dest-offset
+            let result = m.step();
+            assert!(result.is_err(), "execution step succeeded");
+            assert_eq!(result.err().unwrap().exit_code(), EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS);
+        };
+    }
+
+    #[test]
+    fn test_returndatacopy_err3() {
+        // error condition 3 -- offset+length too large
+        evm_unit_test! {
+            (m) {
+                RETURNDATACOPY;
+            }
+            m.state.return_data = vec![0x00, 0x01, 0x02].into();
+            m.state.stack.push(U256::from(2)).unwrap();   // length
+            m.state.stack.push(U256::from(2)).unwrap();  // offset
+            m.state.stack.push(U256::from(0)).unwrap();  // dest-offset
+            let result = m.step();
+            assert!(result.is_err(), "execution step succeeded");
+            assert_eq!(result.err().unwrap().exit_code(), EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS);
+        };
     }
 }
