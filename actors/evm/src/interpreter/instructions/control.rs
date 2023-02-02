@@ -162,7 +162,7 @@ mod tests {
     use fil_actors_evm_shared::uints::U256;
 
     use crate::evm_unit_test;
-    use crate::EVM_CONTRACT_BAD_JUMPDEST;
+    use crate::{EVM_CONTRACT_BAD_JUMPDEST, EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS};
 
     #[test]
     fn test_jump() {
@@ -343,6 +343,38 @@ mod tests {
             expected[0] = 0x01;
             expected[1] = 0x02;
             assert_eq!(m.state.memory.as_ref(), &expected);
+        };
+    }
+
+    #[test]
+    fn test_returndatacopy_err() {
+        evm_unit_test! {
+            (m) {
+                RETURNDATACOPY;
+            }
+            m.state.return_data = vec![0x00, 0x01, 0x02].into();
+            m.state.stack.push(U256::from(10)).unwrap();  // length
+            m.state.stack.push(U256::from(1)).unwrap();  // offset
+            m.state.stack.push(U256::from(0)).unwrap();  // dest-offset
+            let result = m.step();
+            assert!(!result.is_ok(), "execution step succeeded");
+            assert_eq!(result.err().unwrap().exit_code(), EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS);
+        };
+    }
+
+    #[test]
+    fn test_returndatacopy_err2() {
+        evm_unit_test! {
+            (m) {
+                RETURNDATACOPY;
+            }
+            m.state.return_data = vec![0x00, 0x01, 0x02].into();
+            m.state.stack.push(U256::from(2)).unwrap();  // length
+            m.state.stack.push(U256::from(10)).unwrap();  // offset
+            m.state.stack.push(U256::from(0)).unwrap();  // dest-offset
+            let result = m.step();
+            assert!(!result.is_ok(), "execution step succeeded");
+            assert_eq!(result.err().unwrap().exit_code(), EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS);
         };
     }
 }

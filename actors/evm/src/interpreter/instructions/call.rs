@@ -359,6 +359,38 @@ mod tests {
     }
 
     #[test]
+    fn test_calldataload2() {
+        evm_unit_test! {
+            (m) {
+                CALLDATALOAD;
+            }
+            m.state.input_data = vec![0x00, 0x01, 0x02].into();
+            m.state.stack.push(U256::from(10)).unwrap();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::zero());
+        };
+    }
+
+    #[test]
+    fn test_calldataload3() {
+        evm_unit_test! {
+            (m) {
+                CALLDATALOAD;
+            }
+            let mut input_data = [0u8;64];
+            input_data[0] = 0x42;
+            m.state.input_data = Vec::from(input_data).into();
+            m.state.stack.push(U256::from(0)).unwrap();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(0x42) << 248);
+        };
+    }
+
+    #[test]
     fn test_calldatasize() {
         evm_unit_test! {
             (m) {
@@ -388,6 +420,44 @@ mod tests {
             let mut expected = [0u8; 32];
             expected[0] = 0x01;
             expected[1] = 0x02;
+            assert_eq!(m.state.memory.as_ref(), &expected);
+        };
+    }
+
+    #[test]
+    fn test_calldatacopy2() {
+        evm_unit_test! {
+            (m) {
+                CALLDATACOPY;
+            }
+            m.state.input_data = vec![0x00, 0x01, 0x02].into();
+            m.state.stack.push(U256::from(64)).unwrap(); // length -- too big
+            m.state.stack.push(U256::from(1)).unwrap();  // offset
+            m.state.stack.push(U256::from(0)).unwrap();  // dest-offset
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 0);
+            let mut expected = [0u8; 64];
+            expected[0] = 0x01;
+            expected[1] = 0x02;
+            assert_eq!(m.state.memory.as_ref(), &expected);
+        };
+    }
+
+    #[test]
+    fn test_calldatacopy3() {
+        evm_unit_test! {
+            (m) {
+                CALLDATACOPY;
+            }
+            m.state.input_data = vec![0x00, 0x01, 0x02].into();
+            m.state.stack.push(U256::from(2)).unwrap();   // length
+            m.state.stack.push(U256::from(10)).unwrap();  // offset -- out of bounds
+            m.state.stack.push(U256::from(0)).unwrap();   // dest-offset
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 0);
+            let expected = [0u8; 32];
             assert_eq!(m.state.memory.as_ref(), &expected);
         };
     }
