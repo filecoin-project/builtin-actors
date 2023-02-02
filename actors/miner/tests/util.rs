@@ -88,6 +88,7 @@ use fil_actor_miner::testing::{
 };
 use fil_actors_runtime::cbor::serialize;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::crypto::hash::SupportedHashes;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::TryInto;
 use std::iter;
@@ -2931,14 +2932,14 @@ where
 }
 
 // Returns a fake hashing function that always arranges the first 8 bytes of the digest to be the binary
-// encoding of a target uint64.
-fn fixed_hasher(offset: ChainEpoch) -> Box<dyn Fn(&[u8]) -> [u8; 32]> {
-    let hash = move |_: &[u8]| -> [u8; 32] {
-        let mut result = [0u8; 32];
+// encoding of a target uint64 and ignores the hash function.
+fn fixed_hasher(offset: ChainEpoch) -> Box<dyn Fn(SupportedHashes, &[u8]) -> ([u8; 64], usize)> {
+    let hash = move |_: SupportedHashes, _: &[u8]| -> ([u8; 64], usize) {
+        let mut result = [0u8; 64];
         for (i, item) in result.iter_mut().enumerate().take(8) {
             *item = ((offset >> (8 * (7 - i))) & 0xff) as u8;
         }
-        result
+        (result, 32)
     };
     Box::new(hash)
 }

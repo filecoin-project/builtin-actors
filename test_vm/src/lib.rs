@@ -1,6 +1,7 @@
 use anyhow::anyhow;
 use bimap::BiBTreeMap;
 use cid::multihash::Code;
+use cid::multihash::MultihashDigest;
 use cid::Cid;
 use fil_actor_account::{Actor as AccountActor, State as AccountState};
 use fil_actor_cron::{Actor as CronActor, Entry as CronEntry, State as CronState};
@@ -40,7 +41,10 @@ use fvm_shared::address::Payload;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
-use fvm_shared::crypto::signature::Signature;
+use fvm_shared::crypto::hash::SupportedHashes;
+use fvm_shared::crypto::signature::{
+    Signature, SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE,
+};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
@@ -53,7 +57,7 @@ use fvm_shared::sector::{
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::sys::SendFlags;
 use fvm_shared::version::NetworkVersion;
-use fvm_shared::{ActorID, MethodNum, Response, METHOD_CONSTRUCTOR, METHOD_SEND};
+use fvm_shared::{ActorID, MethodNum, Response, IPLD_RAW, METHOD_CONSTRUCTOR, METHOD_SEND};
 use regex::Regex;
 use serde::de::DeserializeOwned;
 use serde::{ser, Serialize};
@@ -553,14 +557,23 @@ impl InternalMessage {
 }
 
 impl MessageInfo for InvocationCtx<'_, '_> {
+    fn nonce(&self) -> u64 {
+        self.top.originator_call_seq
+    }
     fn caller(&self) -> Address {
         self.msg.from
+    }
+    fn origin(&self) -> Address {
+        Address::new_id(self.resolve_address(&self.top.originator_stable_addr).unwrap())
     }
     fn receiver(&self) -> Address {
         self.to()
     }
     fn value_received(&self) -> TokenAmount {
         self.msg.value.clone()
+    }
+    fn gas_premium(&self) -> TokenAmount {
+        TokenAmount::zero()
     }
 }
 
@@ -732,8 +745,10 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             Type::Power => PowerActor::invoke_method(self, self.msg.method, params),
             Type::PaymentChannel => PaychActor::invoke_method(self, self.msg.method, params),
             Type::VerifiedRegistry => VerifregActor::invoke_method(self, self.msg.method, params),
-            // Type::EVM => panic!("no EVM"),
             Type::DataCap => DataCapActor::invoke_method(self, self.msg.method, params),
+            Type::Placeholder => {
+                Err(ActorError::unhandled_message("placeholder actors only handle method 0".into()))
+            }
         };
         if res.is_ok() && !self.caller_validated {
             res = Err(actor_error!(assertion_failed, "failed to validate caller"));
@@ -1021,6 +1036,22 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         TokenAmount::zero()
     }
 
+    fn actor_balance(&self, id: ActorID) -> Option<TokenAmount> {
+        self.v.get_actor(Address::new_id(id)).map(|act| act.balance)
+    }
+
+    fn gas_available(&self) -> u64 {
+        u32::MAX.into()
+    }
+
+    fn tipset_timestamp(&self) -> u64 {
+        0
+    }
+
+    fn tipset_cid(&self, _epoch: i64) -> Option<Cid> {
+        Some(Cid::new_v1(IPLD_RAW, Multihash::wrap(0, b"faketipset").unwrap()))
+    }
+
     fn read_only(&self) -> bool {
         self.read_only
     }
@@ -1061,6 +1092,25 @@ impl Primitives for VM<'_> {
     ) -> Result<Cid, anyhow::Error> {
         Ok(make_piece_cid(b"unsealed from itest vm"))
     }
+
+    fn hash(&self, hasher: SupportedHashes, data: &[u8]) -> Vec<u8> {
+        let hasher = Code::try_from(hasher as u64).unwrap(); // supported hashes are all implemented in multihash
+        hasher.digest(data).digest().to_owned()
+    }
+
+    fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
+        let hasher = Code::try_from(hasher as u64).unwrap();
+        let (len, buf, ..) = hasher.digest(data).into_inner();
+        (buf, len as usize)
+    }
+
+    fn recover_secp_public_key(
+        &self,
+        hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
+        signature: &[u8; SECP_SIG_LEN],
+    ) -> Result<[u8; SECP_PUB_LEN], anyhow::Error> {
+        recover_secp_public_key(hash, signature).map_err(|_| anyhow!("failed to recover pubkey"))
+    }
 }
 
 impl Primitives for InvocationCtx<'_, '_> {
@@ -1083,6 +1133,22 @@ impl Primitives for InvocationCtx<'_, '_> {
         pieces: &[PieceInfo],
     ) -> Result<Cid, anyhow::Error> {
         self.v.compute_unsealed_sector_cid(proof_type, pieces)
+    }
+
+    fn hash(&self, hasher: SupportedHashes, data: &[u8]) -> Vec<u8> {
+        self.v.hash(hasher, data)
+    }
+
+    fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
+        self.v.hash_64(hasher, data)
+    }
+
+    fn recover_secp_public_key(
+        &self,
+        hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
+        signature: &[u8; SECP_SIG_LEN],
+    ) -> Result<[u8; SECP_PUB_LEN], anyhow::Error> {
+        self.v.recover_secp_public_key(hash, signature)
     }
 }
 
