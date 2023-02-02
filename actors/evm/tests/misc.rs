@@ -50,7 +50,7 @@ return
 
     let mut rt = util::construct_and_verify(contract);
 
-    rt.tipset_cids = (0..900)
+    rt.tipset_cids = (0..(0xffff + 512))
         .map(|i| {
             Cid::new_v1(DAG_CBOR, Multihash::wrap(0, format!("block-{:026}", i).as_ref()).unwrap())
         })
@@ -60,14 +60,14 @@ return
     let result = util::invoke_contract(&mut rt, &[]);
     assert_eq!(
         String::from_utf8_lossy(&result.to_vec()),
-        String::from_utf8_lossy(rt.tipset_cids[2].hash().digest())
+        String::from_utf8_lossy(rt.tipset_cids[0xffff].hash().digest())
     );
 
     rt.epoch = 0xffff + 256;
     let result = util::invoke_contract(&mut rt, &[]);
     assert_eq!(
         String::from_utf8_lossy(&result.to_vec()),
-        String::from_utf8_lossy(rt.tipset_cids[256].hash().digest())
+        String::from_utf8_lossy(rt.tipset_cids[0xffff].hash().digest())
     );
 
     rt.epoch = 0xffff;
