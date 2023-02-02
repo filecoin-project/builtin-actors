@@ -26,7 +26,7 @@ pub fn blockhash(
             let curr_epoch = system.rt.curr_epoch();
             height >= curr_epoch - 256 && height < curr_epoch
         })
-        .and_then(|height| system.rt.tipset_cid(height))
+        .and_then(|height| system.rt.tipset_cid(height).ok())
         .map(|cid| {
             let mut hash = cid.hash().digest();
             if hash.len() > EVM_WORD_SIZE {

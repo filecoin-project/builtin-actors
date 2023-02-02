@@ -157,7 +157,7 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
     #[allow(clippy::type_complexity)]
     pub hash_func: Box<dyn Fn(SupportedHashes, &[u8]) -> ([u8; 64], usize)>,
     #[allow(clippy::type_complexity)]
-    pub recover_pubkey_fn: Box<
+    pub recover_secp_pubkey_fn: Box<
         dyn Fn(
             &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
             &[u8; SECP_SIG_LEN],
@@ -182,7 +182,6 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
 
     pub circulating_supply: TokenAmount,
 
-    // iron
     pub gas_limit: u64,
     pub gas_premium: TokenAmount,
     pub actor_balances: HashMap<ActorID, TokenAmount>,
@@ -351,7 +350,7 @@ impl<BS> MockRuntime<BS> {
             origin: Address::new_id(0),
             value_received: Default::default(),
             hash_func: Box::new(hash),
-            recover_pubkey_fn: Box::new(recover_secp_public_key),
+            recover_secp_pubkey_fn: Box::new(recover_secp_public_key),
             network_version: NetworkVersion::V0,
             state: Default::default(),
             balance: Default::default(),
@@ -844,6 +843,10 @@ impl<BS: Blockstore> MockRuntime<BS> {
 }
 
 impl<BS> MessageInfo for MockRuntime<BS> {
+    fn nonce(&self) -> u64 {
+        0
+    }
+
     fn caller(&self) -> Address {
         self.caller
     }
@@ -858,10 +861,6 @@ impl<BS> MessageInfo for MockRuntime<BS> {
     }
     fn gas_premium(&self) -> TokenAmount {
         self.gas_premium.clone()
-    }
-
-    fn nonce(&self) -> u64 {
-        0
     }
 }
 
@@ -1285,16 +1284,18 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         self.tipset_timestamp
     }
 
-    fn tipset_cid(&self, epoch: i64) -> Option<Cid> {
+    fn tipset_cid(&self, epoch: i64) -> Result<Cid, ActorError> {
         let offset = self.epoch - epoch;
         // Can't get tipset for epochs:
         // - not current or future epoch
         // - not negative
         // - before current finality
         if offset <= 0 || epoch < 0 || offset > 256 {
-            return None;
+            return Err(
+                actor_error!(illegal_argument; "invalid epoch to fetch tipset_cid {}", epoch),
+            );
         }
-        self.tipset_cids.get(epoch as usize).copied()
+        Ok(*self.tipset_cids.get(epoch as usize).unwrap())
     }
 
     fn emit_event(&self, event: &ActorEvent) -> Result<(), ActorError> {
@@ -1417,7 +1418,8 @@ impl<BS> Primitives for MockRuntime<BS> {
         hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
         signature: &[u8; SECP_SIG_LEN],
     ) -> Result<[u8; SECP_PUB_LEN], anyhow::Error> {
-        (*self.recover_pubkey_fn)(hash, signature).map_err(|_| anyhow!("failed to recover pubkey."))
+        (*self.recover_secp_pubkey_fn)(hash, signature)
+            .map_err(|_| anyhow!("failed to recover pubkey."))
     }
 
     fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
