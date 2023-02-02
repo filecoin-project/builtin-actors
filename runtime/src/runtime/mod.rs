@@ -243,8 +243,9 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// The current tipset's timestamp, as UNIX seconds
     fn tipset_timestamp(&self) -> u64;
 
-    /// The hash of on of the last 256 blocks
-    fn tipset_cid(&self, epoch: i64) -> Option<Cid>;
+    /// The CID of the tipset at the specified epoch.
+    /// The epoch must satisfy: (curr_epoch - FINALITY) < epoch <= curr_epoch
+    fn tipset_cid(&self, epoch: i64) -> Result<Cid, ActorError>;
 
     /// Emits an event denoting that something externally noteworthy has ocurred.
     fn emit_event(&self, event: &ActorEvent) -> Result<(), ActorError>;

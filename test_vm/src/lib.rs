@@ -1142,8 +1142,8 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         0
     }
 
-    fn tipset_cid(&self, _epoch: i64) -> Option<Cid> {
-        Some(Cid::new_v1(IPLD_RAW, Multihash::wrap(0, b"faketipset").unwrap()))
+    fn tipset_cid(&self, _epoch: i64) -> Result<Cid, ActorError> {
+        Ok(Cid::new_v1(IPLD_RAW, Multihash::wrap(0, b"faketipset").unwrap()))
     }
 
     // TODO No support for events yet.
