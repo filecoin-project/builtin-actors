@@ -1834,6 +1834,7 @@ dependencies = [
  "anyhow",
  "cid",
  "fil_actor_evm",
+ "fil_actors_evm_shared",
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding 0.3.3",
