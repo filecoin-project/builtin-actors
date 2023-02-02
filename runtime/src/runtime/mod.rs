@@ -7,7 +7,10 @@ use fvm_ipld_encoding::CborStore;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
-use fvm_shared::crypto::signature::Signature;
+use fvm_shared::crypto::hash::SupportedHashes;
+use fvm_shared::crypto::signature::{
+    Signature, SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE,
+};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::RANDOMNESS_LENGTH;
@@ -56,7 +59,8 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// Information related to the current message being executed.
     fn message(&self) -> &dyn MessageInfo;
 
-    /// The current chain epoch number. The genesis block has epoch zero.
+    /// The current chain epoch number, corresponding to the epoch in which the message is executed.
+    /// The genesis block has epoch zero.
     fn curr_epoch(&self) -> ChainEpoch;
 
     /// Validates the caller against some predicate.
@@ -71,6 +75,9 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
 
     /// The balance of the receiver.
     fn current_balance(&self) -> TokenAmount;
+
+    /// The balance of an actor.
+    fn actor_balance(&self, id: ActorID) -> Option<TokenAmount>;
 
     /// Resolves an address of any protocol to an ID address (via the Init actor's table).
     /// This allows resolution of externally-provided SECP, BLS, or actor addresses to the canonical form.
@@ -218,6 +225,16 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// Returns the gas base fee (cost per unit) for the current epoch.
     fn base_fee(&self) -> TokenAmount;
 
+    /// The gas still available for computation
+    fn gas_available(&self) -> u64;
+
+    /// The timestamp of the tipset at the current epoch (see curr_epoch), as UNIX seconds.
+    fn tipset_timestamp(&self) -> u64;
+
+    /// The CID of the tipset at the specified epoch.
+    /// The epoch must satisfy: (curr_epoch - FINALITY) < epoch <= curr_epoch
+    fn tipset_cid(&self, epoch: i64) -> Result<Cid, ActorError>;
+
     /// Returns true if the call is read_only.
     /// All state updates, including actor creation and balance transfers, are rejected in read_only calls.
     fn read_only(&self) -> bool;
@@ -225,8 +242,14 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
 
 /// Message information available to the actor about executing message.
 pub trait MessageInfo {
+    /// The nonce of the currently executing message.
+    fn nonce(&self) -> u64;
+
     /// The address of the immediate calling actor. Always an ID-address.
     fn caller(&self) -> Address;
+
+    /// The address of the origin of the current invocation. Always an ID-address
+    fn origin(&self) -> Address;
 
     /// The address of the actor receiving the message. Always an ID-address.
     fn receiver(&self) -> Address;
@@ -234,12 +257,21 @@ pub trait MessageInfo {
     /// The value attached to the message being processed, implicitly
     /// added to current_balance() before method invocation.
     fn value_received(&self) -> TokenAmount;
+
+    /// The message gas premium
+    fn gas_premium(&self) -> TokenAmount;
 }
 
 /// Pure functions implemented as primitives by the runtime.
 pub trait Primitives {
     /// Hashes input data using blake2b with 256 bit output.
     fn hash_blake2b(&self, data: &[u8]) -> [u8; 32];
+
+    /// Hashes input data using a supported hash function.
+    fn hash(&self, hasher: SupportedHashes, data: &[u8]) -> Vec<u8>;
+
+    /// Hashes input into a 64 byte buffer
+    fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize);
 
     /// Computes an unsealed sector CID (CommD) from its constituent piece CIDs (CommPs) and sizes.
     fn compute_unsealed_sector_cid(
@@ -255,6 +287,12 @@ pub trait Primitives {
         signer: &Address,
         plaintext: &[u8],
     ) -> Result<(), anyhow::Error>;
+
+    fn recover_secp_public_key(
+        &self,
+        hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
+        signature: &[u8; SECP_SIG_LEN],
+    ) -> Result<[u8; SECP_PUB_LEN], anyhow::Error>;
 }
 
 /// filcrypto verification primitives provided by the runtime

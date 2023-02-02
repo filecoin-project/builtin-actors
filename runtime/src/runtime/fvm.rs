@@ -10,7 +10,10 @@ use fvm_sdk as fvm;
 use fvm_sdk::NO_DATA_BLOCK_ID;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::crypto::signature::Signature;
+use fvm_shared::crypto::hash::SupportedHashes;
+use fvm_shared::crypto::signature::{
+    Signature, SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE,
+};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::piece::PieceInfo;
@@ -84,12 +87,24 @@ impl MessageInfo for FvmMessage {
         Address::new_id(fvm::message::caller())
     }
 
+    fn origin(&self) -> Address {
+        Address::new_id(fvm::message::origin())
+    }
+
     fn receiver(&self) -> Address {
         Address::new_id(fvm::message::receiver())
     }
 
     fn value_received(&self) -> TokenAmount {
         fvm::message::value_received()
+    }
+
+    fn gas_premium(&self) -> TokenAmount {
+        fvm::message::gas_premium()
+    }
+
+    fn nonce(&self) -> u64 {
+        fvm::message::nonce()
     }
 }
 
@@ -158,6 +173,10 @@ where
         fvm::sself::current_balance()
     }
 
+    fn actor_balance(&self, id: ActorID) -> Option<TokenAmount> {
+        fvm::actor::balance_of(id)
+    }
+
     fn resolve_address(&self, address: &Address) -> Option<ActorID> {
         fvm::actor::resolve_address(address)
     }
@@ -184,30 +203,14 @@ where
         rand_epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        // Note: For Go actors, Lotus treated all failures to get randomness as "fatal" errors,
-        // which it then translated into exit code SysErrReserved1 (= 4, and now known as
-        // SYS_ILLEGAL_INSTRUCTION), rather than just aborting with an appropriate exit code.
-        //
-        // We can replicate that here prior to network v16, but from nv16 onwards the FVM will
-        // override the attempt to use a system exit code, and produce
-        // SYS_ILLEGAL_EXIT_CODE (9) instead.
-        //
-        // Since that behaviour changes, we may as well abort with a more appropriate exit code
-        // explicitly.
-        fvm::rand::get_chain_randomness(personalization as i64, rand_epoch, entropy)
-            .map_err(|e| {
-                if self.network_version() < NetworkVersion::V16 {
-                    ActorError::unchecked(ExitCode::SYS_ILLEGAL_INSTRUCTION,
-                                          "failed to get chain randomness".into())
-                } else {
-                    match e {
-                        ErrorNumber::LimitExceeded => {
-                            actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
-                        }
-                        e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
-                    }
+        fvm::rand::get_chain_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
+            match e {
+                ErrorNumber::LimitExceeded => {
+                    actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
                 }
-            })
+                e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
+            }
+        })
     }
 
     fn get_randomness_from_beacon(
@@ -216,21 +219,14 @@ where
         rand_epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        // See note on exit codes in get_randomness_from_tickets.
-        fvm::rand::get_beacon_randomness(personalization as i64, rand_epoch, entropy)
-            .map_err(|e| {
-                if self.network_version() < NetworkVersion::V16 {
-                    ActorError::unchecked(ExitCode::SYS_ILLEGAL_INSTRUCTION,
-                                          "failed to get chain randomness".into())
-                } else {
-                    match e {
-                        ErrorNumber::LimitExceeded => {
-                            actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
-                        }
-                        e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
-                    }
+        fvm::rand::get_beacon_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
+            match e {
+                ErrorNumber::LimitExceeded => {
+                    actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
                 }
-            })
+                e => actor_error!(assertion_failed; "get beacon randomness failed with an unexpected error: {}", e),
+            }
+        })
     }
 
     fn get_state_root(&self) -> Result<Cid, ActorError> {
@@ -306,6 +302,7 @@ where
             ErrorNumber::IllegalArgument => {
                 ActorError::illegal_argument("failed to create actor".into())
             }
+            ErrorNumber::Forbidden => ActorError::forbidden("actor already exists".into()),
             _ => actor_error!(assertion_failed; "create failed with unknown error: {}", e),
         })
     }
@@ -329,6 +326,19 @@ where
 
     fn base_fee(&self) -> TokenAmount {
         fvm::network::base_fee()
+    }
+
+    fn gas_available(&self) -> u64 {
+        fvm::gas::available()
+    }
+
+    fn tipset_timestamp(&self) -> u64 {
+        fvm::network::tipset_timestamp()
+    }
+
+    fn tipset_cid(&self, epoch: i64) -> Result<Cid, ActorError> {
+        fvm::network::tipset_cid(epoch)
+            .map_err(|_| actor_error!(illegal_argument; "invalid epoch to query tipset_cid"))
     }
 
     fn read_only(&self) -> bool {
@@ -365,6 +375,25 @@ where
         // exit code ErrIllegalArgument. We should probably move that here, or to the syscall itself.
         fvm::crypto::compute_unsealed_sector_cid(proof_type, pieces)
             .map_err(|e| anyhow!("failed to compute unsealed sector CID; exit code: {}", e))
+    }
+
+    fn hash(&self, hasher: SupportedHashes, data: &[u8]) -> Vec<u8> {
+        fvm::crypto::hash_owned(hasher, data)
+    }
+
+    fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
+        let mut buf = [0u8; 64];
+        let len = fvm::crypto::hash_into(hasher, data, &mut buf);
+        (buf, len)
+    }
+
+    fn recover_secp_public_key(
+        &self,
+        hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
+        signature: &[u8; SECP_SIG_LEN],
+    ) -> Result<[u8; SECP_PUB_LEN], anyhow::Error> {
+        fvm::crypto::recover_secp_public_key(hash, signature)
+            .map_err(|e| anyhow!("failed to recover pubkey; exit code: {}", e))
     }
 }
 

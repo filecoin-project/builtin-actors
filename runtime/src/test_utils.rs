@@ -17,7 +17,10 @@ use fvm_shared::address::{Address, Protocol};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
 use fvm_shared::consensus::ConsensusFault;
-use fvm_shared::crypto::signature::Signature;
+use fvm_shared::crypto::hash::SupportedHashes;
+use fvm_shared::crypto::signature::{
+    Signature, SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE,
+};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::piece::PieceInfo;
@@ -41,6 +44,7 @@ use crate::runtime::{
     Verifier, EMPTY_ARR_CID,
 };
 use crate::{actor_error, ActorError, SendError};
+use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::sys::SendFlags;
@@ -73,6 +77,7 @@ lazy_static::lazy_static! {
         map.insert(*REWARD_ACTOR_CODE_ID, Type::Reward);
         map.insert(*VERIFREG_ACTOR_CODE_ID, Type::VerifiedRegistry);
         map.insert(*DATACAP_TOKEN_ACTOR_CODE_ID, Type::DataCap);
+        map.insert(*PLACEHOLDER_ACTOR_CODE_ID, Type::Placeholder);
         map
     };
     pub static ref ACTOR_CODES: BTreeMap<Type, Cid> = [
@@ -88,6 +93,7 @@ lazy_static::lazy_static! {
         (Type::Reward, *REWARD_ACTOR_CODE_ID),
         (Type::VerifiedRegistry, *VERIFREG_ACTOR_CODE_ID),
         (Type::DataCap, *DATACAP_TOKEN_ACTOR_CODE_ID),
+        (Type::Placeholder, *PLACEHOLDER_ACTOR_CODE_ID),
     ]
     .into_iter()
     .collect();
@@ -97,6 +103,7 @@ lazy_static::lazy_static! {
         map.insert(*PAYCH_ACTOR_CODE_ID, ());
         map.insert(*MULTISIG_ACTOR_CODE_ID, ());
         map.insert(*MINER_ACTOR_CODE_ID, ());
+        map.insert(*PLACEHOLDER_ACTOR_CODE_ID, ());
         map
     };
 }
@@ -119,9 +126,17 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
     pub receiver: Address,
     pub caller: Address,
     pub caller_type: Cid,
+    pub origin: Address,
     pub value_received: TokenAmount,
     #[allow(clippy::type_complexity)]
-    pub hash_func: Box<dyn Fn(&[u8]) -> [u8; 32]>,
+    pub hash_func: Box<dyn Fn(SupportedHashes, &[u8]) -> ([u8; 64], usize)>,
+    #[allow(clippy::type_complexity)]
+    pub recover_secp_pubkey_fn: Box<
+        dyn Fn(
+            &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
+            &[u8; SECP_SIG_LEN],
+        ) -> Result<[u8; SECP_PUB_LEN], ()>,
+    >,
     pub network_version: NetworkVersion,
 
     // Actor State
@@ -140,6 +155,12 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
     pub policy: Policy,
 
     pub circulating_supply: TokenAmount,
+
+    pub gas_limit: u64,
+    pub gas_premium: TokenAmount,
+    pub actor_balances: HashMap<ActorID, TokenAmount>,
+    pub tipset_timestamp: u64,
+    pub tipset_cids: Vec<Cid>,
 }
 
 #[derive(Default)]
@@ -161,6 +182,7 @@ pub struct Expectations {
     pub expect_aggregate_verify_seals: Option<ExpectAggregateVerifySeals>,
     pub expect_replica_verify: Option<ExpectReplicaVerify>,
     pub expect_gas_charge: VecDeque<i64>,
+    pub expect_gas_available: VecDeque<u64>,
     skip_verification_on_drop: bool,
 }
 
@@ -257,6 +279,11 @@ impl Expectations {
             "expect_gas_charge {:?}, not received",
             this.expect_gas_charge
         );
+        assert!(
+            this.expect_gas_available.is_empty(),
+            "expect_gas_available {:?}, not received",
+            this.expect_gas_available
+        );
     }
 }
 
@@ -279,8 +306,10 @@ impl<BS> MockRuntime<BS> {
             receiver: Address::new_id(0),
             caller: Address::new_id(0),
             caller_type: Default::default(),
+            origin: Address::new_id(0),
             value_received: Default::default(),
-            hash_func: Box::new(blake2b_256),
+            hash_func: Box::new(hash),
+            recover_secp_pubkey_fn: Box::new(recover_secp_public_key),
             network_version: NetworkVersion::V0,
             state: Default::default(),
             balance: Default::default(),
@@ -290,6 +319,11 @@ impl<BS> MockRuntime<BS> {
             expectations: Default::default(),
             policy: Default::default(),
             circulating_supply: Default::default(),
+            gas_limit: 10_000_000_000u64,
+            gas_premium: Default::default(),
+            actor_balances: Default::default(),
+            tipset_timestamp: Default::default(),
+            tipset_cids: Default::default(),
         }
     }
 }
@@ -448,6 +482,10 @@ impl<BS: Blockstore> MockRuntime<BS> {
         self.caller = address;
         self.caller_type = code_id;
         self.actor_code_cids.insert(address, code_id);
+    }
+
+    pub fn set_origin(&mut self, address: Address) {
+        self.origin = address;
     }
 
     pub fn set_address_actor_type(&mut self, address: Address, actor_type: Cid) {
@@ -711,6 +749,11 @@ impl<BS: Blockstore> MockRuntime<BS> {
         self.expectations.borrow_mut().expect_gas_charge.push_back(value);
     }
 
+    #[allow(dead_code)]
+    pub fn expect_gas_available(&mut self, value: u64) {
+        self.expectations.borrow_mut().expect_gas_available.push_back(value);
+    }
+
     ///// Private helpers /////
 
     fn require_in_call(&self) {
@@ -727,14 +770,24 @@ impl<BS: Blockstore> MockRuntime<BS> {
 }
 
 impl<BS> MessageInfo for MockRuntime<BS> {
+    fn nonce(&self) -> u64 {
+        0
+    }
+
     fn caller(&self) -> Address {
         self.caller
+    }
+    fn origin(&self) -> Address {
+        self.origin
     }
     fn receiver(&self) -> Address {
         self.receiver
     }
     fn value_received(&self) -> TokenAmount {
         self.value_received.clone()
+    }
+    fn gas_premium(&self) -> TokenAmount {
+        self.gas_premium.clone()
     }
 }
 
@@ -834,6 +887,11 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
     fn current_balance(&self) -> TokenAmount {
         self.require_in_call();
         self.balance.borrow().clone()
+    }
+
+    fn actor_balance(&self, id: ActorID) -> Option<TokenAmount> {
+        self.require_in_call();
+        self.actor_balances.get(&id).cloned()
     }
 
     fn resolve_address(&self, address: &Address) -> Option<ActorID> {
@@ -1096,6 +1154,25 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         self.base_fee.clone()
     }
 
+    fn gas_available(&self) -> u64 {
+        let mut exs = self.expectations.borrow_mut();
+        assert!(!exs.expect_gas_available.is_empty(), "unexpected gas available call");
+        exs.expect_gas_available.pop_front().unwrap()
+    }
+
+    fn tipset_timestamp(&self) -> u64 {
+        self.tipset_timestamp
+    }
+
+    fn tipset_cid(&self, epoch: i64) -> Result<Cid, ActorError> {
+        if epoch > self.epoch || epoch < 0 {
+            return Err(
+                actor_error!(illegal_argument; "invalid epoch to fetch tipset_cid {}", epoch),
+            );
+        }
+        Ok(*self.tipset_cids.get((self.epoch - epoch) as usize).unwrap())
+    }
+
     fn read_only(&self) -> bool {
         // Unsupported for unit tests
         unimplemented!()
@@ -1145,8 +1222,17 @@ impl<BS> Primitives for MockRuntime<BS> {
     }
 
     fn hash_blake2b(&self, data: &[u8]) -> [u8; 32] {
-        (*self.hash_func)(data)
+        let (digest, _) = (*self.hash_func)(SupportedHashes::Blake2b256, data);
+        let mut ret = [0u8; 32];
+        ret.copy_from_slice(&digest[..32]);
+        ret
     }
+
+    fn hash(&self, hasher: SupportedHashes, data: &[u8]) -> Vec<u8> {
+        let (digest, len) = (*self.hash_func)(hasher, data);
+        Vec::from(&digest[..len])
+    }
+
     fn compute_unsealed_sector_cid(
         &self,
         reg: RegisteredSealProof,
@@ -1174,6 +1260,19 @@ impl<BS> Primitives for MockRuntime<BS> {
             )));
         }
         Ok(exp.cid)
+    }
+
+    fn recover_secp_public_key(
+        &self,
+        hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
+        signature: &[u8; SECP_SIG_LEN],
+    ) -> Result<[u8; SECP_PUB_LEN], anyhow::Error> {
+        (*self.recover_secp_pubkey_fn)(hash, signature)
+            .map_err(|_| anyhow!("failed to recover pubkey."))
+    }
+
+    fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
+        (*self.hash_func)(hasher, data)
     }
 }
 
@@ -1330,6 +1429,30 @@ pub fn blake2b_256(data: &[u8]) -> [u8; 32] {
         .as_bytes()
         .try_into()
         .unwrap()
+}
+
+pub fn hash(hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
+    let hasher = Code::try_from(hasher as u64).unwrap();
+    let (_, digest, written) = hasher.digest(data).into_inner();
+    (digest, written as usize)
+}
+
+#[allow(clippy::result_unit_err)]
+pub fn recover_secp_public_key(
+    hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
+    signature: &[u8; SECP_SIG_LEN],
+) -> Result<[u8; SECP_PUB_LEN], ()> {
+    // generate types to recover key from
+    let rec_id = RecoveryId::parse(signature[64]).map_err(|_| ())?;
+    let message = Message::parse(hash);
+
+    // Signature value without recovery byte
+    let mut s = [0u8; 64];
+    s.copy_from_slice(signature[..64].as_ref());
+
+    // generate Signature
+    let sig = EcsdaSignature::parse_standard(&s).map_err(|_| ())?;
+    Ok(recover(&message, &sig, &rec_id).map_err(|_| ())?.serialize())
 }
 
 // multihash library doesn't support poseidon hashing, so we fake it

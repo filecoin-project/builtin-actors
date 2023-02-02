@@ -20,6 +20,7 @@ pub enum Type {
     Reward = 10,
     VerifiedRegistry = 11,
     DataCap = 12,
+    Placeholder = 13,
 }
 
 impl Type {
@@ -37,6 +38,7 @@ impl Type {
             Type::Reward => "reward",
             Type::VerifiedRegistry => "verifiedregistry",
             Type::DataCap => "datacap",
+            Type::Placeholder => "placeholder",
         }
     }
 }
