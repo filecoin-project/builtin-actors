@@ -359,7 +359,7 @@ mod tests {
             m.state.stack.push(U256::from(1)).unwrap();   // offset
             m.state.stack.push(U256::from(0)).unwrap();   // dest-offset
             let result = m.step();
-            assert!(!result.is_ok(), "execution step succeeded");
+            assert!(result.is_err(), "execution step succeeded");
             assert_eq!(result.err().unwrap().exit_code(), EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS);
         };
     }
@@ -376,7 +376,7 @@ mod tests {
             m.state.stack.push(U256::from(10)).unwrap();  // offset
             m.state.stack.push(U256::from(0)).unwrap();   // dest-offset
             let result = m.step();
-            assert!(!result.is_ok(), "execution step succeeded");
+            assert!(result.is_err(), "execution step succeeded");
             assert_eq!(result.err().unwrap().exit_code(), EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS);
         };
     }
@@ -393,7 +393,7 @@ mod tests {
             m.state.stack.push(U256::from(2)).unwrap();  // offset
             m.state.stack.push(U256::from(0)).unwrap();  // dest-offset
             let result = m.step();
-            assert!(!result.is_ok(), "execution step succeeded");
+            assert!(result.is_err(), "execution step succeeded");
             assert_eq!(result.err().unwrap().exit_code(), EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS);
         };
     }
