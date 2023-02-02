@@ -341,12 +341,12 @@ fn effective_gas_limit<RT: Runtime>(system: &System<RT>, gas: U256) -> u64 {
 #[cfg(test)]
 mod tests {
     use crate::evm_unit_test;
-    use crate::interpreter::U256;
+    use fil_actors_evm_shared::uints::U256;
 
     #[test]
     fn test_calldataload() {
         evm_unit_test! {
-            (rt, m) {
+            (m) {
                 CALLDATALOAD;
             }
             m.state.input_data = vec![0x00, 0x01, 0x02].into();
@@ -361,7 +361,7 @@ mod tests {
     #[test]
     fn test_calldatasize() {
         evm_unit_test! {
-            (rt, m) {
+            (m) {
                 CALLDATASIZE;
             }
             m.state.input_data = vec![0x00, 0x01, 0x02].into();
@@ -375,7 +375,7 @@ mod tests {
     #[test]
     fn test_calldatacopy() {
         evm_unit_test! {
-            (rt, m) {
+            (m) {
                 CALLDATACOPY;
             }
             m.state.input_data = vec![0x00, 0x01, 0x02].into();

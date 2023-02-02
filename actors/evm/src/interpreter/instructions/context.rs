@@ -150,12 +150,12 @@ pub fn base_fee(
 #[cfg(test)]
 mod tests {
     use crate::evm_unit_test;
-    use crate::interpreter::U256;
+    use fil_actors_evm_shared::uints::U256;
 
     #[test]
     fn test_callvalue() {
         evm_unit_test! {
-            (rt, m) {
+            (m) {
                 CALLVALUE;
             }
             m.state.value_received = TokenAmount::from_atto(123);

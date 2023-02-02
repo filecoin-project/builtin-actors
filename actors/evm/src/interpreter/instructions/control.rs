@@ -315,7 +315,7 @@ mod tests {
     #[test]
     fn test_returndatasize() {
         evm_unit_test! {
-            (rt, m) {
+            (m) {
                 RETURNDATASIZE;
             }
             m.state.return_data = vec![0x00, 0x01, 0x02].into();
@@ -329,7 +329,7 @@ mod tests {
     #[test]
     fn test_returndatacopy() {
         evm_unit_test! {
-            (rt, m) {
+            (m) {
                 RETURNDATACOPY;
             }
             m.state.return_data = vec![0x00, 0x01, 0x02].into();
