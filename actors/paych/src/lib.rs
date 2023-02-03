@@ -61,7 +61,7 @@ impl Actor {
 
         let from = Self::resolve_address(rt, &params.from)
             .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
-                format!("from address not found {}", params.to)
+                format!("from address not found {}", params.from)
             })?;
 
         let empty_arr_cid =
