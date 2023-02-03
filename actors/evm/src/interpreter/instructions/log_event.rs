@@ -65,10 +65,11 @@ pub fn log(
 
 #[cfg(test)]
 mod tests {
-    use fvm_ipld_encoding::{BytesSer, RawBytes};
+    use fil_actors_evm_shared::uints::U256;
+    use fvm_ipld_encoding::{to_vec, BytesSer, RawBytes};
     use fvm_shared::event::{ActorEvent, Entry, Flags};
 
-    use super::EVENT_DATA_KEY;
+    use super::{EVENT_DATA_KEY, EVENT_TOPIC_KEYS};
     use crate::evm_unit_test;
 
     #[test]
@@ -95,6 +96,46 @@ mod tests {
                 PUSH1; 0x20;
                 PUSH0;
                 LOG0;
+            }
+
+            let result = m.execute();
+            assert!(result.is_ok(), "execution step failed");
+        };
+    }
+
+    #[test]
+    fn test_log1() {
+        evm_unit_test! {
+            (rt) {
+                let t1 = U256::from(0x01);
+                let mut data = [0u8; 32];
+                data[28] = 0xCA;
+                data[29] = 0xFE;
+                data[30] = 0xBA;
+                data[31] = 0xBE;
+                rt.expect_emitted_event(
+                    ActorEvent::from(vec![
+                        Entry{
+                            flags: Flags::FLAG_INDEXED_ALL,
+                            key:  EVENT_TOPIC_KEYS[0].to_owned(),
+                            value: to_vec(&t1).unwrap().into(),
+                        },
+                        Entry{
+                            flags: Flags::FLAG_INDEXED_ALL,
+                            key: EVENT_DATA_KEY.to_owned(),
+                            value: RawBytes::serialize(BytesSer(&data)).unwrap(),
+                        }
+                    ])
+                );
+            }
+            (m) {
+                PUSH4; 0xCA; 0xFE; 0xBA; 0xBE;
+                PUSH0;
+                MSTORE;
+                PUSH1; 0x01;
+                PUSH1; 0x20;
+                PUSH0;
+                LOG1;
             }
 
             let result = m.execute();
