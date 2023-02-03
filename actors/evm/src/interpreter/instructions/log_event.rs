@@ -62,3 +62,43 @@ pub fn log(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use fvm_ipld_encoding::{BytesSer, RawBytes};
+    use fvm_shared::event::{ActorEvent, Entry, Flags};
+
+    use super::EVENT_DATA_KEY;
+    use crate::evm_unit_test;
+
+    #[test]
+    fn test_log0() {
+        evm_unit_test! {
+            (rt) {
+                let mut data = [0u8; 32];
+                data[28] = 0xCA;
+                data[29] = 0xFE;
+                data[30] = 0xBA;
+                data[31] = 0xBE;
+                rt.expect_emitted_event(
+                    ActorEvent::from(vec![Entry{
+                        flags: Flags::FLAG_INDEXED_ALL,
+                        key: EVENT_DATA_KEY.to_owned(),
+                        value: RawBytes::serialize(BytesSer(&data)).unwrap(),
+                    }])
+                );
+            }
+            (m) {
+                PUSH4; 0xCA; 0xFE; 0xBA; 0xBE;
+                PUSH0;
+                MSTORE;
+                PUSH1; 0x20;
+                PUSH0;
+                LOG0;
+            }
+
+            let result = m.execute();
+            assert!(result.is_ok(), "execution step failed");
+        };
+    }
+}
