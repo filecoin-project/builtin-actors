@@ -235,6 +235,10 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// The epoch must satisfy: (curr_epoch - FINALITY) < epoch <= curr_epoch
     fn tipset_cid(&self, epoch: i64) -> Result<Cid, ActorError>;
 
+    /// Exit the current computation with an error code and optionally data and a debugging
+    /// message.
+    fn exit(&self, code: u32, data: Option<IpldBlock>, msg: Option<&str>) -> !;
+
     /// Returns true if the call is read_only.
     /// All state updates, including actor creation and balance transfers, are rejected in read_only calls.
     fn read_only(&self) -> bool;

@@ -341,6 +341,10 @@ where
             .map_err(|_| actor_error!(illegal_argument; "invalid epoch to query tipset_cid"))
     }
 
+    fn exit(&self, code: u32, data: Option<IpldBlock>, msg: Option<&str>) -> ! {
+        fvm::vm::exit(code, data, msg)
+    }
+
     fn read_only(&self) -> bool {
         fvm::vm::read_only()
     }

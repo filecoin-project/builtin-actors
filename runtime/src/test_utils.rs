@@ -115,6 +115,12 @@ pub fn make_identity_cid(bz: &[u8]) -> Cid {
     Cid::new_v1(IPLD_RAW, OtherMultihash::wrap(0, bz).expect("name too long"))
 }
 
+pub struct ActorExit {
+    code: u32,
+    data: Option<IpldBlock>,
+    msg: Option<String>,
+}
+
 pub struct MockRuntime<BS = MemoryBlockstore> {
     pub epoch: ChainEpoch,
     pub miner: Address,
@@ -161,6 +167,9 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
     pub actor_balances: HashMap<ActorID, TokenAmount>,
     pub tipset_timestamp: u64,
     pub tipset_cids: Vec<Cid>,
+
+    // actor exits
+    pub actor_exit: RefCell<Option<ActorExit>>,
 }
 
 #[derive(Default)]
@@ -324,6 +333,7 @@ impl<BS> MockRuntime<BS> {
             actor_balances: Default::default(),
             tipset_timestamp: Default::default(),
             tipset_cids: Default::default(),
+            actor_exit: Default::default(),
         }
     }
 }
@@ -521,7 +531,29 @@ impl<BS: Blockstore> MockRuntime<BS> {
     ) -> Result<Option<IpldBlock>, ActorError> {
         self.in_call = true;
         let prev_state = self.state;
-        let res = A::invoke_method(self, method_num, params);
+
+        let res: Result<Option<IpldBlock>, ActorError> =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                A::invoke_method(self, method_num, params)
+            }))
+            .unwrap_or_else(|panic| {
+                // If there was a panic, check if we have was an expected `exit`, and return that
+                if self.actor_exit.borrow().is_some() {
+                    let exit = self.actor_exit.take().unwrap();
+                    if exit.code == 0 {
+                        Ok(exit.data)
+                    } else {
+                        Err(ActorError::unchecked_with_data(
+                            ExitCode::new(exit.code),
+                            exit.msg.unwrap_or_else(|| "actor exited".to_owned()),
+                            exit.data,
+                        ))
+                    }
+                } else {
+                    // If there wasn't an expected exit, resume the panic (something went wrong)
+                    std::panic::resume_unwind(panic)
+                }
+            });
 
         if res.is_err() {
             self.state = prev_state;
@@ -1171,6 +1203,11 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
             );
         }
         Ok(*self.tipset_cids.get((self.epoch - epoch) as usize).unwrap())
+    }
+
+    fn exit(&self, code: u32, data: Option<IpldBlock>, msg: Option<&str>) -> ! {
+        self.actor_exit.replace(Some(ActorExit { code, data, msg: msg.map(|s| s.to_owned()) }));
+        std::panic::panic_any("actor exit");
     }
 
     fn read_only(&self) -> bool {

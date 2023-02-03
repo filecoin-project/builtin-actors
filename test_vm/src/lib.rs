@@ -451,6 +451,7 @@ impl<'bs> VM<'bs> {
             read_only: false,
             policy: &Policy::default(),
             subinvocations: RefCell::new(vec![]),
+            actor_exit: RefCell::new(None),
         };
         let res = new_ctx.invoke();
 
@@ -592,6 +593,13 @@ pub struct InvocationCtx<'invocation, 'bs> {
     read_only: bool,
     policy: &'invocation Policy,
     subinvocations: RefCell<Vec<InvocationTrace>>,
+    actor_exit: RefCell<Option<ActorExit>>,
+}
+
+struct ActorExit {
+    code: u32,
+    data: Option<IpldBlock>,
+    msg: Option<String>,
 }
 
 impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
@@ -653,6 +661,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 read_only: false,
                 policy: self.policy,
                 subinvocations: RefCell::new(vec![]),
+                actor_exit: RefCell::new(None),
             };
             if is_account {
                 new_ctx.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id, None).unwrap();
@@ -732,7 +741,9 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         // call target actor
         let to_actor = self.v.get_actor(to_addr).unwrap();
         let params = self.msg.params.clone();
-        let mut res = match ACTOR_TYPES.get(&to_actor.code).expect("Target actor is not a builtin")
+        let mut res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| match ACTOR_TYPES
+            .get(&to_actor.code)
+            .expect("Target actor is not a builtin")
         {
             Type::Account => AccountActor::invoke_method(self, self.msg.method, params),
             Type::Cron => CronActor::invoke_method(self, self.msg.method, params),
@@ -749,7 +760,26 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             Type::Placeholder => {
                 Err(ActorError::unhandled_message("placeholder actors only handle method 0".into()))
             }
-        };
+        }))
+        .unwrap_or_else(|panic| {
+            // If there was a panic, check if we have was an expected `exit`, and return that
+            if self.actor_exit.borrow().is_some() {
+                let exit = self.actor_exit.take().unwrap();
+                if exit.code == 0 {
+                    Ok(exit.data)
+                } else {
+                    Err(ActorError::unchecked_with_data(
+                        ExitCode::new(exit.code),
+                        exit.msg.unwrap_or_else(|| "actor exited".to_owned()),
+                        exit.data,
+                    ))
+                }
+            } else {
+                // If there wasn't an expected exit, resume the panic (something went wrong)
+                std::panic::resume_unwind(panic)
+            }
+        });
+
         if res.is_ok() && !self.caller_validated {
             res = Err(actor_error!(assertion_failed, "failed to validate caller"));
         }
@@ -928,6 +958,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
             read_only: send_flags.read_only(),
             policy: self.policy,
             subinvocations: RefCell::new(vec![]),
+            actor_exit: RefCell::new(None),
         };
         let res = new_ctx.invoke();
         let invoc = new_ctx.gather_trace(res.clone());
@@ -1050,6 +1081,11 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
 
     fn tipset_cid(&self, _epoch: i64) -> Result<Cid, ActorError> {
         Ok(Cid::new_v1(IPLD_RAW, Multihash::wrap(0, b"faketipset").unwrap()))
+    }
+
+    fn exit(&self, code: u32, data: Option<IpldBlock>, msg: Option<&str>) -> ! {
+        self.actor_exit.replace(Some(ActorExit { code, data, msg: msg.map(|s| s.to_owned()) }));
+        std::panic::panic_any("actor exit");
     }
 
     fn read_only(&self) -> bool {
