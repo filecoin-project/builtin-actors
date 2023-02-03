@@ -32,7 +32,7 @@ fvm_sdk = { version = "3.0.0-alpha.22", optional = true }
 blake2b_simd = "1.0"
 fvm_ipld_blockstore = "0.1.1"
 fvm_ipld_encoding = "0.3.3"
-fvm_ipld_bitfield = "0.5.2"
+fvm_ipld_bitfield = "0.5.4"
 multihash = { version = "0.16.1", default-features = false }
 rand = "0.8.5"
 serde_repr = "0.1.8"
