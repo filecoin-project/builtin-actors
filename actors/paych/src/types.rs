@@ -3,7 +3,7 @@
 
 use fil_actors_runtime::network::EPOCHS_IN_HOUR;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{serde_bytes, to_vec, Error, RawBytes};
+use fvm_ipld_encoding::{strict_bytes, to_vec, Error, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::signature::Signature;
@@ -21,6 +21,7 @@ pub const SETTLE_DELAY: ChainEpoch = EPOCHS_IN_HOUR * 12;
 pub const MAX_SECRET_SIZE: usize = 256;
 
 pub const LANE_STATES_AMT_BITWIDTH: u32 = 3;
+
 /// Constructor parameters for payment channel actor
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ConstructorParams {
@@ -40,7 +41,7 @@ pub struct SignedVoucher {
     /// set to 0 means no timeout
     pub time_lock_max: ChainEpoch,
     /// (optional) Used by `to` to validate
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub secret_pre_image: Vec<u8>,
     /// (optional) Specified by `from` to add a verification method to the voucher
     pub extra: Option<ModVerifyParams>,
@@ -68,7 +69,7 @@ impl SignedVoucher {
             pub channel_addr: &'a Address,
             pub time_lock_min: ChainEpoch,
             pub time_lock_max: ChainEpoch,
-            #[serde(with = "serde_bytes")]
+            #[serde(with = "strict_bytes")]
             pub secret_pre_image: &'a [u8],
             pub extra: &'a Option<ModVerifyParams>,
             pub lane: u64,
@@ -108,14 +109,14 @@ pub struct ModVerifyParams {
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct PaymentVerifyParams {
     pub extra: RawBytes,
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub proof: Vec<u8>,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct UpdateChannelStateParams {
     pub sv: SignedVoucher,
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub secret: Vec<u8>,
     // * proof removed in v2
 }

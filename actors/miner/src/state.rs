@@ -16,7 +16,7 @@ use fvm_ipld_amt::Error as AmtError;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{serde_bytes, BytesDe, CborStore};
+use fvm_ipld_encoding::{strict_bytes, BytesDe, CborStore};
 use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::address::Address;
 
@@ -1227,7 +1227,7 @@ pub struct MinerInfo {
     pub pending_worker_key: Option<WorkerKeyChange>,
 
     /// Libp2p identity that should be used when connecting to this miner
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub peer_id: Vec<u8>,
 
     /// Vector of byte arrays representing Libp2p multi-addresses used for establishing a connection with this miner.
