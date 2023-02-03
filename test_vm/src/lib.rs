@@ -37,7 +37,7 @@ use fil_builtin_actors_state::check::Tree;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{CborStore, RawBytes, IPLD_RAW};
+use fvm_ipld_encoding::{CborStore, RawBytes};
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
 use fvm_shared::address::Address;
 use fvm_shared::address::Payload;
@@ -62,7 +62,7 @@ use fvm_shared::sector::{
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::sys::SendFlags;
 use fvm_shared::version::NetworkVersion;
-use fvm_shared::{ActorID, MethodNum, Response, METHOD_CONSTRUCTOR, METHOD_SEND};
+use fvm_shared::{ActorID, MethodNum, Response, IPLD_RAW, METHOD_CONSTRUCTOR, METHOD_SEND};
 use regex::Regex;
 use serde::de::DeserializeOwned;
 use serde::{ser, Serialize};
@@ -573,6 +573,9 @@ impl InternalMessage {
 }
 
 impl MessageInfo for InvocationCtx<'_, '_> {
+    fn nonce(&self) -> u64 {
+        self.top.originator_call_seq
+    }
     fn caller(&self) -> Address {
         self.msg.from
     }
@@ -587,10 +590,6 @@ impl MessageInfo for InvocationCtx<'_, '_> {
     }
     fn gas_premium(&self) -> TokenAmount {
         TokenAmount::zero()
-    }
-
-    fn nonce(&self) -> u64 {
-        self.top.originator_call_seq
     }
 }
 
@@ -791,7 +790,6 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             Type::Power => PowerActor::invoke_method(self, self.msg.method, params),
             Type::PaymentChannel => PaychActor::invoke_method(self, self.msg.method, params),
             Type::VerifiedRegistry => VerifregActor::invoke_method(self, self.msg.method, params),
-            // Type::EVM => panic!("no EVM"),
             Type::DataCap => DataCapActor::invoke_method(self, self.msg.method, params),
             Type::Placeholder => {
                 Err(ActorError::unhandled_message("placeholder actors only handle method 0".into()))
@@ -1142,8 +1140,8 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         0
     }
 
-    fn tipset_cid(&self, _epoch: i64) -> Option<Cid> {
-        Some(Cid::new_v1(IPLD_RAW, Multihash::wrap(0, b"faketipset").unwrap()))
+    fn tipset_cid(&self, _epoch: i64) -> Result<Cid, ActorError> {
+        Ok(Cid::new_v1(IPLD_RAW, Multihash::wrap(0, b"faketipset").unwrap()))
     }
 
     // TODO No support for events yet.
