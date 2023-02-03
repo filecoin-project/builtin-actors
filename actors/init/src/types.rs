@@ -20,10 +20,21 @@ pub struct ExecParams {
 }
 
 /// Init actor Exec Return value
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct ExecReturn {
     /// ID based address for created actor
     pub id_address: Address,
     /// Reorg safe address for actor
     pub robust_address: Address,
 }
+
+/// Init actor Exec4 Params
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct Exec4Params {
+    pub code_cid: Cid,
+    pub constructor_params: RawBytes,
+    pub subaddress: RawBytes,
+}
+
+/// Init actor Exec4 Return value
+pub type Exec4Return = ExecReturn;
