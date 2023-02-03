@@ -66,4 +66,20 @@ mod tests {
             assert_eq!(m.state.stack.pop().unwrap(), U256::from(0));
         };
     }
+
+    #[test]
+    fn test_sstore() {
+        evm_unit_test! {
+            (m) {
+                SSTORE;
+            }
+
+            m.state.stack.push(U256::from(0x42)).unwrap();
+            m.state.stack.push(U256::from(0)).unwrap();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 0);
+            assert_eq!(m.system.get_storage(U256::from(0)).unwrap(), U256::from(0x42));
+        };
+    }
 }
