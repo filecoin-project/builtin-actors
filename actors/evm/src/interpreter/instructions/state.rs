@@ -55,8 +55,6 @@ mod test {
             ] {
                 evm_unit_test! {
                     (rt) {
-                        rt.in_call = true;
-
                         let id_address = 1111;
                         if has_id {
                             let addr: EthAddress = addr.into();
@@ -100,8 +98,6 @@ mod test {
 
         evm_unit_test! {
             (rt) {
-                rt.in_call = true;
-
                 // 0xff id address gets balance
                 rt.actor_balances.insert(id as u64, TokenAmount::from_atto(balance));
             }
@@ -130,7 +126,6 @@ mod test {
             let balance = U256::ONE << i;
             evm_unit_test! {
                 (rt) {
-                    rt.in_call = true;
                     rt.add_balance(TokenAmount::from(&balance));
                 }
                 (m) {

@@ -75,7 +75,7 @@ pub fn coinbase(
     _state: &mut ExecutionState,
     _system: &System<impl Runtime>,
 ) -> Result<U256, ActorError> {
-    // TODO do we want to return the zero ID address, or just a plain 0?
+    // Eth zero address, beneficiary of the current block doesn't make much sense in Filecoin due to multiple winners in each block.
     Ok(U256::zero())
 }
 
@@ -106,6 +106,7 @@ pub fn block_number(
     _state: &mut ExecutionState,
     system: &System<impl Runtime>,
 ) -> Result<U256, ActorError> {
+    // NOTE: Panics if current epoch is negative, which should never happen in the network
     Ok(U256::from(system.rt.curr_epoch()))
 }
 
@@ -216,5 +217,118 @@ mod tests {
             assert_eq!(m.state.stack.len(), 1);
             assert_eq!(m.state.stack.pop().unwrap(), U256::from(123));
         };
+    }
+
+    #[test]
+    fn test_number() {
+        for epoch in [1234, i64::MAX, 0, 1] {
+            evm_unit_test! {
+                (rt) {
+                    rt.set_epoch(epoch);
+                }
+                (m) {
+                    NUMBER;
+                }
+                m.step().expect("execution step failed");
+                assert_eq!(m.state.stack.len(), 1);
+                assert_eq!(m.state.stack.pop().unwrap(), U256::from(epoch));
+            };
+        }
+    }
+
+    #[test]
+    fn test_chainid() {
+        for chainid in [31415, 3141, 0, 1] {
+            evm_unit_test! {
+                (rt) {
+                    rt.chain_id = chainid.into();
+                }
+                (m) {
+                    CHAINID;
+                }
+                m.step().expect("execution step failed");
+                assert_eq!(m.state.stack.len(), 1);
+                assert_eq!(m.state.stack.pop().unwrap(), U256::from(chainid));
+            };
+        }
+    }
+
+    #[test]
+    fn test_basefee() {
+        for basefee in [12345, u128::MAX, 0, 1].map(U256::from) {
+            evm_unit_test! {
+                (rt) {
+                    rt.base_fee = TokenAmount::from(&basefee);
+                }
+                (m) {
+                    BASEFEE;
+                }
+                m.step().expect("execution step failed");
+                assert_eq!(m.state.stack.len(), 1);
+                assert_eq!(m.state.stack.pop().unwrap(), basefee);
+            };
+        }
+    }
+
+    #[test]
+    fn test_coinbase() {
+        evm_unit_test! {
+            (m) {
+                COINBASE;
+            }
+            m.step().expect("execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::ZERO);
+        };
+    }
+
+    #[test]
+    fn test_timestamp() {
+        evm_unit_test! {
+            (rt) {
+                rt.tipset_timestamp = 12345;
+            }
+            (m) {
+                TIMESTAMP;
+            }
+            m.step().expect("execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(12345));
+        };
+    }
+
+    #[test]
+    fn test_prevrandao() {
+        let epoch = 1234;
+        evm_unit_test! {
+            (rt) {
+                rt.set_epoch(epoch);
+                rt.expect_get_randomness_from_beacon(fil_actors_runtime::runtime::DomainSeparationTag::EvmPrevRandao, epoch, Vec::from(*b"prevrandao"), [0xff; 32]);
+            }
+            (m) {
+                PREVRANDAO;
+            }
+            m.step().expect("execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::MAX);
+        };
+    }
+
+    #[test]
+    fn test_gas_limit() {
+        for limit in [12345, 0, u64::MAX] {
+            evm_unit_test! {
+                (rt) {
+                    rt.gas_limit = limit;
+                }
+                (m) {
+                    GASLIMIT;
+                }
+                m.step().expect("execution step failed");
+                assert_eq!(m.state.stack.len(), 1);
+                // always block gas limit
+                assert_eq!(m.state.stack.pop().unwrap(), U256::from(10_000_000_000u64));
+            };
+        }
     }
 }
