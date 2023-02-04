@@ -558,6 +558,18 @@ mod tests {
                 res,
                 Err(PrecompileError::EcErr(substrate_bn::CurveError::NotMember))
             ));
+
+            let input = hex::decode(
+                "\
+                035cf447ec2f8f21e6ea3d49d80a4a823834b1a776ab1733731587613f5065f8\
+                21c972c4e0c8eb2430171599b1f4900601fdb8f4b2d248d22ebefe3d5368a800\
+                0000000000000000000000000000000000000000000000000000000000000000\
+                0000000000000000000000000000000000000000000000000000000000000000\
+                ",
+            )
+            .unwrap();
+            let res = ec_mul(&mut system, &input, PrecompileContext::default());
+            assert_eq!(vec![0u8; 64], res.unwrap());
         }
 
         #[test]
