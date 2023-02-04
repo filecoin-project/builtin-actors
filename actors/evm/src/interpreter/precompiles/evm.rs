@@ -141,15 +141,13 @@ pub(super) fn modexp<RT: Runtime>(
     Ok(output)
 }
 
-pub(super) fn curve_to_vec(curve: G1) -> Result<Vec<u8>, PrecompileError> {
-    AffineG1::from_jacobian(curve)
-        .map(|product| {
-            let mut output = vec![0; 64];
-            product.x().to_big_endian(&mut output[0..32]).unwrap();
-            product.y().to_big_endian(&mut output[32..64]).unwrap();
-            output
-        })
-        .ok_or(PrecompileError::EcErr(substrate_bn::CurveError::InvalidEncoding))
+pub(super) fn curve_to_vec(curve: G1) -> Vec<u8> {
+    let mut output = vec![0; 64];
+    if let Some(product) = AffineG1::from_jacobian(curve) {
+        product.x().to_big_endian(&mut output[0..32]).unwrap();
+        product.y().to_big_endian(&mut output[32..64]).unwrap();
+    }
+    output
 }
 
 /// add 2 points together on an elliptic curve
@@ -162,7 +160,7 @@ pub(super) fn ec_add<RT: Runtime>(
     let point1: G1 = input_params.read_value()?;
     let point2: G1 = input_params.read_value()?;
 
-    curve_to_vec(point1 + point2)
+    Ok(curve_to_vec(point1 + point2))
 }
 
 /// multiply a point on an elliptic curve by a scalar value
@@ -175,7 +173,7 @@ pub(super) fn ec_mul<RT: Runtime>(
     let point: G1 = input_params.read_value()?;
     let scalar: Fr = input_params.read_value()?;
 
-    curve_to_vec(point * scalar)
+    Ok(curve_to_vec(point * scalar))
 }
 
 /// pairs multple groups of twisted bn curves
@@ -464,27 +462,14 @@ mod tests {
             let res = ec_add(&mut system, &input, PrecompileContext::default()).unwrap();
             assert_eq!(res, expected);
             // zero sum test
-            let input = hex::decode(
-                "\
-                0000000000000000000000000000000000000000000000000000000000000000\
-                0000000000000000000000000000000000000000000000000000000000000000\
-                0000000000000000000000000000000000000000000000000000000000000000\
-                0000000000000000000000000000000000000000000000000000000000000000",
-            )
-            .unwrap();
-            let res = ec_add(&mut system, &input, PrecompileContext::default());
-            assert!(matches!(
-                res,
-                Err(PrecompileError::EcErr(substrate_bn::CurveError::InvalidEncoding))
-            ));
+            let input = vec![0; 32 * 4];
+            let res = ec_add(&mut system, &input, PrecompileContext::default()).unwrap();
+            assert_eq!(res, vec![0; 64]);
 
-            // no input test
+            // no input test (auto zero extend)
             let input = [];
-            let res = ec_add(&mut system, &input, PrecompileContext::default());
-            assert!(matches!(
-                res,
-                Err(PrecompileError::EcErr(substrate_bn::CurveError::InvalidEncoding))
-            ));
+            let res = ec_add(&mut system, &input, PrecompileContext::default()).unwrap();
+            assert_eq!(res, vec![0; 64]);
 
             // point not on curve fail
             let input = hex::decode(
@@ -523,27 +508,10 @@ mod tests {
             let res = ec_mul(&mut system, &input, PrecompileContext::default()).unwrap();
             assert_eq!(res, expected);
 
-            // out of gas test
-            let input = hex::decode(
-                "\
-                0000000000000000000000000000000000000000000000000000000000000000\
-                0000000000000000000000000000000000000000000000000000000000000000\
-                0200000000000000000000000000000000000000000000000000000000000000",
-            )
-            .unwrap();
-            let res = ec_mul(&mut system, &input, PrecompileContext::default());
-            assert!(matches!(
-                res,
-                Err(PrecompileError::EcErr(substrate_bn::CurveError::InvalidEncoding))
-            ));
-
             // no input test
             let input = [0u8; 0];
-            let res = ec_mul(&mut system, &input, PrecompileContext::default());
-            assert!(matches!(
-                res,
-                Err(PrecompileError::EcErr(substrate_bn::CurveError::InvalidEncoding))
-            ));
+            let res = ec_mul(&mut system, &input, PrecompileContext::default()).unwrap();
+            assert_eq!(res, vec![0u8; 64]);
 
             // point not on curve fail
             let input = hex::decode(
