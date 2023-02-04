@@ -29,7 +29,7 @@ pub use self::actor_code::*;
 pub use self::policy::*;
 pub use self::randomness::DomainSeparationTag;
 use crate::runtime::builtins::Type;
-use crate::{actor_error, ActorError};
+use crate::{actor_error, ActorError, SendError};
 
 mod actor_code;
 pub mod builtins;
@@ -47,7 +47,6 @@ pub(crate) mod empty;
 
 pub use empty::EMPTY_ARR_CID;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_shared::error::ErrorNumber;
 use fvm_shared::sys::SendFlags;
 use multihash::Code;
 
@@ -62,7 +61,8 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// Information related to the current message being executed.
     fn message(&self) -> &dyn MessageInfo;
 
-    /// The current chain epoch number. The genesis block has epoch zero.
+    /// The current chain epoch number, corresponding to the epoch in which the message is executed.
+    /// The genesis block has epoch zero.
     fn curr_epoch(&self) -> ChainEpoch;
 
     /// The ID for the EVM-based chain, as defined in https://github.com/ethereum-lists/chains.
@@ -124,20 +124,6 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError>;
 
-    fn user_get_randomness_from_chain(
-        &self,
-        personalization: i64,
-        epoch: ChainEpoch,
-        entropy: &[u8],
-    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError>;
-
-    fn user_get_randomness_from_beacon(
-        &self,
-        personalization: i64,
-        epoch: ChainEpoch,
-        entropy: &[u8],
-    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError>;
-
     /// Initializes the state object.
     /// This is only valid when the state has not yet been initialized.
     /// NOTE: we should also limit this to being invoked during the constructor method
@@ -195,7 +181,7 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
         value: TokenAmount,
         gas_limit: Option<u64>,
         flags: SendFlags,
-    ) -> Result<Response, ErrorNumber>;
+    ) -> Result<Response, SendError>;
 
     /// Simplified version of [`Runtime::send`] that does not specify a gas limit, nor any send flags.
     fn send_simple(
@@ -204,7 +190,7 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
         method: MethodNum,
         params: Option<IpldBlock>,
         value: TokenAmount,
-    ) -> Result<Response, ErrorNumber> {
+    ) -> Result<Response, SendError> {
         self.send(to, method, params, value, None, SendFlags::empty())
     }
 
@@ -255,11 +241,12 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// The gas still available for computation
     fn gas_available(&self) -> u64;
 
-    /// The current tipset's timestamp, as UNIX seconds
+    /// The timestamp of the tipset at the current epoch (see curr_epoch), as UNIX seconds.
     fn tipset_timestamp(&self) -> u64;
 
-    /// The hash of on of the last 256 blocks
-    fn tipset_cid(&self, epoch: i64) -> Option<Cid>;
+    /// The CID of the tipset at the specified epoch.
+    /// The epoch must satisfy: (curr_epoch - FINALITY) < epoch <= curr_epoch
+    fn tipset_cid(&self, epoch: i64) -> Result<Cid, ActorError>;
 
     /// Emits an event denoting that something externally noteworthy has ocurred.
     fn emit_event(&self, event: &ActorEvent) -> Result<(), ActorError>;

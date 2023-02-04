@@ -52,6 +52,7 @@ regex = "1"
 serde = { version = "1.0.136", features = ["derive"] }
 thiserror = "1.0.30"
 libsecp256k1 = { version = "0.7.1"}
+fil_actors_evm_shared = { version = "10.0.0-alpha.1", path = "../actors/evm/shared" }
 
 [dev-dependencies]
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }

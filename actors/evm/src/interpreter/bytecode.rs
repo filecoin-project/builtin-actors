@@ -1,8 +1,6 @@
-#![allow(dead_code)]
-
 use std::ops::Deref;
 
-use super::execution::opcodes;
+use super::opcodes;
 
 #[derive(Clone, Debug)]
 pub struct Bytecode {

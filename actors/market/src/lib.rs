@@ -482,6 +482,7 @@ impl Actor {
             validate_and_return_deal_space(
                 &proposals,
                 &sector.deal_ids,
+                st.next_id,
                 &miner_addr,
                 sector.sector_expiry,
                 curr_epoch,
@@ -516,6 +517,7 @@ impl Actor {
             validate_and_return_deal_space(
                 &proposals,
                 &params.deal_ids,
+                st.next_id,
                 &miner_addr,
                 params.sector_expiry,
                 curr_epoch,
@@ -542,9 +544,7 @@ impl Actor {
                     ));
                 }
 
-                let proposal = st
-                    .find_proposal(rt.store(), deal_id)?
-                    .ok_or_else(|| actor_error!(not_found, "no such deal_id: {}", deal_id))?;
+                let proposal = st.get_proposal(rt.store(), deal_id)?;
 
                 let propc = rt_deal_cid(rt, &proposal)?;
 
@@ -696,9 +696,7 @@ impl Actor {
                 let deal_ids = st.get_deals_for_epoch(rt.store(), i)?;
 
                 for deal_id in deal_ids {
-                    let deal = st.find_proposal(rt.store(), deal_id)?.ok_or_else(|| {
-                        actor_error!(not_found, "proposal doesn't exist ({})", deal_id)
-                    })?;
+                    let deal = st.get_proposal(rt.store(), deal_id)?;
 
                     let dcid = rt_deal_cid(rt, &deal)?;
 
@@ -974,7 +972,6 @@ impl Actor {
                 terminated: state.slash_epoch,
             }),
             None => {
-                // State::get_proposal will fail with USR_NOT_FOUND in either case.
                 let maybe_proposal = st.find_proposal(rt.store(), params.id)?;
                 match maybe_proposal {
                     Some(_) => Ok(GetDealActivationReturn {
@@ -1030,6 +1027,7 @@ fn compute_data_commitment<BS: Blockstore>(
 pub fn validate_and_return_deal_space<BS: Blockstore>(
     proposals: &DealArray<BS>,
     deal_ids: &[DealID],
+    next_id: DealID,
     miner_addr: &Address,
     sector_expiry: ChainEpoch,
     sector_activation: ChainEpoch,
@@ -1051,7 +1049,13 @@ pub fn validate_and_return_deal_space<BS: Blockstore>(
         let proposal = proposals
             .get(*deal_id)
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal")?
-            .ok_or_else(|| actor_error!(not_found, "no such deal {}", deal_id))?;
+            .ok_or_else(|| {
+                if deal_id < &next_id {
+                    ActorError::unchecked(EX_DEAL_EXPIRED, format!("deal {} expired", deal_id))
+                } else {
+                    actor_error!(not_found, "no such deal {}", deal_id)
+                }
+            })?;
 
         validate_deal_can_activate(proposal, miner_addr, sector_expiry, sector_activation)
             .with_context(|| format!("cannot activate deal {}", deal_id))?;

@@ -1,14 +1,12 @@
-#![allow(dead_code)]
-
+use fil_actors_evm_shared::address::EthAddress;
 use fil_actors_runtime::ActorError;
 use fvm_shared::econ::TokenAmount;
 
-use super::address::EthAddress;
 use {
     super::instructions,
-    crate::interpreter::memory::Memory,
-    crate::interpreter::stack::Stack,
-    crate::interpreter::{Bytecode, Output, System},
+    super::memory::Memory,
+    super::stack::Stack,
+    super::{Bytecode, Output, System},
     bytes::Bytes,
     fil_actors_runtime::runtime::Runtime,
 };
@@ -57,7 +55,7 @@ pub struct Machine<'r, 'a, RT: Runtime + 'a> {
 
 macro_rules! def_opcodes {
     ($($code:literal: $op:ident,)*) => {
-        pub const fn jumptable<'r, 'a, RT: Runtime>() -> [Instruction<'r, 'a, RT>; 256] {
+        pub(crate) const fn jumptable<'r, 'a, RT: Runtime>() -> [Instruction<'r, 'a, RT>; 256] {
             def_ins_raw! {
                 UNDEFINED(_m) {
                     Err(ActorError::unchecked(
@@ -98,7 +96,7 @@ pub mod opcodes {
     use fil_actors_runtime::runtime::Runtime;
     use fil_actors_runtime::ActorError;
 
-    pub type Instruction<'r, 'a, RT> =
+    pub(crate) type Instruction<'r, 'a, RT> =
         unsafe fn(*mut Machine<'r, 'a, RT>) -> Result<(), ActorError>;
 
     def_opcodes! {

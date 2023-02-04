@@ -37,7 +37,7 @@ use crate::runtime::{
     ActorCode, ConsensusFault, DomainSeparationTag, MessageInfo, Policy, Primitives, RuntimePolicy,
     Verifier,
 };
-use crate::{actor_error, ActorError, AsActorError, Runtime};
+use crate::{actor_error, ActorError, AsActorError, Runtime, SendError};
 
 /// A runtime that bridges to the FVM environment through the FVM SDK.
 pub struct FvmRuntime<B = ActorBlockstore> {
@@ -228,7 +228,14 @@ where
         rand_epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        self.user_get_randomness_from_chain(personalization as i64, rand_epoch, entropy)
+        fvm::rand::get_chain_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
+            match e {
+                ErrorNumber::LimitExceeded => {
+                    actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
+                }
+                e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
+            }
+        })
     }
 
     fn get_randomness_from_beacon(
@@ -237,37 +244,12 @@ where
         rand_epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        self.user_get_randomness_from_beacon(personalization as i64, rand_epoch, entropy)
-    }
-
-    fn user_get_randomness_from_beacon(
-        &self,
-        personalization: i64,
-        epoch: ChainEpoch,
-        entropy: &[u8],
-    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        fvm::rand::get_beacon_randomness(personalization, epoch, entropy).map_err(|e| {
+        fvm::rand::get_beacon_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
             match e {
                 ErrorNumber::LimitExceeded => {
                     actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
                 }
                 e => actor_error!(assertion_failed; "get beacon randomness failed with an unexpected error: {}", e),
-            }
-        })
-    }
-
-    fn user_get_randomness_from_chain(
-        &self,
-        personalization: i64,
-        epoch: ChainEpoch,
-        entropy: &[u8],
-    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        fvm::rand::get_chain_randomness(personalization, epoch, entropy).map_err(|e| {
-            match e {
-                ErrorNumber::LimitExceeded => {
-                    actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
-                }
-                e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
             }
         })
     }
@@ -316,14 +298,14 @@ where
         value: TokenAmount,
         gas_limit: Option<u64>,
         flags: SendFlags,
-    ) -> Result<Response, ErrorNumber> {
+    ) -> Result<Response, SendError> {
         if self.in_transaction {
             // Note: It's slightly improper to call this ErrorNumber::IllegalOperation,
             // since the error arises before getting to the VM.
-            return Err(ErrorNumber::IllegalOperation);
+            return Err(SendError(ErrorNumber::IllegalOperation));
         }
 
-        fvm::send::send(to, method, params, value, gas_limit, flags)
+        fvm::send::send(to, method, params, value, gas_limit, flags).map_err(SendError)
     }
 
     fn new_actor_address(&mut self) -> Result<Address, ActorError> {
@@ -379,8 +361,9 @@ where
         fvm::network::tipset_timestamp()
     }
 
-    fn tipset_cid(&self, epoch: i64) -> Option<Cid> {
-        fvm::network::tipset_cid(epoch).ok()
+    fn tipset_cid(&self, epoch: i64) -> Result<Cid, ActorError> {
+        fvm::network::tipset_cid(epoch)
+            .map_err(|_| actor_error!(illegal_argument; "invalid epoch to query tipset_cid"))
     }
 
     fn emit_event(&self, event: &ActorEvent) -> Result<(), ActorError> {

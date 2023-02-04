@@ -1,8 +1,8 @@
 use cid::Cid;
-use evm::interpreter::address::EthAddress;
-use evm::interpreter::U256;
 use fil_actor_evm as evm;
 use fil_actor_evm::State;
+use fil_actors_evm_shared::address::EthAddress;
+use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::{
     test_utils::{self, *},

@@ -1,5 +1,5 @@
 use etk_asm::ingest::Ingest;
-use evm::interpreter::execution::opcodes;
+use evm::interpreter::opcodes;
 use fil_actor_evm as evm;
 
 const PRELUDE: &str = r#"

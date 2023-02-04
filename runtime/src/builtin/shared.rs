@@ -7,6 +7,7 @@ use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::METHOD_SEND;
 use fvm_shared::{ActorID, MethodNum};
+use std::fmt::{Display, Formatter};
 
 use crate::runtime::Runtime;
 
@@ -81,22 +82,20 @@ where
     Ok(())
 }
 
-pub fn extract_send_result(
-    res: Result<fvm_shared::Response, fvm_shared::error::ErrorNumber>,
-) -> Result<Option<IpldBlock>, ActorError> {
-    match res {
-        Ok(ret) => {
-            if ret.exit_code.is_success() {
-                Ok(ret.return_data)
-            } else {
-                Err(ActorError::checked(
-                    ret.exit_code,
-                    format!("send aborted with code {}", ret.exit_code),
-                    ret.return_data,
-                ))
-            }
-        }
-        Err(err) => Err(match err {
+/// An error returned on a failed send. Can be automatically converted into an [`ActorError`] with
+/// the question-mark operator.
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
+pub struct SendError(pub fvm_shared::error::ErrorNumber);
+
+impl From<SendError> for fvm_shared::error::ErrorNumber {
+    fn from(s: SendError) -> fvm_shared::error::ErrorNumber {
+        s.0
+    }
+}
+
+impl From<SendError> for ActorError {
+    fn from(s: SendError) -> ActorError {
+        match s.0 {
             // Some of these errors are from operations in the Runtime or SDK layer
             // before or after the underlying VM send syscall.
             fvm_shared::error::ErrorNumber::NotFound => {
@@ -121,6 +120,27 @@ pub fn extract_send_result(
                 // We don't expect any other syscall exit codes.
                 actor_error!(assertion_failed; "unexpected error: {}", err)
             }
-        }),
+        }
+    }
+}
+
+impl Display for SendError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "send failed with error number {}", self.0)
+    }
+}
+
+pub fn extract_send_result(
+    res: Result<fvm_shared::Response, SendError>,
+) -> Result<Option<IpldBlock>, ActorError> {
+    let ret = res?;
+    if ret.exit_code.is_success() {
+        Ok(ret.return_data)
+    } else {
+        Err(ActorError::checked(
+            ret.exit_code,
+            format!("send aborted with code {}", ret.exit_code),
+            ret.return_data,
+        ))
     }
 }

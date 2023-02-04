@@ -28,6 +28,7 @@ fvm_shared = { version = "3.0.0-alpha.17", default-features = false }
 num-traits = "0.2.15"
 num-derive = "0.3.3"
 hex-literal = "0.3.4"
+fil_actors_evm_shared = { version = "10.0.0-alpha.1", path = "../evm/shared" }
 
 [dev-dependencies]
 fil_actor_evm = { version = "10.0.0-alpha.1", path = "../evm"}

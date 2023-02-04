@@ -1,21 +1,23 @@
 #![allow(clippy::too_many_arguments)]
 
+use fil_actors_evm_shared::{address::EthAddress, uints::U256};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::BytesDe;
 use fvm_shared::{address::Address, sys::SendFlags, MethodNum, IPLD_RAW};
 
-use crate::interpreter::precompiles::{is_reserved_precompile_address, PrecompileContext};
+use crate::interpreter::{
+    precompiles::{is_reserved_precompile_address, PrecompileContext},
+    CallKind,
+};
 
 use super::ext::{get_contract_type, get_evm_bytecode_cid, ContractType};
 
 use {
     super::memory::{copy_to_memory, get_memory_region},
-    crate::interpreter::address::EthAddress,
     crate::interpreter::instructions::memory::MemoryRegion,
     crate::interpreter::precompiles,
     crate::interpreter::ExecutionState,
     crate::interpreter::System,
-    crate::interpreter::U256,
     crate::{DelegateCallParams, Method},
     fil_actors_runtime::runtime::Runtime,
     fil_actors_runtime::ActorError,
@@ -25,14 +27,6 @@ use {
 
 /// The gas granted on bare "transfers".
 const TRANSFER_GAS_LIMIT: U256 = U256::from_u64(10_000_000);
-
-/// The kind of call-like instruction.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum CallKind {
-    Call,
-    DelegateCall,
-    StaticCall,
-}
 
 pub fn calldataload(
     state: &mut ExecutionState,
@@ -342,4 +336,135 @@ fn effective_gas_limit<RT: Runtime>(system: &System<RT>, gas: U256) -> u64 {
     let gas_rsvp = (63 * system.rt.gas_available()) / 64;
     let gas = gas.to_u64_saturating();
     std::cmp::min(gas, gas_rsvp)
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::evm_unit_test;
+    use fil_actors_evm_shared::uints::U256;
+
+    #[test]
+    fn test_calldataload() {
+        // happy path
+        evm_unit_test! {
+            (m) {
+                CALLDATALOAD;
+            }
+            m.state.input_data = vec![0x00, 0x01, 0x02].into();
+            m.state.stack.push(U256::from(1)).unwrap();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(0x0102) << 240);
+        };
+    }
+
+    #[test]
+    fn test_calldataload_oob() {
+        // tsests admissibility of out of bounds reads (as 0s)
+        evm_unit_test! {
+            (m) {
+                CALLDATALOAD;
+            }
+            m.state.input_data = vec![0x00, 0x01, 0x02].into();
+            m.state.stack.push(U256::from(10)).unwrap();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::zero());
+        };
+    }
+
+    #[test]
+    fn test_calldataload_large_input() {
+        // tests admissibility of subset of data reads
+        evm_unit_test! {
+            (m) {
+                CALLDATALOAD;
+            }
+            let mut input_data = [0u8;64];
+            input_data[0] = 0x42;
+            m.state.input_data = Vec::from(input_data).into();
+            m.state.stack.push(U256::from(0)).unwrap();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(0x42) << 248);
+        };
+    }
+
+    #[test]
+    fn test_calldatasize() {
+        evm_unit_test! {
+            (m) {
+                CALLDATASIZE;
+            }
+            m.state.input_data = vec![0x00, 0x01, 0x02].into();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(3));
+        };
+    }
+
+    #[test]
+    fn test_calldatacopy() {
+        // happy path
+        evm_unit_test! {
+            (m) {
+                CALLDATACOPY;
+            }
+            m.state.input_data = vec![0x00, 0x01, 0x02].into();
+            m.state.stack.push(U256::from(2)).unwrap();  // length
+            m.state.stack.push(U256::from(1)).unwrap();  // offset
+            m.state.stack.push(U256::from(0)).unwrap();  // dest-offset
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 0);
+            let mut expected = [0u8; 32];
+            expected[0] = 0x01;
+            expected[1] = 0x02;
+            assert_eq!(m.state.memory.as_ref(), &expected);
+        };
+    }
+
+    #[test]
+    fn test_calldatacopy_oob() {
+        // tests admissibility of large (oob) lengths; should give zeros.
+        evm_unit_test! {
+            (m) {
+                CALLDATACOPY;
+            }
+            m.state.input_data = vec![0x00, 0x01, 0x02].into();
+            m.state.stack.push(U256::from(64)).unwrap(); // length -- too big
+            m.state.stack.push(U256::from(1)).unwrap();  // offset
+            m.state.stack.push(U256::from(0)).unwrap();  // dest-offset
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 0);
+            let mut expected = [0u8; 64];
+            expected[0] = 0x01;
+            expected[1] = 0x02;
+            assert_eq!(m.state.memory.as_ref(), &expected);
+        };
+    }
+
+    #[test]
+    fn test_calldatacopy_oob2() {
+        // test admissibility of large (oob) offsetes -- should give zeros.
+        evm_unit_test! {
+            (m) {
+                CALLDATACOPY;
+            }
+            m.state.input_data = vec![0x00, 0x01, 0x02].into();
+            m.state.stack.push(U256::from(2)).unwrap();   // length
+            m.state.stack.push(U256::from(10)).unwrap();  // offset -- out of bounds
+            m.state.stack.push(U256::from(0)).unwrap();   // dest-offset
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 0);
+            let expected = [0u8; 32];
+            assert_eq!(m.state.memory.as_ref(), &expected);
+        };
+    }
 }

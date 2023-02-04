@@ -1,7 +1,6 @@
-#![allow(dead_code)]
-
 use std::borrow::Cow;
 
+use fil_actors_evm_shared::{address::EthAddress, uints::U256};
 use fil_actors_runtime::{
     actor_error, extract_send_result, runtime::EMPTY_ARR_CID, AsActorError, EAM_ACTOR_ID,
 };
@@ -23,10 +22,7 @@ use once_cell::unsync::OnceCell;
 use crate::state::{State, Tombstone};
 use crate::BytecodeHash;
 
-use super::{address::EthAddress, Bytecode};
-
 use {
-    crate::interpreter::U256,
     cid::Cid,
     fil_actors_runtime::{runtime::Runtime, ActorError},
     fvm_ipld_blockstore::Blockstore,
@@ -269,7 +265,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
             _ => {}
         }
 
-        Ok(result)
+        Ok(result.map_err(|e| e.0))
     }
 
     /// Flush the actor state (bytecode, nonce, and slots).
@@ -459,17 +455,5 @@ impl<'r, RT: Runtime> System<'r, RT> {
     pub fn mark_selfdestructed(&mut self) {
         self.saved_state_root = None;
         self.tombstone = Some(crate::current_tombstone(self.rt));
-    }
-}
-
-pub fn load_bytecode<BS: Blockstore>(bs: &BS, cid: &Cid) -> Result<Option<Bytecode>, ActorError> {
-    let bytecode = bs
-        .get(cid)
-        .context_code(ExitCode::USR_NOT_FOUND, "failed to read bytecode")?
-        .expect("bytecode not in state tree");
-    if bytecode.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(Bytecode::new(bytecode)))
     }
 }

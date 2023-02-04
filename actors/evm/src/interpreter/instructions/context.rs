@@ -1,10 +1,11 @@
+use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::ActorError;
 use fvm_shared::clock::ChainEpoch;
 
 use crate::EVM_WORD_SIZE;
 
 use {
-    crate::interpreter::{ExecutionState, System, U256},
+    crate::interpreter::{ExecutionState, System},
     fil_actors_runtime::runtime::Runtime,
 };
 
@@ -25,7 +26,7 @@ pub fn blockhash(
             let curr_epoch = system.rt.curr_epoch();
             height >= curr_epoch - 256 && height < curr_epoch
         })
-        .and_then(|height| system.rt.tipset_cid(height))
+        .and_then(|height| system.rt.tipset_cid(height).ok())
         .map(|cid| {
             let mut hash = cid.hash().digest();
             if hash.len() > EVM_WORD_SIZE {
@@ -74,7 +75,7 @@ pub fn coinbase(
     _state: &mut ExecutionState,
     _system: &System<impl Runtime>,
 ) -> Result<U256, ActorError> {
-    // TODO do we want to return the zero ID address, or just a plain 0?
+    // Eth zero address, beneficiary of the current block doesn't make much sense in Filecoin due to multiple winners in each block.
     Ok(U256::zero())
 }
 
@@ -105,6 +106,7 @@ pub fn block_number(
     _state: &mut ExecutionState,
     system: &System<impl Runtime>,
 ) -> Result<U256, ActorError> {
+    // NOTE: Panics if current epoch is negative, which should never happen in the network
     Ok(U256::from(system.rt.curr_epoch()))
 }
 
@@ -144,4 +146,189 @@ pub fn base_fee(
     system: &System<impl Runtime>,
 ) -> Result<U256, ActorError> {
     Ok(U256::from(&system.rt.base_fee()))
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::evm_unit_test;
+    use cid::Cid;
+    use fil_actors_evm_shared::uints::U256;
+    use fvm_ipld_encoding::{DAG_CBOR, IPLD_RAW};
+
+    #[test]
+    fn test_blockhash() {
+        // truncate to 32 bytes
+        let counting_byte_hash: Vec<u8> = (0..40u8).collect();
+        let long_unknown =
+            Cid::new_v1(IPLD_RAW, multihash::Multihash::wrap(0, &counting_byte_hash).unwrap());
+        let long_expect = counting_byte_hash[..32].try_into().unwrap();
+        // multihash code ignored
+        let cbor_odd_hash =
+            Cid::new_v1(DAG_CBOR, multihash::Multihash::wrap(123, &[0xfe; 32]).unwrap());
+        let cbor_odd_expect = [0xfe; 32];
+
+        let nothing = [0; 32];
+
+        for (current, getting, insert, expect, test) in [
+            (
+                12345,
+                12340u16,
+                Some(long_unknown),
+                long_expect,
+                "truncated tipset hash, (first 32 bytes)",
+            ),
+            (1234, 1230u16, Some(cbor_odd_hash), cbor_odd_expect, "normal-ish tipset"),
+            (123, 222u16, None, nothing, "future tipset"),
+            (1234, 123u16, None, nothing, "requested older than finality (256)"),
+        ] {
+            let [a, b] = getting.to_be_bytes();
+            evm_unit_test! {
+                (rt) {
+                    rt.in_call = true;
+                    rt.set_epoch(current);
+                    rt.tipset_cids.resize(current as usize, Cid::default());
+                    if let Some(cid) = insert {
+                        rt.tipset_cids[getting as usize] = cid;
+                    }
+                }
+                (m) {
+                    PUSH2;
+                    {a};
+                    {b};
+                    BLOCKHASH;
+                }
+                m.step().expect("execution step failed");
+                m.step().expect("execution step failed");
+                assert_eq!(m.state.stack.len(), 1);
+                assert_eq!(m.state.stack.pop().unwrap(), U256::from(expect), "{}", test);
+            };
+        }
+    }
+
+    #[test]
+    fn test_callvalue() {
+        evm_unit_test! {
+            (m) {
+                CALLVALUE;
+            }
+            m.state.value_received = TokenAmount::from_atto(123);
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(123));
+        };
+    }
+
+    #[test]
+    fn test_number() {
+        for epoch in [1234, i64::MAX, 0, 1] {
+            evm_unit_test! {
+                (rt) {
+                    rt.set_epoch(epoch);
+                }
+                (m) {
+                    NUMBER;
+                }
+                m.step().expect("execution step failed");
+                assert_eq!(m.state.stack.len(), 1);
+                assert_eq!(m.state.stack.pop().unwrap(), U256::from(epoch));
+            };
+        }
+    }
+
+    #[test]
+    fn test_chainid() {
+        for chainid in [31415, 3141, 0, 1] {
+            evm_unit_test! {
+                (rt) {
+                    rt.chain_id = chainid.into();
+                }
+                (m) {
+                    CHAINID;
+                }
+                m.step().expect("execution step failed");
+                assert_eq!(m.state.stack.len(), 1);
+                assert_eq!(m.state.stack.pop().unwrap(), U256::from(chainid));
+            };
+        }
+    }
+
+    #[test]
+    fn test_basefee() {
+        for basefee in [12345, u128::MAX, 0, 1].map(U256::from) {
+            evm_unit_test! {
+                (rt) {
+                    rt.base_fee = TokenAmount::from(&basefee);
+                }
+                (m) {
+                    BASEFEE;
+                }
+                m.step().expect("execution step failed");
+                assert_eq!(m.state.stack.len(), 1);
+                assert_eq!(m.state.stack.pop().unwrap(), basefee);
+            };
+        }
+    }
+
+    #[test]
+    fn test_coinbase() {
+        evm_unit_test! {
+            (m) {
+                COINBASE;
+            }
+            m.step().expect("execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::ZERO);
+        };
+    }
+
+    #[test]
+    fn test_timestamp() {
+        evm_unit_test! {
+            (rt) {
+                rt.tipset_timestamp = 12345;
+            }
+            (m) {
+                TIMESTAMP;
+            }
+            m.step().expect("execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(12345));
+        };
+    }
+
+    #[test]
+    fn test_prevrandao() {
+        let epoch = 1234;
+        evm_unit_test! {
+            (rt) {
+                rt.set_epoch(epoch);
+                rt.expect_get_randomness_from_beacon(fil_actors_runtime::runtime::DomainSeparationTag::EvmPrevRandao, epoch, Vec::from(*b"prevrandao"), [0xff; 32]);
+            }
+            (m) {
+                PREVRANDAO;
+            }
+            m.step().expect("execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::MAX);
+        };
+    }
+
+    #[test]
+    fn test_gas_limit() {
+        for limit in [12345, 0, u64::MAX] {
+            evm_unit_test! {
+                (rt) {
+                    rt.gas_limit = limit;
+                }
+                (m) {
+                    GASLIMIT;
+                }
+                m.step().expect("execution step failed");
+                assert_eq!(m.state.stack.len(), 1);
+                // always block gas limit
+                assert_eq!(m.state.stack.pop().unwrap(), U256::from(10_000_000_000u64));
+            };
+        }
+    }
 }

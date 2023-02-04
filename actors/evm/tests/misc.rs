@@ -2,8 +2,8 @@ mod asm;
 mod util;
 
 use cid::Cid;
-use evm::interpreter::{address::EthAddress, U256};
-use fil_actor_evm as evm;
+use fil_actors_evm_shared::address::EthAddress;
+use fil_actors_evm_shared::uints::U256;
 use fvm_ipld_encoding::DAG_CBOR;
 use fvm_shared::chainid::ChainID;
 use fvm_shared::{address::Address, econ::TokenAmount};
@@ -50,7 +50,7 @@ return
 
     let mut rt = util::construct_and_verify(contract);
 
-    rt.tipset_cids = (0..900)
+    rt.tipset_cids = (0..(0xffff + 512))
         .map(|i| {
             Cid::new_v1(DAG_CBOR, Multihash::wrap(0, format!("block-{:026}", i).as_ref()).unwrap())
         })
@@ -60,14 +60,14 @@ return
     let result = util::invoke_contract(&mut rt, &[]);
     assert_eq!(
         String::from_utf8_lossy(&result.to_vec()),
-        String::from_utf8_lossy(rt.tipset_cids[2].hash().digest())
+        String::from_utf8_lossy(rt.tipset_cids[0xffff].hash().digest())
     );
 
     rt.epoch = 0xffff + 256;
     let result = util::invoke_contract(&mut rt, &[]);
     assert_eq!(
         String::from_utf8_lossy(&result.to_vec()),
-        String::from_utf8_lossy(rt.tipset_cids[256].hash().digest())
+        String::from_utf8_lossy(rt.tipset_cids[0xffff].hash().digest())
     );
 
     rt.epoch = 0xffff;
