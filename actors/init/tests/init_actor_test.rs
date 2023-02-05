@@ -4,7 +4,8 @@
 use cid::Cid;
 use fil_actor_init::testing::check_state_invariants;
 use fil_actor_init::{
-    Actor as InitActor, ConstructorParams, ExecParams, ExecReturn, Method, State,
+    Actor as InitActor, ConstructorParams, Exec4Params, Exec4Return, ExecParams, ExecReturn,
+    Method, State,
 };
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
@@ -16,7 +17,7 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
+use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
 use num_traits::Zero;
 use serde::Serialize;
 
@@ -356,6 +357,134 @@ fn exec_restricted_correctly() {
     rt.verify();
 }
 
+#[test]
+fn call_exec4() {
+    let mut rt = construct_runtime();
+    construct_and_verify(&mut rt);
+
+    // Assign addresses
+    let unique_address = Address::new_actor(b"test");
+    rt.new_actor_addr = Some(unique_address);
+
+    // Make the f4 addr
+    let subaddr = b"foobar";
+    let namespace = 10;
+    let f4_addr = Address::new_delegated(namespace, subaddr).unwrap();
+
+    // Next id
+    let expected_id = 100;
+    let expected_id_addr = Address::new_id(expected_id);
+    rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id, Some(f4_addr));
+
+    let fake_params = ConstructorParams { network_name: String::from("fake_param") };
+    // Expect a send to the multisig actor constructor
+    rt.expect_send_simple(
+        expected_id_addr,
+        METHOD_CONSTRUCTOR,
+        IpldBlock::serialize_cbor(&fake_params).unwrap(),
+        TokenAmount::zero(),
+        None,
+        ExitCode::OK,
+    );
+
+    // Return should have been successful. Check the returned addresses
+    let exec_ret =
+        exec4_and_verify(&mut rt, namespace, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params)
+            .unwrap();
+
+    assert_eq!(unique_address, exec_ret.robust_address, "Robust address does not macth");
+    assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
+
+    // Check that we assigned the right f4 address.
+    let init_state: State = rt.get_state();
+    let resolved_id = init_state
+        .resolve_address(rt.store(), &f4_addr)
+        .ok()
+        .flatten()
+        .expect("failed to lookup f4 address");
+    assert_eq!(expected_id_addr, resolved_id, "f4 address not assigned to the right actor");
+
+    // Try again and expect it to fail with "forbidden".
+    let unique_address = Address::new_actor(b"test2");
+    rt.new_actor_addr = Some(unique_address);
+    let exec_err =
+        exec4_and_verify(&mut rt, namespace, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params)
+            .unwrap_err();
+
+    assert_eq!(exec_err.exit_code(), ExitCode::USR_FORBIDDEN);
+
+    // Delete and try again, it should still fail.
+    rt.actor_code_cids.remove(&resolved_id);
+    let unique_address = Address::new_actor(b"test2");
+    rt.new_actor_addr = Some(unique_address);
+    let exec_err =
+        exec4_and_verify(&mut rt, namespace, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params)
+            .unwrap_err();
+
+    assert_eq!(exec_err.exit_code(), ExitCode::USR_FORBIDDEN);
+}
+
+// Try turning a placeholder into an f4 actor.
+#[test]
+fn call_exec4_placeholder() {
+    let mut rt = construct_runtime();
+    construct_and_verify(&mut rt);
+
+    // Assign addresses
+    let unique_address = Address::new_actor(b"test");
+    rt.new_actor_addr = Some(unique_address);
+
+    // Make the f4 addr
+    let subaddr = b"foobar";
+    let namespace = 10;
+    let f4_addr = Address::new_delegated(namespace, subaddr).unwrap();
+
+    // Register a placeholder with the init actor.
+    let expected_id = {
+        let mut state: State = rt.get_state();
+        let (id, existing) = state.map_addresses_to_id(rt.store(), &f4_addr, None).unwrap();
+        assert!(!existing);
+        rt.replace_state(&state);
+        id
+    };
+
+    // Register it in the state-tree.
+    let expected_id_addr = Address::new_id(expected_id);
+    rt.set_address_actor_type(expected_id_addr, *PLACEHOLDER_ACTOR_CODE_ID);
+    rt.set_delegated_address(expected_id, f4_addr);
+
+    // Now try to create it.
+    rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id, Some(f4_addr));
+
+    let fake_params = ConstructorParams { network_name: String::from("fake_param") };
+    // Expect a send to the multisig actor constructor
+    rt.expect_send_simple(
+        expected_id_addr,
+        METHOD_CONSTRUCTOR,
+        IpldBlock::serialize_cbor(&fake_params).unwrap(),
+        TokenAmount::zero(),
+        None,
+        ExitCode::OK,
+    );
+
+    // Return should have been successful. Check the returned addresses
+    let exec_ret =
+        exec4_and_verify(&mut rt, namespace, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params)
+            .unwrap();
+
+    assert_eq!(unique_address, exec_ret.robust_address, "Robust address does not macth");
+    assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
+
+    // Check that we assigned the right f4 address.
+    let init_state: State = rt.get_state();
+    let resolved_id = init_state
+        .resolve_address(rt.store(), &f4_addr)
+        .ok()
+        .flatten()
+        .expect("failed to lookup f4 address");
+    assert_eq!(expected_id_addr, resolved_id, "f4 address not assigned to the right actor");
+}
+
 fn construct_and_verify(rt: &mut MockRuntime) {
     rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
@@ -398,4 +527,30 @@ where
     rt.verify();
     check_state(rt);
     ret
+}
+
+fn exec4_and_verify<S: Serialize>(
+    rt: &mut MockRuntime,
+    namespace: ActorID,
+    subaddr: &[u8],
+    code_id: Cid,
+    params: &S,
+) -> Result<Exec4Return, ActorError>
+where
+    S: Serialize,
+{
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(namespace));
+    rt.expect_validate_caller_any();
+    let exec_params = Exec4Params {
+        code_cid: code_id,
+        constructor_params: RawBytes::serialize(params).unwrap(),
+        subaddress: subaddr.to_owned().into(),
+    };
+
+    let ret = rt
+        .call::<InitActor>(Method::Exec4 as u64, IpldBlock::serialize_cbor(&exec_params).unwrap());
+
+    rt.verify();
+    check_state(rt);
+    ret.and_then(|v| v.unwrap().deserialize().map_err(|e| e.into()))
 }
