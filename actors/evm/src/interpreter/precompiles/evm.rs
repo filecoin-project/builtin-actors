@@ -339,7 +339,7 @@ mod tests {
         );
         // wrong signature
         let res = ec_recover(&mut system, input, PrecompileContext::default()).unwrap();
-        assert_eq!(res, Vec::new());
+        assert!(res.is_empty());
 
         let input = &hex!(
             "456e9aea5e197a1f1af7a3e85a3212fa4049a3ba34c2289b4c860fc0b0c64ef3" // h(ash)
@@ -350,7 +350,7 @@ mod tests {
         );
         // invalid recovery byte
         let res = ec_recover(&mut system, input, PrecompileContext::default()).unwrap();
-        assert_eq!(res, Vec::new());
+        assert!(res.is_empty());
     }
 
     #[test]
@@ -431,15 +431,21 @@ mod tests {
         );
         // no mod is invalid
         let res = modexp(&mut system, input, PrecompileContext::default()).unwrap();
-        assert_eq!(res, Vec::new());
+        assert!(res.is_empty());
     }
 
     // bn tests borrowed from https://github.com/bluealloy/revm/blob/26540bf5b29de6e7c8020c4c1880f8a97d1eadc9/crates/revm_precompiles/src/bn128.rs
     mod bn {
+        use serde::{Deserialize, Serialize};
+
         use super::MockRuntime;
 
         use crate::interpreter::{
-            precompiles::{ec_add, ec_mul, ec_pairing, PrecompileContext, PrecompileError},
+            precompiles::{
+                ec_add, ec_mul, ec_pairing,
+                evm::{blake2f, ec_recover, modexp},
+                PrecompileContext, PrecompileError, PrecompileFn,
+            },
             System,
         };
 
@@ -488,6 +494,70 @@ mod tests {
                 res,
                 Err(PrecompileError::EcErr(substrate_bn::CurveError::NotMember))
             ));
+        }
+
+        const TESTDATA_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/precompile-testdata/");
+
+        #[test]
+        fn conformance() {
+            #[derive(Deserialize, Serialize)]
+            #[serde(rename_all = "PascalCase")]
+            struct TestCase {
+                name: String,
+                #[serde(with = "hex")]
+                input: Vec<u8>,
+                #[serde(with = "hex")]
+                expected: Vec<u8>,
+            }
+
+            let tests: &[(PrecompileFn<MockRuntime>, &'static str)] = &[
+                (ec_add, "bn256Add"),
+                (ec_mul, "bn256ScalarMul"),
+                (ec_recover, "ecRecover"),
+                (blake2f, "blake2F"),
+                (ec_pairing, "bn256Pairing"),
+                (modexp, "modexp"),
+                (modexp, "modexp_eip2565"),
+            ];
+
+            let mut rt = MockRuntime::default();
+            let mut system = System::create(&mut rt).unwrap();
+
+            for (f, name) in tests {
+                let td = std::fs::read_to_string(format!("{TESTDATA_PATH}/{name}.json")).unwrap();
+                let cases: Vec<TestCase> = serde_json::from_str(&td).unwrap();
+                for t in cases {
+                    let res = f(&mut system, &t.input, PrecompileContext::default())
+                        .expect("call failed");
+                    assert_eq!(res, t.expected);
+                }
+            }
+        }
+
+        #[test]
+        fn conformance_failure() {
+            #[derive(Deserialize, Serialize)]
+            #[serde(rename_all = "PascalCase")]
+            struct FailureCase {
+                name: String,
+                #[serde(with = "hex")]
+                input: Vec<u8>,
+            }
+
+            let failures: &[(PrecompileFn<MockRuntime>, &'static str)] =
+                &[(blake2f, "fail-blake2f")];
+
+            let mut rt = MockRuntime::default();
+            let mut system = System::create(&mut rt).unwrap();
+
+            for (f, name) in failures {
+                let td = std::fs::read_to_string(format!("{TESTDATA_PATH}/{name}.json")).unwrap();
+                let cases: Vec<FailureCase> = serde_json::from_str(&td).unwrap();
+                for t in cases {
+                    let _ = f(&mut system, &t.input, PrecompileContext::default())
+                        .expect_err("call failed");
+                }
+            }
         }
 
         #[test]

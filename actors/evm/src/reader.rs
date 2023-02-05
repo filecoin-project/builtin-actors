@@ -206,8 +206,9 @@ mod test {
     #[test]
     fn test_read_fixed() {
         let mut reader = ValueReader::new(&[1, 2, 3]);
+        let empty: [u8; 0] = [];
         assert_eq!(reader.read_fixed::<2>(), [1, 2]);
-        assert_eq!(reader.read_fixed::<0>(), []);
+        assert_eq!(reader.read_fixed::<0>(), empty);
         assert_eq!(reader.read_fixed::<5>(), [3u8, 0, 0, 0, 0]);
         assert_eq!(reader.read_fixed::<3>(), [0, 0, 0]);
     }
