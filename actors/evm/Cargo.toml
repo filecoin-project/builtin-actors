@@ -7,6 +7,7 @@ authors = ["Protocol Labs", "Filecoin Core Devs"]
 edition = "2021"
 repository = "https://github.com/filecoin-project/builtin-actors"
 keywords = ["filecoin", "web3", "wasm", "evm"]
+exclude = ["/precompile-testdata", "/tests/measurements", "/tests/contracts"]
 
 [lib]
 ## lib is necessary for integration tests
@@ -35,7 +36,7 @@ derive_more = "0.99"
 fixed-hash = { version = "0.7.0", default-features = false }
 impl-serde = { version = "0.3.2", default-features = false }
 arrayvec = { version = "0.7.2", features = ["serde"] }
-hex = "0.4.3"
+hex = { version = "0.4.3", features = ["serde"] }
 hex-literal = "0.3.4"
 substrate-bn = { version = "0.6.0", default-features = false }
 near-blake2 = { version = "0.9.1", git = "https://github.com/filecoin-project/near-blake2.git" }
