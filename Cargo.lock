@@ -636,6 +636,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "fil_actor_ethaccount"
+version = "10.0.0-alpha.1"
+dependencies = [
+ "fil_actors_runtime",
+ "frc42_dispatch",
+ "fvm_actor_utils",
+ "fvm_ipld_encoding 0.3.3",
+ "fvm_shared 3.0.0-alpha.17",
+ "hex-literal",
+ "num-derive",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
 name = "fil_actor_init"
 version = "10.0.0-alpha.1"
 dependencies = [
@@ -879,6 +894,7 @@ dependencies = [
  "fil_actor_bundler",
  "fil_actor_cron",
  "fil_actor_datacap",
+ "fil_actor_ethaccount",
  "fil_actor_init",
  "fil_actor_market",
  "fil_actor_miner",
@@ -1380,6 +1396,12 @@ name = "hex"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
+
+[[package]]
+name = "hex-literal"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7ebdb29d2ea9ed0083cd8cece49bbd968021bd99b0849edb4a9a7ee0fdf6a4e0"
 
 [[package]]
 name = "ident_case"
