@@ -1,0 +1,16 @@
+[package]
+name = "fil_actor_evm"
+description = "Builtin EVM actor for Filecoin"
+version = "10.0.0-alpha.1"
+license = "MIT OR Apache-2.0"
+authors = ["Protocol Labs", "Filecoin Core Devs"]
+edition = "2021"
+repository = "https://github.com/filecoin-project/builtin-actors"
+keywords = ["filecoin", "web3", "wasm", "evm"]
+exclude = ["/precompile-testdata", "/tests/measurements", "/tests/contracts"]
+
+[dependencies]
+fil_actors_runtime = { version = "10.0.0-alpha.1", path = "../../runtime" }
+
+[features]
+fil-actor = ["fil_actors_runtime/fil-actor"]

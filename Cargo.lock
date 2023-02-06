@@ -651,6 +651,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "fil_actor_evm"
+version = "10.0.0-alpha.1"
+dependencies = [
+ "fil_actors_runtime",
+]
+
+[[package]]
 name = "fil_actor_init"
 version = "10.0.0-alpha.1"
 dependencies = [
@@ -895,6 +902,7 @@ dependencies = [
  "fil_actor_cron",
  "fil_actor_datacap",
  "fil_actor_ethaccount",
+ "fil_actor_evm",
  "fil_actor_init",
  "fil_actor_market",
  "fil_actor_miner",
@@ -2131,6 +2139,8 @@ dependencies = [
  "fil_actor_account",
  "fil_actor_cron",
  "fil_actor_datacap",
+ "fil_actor_ethaccount",
+ "fil_actor_evm",
  "fil_actor_init",
  "fil_actor_market",
  "fil_actor_miner",

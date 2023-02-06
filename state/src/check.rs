@@ -221,6 +221,8 @@ pub fn check_state_invariants<'a, BS: Blockstore + Debug>(
                 datacap_summary = Some(summary);
             }
             Some(Type::Placeholder) => {}
+            Some(Type::EVM) => {}
+            Some(Type::EthAccount) => {}
             None => {
                 bail!("unexpected actor code CID {} for address {}", actor.code, key);
             }
