@@ -11,6 +11,9 @@ exclude = ["/precompile-testdata", "/tests/measurements", "/tests/contracts"]
 
 [dependencies]
 fil_actors_runtime = { version = "10.0.0-alpha.1", path = "../../runtime" }
+serde = { version = "1.0.136", features = ["derive"] }
+fvm_ipld_encoding = "0.3.3"
+fil_actors_evm_shared = { version = "10.0.0-alpha.1", path = "shared" }
 
 [features]
 fil-actor = ["fil_actors_runtime/fil-actor"]

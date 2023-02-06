@@ -269,6 +269,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "14c189c53d098945499cdfa7ecc63567cf3886b3332b312a5b4585d8d3a6a610"
 
 [[package]]
+name = "bytes"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "89b2fd2a0dcf38d7971e2194b6b6eebab45ae01067456a7fd93d5547a61b70be"
+
+[[package]]
 name = "castaway"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -636,6 +642,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "fil_actor_eam"
+version = "10.0.0-alpha.1"
+dependencies = [
+ "anyhow",
+ "cid",
+ "fil_actor_evm",
+ "fil_actors_evm_shared",
+ "fil_actors_runtime",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding 0.3.3",
+ "fvm_shared 3.0.0-alpha.20",
+ "hex-literal",
+ "log",
+ "multihash",
+ "num-derive",
+ "num-traits",
+ "rlp",
+ "serde",
+ "serde_tuple",
+]
+
+[[package]]
 name = "fil_actor_ethaccount"
 version = "10.0.0-alpha.1"
 dependencies = [
@@ -654,7 +682,10 @@ dependencies = [
 name = "fil_actor_evm"
 version = "10.0.0-alpha.1"
 dependencies = [
+ "fil_actors_evm_shared",
  "fil_actors_runtime",
+ "fvm_ipld_encoding 0.3.3",
+ "serde",
 ]
 
 [[package]]
@@ -848,6 +879,15 @@ dependencies = [
  "log",
  "num-derive",
  "num-traits",
+ "serde",
+]
+
+[[package]]
+name = "fil_actors_evm_shared"
+version = "10.0.0-alpha.1"
+dependencies = [
+ "fvm_ipld_encoding 0.3.3",
+ "hex",
  "serde",
 ]
 
@@ -1897,6 +1937,22 @@ checksum = "bd124222d17ad93a644ed9d011a40f4fb64aa54275c08cc216524a9ea82fb09f"
 dependencies = [
  "digest 0.10.6",
 ]
+
+[[package]]
+name = "rlp"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bb919243f34364b6bd2fc10ef797edbfa75f33c252e7998527479c6d6b47e1ec"
+dependencies = [
+ "bytes",
+ "rustc-hex",
+]
+
+[[package]]
+name = "rustc-hex"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3e75f6a532d0fd9f7f13144f392b6ad56a32696bfcd9c78f797f16bbb6f072d6"
 
 [[package]]
 name = "rustversion"
