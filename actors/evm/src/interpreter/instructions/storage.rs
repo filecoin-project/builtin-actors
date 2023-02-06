@@ -29,3 +29,57 @@ pub fn sstore(
 
     system.set_storage(key, value)
 }
+
+#[cfg(test)]
+mod tests {
+    use fil_actors_evm_shared::uints::U256;
+
+    use crate::evm_unit_test;
+
+    #[test]
+    fn test_sload() {
+        // happy path
+        evm_unit_test! {
+            (m) {
+                SLOAD;
+            }
+            m.system.set_storage(U256::from(0), U256::from(0x42)).unwrap();
+            m.state.stack.push(U256::from(0)).unwrap();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(0x42));
+        };
+    }
+
+    #[test]
+    fn test_sload_oob() {
+        // oob access -- it is a zero
+        evm_unit_test! {
+            (m) {
+                SLOAD;
+            }
+            m.state.stack.push(U256::from(1234)).unwrap();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(0));
+        };
+    }
+
+    #[test]
+    fn test_sstore() {
+        evm_unit_test! {
+            (m) {
+                SSTORE;
+            }
+
+            m.state.stack.push(U256::from(0x42)).unwrap();
+            m.state.stack.push(U256::from(0)).unwrap();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 0);
+            assert_eq!(m.system.get_storage(U256::from(0)).unwrap(), U256::from(0x42));
+        };
+    }
+}

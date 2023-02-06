@@ -34,6 +34,7 @@ macro_rules! evm_unit_test {
 
         let mut system = System::new(&mut $rt, false);
         let bytecode = Bytecode::new(code);
+        #[allow(unused_mut)]
         let mut $machine = Machine {
             system: &mut system,
             state: &mut state,
@@ -63,6 +64,7 @@ macro_rules! evm_unit_test {
 
         let mut system = System::new(&mut rt, false);
         let bytecode = Bytecode::new(code);
+        #[allow(unused_mut)]
         let mut $machine = Machine {
             system: &mut system,
             state: &mut state,
