@@ -11,7 +11,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::MethodNum;
 
 use fil_actors_runtime::test_utils::{
-    expect_abort_contains_message, EVM_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID,
+    expect_abort_contains_message, ACCOUNT_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID,
 };
 use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
 
@@ -32,7 +32,7 @@ fn no_delegated_cant_deploy() {
 fn token_receiver() {
     let mut rt = setup();
 
-    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(1234));
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(1234));
     rt.expect_validate_caller_any();
     let ret = rt
         .call::<EthAccountActor>(

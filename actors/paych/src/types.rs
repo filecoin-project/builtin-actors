@@ -21,6 +21,7 @@ pub const SETTLE_DELAY: ChainEpoch = EPOCHS_IN_HOUR * 12;
 pub const MAX_SECRET_SIZE: usize = 256;
 
 pub const LANE_STATES_AMT_BITWIDTH: u32 = 3;
+
 /// Constructor parameters for payment channel actor
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ConstructorParams {

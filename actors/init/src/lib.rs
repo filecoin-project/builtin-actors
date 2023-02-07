@@ -1,8 +1,6 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use std::iter;
-
 use cid::Cid;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
@@ -114,14 +112,13 @@ impl Actor {
         Ok(ExecReturn { id_address: Address::new_id(id_address), robust_address })
     }
 
-    /// Exec init actor
+    /// Exec4 init actor
     pub fn exec4(rt: &mut impl Runtime, params: Exec4Params) -> Result<Exec4Return, ActorError> {
         if cfg!(feature = "m2-native") {
             rt.validate_immediate_caller_accept_any()?;
         } else {
-            rt.validate_immediate_caller_is(iter::once(&EAM_ACTOR_ADDR))?;
+            rt.validate_immediate_caller_is(std::iter::once(&EAM_ACTOR_ADDR))?;
         }
-
         // Compute the f4 address.
         let caller_id = rt.message().caller().id().unwrap();
         let delegated_address =
@@ -222,8 +219,8 @@ impl ActorCode for Actor {
     actor_dispatch! {
         Constructor => constructor,
         Exec => exec,
-        ExecExported => exec,
         Exec4 => exec4,
+        ExecExported => exec,
         #[cfg(feature = "m2-native")]
         InstallCode => install,
     }
