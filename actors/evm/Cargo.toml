@@ -27,29 +27,22 @@ anyhow = "1.0.65"
 log = "0.4.14"
 fvm_ipld_blockstore = "0.1.1"
 fvm_ipld_encoding = "0.3.3"
-rlp = { version = "0.5.1", default-features = false }
-strum = "0.24"
-strum_macros = "0.24"
 multihash = { version = "0.16.1", default-features = false }
-derive_more = "0.99"
-fixed-hash = { version = "0.7.0", default-features = false }
-impl-serde = { version = "0.3.2", default-features = false }
-arrayvec = { version = "0.7.2", features = ["serde"] }
 hex = { version = "0.4.3", features = ["serde"] }
 hex-literal = "0.3.4"
 substrate-bn = { version = "0.6.0", default-features = false }
 near-blake2 = { version = "0.9.1", git = "https://github.com/filecoin-project/near-blake2.git" }
-lazy_static = "1.4.0"
-once_cell = { version = "1.16.0", default-features = false}
 frc42_dispatch = "3.0.1-alpha.2"
 fil_actors_evm_shared = { version = "10.0.0-alpha.1", path = "shared" }
 
 [dev-dependencies]
+lazy_static = "1.4.0"
 fil_actors_runtime = { path = "../../runtime", features = ["test_utils", "sector-default"] }
 etk-asm = "^0.2.1"
 ethers = { version = "1.0.2", features = ["abigen"] }
 serde_json = "1.0"
 rand = "0.8.5"
+once_cell = "1.17.0"
 
 [features]
 fil-actor = ["fil_actors_runtime/fil-actor"]

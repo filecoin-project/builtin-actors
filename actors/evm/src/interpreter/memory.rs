@@ -1,11 +1,24 @@
-use derive_more::{Deref, DerefMut};
-
 use crate::EVM_WORD_SIZE;
+use std::ops::{Deref, DerefMut};
 
 const PAGE_SIZE: usize = 4 * 1024;
 
-#[derive(Clone, Debug, Deref, DerefMut)]
+#[derive(Clone, Debug)]
 pub struct Memory(Vec<u8>);
+
+impl Deref for Memory {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        &*self.0
+    }
+}
+
+impl DerefMut for Memory {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut *self.0
+    }
+}
 
 impl Default for Memory {
     fn default() -> Self {
@@ -59,6 +72,6 @@ mod tests {
         let mut mem = Memory::default();
         mem.grow(PAGE_SIZE * 2 + 1);
         assert_eq!(mem.len(), PAGE_SIZE * 2 + EVM_WORD_SIZE);
-        assert_eq!(mem.capacity(), PAGE_SIZE * 3);
+        assert_eq!(mem.0.capacity(), PAGE_SIZE * 3);
     }
 }
