@@ -7,7 +7,7 @@ use std::ops::Neg;
 use anyhow::{anyhow, Error};
 use cid::multihash::Code;
 use cid::Cid;
-use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::runtime::{Policy, Runtime};
 use fil_actors_runtime::{
     actor_error, make_empty_map, make_map_with_root_and_bitwidth, u64_key, ActorDowncast,
     ActorError, Array,
@@ -756,6 +756,33 @@ impl State {
         Ok(())
     }
 
+    pub fn fund_initial_pledge<RT:Runtime>(&mut self, 
+        deficit: TokenAmount,
+        sector_number: u64,
+        rt: &RT) -> Result<(), ActorError>{
+        let unlocked_balance = self
+        .get_unlocked_balance(&rt.current_balance())
+        .map_err(|_|
+            actor_error!(illegal_state, "failed to calculate unlocked balance")
+        )?;
+        if unlocked_balance < deficit {
+            return Err(actor_error!(
+                insufficient_funds,
+                "insufficient funds for new initial pledge requirement {}, available: {}, skipping sector {}",
+                deficit,
+                unlocked_balance,
+                sector_number
+            ));
+        }
+
+        self.add_initial_pledge(&deficit).map_err(|_e|
+            actor_error!(
+                illegal_state,
+                "failed to add initial pledge"
+            )
+        )?;
+        Ok(())
+    }
     pub fn apply_penalty(&mut self, penalty: &TokenAmount) -> anyhow::Result<()> {
         if penalty.is_negative() {
             Err(anyhow!("applying negative penalty {} not allowed", penalty))

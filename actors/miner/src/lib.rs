@@ -1324,32 +1324,14 @@ impl Actor {
                         &pow.quality_adj_power_smoothed,
                         &rt.total_fil_circ_supply(),
                     );
+                    
+                    let deficit = &initial_pledge_at_upgrade - &with_details.sector_info.initial_pledge;
+                    
 
-                    if initial_pledge_at_upgrade > with_details.sector_info.initial_pledge {
-                        let deficit = &initial_pledge_at_upgrade - &with_details.sector_info.initial_pledge;
-
-                        let unlocked_balance = state
-                            .get_unlocked_balance(&rt.current_balance())
-                            .map_err(|_|
-                                actor_error!(illegal_state, "failed to calculate unlocked balance")
-                            )?;
-                        if unlocked_balance < deficit {
-                            return Err(actor_error!(
-                                insufficient_funds,
-                                "insufficient funds for new initial pledge requirement {}, available: {}, skipping sector {}",
-                                deficit,
-                                unlocked_balance,
-                                with_details.sector_info.sector_number
-                            ));
-                        }
-
-                        state.add_initial_pledge(&deficit).map_err(|_e|
-                            actor_error!(
-                                illegal_state,
-                                "failed to add initial pledge"
-                            )
-                        )?;
-
+                    if deficit > TokenAmount::zero() {
+                        state.fund_initial_pledge(deficit, 
+                        with_details.sector_info.sector_number,
+                        rt)?;
                         new_sector_info.initial_pledge = initial_pledge_at_upgrade;
                     }
 
@@ -3688,19 +3670,47 @@ fn extend_sector_committment<RT>(
     new_expiration: ChainEpoch,
     sector: &SectorOnChainInfo,
     claim_space_by_sector: &BTreeMap<SectorNumber, (u64, u64)>,
-    rt: &mut RT, 
+    rt: &RT, 
 ) -> Result<SectorOnChainInfo, ActorError> 
 where 
-    RT::Blockstore: Blockstore + Clone,
+    RT::Blockstore: Blockstore,
     RT: Runtime, {
     validate_extended_expiration(policy, curr_epoch, new_expiration, sector)?;
 
+    let state = rt.state()?;
+    let info = get_miner_info(rt.store(), &state)?;
+    let sector_size = info.sector_size;
+
+    
+    let reward_and_baseline = request_current_epoch_block_reward(rt)?;
+    let rew = reward_and_baseline.this_epoch_reward_smoothed;
+    let baseline_power = reward_and_baseline.this_epoch_baseline_power;
+    let pow = request_current_total_power(rt)?.quality_adj_power_smoothed;
+    let circulating_supply = rt.total_fil_circ_supply();
+
     // all simple_qa_power sectors with VerifiedDealWeight > 0 MUST check all claims
     if sector.simple_qa_power {
-        extend_simple_qap_sector(policy, new_expiration, curr_epoch, sector, claim_space_by_sector)
+        extend_simple_qap_sector(policy, 
+            new_expiration, 
+            curr_epoch, sector, 
+            claim_space_by_sector, 
+            sector_size, 
+            &rew, 
+            &pow, 
+            baseline_power, 
+            circulating_supply)
     } else {
-        extend_non_simple_qap_sector(new_expiration, curr_epoch, sector, rt)
+        extend_non_simple_qap_sector(new_expiration,
+            curr_epoch,
+            sector,
+            sector_size,
+            &rew, 
+            &pow, 
+            baseline_power,
+            circulating_supply
+        )
     }
+
 }
 
 fn extend_sector_committment_legacy<RT>(
@@ -3708,12 +3718,22 @@ fn extend_sector_committment_legacy<RT>(
     curr_epoch: ChainEpoch,
     new_expiration: ChainEpoch,
     sector: &SectorOnChainInfo,
-    rt: &mut RT, 
+    rt: &RT, 
 ) -> Result<SectorOnChainInfo, ActorError> 
 where
-    RT::Blockstore: Blockstore + Clone, 
+    RT::Blockstore: Blockstore, 
     RT: Runtime, {
     validate_extended_expiration(policy, curr_epoch, new_expiration, sector)?;
+
+    let state = rt.state()?;
+    let info = get_miner_info(rt.store(), &state)?;
+    let sector_size = info.sector_size;
+    let reward_and_baseline = request_current_epoch_block_reward(rt)?;
+
+    let rew = reward_and_baseline.this_epoch_reward_smoothed;
+    let pow = request_current_total_power(rt)?.quality_adj_power_smoothed;
+    let baseline_power = reward_and_baseline.this_epoch_baseline_power;
+    let circulating_supply = rt.total_fil_circ_supply();
 
     // it is an error to do legacy sector expiration on simple-qa power sectors with deal weight
     if sector.simple_qa_power
@@ -3725,7 +3745,15 @@ where
             sector.sector_number
         ));
     }
-    extend_non_simple_qap_sector(new_expiration, curr_epoch, sector, rt)
+    extend_non_simple_qap_sector(new_expiration,
+        curr_epoch,
+        sector, 
+        sector_size,
+        &rew, 
+        &pow,
+        baseline_power, 
+        circulating_supply)
+
 }
 
 fn extend_proof_validity(
@@ -3806,16 +3834,18 @@ fn validate_extended_expiration(
     Ok(())
 }
 
-fn extend_simple_qap_sector<RT>(
+fn extend_simple_qap_sector(
     policy: &Policy,
     new_expiration: ChainEpoch,
     curr_epoch: ChainEpoch,
     sector: &SectorOnChainInfo,
     claim_space_by_sector: &BTreeMap<SectorNumber, (u64, u64)>,
-) -> Result<SectorOnChainInfo, ActorError>
-where
-    RT::Blockstore: Blockstore + Clone,
-    RT: Runtime, {
+    sector_size: SectorSize,
+    reward_estimate: &FilterEstimate, 
+    network_qa_power_estimate: &FilterEstimate,
+    baseline_power: StoragePower, 
+    circulating_supply: TokenAmount 
+) -> Result<SectorOnChainInfo, ActorError>{
     let mut new_sector = sector.clone();
     if sector.verified_deal_weight > BigInt::zero() {
         let old_duration = sector.commitment_expiration - sector.activation;
@@ -3862,34 +3892,44 @@ where
         new_sector.commitment_expiration = new_expiration
     }
     let duration = new_sector.commitment_expiration - new_sector.last_extension_epoch;
-    let state = rt.state()?;
-    let info = get_miner_info(rt.store(), &state)?;
-    let rew = request_current_epoch_block_reward(rt)?;
-    let pow = request_current_total_power(rt)?;
     let qa_pow = qa_power_for_weight(
-        info.sector_size, 
+        sector_size, 
         duration, 
         &new_sector.deal_weight, 
         &new_sector.verified_deal_weight
     ) * sdm(duration);
-    new_sector.expected_day_reward = expected_reward_for_power(
-        &rew.this_epoch_reward_smoothed, 
-        &pow.quality_adj_power_smoothed, 
+    new_sector.expected_day_reward = std::cmp::max(sector.expected_day_reward.clone(),
+         expected_reward_for_power(
+        reward_estimate, 
+        network_qa_power_estimate, 
         &qa_pow, 
         fil_actors_runtime::network::EPOCHS_IN_DAY, 
+    ));
+
+    // Update Initial Pledge Upon Extension
+    let initial_pledge_at_upgrade = initial_pledge_for_power(
+        &qa_pow,
+        &baseline_power,
+        reward_estimate,
+        network_qa_power_estimate,
+        &circulating_supply,
     );
+    new_sector.initial_pledge = std::cmp::max(initial_pledge_at_upgrade, 
+    sector.initial_pledge.clone());
+
     Ok(new_sector)
 }
 
-fn extend_non_simple_qap_sector<RT>(
+fn extend_non_simple_qap_sector(
     new_expiration: ChainEpoch,
     curr_epoch: ChainEpoch,
     sector: &SectorOnChainInfo,
-    rt: &mut RT, 
-) -> Result<SectorOnChainInfo, ActorError> 
-where 
-    RT::Blockstore: Blockstore + Clone,
-    RT: Runtime, {
+    sector_size: SectorSize, 
+    reward_estimate: &FilterEstimate, 
+    network_qa_power_estimate: &FilterEstimate,
+    baseline_power: StoragePower, 
+    circulating_supply: TokenAmount 
+) -> Result<SectorOnChainInfo, ActorError> {
     let mut new_sector = sector.clone();
     // Remove "spent" deal weights for non simple_qa_power sectors with deal weight > 0
     let new_deal_weight = (&sector.deal_weight * (sector.commitment_expiration - curr_epoch))
@@ -3899,11 +3939,6 @@ where
         * (sector.commitment_expiration - curr_epoch))
         .div_floor(&BigInt::from(sector.commitment_expiration - sector.activation));
 
-    let state = rt.state()?;
-    let info = get_miner_info(rt.store(), &state)?;
-    let rew = request_current_epoch_block_reward(rt)?;
-    let pow = request_current_total_power(rt)?;
-
     new_sector.commitment_expiration = new_expiration;
     new_sector.deal_weight = new_deal_weight;
     new_sector.verified_deal_weight = new_verified_deal_weight;
@@ -3911,17 +3946,28 @@ where
 
     let duration = new_expiration - curr_epoch; 
     let qa_pow = qa_power_for_weight(
-        info.sector_size,
+        sector_size,
         duration, 
         &new_sector.deal_weight, 
         &new_sector.verified_deal_weight
     ) * sdm(duration);
-    new_sector.expected_day_reward = expected_reward_for_power(
-        &rew.this_epoch_reward_smoothed, 
-        &pow.quality_adj_power_smoothed, 
+    new_sector.expected_day_reward = std::cmp::max(sector.expected_day_reward.clone(),
+         expected_reward_for_power(
+        reward_estimate, 
+        network_qa_power_estimate, 
         &qa_pow, 
         fil_actors_runtime::network::EPOCHS_IN_DAY, 
+    ));
+
+    let initial_pledge_at_upgrade = initial_pledge_for_power(
+        &qa_pow,
+        &baseline_power,
+        reward_estimate,
+        network_qa_power_estimate,
+        &circulating_supply,
     );
+    new_sector.initial_pledge = std::cmp::max(initial_pledge_at_upgrade, 
+    sector.initial_pledge.clone());
 
     Ok(new_sector)
 }
@@ -4437,7 +4483,7 @@ fn request_deal_data(
 /// Requests the current epoch target block reward from the reward actor.
 /// return value includes reward, smoothed estimate of reward, and baseline power
 fn request_current_epoch_block_reward(
-    rt: &mut impl Runtime,
+    rt: & impl Runtime,
 ) -> Result<ThisEpochRewardReturn, ActorError> {
     deserialize_block(
         rt.send(
@@ -4452,7 +4498,7 @@ fn request_current_epoch_block_reward(
 
 /// Requests the current network total power and pledge from the power actor.
 fn request_current_total_power(
-    rt: &mut impl Runtime,
+    rt: & impl Runtime,
 ) -> Result<ext::power::CurrentTotalPowerReturn, ActorError> {
     deserialize_block(
         rt.send(
