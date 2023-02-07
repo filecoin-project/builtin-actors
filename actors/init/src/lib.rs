@@ -31,8 +31,6 @@ pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
     Exec = 2,
     Exec4 = 3,
-    // Method numbers derived from FRC-0042 standards
-    ExecExported = frc42_dispatch::method_hash!("Exec"),
 }
 
 /// Init actor
@@ -172,7 +170,6 @@ impl ActorCode for Actor {
         Constructor => constructor,
         Exec => exec,
         Exec4 => exec4,
-        ExecExported => exec,
     }
 }
 
