@@ -21,6 +21,8 @@ pub enum Type {
     VerifiedRegistry = 11,
     DataCap = 12,
     Placeholder = 13,
+    EVM = 14,
+    EthAccount = 15,
 }
 
 impl Type {
@@ -39,6 +41,8 @@ impl Type {
             Type::VerifiedRegistry => "verifiedregistry",
             Type::DataCap => "datacap",
             Type::Placeholder => "placeholder",
+            Type::EVM => "evm",
+            Type::EthAccount => "ethaccount",
         }
     }
 }

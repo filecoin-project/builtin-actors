@@ -6,6 +6,7 @@ use cid::Cid;
 use fil_actor_account::{Actor as AccountActor, State as AccountState};
 use fil_actor_cron::{Actor as CronActor, Entry as CronEntry, State as CronState};
 use fil_actor_datacap::{Actor as DataCapActor, State as DataCapState};
+use fil_actor_ethaccount::EthAccountActor;
 use fil_actor_init::{Actor as InitActor, ExecReturn, State as InitState};
 use fil_actor_market::{Actor as MarketActor, Method as MarketMethod, State as MarketState};
 use fil_actor_miner::{Actor as MinerActor, MinerInfo, State as MinerState};
@@ -749,6 +750,10 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             Type::Placeholder => {
                 Err(ActorError::unhandled_message("placeholder actors only handle method 0".into()))
             }
+            Type::EVM => {
+                Err(ActorError::unhandled_message("evm actors are not yet supported".into()))
+            }
+            Type::EthAccount => EthAccountActor::invoke_method(self, self.msg.method, params),
         };
         if res.is_ok() && !self.caller_validated {
             res = Err(actor_error!(assertion_failed, "failed to validate caller"));
