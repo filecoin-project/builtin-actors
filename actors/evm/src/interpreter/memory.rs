@@ -1,18 +1,15 @@
-use {
-    bytes::BytesMut,
-    derive_more::{Deref, DerefMut},
-};
+use derive_more::{Deref, DerefMut};
 
 use crate::EVM_WORD_SIZE;
 
 const PAGE_SIZE: usize = 4 * 1024;
 
 #[derive(Clone, Debug, Deref, DerefMut)]
-pub struct Memory(BytesMut);
+pub struct Memory(Vec<u8>);
 
 impl Default for Memory {
     fn default() -> Self {
-        Self(BytesMut::with_capacity(PAGE_SIZE))
+        Self(Vec::with_capacity(PAGE_SIZE))
     }
 }
 

@@ -17,7 +17,7 @@ macro_rules! evm_unit_test {
         use ::fil_actors_runtime::test_utils::MockRuntime;
         use ::fvm_shared::econ::TokenAmount;
         use $crate::interpreter::{execution::Machine, system::System, Output};
-        use $crate::{Bytecode, Bytes, EthAddress, ExecutionState};
+        use $crate::{Bytecode, EthAddress, ExecutionState};
 
         let mut $rt = MockRuntime::default();
         $rt.in_call = true;
@@ -27,7 +27,7 @@ macro_rules! evm_unit_test {
             EthAddress::from_id(1000),
             EthAddress::from_id(1000),
             TokenAmount::from_atto(0),
-            Bytes::default(),
+            Vec::new(),
         );
 
         let code = vec![$($crate::evm_instruction!($inst)),*];
@@ -50,14 +50,14 @@ macro_rules! evm_unit_test {
         use ::fil_actors_runtime::test_utils::MockRuntime;
         use ::fvm_shared::econ::TokenAmount;
         use $crate::interpreter::{execution::Machine, system::System, Output};
-        use $crate::{Bytecode, Bytes, EthAddress, ExecutionState};
+        use $crate::{Bytecode, EthAddress, ExecutionState};
 
         let mut rt = MockRuntime::default();
         let mut state = ExecutionState::new(
             EthAddress::from_id(1000),
             EthAddress::from_id(1000),
             TokenAmount::from_atto(0),
-            Bytes::default(),
+            Vec::new(),
         );
 
         let code = vec![$($crate::evm_instruction!($inst)),*];
