@@ -19,11 +19,11 @@ fil_actors_runtime = { version = "10.0.0-alpha.1", path = "../../runtime"}
 anyhow = "1.0.65"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 frc42_dispatch = "3.0.1-alpha.1"
-fvm_actor_utils = "4.0.0"
+fvm_actor_utils = "4.0.1-alpha.1"
 fvm_ipld_blockstore = "0.1.1"
 fvm_ipld_encoding = "0.3.3"
 fvm_ipld_hamt = "0.6.1"
-fvm_shared = { version = "3.0.0-alpha.17", default-features = false }
+fvm_shared = { version = "3.0.0-alpha.20", default-features = false }
 indexmap = { version = "1.8.0", features = ["serde-1"] }
 integer-encoding = { version = "3.0.3", default-features = false }
 num-derive = "0.3.3"
