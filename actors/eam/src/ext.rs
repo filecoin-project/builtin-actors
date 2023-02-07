@@ -4,7 +4,6 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 
 pub mod init {
-
     use super::*;
 
     pub const EXEC4_METHOD: u64 = 3;
@@ -30,10 +29,14 @@ pub mod init {
 pub mod evm {
     use super::*;
 
-    #[derive(Serialize_tuple, Deserialize_tuple)]
+    use fil_actors_evm_shared::address::EthAddress;
+
+    #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
     pub struct ConstructorParams {
-        pub bytecode: RawBytes,
-        pub input_data: RawBytes,
+        /// The actor's "creator" (specified by the EAM).
+        pub creator: EthAddress,
+        /// The initcode that will construct the new EVM actor.
+        pub initcode: RawBytes,
     }
 
     pub const RESURRECT_METHOD: u64 = 2;

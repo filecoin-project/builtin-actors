@@ -11,11 +11,14 @@ use fvm_shared::error::ExitCode;
 use crate::interpreter::Outcome;
 use crate::reader::ValueReader;
 
+pub use types::*;
+
 #[doc(hidden)]
 pub mod ext;
 pub mod interpreter;
 pub(crate) mod reader;
 mod state;
+mod types;
 
 use {
     crate::interpreter::{execute, Bytecode, ExecutionState, System},
@@ -25,7 +28,6 @@ use {
         ActorError,
     },
     fvm_ipld_encoding::tuple::*,
-    fvm_ipld_encoding::RawBytes,
     fvm_shared::{MethodNum, METHOD_CONSTRUCTOR},
     num_derive::FromPrimitive,
     num_traits::FromPrimitive,
@@ -462,14 +464,6 @@ impl ActorCode for EvmContractActor {
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }
     }
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct ConstructorParams {
-    /// The actor's "creator" (specified by the EAM).
-    pub creator: EthAddress,
-    /// The initcode that will construct the new EVM actor.
-    pub initcode: RawBytes,
 }
 
 pub type ResurrectParams = ConstructorParams;
