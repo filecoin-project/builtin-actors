@@ -1,7 +1,7 @@
 use crate::interpreter::instructions::memory::get_memory_region;
 use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::ActorError;
-use fvm_ipld_encoding::{to_vec, BytesSer, RawBytes};
+use fvm_ipld_encoding::IPLD_RAW;
 use fvm_shared::event::{Entry, Flags};
 use {
     crate::interpreter::{ExecutionState, System},
@@ -42,7 +42,8 @@ pub fn log(
         let entry = Entry {
             flags: Flags::FLAG_INDEXED_ALL,
             key: (*key).to_owned(),
-            value: to_vec(&topic)?.into(), // U256 serializes as a byte string.
+            codec: IPLD_RAW,
+            value: topic.to_bytes().into(), // U256 serializes as a byte string.
         };
         entries.push(entry);
     }
@@ -53,7 +54,8 @@ pub fn log(
         let entry = Entry {
             flags: Flags::FLAG_INDEXED_ALL,
             key: EVENT_DATA_KEY.to_owned(),
-            value: RawBytes::serialize(BytesSer(&data))?,
+            codec: IPLD_RAW,
+            value: data,
         };
         entries.push(entry);
     }
@@ -66,7 +68,7 @@ pub fn log(
 #[cfg(test)]
 mod tests {
     use fil_actors_evm_shared::uints::U256;
-    use fvm_ipld_encoding::{to_vec, BytesSer, RawBytes};
+    use fvm_ipld_encoding::IPLD_RAW;
     use fvm_shared::event::{ActorEvent, Entry, Flags};
 
     use super::{EVENT_DATA_KEY, EVENT_TOPIC_KEYS};
@@ -85,7 +87,8 @@ mod tests {
                     ActorEvent::from(vec![Entry{
                         flags: Flags::FLAG_INDEXED_ALL,
                         key: EVENT_DATA_KEY.to_owned(),
-                        value: RawBytes::serialize(BytesSer(&data)).unwrap(),
+                        codec: IPLD_RAW,
+                        value: data.into(),
                     }])
                 );
             }
@@ -118,12 +121,14 @@ mod tests {
                         Entry{
                             flags: Flags::FLAG_INDEXED_ALL,
                             key:  EVENT_TOPIC_KEYS[0].to_owned(),
-                            value: to_vec(&t1).unwrap().into(),
+                            codec: IPLD_RAW,
+                            value: t1.to_bytes().into(),
                         },
                         Entry{
                             flags: Flags::FLAG_INDEXED_ALL,
                             key: EVENT_DATA_KEY.to_owned(),
-                            value: RawBytes::serialize(BytesSer(&data)).unwrap(),
+                            codec: IPLD_RAW,
+                            value: data.into(),
                         }
                     ])
                 );
@@ -159,17 +164,20 @@ mod tests {
                         Entry{
                             flags: Flags::FLAG_INDEXED_ALL,
                             key:  EVENT_TOPIC_KEYS[0].to_owned(),
-                            value: to_vec(&t1).unwrap().into(),
+                            codec: IPLD_RAW,
+                            value: t1.to_bytes().into(),
                         },
                         Entry{
                             flags: Flags::FLAG_INDEXED_ALL,
                             key:  EVENT_TOPIC_KEYS[1].to_owned(),
-                            value: to_vec(&t2).unwrap().into(),
+                            codec: IPLD_RAW,
+                            value: t2.to_bytes().into(),
                         },
                         Entry{
                             flags: Flags::FLAG_INDEXED_ALL,
                             key: EVENT_DATA_KEY.to_owned(),
-                            value: RawBytes::serialize(BytesSer(&data)).unwrap(),
+                            codec: IPLD_RAW,
+                            value: data.into(),
                         }
                     ])
                 );
@@ -207,22 +215,26 @@ mod tests {
                         Entry{
                             flags: Flags::FLAG_INDEXED_ALL,
                             key:  EVENT_TOPIC_KEYS[0].to_owned(),
-                            value: to_vec(&t1).unwrap().into(),
+                            codec: IPLD_RAW,
+                            value: t1.to_bytes().into(),
                         },
                         Entry{
                             flags: Flags::FLAG_INDEXED_ALL,
                             key:  EVENT_TOPIC_KEYS[1].to_owned(),
-                            value: to_vec(&t2).unwrap().into(),
+                            codec: IPLD_RAW,
+                            value: t2.to_bytes().into(),
                         },
                         Entry{
                             flags: Flags::FLAG_INDEXED_ALL,
                             key:  EVENT_TOPIC_KEYS[2].to_owned(),
-                            value: to_vec(&t3).unwrap().into(),
+                            codec: IPLD_RAW,
+                            value: t3.to_bytes().into(),
                         },
                         Entry{
                             flags: Flags::FLAG_INDEXED_ALL,
                             key: EVENT_DATA_KEY.to_owned(),
-                            value: RawBytes::serialize(BytesSer(&data)).unwrap(),
+                            codec: IPLD_RAW,
+                            value: data.into(),
                         }
                     ])
                 );
@@ -262,27 +274,32 @@ mod tests {
                         Entry{
                             flags: Flags::FLAG_INDEXED_ALL,
                             key:  EVENT_TOPIC_KEYS[0].to_owned(),
-                            value: to_vec(&t1).unwrap().into(),
+                            codec: IPLD_RAW,
+                            value: t1.to_bytes().into(),
                         },
                         Entry{
                             flags: Flags::FLAG_INDEXED_ALL,
                             key:  EVENT_TOPIC_KEYS[1].to_owned(),
-                            value: to_vec(&t2).unwrap().into(),
+                            codec: IPLD_RAW,
+                            value: t2.to_bytes().into(),
                         },
                         Entry{
                             flags: Flags::FLAG_INDEXED_ALL,
                             key:  EVENT_TOPIC_KEYS[2].to_owned(),
-                            value: to_vec(&t3).unwrap().into(),
+                            codec: IPLD_RAW,
+                            value: t3.to_bytes().into(),
                         },
                         Entry{
                             flags: Flags::FLAG_INDEXED_ALL,
                             key:  EVENT_TOPIC_KEYS[3].to_owned(),
-                            value: to_vec(&t4).unwrap().into(),
+                            codec: IPLD_RAW,
+                            value: t4.to_bytes().into(),
                         },
                         Entry{
                             flags: Flags::FLAG_INDEXED_ALL,
                             key: EVENT_DATA_KEY.to_owned(),
-                            value: RawBytes::serialize(BytesSer(&data)).unwrap(),
+                            codec: IPLD_RAW,
+                            value: data.into(),
                         }
                     ])
                 );
