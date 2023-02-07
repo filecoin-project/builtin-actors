@@ -9,30 +9,23 @@ use ext::{
     init::{Exec4Params, Exec4Return},
 };
 use fil_actors_runtime::{
-    actor_dispatch_unrestricted, deserialize_block, extract_send_result, AsActorError,
+    actor_dispatch_unrestricted, actor_error, deserialize_block, extract_send_result, ActorError,
+    AsActorError, EAM_ACTOR_ID, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_shared::{error::ExitCode, sys::SendFlags};
+use fvm_shared::{error::ExitCode, sys::SendFlags, ActorID, METHOD_CONSTRUCTOR};
 use serde::{Deserialize, Serialize};
 
 pub mod ext;
 
-use {
-    fil_actors_runtime::{
-        actor_error,
-        runtime::builtins::Type,
-        runtime::{ActorCode, Runtime},
-        ActorError, EAM_ACTOR_ID, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-    },
-    fvm_ipld_encoding::{strict_bytes, tuple::*, RawBytes},
-    fvm_shared::{
-        address::{Address, Payload},
-        crypto::hash::SupportedHashes,
-        ActorID, METHOD_CONSTRUCTOR,
-    },
-    num_derive::FromPrimitive,
-};
+use fil_actors_runtime::runtime::builtins::Type;
+use fil_actors_runtime::runtime::{ActorCode, Runtime};
+
+use fvm_ipld_encoding::{strict_bytes, tuple::*, RawBytes};
+use fvm_shared::address::{Address, Payload};
+use fvm_shared::crypto::hash::SupportedHashes;
+use num_derive::FromPrimitive;
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(EamActor);
@@ -41,7 +34,6 @@ fil_actors_runtime::wasm_trampoline!(EamActor);
 #[repr(u64)]
 pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
-    // TODO: Do we want to use ExportedNums for all of these, per FRC-42?
     Create = 2,
     Create2 = 3,
     CreateExternal = 4,
@@ -109,14 +101,6 @@ impl Return {
     }
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
-pub struct EvmConstructorParams {
-    /// The actor's "creator" (specified by the EAM).
-    pub creator: EthAddress,
-    /// The initcode that will construct the new EVM actor.
-    pub initcode: RawBytes,
-}
-
 /// hash of data with Keccack256, with first 12 bytes cropped
 fn hash_20(rt: &impl Runtime, data: &[u8]) -> [u8; 20] {
     rt.hash(SupportedHashes::Keccak256, data)[12..32].try_into().unwrap()
@@ -140,7 +124,7 @@ fn create_actor(
     }
 
     let constructor_params =
-        RawBytes::serialize(EvmConstructorParams { creator, initcode: initcode.into() })?;
+        RawBytes::serialize(ext::evm::ConstructorParams { creator, initcode: initcode.into() })?;
     let value = rt.message().value_received();
 
     let f4_addr = Address::new_delegated(EAM_ACTOR_ID, &new_addr.0).unwrap();

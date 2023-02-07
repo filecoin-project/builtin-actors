@@ -1,6 +1,6 @@
 use eam::ext::evm::RESURRECT_METHOD;
 use eam::ext::init::{Exec4Params, Exec4Return, EXEC4_METHOD};
-use eam::{compute_address_create, Create2Params, CreateParams, EvmConstructorParams, Return};
+use eam::{compute_address_create, Create2Params, CreateParams, Return};
 use fil_actor_eam as eam;
 use fil_actor_eam::CreateExternalParams;
 use fil_actors_evm_shared::address::EthAddress;
@@ -34,7 +34,8 @@ fn call_create_new() {
 
     let create_params = CreateParams { initcode: initcode.clone(), nonce: 0 };
 
-    let evm_params = EvmConstructorParams { creator: eth_addr, initcode: initcode.into() };
+    let evm_params =
+        eam::ext::evm::ConstructorParams { creator: eth_addr, initcode: initcode.into() };
 
     let new_eth_addr = compute_address_create(&rt, &eth_addr, 0);
     let params = Exec4Params {
@@ -101,7 +102,8 @@ fn call_create_external_over_placeholder() {
 
     let create_params = CreateExternalParams(initcode.clone());
 
-    let evm_params = EvmConstructorParams { creator: caller_eth_addr, initcode: initcode.into() };
+    let evm_params =
+        eam::ext::evm::ConstructorParams { creator: caller_eth_addr, initcode: initcode.into() };
 
     let params = Exec4Params {
         code_cid: *EVM_ACTOR_CODE_ID,
@@ -168,7 +170,8 @@ fn call_resurrect() {
 
     let create_params = CreateParams { initcode: initcode.clone(), nonce: 0 };
 
-    let params = EvmConstructorParams { creator: caller_eth_addr, initcode: initcode.into() };
+    let params =
+        eam::ext::evm::ConstructorParams { creator: caller_eth_addr, initcode: initcode.into() };
 
     rt.expect_send_simple(
         target_id_addr,
@@ -212,7 +215,8 @@ fn call_create2() {
 
     let create2_params = Create2Params { initcode: initcode.clone(), salt: [0; 32] };
 
-    let evm_params = EvmConstructorParams { creator: eth_addr, initcode: initcode.clone().into() };
+    let evm_params =
+        eam::ext::evm::ConstructorParams { creator: eth_addr, initcode: initcode.clone().into() };
 
     let inithash = rt.hash(fvm_shared::crypto::hash::SupportedHashes::Keccak256, &initcode);
     let mut subaddress = rt.hash(
