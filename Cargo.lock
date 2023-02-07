@@ -72,9 +72,6 @@ name = "arrayvec"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8da52d66c7071e2e3fa2a1e5c6d088fec47b593032b254f5e980de8ea54454d6"
-dependencies = [
- "serde",
-]
 
 [[package]]
 name = "async-channel"
@@ -780,12 +777,6 @@ checksum = "f3ad85c1f65dc7b37604eb0e89748faf0b9653065f2a8ef69f96a687ec1e9279"
 
 [[package]]
 name = "convert_case"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6245d59a3e82a7fc217c5828a6692dbc6dfb63a0c8c90495621f7b9d79704a0e"
-
-[[package]]
-name = "convert_case"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fb4a24b1aaf0fd0ce8b45161144d6f42cd91677fd5940fd431183eb023b3a2b8"
@@ -1009,10 +1000,8 @@ version = "0.99.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4fb810d30a7c1953f91334de7244731fc3f3c10d7fe163338a35b9f640960321"
 dependencies = [
- "convert_case 0.4.0",
  "proc-macro2",
  "quote",
- "rustc_version",
  "syn",
 ]
 
@@ -1869,14 +1858,11 @@ name = "fil_actor_evm"
 version = "10.0.0-alpha.1"
 dependencies = [
  "anyhow",
- "arrayvec",
  "cid",
- "derive_more",
  "ethers 1.0.2",
  "etk-asm",
  "fil_actors_evm_shared",
  "fil_actors_runtime",
- "fixed-hash 0.7.0",
  "frc42_dispatch",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding 0.3.3",
@@ -1884,7 +1870,6 @@ dependencies = [
  "fvm_shared 3.0.0-alpha.20",
  "hex",
  "hex-literal",
- "impl-serde 0.3.2",
  "lazy_static",
  "log",
  "multihash",
@@ -1893,12 +1878,9 @@ dependencies = [
  "num-traits",
  "once_cell",
  "rand",
- "rlp",
  "serde",
  "serde_json",
  "serde_tuple",
- "strum",
- "strum_macros",
  "substrate-bn",
 ]
 
