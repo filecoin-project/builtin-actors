@@ -1299,7 +1299,7 @@ impl Actor {
                         duration,
                         &new_sector_info.deal_weight,
                         &new_sector_info.verified_deal_weight,
-                    );
+                    ) * sdm(duration);
 
                     new_sector_info.replaced_day_reward = with_details.sector_info.expected_day_reward.clone();
                     new_sector_info.expected_day_reward = expected_reward_for_power(
@@ -3680,29 +3680,37 @@ fn validate_extension_declarations(
     })
 }
 
-fn extend_sector_committment(
+fn extend_sector_committment<RT>(
     policy: &Policy,
     curr_epoch: ChainEpoch,
     new_expiration: ChainEpoch,
     sector: &SectorOnChainInfo,
     claim_space_by_sector: &BTreeMap<SectorNumber, (u64, u64)>,
-) -> Result<SectorOnChainInfo, ActorError> {
+    rt: &mut RT, 
+) -> Result<SectorOnChainInfo, ActorError> 
+where 
+    RT::Blockstore: Blockstore + Clone,
+    RT: Runtime, {
     validate_extended_expiration(policy, curr_epoch, new_expiration, sector)?;
 
     // all simple_qa_power sectors with VerifiedDealWeight > 0 MUST check all claims
     if sector.simple_qa_power {
         extend_simple_qap_sector(policy, new_expiration, curr_epoch, sector, claim_space_by_sector)
     } else {
-        extend_non_simple_qap_sector(new_expiration, curr_epoch, sector)
+        extend_non_simple_qap_sector(new_expiration, curr_epoch, sector, rt)
     }
 }
 
-fn extend_sector_committment_legacy(
+fn extend_sector_committment_legacy<RT>(
     policy: &Policy,
     curr_epoch: ChainEpoch,
     new_expiration: ChainEpoch,
     sector: &SectorOnChainInfo,
-) -> Result<SectorOnChainInfo, ActorError> {
+    rt: &mut RT, 
+) -> Result<SectorOnChainInfo, ActorError> 
+where
+    RT::Blockstore: Blockstore + Clone, 
+    RT: Runtime, {
     validate_extended_expiration(policy, curr_epoch, new_expiration, sector)?;
 
     // it is an error to do legacy sector expiration on simple-qa power sectors with deal weight
@@ -3715,7 +3723,7 @@ fn extend_sector_committment_legacy(
             sector.sector_number
         ));
     }
-    extend_non_simple_qap_sector(new_expiration, curr_epoch, sector)
+    extend_non_simple_qap_sector(new_expiration, curr_epoch, sector, rt)
 }
 
 fn extend_proof_validity(
@@ -3851,11 +3859,15 @@ fn extend_simple_qap_sector(
     Ok(new_sector)
 }
 
-fn extend_non_simple_qap_sector(
+fn extend_non_simple_qap_sector<RT>(
     new_expiration: ChainEpoch,
     curr_epoch: ChainEpoch,
     sector: &SectorOnChainInfo,
-) -> Result<SectorOnChainInfo, ActorError> {
+    rt: &mut RT, 
+) -> Result<SectorOnChainInfo, ActorError> 
+where 
+    RT::Blockstore: Blockstore + Clone,
+    RT: Runtime, {
     let mut new_sector = sector.clone();
     // Remove "spent" deal weights for non simple_qa_power sectors with deal weight > 0
     let new_deal_weight = (&sector.deal_weight * (sector.commitment_expiration - curr_epoch))
@@ -3865,9 +3877,30 @@ fn extend_non_simple_qap_sector(
         * (sector.commitment_expiration - curr_epoch))
         .div_floor(&BigInt::from(sector.commitment_expiration - sector.activation));
 
+    let state = rt.state()?;
+    let info = get_miner_info(rt.store(), &state)?;
+    let rew = request_current_epoch_block_reward(rt)?;
+    let pow = request_current_total_power(rt)?;
+
     new_sector.commitment_expiration = new_expiration;
     new_sector.deal_weight = new_deal_weight;
     new_sector.verified_deal_weight = new_verified_deal_weight;
+    new_sector.last_extension_epoch = curr_epoch;
+
+    let duration = new_expiration - curr_epoch; 
+    let qa_pow = qa_power_for_weight(
+        info.sector_size,
+        duration, 
+        &new_sector.deal_weight, 
+        &new_sector.verified_deal_weight
+    ) * sdm(duration);
+    new_sector.expected_day_reward = expected_reward_for_power(
+        &rew.this_epoch_reward_smoothed, 
+        &pow.quality_adj_power_smoothed, 
+        &qa_pow, 
+        fil_actors_runtime::network::EPOCHS_IN_DAY, 
+    );
+
     Ok(new_sector)
 }
 
@@ -4592,6 +4625,7 @@ fn termination_penalty(
 
     for sector in sectors {
         let sector_power = qa_power_for_sector(sector_size, sector);
+        let duration = sector.commitment_expiration - sector.last_extension_epoch; 
         let fee = pledge_penalty_for_termination(
             &sector.expected_day_reward,
             current_epoch - sector.activation,
@@ -4601,6 +4635,7 @@ fn termination_penalty(
             reward_estimate,
             &sector.replaced_day_reward,
             sector.replaced_sector_age,
+            duration, 
         );
         total_fee += fee;
     }
@@ -4845,6 +4880,7 @@ fn confirm_sector_proofs_valid_internal(
                 commitment_expiration: pre_commit.info.expiration,
                 proof_expiration: activation + policy.max_proof_validity,
                 activation,
+                last_extension_epoch: activation,
                 deal_weight,
                 verified_deal_weight,
                 initial_pledge,

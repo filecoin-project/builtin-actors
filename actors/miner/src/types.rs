@@ -332,6 +332,8 @@ pub struct SectorOnChainInfo {
     pub activation: ChainEpoch,
     /// Epoch during which the sector expires
     pub commitment_expiration: ChainEpoch,
+    /// Epoch during which sector was last extended, 
+    pub last_extension_epoch: ChainEpoch, 
     /// Epoch during which the sector proof validity expires
     pub proof_expiration: ChainEpoch,
     /// Integral of active deals over sector lifetime

@@ -136,10 +136,21 @@ pub fn qa_power_for_weight(
     (BigInt::from(size as u64) * quality) >> SECTOR_QUALITY_PRECISION
 }
 
+/// Returns Sector Duration Multiplier for a Sector 
+/// Flag - Needs to use fixed point arithmetic 
+pub fn sdm(duration_commitment: i64) -> i64 {
+    if duration_commitment <= (3 * EPOCHS_IN_YEAR)/2 {
+        1
+    } else {
+        (duration_commitment - EPOCHS_IN_YEAR/2) / EPOCHS_IN_YEAR
+    }
+}
+
 /// Returns the quality-adjusted power for a sector.
 pub fn qa_power_for_sector(size: SectorSize, sector: &SectorOnChainInfo) -> StoragePower {
-    let duration = sector.commitment_expiration - sector.activation;
-    qa_power_for_weight(size, duration, &sector.deal_weight, &sector.verified_deal_weight)
+    let duration = sector.commitment_expiration - sector.last_extension_epoch;
+    BigInt::from(sdm(duration)) * qa_power_for_weight(size, duration,
+         &sector.deal_weight, &sector.verified_deal_weight)
 }
 
 /// Determine maximum number of deal miner's sector can hold
