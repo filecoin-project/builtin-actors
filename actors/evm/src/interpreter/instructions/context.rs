@@ -19,10 +19,9 @@ pub fn blockhash(
         .try_into()
         .ok()
         .filter(|&height: &ChainEpoch| {
-            // The EVM allows fetching blockhashes from the 256 _previous_ blocks.
-            // TODO: we can consider extending this to allow the full range.
-            // Also relates to https://github.com/filecoin-project/ref-fvm/issues/1023 (we might
-            // want to keep some of these restrictions).
+            // The EVM allows fetching blockhashes from the 256 _previous_ blocks, not including the
+            // current. The FVM allows fetching block CIDs from the last 899 epochs, not including
+            // the current epoch.
             let curr_epoch = system.rt.curr_epoch();
             height >= curr_epoch - 256 && height < curr_epoch
         })
