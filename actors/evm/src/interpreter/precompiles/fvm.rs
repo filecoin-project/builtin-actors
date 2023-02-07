@@ -166,7 +166,7 @@ pub(super) fn call_actor_shared<RT: Runtime>(
     // ------ Begin Call -------
 
     let result = {
-        // TODO only CBOR or "nothing" for now
+        // TODO only CBOR or "nothing" for now. We should support RAW and DAG_CBOR in the future.
         let params = match codec {
             fvm_ipld_encoding::CBOR => Some(IpldBlock { codec, data: params.into() }),
             #[cfg(feature = "hyperspace")]
