@@ -53,5 +53,6 @@ serde_json = "1.0"
 rand = "0.8.5"
 
 [features]
+hyperspace = []
 fil-actor = ["fil_actors_runtime/fil-actor"]
 m2-native = ["fil_actors_runtime/m2-native"]
