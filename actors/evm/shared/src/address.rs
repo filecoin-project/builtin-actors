@@ -5,8 +5,6 @@ use fvm_shared::address::Address;
 use fvm_shared::ActorID;
 
 /// A Filecoin address as represented in the FEVM runtime (also called EVM-form).
-///
-/// TODO this type will eventually handle f4 address detection.
 #[derive(serde::Deserialize, serde::Serialize, PartialEq, Eq, Clone, Copy)]
 pub struct EthAddress(#[serde(with = "strict_bytes")] pub [u8; 20]);
 

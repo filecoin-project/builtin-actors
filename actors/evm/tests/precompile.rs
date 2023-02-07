@@ -282,8 +282,6 @@ fn test_precompile_transfer_nothing() {
 
 #[test]
 fn test_precompile_failure() {
-    // TODO: refactor these to be more clear
-
     let bytecode = resolve_address_contract();
     let mut rt = util::construct_and_verify(bytecode);
 

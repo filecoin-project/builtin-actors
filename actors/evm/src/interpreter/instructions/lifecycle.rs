@@ -45,6 +45,7 @@ pub fn create(
         &[]
     };
 
+    // We increment the nonce earlier than in the EVM. See the comment in `create2` for details.
     let nonce = system.increment_nonce();
     let params = eam::CreateParams { code: input_data.to_vec(), nonce };
     create_init(system, IpldBlock::serialize_cbor(&params)?, eam::CREATE_METHOD_NUM, value)
@@ -64,7 +65,6 @@ pub fn create2(
 
     let ExecutionState { stack: _, memory, .. } = state;
 
-    // see `create()` overall TODOs
     let endowment = TokenAmount::from(&endowment);
     if endowment > system.rt.current_balance() {
         return Ok(U256::zero());
@@ -82,6 +82,16 @@ pub fn create2(
     };
     let params = eam::Create2Params { code: input_data.to_vec(), salt };
 
+    // We increment the nonce earlier than in the EVM, but this is unlikely to cause issues:
+    //
+    // 1. Like the EVM, we increment the nonce on address conflict (effectively "skipping" the
+    //    address).
+    // 2. Like the EVM, we increment the nonce even if the target contract runs out of gas.
+    // 4. Like the EVM, we don't increment the nonce if the caller doesn't have enough funds to
+    //    cover the endowment.
+    // 4. Unlike the EVM, we increment the nonce if contract creation fails because we're at the max
+    //    stack depth. However, given that there are other ways to increment the nonce without
+    //    deploying a contract (e.g., 2), this shouldn't be an issue.
     system.increment_nonce();
     create_init(system, IpldBlock::serialize_cbor(&params)?, eam::CREATE2_METHOD_NUM, endowment)
 }
@@ -100,25 +110,6 @@ fn create_init(
     // send bytecode & params to EAM to generate the address and contract
     let ret =
         system.send(&EAM_ACTOR_ADDR, method, params, value, Some(gas_limit), SendFlags::default());
-
-    // https://github.com/ethereum/go-ethereum/blob/fb75f11e87420ec25ff72f7eeeb741fa8974e87e/core/vm/evm.go#L406-L496
-    // Normally EVM will do some checks here to ensure that a contract has the capability
-    // to create an actor, but here FVM does these checks for us, including:
-    // - execution depth, equal to FVM's max call depth (FVM)
-    // - account has enough value to send (FVM)
-    // - ensuring there isn't an existing account at the generated f4 address (INIT)
-    // - constructing smart contract on chain (INIT)
-    // - checks if max code size is exceeded (EAM & EVM)
-    // - gas cost of deployment (FVM)
-    // - EIP-3541 (EVM)
-    //
-    // However these errors are flattened to a 0 pushed on the stack.
-
-    // TODO revert state if error was returned (revert nonce bump)
-    // https://github.com/filecoin-project/ref-fvm/issues/956
-
-    // TODO Exit with revert if sys out of gas when subcall gas limits are introduced
-    // https://github.com/filecoin-project/ref-fvm/issues/966
 
     Ok(match ret {
         Ok(eam_ret) => {
