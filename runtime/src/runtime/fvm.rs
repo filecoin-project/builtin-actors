@@ -371,10 +371,6 @@ where
             .context_code(ExitCode::USR_ASSERTION_FAILED, "failed to emit event")
     }
 
-    fn exit(&self, code: u32, data: Option<IpldBlock>, msg: Option<&str>) -> ! {
-        fvm::vm::exit(code, data, msg)
-    }
-
     fn read_only(&self) -> bool {
         fvm::vm::read_only()
     }
