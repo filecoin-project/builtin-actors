@@ -2266,6 +2266,7 @@ impl Actor {
                                 curr_epoch,
                                 decl.new_expiration,
                                 sector,
+                                rt,
                             ),
                             ExtensionKind::Committment => match &inner.claims {
                                 None => Err(actor_error!(
@@ -2278,6 +2279,7 @@ impl Actor {
                                     decl.new_expiration,
                                     sector,
                                     claim_space_by_sector,
+                                    rt,
                                 ),
                             },
                             ExtensionKind::ProofValidity => {
@@ -3804,13 +3806,16 @@ fn validate_extended_expiration(
     Ok(())
 }
 
-fn extend_simple_qap_sector(
+fn extend_simple_qap_sector<RT>(
     policy: &Policy,
     new_expiration: ChainEpoch,
     curr_epoch: ChainEpoch,
     sector: &SectorOnChainInfo,
     claim_space_by_sector: &BTreeMap<SectorNumber, (u64, u64)>,
-) -> Result<SectorOnChainInfo, ActorError> {
+) -> Result<SectorOnChainInfo, ActorError>
+where
+    RT::Blockstore: Blockstore + Clone,
+    RT: Runtime, {
     let mut new_sector = sector.clone();
     if sector.verified_deal_weight > BigInt::zero() {
         let old_duration = sector.commitment_expiration - sector.activation;
@@ -3856,6 +3861,23 @@ fn extend_simple_qap_sector(
     } else {
         new_sector.commitment_expiration = new_expiration
     }
+    let duration = new_sector.commitment_expiration - new_sector.last_extension_epoch;
+    let state = rt.state()?;
+    let info = get_miner_info(rt.store(), &state)?;
+    let rew = request_current_epoch_block_reward(rt)?;
+    let pow = request_current_total_power(rt)?;
+    let qa_pow = qa_power_for_weight(
+        info.sector_size, 
+        duration, 
+        &new_sector.deal_weight, 
+        &new_sector.verified_deal_weight
+    ) * sdm(duration);
+    new_sector.expected_day_reward = expected_reward_for_power(
+        &rew.this_epoch_reward_smoothed, 
+        &pow.quality_adj_power_smoothed, 
+        &qa_pow, 
+        fil_actors_runtime::network::EPOCHS_IN_DAY, 
+    );
     Ok(new_sector)
 }
 
