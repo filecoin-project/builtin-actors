@@ -446,7 +446,7 @@ impl Actor {
 
         // notify clients ignoring any errors
         for (i, valid_deal) in valid_deals.iter().enumerate() {
-            _ = extract_send_result(rt.send_simple(
+            extract_send_result(rt.send_simple(
                 &valid_deal.proposal.client,
                 MARKET_NOTIFY_DEAL_METHOD,
                 IpldBlock::serialize_cbor(&MarketNotifyDealParams {
@@ -454,7 +454,7 @@ impl Actor {
                     deal_id: new_deal_ids[i],
                 })?,
                 TokenAmount::zero(),
-            ));
+            ))?;
         }
 
         Ok(PublishStorageDealsReturn { ids: new_deal_ids, valid_deals: valid_input_bf })
