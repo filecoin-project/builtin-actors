@@ -1,5 +1,3 @@
-use bytes::Bytes;
-
 use fil_actors_evm_shared::address::EthAddress;
 use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::ActorError;
@@ -170,5 +168,5 @@ pub fn selfdestruct(
     //
     // 1. In the constructor, this will set our code to "empty". This is correct.
     // 2. Otherwise, we'll successfully return nothing to the caller.
-    Ok(Output { outcome: Outcome::Return, return_data: Bytes::new() })
+    Ok(Output { outcome: Outcome::Return, return_data: Vec::new() })
 }

@@ -36,7 +36,7 @@ use fil_actors_runtime::{
     REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::{RawBytes, DAG_CBOR};
 
 use crate::ext::verifreg::{AllocationID, AllocationRequest};
 
@@ -1305,8 +1305,6 @@ fn deal_proposal_is_internally_valid(
     .map_err(|e| e.wrap("proposal authentication failed"))?;
     Ok(())
 }
-
-pub const DAG_CBOR: u64 = 0x71; // TODO is there a better place to get this?
 
 /// Compute a deal CID using the runtime.
 pub(crate) fn rt_deal_cid(rt: &impl Runtime, proposal: &DealProposal) -> Result<Cid, ActorError> {

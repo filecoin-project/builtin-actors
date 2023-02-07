@@ -7,7 +7,6 @@ use {
     super::memory::Memory,
     super::stack::Stack,
     super::{Bytecode, Output, System},
-    bytes::Bytes,
     fil_actors_runtime::runtime::Runtime,
 };
 
@@ -16,8 +15,8 @@ use {
 pub struct ExecutionState {
     pub stack: Stack,
     pub memory: Memory,
-    pub input_data: Bytes,
-    pub return_data: Bytes,
+    pub input_data: Vec<u8>,
+    pub return_data: Vec<u8>,
     /// The EVM address of the caller.
     pub caller: EthAddress,
     /// The EVM address of the receiver.
@@ -31,7 +30,7 @@ impl ExecutionState {
         caller: EthAddress,
         receiver: EthAddress,
         value_received: TokenAmount,
-        input_data: Bytes,
+        input_data: Vec<u8>,
     ) -> Self {
         Self {
             stack: Stack::new(),

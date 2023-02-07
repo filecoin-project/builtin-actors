@@ -1,4 +1,4 @@
-use fvm_ipld_encoding::serde_bytes;
+use fvm_ipld_encoding::strict_bytes;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::tuple::{Deserialize_tuple, Serialize_tuple};
 use fvm_shared::address::Address;
@@ -11,9 +11,9 @@ pub mod account {
 
     #[derive(Serialize_tuple, Deserialize_tuple)]
     pub struct AuthenticateMessageParams {
-        #[serde(with = "serde_bytes")]
+        #[serde(with = "strict_bytes")]
         pub signature: Vec<u8>,
-        #[serde(with = "serde_bytes")]
+        #[serde(with = "strict_bytes")]
         pub message: Vec<u8>,
     }
 }

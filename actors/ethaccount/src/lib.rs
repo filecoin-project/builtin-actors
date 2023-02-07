@@ -10,7 +10,7 @@ use num_derive::FromPrimitive;
 use crate::types::AuthenticateMessageParams;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, ActorDowncast, ActorError, AsActorError, EAM_ACTOR_ID,
+    actor_dispatch, actor_error, ActorError, AsActorError, EAM_ACTOR_ID,
     FIRST_EXPORTED_METHOD_NUMBER, SYSTEM_ACTOR_ADDR,
 };
 
@@ -73,11 +73,8 @@ impl EthAccountActor {
                     .try_into()
                     .map_err(|_| actor_error!(illegal_argument; "invalid signature length"))?,
             )
-            .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_ARGUMENT,
-                    "failed to recover signer public key",
-                )
+            .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
+                "failed to recover signer public key"
             })?;
 
         // 0x04 to indicate uncompressed point

@@ -17,7 +17,7 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
+use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
 use num_traits::Zero;
 use serde::Serialize;
 
@@ -360,7 +360,8 @@ fn call_exec4() {
 
     // Make the f4 addr
     let subaddr = b"foobar";
-    let f4_addr = Address::new_delegated(EAM_ACTOR_ID, subaddr).unwrap();
+    let namespace = EAM_ACTOR_ID;
+    let f4_addr = Address::new_delegated(namespace, subaddr).unwrap();
 
     // Next id
     let expected_id = 100;
@@ -380,7 +381,8 @@ fn call_exec4() {
 
     // Return should have been successful. Check the returned addresses
     let exec_ret =
-        exec4_and_verify(&mut rt, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap();
+        exec4_and_verify(&mut rt, namespace, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params)
+            .unwrap();
 
     assert_eq!(unique_address, exec_ret.robust_address, "Robust address does not macth");
     assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
@@ -398,7 +400,8 @@ fn call_exec4() {
     let unique_address = Address::new_actor(b"test2");
     rt.new_actor_addr = Some(unique_address);
     let exec_err =
-        exec4_and_verify(&mut rt, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap_err();
+        exec4_and_verify(&mut rt, namespace, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params)
+            .unwrap_err();
 
     assert_eq!(exec_err.exit_code(), ExitCode::USR_FORBIDDEN);
 
@@ -407,7 +410,8 @@ fn call_exec4() {
     let unique_address = Address::new_actor(b"test2");
     rt.new_actor_addr = Some(unique_address);
     let exec_err =
-        exec4_and_verify(&mut rt, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap_err();
+        exec4_and_verify(&mut rt, namespace, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params)
+            .unwrap_err();
 
     assert_eq!(exec_err.exit_code(), ExitCode::USR_FORBIDDEN);
 }
@@ -424,7 +428,8 @@ fn call_exec4_placeholder() {
 
     // Make the f4 addr
     let subaddr = b"foobar";
-    let f4_addr = Address::new_delegated(EAM_ACTOR_ID, subaddr).unwrap();
+    let namespace = EAM_ACTOR_ID;
+    let f4_addr = Address::new_delegated(namespace, subaddr).unwrap();
 
     // Register a placeholder with the init actor.
     let expected_id = {
@@ -456,7 +461,8 @@ fn call_exec4_placeholder() {
 
     // Return should have been successful. Check the returned addresses
     let exec_ret =
-        exec4_and_verify(&mut rt, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap();
+        exec4_and_verify(&mut rt, namespace, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params)
+            .unwrap();
 
     assert_eq!(unique_address, exec_ret.robust_address, "Robust address does not macth");
     assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
@@ -517,6 +523,7 @@ where
 
 fn exec4_and_verify<S: Serialize>(
     rt: &mut MockRuntime,
+    namespace: ActorID,
     subaddr: &[u8],
     code_id: Cid,
     params: &S,
@@ -524,7 +531,7 @@ fn exec4_and_verify<S: Serialize>(
 where
     S: Serialize,
 {
-    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, EAM_ACTOR_ADDR);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(namespace));
     if cfg!(feature = "m2-native") {
         rt.expect_validate_caller_any();
     } else {
