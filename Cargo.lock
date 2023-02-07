@@ -1870,7 +1870,6 @@ version = "10.0.0-alpha.1"
 dependencies = [
  "anyhow",
  "arrayvec",
- "bytes",
  "cid",
  "derive_more",
  "ethers 1.0.2",

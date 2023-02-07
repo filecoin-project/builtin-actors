@@ -1,4 +1,3 @@
-use bytes::Bytes;
 use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::{ActorError, AsActorError};
 
@@ -53,7 +52,7 @@ pub fn stop(
     _state: &mut ExecutionState,
     _system: &System<impl Runtime>,
 ) -> Result<Output, ActorError> {
-    Ok(Output { return_data: Bytes::new(), outcome: Outcome::Return })
+    Ok(Output { return_data: Vec::new(), outcome: Outcome::Return })
 }
 
 #[inline]
@@ -66,7 +65,7 @@ fn exit(
     Ok(Output {
         outcome: status,
         return_data: super::memory::get_memory_region(memory, offset, size)?
-            .map(|region| memory[region.offset..region.offset + region.size.get()].to_vec().into())
+            .map(|region| memory[region.offset..region.offset + region.size.get()].to_vec())
             .unwrap_or_default(),
     })
 }
@@ -318,7 +317,7 @@ mod tests {
             (m) {
                 RETURNDATASIZE;
             }
-            m.state.return_data = vec![0x00, 0x01, 0x02].into();
+            m.state.return_data = vec![0x00, 0x01, 0x02];
             let result = m.step();
             assert!(result.is_ok(), "execution step failed");
             assert_eq!(m.state.stack.len(), 1);
@@ -333,7 +332,7 @@ mod tests {
             (m) {
                 RETURNDATACOPY;
             }
-            m.state.return_data = vec![0x00, 0x01, 0x02].into();
+            m.state.return_data = vec![0x00, 0x01, 0x02];
             m.state.stack.push(U256::from(2)).unwrap();  // length
             m.state.stack.push(U256::from(1)).unwrap();  // offset
             m.state.stack.push(U256::from(0)).unwrap();  // dest-offset
@@ -343,7 +342,7 @@ mod tests {
             let mut expected = [0u8; 32];
             expected[0] = 0x01;
             expected[1] = 0x02;
-            assert_eq!(m.state.memory.as_ref(), &expected);
+            assert_eq!(&*m.state.memory, &expected);
         };
     }
 
@@ -354,7 +353,7 @@ mod tests {
             (m) {
                 RETURNDATACOPY;
             }
-            m.state.return_data = vec![0x00, 0x01, 0x02].into();
+            m.state.return_data = vec![0x00, 0x01, 0x02];
             m.state.stack.push(U256::from(10)).unwrap();  // length
             m.state.stack.push(U256::from(1)).unwrap();   // offset
             m.state.stack.push(U256::from(0)).unwrap();   // dest-offset
@@ -371,7 +370,7 @@ mod tests {
             (m) {
                 RETURNDATACOPY;
             }
-            m.state.return_data = vec![0x00, 0x01, 0x02].into();
+            m.state.return_data = vec![0x00, 0x01, 0x02];
             m.state.stack.push(U256::from(2)).unwrap();   // length
             m.state.stack.push(U256::from(10)).unwrap();  // offset
             m.state.stack.push(U256::from(0)).unwrap();   // dest-offset
@@ -388,7 +387,7 @@ mod tests {
             (m) {
                 RETURNDATACOPY;
             }
-            m.state.return_data = vec![0x00, 0x01, 0x02].into();
+            m.state.return_data = vec![0x00, 0x01, 0x02];
             m.state.stack.push(U256::from(2)).unwrap();   // length
             m.state.stack.push(U256::from(2)).unwrap();  // offset
             m.state.stack.push(U256::from(0)).unwrap();  // dest-offset

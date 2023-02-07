@@ -1,7 +1,5 @@
 use std::fmt::Debug;
 
-use bytes::Bytes;
-
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Outcome {
     #[default]
@@ -15,5 +13,5 @@ pub struct Output {
     /// Indicates the "outcome" of the execution.
     pub outcome: Outcome,
     /// The return data.
-    pub return_data: Bytes,
+    pub return_data: Vec<u8>,
 }

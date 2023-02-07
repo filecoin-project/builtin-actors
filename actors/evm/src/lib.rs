@@ -19,7 +19,6 @@ mod state;
 
 use {
     crate::interpreter::{execute, Bytecode, ExecutionState, System},
-    bytes::Bytes,
     cid::Cid,
     fil_actors_runtime::{
         runtime::{ActorCode, Runtime},
@@ -132,8 +131,7 @@ fn initialize_evm_contract(
 
     // create a new execution context
     let value_received = system.rt.message().value_received();
-    let mut exec_state =
-        ExecutionState::new(caller, receiver_eth_addr, value_received, Bytes::new());
+    let mut exec_state = ExecutionState::new(caller, receiver_eth_addr, value_received, Vec::new());
 
     // identify bytecode valid jump destinations
     let initcode = Bytecode::new(initcode);
@@ -156,7 +154,7 @@ fn initialize_evm_contract(
 
 fn invoke_contract_inner<RT>(
     system: &mut System<RT>,
-    input_data: &[u8],
+    input_data: Vec<u8>,
     bytecode_cid: &Cid,
     caller: &EthAddress,
     value_received: TokenAmount,
@@ -176,7 +174,7 @@ where
     let receiver_eth_addr = system.resolve_ethereum_address(&receiver_fil_addr).unwrap();
 
     let mut exec_state =
-        ExecutionState::new(*caller, receiver_eth_addr, value_received, input_data.to_vec().into());
+        ExecutionState::new(*caller, receiver_eth_addr, value_received, input_data);
 
     let output = execute(&bytecode, &mut exec_state, system)?;
 
@@ -225,16 +223,10 @@ impl EvmContractActor {
         let mut system = System::load(rt).map_err(|e| {
             ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
         })?;
-        invoke_contract_inner(
-            &mut system,
-            &params.input,
-            &params.code,
-            &params.caller,
-            params.value,
-        )
+        invoke_contract_inner(&mut system, params.input, &params.code, &params.caller, params.value)
     }
 
-    pub fn invoke_contract<RT>(rt: &mut RT, input_data: &[u8]) -> Result<Vec<u8>, ActorError>
+    pub fn invoke_contract<RT>(rt: &mut RT, input_data: Vec<u8>) -> Result<Vec<u8>, ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
@@ -267,7 +259,7 @@ impl EvmContractActor {
     {
         let params = args.unwrap_or(IpldBlock { codec: 0, data: vec![] });
         let input = handle_filecoin_method_input(method, params.codec, params.data.as_slice());
-        let output = Self::invoke_contract(rt, &input)?;
+        let output = Self::invoke_contract(rt, input)?;
         handle_filecoin_method_output(&output)
     }
 
@@ -422,7 +414,7 @@ impl ActorCode for EvmContractActor {
                         p
                     }
                 };
-                let value = Self::invoke_contract(rt, &params)?;
+                let value = Self::invoke_contract(rt, params)?;
                 Ok(IpldBlock::serialize_cbor(&BytesSer(&value))?)
             }
             Some(Method::GetBytecode) => {
