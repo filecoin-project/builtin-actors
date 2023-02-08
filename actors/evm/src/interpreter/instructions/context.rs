@@ -384,4 +384,17 @@ mod tests {
         };
     }
 
+    #[test]
+    fn test_caller() {
+        evm_unit_test! {
+            (m) {
+                CALLER;
+            }
+            let addr = EthAddress::from_id(1001);
+            m.state.caller = addr;
+            m.step().expect("execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), addr.as_evm_word());
+        };
+    }
 }
