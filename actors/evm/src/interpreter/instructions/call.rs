@@ -761,8 +761,8 @@ mod tests {
 
                 let params = crate::DelegateCallParams {
                     code: bytecode_cid,
-                    input: input_data.into(),
-                    caller: caller,
+                    input: input_data,
+                    caller,
                     value: TokenAmount::zero(),
                 };
 
