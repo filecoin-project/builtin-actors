@@ -804,4 +804,49 @@ mod tests {
         };
     }
 
+    #[test]
+    fn test_staticcall() {
+        let dest = EthAddress::from_id(1001);
+        let fil_dest = FilAddress::new_id(1001);
+        let input_data = vec![0x01, 0x02, 0x03, 0x04];
+        let output_data = vec![0xCA, 0xFE, 0xBA, 0xBE];
+        evm_unit_test! {
+            (rt) {
+                rt.in_call = true;
+                rt.expect_send(
+                    fil_dest,
+                    crate::Method::InvokeContract as u64,
+                    Some(IpldBlock { codec: IPLD_RAW, data: input_data }),
+                    TokenAmount::zero(),
+                    Some(1_000_000_000),
+                    SendFlags::READ_ONLY,
+                    Some(IpldBlock { codec: IPLD_RAW, data: output_data.clone() }),
+                    ExitCode::OK,
+                    None,
+                );
+                rt.expect_gas_available(10_000_000_000);
+            }
+            (m) {
+                // input data
+                PUSH4; 0x01; 0x02; 0x03; 0x04;
+                PUSH0;
+                MSTORE;
+                // the call
+                STATICCALL;
+            }
+            m.state.stack.push(U256::from(4)).unwrap();  // output size
+            m.state.stack.push(U256::from(0)).unwrap();  // output offset
+            m.state.stack.push(U256::from(4)).unwrap();  // input size
+            m.state.stack.push(U256::from(28)).unwrap(); // input offset
+            m.state.stack.push(dest.as_evm_word()).unwrap();  // dest
+            m.state.stack.push(U256::from(1_000_000_000)).unwrap(); // gas
+            for _ in 0..4 {
+                m.step().expect("execution step failed");
+            }
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(1));
+            assert_eq!(&m.state.return_data, &output_data);
+            assert_eq!(&m.state.memory[0..4], &output_data);
+        };
+    }
 }
