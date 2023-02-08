@@ -522,6 +522,7 @@ mod tests {
         evm_unit_test! {
             (rt) {
                 rt.set_balance(TokenAmount::from_atto(1_000_000));
+                rt.set_origin(fil_beneficiary);
 
                 rt.expect_send(
                     fil_beneficiary,
@@ -541,6 +542,11 @@ mod tests {
             m.state.stack.push(beneficiary.as_evm_word()).unwrap();
             m.step().expect("execution step failed");
             assert!(m.system.tombstone.is_some());
+            assert_eq!(m.system.tombstone.unwrap(),
+                       crate::Tombstone {
+                           origin: 1001,
+                           nonce: 0,
+                       });
         }
     }
 
