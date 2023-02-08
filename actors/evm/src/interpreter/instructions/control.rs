@@ -407,6 +407,8 @@ mod tests {
                 MSTORE;
                 // exit
                 RETURN;
+                // correctness check sled
+                INVALID;
             }
             m.state.stack.push(U256::from(4)).unwrap(); // length
             m.state.stack.push(U256::from(28)).unwrap(); // offset
@@ -427,6 +429,8 @@ mod tests {
                 MSTORE;
                 // exit
                 REVERT;
+                // correctness check sled
+                INVALID;
             }
             m.state.stack.push(U256::from(4)).unwrap(); // length
             m.state.stack.push(U256::from(28)).unwrap(); // offset
