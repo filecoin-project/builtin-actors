@@ -330,4 +330,18 @@ mod tests {
             };
         }
     }
+
+    #[test]
+    fn test_address() {
+        let addr = EthAddress::from_id(1001);
+        evm_unit_test! {
+            (m) {
+                ADDRESS;
+            }
+            m.state.receiver = addr;
+            m.step().expect("execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), addr.as_evm_word());
+        };
+    }
 }
