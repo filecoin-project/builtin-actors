@@ -540,5 +540,4 @@ mod tests {
             assert_eq!(m.state.memory[0..3], m.bytecode[1..4]);
         };
     }
-
 }

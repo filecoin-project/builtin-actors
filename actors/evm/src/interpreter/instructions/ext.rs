@@ -154,18 +154,18 @@ pub fn get_evm_bytecode(
 #[cfg(test)]
 mod tests {
     use crate::evm_unit_test;
-    use fil_actors_evm_shared::uints::U256;
-    use fil_actors_runtime::test_utils::EVM_ACTOR_CODE_ID;
-    use fvm_shared::address::Address as FilAddress;
-    use fvm_shared::sys::SendFlags;
-    use fvm_shared::error::ExitCode;
-    use cid::Cid;
-    use fvm_ipld_encoding::ipld_block::IpldBlock;
-    use fvm_ipld_blockstore::Blockstore;
-    use num_traits::Zero;
-    use fvm_shared::crypto::hash::SupportedHashes;
     use crate::BytecodeHash;
+    use cid::Cid;
+    use fil_actors_evm_shared::uints::U256;
     use fil_actors_runtime::runtime::Primitives;
+    use fil_actors_runtime::test_utils::EVM_ACTOR_CODE_ID;
+    use fvm_ipld_blockstore::Blockstore;
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
+    use fvm_shared::address::Address as FilAddress;
+    use fvm_shared::crypto::hash::SupportedHashes;
+    use fvm_shared::error::ExitCode;
+    use fvm_shared::sys::SendFlags;
+    use num_traits::Zero;
 
     #[test]
     fn test_extcodesize() {
@@ -391,5 +391,4 @@ mod tests {
             assert_eq!(m.state.stack.pop().unwrap(), U256::from(0));
         };
     }
-
 }
