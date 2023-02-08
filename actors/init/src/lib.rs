@@ -33,9 +33,6 @@ pub enum Method {
     Exec4 = 3,
     #[cfg(feature = "m2-native")]
     InstallCode = 4,
-    // Method numbers derived from FRC-0042 standards
-    ExecExported = frc42_dispatch::method_hash!("Exec"),
-    // TODO: Export new methods if appropriate
 }
 
 /// Init actor
@@ -220,7 +217,6 @@ impl ActorCode for Actor {
         Constructor => constructor,
         Exec => exec,
         Exec4 => exec4,
-        ExecExported => exec,
         #[cfg(feature = "m2-native")]
         InstallCode => install,
     }

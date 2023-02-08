@@ -17,7 +17,7 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
+use fvm_shared::{ActorID, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
 use num_traits::Zero;
 use serde::Serialize;
 
@@ -284,69 +284,6 @@ fn sending_constructor_failure() {
     let returned_address = state.resolve_address(&rt.store, &unique_address).unwrap();
     assert_eq!(returned_address, None, "Addresses should have not been found");
     check_state(&rt);
-}
-
-#[test]
-fn exec_restricted_correctly() {
-    let mut rt = construct_runtime();
-    construct_and_verify(&mut rt);
-
-    // set caller to not-builtin
-    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(1000));
-
-    // cannot call the unexported method num
-    let fake_constructor_params =
-        RawBytes::serialize(ConstructorParams { network_name: String::from("fake_param") })
-            .unwrap();
-    let exec_params = ExecParams {
-        code_cid: *MULTISIG_ACTOR_CODE_ID,
-        constructor_params: RawBytes::serialize(fake_constructor_params.clone()).unwrap(),
-    };
-
-    expect_abort_contains_message(
-        ExitCode::USR_FORBIDDEN,
-        "must be built-in",
-        rt.call::<InitActor>(
-            Method::Exec as MethodNum,
-            IpldBlock::serialize_cbor(&exec_params).unwrap(),
-        ),
-    );
-
-    // can call the exported method num
-
-    // Assign addresses
-    let unique_address = Address::new_actor(b"multisig");
-    rt.new_actor_addr = Some(unique_address);
-
-    // Next id
-    let expected_id = 100;
-    let expected_id_addr = Address::new_id(expected_id);
-    rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id, None);
-
-    // Expect a send to the multisig actor constructor
-    rt.expect_send_simple(
-        expected_id_addr,
-        METHOD_CONSTRUCTOR,
-        IpldBlock::serialize_cbor(&fake_constructor_params).unwrap(),
-        TokenAmount::zero(),
-        None,
-        ExitCode::OK,
-    );
-
-    rt.expect_validate_caller_any();
-
-    let ret = rt
-        .call::<InitActor>(
-            Method::ExecExported as u64,
-            IpldBlock::serialize_cbor(&exec_params).unwrap(),
-        )
-        .unwrap()
-        .unwrap();
-    let exec_ret: ExecReturn = ret.deserialize().unwrap();
-    assert_eq!(unique_address, exec_ret.robust_address, "Robust address does not macth");
-    assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
-    check_state(&rt);
-    rt.verify();
 }
 
 #[test]
