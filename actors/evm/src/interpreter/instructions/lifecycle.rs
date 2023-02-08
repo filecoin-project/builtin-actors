@@ -161,3 +161,66 @@ pub fn selfdestruct(
     // 2. Otherwise, we'll successfully return nothing to the caller.
     Ok(Output { outcome: Outcome::Return, return_data: Vec::new() })
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::evm_unit_test;
+    use crate::ext::eam;
+
+    use fil_actors_runtime::EAM_ACTOR_ADDR;
+    use fil_actors_evm_shared::uints::U256;
+    use fvm_shared::error::ExitCode;
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
+    use fvm_shared::sys::SendFlags;
+
+
+    #[test]
+    fn test_create() {
+        let ret_addr = EthAddress(hex_literal::hex!("CAFEB0BA00000000000000000000000000000000"));
+
+        evm_unit_test! {
+            (rt) {
+                rt.set_balance(TokenAmount::from_atto(1_000_000));
+
+                let code = vec![0x01, 0x02, 0x03, 0x04];
+                let nonce = 1;
+                let create_params = eam::CreateParams { code, nonce };
+                let create_ret = eam::CreateReturn {
+                    actor_id: 12345,
+                    eth_address: ret_addr,
+                    robust_address: Some((&ret_addr).try_into().unwrap()),
+                };
+
+                rt.expect_gas_available(10_000_000_000);
+                rt.expect_send(
+                    EAM_ACTOR_ADDR,
+                    eam::CREATE_METHOD_NUM,
+                    IpldBlock::serialize_cbor(&create_params).unwrap(),
+                    TokenAmount::from_atto(1234),
+                    Some(63 * 10_000_000_000 / 64),
+                    SendFlags::empty(),
+                    IpldBlock::serialize_cbor(&create_ret).unwrap(),
+                    ExitCode::OK,
+                    None,
+                );
+            }
+            (m) {
+                // input data
+                PUSH4; 0x01; 0x02; 0x03; 0x04;
+                PUSH0;
+                MSTORE;
+                // the deed
+                CREATE;
+            }
+            m.state.stack.push(U256::from(4)).unwrap();    // input size
+            m.state.stack.push(U256::from(28)).unwrap();   // input offset
+            m.state.stack.push(U256::from(1234)).unwrap(); // initial value
+            for _ in 0..4 {
+                m.step().expect("execution step failed");
+            }
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), ret_addr.as_evm_word());
+        };
+
+    }
+}
