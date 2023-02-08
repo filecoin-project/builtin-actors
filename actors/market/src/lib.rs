@@ -243,11 +243,12 @@ impl Actor {
 
         // We perform these checks before loading state since the call to `AuthenticateMessage` could recurse
         for (di, deal) in params.deals.iter().enumerate() {
-            let mut valid = true;
-            if let Err(e) = validate_deal(rt, deal, &network_raw_power, &baseline_power) {
+            let valid = if let Err(e) = validate_deal(rt, deal, &network_raw_power, &baseline_power) {
                 info!("invalid deal {}: {}", di, e);
-                valid = false;
-            }
+                false
+            } else {
+                true
+            };
 
             validity_index.push(valid);
         }
