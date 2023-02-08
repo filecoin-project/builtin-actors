@@ -45,5 +45,6 @@ rand = "0.8.5"
 once_cell = "1.17.0"
 
 [features]
+hyperspace = []
 fil-actor = ["fil_actors_runtime/fil-actor"]
 m2-native = ["fil_actors_runtime/m2-native"]
