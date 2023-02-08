@@ -378,6 +378,65 @@ mod tests {
     }
 
     #[test]
+    fn test_create_fail_readonly() {
+        evm_unit_test! {
+            (rt) {
+                rt.set_balance(TokenAmount::from_atto(1));
+            }
+            (m) {
+                // input data
+                PUSH4; 0x01; 0x02; 0x03; 0x04;
+                PUSH0;
+                MSTORE;
+                // the deed
+                CREATE;
+            }
+            m.system.readonly = true;
+            m.state.stack.push(U256::from(4)).unwrap();    // input size
+            m.state.stack.push(U256::from(28)).unwrap();   // input offset
+            m.state.stack.push(U256::from(1234)).unwrap(); // initial value
+            for _ in 0..3 {
+                m.step().expect("execution step failed");
+            }
+            let result = m.step();
+            assert!(result.is_err());
+            assert_eq!(result.err().unwrap().exit_code(), ExitCode::USR_READ_ONLY);
+            assert_eq!(m.system.nonce, 1);
+        };
+    }
+
+
+    #[test]
+    fn test_create2_fail_readonly() {
+        evm_unit_test! {
+            (rt) {
+                rt.set_balance(TokenAmount::from_atto(1));
+            }
+            (m) {
+                // input data
+                PUSH4; 0x01; 0x02; 0x03; 0x04;
+                PUSH0;
+                MSTORE;
+                // the deed
+                CREATE2;
+            }
+            m.system.readonly = true;
+            m.state.stack.push(U256::from(0xDEADBEEFu64)).unwrap(); // salt
+            m.state.stack.push(U256::from(4)).unwrap();    // input size
+            m.state.stack.push(U256::from(28)).unwrap();   // input offset
+            m.state.stack.push(U256::from(1234)).unwrap(); // initial value
+            for _ in 0..3 {
+                m.step().expect("execution step failed");
+            }
+            let result = m.step();
+            assert!(result.is_err());
+            assert_eq!(result.err().unwrap().exit_code(), ExitCode::USR_READ_ONLY);
+            assert_eq!(m.system.nonce, 1);
+        };
+    }
+
+
+    #[test]
     fn test_create_err() {
         // this covers the relevant create2 codepath as well (in create_init)
         evm_unit_test! {
