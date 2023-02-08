@@ -6,7 +6,9 @@ use cid::Cid;
 use fil_actor_account::{Actor as AccountActor, State as AccountState};
 use fil_actor_cron::{Actor as CronActor, Entry as CronEntry, State as CronState};
 use fil_actor_datacap::{Actor as DataCapActor, State as DataCapState};
+use fil_actor_eam::EamActor;
 use fil_actor_ethaccount::EthAccountActor;
+use fil_actor_evm::EvmContractActor;
 use fil_actor_init::{Actor as InitActor, ExecReturn, State as InitState};
 use fil_actor_market::{Actor as MarketActor, Method as MarketMethod, State as MarketState};
 use fil_actor_miner::{Actor as MinerActor, MinerInfo, State as MinerState};
@@ -25,9 +27,9 @@ use fil_actors_runtime::runtime::{
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{actor_error, SendError};
 use fil_actors_runtime::{
-    ActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, FIRST_NON_SINGLETON_ADDR, INIT_ACTOR_ADDR,
-    REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
+    ActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, EAM_ACTOR_ADDR, FIRST_NON_SINGLETON_ADDR,
+    INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fil_actors_runtime::{MessageAccumulator, DATACAP_TOKEN_ACTOR_ADDR};
 use fil_builtin_actors_state::check::check_state_invariants;
@@ -40,6 +42,7 @@ use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
 use fvm_shared::address::Address;
 use fvm_shared::address::Payload;
 use fvm_shared::bigint::Zero;
+use fvm_shared::chainid::ChainID;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::hash::SupportedHashes;
@@ -48,6 +51,7 @@ use fvm_shared::crypto::signature::{
 };
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::event::ActorEvent;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::randomness::RANDOMNESS_LENGTH;
@@ -244,6 +248,12 @@ impl<'bs> VM<'bs> {
             actor(*VERIFREG_ACTOR_CODE_ID, verifreg_head, 0, TokenAmount::zero(), None),
         );
 
+        // Ethereum Address Manager
+        v.set_actor(
+            EAM_ACTOR_ADDR,
+            actor(*EAM_ACTOR_CODE_ID, EMPTY_ARR_CID, 0, TokenAmount::zero(), None),
+        );
+
         // datacap
         let datacap_head =
             v.put_store(&DataCapState::new(&v.store, VERIFIED_REGISTRY_ACTOR_ADDR).unwrap());
@@ -424,6 +434,10 @@ impl<'bs> VM<'bs> {
         let mut a = self.get_actor(from_id).unwrap();
         let call_seq = a.call_seq_num;
         a.call_seq_num = call_seq + 1;
+        // EthAccount abstractions turns Placeholders into EthAccounts
+        if a.code == *PLACEHOLDER_ACTOR_CODE_ID {
+            a.code = *ETHACCOUNT_ACTOR_CODE_ID;
+        }
         self.set_actor(from_id, a);
 
         let prior_root = self.checkpoint();
@@ -750,9 +764,8 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             Type::Placeholder => {
                 Err(ActorError::unhandled_message("placeholder actors only handle method 0".into()))
             }
-            Type::EVM => {
-                Err(ActorError::unhandled_message("evm actors are not yet supported".into()))
-            }
+            Type::EVM => EvmContractActor::invoke_method(self, self.msg.method, params),
+            Type::EAM => EamActor::invoke_method(self, self.msg.method, params),
             Type::EthAccount => EthAccountActor::invoke_method(self, self.msg.method, params),
         };
         if res.is_ok() && !self.caller_validated {
@@ -825,6 +838,10 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         self.v.get_epoch()
     }
 
+    fn chain_id(&self) -> ChainID {
+        ChainID::from(0)
+    }
+
     fn validate_immediate_caller_accept_any(&mut self) -> Result<(), ActorError> {
         if self.caller_validated {
             Err(ActorError::unchecked(
@@ -835,6 +852,45 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
             self.caller_validated = true;
             Ok(())
         }
+    }
+
+    fn validate_immediate_caller_namespace<I>(
+        &mut self,
+        namespace_manager_addresses: I,
+    ) -> Result<(), ActorError>
+    where
+        I: IntoIterator<Item = u64>,
+    {
+        if self.caller_validated {
+            return Err(ActorError::unchecked(
+                ExitCode::SYS_ASSERTION_FAILED,
+                "caller double validated".to_string(),
+            ));
+        }
+        let managers: Vec<_> = namespace_manager_addresses.into_iter().collect();
+
+        if let Some(delegated) =
+            self.lookup_delegated_address(self.message().caller().id().unwrap())
+        {
+            for id in managers {
+                if match delegated.payload() {
+                    Payload::Delegated(d) => d.namespace() == id,
+                    _ => false,
+                } {
+                    return Ok(());
+                }
+            }
+        } else {
+            return Err(ActorError::unchecked(
+                ExitCode::SYS_ASSERTION_FAILED,
+                "immediate caller actor expected to have namespace".to_string(),
+            ));
+        }
+
+        Err(ActorError::unchecked(
+            ExitCode::SYS_ASSERTION_FAILED,
+            "immediate caller actor namespace forbidden".to_string(),
+        ))
     }
 
     fn validate_immediate_caller_is<'a, I>(&mut self, addresses: I) -> Result<(), ActorError>
@@ -1055,6 +1111,11 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
 
     fn tipset_cid(&self, _epoch: i64) -> Result<Cid, ActorError> {
         Ok(Cid::new_v1(IPLD_RAW, Multihash::wrap(0, b"faketipset").unwrap()))
+    }
+
+    // TODO No support for events yet.
+    fn emit_event(&self, _event: &ActorEvent) -> Result<(), ActorError> {
+        unimplemented!()
     }
 
     fn read_only(&self) -> bool {

@@ -107,7 +107,7 @@ fn hash_20(rt: &impl Runtime, data: &[u8]) -> [u8; 20] {
 }
 
 fn can_assign_address(addr: &EthAddress) -> bool {
-    !addr.is_id() && !addr.is_null()
+    !addr.is_precompile() && !addr.is_id() && !addr.is_null()
 }
 
 fn create_actor(
@@ -317,6 +317,21 @@ mod test {
 
         // Reject ID.
         let new_addr = EthAddress::from_id(8224);
+        assert_eq!(
+            ExitCode::USR_FORBIDDEN,
+            create_actor(&mut rt, creator, new_addr, Vec::new()).unwrap_err().exit_code()
+        );
+
+        // Reject EVM Precompile.
+        let mut new_addr = EthAddress::null();
+        new_addr.0[19] = 0x20;
+        assert_eq!(
+            ExitCode::USR_FORBIDDEN,
+            create_actor(&mut rt, creator, new_addr, Vec::new()).unwrap_err().exit_code()
+        );
+
+        // Reject Native Precompile.
+        new_addr.0[0] = 0xfe;
         assert_eq!(
             ExitCode::USR_FORBIDDEN,
             create_actor(&mut rt, creator, new_addr, Vec::new()).unwrap_err().exit_code()

@@ -9,11 +9,40 @@ repository = "https://github.com/filecoin-project/builtin-actors"
 keywords = ["filecoin", "web3", "wasm", "evm"]
 exclude = ["/precompile-testdata", "/tests/measurements", "/tests/contracts"]
 
+[lib]
+## lib is necessary for integration tests
+## cdylib is necessary for Wasm build
+crate-type = ["cdylib", "lib"]
+
 [dependencies]
 fil_actors_runtime = { version = "10.0.0-alpha.1", path = "../../runtime" }
+fvm_shared = { version = "3.0.0-alpha.20", default-features = false }
+fvm_ipld_kamt = { version = "0.2.0" }
 serde = { version = "1.0.136", features = ["derive"] }
+serde_tuple = "0.5"
+num-traits = "0.2.14"
+num-derive = "0.3.3"
+cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
+anyhow = "1.0.65"
+log = "0.4.14"
+fvm_ipld_blockstore = "0.1.1"
 fvm_ipld_encoding = "0.3.3"
+multihash = { version = "0.16.1", default-features = false }
+hex = { version = "0.4.3", features = ["serde"] }
+hex-literal = "0.3.4"
+substrate-bn = { version = "0.6.0", default-features = false }
+near-blake2 = { version = "0.9.1", git = "https://github.com/filecoin-project/near-blake2.git" }
+frc42_dispatch = "3.0.1-alpha.2"
 fil_actors_evm_shared = { version = "10.0.0-alpha.1", path = "shared" }
+
+[dev-dependencies]
+lazy_static = "1.4.0"
+fil_actors_runtime = { path = "../../runtime", features = ["test_utils", "sector-default"] }
+etk-asm = "^0.2.1"
+ethers = { version = "1.0.2", features = ["abigen"] }
+serde_json = "1.0"
+rand = "0.8.5"
+once_cell = "1.17.0"
 
 [features]
 fil-actor = ["fil_actors_runtime/fil-actor"]

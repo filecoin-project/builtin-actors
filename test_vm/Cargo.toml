@@ -26,6 +26,7 @@ fil_actor_verifreg = { version = "10.0.0-alpha.1", path = "../actors/verifreg" }
 fil_actor_miner = { version = "10.0.0-alpha.1", path = "../actors/miner" }
 fil_actor_datacap = { version = "10.0.0-alpha.1", path = "../actors/datacap" }
 fil_actor_evm = { version = "10.0.0-alpha.1", path = "../actors/evm" }
+fil_actor_eam = { version = "10.0.0-alpha.1", path = "../actors/eam" }
 fil_actor_ethaccount = { version = "10.0.0-alpha.1", path = "../actors/ethaccount" }
 
 anyhow = "1.0.65"
@@ -50,8 +51,12 @@ rand_chacha = "0.3.1"
 regex = "1"
 serde = { version = "1.0.136", features = ["derive"] }
 thiserror = "1.0.30"
+fil_actors_evm_shared = { version = "10.0.0-alpha.1", path = "../actors/evm/shared" }
 
 [dev-dependencies]
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 multihash = { version = "0.16.1", default-features = false }
 test-case = "2.2.1"
+ethers = { version = "0.17.0", features = ["abigen"] }
+hex = "0.4.3"
+hex-literal = "0.3.4"

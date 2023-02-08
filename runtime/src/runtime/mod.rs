@@ -45,6 +45,8 @@ pub(crate) mod empty;
 
 pub use empty::EMPTY_ARR_CID;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::chainid::ChainID;
+use fvm_shared::event::ActorEvent;
 use fvm_shared::sys::SendFlags;
 use multihash::Code;
 
@@ -63,12 +65,23 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// The genesis block has epoch zero.
     fn curr_epoch(&self) -> ChainEpoch;
 
+    /// The ID for the EVM-based chain, as defined in https://github.com/ethereum-lists/chains.
+    fn chain_id(&self) -> ChainID;
+
     /// Validates the caller against some predicate.
     /// Exported actor methods must invoke at least one caller validation before returning.
     fn validate_immediate_caller_accept_any(&mut self) -> Result<(), ActorError>;
     fn validate_immediate_caller_is<'a, I>(&mut self, addresses: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Address>;
+    /// Validates the caller is a member of a namespace.
+    /// Addresses must be of Protocol ID.
+    fn validate_immediate_caller_namespace<I>(
+        &mut self,
+        namespace_manager_addresses: I,
+    ) -> Result<(), ActorError>
+    where
+        I: IntoIterator<Item = u64>;
     fn validate_immediate_caller_type<'a, I>(&mut self, types: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Type>;
@@ -234,6 +247,9 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// The CID of the tipset at the specified epoch.
     /// The epoch must satisfy: (curr_epoch - FINALITY) < epoch <= curr_epoch
     fn tipset_cid(&self, epoch: i64) -> Result<Cid, ActorError>;
+
+    /// Emits an event denoting that something externally noteworthy has ocurred.
+    fn emit_event(&self, event: &ActorEvent) -> Result<(), ActorError>;
 
     /// Returns true if the call is read_only.
     /// All state updates, including actor creation and balance transfers, are rejected in read_only calls.
