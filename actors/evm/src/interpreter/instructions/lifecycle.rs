@@ -224,6 +224,60 @@ mod tests {
     }
 
     #[test]
+    fn test_create2() {
+        let ret_addr = EthAddress(hex_literal::hex!("CAFEB0BA00000000000000000000000000000000"));
+
+        evm_unit_test! {
+            (rt) {
+                rt.set_balance(TokenAmount::from_atto(1_000_000));
+
+                let code = vec![0x01, 0x02, 0x03, 0x04];
+                let mut salt = [0u8; 32];
+                salt[28] = 0xDE;
+                salt[29] = 0xAD;
+                salt[30] = 0xBE;
+                salt[31] = 0xEF;
+                let create_params = eam::Create2Params { code, salt };
+                let create_ret = eam::CreateReturn {
+                    actor_id: 12345,
+                    eth_address: ret_addr,
+                    robust_address: Some((&ret_addr).try_into().unwrap()),
+                };
+
+                rt.expect_gas_available(10_000_000_000);
+                rt.expect_send(
+                    EAM_ACTOR_ADDR,
+                    eam::CREATE2_METHOD_NUM,
+                    IpldBlock::serialize_cbor(&create_params).unwrap(),
+                    TokenAmount::from_atto(1234),
+                    Some(63 * 10_000_000_000 / 64),
+                    SendFlags::empty(),
+                    IpldBlock::serialize_cbor(&create_ret).unwrap(),
+                    ExitCode::OK,
+                    None,
+                );
+            }
+            (m) {
+                // input data
+                PUSH4; 0x01; 0x02; 0x03; 0x04;
+                PUSH0;
+                MSTORE;
+                // the deed
+                CREATE2;
+            }
+            m.state.stack.push(U256::from(0xDEADBEEFu64)).unwrap(); // salt
+            m.state.stack.push(U256::from(4)).unwrap();          // input size
+            m.state.stack.push(U256::from(28)).unwrap();         // input offset
+            m.state.stack.push(U256::from(1234)).unwrap();       // initial value
+            for _ in 0..4 {
+                m.step().expect("execution step failed");
+            }
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), ret_addr.as_evm_word());
+        };
+    }
+
+    #[test]
     fn test_create_fail_eam() {
         evm_unit_test! {
             (rt) {
