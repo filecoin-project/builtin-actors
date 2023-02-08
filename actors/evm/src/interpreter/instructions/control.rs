@@ -396,4 +396,60 @@ mod tests {
             assert_eq!(result.err().unwrap().exit_code(), EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS);
         };
     }
+
+    #[test]
+    fn test_return() {
+        evm_unit_test! {
+            (m) {
+                // output data
+                PUSH4; 0x01; 0x02; 0x03; 0x04;
+                PUSH0;
+                MSTORE;
+                // exit
+                RETURN;
+                // correctness check sled
+                INVALID;
+            }
+            m.state.stack.push(U256::from(4)).unwrap(); // length
+            m.state.stack.push(U256::from(28)).unwrap(); // offset
+            let result = m.execute().expect("execution failed");
+            assert_eq!(result.outcome, crate::Outcome::Return);
+            let expected_data = vec![0x01, 0x02, 0x03, 0x04];
+            assert_eq!(&result.return_data, &expected_data);
+        };
+    }
+
+    #[test]
+    fn test_revert() {
+        evm_unit_test! {
+            (m) {
+                // output data
+                PUSH4; 0x01; 0x02; 0x03; 0x04;
+                PUSH0;
+                MSTORE;
+                // exit
+                REVERT;
+                // correctness check sled
+                INVALID;
+            }
+            m.state.stack.push(U256::from(4)).unwrap(); // length
+            m.state.stack.push(U256::from(28)).unwrap(); // offset
+            let result = m.execute().expect("execution failed");
+            assert_eq!(result.outcome, crate::Outcome::Revert);
+            let expected_data = vec![0x01, 0x02, 0x03, 0x04];
+            assert_eq!(&result.return_data, &expected_data);
+        };
+    }
+
+    #[test]
+    fn test_invalid() {
+        evm_unit_test! {
+            (m) {
+                INVALID;
+            }
+            let result = m.step();
+            assert!(result.is_err(), "execution succeeded");
+            assert_eq!(result.err().unwrap().exit_code(), crate::EVM_CONTRACT_INVALID_INSTRUCTION);
+        };
+    }
 }
