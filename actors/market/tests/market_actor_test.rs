@@ -942,7 +942,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
         notify_param,
         TokenAmount::zero(),
         None,
-        ExitCode::USR_UNHANDLED_MESSAGE,
+        ExitCode::OK,
     );
 
     let ret: PublishStorageDealsReturn = rt
@@ -1997,7 +1997,7 @@ fn insufficient_client_balance_in_a_batch() {
         notify_param2,
         TokenAmount::zero(),
         None,
-        ExitCode::USR_UNHANDLED_MESSAGE,
+        ExitCode::OK,
     );
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
@@ -2137,7 +2137,7 @@ fn insufficient_provider_balance_in_a_batch() {
         notify_param2,
         TokenAmount::zero(),
         None,
-        ExitCode::USR_UNHANDLED_MESSAGE,
+        ExitCode::OK,
     );
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
@@ -2280,7 +2280,7 @@ fn psd_restricted_correctly() {
         notify_param,
         TokenAmount::zero(),
         None,
-        ExitCode::USR_UNHANDLED_MESSAGE,
+        ExitCode::OK,
     );
 
     let ret: PublishStorageDealsReturn = rt

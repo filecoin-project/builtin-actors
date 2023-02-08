@@ -244,7 +244,7 @@ impl Actor {
         // We perform these checks before loading state since the call to `AuthenticateMessage` could recurse
         for (di, deal) in params.deals.iter().enumerate() {
             let mut valid = true;
-            if let Err(e) = validate_deal(rt, &deal, &network_raw_power, &baseline_power) {
+            if let Err(e) = validate_deal(rt, deal, &network_raw_power, &baseline_power) {
                 info!("invalid deal {}: {}", di, e);
                 valid = false;
             }
@@ -475,7 +475,7 @@ impl Actor {
                 })?,
                 TokenAmount::zero(),
             ))
-            .with_context(|| {
+            .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
                 format!("failed to notify deal with proposal cid {}", valid_deal.cid)
             })?;
         }

@@ -608,7 +608,7 @@ pub fn publish_deals(
             params,
             TokenAmount::zero(),
             None,
-            ExitCode::USR_UNHANDLED_MESSAGE,
+            ExitCode::OK,
         );
         deal_id += 1;
     }

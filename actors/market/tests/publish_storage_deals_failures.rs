@@ -3,7 +3,7 @@
 
 use fil_actor_market::policy::deal_provider_collateral_bounds;
 use fil_actor_market::{
-    Actor as MarketActor, ClientDealProposal, DealProposal, MarketNotifyDealParams, Method,
+    ext, Actor as MarketActor, ClientDealProposal, DealProposal, MarketNotifyDealParams, Method,
     PublishStorageDealsParams, PublishStorageDealsReturn, State, MARKET_NOTIFY_DEAL_METHOD,
 };
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
@@ -373,7 +373,7 @@ fn fail_when_deals_have_different_providers() {
         notify_param1,
         TokenAmount::zero(),
         None,
-        ExitCode::USR_UNHANDLED_MESSAGE,
+        ExitCode::OK,
     );
 
     let psd_ret: PublishStorageDealsReturn = rt
@@ -477,6 +477,78 @@ fn fails_if_provider_is_not_a_storage_miner_actor() {
 
     rt.expect_validate_caller_any();
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+    expect_abort(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        rt.call::<MarketActor>(
+            Method::PublishStorageDeals as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        ),
+    );
+
+    rt.verify();
+    check_state(&rt);
+}
+
+#[test]
+fn fails_if_notify_deal_fails() {
+    let mut rt = setup();
+
+    let deal = generate_deal_and_add_funds(
+        &mut rt,
+        CLIENT_ADDR,
+        &MinerAddresses::default(),
+        ChainEpoch::from(42),
+        200 * EPOCHS_IN_DAY,
+    );
+
+    let buf = RawBytes::serialize(deal.clone()).expect("failed to marshal deal proposal");
+    let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
+    let params = PublishStorageDealsParams {
+        deals: vec![ClientDealProposal { proposal: deal, client_signature: sig.clone() }],
+    };
+
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+    rt.expect_validate_caller_any();
+
+    rt.expect_send_simple(
+        PROVIDER_ADDR,
+        ext::miner::IS_CONTROLLING_ADDRESS_EXPORTED,
+        IpldBlock::serialize_cbor(&ext::miner::IsControllingAddressParam { address: rt.caller })
+            .unwrap(),
+        TokenAmount::zero(),
+        IpldBlock::serialize_cbor(&ext::miner::IsControllingAddressReturn { is_controlling: true })
+            .unwrap(),
+        ExitCode::OK,
+    );
+    expect_query_network_info(&mut rt);
+
+    rt.expect_send(
+        CLIENT_ADDR,
+        AUTHENTICATE_MESSAGE_METHOD as u64,
+        IpldBlock::serialize_cbor(&AuthenticateMessageParams {
+            signature: sig.bytes,
+            message: buf.to_vec(),
+        })
+        .unwrap(),
+        TokenAmount::zero(),
+        None,
+        SendFlags::READ_ONLY,
+        None,
+        ExitCode::OK,
+        None,
+    );
+
+    rt.expect_send_simple(
+        CLIENT_ADDR,
+        MARKET_NOTIFY_DEAL_METHOD,
+        IpldBlock::serialize_cbor(&MarketNotifyDealParams { proposal: buf.to_vec(), deal_id: 0 })
+            .unwrap(),
+        TokenAmount::zero(),
+        None,
+        // the exit code of the notify method doesn't matter, so long as it's a failure
+        ExitCode::USR_INSUFFICIENT_FUNDS,
+    );
+
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MarketActor>(
