@@ -152,9 +152,9 @@ mod tests {
     use crate::evm_unit_test;
     use cid::Cid;
     use fil_actors_evm_shared::uints::U256;
+    use fil_actors_runtime::EAM_ACTOR_ID;
     use fvm_ipld_encoding::{DAG_CBOR, IPLD_RAW};
     use fvm_shared::address::Address as FilAddress;
-    use fil_actors_runtime::EAM_ACTOR_ID;
 
     #[test]
     fn test_blockhash() {
@@ -433,5 +433,4 @@ mod tests {
             assert_eq!(m.state.stack.pop().unwrap(), U256::from(1234000));
         };
     }
-
 }
