@@ -342,6 +342,12 @@ fn effective_gas_limit<RT: Runtime>(system: &System<RT>, gas: U256) -> u64 {
 mod tests {
     use crate::evm_unit_test;
     use fil_actors_evm_shared::uints::U256;
+    use fvm_shared::address::Address as FilAddress;
+    use fvm_shared::sys::SendFlags;
+    use fvm_shared::error::ExitCode;
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
+    use fvm_ipld_encoding::IPLD_RAW;
+    use num_traits::Zero;
 
     #[test]
     fn test_calldataload() {
@@ -538,6 +544,53 @@ mod tests {
             assert!(result.is_ok(), "execution step failed");
             assert_eq!(m.state.stack.len(), 0);
             assert_eq!(m.state.memory[0..3], m.bytecode[1..4]);
+        };
+    }
+
+    #[test]
+    fn test_call() {
+        let dest = EthAddress::from_id(1001);
+        let fil_dest = FilAddress::new_id(1001);
+        let input_data = vec![0x01, 0x02, 0x03, 0x04];
+        let output_data = vec![0xCA, 0xFE, 0xBA, 0xBE];
+        evm_unit_test! {
+            (rt) {
+                rt.in_call = true;
+                rt.expect_send(
+                    fil_dest,
+                    crate::Method::InvokeContract as u64,
+                    Some(IpldBlock { codec: IPLD_RAW, data: input_data }),
+                    TokenAmount::zero(),
+                    Some(1_000_000_000),
+                    SendFlags::empty(),
+                    Some(IpldBlock { codec: IPLD_RAW, data: output_data.clone() }),
+                    ExitCode::OK,
+                    None,
+                );
+                rt.expect_gas_available(10_000_000_000);
+            }
+            (m) {
+                // input data
+                PUSH4; 0x01; 0x02; 0x03; 0x04;
+                PUSH0;
+                MSTORE;
+                // the call
+                CALL;
+            }
+            m.state.stack.push(U256::from(4)).unwrap();  // output size
+            m.state.stack.push(U256::from(0)).unwrap();  // output offset
+            m.state.stack.push(U256::from(4)).unwrap();  // input size
+            m.state.stack.push(U256::from(28)).unwrap(); // input offset
+            m.state.stack.push(U256::from(0)).unwrap();  // value
+            m.state.stack.push(dest.as_evm_word()).unwrap();  // dest
+            m.state.stack.push(U256::from(1_000_000_000)).unwrap(); // gas
+            for _ in 0..4 {
+                m.step().expect("execution step failed");
+            }
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(1));
+            assert_eq!(&m.state.return_data, &output_data);
+            assert_eq!(&m.state.memory[0..4], &output_data);
         };
     }
 }
