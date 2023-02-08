@@ -167,13 +167,13 @@ mod tests {
     use crate::evm_unit_test;
     use crate::ext::eam;
 
-    use fil_actors_runtime::EAM_ACTOR_ADDR;
     use fil_actors_evm_shared::uints::U256;
-    use fvm_shared::error::{ExitCode, ErrorNumber};
+    use fil_actors_runtime::EAM_ACTOR_ADDR;
     use fvm_ipld_encoding::ipld_block::IpldBlock;
+    use fvm_shared::address::Address as FilAddress;
+    use fvm_shared::error::{ErrorNumber, ExitCode};
     use fvm_shared::sys::SendFlags;
     use fvm_shared::METHOD_SEND;
-    use fvm_shared::address::Address as FilAddress;
 
     #[test]
     fn test_create() {
@@ -481,7 +481,6 @@ mod tests {
         }
     }
 
-
     #[test]
     fn test_selfdestruct_fail() {
         // tests the outcome of selfdestruct
@@ -513,5 +512,4 @@ mod tests {
             assert_eq!(result.err().unwrap().exit_code(), crate::EVM_CONTRACT_SELFDESTRUCT_FAILED);
         }
     }
-
 }
