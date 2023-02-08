@@ -341,16 +341,16 @@ fn effective_gas_limit<RT: Runtime>(system: &System<RT>, gas: U256) -> u64 {
 #[cfg(test)]
 mod tests {
     use crate::evm_unit_test;
+    use cid::Cid;
     use fil_actors_evm_shared::uints::U256;
-    use fvm_shared::address::Address as FilAddress;
-    use fvm_shared::sys::SendFlags;
-    use fvm_shared::error::{ExitCode, ErrorNumber};
+    use fil_actors_runtime::test_utils::EVM_ACTOR_CODE_ID;
+    use fvm_ipld_blockstore::Blockstore;
     use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_ipld_encoding::IPLD_RAW;
+    use fvm_shared::address::Address as FilAddress;
+    use fvm_shared::error::{ErrorNumber, ExitCode};
+    use fvm_shared::sys::SendFlags;
     use num_traits::Zero;
-    use fil_actors_runtime::test_utils::EVM_ACTOR_CODE_ID;
-    use cid::Cid;
-    use fvm_ipld_blockstore::Blockstore;
 
     #[test]
     fn test_calldataload() {

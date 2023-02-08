@@ -448,5 +448,4 @@ mod tests {
             assert_eq!(result.err().unwrap().exit_code(), crate::EVM_CONTRACT_INVALID_INSTRUCTION);
         };
     }
-
 }
