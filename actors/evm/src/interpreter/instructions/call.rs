@@ -467,4 +467,20 @@ mod tests {
             assert_eq!(&*m.state.memory, &expected);
         };
     }
+
+    #[test]
+    fn test_codesize() {
+        evm_unit_test! {
+            (m) {
+                CODESIZE;
+                JUMPDEST;
+                JUMPDEST;
+                JUMPDEST;
+            }
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(4));
+        };
+    }
 }
