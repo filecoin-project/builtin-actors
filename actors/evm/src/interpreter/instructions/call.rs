@@ -348,6 +348,9 @@ mod tests {
     use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_ipld_encoding::IPLD_RAW;
     use num_traits::Zero;
+    use fil_actors_runtime::test_utils::EVM_ACTOR_CODE_ID;
+    use cid::Cid;
+    use fvm_ipld_blockstore::Blockstore;
 
     #[test]
     fn test_calldataload() {
@@ -725,4 +728,80 @@ mod tests {
             assert_eq!(&m.state.memory[..], &output_data);
         };
     }
+
+    #[test]
+    fn test_delegatecall() {
+        let receiver = FilAddress::new_id(1000);
+        let dest = EthAddress::from_id(1001);
+        let caller = EthAddress::from_id(1002);
+        let fil_dest = FilAddress::new_id(1001);
+        let input_data = vec![0x01, 0x02, 0x03, 0x04];
+        let output_data = vec![0xCA, 0xFE, 0xBA, 0xBE];
+        evm_unit_test! {
+            (rt) {
+                rt.in_call = true;
+                rt.receiver = receiver;
+                rt.set_address_actor_type(fil_dest, *EVM_ACTOR_CODE_ID);
+
+                let bytecode = vec![0xFE, 0xED, 0x43, 0x33];
+                let bytecode_cid = Cid::try_from("baeaikaia").unwrap();
+                rt.store.put_keyed(&bytecode_cid, bytecode.as_slice()).unwrap();
+
+                rt.expect_send(
+                    fil_dest,
+                    crate::Method::GetBytecode as u64,
+                    Default::default(),
+                    TokenAmount::zero(),
+                    None,
+                    SendFlags::READ_ONLY,
+                    IpldBlock::serialize_cbor(&bytecode_cid).unwrap(),
+                    ExitCode::OK,
+                    None,
+                );
+
+                let params = crate::DelegateCallParams {
+                    code: bytecode_cid,
+                    input: input_data.into(),
+                    caller: caller,
+                    value: TokenAmount::zero(),
+                };
+
+                rt.expect_send(
+                    receiver,
+                    crate::Method::InvokeContractDelegate as u64,
+                    IpldBlock::serialize_dag_cbor(&params).unwrap(),
+                    TokenAmount::zero(),
+                    Some(1_000_000_000),
+                    SendFlags::empty(),
+                    Some(IpldBlock { codec: IPLD_RAW, data: output_data.clone() }),
+                    ExitCode::OK,
+                    None,
+                );
+                rt.expect_gas_available(10_000_000_000);
+            }
+            (m) {
+                // input data
+                PUSH4; 0x01; 0x02; 0x03; 0x04;
+                PUSH0;
+                MSTORE;
+                // the call
+                DELEGATECALL;
+            }
+            m.state.caller = caller;
+            m.state.stack.push(U256::from(4)).unwrap();  // output size
+            m.state.stack.push(U256::from(0)).unwrap();  // output offset
+            m.state.stack.push(U256::from(4)).unwrap();  // input size
+            m.state.stack.push(U256::from(28)).unwrap(); // input offset
+            m.state.stack.push(dest.as_evm_word()).unwrap();  // dest
+            m.state.stack.push(U256::from(1_000_000_000)).unwrap(); // gas
+            for _ in 0..4 {
+                m.step().expect("execution step failed");
+            }
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(1));
+            assert_eq!(&m.state.return_data, &output_data);
+            assert_eq!(&m.state.memory[0..4], &output_data);
+        };
+    }
+
 }
