@@ -279,6 +279,7 @@ mod tests {
 
     #[test]
     fn test_create_fail_eam() {
+        // this covers the relevant create2 codepath as well (in create_init)
         evm_unit_test! {
             (rt) {
                 rt.set_balance(TokenAmount::from_atto(1_000_000));
@@ -345,7 +346,34 @@ mod tests {
     }
 
     #[test]
+    fn test_create2_fail_nofunds() {
+        evm_unit_test! {
+            (rt) {
+                rt.set_balance(TokenAmount::from_atto(1));
+            }
+            (m) {
+                // input data
+                PUSH4; 0x01; 0x02; 0x03; 0x04;
+                PUSH0;
+                MSTORE;
+                // the deed
+                CREATE2;
+            }
+            m.state.stack.push(U256::from(0xDEADBEEFu64)).unwrap(); // salt
+            m.state.stack.push(U256::from(4)).unwrap();    // input size
+            m.state.stack.push(U256::from(28)).unwrap();   // input offset
+            m.state.stack.push(U256::from(1234)).unwrap(); // initial value
+            for _ in 0..4 {
+                m.step().expect("execution step failed");
+            }
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(0));
+        };
+    }
+
+    #[test]
     fn test_create_err() {
+        // this covers the relevant create2 codepath as well (in create_init)
         evm_unit_test! {
             (rt) {
                 rt.set_balance(TokenAmount::from_atto(1_000_000));
