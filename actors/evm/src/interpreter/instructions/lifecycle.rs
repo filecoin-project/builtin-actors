@@ -161,3 +161,424 @@ pub fn selfdestruct(
     // 2. Otherwise, we'll successfully return nothing to the caller.
     Ok(Output { outcome: Outcome::Return, return_data: Vec::new() })
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::evm_unit_test;
+    use crate::ext::eam;
+
+    use fil_actors_evm_shared::uints::U256;
+    use fil_actors_runtime::EAM_ACTOR_ADDR;
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
+    use fvm_shared::address::Address as FilAddress;
+    use fvm_shared::error::{ErrorNumber, ExitCode};
+    use fvm_shared::sys::SendFlags;
+    use fvm_shared::METHOD_SEND;
+
+    #[test]
+    fn test_create() {
+        let ret_addr = EthAddress(hex_literal::hex!("CAFEB0BA00000000000000000000000000000000"));
+
+        evm_unit_test! {
+            (rt) {
+                rt.set_balance(TokenAmount::from_atto(1_000_000));
+
+                let code = vec![0x01, 0x02, 0x03, 0x04];
+                let nonce = 1;
+                let create_params = eam::CreateParams { code, nonce };
+                let create_ret = eam::CreateReturn {
+                    actor_id: 12345,
+                    eth_address: ret_addr,
+                    robust_address: Some((&ret_addr).try_into().unwrap()),
+                };
+
+                rt.expect_gas_available(10_000_000_000);
+                rt.expect_send(
+                    EAM_ACTOR_ADDR,
+                    eam::CREATE_METHOD_NUM,
+                    IpldBlock::serialize_cbor(&create_params).unwrap(),
+                    TokenAmount::from_atto(1234),
+                    Some(63 * 10_000_000_000 / 64),
+                    SendFlags::empty(),
+                    IpldBlock::serialize_cbor(&create_ret).unwrap(),
+                    ExitCode::OK,
+                    None,
+                );
+            }
+            (m) {
+                // input data
+                PUSH4; 0x01; 0x02; 0x03; 0x04;
+                PUSH0;
+                MSTORE;
+                // the deed
+                CREATE;
+            }
+            m.state.stack.push(U256::from(4)).unwrap();    // input size
+            m.state.stack.push(U256::from(28)).unwrap();   // input offset
+            m.state.stack.push(U256::from(1234)).unwrap(); // initial value
+            for _ in 0..4 {
+                m.step().expect("execution step failed");
+            }
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), ret_addr.as_evm_word());
+            assert_eq!(m.system.nonce, 2);
+        };
+    }
+
+    #[test]
+    fn test_create2() {
+        let ret_addr = EthAddress(hex_literal::hex!("CAFEB0BA00000000000000000000000000000000"));
+
+        evm_unit_test! {
+            (rt) {
+                rt.set_balance(TokenAmount::from_atto(1_000_000));
+
+                let code = vec![0x01, 0x02, 0x03, 0x04];
+                let mut salt = [0u8; 32];
+                salt[28] = 0xDE;
+                salt[29] = 0xAD;
+                salt[30] = 0xBE;
+                salt[31] = 0xEF;
+                let create_params = eam::Create2Params { code, salt };
+                let create_ret = eam::CreateReturn {
+                    actor_id: 12345,
+                    eth_address: ret_addr,
+                    robust_address: Some((&ret_addr).try_into().unwrap()),
+                };
+
+                rt.expect_gas_available(10_000_000_000);
+                rt.expect_send(
+                    EAM_ACTOR_ADDR,
+                    eam::CREATE2_METHOD_NUM,
+                    IpldBlock::serialize_cbor(&create_params).unwrap(),
+                    TokenAmount::from_atto(1234),
+                    Some(63 * 10_000_000_000 / 64),
+                    SendFlags::empty(),
+                    IpldBlock::serialize_cbor(&create_ret).unwrap(),
+                    ExitCode::OK,
+                    None,
+                );
+            }
+            (m) {
+                // input data
+                PUSH4; 0x01; 0x02; 0x03; 0x04;
+                PUSH0;
+                MSTORE;
+                // the deed
+                CREATE2;
+            }
+            m.state.stack.push(U256::from(0xDEADBEEFu64)).unwrap(); // salt
+            m.state.stack.push(U256::from(4)).unwrap();          // input size
+            m.state.stack.push(U256::from(28)).unwrap();         // input offset
+            m.state.stack.push(U256::from(1234)).unwrap();       // initial value
+            for _ in 0..4 {
+                m.step().expect("execution step failed");
+            }
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), ret_addr.as_evm_word());
+            assert_eq!(m.system.nonce, 2);
+        };
+    }
+
+    #[test]
+    fn test_create_fail_eam() {
+        // this covers the relevant create2 codepath as well (in create_init)
+        evm_unit_test! {
+            (rt) {
+                rt.set_balance(TokenAmount::from_atto(1_000_000));
+
+                let code = vec![0x01, 0x02, 0x03, 0x04];
+                let nonce = 1;
+                let create_params = eam::CreateParams { code, nonce };
+
+                rt.expect_gas_available(10_000_000_000);
+                rt.expect_send(
+                    EAM_ACTOR_ADDR,
+                    eam::CREATE_METHOD_NUM,
+                    IpldBlock::serialize_cbor(&create_params).unwrap(),
+                    TokenAmount::from_atto(1234),
+                    Some(63 * 10_000_000_000 / 64),
+                    SendFlags::empty(),
+                    None,
+                    ExitCode::USR_FORBIDDEN,
+                    None,
+                );
+            }
+            (m) {
+                // input data
+                PUSH4; 0x01; 0x02; 0x03; 0x04;
+                PUSH0;
+                MSTORE;
+                // the deed
+                CREATE;
+            }
+            m.state.stack.push(U256::from(4)).unwrap();    // input size
+            m.state.stack.push(U256::from(28)).unwrap();   // input offset
+            m.state.stack.push(U256::from(1234)).unwrap(); // initial value
+            for _ in 0..4 {
+                m.step().expect("execution step failed");
+            }
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(0));
+            assert_eq!(m.system.nonce, 2);
+        };
+    }
+
+    #[test]
+    fn test_create_fail_nofunds() {
+        evm_unit_test! {
+            (rt) {
+                rt.set_balance(TokenAmount::from_atto(1));
+            }
+            (m) {
+                // input data
+                PUSH4; 0x01; 0x02; 0x03; 0x04;
+                PUSH0;
+                MSTORE;
+                // the deed
+                CREATE;
+            }
+            m.state.stack.push(U256::from(4)).unwrap();    // input size
+            m.state.stack.push(U256::from(28)).unwrap();   // input offset
+            m.state.stack.push(U256::from(1234)).unwrap(); // initial value
+            for _ in 0..4 {
+                m.step().expect("execution step failed");
+            }
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(0));
+            assert_eq!(m.system.nonce, 1);
+        };
+    }
+
+    #[test]
+    fn test_create2_fail_nofunds() {
+        evm_unit_test! {
+            (rt) {
+                rt.set_balance(TokenAmount::from_atto(1));
+            }
+            (m) {
+                // input data
+                PUSH4; 0x01; 0x02; 0x03; 0x04;
+                PUSH0;
+                MSTORE;
+                // the deed
+                CREATE2;
+            }
+            m.state.stack.push(U256::from(0xDEADBEEFu64)).unwrap(); // salt
+            m.state.stack.push(U256::from(4)).unwrap();    // input size
+            m.state.stack.push(U256::from(28)).unwrap();   // input offset
+            m.state.stack.push(U256::from(1234)).unwrap(); // initial value
+            for _ in 0..4 {
+                m.step().expect("execution step failed");
+            }
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(0));
+            assert_eq!(m.system.nonce, 1);
+        };
+    }
+
+    #[test]
+    fn test_create_fail_readonly() {
+        evm_unit_test! {
+            (rt) {
+                rt.set_balance(TokenAmount::from_atto(1));
+            }
+            (m) {
+                // input data
+                PUSH4; 0x01; 0x02; 0x03; 0x04;
+                PUSH0;
+                MSTORE;
+                // the deed
+                CREATE;
+            }
+            m.system.readonly = true;
+            m.state.stack.push(U256::from(4)).unwrap();    // input size
+            m.state.stack.push(U256::from(28)).unwrap();   // input offset
+            m.state.stack.push(U256::from(1234)).unwrap(); // initial value
+            for _ in 0..3 {
+                m.step().expect("execution step failed");
+            }
+            let result = m.step();
+            assert!(result.is_err());
+            assert_eq!(result.err().unwrap().exit_code(), ExitCode::USR_READ_ONLY);
+            assert_eq!(m.system.nonce, 1);
+        };
+    }
+
+    #[test]
+    fn test_create2_fail_readonly() {
+        evm_unit_test! {
+            (rt) {
+                rt.set_balance(TokenAmount::from_atto(1));
+            }
+            (m) {
+                // input data
+                PUSH4; 0x01; 0x02; 0x03; 0x04;
+                PUSH0;
+                MSTORE;
+                // the deed
+                CREATE2;
+            }
+            m.system.readonly = true;
+            m.state.stack.push(U256::from(0xDEADBEEFu64)).unwrap(); // salt
+            m.state.stack.push(U256::from(4)).unwrap();    // input size
+            m.state.stack.push(U256::from(28)).unwrap();   // input offset
+            m.state.stack.push(U256::from(1234)).unwrap(); // initial value
+            for _ in 0..3 {
+                m.step().expect("execution step failed");
+            }
+            let result = m.step();
+            assert!(result.is_err());
+            assert_eq!(result.err().unwrap().exit_code(), ExitCode::USR_READ_ONLY);
+            assert_eq!(m.system.nonce, 1);
+        };
+    }
+
+    #[test]
+    fn test_create_err() {
+        // this covers the relevant create2 codepath as well (in create_init)
+        evm_unit_test! {
+            (rt) {
+                rt.set_balance(TokenAmount::from_atto(1_000_000));
+
+                let code = vec![0x01, 0x02, 0x03, 0x04];
+                let nonce = 1;
+                let create_params = eam::CreateParams { code, nonce };
+
+                rt.expect_gas_available(10_000_000_000);
+                rt.expect_send(
+                    EAM_ACTOR_ADDR,
+                    eam::CREATE_METHOD_NUM,
+                    IpldBlock::serialize_cbor(&create_params).unwrap(),
+                    TokenAmount::from_atto(1234),
+                    Some(63 * 10_000_000_000 / 64),
+                    SendFlags::empty(),
+                    None,
+                    ExitCode::OK,
+                    Some(ErrorNumber::IllegalOperation),
+                );
+            }
+            (m) {
+                // input data
+                PUSH4; 0x01; 0x02; 0x03; 0x04;
+                PUSH0;
+                MSTORE;
+                // the deed
+                CREATE;
+            }
+            m.state.stack.push(U256::from(4)).unwrap();    // input size
+            m.state.stack.push(U256::from(28)).unwrap();   // input offset
+            m.state.stack.push(U256::from(1234)).unwrap(); // initial value
+            for _ in 0..4 {
+                m.step().expect("execution step failed");
+            }
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(0));
+            assert_eq!(m.system.nonce, 2);
+        };
+    }
+
+    #[test]
+    fn test_selfdestruct() {
+        // tests the outcome of selfdestruct
+        let beneficiary = EthAddress::from_id(1001);
+        let fil_beneficiary = FilAddress::new_id(1001);
+
+        evm_unit_test! {
+            (rt) {
+                rt.set_balance(TokenAmount::from_atto(1_000_000));
+
+                rt.expect_send(
+                    fil_beneficiary,
+                    METHOD_SEND,
+                    None,
+                    TokenAmount::from_atto(1_000_000),
+                    None,
+                    SendFlags::empty(),
+                    None,
+                    ExitCode::OK,
+                    None,
+                );
+            }
+            (m) {
+                SELFDESTRUCT;
+                // correctness check sled
+                INVALID;
+            }
+            m.state.stack.push(beneficiary.as_evm_word()).unwrap();
+            let result = m.execute().expect("execution failed");
+            assert_eq!(result.outcome, crate::Outcome::Return);
+            assert_eq!(result.return_data.len(), 0);
+        }
+    }
+
+    #[test]
+    fn test_selfdestruct_tombstone() {
+        // tests the selfdestruct step to ensure a tombstone is created.
+        // can't merge these two tests because rust....
+        let beneficiary = EthAddress::from_id(1001);
+        let fil_beneficiary = FilAddress::new_id(1001);
+
+        evm_unit_test! {
+            (rt) {
+                rt.set_balance(TokenAmount::from_atto(1_000_000));
+                rt.set_origin(fil_beneficiary);
+
+                rt.expect_send(
+                    fil_beneficiary,
+                    METHOD_SEND,
+                    None,
+                    TokenAmount::from_atto(1_000_000),
+                    None,
+                    SendFlags::empty(),
+                    None,
+                    ExitCode::OK,
+                    None,
+                );
+            }
+            (m) {
+                SELFDESTRUCT;
+            }
+            m.state.stack.push(beneficiary.as_evm_word()).unwrap();
+            m.step().expect("execution step failed");
+            assert!(m.system.tombstone.is_some());
+            assert_eq!(m.system.tombstone.unwrap(),
+                       crate::Tombstone {
+                           origin: 1001,
+                           nonce: 0,
+                       });
+        }
+    }
+
+    #[test]
+    fn test_selfdestruct_fail() {
+        // tests the outcome of selfdestruct
+        let beneficiary = EthAddress::from_id(1001);
+        let fil_beneficiary = FilAddress::new_id(1001);
+
+        evm_unit_test! {
+            (rt) {
+                rt.set_balance(TokenAmount::from_atto(1_000_000));
+
+                rt.expect_send(
+                    fil_beneficiary,
+                    METHOD_SEND,
+                    None,
+                    TokenAmount::from_atto(1_000_000),
+                    None,
+                    SendFlags::empty(),
+                    None,
+                    ExitCode::USR_FORBIDDEN,
+                    None,
+                );
+            }
+            (m) {
+                SELFDESTRUCT;
+            }
+            m.state.stack.push(beneficiary.as_evm_word()).unwrap();
+            let result = m.step();
+            assert!(result.is_err());
+            assert_eq!(result.err().unwrap().exit_code(), crate::EVM_CONTRACT_SELFDESTRUCT_FAILED);
+        }
+    }
+}

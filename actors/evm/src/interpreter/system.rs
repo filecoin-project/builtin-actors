@@ -96,7 +96,7 @@ pub struct System<'r, RT: Runtime> {
     /// The contract's EVM storage slots.
     slots: StateKamt<RT::Blockstore>,
     /// The contracts "nonce" (incremented when creating new actors).
-    nonce: u64,
+    pub(crate) nonce: u64,
     /// The last saved state root. None if the current state hasn't been saved yet.
     saved_state_root: Option<Cid>,
     /// Read Only context (staticcall)
@@ -106,7 +106,7 @@ pub struct System<'r, RT: Runtime> {
 
     /// This is "some" if the actor is currently a "zombie". I.e., it has selfdestructed, but the
     /// current message is still executing. `System` cannot load a contracts state with a
-    tombstone: Option<Tombstone>,
+    pub(crate) tombstone: Option<Tombstone>,
 }
 
 impl<'r, RT: Runtime> System<'r, RT> {
