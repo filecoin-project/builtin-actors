@@ -483,4 +483,62 @@ mod tests {
             assert_eq!(m.state.stack.pop().unwrap(), U256::from(4));
         };
     }
+
+    #[test]
+    fn test_codecopy() {
+        evm_unit_test! {
+            (m) {
+                CODECOPY;
+                JUMPDEST;
+                JUMPDEST;
+                JUMPDEST;
+            }
+            m.state.stack.push(U256::from(4)).unwrap();
+            m.state.stack.push(U256::from(0)).unwrap();
+            m.state.stack.push(U256::from(0)).unwrap();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 0);
+            assert_eq!(m.state.memory[0..4], m.bytecode[..]);
+        };
+    }
+
+    #[test]
+    fn test_codecopy_partial() {
+        evm_unit_test! {
+            (m) {
+                CODECOPY;
+                JUMPDEST;
+                JUMPDEST;
+                JUMPDEST;
+            }
+            m.state.stack.push(U256::from(3)).unwrap();
+            m.state.stack.push(U256::from(1)).unwrap();
+            m.state.stack.push(U256::from(0)).unwrap();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 0);
+            assert_eq!(m.state.memory[0..3], m.bytecode[1..4]);
+        };
+    }
+
+    #[test]
+    fn test_codecopy_oob() {
+        evm_unit_test! {
+            (m) {
+                CODECOPY;
+                JUMPDEST;
+                JUMPDEST;
+                JUMPDEST;
+            }
+            m.state.stack.push(U256::from(4)).unwrap();
+            m.state.stack.push(U256::from(1)).unwrap();
+            m.state.stack.push(U256::from(0)).unwrap();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 0);
+            assert_eq!(m.state.memory[0..3], m.bytecode[1..4]);
+        };
+    }
+
 }
