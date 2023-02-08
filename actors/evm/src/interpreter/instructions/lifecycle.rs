@@ -172,7 +172,8 @@ mod tests {
     use fvm_shared::error::{ExitCode, ErrorNumber};
     use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_shared::sys::SendFlags;
-
+    use fvm_shared::METHOD_SEND;
+    use fvm_shared::address::Address as FilAddress;
 
     #[test]
     fn test_create() {
@@ -413,4 +414,104 @@ mod tests {
             assert_eq!(m.state.stack.pop().unwrap(), U256::from(0));
         };
     }
+
+    #[test]
+    fn test_selfdestruct() {
+        // tests the outcome of selfdestruct
+        let beneficiary = EthAddress::from_id(1001);
+        let fil_beneficiary = FilAddress::new_id(1001);
+
+        evm_unit_test! {
+            (rt) {
+                rt.set_balance(TokenAmount::from_atto(1_000_000));
+
+                rt.expect_send(
+                    fil_beneficiary,
+                    METHOD_SEND,
+                    None,
+                    TokenAmount::from_atto(1_000_000),
+                    None,
+                    SendFlags::empty(),
+                    None,
+                    ExitCode::OK,
+                    None,
+                );
+            }
+            (m) {
+                SELFDESTRUCT;
+                // correctness check sled
+                INVALID;
+            }
+            m.state.stack.push(beneficiary.as_evm_word()).unwrap();
+            let result = m.execute().expect("execution failed");
+            assert_eq!(result.outcome, crate::Outcome::Return);
+            assert_eq!(result.return_data.len(), 0);
+        }
+    }
+
+    #[test]
+    fn test_selfdestruct_tombstone() {
+        // tests the selfdestruct step to ensure a tombstone is created.
+        // can't merge these two tests because rust....
+        let beneficiary = EthAddress::from_id(1001);
+        let fil_beneficiary = FilAddress::new_id(1001);
+
+        evm_unit_test! {
+            (rt) {
+                rt.set_balance(TokenAmount::from_atto(1_000_000));
+
+                rt.expect_send(
+                    fil_beneficiary,
+                    METHOD_SEND,
+                    None,
+                    TokenAmount::from_atto(1_000_000),
+                    None,
+                    SendFlags::empty(),
+                    None,
+                    ExitCode::OK,
+                    None,
+                );
+            }
+            (m) {
+                SELFDESTRUCT;
+            }
+            m.state.stack.push(beneficiary.as_evm_word()).unwrap();
+            m.step().expect("execution step failed");
+            assert!(m.system.tombstone.is_some());
+        }
+    }
+
+
+    #[test]
+    fn test_selfdestruct_fail() {
+        // tests the outcome of selfdestruct
+        let beneficiary = EthAddress::from_id(1001);
+        let fil_beneficiary = FilAddress::new_id(1001);
+
+        evm_unit_test! {
+            (rt) {
+                rt.set_balance(TokenAmount::from_atto(1_000_000));
+
+                rt.expect_send(
+                    fil_beneficiary,
+                    METHOD_SEND,
+                    None,
+                    TokenAmount::from_atto(1_000_000),
+                    None,
+                    SendFlags::empty(),
+                    None,
+                    ExitCode::USR_FORBIDDEN,
+                    None,
+                );
+            }
+            (m) {
+                SELFDESTRUCT;
+            }
+            m.state.stack.push(beneficiary.as_evm_word()).unwrap();
+            let result = m.step();
+            assert!(result.is_err());
+            assert_eq!(result.err().unwrap().exit_code(), crate::EVM_CONTRACT_SELFDESTRUCT_FAILED);
+        }
+    }
+
 }

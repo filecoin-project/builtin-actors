@@ -106,7 +106,7 @@ pub struct System<'r, RT: Runtime> {
 
     /// This is "some" if the actor is currently a "zombie". I.e., it has selfdestructed, but the
     /// current message is still executing. `System` cannot load a contracts state with a
-    tombstone: Option<Tombstone>,
+    pub(crate) tombstone: Option<Tombstone>,
 }
 
 impl<'r, RT: Runtime> System<'r, RT> {
