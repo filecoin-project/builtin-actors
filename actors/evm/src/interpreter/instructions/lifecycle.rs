@@ -169,7 +169,7 @@ mod tests {
 
     use fil_actors_runtime::EAM_ACTOR_ADDR;
     use fil_actors_evm_shared::uints::U256;
-    use fvm_shared::error::ExitCode;
+    use fvm_shared::error::{ExitCode, ErrorNumber};
     use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_shared::sys::SendFlags;
 
@@ -221,6 +221,114 @@ mod tests {
             assert_eq!(m.state.stack.len(), 1);
             assert_eq!(m.state.stack.pop().unwrap(), ret_addr.as_evm_word());
         };
+    }
 
+    #[test]
+    fn test_create_fail_eam() {
+        evm_unit_test! {
+            (rt) {
+                rt.set_balance(TokenAmount::from_atto(1_000_000));
+
+                let code = vec![0x01, 0x02, 0x03, 0x04];
+                let nonce = 1;
+                let create_params = eam::CreateParams { code, nonce };
+
+                rt.expect_gas_available(10_000_000_000);
+                rt.expect_send(
+                    EAM_ACTOR_ADDR,
+                    eam::CREATE_METHOD_NUM,
+                    IpldBlock::serialize_cbor(&create_params).unwrap(),
+                    TokenAmount::from_atto(1234),
+                    Some(63 * 10_000_000_000 / 64),
+                    SendFlags::empty(),
+                    None,
+                    ExitCode::USR_FORBIDDEN,
+                    None,
+                );
+            }
+            (m) {
+                // input data
+                PUSH4; 0x01; 0x02; 0x03; 0x04;
+                PUSH0;
+                MSTORE;
+                // the deed
+                CREATE;
+            }
+            m.state.stack.push(U256::from(4)).unwrap();    // input size
+            m.state.stack.push(U256::from(28)).unwrap();   // input offset
+            m.state.stack.push(U256::from(1234)).unwrap(); // initial value
+            for _ in 0..4 {
+                m.step().expect("execution step failed");
+            }
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(0));
+        };
+    }
+
+    #[test]
+    fn test_create_fail_nofunds() {
+        evm_unit_test! {
+            (rt) {
+                rt.set_balance(TokenAmount::from_atto(1));
+            }
+            (m) {
+                // input data
+                PUSH4; 0x01; 0x02; 0x03; 0x04;
+                PUSH0;
+                MSTORE;
+                // the deed
+                CREATE;
+            }
+            m.state.stack.push(U256::from(4)).unwrap();    // input size
+            m.state.stack.push(U256::from(28)).unwrap();   // input offset
+            m.state.stack.push(U256::from(1234)).unwrap(); // initial value
+            for _ in 0..4 {
+                m.step().expect("execution step failed");
+            }
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(0));
+        };
+    }
+
+    #[test]
+    fn test_create_err() {
+        evm_unit_test! {
+            (rt) {
+                rt.set_balance(TokenAmount::from_atto(1_000_000));
+
+                let code = vec![0x01, 0x02, 0x03, 0x04];
+                let nonce = 1;
+                let create_params = eam::CreateParams { code, nonce };
+
+                rt.expect_gas_available(10_000_000_000);
+                rt.expect_send(
+                    EAM_ACTOR_ADDR,
+                    eam::CREATE_METHOD_NUM,
+                    IpldBlock::serialize_cbor(&create_params).unwrap(),
+                    TokenAmount::from_atto(1234),
+                    Some(63 * 10_000_000_000 / 64),
+                    SendFlags::empty(),
+                    None,
+                    ExitCode::OK,
+                    Some(ErrorNumber::IllegalOperation),
+                );
+            }
+            (m) {
+                // input data
+                PUSH4; 0x01; 0x02; 0x03; 0x04;
+                PUSH0;
+                MSTORE;
+                // the deed
+                CREATE;
+            }
+            m.state.stack.push(U256::from(4)).unwrap();    // input size
+            m.state.stack.push(U256::from(28)).unwrap();   // input offset
+            m.state.stack.push(U256::from(1234)).unwrap(); // initial value
+            for _ in 0..4 {
+                m.step().expect("execution step failed");
+            }
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(0));
+        };
     }
 }
