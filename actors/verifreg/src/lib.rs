@@ -30,6 +30,7 @@ use fil_actors_runtime::{
 };
 use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::sys::SendFlags;
 
 use crate::ext::datacap::{DestroyParams, MintParams};
 
@@ -873,7 +874,7 @@ fn remove_data_cap_request_is_valid(
 
     let payload = [SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP, b.bytes()].concat();
 
-    extract_send_result(rt.send_simple(
+    extract_send_result(rt.send(
         &request.verifier,
         ext::account::AUTHENTICATE_MESSAGE_METHOD,
         IpldBlock::serialize_cbor(&ext::account::AuthenticateMessageParams {
@@ -881,6 +882,8 @@ fn remove_data_cap_request_is_valid(
             message: payload,
         })?,
         TokenAmount::zero(),
+        None,
+        SendFlags::READ_ONLY,
     ))
     .map_err(|e| e.wrap("proposal authentication failed"))?;
     Ok(())
