@@ -399,6 +399,25 @@ mod tests {
     }
 
     #[test]
+    fn test_gasprice() {
+        // Note: This is currently buggy, as the price needs to be capped by the MaxFeeCap.
+        evm_unit_test! {
+            (rt) {
+                rt.base_fee = TokenAmount::from_atto(1000);
+                rt.gas_premium = TokenAmount::from_atto(1234);
+            }
+            (m) {
+                GASPRICE;
+            }
+            let addr = EthAddress::from_id(1001);
+            m.state.caller = addr;
+            m.step().expect("execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(2234));
+        };
+    }
+
+    #[test]
     fn test_gas() {
         evm_unit_test! {
             (rt) {
