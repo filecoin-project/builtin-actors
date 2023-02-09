@@ -42,8 +42,8 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
     actor_dispatch, actor_error, deserialize_block, extract_send_result, ActorContext,
-    ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR,
-    REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -4197,11 +4197,10 @@ fn request_terminate_deals(
         ));
         // Intentionally swallow this error to prevent frozen market cron corruption from also freezing this miner cron.
         // This is safe from a malicious caller perspective because this method's callstack should always originate with the trusted system caller.
-        if rt.message().origin() == CRON_ACTOR_ADDR {
-            match res {
-                Err(e) => error!("OnSectorsTerminate event failed from cron caller {}", e),
-                _ => (),
-            };
+        if rt.message().origin() == SYSTEM_ACTOR_ADDR {
+            if let Err(e) = res {
+                error!("OnSectorsTerminate event failed from cron caller {}", e)
+            }
         } else {
             res?;
         }
