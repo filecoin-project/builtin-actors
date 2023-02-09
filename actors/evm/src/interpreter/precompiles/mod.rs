@@ -8,6 +8,7 @@ use substrate_bn::{CurveError, FieldError, GroupError};
 use crate::reader::OverflowError;
 
 use super::{CallKind, System};
+mod blake2f_impl;
 mod evm;
 mod fvm;
 
