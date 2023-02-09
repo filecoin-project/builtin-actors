@@ -227,6 +227,11 @@ impl Expectations {
             this.expect_validate_caller_addr
         );
         assert!(
+            this.expect_validate_caller_f4_namespace.is_none(),
+            "expected ValidateCallerF4Namespace {:?}, not received",
+            this.expect_validate_caller_f4_namespace
+        );
+        assert!(
             this.expect_validate_caller_type.is_none(),
             "expected ValidateCallerType {:?}, not received",
             this.expect_validate_caller_type
@@ -1252,11 +1257,11 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
 
     fn tipset_cid(&self, epoch: i64) -> Result<Cid, ActorError> {
         let offset = self.epoch - epoch;
-        // Can't get tipset for epochs:
-        // - not current or future epoch
-        // - not negative
-        // - before current finality
-        if offset <= 0 || epoch < 0 || offset > 256 {
+        // Can't get tipset for:
+        // - current or future epochs
+        // - negative epochs
+        // - epochs beyond FINALITY of current epoch
+        if offset <= 0 || epoch < 0 || offset > self.policy.chain_finality {
             return Err(
                 actor_error!(illegal_argument; "invalid epoch to fetch tipset_cid {}", epoch),
             );
