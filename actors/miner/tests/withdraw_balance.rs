@@ -2,7 +2,7 @@ use fil_actor_miner::{
     Actor, BeneficiaryTerm, Method, WithdrawBalanceParams, WithdrawBalanceReturn,
 };
 use fil_actors_runtime::test_utils::{
-    expect_abort, expect_abort_contains_message, make_identity_cid,
+    expect_abort, expect_abort_contains_message, EVM_ACTOR_CODE_ID,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
@@ -47,7 +47,7 @@ fn withdraw_funds_restricted_correctly() {
     })
     .unwrap();
 
-    rt.set_caller(make_identity_cid(b"1234"), h.owner);
+    rt.set_caller(*EVM_ACTOR_CODE_ID, h.owner);
 
     // fail to call the unexported method
 

@@ -1,5 +1,5 @@
 use fil_actor_miner::{locked_reward_from_reward, Actor, Method};
-use fil_actors_runtime::test_utils::{expect_abort_contains_message, make_identity_cid};
+use fil_actors_runtime::test_utils::{expect_abort_contains_message, EVM_ACTOR_CODE_ID};
 use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
@@ -65,7 +65,7 @@ fn repay_debt_restricted_correctly() {
     st.fee_debt = fee_debt.clone();
     rt.replace_state(&st);
 
-    rt.set_caller(make_identity_cid(b"1234"), h.owner);
+    rt.set_caller(*EVM_ACTOR_CODE_ID, h.owner);
 
     // fail to call the unexported method
     expect_abort_contains_message(

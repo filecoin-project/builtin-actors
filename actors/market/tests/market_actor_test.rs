@@ -2167,7 +2167,7 @@ fn add_balance_restricted_correctly() {
     rt.set_value(amount);
 
     // set caller to not-builtin
-    rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1234));
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(1234));
 
     // cannot call the unexported method num
     expect_abort_contains_message(
@@ -2233,7 +2233,7 @@ fn psd_restricted_correctly() {
     };
 
     // set caller to not-builtin
-    rt.set_caller(make_identity_cid(b"1234"), WORKER_ADDR);
+    rt.set_caller(*EVM_ACTOR_CODE_ID, WORKER_ADDR);
 
     // cannot call the unexported method num
     expect_abort_contains_message(

@@ -1,7 +1,7 @@
 use fil_actor_miner::{Actor, GetOwnerReturn, Method};
 use fil_actors_runtime::test_utils::{
-    expect_abort, expect_abort_contains_message, make_identity_cid, new_bls_addr, MockRuntime,
-    ACCOUNT_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID,
+    expect_abort, expect_abort_contains_message, new_bls_addr, MockRuntime, ACCOUNT_ACTOR_CODE_ID,
+    EVM_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::econ::TokenAmount;
@@ -42,7 +42,7 @@ fn successful_change() {
     h.change_owner_address(&mut rt, NEW_ADDRESS).unwrap();
 
     // Set to non-builtin caller to confirm exported correctly
-    rt.set_caller(make_identity_cid(b"1234"), OTHER_ADDRESS);
+    rt.set_caller(*EVM_ACTOR_CODE_ID, OTHER_ADDRESS);
     rt.expect_validate_caller_any();
     let ret: GetOwnerReturn = rt
         .call::<Actor>(Method::GetOwnerExported as u64, None)
@@ -70,7 +70,7 @@ fn change_owner_address_restricted_correctly() {
     let (h, mut rt) = setup();
 
     let params = IpldBlock::serialize_cbor(&NEW_ADDRESS).unwrap();
-    rt.set_caller(make_identity_cid(b"1234"), h.owner);
+    rt.set_caller(*EVM_ACTOR_CODE_ID, h.owner);
 
     // fail to call the unexported method
 
@@ -94,7 +94,7 @@ fn change_owner_address_restricted_correctly() {
     // new owner can also call the exported method
 
     rt.expect_validate_caller_addr(vec![NEW_ADDRESS]);
-    rt.set_caller(make_identity_cid(b"1234"), NEW_ADDRESS);
+    rt.set_caller(*EVM_ACTOR_CODE_ID, NEW_ADDRESS);
     rt.call::<Actor>(Method::ChangeOwnerAddressExported as u64, params).unwrap();
 
     rt.verify();
