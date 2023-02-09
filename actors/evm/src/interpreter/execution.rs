@@ -284,3 +284,231 @@ pub fn execute(
 ) -> Result<Output, ActorError> {
     Machine::new(system, runtime, bytecode).execute()
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::evm_unit_test;
+
+    macro_rules! check_underflow_err {
+        ($($ins:ident,)*) => {
+            $(do_check_underflow_err!($ins);)*
+        }
+    }
+
+    macro_rules! check_underflow_none {
+        ($($ins:ident,)*) => {
+            $(do_check_underflow_none!($ins);)*
+        }
+    }
+
+    macro_rules! do_check_underflow_err {
+        ($ins:ident) => {
+            {
+                evm_unit_test! {
+                    (m) { $ins; }
+                    let result = m.step();
+                    assert!(result.is_err(), stringify!($ins));
+                    assert_eq!(result.unwrap_err().exit_code(), crate::EVM_CONTRACT_STACK_UNDERFLOW, stringify!($ins));
+                };
+            }
+        }
+    }
+
+    macro_rules! do_check_underflow_none {
+        ($ins:ident) => {{
+            evm_unit_test! {
+                (m) { $ins; }
+                let result = m.step();
+                assert!(result.is_ok(), stringify!($ins));
+            };
+        }};
+    }
+
+    #[test]
+    fn test_execution_underflow() {
+        check_underflow_err!(
+            ADD,
+            MUL,
+            SUB,
+            DIV,
+            SDIV,
+            MOD,
+            SMOD,
+            ADDMOD,
+            MULMOD,
+            EXP,
+            SIGNEXTEND,
+            LT,
+            GT,
+            SLT,
+            SGT,
+            EQ,
+            ISZERO,
+            AND,
+            OR,
+            XOR,
+            NOT,
+            BYTE,
+            SHL,
+            SHR,
+            SAR,
+            DUP1,
+            DUP2,
+            DUP3,
+            DUP4,
+            DUP5,
+            DUP6,
+            DUP7,
+            DUP8,
+            DUP9,
+            DUP10,
+            DUP11,
+            DUP12,
+            DUP13,
+            DUP14,
+            DUP15,
+            DUP16,
+            SWAP1,
+            SWAP2,
+            SWAP3,
+            SWAP4,
+            SWAP5,
+            SWAP6,
+            SWAP7,
+            SWAP8,
+            SWAP9,
+            SWAP10,
+            SWAP11,
+            SWAP12,
+            SWAP13,
+            SWAP14,
+            SWAP15,
+            SWAP16,
+            POP,
+            KECCAK256,
+            BALANCE,
+            CALLDATALOAD,
+            CALLDATACOPY,
+            EXTCODESIZE,
+            EXTCODECOPY,
+            EXTCODEHASH,
+            RETURNDATACOPY,
+            BLOCKHASH,
+            MLOAD,
+            MSTORE,
+            MSTORE8,
+            SLOAD,
+            SSTORE,
+            LOG0,
+            LOG1,
+            LOG2,
+            LOG3,
+            LOG4,
+            CALL,
+            DELEGATECALL,
+            STATICCALL,
+            CODECOPY,
+            CREATE,
+            CREATE2,
+            RETURN,
+            REVERT,
+            SELFDESTRUCT,
+            JUMP,
+            JUMPI,
+        );
+
+        check_underflow_none!(
+            PUSH0,
+            PUSH1,
+            PUSH2,
+            PUSH3,
+            PUSH4,
+            PUSH5,
+            PUSH6,
+            PUSH7,
+            PUSH8,
+            PUSH9,
+            PUSH10,
+            PUSH11,
+            PUSH12,
+            PUSH13,
+            PUSH14,
+            PUSH15,
+            PUSH16,
+            PUSH17,
+            PUSH18,
+            PUSH19,
+            PUSH20,
+            PUSH21,
+            PUSH22,
+            PUSH23,
+            PUSH24,
+            PUSH25,
+            PUSH26,
+            PUSH27,
+            PUSH28,
+            PUSH29,
+            PUSH30,
+            PUSH31,
+            PUSH32,
+            ADDRESS,
+            ORIGIN,
+            CALLER,
+            CALLVALUE,
+            CALLDATASIZE,
+            GASPRICE,
+            RETURNDATASIZE,
+            COINBASE,
+            TIMESTAMP,
+            NUMBER,
+            GASLIMIT,
+            CHAINID,
+            BASEFEE,
+            SELFBALANCE,
+            MSIZE,
+            CODESIZE,
+            JUMPDEST,
+            STOP,
+            PC,
+        );
+
+        // manual checks
+        {
+            evm_unit_test! {
+                (rt) {
+                    let epoch = 1234;
+                    rt.set_epoch(epoch);
+                    rt.expect_get_randomness_from_beacon(
+                        fil_actors_runtime::runtime::DomainSeparationTag::EvmPrevRandao,
+                        epoch,
+                        Vec::from(*b"prevrandao"),
+                        [0xff; 32]
+                    );
+                }
+                (m) { PREVRANDAO; }
+                let result = m.step();
+                assert!(result.is_ok());
+            };
+        }
+
+        {
+            evm_unit_test! {
+                (rt) {
+                    rt.expect_gas_available(1234);
+                }
+                (m) { GAS; }
+                let result = m.step();
+                assert!(result.is_ok());
+            };
+        }
+
+        {
+            evm_unit_test! {
+                (m) { INVALID; }
+                let result = m.step();
+                assert!(result.is_err());
+                assert_eq!(result.unwrap_err().exit_code(), crate::EVM_CONTRACT_INVALID_INSTRUCTION);
+            };
+        }
+    }
+}
