@@ -4195,8 +4195,8 @@ fn request_terminate_deals(
             })?,
             TokenAmount::zero(),
         ));
-        // Intentionally swallow this error to prevent frozen market cron corruption from also freezing this miner cron.
-        // This is safe from a malicious caller perspective because this method's callstack should always originate with the trusted system caller.
+        // If running in a system / cron context intentionally swallow this error to prevent
+        // frozen market cron corruption from also freezing this miner cron.
         if rt.message().origin() == SYSTEM_ACTOR_ADDR {
             if let Err(e) = res {
                 error!("OnSectorsTerminate event failed from cron caller {}", e)
