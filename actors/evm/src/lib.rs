@@ -1,15 +1,21 @@
 use fil_actors_evm_shared::address::EthAddress;
 use fil_actors_evm_shared::uints::U256;
-use fil_actors_runtime::{actor_error, AsActorError, EAM_ACTOR_ADDR, INIT_ACTOR_ADDR};
+use fil_actors_runtime::{actor_error, ActorError, AsActorError, EAM_ACTOR_ADDR, INIT_ACTOR_ADDR};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::{strict_bytes, BytesDe, BytesSer};
+use fvm_ipld_encoding::{BytesDe, BytesSer};
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 
 use crate::interpreter::Outcome;
+use crate::interpreter::{execute, Bytecode, ExecutionState, System};
 use crate::reader::ValueReader;
+use cid::Cid;
+use fil_actors_runtime::runtime::{ActorCode, Runtime};
+use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
+use num_derive::FromPrimitive;
+use num_traits::FromPrimitive;
 
 pub use types::*;
 
@@ -19,19 +25,6 @@ pub mod interpreter;
 pub(crate) mod reader;
 mod state;
 mod types;
-
-use {
-    crate::interpreter::{execute, Bytecode, ExecutionState, System},
-    cid::Cid,
-    fil_actors_runtime::{
-        runtime::{ActorCode, Runtime},
-        ActorError,
-    },
-    fvm_ipld_encoding::tuple::*,
-    fvm_shared::{MethodNum, METHOD_CONSTRUCTOR},
-    num_derive::FromPrimitive,
-    num_traits::FromPrimitive,
-};
 
 pub use state::*;
 
@@ -462,23 +455,4 @@ impl ActorCode for EvmContractActor {
             None => Err(actor_error!(unhandled_message; "Invalid method")),
         }
     }
-}
-
-pub type ResurrectParams = ConstructorParams;
-
-#[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct DelegateCallParams {
-    pub code: Cid,
-    /// The contract invocation parameters
-    #[serde(with = "strict_bytes")]
-    pub input: Vec<u8>,
-    /// The original caller's Eth address.
-    pub caller: EthAddress,
-    /// The value passed in the original call.
-    pub value: TokenAmount,
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct GetStorageAtParams {
-    pub storage_key: U256,
 }

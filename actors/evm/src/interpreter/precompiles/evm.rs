@@ -1,14 +1,11 @@
 use std::ops::Range;
 
-use fil_actors_evm_shared::uints::{
-    byteorder::{ByteOrder, LE},
-    U256,
-};
+use fil_actors_evm_shared::uints::byteorder::{ByteOrder, LE};
+use fil_actors_evm_shared::uints::U256;
+
 use fil_actors_runtime::runtime::Runtime;
-use fvm_shared::crypto::{
-    hash::SupportedHashes,
-    signature::{SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE},
-};
+use fvm_shared::crypto::hash::SupportedHashes;
+use fvm_shared::crypto::signature::{SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE};
 use num_traits::{One, Zero};
 use substrate_bn::{pairing_batch, AffineG1, AffineG2, Fq, Fq2, Fr, Group, Gt, G1, G2};
 
