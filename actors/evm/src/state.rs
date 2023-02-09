@@ -3,13 +3,11 @@ use std::array::TryFromSliceError;
 use fil_actors_evm_shared::uints::U256;
 use fvm_shared::ActorID;
 
-use {
-    cid::Cid,
-    fvm_ipld_encoding::strict_bytes,
-    fvm_ipld_encoding::tuple::*,
-    serde::{Deserialize, Serialize},
-    serde_tuple::{Deserialize_tuple, Serialize_tuple},
-};
+use cid::Cid;
+use fvm_ipld_encoding::strict_bytes;
+use fvm_ipld_encoding::tuple::*;
+use serde::{Deserialize, Serialize};
+use serde_tuple::{Deserialize_tuple, Serialize_tuple};
 
 /// A tombstone indicating that the contract has been self-destructed.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
@@ -137,6 +135,7 @@ mod test {
     use fvm_ipld_encoding::{from_slice, to_vec, BytesDe};
 
     use crate::BytecodeHash;
+
     #[test]
     fn test_bytecode_hash_serde() {
         let encoded = to_vec(&BytecodeHash::EMPTY).unwrap();
