@@ -1873,7 +1873,6 @@ dependencies = [
  "lazy_static",
  "log",
  "multihash",
- "near-blake2",
  "num-derive",
  "num-traits",
  "once_cell",
@@ -3265,16 +3264,6 @@ dependencies = [
  "quote",
  "syn",
  "synstructure",
-]
-
-[[package]]
-name = "near-blake2"
-version = "0.9.1"
-source = "git+https://github.com/filecoin-project/near-blake2.git#47a58e5061ba6d6c1132f535188b7fde2f67bcb2"
-dependencies = [
- "crypto-mac",
- "digest 0.9.0",
- "opaque-debug 0.3.0",
 ]
 
 [[package]]
