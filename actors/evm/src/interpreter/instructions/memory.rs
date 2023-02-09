@@ -479,6 +479,7 @@ mod tests {
             assert_eq!(m.state.stack.pop().unwrap(), U256::from(64));
         };
     }
+
     #[test]
     fn test_msize_basic() {
         // Demonstrate that MSIZE depends on memory.len()
@@ -492,5 +493,108 @@ mod tests {
             m.step().expect("execution step failed");
             assert_eq!(m.state.stack.pop().unwrap(), U256::from(32));
         };
+    }
+
+    macro_rules! check_mem {
+        ($mem:ident, $region:ident, $len:expr) => {
+            match $region {
+                Some(MemoryRegion { offset, size }) => {
+                    let sizeu: usize = size.into();
+                    assert!(sizeu == $len);
+                    assert!($mem.len() >= offset + sizeu);
+                    for x in offset..offset + sizeu {
+                        assert_eq!($mem[x], 0);
+                    }
+                }
+                None => {
+                    panic!("no memory region");
+                }
+            }
+        };
+    }
+
+    #[test]
+    fn test_memread_simple() {
+        // simple read in bounds
+        let mut mem = Memory::default();
+        mem.grow(1024);
+        assert_eq!(mem.len(), 1024);
+
+        let region = get_memory_region(&mut mem, 0, 512).expect("memory read failed");
+        check_mem!(mem, region, 512);
+    }
+
+    #[test]
+    fn test_memread_simple2() {
+        // simple read in bounds
+        let mut mem = Memory::default();
+        mem.grow(1024);
+        assert_eq!(mem.len(), 1024);
+
+        let region = get_memory_region(&mut mem, 128, 512).expect("memory read failed");
+        check_mem!(mem, region, 512);
+    }
+
+    #[test]
+    fn test_memread_simple3() {
+        // simple read in bounds
+        let mut mem = Memory::default();
+        mem.grow(1024);
+        assert_eq!(mem.len(), 1024);
+
+        let region = get_memory_region(&mut mem, 512, 512).expect("memory read failed");
+        check_mem!(mem, region, 512);
+    }
+
+    #[test]
+    fn test_memread_empty() {
+        let mut mem = Memory::default();
+        mem.grow(1024);
+        assert_eq!(mem.len(), 1024);
+
+        let region = get_memory_region(&mut mem, 512, 0).expect("memory read failed");
+        assert!(region.is_none());
+    }
+
+    #[test]
+    fn test_memread_overflow1() {
+        // len > mem size
+        let mut mem = Memory::default();
+        mem.grow(1024);
+        assert_eq!(mem.len(), 1024);
+
+        let region = get_memory_region(&mut mem, 0, 2048).expect("memory read failed");
+        check_mem!(mem, region, 2048);
+    }
+
+    #[test]
+    fn test_memread_overflow2() {
+        // offset > mem size
+        let mut mem = Memory::default();
+        mem.grow(1024);
+        assert_eq!(mem.len(), 1024);
+
+        let region = get_memory_region(&mut mem, 1056, 1024).expect("memory read failed");
+        check_mem!(mem, region, 1024);
+    }
+
+    #[test]
+    fn test_memread_overflow3() {
+        // offset+len > mem size
+        let mut mem = Memory::default();
+        mem.grow(1024);
+        assert_eq!(mem.len(), 1024);
+
+        let region = get_memory_region(&mut mem, 988, 2048).expect("memory read failed");
+        check_mem!(mem, region, 2048);
+    }
+
+    #[test]
+    fn test_memread_overflow_err() {
+        let mut mem = Memory::default();
+
+        let result = get_memory_region(&mut mem, u32::MAX - 1, 10);
+        assert!(result.is_err());
+        assert_eq!(result.err().unwrap().exit_code(), crate::EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS);
     }
 }
