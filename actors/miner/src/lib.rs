@@ -42,8 +42,9 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
     actor_dispatch, actor_error, deserialize_block, extract_send_result, ActorContext,
-    ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
-    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR, CRON_ACTOR_ADDR,
+    ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR,
+    REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 pub use monies::*;
@@ -4199,7 +4200,7 @@ fn request_terminate_deals(
         if rt.message().origin() == CRON_ACTOR_ADDR {
             match res {
                 Err(e) => error!("OnSectorsTerminate event failed from cron caller {}", e),
-                _ => (), 
+                _ => (),
             };
         } else {
             res?;
