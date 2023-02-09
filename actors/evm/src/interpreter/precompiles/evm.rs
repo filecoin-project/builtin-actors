@@ -249,7 +249,6 @@ pub(super) fn blake2f<RT: Runtime>(
     if input.len() != 213 {
         return Err(PrecompileError::IncorrectInputSize);
     }
-    let mut hasher = near_blake2::VarBlake2b::default();
     let mut rounds = [0u8; 4];
 
     let mut start = 0;
@@ -275,7 +274,7 @@ pub(super) fn blake2f<RT: Runtime>(
     }?;
 
     let rounds = u32::from_be_bytes(rounds);
-    let h = {
+    let mut h = {
         let mut ret = [0u64; 8];
         LE::read_u64_into(h, &mut ret);
         ret
@@ -291,8 +290,10 @@ pub(super) fn blake2f<RT: Runtime>(
         ret
     };
 
-    hasher.blake2_f(rounds, h, m, t, f);
-    let output = hasher.output().to_vec();
+    super::blake2f_impl::compress(&mut h, m, t, f, rounds as usize);
+
+    let mut output = vec![0; 64];
+    LE::write_u64_into(&h, &mut output);
     Ok(output)
 }
 
