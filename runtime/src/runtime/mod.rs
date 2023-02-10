@@ -65,7 +65,8 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// The genesis block has epoch zero.
     fn curr_epoch(&self) -> ChainEpoch;
 
-    /// The ID for the EVM-based chain, as defined in https://github.com/ethereum-lists/chains.
+    /// The ID for this chain.
+    /// Filecoin chain IDs are usually in the Ethereum namespace, see: https://github.com/ethereum-lists/chains.
     fn chain_id(&self) -> ChainID;
 
     /// Validates the caller against some predicate.
