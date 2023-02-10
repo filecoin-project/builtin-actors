@@ -48,6 +48,7 @@ fn when_undeclared_fault_fee_exceeds_expected_reward_returns_undeclared_fault_fe
     let twenty_day_reward = &day_reward * INITIAL_PLEDGE_FACTOR;
     let sector_age_in_days = 20;
     let sector_age = sector_age_in_days * EPOCHS_IN_DAY;
+    let duration = sector_age; 
 
     let fee = pledge_penalty_for_termination(
         &day_reward,
@@ -58,6 +59,7 @@ fn when_undeclared_fault_fee_exceeds_expected_reward_returns_undeclared_fault_fe
         &reward_estimate(),
         &TokenAmount::zero(),
         0,
+        duration
     );
 
     assert_eq!(undeclared_penalty(), fee);

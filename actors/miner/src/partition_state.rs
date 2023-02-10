@@ -53,7 +53,6 @@ pub struct Partition {
     /// canceled but effective power has already been adjusted.
     /// Not quantized.
     pub early_terminated: Cid, // AMT[ChainEpoch]BitField
-
     /// Power of not-yet-terminated sectors (incl faulty & unproven).
     pub live_power: PowerPair,
     /// Power of yet-to-be-proved sectors (never faulty).
