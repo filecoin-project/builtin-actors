@@ -783,6 +783,34 @@ impl State {
         )?;
         Ok(())
     }
+
+    pub fn fund_initial_pledge_2(&mut self, 
+        deficit: TokenAmount,
+        sector_number: u64,
+        current_balance: TokenAmount) -> Result<(), ActorError>{
+        let unlocked_balance = self
+        .get_unlocked_balance(&current_balance)
+        .map_err(|_|
+            actor_error!(illegal_state, "failed to calculate unlocked balance")
+        )?;
+        if unlocked_balance < deficit {
+            return Err(actor_error!(
+                insufficient_funds,
+                "insufficient funds for new initial pledge requirement {}, available: {}, skipping sector {}",
+                deficit,
+                unlocked_balance,
+                sector_number
+            ));
+        }
+
+        self.add_initial_pledge(&deficit).map_err(|_e|
+            actor_error!(
+                illegal_state,
+                "failed to add initial pledge"
+            )
+        )?;
+        Ok(())
+    }
     pub fn apply_penalty(&mut self, penalty: &TokenAmount) -> anyhow::Result<()> {
         if penalty.is_negative() {
             Err(anyhow!("applying negative penalty {} not allowed", penalty))

@@ -5,6 +5,7 @@ use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::iter;
 use std::ops::Neg;
+use std::thread::current;
 
 use anyhow::{anyhow, Error};
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
@@ -1326,7 +1327,6 @@ impl Actor {
                     );
                     
                     let deficit = &initial_pledge_at_upgrade - &with_details.sector_info.initial_pledge;
-                    
 
                     if deficit > TokenAmount::zero() {
                         state.fund_initial_pledge(deficit, 
@@ -3677,16 +3677,15 @@ where
     RT: Runtime, {
     validate_extended_expiration(policy, curr_epoch, new_expiration, sector)?;
 
-    let state = rt.state()?;
+    let mut state = rt.state()?;
     let info = get_miner_info(rt.store(), &state)?;
     let sector_size = info.sector_size;
-
-    
     let reward_and_baseline = request_current_epoch_block_reward(rt)?;
     let rew = reward_and_baseline.this_epoch_reward_smoothed;
     let baseline_power = reward_and_baseline.this_epoch_baseline_power;
     let pow = request_current_total_power(rt)?.quality_adj_power_smoothed;
     let circulating_supply = rt.total_fil_circ_supply();
+    let current_balance = rt.current_balance(); 
 
     // all simple_qa_power sectors with VerifiedDealWeight > 0 MUST check all claims
     if sector.simple_qa_power {
@@ -3698,7 +3697,9 @@ where
             &rew, 
             &pow, 
             baseline_power, 
-            circulating_supply)
+            circulating_supply,
+            &mut state, 
+            current_balance)
     } else {
         extend_non_simple_qap_sector(new_expiration,
             curr_epoch,
@@ -3707,7 +3708,9 @@ where
             &rew, 
             &pow, 
             baseline_power,
-            circulating_supply
+            circulating_supply, 
+            &mut state, 
+            current_balance
         )
     }
 
@@ -3725,7 +3728,7 @@ where
     RT: Runtime, {
     validate_extended_expiration(policy, curr_epoch, new_expiration, sector)?;
 
-    let state = rt.state()?;
+    let mut state = rt.state()?;
     let info = get_miner_info(rt.store(), &state)?;
     let sector_size = info.sector_size;
     let reward_and_baseline = request_current_epoch_block_reward(rt)?;
@@ -3734,6 +3737,7 @@ where
     let pow = request_current_total_power(rt)?.quality_adj_power_smoothed;
     let baseline_power = reward_and_baseline.this_epoch_baseline_power;
     let circulating_supply = rt.total_fil_circ_supply();
+    let current_balance = rt.current_balance(); 
 
     // it is an error to do legacy sector expiration on simple-qa power sectors with deal weight
     if sector.simple_qa_power
@@ -3752,7 +3756,9 @@ where
         &rew, 
         &pow,
         baseline_power, 
-        circulating_supply)
+        circulating_supply, 
+        &mut state, 
+        current_balance)
 
 }
 
@@ -3844,7 +3850,9 @@ fn extend_simple_qap_sector(
     reward_estimate: &FilterEstimate, 
     network_qa_power_estimate: &FilterEstimate,
     baseline_power: StoragePower, 
-    circulating_supply: TokenAmount 
+    circulating_supply: TokenAmount, 
+    state: &mut State, 
+    current_balance: TokenAmount
 ) -> Result<SectorOnChainInfo, ActorError>{
     let mut new_sector = sector.clone();
     if sector.verified_deal_weight > BigInt::zero() {
@@ -3914,9 +3922,18 @@ fn extend_simple_qap_sector(
         network_qa_power_estimate,
         &circulating_supply,
     );
-    new_sector.initial_pledge = std::cmp::max(initial_pledge_at_upgrade, 
-    sector.initial_pledge.clone());
 
+    let deficit = &initial_pledge_at_upgrade - sector.initial_pledge.clone();
+    
+    // check if difference in Pledge is less than 0, and if miner has 
+    // required available balance to cover the pledge difference. el
+    if deficit > TokenAmount::zero() { 
+        state.fund_initial_pledge_2(deficit, 
+        sector.sector_number, 
+        current_balance)?;    
+
+        new_sector.initial_pledge = initial_pledge_at_upgrade;  
+    }
     Ok(new_sector)
 }
 
@@ -3928,7 +3945,9 @@ fn extend_non_simple_qap_sector(
     reward_estimate: &FilterEstimate, 
     network_qa_power_estimate: &FilterEstimate,
     baseline_power: StoragePower, 
-    circulating_supply: TokenAmount 
+    circulating_supply: TokenAmount,
+    state: &mut State, 
+    current_balance: TokenAmount 
 ) -> Result<SectorOnChainInfo, ActorError> {
     let mut new_sector = sector.clone();
     // Remove "spent" deal weights for non simple_qa_power sectors with deal weight > 0
@@ -3966,8 +3985,16 @@ fn extend_non_simple_qap_sector(
         network_qa_power_estimate,
         &circulating_supply,
     );
-    new_sector.initial_pledge = std::cmp::max(initial_pledge_at_upgrade, 
-    sector.initial_pledge.clone());
+    
+    let deficit = &initial_pledge_at_upgrade - sector.initial_pledge.clone();
+
+    if deficit > TokenAmount::zero() {
+        state.fund_initial_pledge_2(deficit,
+        sector.sector_number,
+        current_balance)?;
+        
+        new_sector.initial_pledge = initial_pledge_at_upgrade; 
+    }
 
     Ok(new_sector)
 }
