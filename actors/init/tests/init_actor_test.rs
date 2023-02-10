@@ -133,7 +133,7 @@ fn create_2_payment_channels() {
         let fake_params = ConstructorParams { network_name: String::from("fake_param") };
 
         // expect anne creating a payment channel to trigger a send to the payment channels constructor
-        let balance = TokenAmount::from_atto(100u8);
+        let balance = TokenAmount::from_atto(100);
 
         rt.expect_send_simple(
             expected_id_addr,
