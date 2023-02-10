@@ -39,7 +39,6 @@ fn state_control() {
         TokenAmount::from_atto(1u8),
         None,
     );
-
     v.set_actor(addr2, a2.clone());
     assert_eq!(v.get_actor(addr2).unwrap(), a2);
     // rollback removes a2 but not a1

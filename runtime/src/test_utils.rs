@@ -12,8 +12,8 @@ use cid::Cid;
 use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::de::DeserializeOwned;
 use fvm_ipld_encoding::CborStore;
-use fvm_shared::address::{Address, Payload, Protocol};
-use fvm_shared::chainid::ChainID;
+use fvm_shared::address::Payload;
+use fvm_shared::address::{Address, Protocol};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
 use fvm_shared::consensus::ConsensusFault;
@@ -44,10 +44,11 @@ use crate::runtime::{
     Verifier, EMPTY_ARR_CID,
 };
 use crate::{actor_error, ActorError, SendError};
-use fvm_shared::event::ActorEvent;
 use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::chainid::ChainID;
+use fvm_shared::event::ActorEvent;
 use fvm_shared::sys::SendFlags;
 
 lazy_static::lazy_static! {
@@ -67,6 +68,7 @@ lazy_static::lazy_static! {
     pub static ref EVM_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/evm");
     pub static ref EAM_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/eam");
     pub static ref ETHACCOUNT_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/ethaccount");
+
     pub static ref ACTOR_TYPES: BTreeMap<Cid, Type> = {
         let mut map = BTreeMap::new();
         map.insert(*SYSTEM_ACTOR_CODE_ID, Type::System);
@@ -107,8 +109,6 @@ lazy_static::lazy_static! {
     ]
     .into_iter()
     .collect();
-    // TODO this is the other way around and will not work for wasm actors; the singletons must
-    //      be in a map, not the nonsingletons .
     pub static ref NON_SINGLETON_CODES: BTreeMap<Cid, ()> = {
         let mut map = BTreeMap::new();
         map.insert(*ACCOUNT_ACTOR_CODE_ID, ());
@@ -316,10 +316,6 @@ impl Expectations {
             "expect_emitted_events {:?}, not received",
             this.expect_emitted_events
         );
-    }
-
-    fn skip_verification_on_drop(&mut self) {
-        self.skip_verification_on_drop = true;
     }
 }
 
@@ -567,14 +563,13 @@ impl<BS: Blockstore> MockRuntime<BS> {
         res
     }
 
-    /// Verifies that all mock expectations have been met.
+    /// Verifies that all mock expectations have been met (and resets the expectations).
     pub fn verify(&mut self) {
         self.expectations.borrow_mut().verify()
     }
 
     /// Clears all mock expectations.
     pub fn reset(&mut self) {
-        self.expectations.borrow_mut().skip_verification_on_drop();
         self.expectations.borrow_mut().reset();
     }
 

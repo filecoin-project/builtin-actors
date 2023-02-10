@@ -128,6 +128,7 @@ fn get_and_change_multiaddrs_restricted_correctly() {
     .unwrap();
 
     rt.set_caller(*EVM_ACTOR_CODE_ID, h.worker);
+
     // fail to call the unexported setter
 
     expect_abort_contains_message(

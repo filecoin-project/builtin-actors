@@ -73,6 +73,7 @@ impl ActorError {
     pub fn assertion_failed(msg: String) -> Self {
         Self { exit_code: ExitCode::USR_ASSERTION_FAILED, msg, data: None }
     }
+
     pub fn read_only(msg: String) -> Self {
         Self { exit_code: ExitCode::USR_READ_ONLY, msg, data: None }
     }
