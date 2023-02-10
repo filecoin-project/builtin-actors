@@ -22,7 +22,8 @@ pub enum Type {
     DataCap = 12,
     Placeholder = 13,
     EVM = 14,
-    EthAccount = 15,
+    EAM = 15,
+    EthAccount = 16,
 }
 
 impl Type {
@@ -42,6 +43,7 @@ impl Type {
             Type::DataCap => "datacap",
             Type::Placeholder => "placeholder",
             Type::EVM => "evm",
+            Type::EAM => "eam",
             Type::EthAccount => "ethaccount",
         }
     }

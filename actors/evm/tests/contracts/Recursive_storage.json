@@ -1,0 +1,1 @@
+{"storage":[{"astId":3,"contract":"tests/contracts/Recursive.sol:Recursive","label":"a","offset":0,"slot":"0","type":"t_bool"},{"astId":5,"contract":"tests/contracts/Recursive.sol:Recursive","label":"b","offset":1,"slot":"0","type":"t_bool"}],"types":{"t_bool":{"encoding":"inplace","label":"bool","numberOfBytes":"1"}}}
