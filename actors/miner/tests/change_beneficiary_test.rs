@@ -7,7 +7,6 @@ use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode, MethodNum
 use num_traits::Zero;
 
 mod util;
-
 use util::*;
 
 fn setup() -> (ActorHarness, MockRuntime) {

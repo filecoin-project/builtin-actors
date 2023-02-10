@@ -4,6 +4,8 @@ use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::CborStore;
+#[cfg(feature = "fake-proofs")]
+use fvm_ipld_encoding::RawBytes;
 use fvm_sdk as fvm;
 use fvm_sdk::NO_DATA_BLOCK_ID;
 use fvm_shared::address::{Address, Payload};
@@ -508,7 +510,7 @@ where
 
         hasher.update(info.randomness.0);
         for si in info.challenged_sectors {
-            hasher.update(fvm_ipld_encoding::RawBytes::serialize(si)?.bytes());
+            hasher.update(RawBytes::serialize(si)?.bytes());
         }
 
         let expected_proof = hasher.finalize();
