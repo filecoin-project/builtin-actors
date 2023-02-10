@@ -3,14 +3,12 @@ TEST_CONTRACTS_SOL = $(shell find $(TEST_CONTRACTS_DIR) -type f -name "*.sol")
 TEST_CONTRACTS_HEX = $(TEST_CONTRACTS_SOL:.sol=.hex)
 
 MEASUREMENTS_DIR  = tests/measurements
-MEASUREMENTS_JSON = $(shell find $(MEASUREMENTS_DIR) -type f -name "*.jsonline")
+#MEASUREMENTS_JSON = $(shell find $(MEASUREMENTS_DIR) -type f -name "*.jsonline")
 MEASUREMENTS_PNG  = $(MEASUREMENTS_JSON:.jsonline=.png)
 
 .PHONY: all
 all: \
 	test-contracts \
-	measure-storage-footprint \
-	plot-measurements
 
 # Compile all Solidity test contracts.
 # This could also be achieved with https://docs.rs/ethers/latest/ethers/solc/
