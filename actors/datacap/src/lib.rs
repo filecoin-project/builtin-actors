@@ -71,7 +71,7 @@ pub enum Method {
     DestroyExported = frc42_dispatch::method_hash!("Destroy"),
     NameExported = frc42_dispatch::method_hash!("Name"),
     SymbolExported = frc42_dispatch::method_hash!("Symbol"),
-    GranularityExported = frc42_dispatch::method_hash!("GranularityExported"),
+    GranularityExported = frc42_dispatch::method_hash!("Granularity"),
     TotalSupplyExported = frc42_dispatch::method_hash!("TotalSupply"),
     BalanceExported = frc42_dispatch::method_hash!("Balance"),
     TransferExported = frc42_dispatch::method_hash!("Transfer"),
