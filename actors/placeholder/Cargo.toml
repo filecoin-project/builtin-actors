@@ -12,9 +12,5 @@ keywords = ["filecoin", "web3", "wasm"]
 ## cdylib is necessary for Wasm build
 crate-type = ["cdylib", "lib"]
 
-[dependencies]
-fvm_sdk = { version = "3.0.0-alpha.22", optional = true }
-fvm_shared = { version = "3.0.0-alpha.16", optional = true }
-
 [features]
-fil-actor = ["fvm_sdk", "fvm_shared"]
+fil-actor = []

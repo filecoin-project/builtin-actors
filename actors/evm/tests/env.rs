@@ -3,8 +3,8 @@ use ethers::{
     prelude::{builders::ContractCall, decode_function_data},
     providers::{MockProvider, Provider},
 };
-use evm::interpreter::address::EthAddress;
 use fil_actor_evm as evm;
+use fil_actors_evm_shared::address::EthAddress;
 use fil_actors_runtime::{
     test_utils::{MockRuntime, EVM_ACTOR_CODE_ID, INIT_ACTOR_CODE_ID},
     INIT_ACTOR_ADDR,
@@ -54,8 +54,8 @@ impl TestEnv {
 
         self.runtime.set_origin(self.evm_address);
         // first actor created is 0
-        self.runtime.add_delegated_address(
-            Address::new_id(0),
+        self.runtime.set_delegated_address(
+            0,
             Address::new_delegated(
                 10,
                 &hex_literal::hex!("FEEDFACECAFEBEEF000000000000000000000000"),

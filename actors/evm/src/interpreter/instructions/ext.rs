@@ -1,16 +1,19 @@
 use crate::interpreter::instructions::memory::copy_to_memory;
-use crate::interpreter::{address::EthAddress, precompiles::Precompiles};
-use crate::{BytecodeHash, U256};
+use crate::interpreter::precompiles::Precompiles;
+use crate::BytecodeHash;
 use cid::Cid;
-use fil_actors_runtime::deserialize_block;
+use fil_actors_evm_shared::address::EthAddress;
+use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::ActorError;
+use fil_actors_runtime::{deserialize_block, AsActorError};
 use fvm_ipld_blockstore::Blockstore;
+use fvm_shared::error::ExitCode;
 use fvm_shared::sys::SendFlags;
 use fvm_shared::{address::Address, econ::TokenAmount};
 use num_traits::Zero;
 use {
-    crate::interpreter::{ExecutionState, StatusCode, System},
+    crate::interpreter::{ExecutionState, System},
     fil_actors_runtime::runtime::Runtime,
 };
 
@@ -18,7 +21,7 @@ pub fn extcodesize(
     _state: &mut ExecutionState,
     system: &mut System<impl Runtime>,
     addr: U256,
-) -> Result<U256, StatusCode> {
+) -> Result<U256, ActorError> {
     // TODO (M2.2) we're fetching the entire block here just to get its size. We should instead use
     //  the ipld::block_stat syscall, but the Runtime nor the Blockstore expose it.
     //  Tracked in https://github.com/filecoin-project/ref-fvm/issues/867
@@ -38,7 +41,7 @@ pub fn extcodehash(
     _state: &mut ExecutionState,
     system: &mut System<impl Runtime>,
     addr: U256,
-) -> Result<U256, StatusCode> {
+) -> Result<U256, ActorError> {
     let addr = match get_contract_type(system.rt, &addr.into()) {
         ContractType::EVM(a) => a,
         // _Technically_ since we have native "bytecode" set as 0xfe this is valid, though we cant differentiate between different native actors.
@@ -73,7 +76,7 @@ pub fn extcodecopy(
     dest_offset: U256,
     data_offset: U256,
     size: U256,
-) -> Result<(), StatusCode> {
+) -> Result<(), ActorError> {
     let bytecode = match get_contract_type(system.rt, &addr.into()) {
         ContractType::EVM(addr) => get_evm_bytecode(system, &addr)?,
         ContractType::NotFound | ContractType::Account | ContractType::Precompile => Vec::new(),
@@ -86,6 +89,7 @@ pub fn extcodecopy(
 }
 
 #[derive(Debug)]
+#[allow(clippy::upper_case_acronyms)]
 pub enum ContractType {
     Precompile,
     /// EVM ID Address and the CID of the actor (not the bytecode)
@@ -133,18 +137,258 @@ pub fn get_evm_bytecode_cid(
 pub fn get_evm_bytecode(
     system: &mut System<impl Runtime>,
     addr: &Address,
-) -> Result<Vec<u8>, StatusCode> {
+) -> Result<Vec<u8>, ActorError> {
     if let Some(cid) = get_evm_bytecode_cid(system, addr)? {
         let raw_bytecode = system
             .rt
             .store()
             .get(&cid) // TODO this is inefficient; should call stat here.
-            .map_err(|e| {
-                StatusCode::InternalError(format!("failed to get bytecode block: {}", &e))
-            })?
-            .ok_or_else(|| ActorError::not_found("bytecode block not found".to_string()))?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get bytecode block")?
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "bytecode block not found")?;
         Ok(raw_bytecode)
     } else {
         Ok(Vec::new())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::evm_unit_test;
+    use crate::BytecodeHash;
+    use cid::Cid;
+    use fil_actors_evm_shared::uints::U256;
+    use fil_actors_runtime::runtime::Primitives;
+    use fil_actors_runtime::test_utils::EVM_ACTOR_CODE_ID;
+    use fvm_ipld_blockstore::Blockstore;
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
+    use fvm_shared::address::Address as FilAddress;
+    use fvm_shared::crypto::hash::SupportedHashes;
+    use fvm_shared::error::ExitCode;
+    use fvm_shared::sys::SendFlags;
+    use num_traits::Zero;
+
+    #[test]
+    fn test_extcodesize() {
+        evm_unit_test! {
+            (rt) {
+                rt.in_call = true;
+
+                let addr = FilAddress::new_id(1001);
+                rt.set_address_actor_type(addr, *EVM_ACTOR_CODE_ID);
+
+                let bytecode_cid = Cid::try_from("baeaikaia").unwrap();
+                let bytecode = vec![0x01, 0x02, 0x03, 0x04];
+                rt.store.put_keyed(&bytecode_cid, bytecode.as_slice()).unwrap();
+
+                rt.expect_send(
+                    addr,
+                    crate::Method::GetBytecode as u64,
+                    Default::default(),
+                    TokenAmount::zero(),
+                    None,
+                    SendFlags::READ_ONLY,
+                    IpldBlock::serialize_cbor(&bytecode_cid).unwrap(),
+                    ExitCode::OK,
+                    None,
+                );
+            }
+            (m) {
+                EXTCODESIZE;
+            }
+            m.state.stack.push(EthAddress::from_id(1001).as_evm_word()).unwrap();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(4));
+        };
+    }
+
+    #[test]
+    fn test_extcodesize_nonexist() {
+        evm_unit_test! {
+            (rt) {
+                rt.in_call = true;
+            }
+            (m) {
+                EXTCODESIZE;
+            }
+            m.state.stack.push(EthAddress::from_id(1001).as_evm_word()).unwrap();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(0));
+        };
+    }
+
+    #[test]
+    fn test_extcodecopy() {
+        let bytecode = vec![0x01, 0x02, 0x03, 0x04];
+
+        evm_unit_test! {
+            (rt) {
+                rt.in_call = true;
+
+                let addr = FilAddress::new_id(1001);
+                rt.set_address_actor_type(addr, *EVM_ACTOR_CODE_ID);
+                let bytecode_cid = Cid::try_from("baeaikaia").unwrap();
+                rt.store.put_keyed(&bytecode_cid, bytecode.as_slice()).unwrap();
+
+                rt.expect_send(
+                    addr,
+                    crate::Method::GetBytecode as u64,
+                    Default::default(),
+                    TokenAmount::zero(),
+                    None,
+                    SendFlags::READ_ONLY,
+                    IpldBlock::serialize_cbor(&bytecode_cid).unwrap(),
+                    ExitCode::OK,
+                    None,
+                );
+            }
+            (m) {
+                EXTCODECOPY;
+            }
+            m.state.stack.push(U256::from(4)).unwrap();  // length
+            m.state.stack.push(U256::from(0)).unwrap(); // offset
+            m.state.stack.push(U256::from(0)).unwrap(); // destOffset
+            m.state.stack.push(EthAddress::from_id(1001).as_evm_word()).unwrap();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 0);
+            assert_eq!(&m.state.memory[0..4], &bytecode);
+        };
+    }
+
+    #[test]
+    fn test_extcodecopy_partial() {
+        let bytecode = vec![0x01, 0x02, 0x03, 0x04];
+
+        evm_unit_test! {
+            (rt) {
+                rt.in_call = true;
+
+                let addr = FilAddress::new_id(1001);
+                rt.set_address_actor_type(addr, *EVM_ACTOR_CODE_ID);
+                let bytecode_cid = Cid::try_from("baeaikaia").unwrap();
+                rt.store.put_keyed(&bytecode_cid, bytecode.as_slice()).unwrap();
+
+                rt.expect_send(
+                    addr,
+                    crate::Method::GetBytecode as u64,
+                    Default::default(),
+                    TokenAmount::zero(),
+                    None,
+                    SendFlags::READ_ONLY,
+                    IpldBlock::serialize_cbor(&bytecode_cid).unwrap(),
+                    ExitCode::OK,
+                    None,
+                );
+            }
+            (m) {
+                EXTCODECOPY;
+            }
+            m.state.stack.push(U256::from(3)).unwrap();  // length
+            m.state.stack.push(U256::from(1)).unwrap(); // offset
+            m.state.stack.push(U256::from(0)).unwrap(); // destOffset
+            m.state.stack.push(EthAddress::from_id(1001).as_evm_word()).unwrap();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 0);
+            assert_eq!(m.state.memory[0..3], bytecode[1..4]);
+        };
+    }
+
+    #[test]
+    fn test_extcodecopy_oob() {
+        let bytecode = vec![0x01, 0x02, 0x03, 0x04];
+
+        evm_unit_test! {
+            (rt) {
+                rt.in_call = true;
+
+                let addr = FilAddress::new_id(1001);
+                rt.set_address_actor_type(addr, *EVM_ACTOR_CODE_ID);
+                let bytecode_cid = Cid::try_from("baeaikaia").unwrap();
+                rt.store.put_keyed(&bytecode_cid, bytecode.as_slice()).unwrap();
+
+                rt.expect_send(
+                    addr,
+                    crate::Method::GetBytecode as u64,
+                    Default::default(),
+                    TokenAmount::zero(),
+                    None,
+                    SendFlags::READ_ONLY,
+                    IpldBlock::serialize_cbor(&bytecode_cid).unwrap(),
+                    ExitCode::OK,
+                    None,
+                );
+            }
+            (m) {
+                EXTCODECOPY;
+            }
+            m.state.stack.push(U256::from(4)).unwrap();  // length
+            m.state.stack.push(U256::from(1)).unwrap(); // offset
+            m.state.stack.push(U256::from(0)).unwrap(); // destOffset
+            m.state.stack.push(EthAddress::from_id(1001).as_evm_word()).unwrap();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 0);
+            assert_eq!(m.state.memory[0..3], bytecode[1..4]);
+        };
+    }
+
+    #[test]
+    fn test_extcodehash() {
+        #[allow(unused_assignments)]
+        let mut bytecode_hash = None;
+
+        evm_unit_test! {
+            (rt) {
+                rt.in_call = true;
+
+                let addr = FilAddress::new_id(1001);
+                rt.set_address_actor_type(addr, *EVM_ACTOR_CODE_ID);
+                let bytecode = vec![0x01, 0x02, 0x03, 0x04];
+                let hash = BytecodeHash::try_from(rt.hash(SupportedHashes::Keccak256, &bytecode).as_slice()).unwrap();
+                bytecode_hash = Some(hash);
+
+                rt.expect_send(
+                    addr,
+                    crate::Method::GetBytecodeHash as u64,
+                    Default::default(),
+                    TokenAmount::zero(),
+                    None,
+                    SendFlags::READ_ONLY,
+                    IpldBlock::serialize_cbor(&hash).unwrap(),
+                    ExitCode::OK,
+                    None,
+                );
+            }
+            (m) {
+                EXTCODEHASH;
+            }
+            m.state.stack.push(EthAddress::from_id(1001).as_evm_word()).unwrap();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(bytecode_hash.unwrap()));
+        };
+    }
+
+    #[test]
+    fn test_extcodehash_nonexist() {
+        evm_unit_test! {
+            (rt) {
+                rt.in_call = true;
+            }
+            (m) {
+                EXTCODEHASH;
+            }
+            m.state.stack.push(EthAddress::from_id(1001).as_evm_word()).unwrap();
+            let result = m.step();
+            assert!(result.is_ok(), "execution step failed");
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(0));
+        };
     }
 }

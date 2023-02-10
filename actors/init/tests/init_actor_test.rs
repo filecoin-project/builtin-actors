@@ -17,7 +17,7 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
+use fvm_shared::{ActorID, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
 use num_traits::Zero;
 use serde::Serialize;
 
@@ -71,7 +71,7 @@ fn repeated_robust_address() {
         rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id, None);
 
         // Expect a send to the multisig actor constructor
-        rt.expect_send(
+        rt.expect_send_simple(
             expected_id_addr,
             METHOD_CONSTRUCTOR,
             IpldBlock::serialize_cbor(&fake_params).unwrap(),
@@ -135,7 +135,7 @@ fn create_2_payment_channels() {
         // expect anne creating a payment channel to trigger a send to the payment channels constructor
         let balance = TokenAmount::from_atto(100);
 
-        rt.expect_send(
+        rt.expect_send_simple(
             expected_id_addr,
             METHOD_CONSTRUCTOR,
             IpldBlock::serialize_cbor(&fake_params).unwrap(),
@@ -176,7 +176,7 @@ fn create_storage_miner() {
 
     let fake_params = ConstructorParams { network_name: String::from("fake_param") };
 
-    rt.expect_send(
+    rt.expect_send_simple(
         expected_id_addr,
         METHOD_CONSTRUCTOR,
         IpldBlock::serialize_cbor(&fake_params).unwrap(),
@@ -225,7 +225,7 @@ fn create_multisig_actor() {
 
     let fake_params = ConstructorParams { network_name: String::from("fake_param") };
     // Expect a send to the multisig actor constructor
-    rt.expect_send(
+    rt.expect_send_simple(
         expected_id_addr,
         METHOD_CONSTRUCTOR,
         IpldBlock::serialize_cbor(&fake_params).unwrap(),
@@ -259,7 +259,7 @@ fn sending_constructor_failure() {
     rt.expect_create_actor(*MINER_ACTOR_CODE_ID, expected_id, None);
 
     let fake_params = ConstructorParams { network_name: String::from("fake_param") };
-    rt.expect_send(
+    rt.expect_send_simple(
         expected_id_addr,
         METHOD_CONSTRUCTOR,
         IpldBlock::serialize_cbor(&fake_params).unwrap(),
@@ -287,69 +287,6 @@ fn sending_constructor_failure() {
 }
 
 #[test]
-fn exec_restricted_correctly() {
-    let mut rt = construct_runtime();
-    construct_and_verify(&mut rt);
-
-    // set caller to not-builtin
-    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(1000));
-
-    // cannot call the unexported method num
-    let fake_constructor_params =
-        RawBytes::serialize(ConstructorParams { network_name: String::from("fake_param") })
-            .unwrap();
-    let exec_params = ExecParams {
-        code_cid: *MULTISIG_ACTOR_CODE_ID,
-        constructor_params: RawBytes::serialize(fake_constructor_params.clone()).unwrap(),
-    };
-
-    expect_abort_contains_message(
-        ExitCode::USR_FORBIDDEN,
-        "must be built-in",
-        rt.call::<InitActor>(
-            Method::Exec as MethodNum,
-            IpldBlock::serialize_cbor(&exec_params).unwrap(),
-        ),
-    );
-
-    // can call the exported method num
-
-    // Assign addresses
-    let unique_address = Address::new_actor(b"multisig");
-    rt.new_actor_addr = Some(unique_address);
-
-    // Next id
-    let expected_id = 100;
-    let expected_id_addr = Address::new_id(expected_id);
-    rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id, None);
-
-    // Expect a send to the multisig actor constructor
-    rt.expect_send(
-        expected_id_addr,
-        METHOD_CONSTRUCTOR,
-        IpldBlock::serialize_cbor(&fake_constructor_params).unwrap(),
-        TokenAmount::zero(),
-        None,
-        ExitCode::OK,
-    );
-
-    rt.expect_validate_caller_any();
-
-    let ret = rt
-        .call::<InitActor>(
-            Method::ExecExported as u64,
-            IpldBlock::serialize_cbor(&exec_params).unwrap(),
-        )
-        .unwrap()
-        .unwrap();
-    let exec_ret: ExecReturn = ret.deserialize().unwrap();
-    assert_eq!(unique_address, exec_ret.robust_address, "Robust address does not macth");
-    assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
-    check_state(&rt);
-    rt.verify();
-}
-
-#[test]
 fn call_exec4() {
     let mut rt = construct_runtime();
     construct_and_verify(&mut rt);
@@ -360,7 +297,8 @@ fn call_exec4() {
 
     // Make the f4 addr
     let subaddr = b"foobar";
-    let f4_addr = Address::new_delegated(EAM_ACTOR_ID, subaddr).unwrap();
+    let namespace = EAM_ACTOR_ID;
+    let f4_addr = Address::new_delegated(namespace, subaddr).unwrap();
 
     // Next id
     let expected_id = 100;
@@ -369,7 +307,7 @@ fn call_exec4() {
 
     let fake_params = ConstructorParams { network_name: String::from("fake_param") };
     // Expect a send to the multisig actor constructor
-    rt.expect_send(
+    rt.expect_send_simple(
         expected_id_addr,
         METHOD_CONSTRUCTOR,
         IpldBlock::serialize_cbor(&fake_params).unwrap(),
@@ -380,7 +318,8 @@ fn call_exec4() {
 
     // Return should have been successful. Check the returned addresses
     let exec_ret =
-        exec4_and_verify(&mut rt, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap();
+        exec4_and_verify(&mut rt, namespace, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params)
+            .unwrap();
 
     assert_eq!(unique_address, exec_ret.robust_address, "Robust address does not macth");
     assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
@@ -398,7 +337,8 @@ fn call_exec4() {
     let unique_address = Address::new_actor(b"test2");
     rt.new_actor_addr = Some(unique_address);
     let exec_err =
-        exec4_and_verify(&mut rt, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap_err();
+        exec4_and_verify(&mut rt, namespace, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params)
+            .unwrap_err();
 
     assert_eq!(exec_err.exit_code(), ExitCode::USR_FORBIDDEN);
 
@@ -407,7 +347,8 @@ fn call_exec4() {
     let unique_address = Address::new_actor(b"test2");
     rt.new_actor_addr = Some(unique_address);
     let exec_err =
-        exec4_and_verify(&mut rt, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap_err();
+        exec4_and_verify(&mut rt, namespace, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params)
+            .unwrap_err();
 
     assert_eq!(exec_err.exit_code(), ExitCode::USR_FORBIDDEN);
 }
@@ -424,7 +365,8 @@ fn call_exec4_placeholder() {
 
     // Make the f4 addr
     let subaddr = b"foobar";
-    let f4_addr = Address::new_delegated(EAM_ACTOR_ID, subaddr).unwrap();
+    let namespace = EAM_ACTOR_ID;
+    let f4_addr = Address::new_delegated(namespace, subaddr).unwrap();
 
     // Register a placeholder with the init actor.
     let expected_id = {
@@ -438,14 +380,14 @@ fn call_exec4_placeholder() {
     // Register it in the state-tree.
     let expected_id_addr = Address::new_id(expected_id);
     rt.set_address_actor_type(expected_id_addr, *PLACEHOLDER_ACTOR_CODE_ID);
-    rt.add_delegated_address(expected_id_addr, f4_addr);
+    rt.set_delegated_address(expected_id, f4_addr);
 
     // Now try to create it.
     rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id, Some(f4_addr));
 
     let fake_params = ConstructorParams { network_name: String::from("fake_param") };
     // Expect a send to the multisig actor constructor
-    rt.expect_send(
+    rt.expect_send_simple(
         expected_id_addr,
         METHOD_CONSTRUCTOR,
         IpldBlock::serialize_cbor(&fake_params).unwrap(),
@@ -456,7 +398,8 @@ fn call_exec4_placeholder() {
 
     // Return should have been successful. Check the returned addresses
     let exec_ret =
-        exec4_and_verify(&mut rt, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap();
+        exec4_and_verify(&mut rt, namespace, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params)
+            .unwrap();
 
     assert_eq!(unique_address, exec_ret.robust_address, "Robust address does not macth");
     assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
@@ -517,6 +460,7 @@ where
 
 fn exec4_and_verify<S: Serialize>(
     rt: &mut MockRuntime,
+    namespace: ActorID,
     subaddr: &[u8],
     code_id: Cid,
     params: &S,
@@ -524,7 +468,7 @@ fn exec4_and_verify<S: Serialize>(
 where
     S: Serialize,
 {
-    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, EAM_ACTOR_ADDR);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(namespace));
     if cfg!(feature = "m2-native") {
         rt.expect_validate_caller_any();
     } else {

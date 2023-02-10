@@ -1,24 +1,24 @@
 #![allow(clippy::unnecessary_mut_passed)]
 
-pub mod arithmetic;
-pub mod bitwise;
-pub mod boolean;
-pub mod call;
-pub mod context;
-pub mod control;
-pub mod ext;
-pub mod hash;
-pub mod lifecycle;
-pub mod log_event;
-pub mod memory;
-pub mod stack;
-pub mod state;
-pub mod storage;
+mod arithmetic;
+mod bitwise;
+mod boolean;
+mod call;
+mod context;
+mod control;
+mod ext;
+mod hash;
+mod lifecycle;
+mod log_event;
+mod memory;
+mod stack;
+mod state;
+mod storage;
 
 use crate::interpreter::execution::Machine;
-use crate::interpreter::output::StatusCode;
-use crate::interpreter::U256;
+use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::runtime::Runtime;
+use fil_actors_runtime::ActorError;
 
 macro_rules! rev {
     ($($args:ident),*) => {
@@ -36,7 +36,7 @@ macro_rules! def_op {
     ($op:ident ($m:ident) => { $($body:tt)* }) => {
         #[allow(non_snake_case)]
         #[inline(always)]
-        pub fn $op<'r, 'a, RT: Runtime + 'a>($m: &mut Machine<'r, 'a, RT> ) -> Result<(), StatusCode> {
+        pub fn $op<'r, 'a, RT: Runtime + 'a>($m: &mut Machine<'r, 'a, RT> ) -> Result<(), ActorError> {
             $($body)*
         }
     }
@@ -77,8 +77,9 @@ macro_rules! def_stackop {
     };
 }
 
-// pusho variants: push stuff on the stack taken as input from bytecode; the kind of thing that
+// push variants: push stuff on the stack taken as input from bytecode; the kind of thing that
 // makes you want to cry because it really is a stack op.
+// Takes subslice of bytecode starting at pc. Advances pc by number of bytes read.
 macro_rules! def_push {
     ($op:ident => $impl:path) => {
         def_op! { $op (m) => {

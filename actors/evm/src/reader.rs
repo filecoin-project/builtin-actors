@@ -1,9 +1,8 @@
 use std::{borrow::Cow, fmt::Display};
 
+use fil_actors_evm_shared::uints::U256;
 use fvm_shared::{bigint::BigUint, error::ExitCode};
 use substrate_bn::{AffineG1, CurveError, FieldError, Fq, Fr, Group, G1};
-
-use crate::interpreter::U256;
 
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct OverflowError;
@@ -207,8 +206,9 @@ mod test {
     #[test]
     fn test_read_fixed() {
         let mut reader = ValueReader::new(&[1, 2, 3]);
+        let empty: [u8; 0] = [];
         assert_eq!(reader.read_fixed::<2>(), [1, 2]);
-        assert_eq!(reader.read_fixed::<0>(), []);
+        assert_eq!(reader.read_fixed::<0>(), empty);
         assert_eq!(reader.read_fixed::<5>(), [3u8, 0, 0, 0, 0]);
         assert_eq!(reader.read_fixed::<3>(), [0, 0, 0]);
     }

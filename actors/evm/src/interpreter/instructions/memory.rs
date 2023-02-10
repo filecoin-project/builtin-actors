@@ -1,14 +1,16 @@
 #!allow[clippy::result-unit-err]
 
+use fil_actors_evm_shared::uints::U256;
+use fil_actors_runtime::{ActorError, AsActorError};
+
+use crate::{EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS, EVM_WORD_SIZE};
+
 use {
     crate::interpreter::memory::Memory,
-    crate::interpreter::{ExecutionState, StatusCode, System, U256},
+    crate::interpreter::{ExecutionState, System},
     fil_actors_runtime::runtime::Runtime,
     std::num::NonZeroUsize,
 };
-
-/// The size of the EVM 256-bit word in bytes.
-const WORD_SIZE: usize = 32;
 
 #[derive(Debug)]
 pub struct MemoryRegion {
@@ -17,37 +19,33 @@ pub struct MemoryRegion {
 }
 
 #[inline]
-fn grow_memory(mem: &mut Memory, mut new_size: usize) -> Result<(), ()> {
-    // Align to the next u256.
-    // Guaranteed to not overflow.
-    let alignment = new_size % WORD_SIZE;
-    if alignment > 0 {
-        new_size += WORD_SIZE - alignment;
-    }
-    mem.grow(new_size);
-    Ok(())
-}
-
-#[inline]
-#[allow(clippy::result_unit_err)]
 pub fn get_memory_region(
     mem: &mut Memory,
     offset: impl TryInto<u32>,
     size: impl TryInto<u32>,
-) -> Result<Option<MemoryRegion>, ()> {
+) -> Result<Option<MemoryRegion>, ActorError> {
     // We use u32 because we don't support more than 4GiB of memory anyways.
     // Also, explicitly check math so we don't panic and/or wrap around.
-    let size: u32 = size.try_into().map_err(|_| ())?;
+    let size: u32 = size.try_into().map_err(|_| {
+        ActorError::unchecked(
+            EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS,
+            "size must be less than max u32".into(),
+        )
+    })?;
     if size == 0 {
         return Ok(None);
     }
-    let offset: u32 = offset.try_into().map_err(|_| ())?;
-    let new_size: u32 = offset.checked_add(size).ok_or(())?;
+    let offset: u32 = offset.try_into().map_err(|_| {
+        ActorError::unchecked(
+            EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS,
+            "offset must be less than max u32".into(),
+        )
+    })?;
+    let new_size: u32 = offset
+        .checked_add(size)
+        .context_code(EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS, "new memory size exceeds max u32")?;
 
-    let current_size = mem.len();
-    if new_size as usize > current_size {
-        grow_memory(mem, new_size as usize)?;
-    }
+    mem.grow(new_size as usize);
 
     Ok(Some(MemoryRegion {
         offset: offset as usize,
@@ -62,9 +60,8 @@ pub fn copy_to_memory(
     data_offset: U256,
     data: &[u8],
     zero_fill: bool,
-) -> Result<(), StatusCode> {
-    let region = get_memory_region(memory, dest_offset, dest_size)
-        .map_err(|_| StatusCode::InvalidMemoryAccess)?;
+) -> Result<(), ActorError> {
+    let region = get_memory_region(memory, dest_offset, dest_size)?;
 
     #[inline(always)]
     fn min(a: U256, b: usize) -> usize {
@@ -98,10 +95,8 @@ pub fn mload(
     state: &mut ExecutionState,
     _system: &System<impl Runtime>,
     index: U256,
-) -> Result<U256, StatusCode> {
-    let region = get_memory_region(&mut state.memory, index, WORD_SIZE)
-        .map_err(|_| StatusCode::InvalidMemoryAccess)?
-        .expect("empty region");
+) -> Result<U256, ActorError> {
+    let region = get_memory_region(&mut state.memory, index, EVM_WORD_SIZE)?.expect("empty region");
     let value =
         U256::from_big_endian(&state.memory[region.offset..region.offset + region.size.get()]);
 
@@ -114,14 +109,12 @@ pub fn mstore(
     _system: &System<impl Runtime>,
     index: U256,
     value: U256,
-) -> Result<(), StatusCode> {
-    let region = get_memory_region(&mut state.memory, index, WORD_SIZE)
-        .map_err(|_| StatusCode::InvalidMemoryAccess)?
-        .expect("empty region");
+) -> Result<(), ActorError> {
+    let region = get_memory_region(&mut state.memory, index, EVM_WORD_SIZE)?.expect("empty region");
 
-    let mut bytes = [0u8; WORD_SIZE];
+    let mut bytes = [0u8; EVM_WORD_SIZE];
     value.to_big_endian(&mut bytes);
-    state.memory[region.offset..region.offset + WORD_SIZE].copy_from_slice(&bytes);
+    state.memory[region.offset..region.offset + EVM_WORD_SIZE].copy_from_slice(&bytes);
 
     Ok(())
 }
@@ -132,10 +125,8 @@ pub fn mstore8(
     _system: &System<impl Runtime>,
     index: U256,
     value: U256,
-) -> Result<(), StatusCode> {
-    let region = get_memory_region(&mut state.memory, index, 1)
-        .map_err(|_| StatusCode::InvalidMemoryAccess)?
-        .expect("empty region");
+) -> Result<(), ActorError> {
+    let region = get_memory_region(&mut state.memory, index, 1)?.expect("empty region");
 
     let value = (value.low_u32() & 0xff) as u8;
     state.memory[region.offset] = value;
@@ -147,14 +138,14 @@ pub fn mstore8(
 pub fn msize(
     state: &mut ExecutionState,
     _system: &System<impl Runtime>,
-) -> Result<U256, StatusCode> {
+) -> Result<U256, ActorError> {
     Ok(u64::try_from(state.memory.len()).unwrap().into())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::interpreter::memory::Memory;
+    use crate::{evm_unit_test, interpreter::memory::Memory};
 
     #[test]
     fn copy_to_memory_big() {
@@ -167,7 +158,7 @@ mod tests {
             &[],
             true,
         );
-        assert_eq!(result, Err(StatusCode::InvalidMemoryAccess));
+        assert_eq!(result.unwrap_err().exit_code(), EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS);
     }
 
     #[test]
@@ -207,5 +198,403 @@ mod tests {
         assert_eq!(result, Ok(()));
         assert_eq!(mem.len(), 32);
         assert_eq!(&mem[0..4], result_data);
+    }
+
+    #[test]
+    fn test_mload_nothing() {
+        evm_unit_test! {
+            (m) {
+                PUSH0;
+                MLOAD;
+            }
+
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::zero());
+        };
+    }
+
+    #[test]
+    fn test_mload_large_offset() {
+        evm_unit_test! {
+            (m) {
+                PUSH4; // garbage offset
+                0x01;
+                0x02;
+                0x03;
+                0x04;
+                MLOAD;
+            }
+
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::zero());
+        };
+    }
+
+    #[test]
+    fn test_mload_word() {
+        for sh in 0..32 {
+            evm_unit_test! {
+                (m) {
+                    PUSH1;
+                    {sh};
+                    MLOAD;
+                }
+
+                m.state.memory.grow(32);
+                m.state.memory[..32].copy_from_slice(&U256::MAX.to_bytes());
+
+                m.step().expect("execution step failed");
+                m.step().expect("execution step failed");
+
+                assert_eq!(m.state.stack.len(), 1);
+                assert_eq!(m.state.stack.pop().unwrap(), U256::MAX << (8 * sh));
+            };
+        }
+    }
+
+    #[test]
+    fn test_mstore8_basic() {
+        for i in 0..=u8::MAX {
+            evm_unit_test! {
+                (m) {
+                    PUSH1;
+                    {i};
+                    PUSH0;
+                    MSTORE8;
+                }
+                m.step().expect("execution step failed");
+                m.step().expect("execution step failed");
+                m.step().expect("execution step failed");
+
+                assert_eq!(m.state.stack.len(), 0);
+                assert_eq!(m.state.memory[0], i);
+            };
+        }
+    }
+
+    #[test]
+    fn test_mstore8_overwrite() {
+        evm_unit_test! {
+            (m) {
+                PUSH1;
+                0x01;
+                PUSH1;
+                0x01;
+                MSTORE8;
+            }
+            // index has garbage
+            m.state.memory.grow(32);
+            m.state.memory[0] = 0xab;
+            m.state.memory[1] = 0xff;
+            m.state.memory[2] = 0xfe;
+
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+
+            assert_eq!(m.state.stack.len(), 0);
+            // overwritten
+            assert_eq!(m.state.memory[1], 0x01);
+            // byte after isn't touched
+            assert_eq!(m.state.memory[2], 0xfe);
+            // byte before isn't touched
+            assert_eq!(m.state.memory[0], 0xab);
+        };
+    }
+
+    #[test]
+    fn test_mstore8_large_offset() {
+        for sh in 0..16 {
+            let i = 1u16 << sh;
+            let [a, b] = i.to_be_bytes();
+            evm_unit_test! {
+                (m) {
+                    PUSH1;
+                    0xff;
+                    PUSH2;
+                    {a};
+                    {b};
+                    MSTORE8;
+                }
+                m.step().expect("execution step failed");
+                m.step().expect("execution step failed");
+                m.step().expect("execution step failed");
+
+                assert_eq!(m.state.stack.len(), 0);
+                assert_eq!(m.state.memory[i as usize], 0xff);
+                // leading memory is zeroed
+                assert_eq!(&m.state.memory[..i as usize], &vec![0; i as usize]);
+            };
+        }
+    }
+
+    #[test]
+    fn test_mstore8_garbage() {
+        evm_unit_test! {
+            (m) {
+                PUSH32;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0xff;
+                0x01;
+                PUSH0;
+                MSTORE8;
+            }
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+
+            assert_eq!(m.state.stack.len(), 0);
+            assert_eq!(m.state.memory[0], 0x01);
+            // garbage is not written alongside byte
+            assert_eq!(&m.state.memory[1..32], &[0; 31]);
+        };
+    }
+
+    #[test]
+    fn test_mstore_basic() {
+        evm_unit_test! {
+            (m) {
+                PUSH2;
+                0xff;
+                0xfe;
+                PUSH0;
+                MSTORE;
+            }
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+
+            assert_eq!(m.state.stack.len(), 0);
+            assert_eq!(m.state.memory[30..32], [0xff, 0xfe]);
+            // nothing else is written to memory
+            assert_eq!(&m.state.memory[..30], &[0; 30]);
+        };
+    }
+
+    #[test]
+    fn test_mstore_overwrite() {
+        evm_unit_test! {
+            (m) {
+                PUSH2;
+                0xff;
+                0xfe;
+                PUSH0;
+                MSTORE;
+            }
+            m.state.memory.grow(64);
+            m.state.memory[..EVM_WORD_SIZE].copy_from_slice(&[0xff; EVM_WORD_SIZE]);
+            // single byte outside expected overwritten area
+            m.state.memory[32] = 0xfe;
+
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+
+            assert_eq!(m.state.stack.len(), 0);
+            assert_eq!(m.state.memory[30..32], [0xff, 0xfe]);
+            // zeroes fill remaining word
+            assert_eq!(&m.state.memory[..30], &[0; 30]);
+            // nothing written outside of word
+            assert_eq!(m.state.memory[32], 0xfe);
+        };
+    }
+
+    #[test]
+    fn test_msize_multiple_mstore8() {
+        evm_unit_test! {
+            (m) {
+                PUSH1;
+                0xff;
+                PUSH1;
+                {42}; // offset of 42
+                MSTORE8;
+                MSIZE;
+            }
+
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+
+            assert_eq!(m.state.stack.len(), 1);
+            // msize is always a multiple of 32
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(64));
+        };
+    }
+
+    #[test]
+    fn test_msize_multiple_mstore() {
+        evm_unit_test! {
+            (m) {
+                PUSH1;
+                0xff;
+                PUSH1;
+                {12}; // offset of 12
+                MSTORE;
+                MSIZE;
+            }
+
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+            m.step().expect("execution step failed");
+
+            assert_eq!(m.state.stack.len(), 1);
+            // 12 + 32 = 42, round up to nearest 32 = 64
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(64));
+        };
+    }
+
+    #[test]
+    fn test_msize_basic() {
+        // Demonstrate that MSIZE depends on memory.len()
+        // Normally this should never happen and we wont panic from it.
+        evm_unit_test! {
+            (m) {
+                MSIZE;
+            }
+
+            m.state.memory.grow(12);
+            m.step().expect("execution step failed");
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(32));
+        };
+    }
+
+    macro_rules! check_mem {
+        ($mem:ident, $region:ident, $len:expr) => {
+            match $region {
+                Some(MemoryRegion { offset, size }) => {
+                    let sizeu: usize = size.into();
+                    assert!(sizeu == $len);
+                    assert!($mem.len() >= offset + sizeu);
+                    for x in offset..offset + sizeu {
+                        assert_eq!($mem[x], 0);
+                    }
+                }
+                None => {
+                    panic!("no memory region");
+                }
+            }
+        };
+    }
+
+    #[test]
+    fn test_memread_simple() {
+        // simple read in bounds
+        let mut mem = Memory::default();
+        mem.grow(1024);
+        assert_eq!(mem.len(), 1024);
+
+        let region = get_memory_region(&mut mem, 0, 512).expect("memory read failed");
+        check_mem!(mem, region, 512);
+    }
+
+    #[test]
+    fn test_memread_simple2() {
+        // simple read in bounds
+        let mut mem = Memory::default();
+        mem.grow(1024);
+        assert_eq!(mem.len(), 1024);
+
+        let region = get_memory_region(&mut mem, 128, 512).expect("memory read failed");
+        check_mem!(mem, region, 512);
+    }
+
+    #[test]
+    fn test_memread_simple3() {
+        // simple read in bounds
+        let mut mem = Memory::default();
+        mem.grow(1024);
+        assert_eq!(mem.len(), 1024);
+
+        let region = get_memory_region(&mut mem, 512, 512).expect("memory read failed");
+        check_mem!(mem, region, 512);
+    }
+
+    #[test]
+    fn test_memread_empty() {
+        let mut mem = Memory::default();
+        mem.grow(1024);
+        assert_eq!(mem.len(), 1024);
+
+        let region = get_memory_region(&mut mem, 512, 0).expect("memory read failed");
+        assert!(region.is_none());
+    }
+
+    #[test]
+    fn test_memread_overflow1() {
+        // len > mem size
+        let mut mem = Memory::default();
+        mem.grow(1024);
+        assert_eq!(mem.len(), 1024);
+
+        let region = get_memory_region(&mut mem, 0, 2048).expect("memory read failed");
+        check_mem!(mem, region, 2048);
+    }
+
+    #[test]
+    fn test_memread_overflow2() {
+        // offset > mem size
+        let mut mem = Memory::default();
+        mem.grow(1024);
+        assert_eq!(mem.len(), 1024);
+
+        let region = get_memory_region(&mut mem, 1056, 1024).expect("memory read failed");
+        check_mem!(mem, region, 1024);
+    }
+
+    #[test]
+    fn test_memread_overflow3() {
+        // offset+len > mem size
+        let mut mem = Memory::default();
+        mem.grow(1024);
+        assert_eq!(mem.len(), 1024);
+
+        let region = get_memory_region(&mut mem, 988, 2048).expect("memory read failed");
+        check_mem!(mem, region, 2048);
+    }
+
+    #[test]
+    fn test_memread_overflow_err() {
+        let mut mem = Memory::default();
+
+        let result = get_memory_region(&mut mem, u32::MAX - 1, 10);
+        assert!(result.is_err());
+        assert_eq!(result.err().unwrap().exit_code(), crate::EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS);
     }
 }

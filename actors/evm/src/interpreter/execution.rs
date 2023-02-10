@@ -1,15 +1,12 @@
-#![allow(dead_code)]
-
+use fil_actors_evm_shared::address::EthAddress;
+use fil_actors_runtime::ActorError;
 use fvm_shared::econ::TokenAmount;
 
-use super::address::EthAddress;
 use {
     super::instructions,
-    super::StatusCode,
-    crate::interpreter::memory::Memory,
-    crate::interpreter::stack::Stack,
-    crate::interpreter::{Bytecode, Output, System},
-    bytes::Bytes,
+    super::memory::Memory,
+    super::stack::Stack,
+    super::{Bytecode, Output, System},
     fil_actors_runtime::runtime::Runtime,
 };
 
@@ -18,8 +15,8 @@ use {
 pub struct ExecutionState {
     pub stack: Stack,
     pub memory: Memory,
-    pub input_data: Bytes,
-    pub return_data: Bytes,
+    pub input_data: Vec<u8>,
+    pub return_data: Vec<u8>,
     /// The EVM address of the caller.
     pub caller: EthAddress,
     /// The EVM address of the receiver.
@@ -33,7 +30,7 @@ impl ExecutionState {
         caller: EthAddress,
         receiver: EthAddress,
         value_received: TokenAmount,
-        input_data: Bytes,
+        input_data: Vec<u8>,
     ) -> Self {
         Self {
             stack: Stack::new(),
@@ -57,10 +54,13 @@ pub struct Machine<'r, 'a, RT: Runtime + 'a> {
 
 macro_rules! def_opcodes {
     ($($code:literal: $op:ident,)*) => {
-        pub const fn jumptable<'r, 'a, RT: Runtime>() -> [Instruction<'r, 'a, RT>; 256] {
+        pub(crate) const fn jumptable<'r, 'a, RT: Runtime>() -> [Instruction<'r, 'a, RT>; 256] {
             def_ins_raw! {
                 UNDEFINED(_m) {
-                    Err(StatusCode::UndefinedInstruction)
+                    Err(ActorError::unchecked(
+                        crate::EVM_CONTRACT_UNDEFINED_INSTRUCTION,
+                        "undefined instruction".into()
+                    ))
                 }
             }
             $(def_ins_raw! {
@@ -80,7 +80,7 @@ macro_rules! def_opcodes {
 macro_rules! def_ins_raw {
     ($ins:ident ($arg:ident) $body:block) => {
         #[allow(non_snake_case)]
-        unsafe fn $ins<'r, 'a, RT: Runtime>(p: *mut Machine<'r, 'a, RT>) -> Result<(), StatusCode> {
+        unsafe fn $ins<'r, 'a, RT: Runtime>(p: *mut Machine<'r, 'a, RT>) -> Result<(), ActorError> {
             // SAFETY: macro ensures that mut pointer is taken directly from a mutable borrow, used
             // once, then goes out of scope immediately after
             let $arg: &mut Machine<'r, 'a, RT> = &mut *p;
@@ -92,11 +92,11 @@ macro_rules! def_ins_raw {
 pub mod opcodes {
     use super::instructions;
     use super::Machine;
-    use crate::interpreter::StatusCode;
     use fil_actors_runtime::runtime::Runtime;
+    use fil_actors_runtime::ActorError;
 
-    pub type Instruction<'r, 'a, RT> =
-        unsafe fn(*mut Machine<'r, 'a, RT>) -> Result<(), StatusCode>;
+    pub(crate) type Instruction<'r, 'a, RT> =
+        unsafe fn(*mut Machine<'r, 'a, RT>) -> Result<(), ActorError>;
 
     def_opcodes! {
         0x00: STOP,
@@ -255,12 +255,12 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
         Machine { system, state, bytecode, pc: 0, output: Output::default() }
     }
 
-    pub fn execute(mut self) -> Result<Output, StatusCode> {
+    pub fn execute(mut self) -> Result<Output, ActorError> {
         while self.pc < self.bytecode.len() {
             // This is faster than the question mark operator, and speed counts here.
             #[allow(clippy::question_mark)]
             if let Err(e) = self.step() {
-                return Err(e);
+                return Err(e.wrap(format!("ABORT(pc={})", self.pc)));
             }
         }
 
@@ -268,7 +268,8 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
     }
 
     #[inline(always)]
-    fn step(&mut self) -> Result<(), StatusCode> {
+    // Note: pub only for unit test steps.
+    pub(crate) fn step(&mut self) -> Result<(), ActorError> {
         let op = self.bytecode[self.pc];
         unsafe { Self::JMPTABLE[op as usize](self) }
     }
@@ -280,6 +281,234 @@ pub fn execute(
     bytecode: &Bytecode,
     runtime: &mut ExecutionState,
     system: &mut System<impl Runtime>,
-) -> Result<Output, StatusCode> {
+) -> Result<Output, ActorError> {
     Machine::new(system, runtime, bytecode).execute()
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::evm_unit_test;
+
+    macro_rules! check_underflow_err {
+        ($($ins:ident,)*) => {
+            $(do_check_underflow_err!($ins);)*
+        }
+    }
+
+    macro_rules! check_underflow_none {
+        ($($ins:ident,)*) => {
+            $(do_check_underflow_none!($ins);)*
+        }
+    }
+
+    macro_rules! do_check_underflow_err {
+        ($ins:ident) => {
+            {
+                evm_unit_test! {
+                    (m) { $ins; }
+                    let result = m.step();
+                    assert!(result.is_err(), stringify!($ins));
+                    assert_eq!(result.unwrap_err().exit_code(), crate::EVM_CONTRACT_STACK_UNDERFLOW, stringify!($ins));
+                };
+            }
+        }
+    }
+
+    macro_rules! do_check_underflow_none {
+        ($ins:ident) => {{
+            evm_unit_test! {
+                (m) { $ins; }
+                let result = m.step();
+                assert!(result.is_ok(), stringify!($ins));
+            };
+        }};
+    }
+
+    #[test]
+    fn test_execution_underflow() {
+        check_underflow_err!(
+            ADD,
+            MUL,
+            SUB,
+            DIV,
+            SDIV,
+            MOD,
+            SMOD,
+            ADDMOD,
+            MULMOD,
+            EXP,
+            SIGNEXTEND,
+            LT,
+            GT,
+            SLT,
+            SGT,
+            EQ,
+            ISZERO,
+            AND,
+            OR,
+            XOR,
+            NOT,
+            BYTE,
+            SHL,
+            SHR,
+            SAR,
+            DUP1,
+            DUP2,
+            DUP3,
+            DUP4,
+            DUP5,
+            DUP6,
+            DUP7,
+            DUP8,
+            DUP9,
+            DUP10,
+            DUP11,
+            DUP12,
+            DUP13,
+            DUP14,
+            DUP15,
+            DUP16,
+            SWAP1,
+            SWAP2,
+            SWAP3,
+            SWAP4,
+            SWAP5,
+            SWAP6,
+            SWAP7,
+            SWAP8,
+            SWAP9,
+            SWAP10,
+            SWAP11,
+            SWAP12,
+            SWAP13,
+            SWAP14,
+            SWAP15,
+            SWAP16,
+            POP,
+            KECCAK256,
+            BALANCE,
+            CALLDATALOAD,
+            CALLDATACOPY,
+            EXTCODESIZE,
+            EXTCODECOPY,
+            EXTCODEHASH,
+            RETURNDATACOPY,
+            BLOCKHASH,
+            MLOAD,
+            MSTORE,
+            MSTORE8,
+            SLOAD,
+            SSTORE,
+            LOG0,
+            LOG1,
+            LOG2,
+            LOG3,
+            LOG4,
+            CALL,
+            DELEGATECALL,
+            STATICCALL,
+            CODECOPY,
+            CREATE,
+            CREATE2,
+            RETURN,
+            REVERT,
+            SELFDESTRUCT,
+            JUMP,
+            JUMPI,
+        );
+
+        check_underflow_none!(
+            PUSH0,
+            PUSH1,
+            PUSH2,
+            PUSH3,
+            PUSH4,
+            PUSH5,
+            PUSH6,
+            PUSH7,
+            PUSH8,
+            PUSH9,
+            PUSH10,
+            PUSH11,
+            PUSH12,
+            PUSH13,
+            PUSH14,
+            PUSH15,
+            PUSH16,
+            PUSH17,
+            PUSH18,
+            PUSH19,
+            PUSH20,
+            PUSH21,
+            PUSH22,
+            PUSH23,
+            PUSH24,
+            PUSH25,
+            PUSH26,
+            PUSH27,
+            PUSH28,
+            PUSH29,
+            PUSH30,
+            PUSH31,
+            PUSH32,
+            ADDRESS,
+            ORIGIN,
+            CALLER,
+            CALLVALUE,
+            CALLDATASIZE,
+            GASPRICE,
+            RETURNDATASIZE,
+            COINBASE,
+            TIMESTAMP,
+            NUMBER,
+            GASLIMIT,
+            CHAINID,
+            BASEFEE,
+            SELFBALANCE,
+            MSIZE,
+            CODESIZE,
+            JUMPDEST,
+            STOP,
+            PC,
+        );
+
+        // manual checks
+        {
+            evm_unit_test! {
+                (rt) {
+                    let epoch = 1234;
+                    rt.set_epoch(epoch);
+                    rt.expect_get_randomness_from_beacon(
+                        fil_actors_runtime::runtime::DomainSeparationTag::EvmPrevRandao,
+                        epoch,
+                        Vec::from(*b"prevrandao"),
+                        [0xff; 32]
+                    );
+                }
+                (m) { PREVRANDAO; }
+                let result = m.step();
+                assert!(result.is_ok());
+            };
+        }
+
+        {
+            evm_unit_test! {
+                (rt) {
+                    rt.expect_gas_available(1234);
+                }
+                (m) { GAS; }
+                let result = m.step();
+                assert!(result.is_ok());
+            };
+        }
+
+        {
+            evm_unit_test! {
+                (m) { INVALID; }
+                let result = m.step();
+                assert!(result.is_err());
+                assert_eq!(result.unwrap_err().exit_code(), crate::EVM_CONTRACT_INVALID_INSTRUCTION);
+            };
+        }
+    }
 }

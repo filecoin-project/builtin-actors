@@ -18,13 +18,13 @@ fil_actors_runtime = { version = "10.0.0-alpha.1", path = "../../runtime"}
 
 anyhow = "1.0.65"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
-frc42_dispatch = "3.0.0"
-frc46_token = "3.1.0"
-fvm_ipld_bitfield = "0.5.2"
+frc42_dispatch = "3.0.1-alpha.2"
+frc46_token = "4.0.1-alpha.1"
+fvm_ipld_bitfield = "0.5.4"
 fvm_ipld_blockstore = "0.1.1"
-fvm_ipld_encoding = "0.3.2"
+fvm_ipld_encoding = "0.3.3"
 fvm_ipld_hamt = "0.6.1"
-fvm_shared = { version = "3.0.0-alpha.16", default-features = false }
+fvm_shared = { version = "3.0.0-alpha.20", default-features = false }
 integer-encoding = { version = "3.0.3", default-features = false }
 libipld-core = { version = "0.13.1", features = ["serde-codec"] }
 log = "0.4.14"

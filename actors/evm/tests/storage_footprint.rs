@@ -5,7 +5,7 @@ use std::sync::Arc;
 use ethers::contract::Lazy;
 use ethers::prelude::abigen;
 use ethers::providers::{MockProvider, Provider};
-use fil_actor_evm::interpreter::address::EthAddress;
+use fil_actors_evm_shared::address::EthAddress;
 use fvm_ipld_blockstore::tracking::BSStats as BlockstoreStats;
 use fvm_shared::address::Address;
 use fvm_shared::ActorID;

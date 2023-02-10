@@ -1,8 +1,8 @@
 mod asm;
 
 use cid::Cid;
-use evm::interpreter::U256;
 use fil_actor_evm as evm;
+use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -11,8 +11,19 @@ use fvm_shared::address::Address;
 mod util;
 
 #[test]
+fn basic_contract_construction_and_invocation_fe_lang() {
+    let bytecode =
+        hex::decode(include_str!("contracts/output/FeSimplecoin/FeSimplecoin.bin")).unwrap();
+    simplecoin_test(bytecode);
+}
+
+#[test]
 fn basic_contract_construction_and_invocation() {
     let bytecode = hex::decode(include_str!("contracts/simplecoin.hex")).unwrap();
+    simplecoin_test(bytecode);
+}
+
+fn simplecoin_test(bytecode: Vec<u8>) {
     let contract = Address::new_id(100);
 
     let mut rt = util::init_construct_and_verify(bytecode, |rt| {
@@ -147,4 +158,47 @@ sstore";
 
     assert_eq!(U256::from(0), value);
     rt.verify();
+}
+
+#[test]
+fn test_push_last_byte() {
+    // 60 01 # len
+    // 80    # dup len
+    // 60 0b # offset 0x0b
+    // 60 0  # mem offset 0
+    // 39    # codecopy (dstOff, off, len)
+    //       # stack = [0x01]
+    // 60 0  # mem offset 0
+    // f3    # return (offset, size)
+    // 7f    # (bytecode)
+
+    // // Inputs[1] { @000A  memory[0x00:0x01] }
+    // 0000    60  PUSH1 0x01
+    // 0002    80  DUP1
+    // 0003    60  PUSH1 0x0b
+    // 0005    60  PUSH1 0x00
+    // 0007    39  CODECOPY
+    // 0008    60  PUSH1 0x00
+    // 000A    F3  *RETURN
+    // // Stack delta = +0
+    // // Outputs[2]
+    // // {
+    // //     @0007  memory[0x00:0x01] = code[0x0b:0x0c]
+    // //     @000A  return memory[0x00:0x01];
+    // // }
+    // // Block terminates
+
+    // 000B    7F    PUSH32 0x
+
+    // function main() {
+    //     memory[0x00:0x01] = code[0x0b:0x0c];
+    //     return memory[0x00:0x01];
+    // }
+
+    // bytecode where push32 opcode is the last/only byte
+    let init_code = hex::decode("600180600b6000396000f37f").unwrap();
+
+    let mut rt = util::construct_and_verify(init_code);
+
+    util::invoke_contract(&mut rt, &[]);
 }

@@ -10,7 +10,7 @@ repository = "https://github.com/filecoin-project/builtin-actors"
 [dependencies]
 fvm_ipld_hamt = "0.6.1"
 fvm_ipld_amt = { version = "0.5.1", features = ["go-interop"] }
-fvm_shared = { version = "3.0.0-alpha.16", default-features = false }
+fvm_shared = { version = "3.0.0-alpha.20", default-features = false }
 num = { version = "0.4", features = ["serde"] }
 num-traits = "0.2.14"
 num-derive = "0.3.3"
@@ -22,9 +22,10 @@ cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] 
 log = "0.4.14"
 thiserror = "1.0.30"
 anyhow = "1.0.65"
+fvm_sdk = { version = "3.0.0-alpha.24", optional = true }
 fvm_ipld_blockstore = "0.1.1"
-fvm_ipld_encoding = "0.3.2"
-fvm_ipld_bitfield = "0.5.2"
+fvm_ipld_encoding = "0.3.3"
+fvm_ipld_bitfield = "0.5.4"
 multihash = { version = "0.16.1", default-features = false }
 serde_repr = "0.1.8"
 regex = "1"
@@ -35,9 +36,6 @@ castaway = "0.2.2"
 # A fake-proofs dependency but... we can't select on that feature here because we enable it from
 # build.rs.
 sha2 = "0.10"
-
-# fil-actor
-fvm_sdk = { version = "3.0.0-alpha.22", optional = true }
 
 # test_util
 rand = { version = "0.8.5", default-features = false, optional = true }
@@ -89,5 +87,6 @@ no-provider-deal-collateral = []
 
 # fake proofs (for testing)
 fake-proofs = []
+
 
 test_utils = ["hex", "multihash/sha2", "libsecp256k1", "blake2b_simd", "rand", "rand/std_rng", "lazy_static", "pretty_env_logger"]

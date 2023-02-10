@@ -24,8 +24,7 @@ use fvm_shared::sector::{
 };
 use fvm_shared::sys::SendFlags;
 use fvm_shared::version::NetworkVersion;
-use fvm_shared::Response;
-use fvm_shared::{ActorID, MethodNum};
+use fvm_shared::{ActorID, MethodNum, Response};
 use num_traits::FromPrimitive;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -38,7 +37,7 @@ use crate::runtime::{
     ActorCode, ConsensusFault, DomainSeparationTag, MessageInfo, Policy, Primitives, RuntimePolicy,
     Verifier,
 };
-use crate::{actor_error, ActorError, AsActorError, Runtime};
+use crate::{actor_error, ActorError, AsActorError, Runtime, SendError};
 
 /// A runtime that bridges to the FVM environment through the FVM SDK.
 pub struct FvmRuntime<B = ActorBlockstore> {
@@ -229,7 +228,14 @@ where
         rand_epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        self.user_get_randomness_from_chain(personalization as i64, rand_epoch, entropy)
+        fvm::rand::get_chain_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
+            match e {
+                ErrorNumber::LimitExceeded => {
+                    actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
+                }
+                e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
+            }
+        })
     }
 
     fn get_randomness_from_beacon(
@@ -238,37 +244,12 @@ where
         rand_epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        self.user_get_randomness_from_beacon(personalization as i64, rand_epoch, entropy)
-    }
-
-    fn user_get_randomness_from_beacon(
-        &self,
-        personalization: i64,
-        epoch: ChainEpoch,
-        entropy: &[u8],
-    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        fvm::rand::get_beacon_randomness(personalization, epoch, entropy).map_err(|e| {
+        fvm::rand::get_beacon_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
             match e {
                 ErrorNumber::LimitExceeded => {
                     actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
                 }
                 e => actor_error!(assertion_failed; "get beacon randomness failed with an unexpected error: {}", e),
-            }
-        })
-    }
-
-    fn user_get_randomness_from_chain(
-        &self,
-        personalization: i64,
-        epoch: ChainEpoch,
-        entropy: &[u8],
-    ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        fvm::rand::get_chain_randomness(personalization, epoch, entropy).map_err(|e| {
-            match e {
-                ErrorNumber::LimitExceeded => {
-                    actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
-                }
-                e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
             }
         })
     }
@@ -288,8 +269,6 @@ where
     {
         let state_cid = fvm::sself::root()
             .map_err(|_| actor_error!(illegal_argument; "failed to get actor root state CID"))?;
-
-        log::debug!("getting cid: {}", state_cid);
 
         let mut state = ActorBlockstore
             .get_cbor::<S>(&state_cid)
@@ -311,7 +290,7 @@ where
         &self.blockstore
     }
 
-    fn send_generalized(
+    fn send(
         &self,
         to: &Address,
         method: MethodNum,
@@ -319,12 +298,14 @@ where
         value: TokenAmount,
         gas_limit: Option<u64>,
         flags: SendFlags,
-    ) -> Result<Response, ErrorNumber> {
+    ) -> Result<Response, SendError> {
         if self.in_transaction {
-            return Err(ErrorNumber::IllegalOperation);
+            // Note: It's slightly improper to call this ErrorNumber::IllegalOperation,
+            // since the error arises before getting to the VM.
+            return Err(SendError(ErrorNumber::IllegalOperation));
         }
 
-        fvm::send::send(to, method, params, value, gas_limit, flags)
+        fvm::send::send(to, method, params, value, gas_limit, flags).map_err(SendError)
     }
 
     fn new_actor_address(&mut self) -> Result<Address, ActorError> {
@@ -380,17 +361,14 @@ where
         fvm::network::tipset_timestamp()
     }
 
-    fn tipset_cid(&self, epoch: i64) -> Option<Cid> {
-        fvm::network::tipset_cid(epoch).ok()
+    fn tipset_cid(&self, epoch: i64) -> Result<Cid, ActorError> {
+        fvm::network::tipset_cid(epoch)
+            .map_err(|_| actor_error!(illegal_argument; "invalid epoch to query tipset_cid"))
     }
 
     fn emit_event(&self, event: &ActorEvent) -> Result<(), ActorError> {
         fvm::event::emit_event(event)
             .context_code(ExitCode::USR_ASSERTION_FAILED, "failed to emit event")
-    }
-
-    fn exit(&self, code: u32, data: Option<IpldBlock>, msg: Option<&str>) -> ! {
-        fvm::vm::exit(code, data, msg)
     }
 
     fn read_only(&self) -> bool {
@@ -588,14 +566,13 @@ where
 /// 5a. In case of error, aborts the execution with the emitted exit code, or
 /// 5b. In case of success, stores the return data as a block and returns the latter.
 pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
-    fvm::debug::init_logging();
+    init_logging();
 
     std::panic::set_hook(Box::new(|info| {
         fvm::vm::abort(ExitCode::USR_ASSERTION_FAILED.value(), Some(&format!("{}", info)))
     }));
 
     let method = fvm::message::method_number();
-    log::debug!("fetching parameters block: {}", params);
     let params = fvm::message::params_raw(params).expect("params block invalid");
 
     // Construct a new runtime.
@@ -617,5 +594,41 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
         None => NO_DATA_BLOCK_ID,
         Some(ret_block) => fvm::ipld::put_block(ret_block.codec, ret_block.data.as_slice())
             .expect("failed to write result"),
+    }
+}
+
+/// If debugging is enabled in the VM, installs a logger that sends messages to the FVM log syscall.
+/// Messages are prefixed with "[LEVEL] ".
+/// If debugging is not enabled, no logger will be installed which means that log!() and
+/// similar calls will be dropped without either formatting args or making a syscall.
+/// Note that, when debugging, the log syscalls will charge gas that wouldn't be charged
+/// when debugging is not enabled.
+///
+/// Note: this is similar to fvm::debug::init_logging() from the FVM SDK, but
+/// that doesn't work (at FVM SDK v2.2).
+fn init_logging() {
+    struct Logger;
+
+    impl log::Log for Logger {
+        fn enabled(&self, _: &log::Metadata) -> bool {
+            true
+        }
+
+        fn log(&self, record: &log::Record) {
+            // Note the log system won't automatically call enabled() before this,
+            // so it's canonical to check it here.
+            // But logging must have been enabled at initialisation time in order for
+            // the logger to be installed.
+            // There's currently no use for dynamically disabling logging, so just skip checking.
+            let msg = format!("[{}] {}", record.level(), record.args());
+            fvm::debug::log(msg);
+        }
+
+        fn flush(&self) {}
+    }
+
+    if fvm::debug::enabled() {
+        log::set_logger(&Logger).expect("failed to enable logging");
+        log::set_max_level(log::LevelFilter::Trace);
     }
 }

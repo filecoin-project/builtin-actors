@@ -3,7 +3,7 @@
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, restrict_internal_api, ActorError, BURNT_FUNDS_ACTOR_ADDR,
+    actor_dispatch, actor_error, extract_send_result, ActorError, BURNT_FUNDS_ACTOR_ADDR,
     EXPECTED_LEADERS_PER_EPOCH, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 
@@ -11,10 +11,9 @@ use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
+use fvm_shared::{METHOD_CONSTRUCTOR, METHOD_SEND};
 use log::{error, warn};
 use num_derive::FromPrimitive;
-use num_traits::FromPrimitive;
 
 pub use self::logic::*;
 pub use self::state::{Reward, State, VestingFunction};
@@ -146,19 +145,24 @@ impl Actor {
 
         // if this fails, we can assume the miner is responsible and avoid failing here.
         let reward_params = ext::miner::ApplyRewardParams { reward: total_reward.clone(), penalty };
-        let res = rt.send(
+        let res = extract_send_result(rt.send_simple(
             &Address::new_id(miner_id),
             ext::miner::APPLY_REWARDS_METHOD,
             IpldBlock::serialize_cbor(&reward_params)?,
             total_reward.clone(),
-        );
+        ));
         if let Err(e) = res {
             error!(
                 "failed to send ApplyRewards call to the miner actor with funds {}, code: {:?}",
                 total_reward,
                 e.exit_code()
             );
-            let res = rt.send(&BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, None, total_reward);
+            let res = extract_send_result(rt.send_simple(
+                &BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                None,
+                total_reward,
+            ));
             if let Err(e) = res {
                 error!(
                     "failed to send unsent reward to the burnt funds actor, code: {:?}",

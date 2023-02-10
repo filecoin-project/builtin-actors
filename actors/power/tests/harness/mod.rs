@@ -157,7 +157,7 @@ impl Harness {
             constructor_params: RawBytes::serialize(miner_ctor_params).unwrap(),
         };
         let create_miner_ret = CreateMinerReturn { id_address: *miner, robust_address: *robust };
-        rt.expect_send(
+        rt.expect_send_simple(
             INIT_ACTOR_ADDR,
             ext::init::EXEC_METHOD,
             IpldBlock::serialize_cbor(&expected_init_params).unwrap(),
@@ -392,7 +392,7 @@ impl Harness {
             this_epoch_reward_smoothed: self.this_epoch_reward_smoothed.clone(),
         };
 
-        rt.expect_send(
+        rt.expect_send_simple(
             REWARD_ACTOR_ADDR,
             ThisEpochReward as u64,
             None,
@@ -422,7 +422,7 @@ impl Harness {
                 reward_baseline_power: self.this_epoch_baseline_power.clone(),
                 quality_adj_power_smoothed: state.this_epoch_qa_power_smoothed.clone(),
             };
-            rt.expect_send(
+            rt.expect_send_simple(
                 sector.miner,
                 CONFIRM_SECTOR_PROOFS_VALID_METHOD,
                 IpldBlock::serialize_cbor(&param).unwrap(),
@@ -436,7 +436,7 @@ impl Harness {
         rt.expect_batch_verify_seals(infos, anyhow::Ok(verified_seals));
 
         // expect power sends to reward actor
-        rt.expect_send(
+        rt.expect_send_simple(
             REWARD_ACTOR_ADDR,
             UPDATE_NETWORK_KPI,
             IpldBlock::serialize_cbor(&BigIntSer(expected_raw_power)).unwrap(),

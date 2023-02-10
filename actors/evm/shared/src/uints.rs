@@ -1,12 +1,12 @@
-#![allow(dead_code)]
 // to silence construct_uint! clippy warnings
 // see https://github.com/paritytech/parity-common/issues/660
 #![allow(clippy::ptr_offset_with_cast, clippy::assign_op_pattern)]
 
-use serde::{Deserialize, Serialize};
-use substrate_bn::arith;
+#[doc(inline)]
+pub use uint::byteorder;
 
-use crate::BytecodeHash;
+use serde::{Deserialize, Serialize};
+//use substrate_bn::arith;
 
 use {
     fvm_shared::bigint::BigInt, fvm_shared::econ::TokenAmount, std::cmp::Ordering, std::fmt,
@@ -57,7 +57,89 @@ impl U256 {
     /// turns a i256 value to negative
     #[inline(always)]
     pub fn i256_neg(&self) -> U256 {
-        !*self + U256::ONE
+        if self.is_zero() {
+            U256::ZERO
+        } else {
+            !*self + U256::ONE
+        }
+    }
+
+    #[inline(always)]
+    pub fn i256_cmp(&self, other: &U256) -> Ordering {
+        // true > false:
+        // - true < positive:
+        match other.i256_is_negative().cmp(&self.i256_is_negative()) {
+            Ordering::Equal => self.cmp(other),
+            sign_cmp => sign_cmp,
+        }
+    }
+
+    #[inline]
+    pub fn i256_div(&self, other: &U256) -> U256 {
+        if self.is_zero() || other.is_zero() {
+            // EVM defines X/0 to be 0.
+            return U256::ZERO;
+        }
+
+        // min-negative-value can't be represented as a positive value, but we don't need to.
+        // NOTE: we've already checked that 'second' isn't zero above.
+        if (self, other) == (&U256::I128_MIN, &U256::ONE) {
+            return U256::I128_MIN;
+        }
+
+        let mut first = *self;
+        let mut second = *other;
+
+        // Record and strip the signs. We add them back at the end.
+        let first_neg = first.i256_is_negative();
+        let second_neg = second.i256_is_negative();
+
+        if first_neg {
+            first = first.i256_neg()
+        }
+
+        if second_neg {
+            second = second.i256_neg()
+        }
+
+        let d = first / second;
+
+        // Flip the sign back if necessary.
+        if d.is_zero() || first_neg == second_neg {
+            d
+        } else {
+            d.i256_neg()
+        }
+    }
+
+    #[inline]
+    pub fn i256_mod(&self, other: &U256) -> U256 {
+        if self.is_zero() || other.is_zero() {
+            // X % 0  or 0 % X is always 0.
+            return U256::ZERO;
+        }
+
+        let mut first = *self;
+        let mut second = *other;
+
+        // Record and strip the sign.
+        let negative = first.i256_is_negative();
+        if negative {
+            first = first.i256_neg();
+        }
+
+        if second.i256_is_negative() {
+            second = second.i256_neg()
+        }
+
+        let r = first % second;
+
+        // Restore the sign.
+        if negative && !r.is_zero() {
+            r.i256_neg()
+        } else {
+            r
+        }
     }
 
     pub fn to_bytes(&self) -> [u8; 32] {
@@ -90,12 +172,6 @@ impl From<&TokenAmount> for U256 {
     }
 }
 
-impl From<U256> for arith::U256 {
-    fn from(src: U256) -> arith::U256 {
-        arith::U256::from(src.0)
-    }
-}
-
 impl From<U256> for U512 {
     fn from(v: U256) -> Self {
         let [a, b, c, d] = v.0;
@@ -108,13 +184,6 @@ impl From<&U256> for TokenAmount {
         let mut bits = [0u8; 32];
         ui.to_big_endian(&mut bits);
         TokenAmount::from_atto(BigInt::from_bytes_be(fvm_shared::bigint::Sign::Plus, &bits))
-    }
-}
-
-impl From<BytecodeHash> for U256 {
-    fn from(bytecode: BytecodeHash) -> Self {
-        let bytes: [u8; 32] = bytecode.into();
-        Self::from(bytes)
     }
 }
 
@@ -161,102 +230,6 @@ fn zeroless_view(v: &impl AsRef<[u8]>) -> &[u8] {
     &v[v.iter().take_while(|&&b| b == 0).count()..]
 }
 
-macro_rules! impl_rlp_codec_uint {
-  ($type:ident, $bytes_len: expr) => {
-    impl rlp::Encodable for $type {
-      fn rlp_append(&self, s: &mut rlp::RlpStream) {
-        let mut bytes = [0u8; $bytes_len];
-        self.to_big_endian(&mut bytes);
-        let zbytes = zeroless_view(&bytes);
-        s.encoder().encode_value(&zbytes);
-      }
-    }
-    impl rlp::Decodable for $type {
-      fn decode(rlp: &rlp::Rlp) -> Result<Self, rlp::DecoderError> {
-        rlp
-          .decoder()
-          .decode_value(|bytes| Ok($type::from_big_endian(bytes)))
-      }
-    }
-  };
-}
-
-// RLP Support
-impl_rlp_codec_uint!(U256, 32);
-impl_rlp_codec_uint!(U512, 64);
-
-#[inline(always)]
-pub fn i256_div(mut first: U256, mut second: U256) -> U256 {
-    if first.is_zero() || second.is_zero() {
-        // EVM defines X/0 to be 0.
-        return U256::ZERO;
-    }
-
-    // min-negative-value can't be represented as a positive value, but we don't need to.
-    // NOTE: we've already checked that 'second' isn't zero above.
-    if (first, second) == (U256::I128_MIN, U256::ONE) {
-        return U256::I128_MIN;
-    }
-
-    // Record and strip the signs. We add them back at the end.
-    let first_neg = first.i256_is_negative();
-    let second_neg = second.i256_is_negative();
-
-    if first_neg {
-        first = first.i256_neg()
-    }
-
-    if second_neg {
-        second = second.i256_neg()
-    }
-
-    let d = first / second;
-
-    // Flip the sign back if necessary.
-    if d.is_zero() || first_neg == second_neg {
-        d
-    } else {
-        d.i256_neg()
-    }
-}
-
-#[inline(always)]
-pub fn i256_mod(mut first: U256, mut second: U256) -> U256 {
-    if first.is_zero() || second.is_zero() {
-        // X % 0  or 0 % X is always 0.
-        return U256::ZERO;
-    }
-
-    // Record and strip the sign.
-    let negative = first.i256_is_negative();
-    if negative {
-        first = first.i256_neg();
-    }
-
-    if second.i256_is_negative() {
-        second = second.i256_neg()
-    }
-
-    let r = first % second;
-
-    // Restore the sign.
-    if negative && !r.is_zero() {
-        r.i256_neg()
-    } else {
-        r
-    }
-}
-
-#[inline(always)]
-pub fn i256_cmp(first: U256, second: U256) -> Ordering {
-    // true > false:
-    // - true < positive:
-    match second.i256_is_negative().cmp(&first.i256_is_negative()) {
-        Ordering::Equal => first.cmp(&second),
-        sign_cmp => sign_cmp,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use fvm_ipld_encoding::{BytesDe, BytesSer, RawBytes};
@@ -278,17 +251,64 @@ mod tests {
         let max_value = U256::from(2).pow(255.into()) - 1;
         let neg_max_value = U256::from(2).pow(255.into()) - 1;
 
-        assert_eq!(i256_div(U256::I128_MIN, minus_one), U256::I128_MIN);
-        assert_eq!(i256_div(U256::I128_MIN, one), U256::I128_MIN);
-        assert_eq!(i256_div(one, U256::I128_MIN), zero);
-        assert_eq!(i256_div(max_value, one), max_value);
-        assert_eq!(i256_div(max_value, minus_one), neg_max_value);
-        assert_eq!(i256_div(one_hundred, minus_one), neg_one_hundred);
-        assert_eq!(i256_div(one_hundred, two), fifty);
+        assert_eq!(U256::I128_MIN.i256_div(&minus_one), U256::I128_MIN);
+        assert_eq!(U256::I128_MIN.i256_div(&one), U256::I128_MIN);
+        assert_eq!(one.i256_div(&U256::I128_MIN), zero);
+        assert_eq!(max_value.i256_div(&one), max_value);
+        assert_eq!(max_value.i256_div(&minus_one), neg_max_value);
+        assert_eq!(one_hundred.i256_div(&minus_one), neg_one_hundred);
+        assert_eq!(one_hundred.i256_div(&two), fifty);
 
-        assert_eq!(i256_div(zero, zero), zero);
-        assert_eq!(i256_div(one, zero), zero);
-        assert_eq!(i256_div(zero, one), zero);
+        assert_eq!(zero.i256_div(&zero), zero);
+        assert_eq!(one.i256_div(&zero), zero);
+        assert_eq!(zero.i256_div(&one), zero);
+    }
+
+    #[test]
+    fn mod_i256() {
+        let zero = U256::ZERO;
+        let one = U256::ONE;
+        let one_hundred = U256::from(100);
+        let two = U256::from(2);
+        let three = U256::from(3);
+
+        let neg_one_hundred = U256::from(100).i256_neg();
+        let minus_one = U256::from(1).i256_neg();
+        let neg_three = U256::from(3).i256_neg();
+        let max_value = U256::from(2).pow(255.into()) - 1;
+
+        // zero
+        assert_eq!(minus_one.i256_mod(&U256::ZERO), U256::ZERO);
+        assert_eq!(max_value.i256_mod(&U256::ZERO), U256::ZERO);
+        assert_eq!(U256::ZERO.i256_mod(&U256::ZERO), U256::ZERO);
+
+        assert_eq!(minus_one.i256_mod(&two), minus_one);
+        assert_eq!(U256::I128_MIN.i256_mod(&one), 0);
+        assert_eq!(one.i256_mod(&U256::I128_MIN), one);
+        assert_eq!(one.i256_mod(&U256::from(i128::MAX)), one);
+
+        assert_eq!(max_value.i256_mod(&minus_one), zero);
+        assert_eq!(neg_one_hundred.i256_mod(&minus_one), zero);
+        assert_eq!(one_hundred.i256_mod(&two), zero);
+        assert_eq!(one_hundred.i256_mod(&neg_three), one);
+
+        assert_eq!(neg_one_hundred.i256_mod(&three), minus_one);
+
+        let a = U256::from(95).i256_neg();
+        let b = U256::from(256);
+        assert_eq!(a % b, U256::from(161))
+    }
+
+    #[test]
+    fn negative_i256() {
+        assert_eq!(U256::ZERO.i256_neg(), U256::ZERO);
+
+        let one = U256::ONE.i256_neg();
+        assert!(one.i256_is_negative());
+
+        let neg_one = U256::from(&[0xff; 32]);
+        let pos_one = neg_one.i256_neg();
+        assert_eq!(pos_one, U256::ONE);
     }
 
     #[test]

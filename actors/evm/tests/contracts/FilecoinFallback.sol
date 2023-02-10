@@ -7,11 +7,11 @@ contract FilecoinFallback {
         if (method == 1024) {
             return ( 0, 0, bytes("") );
         } else if (method == 1025) {
-            return ( 0, 0x71, bytes("foobar") );
+            return ( 0, 0x51, bytes("foobar") );
         } else if (method == 1026) {
             return ( 42, 0, bytes("") );
         } else if (method == 1027) {
-            return ( 42, 0x71, bytes("foobar") );
+            return ( 42, 0x51, bytes("foobar") );
         }
         revert();
     }

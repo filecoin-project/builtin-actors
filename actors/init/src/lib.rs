@@ -1,21 +1,18 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use std::iter;
-
 use cid::Cid;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, restrict_internal_api, ActorContext, ActorError, AsActorError,
+    actor_dispatch, actor_error, extract_send_result, ActorContext, ActorError, AsActorError,
     EAM_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_shared::address::Address;
 use fvm_shared::error::ExitCode;
-use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR};
+use fvm_shared::{ActorID, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
-use num_traits::FromPrimitive;
 
 pub use self::state::State;
 pub use self::types::*;
@@ -36,9 +33,6 @@ pub enum Method {
     Exec4 = 3,
     #[cfg(feature = "m2-native")]
     InstallCode = 4,
-    // Method numbers derived from FRC-0042 standards
-    ExecExported = frc42_dispatch::method_hash!("Exec"),
-    // TODO: Export new methods if appropriate
 }
 
 /// Init actor
@@ -93,32 +87,35 @@ impl Actor {
         if existing {
             // NOTE: this case should be impossible, but we check it anyways just in case something
             // changes.
-            return Err(ActorError::forbidden("cannot exec over an existing actor".into()));
+            return Err(actor_error!(
+                forbidden,
+                "cannot exec over an existing actor {}",
+                id_address
+            ));
         }
 
         // Create an empty actor
         rt.create_actor(params.code_cid, id_address, None)?;
 
         // Invoke constructor
-        rt.send(
+        extract_send_result(rt.send_simple(
             &Address::new_id(id_address),
             METHOD_CONSTRUCTOR,
             params.constructor_params.into(),
             rt.message().value_received(),
-        )
+        ))
         .context("constructor failed")?;
 
         Ok(ExecReturn { id_address: Address::new_id(id_address), robust_address })
     }
 
-    /// Exec init actor
+    /// Exec4 init actor
     pub fn exec4(rt: &mut impl Runtime, params: Exec4Params) -> Result<Exec4Return, ActorError> {
         if cfg!(feature = "m2-native") {
             rt.validate_immediate_caller_accept_any()?;
         } else {
-            rt.validate_immediate_caller_is(iter::once(&EAM_ACTOR_ADDR))?;
+            rt.validate_immediate_caller_is(std::iter::once(&EAM_ACTOR_ADDR))?;
         }
-
         // Compute the f4 address.
         let caller_id = rt.message().caller().id().unwrap();
         let delegated_address =
@@ -161,12 +158,12 @@ impl Actor {
         rt.create_actor(params.code_cid, id_address, Some(delegated_address))?;
 
         // Invoke constructor
-        rt.send(
+        extract_send_result(rt.send_simple(
             &Address::new_id(id_address),
             METHOD_CONSTRUCTOR,
             params.constructor_params.into(),
             rt.message().value_received(),
-        )
+        ))
         .context("constructor failed")?;
 
         Ok(Exec4Return { id_address: Address::new_id(id_address), robust_address })
@@ -219,7 +216,6 @@ impl ActorCode for Actor {
     actor_dispatch! {
         Constructor => constructor,
         Exec => exec,
-        ExecExported => exec,
         Exec4 => exec4,
         #[cfg(feature = "m2-native")]
         InstallCode => install,

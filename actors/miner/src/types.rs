@@ -4,7 +4,7 @@
 use cid::Cid;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{serde_bytes, BytesDe};
+use fvm_ipld_encoding::{strict_bytes, BytesDe};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
@@ -38,7 +38,7 @@ pub struct MinerConstructorParams {
     pub worker: Address,
     pub control_addresses: Vec<Address>,
     pub window_post_proof_type: RegisteredPoStProof,
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub peer_id: Vec<u8>,
     pub multi_addresses: Vec<BytesDe>,
 }
@@ -69,7 +69,7 @@ pub struct ChangeWorkerAddressParams {
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ChangePeerIDParams {
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub new_id: Vec<u8>,
 }
 
@@ -89,7 +89,7 @@ pub struct ConfirmSectorProofsParams {
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct DeferredCronEventParams {
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub event_payload: Vec<u8>,
     pub reward_smoothed: FilterEstimate,
     pub quality_adj_power_smoothed: FilterEstimate,
@@ -122,7 +122,7 @@ pub struct SubmitWindowedPoStParams {
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ProveCommitSectorParams {
     pub sector_number: SectorNumber,
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub proof: Vec<u8>,
 }
 
@@ -244,11 +244,11 @@ pub struct CompactSectorNumbersParams {
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ReportConsensusFaultParams {
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub header1: Vec<u8>,
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub header2: Vec<u8>,
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub header_extra: Vec<u8>,
 }
 
@@ -377,7 +377,7 @@ pub struct DisputeWindowedPoStParams {
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct ProveCommitAggregateParams {
     pub sector_numbers: BitField,
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub aggregate_proof: Vec<u8>,
 }
 
@@ -389,7 +389,7 @@ pub struct ReplicaUpdate {
     pub new_sealed_cid: Cid,
     pub deals: Vec<DealID>,
     pub update_proof_type: RegisteredUpdateProof,
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub replica_proof: Vec<u8>,
 }
 
@@ -407,7 +407,7 @@ pub struct ReplicaUpdate2 {
     pub new_unsealed_cid: Cid,
     pub deals: Vec<DealID>,
     pub update_proof_type: RegisteredUpdateProof,
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub replica_proof: Vec<u8>,
 }
 
@@ -482,7 +482,7 @@ pub struct GetVestingFundsReturn {
 
 #[derive(Debug, Default, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct GetPeerIDReturn {
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub peer_id: Vec<u8>,
 }
 

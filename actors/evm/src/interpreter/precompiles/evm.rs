@@ -1,5 +1,9 @@
 use std::ops::Range;
 
+use fil_actors_evm_shared::uints::{
+    byteorder::{ByteOrder, LE},
+    U256,
+};
 use fil_actors_runtime::runtime::Runtime;
 use fvm_shared::crypto::{
     hash::SupportedHashes,
@@ -7,9 +11,11 @@ use fvm_shared::crypto::{
 };
 use num_traits::{One, Zero};
 use substrate_bn::{pairing_batch, AffineG1, AffineG2, Fq, Fq2, Fr, Group, Gt, G1, G2};
-use uint::byteorder::{ByteOrder, LE};
 
-use crate::interpreter::{precompiles::PrecompileError, System, U256};
+use crate::{
+    interpreter::{precompiles::PrecompileError, System},
+    EVM_WORD_SIZE,
+};
 
 use super::{PrecompileContext, PrecompileResult};
 use crate::reader::ValueReader;
@@ -85,7 +91,7 @@ pub(super) fn ripemd160<RT: Runtime>(
     let mut out = vec![0; 12];
     let hash = system.rt.hash(SupportedHashes::Ripemd160, input);
     out.extend_from_slice(&hash);
-    debug_assert_eq!(out.len(), 32);
+    debug_assert_eq!(out.len(), EVM_WORD_SIZE);
     Ok(out)
 }
 
@@ -138,15 +144,13 @@ pub(super) fn modexp<RT: Runtime>(
     Ok(output)
 }
 
-pub(super) fn curve_to_vec(curve: G1) -> Result<Vec<u8>, PrecompileError> {
-    AffineG1::from_jacobian(curve)
-        .map(|product| {
-            let mut output = vec![0; 64];
-            product.x().to_big_endian(&mut output[0..32]).unwrap();
-            product.y().to_big_endian(&mut output[32..64]).unwrap();
-            output
-        })
-        .ok_or(PrecompileError::EcErr(substrate_bn::CurveError::InvalidEncoding))
+pub(super) fn curve_to_vec(curve: G1) -> Vec<u8> {
+    let mut output = vec![0; 64];
+    if let Some(product) = AffineG1::from_jacobian(curve) {
+        product.x().to_big_endian(&mut output[0..32]).unwrap();
+        product.y().to_big_endian(&mut output[32..64]).unwrap();
+    }
+    output
 }
 
 /// add 2 points together on an elliptic curve
@@ -159,7 +163,7 @@ pub(super) fn ec_add<RT: Runtime>(
     let point1: G1 = input_params.read_value()?;
     let point2: G1 = input_params.read_value()?;
 
-    curve_to_vec(point1 + point2)
+    Ok(curve_to_vec(point1 + point2))
 }
 
 /// multiply a point on an elliptic curve by a scalar value
@@ -172,7 +176,7 @@ pub(super) fn ec_mul<RT: Runtime>(
     let point: G1 = input_params.read_value()?;
     let scalar: Fr = input_params.read_value()?;
 
-    curve_to_vec(point * scalar)
+    Ok(curve_to_vec(point * scalar))
 }
 
 /// pairs multple groups of twisted bn curves
@@ -234,7 +238,7 @@ pub(super) fn ec_pairing<RT: Runtime>(
     let accumulated = pairing_batch(&groups);
 
     let paring_success = if accumulated == Gt::one() { U256::one() } else { U256::zero() };
-    let mut ret = [0u8; 32];
+    let mut ret = [0u8; EVM_WORD_SIZE];
     paring_success.to_big_endian(&mut ret);
     Ok(ret.to_vec())
 }
@@ -248,7 +252,6 @@ pub(super) fn blake2f<RT: Runtime>(
     if input.len() != 213 {
         return Err(PrecompileError::IncorrectInputSize);
     }
-    let mut hasher = near_blake2::VarBlake2b::default();
     let mut rounds = [0u8; 4];
 
     let mut start = 0;
@@ -274,7 +277,7 @@ pub(super) fn blake2f<RT: Runtime>(
     }?;
 
     let rounds = u32::from_be_bytes(rounds);
-    let h = {
+    let mut h = {
         let mut ret = [0u64; 8];
         LE::read_u64_into(h, &mut ret);
         ret
@@ -290,14 +293,16 @@ pub(super) fn blake2f<RT: Runtime>(
         ret
     };
 
-    hasher.blake2_f(rounds, h, m, t, f);
-    let output = hasher.output().to_vec();
+    super::blake2f_impl::compress(&mut h, m, t, f, rounds as usize);
+
+    let mut output = vec![0; 64];
+    LE::write_u64_into(&h, &mut output);
     Ok(output)
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::interpreter::instructions::call::CallKind;
+    use crate::interpreter::CallKind;
 
     use super::*;
     use fil_actors_runtime::test_utils::MockRuntime;
@@ -335,7 +340,7 @@ mod tests {
         );
         // wrong signature
         let res = ec_recover(&mut system, input, PrecompileContext::default()).unwrap();
-        assert_eq!(res, Vec::new());
+        assert!(res.is_empty());
 
         let input = &hex!(
             "456e9aea5e197a1f1af7a3e85a3212fa4049a3ba34c2289b4c860fc0b0c64ef3" // h(ash)
@@ -346,7 +351,7 @@ mod tests {
         );
         // invalid recovery byte
         let res = ec_recover(&mut system, input, PrecompileContext::default()).unwrap();
-        assert_eq!(res, Vec::new());
+        assert!(res.is_empty());
     }
 
     #[test]
@@ -427,15 +432,21 @@ mod tests {
         );
         // no mod is invalid
         let res = modexp(&mut system, input, PrecompileContext::default()).unwrap();
-        assert_eq!(res, Vec::new());
+        assert!(res.is_empty());
     }
 
     // bn tests borrowed from https://github.com/bluealloy/revm/blob/26540bf5b29de6e7c8020c4c1880f8a97d1eadc9/crates/revm_precompiles/src/bn128.rs
     mod bn {
+        use serde::{Deserialize, Serialize};
+
         use super::MockRuntime;
 
         use crate::interpreter::{
-            precompiles::{ec_add, ec_mul, ec_pairing, PrecompileContext, PrecompileError},
+            precompiles::{
+                ec_add, ec_mul, ec_pairing,
+                evm::{blake2f, ec_recover, modexp},
+                PrecompileContext, PrecompileError, PrecompileFn,
+            },
             System,
         };
 
@@ -461,27 +472,14 @@ mod tests {
             let res = ec_add(&mut system, &input, PrecompileContext::default()).unwrap();
             assert_eq!(res, expected);
             // zero sum test
-            let input = hex::decode(
-                "\
-                0000000000000000000000000000000000000000000000000000000000000000\
-                0000000000000000000000000000000000000000000000000000000000000000\
-                0000000000000000000000000000000000000000000000000000000000000000\
-                0000000000000000000000000000000000000000000000000000000000000000",
-            )
-            .unwrap();
-            let res = ec_add(&mut system, &input, PrecompileContext::default());
-            assert!(matches!(
-                res,
-                Err(PrecompileError::EcErr(substrate_bn::CurveError::InvalidEncoding))
-            ));
+            let input = vec![0; 32 * 4];
+            let res = ec_add(&mut system, &input, PrecompileContext::default()).unwrap();
+            assert_eq!(res, vec![0; 64]);
 
-            // no input test
+            // no input test (auto zero extend)
             let input = [];
-            let res = ec_add(&mut system, &input, PrecompileContext::default());
-            assert!(matches!(
-                res,
-                Err(PrecompileError::EcErr(substrate_bn::CurveError::InvalidEncoding))
-            ));
+            let res = ec_add(&mut system, &input, PrecompileContext::default()).unwrap();
+            assert_eq!(res, vec![0; 64]);
 
             // point not on curve fail
             let input = hex::decode(
@@ -497,6 +495,70 @@ mod tests {
                 res,
                 Err(PrecompileError::EcErr(substrate_bn::CurveError::NotMember))
             ));
+        }
+
+        const TESTDATA_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/precompile-testdata/");
+
+        #[test]
+        fn conformance() {
+            #[derive(Deserialize, Serialize)]
+            #[serde(rename_all = "PascalCase")]
+            struct TestCase {
+                name: String,
+                #[serde(with = "hex")]
+                input: Vec<u8>,
+                #[serde(with = "hex")]
+                expected: Vec<u8>,
+            }
+
+            let tests: &[(PrecompileFn<MockRuntime>, &'static str)] = &[
+                (ec_add, "bn256Add"),
+                (ec_mul, "bn256ScalarMul"),
+                (ec_recover, "ecRecover"),
+                (blake2f, "blake2F"),
+                (ec_pairing, "bn256Pairing"),
+                (modexp, "modexp"),
+                (modexp, "modexp_eip2565"),
+            ];
+
+            let mut rt = MockRuntime::default();
+            let mut system = System::create(&mut rt).unwrap();
+
+            for (f, name) in tests {
+                let td = std::fs::read_to_string(format!("{TESTDATA_PATH}/{name}.json")).unwrap();
+                let cases: Vec<TestCase> = serde_json::from_str(&td).unwrap();
+                for t in cases {
+                    let res = f(&mut system, &t.input, PrecompileContext::default())
+                        .expect("call failed");
+                    assert_eq!(res, t.expected);
+                }
+            }
+        }
+
+        #[test]
+        fn conformance_failure() {
+            #[derive(Deserialize, Serialize)]
+            #[serde(rename_all = "PascalCase")]
+            struct FailureCase {
+                name: String,
+                #[serde(with = "hex")]
+                input: Vec<u8>,
+            }
+
+            let failures: &[(PrecompileFn<MockRuntime>, &'static str)] =
+                &[(blake2f, "fail-blake2f")];
+
+            let mut rt = MockRuntime::default();
+            let mut system = System::create(&mut rt).unwrap();
+
+            for (f, name) in failures {
+                let td = std::fs::read_to_string(format!("{TESTDATA_PATH}/{name}.json")).unwrap();
+                let cases: Vec<FailureCase> = serde_json::from_str(&td).unwrap();
+                for t in cases {
+                    let _ = f(&mut system, &t.input, PrecompileContext::default())
+                        .expect_err("call failed");
+                }
+            }
         }
 
         #[test]
@@ -520,27 +582,10 @@ mod tests {
             let res = ec_mul(&mut system, &input, PrecompileContext::default()).unwrap();
             assert_eq!(res, expected);
 
-            // out of gas test
-            let input = hex::decode(
-                "\
-                0000000000000000000000000000000000000000000000000000000000000000\
-                0000000000000000000000000000000000000000000000000000000000000000\
-                0200000000000000000000000000000000000000000000000000000000000000",
-            )
-            .unwrap();
-            let res = ec_mul(&mut system, &input, PrecompileContext::default());
-            assert!(matches!(
-                res,
-                Err(PrecompileError::EcErr(substrate_bn::CurveError::InvalidEncoding))
-            ));
-
             // no input test
             let input = [0u8; 0];
-            let res = ec_mul(&mut system, &input, PrecompileContext::default());
-            assert!(matches!(
-                res,
-                Err(PrecompileError::EcErr(substrate_bn::CurveError::InvalidEncoding))
-            ));
+            let res = ec_mul(&mut system, &input, PrecompileContext::default()).unwrap();
+            assert_eq!(res, vec![0u8; 64]);
 
             // point not on curve fail
             let input = hex::decode(
@@ -555,6 +600,18 @@ mod tests {
                 res,
                 Err(PrecompileError::EcErr(substrate_bn::CurveError::NotMember))
             ));
+
+            let input = hex::decode(
+                "\
+                035cf447ec2f8f21e6ea3d49d80a4a823834b1a776ab1733731587613f5065f8\
+                21c972c4e0c8eb2430171599b1f4900601fdb8f4b2d248d22ebefe3d5368a800\
+                0000000000000000000000000000000000000000000000000000000000000000\
+                0000000000000000000000000000000000000000000000000000000000000000\
+                ",
+            )
+            .unwrap();
+            let res = ec_mul(&mut system, &input, PrecompileContext::default());
+            assert_eq!(vec![0u8; 64], res.unwrap());
         }
 
         #[test]

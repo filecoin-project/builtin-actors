@@ -1,8 +1,9 @@
-#![allow(dead_code)]
-
 use std::borrow::Cow;
 
-use fil_actors_runtime::{actor_error, runtime::EMPTY_ARR_CID, AsActorError, EAM_ACTOR_ID};
+use fil_actors_evm_shared::{address::EthAddress, uints::U256};
+use fil_actors_runtime::{
+    actor_error, extract_send_result, runtime::EMPTY_ARR_CID, AsActorError, EAM_ACTOR_ID,
+};
 use fvm_ipld_blockstore::Block;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::CborStore;
@@ -11,53 +12,43 @@ use fvm_shared::{
     address::{Address, Payload},
     crypto::hash::SupportedHashes,
     econ::TokenAmount,
-    error::ExitCode,
+    error::{ErrorNumber, ExitCode},
     sys::SendFlags,
-    MethodNum, IPLD_RAW, METHOD_SEND,
+    MethodNum, Response, IPLD_RAW, METHOD_SEND,
 };
 use multihash::Code;
-use once_cell::unsync::OnceCell;
 
 use crate::state::{State, Tombstone};
 use crate::BytecodeHash;
 
-use super::{address::EthAddress, Bytecode};
-
 use {
-    crate::interpreter::{StatusCode, U256},
     cid::Cid,
     fil_actors_runtime::{runtime::Runtime, ActorError},
     fvm_ipld_blockstore::Blockstore,
     fvm_ipld_kamt::{AsHashedKey, Config as KamtConfig, Kamt},
 };
 
-lazy_static::lazy_static! {
-    // The Solidity compiler creates contiguous array item keys.
-    // To prevent the tree from going very deep we use extensions,
-    // which the Kamt supports and does in all cases.
-    //
-    // There are maximum 32 levels in the tree with the default bit width of 8.
-    // The top few levels will have a higher level of overlap in their hashes.
-    // Intuitively these levels should be used for routing, not storing data.
-    //
-    // The only exception to this is the top level variables in the contract
-    // which solidity puts in the first few slots. There having to do extra
-    // lookups is burdensome, and they will always be accessed even for arrays
-    // because that's where the array length is stored.
-    //
-    // However, for Solidity, the size of the KV pairs is 2x256, which is
-    // comparable to a size of a CID pointer plus extension metadata.
-    // We can keep the root small either by force-pushing data down,
-    // or by not allowing many KV pairs in a slot.
-    //
-    // The following values have been set by looking at how the charts evolved
-    // with the test contract. They might not be the best for other contracts.
-    static ref KAMT_CONFIG: KamtConfig = KamtConfig {
-        min_data_depth: 0,
-        bit_width: 5,
-        max_array_width: 1
-    };
-}
+// The Solidity compiler creates contiguous array item keys.
+// To prevent the tree from going very deep we use extensions,
+// which the Kamt supports and does in all cases.
+//
+// There are maximum 32 levels in the tree with the default bit width of 8.
+// The top few levels will have a higher level of overlap in their hashes.
+// Intuitively these levels should be used for routing, not storing data.
+//
+// The only exception to this is the top level variables in the contract
+// which solidity puts in the first few slots. There having to do extra
+// lookups is burdensome, and they will always be accessed even for arrays
+// because that's where the array length is stored.
+//
+// However, for Solidity, the size of the KV pairs is 2x256, which is
+// comparable to a size of a CID pointer plus extension metadata.
+// We can keep the root small either by force-pushing data down,
+// or by not allowing many KV pairs in a slot.
+//
+// The following values have been set by looking at how the charts evolved
+// with the test contract. They might not be the best for other contracts.
+const KAMT_CONFIG: KamtConfig = KamtConfig { min_data_depth: 0, bit_width: 5, max_array_width: 1 };
 
 pub struct StateHashAlgorithm;
 
@@ -105,21 +96,21 @@ pub struct System<'r, RT: Runtime> {
     /// The contract's EVM storage slots.
     slots: StateKamt<RT::Blockstore>,
     /// The contracts "nonce" (incremented when creating new actors).
-    nonce: u64,
+    pub(crate) nonce: u64,
     /// The last saved state root. None if the current state hasn't been saved yet.
     saved_state_root: Option<Cid>,
     /// Read Only context (staticcall)
     pub readonly: bool,
     /// Randomness taken from the current epoch of chain randomness
-    randomness: OnceCell<[u8; 32]>,
+    randomness: Option<[u8; 32]>,
 
     /// This is "some" if the actor is currently a "zombie". I.e., it has selfdestructed, but the
     /// current message is still executing. `System` cannot load a contracts state with a
-    tombstone: Option<Tombstone>,
+    pub(crate) tombstone: Option<Tombstone>,
 }
 
 impl<'r, RT: Runtime> System<'r, RT> {
-    fn new(rt: &'r mut RT, readonly: bool) -> Self
+    pub(crate) fn new(rt: &'r mut RT, readonly: bool) -> Self
     where
         RT::Blockstore: Clone,
     {
@@ -131,7 +122,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
             saved_state_root: None,
             bytecode: None,
             readonly,
-            randomness: OnceCell::new(),
+            randomness: None,
             tombstone: None,
         }
     }
@@ -199,7 +190,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
             saved_state_root: Some(state_root),
             bytecode: Some(EvmBytecode::new(state.bytecode, state.bytecode_hash)),
             readonly: read_only,
-            randomness: OnceCell::new(),
+            randomness: None,
             tombstone: state.tombstone,
         })
     }
@@ -213,7 +204,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
 
     /// Transfers funds to the receiver. This doesn't bother saving/reloading state.
     pub fn transfer(&mut self, to: &Address, value: TokenAmount) -> Result<(), ActorError> {
-        self.rt.send(to, METHOD_SEND, None, value)?;
+        extract_send_result(self.rt.send_simple(to, METHOD_SEND, None, value))?;
         Ok(())
     }
 
@@ -227,26 +218,47 @@ impl<'r, RT: Runtime> System<'r, RT> {
         gas_limit: Option<u64>,
         send_flags: SendFlags,
     ) -> Result<Option<IpldBlock>, ActorError> {
-        self.flush()?;
-        let result = self
-            .rt
-            .send_generalized(to, method, params, value, gas_limit, send_flags)
-            .map_err(|err| actor_error!(unspecified; "send syscall failed: {}", err))?;
+        let result = self.send_raw(to, method, params, value, gas_limit, send_flags)?.map_err(|err| {
+            actor_error!(unspecified; "send syscall to {to} on method {method} failed: {}", err)
+        })?;
 
         // Don't bother reloading on abort, just return the error.
         if !result.exit_code.is_success() {
-            return Err(ActorError::checked_with_data(
+            return Err(ActorError::checked(
                 result.exit_code,
                 format!("failed to call {to} on method {method}"),
                 result.return_data,
             ));
         }
 
-        if !send_flags.read_only() {
-            self.reload()?;
+        Ok(result.return_data)
+    }
+
+    /// Send, but get back the raw syscall error failure without interpreting it as an actor error.
+    /// This method has a really funky return type because:
+    /// 1. It can fail with an outer "actor error". In that case, the EVM is expected to abort with
+    ///    the specified exit code.
+    /// 2. It can fail with an inner syscall error.
+    /// 3. It can successfully call into the other actor, and return a response with a non-zero exit code.
+    pub fn send_raw(
+        &mut self,
+        to: &Address,
+        method: MethodNum,
+        params: Option<IpldBlock>,
+        value: TokenAmount,
+        gas_limit: Option<u64>,
+        send_flags: SendFlags,
+    ) -> Result<Result<Response, ErrorNumber>, ActorError> {
+        self.flush()?;
+        let result = self.rt.send(to, method, params, value, gas_limit, send_flags);
+
+        // Reload on success, and only on success.
+        match &result {
+            Ok(r) if r.exit_code.is_success() => self.reload()?,
+            _ => {}
         }
 
-        Ok(result.return_data)
+        Ok(result.map_err(|e| e.0))
     }
 
     /// Flush the actor state (bytecode, nonce, and slots).
@@ -349,23 +361,28 @@ impl<'r, RT: Runtime> System<'r, RT> {
     }
 
     /// Get value of a storage key.
-    pub fn get_storage(&mut self, key: U256) -> Result<U256, StatusCode> {
+    pub fn get_storage(&mut self, key: U256) -> Result<U256, ActorError> {
         Ok(self
             .slots
             .get(&key)
-            .map_err(|e| StatusCode::InternalError(e.to_string()))?
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to clear storage slot")?
             .cloned()
             .unwrap_or_default())
     }
 
     /// Set value of a storage key.
-    pub fn set_storage(&mut self, key: U256, value: U256) -> Result<(), StatusCode> {
+    pub fn set_storage(&mut self, key: U256, value: U256) -> Result<(), ActorError> {
         let changed = if value.is_zero() {
-            self.slots.delete(&key).map(|v| v.is_some())
+            self.slots
+                .delete(&key)
+                .map(|v| v.is_some())
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to clear storage slot")?
         } else {
-            self.slots.set(key, value).map(|v| v != Some(value))
-        }
-        .map_err(|e| StatusCode::InternalError(e.to_string()))?;
+            self.slots
+                .set(key, value)
+                .map(|v| v != Some(value))
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to update storage slot")?
+        };
 
         if changed {
             self.saved_state_root = None; // dirty.
@@ -379,35 +396,34 @@ impl<'r, RT: Runtime> System<'r, RT> {
     /// - f3, f2, and f1, addresses will resolve to ID address then...
     /// - Attempt to lookup Eth f4 address from ID address.
     /// - Otherwise encode ID address into Eth address (0xff....\<id>)
-    pub fn resolve_ethereum_address(&self, addr: &Address) -> Result<EthAddress, StatusCode> {
+    pub fn resolve_ethereum_address(&self, addr: &Address) -> Result<EthAddress, ActorError> {
         // Short-circuit if we already have an EVM actor.
         match addr.payload() {
             Payload::Delegated(delegated) if delegated.namespace() == EAM_ACTOR_ID => {
-                let subaddr: [u8; 20] = delegated.subaddress().try_into().map_err(|_| {
-                    StatusCode::BadAddress("invalid ethereum address length".into())
-                })?;
+                let subaddr: [u8; 20] = delegated
+                    .subaddress()
+                    .try_into()
+                    .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                        format!("invalid ethereum address length: {addr}")
+                    })?;
                 return Ok(EthAddress(subaddr));
             }
             _ => {}
         }
 
         // Otherwise, resolve to an ID address.
-        let actor_id = self.rt.resolve_address(addr).ok_or_else(|| {
-            StatusCode::BadAddress(format!(
-                "non-ethereum address {addr} cannot be resolved to an ID address"
-            ))
-        })?;
+        let actor_id = self.rt.resolve_address(addr).context_code(
+            ExitCode::USR_ILLEGAL_STATE,
+            "non-ethereum address {addr} cannot be resolved to an ID address",
+        )?;
 
         // Then attempt to resolve back into an EVM address.
-        //
-        // TODO: this method doesn't differentiate between "actor doesn't have a delegated
-        // address" and "actor doesn't exist". We should probably fix that and return an error if
-        // the actor doesn't exist.
         match self.rt.lookup_delegated_address(actor_id).map(|a| a.into_payload()) {
             Some(Payload::Delegated(delegated)) if delegated.namespace() == EAM_ACTOR_ID => {
-                let subaddr: [u8; 20] = delegated.subaddress().try_into().map_err(|_| {
-                    StatusCode::BadAddress("invalid ethereum address length".into())
-                })?;
+                let subaddr: [u8; 20] = delegated.subaddress().try_into().context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "invalid ethereum address length: {addr}",
+                )?;
                 Ok(EthAddress(subaddr))
             }
             // But use an EVM address as the fallback.
@@ -416,33 +432,22 @@ impl<'r, RT: Runtime> System<'r, RT> {
     }
 
     /// Gets the cached EVM randomness seed of the current epoch
-    pub fn get_randomness(&mut self) -> Result<&[u8; 32], StatusCode> {
+    pub fn get_randomness(&mut self) -> Result<&[u8; 32], ActorError> {
         const ENTROPY: &[u8] = b"prevrandao";
-        self.randomness.get_or_try_init(|| {
+        match &mut self.randomness {
+            Some(rand) => Ok(&*rand),
             // get randomness from current beacon epoch with entropy of "prevrandao"
-            Ok(self.rt.get_randomness_from_beacon(
+            cache => Ok(cache.insert(self.rt.get_randomness_from_beacon(
                 fil_actors_runtime::runtime::DomainSeparationTag::EvmPrevRandao,
                 self.rt.curr_epoch(),
                 ENTROPY,
-            )?)
-        })
+            )?)),
+        }
     }
 
     /// Mark ourselves as "selfdestructed".
     pub fn mark_selfdestructed(&mut self) {
         self.saved_state_root = None;
         self.tombstone = Some(crate::current_tombstone(self.rt));
-    }
-}
-
-pub fn load_bytecode<BS: Blockstore>(bs: &BS, cid: &Cid) -> Result<Option<Bytecode>, ActorError> {
-    let bytecode = bs
-        .get(cid)
-        .context_code(ExitCode::USR_NOT_FOUND, "failed to read bytecode")?
-        .expect("bytecode not in state tree");
-    if bytecode.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(Bytecode::new(bytecode)))
     }
 }

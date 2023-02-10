@@ -1,108 +1,13 @@
-use crate::EVM_MAX_RESERVED_METHOD;
-use fil_actors_runtime::runtime::{builtins::Type, Runtime};
+use crate::{EVM_MAX_RESERVED_METHOD, EVM_WORD_SIZE};
+use fil_actors_evm_shared::uints::U256;
+use fil_actors_runtime::runtime::Runtime;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::{address::Address, econ::TokenAmount, sys::SendFlags, METHOD_SEND};
-use num_traits::FromPrimitive;
 
-use crate::interpreter::{instructions::call::CallKind, precompiles::NativeType, System, U256};
+use crate::interpreter::{CallKind, System};
 
 use super::{PrecompileContext, PrecompileError, PrecompileResult};
 use crate::reader::ValueReader;
-
-/// Read right padded BE encoded low u64 ID address from a u256 word.
-/// - Reverts if the input is greater than `MAX::u64`.
-/// - Returns variant of [`BuiltinType`] encoded as a u256 word.
-pub(super) fn get_actor_type<RT: Runtime>(
-    system: &mut System<RT>,
-    input: &[u8],
-    _: PrecompileContext,
-) -> PrecompileResult {
-    let mut reader = ValueReader::new(input);
-    let id: u64 = reader.read_value()?;
-
-    // resolve type from code CID
-    let builtin_type = system
-        .rt
-        .get_actor_code_cid(&id)
-        .and_then(|cid| system.rt.resolve_builtin_actor_type(&cid));
-
-    let builtin_type = match builtin_type {
-        Some(t) => match t {
-            Type::Account | Type::EthAccount => NativeType::Account,
-            Type::Placeholder => NativeType::Placeholder,
-            Type::EVM => NativeType::EVMContract,
-            Type::Miner => NativeType::StorageProvider,
-            // Others
-            Type::PaymentChannel | Type::Multisig => NativeType::OtherTypes,
-            // Singletons (this should be caught earlier, but we are being exhaustive)
-            Type::Market
-            | Type::Power
-            | Type::Init
-            | Type::Cron
-            | Type::Reward
-            | Type::VerifiedRegistry
-            | Type::DataCap
-            | Type::EAM
-            | Type::System => NativeType::System,
-        },
-        None => NativeType::NonExistent,
-    };
-
-    Ok(builtin_type.word_vec())
-}
-
-/// !! DISABLED !!
-///
-/// Params:
-///
-/// | Param            | Value                     |
-/// |------------------|---------------------------|
-/// | randomness_type  | U256 - low i32: `Chain`(0) OR `Beacon`(1) |
-/// | personalization  | U256 - low i64             |
-/// | randomness_epoch | U256 - low i64             |
-/// | entropy_length   | U256 - low u32             |
-/// | entropy          | input\[32..] (right padded)|
-///
-/// any bytes in between values are ignored
-///
-/// Returns empty array if invalid randomness type
-/// Errors if unable to fetch randomness
-#[allow(unused)]
-pub(super) fn get_randomness<RT: Runtime>(
-    system: &mut System<RT>,
-    input: &[u8],
-    _: PrecompileContext,
-) -> PrecompileResult {
-    let mut input_params = ValueReader::new(input);
-
-    #[derive(num_derive::FromPrimitive)]
-    #[repr(i32)]
-    enum RandomnessType {
-        Chain = 0,
-        Beacon = 1,
-    }
-
-    let randomness_type = RandomnessType::from_i32(input_params.read_value::<i32>()?);
-    let personalization = input_params.read_value::<i64>()?;
-    let rand_epoch = input_params.read_value::<i64>()?;
-    let entropy_len = input_params.read_value::<u32>()? as usize;
-
-    let entropy = input_params.read_padded(entropy_len);
-
-    let randomness = match randomness_type {
-        Some(RandomnessType::Chain) => system
-            .rt
-            .user_get_randomness_from_chain(personalization, rand_epoch, &entropy)
-            .map(|a| a.to_vec()),
-        Some(RandomnessType::Beacon) => system
-            .rt
-            .user_get_randomness_from_beacon(personalization, rand_epoch, &entropy)
-            .map(|a| a.to_vec()),
-        None => Ok(Vec::new()),
-    };
-
-    randomness.map_err(|_| PrecompileError::InvalidInput)
-}
 
 /// Read BE encoded low u64 ID address from a u256 word
 /// Looks up and returns the encoded f4 addresses of an ID address. Empty array if not found or `InvalidInput` input was larger 2^64.
@@ -261,13 +166,26 @@ pub(super) fn call_actor_shared<RT: Runtime>(
     // ------ Begin Call -------
 
     let result = {
-        // TODO only CBOR or "nothing" for now
+        // TODO only CBOR or "nothing" for now. We should support RAW and DAG_CBOR in the future.
         let params = match codec {
+            fvm_ipld_encoding::CBOR => Some(IpldBlock { codec, data: params.into() }),
+            #[cfg(feature = "hyperspace")]
             fvm_ipld_encoding::DAG_CBOR => Some(IpldBlock { codec, data: params.into() }),
             0 if params.is_empty() => None,
             _ => return Err(PrecompileError::InvalidInput),
         };
-        system.send(&address, method, params, TokenAmount::from(&value), Some(ctx.gas_limit), flags)
+        // This method returns two results. If the outer result is an error, we consider the
+        // precompile to have completely failed.
+        //
+        // If get `Ok(anything)`, we expose `anything` to the user.
+        system.send_raw(
+            &address,
+            method,
+            params,
+            TokenAmount::from(&value),
+            Some(ctx.gas_limit),
+            flags,
+        )?
     };
 
     // ------ Build Output -------
@@ -277,30 +195,27 @@ pub(super) fn call_actor_shared<RT: Runtime>(
         // positive values are user/actor errors
         // success is 0
         let (exit_code, data) = match result {
-            Err(mut ae) => {
-                // TODO handle revert
-                // TODO https://github.com/filecoin-project/ref-fvm/issues/1020
-                // put error number from call into revert
-                let exit_code = U256::from(ae.exit_code().value());
+            Err(errno) => {
+                let exit_code = U256::from(errno as u32).i256_neg();
 
                 // no return only exit code
-                (exit_code, ae.take_data())
+                (exit_code, None)
             }
-            Ok(ret) => (U256::zero(), ret),
+            Ok(resp) => (U256::from(resp.exit_code.value()), resp.return_data),
         };
 
         let ret_blk = data.unwrap_or(IpldBlock { codec: 0, data: vec![] });
 
-        let mut output = Vec::with_capacity(4 * 32 + ret_blk.data.len());
+        let mut output = Vec::with_capacity(4 * EVM_WORD_SIZE + ret_blk.data.len());
         output.extend_from_slice(&exit_code.to_bytes());
         output.extend_from_slice(&U256::from(ret_blk.codec).to_bytes());
-        output.extend_from_slice(&U256::from(output.len() + 32).to_bytes());
+        output.extend_from_slice(&U256::from(output.len() + EVM_WORD_SIZE).to_bytes());
         output.extend_from_slice(&U256::from(ret_blk.data.len()).to_bytes());
         output.extend_from_slice(&ret_blk.data);
         // Pad out to the next increment of 32 bytes for solidity compatibility.
-        let offset = output.len() % 32;
+        let offset = output.len() % EVM_WORD_SIZE;
         if offset > 0 {
-            output.resize(output.len() - offset + 32, 0);
+            output.resize(output.len() - offset + EVM_WORD_SIZE, 0);
         }
         output
     };

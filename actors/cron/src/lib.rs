@@ -3,15 +3,15 @@
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, restrict_internal_api, ActorError, SYSTEM_ACTOR_ADDR,
+    actor_dispatch, actor_error, extract_send_result, ActorError, SYSTEM_ACTOR_ADDR,
 };
 
 use fvm_ipld_encoding::tuple::*;
 use fvm_shared::econ::TokenAmount;
 
-use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
+use fvm_shared::METHOD_CONSTRUCTOR;
 use num_derive::FromPrimitive;
-use num_traits::{FromPrimitive, Zero};
+use num_traits::Zero;
 
 pub use self::state::{Entry, State};
 
@@ -58,7 +58,12 @@ impl Actor {
         let st: State = rt.state()?;
         for entry in st.entries {
             // Intentionally ignore any error when calling cron methods
-            let res = rt.send(&entry.receiver, entry.method_num, None, TokenAmount::zero());
+            let res = extract_send_result(rt.send_simple(
+                &entry.receiver,
+                entry.method_num,
+                None,
+                TokenAmount::zero(),
+            ));
             if let Err(e) = res {
                 log::error!(
                     "cron failed to send entry to {}, send error code {}",

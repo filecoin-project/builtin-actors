@@ -16,7 +16,6 @@ publish = false
 fil_actor_account = { version = "10.0.0-alpha.1", path = "./actors/account", features = ["fil-actor"] }
 fil_actor_cron = { version = "10.0.0-alpha.1", path = "./actors/cron", features = ["fil-actor"] }
 fil_actor_datacap = { version = "10.0.0-alpha.1", path = "./actors/datacap", features = ["fil-actor"] }
-fil_actor_placeholder = { version = "10.0.0-alpha.1", path = "./actors/placeholder", features = ["fil-actor"] }
 fil_actor_ethaccount = { version = "10.0.0-alpha.1", path = "actors/ethaccount", features = ["fil-actor"] }
 fil_actor_evm = { version = "10.0.0-alpha.1", path = "./actors/evm", features = ["fil-actor"] }
 fil_actor_init = { version = "10.0.0-alpha.1", path = "./actors/init", features = ["fil-actor"] }
@@ -24,13 +23,14 @@ fil_actor_market = { version = "10.0.0-alpha.1", path = "./actors/market", featu
 fil_actor_miner = { version = "10.0.0-alpha.1", path = "./actors/miner", features = ["fil-actor"] }
 fil_actor_multisig = { version = "10.0.0-alpha.1", path = "./actors/multisig", features = ["fil-actor"] }
 fil_actor_paych = { version = "10.0.0-alpha.1", path = "./actors/paych", features = ["fil-actor"] }
+fil_actor_placeholder = { version = "10.0.0-alpha.1", path = "./actors/placeholder", features = ["fil-actor"] }
 fil_actor_power = { version = "10.0.0-alpha.1", path = "./actors/power", features = ["fil-actor"] }
 fil_actor_reward = { version = "10.0.0-alpha.1", path = "./actors/reward", features = ["fil-actor"] }
 fil_actor_system = { version = "10.0.0-alpha.1", path = "./actors/system", features = ["fil-actor"] }
 fil_actor_verifreg = { version = "10.0.0-alpha.1", path = "./actors/verifreg", features = ["fil-actor"] }
 
 [build-dependencies]
-fil_actor_bundler = "4.1.0"
+fil_actor_bundler = "5.0.0"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 fil_actors_runtime = { version = "10.0.0-alpha.1", path = "runtime" }
 num-traits = "0.2.15"
@@ -50,20 +50,19 @@ testing-fake-proofs = []
 m2-native = []
 
 [workspace]
-members = ["actors/*", "state", "runtime", "test_vm"]
+members = ["actors/*", "state", "runtime", "test_vm", "actors/evm/shared"]
 
 [patch.crates-io]
-frc42_dispatch = { git = "https://github.com/filecoin-project/filecoin-actor-utils", branch = "feat/fvm-m2" }
-frc46_token = { git = "https://github.com/filecoin-project/filecoin-actor-utils", branch = "feat/fvm-m2" }
-fvm_actor_utils = { git = "https://github.com/filecoin-project/filecoin-actor-utils", branch = "feat/fvm-m2" }
 #fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
 #fvm_sdk = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
 #fvm_ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
-#fvm_ipld_kamt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
 #fvm_ipld_amt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
 #fvm_ipld_bitfield = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
 #fvm_ipld_encoding = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
 #fvm_ipld_blockstore = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+#fvm_actor_utils = { git = "https://github.com/helix-onchain/filecoin", branch = "main" }
+#frc42_dispatch = { git = "https://github.com/helix-onchain/filecoin", branch = "main" }
+#frc46_token = { git = "https://github.com/helix-onchain/filecoin", branch = "main" }
 
 ## Uncomment when working locally on ref-fvm and this repo simultaneously.
 ## Assumes the ref-fvm checkout is in a sibling directory with the same name.

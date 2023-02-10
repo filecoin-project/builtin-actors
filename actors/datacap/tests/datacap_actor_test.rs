@@ -35,7 +35,27 @@ mod construction {
             .deserialize()
             .unwrap();
         rt.verify();
-        assert_eq!(ret.granularity, DATACAP_GRANULARITY)
+        assert_eq!(ret.granularity, DATACAP_GRANULARITY);
+
+        rt.expect_validate_caller_any();
+        let ret: String = rt
+            .call::<Actor>(Method::NameExported as MethodNum, None)
+            .unwrap()
+            .unwrap()
+            .deserialize()
+            .unwrap();
+        rt.verify();
+        assert_eq!(ret, "DataCap");
+
+        rt.expect_validate_caller_any();
+        let ret: String = rt
+            .call::<Actor>(Method::SymbolExported as MethodNum, None)
+            .unwrap()
+            .unwrap()
+            .deserialize()
+            .unwrap();
+        rt.verify();
+        assert_eq!(ret, "DCAP")
     }
 }
 
