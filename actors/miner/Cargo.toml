@@ -34,7 +34,7 @@ fvm_ipld_encoding = "0.3.3"
 multihash = { version = "0.16.2", default-features = false }
 
 [dev-dependencies]
-fil_actors_runtime = { version = "10.0.0-alpha.1", path = "../../runtime", features = ["test_utils", "sector-default"] }
+fil_actors_runtime = { path = "../../runtime", features = ["test_utils", "sector-default"] }
 fil_actor_account = { path = "../account" }
 fil_actor_reward = { path = "../reward" }
 fil_actor_power = { path = "../power" }
