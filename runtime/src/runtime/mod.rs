@@ -65,7 +65,8 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// The genesis block has epoch zero.
     fn curr_epoch(&self) -> ChainEpoch;
 
-    /// The ID for the EVM-based chain, as defined in https://github.com/ethereum-lists/chains.
+    /// The ID for this chain.
+    /// Filecoin chain IDs are usually in the Ethereum namespace, see: https://github.com/ethereum-lists/chains.
     fn chain_id(&self) -> ChainID;
 
     /// Validates the caller against some predicate.
@@ -74,7 +75,8 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     fn validate_immediate_caller_is<'a, I>(&mut self, addresses: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Address>;
-    /// Validates the caller is a member of a namespace.
+    /// Validates that the caller has a delegated address that is a member of
+    /// one of the provided namespaces.
     /// Addresses must be of Protocol ID.
     fn validate_immediate_caller_namespace<I>(
         &mut self,

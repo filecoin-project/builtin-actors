@@ -1113,9 +1113,8 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         Ok(Cid::new_v1(IPLD_RAW, Multihash::wrap(0, b"faketipset").unwrap()))
     }
 
-    // TODO No support for events yet.
     fn emit_event(&self, _event: &ActorEvent) -> Result<(), ActorError> {
-        Ok(())
+        unimplemented!()
     }
 
     fn read_only(&self) -> bool {

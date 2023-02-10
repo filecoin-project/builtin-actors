@@ -42,6 +42,7 @@ use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
 use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::smooth::FilterEstimate;
+use fvm_shared::sys::SendFlags;
 use fvm_shared::{
     address::Address, econ::TokenAmount, error::ExitCode, ActorID, METHOD_CONSTRUCTOR, METHOD_SEND,
 };
@@ -494,7 +495,7 @@ pub fn publish_deals(
         params.deals.push(client_proposal);
 
         // Expect an invocation of authenticate_message to verify the signature.
-        rt.expect_send_simple(
+        rt.expect_send(
             deal.client,
             ext::account::AUTHENTICATE_MESSAGE_METHOD as u64,
             IpldBlock::serialize_cbor(&AuthenticateMessageParams {
@@ -504,9 +505,14 @@ pub fn publish_deals(
             .unwrap(),
             TokenAmount::zero(),
             None,
+            SendFlags::READ_ONLY,
+            None,
             ExitCode::OK,
+            None,
         );
+    }
 
+    for deal in publish_deals {
         if deal.verified_deal {
             // Expect query for the client's datacap balance, just once per client.
             let client_id = deal.client.id().unwrap();
@@ -602,7 +608,7 @@ pub fn publish_deals(
             params,
             TokenAmount::zero(),
             None,
-            ExitCode::USR_UNHANDLED_MESSAGE,
+            ExitCode::OK,
         );
         deal_id += 1;
     }
@@ -653,13 +659,16 @@ pub fn publish_deals_expect_abort(
     })
     .unwrap();
 
-    rt.expect_send_simple(
+    rt.expect_send(
         proposal.client,
         AUTHENTICATE_MESSAGE_METHOD,
         auth_param,
         TokenAmount::zero(),
         None,
+        SendFlags::READ_ONLY,
+        None,
         ExitCode::OK,
+        None,
     );
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
@@ -830,16 +839,19 @@ where
     })
     .unwrap();
 
-    rt.expect_send_simple(
+    rt.expect_send(
         deal_proposal.client,
         AUTHENTICATE_MESSAGE_METHOD,
         auth_param,
         TokenAmount::zero(),
         None,
+        SendFlags::READ_ONLY,
+        None,
         match sig_valid {
             true => ExitCode::OK,
             false => ExitCode::USR_ILLEGAL_ARGUMENT,
         },
+        None,
     );
 
     let params: PublishStorageDealsParams = PublishStorageDealsParams {
