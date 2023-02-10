@@ -1,6 +1,6 @@
 use fil_actor_miner::{Actor, BeneficiaryTerm, GetBeneficiaryReturn, Method};
 use fil_actors_runtime::test_utils::{
-    expect_abort, expect_abort_contains_message, make_identity_cid, MockRuntime,
+    expect_abort, expect_abort_contains_message, MockRuntime, EVM_ACTOR_CODE_ID,
 };
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode, MethodNum};
@@ -449,7 +449,7 @@ fn get_beneficiary_correctly_restricted() {
     let (h, mut rt) = setup();
 
     // set caller to not-builtin
-    rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1000));
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(1000));
 
     // cannot call the unexported method num
     expect_abort_contains_message(

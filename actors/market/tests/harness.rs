@@ -124,7 +124,7 @@ pub fn construct_and_verify(rt: &mut MockRuntime) {
 }
 
 pub fn get_balance(rt: &mut MockRuntime, addr: &Address) -> GetBalanceReturn {
-    rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1234));
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(1234));
     rt.expect_validate_caller_any();
     let ret: GetBalanceReturn = rt
         .call::<MarketActor>(
