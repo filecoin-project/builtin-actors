@@ -8,7 +8,7 @@ use fil_actor_init::{
     Method, State,
 };
 use fil_actors_runtime::runtime::Runtime;
-use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::{test_utils::*, EAM_ACTOR_ADDR, EAM_ACTOR_ID};
 use fil_actors_runtime::{
     ActorError, Multimap, FIRST_NON_SINGLETON_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
@@ -81,9 +81,7 @@ fn repeated_robust_address() {
         );
 
         // Return should have been successful. Check the returned addresses
-        let exec_ret =
-            exec_and_verify(&mut rt, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap().unwrap();
-        let exec_ret: ExecReturn = exec_ret.deserialize().unwrap();
+        let exec_ret = exec_and_verify(&mut rt, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap();
         assert_eq!(unique_address, exec_ret.robust_address, "Robust address does not macth");
         assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
         check_state(&rt);
@@ -146,9 +144,7 @@ fn create_2_payment_channels() {
             ExitCode::OK,
         );
 
-        let exec_ret =
-            exec_and_verify(&mut rt, *PAYCH_ACTOR_CODE_ID, &fake_params).unwrap().unwrap();
-        let exec_ret: ExecReturn = exec_ret.deserialize().unwrap();
+        let exec_ret = exec_and_verify(&mut rt, *PAYCH_ACTOR_CODE_ID, &fake_params).unwrap();
         assert_eq!(unique_address, exec_ret.robust_address, "Robust Address does not match");
         assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
 
@@ -189,9 +185,7 @@ fn create_storage_miner() {
         ExitCode::OK,
     );
 
-    let exec_ret = exec_and_verify(&mut rt, *MINER_ACTOR_CODE_ID, &fake_params).unwrap().unwrap();
-
-    let exec_ret: ExecReturn = exec_ret.deserialize().unwrap();
+    let exec_ret = exec_and_verify(&mut rt, *MINER_ACTOR_CODE_ID, &fake_params).unwrap();
     assert_eq!(unique_address, exec_ret.robust_address);
     assert_eq!(expected_id_addr, exec_ret.id_address);
 
@@ -241,9 +235,7 @@ fn create_multisig_actor() {
     );
 
     // Return should have been successful. Check the returned addresses
-    let exec_ret =
-        exec_and_verify(&mut rt, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap().unwrap();
-    let exec_ret: ExecReturn = exec_ret.deserialize().unwrap();
+    let exec_ret = exec_and_verify(&mut rt, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap();
     assert_eq!(unique_address, exec_ret.robust_address, "Robust address does not macth");
     assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
     check_state(&rt);
@@ -305,7 +297,7 @@ fn call_exec4() {
 
     // Make the f4 addr
     let subaddr = b"foobar";
-    let namespace = 10;
+    let namespace = EAM_ACTOR_ID;
     let f4_addr = Address::new_delegated(namespace, subaddr).unwrap();
 
     // Next id
@@ -373,7 +365,7 @@ fn call_exec4_placeholder() {
 
     // Make the f4 addr
     let subaddr = b"foobar";
-    let namespace = 10;
+    let namespace = EAM_ACTOR_ID;
     let f4_addr = Address::new_delegated(namespace, subaddr).unwrap();
 
     // Register a placeholder with the init actor.
@@ -450,7 +442,7 @@ fn exec_and_verify<S: Serialize>(
     rt: &mut MockRuntime,
     code_id: Cid,
     params: &S,
-) -> Result<Option<IpldBlock>, ActorError>
+) -> Result<ExecReturn, ActorError>
 where
     S: Serialize,
 {
@@ -463,7 +455,7 @@ where
 
     rt.verify();
     check_state(rt);
-    ret
+    ret.and_then(|v| v.unwrap().deserialize().map_err(|e| e.into()))
 }
 
 fn exec4_and_verify<S: Serialize>(
@@ -477,7 +469,7 @@ where
     S: Serialize,
 {
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(namespace));
-    rt.expect_validate_caller_any();
+    rt.expect_validate_caller_addr(vec![EAM_ACTOR_ADDR]);
     let exec_params = Exec4Params {
         code_cid: code_id,
         constructor_params: RawBytes::serialize(params).unwrap(),
