@@ -48,7 +48,7 @@ use {
 //
 // The following values have been set by looking at how the charts evolved
 // with the test contract. They might not be the best for other contracts.
-const KAMT_CONFIG: KamtConfig = KamtConfig { min_data_depth: 0, bit_width: 5, max_array_width: 1 };
+pub const KAMT_CONFIG: KamtConfig = KamtConfig { min_data_depth: 0, bit_width: 5, max_array_width: 1 };
 
 pub struct StateHashAlgorithm;
 

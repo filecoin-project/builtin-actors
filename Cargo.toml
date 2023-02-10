@@ -18,6 +18,7 @@ fil_actor_cron = { version = "10.0.0-alpha.1", path = "./actors/cron", features 
 fil_actor_datacap = { version = "10.0.0-alpha.1", path = "./actors/datacap", features = ["fil-actor"] }
 fil_actor_ethaccount = { version = "10.0.0-alpha.1", path = "actors/ethaccount", features = ["fil-actor"] }
 fil_actor_evm = { version = "10.0.0-alpha.1", path = "./actors/evm", features = ["fil-actor"] }
+fil_actor_eam = { version = "10.0.0-alpha.1", path = "./actors/eam", features = ["fil-actor"] }
 fil_actor_init = { version = "10.0.0-alpha.1", path = "./actors/init", features = ["fil-actor"] }
 fil_actor_market = { version = "10.0.0-alpha.1", path = "./actors/market", features = ["fil-actor"] }
 fil_actor_miner = { version = "10.0.0-alpha.1", path = "./actors/miner", features = ["fil-actor"] }
@@ -67,15 +68,15 @@ members = ["actors/*", "state", "runtime", "test_vm", "actors/evm/shared"]
 ## Uncomment when working locally on ref-fvm and this repo simultaneously.
 ## Assumes the ref-fvm checkout is in a sibling directory with the same name.
 ## (Valid while FVM modules aren't published to crates.io)
-#[patch."https://github.com/filecoin-project/ref-fvm"]
-#fvm_shared = { path = "../ref-fvm/shared" }
-#fvm_sdk = { path = "../ref-fvm/sdk" }
-#fvm_ipld_hamt = { path = "../ref-fvm/ipld/hamt" }
-#fvm_ipld_kamt = { path = "../ref-fvm/ipld/kamt" }
-#fvm_ipld_amt = { path = "../ref-fvm/ipld/amt" }
-#fvm_ipld_bitfield = { path = "../ref-fvm/ipld/bitfield"}
-#fvm_ipld_encoding = { path = "../ref-fvm/ipld/encoding"}
-#fvm_ipld_blockstore = { path = "../ref-fvm/ipld/blockstore"}
+##[patch."https://github.com/filecoin-project/ref-fvm"]
+fvm_shared = { path = "../ref-fvm/shared" }
+fvm_sdk = { path = "../ref-fvm/sdk" }
+fvm_ipld_hamt = { path = "../ref-fvm/ipld/hamt" }
+fvm_ipld_kamt = { path = "../ref-fvm/ipld/kamt" }
+fvm_ipld_amt = { path = "../ref-fvm/ipld/amt" }
+fvm_ipld_bitfield = { path = "../ref-fvm/ipld/bitfield"}
+fvm_ipld_encoding = { path = "../ref-fvm/ipld/encoding"}
+fvm_ipld_blockstore = { path = "../ref-fvm/ipld/blockstore"}
 
 # Uncomment entries below when working locally on ref-fvm and this repo simultaneously.
 # Assumes the ref-fvm checkout is in a sibling directory with the same name.

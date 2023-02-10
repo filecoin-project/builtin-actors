@@ -5,7 +5,7 @@ mod memory;
 mod output;
 mod precompiles;
 mod stack;
-mod system;
+pub mod system;
 
 #[cfg(test)]
 pub mod test_util;
