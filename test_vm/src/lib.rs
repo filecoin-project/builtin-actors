@@ -434,6 +434,10 @@ impl<'bs> VM<'bs> {
         let mut a = self.get_actor(from_id).unwrap();
         let call_seq = a.call_seq_num;
         a.call_seq_num = call_seq + 1;
+        // EthAccount abstractions turns Placeholders into EthAccounts
+        if a.code == *PLACEHOLDER_ACTOR_CODE_ID {
+            a.code = *ETHACCOUNT_ACTOR_CODE_ID;
+        }
         self.set_actor(from_id, a);
 
         let prior_root = self.checkpoint();
