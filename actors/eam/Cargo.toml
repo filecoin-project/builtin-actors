@@ -31,7 +31,7 @@ hex-literal = "0.3.4"
 fil_actors_evm_shared = { version = "10.0.0-alpha.1", path = "../evm/shared" }
 
 [dev-dependencies]
-fil_actor_evm = { version = "10.0.0-alpha.1", path = "../evm"}
+fil_actor_evm = { path = "../evm"}
 fil_actors_runtime = { path = "../../runtime", features = ["test_utils"] }
 
 [features]
