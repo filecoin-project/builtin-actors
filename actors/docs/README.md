@@ -2,7 +2,7 @@
 
 [FIP-0050](https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0050.md) exports a stable subset of the built-in actor methods, along with some new methods, for invocation around storage, market, miner and etc by user actors. 
 
-The method number of the exported methods follows [FRC-0042](https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0050.md) and can be called by any type of caller.
+The method number of the exported methods follows [FRC-0042](https://github.com/filecoin-project/FIPs/blob/master/FRCs/frc-0042.md) and can be called by any type of caller.
 
 This API docs intend to provide information about how to use those exported APIs in user-defined actors. You can find the docs of the exported  APIs and their usage in this folder.
 
@@ -27,7 +27,7 @@ This API docs intend to provide information about how to use those exported APIs
 |datacap   	|[Allowance](datacap.md#Allowance)   	|4205072950   	|
 |datacap |[Mint](datacap.md#mint) |116935346 |
 |datacap |[Destroy](datacap.md#Destroy) |2624896501 |
-|ethaccount   	|AuthenticateMessage   	|2643134072   	|
+|ethaccount   	|[AuthenticateMessage](ethaccount.md#AuthenticateMessage)   	|2643134072   	|
 |evm   	|InvokeEVM   	|3844450837   	|
 |market   	|[AddBalance](market.md#AddBalance)   	|822473126   	|
 |market   	|[WithdrawBalance](market.md#WithdrawBalance)   	|2280458852   	|
