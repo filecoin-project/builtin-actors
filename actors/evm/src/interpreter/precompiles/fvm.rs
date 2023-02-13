@@ -169,8 +169,12 @@ pub(super) fn call_actor_shared<RT: Runtime>(
         // TODO only CBOR or "nothing" for now. We should support RAW and DAG_CBOR in the future.
         let params = match codec {
             fvm_ipld_encoding::CBOR => Some(IpldBlock { codec, data: params.into() }),
+            // We "allow" dag-cbor on hyperspace, but reduce it to regular cbor when calling. This
+            // avoids breaking existing contracts.
             #[cfg(feature = "hyperspace")]
-            fvm_ipld_encoding::DAG_CBOR => Some(IpldBlock { codec, data: params.into() }),
+            fvm_ipld_encoding::DAG_CBOR => {
+                Some(IpldBlock { codec: fvm_ipld_encoding::CBOR, data: params.into() })
+            }
             0 if params.is_empty() => None,
             _ => return Err(PrecompileError::InvalidInput),
         };
@@ -205,6 +209,14 @@ pub(super) fn call_actor_shared<RT: Runtime>(
         };
 
         let ret_blk = data.unwrap_or(IpldBlock { codec: 0, data: vec![] });
+        // In hyperspace, we convert CBOR into DAG_CBOR to avoid breaking existing contracts.
+        #[cfg(feature = "hyperspace")]
+        let ret_blk = match ret_blk {
+            IpldBlock { codec: fvm_ipld_encoding::CBOR, data } => {
+                IpldBlock { codec: fvm_ipld_encoding::DAG_CBOR, data }
+            }
+            other => other,
+        };
 
         let mut output = Vec::with_capacity(4 * EVM_WORD_SIZE + ret_blk.data.len());
         output.extend_from_slice(&exit_code.to_bytes());

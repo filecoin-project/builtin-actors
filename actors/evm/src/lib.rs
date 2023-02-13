@@ -303,6 +303,11 @@ impl EvmContractActor {
 
 /// Format "filecoin_native_method" input parameters.
 fn handle_filecoin_method_input(method: u64, codec: u64, params: &[u8]) -> Vec<u8> {
+    // If we're on hyperspace, many contracts hard-code "dag cbor". So we just tell them they're
+    // being called with "dag cbor".
+    #[cfg(feature = "hyperspace")]
+    let codec = if codec == fvm_ipld_encoding::CBOR { fvm_ipld_encoding::DAG_CBOR } else { codec };
+
     let static_args =
         [method, codec, EVM_WORD_SIZE as u64 * 3 /* start of params */, params.len() as u64];
     let total_words =
@@ -361,8 +366,12 @@ fn handle_filecoin_method_output(output: &[u8]) -> Result<Option<IpldBlock>, Act
         }
         // Supported codecs.
         fvm_ipld_encoding::CBOR => Some(IpldBlock { codec, data: return_data.into() }),
+        // We "allow" dag-cbor on hyperspace, but reduce it to regular cbor when returning. This
+        // avoids breaking existing contracts.
         #[cfg(feature = "hyperspace")]
-        fvm_ipld_encoding::DAG_CBOR => Some(IpldBlock { codec, data: return_data.into() }),
+        fvm_ipld_encoding::DAG_CBOR => {
+            Some(IpldBlock { codec: fvm_ipld_encoding::CBOR, data: return_data.into() })
+        }
         // Everything else.
         _ => return Err(ActorError::serialization(format!("unsupported codec: {codec}"))),
     };
