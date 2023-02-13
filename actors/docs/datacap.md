@@ -45,24 +45,6 @@ Return the name of DataCap token which is 'DataCap'.
 
 + `String` : DataCap
 
-### Name
-
-```go
-func Name() String {}
-```
-
-Return the name of DataCap token which is 'DataCap'.
-
-`Unit ` NameMethodNum : 48890204.
-
-**Params**:
-
-+ null
-
-**Results**:
-
-+ `String` : DataCap
-
 ### Symbol
 
 ```go
