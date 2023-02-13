@@ -361,6 +361,8 @@ fn handle_filecoin_method_output(output: &[u8]) -> Result<Option<IpldBlock>, Act
         }
         // Supported codecs.
         fvm_ipld_encoding::CBOR => Some(IpldBlock { codec, data: return_data.into() }),
+        #[cfg(feature = "hyperspace")]
+        fvm_ipld_encoding::DAG_CBOR => Some(IpldBlock { codec, data: return_data.into() }),
         // Everything else.
         _ => return Err(ActorError::serialization(format!("unsupported codec: {codec}"))),
     };

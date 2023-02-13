@@ -32,6 +32,12 @@ const ACTORS: &[(&Package, &ID)] = &[
     ("ethaccount", "ethaccount"),
 ];
 
+/// Default Cargo features to activate during the build.
+const DEFAULT_CARGO_FEATURES: &[&str] = &["fil-actor"];
+
+/// Extra Cargo-level features to enable per network.
+const EXTRA_CARGO_FEATURES: &[(&str, &[&str])] = &[("hyperspace", &["hyperspace"])];
+
 const NETWORK_ENV: &str = "BUILD_FIL_NETWORK";
 
 /// Returns the configured network name, checking both the environment and feature flags.
@@ -48,6 +54,10 @@ fn network_name() -> String {
         Some("calibrationnet")
     } else if cfg!(feature = "devnet") {
         Some("devnet")
+    } else if cfg!(feature = "wallaby") {
+        Some("wallaby")
+    } else if cfg!(feature = "hyperspace") {
+        Some("hyperspace")
     } else if cfg!(feature = "testing") {
         Some("testing")
     } else if cfg!(feature = "testing-fake-proofs") {
@@ -107,6 +117,16 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("cargo:rerun-if-changed={}", file);
     }
 
+    // Compute Cargo features to apply.
+    let features = {
+        let extra = EXTRA_CARGO_FEATURES
+            .iter()
+            .find(|(k, _)| k == &network_name)
+            .map(|f| f.1)
+            .unwrap_or_default();
+        [DEFAULT_CARGO_FEATURES, extra].concat()
+    };
+
     // Cargo build command for all actors at once.
     let mut cmd = Command::new(&cargo);
     cmd.arg("build")
@@ -114,7 +134,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .arg("--target=wasm32-unknown-unknown")
         .arg("--profile=wasm")
         .arg("--locked")
-        .arg("--features=fil-actor")
+        .arg("--features=".to_owned() + &features.join(","))
         .arg("--manifest-path=".to_owned() + manifest_path.to_str().unwrap())
         .env(NETWORK_ENV, network_name)
         .stdout(Stdio::piped())

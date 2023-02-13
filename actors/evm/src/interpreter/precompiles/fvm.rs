@@ -169,6 +169,8 @@ pub(super) fn call_actor_shared<RT: Runtime>(
         // TODO only CBOR or "nothing" for now. We should support RAW and DAG_CBOR in the future.
         let params = match codec {
             fvm_ipld_encoding::CBOR => Some(IpldBlock { codec, data: params.into() }),
+            #[cfg(feature = "hyperspace")]
+            fvm_ipld_encoding::DAG_CBOR => Some(IpldBlock { codec, data: params.into() }),
             0 if params.is_empty() => None,
             _ => return Err(PrecompileError::InvalidInput),
         };

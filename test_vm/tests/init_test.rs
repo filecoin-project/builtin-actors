@@ -64,7 +64,7 @@ fn placeholder_deploy() {
 
     let deploy = || {
         v.apply_message(
-            EAM_ACTOR_ADDR, // so this works even if "m2-native" is disabled.
+            EAM_ACTOR_ADDR,
             INIT_ACTOR_ADDR,
             TokenAmount::zero(),
             fil_actor_init::Method::Exec4 as u64,

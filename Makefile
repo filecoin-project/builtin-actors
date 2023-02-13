@@ -45,7 +45,7 @@ bundle: deps-build
 	cargo run -- -o output/builtin-actors.car
 
 # Create all canonical network bundles
-all-bundles: bundle-mainnet bundle-caterpillarnet bundle-butterflynet bundle-calibrationnet bundle-devnet bundle-testing bundle-testing
+all-bundles: bundle-mainnet bundle-caterpillarnet bundle-butterflynet bundle-calibrationnet bundle-devnet bundle-testing bundle-testing bundle-wallaby bundle-hyperspace
 
 bundle-mainnet: deps-build
 	BUILD_FIL_NETWORK=mainnet cargo run -- -o output/builtin-actors-mainnet.car
@@ -61,6 +61,12 @@ bundle-calibrationnet: deps-build
 
 bundle-devnet: deps-build
 	BUILD_FIL_NETWORK=devnet cargo run -- -o output/builtin-actors-devnet.car
+
+bundle-wallaby: deps-build
+	BUILD_FIL_NETWORK=wallaby cargo run -- -o output/builtin-actors-wallaby.car
+
+bundle-hyperspace: deps-build
+	BUILD_FIL_NETWORK=hyperspace cargo run -- -o output/builtin-actors-hyperspace.car
 
 bundle-testing: deps-build
 	BUILD_FIL_NETWORK=testing cargo run -- -o output/builtin-actors-testing.car
