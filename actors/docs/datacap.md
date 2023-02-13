@@ -4,29 +4,6 @@ DataCap Actor is responsible for DataCap token management.
 
 The ActorCode for DataCap actor is `hex"0007"` which will be used to call DataCap actor APIs. You also need to specify method number of which method you want to invoke. Please refer the each method for its method number.
 
-### Mint
-
-```go
-func Mint(params MintParam) MintReturn {}
-```
-
-Mints new datacap token for an address.
-`Unit ` NameMethodNum : 116935346.
-
-**Params**:
-
-+ `struct` MintParam
-  + `bytes` To -  the address to receive DataCap token.
-  + `int256` Amount -  a non-negative amount to transfer.
-  + `bytes[]` Operators - operator addresses
-
-**Results**:
-
-+ `struct` MintReturn
-  + `bytes` To -  the address to receive DataCap token.
-  + `int256` Amount -  A non-negative amount to transfer.
-  + `bytes[]` OperatorData - Arbitrary data to pass on via the receiver hook.
-
 ### Name
 
 ```go
@@ -62,6 +39,24 @@ Return the symbol of DataCap token which is 'DCAP'.
 **Results**:
 
 + `String` : DCAP
+
+### Granularity
+
+```go
+func Granularity() String {}
+```
+
+Return the granularity of DataCap token.
+
+`unit` SymbolMethodNum: 3936767397.
+
+**Params**:
+
++ null
+
+**Results**:
+
++ `uint64` : Granularity - the DataCap token precision.
 
 ### TotalSupply
 
@@ -276,3 +271,47 @@ Return the allowance between owner and operator address.
 **Results**:
 
 + `int256`  TokenAmount - the allowance that an operator can control of an owner's allowance.
+
+### Mint
+
+```go
+func Mint(params MintParams) MintReturn {}
+```
+
+Mints new datacap token for an address.
+
+`Unit ` NameMethodNum : 116935346.
+
+**Params**:
+
++ `struct` MintParam
+  + `bytes` To -  the address to receive DataCap token.
+  + `int256` Amount -  a non-negative amount to transfer.
+  + `bytes[]` Operators - operator addresses
+
+**Results**:
+
++ `struct` MintReturn
+  + `bytes` To -  the address to receive DataCap token.
+  + `int256` Amount -  A non-negative amount to transfer.
+  + `bytes[]` OperatorData - Arbitrary data to pass on via the receiver hook.
+
+### Destroy
+
+```go
+func Destroy(params DestroyParams) TokenAmount {}
+```
+
+Destroys data cap tokens for an address, and only the governor can call this method. 
+
+`Unit ` DestroyMethodNum : 2624896501.
+
+**Params**:
+
++ `struct` DestroyParams
+  + `bytes` Owner -  the address to the DataCap token to be burned.
+  + `int256` Amount -  a non-negative amount to be destroyed and burned.
+
+**Results**:
+
++ `int256`  TokenAmount - the DataCap was burned from the owner address.
