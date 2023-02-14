@@ -10,11 +10,11 @@ use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{ActorDowncast, Array};
 use fvm_ipld_amt::{Error as AmtError, ValueMut};
 use fvm_ipld_bitfield::BitField;
-use fvm_shared::bigint::bigint_ser;
-use fvm_shared::blockstore::Blockstore;
+use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::tuple::*;
+
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::tuple::*;
 use fvm_shared::sector::{SectorNumber, SectorSize};
 use num_traits::{Signed, Zero};
 
@@ -38,7 +38,6 @@ pub struct ExpirationSet {
     /// Sectors expiring "early" due to being faulty for too long
     pub early_sectors: BitField,
     /// Pledge total for the on-time sectors
-    #[serde(with = "bigint_ser")]
     pub on_time_pledge: TokenAmount,
     /// Power that is currently active (not faulty)
     pub active_power: PowerPair,
@@ -362,8 +361,8 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         sectors: Vec<SectorOnChainInfo>,
         sector_size: SectorSize,
     ) -> anyhow::Result<PowerPair> {
-        let mut remaining: BTreeSet<SectorNumber> =
-            sectors.iter().map(|sector| sector.sector_number).collect();
+        let mut remaining: BTreeMap<SectorNumber, &SectorOnChainInfo> =
+            sectors.iter().map(|sector| (sector.sector_number, sector)).collect();
 
         // Traverse the expiration queue once to find each recovering sector and remove it from early/faulty there.
         // We expect this to find all recovering sectors within the first FaultMaxAge/WPoStProvingPeriod entries
@@ -372,48 +371,49 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         let mut recovered_power = PowerPair::zero();
 
         self.iter_while_mut(|_epoch, expiration_set| {
-            let on_time_sectors: BTreeSet<SectorNumber> = expiration_set
-                .on_time_sectors
-                .bounded_iter(ENTRY_SECTORS_MAX)
-                .context("too many sectors to reschedule")?
-                .map(|i| i as SectorNumber)
-                .collect();
+            let mut faulty_power_delta = PowerPair::zero();
+            let mut active_power_delta = PowerPair::zero();
 
-            let early_sectors: BTreeSet<SectorNumber> = expiration_set
-                .early_sectors
-                .bounded_iter(ENTRY_SECTORS_MAX)
-                .context("too many sectors to reschedule")?
-                .map(|i| i as SectorNumber)
-                .collect();
+            for sector_number in expiration_set.on_time_sectors.iter() {
+                let sector = match remaining.remove(&sector_number) {
+                    Some(s) => s,
+                    None => continue,
+                };
 
-            // This loop could alternatively be done by constructing bitfields and intersecting them, but it's not
-            // clear that would be much faster (O(max(N, M)) vs O(N+M)).
-            // If faults are correlated, the first queue entry likely has them all anyway.
-            // The length of sectors has a maximum of one partition size.
-            for sector in sectors.iter() {
-                let sector_number = sector.sector_number;
+                // If the sector expires on-time at this epoch, leave it here but change faulty power to active.
+                // The pledge is already part of the on-time pledge at this entry.
                 let power = power_for_sector(sector_size, sector);
-                let mut found = false;
+                faulty_power_delta -= &power;
+                active_power_delta += &power;
 
-                if on_time_sectors.contains(&sector_number) {
-                    found = true;
-                    // If the sector expires on-time at this epoch, leave it here but change faulty power to active.
-                    // The pledge is already part of the on-time pledge at this entry.
-                    expiration_set.faulty_power -= &power;
-                    expiration_set.active_power += &power;
-                } else if early_sectors.contains(&sector_number) {
-                    found = true;
-                    // If the sector expires early at this epoch, remove it for re-scheduling.
-                    // It's not part of the on-time pledge number here.
-                    expiration_set.early_sectors.unset(sector_number);
-                    expiration_set.faulty_power -= &power;
-                    sectors_rescheduled.push(sector);
-                }
+                recovered_power += &power;
+            }
+            let mut early_unset = Vec::new();
+            for sector_number in expiration_set.early_sectors.iter() {
+                let sector = match remaining.remove(&sector_number) {
+                    Some(s) => s,
+                    None => continue,
+                };
+                // If the sector expires early at this epoch, remove it for re-scheduling.
+                // It's not part of the on-time pledge number here.
+                early_unset.push(sector_number);
+                let power = power_for_sector(sector_size, sector);
+                faulty_power_delta -= &power;
+                sectors_rescheduled.push(sector);
 
-                if found {
-                    recovered_power += &power;
-                    remaining.remove(&sector.sector_number);
-                }
+                recovered_power += &power;
+            }
+
+            // we need to defer the changes as we cannot borrow immutably for iteration
+            // and mutably for changes at the same time
+            if !early_unset.is_empty()
+                || !faulty_power_delta.is_zero()
+                || !active_power_delta.is_zero()
+            {
+                expiration_set.active_power += &active_power_delta;
+                expiration_set.faulty_power += &faulty_power_delta;
+
+                expiration_set.early_sectors -= BitField::try_from_bits(early_unset)?;
             }
 
             expiration_set.validate_state()?;
@@ -947,3 +947,6 @@ fn check_no_early_sectors(set: &BTreeSet<u64>, es: &ExpirationSet) -> anyhow::Re
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests;

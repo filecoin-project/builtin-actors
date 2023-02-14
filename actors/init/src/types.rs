@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use cid::Cid;
+use fvm_ipld_encoding::tuple::*;
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
-use fvm_shared::encoding::tuple::*;
-use fvm_shared::encoding::{Cbor, RawBytes};
 
 /// Init actor Constructor parameters
 #[derive(Serialize_tuple, Deserialize_tuple)]
@@ -20,7 +20,7 @@ pub struct ExecParams {
 }
 
 /// Init actor Exec Return value
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct ExecReturn {
     /// ID based address for created actor
     pub id_address: Address,
@@ -28,4 +28,13 @@ pub struct ExecReturn {
     pub robust_address: Address,
 }
 
-impl Cbor for ExecReturn {}
+/// Init actor Exec4 Params
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct Exec4Params {
+    pub code_cid: Cid,
+    pub constructor_params: RawBytes,
+    pub subaddress: RawBytes,
+}
+
+/// Init actor Exec4 Return value
+pub type Exec4Return = ExecReturn;

@@ -2,6 +2,9 @@ name: Continuous integration
 
 on:
   push:
+    branches:
+      - master
+  pull_request:
 
 env:
   RUSTFLAGS: -Dwarnings
@@ -10,73 +13,97 @@ jobs:
   rustfmt:
     runs-on: ubuntu-latest
     steps:
-    - name: Checking out fvm
+    - name: Checking out
       uses: actions/checkout@v2
-    - name: Installing Rust
-      uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1.0.7
+    - name: Running rustfmt
+      run: make rustfmt
+
+  check-clippy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checking out
+      uses: actions/checkout@v2
+    - name: Running clippy
+      run: make check
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checking out
+      uses: actions/checkout@v2
+    - name: Running tests
+      uses: ./.github/actions/rust-cargo-run
       with:
-        profile: minimal
-        override: true
-        components: rustfmt
-    - name: Running fmt
-      uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1.0.3
-      with:
-        command: fmt
-        args: -- --check
-  cargo:
+        command: test
+        args: --locked --all --no-fail-fast --exclude=fil_builtin_actors_bundle
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        save_cache: true
+
+  build:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        include:
-          - name: check-clippy
-            command: clippy
-            args: --all --all-targets
-            components: clippy
-          - name: test
-            command: test
-            args: --all
-          - name: build
-            command: build
-            push: true
-    env:
-      SCCACHE_CACHE_SIZE: 2G
-      SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
-      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      CARGO_INCREMENTAL: 0
-      CACHE_SKIP_SAVE: ${{ matrix.push == '' || matrix.push == 'false' }}
-    name: ${{ matrix.name }}
+        network: [ 'mainnet', 'caterpillarnet', 'butterflynet', 'calibrationnet', 'devnet', 'testing', 'testing-fake-proofs' ]
     steps:
-    - name: Checking out builtin-actors
+    - name: Checking out
       uses: actions/checkout@v2
+    - name: Install Rust toolchain
+      uses: ./.github/actions/rust-cargo-run
       with:
-        submodules: ${{ matrix.submodules }}
-    - name: Installing Rust
-      uses: actions-rs/toolchain@16499b5e05bf2e26879000db0c1d13f7e13fa3af # v1.0.7
+        command: version
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+    - name: Writing bundle
+      env:
+        BUILD_FIL_NETWORK: ${{ matrix.network }}
+      run: |
+        cargo run --locked -- -o output/builtin-actors.car
+  coverage:
+    runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+    - name: Checking out
+      uses: actions/checkout@v2
+    - name: Install Rust toolchain
+      uses: ./.github/actions/rust-cargo-run
       with:
-        profile: minimal
-        target: wasm32-unknown-unknown
-        override: true
-        components: ${{ matrix.components }}
-    # we don't check the lockfile in; this is needed for cache restoration/saving
-    - name: Generating Cargo.lock
-      uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1.0.3
+        command: version
+        components: llvm-tools-preview
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        cache_name: v3-cov
+        save_cache: true
+    - name: Put LLVM tools into the PATH
+      run: echo "${HOME}/.rustup/toolchains/$(cat rust-toolchain)-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-gnu/bin" >> $GITHUB_PATH
+    - name: Install demangler
+      run: cargo install rustfilt
+    - name: Create coverage report
+      env:
+        # Make sure that each run of an executable creates a new profile file,
+        # with the default name they would override each other.
+        LLVM_PROFILE_FILE: "%m.profraw"
+        RUSTFLAGS: "-Cinstrument-coverage"
+      run: cargo test --workspace --exclude fil_builtin_actors_bundle
+    - name: Merge profiling data
+      # Do *not* use sparse output. It leads to more lines that are not taken
+      # into account at all
+      run: llvm-profdata merge --output=default.profdata $(find . -name '*.profraw')
+    - name: Create HTML coverage report
+      # The compiled files contain the coverage information. From running the
+      # tests we don't know what those files are called, hence use all files
+      # from the `./target/debug/deps` directory which don't have an extension.
+      run: |
+        OBJECT_OPTIONS=($(find ./target/debug/deps/* -name '*' -not -name '*\.*' -printf ' --object %p'))
+        # Create HTML report of this project, we don't care about coverage of
+        # dependencies
+        llvm-cov show --Xdemangler=rustfilt --show-expansions --show-line-counts-or-regions --ignore-filename-regex=".cargo|.rustup|/rustc|./tests/" --format=html --output-dir=./llvm-show --instr-profile=default.profdata ${OBJECT_OPTIONS[@]}
+        # Create file to be uploaded to codecov
+        llvm-cov export --ignore-filename-regex=".cargo|.rustup|/rustc|./tests" --format=lcov --instr-profile=default.profdata ${OBJECT_OPTIONS[@]} > lcov.info
+    - name: Archive code coverage results
+      uses: actions/upload-artifact@v3
       with:
-        command: generate-lockfile
-    - name: Setting up cache
-      uses: ./.github/actions/rust-sccache
+        name: code-coverage-report
+        path: llvm-show/*
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@81cd2dc8148241f03f5839d295e000b8f761e378 # v3.1.0
       with:
-        version: v0.2.15
-        # change this to invalidate sccache for this job
-        shared-key: v1
-    - name: Running ${{ matrix.command }}
-      uses: actions-rs/cargo@844f36862e911db73fe0815f00a4a2602c279505 # v1.0.3
-      with:
-        command: ${{ matrix.command }}
-        args: ${{ matrix.args }}
-    - name: Publishing build artifacts
-      if: ${{ matrix.command == 'build' }}
-      uses: actions/upload-artifact@v2
-      with:
-        name: bundle
-        path: |
-          target/**/bundle.car
+        files: lcov.info

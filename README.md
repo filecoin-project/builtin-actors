@@ -1,4 +1,4 @@
-# Built-in Filecoin actors (v8)
+# Built-in Filecoin actors
 
 This repo contains the code for the on-chain built-in actors that power the
 Filecoin network starting from network version 16.
@@ -35,28 +35,17 @@ characteristics:
   entry represents a built-in actor.
 - Manifest keys (CID) point to the Wasm bytecode of an actor as a single block.
 - Manifest values (i32) identify the actor type, to be parsed as the
-  `fvm_shared::actor::builtin::Type` enum:
-    - System = 1
-    - Init = 2
-    - Cron = 3
-    - Account = 4
-    - Power = 5
-    - Miner = 6
-    - Market = 7
-    - PaymentChannel = 8
-    - Multisig = 9
-    - Reward = 10
-    - VerifiedRegistry = 11
+  `runtime::builtins::Type` enum.
 
-The CARv1 is embedded as a byte slice at the root of the library, and exported
-under the `BUNDLE_CAR` public const, for easier consumption by Rust code.
+Precompiled actor bundles are provided as [release binaries][releases] in this repo. The
+[`fil_builtin_actors_bundle`](https://crates.io/crates/fil_builtin_actors_bundle) crate on
+[crates.io](https://crates.io) will not be updated.
 
-Precompiled actor bundles may also be provided as release binaries in this repo,
-if requested by implementors.
+[releases]: https://github.com/filecoin-project/builtin-actors/releases
 
 ## Releasing
 
-We usually release all actors, the runtime, and the bundle at the same time. That means releasing:
+We usually release all actors, the runtime, and the state abstraction at the same time. That means releasing:
 
 - `fil_actors_runtime`
 - `fil_actor_account`
@@ -70,9 +59,9 @@ We usually release all actors, the runtime, and the bundle at the same time. Tha
 - `fil_actor_reward`
 - `fil_actor_system`
 - `fil_actor_verifreg`
-- `fil_builtin_actors_bundle`
+- `fil_builtin_actors_state`
 
-(in that order)
+We do not publish the "bundle" _crate_, but instead build it in CI and publish the bundle itself as a [release][releases].
 
 To make this easier, we've added some helper scripts to the Makefile. Instructions follow.
 
@@ -98,6 +87,7 @@ By default, this bumps the patch version. To bump to a different version, append
 - `major`
 - `alpha`
 - `beta`
+- `rc`
 
 You can also _set_ a specific version with the `set-version` target.
 
@@ -105,11 +95,13 @@ You can also _set_ a specific version with the `set-version` target.
 make set-version VERSION=7.1.1
 ```
 
-Finally, commit the version changes:
+Commit the version changes:
 
 ```bash
 git commit -a -m "Release $(make --quiet version)"
 ```
+
+Finally, create a PR to commit your changes, make sure your PR is approved and merged before move to the next step!
 
 ### 3: Publish Crates
 
@@ -147,13 +139,9 @@ Instructions to build from source (option 1):
 
 1. Clone the repo.
 2. Check out the relevant branch or tag (see Versioning section below).
-3. `cargo build` from the workspace root.
-4. Copy the CARv1 file generated the location printed in this log line:
-    ```
-   warning: bundle=/path/to/repo/target/debug/build/filecoin_canonical_actors_bundle-aef13b28a60e195b/out/bundle/bundle.car
-   ```
-   All output is printed as a warning only due to limitations in the Cargo build
-   script mechanisms.
+3. `make bundle` from the workspace root.
+
+The bundle be written to `output/builtin-actors.car`.
 
 Both options are compatible with automation via scripts or CI pipelines.
 
@@ -231,3 +219,6 @@ of the implementation or project they identify with.
 
 Dual-licensed: [MIT](./LICENSE-MIT), [Apache Software License v2](./LICENSE-APACHE), by way of the
 [Permissive License Stack](https://protocol.ai/blog/announcing-the-permissive-license-stack/).
+
+Except the EVM precompile [test data](actors/evm/precompile-testdata), which is licensed under the
+LGPL v3 and not included in crates or build artifacts.

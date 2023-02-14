@@ -1,20 +1,19 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use anyhow::anyhow;
 use cid::Cid;
 use fil_actors_runtime::{
-    make_empty_map, make_map_with_root_and_bitwidth, FIRST_NON_SINGLETON_ADDR,
+    actor_error, make_empty_map, make_map_with_root_and_bitwidth, ActorError, AsActorError,
+    FIRST_NON_SINGLETON_ADDR,
 };
-use fvm_ipld_hamt::Error as HamtError;
+use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::tuple::*;
 use fvm_shared::address::{Address, Protocol};
-use fvm_shared::blockstore::Blockstore;
-use fvm_shared::encoding::tuple::*;
-use fvm_shared::encoding::Cbor;
+use fvm_shared::error::ExitCode;
 use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
 
 /// State is reponsible for creating
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug)]
 pub struct State {
     pub address_map: Cid,
     pub next_id: ActorID,
@@ -22,28 +21,64 @@ pub struct State {
 }
 
 impl State {
-    pub fn new<BS: Blockstore>(store: &BS, network_name: String) -> anyhow::Result<Self> {
+    pub fn new<BS: Blockstore>(store: &BS, network_name: String) -> Result<Self, ActorError> {
         let empty_map = make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH)
             .flush()
-            .map_err(|e| anyhow!("failed to create empty map: {}", e))?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to create empty map")?;
         Ok(Self { address_map: empty_map, next_id: FIRST_NON_SINGLETON_ADDR, network_name })
     }
 
-    /// Allocates a new ID address and stores a mapping of the argument address to it.
-    /// Returns the newly-allocated address.
-    pub fn map_address_to_new_id<BS: Blockstore>(
+    /// Maps argument addresses to to a new or existing actor ID.
+    /// With no delegated address, or if the delegated address is not already mapped,
+    /// allocates a new ID address and maps both to it.
+    /// If the delegated address is already present, maps the robust address to that actor ID.
+    /// Fails if the robust address is already mapped. The assignment of an ID to an address is one-time-only, even if the actor at that ID is deleted.
+    /// Returns the actor ID and a boolean indicating whether or not the actor already exists.
+    pub fn map_addresses_to_id<BS: Blockstore>(
         &mut self,
         store: &BS,
-        addr: &Address,
-    ) -> Result<ActorID, HamtError> {
-        let id = self.next_id;
-        self.next_id += 1;
+        robust_addr: &Address,
+        delegated_addr: Option<&Address>,
+    ) -> Result<(ActorID, bool), ActorError> {
+        let mut map = make_map_with_root_and_bitwidth(&self.address_map, store, HAMT_BIT_WIDTH)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load address map")?;
+        let (id, existing) = if let Some(delegated_addr) = delegated_addr {
+            // If there's a delegated address, either recall the already-mapped actor ID or
+            // create and map a new one.
+            let delegated_key = delegated_addr.to_bytes().into();
+            if let Some(existing_id) = map
+                .get(&delegated_key)
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to lookup delegated address")?
+            {
+                (*existing_id, true)
+            } else {
+                let new_id = self.next_id;
+                self.next_id += 1;
+                map.set(delegated_key, new_id)
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to map delegated address")?;
+                (new_id, false)
+            }
+        } else {
+            // With no delegated address, always create a new actor ID.
+            let new_id = self.next_id;
+            self.next_id += 1;
+            (new_id, false)
+        };
 
-        let mut map = make_map_with_root_and_bitwidth(&self.address_map, store, HAMT_BIT_WIDTH)?;
-        map.set(addr.to_bytes().into(), id)?;
-        self.address_map = map.flush()?;
-
-        Ok(id)
+        // Map the robust address to the ID, failing if it's already mapped to anything.
+        let is_new = map
+            .set_if_absent(robust_addr.to_bytes().into(), id)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to map robust address")?;
+        if !is_new {
+            return Err(actor_error!(
+                forbidden,
+                "robust address {} is already allocated in the address map",
+                robust_addr
+            ));
+        }
+        self.address_map =
+            map.flush().context_code(ExitCode::USR_ILLEGAL_STATE, "failed to store address map")?;
+        Ok((id, existing))
     }
 
     /// ResolveAddress resolves an address to an ID-address, if possible.
@@ -60,15 +95,17 @@ impl State {
         &self,
         store: &BS,
         addr: &Address,
-    ) -> anyhow::Result<Option<Address>> {
+    ) -> Result<Option<Address>, ActorError> {
         if addr.protocol() == Protocol::ID {
             return Ok(Some(*addr));
         }
 
-        let map = make_map_with_root_and_bitwidth(&self.address_map, store, HAMT_BIT_WIDTH)?;
+        let map = make_map_with_root_and_bitwidth(&self.address_map, store, HAMT_BIT_WIDTH)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load address map")?;
 
-        Ok(map.get(&addr.to_bytes())?.copied().map(Address::new_id))
+        let found = map
+            .get(&addr.to_bytes())
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get address entry")?;
+        Ok(found.copied().map(Address::new_id))
     }
 }
-
-impl Cbor for State {}

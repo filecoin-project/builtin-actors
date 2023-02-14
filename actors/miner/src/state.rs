@@ -4,7 +4,7 @@
 use std::cmp;
 use std::ops::Neg;
 
-use anyhow::anyhow;
+use anyhow::{anyhow, Error};
 use cid::multihash::Code;
 use cid::Cid;
 use fil_actors_runtime::runtime::Policy;
@@ -14,19 +14,21 @@ use fil_actors_runtime::{
 };
 use fvm_ipld_amt::Error as AmtError;
 use fvm_ipld_bitfield::BitField;
+use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::tuple::*;
+use fvm_ipld_encoding::{strict_bytes, BytesDe, CborStore};
 use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser;
-use fvm_shared::blockstore::{Blockstore, CborStore};
+
 use fvm_shared::clock::{ChainEpoch, QuantSpec, EPOCH_UNDEFINED};
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::tuple::*;
-use fvm_shared::encoding::{serde_bytes, BytesDe, Cbor};
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, SectorSize, MAX_SECTOR_NUMBER};
-use fvm_shared::HAMT_BIT_WIDTH;
-use num_traits::{Signed, Zero};
+use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
+use itertools::Itertools;
+use num_traits::Zero;
 
+use super::beneficiary::*;
 use super::deadlines::new_deadline_info;
 use super::policy::*;
 use super::types::*;
@@ -46,28 +48,24 @@ pub const SECTORS_AMT_BITWIDTH: u32 = 5;
 /// that limits a miner actor's behavior (i.e. no balance withdrawals)
 /// Excess balance as computed by st.GetAvailableBalance will be
 /// withdrawable or usable for pre-commit deposit or pledge lock-up.
-#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug)]
 pub struct State {
     /// Contains static info about this miner
     pub info: Cid,
 
     /// Total funds locked as pre_commit_deposit
-    #[serde(with = "bigint_ser")]
     pub pre_commit_deposits: TokenAmount,
 
     /// Total rewards and added funds locked in vesting table
-    #[serde(with = "bigint_ser")]
     pub locked_funds: TokenAmount,
 
     /// VestingFunds (Vesting Funds schedule for the miner).
     pub vesting_funds: Cid,
 
     /// Absolute value of debt this miner owes from unpaid fees.
-    #[serde(with = "bigint_ser")]
     pub fee_debt: TokenAmount,
 
     /// Sum of initial pledge requirements of all active sectors.
-    #[serde(with = "bigint_ser")]
     pub initial_pledge: TokenAmount,
 
     /// Sectors that have been pre-committed but not yet proven.
@@ -112,13 +110,11 @@ pub struct State {
     pub deadline_cron_active: bool,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Eq)]
 pub enum CollisionPolicy {
     AllowCollisions,
     DenyCollisions,
 }
-
-impl Cbor for State {}
 
 impl State {
     #[allow(clippy::too_many_arguments)]
@@ -132,7 +128,7 @@ impl State {
         let empty_precommit_map =
             make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH).flush().map_err(|e| {
                 e.downcast_default(
-                    ExitCode::ErrIllegalState,
+                    ExitCode::USR_ILLEGAL_STATE,
                     "failed to construct empty precommit map",
                 )
             })?;
@@ -141,7 +137,7 @@ impl State {
                 .flush()
                 .map_err(|e| {
                     e.downcast_default(
-                        ExitCode::ErrIllegalState,
+                        ExitCode::USR_ILLEGAL_STATE,
                         "failed to construct empty precommits array",
                     )
                 })?;
@@ -150,27 +146,27 @@ impl State {
                 .flush()
                 .map_err(|e| {
                     e.downcast_default(
-                        ExitCode::ErrIllegalState,
+                        ExitCode::USR_ILLEGAL_STATE,
                         "failed to construct sectors array",
                     )
                 })?;
         let empty_bitfield = store.put_cbor(&BitField::new(), Code::Blake2b256).map_err(|e| {
-            e.downcast_default(ExitCode::ErrIllegalState, "failed to construct empty bitfield")
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct empty bitfield")
         })?;
         let deadline = Deadline::new(store)?;
         let empty_deadline = store.put_cbor(&deadline, Code::Blake2b256).map_err(|e| {
-            e.downcast_default(ExitCode::ErrIllegalState, "failed to construct illegal state")
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct illegal state")
         })?;
 
         let empty_deadlines = store
             .put_cbor(&Deadlines::new(policy, empty_deadline), Code::Blake2b256)
             .map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to construct illegal state")
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct illegal state")
             })?;
 
         let empty_vesting_funds_cid =
             store.put_cbor(&VestingFunds::new(), Code::Blake2b256).map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to construct illegal state")
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct illegal state")
             })?;
 
         Ok(Self {
@@ -199,7 +195,7 @@ impl State {
     pub fn get_info<BS: Blockstore>(&self, store: &BS) -> anyhow::Result<MinerInfo> {
         match store.get_cbor(&self.info) {
             Ok(Some(info)) => Ok(info),
-            Ok(None) => Err(actor_error!(ErrNotFound, "failed to get miner info").into()),
+            Ok(None) => Err(actor_error!(not_found, "failed to get miner info").into()),
             Err(e) => Err(e.downcast_wrap("failed to get miner info")),
         }
     }
@@ -255,11 +251,11 @@ impl State {
             .get_cbor(&self.allocated_sectors)
             .map_err(|e| {
                 e.downcast_default(
-                    ExitCode::ErrIllegalState,
+                    ExitCode::USR_ILLEGAL_STATE,
                     "failed to load allocated sectors bitfield",
                 )
             })?
-            .ok_or_else(|| actor_error!(ErrIllegalState, "allocated sectors bitfield not found"))?;
+            .ok_or_else(|| actor_error!(illegal_state, "allocated sectors bitfield not found"))?;
 
         if policy != CollisionPolicy::AllowCollisions {
             // NOTE: A fancy merge algorithm could extract this intersection while merging, below, saving
@@ -267,7 +263,7 @@ impl State {
             let collisions = &prior_allocation & sector_numbers;
             if !collisions.is_empty() {
                 return Err(actor_error!(
-                    ErrIllegalArgument,
+                    illegal_argument,
                     "sector numbers {:?} already allocated",
                     collisions
                 ));
@@ -277,7 +273,7 @@ impl State {
         self.allocated_sectors =
             store.put_cbor(&new_allocation, Code::Blake2b256).map_err(|e| {
                 e.downcast_default(
-                    ExitCode::ErrIllegalArgument,
+                    ExitCode::USR_ILLEGAL_ARGUMENT,
                     format!(
                         "failed to store allocated sectors bitfield after adding {:?}",
                         sector_numbers,
@@ -360,7 +356,10 @@ impl State {
         )?;
 
         for &sector_num in sector_nums {
-            precommitted.delete(&u64_key(sector_num))?;
+            let prev_entry = precommitted.delete(&u64_key(sector_num))?;
+            if prev_entry.is_none() {
+                return Err(format!("sector {} doesn't exist", sector_num).into());
+            }
         }
 
         self.pre_committed_sectors = precommitted.flush()?;
@@ -409,10 +408,16 @@ impl State {
         let mut sectors = Sectors::load(store, &self.sectors)?;
 
         for sector_num in sector_nos.iter() {
-            sectors
+            let deleted_sector = sectors
                 .amt
                 .delete(sector_num)
                 .map_err(|e| e.downcast_wrap("could not delete sector number"))?;
+            if deleted_sector.is_none() {
+                return Err(AmtError::Dynamic(Error::msg(format!(
+                    "sector {} doesn't exist, failed to delete",
+                    sector_num
+                ))));
+            }
         }
 
         self.sectors = sectors.amt.flush()?;
@@ -643,7 +648,7 @@ impl State {
         let exists = partition.sectors.get(sector_number);
         if !exists {
             return Err(actor_error!(
-                ErrNotFound;
+                not_found;
                 "sector {} not a member of partition {}, deadline {}",
                 sector_number, partition_idx, deadline_idx
             )
@@ -683,7 +688,7 @@ impl State {
 
         if !partition.sectors.get(sector_number) {
             return Err(actor_error!(
-                ErrNotFound;
+                not_found;
                 "sector {} not a member of partition {}, deadline {}",
                 sector_number, partition_idx, deadline_idx
             )
@@ -692,7 +697,7 @@ impl State {
 
         if partition.faults.get(sector_number) {
             return Err(actor_error!(
-                ErrForbidden;
+                forbidden;
                 "sector {} not a member of partition {}, deadline {}",
                 sector_number, partition_idx, deadline_idx
             )
@@ -701,7 +706,7 @@ impl State {
 
         if partition.terminated.get(sector_number) {
             return Err(actor_error!(
-                ErrNotFound;
+                not_found;
                 "sector {} not of partition {}, deadline {} is terminated",
                 sector_number, partition_idx, deadline_idx
             )
@@ -723,9 +728,11 @@ impl State {
     pub fn load_deadlines<BS: Blockstore>(&self, store: &BS) -> Result<Deadlines, ActorError> {
         store
             .get_cbor::<Deadlines>(&self.deadlines)
-            .map_err(|e| e.downcast_default(ExitCode::ErrIllegalState, "failed to load deadlines"))?
+            .map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load deadlines")
+            })?
             .ok_or_else(
-                || actor_error!(ErrIllegalState; "failed to load deadlines {}", self.deadlines),
+                || actor_error!(illegal_state; "failed to load deadlines {}", self.deadlines),
             )
     }
 
@@ -743,11 +750,11 @@ impl State {
         Ok(store
             .get_cbor(&self.vesting_funds)
             .map_err(|e| {
-                e.downcast_wrap(
-                    format!("failed to load vesting funds {}", self.vesting_funds),
-                )
+                e.downcast_wrap(format!("failed to load vesting funds {}", self.vesting_funds))
             })?
-            .ok_or_else(|| actor_error!(ErrNotFound; "failed to load vesting funds {:?}", self.vesting_funds))?)
+            .ok_or_else(
+                || actor_error!(not_found; "failed to load vesting funds {:?}", self.vesting_funds),
+            )?)
     }
 
     /// Saves the vesting table to the store.
@@ -863,7 +870,6 @@ impl State {
         let fee_debt = self.fee_debt.clone();
         let from_vesting = self.unlock_unvested_funds(store, current_epoch, &fee_debt)?;
 
-        // * It may be possible the go implementation catches a potential panic here
         if from_vesting > self.fee_debt {
             return Err(anyhow!("should never unlock more than the debt we need to repay"));
         }
@@ -883,7 +889,7 @@ impl State {
         let unlocked_balance = self.get_unlocked_balance(curr_balance)?;
         if unlocked_balance < self.fee_debt {
             return Err(actor_error!(
-                ErrInsufficientFunds,
+                insufficient_funds,
                 "unlocked balance can not repay fee debt ({} < {})",
                 unlocked_balance,
                 self.fee_debt
@@ -976,7 +982,7 @@ impl State {
         &self,
         actor_balance: &TokenAmount,
     ) -> anyhow::Result<TokenAmount> {
-        // (actor_balance - &self.locked_funds) - &self.pre_commit_deposit
+        // (actor_balance - &self.locked_funds) - &self.pre_commit_deposit - &self.initial_pledge
         Ok(self.get_unlocked_balance(actor_balance)? - &self.fee_debt)
     }
 
@@ -1174,13 +1180,13 @@ impl State {
         for sector_no in sector_nos.iter() {
             if sector_no as u64 > MAX_SECTOR_NUMBER {
                 return Err(
-                    actor_error!(ErrIllegalArgument; "sector number greater than maximum").into()
+                    actor_error!(illegal_argument; "sector number greater than maximum").into()
                 );
             }
             let info: &SectorPreCommitOnChainInfo =
                 precommitted
                     .get(&u64_key(sector_no as u64))?
-                    .ok_or_else(|| actor_error!(ErrNotFound, "sector {} not found", sector_no))?;
+                    .ok_or_else(|| actor_error!(not_found, "sector {} not found", sector_no))?;
             precommits.push(info.clone());
         }
         Ok(precommits)
@@ -1201,7 +1207,7 @@ pub struct AdvanceDeadlineResult {
 }
 
 /// Static information about miner
-#[derive(Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct MinerInfo {
     /// Account that owns this miner
     /// - Income and returned collateral are paid to this address
@@ -1221,7 +1227,7 @@ pub struct MinerInfo {
     pub pending_worker_key: Option<WorkerKeyChange>,
 
     /// Libp2p identity that should be used when connecting to this miner
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub peer_id: Vec<u8>,
 
     /// Vector of byte arrays representing Libp2p multi-addresses used for establishing a connection with this miner.
@@ -1244,30 +1250,45 @@ pub struct MinerInfo {
     /// A proposed new owner account for this miner.
     /// Must be confirmed by a message from the pending address itself.
     pub pending_owner_address: Option<Address>,
+
+    /// Account for receive miner benefits, withdraw on miner must send to this address,
+    /// set owner address by default when create miner
+    pub beneficiary: Address,
+
+    /// beneficiary's total quota, how much quota has been withdraw,
+    /// and when this beneficiary expired
+    pub beneficiary_term: BeneficiaryTerm,
+
+    /// A proposal new beneficiary message for this miner
+    pub pending_beneficiary_term: Option<PendingBeneficiaryChange>,
 }
 
 impl MinerInfo {
     pub fn new(
-        owner: Address,
-        worker: Address,
-        control_addresses: Vec<Address>,
+        owner: ActorID,
+        worker: ActorID,
+        control_addresses: Vec<ActorID>,
         peer_id: Vec<u8>,
         multi_address: Vec<BytesDe>,
         window_post_proof_type: RegisteredPoStProof,
     ) -> Result<Self, ActorError> {
         let sector_size = window_post_proof_type
             .sector_size()
-            .map_err(|e| actor_error!(ErrIllegalArgument, "invalid sector size: {}", e))?;
+            .map_err(|e| actor_error!(illegal_argument, "invalid sector size: {}", e))?;
 
         let window_post_partition_sectors = window_post_proof_type
             .window_post_partitions_sector()
-            .map_err(|e| actor_error!(ErrIllegalArgument, "invalid partition sectors: {}", e))?;
+            .map_err(|e| actor_error!(illegal_argument, "invalid partition sectors: {}", e))?;
 
         Ok(Self {
-            owner,
-            worker,
-            control_addresses,
+            owner: Address::new_id(owner),
+            worker: Address::new_id(worker),
+            control_addresses: control_addresses.into_iter().map(Address::new_id).collect_vec(),
+
             pending_worker_key: None,
+            beneficiary: Address::new_id(owner),
+            beneficiary_term: BeneficiaryTerm::default(),
+            pending_beneficiary_term: None,
             peer_id,
             multi_address,
             window_post_proof_type,

@@ -8,7 +8,7 @@ use cid::Cid;
 use fil_actors_runtime::{actor_error, ActorDowncast, ActorError, Array};
 use fvm_ipld_amt::Error as AmtError;
 use fvm_ipld_bitfield::BitField;
-use fvm_shared::blockstore::Blockstore;
+use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{SectorNumber, MAX_SECTOR_NUMBER};
 
@@ -23,17 +23,10 @@ impl<'db, BS: Blockstore> Sectors<'db, BS> {
         Ok(Self { amt: Array::load(root, store)? })
     }
 
-    pub fn load_sector<'a>(
+    pub fn load_sector(
         &self,
-        sector_numbers: impl fvm_ipld_bitfield::Validate<'a>,
+        sector_numbers: &BitField,
     ) -> Result<Vec<SectorOnChainInfo>, ActorError> {
-        let sector_numbers = match sector_numbers.validate() {
-            Ok(sector_numbers) => sector_numbers,
-            Err(e) => {
-                return Err(actor_error!(ErrIllegalArgument, "failed to load sectors: {}", e))
-            }
-        };
-
         let mut sector_infos: Vec<SectorOnChainInfo> = Vec::new();
         for sector_number in sector_numbers.iter() {
             let sector_on_chain = self
@@ -41,12 +34,12 @@ impl<'db, BS: Blockstore> Sectors<'db, BS> {
                 .get(sector_number)
                 .map_err(|e| {
                     e.downcast_default(
-                        ExitCode::ErrIllegalState,
+                        ExitCode::USR_ILLEGAL_STATE,
                         format!("failed to load sector {}", sector_number),
                     )
                 })?
                 .cloned()
-                .ok_or_else(|| actor_error!(ErrNotFound; "sector not found: {}", sector_number))?;
+                .ok_or_else(|| actor_error!(not_found; "sector not found: {}", sector_number))?;
             sector_infos.push(sector_on_chain);
         }
         Ok(sector_infos)
@@ -130,7 +123,7 @@ impl<'db, BS: Blockstore> Sectors<'db, BS> {
     }
 }
 
-pub(crate) fn select_sectors(
+pub fn select_sectors(
     sectors: &[SectorOnChainInfo],
     field: &BitField,
 ) -> anyhow::Result<Vec<SectorOnChainInfo>> {

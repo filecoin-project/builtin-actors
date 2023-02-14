@@ -1,13 +1,15 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use std::fmt::Display;
+
+use fvm_ipld_encoding::tuple::*;
+use fvm_ipld_encoding::{strict_bytes, RawBytes};
 use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser;
+
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::tuple::*;
-use fvm_shared::encoding::{serde_bytes, RawBytes};
 use fvm_shared::error::ExitCode;
 use fvm_shared::MethodNum;
 use integer_encoding::VarInt;
@@ -18,7 +20,7 @@ use serde::{Deserialize, Serialize};
 pub const SIGNERS_MAX: usize = 256;
 
 /// Transaction ID type
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, Hash, Eq, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, Hash, Eq, PartialEq, PartialOrd)]
 #[serde(transparent)]
 pub struct TxnID(pub i64);
 
@@ -28,11 +30,16 @@ impl TxnID {
     }
 }
 
+impl Display for TxnID {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// Transaction type used in multisig actor
-#[derive(Clone, PartialEq, Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct Transaction {
     pub to: Address,
-    #[serde(with = "bigint_ser")]
     pub value: TokenAmount,
     pub method: MethodNum,
     pub params: RawBytes,
@@ -50,7 +57,6 @@ pub struct Transaction {
 pub struct ProposalHashData<'a> {
     pub requester: Option<&'a Address>,
     pub to: &'a Address,
-    #[serde(with = "bigint_ser")]
     pub value: &'a TokenAmount,
     pub method: &'a MethodNum,
     pub params: &'a RawBytes,
@@ -70,7 +76,6 @@ pub struct ConstructorParams {
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ProposeParams {
     pub to: Address,
-    #[serde(with = "bigint_ser")]
     pub value: TokenAmount,
     pub method: MethodNum,
     pub params: RawBytes,
@@ -92,12 +97,12 @@ pub struct ProposeReturn {
 }
 
 /// Parameters for approve and cancel multisig functions.
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, PartialEq, Eq, Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct TxnIDParams {
     pub id: TxnID,
     /// Optional hash of proposal to ensure an operation can only apply to a
     /// specific proposal.
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub proposal_hash: Vec<u8>,
 }
 
@@ -146,6 +151,5 @@ pub struct ChangeNumApprovalsThresholdParams {
 pub struct LockBalanceParams {
     pub start_epoch: ChainEpoch,
     pub unlock_duration: ChainEpoch,
-    #[serde(with = "bigint_ser")]
     pub amount: TokenAmount,
 }

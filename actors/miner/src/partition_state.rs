@@ -8,12 +8,12 @@ use anyhow::{anyhow, Context};
 use cid::Cid;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{actor_error, ActorDowncast, Array};
-use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
+use fvm_ipld_bitfield::BitField;
+use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::tuple::*;
 use fvm_shared::bigint::bigint_ser;
-use fvm_shared::blockstore::Blockstore;
 use fvm_shared::clock::{ChainEpoch, QuantSpec, NO_QUANTIZATION};
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::encoding::tuple::*;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{SectorSize, StoragePower};
 use num_traits::{Signed, Zero};
@@ -213,17 +213,13 @@ impl Partition {
         &mut self,
         store: &BS,
         sectors: &Sectors<'_, BS>,
-        sector_numbers: &mut UnvalidatedBitField,
+        sector_numbers: &BitField,
         fault_expiration_epoch: ChainEpoch,
         sector_size: SectorSize,
         quant: QuantSpec,
     ) -> anyhow::Result<(BitField, PowerPair, PowerPair)> {
         validate_partition_contains_sectors(self, sector_numbers)
-            .map_err(|e| actor_error!(ErrIllegalArgument; "failed fault declaration: {}", e))?;
-
-        let sector_numbers = sector_numbers
-            .validate()
-            .map_err(|e| anyhow!("failed to intersect sectors with recoveries: {}", e))?;
+            .map_err(|e| actor_error!(illegal_argument; "failed fault declaration: {}", e))?;
 
         // Split declarations into declarations of new faults, and retraction of declared recoveries.
         let retracted_recoveries = &self.recoveries & sector_numbers;
@@ -250,6 +246,16 @@ impl Partition {
         } else {
             Default::default()
         };
+
+        // remove faulty recoveries from state
+        let retracted_recovery_sectors = sectors
+            .load_sector(&retracted_recoveries)
+            .map_err(|e| e.wrap("failed to load recovery sectors"))?;
+        if !retracted_recovery_sectors.is_empty() {
+            let retracted_recovery_power =
+                power_for_sectors(sector_size, &retracted_recovery_sectors);
+            self.remove_recoveries(&retracted_recoveries, &retracted_recovery_power);
+        }
 
         // check invariants
         self.validate_state()?;
@@ -312,15 +318,11 @@ impl Partition {
         &mut self,
         sectors: &Sectors<'_, BS>,
         sector_size: SectorSize,
-        sector_numbers: &mut UnvalidatedBitField,
+        sector_numbers: &BitField,
     ) -> anyhow::Result<()> {
         // Check that the declared sectors are actually assigned to the partition.
         validate_partition_contains_sectors(self, sector_numbers)
-            .map_err(|e| actor_error!(ErrIllegalArgument; "failed fault declaration: {}", e))?;
-
-        let sector_numbers = sector_numbers
-            .validate()
-            .map_err(|e| anyhow!("failed to validate recoveries: {}", e))?;
+            .map_err(|e| actor_error!(illegal_argument; "failed fault declaration: {}", e))?;
 
         // Ignore sectors not faulty or already declared recovered
         let mut recoveries = sector_numbers & &self.faults;
@@ -372,16 +374,12 @@ impl Partition {
         store: &BS,
         sectors: &Sectors<'_, BS>,
         new_expiration: ChainEpoch,
-        sector_numbers: &mut UnvalidatedBitField,
+        sector_numbers: &BitField,
         sector_size: SectorSize,
         quant: QuantSpec,
     ) -> anyhow::Result<Vec<SectorOnChainInfo>> {
-        let sector_numbers = sector_numbers.validate().map_err(|e| {
-            actor_error!(ErrIllegalArgument, "failed to validate rescheduled sectors: {}", e)
-        })?;
-
         // Ensure these sectors actually belong to this partition.
-        let present = &*sector_numbers & &self.sectors;
+        let present = sector_numbers & &self.sectors;
 
         // Filter out terminated sectors.
         let live = &present - &self.terminated;
@@ -484,17 +482,14 @@ impl Partition {
         store: &BS,
         sectors: &Sectors<'_, BS>,
         epoch: ChainEpoch,
-        sector_numbers: &mut UnvalidatedBitField,
+        sector_numbers: &BitField,
         sector_size: SectorSize,
         quant: QuantSpec,
     ) -> anyhow::Result<ExpirationSet> {
         let live_sectors = self.live_sectors();
-        let sector_numbers = sector_numbers.validate().map_err(|e| {
-            actor_error!(ErrIllegalArgument, "failed to validate terminating sectors: {}", e)
-        })?;
 
         if !live_sectors.contains_all(sector_numbers) {
-            return Err(actor_error!(ErrIllegalArgument, "can only terminate live sectors").into());
+            return Err(actor_error!(illegal_argument, "can only terminate live sectors").into());
         }
 
         let sector_infos = sectors.load_sector(sector_numbers)?;
@@ -551,7 +546,7 @@ impl Partition {
         // handling sector expirations.
         if !self.unproven.is_empty() {
             return Err(anyhow!(
-                "Cannot pop expired sectors from a partition with unproven sectors"
+                "cannot pop expired sectors from a partition with unproven sectors"
             ));
         }
 
@@ -711,7 +706,7 @@ impl Partition {
     /// Returns the amount of power newly faulty, or declared recovered but faulty again.
     ///
     /// - Skipped faults that are not in the provided partition triggers an error.
-    /// - Skipped faults that are already declared (but not delcared recovered) are ignored.
+    /// - Skipped faults that are already declared (but not declared recovered) are ignored.
     pub fn record_skipped_faults<BS: Blockstore>(
         &mut self,
         store: &BS,
@@ -719,12 +714,8 @@ impl Partition {
         sector_size: SectorSize,
         quant: QuantSpec,
         fault_expiration: ChainEpoch,
-        skipped: &mut UnvalidatedBitField,
+        skipped: &BitField,
     ) -> anyhow::Result<(PowerPair, PowerPair, PowerPair, bool)> {
-        let skipped = skipped.validate().map_err(|e| {
-            actor_error!(ErrIllegalArgument, "failed to validate skipped sectors: {}", e)
-        })?;
-
         if skipped.is_empty() {
             return Ok((PowerPair::zero(), PowerPair::zero(), PowerPair::zero(), false));
         }
@@ -732,7 +723,7 @@ impl Partition {
         // Check that the declared sectors are actually in the partition.
         if !self.sectors.contains_all(skipped) {
             return Err(actor_error!(
-                ErrIllegalArgument,
+                illegal_argument,
                 "skipped faults contains sectors outside partition"
             )
             .into());
@@ -746,7 +737,7 @@ impl Partition {
         let retracted_recovery_power = power_for_sectors(sector_size, &retracted_recovery_sectors);
 
         // Ignore skipped faults that are already faults or terminated.
-        let new_faults = &(&*skipped - &self.terminated) - &self.faults;
+        let new_faults = &(skipped - &self.terminated) - &self.faults;
         let new_fault_sectors =
             sectors.load_sector(&new_faults).map_err(|e| e.wrap("failed to load sectors"))?;
 
@@ -761,7 +752,7 @@ impl Partition {
                 quant,
             )
             .map_err(|e| {
-                e.downcast_default(ExitCode::ErrIllegalState, "failed to add skipped faults")
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to add skipped faults")
             })?;
 
         // Remove faulty recoveries
@@ -843,6 +834,10 @@ pub struct PowerPair {
 }
 
 impl PowerPair {
+    pub fn new(raw: StoragePower, qa: StoragePower) -> Self {
+        Self { raw, qa }
+    }
+
     pub fn zero() -> Self {
         Default::default()
     }
@@ -860,6 +855,14 @@ impl ops::Add for &PowerPair {
     }
 }
 
+impl ops::Add for PowerPair {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        &self + &rhs
+    }
+}
+
 impl ops::AddAssign<&Self> for PowerPair {
     fn add_assign(&mut self, rhs: &Self) {
         *self = &*self + rhs;
@@ -871,6 +874,14 @@ impl ops::Sub for &PowerPair {
 
     fn sub(self, rhs: Self) -> Self::Output {
         PowerPair { raw: &self.raw - &rhs.raw, qa: &self.qa - &rhs.qa }
+    }
+}
+
+impl ops::Sub for PowerPair {
+    type Output = Self;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        &self - &rhs
     }
 }
 

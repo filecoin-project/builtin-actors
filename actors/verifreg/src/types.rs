@@ -1,24 +1,22 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use cid::Cid;
+use fil_actors_runtime::BatchReturn;
+use fvm_ipld_encoding::tuple::*;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser;
+use fvm_shared::bigint::{bigint_ser, BigInt};
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::signature::Signature;
-use fvm_shared::encoding::tuple::*;
+use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::sector::SectorNumber;
 use fvm_shared::sector::StoragePower;
-use lazy_static::lazy_static;
-use num_traits::FromPrimitive;
-use serde::{Deserialize, Serialize};
+use fvm_shared::ActorID;
 
-#[cfg(not(feature = "small-deals"))]
-lazy_static! {
-    pub static ref MINIMUM_VERIFIED_DEAL_SIZE: StoragePower = StoragePower::from_i32(1 << 20).unwrap(); // placeholder
-}
+use crate::Claim;
 
-#[cfg(feature = "small-deals")]
-lazy_static! {
-    pub static ref MINIMUM_VERIFIED_DEAL_SIZE: StoragePower = StoragePower::from_i32(256).unwrap(); // placeholder
-}
+pub type AllocationID = u64;
+pub type ClaimID = u64;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct VerifierParams {
@@ -28,23 +26,14 @@ pub struct VerifierParams {
 }
 
 pub type AddVerifierParams = VerifierParams;
-pub type AddVerifierClientParams = VerifierParams;
+
+pub type AddVerifiedClientParams = VerifierParams;
 
 /// DataCap is an integer number of bytes.
 /// We can introduce policy changes and replace this in the future.
 pub type DataCap = StoragePower;
 
-#[derive(Clone, Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
-pub struct BytesParams {
-    /// Address of verified client.
-    pub address: Address,
-    /// Number of bytes to use.
-    #[serde(with = "bigint_ser")]
-    pub deal_size: StoragePower,
-}
-
-pub type UseBytesParams = BytesParams;
-pub type RestoreBytesParams = BytesParams;
+pub const SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP: &[u8] = b"fil_removedatacap:";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct RemoveDataCapParams {
@@ -68,9 +57,10 @@ pub struct RemoveDataCapReturn {
     pub data_cap_removed: DataCap,
 }
 
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
-#[serde(transparent)]
-pub struct RemoveDataCapProposalID(pub u64);
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct RemoveDataCapProposalID {
+    pub id: u64,
+}
 
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]
 pub struct RemoveDataCapProposal {
@@ -96,4 +86,133 @@ impl AddrPairKey {
         first.append(&mut second);
         first
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct RemoveExpiredAllocationsParams {
+    // Client for which to remove expired allocations.
+    pub client: ActorID,
+    // Optional list of allocation IDs to attempt to remove.
+    // Empty means remove all eligible expired allocations.
+    pub allocation_ids: Vec<AllocationID>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct RemoveExpiredAllocationsReturn {
+    // Ids of the allocations that were either specified by the caller or discovered to be expired.
+    pub considered: Vec<AllocationID>,
+    // Results for each processed allocation.
+    pub results: BatchReturn,
+    // The amount of datacap reclaimed for the client.
+    #[serde(with = "bigint_ser")]
+    pub datacap_recovered: DataCap,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct SectorAllocationClaim {
+    pub client: ActorID,
+    pub allocation_id: AllocationID,
+    pub data: Cid,
+    pub size: PaddedPieceSize,
+    pub sector: SectorNumber,
+    pub sector_expiry: ChainEpoch,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct ClaimAllocationsParams {
+    pub sectors: Vec<SectorAllocationClaim>,
+    pub all_or_nothing: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct ClaimAllocationsReturn {
+    pub batch_info: BatchReturn,
+    #[serde(with = "bigint_ser")]
+    pub claimed_space: BigInt,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct ClaimTerm {
+    pub provider: ActorID,
+    pub claim_id: ClaimID,
+    pub term_max: ChainEpoch,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct ExtendClaimTermsParams {
+    pub terms: Vec<ClaimTerm>,
+}
+
+pub type ExtendClaimTermsReturn = BatchReturn;
+
+//
+// Receiver hook payload
+//
+
+// A request to create an allocation with datacap tokens.
+// See Allocation state for description of field semantics.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct AllocationRequest {
+    pub provider: ActorID,
+    pub data: Cid,
+    pub size: PaddedPieceSize,
+    pub term_min: ChainEpoch,
+    pub term_max: ChainEpoch,
+    pub expiration: ChainEpoch,
+}
+
+// A request to extend the term of an existing claim with datacap tokens.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct ClaimExtensionRequest {
+    pub provider: ActorID,
+    pub claim: ClaimID,
+    pub term_max: ChainEpoch,
+}
+
+/// Operator-data payload for a datacap token transfer receiver hook specifying an allocation.
+/// The implied client is the sender of the datacap.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct AllocationRequests {
+    pub allocations: Vec<AllocationRequest>,
+    pub extensions: Vec<ClaimExtensionRequest>,
+}
+
+/// Recipient data payload in response to a datacap token transfer.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct AllocationsResponse {
+    // Result for each allocation request.
+    pub allocation_results: BatchReturn,
+    // Result for each extension request.
+    pub extension_results: BatchReturn,
+    // IDs of new allocations created.
+    pub new_allocations: Vec<AllocationID>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct GetClaimsParams {
+    pub provider: ActorID,
+    pub claim_ids: Vec<ClaimID>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct GetClaimsReturn {
+    pub batch_info: BatchReturn,
+    pub claims: Vec<Claim>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct RemoveExpiredClaimsParams {
+    // Provider to clean up (need not be the caller)
+    pub provider: ActorID,
+    // Optional list of claim IDs to attempt to remove.
+    // Empty means remove all eligible expired claims.
+    pub claim_ids: Vec<ClaimID>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct RemoveExpiredClaimsReturn {
+    // Ids of the claims that were either specified by the caller or discovered to be expired.
+    pub considered: Vec<AllocationID>,
+    // Results for each processed claim.
+    pub results: BatchReturn,
 }

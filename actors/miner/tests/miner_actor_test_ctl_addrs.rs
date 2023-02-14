@@ -14,5 +14,5 @@ fn test_control_addrs() {
     assert_eq!(h.worker, worker);
     assert_eq!(h.control_addrs, control_addrs);
 
-    util::check_state_invariants(&rt);
+    h.check_state(&rt);
 }
