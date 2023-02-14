@@ -191,11 +191,11 @@ impl<'r, RT: Runtime> System<'r, RT> {
         })
     }
 
-    pub fn increment_nonce(&mut self) -> u64 {
+    pub fn increment_nonce(&mut self) -> Option<u64> {
         self.saved_state_root = None;
         let nonce = self.nonce;
-        self.nonce = self.nonce.checked_add(1).unwrap();
-        nonce
+        self.nonce = self.nonce.checked_add(1)?;
+        Some(nonce)
     }
 
     /// Transfers funds to the receiver. This doesn't bother saving/reloading state.

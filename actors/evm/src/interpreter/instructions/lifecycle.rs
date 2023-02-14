@@ -46,7 +46,11 @@ pub fn create(
     };
 
     // We increment the nonce earlier than in the EVM. See the comment in `create2` for details.
-    let nonce = system.increment_nonce();
+    let nonce = match system.increment_nonce() {
+        Some(nonce) => nonce,
+        // If it overflows, bail.
+        None => return Ok(U256::zero()),
+    };
     let params = eam::CreateParams { code: input_data.to_vec(), nonce };
     create_init(system, IpldBlock::serialize_cbor(&params)?, eam::CREATE_METHOD_NUM, value)
 }
@@ -92,7 +96,10 @@ pub fn create2(
     // 4. Unlike the EVM, we increment the nonce if contract creation fails because we're at the max
     //    stack depth. However, given that there are other ways to increment the nonce without
     //    deploying a contract (e.g., 2), this shouldn't be an issue.
-    system.increment_nonce();
+    if system.increment_nonce().is_none() {
+        // If it overflows, bail.
+        return Ok(U256::zero());
+    }
     create_init(system, IpldBlock::serialize_cbor(&params)?, eam::CREATE2_METHOD_NUM, endowment)
 }
 
