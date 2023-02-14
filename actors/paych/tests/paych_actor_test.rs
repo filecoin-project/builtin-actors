@@ -669,7 +669,7 @@ mod merge_tests {
 
 mod update_channel_state_extra {
     use super::*;
-    use fvm_ipld_encoding::DAG_CBOR;
+    use fvm_ipld_encoding::CBOR;
 
     const OTHER_ADDR: u64 = 104;
 
@@ -691,7 +691,7 @@ mod update_channel_state_extra {
         rt.expect_send_simple(
             other_addr,
             Method::UpdateChannelState as u64,
-            Some(IpldBlock { codec: DAG_CBOR, data: fake_params.to_vec() }),
+            Some(IpldBlock { codec: CBOR, data: fake_params.to_vec() }),
             TokenAmount::zero(),
             None,
             exit_code,

@@ -47,6 +47,8 @@ use crate::{actor_error, ActorError, SendError};
 use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::chainid::ChainID;
+use fvm_shared::event::ActorEvent;
 use fvm_shared::sys::SendFlags;
 
 lazy_static::lazy_static! {
@@ -63,8 +65,8 @@ lazy_static::lazy_static! {
     pub static ref VERIFREG_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/verifiedregistry");
     pub static ref DATACAP_TOKEN_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/datacap");
     pub static ref PLACEHOLDER_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/placeholder");
-
     pub static ref EVM_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/evm");
+    pub static ref EAM_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/eam");
     pub static ref ETHACCOUNT_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/ethaccount");
 
     pub static ref ACTOR_TYPES: BTreeMap<Cid, Type> = {
@@ -82,8 +84,8 @@ lazy_static::lazy_static! {
         map.insert(*VERIFREG_ACTOR_CODE_ID, Type::VerifiedRegistry);
         map.insert(*DATACAP_TOKEN_ACTOR_CODE_ID, Type::DataCap);
         map.insert(*PLACEHOLDER_ACTOR_CODE_ID, Type::Placeholder);
-
         map.insert(*EVM_ACTOR_CODE_ID, Type::EVM);
+        map.insert(*EAM_ACTOR_CODE_ID, Type::EAM);
         map.insert(*ETHACCOUNT_ACTOR_CODE_ID, Type::EthAccount);
         map
     };
@@ -102,6 +104,7 @@ lazy_static::lazy_static! {
         (Type::DataCap, *DATACAP_TOKEN_ACTOR_CODE_ID),
         (Type::Placeholder, *PLACEHOLDER_ACTOR_CODE_ID),
         (Type::EVM, *EVM_ACTOR_CODE_ID),
+        (Type::EAM, *EAM_ACTOR_CODE_ID),
         (Type::EthAccount, *ETHACCOUNT_ACTOR_CODE_ID),
     ]
     .into_iter()
@@ -126,10 +129,16 @@ pub fn make_identity_cid(bz: &[u8]) -> Cid {
     Cid::new_v1(IPLD_RAW, OtherMultihash::wrap(0, bz).expect("name too long"))
 }
 
+/// Enable logging to enviornment. Returns error if already init.
+pub fn init_logging() -> Result<(), log::SetLoggerError> {
+    pretty_env_logger::try_init()
+}
+
 pub struct MockRuntime<BS = MemoryBlockstore> {
     pub epoch: ChainEpoch,
     pub miner: Address,
     pub base_fee: TokenAmount,
+    pub chain_id: ChainID,
     pub id_addresses: HashMap<Address, Address>,
     pub delegated_addresses: HashMap<ActorID, Address>,
     pub actor_code_cids: HashMap<Address, Cid>,
@@ -178,6 +187,7 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
 pub struct Expectations {
     pub expect_validate_caller_any: bool,
     pub expect_validate_caller_addr: Option<Vec<Address>>,
+    pub expect_validate_caller_f4_namespace: Option<Vec<u64>>,
     pub expect_validate_caller_type: Option<Vec<Type>>,
     pub expect_sends: VecDeque<ExpectedMessage>,
     pub expect_create_actor: Option<ExpectCreateActor>,
@@ -194,6 +204,7 @@ pub struct Expectations {
     pub expect_replica_verify: Option<ExpectReplicaVerify>,
     pub expect_gas_charge: VecDeque<i64>,
     pub expect_gas_available: VecDeque<u64>,
+    pub expect_emitted_events: VecDeque<ActorEvent>,
     skip_verification_on_drop: bool,
 }
 
@@ -214,6 +225,11 @@ impl Expectations {
             this.expect_validate_caller_addr.is_none(),
             "expected ValidateCallerAddr {:?}, not received",
             this.expect_validate_caller_addr
+        );
+        assert!(
+            this.expect_validate_caller_f4_namespace.is_none(),
+            "expected ValidateCallerF4Namespace {:?}, not received",
+            this.expect_validate_caller_f4_namespace
         );
         assert!(
             this.expect_validate_caller_type.is_none(),
@@ -295,6 +311,11 @@ impl Expectations {
             "expect_gas_available {:?}, not received",
             this.expect_gas_available
         );
+        assert!(
+            this.expect_emitted_events.is_empty(),
+            "expect_emitted_events {:?}, not received",
+            this.expect_emitted_events
+        );
     }
 }
 
@@ -310,6 +331,7 @@ impl<BS> MockRuntime<BS> {
             epoch: Default::default(),
             miner: Address::new_id(0),
             base_fee: Default::default(),
+            chain_id: ChainID::from(0),
             id_addresses: Default::default(),
             delegated_addresses: Default::default(),
             actor_code_cids: Default::default(),
@@ -608,6 +630,12 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 
     #[allow(dead_code)]
+    pub fn expect_validate_caller_namespace(&self, namespaces: Vec<u64>) {
+        assert!(!namespaces.is_empty(), "f4 namespaces must be non-empty");
+        self.expectations.borrow_mut().expect_validate_caller_f4_namespace = Some(namespaces);
+    }
+
+    #[allow(dead_code)]
     pub fn expect_delete_actor(&mut self, beneficiary: Address) {
         self.expectations.borrow_mut().expect_delete_actor = Some(beneficiary);
     }
@@ -765,6 +793,11 @@ impl<BS: Blockstore> MockRuntime<BS> {
         self.expectations.borrow_mut().expect_gas_available.push_back(value);
     }
 
+    #[allow(dead_code)]
+    pub fn expect_emitted_event(&mut self, event: ActorEvent) {
+        self.expectations.borrow_mut().expect_emitted_events.push_back(event)
+    }
+
     ///// Private helpers /////
 
     fn require_in_call(&self) {
@@ -862,6 +895,53 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
                 self.message().caller(), &addrs
         ))
     }
+
+    fn validate_immediate_caller_namespace<I>(&mut self, namespaces: I) -> Result<(), ActorError>
+    where
+        I: IntoIterator<Item = u64>,
+    {
+        self.require_in_call();
+
+        let namespaces: Vec<u64> = namespaces.into_iter().collect();
+
+        let mut expectations = self.expectations.borrow_mut();
+        assert!(
+            expectations.expect_validate_caller_f4_namespace.is_some(),
+            "unexpected validate caller namespace"
+        );
+
+        let expected_namespaces =
+            expectations.expect_validate_caller_f4_namespace.as_ref().unwrap();
+
+        assert_eq!(
+            &namespaces, expected_namespaces,
+            "unexpected validate caller namespace {:?}, expected {:?}",
+            namespaces, &expectations.expect_validate_caller_f4_namespace
+        );
+
+        let caller_f4 = self.lookup_delegated_address(self.caller().id().unwrap());
+
+        assert!(caller_f4.is_some(), "unexpected caller doesn't have a delegated address");
+
+        for id in namespaces.iter() {
+            let bound_address = match caller_f4.unwrap().payload() {
+                Payload::Delegated(d) => d.namespace(),
+                _ => unreachable!(
+                    "lookup_delegated_address should always return a delegated address"
+                ),
+            };
+            if bound_address == *id {
+                expectations.expect_validate_caller_f4_namespace = None;
+                return Ok(());
+            }
+        }
+        expectations.expect_validate_caller_addr = None;
+        Err(actor_error!(forbidden;
+                "caller address {:?} forbidden, allowed: {:?}",
+                self.message().caller(), &namespaces
+        ))
+    }
+
     fn validate_immediate_caller_type<'a, I>(&mut self, types: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Type>,
@@ -1176,17 +1256,38 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
     }
 
     fn tipset_cid(&self, epoch: i64) -> Result<Cid, ActorError> {
-        if epoch > self.epoch || epoch < 0 {
+        let offset = self.epoch - epoch;
+        // Can't get tipset for:
+        // - current or future epochs
+        // - negative epochs
+        // - epochs beyond FINALITY of current epoch
+        if offset <= 0 || epoch < 0 || offset > self.policy.chain_finality {
             return Err(
                 actor_error!(illegal_argument; "invalid epoch to fetch tipset_cid {}", epoch),
             );
         }
-        Ok(*self.tipset_cids.get((self.epoch - epoch) as usize).unwrap())
+        Ok(*self.tipset_cids.get(epoch as usize).unwrap())
+    }
+
+    fn emit_event(&self, event: &ActorEvent) -> Result<(), ActorError> {
+        let expected = self
+            .expectations
+            .borrow_mut()
+            .expect_emitted_events
+            .pop_front()
+            .expect("unexpected call to emit_evit");
+
+        assert_eq!(*event, expected);
+
+        Ok(())
+    }
+
+    fn chain_id(&self) -> ChainID {
+        self.chain_id
     }
 
     fn read_only(&self) -> bool {
-        // Unsupported for unit tests
-        unimplemented!()
+        false
     }
 }
 

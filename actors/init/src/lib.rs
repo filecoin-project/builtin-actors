@@ -7,7 +7,7 @@ use fil_actors_runtime::runtime::{ActorCode, Runtime};
 
 use fil_actors_runtime::{
     actor_dispatch, actor_error, extract_send_result, ActorContext, ActorError, AsActorError,
-    SYSTEM_ACTOR_ADDR,
+    EAM_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_shared::address::Address;
 use fvm_shared::error::ExitCode;
@@ -109,7 +109,7 @@ impl Actor {
 
     /// Exec4 init actor
     pub fn exec4(rt: &mut impl Runtime, params: Exec4Params) -> Result<Exec4Return, ActorError> {
-        rt.validate_immediate_caller_accept_any()?;
+        rt.validate_immediate_caller_is(std::iter::once(&EAM_ACTOR_ADDR))?;
         // Compute the f4 address.
         let caller_id = rt.message().caller().id().unwrap();
         let delegated_address =

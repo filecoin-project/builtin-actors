@@ -401,7 +401,7 @@ mod clients {
             AddVerifiedClientParams { address: *CLIENT, allowance: allowance_client.clone() };
 
         // set caller to not-builtin
-        rt.set_caller(make_identity_cid(b"1234"), *VERIFIER);
+        rt.set_caller(*EVM_ACTOR_CODE_ID, *VERIFIER);
 
         // cannot call the unexported method num
         expect_abort_contains_message(
@@ -514,7 +514,7 @@ mod allocs_claims {
         MINIMUM_VERIFIED_ALLOCATION_TERM,
     };
     use fil_actors_runtime::test_utils::{
-        expect_abort_contains_message, make_identity_cid, ACCOUNT_ACTOR_CODE_ID,
+        expect_abort_contains_message, ACCOUNT_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID,
     };
     use fil_actors_runtime::FailCode;
     use harness::*;
@@ -988,7 +988,7 @@ mod allocs_claims {
         };
 
         // set caller to not-builtin
-        rt.set_caller(make_identity_cid(b"1234"), Address::new_id(CLIENT1));
+        rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(CLIENT1));
 
         // cannot call the unexported extend method num
         expect_abort_contains_message(

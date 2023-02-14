@@ -1,6 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use crate::runtime::builtins::Type;
 use crate::{actor_error, ActorContext, ActorError};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
@@ -66,10 +67,15 @@ where
         }
         Some(code_cid) => {
             let builtin_type = rt.resolve_builtin_actor_type(&code_cid);
-            if builtin_type.is_none() {
-                return Err(
-                    actor_error!(forbidden; "caller {} of method {} must be built-in", caller, method),
-                );
+            match builtin_type {
+                None | Some(Type::EVM) => {
+                    return Err(
+                        actor_error!(forbidden; "caller {} of method {} must be built-in", caller, method),
+                    );
+                }
+
+                // Anything else is a valid built-in caller of the internal API
+                Some(_) => {}
             }
         }
     }

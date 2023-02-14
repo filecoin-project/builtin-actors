@@ -26,6 +26,10 @@ const ACTORS: &[(&Package, &ID)] = &[
     ("reward", "reward"),
     ("verifreg", "verifiedregistry"),
     ("datacap", "datacap"),
+    ("placeholder", "placeholder"),
+    ("evm", "evm"),
+    ("eam", "eam"),
+    ("ethaccount", "ethaccount"),
 ];
 
 const NETWORK_ENV: &str = "BUILD_FIL_NETWORK";

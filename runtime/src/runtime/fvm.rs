@@ -8,7 +8,8 @@ use fvm_ipld_encoding::CborStore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_sdk as fvm;
 use fvm_sdk::NO_DATA_BLOCK_ID;
-use fvm_shared::address::Address;
+use fvm_shared::address::{Address, Payload};
+use fvm_shared::chainid::ChainID;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::crypto::signature::{
@@ -16,6 +17,7 @@ use fvm_shared::crypto::signature::{
 };
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
+use fvm_shared::event::ActorEvent;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
@@ -37,7 +39,7 @@ use crate::runtime::{
     ActorCode, ConsensusFault, DomainSeparationTag, MessageInfo, Policy, Primitives, RuntimePolicy,
     Verifier,
 };
-use crate::{actor_error, ActorError, Runtime, SendError};
+use crate::{actor_error, ActorError, AsActorError, Runtime, SendError};
 
 /// A runtime that bridges to the FVM environment through the FVM SDK.
 pub struct FvmRuntime<B = ActorBlockstore> {
@@ -126,6 +128,10 @@ where
         fvm::network::curr_epoch()
     }
 
+    fn chain_id(&self) -> ChainID {
+        fvm::network::chain_id()
+    }
+
     fn validate_immediate_caller_accept_any(&mut self) -> Result<(), ActorError> {
         self.assert_not_validated()?;
         self.caller_validated = true;
@@ -144,6 +150,27 @@ where
         } else {
             Err(actor_error!(forbidden;
                 "caller {} is not one of supported", caller_addr
+            ))
+        }
+    }
+
+    fn validate_immediate_caller_namespace<I>(&mut self, addresses: I) -> Result<(), ActorError>
+    where
+        I: IntoIterator<Item = u64>,
+    {
+        self.assert_not_validated()?;
+        let caller_addr = self.message().caller();
+        let caller_f4 =
+            self.lookup_delegated_address(caller_addr.id().unwrap()).map(|a| *a.payload());
+        if addresses
+            .into_iter()
+            .any(|a| matches!(caller_f4, Some(Payload::Delegated(d)) if d.namespace() == a))
+        {
+            self.caller_validated = true;
+            Ok(())
+        } else {
+            Err(actor_error!(forbidden;
+                "caller's namespace {} is not one of supported", caller_addr
             ))
         }
     }
@@ -339,6 +366,11 @@ where
     fn tipset_cid(&self, epoch: i64) -> Result<Cid, ActorError> {
         fvm::network::tipset_cid(epoch)
             .map_err(|_| actor_error!(illegal_argument; "invalid epoch to query tipset_cid"))
+    }
+
+    fn emit_event(&self, event: &ActorEvent) -> Result<(), ActorError> {
+        fvm::event::emit_event(event)
+            .context_code(ExitCode::USR_ASSERTION_FAILED, "failed to emit event")
     }
 
     fn read_only(&self) -> bool {
@@ -543,8 +575,9 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
     // Construct a new runtime.
     let mut rt = FvmRuntime::default();
     // Invoke the method, aborting if the actor returns an errored exit code.
-    let ret = C::invoke_method(&mut rt, method, params)
-        .unwrap_or_else(|err| fvm::vm::abort(err.exit_code().value(), Some(err.msg())));
+    let ret = C::invoke_method(&mut rt, method, params).unwrap_or_else(|mut err| {
+        fvm::vm::exit(err.exit_code().value(), err.take_data(), Some(err.msg()))
+    });
 
     // Abort with "assertion failed" if the actor failed to validate the caller somewhere.
     // We do this after handling the error, because the actor may have encountered an error before
