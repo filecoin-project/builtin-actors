@@ -8,24 +8,42 @@ use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
 use fvm_actor_utils::receiver::UniversalReceiverParams;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{RawBytes, DAG_CBOR};
 use fvm_shared::address::{Address, BLS_PUB_LEN};
-
-use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{MethodNum, METHOD_SEND};
+use std::collections::HashMap;
 
 mod util;
 
+const TEST_MSIG_ADDR: u64 = 100;
+const TEST_ANNE_ADDR: u64 = 101;
+const TEST_BOB_ADDR: u64 = 102;
+const TEST_CHUCK_ADDR: u64 = 103;
+const TEST_DARLENE_ADDR: u64 = 104;
+
 fn construct_runtime(receiver: Address) -> MockRuntime {
+    let test_msig_addr = Address::new_id(TEST_MSIG_ADDR);
+    let test_anne_addr = Address::new_id(TEST_ANNE_ADDR);
+    let test_bob_addr = Address::new_id(TEST_BOB_ADDR);
+    let test_chuck_addr = Address::new_id(TEST_CHUCK_ADDR);
+    let test_darlene_addr = Address::new_id(TEST_DARLENE_ADDR);
+    let mut actor_code_cids = HashMap::default();
+    actor_code_cids.insert(test_msig_addr, *ACCOUNT_ACTOR_CODE_ID);
+    actor_code_cids.insert(test_anne_addr, *ACCOUNT_ACTOR_CODE_ID);
+    actor_code_cids.insert(test_bob_addr, *ACCOUNT_ACTOR_CODE_ID);
+    actor_code_cids.insert(test_chuck_addr, *ACCOUNT_ACTOR_CODE_ID);
+    actor_code_cids.insert(test_darlene_addr, *ACCOUNT_ACTOR_CODE_ID);
     MockRuntime {
         receiver,
         caller: SYSTEM_ACTOR_ADDR,
         caller_type: *SYSTEM_ACTOR_CODE_ID,
+        actor_code_cids,
         ..Default::default()
     }
 }
