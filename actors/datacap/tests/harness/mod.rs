@@ -84,7 +84,7 @@ impl Harness {
             )?,
         };
         // UniversalReceiverParams
-        rt.expect_send(
+        rt.expect_send_simple(
             *to,
             frc42_dispatch::method_hash!("Receive"),
             IpldBlock::serialize_cbor(&hook_params).unwrap(),
@@ -151,7 +151,7 @@ impl Harness {
             )?,
         };
         // UniversalReceiverParams
-        rt.expect_send(
+        rt.expect_send_simple(
             *to,
             frc42_dispatch::method_hash!("Receive"),
             IpldBlock::serialize_cbor(&hook_params).unwrap(),
@@ -198,7 +198,7 @@ impl Harness {
             )?,
         };
         // UniversalReceiverParams
-        rt.expect_send(
+        rt.expect_send_simple(
             *to,
             frc42_dispatch::method_hash!("Receive"),
             IpldBlock::serialize_cbor(&hook_params).unwrap(),

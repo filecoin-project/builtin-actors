@@ -47,7 +47,7 @@ fn prepare_env() -> TestEnv {
     env.rt.actor_code_cids.insert(env.worker, *ACCOUNT_ACTOR_CODE_ID);
     env.rt.actor_code_cids.insert(env.control_addrs[0], *ACCOUNT_ACTOR_CODE_ID);
     env.rt.actor_code_cids.insert(env.control_addrs[1], *ACCOUNT_ACTOR_CODE_ID);
-    env.rt.hash_func = Box::new(blake2b_256);
+    env.rt.hash_func = Box::new(hash);
     env.rt.caller = INIT_ACTOR_ADDR;
     env.rt.caller_type = *INIT_ACTOR_CODE_ID;
     env
@@ -71,7 +71,7 @@ fn simple_construction() {
 
     env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
     env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
-    env.rt.expect_send(
+    env.rt.expect_send_simple(
         env.worker,
         AccountMethod::PubkeyAddress as u64,
         None,
@@ -145,7 +145,7 @@ fn control_addresses_are_resolved_during_construction() {
     let params = constructor_params(&env);
     env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
     env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
-    env.rt.expect_send(
+    env.rt.expect_send_simple(
         env.worker,
         AccountMethod::PubkeyAddress as u64,
         None,

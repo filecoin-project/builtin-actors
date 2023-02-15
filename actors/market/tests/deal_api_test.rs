@@ -136,7 +136,7 @@ fn activation() {
     // Clean up state
     let clean_epoch = terminate_epoch + DEAL_UPDATES_INTERVAL;
     rt.set_epoch(clean_epoch);
-    rt.expect_send(
+    rt.expect_send_simple(
         BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
         None,

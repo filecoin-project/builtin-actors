@@ -152,7 +152,7 @@ mod verifiers {
         let allowance = verifier_allowance(&rt);
         // Expect runtime to attempt to create the actor, but don't add it to the mock's
         // address resolution table.
-        rt.expect_send(
+        rt.expect_send_simple(
             verifier_key_address,
             METHOD_SEND,
             None,
@@ -337,7 +337,14 @@ mod clients {
         let client = Address::new_bls(&[7u8; BLS_PUB_LEN]).unwrap();
         // Expect runtime to attempt to create the actor, but don't add it to the mock's
         // address resolution table.
-        rt.expect_send(client, METHOD_SEND, None, TokenAmount::default(), None, ExitCode::OK);
+        rt.expect_send_simple(
+            client,
+            METHOD_SEND,
+            None,
+            TokenAmount::default(),
+            None,
+            ExitCode::OK,
+        );
 
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -394,7 +401,7 @@ mod clients {
             AddVerifiedClientParams { address: *CLIENT, allowance: allowance_client.clone() };
 
         // set caller to not-builtin
-        rt.set_caller(make_identity_cid(b"1234"), *VERIFIER);
+        rt.set_caller(*EVM_ACTOR_CODE_ID, *VERIFIER);
 
         // cannot call the unexported method num
         expect_abort_contains_message(
@@ -415,7 +422,7 @@ mod clients {
             amount: TokenAmount::from_whole(allowance_client.to_i64().unwrap()),
             operators: vec![STORAGE_MARKET_ACTOR_ADDR],
         };
-        rt.expect_send(
+        rt.expect_send_simple(
             DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Mint as MethodNum,
             IpldBlock::serialize_cbor(&mint_params).unwrap(),
@@ -507,7 +514,7 @@ mod allocs_claims {
         MINIMUM_VERIFIED_ALLOCATION_TERM,
     };
     use fil_actors_runtime::test_utils::{
-        expect_abort_contains_message, make_identity_cid, ACCOUNT_ACTOR_CODE_ID,
+        expect_abort_contains_message, ACCOUNT_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID,
     };
     use fil_actors_runtime::FailCode;
     use harness::*;
@@ -981,7 +988,7 @@ mod allocs_claims {
         };
 
         // set caller to not-builtin
-        rt.set_caller(make_identity_cid(b"1234"), Address::new_id(CLIENT1));
+        rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(CLIENT1));
 
         // cannot call the unexported extend method num
         expect_abort_contains_message(

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{serde_bytes, BytesDe, RawBytes};
+use fvm_ipld_encoding::{strict_bytes, BytesDe, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
@@ -26,12 +26,12 @@ pub const CRON_QUEUE_HAMT_BITWIDTH: u32 = 6;
 pub const CRON_QUEUE_AMT_BITWIDTH: u32 = 6;
 pub const PROOF_VALIDATION_BATCH_AMT_BITWIDTH: u32 = 4;
 
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, PartialEq)]
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 pub struct CreateMinerParams {
     pub owner: Address,
     pub worker: Address,
     pub window_post_proof_type: RegisteredPoStProof,
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub peer: Vec<u8>,
     pub multiaddrs: Vec<BytesDe>,
 }
@@ -64,7 +64,7 @@ pub struct UpdatePledgeTotalParams {
     pub pledge_delta: TokenAmount,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, PartialEq)]
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 pub struct CurrentTotalPowerReturn {
     #[serde(with = "bigint_ser")]
     pub raw_byte_power: StoragePower,

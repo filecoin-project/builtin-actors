@@ -10,7 +10,7 @@ use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
 use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{RawBytes, DAG_CBOR};
+use fvm_ipld_encoding::{RawBytes, CBOR};
 use fvm_shared::address::{Address, BLS_PUB_LEN};
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
@@ -237,7 +237,14 @@ mod constructor_tests {
             start_epoch: 0,
         };
         rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
-        rt.expect_send(anne_non_id, METHOD_SEND, None, TokenAmount::zero(), None, ExitCode::OK);
+        rt.expect_send_simple(
+            anne_non_id,
+            METHOD_SEND,
+            None,
+            TokenAmount::zero(),
+            None,
+            ExitCode::OK,
+        );
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -339,7 +346,7 @@ mod vesting_tests {
 
         // advance the epoch s.t. all funds are unlocked
         rt.set_epoch(START_EPOCH + UNLOCK_DURATION);
-        rt.expect_send(
+        rt.expect_send_simple(
             DARLENE,
             METHOD_SEND,
             None,
@@ -373,7 +380,7 @@ mod vesting_tests {
         );
         rt.set_epoch(START_EPOCH + UNLOCK_DURATION / 2);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, BOB);
-        rt.expect_send(
+        rt.expect_send_simple(
             DARLENE,
             METHOD_SEND,
             None,
@@ -410,7 +417,7 @@ mod vesting_tests {
         rt.reset();
         rt.set_epoch(START_EPOCH + UNLOCK_DURATION / 10);
         let amount_out = MSIG_INITIAL_BALANCE.div_floor(10);
-        rt.expect_send(DARLENE, METHOD_SEND, None, amount_out.clone(), None, ExitCode::OK);
+        rt.expect_send_simple(DARLENE, METHOD_SEND, None, amount_out.clone(), None, ExitCode::OK);
         h.propose_ok(&mut rt, DARLENE, amount_out, METHOD_SEND, RawBytes::default());
 
         check_state(&rt);
@@ -470,7 +477,7 @@ mod vesting_tests {
 
         // expect 1 unit available after 2 epochs
         rt.set_epoch(START_EPOCH + 2);
-        rt.expect_send(ANNE, METHOD_SEND, None, one.clone(), None, ExitCode::OK);
+        rt.expect_send_simple(ANNE, METHOD_SEND, None, one.clone(), None, ExitCode::OK);
         h.propose_ok(&mut rt, ANNE, one.clone(), METHOD_SEND, RawBytes::default());
         rt.set_balance(locked_balance.clone());
 
@@ -483,7 +490,7 @@ mod vesting_tests {
         rt.reset();
 
         // expect all but one unit available after all but one epochs
-        rt.expect_send(
+        rt.expect_send_simple(
             ANNE,
             METHOD_SEND,
             None,
@@ -496,7 +503,7 @@ mod vesting_tests {
 
         // expect everything after exactly lock duration
         rt.set_epoch(START_EPOCH + UNLOCK_DURATION);
-        rt.expect_send(ANNE, METHOD_SEND, None, locked_balance.clone(), None, ExitCode::OK);
+        rt.expect_send_simple(ANNE, METHOD_SEND, None, locked_balance.clone(), None, ExitCode::OK);
         h.propose_ok(&mut rt, ANNE, locked_balance, METHOD_SEND, RawBytes::default());
         check_state(&rt);
     }
@@ -512,7 +519,7 @@ mod vesting_tests {
         rt.set_received(TokenAmount::zero());
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ANNE);
-        rt.expect_send(BOB, METHOD_SEND, None, TokenAmount::zero(), None, ExitCode::OK);
+        rt.expect_send_simple(BOB, METHOD_SEND, None, TokenAmount::zero(), None, ExitCode::OK);
         h.propose_ok(&mut rt, BOB, TokenAmount::zero(), METHOD_SEND, RawBytes::default());
         check_state(&rt);
     }
@@ -534,7 +541,7 @@ mod vesting_tests {
         // make a tx that transfers no value
         let send_amount = TokenAmount::zero();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ANNE);
-        rt.expect_send(BOB, METHOD_SEND, None, send_amount.clone(), None, ExitCode::OK);
+        rt.expect_send_simple(BOB, METHOD_SEND, None, send_amount.clone(), None, ExitCode::OK);
         h.propose_ok(&mut rt, BOB, send_amount, METHOD_SEND, RawBytes::default());
 
         // verify that sending any value is prevented
@@ -598,7 +605,7 @@ fn test_propose_with_threshold_met() {
     rt.set_received(TokenAmount::zero());
     h.construct_and_verify(&mut rt, num_approvals, no_unlock_duration, start_epoch, signers);
 
-    rt.expect_send(
+    rt.expect_send_simple(
         chuck,
         METHOD_SEND,
         to_ipld_block(fake_params.clone()),
@@ -646,7 +653,7 @@ fn test_propose_with_threshold_and_non_empty_return_value() {
     };
     let inner_ret_bytes = serialize(&propose_ret, "fake proposal return value").unwrap();
     let fake_method = 42u64;
-    rt.expect_send(
+    rt.expect_send_simple(
         chuck,
         fake_method,
         to_ipld_block(fake_params.clone()),
@@ -1308,7 +1315,7 @@ mod approval_tests {
         // approval
         rt.set_balance(send_value.clone());
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
-        rt.expect_send(
+        rt.expect_send_simple(
             chuck,
             fake_method,
             to_ipld_block(fake_params),
@@ -1343,7 +1350,7 @@ mod approval_tests {
             h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, fake_params.clone());
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
-        rt.expect_send(
+        rt.expect_send_simple(
             chuck,
             fake_method,
             to_ipld_block(fake_params),
@@ -1393,7 +1400,7 @@ mod approval_tests {
         );
         rt.set_epoch(start_epoch + unlock_duration);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
-        rt.expect_send(
+        rt.expect_send_simple(
             chuck,
             fake_method,
             to_ipld_block(fake_params),
@@ -1538,7 +1545,7 @@ mod approval_tests {
         h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, fake_params.clone());
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
-        rt.expect_send(
+        rt.expect_send_simple(
             chuck,
             fake_method,
             to_ipld_block(fake_params),
@@ -1688,7 +1695,7 @@ mod approval_tests {
         h.change_num_approvals_threshold(&mut rt, new_threshold).unwrap();
 
         // self approval executes tx because the msig is across the threshold
-        rt.expect_send(
+        rt.expect_send_simple(
             chuck,
             fake_method,
             to_ipld_block(fake_params),
@@ -1732,7 +1739,7 @@ mod approval_tests {
         h.change_num_approvals_threshold(&mut rt, new_threshold).unwrap();
 
         // duplicate approval executes tx because the msig is across the threshold
-        rt.expect_send(
+        rt.expect_send_simple(
             chuck,
             fake_method,
             to_ipld_block(fake_params),
@@ -1780,7 +1787,7 @@ mod approval_tests {
 
         // anne can self approve with lower threshold
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
-        rt.expect_send(
+        rt.expect_send_simple(
             chuck,
             fake_method,
             to_ipld_block(fake_params),
@@ -2136,7 +2143,7 @@ mod change_threshold_tests {
         h.change_num_approvals_threshold(&mut rt, 1).unwrap();
 
         // anne may re-approve causing tx to be exected
-        rt.expect_send(chuck, fake_method, None, send_value.clone(), None, ExitCode::OK);
+        rt.expect_send_simple(chuck, fake_method, None, send_value.clone(), None, ExitCode::OK);
         rt.set_balance(send_value);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         h.approve_ok(&mut rt, TxnID(0), proposal_hash);
@@ -2197,7 +2204,7 @@ mod lock_balance_tests {
 
         // can fully spend the vested amount
         rt.set_balance(lock_amount.clone());
-        rt.expect_send(bob, METHOD_SEND, None, vested.clone(), None, ExitCode::OK);
+        rt.expect_send_simple(bob, METHOD_SEND, None, vested.clone(), None, ExitCode::OK);
         h.propose_ok(&mut rt, bob, vested.clone(), METHOD_SEND, RawBytes::default());
 
         // can't spend more
@@ -2211,7 +2218,7 @@ mod lock_balance_tests {
         // later can spend the rest
         rt.set_epoch(vest_start + vest_duration);
         let rested = TokenAmount::from_atto(70_000u32);
-        rt.expect_send(bob, METHOD_SEND, None, rested.clone(), None, ExitCode::OK);
+        rt.expect_send_simple(bob, METHOD_SEND, None, rested.clone(), None, ExitCode::OK);
         h.propose_ok(&mut rt, bob, rested, METHOD_SEND, RawBytes::default());
         check_state(&rt);
     }
@@ -2240,7 +2247,14 @@ mod lock_balance_tests {
         rt.set_epoch(300);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         rt.set_balance(lock_amount.clone() + TokenAmount::from_atto(1));
-        rt.expect_send(bob, METHOD_SEND, None, TokenAmount::from_atto(1), None, ExitCode::OK);
+        rt.expect_send_simple(
+            bob,
+            METHOD_SEND,
+            None,
+            TokenAmount::from_atto(1),
+            None,
+            ExitCode::OK,
+        );
         h.propose_ok(&mut rt, bob, TokenAmount::from_atto(1), METHOD_SEND, RawBytes::default());
 
         // fail to spend locked funds before vesting starts
@@ -2254,7 +2268,7 @@ mod lock_balance_tests {
         // can spend partially vested amount
         rt.set_epoch(vest_start + 200);
         let expect_vested = TokenAmount::from_atto(20_000);
-        rt.expect_send(bob, METHOD_SEND, None, expect_vested.clone(), None, ExitCode::OK);
+        rt.expect_send_simple(bob, METHOD_SEND, None, expect_vested.clone(), None, ExitCode::OK);
         h.propose_ok(&mut rt, bob, expect_vested.clone(), METHOD_SEND, RawBytes::default());
 
         // can't spend more
@@ -2267,7 +2281,7 @@ mod lock_balance_tests {
         // later, can spend the rest
         rt.set_epoch(vest_start + vest_duration);
         let rested = TokenAmount::from_atto(80_000);
-        rt.expect_send(bob, METHOD_SEND, None, rested.clone(), None, ExitCode::OK);
+        rt.expect_send_simple(bob, METHOD_SEND, None, rested.clone(), None, ExitCode::OK);
         h.propose_ok(&mut rt, bob, rested, METHOD_SEND, RawBytes::default());
         check_state(&rt);
     }
@@ -2394,5 +2408,5 @@ fn token_receiver() {
 }
 
 fn to_ipld_block(p: RawBytes) -> Option<IpldBlock> {
-    Some(IpldBlock { codec: DAG_CBOR, data: p.to_vec() })
+    Some(IpldBlock { codec: CBOR, data: p.to_vec() })
 }

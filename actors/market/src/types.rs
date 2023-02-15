@@ -5,7 +5,7 @@ use super::ext::verifreg::AllocationID;
 use cid::Cid;
 use fil_actors_runtime::Array;
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_encoding::serde_bytes;
+use fvm_ipld_encoding::strict_bytes;
 use fvm_ipld_encoding::tuple::*;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::{bigint_ser, BigInt};
@@ -104,6 +104,7 @@ pub struct ActivateDealsResult {
     pub nonverified_deal_space: BigInt,
     pub verified_infos: Vec<VerifiedDealInfo>,
 }
+
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 pub struct DealSpaces {
     #[serde(with = "bigint_ser")]
@@ -141,6 +142,7 @@ pub struct DealQueryParams {
 }
 
 pub type GetDealDataCommitmentParams = DealQueryParams;
+
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 pub struct GetDealDataCommitmentReturn {
     pub data: Cid,
@@ -148,6 +150,7 @@ pub struct GetDealDataCommitmentReturn {
 }
 
 pub type GetDealClientParams = DealQueryParams;
+
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 #[serde(transparent)]
 pub struct GetDealClientReturn {
@@ -155,6 +158,7 @@ pub struct GetDealClientReturn {
 }
 
 pub type GetDealProviderParams = DealQueryParams;
+
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 #[serde(transparent)]
 pub struct GetDealProviderReturn {
@@ -162,6 +166,7 @@ pub struct GetDealProviderReturn {
 }
 
 pub type GetDealLabelParams = DealQueryParams;
+
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 #[serde(transparent)]
 pub struct GetDealLabelReturn {
@@ -169,13 +174,16 @@ pub struct GetDealLabelReturn {
 }
 
 pub type GetDealTermParams = DealQueryParams;
+
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 pub struct GetDealTermReturn {
-    pub start: ChainEpoch,    // First epoch for the deal (inclusive)
+    // First epoch for the deal (inclusive)
+    pub start: ChainEpoch,
     pub duration: ChainEpoch, // Duration of the deal.
 }
 
 pub type GetDealTotalPriceParams = DealQueryParams;
+
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 #[serde(transparent)]
 pub struct GetDealTotalPriceReturn {
@@ -183,6 +191,7 @@ pub struct GetDealTotalPriceReturn {
 }
 
 pub type GetDealClientCollateralParams = DealQueryParams;
+
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 #[serde(transparent)]
 pub struct GetDealClientCollateralReturn {
@@ -190,6 +199,7 @@ pub struct GetDealClientCollateralReturn {
 }
 
 pub type GetDealProviderCollateralParams = DealQueryParams;
+
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 #[serde(transparent)]
 pub struct GetDealProviderCollateralReturn {
@@ -197,6 +207,7 @@ pub struct GetDealProviderCollateralReturn {
 }
 
 pub type GetDealVerifiedParams = DealQueryParams;
+
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 #[serde(transparent)]
 pub struct GetDealVerifiedReturn {
@@ -204,6 +215,7 @@ pub struct GetDealVerifiedReturn {
 }
 
 pub type GetDealActivationParams = DealQueryParams;
+
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 pub struct GetDealActivationReturn {
     /// Epoch at which the deal was activated, or -1.
@@ -218,7 +230,7 @@ pub const MARKET_NOTIFY_DEAL_METHOD: u64 = frc42_dispatch::method_hash!("MarketN
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct MarketNotifyDealParams {
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub proposal: Vec<u8>,
     pub deal_id: u64,
 }

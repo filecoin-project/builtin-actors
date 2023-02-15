@@ -42,6 +42,7 @@ use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
 use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::smooth::FilterEstimate;
+use fvm_shared::sys::SendFlags;
 use fvm_shared::{
     address::Address, econ::TokenAmount, error::ExitCode, ActorID, METHOD_CONSTRUCTOR, METHOD_SEND,
 };
@@ -123,7 +124,7 @@ pub fn construct_and_verify(rt: &mut MockRuntime) {
 }
 
 pub fn get_balance(rt: &mut MockRuntime, addr: &Address) -> GetBalanceReturn {
-    rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1234));
+    rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(1234));
     rt.expect_validate_caller_any();
     let ret: GetBalanceReturn = rt
         .call::<MarketActor>(
@@ -147,7 +148,7 @@ pub fn expect_get_control_addresses(
 ) {
     let result = GetControlAddressesReturnParams { owner, worker, control_addresses: controls };
 
-    rt.expect_send(
+    rt.expect_send_simple(
         provider,
         ext::miner::CONTROL_ADDRESSES_METHOD,
         None,
@@ -164,6 +165,25 @@ pub fn expect_provider_control_address(
     worker: Address,
 ) {
     expect_get_control_addresses(rt, provider, owner, worker, vec![])
+}
+
+pub fn expect_provider_is_control_address(
+    rt: &mut MockRuntime,
+    provider: Address,
+    caller: Address,
+    is_controlling: bool,
+) {
+    let result = ext::miner::IsControllingAddressReturn { is_controlling };
+
+    rt.expect_send_simple(
+        provider,
+        ext::miner::IS_CONTROLLING_ADDRESS_EXPORTED,
+        IpldBlock::serialize_cbor(&ext::miner::IsControllingAddressParam { address: caller })
+            .unwrap(),
+        TokenAmount::zero(),
+        IpldBlock::serialize_cbor(&result).unwrap(),
+        ExitCode::OK,
+    )
 }
 
 pub fn add_provider_funds(rt: &mut MockRuntime, amount: TokenAmount, addrs: &MinerAddresses) {
@@ -214,7 +234,7 @@ pub fn withdraw_provider_balance(
 
     let params = WithdrawBalanceParams { provider_or_client: provider, amount: withdraw_amount };
 
-    rt.expect_send(owner, METHOD_SEND, None, expected_send.clone(), None, ExitCode::OK);
+    rt.expect_send_simple(owner, METHOD_SEND, None, expected_send.clone(), None, ExitCode::OK);
     let ret: WithdrawBalanceReturn = rt
         .call::<MarketActor>(
             Method::WithdrawBalance as u64,
@@ -240,7 +260,7 @@ pub fn withdraw_client_balance(
     client: Address,
 ) {
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, client);
-    rt.expect_send(client, METHOD_SEND, None, expected_send.clone(), None, ExitCode::OK);
+    rt.expect_send_simple(client, METHOD_SEND, None, expected_send.clone(), None, ExitCode::OK);
     rt.expect_validate_caller_addr(vec![client]);
 
     let params = WithdrawBalanceParams { provider_or_client: client, amount: withdraw_amount };
@@ -363,7 +383,7 @@ pub fn cron_tick_and_assert_balances(
     // end epoch for payment calc
     let mut payment_end = d.end_epoch;
     if s.slash_epoch != EPOCH_UNDEFINED {
-        rt.expect_send(
+        rt.expect_send_simple(
             BURNT_FUNDS_ACTOR_ADDR,
             METHOD_SEND,
             None,
@@ -441,17 +461,14 @@ pub fn publish_deals(
     let st: State = rt.get_state();
     let next_deal_id = st.next_id;
     rt.expect_validate_caller_any();
-    rt.expect_send(
+    let return_value = ext::miner::IsControllingAddressReturn { is_controlling: true };
+    rt.expect_send_simple(
         addrs.provider,
-        ext::miner::CONTROL_ADDRESSES_METHOD,
-        None,
+        ext::miner::IS_CONTROLLING_ADDRESS_EXPORTED,
+        IpldBlock::serialize_cbor(&ext::miner::IsControllingAddressParam { address: rt.caller })
+            .unwrap(),
         TokenAmount::zero(),
-        IpldBlock::serialize_cbor(&GetControlAddressesReturnParams {
-            owner: addrs.owner,
-            worker: addrs.worker,
-            control_addresses: addrs.control.clone(),
-        })
-        .unwrap(),
+        IpldBlock::serialize_cbor(&return_value).unwrap(),
         ExitCode::OK,
     );
 
@@ -488,14 +505,19 @@ pub fn publish_deals(
             .unwrap(),
             TokenAmount::zero(),
             None,
+            SendFlags::READ_ONLY,
+            None,
             ExitCode::OK,
+            None,
         );
+    }
 
+    for deal in publish_deals {
         if deal.verified_deal {
             // Expect query for the client's datacap balance, just once per client.
             let client_id = deal.client.id().unwrap();
             if client_verified_deals.get(&client_id).is_none() {
-                rt.expect_send(
+                rt.expect_send_simple(
                     DATACAP_TOKEN_ACTOR_ADDR,
                     ext::datacap::BALANCE_OF_METHOD as u64,
                     IpldBlock::serialize_cbor(&deal.client).unwrap(),
@@ -557,7 +579,7 @@ pub fn publish_deals(
             extension_results: BatchReturn::empty(),
             new_allocations: (alloc_id..alloc_id + alloc_req.allocations.len() as u64).collect(),
         };
-        rt.expect_send(
+        rt.expect_send_simple(
             DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::TRANSFER_FROM_METHOD as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
@@ -580,13 +602,13 @@ pub fn publish_deals(
         let params =
             IpldBlock::serialize_cbor(&MarketNotifyDealParams { proposal: buf.to_vec(), deal_id })
                 .unwrap();
-        rt.expect_send(
+        rt.expect_send_simple(
             deal.client,
             MARKET_NOTIFY_DEAL_METHOD,
             params,
             TokenAmount::zero(),
             None,
-            ExitCode::USR_UNHANDLED_MESSAGE,
+            ExitCode::OK,
         );
         deal_id += 1;
     }
@@ -624,12 +646,7 @@ pub fn publish_deals_expect_abort(
     expected_exit_code: ExitCode,
 ) {
     rt.expect_validate_caller_any();
-    expect_provider_control_address(
-        rt,
-        miner_addresses.provider,
-        miner_addresses.owner,
-        miner_addresses.worker,
-    );
+    expect_provider_is_control_address(rt, miner_addresses.provider, WORKER_ADDR, true);
 
     let deal_serialized =
         RawBytes::serialize(proposal.clone()).expect("Failed to marshal deal proposal");
@@ -648,7 +665,10 @@ pub fn publish_deals_expect_abort(
         auth_param,
         TokenAmount::zero(),
         None,
+        SendFlags::READ_ONLY,
+        None,
         ExitCode::OK,
+        None,
     );
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
@@ -706,7 +726,7 @@ pub fn expect_query_network_info(rt: &mut MockRuntime) {
         this_epoch_baseline_power: power,
         this_epoch_reward_smoothed: epoch_reward_smooth,
     };
-    rt.expect_send(
+    rt.expect_send_simple(
         REWARD_ACTOR_ADDR,
         RewardMethod::ThisEpochReward as u64,
         None,
@@ -714,7 +734,7 @@ pub fn expect_query_network_info(rt: &mut MockRuntime) {
         IpldBlock::serialize_cbor(&current_reward).unwrap(),
         ExitCode::OK,
     );
-    rt.expect_send(
+    rt.expect_send_simple(
         STORAGE_POWER_ACTOR_ADDR,
         PowerMethod::CurrentTotalPower as u64,
         None,
@@ -807,7 +827,7 @@ where
     post_setup(&mut rt, &mut deal_proposal);
 
     rt.expect_validate_caller_any();
-    expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
+    expect_provider_is_control_address(&mut rt, PROVIDER_ADDR, WORKER_ADDR, true);
     expect_query_network_info(&mut rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
 
@@ -825,10 +845,13 @@ where
         auth_param,
         TokenAmount::zero(),
         None,
+        SendFlags::READ_ONLY,
+        None,
         match sig_valid {
             true => ExitCode::OK,
             false => ExitCode::USR_ILLEGAL_ARGUMENT,
         },
+        None,
     );
 
     let params: PublishStorageDealsParams = PublishStorageDealsParams {

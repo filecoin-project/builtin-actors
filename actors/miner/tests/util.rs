@@ -88,6 +88,7 @@ use fil_actor_miner::testing::{
 };
 use fil_actors_runtime::cbor::serialize;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::crypto::hash::SupportedHashes;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::TryInto;
 use std::iter;
@@ -259,7 +260,7 @@ impl ActorHarness {
 
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
-        rt.expect_send(
+        rt.expect_send_simple(
             self.worker,
             AccountMethod::PubkeyAddress as u64,
             None,
@@ -675,7 +676,7 @@ impl ActorHarness {
         if any_deals {
             let vdparams = VerifyDealsForActivationParams { sectors: sector_deals };
             let vdreturn = VerifyDealsForActivationReturn { sectors: sector_deal_data };
-            rt.expect_send(
+            rt.expect_send_simple(
                 STORAGE_MARKET_ACTOR_ADDR,
                 MarketMethod::VerifyDealsForActivation as u64,
                 IpldBlock::serialize_cbor(&vdparams).unwrap(),
@@ -691,7 +692,7 @@ impl ActorHarness {
             let expected_network_fee =
                 aggregate_pre_commit_network_fee(sectors.len() as i64, base_fee);
             let expected_burn = expected_network_fee + state.fee_debt;
-            rt.expect_send(
+            rt.expect_send_simple(
                 BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
                 None,
@@ -708,7 +709,7 @@ impl ActorHarness {
                 rt.epoch,
             );
             let cron_params = make_deadline_cron_event_params(dlinfo.last());
-            rt.expect_send(
+            rt.expect_send_simple(
                 STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::EnrollCronEvent as u64,
                 IpldBlock::serialize_cbor(&cron_params).unwrap(),
@@ -758,7 +759,7 @@ impl ActorHarness {
             };
             let vdreturn = VerifyDealsForActivationReturn { sectors: vec![conf.0] };
 
-            rt.expect_send(
+            rt.expect_send_simple(
                 STORAGE_MARKET_ACTOR_ADDR,
                 MarketMethod::VerifyDealsForActivation as u64,
                 IpldBlock::serialize_cbor(&vdparams).unwrap(),
@@ -771,7 +772,7 @@ impl ActorHarness {
 
         let state = self.get_state(rt);
         if state.fee_debt.is_positive() {
-            rt.expect_send(
+            rt.expect_send_simple(
                 BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
                 None,
@@ -788,7 +789,7 @@ impl ActorHarness {
                 rt.epoch,
             );
             let cron_params = make_deadline_cron_event_params(dlinfo.last());
-            rt.expect_send(
+            rt.expect_send_simple(
                 STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::EnrollCronEvent as u64,
                 IpldBlock::serialize_cbor(&cron_params).unwrap(),
@@ -845,7 +846,7 @@ impl ActorHarness {
             this_epoch_baseline_power: self.baseline_power.clone(),
             this_epoch_reward_smoothed: self.epoch_reward_smooth.clone(),
         };
-        rt.expect_send(
+        rt.expect_send_simple(
             REWARD_ACTOR_ADDR,
             RewardMethod::ThisEpochReward as u64,
             None,
@@ -853,7 +854,7 @@ impl ActorHarness {
             IpldBlock::serialize_cbor(&current_reward).unwrap(),
             ExitCode::OK,
         );
-        rt.expect_send(
+        rt.expect_send_simple(
             STORAGE_POWER_ACTOR_ADDR,
             PowerMethod::CurrentTotalPower as u64,
             None,
@@ -914,7 +915,7 @@ impl ActorHarness {
             interactive_randomness: Randomness(seal_int_rand.into()),
             unsealed_cid: pc.info.unsealed_cid.get_cid(pc.info.seal_proof).unwrap(),
         };
-        rt.expect_send(
+        rt.expect_send_simple(
             STORAGE_POWER_ACTOR_ADDR,
             PowerMethod::SubmitPoRepForBulkVerify as u64,
             IpldBlock::serialize_cbor(&seal).unwrap(),
@@ -994,7 +995,14 @@ impl ActorHarness {
         // burn network fee
         let expected_fee = aggregate_prove_commit_network_fee(precommits.len() as i64, base_fee);
         assert!(expected_fee.is_positive());
-        rt.expect_send(BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, None, expected_fee, None, ExitCode::OK);
+        rt.expect_send_simple(
+            BURNT_FUNDS_ACTOR_ADDR,
+            METHOD_SEND,
+            None,
+            expected_fee,
+            None,
+            ExitCode::OK,
+        );
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         let addrs = self.caller_addrs().clone();
@@ -1070,7 +1078,7 @@ impl ActorHarness {
                         .unwrap_or_default(),
                 };
 
-                rt.expect_send(
+                rt.expect_send_simple(
                     STORAGE_MARKET_ACTOR_ADDR,
                     MarketMethod::ActivateDeals as u64,
                     IpldBlock::serialize_cbor(&activate_params).unwrap(),
@@ -1107,7 +1115,7 @@ impl ActorHarness {
                         batch_info: BatchReturn::ok(ret.verified_infos.len() as u32),
                         claimed_space: deal_spaces.verified_deal_space,
                     };
-                    rt.expect_send(
+                    rt.expect_send_simple(
                         VERIFIED_REGISTRY_ACTOR_ADDR,
                         CLAIM_ALLOCATIONS_METHOD as u64,
                         IpldBlock::serialize_cbor(&claim_allocation_params).unwrap(),
@@ -1154,7 +1162,7 @@ impl ActorHarness {
             }
 
             if !expected_pledge.is_zero() {
-                rt.expect_send(
+                rt.expect_send_simple(
                     STORAGE_POWER_ACTOR_ADDR,
                     PowerMethod::UpdatePledgeTotal as u64,
                     IpldBlock::serialize_cbor(&expected_pledge).unwrap(),
@@ -1226,7 +1234,7 @@ impl ActorHarness {
                 raw_byte_delta: power_delta.raw,
                 quality_adjusted_delta: power_delta.qa,
             };
-            rt.expect_send(
+            rt.expect_send_simple(
                 STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::UpdateClaimedPower as u64,
                 IpldBlock::serialize_cbor(&params).unwrap(),
@@ -1244,7 +1252,7 @@ impl ActorHarness {
         penalty_total += cfg.expired_precommit_penalty.clone();
 
         if !penalty_total.is_zero() {
-            rt.expect_send(
+            rt.expect_send_simple(
                 BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
                 None,
@@ -1268,7 +1276,7 @@ impl ActorHarness {
         pledge_delta -= immediately_vesting_funds(rt, &state);
 
         if !pledge_delta.is_zero() {
-            rt.expect_send(
+            rt.expect_send_simple(
                 STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::UpdatePledgeTotal as u64,
                 IpldBlock::serialize_cbor(&pledge_delta).unwrap(),
@@ -1281,7 +1289,7 @@ impl ActorHarness {
         // Re-enrollment for next period.
         if !cfg.no_enrollment {
             let params = make_deadline_cron_event_params(cfg.expected_enrollment);
-            rt.expect_send(
+            rt.expect_send_simple(
                 STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::EnrollCronEvent as u64,
                 IpldBlock::serialize_cbor(&params).unwrap(),
@@ -1401,7 +1409,7 @@ impl ActorHarness {
                     raw_byte_delta: power_delta.raw,
                     quality_adjusted_delta: power_delta.qa,
                 };
-                rt.expect_send(
+                rt.expect_send_simple(
                     STORAGE_POWER_ACTOR_ADDR,
                     PowerMethod::UpdateClaimedPower as u64,
                     IpldBlock::serialize_cbor(&claim).unwrap(),
@@ -1512,7 +1520,7 @@ impl ActorHarness {
                     raw_byte_delta: expected_power_delta.raw,
                     quality_adjusted_delta: expected_power_delta.qa,
                 };
-                rt.expect_send(
+                rt.expect_send_simple(
                     STORAGE_POWER_ACTOR_ADDR,
                     PowerMethod::UpdateClaimedPower as u64,
                     IpldBlock::serialize_cbor(&claim).unwrap(),
@@ -1524,12 +1532,19 @@ impl ActorHarness {
 
             if dispute_result.expected_reward.is_some() {
                 let expected_reward = dispute_result.expected_reward.unwrap();
-                rt.expect_send(self.worker, METHOD_SEND, None, expected_reward, None, ExitCode::OK);
+                rt.expect_send_simple(
+                    self.worker,
+                    METHOD_SEND,
+                    None,
+                    expected_reward,
+                    None,
+                    ExitCode::OK,
+                );
             }
 
             if dispute_result.expected_penalty.is_some() {
                 let expected_penalty = dispute_result.expected_penalty.unwrap();
-                rt.expect_send(
+                rt.expect_send_simple(
                     BURNT_FUNDS_ACTOR_ADDR,
                     METHOD_SEND,
                     None,
@@ -1541,7 +1556,7 @@ impl ActorHarness {
 
             if dispute_result.expected_pledge_delta.is_some() {
                 let expected_pledge_delta = dispute_result.expected_pledge_delta.unwrap();
-                rt.expect_send(
+                rt.expect_send_simple(
                     STORAGE_POWER_ACTOR_ADDR,
                     PowerMethod::UpdatePledgeTotal as u64,
                     IpldBlock::serialize_cbor(&expected_pledge_delta).unwrap(),
@@ -1610,7 +1625,7 @@ impl ActorHarness {
         rt.set_caller(*REWARD_ACTOR_CODE_ID, REWARD_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![REWARD_ACTOR_ADDR]);
         // expect pledge update
-        rt.expect_send(
+        rt.expect_send_simple(
             STORAGE_POWER_ACTOR_ADDR,
             PowerMethod::UpdatePledgeTotal as u64,
             IpldBlock::serialize_cbor(&pledge_delta).unwrap(),
@@ -1620,7 +1635,7 @@ impl ActorHarness {
         );
 
         if penalty.is_positive() {
-            rt.expect_send(
+            rt.expect_send_simple(
                 BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
                 None,
@@ -1766,7 +1781,7 @@ impl ActorHarness {
             raw_byte_delta: expected_raw_delta.clone(),
             quality_adjusted_delta: expected_qa_delta.clone(),
         };
-        rt.expect_send(
+        rt.expect_send_simple(
             STORAGE_POWER_ACTOR_ADDR,
             PowerMethod::UpdateClaimedPower as u64,
             IpldBlock::serialize_cbor(&claim).unwrap(),
@@ -1797,7 +1812,7 @@ impl ActorHarness {
         rt.expect_validate_caller_addr(self.caller_addrs());
 
         if expected_debt_repaid.is_positive() {
-            rt.expect_send(
+            rt.expect_send_simple(
                 BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
                 None,
@@ -1907,7 +1922,7 @@ impl ActorHarness {
             this_epoch_baseline_power: self.baseline_power.clone(),
             this_epoch_reward_smoothed: self.epoch_reward_smooth.clone(),
         };
-        rt.expect_send(
+        rt.expect_send_simple(
             REWARD_ACTOR_ADDR,
             RewardMethod::ThisEpochReward as u64,
             None,
@@ -1918,11 +1933,18 @@ impl ActorHarness {
         let this_epoch_reward = TokenAmount::from_atto(self.epoch_reward_smooth.estimate());
         let penalty_total = consensus_fault_penalty(this_epoch_reward.clone());
         let reward_total = reward_for_consensus_slash_report(&this_epoch_reward);
-        rt.expect_send(from, METHOD_SEND, None, reward_total.clone(), None, ExitCode::OK);
+        rt.expect_send_simple(from, METHOD_SEND, None, reward_total.clone(), None, ExitCode::OK);
 
         // pay fault fee
         let to_burn = &penalty_total - &reward_total;
-        rt.expect_send(BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, None, to_burn, None, ExitCode::OK);
+        rt.expect_send_simple(
+            BURNT_FUNDS_ACTOR_ADDR,
+            METHOD_SEND,
+            None,
+            to_burn,
+            None,
+            ExitCode::OK,
+        );
 
         let result = rt.call::<Actor>(
             Method::ReportConsensusFault as u64,
@@ -1992,7 +2014,7 @@ impl ActorHarness {
 
         let mut pledge_delta = TokenAmount::zero();
         if expected_fee.is_positive() {
-            rt.expect_send(
+            rt.expect_send_simple(
                 BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
                 None,
@@ -2009,7 +2031,7 @@ impl ActorHarness {
         }
 
         if !pledge_delta.is_zero() {
-            rt.expect_send(
+            rt.expect_send_simple(
                 STORAGE_POWER_ACTOR_ADDR,
                 UPDATE_PLEDGE_TOTAL_METHOD,
                 IpldBlock::serialize_cbor(&pledge_delta).unwrap(),
@@ -2026,7 +2048,7 @@ impl ActorHarness {
                 epoch: rt.epoch,
                 deal_ids: deal_ids[0..size].to_owned(),
             };
-            rt.expect_send(
+            rt.expect_send_simple(
                 STORAGE_MARKET_ACTOR_ADDR,
                 ON_MINER_SECTORS_TERMINATE_METHOD,
                 IpldBlock::serialize_cbor(&params).unwrap(),
@@ -2041,7 +2063,7 @@ impl ActorHarness {
             raw_byte_delta: -sector_power.raw.clone(),
             quality_adjusted_delta: -sector_power.qa.clone(),
         };
-        rt.expect_send(
+        rt.expect_send_simple(
             STORAGE_POWER_ACTOR_ADDR,
             UPDATE_CLAIMED_POWER_METHOD,
             IpldBlock::serialize_cbor(&params).unwrap(),
@@ -2114,7 +2136,7 @@ impl ActorHarness {
         rt.set_received(value.clone());
         if expected_repaid_from_vest > &TokenAmount::zero() {
             let pledge_delta = expected_repaid_from_vest.neg();
-            rt.expect_send(
+            rt.expect_send_simple(
                 STORAGE_POWER_ACTOR_ADDR,
                 PowerMethod::UpdatePledgeTotal as u64,
                 IpldBlock::serialize_cbor(&pledge_delta).unwrap(),
@@ -2126,7 +2148,7 @@ impl ActorHarness {
 
         let total_repaid = expected_repaid_from_vest + expected_repaid_from_balance;
         if total_repaid.is_positive() {
-            rt.expect_send(
+            rt.expect_send_simple(
                 BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
                 None,
@@ -2153,7 +2175,7 @@ impl ActorHarness {
 
         if expected_withdrawn.is_positive() {
             //no send when real withdraw amount is zero
-            rt.expect_send(
+            rt.expect_send_simple(
                 self.beneficiary,
                 METHOD_SEND,
                 None,
@@ -2164,7 +2186,7 @@ impl ActorHarness {
         }
 
         if expected_debt_repaid.is_positive() {
-            rt.expect_send(
+            rt.expect_send_simple(
                 BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
                 None,
@@ -2223,7 +2245,7 @@ impl ActorHarness {
             new_worker: new_worker.clone(),
             new_control_addresses: new_control_addresses.clone(),
         };
-        rt.expect_send(
+        rt.expect_send_simple(
             new_worker,
             AccountMethod::PubkeyAddress as u64,
             None,
@@ -2380,7 +2402,7 @@ impl ActorHarness {
                 raw_byte_delta: BigInt::zero(),
                 quality_adjusted_delta: qa_delta,
             };
-            rt.expect_send(
+            rt.expect_send_simple(
                 STORAGE_POWER_ACTOR_ADDR,
                 UPDATE_CLAIMED_POWER_METHOD,
                 IpldBlock::serialize_cbor(&params).unwrap(),
@@ -2428,7 +2450,7 @@ impl ActorHarness {
                     }
                 }
 
-                rt.expect_send(
+                rt.expect_send_simple(
                     VERIFIED_REGISTRY_ACTOR_ADDR,
                     fil_actor_miner::ext::verifreg::GET_CLAIMS_METHOD as u64,
                     IpldBlock::serialize_cbor(&GetClaimsParams {
@@ -2482,7 +2504,7 @@ impl ActorHarness {
                 raw_byte_delta: BigInt::zero(),
                 quality_adjusted_delta: qa_delta,
             };
-            rt.expect_send(
+            rt.expect_send_simple(
                 STORAGE_POWER_ACTOR_ADDR,
                 UPDATE_CLAIMED_POWER_METHOD,
                 IpldBlock::serialize_cbor(&params).unwrap(),
@@ -2555,7 +2577,7 @@ impl ActorHarness {
 
     pub fn get_available_balance(&self, rt: &mut MockRuntime) -> Result<TokenAmount, ActorError> {
         // set caller to non-builtin
-        rt.set_caller(make_identity_cid(b"1234"), Address::new_id(1234));
+        rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(1234));
         rt.expect_validate_caller_any();
         let available_balance_ret: GetAvailableBalanceReturn = rt
             .call::<Actor>(Method::GetAvailableBalanceExported as u64, None)?
@@ -2910,14 +2932,14 @@ where
 }
 
 // Returns a fake hashing function that always arranges the first 8 bytes of the digest to be the binary
-// encoding of a target uint64.
-fn fixed_hasher(offset: ChainEpoch) -> Box<dyn Fn(&[u8]) -> [u8; 32]> {
-    let hash = move |_: &[u8]| -> [u8; 32] {
-        let mut result = [0u8; 32];
+// encoding of a target uint64 and ignores the hash function.
+fn fixed_hasher(offset: ChainEpoch) -> Box<dyn Fn(SupportedHashes, &[u8]) -> ([u8; 64], usize)> {
+    let hash = move |_: SupportedHashes, _: &[u8]| -> ([u8; 64], usize) {
+        let mut result = [0u8; 64];
         for (i, item) in result.iter_mut().enumerate().take(8) {
             *item = ((offset >> (8 * (7 - i))) & 0xff) as u8;
         }
-        result
+        (result, 32)
     };
     Box::new(hash)
 }

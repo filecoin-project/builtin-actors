@@ -25,6 +25,7 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::sys::SendFlags;
 use fvm_shared::METHOD_CONSTRUCTOR;
 use num_traits::Zero;
 
@@ -158,7 +159,7 @@ mod paych_constructor {
             ..Default::default()
         };
 
-        rt.expect_send(
+        rt.expect_send_simple(
             non_id_addr,
             METHOD_SEND,
             Default::default(),
@@ -196,7 +197,7 @@ mod paych_constructor {
             ..Default::default()
         };
 
-        rt.expect_send(
+        rt.expect_send_simple(
             non_id_addr,
             METHOD_SEND,
             Default::default(),
@@ -668,7 +669,7 @@ mod merge_tests {
 
 mod update_channel_state_extra {
     use super::*;
-    use fvm_ipld_encoding::DAG_CBOR;
+    use fvm_ipld_encoding::CBOR;
 
     const OTHER_ADDR: u64 = 104;
 
@@ -687,10 +688,10 @@ mod update_channel_state_extra {
         });
         expect_authenticate_message(&mut rt, state.to, sv.clone(), ExitCode::OK);
 
-        rt.expect_send(
+        rt.expect_send_simple(
             other_addr,
             Method::UpdateChannelState as u64,
-            Some(IpldBlock { codec: DAG_CBOR, data: fake_params.to_vec() }),
+            Some(IpldBlock { codec: CBOR, data: fake_params.to_vec() }),
             TokenAmount::zero(),
             None,
             exit_code,
@@ -931,7 +932,7 @@ mod actor_collect {
         // wait for settlingat epoch
         rt.epoch = st.settling_at + 1;
 
-        rt.expect_send(
+        rt.expect_send_simple(
             st.to,
             METHOD_SEND,
             Default::default(),
@@ -989,7 +990,7 @@ mod actor_collect {
             rt.epoch = state.settling_at + 1;
 
             if !tc.dont_settle {
-                rt.expect_send(
+                rt.expect_send_simple(
                     state.to,
                     METHOD_SEND,
                     Default::default(),
@@ -1137,6 +1138,9 @@ fn expect_authenticate_message(
         .unwrap(),
         TokenAmount::zero(),
         None,
+        SendFlags::READ_ONLY,
+        None,
         exp_exit_code,
+        None,
     )
 }

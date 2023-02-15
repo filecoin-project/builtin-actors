@@ -41,9 +41,10 @@ use fil_actors_runtime::cbor::{serialize, serialize_vec};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, deserialize_block, ActorContext, ActorDowncast, ActorError,
-    BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
-    STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    actor_dispatch, actor_error, deserialize_block, extract_send_result, ActorContext,
+    ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 pub use monies::*;
@@ -1649,7 +1650,9 @@ impl Actor {
 
         request_update_power(rt, power_delta)?;
         if !to_reward.is_zero() {
-            if let Err(e) = rt.send(&reporter, METHOD_SEND, None, to_reward.clone()) {
+            if let Err(e) =
+                extract_send_result(rt.send_simple(&reporter, METHOD_SEND, None, to_reward.clone()))
+            {
                 error!("failed to send reward: {}", e);
                 to_burn += to_reward;
             }
@@ -2078,12 +2081,12 @@ impl Actor {
             precommit.info.unsealed_cid,
         )?;
 
-        rt.send(
+        extract_send_result(rt.send_simple(
             &STORAGE_POWER_ACTOR_ADDR,
             ext::power::SUBMIT_POREP_FOR_BULK_VERIFY_METHOD,
             IpldBlock::serialize_cbor(&svi)?,
             TokenAmount::zero(),
-        )?;
+        ))?;
 
         Ok(())
     }
@@ -3178,7 +3181,9 @@ impl Actor {
             Ok((burn_amount, reward_amount))
         })?;
 
-        if let Err(e) = rt.send(&reporter, METHOD_SEND, None, reward_amount) {
+        if let Err(e) =
+            extract_send_result(rt.send_simple(&reporter, METHOD_SEND, None, reward_amount))
+        {
             error!("failed to send reward: {}", e);
         }
 
@@ -3277,7 +3282,12 @@ impl Actor {
             })?;
 
         if amount_withdrawn.is_positive() {
-            rt.send(&info.beneficiary, METHOD_SEND, None, amount_withdrawn.clone())?;
+            extract_send_result(rt.send_simple(
+                &info.beneficiary,
+                METHOD_SEND,
+                None,
+                amount_withdrawn.clone(),
+            ))?;
         }
 
         burn_funds(rt, fee_to_burn)?;
@@ -3423,7 +3433,8 @@ impl Actor {
     // and to abstract the state representation for clients.
     fn get_beneficiary(rt: &mut impl Runtime) -> Result<GetBeneficiaryReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        let info = rt.transaction(|state: &mut State, rt| get_miner_info(rt.store(), state))?;
+        let st: State = rt.state()?;
+        let info = get_miner_info(rt.store(), &st)?;
 
         Ok(GetBeneficiaryReturn {
             active: ActiveBeneficiary {
@@ -4137,12 +4148,12 @@ fn enroll_cron_event(
     let payload = serialize(&cb, "cron payload")?;
     let ser_params =
         IpldBlock::serialize_cbor(&ext::power::EnrollCronEventParams { event_epoch, payload })?;
-    rt.send(
+    extract_send_result(rt.send_simple(
         &STORAGE_POWER_ACTOR_ADDR,
         ext::power::ENROLL_CRON_EVENT_METHOD,
         ser_params,
         TokenAmount::zero(),
-    )?;
+    ))?;
 
     Ok(())
 }
@@ -4154,7 +4165,7 @@ fn request_update_power(rt: &mut impl Runtime, delta: PowerPair) -> Result<(), A
 
     let delta_clone = delta.clone();
 
-    rt.send(
+    extract_send_result(rt.send_simple(
         &STORAGE_POWER_ACTOR_ADDR,
         ext::power::UPDATE_CLAIMED_POWER_METHOD,
         IpldBlock::serialize_cbor(&ext::power::UpdateClaimedPowerParams {
@@ -4162,7 +4173,7 @@ fn request_update_power(rt: &mut impl Runtime, delta: PowerPair) -> Result<(), A
             quality_adjusted_delta: delta.qa,
         })?,
         TokenAmount::zero(),
-    )
+    ))
     .map_err(|e| e.wrap(format!("failed to update power with {:?}", delta_clone)))?;
 
     Ok(())
@@ -4174,9 +4185,8 @@ fn request_terminate_deals(
     deal_ids: Vec<DealID>,
 ) -> Result<(), ActorError> {
     const MAX_LENGTH: usize = 8192;
-
     for chunk in deal_ids.chunks(MAX_LENGTH) {
-        rt.send(
+        let res = extract_send_result(rt.send_simple(
             &STORAGE_MARKET_ACTOR_ADDR,
             ext::market::ON_MINER_SECTORS_TERMINATE_METHOD,
             IpldBlock::serialize_cbor(&ext::market::OnMinerSectorsTerminateParamsRef {
@@ -4184,7 +4194,16 @@ fn request_terminate_deals(
                 deal_ids: chunk,
             })?,
             TokenAmount::zero(),
-        )?;
+        ));
+        // If running in a system / cron context intentionally swallow this error to prevent
+        // frozen market cron corruption from also freezing this miner cron.
+        if rt.message().origin() == SYSTEM_ACTOR_ADDR {
+            if let Err(e) = res {
+                error!("OnSectorsTerminate event failed from cron caller {}", e)
+            }
+        } else {
+            res?;
+        }
     }
 
     Ok(())
@@ -4310,12 +4329,12 @@ fn request_deal_data(
         });
     }
 
-    deserialize_block(rt.send(
+    deserialize_block(extract_send_result(rt.send_simple(
         &STORAGE_MARKET_ACTOR_ADDR,
         ext::market::VERIFY_DEALS_FOR_ACTIVATION_METHOD,
         IpldBlock::serialize_cbor(&ext::market::VerifyDealsForActivationParamsRef { sectors })?,
         TokenAmount::zero(),
-    )?)
+    ))?)
 }
 
 /// Requests the current epoch target block reward from the reward actor.
@@ -4324,12 +4343,12 @@ fn request_current_epoch_block_reward(
     rt: &mut impl Runtime,
 ) -> Result<ThisEpochRewardReturn, ActorError> {
     deserialize_block(
-        rt.send(
+        extract_send_result(rt.send_simple(
             &REWARD_ACTOR_ADDR,
             ext::reward::THIS_EPOCH_REWARD_METHOD,
             Default::default(),
             TokenAmount::zero(),
-        )
+        ))
         .map_err(|e| e.wrap("failed to check epoch baseline power"))?,
     )
 }
@@ -4339,12 +4358,12 @@ fn request_current_total_power(
     rt: &mut impl Runtime,
 ) -> Result<ext::power::CurrentTotalPowerReturn, ActorError> {
     deserialize_block(
-        rt.send(
+        extract_send_result(rt.send_simple(
             &STORAGE_POWER_ACTOR_ADDR,
             ext::power::CURRENT_TOTAL_POWER_METHOD,
             Default::default(),
             TokenAmount::zero(),
-        )
+        ))
         .map_err(|e| e.wrap("failed to check current power"))?,
     )
 }
@@ -4368,12 +4387,12 @@ fn resolve_worker_address(rt: &mut impl Runtime, raw: Address) -> Result<ActorID
     }
 
     if raw.protocol() != Protocol::BLS {
-        let pub_key: Address = deserialize_block(rt.send(
+        let pub_key: Address = deserialize_block(extract_send_result(rt.send_simple(
             &Address::new_id(resolved),
             ext::account::PUBKEY_ADDRESS_METHOD,
             None,
             TokenAmount::zero(),
-        )?)?;
+        ))?)?;
         if pub_key.protocol() != Protocol::BLS {
             return Err(actor_error!(
                 illegal_argument,
@@ -4389,7 +4408,7 @@ fn resolve_worker_address(rt: &mut impl Runtime, raw: Address) -> Result<ActorID
 fn burn_funds(rt: &mut impl Runtime, amount: TokenAmount) -> Result<(), ActorError> {
     log::debug!("storage provder {} burning {}", rt.message().receiver(), amount);
     if amount.is_positive() {
-        rt.send(&BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, None, amount)?;
+        extract_send_result(rt.send_simple(&BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, None, amount))?;
     }
     Ok(())
 }
@@ -4399,12 +4418,12 @@ fn notify_pledge_changed(
     pledge_delta: &TokenAmount,
 ) -> Result<(), ActorError> {
     if !pledge_delta.is_zero() {
-        rt.send(
+        extract_send_result(rt.send_simple(
             &STORAGE_POWER_ACTOR_ADDR,
             ext::power::UPDATE_PLEDGE_TOTAL_METHOD,
             IpldBlock::serialize_cbor(pledge_delta)?,
             TokenAmount::zero(),
-        )?;
+        ))?;
     }
     Ok(())
 }
@@ -4417,12 +4436,13 @@ fn get_claims(
         provider: rt.message().receiver().id().unwrap(),
         claim_ids: ids.clone(),
     };
-    let claims_ret: ext::verifreg::GetClaimsReturn = deserialize_block(rt.send(
-        &VERIFIED_REGISTRY_ACTOR_ADDR,
-        ext::verifreg::GET_CLAIMS_METHOD as u64,
-        IpldBlock::serialize_cbor(&params)?,
-        TokenAmount::zero(),
-    )?)?;
+    let claims_ret: ext::verifreg::GetClaimsReturn =
+        deserialize_block(extract_send_result(rt.send_simple(
+            &VERIFIED_REGISTRY_ACTOR_ADDR,
+            ext::verifreg::GET_CLAIMS_METHOD as u64,
+            IpldBlock::serialize_cbor(&params)?,
+            TokenAmount::zero(),
+        ))?)?;
     if (claims_ret.batch_info.success_count as usize) < ids.len() {
         return Err(actor_error!(illegal_argument, "invalid claims"));
     }
@@ -4869,12 +4889,12 @@ fn activate_deals_and_claim_allocations(
         return Ok(Some(ext::market::DealSpaces::default()));
     }
     // Check (and activate) storage deals associated to sector. Abort if checks failed.
-    let activate_raw = rt.send(
+    let activate_raw = extract_send_result(rt.send_simple(
         &STORAGE_MARKET_ACTOR_ADDR,
         ext::market::ACTIVATE_DEALS_METHOD,
         IpldBlock::serialize_cbor(&ext::market::ActivateDealsParams { deal_ids, sector_expiry })?,
         TokenAmount::zero(),
-    );
+    ));
     let activate_res: ext::market::ActivateDealsResult = match activate_raw {
         Ok(res) => deserialize_block(res)?,
         Err(e) => {
@@ -4903,7 +4923,7 @@ fn activate_deals_and_claim_allocations(
         })
         .collect();
 
-    let claim_raw = rt.send(
+    let claim_raw = extract_send_result(rt.send_simple(
         &VERIFIED_REGISTRY_ACTOR_ADDR,
         ext::verifreg::CLAIM_ALLOCATIONS_METHOD,
         IpldBlock::serialize_cbor(&ext::verifreg::ClaimAllocationsParams {
@@ -4911,7 +4931,7 @@ fn activate_deals_and_claim_allocations(
             all_or_nothing: true,
         })?,
         TokenAmount::zero(),
-    );
+    ));
     let claim_res: ext::verifreg::ClaimAllocationsReturn = match claim_raw {
         Ok(res) => deserialize_block(res)?,
         Err(e) => {

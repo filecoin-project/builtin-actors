@@ -176,7 +176,7 @@ fn cron_processing_of_deal_after_missed_activation_should_fail_and_slash() {
     rt.set_epoch(process_epoch(START_EPOCH, deal_id));
 
     // FIXME: cron_tick calls 'VERIFIED_REGISTRY_ACTOR_ADDR' with the 'USE_BYTES_METHOD' method.
-    rt.expect_send(
+    rt.expect_send_simple(
         BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
         None,

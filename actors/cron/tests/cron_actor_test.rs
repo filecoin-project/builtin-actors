@@ -79,7 +79,7 @@ fn epoch_tick_with_entries() {
     construct_and_verify(&mut rt, &params);
 
     // ExitCodes dont matter here
-    rt.expect_send(
+    rt.expect_send_simple(
         entry1.receiver,
         entry1.method_num,
         None,
@@ -87,7 +87,7 @@ fn epoch_tick_with_entries() {
         None,
         ExitCode::OK,
     );
-    rt.expect_send(
+    rt.expect_send_simple(
         entry2.receiver,
         entry2.method_num,
         None,
@@ -95,7 +95,7 @@ fn epoch_tick_with_entries() {
         None,
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
-    rt.expect_send(
+    rt.expect_send_simple(
         entry3.receiver,
         entry3.method_num,
         None,
@@ -103,7 +103,7 @@ fn epoch_tick_with_entries() {
         None,
         ExitCode::OK,
     );
-    rt.expect_send(
+    rt.expect_send_simple(
         entry4.receiver,
         entry4.method_num,
         None,
