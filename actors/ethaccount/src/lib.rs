@@ -10,8 +10,8 @@ use num_derive::FromPrimitive;
 use crate::types::AuthenticateMessageParams;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, ActorError, AsActorError, EAM_ACTOR_ID,
-    FIRST_EXPORTED_METHOD_NUMBER, SYSTEM_ACTOR_ADDR,
+    actor_error, ActorError, AsActorError, EAM_ACTOR_ID, FIRST_EXPORTED_METHOD_NUMBER,
+    SYSTEM_ACTOR_ADDR,
 };
 
 #[cfg(feature = "fil-actor")]
@@ -139,9 +139,20 @@ impl EthAccountActor {
 
 impl ActorCode for EthAccountActor {
     type Methods = Method;
-    actor_dispatch! {
-        Constructor => constructor,
-        AuthenticateMessageExported => authenticate_message,
-        _ => fallback [raw],
+    fn invoke_method<RT>(
+        _rt: &mut RT,
+        _method: MethodNum,
+        _args: Option<IpldBlock>,
+    ) -> Result<Option<IpldBlock>, ActorError>
+    where
+        RT: Runtime,
+        RT::Blockstore: Clone,
+    {
+        Err(actor_error!(illegal_argument; "EthAccount has been disabled"))
     }
+    // actor_dispatch! {
+    //     Constructor => constructor,
+    //     AuthenticateMessageExported => authenticate_message,
+    //     _ => fallback [raw],
+    // }
 }
