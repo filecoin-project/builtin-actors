@@ -9,12 +9,12 @@ use ext::{
     init::{Exec4Params, Exec4Return},
 };
 use fil_actors_runtime::{
-    actor_dispatch_unrestricted, actor_error, deserialize_block, extract_send_result, ActorError,
-    AsActorError, EAM_ACTOR_ID, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    actor_error, deserialize_block, extract_send_result, ActorError, AsActorError, EAM_ACTOR_ID,
+    INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_shared::{error::ExitCode, sys::SendFlags, ActorID, METHOD_CONSTRUCTOR};
+use fvm_shared::{error::ExitCode, sys::SendFlags, ActorID, MethodNum, METHOD_CONSTRUCTOR};
 use serde::{Deserialize, Serialize};
 
 pub mod ext;
@@ -293,12 +293,23 @@ impl EamActor {
 
 impl ActorCode for EamActor {
     type Methods = Method;
-    actor_dispatch_unrestricted! {
-        Constructor => constructor,
-        Create => create,
-        Create2 => create2,
-        CreateExternal => create_external,
+    fn invoke_method<RT>(
+        _rt: &mut RT,
+        _method: MethodNum,
+        _args: Option<IpldBlock>,
+    ) -> Result<Option<IpldBlock>, ActorError>
+    where
+        RT: Runtime,
+        RT::Blockstore: Clone,
+    {
+        Err(actor_error!(illegal_argument; "EAM has been disabled"))
     }
+    // actor_dispatch_unrestricted! {
+    //     Constructor => constructor,
+    //     Create => create,
+    //     Create2 => create2,
+    //     CreateExternal => create_external,
+    // }
 }
 
 #[cfg(test)]

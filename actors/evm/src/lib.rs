@@ -388,6 +388,9 @@ impl ActorCode for EvmContractActor {
         RT: Runtime,
         RT::Blockstore: Clone,
     {
+        if true {
+            return Err(actor_error!(illegal_argument; "EVM has been disabled"));
+        }
         match FromPrimitive::from_u64(method) {
             Some(Method::Constructor) => {
                 Self::constructor(
