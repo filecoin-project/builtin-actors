@@ -103,7 +103,7 @@ fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_l
         TokenAmount::zero(),
         None,
         SendFlags::READ_ONLY,
-        None,
+        AUTHENTICATE_MESSAGE_RESPONSE.clone(),
         ExitCode::OK,
         None,
     );

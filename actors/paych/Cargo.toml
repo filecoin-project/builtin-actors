@@ -29,6 +29,7 @@ fvm_ipld_encoding = "0.3.3"
 fil_actors_runtime = { path = "../../runtime", features = ["test_utils", "sector-default"] }
 fvm_ipld_amt = { version = "0.5.1", features = ["go-interop"] }
 derive_builder = "0.10.2"
+lazy_static = "1.4.0"
 
 [features]
 fil-actor = ["fil_actors_runtime/fil-actor"]
