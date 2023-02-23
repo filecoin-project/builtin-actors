@@ -1,17 +1,11 @@
 use fil_actor_account::types::AuthenticateMessageParams;
 use fil_actor_account::Method::AuthenticateMessageExported;
-use fil_actors_runtime::test_utils::hash;
-use fil_actors_runtime::EAM_ACTOR_ID;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
-use fvm_shared::crypto::hash::SupportedHashes::Keccak256;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::METHOD_SEND;
-use rand::SeedableRng;
-use rand_chacha::ChaCha8Rng;
+
 use test_vm::util::{apply_code, apply_ok, create_accounts, generate_deal_proposal};
 use test_vm::VM;
 
