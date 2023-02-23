@@ -60,6 +60,11 @@ pub const WORKER_ADDR: Address = Address::new_id(WORKER_ID);
 pub const CLIENT_ADDR: Address = Address::new_id(CLIENT_ID);
 pub const CONTROL_ADDR: Address = Address::new_id(CONTROL_ID);
 
+lazy_static::lazy_static! {
+    pub static ref AUTHENTICATE_MESSAGE_RESPONSE: Option<IpldBlock> =
+        IpldBlock::serialize_cbor(&true).unwrap();
+}
+
 pub struct MinerAddresses {
     pub owner: Address,
     pub worker: Address,
@@ -506,7 +511,7 @@ pub fn publish_deals(
             TokenAmount::zero(),
             None,
             SendFlags::READ_ONLY,
-            None,
+            AUTHENTICATE_MESSAGE_RESPONSE.clone(),
             ExitCode::OK,
             None,
         );
@@ -666,7 +671,7 @@ pub fn publish_deals_expect_abort(
         TokenAmount::zero(),
         None,
         SendFlags::READ_ONLY,
-        None,
+        AUTHENTICATE_MESSAGE_RESPONSE.clone(),
         ExitCode::OK,
         None,
     );
@@ -846,7 +851,10 @@ where
         TokenAmount::zero(),
         None,
         SendFlags::READ_ONLY,
-        None,
+        match sig_valid {
+            true => AUTHENTICATE_MESSAGE_RESPONSE.clone(),
+            false => None,
+        },
         match sig_valid {
             true => ExitCode::OK,
             false => ExitCode::USR_ILLEGAL_ARGUMENT,

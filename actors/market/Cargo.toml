@@ -41,6 +41,7 @@ fvm_ipld_amt = { version = "0.5.1", features = ["go-interop"] }
 multihash = { version = "0.16.1", default-features = false }
 regex = "1"
 itertools = "0.10"
+lazy_static = "1.4.0"
 
 [features]
 fil-actor = ["fil_actors_runtime/fil-actor"]

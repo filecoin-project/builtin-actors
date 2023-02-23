@@ -67,7 +67,7 @@ impl Actor {
     pub fn authenticate_message(
         rt: &mut impl Runtime,
         params: AuthenticateMessageParams,
-    ) -> Result<(), ActorError> {
+    ) -> Result<bool, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let st: State = rt.state()?;
         let address = st.address;
@@ -87,7 +87,7 @@ impl Actor {
             )
         })?;
 
-        Ok(())
+        Ok(true)
     }
 
     /// Fallback method for unimplemented method numbers.
