@@ -60,7 +60,7 @@ impl EthAccountActor {
     pub fn authenticate_message(
         rt: &mut impl Runtime,
         params: AuthenticateMessageParams,
-    ) -> Result<(), ActorError> {
+    ) -> Result<bool, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let msg_hash = rt.hash_blake2b(&params.message);
 
@@ -119,7 +119,7 @@ impl EthAccountActor {
             return Err(actor_error!(illegal_argument; "invalid signature for {}", self_address));
         }
 
-        Ok(())
+        Ok(true)
     }
 
     // Always succeeds, accepting any transfers.
