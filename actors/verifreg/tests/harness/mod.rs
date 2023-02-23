@@ -1,18 +1,3 @@
-use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
-use frc46_token::token::types::{BurnParams, BurnReturn, TransferParams};
-use frc46_token::token::TOKEN_PRECISION;
-use fvm_actor_utils::receiver::UniversalReceiverParams;
-use fvm_ipld_encoding::RawBytes;
-use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser::{BigIntDe, BigIntSer};
-use fvm_shared::clock::ChainEpoch;
-use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
-use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::sector::SectorNumber;
-use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH};
-use num_traits::{ToPrimitive, Zero};
-
 use fil_actor_verifreg::testing::check_state_invariants;
 use fil_actor_verifreg::{
     ext, Actor as VerifregActor, AddVerifiedClientParams, AddVerifierParams, Allocation,
@@ -33,15 +18,51 @@ use fil_actors_runtime::{
     make_empty_map, ActorError, AsActorError, BatchReturn, DATACAP_TOKEN_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
+use frc46_token::token::types::{BurnParams, BurnReturn, TransferParams};
+use frc46_token::token::TOKEN_PRECISION;
+use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::RawBytes;
+use fvm_shared::address::Address;
+use fvm_shared::bigint::bigint_ser::{BigIntDe, BigIntSer};
+use fvm_shared::clock::ChainEpoch;
+use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
+use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::sector::SectorNumber;
+use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH};
+use num_traits::{ToPrimitive, Zero};
+use std::collections::HashMap;
 
 pub const ROOT_ADDR: Address = Address::new_id(101);
 
+const TEST_VERIFIER_ADDR: u64 = 201;
+const TEST_VERIFIER2_ADDR: u64 = 202;
+const TEST_CLIENT_ADDR: u64 = 301;
+const TEST_CLIENT2_ADDR: u64 = 302;
+const TEST_CLIENT3_ADDR: u64 = 303;
+const TEST_CLIENT4_ADDR: u64 = 304;
+
 pub fn new_runtime() -> MockRuntime {
+    let test_verifier_addr = Address::new_id(TEST_VERIFIER_ADDR);
+    let test_verifier2_addr = Address::new_id(TEST_VERIFIER2_ADDR);
+    let test_client_addr = Address::new_id(TEST_CLIENT_ADDR);
+    let test_client2_addr = Address::new_id(TEST_CLIENT2_ADDR);
+    let test_client3_addr = Address::new_id(TEST_CLIENT3_ADDR);
+    let test_client4_addr = Address::new_id(TEST_CLIENT4_ADDR);
+    let mut actor_code_cids = HashMap::default();
+    actor_code_cids.insert(test_verifier_addr, *ACCOUNT_ACTOR_CODE_ID);
+    actor_code_cids.insert(test_verifier2_addr, *ACCOUNT_ACTOR_CODE_ID);
+    actor_code_cids.insert(test_client_addr, *ACCOUNT_ACTOR_CODE_ID);
+    actor_code_cids.insert(test_client2_addr, *ACCOUNT_ACTOR_CODE_ID);
+    actor_code_cids.insert(test_client3_addr, *ACCOUNT_ACTOR_CODE_ID);
+    actor_code_cids.insert(test_client4_addr, *ACCOUNT_ACTOR_CODE_ID);
     MockRuntime {
         receiver: VERIFIED_REGISTRY_ACTOR_ADDR,
         caller: SYSTEM_ACTOR_ADDR,
         caller_type: *SYSTEM_ACTOR_CODE_ID,
+        actor_code_cids,
         ..Default::default()
     }
 }

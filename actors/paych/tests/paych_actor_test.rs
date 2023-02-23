@@ -118,7 +118,7 @@ mod paych_constructor {
             &mut rt,
             METHOD_CONSTRUCTOR,
             IpldBlock::serialize_cbor(&params).unwrap(),
-            ExitCode::USR_ILLEGAL_ARGUMENT,
+            ExitCode::USR_NOT_FOUND,
         );
     }
 
