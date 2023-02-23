@@ -43,16 +43,6 @@ const TEST_CLIENT_ADDR: u64 = 301;
 const TEST_CLIENT2_ADDR: u64 = 302;
 const TEST_CLIENT3_ADDR: u64 = 303;
 const TEST_CLIENT4_ADDR: u64 = 304;
-/*
-static ref VERIFIER: Address = Address::new_id(201);
-    static ref VERIFIER2: Address = Address::new_id(202);
-    static ref CLIENT: Address = Address::new_id(301);
-    static ref CLIENT2: Address = Address::new_id(302);
-    static ref CLIENT3: Address = Address::new_id(303);
-    static ref CLIENT4: Address = Address::new_id(304);
-    static ref PROVIDER: Address = Address::new_id(305);
-    static ref PROVIDER2: Address = Address::new_id(306);
- */
 
 pub fn new_runtime() -> MockRuntime {
     let test_verifier_addr = Address::new_id(TEST_VERIFIER_ADDR);
