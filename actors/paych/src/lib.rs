@@ -4,8 +4,8 @@
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, extract_send_result, resolve_to_actor_id, ActorDowncast,
-    ActorError, Array,
+    actor_dispatch, actor_error, deserialize_block, extract_send_result, resolve_to_actor_id,
+    ActorContext, ActorDowncast, ActorError, Array,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::CBOR;
@@ -104,7 +104,7 @@ impl Actor {
 
         // Validate signature
 
-        extract_send_result(rt.send(
+        if !extract_send_result(rt.send(
             &signer,
             ext::account::AUTHENTICATE_MESSAGE_METHOD,
             IpldBlock::serialize_cbor(&ext::account::AuthenticateMessageParams {
@@ -115,7 +115,11 @@ impl Actor {
             None,
             SendFlags::READ_ONLY,
         ))
-        .map_err(|e| e.wrap("voucher sig authentication failed"))?;
+        .and_then(deserialize_block)
+        .context("proposal authentication failed")?
+        {
+            return Err(actor_error!(illegal_argument, "voucher sig authentication failed"));
+        }
 
         let pch_addr = rt.message().receiver();
         let svpch_id = rt.resolve_address(&sv.channel_addr).ok_or_else(|| {

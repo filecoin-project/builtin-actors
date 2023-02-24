@@ -1318,7 +1318,7 @@ fn deal_proposal_is_internally_valid(
     // Generate unsigned bytes
     let proposal_bytes = serialize(&proposal.proposal, "deal proposal")?;
 
-    extract_send_result(rt.send(
+    if !extract_send_result(rt.send(
         &proposal.proposal.client,
         ext::account::AUTHENTICATE_MESSAGE_METHOD,
         IpldBlock::serialize_cbor(&ext::account::AuthenticateMessageParams {
@@ -1329,8 +1329,13 @@ fn deal_proposal_is_internally_valid(
         None,
         SendFlags::READ_ONLY,
     ))
-    .map_err(|e| e.wrap("proposal authentication failed"))?;
-    Ok(())
+    .and_then(deserialize_block)
+    .context("proposal authentication failed")?
+    {
+        Err(actor_error!(illegal_argument, "proposal authentication failed"))
+    } else {
+        Ok(())
+    }
 }
 
 /// Compute a deal CID using the runtime.

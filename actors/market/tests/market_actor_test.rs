@@ -869,7 +869,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
         TokenAmount::zero(),
         None,
         SendFlags::READ_ONLY,
-        None,
+        AUTHENTICATE_MESSAGE_RESPONSE.clone(),
         ExitCode::OK,
         None,
     );
@@ -1547,7 +1547,7 @@ fn cannot_publish_the_same_deal_twice_before_a_cron_tick() {
         TokenAmount::zero(),
         None,
         SendFlags::READ_ONLY,
-        None,
+        AUTHENTICATE_MESSAGE_RESPONSE.clone(),
         ExitCode::OK,
         None,
     );
@@ -1969,7 +1969,7 @@ fn insufficient_client_balance_in_a_batch() {
         TokenAmount::zero(),
         None,
         SendFlags::READ_ONLY,
-        None,
+        AUTHENTICATE_MESSAGE_RESPONSE.clone(),
         ExitCode::OK,
         None,
     );
@@ -1980,7 +1980,7 @@ fn insufficient_client_balance_in_a_batch() {
         TokenAmount::zero(),
         None,
         SendFlags::READ_ONLY,
-        None,
+        AUTHENTICATE_MESSAGE_RESPONSE.clone(),
         ExitCode::OK,
         None,
     );
@@ -2109,7 +2109,7 @@ fn insufficient_provider_balance_in_a_batch() {
         TokenAmount::zero(),
         None,
         SendFlags::READ_ONLY,
-        None,
+        AUTHENTICATE_MESSAGE_RESPONSE.clone(),
         ExitCode::OK,
         None,
     );
@@ -2120,7 +2120,7 @@ fn insufficient_provider_balance_in_a_batch() {
         TokenAmount::zero(),
         None,
         SendFlags::READ_ONLY,
-        None,
+        AUTHENTICATE_MESSAGE_RESPONSE.clone(),
         ExitCode::OK,
         None,
     );
@@ -2264,7 +2264,7 @@ fn psd_restricted_correctly() {
         TokenAmount::zero(),
         None,
         SendFlags::READ_ONLY,
-        None,
+        AUTHENTICATE_MESSAGE_RESPONSE.clone(),
         ExitCode::OK,
         None,
     );

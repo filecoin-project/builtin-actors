@@ -42,6 +42,11 @@ struct LaneParams {
     nonce: u64,
 }
 
+lazy_static::lazy_static! {
+    pub static ref AUTHENTICATE_MESSAGE_RESPONSE: Option<IpldBlock> =
+        IpldBlock::serialize_cbor(&true).unwrap();
+}
+
 fn call(rt: &mut MockRuntime, method_num: u64, ser: Option<IpldBlock>) -> Option<IpldBlock> {
     rt.call::<PaychActor>(method_num, ser).unwrap()
 }
@@ -1139,7 +1144,7 @@ fn expect_authenticate_message(
         TokenAmount::zero(),
         None,
         SendFlags::READ_ONLY,
-        None,
+        exp_exit_code.is_success().then(|| AUTHENTICATE_MESSAGE_RESPONSE.clone()).flatten(),
         exp_exit_code,
         None,
     )
