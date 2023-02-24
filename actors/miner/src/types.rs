@@ -351,9 +351,9 @@ pub struct SectorOnChainInfo {
     pub expected_day_reward: TokenAmount,
     /// Expected twenty day projection of reward for sector computed at activation time
     pub expected_storage_pledge: TokenAmount,
-    /// Age of sector this sector replaced or zero
-    pub replaced_sector_age: ChainEpoch,
-    /// Day reward of sector this sector replace or zero
+    /// Epoch at which this sector's power was most recently updated
+    pub power_base_epoch: ChainEpoch,
+    /// Day reward of this sector before its power was most recently updated
     pub replaced_day_reward: TokenAmount,
     /// The original SealedSectorCID, only gets set on the first ReplicaUpdate
     pub sector_key_cid: Option<Cid>,

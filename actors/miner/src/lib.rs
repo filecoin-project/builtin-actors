@@ -1315,9 +1315,12 @@ impl Actor {
                     // Skip checking if CID is defined because it cannot be so in Rust
 
                     new_sector_info.deal_ids = with_details.update.deals.clone();
-                    new_sector_info.activation = rt.curr_epoch();
 
-                    let duration = new_sector_info.expiration - new_sector_info.activation;
+                    if !with_details.deal_spaces.verified_deal_space.is_zero() {
+                        new_sector_info.power_base_epoch = rt.curr_epoch();
+                    }
+
+                    let duration = new_sector_info.expiration - new_sector_info.power_base_epoch;
 
                     new_sector_info.deal_weight =
                         with_details.deal_spaces.deal_space.clone() * duration;
@@ -1346,8 +1349,6 @@ impl Actor {
                         &qa_pow,
                         INITIAL_PLEDGE_PROJECTION_PERIOD,
                     );
-                    new_sector_info.replaced_sector_age =
-                        ChainEpoch::max(0, rt.curr_epoch() - with_details.sector_info.activation);
 
                     new_sector_info.initial_pledge = max(
                         new_sector_info.initial_pledge,
@@ -3795,8 +3796,12 @@ fn extend_simple_qap_sector(
     claim_space_by_sector: &BTreeMap<SectorNumber, (u64, u64)>,
 ) -> Result<SectorOnChainInfo, ActorError> {
     let mut new_sector = sector.clone();
+    // Update the power_base_epoch, assuming the sector is actually being extended
+    if sector.expiration != new_expiration {
+        new_sector.power_base_epoch = curr_epoch
+    }
     if sector.verified_deal_weight > BigInt::zero() {
-        let old_duration = sector.expiration - sector.activation;
+        let old_duration = sector.expiration - sector.power_base_epoch;
         let deal_space = &sector.deal_weight / old_duration;
         let old_verified_deal_space = &sector.verified_deal_weight / old_duration;
         let (expected_verified_deal_space, new_verified_deal_space) = match claim_space_by_sector
@@ -3831,12 +3836,13 @@ fn extend_simple_qap_sector(
 
         new_sector.expiration = new_expiration;
         // update deal weights to account for new duration
-        new_sector.deal_weight = deal_space * (new_sector.expiration - new_sector.activation);
+        new_sector.deal_weight = deal_space * (new_sector.expiration - new_sector.power_base_epoch);
         new_sector.verified_deal_weight = BigInt::from(*new_verified_deal_space)
-            * (new_sector.expiration - new_sector.activation);
+            * (new_sector.expiration - new_sector.power_base_epoch);
     } else {
         new_sector.expiration = new_expiration
     }
+
     Ok(new_sector)
 }
 
@@ -3848,15 +3854,16 @@ fn extend_non_simple_qap_sector(
     let mut new_sector = sector.clone();
     // Remove "spent" deal weights for non simple_qa_power sectors with deal weight > 0
     let new_deal_weight = (&sector.deal_weight * (sector.expiration - curr_epoch))
-        .div_floor(&BigInt::from(sector.expiration - sector.activation));
+        .div_floor(&BigInt::from(sector.expiration - sector.power_base_epoch));
 
     let new_verified_deal_weight = (&sector.verified_deal_weight
         * (sector.expiration - curr_epoch))
-        .div_floor(&BigInt::from(sector.expiration - sector.activation));
+        .div_floor(&BigInt::from(sector.expiration - sector.power_base_epoch));
 
     new_sector.expiration = new_expiration;
     new_sector.deal_weight = new_deal_weight;
     new_sector.verified_deal_weight = new_verified_deal_weight;
+
     Ok(new_sector)
 }
 
@@ -4588,13 +4595,13 @@ fn termination_penalty(
         let sector_power = qa_power_for_sector(sector_size, sector);
         let fee = pledge_penalty_for_termination(
             &sector.expected_day_reward,
-            current_epoch - sector.activation,
+            current_epoch - sector.power_base_epoch,
             &sector.expected_storage_pledge,
             network_qa_power_estimate,
             &sector_power,
             reward_estimate,
             &sector.replaced_day_reward,
-            sector.replaced_sector_age,
+            sector.power_base_epoch - sector.activation,
         );
         total_fee += fee;
     }
@@ -4843,7 +4850,7 @@ fn confirm_sector_proofs_valid_internal(
                 initial_pledge,
                 expected_day_reward: day_reward,
                 expected_storage_pledge: storage_pledge,
-                replaced_sector_age: ChainEpoch::zero(),
+                power_base_epoch: activation,
                 replaced_day_reward: TokenAmount::zero(),
                 sector_key_cid: None,
                 simple_qa_power: true,
