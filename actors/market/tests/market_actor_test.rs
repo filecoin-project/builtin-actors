@@ -4,14 +4,15 @@
 use fil_actor_market::balance_table::BALANCE_TABLE_BITWIDTH;
 use fil_actor_market::policy::detail::DEAL_MAX_LABEL_SIZE;
 use fil_actor_market::{
-    deal_id_key, ext, ActivateDealsParams, Actor as MarketActor, ClientDealProposal, DealArray,
-    DealMetaArray, Label, MarketNotifyDealParams, Method, PublishStorageDealsParams,
-    PublishStorageDealsReturn, State, WithdrawBalanceParams, EX_DEAL_EXPIRED,
-    MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
+    deal_id_key, ext, next_update_epoch, ActivateDealsParams, Actor as MarketActor,
+    ClientDealProposal, DealArray, DealMetaArray, Label, MarketNotifyDealParams, Method,
+    PublishStorageDealsParams, PublishStorageDealsReturn, State, WithdrawBalanceParams,
+    EX_DEAL_EXPIRED, MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID, PROPOSALS_AMT_BITWIDTH,
+    STATES_AMT_BITWIDTH,
 };
 use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::runtime::{builtins::Type, Policy, Runtime};
+use fil_actors_runtime::runtime::{builtins::Type, Policy, Runtime, RuntimePolicy};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
     make_empty_map, make_map_with_root_and_bitwidth, ActorError, BatchReturn, Map, SetMultimap,
@@ -598,6 +599,7 @@ fn deal_starts_partway_through_day() {
     let start_epoch = 1000;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let publish_epoch = ChainEpoch::from(1);
+    let interval = Policy::default().deal_updates_interval;
 
     let rt = setup();
     rt.set_epoch(publish_epoch);
@@ -619,11 +621,11 @@ fn deal_starts_partway_through_day() {
     let st: State = rt.get_state();
     let store = &rt.store;
     let dobe = SetMultimap::from_root(store, &st.deal_ops_by_epoch).unwrap();
-    for e in 2880..(2880 + start_epoch) {
+    for e in interval..(interval + start_epoch) {
         assert_n_good_deals(&dobe, e, 1);
     }
-    // Nothing scheduled between 0 and 2880
-    for e in 0..2880 {
+    // Nothing scheduled between 0 and interval
+    for e in 0..interval {
         assert_n_good_deals(&dobe, e, 0);
     }
 
@@ -736,7 +738,7 @@ fn deal_expires() {
         next_allocation_id,
     )[0];
 
-    rt.set_epoch(start_epoch + EPOCHS_IN_DAY + 1);
+    rt.set_epoch(start_epoch + Policy::default().deal_updates_interval + 1);
     rt.expect_send_simple(
         BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
@@ -1485,6 +1487,45 @@ fn slash_a_deal_and_make_payment_for_another_deal_in_the_same_epoch() {
 }
 
 #[test]
+fn cron_reschedules_update_to_new_period() {
+    let start_epoch = ChainEpoch::from(1);
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+
+    // Publish a deal
+    let mut rt = setup();
+    let deal_id = publish_and_activate_deal(
+        &mut rt,
+        CLIENT_ADDR,
+        &MinerAddresses::default(),
+        start_epoch,
+        end_epoch,
+        0,
+        end_epoch,
+    );
+    let update_interval = rt.policy().deal_updates_interval;
+
+    // Hack state to move the scheduled update to some off-policy epoch.
+    // This simulates there having been a prior policy that put it here, but now
+    // the policy has changed.
+    let mut st: State = rt.get_state();
+    let expected_epoch = next_update_epoch(deal_id, update_interval, start_epoch);
+    let misscheduled_epoch = expected_epoch + 42;
+    st.remove_deals_by_epoch(rt.store(), &[expected_epoch]).unwrap();
+    st.put_deals_by_epoch(rt.store(), &[(misscheduled_epoch, deal_id)]).unwrap();
+    rt.replace_state(&st);
+
+    let curr_epoch = rt.set_epoch(misscheduled_epoch);
+    cron_tick(&mut rt);
+
+    let st: State = rt.get_state();
+    let expected_epoch = next_update_epoch(deal_id, update_interval, curr_epoch);
+    assert_ne!(expected_epoch, curr_epoch);
+    assert_ne!(expected_epoch, misscheduled_epoch + update_interval);
+    let found = st.get_deals_for_epoch(rt.store(), expected_epoch).unwrap();
+    assert_eq!([deal_id][..], found[..]);
+}
+
+#[test]
 fn cannot_publish_the_same_deal_twice_before_a_cron_tick() {
     let start_epoch = ChainEpoch::from(50);
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
@@ -1649,6 +1690,8 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
 
 #[test]
 fn locked_fund_tracking_states() {
+    // This test logic depends on fragile assumptions about how deal IDs are scheduled
+    // for periodic updates.
     let p1 = Address::new_id(201);
     let p2 = Address::new_id(202);
     let p3 = Address::new_id(203);
@@ -1707,16 +1750,15 @@ fn locked_fund_tracking_states() {
     assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
 
     // activation doesn't change anything
-    let curr = start_epoch - 1;
-    rt.set_epoch(curr);
+    let curr = rt.set_epoch(start_epoch - 1);
     activate_deals(&rt, sector_expiry, p1, curr, &[deal_id1]);
     activate_deals(&rt, sector_expiry, p2, curr, &[deal_id2]);
 
     assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
 
     // make payment for p1 and p2, p3 times out as it has not been activated
-    let curr = process_epoch(start_epoch, deal_id3);
-    rt.set_epoch(curr);
+    let curr = rt.set_epoch(process_epoch(start_epoch, deal_id3));
+    let last_payment_epoch = curr;
     rt.expect_send_simple(
         BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
@@ -1733,17 +1775,14 @@ fn locked_fund_tracking_states() {
     let mut clc = clc - d3.client_collateral;
     assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
 
-    // deal1 and deal2 will now be charged at epoch curr + market.DealUpdatesInterval, so nothing changes before that.
-    let deal_updates_interval = Policy::default().deal_updates_interval;
-    let curr = curr + deal_updates_interval - 1;
-    rt.set_epoch(curr);
+    // Advance to just before the process epochs for deal 1 & 2, nothing changes before that.
+    let curr = rt.set_epoch(process_epoch(curr, deal_id1) - 1);
     cron_tick(&rt);
     assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
 
     // one more round of payment for deal1 and deal2
-    let curr = curr + 1;
-    rt.set_epoch(curr);
-    let duration = deal_updates_interval;
+    let curr = rt.set_epoch(process_epoch(curr, deal_id2));
+    let duration = curr - last_payment_epoch;
     let payment = 2 * d1.storage_price_per_epoch * duration;
     csf -= payment;
     cron_tick(&rt);

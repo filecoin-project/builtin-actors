@@ -450,7 +450,11 @@ impl Actor {
                 // Randomize the first epoch for when the deal will be processed so an attacker isn't able to
                 // schedule too many deals for the same tick.
                 deals_by_epoch.push((
-                    gen_rand_next_epoch(rt.policy(), valid_deal.proposal.start_epoch, deal_id),
+                    next_update_epoch(
+                        deal_id,
+                        rt.policy().deal_updates_interval,
+                        valid_deal.proposal.start_epoch,
+                    ),
                     deal_id,
                 ));
 
@@ -713,17 +717,15 @@ impl Actor {
 
         rt.transaction(|st: &mut State, rt| {
             let last_cron = st.last_cron;
-            let mut updates_needed: BTreeMap<ChainEpoch, Vec<DealID>> = BTreeMap::new();
-            let mut rm_cron_id: Vec<ChainEpoch> = vec![];
+            let mut new_updates_scheduled: BTreeMap<ChainEpoch, Vec<DealID>> = BTreeMap::new();
+            let mut epochs_completed: Vec<ChainEpoch> = vec![];
 
             for i in (last_cron + 1)..=rt.curr_epoch() {
                 let deal_ids = st.get_deals_for_epoch(rt.store(), i)?;
 
                 for deal_id in deal_ids {
                     let deal = st.get_proposal(rt.store(), deal_id)?;
-
                     let dcid = rt_deal_cid(rt, &deal)?;
-
                     let state = st.find_deal_state(rt.store(), deal_id)?;
 
                     // deal has been published but not activated yet -> terminate it
@@ -781,13 +783,8 @@ impl Actor {
                         })?;
                     }
 
-                    let (slash_amount, next_epoch, remove_deal) = st.put_pending_deal_state(
-                        rt.store(),
-                        rt.policy(),
-                        &state,
-                        &deal,
-                        curr_epoch,
-                    )?;
+                    let (slash_amount, remove_deal) =
+                        st.process_deal_update(rt.store(), &state, &deal, curr_epoch)?;
 
                     if slash_amount.is_negative() {
                         return Err(actor_error!(
@@ -800,21 +797,10 @@ impl Actor {
                     }
 
                     if remove_deal {
-                        if next_epoch != EPOCH_UNDEFINED {
-                            return Err(actor_error!(
-                                illegal_state,
-                                format!(
-                                    "removed deal {} should have no scheduled epoch (got {})",
-                                    deal_id, next_epoch
-                                )
-                            ));
-                        }
-
                         amount_slashed += slash_amount;
 
                         // Delete proposal and state simultaneously.
                         let deleted = st.remove_deal_state(rt.store(), deal_id)?;
-
                         if deleted.is_none() {
                             return Err(actor_error!(
                                 illegal_state,
@@ -823,7 +809,6 @@ impl Actor {
                         }
 
                         let deleted = st.remove_proposal(rt.store(), deal_id)?;
-
                         if deleted.is_none() {
                             return Err(actor_error!(
                                 illegal_state,
@@ -831,14 +816,6 @@ impl Actor {
                             ));
                         }
                     } else {
-                        if next_epoch <= rt.curr_epoch() {
-                            return Err(actor_error!(
-                                illegal_state,
-                                "continuing deal {} next epoch {} should be in the future",
-                                deal_id,
-                                next_epoch
-                            ));
-                        }
                         if !slash_amount.is_zero() {
                             return Err(actor_error!(
                                 illegal_state,
@@ -850,23 +827,24 @@ impl Actor {
                         state.last_updated_epoch = curr_epoch;
                         st.put_deal_states(rt.store(), &[(deal_id, state)])?;
 
-                        if let Some(ev) = updates_needed.get_mut(&next_epoch) {
-                            ev.push(deal_id);
-                        } else {
-                            updates_needed.insert(next_epoch, vec![deal_id]);
-                        }
+                        // Compute and record the next epoch in which this deal will be updated.
+                        // This epoch is independent of the deal's stated start and end epochs
+                        // in order to prevent intentional scheduling of many deals for the same
+                        // update epoch.
+                        let next_epoch = next_update_epoch(
+                            deal_id,
+                            rt.policy().deal_updates_interval,
+                            curr_epoch + 1,
+                        );
+                        new_updates_scheduled.entry(next_epoch).or_default().push(deal_id);
                     }
                 }
-                rm_cron_id.push(i);
+                epochs_completed.push(i);
             }
 
-            st.remove_deals_by_epoch(rt.store(), &rm_cron_id)?;
-
-            // updates_needed is already sorted by epoch.
-            st.put_batch_deals_by_epoch(rt.store(), &updates_needed)?;
-
+            st.remove_deals_by_epoch(rt.store(), &epochs_completed)?;
+            st.put_batch_deals_by_epoch(rt.store(), &new_updates_scheduled)?;
             st.last_cron = rt.curr_epoch();
-
             Ok(())
         })?;
 
@@ -1181,19 +1159,11 @@ fn balance_of(rt: &impl Runtime, owner: &Address) -> Result<TokenAmount, ActorEr
     Ok(ret)
 }
 
-pub fn gen_rand_next_epoch(
-    policy: &Policy,
-    start_epoch: ChainEpoch,
-    deal_id: DealID,
-) -> ChainEpoch {
-    let offset = deal_id as i64 % policy.deal_updates_interval;
-    let q = QuantSpec { unit: policy.deal_updates_interval, offset: 0 };
-    let prev_day = q.quantize_down(start_epoch);
-    if prev_day + offset >= start_epoch {
-        return prev_day + offset;
-    }
-    let next_day = q.quantize_up(start_epoch);
-    next_day + offset
+// Calculates the first update epoch for a deal ID that is no sooner than `earliest`.
+// An ID is processed as a fixed offset within each `interval` of epochs.
+pub fn next_update_epoch(id: DealID, interval: i64, earliest: ChainEpoch) -> ChainEpoch {
+    let q = QuantSpec { unit: interval, offset: id as i64 % interval };
+    q.quantize_up(earliest)
 }
 
 ////////////////////////////////////////////////////////////////////////////////

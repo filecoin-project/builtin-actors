@@ -9,8 +9,8 @@ mod harness;
 use harness::*;
 
 const START_EPOCH: ChainEpoch = 50;
-const END_EPOCH: ChainEpoch = START_EPOCH + 200 * EPOCHS_IN_DAY;
-const SECTOR_EXPIRY: ChainEpoch = END_EPOCH + 400;
+const DURATION_EPOCHS: ChainEpoch = 200 * EPOCHS_IN_DAY;
+const END_EPOCH: ChainEpoch = START_EPOCH + DURATION_EPOCHS;
 
 #[test]
 fn deal_is_correctly_processed_if_first_cron_after_expiry() {
@@ -22,7 +22,7 @@ fn deal_is_correctly_processed_if_first_cron_after_expiry() {
         START_EPOCH,
         END_EPOCH,
         0,
-        SECTOR_EXPIRY,
+        END_EPOCH,
     );
     let deal_proposal = get_deal_proposal(&rt, deal_id);
 
@@ -53,38 +53,45 @@ fn deal_is_correctly_processed_if_first_cron_after_expiry() {
 
 #[test]
 fn regular_payments_till_deal_expires_and_then_locked_funds_are_unlocked() {
-    // start epoch should equal first processing epoch for logic to work
+    // The logic of this test relies on deal ID == 0 so that it's scheduled for
+    // updated in the 0th epoch of every interval, and the start epoch being the same.
     let start_epoch = Policy::default().deal_updates_interval;
+    let end_epoch = start_epoch + DURATION_EPOCHS;
     let rt = setup();
     let deal_id = publish_and_activate_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         start_epoch,
-        END_EPOCH,
+        end_epoch,
         0,
-        SECTOR_EXPIRY,
+        end_epoch,
     );
     let deal_proposal = get_deal_proposal(&rt, deal_id);
 
     // move the current epoch to startEpoch + 5 so payment is made
+    // this skip of 5 epochs is unrealistic, but later demonstrates that the re-scheduled
+    // epoch distribution is robust to this.
     let current = start_epoch + 5;
     rt.set_epoch(current);
     // assert payment
+    assert!(!deal_proposal.storage_price_per_epoch.is_zero());
     let (pay, slashed) =
         cron_tick_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
     assert_eq!(5 * &deal_proposal.storage_price_per_epoch, pay);
     assert!(slashed.is_zero());
 
-    // Setting the current epoch to anything less than next schedule wont make any payment
-    let current = current + Policy::default().deal_updates_interval - 1;
+    // Setting the current epoch to anything less than next schedule wont make any payment.
+    // Note the re-processing is scheduled for start+interval, not current+interval
+    // (which differs because we skipped some epochs).
+    let current = start_epoch + Policy::default().deal_updates_interval - 1;
     rt.set_epoch(current);
     cron_tick_no_change(&rt, CLIENT_ADDR, PROVIDER_ADDR);
 
-    // however setting the current epoch to next schedle will make the payment
+    // however setting the current epoch to next schedule will make the payment
     let current = current + 1;
     rt.set_epoch(current);
-    let duration = Policy::default().deal_updates_interval;
+    let duration = Policy::default().deal_updates_interval - 5;
     let (pay, slashed) =
         cron_tick_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
     assert_eq!(duration * &deal_proposal.storage_price_per_epoch, pay);
@@ -103,8 +110,8 @@ fn regular_payments_till_deal_expires_and_then_locked_funds_are_unlocked() {
     assert!(slashed.is_zero());
 
     // setting epoch to greater than end will expire the deal, make the payment and unlock all funds
-    let duration = END_EPOCH - current;
-    let current = END_EPOCH + 300;
+    let duration = end_epoch - current;
+    let current = end_epoch + 300;
     rt.set_epoch(current);
     let (pay, slashed) =
         cron_tick_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
@@ -122,15 +129,8 @@ fn payment_for_a_deal_if_deal_is_already_expired_before_a_cron_tick() {
     let end = start + 200 * EPOCHS_IN_DAY;
 
     let rt = setup();
-    let deal_id = publish_and_activate_deal(
-        &rt,
-        CLIENT_ADDR,
-        &MinerAddresses::default(),
-        start,
-        end,
-        0,
-        SECTOR_EXPIRY,
-    );
+    let deal_id =
+        publish_and_activate_deal(&rt, CLIENT_ADDR, &MinerAddresses::default(), start, end, 0, end);
     let deal_proposal = get_deal_proposal(&rt, deal_id);
 
     let current = end + 25;
@@ -159,7 +159,7 @@ fn expired_deal_should_unlock_the_remaining_client_and_provider_locked_balance_a
         START_EPOCH,
         END_EPOCH,
         0,
-        SECTOR_EXPIRY,
+        END_EPOCH,
     );
     let deal_proposal = get_deal_proposal(&rt, deal_id);
 
@@ -196,7 +196,7 @@ fn all_payments_are_made_for_a_deal_client_withdraws_collateral_and_client_accou
         START_EPOCH,
         END_EPOCH,
         0,
-        SECTOR_EXPIRY,
+        END_EPOCH,
     );
     let deal_proposal = get_deal_proposal(&rt, deal_id);
 
