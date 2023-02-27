@@ -382,11 +382,14 @@ impl Actor {
 /// runtime library.
 #[repr(transparent)]
 struct SyscallProvider<RT> {
+    // Do not add fields.
     rt: RT,
 }
 
 impl<RT> SyscallProvider<RT> {
     pub fn new(rt: &mut RT) -> &mut Self {
+        // This is safe as `SyscallProvider` contains exactly one field of type `RT`, and is
+        // transparent.
         unsafe { &mut *(rt as *mut RT as *mut SyscallProvider<RT>) }
     }
 }
@@ -444,19 +447,19 @@ where
     RT: Runtime,
 {
     fn root(&self) -> Result<Cid, NoStateError> {
-        (&**self).root()
+        (**self).root()
     }
 
     fn set_root(&self, cid: &Cid) -> Result<(), NoStateError> {
-        (&**self).set_root(cid)
+        (**self).set_root(cid)
     }
 
     fn receiver(&self) -> ActorID {
-        (&**self).receiver()
+        (**self).receiver()
     }
 
     fn caller(&self) -> ActorID {
-        (&**self).caller()
+        (**self).caller()
     }
 
     // This never returns an Err.  However we could return an error if the
@@ -469,11 +472,11 @@ where
         params: Option<IpldBlock>,
         value: TokenAmount,
     ) -> Result<Response, ErrorNumber> {
-        (&**self).send(to, method, params, value)
+        (**self).send(to, method, params, value)
     }
 
     fn resolve_address(&self, addr: &Address) -> Option<ActorID> {
-        (&**self).resolve_address(addr)
+        (**self).resolve_address(addr)
     }
 }
 
@@ -489,9 +492,7 @@ where
 }
 
 // Returns an ActorRuntime wrapping the Runtime and Blockstore
-fn as_actor_runtime<'st, RT>(
-    rt: &'st mut RT,
-) -> ActorRuntime<&'st SyscallProvider<RT>, &'st RT::Blockstore>
+fn as_actor_runtime<RT>(rt: &mut RT) -> ActorRuntime<&SyscallProvider<RT>, &RT::Blockstore>
 where
     RT: Runtime,
 {
