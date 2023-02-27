@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use core::fmt;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::rc::Rc;
 
@@ -160,7 +160,7 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
     pub network_version: NetworkVersion,
 
     // Actor State
-    pub state: Option<Cid>,
+    pub state: Cell<Option<Cid>>,
     pub balance: RefCell<TokenAmount>,
 
     // VM Impl
@@ -486,11 +486,11 @@ impl<BS: Blockstore> MockRuntime<BS> {
     ///// Runtime access for tests /////
 
     pub fn get_state<T: DeserializeOwned>(&self) -> T {
-        self.store_get(self.state.as_ref().unwrap())
+        self.store_get(&self.state.get().unwrap())
     }
 
     pub fn replace_state<T: Serialize>(&mut self, obj: &T) {
-        self.state = Some(self.store_put(obj));
+        self.state.set(Some(self.store_put(obj)));
     }
 
     pub fn set_balance(&mut self, amount: TokenAmount) {
@@ -553,11 +553,11 @@ impl<BS: Blockstore> MockRuntime<BS> {
         params: Option<IpldBlock>,
     ) -> Result<Option<IpldBlock>, ActorError> {
         self.in_call = true;
-        let prev_state = self.state;
+        let prev_state = self.state.get();
         let res = A::invoke_method(self, method_num, params);
 
         if res.is_err() {
-            self.state = prev_state;
+            self.state.set(prev_state);
         }
         self.in_call = false;
         res
@@ -1079,23 +1079,23 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
     }
 
     fn create<T: Serialize>(&mut self, obj: &T) -> Result<(), ActorError> {
-        if self.state.is_some() {
+        if self.state.get().is_some() {
             return Err(actor_error!(illegal_state; "state already constructed"));
         }
-        self.state = Some(self.store_put(obj));
+        self.state.set(Some(self.store_put(obj)));
         Ok(())
     }
 
     fn state<T: DeserializeOwned>(&self) -> Result<T, ActorError> {
-        Ok(self.store_get(self.state.as_ref().unwrap()))
+        Ok(self.store_get(self.state.get().as_ref().unwrap()))
     }
 
     fn get_state_root(&self) -> Result<Cid, ActorError> {
-        Ok(self.state.unwrap_or(EMPTY_ARR_CID))
+        Ok(self.state.get().unwrap_or(EMPTY_ARR_CID))
     }
 
-    fn set_state_root(&mut self, root: &Cid) -> Result<(), ActorError> {
-        self.state = Some(*root);
+    fn set_state_root(&self, root: &Cid) -> Result<(), ActorError> {
+        self.state.set(Some(*root));
         Ok(())
     }
 
@@ -1111,7 +1111,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         self.in_transaction = true;
         let ret = f(&mut read_only, self);
         if ret.is_ok() {
-            self.state = Some(self.store_put(&read_only));
+            self.state.set(Some(self.store_put(&read_only)));
         }
         self.in_transaction = false;
         ret

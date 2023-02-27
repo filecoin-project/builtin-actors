@@ -1025,7 +1025,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         Ok(self.v.get_actor(self.to()).unwrap().head)
     }
 
-    fn set_state_root(&mut self, root: &Cid) -> Result<(), ActorError> {
+    fn set_state_root(&self, root: &Cid) -> Result<(), ActorError> {
         let maybe_act = self.v.get_actor(self.to());
         match maybe_act {
             None => Err(ActorError::unchecked(

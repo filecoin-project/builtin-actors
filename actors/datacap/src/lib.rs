@@ -118,8 +118,8 @@ impl Actor {
     pub fn total_supply(rt: &mut impl Runtime) -> Result<TokenAmount, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let mut st: State = rt.state()?;
-        let msg = SyscallProvider { rt };
-        let token = as_token(&mut st, &msg);
+        let art = as_actor_runtime(rt);
+        let token = as_token(&mut st, &art);
         Ok(token.total_supply())
     }
 
@@ -127,8 +127,8 @@ impl Actor {
         // NOTE: mutability and method caller here are awkward for a read-only call
         rt.validate_immediate_caller_accept_any()?;
         let mut st: State = rt.state()?;
-        let msg = SyscallProvider { rt };
-        let token = as_token(&mut st, &msg);
+        let art = as_actor_runtime(rt);
+        let token = as_token(&mut st, &art);
         token.balance_of(&params).actor_result()
     }
 
@@ -138,8 +138,8 @@ impl Actor {
     ) -> Result<TokenAmount, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let mut st: State = rt.state()?;
-        let msg = SyscallProvider { rt };
-        let token = as_token(&mut st, &msg);
+        let art = as_actor_runtime(rt);
+        let token = as_token(&mut st, &art);
         token.allowance(&params.owner, &params.operator).actor_result()
     }
 
@@ -154,8 +154,8 @@ impl Actor {
                 rt.validate_immediate_caller_is(std::iter::once(&st.governor))?;
                 let operator = st.governor;
 
-                let msg = SyscallProvider { rt };
-                let mut token = as_token(st, &msg);
+                let art = as_actor_runtime(rt);
+                let mut token = as_token(st, &art);
                 // Mint tokens "from" the operator to the beneficiary.
                 let ret = token
                     .mint(
@@ -179,9 +179,9 @@ impl Actor {
             .context("state transaction failed")?;
 
         let mut st: State = rt.state()?;
-        let sys_provider = SyscallProvider { rt };
-        let intermediate = hook.call(&as_actor_runtime(&sys_provider)).actor_result()?;
-        as_token(&mut st, &sys_provider).mint_return(intermediate).actor_result()
+        let art = as_actor_runtime(rt);
+        let intermediate = hook.call(&art).actor_result()?;
+        as_token(&mut st, &art).mint_return(intermediate).actor_result()
     }
 
     /// Destroys data cap tokens for an address (a verified client).
@@ -193,8 +193,8 @@ impl Actor {
             // Only the governor can destroy datacap tokens on behalf of a holder.
             rt.validate_immediate_caller_is(std::iter::once(&st.governor))?;
 
-            let msg = SyscallProvider { rt };
-            let mut token = as_token(st, &msg);
+            let art = as_actor_runtime(rt);
+            let mut token = as_token(st, &art);
             // Burn tokens as if the holder had invoked burn() themselves.
             // The governor doesn't need an allowance.
             token.burn(&params.owner, &params.amount).actor_result()
@@ -231,8 +231,8 @@ impl Actor {
                     ));
                 }
 
-                let msg = SyscallProvider { rt };
-                let mut token = as_token(st, &msg);
+                let art = as_actor_runtime(rt);
+                let mut token = as_token(st, &art);
                 token
                     .transfer(
                         from,
@@ -246,9 +246,9 @@ impl Actor {
             .context("state transaction failed")?;
 
         let mut st: State = rt.state()?;
-        let sys_provider = SyscallProvider { rt };
-        let intermediate = hook.call(&as_actor_runtime(&sys_provider)).actor_result()?;
-        as_token(&mut st, &sys_provider).transfer_return(intermediate).actor_result()
+        let art = as_actor_runtime(rt);
+        let intermediate = hook.call(&art).actor_result()?;
+        as_token(&mut st, &art).transfer_return(intermediate).actor_result()
     }
 
     /// Transfers data cap tokens between addresses.
@@ -280,8 +280,8 @@ impl Actor {
                     ));
                 }
 
-                let msg = SyscallProvider { rt };
-                let mut token = as_token(st, &msg);
+                let art = as_actor_runtime(rt);
+                let mut token = as_token(st, &art);
                 token
                     .transfer_from(
                         &operator,
@@ -296,9 +296,9 @@ impl Actor {
             .context("state transaction failed")?;
 
         let mut st: State = rt.state()?;
-        let sys_provider = SyscallProvider { rt };
-        let intermediate = hook.call(&as_actor_runtime(&sys_provider)).actor_result()?;
-        as_token(&mut st, &sys_provider).transfer_from_return(intermediate).actor_result()
+        let art = as_actor_runtime(rt);
+        let intermediate = hook.call(&art).actor_result()?;
+        as_token(&mut st, &art).transfer_from_return(intermediate).actor_result()
     }
 
     pub fn increase_allowance(
@@ -310,8 +310,8 @@ impl Actor {
         let operator = params.operator;
 
         rt.transaction(|st: &mut State, rt| {
-            let msg = SyscallProvider { rt };
-            let mut token = as_token(st, &msg);
+            let art = as_actor_runtime(rt);
+            let mut token = as_token(st, &art);
             token.increase_allowance(&owner, &operator, &params.increase).actor_result()
         })
         .context("state transaction failed")
@@ -326,8 +326,8 @@ impl Actor {
         let operator = &params.operator;
 
         rt.transaction(|st: &mut State, rt| {
-            let msg = SyscallProvider { rt };
-            let mut token = as_token(st, &msg);
+            let art = as_actor_runtime(rt);
+            let mut token = as_token(st, &art);
             token.decrease_allowance(owner, operator, &params.decrease).actor_result()
         })
         .context("state transaction failed")
@@ -342,8 +342,8 @@ impl Actor {
         let operator = &params.operator;
 
         rt.transaction(|st: &mut State, rt| {
-            let msg = SyscallProvider { rt };
-            let mut token = as_token(st, &msg);
+            let art = as_actor_runtime(rt);
+            let mut token = as_token(st, &art);
             token.revoke_allowance(owner, operator).actor_result()
         })
         .context("state transaction failed")
@@ -354,8 +354,8 @@ impl Actor {
         let owner = &rt.message().caller();
 
         rt.transaction(|st: &mut State, rt| {
-            let msg = SyscallProvider { rt };
-            let mut token = as_token(st, &msg);
+            let art = as_actor_runtime(rt);
+            let mut token = as_token(st, &art);
             token.burn(owner, &params.amount).actor_result()
         })
         .context("state transaction failed")
@@ -370,8 +370,8 @@ impl Actor {
         let owner = &params.owner;
 
         rt.transaction(|st: &mut State, rt| {
-            let msg = SyscallProvider { rt };
-            let mut token = as_token(st, &msg);
+            let art = as_actor_runtime(rt);
+            let mut token = as_token(st, &art);
             token.burn_from(operator, owner, &params.amount).actor_result()
         })
         .context("state transaction failed")
@@ -380,11 +380,18 @@ impl Actor {
 
 /// Implementation of the token library's messenger trait in terms of the built-in actors'
 /// runtime library.
-struct SyscallProvider<'a, RT> {
-    rt: &'a mut RT,
+#[repr(transparent)]
+struct SyscallProvider<RT> {
+    rt: RT,
 }
 
-impl<'a, RT> Syscalls for &SyscallProvider<'a, RT>
+impl<RT> SyscallProvider<RT> {
+    pub fn new(rt: &mut RT) -> &mut Self {
+        unsafe { &mut *(rt as *mut RT as *mut SyscallProvider<RT>) }
+    }
+}
+
+impl<RT> Syscalls for SyscallProvider<RT>
 where
     RT: Runtime,
 {
@@ -392,8 +399,16 @@ where
         self.rt.get_state_root().map_err(|_| NoStateError)
     }
 
+    fn set_root(&self, cid: &Cid) -> Result<(), NoStateError> {
+        self.rt.set_state_root(cid).map_err(|_| NoStateError)
+    }
+
     fn receiver(&self) -> ActorID {
         self.rt.message().receiver().id().unwrap()
+    }
+
+    fn caller(&self) -> ActorID {
+        self.rt.message().caller().id().unwrap()
     }
 
     // This never returns an Err.  However we could return an error if the
@@ -424,25 +439,64 @@ where
     }
 }
 
-// Returns a token instance wrapping the token state.
-fn as_token<'st, RT>(
-    st: &'st mut State,
-    msg: &'st SyscallProvider<'st, RT>,
-) -> Token<'st, &'st SyscallProvider<'st, RT>, &'st RT::Blockstore>
+impl<RT> Syscalls for &SyscallProvider<RT>
 where
     RT: Runtime,
 {
-    Token::wrap(ActorRuntime::new(msg, msg.rt.store()), DATACAP_GRANULARITY, &mut st.token)
+    fn root(&self) -> Result<Cid, NoStateError> {
+        (&**self).root()
+    }
+
+    fn set_root(&self, cid: &Cid) -> Result<(), NoStateError> {
+        (&**self).set_root(cid)
+    }
+
+    fn receiver(&self) -> ActorID {
+        (&**self).receiver()
+    }
+
+    fn caller(&self) -> ActorID {
+        (&**self).caller()
+    }
+
+    // This never returns an Err.  However we could return an error if the
+    // Runtime send method passed through the underlying syscall error
+    // instead of hiding it behind a client-side chosen exit code.
+    fn send(
+        &self,
+        to: &Address,
+        method: MethodNum,
+        params: Option<IpldBlock>,
+        value: TokenAmount,
+    ) -> Result<Response, ErrorNumber> {
+        (&**self).send(to, method, params, value)
+    }
+
+    fn resolve_address(&self, addr: &Address) -> Option<ActorID> {
+        (&**self).resolve_address(addr)
+    }
+}
+
+// Returns a token instance wrapping the token state.
+fn as_token<'st, RT>(
+    st: &'st mut State,
+    rt: &'st ActorRuntime<&'st SyscallProvider<RT>, &'st RT::Blockstore>,
+) -> Token<'st, &'st SyscallProvider<RT>, &'st RT::Blockstore>
+where
+    RT: Runtime,
+{
+    Token::wrap(rt, DATACAP_GRANULARITY, &mut st.token)
 }
 
 // Returns an ActorRuntime wrapping the Runtime and Blockstore
 fn as_actor_runtime<'st, RT>(
-    sys_provider: &'st SyscallProvider<'st, RT>,
-) -> ActorRuntime<&'st SyscallProvider<'st, RT>, &'st RT::Blockstore>
+    rt: &'st mut RT,
+) -> ActorRuntime<&'st SyscallProvider<RT>, &'st RT::Blockstore>
 where
     RT: Runtime,
 {
-    ActorRuntime::new(sys_provider, sys_provider.rt.store())
+    let syscalls = SyscallProvider::new(rt);
+    ActorRuntime { blockstore: syscalls.rt.store(), syscalls }
 }
 
 trait AsActorResult<T> {

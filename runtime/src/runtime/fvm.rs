@@ -260,7 +260,7 @@ where
         Ok(fvm::sself::root()?)
     }
 
-    fn set_state_root(&mut self, root: &Cid) -> Result<(), ActorError> {
+    fn set_state_root(&self, root: &Cid) -> Result<(), ActorError> {
         Ok(fvm::sself::set_root(root)?)
     }
 

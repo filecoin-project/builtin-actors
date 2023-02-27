@@ -155,7 +155,7 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     fn get_state_root(&self) -> Result<Cid, ActorError>;
 
     /// Sets the state-root.
-    fn set_state_root(&mut self, root: &Cid) -> Result<(), ActorError>;
+    fn set_state_root(&self, root: &Cid) -> Result<(), ActorError>;
 
     /// Loads a mutable copy of the state of the receiver, passes it to `f`,
     /// and after `f` completes puts the state object back to the store and sets it as
