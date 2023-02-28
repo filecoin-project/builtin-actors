@@ -390,6 +390,9 @@ impl<RT> SyscallProvider<RT> {
     pub fn new(rt: &mut RT) -> &mut Self {
         // This is safe as `SyscallProvider` contains exactly one field of type `RT`, and is
         // transparent.
+        //
+        // We do this so we can construct an `ActorRuntime` from a reference to a builtin-actors
+        // `Runtime` without having to leave a temporary on the stack. See `as_actor_runtime` below.
         unsafe { &mut *(rt as *mut RT as *mut SyscallProvider<RT>) }
     }
 }
