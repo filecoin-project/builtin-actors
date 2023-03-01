@@ -2,9 +2,10 @@ use std::fmt::Debug;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum Outcome {
-    #[default]
     Return,
     Revert,
+    #[default]
+    Unset,
 }
 
 /// Output of EVM execution.

@@ -6,7 +6,7 @@ use {
     super::instructions,
     super::memory::Memory,
     super::stack::Stack,
-    super::{Bytecode, Output, System},
+    super::{Bytecode, Outcome, Output, System},
     fil_actors_runtime::runtime::Runtime,
 };
 
@@ -256,22 +256,32 @@ impl<'r, 'a, RT: Runtime + 'r> Machine<'r, 'a, RT> {
     }
 
     pub fn execute(mut self) -> Result<Output, ActorError> {
-        while self.pc < self.bytecode.len() {
+        loop {
             // This is faster than the question mark operator, and speed counts here.
             #[allow(clippy::question_mark)]
             if let Err(e) = self.step() {
                 return Err(e.wrap(format!("ABORT(pc={})", self.pc)));
             }
-        }
 
-        Ok(self.output)
+            if self.output.outcome != Outcome::Unset {
+                return Ok(self.output);
+            }
+        }
+    }
+
+    #[inline(always)]
+    fn get_op(&self) -> opcodes::Instruction<'r, 'a, RT> {
+        if self.pc < self.bytecode.len() {
+            return Self::JMPTABLE[self.bytecode[self.pc] as usize];
+        }
+        return Self::JMPTABLE[opcodes::STOP as usize];
     }
 
     #[inline(always)]
     // Note: pub only for unit test steps.
     pub(crate) fn step(&mut self) -> Result<(), ActorError> {
-        let op = self.bytecode[self.pc];
-        unsafe { Self::JMPTABLE[op as usize](self) }
+        let op = self.get_op();
+        unsafe { op(self) }
     }
 
     const JMPTABLE: [opcodes::Instruction<'r, 'a, RT>; 256] = opcodes::jumptable::<'r, 'a, RT>();

@@ -144,6 +144,7 @@ fn initialize_evm_contract(
             "constructor reverted".to_string(),
             IpldBlock::serialize_cbor(&BytesSer(&output.return_data)).unwrap(),
         )),
+        Outcome::Unset => Err(ActorError::unspecified(format!("execution ended without outcome"))),
     }
 }
 
@@ -183,6 +184,7 @@ where
             "contract reverted".to_string(),
             IpldBlock::serialize_cbor(&BytesSer(&output.return_data)).unwrap(),
         )),
+        Outcome::Unset => Err(ActorError::unspecified(format!("execution ended without outcome"))),
     }
 }
 
