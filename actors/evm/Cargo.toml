@@ -1,7 +1,7 @@
 [package]
 name = "fil_actor_evm"
 description = "Builtin EVM actor for Filecoin"
-version = "10.0.0-alpha.1"
+version = "10.0.0"
 license = "MIT OR Apache-2.0"
 authors = ["Protocol Labs", "Filecoin Core Devs"]
 edition = "2021"
@@ -15,8 +15,8 @@ exclude = ["/precompile-testdata", "/tests/measurements", "/tests/contracts"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-fil_actors_runtime = { version = "10.0.0-alpha.1", path = "../../runtime" }
-fvm_shared = { version = "3.0.0-alpha.20", default-features = false }
+fil_actors_runtime = { version = "10.0.0", path = "../../runtime" }
+fvm_shared = { version = "3.0.0", default-features = false }
 fvm_ipld_kamt = { version = "0.2.0" }
 serde = { version = "1.0.136", features = ["derive"] }
 serde_tuple = "0.5"
@@ -31,8 +31,8 @@ multihash = { version = "0.16.1", default-features = false }
 hex = { version = "0.4.3", features = ["serde"] }
 hex-literal = "0.3.4"
 substrate-bn = { version = "0.6.0", default-features = false }
-frc42_dispatch = "3.0.1-alpha.2"
-fil_actors_evm_shared = { version = "10.0.0-alpha.1", path = "shared" }
+frc42_dispatch = "3.0.2"
+fil_actors_evm_shared = { version = "10.0.0", path = "shared" }
 
 [dev-dependencies]
 lazy_static = "1.4.0"
