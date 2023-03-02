@@ -121,7 +121,9 @@ fn authenticate_message() {
     assert!(rt
         .call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, params.clone())
         .unwrap()
-        .is_none());
+        .unwrap()
+        .deserialize::<bool>()
+        .unwrap());
 
     rt.verify();
 
@@ -148,7 +150,12 @@ fn authenticate_message() {
         plaintext: vec![],
         result: Ok(()),
     });
-    rt.call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, params).unwrap();
+    assert!(rt
+        .call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, params)
+        .unwrap()
+        .unwrap()
+        .deserialize::<bool>()
+        .unwrap());
 }
 
 fn check_state(rt: &MockRuntime) {

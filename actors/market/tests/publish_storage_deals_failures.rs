@@ -274,7 +274,7 @@ fn fail_when_provider_has_some_funds_but_not_enough_for_a_deal() {
         TokenAmount::zero(),
         None,
         SendFlags::READ_ONLY,
-        None,
+        AUTHENTICATE_MESSAGE_RESPONSE.clone(),
         ExitCode::OK,
         None,
     );
@@ -344,7 +344,7 @@ fn fail_when_deals_have_different_providers() {
         TokenAmount::zero(),
         None,
         SendFlags::READ_ONLY,
-        None,
+        AUTHENTICATE_MESSAGE_RESPONSE.clone(),
         ExitCode::OK,
         None,
     );
@@ -355,7 +355,7 @@ fn fail_when_deals_have_different_providers() {
         TokenAmount::zero(),
         None,
         SendFlags::READ_ONLY,
-        None,
+        AUTHENTICATE_MESSAGE_RESPONSE.clone(),
         ExitCode::OK,
         None,
     );
@@ -533,7 +533,7 @@ fn fails_if_notify_deal_fails() {
         TokenAmount::zero(),
         None,
         SendFlags::READ_ONLY,
-        None,
+        AUTHENTICATE_MESSAGE_RESPONSE.clone(),
         ExitCode::OK,
         None,
     );

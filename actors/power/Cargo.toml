@@ -1,7 +1,7 @@
 [package]
 name = "fil_actor_power"
 description = "Builtin power actor for Filecoin"
-version = "10.0.0-alpha.1"
+version = "10.0.0"
 license = "MIT OR Apache-2.0"
 authors = ["ChainSafe Systems <info@chainsafe.io>", "Protocol Labs", "Filecoin Core Devs"]
 edition = "2018"
@@ -14,9 +14,9 @@ keywords = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-fil_actors_runtime = { version = "10.0.0-alpha.1", path = "../../runtime" }
-frc42_dispatch = "3.0.1-alpha.2"
-fvm_shared = { version = "3.0.0-alpha.20", default-features = false }
+fil_actors_runtime = { version = "10.0.0", path = "../../runtime" }
+frc42_dispatch = "3.0.2"
+fvm_shared = { version = "3.0.0", default-features = false }
 fvm_ipld_hamt = "0.6.1"
 num-traits = "0.2.14"
 num-derive = "0.3.3"

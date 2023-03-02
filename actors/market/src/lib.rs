@@ -535,25 +535,24 @@ impl Actor {
         let miner_addr = rt.message().caller();
         let curr_epoch = rt.curr_epoch();
 
-        let st: State = rt.state()?;
-        let proposals = st.get_proposal_array(rt.store())?;
+        let (deal_spaces, verified_infos) = rt.transaction(|st: &mut State, rt| {
+            let proposals = st.get_proposal_array(rt.store())?;
 
-        let deal_spaces = {
-            validate_and_return_deal_space(
-                &proposals,
-                &params.deal_ids,
-                st.next_id,
-                &miner_addr,
-                params.sector_expiry,
-                curr_epoch,
-                None,
-            )
-            .context("failed to validate deal proposals for activation")?
-        };
+            let deal_spaces = {
+                validate_and_return_deal_space(
+                    &proposals,
+                    &params.deal_ids,
+                    st.next_id,
+                    &miner_addr,
+                    params.sector_expiry,
+                    curr_epoch,
+                    None,
+                )
+                .context("failed to validate deal proposals for activation")?
+            };
 
-        // Update deal states
-        let mut verified_infos = Vec::new();
-        rt.transaction(|st: &mut State, rt| {
+            // Update deal states
+            let mut verified_infos = Vec::new();
             let mut deal_states: Vec<(DealID, DealState)> = vec![];
 
             for deal_id in params.deal_ids {
@@ -613,7 +612,7 @@ impl Actor {
 
             st.put_deal_states(rt.store(), &deal_states)?;
 
-            Ok(())
+            Ok((deal_spaces, verified_infos))
         })?;
 
         Ok(ActivateDealsResult { nonverified_deal_space: deal_spaces.deal_space, verified_infos })
@@ -1318,7 +1317,7 @@ fn deal_proposal_is_internally_valid(
     // Generate unsigned bytes
     let proposal_bytes = serialize(&proposal.proposal, "deal proposal")?;
 
-    extract_send_result(rt.send(
+    if !extract_send_result(rt.send(
         &proposal.proposal.client,
         ext::account::AUTHENTICATE_MESSAGE_METHOD,
         IpldBlock::serialize_cbor(&ext::account::AuthenticateMessageParams {
@@ -1329,8 +1328,13 @@ fn deal_proposal_is_internally_valid(
         None,
         SendFlags::READ_ONLY,
     ))
-    .map_err(|e| e.wrap("proposal authentication failed"))?;
-    Ok(())
+    .and_then(deserialize_block)
+    .context("proposal authentication failed")?
+    {
+        Err(actor_error!(illegal_argument, "proposal authentication failed"))
+    } else {
+        Ok(())
+    }
 }
 
 /// Compute a deal CID using the runtime.
