@@ -431,13 +431,16 @@ impl Actor {
         let this_epoch_qa_power_smoothed = rt
             .transaction(|st: &mut State, rt| {
                 let result = Ok(st.this_epoch_qa_power_smoothed.clone());
-                if st.proof_validation_batch.is_none() {
-                    debug!("ProofValidationBatch was nil, quitting verification");
-                    return result;
-                }
+                let batch = match &st.proof_validation_batch {
+                    None => {
+                        debug!("ProofValidationBatch was nil, quitting verification");
+                        return result;
+                    }
+                    Some(batch) => batch,
+                };
                 let mmap = match Multimap::from_root(
                     rt.store(),
-                    st.proof_validation_batch.as_ref().unwrap(),
+                    batch,
                     HAMT_BIT_WIDTH,
                     PROOF_VALIDATION_BATCH_AMT_BITWIDTH,
                 ) {
