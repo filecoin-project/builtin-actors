@@ -106,7 +106,6 @@ impl Actor {
         }
 
         let verifier = resolve_to_actor_id(rt, &params.address, true)?;
-
         let verifier = Address::new_id(verifier);
 
         let st: State = rt.state()?;
@@ -138,10 +137,8 @@ impl Actor {
         let verifier = resolve_to_actor_id(rt, &params, false)?;
         let verifier = Address::new_id(verifier);
 
-        let state: State = rt.state()?;
-        rt.validate_immediate_caller_is(std::iter::once(&state.root_key))?;
-
         rt.transaction(|st: &mut State, rt| {
+            rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
             st.remove_verifier(rt.store(), &verifier).context("failed to remove verifier")
         })
     }
@@ -165,39 +162,38 @@ impl Actor {
         let client = resolve_to_actor_id(rt, &params.address, true)?;
         let client = Address::new_id(client);
 
-        let st: State = rt.state()?;
-        if client == st.root_key {
-            return Err(actor_error!(illegal_argument, "root cannot be added as client"));
-        }
-
-        // Validate caller is one of the verifiers, i.e. has an allowance (even if zero).
-        let verifier = rt.message().caller();
-        let verifier_cap = st
-            .get_verifier_cap(rt.store(), &verifier)?
-            .ok_or_else(|| actor_error!(not_found, "caller {} is not a verifier", verifier))?;
-
-        // Disallow existing verifiers as clients.
-        if st.get_verifier_cap(rt.store(), &client)?.is_some() {
-            return Err(actor_error!(
-                illegal_argument,
-                "verifier {} cannot be added as a verified client",
-                client
-            ));
-        }
-
-        // Compute new verifier allowance.
-        if verifier_cap < params.allowance {
-            return Err(actor_error!(
-                illegal_argument,
-                "add more DataCap {} for client than allocated {}",
-                params.allowance,
-                verifier_cap
-            ));
-        }
-
-        // Reduce verifier's cap.
-        let new_verifier_cap = verifier_cap - &params.allowance;
         rt.transaction(|st: &mut State, rt| {
+            if client == st.root_key {
+                return Err(actor_error!(illegal_argument, "root cannot be added as client"));
+            }
+
+            // Validate caller is one of the verifiers, i.e. has an allowance (even if zero).
+            let verifier = rt.message().caller();
+            let verifier_cap = st
+                .get_verifier_cap(rt.store(), &verifier)?
+                .ok_or_else(|| actor_error!(not_found, "caller {} is not a verifier", verifier))?;
+
+            // Disallow existing verifiers as clients.
+            if st.get_verifier_cap(rt.store(), &client)?.is_some() {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "verifier {} cannot be added as a verified client",
+                    client
+                ));
+            }
+
+            // Compute new verifier allowance.
+            if verifier_cap < params.allowance {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "add more DataCap {} for client than allocated {}",
+                    params.allowance,
+                    verifier_cap
+                ));
+            }
+
+            // Reduce verifier's cap.
+            let new_verifier_cap = verifier_cap - &params.allowance;
             st.put_verifier(rt.store(), &verifier, &new_verifier_cap)
                 .context("failed to update verifier allowance")
         })?;
