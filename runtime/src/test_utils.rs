@@ -205,6 +205,7 @@ pub struct Expectations {
     pub expect_gas_charge: VecDeque<i64>,
     pub expect_gas_available: VecDeque<u64>,
     pub expect_emitted_events: VecDeque<ActorEvent>,
+    pub expect_payment: Option<TokenAmount>,
     skip_verification_on_drop: bool,
 }
 
@@ -315,6 +316,11 @@ impl Expectations {
             this.expect_emitted_events.is_empty(),
             "expect_emitted_events {:?}, not received",
             this.expect_emitted_events
+        );
+        assert!(
+            this.expect_payment.is_none(),
+            "expect_payment {:?}, not received",
+            this.expect_payment
         );
     }
 }
@@ -1288,6 +1294,13 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
 
     fn read_only(&self) -> bool {
         false
+    }
+
+    fn payable(&mut self) {
+        self.require_in_call();
+        assert!(self.expectations.borrow().expect_payment.is_some(), "unexpected payable");
+        let expected_payment = self.expectations.borrow_mut().expect_payment.take().unwrap();
+        assert_eq!(expected_payment, self.message().value_received(), "unexpected amount received");
     }
 }
 

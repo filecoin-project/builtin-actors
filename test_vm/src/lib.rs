@@ -463,6 +463,7 @@ impl<'bs> VM<'bs> {
             msg,
             allow_side_effects: true,
             caller_validated: false,
+            payable: false,
             read_only: false,
             policy: &Policy::default(),
             subinvocations: RefCell::new(vec![]),
@@ -604,6 +605,7 @@ pub struct InvocationCtx<'invocation, 'bs> {
     msg: InternalMessage,
     allow_side_effects: bool,
     caller_validated: bool,
+    payable: bool,
     read_only: bool,
     policy: &'invocation Policy,
     subinvocations: RefCell<Vec<InvocationTrace>>,
@@ -665,6 +667,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 msg: new_actor_msg,
                 allow_side_effects: true,
                 caller_validated: false,
+                payable: false,
                 read_only: false,
                 policy: self.policy,
                 subinvocations: RefCell::new(vec![]),
@@ -768,9 +771,17 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             Type::EAM => EamActor::invoke_method(self, self.msg.method, params),
             Type::EthAccount => EthAccountActor::invoke_method(self, self.msg.method, params),
         };
-        if res.is_ok() && !self.caller_validated {
-            res = Err(actor_error!(assertion_failed, "failed to validate caller"));
+        if res.is_ok() {
+            if !self.caller_validated {
+                res = Err(actor_error!(assertion_failed, "failed to validate caller"));
+            } else if !self.payable && !self.msg.value.is_zero() {
+                res = Err(actor_error!(
+                    assertion_failed,
+                    "payment received in method not marked payable"
+                ))
+            }
         }
+
         if res.is_err() {
             self.v.rollback(prior_root)
         };
@@ -986,6 +997,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
             msg: new_actor_msg,
             allow_side_effects: true,
             caller_validated: false,
+            payable: false,
             read_only: send_flags.read_only(),
             policy: self.policy,
             subinvocations: RefCell::new(vec![]),
@@ -1120,6 +1132,10 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
 
     fn read_only(&self) -> bool {
         self.read_only
+    }
+
+    fn payable(&mut self) {
+        todo!()
     }
 }
 
