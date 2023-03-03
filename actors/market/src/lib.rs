@@ -9,7 +9,6 @@ use cid::Cid;
 use fil_actors_runtime::{extract_send_result, FIRST_ACTOR_SPECIFIC_EXIT_CODE};
 use frc46_token::token::types::{BalanceReturn, TransferFromParams, TransferFromReturn};
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
@@ -548,7 +547,7 @@ impl Actor {
             let mut verified_infos = Vec::new();
             let mut deal_states: Vec<(DealID, DealState)> = vec![];
 
-            for deal_id in params.deal_ids {
+            for (deal_id, proposal) in proposals {
                 // This construction could be replaced with a single "update deal state"
                 // state method, possibly batched over all deal ids at once.
                 let s = st.find_deal_state(rt.store(), deal_id)?;
@@ -560,8 +559,6 @@ impl Actor {
                         deal_id
                     ));
                 }
-
-                let proposal = st.get_proposal(rt.store(), deal_id)?;
 
                 let propc = rt_deal_cid(rt, &proposal)?;
 
