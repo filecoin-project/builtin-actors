@@ -512,7 +512,8 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 
     pub fn set_value(&mut self, value: TokenAmount) {
-        self.value_received = value;
+        self.value_received = value.clone();
+        self.expectations.borrow_mut().expect_payment = Some(value);
     }
 
     pub fn set_caller(&mut self, code_id: Cid, address: Address) {
@@ -721,7 +722,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
 
     #[allow(dead_code)]
     pub fn set_received(&mut self, amount: TokenAmount) {
-        self.value_received = amount;
+        self.set_value(amount);
     }
 
     #[allow(dead_code)]
@@ -1296,11 +1297,14 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         false
     }
 
-    fn payable(&mut self) {
+    fn payable(&mut self) -> TokenAmount {
         self.require_in_call();
         assert!(self.expectations.borrow().expect_payment.is_some(), "unexpected payable");
+
         let expected_payment = self.expectations.borrow_mut().expect_payment.take().unwrap();
         assert_eq!(expected_payment, self.message().value_received(), "unexpected amount received");
+
+        expected_payment
     }
 }
 

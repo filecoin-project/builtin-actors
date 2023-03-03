@@ -259,7 +259,7 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
 
     /// Marks the receiver as payable meaning it can receive funds.
     /// Exported actor methods that receive funds must invoke this method before returning.
-    fn payable(&mut self);
+    fn payable(&mut self) -> TokenAmount;
 }
 
 /// Message information available to the actor about executing message.
