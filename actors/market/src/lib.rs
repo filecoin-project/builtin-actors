@@ -1013,10 +1013,10 @@ fn deal_proposals(
     deal_ids: &[DealID],
 ) -> Result<Vec<(DealID, DealProposal)>, ActorError> {
     let state: State = rt.state()?;
-    let proposals = state.get_proposal_array(rt.store())?;
+    let proposal_array = state.get_proposal_array(rt.store())?;
 
-    let sector_proposals = {
-        let mut sector_proposals = Vec::new();
+    let proposals = {
+        let mut proposals = Vec::new();
         let mut seen_deal_ids = BTreeSet::new();
         for deal_id in deal_ids {
             if !seen_deal_ids.insert(deal_id) {
@@ -1026,15 +1026,21 @@ fn deal_proposals(
                     deal_id
                 ));
             }
-            let proposal = proposals
+            let proposal = proposal_array
                 .get(*deal_id)
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal")?
-                .ok_or_else(|| actor_error!(not_found, "no such deal {}", deal_id))?;
-            sector_proposals.push((*deal_id, proposal.clone()));
+                .ok_or_else(|| {
+                    if deal_id < &state.next_id {
+                        ActorError::unchecked(EX_DEAL_EXPIRED, format!("deal {} expired", deal_id))
+                    } else {
+                        actor_error!(not_found, "no such deal {}", deal_id)
+                    }
+                })?;
+            proposals.push((*deal_id, proposal.clone()));
         }
-        sector_proposals
+        proposals
     };
-    Ok(sector_proposals)
+    Ok(proposals)
 }
 
 fn compute_data_commitment(
@@ -1054,7 +1060,7 @@ fn compute_data_commitment(
 }
 
 pub fn validate_and_return_deal_space(
-    sector_proposals: &[(DealID, DealProposal)],
+    proposals: &[(DealID, DealProposal)],
     miner_addr: &Address,
     sector_expiry: ChainEpoch,
     sector_activation: ChainEpoch,
@@ -1063,7 +1069,7 @@ pub fn validate_and_return_deal_space(
     let mut deal_space = BigInt::zero();
     let mut verified_deal_space = BigInt::zero();
 
-    for (deal_id, proposal) in sector_proposals {
+    for (deal_id, proposal) in proposals {
         validate_deal_can_activate(proposal, miner_addr, sector_expiry, sector_activation)
             .with_context(|| format!("cannot activate deal {}", deal_id))?;
 
