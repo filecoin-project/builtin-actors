@@ -495,10 +495,6 @@ impl Actor {
         let miner_addr = rt.message().caller();
         let curr_epoch = rt.curr_epoch();
 
-        // TODO: remove
-        let st: State = rt.state()?;
-        let proposals = st.get_proposal_array(rt.store())?;
-
         let mut sectors_data = Vec::with_capacity(params.sectors.len());
         for sector in params.sectors.iter() {
             let sector_proposals = deal_proposals(rt, &sector.deal_ids)?;
@@ -518,7 +514,7 @@ impl Actor {
             let commd = if sector.deal_ids.is_empty() {
                 None
             } else {
-                Some(compute_data_commitment(rt, &proposals, sector.sector_type, &sector.deal_ids)?)
+                Some(compute_data_commitment(rt, &sector_proposals, sector.sector_type)?)
             };
 
             sectors_data.push(SectorDealData { commd });
@@ -686,17 +682,10 @@ impl Actor {
     ) -> Result<ComputeDataCommitmentReturn, ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
 
-        let st: State = rt.state()?;
-        let proposals = st.get_proposal_array(rt.store())?;
-
         let mut commds = Vec::with_capacity(params.inputs.len());
         for comm_input in params.inputs.iter() {
-            commds.push(compute_data_commitment(
-                rt,
-                &proposals,
-                comm_input.sector_type,
-                &comm_input.deal_ids,
-            )?);
+            let proposed_deals = deal_proposals(rt, &comm_input.deal_ids)?;
+            commds.push(compute_data_commitment(rt, &proposed_deals, comm_input.sector_type)?);
         }
 
         Ok(ComputeDataCommitmentReturn { commds })
@@ -1048,27 +1037,17 @@ fn deal_proposals(
     Ok(sector_proposals)
 }
 
-fn compute_data_commitment<BS: Blockstore>(
+fn compute_data_commitment(
     rt: &impl Runtime,
-    proposals: &DealArray<BS>,
+    proposals: &[(DealID, DealProposal)],
     sector_type: RegisteredSealProof,
-    deal_ids: &[DealID],
 ) -> Result<Cid, ActorError> {
-    let mut pieces = Vec::with_capacity(deal_ids.len());
+    let mut pieces = Vec::with_capacity(proposals.len());
 
-    for deal_id in deal_ids {
-        let deal = proposals
-            .get(*deal_id)
-            .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to get deal_id ({})", deal_id),
-                )
-            })?
-            .ok_or_else(|| actor_error!(not_found, "proposal doesn't exist ({})", deal_id))?;
-
+    for (_, deal) in proposals {
         pieces.push(PieceInfo { cid: deal.piece_cid, size: deal.piece_size });
     }
+
     rt.compute_unsealed_sector_cid(sector_type, &pieces).map_err(|e| {
         e.downcast_default(ExitCode::USR_ILLEGAL_ARGUMENT, "failed to compute unsealed sector CID")
     })
