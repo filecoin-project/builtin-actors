@@ -109,7 +109,7 @@ impl Actor {
 
     /// Deposits the received value into the balance held in escrow.
     fn add_balance(rt: &mut impl Runtime, provider_or_client: Address) -> Result<(), ActorError> {
-        let msg_value = rt.message().value_received();
+        let msg_value = rt.payable();
 
         if msg_value <= TokenAmount::zero() {
             return Err(actor_error!(

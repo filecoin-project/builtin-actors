@@ -823,7 +823,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     assert_eq!(deal.client_balance_requirement(), get_balance(&mut rt, &client_resolved).balance);
 
     // add funds for provider using it's BLS address -> will be resolved and persisted
-    rt.value_received = deal.provider_collateral.clone();
+    rt.set_received(deal.provider_collateral.clone());
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, OWNER_ADDR);
     rt.expect_validate_caller_any();
     expect_provider_control_address(&mut rt, provider_resolved, OWNER_ADDR, WORKER_ADDR);
