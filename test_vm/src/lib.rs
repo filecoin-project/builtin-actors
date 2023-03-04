@@ -1134,7 +1134,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         self.read_only
     }
 
-    fn payable(&mut self) {
+    fn payable(&mut self) -> TokenAmount {
         todo!()
     }
 }
