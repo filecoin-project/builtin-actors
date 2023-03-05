@@ -9,6 +9,7 @@ use cid::Cid;
 use fil_actors_runtime::{extract_send_result, FIRST_ACTOR_SPECIFIC_EXIT_CODE};
 use frc46_token::token::types::{BalanceReturn, TransferFromParams, TransferFromReturn};
 use fvm_ipld_bitfield::BitField;
+use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
@@ -494,9 +495,13 @@ impl Actor {
         let miner_addr = rt.message().caller();
         let curr_epoch = rt.curr_epoch();
 
+        let state = rt.state::<State>()?;
+        let proposal_array = state.get_proposal_array(rt.store())?;
+
         let mut sectors_data = Vec::with_capacity(params.sectors.len());
         for sector in params.sectors.iter() {
-            let sector_proposals = deal_proposals(rt, &sector.deal_ids)?;
+            let sector_proposals =
+                deal_proposals(&proposal_array, &sector.deal_ids, state.next_id)?;
             let sector_size = sector
                 .sector_type
                 .sector_size()
@@ -531,17 +536,20 @@ impl Actor {
         let miner_addr = rt.message().caller();
         let curr_epoch = rt.curr_epoch();
 
-        let deal_proposals = deal_proposals(rt, &params.deal_ids)?;
-        let deal_spaces = {
-            validate_and_return_deal_space(
-                &deal_proposals,
-                &miner_addr,
-                params.sector_expiry,
-                curr_epoch,
-                None,
-            )
-            .context("failed to validate deal proposals for activation")?
-        };
+        let (deal_spaces, verified_infos) = rt.transaction(|st: &mut State, rt| {
+            let proposal_array = st.get_proposal_array(rt.store())?;
+            let proposals = deal_proposals(&proposal_array, &params.deal_ids, st.next_id)?;
+
+            let deal_spaces = {
+                validate_and_return_deal_space(
+                    &proposals,
+                    &miner_addr,
+                    params.sector_expiry,
+                    curr_epoch,
+                    None,
+                )
+                .context("failed to validate deal proposals for activation")?
+            };
 
             // Update deal states
             let mut verified_infos = Vec::new();
@@ -679,9 +687,13 @@ impl Actor {
     ) -> Result<ComputeDataCommitmentReturn, ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
 
+        let state = rt.state::<State>()?;
+        let proposal_array = state.get_proposal_array(rt.store())?;
+
         let mut commds = Vec::with_capacity(params.inputs.len());
         for comm_input in params.inputs.iter() {
-            let proposed_deals = deal_proposals(rt, &comm_input.deal_ids)?;
+            let proposed_deals =
+                deal_proposals(&proposal_array, &comm_input.deal_ids, state.next_id)?;
             commds.push(compute_data_commitment(rt, &proposed_deals, comm_input.sector_type)?);
         }
 
@@ -1005,13 +1017,11 @@ impl Actor {
     }
 }
 
-fn deal_proposals(
-    rt: &impl Runtime,
+fn deal_proposals<BS: Blockstore>(
+    proposal_array: &DealArray<BS>,
     deal_ids: &[DealID],
+    next_id: DealID,
 ) -> Result<Vec<(DealID, DealProposal)>, ActorError> {
-    let state: State = rt.state()?;
-    let proposal_array = state.get_proposal_array(rt.store())?;
-
     let proposals = {
         let mut proposals = Vec::new();
         let mut seen_deal_ids = BTreeSet::new();
@@ -1027,7 +1037,7 @@ fn deal_proposals(
                 .get(*deal_id)
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal")?
                 .ok_or_else(|| {
-                    if deal_id < &state.next_id {
+                    if *deal_id < next_id {
                         ActorError::unchecked(EX_DEAL_EXPIRED, format!("deal {} expired", deal_id))
                     } else {
                         actor_error!(not_found, "no such deal {}", deal_id)
