@@ -50,7 +50,7 @@ pub struct FvmRuntime<B = ActorBlockstore> {
     /// Indicates that the caller has been validated.
     caller_validated: bool,
     /// Indicates that payment can be received.
-    received_payment: bool,
+    payable: bool,
     /// The runtime policy
     policy: Policy,
 }
@@ -61,7 +61,7 @@ impl Default for FvmRuntime {
             blockstore: ActorBlockstore,
             in_transaction: false,
             caller_validated: false,
-            received_payment: false,
+            payable: false,
             policy: Policy::default(),
         }
     }
@@ -381,7 +381,7 @@ where
     }
 
     fn payable(&mut self) -> TokenAmount {
-        self.received_payment = true;
+        self.payable = true;
         fvm::message::value_received()
     }
 }
@@ -595,7 +595,7 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
     }
 
     // Abort with "assertion failed" if the actor received funds but did not call `payable` somehwere.
-    if !rt.received_payment && !fvm::message::value_received().is_zero() {
+    if !rt.payable && !fvm::message::value_received().is_zero() {
         fvm::vm::abort(
             ExitCode::USR_ASSERTION_FAILED.value(),
             Some("payment received in method not marked payable"),

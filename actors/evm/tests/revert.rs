@@ -1,7 +1,5 @@
 use fil_actor_evm as evm;
 use fvm_ipld_encoding::{BytesSer, RawBytes};
-use fvm_shared::econ::TokenAmount;
-use num_traits::Zero;
 
 mod asm;
 mod util;
