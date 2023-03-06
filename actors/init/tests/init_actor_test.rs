@@ -120,8 +120,10 @@ fn create_2_payment_channels() {
         let pay_channel_string = format!("paych_{}", n);
         let paych = pay_channel_string.as_bytes();
 
-        rt.set_balance(TokenAmount::from_atto(100));
-        rt.value_received = TokenAmount::from_atto(100);
+        let balance = TokenAmount::from_atto(100);
+        rt.set_balance(balance.clone());
+        rt.set_value(balance.clone());
+        rt.expect_value(balance.clone());
 
         let unique_address = Address::new_actor(paych);
         rt.new_actor_addr = Some(Address::new_actor(paych));

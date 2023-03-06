@@ -79,7 +79,7 @@ fn repay_debt_restricted_correctly() {
     rt.expect_validate_caller_addr(h.caller_addrs());
 
     rt.add_balance(fee_debt.clone());
-    rt.set_received(fee_debt.clone());
+    rt.set_value(fee_debt.clone());
 
     rt.expect_send_simple(BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, None, fee_debt, None, ExitCode::OK);
 

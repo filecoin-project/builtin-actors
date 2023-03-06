@@ -32,7 +32,6 @@ fn assert_simple_pre_commit(sector_number: SectorNumber, deal_ids: &[DealID]) {
     h.set_proof_type(RegisteredSealProof::StackedDRG64GiBV1);
     let mut rt = h.new_runtime();
     rt.set_balance(BIG_BALANCE.clone());
-    rt.set_received(TokenAmount::zero());
 
     let precommit_epoch = period_offset + 1;
     rt.set_epoch(precommit_epoch);
@@ -114,7 +113,6 @@ mod miner_actor_test_commitment {
         let mut rt = h.new_runtime();
 
         rt.set_balance(insufficient_balance);
-        rt.set_received(TokenAmount::zero());
 
         let precommit_epoch = period_offset + 1;
         rt.set_epoch(precommit_epoch);
@@ -142,7 +140,6 @@ mod miner_actor_test_commitment {
         h.set_proof_type(RegisteredSealProof::StackedDRG64GiBV1);
         let mut rt = h.new_runtime();
         rt.set_balance(BIG_BALANCE.clone());
-        rt.set_received(TokenAmount::zero());
 
         let precommit_epoch = period_offset + 1;
         rt.set_epoch(precommit_epoch);
@@ -173,7 +170,6 @@ mod miner_actor_test_commitment {
         let mut rt = h.new_runtime();
 
         rt.set_balance(BIG_BALANCE.clone());
-        rt.set_received(TokenAmount::zero());
 
         let precommit_epoch = period_offset + 1;
         rt.set_epoch(precommit_epoch);
@@ -473,8 +469,6 @@ mod miner_actor_test_commitment {
             let mut rt = h.new_runtime();
 
             rt.set_balance(BIG_BALANCE.clone());
-            rt.set_received(TokenAmount::zero());
-
             rt.set_epoch(period_offset + 1);
             h.construct_and_verify(&mut rt);
             let deadline = h.deadline(&rt);
@@ -540,7 +534,6 @@ mod miner_actor_test_commitment {
         let mut rt = h.new_runtime();
 
         rt.set_balance(BIG_BALANCE.clone());
-        rt.set_received(TokenAmount::zero());
 
         h.construct_and_verify(&mut rt);
         let precommit_epoch = period_offset + 1;
@@ -583,7 +576,6 @@ mod miner_actor_test_commitment {
         h.set_proof_type(RegisteredSealProof::StackedDRG32GiBV1P1);
         let mut rt = h.new_runtime();
         rt.set_balance(BIG_BALANCE.clone());
-        rt.set_received(TokenAmount::zero());
         let precommit_epoch = period_offset + 1;
         rt.set_epoch(precommit_epoch);
         h.construct_and_verify(&mut rt);

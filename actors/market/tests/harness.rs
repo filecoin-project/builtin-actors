@@ -193,6 +193,7 @@ pub fn expect_provider_is_control_address(
 
 pub fn add_provider_funds(rt: &mut MockRuntime, amount: TokenAmount, addrs: &MinerAddresses) {
     rt.set_value(amount.clone());
+    rt.expect_value(amount.clone());
     rt.set_address_actor_type(addrs.provider, *MINER_ACTOR_CODE_ID);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.owner);
     rt.expect_validate_caller_any();
@@ -212,6 +213,7 @@ pub fn add_provider_funds(rt: &mut MockRuntime, amount: TokenAmount, addrs: &Min
 
 pub fn add_participant_funds(rt: &mut MockRuntime, addr: Address, amount: TokenAmount) {
     rt.set_value(amount.clone());
+    rt.expect_value(amount.clone());
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addr);
 

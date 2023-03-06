@@ -194,8 +194,9 @@ fn adds_to_provider_escrow_funds() {
 
         for tc in &test_cases {
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *caller_addr);
-            rt.set_value(TokenAmount::from_atto(tc.delta));
             rt.expect_validate_caller_any();
+            rt.set_value(TokenAmount::from_atto(tc.delta));
+            rt.expect_value(TokenAmount::from_atto(tc.delta));
             expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
             assert!(rt
@@ -394,8 +395,9 @@ fn adds_to_non_provider_funds() {
 
         for tc in &test_cases {
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *caller_addr);
-            rt.set_value(TokenAmount::from_atto(tc.delta));
             rt.expect_validate_caller_any();
+            rt.set_value(TokenAmount::from_atto(tc.delta));
+            rt.expect_value(TokenAmount::from_atto(tc.delta));
             assert!(rt
                 .call::<MarketActor>(
                     Method::AddBalance as u64,
@@ -495,7 +497,7 @@ fn fail_when_balance_is_zero() {
     let mut rt = setup();
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, OWNER_ADDR);
-    rt.set_received(TokenAmount::zero());
+    rt.set_value(TokenAmount::zero());
 
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -777,7 +779,7 @@ fn deal_expires() {
 
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/0afe155bfffa036057af5519afdead845e0780de/actors/builtin/market/market_test.go#L529
 #[test]
-fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_to_verigreg_actor_for_a_verified_deal(
+fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_to_verifreg_actor_for_a_verified_deal(
 ) {
     use fvm_shared::address::BLS_PUB_LEN;
 
@@ -808,9 +810,10 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     // add funds for client using its BLS address -> will be resolved and persisted
     let amount = deal.client_balance_requirement();
 
-    rt.set_value(amount.clone());
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, client_resolved);
     rt.expect_validate_caller_any();
+    rt.set_value(amount.clone());
+    rt.expect_value(amount.clone());
     assert!(rt
         .call::<MarketActor>(
             Method::AddBalanceExported as u64,
@@ -823,7 +826,8 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     assert_eq!(deal.client_balance_requirement(), get_balance(&mut rt, &client_resolved).balance);
 
     // add funds for provider using it's BLS address -> will be resolved and persisted
-    rt.set_received(deal.provider_collateral.clone());
+    rt.set_value(deal.provider_collateral.clone());
+    rt.expect_value(deal.provider_collateral.clone());
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, OWNER_ADDR);
     rt.expect_validate_caller_any();
     expect_provider_control_address(&mut rt, provider_resolved, OWNER_ADDR, WORKER_ADDR);
@@ -1915,8 +1919,9 @@ fn insufficient_client_balance_in_a_batch() {
     let provider_funds =
         deal1.provider_balance_requirement().add(deal2.provider_balance_requirement());
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, OWNER_ADDR);
-    rt.set_value(provider_funds);
     rt.expect_validate_caller_any();
+    rt.set_value(provider_funds.clone());
+    rt.expect_value(provider_funds);
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
     assert!(rt
@@ -2051,8 +2056,11 @@ fn insufficient_provider_balance_in_a_batch() {
 
     // Provider has enough for only the second deal
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, OWNER_ADDR);
-    rt.set_value(deal2.provider_balance_requirement().clone());
     rt.expect_validate_caller_any();
+    let value = deal2.provider_balance_requirement();
+    rt.set_value(value.clone());
+    rt.expect_value(value.clone());
+
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
     assert!(rt
@@ -2164,7 +2172,8 @@ fn insufficient_provider_balance_in_a_batch() {
 fn add_balance_restricted_correctly() {
     let mut rt = setup();
     let amount = TokenAmount::from_atto(1000);
-    rt.set_value(amount);
+    rt.set_value(amount.clone());
+    rt.expect_value(amount);
 
     // set caller to not-builtin
     rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(1234));
@@ -2208,8 +2217,10 @@ fn psd_restricted_correctly() {
 
     // Provider has enough funds
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, OWNER_ADDR);
-    rt.set_value(deal.provider_balance_requirement().clone());
     rt.expect_validate_caller_any();
+    let value = deal.provider_balance_requirement();
+    rt.set_value(value.clone());
+    rt.expect_value(value.clone());
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
     assert!(rt

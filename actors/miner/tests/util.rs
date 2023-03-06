@@ -2133,7 +2133,7 @@ impl ActorHarness {
         rt.expect_validate_caller_addr(self.caller_addrs());
 
         rt.add_balance(value.clone());
-        rt.set_received(value.clone());
+        rt.set_value(value.clone());
         if expected_repaid_from_vest > &TokenAmount::zero() {
             let pledge_delta = expected_repaid_from_vest.neg();
             rt.expect_send_simple(

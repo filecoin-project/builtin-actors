@@ -96,8 +96,10 @@ fn create_miner_given_send_to_init_actor_fails_should_fail() {
 
     // owner send CreateMiner to Actor
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *OWNER);
-    rt.value_received = TokenAmount::from_atto(10);
-    rt.set_balance(TokenAmount::from_atto(10));
+    let balance = TokenAmount::from_atto(10);
+    rt.set_balance(balance.clone());
+    rt.set_value(balance.clone());
+    rt.expect_value(balance);
     rt.expect_validate_caller_any();
 
     let message_params = ExecParams {

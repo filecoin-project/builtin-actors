@@ -285,7 +285,6 @@ mod miner_actor_precommit_batch {
         let mut rt = h.new_runtime();
 
         rt.set_balance(BIG_BALANCE.clone());
-        rt.set_received(TokenAmount::zero());
 
         let precommit_epoch = period_offset + 1;
         rt.set_epoch(precommit_epoch);
@@ -325,7 +324,6 @@ mod miner_actor_precommit_batch {
         let mut rt = h.new_runtime();
 
         rt.set_balance(BIG_BALANCE.clone());
-        rt.set_received(TokenAmount::zero());
 
         let precommit_epoch = period_offset + 1;
         rt.set_epoch(precommit_epoch);
@@ -364,7 +362,6 @@ mod miner_actor_precommit_batch {
         let mut rt = h.new_runtime();
 
         rt.set_balance(BIG_BALANCE.clone());
-        rt.set_received(TokenAmount::zero());
 
         let precommit_epoch = period_offset + 1;
         rt.set_epoch(precommit_epoch);

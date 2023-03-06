@@ -141,6 +141,7 @@ impl Harness {
     ) -> Result<(), ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *owner);
         rt.set_value(value.clone());
+        rt.expect_value(value.clone());
         rt.set_balance(value.clone());
         rt.expect_validate_caller_any();
 
