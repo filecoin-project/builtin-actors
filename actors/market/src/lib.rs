@@ -495,13 +495,12 @@ impl Actor {
         let miner_addr = rt.message().caller();
         let curr_epoch = rt.curr_epoch();
 
-        let state = rt.state::<State>()?;
-        let proposal_array = state.get_proposal_array(rt.store())?;
+        let st: State = rt.state()?;
+        let proposal_array = st.get_proposal_array(rt.store())?;
 
         let mut sectors_data = Vec::with_capacity(params.sectors.len());
         for sector in params.sectors.iter() {
-            let sector_proposals =
-                deal_proposals(&proposal_array, &sector.deal_ids, state.next_id)?;
+            let sector_proposals = get_proposals(&proposal_array, &sector.deal_ids, st.next_id)?;
             let sector_size = sector
                 .sector_type
                 .sector_size()
@@ -538,7 +537,7 @@ impl Actor {
 
         let (deal_spaces, verified_infos) = rt.transaction(|st: &mut State, rt| {
             let proposal_array = st.get_proposal_array(rt.store())?;
-            let proposals = deal_proposals(&proposal_array, &params.deal_ids, st.next_id)?;
+            let proposals = get_proposals(&proposal_array, &params.deal_ids, st.next_id)?;
 
             let deal_spaces = {
                 validate_and_return_deal_space(
@@ -687,13 +686,12 @@ impl Actor {
     ) -> Result<ComputeDataCommitmentReturn, ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
 
-        let state = rt.state::<State>()?;
-        let proposal_array = state.get_proposal_array(rt.store())?;
+        let st: State = rt.state()?;
+        let proposal_array = st.get_proposal_array(rt.store())?;
 
         let mut commds = Vec::with_capacity(params.inputs.len());
         for comm_input in params.inputs.iter() {
-            let proposed_deals =
-                deal_proposals(&proposal_array, &comm_input.deal_ids, state.next_id)?;
+            let proposed_deals = get_proposals(&proposal_array, &comm_input.deal_ids, st.next_id)?;
             commds.push(compute_data_commitment(rt, &proposed_deals, comm_input.sector_type)?);
         }
 
@@ -1017,36 +1015,29 @@ impl Actor {
     }
 }
 
-fn deal_proposals<BS: Blockstore>(
+fn get_proposals<BS: Blockstore>(
     proposal_array: &DealArray<BS>,
     deal_ids: &[DealID],
     next_id: DealID,
 ) -> Result<Vec<(DealID, DealProposal)>, ActorError> {
-    let proposals = {
-        let mut proposals = Vec::new();
-        let mut seen_deal_ids = BTreeSet::new();
-        for deal_id in deal_ids {
-            if !seen_deal_ids.insert(deal_id) {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "duplicate deal ID {} in sector",
-                    deal_id
-                ));
-            }
-            let proposal = proposal_array
-                .get(*deal_id)
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal")?
-                .ok_or_else(|| {
-                    if *deal_id < next_id {
-                        ActorError::unchecked(EX_DEAL_EXPIRED, format!("deal {} expired", deal_id))
-                    } else {
-                        actor_error!(not_found, "no such deal {}", deal_id)
-                    }
-                })?;
-            proposals.push((*deal_id, proposal.clone()));
+    let mut proposals = Vec::new();
+    let mut seen_deal_ids = BTreeSet::new();
+    for deal_id in deal_ids {
+        if !seen_deal_ids.insert(deal_id) {
+            return Err(actor_error!(illegal_argument, "duplicate deal ID {} in sector", deal_id));
         }
-        proposals
-    };
+        let proposal = proposal_array
+            .get(*deal_id)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal")?
+            .ok_or_else(|| {
+                if *deal_id < next_id {
+                    ActorError::unchecked(EX_DEAL_EXPIRED, format!("deal {} expired", deal_id))
+                } else {
+                    actor_error!(not_found, "no such deal {}", deal_id)
+                }
+            })?;
+        proposals.push((*deal_id, proposal.clone()));
+    }
     Ok(proposals)
 }
 
