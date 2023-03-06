@@ -109,11 +109,7 @@ impl Actor {
         };
 
         if params.unlock_duration != 0 {
-            st.set_locked(
-                params.start_epoch,
-                params.unlock_duration,
-                rt.message().value_received(),
-            );
+            st.set_locked(params.start_epoch, params.unlock_duration, rt.payable());
         }
         rt.create(&st)?;
 
@@ -126,6 +122,7 @@ impl Actor {
         params: ProposeParams,
     ) -> Result<ProposeReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
+        rt.payable();
         let proposer: Address = rt.message().caller();
 
         if params.value.is_negative() {

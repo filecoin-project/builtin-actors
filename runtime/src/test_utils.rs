@@ -205,7 +205,7 @@ pub struct Expectations {
     pub expect_gas_charge: VecDeque<i64>,
     pub expect_gas_available: VecDeque<u64>,
     pub expect_emitted_events: VecDeque<ActorEvent>,
-    pub expect_payment: Option<TokenAmount>,
+    pub expect_value: Option<TokenAmount>,
     skip_verification_on_drop: bool,
 }
 
@@ -318,9 +318,9 @@ impl Expectations {
             this.expect_emitted_events
         );
         assert!(
-            this.expect_payment.is_none(),
+            this.expect_value.is_none(),
             "expect_payment {:?}, not received",
-            this.expect_payment
+            this.expect_value
         );
     }
 }
@@ -512,8 +512,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 
     pub fn set_value(&mut self, value: TokenAmount) {
-        self.value_received = value.clone();
-        self.expectations.borrow_mut().expect_payment = Some(value);
+        self.value_received = value;
     }
 
     pub fn set_caller(&mut self, code_id: Cid, address: Address) {
@@ -721,11 +720,6 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 
     #[allow(dead_code)]
-    pub fn set_received(&mut self, amount: TokenAmount) {
-        self.set_value(amount);
-    }
-
-    #[allow(dead_code)]
     pub fn set_base_fee(&mut self, base_fee: TokenAmount) {
         self.base_fee = base_fee;
     }
@@ -803,6 +797,11 @@ impl<BS: Blockstore> MockRuntime<BS> {
     #[allow(dead_code)]
     pub fn expect_emitted_event(&mut self, event: ActorEvent) {
         self.expectations.borrow_mut().expect_emitted_events.push_back(event)
+    }
+
+    #[allow(dead_code)]
+    pub fn expect_value(&mut self, amount: TokenAmount) {
+        self.expectations.borrow_mut().expect_value = Some(amount);
     }
 
     ///// Private helpers /////
@@ -1299,12 +1298,13 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
 
     fn payable(&mut self) -> TokenAmount {
         self.require_in_call();
-        assert!(self.expectations.borrow().expect_payment.is_some(), "unexpected payable");
 
-        let expected_payment = self.expectations.borrow_mut().expect_payment.take().unwrap();
-        assert_eq!(expected_payment, self.message().value_received(), "unexpected amount received");
+        let expected_payment = self.expectations.borrow_mut().expect_value.take();
+        if let Some(payment) = expected_payment.clone() {
+            assert_eq!(payment, self.message().value_received(), "unexpected amount received");
+        }
 
-        expected_payment
+        expected_payment.unwrap_or_default()
     }
 }
 

@@ -119,13 +119,21 @@ fn initialize_evm_contract(
         )));
     }
 
+    // Must receive value before returning to mark the method payable
+    let value_received = system.rt.payable();
+
     // If we have no code, save the state and return.
     if initcode.is_empty() {
+        if !value_received.is_zero() {
+            return Err(ActorError::assertion_failed(format!(
+                "{} value sent with no code",
+                value_received
+            )));
+        }
         return system.flush();
     }
 
     // create a new execution context
-    let value_received = system.rt.message().value_received();
     let mut exec_state = ExecutionState::new(caller, receiver_eth_addr, value_received, Vec::new());
 
     // identify bytecode valid jump destinations
@@ -238,7 +246,7 @@ impl EvmContractActor {
             None => return Ok(Vec::new()),
         };
 
-        let received_value = system.rt.message().value_received();
+        let received_value = system.rt.payable();
         let caller = system.resolve_ethereum_address(&system.rt.message().caller()).unwrap();
         invoke_contract_inner(&mut system, input_data, &bytecode_cid, &caller, received_value)
     }

@@ -50,6 +50,7 @@ impl Actor {
     /// Exec init actor
     pub fn exec(rt: &mut impl Runtime, params: ExecParams) -> Result<ExecReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
+        let value = rt.payable();
 
         log::trace!("called exec; params.code_cid: {:?}", &params.code_cid);
 
@@ -100,7 +101,7 @@ impl Actor {
             &Address::new_id(id_address),
             METHOD_CONSTRUCTOR,
             params.constructor_params.into(),
-            rt.message().value_received(),
+            value,
         ))
         .context("constructor failed")?;
 
@@ -110,6 +111,7 @@ impl Actor {
     /// Exec4 init actor
     pub fn exec4(rt: &mut impl Runtime, params: Exec4Params) -> Result<Exec4Return, ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&EAM_ACTOR_ADDR))?;
+        let value = rt.payable();
         // Compute the f4 address.
         let caller_id = rt.message().caller().id().unwrap();
         let delegated_address =
@@ -156,7 +158,7 @@ impl Actor {
             &Address::new_id(id_address),
             METHOD_CONSTRUCTOR,
             params.constructor_params.into(),
-            rt.message().value_received(),
+            value,
         ))
         .context("constructor failed")?;
 

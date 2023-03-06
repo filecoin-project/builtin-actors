@@ -93,7 +93,7 @@ impl Actor {
         params: CreateMinerParams,
     ) -> Result<CreateMinerReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        let value = rt.message().value_received();
+        let value = rt.payable();
 
         let constructor_params = RawBytes::serialize(ext::miner::MinerConstructorParams {
             owner: params.owner,

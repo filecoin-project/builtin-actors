@@ -125,7 +125,7 @@ fn create_actor(
 
     let constructor_params =
         RawBytes::serialize(ext::evm::ConstructorParams { creator, initcode: initcode.into() })?;
-    let value = rt.message().value_received();
+    let value = rt.payable();
 
     let f4_addr = Address::new_delegated(EAM_ACTOR_ID, &new_addr.0).unwrap();
 

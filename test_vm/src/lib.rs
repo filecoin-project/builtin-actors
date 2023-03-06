@@ -1135,7 +1135,8 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
     }
 
     fn payable(&mut self) -> TokenAmount {
-        todo!()
+        self.payable = true;
+        self.message().value_received()
     }
 }
 
