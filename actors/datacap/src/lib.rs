@@ -88,7 +88,8 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for DataCap Actor
-    pub fn constructor(rt: &mut impl Runtime, governor: Address) -> Result<(), ActorError> {
+    pub fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
+        let governor = params.governor;
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         // Confirm the governor address is an ID.
@@ -100,14 +101,14 @@ impl Actor {
         Ok(())
     }
 
-    pub fn name(rt: &mut impl Runtime) -> Result<String, ActorError> {
+    pub fn name(rt: &mut impl Runtime) -> Result<NameReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        Ok("DataCap".to_string())
+        Ok(NameReturn { name: "DataCap".to_string() })
     }
 
-    pub fn symbol(rt: &mut impl Runtime) -> Result<String, ActorError> {
+    pub fn symbol(rt: &mut impl Runtime) -> Result<SymbolReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        Ok("DCAP".to_string())
+        Ok(SymbolReturn { symbol: "DCAP".to_string() })
     }
 
     pub fn granularity(rt: &mut impl Runtime) -> Result<GranularityReturn, ActorError> {
@@ -115,32 +116,38 @@ impl Actor {
         Ok(GranularityReturn { granularity: DATACAP_GRANULARITY })
     }
 
-    pub fn total_supply(rt: &mut impl Runtime) -> Result<TokenAmount, ActorError> {
+    pub fn total_supply(rt: &mut impl Runtime) -> Result<TotalSupplyReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let mut st: State = rt.state()?;
         let msg = SyscallProvider { rt };
         let token = as_token(&mut st, &msg);
-        Ok(token.total_supply())
+        Ok(TotalSupplyReturn { supply: token.total_supply() })
     }
 
-    pub fn balance(rt: &mut impl Runtime, params: Address) -> Result<TokenAmount, ActorError> {
+    pub fn balance(
+        rt: &mut impl Runtime,
+        params: BalanceParams,
+    ) -> Result<BalanceReturn, ActorError> {
         // NOTE: mutability and method caller here are awkward for a read-only call
         rt.validate_immediate_caller_accept_any()?;
         let mut st: State = rt.state()?;
         let msg = SyscallProvider { rt };
         let token = as_token(&mut st, &msg);
-        token.balance_of(&params).actor_result()
+        token.balance_of(&params.address).map(|balance| BalanceReturn { balance }).actor_result()
     }
 
     pub fn allowance(
         rt: &mut impl Runtime,
         params: GetAllowanceParams,
-    ) -> Result<TokenAmount, ActorError> {
+    ) -> Result<GetAllowanceReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let mut st: State = rt.state()?;
         let msg = SyscallProvider { rt };
         let token = as_token(&mut st, &msg);
-        token.allowance(&params.owner, &params.operator).actor_result()
+        token
+            .allowance(&params.owner, &params.operator)
+            .map(|allowance| GetAllowanceReturn { allowance })
+            .actor_result()
     }
 
     /// Mints new data cap tokens for an address (a verified client).
@@ -304,7 +311,7 @@ impl Actor {
     pub fn increase_allowance(
         rt: &mut impl Runtime,
         params: IncreaseAllowanceParams,
-    ) -> Result<TokenAmount, ActorError> {
+    ) -> Result<IncreaseAllowanceReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let owner = rt.message().caller();
         let operator = params.operator;
@@ -312,7 +319,10 @@ impl Actor {
         rt.transaction(|st: &mut State, rt| {
             let msg = SyscallProvider { rt };
             let mut token = as_token(st, &msg);
-            token.increase_allowance(&owner, &operator, &params.increase).actor_result()
+            token
+                .increase_allowance(&owner, &operator, &params.increase)
+                .map(|new_allowance| IncreaseAllowanceReturn { new_allowance })
+                .actor_result()
         })
         .context("state transaction failed")
     }
@@ -320,7 +330,7 @@ impl Actor {
     pub fn decrease_allowance(
         rt: &mut impl Runtime,
         params: DecreaseAllowanceParams,
-    ) -> Result<TokenAmount, ActorError> {
+    ) -> Result<DecreaseAllowanceReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let owner = &rt.message().caller();
         let operator = &params.operator;
@@ -328,7 +338,10 @@ impl Actor {
         rt.transaction(|st: &mut State, rt| {
             let msg = SyscallProvider { rt };
             let mut token = as_token(st, &msg);
-            token.decrease_allowance(owner, operator, &params.decrease).actor_result()
+            token
+                .decrease_allowance(owner, operator, &params.decrease)
+                .map(|new_allowance| DecreaseAllowanceReturn { new_allowance })
+                .actor_result()
         })
         .context("state transaction failed")
     }
@@ -336,7 +349,7 @@ impl Actor {
     pub fn revoke_allowance(
         rt: &mut impl Runtime,
         params: RevokeAllowanceParams,
-    ) -> Result<TokenAmount, ActorError> {
+    ) -> Result<RevokeAllowanceReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let owner = &rt.message().caller();
         let operator = &params.operator;
@@ -344,7 +357,10 @@ impl Actor {
         rt.transaction(|st: &mut State, rt| {
             let msg = SyscallProvider { rt };
             let mut token = as_token(st, &msg);
-            token.revoke_allowance(owner, operator).actor_result()
+            token
+                .revoke_allowance(owner, operator)
+                .map(|old_allowance| RevokeAllowanceReturn { old_allowance })
+                .actor_result()
         })
         .context("state transaction failed")
     }
