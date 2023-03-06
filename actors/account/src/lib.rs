@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_shared::address::{Address, Protocol};
+use fvm_shared::address::Protocol;
 use fvm_shared::crypto::signature::SignatureType::{Secp256k1, BLS};
 use fvm_shared::crypto::signature::{Signature, SignatureType};
 use fvm_shared::error::ExitCode;
@@ -13,6 +13,7 @@ use fil_actors_runtime::builtin::singletons::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{actor_dispatch, ActorDowncast, FIRST_EXPORTED_METHOD_NUMBER};
 use fil_actors_runtime::{actor_error, ActorError};
+use types::{AuthenticateMessageReturn, ConstructorParams, PubkeyAddressReturn};
 
 use crate::types::AuthenticateMessageParams;
 
@@ -41,24 +42,25 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for Account actor
-    pub fn constructor(rt: &mut impl Runtime, params: Address) -> Result<(), ActorError> {
+    pub fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
+        let address = params.address;
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
-        match params.protocol() {
+        match address.protocol() {
             Protocol::Secp256k1 | Protocol::BLS => {}
             protocol => {
                 return Err(actor_error!(illegal_argument;
                     "address must use BLS or SECP protocol, got {}", protocol));
             }
         }
-        rt.create(&State { address: params })?;
+        rt.create(&State { address })?;
         Ok(())
     }
 
     /// Fetches the pubkey-type address from this actor.
-    pub fn pubkey_address(rt: &mut impl Runtime) -> Result<Address, ActorError> {
+    pub fn pubkey_address(rt: &mut impl Runtime) -> Result<PubkeyAddressReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let st: State = rt.state()?;
-        Ok(st.address)
+        Ok(PubkeyAddressReturn { address: st.address })
     }
 
     /// Authenticates whether the provided signature is valid for the provided message.
@@ -67,7 +69,7 @@ impl Actor {
     pub fn authenticate_message(
         rt: &mut impl Runtime,
         params: AuthenticateMessageParams,
-    ) -> Result<bool, ActorError> {
+    ) -> Result<AuthenticateMessageReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let st: State = rt.state()?;
         let address = st.address;
@@ -87,7 +89,7 @@ impl Actor {
             )
         })?;
 
-        Ok(true)
+        Ok(AuthenticateMessageReturn { authenticated: true })
     }
 
     /// Fallback method for unimplemented method numbers.
