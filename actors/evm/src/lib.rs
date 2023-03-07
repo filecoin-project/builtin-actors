@@ -119,17 +119,10 @@ fn initialize_evm_contract(
         )));
     }
 
-    // Must receive value before returning to mark the method payable
     let value_received = system.rt.payable();
 
     // If we have no code, save the state and return.
     if initcode.is_empty() {
-        if !value_received.is_zero() {
-            return Err(ActorError::assertion_failed(format!(
-                "{} value sent with no code",
-                value_received
-            )));
-        }
         return system.flush();
     }
 
