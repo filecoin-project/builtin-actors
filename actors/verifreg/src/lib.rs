@@ -874,7 +874,7 @@ fn remove_data_cap_request_is_valid(
 
     let payload = [SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP, b.bytes()].concat();
 
-    extract_send_result(rt.send(
+    if !extract_send_result(rt.send(
         &request.verifier,
         ext::account::AUTHENTICATE_MESSAGE_METHOD,
         IpldBlock::serialize_cbor(&ext::account::AuthenticateMessageParams {
@@ -885,8 +885,13 @@ fn remove_data_cap_request_is_valid(
         None,
         SendFlags::READ_ONLY,
     ))
-    .map_err(|e| e.wrap("proposal authentication failed"))?;
-    Ok(())
+    .and_then(deserialize_block)
+    .context("proposal authentication failed")?
+    {
+        Err(actor_error!(illegal_argument, "proposal authentication failed"))
+    } else {
+        Ok(())
+    }
 }
 
 // Deserializes and validates a receiver hook payload, expecting only an FRC-46 transfer.
