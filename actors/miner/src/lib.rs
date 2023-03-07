@@ -541,6 +541,7 @@ impl Actor {
             rt.validate_immediate_caller_is(
                 info.control_addresses.iter().chain(&[info.worker, info.owner]),
             )?;
+            rt.payable();
 
             // Verify that the miner has passed exactly 1 proof.
             if params.proofs.len() != 1 {
@@ -801,6 +802,7 @@ impl Actor {
         rt.validate_immediate_caller_is(
             info.control_addresses.iter().chain(&[info.worker, info.owner]),
         )?;
+        rt.payable();
         let store = rt.store();
         let precommits =
             state.get_all_precommitted_sectors(store, sector_numbers).map_err(|e| {
@@ -1019,6 +1021,7 @@ impl Actor {
         rt.validate_immediate_caller_is(
             info.control_addresses.iter().chain(&[info.owner, info.worker]),
         )?;
+        rt.payable();
 
         let sector_store = rt.store().clone();
         let mut sectors = Sectors::load(&sector_store, &state.sectors).map_err(|e| {
@@ -1854,6 +1857,8 @@ impl Actor {
         let mut fee_to_burn = TokenAmount::zero();
         let mut needs_cron = false;
         rt.transaction(|state: &mut State, rt| {
+            rt.payable();
+
             // Aggregate fee applies only when batching.
             if sectors.len() > 1 {
                 let aggregate_fee = aggregate_pre_commit_network_fee(sectors.len() as i64, &rt.base_fee());
@@ -2013,6 +2018,7 @@ impl Actor {
         params: ProveCommitSectorParams,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_accept_any()?;
+        rt.payable();
 
         if params.sector_number > MAX_SECTOR_NUMBER {
             return Err(actor_error!(illegal_argument, "sector number greater than maximum"));
@@ -2195,6 +2201,7 @@ impl Actor {
             rt.validate_immediate_caller_is(
                 info.control_addresses.iter().chain(&[info.worker, info.owner]),
             )?;
+            rt.payable();
 
             let mut deadlines =
                 state.load_deadlines(rt.store()).map_err(|e| e.wrap("failed to load deadlines"))?;
@@ -2605,6 +2612,7 @@ impl Actor {
             rt.validate_immediate_caller_is(
                 info.control_addresses.iter().chain(&[info.worker, info.owner]),
             )?;
+            rt.payable();
 
             let store = rt.store();
 
@@ -2748,6 +2756,7 @@ impl Actor {
             rt.validate_immediate_caller_is(
                 info.control_addresses.iter().chain(&[info.worker, info.owner]),
             )?;
+            rt.payable();
 
             if consensus_fault_active(&info, rt.curr_epoch()) {
                 return Err(actor_error!(
@@ -3452,6 +3461,7 @@ impl Actor {
             rt.validate_immediate_caller_is(
                 info.control_addresses.iter().chain(&[info.worker, info.owner]),
             )?;
+            rt.payable();
 
             // Repay as much fee debt as possible.
             let (from_vesting, from_balance) = state
