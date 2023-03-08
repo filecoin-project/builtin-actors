@@ -205,7 +205,7 @@ pub struct Expectations {
     pub expect_gas_charge: VecDeque<i64>,
     pub expect_gas_available: VecDeque<u64>,
     pub expect_emitted_events: VecDeque<ActorEvent>,
-    pub expect_payable: Option<TokenAmount>,
+    pub expect_payable: bool,
     skip_verification_on_drop: bool,
 }
 
@@ -318,8 +318,8 @@ impl Expectations {
             this.expect_emitted_events
         );
         assert!(
-            this.expect_payable.is_none(),
-            "expect_payment {:?}, not received",
+            !this.expect_payable,
+            "expect_payable {:?}, payable() not called",
             this.expect_payable
         );
     }
@@ -800,8 +800,11 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 
     #[allow(dead_code)]
+    /// Set the value returned by `value_received()` and record the expectation that the method
+    /// being called will invoke `payable`
     pub fn expect_payable(&mut self, amount: TokenAmount) {
-        self.expectations.borrow_mut().expect_payable = Some(amount);
+        self.set_value(amount);
+        self.expectations.borrow_mut().expect_payable = true;
     }
 
     ///// Private helpers /////
@@ -1298,13 +1301,9 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
 
     fn payable(&mut self) -> TokenAmount {
         self.require_in_call();
-
-        let expected_payment = self.expectations.borrow_mut().expect_payable.take();
-        if let Some(payment) = expected_payment.clone() {
-            assert_eq!(payment, self.message().value_received(), "unexpected amount received");
-        }
-
-        expected_payment.unwrap_or_default()
+        assert!(self.expectations.borrow().expect_payable, "unexpected payable call");
+        self.expectations.borrow_mut().expect_payable = false;
+        self.message().value_received()
     }
 }
 
