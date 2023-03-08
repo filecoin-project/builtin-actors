@@ -196,7 +196,7 @@ fn adds_to_provider_escrow_funds() {
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *caller_addr);
             rt.expect_validate_caller_any();
             rt.set_value(TokenAmount::from_atto(tc.delta));
-            rt.expect_value(TokenAmount::from_atto(tc.delta));
+            rt.expect_payable(TokenAmount::from_atto(tc.delta));
             expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
             assert!(rt
@@ -397,7 +397,7 @@ fn adds_to_non_provider_funds() {
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *caller_addr);
             rt.expect_validate_caller_any();
             rt.set_value(TokenAmount::from_atto(tc.delta));
-            rt.expect_value(TokenAmount::from_atto(tc.delta));
+            rt.expect_payable(TokenAmount::from_atto(tc.delta));
             assert!(rt
                 .call::<MarketActor>(
                     Method::AddBalance as u64,
@@ -813,7 +813,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, client_resolved);
     rt.expect_validate_caller_any();
     rt.set_value(amount.clone());
-    rt.expect_value(amount.clone());
+    rt.expect_payable(amount.clone());
     assert!(rt
         .call::<MarketActor>(
             Method::AddBalanceExported as u64,
@@ -827,7 +827,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
 
     // add funds for provider using it's BLS address -> will be resolved and persisted
     rt.set_value(deal.provider_collateral.clone());
-    rt.expect_value(deal.provider_collateral.clone());
+    rt.expect_payable(deal.provider_collateral.clone());
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, OWNER_ADDR);
     rt.expect_validate_caller_any();
     expect_provider_control_address(&mut rt, provider_resolved, OWNER_ADDR, WORKER_ADDR);
@@ -1921,7 +1921,7 @@ fn insufficient_client_balance_in_a_batch() {
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, OWNER_ADDR);
     rt.expect_validate_caller_any();
     rt.set_value(provider_funds.clone());
-    rt.expect_value(provider_funds);
+    rt.expect_payable(provider_funds);
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
     assert!(rt
@@ -2059,7 +2059,7 @@ fn insufficient_provider_balance_in_a_batch() {
     rt.expect_validate_caller_any();
     let value = deal2.provider_balance_requirement();
     rt.set_value(value.clone());
-    rt.expect_value(value.clone());
+    rt.expect_payable(value.clone());
 
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
@@ -2173,7 +2173,7 @@ fn add_balance_restricted_correctly() {
     let mut rt = setup();
     let amount = TokenAmount::from_atto(1000);
     rt.set_value(amount.clone());
-    rt.expect_value(amount);
+    rt.expect_payable(amount);
 
     // set caller to not-builtin
     rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(1234));
@@ -2220,7 +2220,7 @@ fn psd_restricted_correctly() {
     rt.expect_validate_caller_any();
     let value = deal.provider_balance_requirement();
     rt.set_value(value.clone());
-    rt.expect_value(value.clone());
+    rt.expect_payable(value.clone());
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
     assert!(rt

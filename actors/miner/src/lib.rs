@@ -1857,8 +1857,6 @@ impl Actor {
         let mut fee_to_burn = TokenAmount::zero();
         let mut needs_cron = false;
         rt.transaction(|state: &mut State, rt| {
-            rt.payable();
-
             // Aggregate fee applies only when batching.
             if sectors.len() > 1 {
                 let aggregate_fee = aggregate_pre_commit_network_fee(sectors.len() as i64, &rt.base_fee());
@@ -1893,6 +1891,8 @@ impl Actor {
                     .iter()
                     .chain(&[info.worker, info.owner]),
             )?;
+            rt.payable();
+
             let store = rt.store();
             if consensus_fault_active(&info, curr_epoch) {
                 return Err(actor_error!(forbidden, "pre-commit not allowed during active consensus fault"));
@@ -2464,6 +2464,7 @@ impl Actor {
             rt.validate_immediate_caller_is(
                 info.control_addresses.iter().chain(&[info.worker, info.owner]),
             )?;
+            rt.payable();
 
             let store = rt.store();
             let curr_epoch = rt.curr_epoch();
@@ -2870,6 +2871,7 @@ impl Actor {
             rt.validate_immediate_caller_is(
                 info.control_addresses.iter().chain(&[info.worker, info.owner]),
             )?;
+            rt.payable();
 
             let store = rt.store();
             let policy = rt.policy();
@@ -3011,6 +3013,7 @@ impl Actor {
             rt.validate_immediate_caller_is(
                 info.control_addresses.iter().chain(&[info.worker, info.owner]),
             )?;
+            rt.payable();
 
             state.allocate_sector_numbers(
                 rt.store(),
@@ -3041,6 +3044,7 @@ impl Actor {
             let mut pledge_delta_total = TokenAmount::zero();
 
             rt.validate_immediate_caller_is(std::iter::once(&REWARD_ACTOR_ADDR))?;
+            rt.payable();
 
             let (reward_to_lock, locked_reward_vesting_spec) =
                 locked_reward_from_reward(params.reward);

@@ -99,7 +99,7 @@ fn create_miner_given_send_to_init_actor_fails_should_fail() {
     let balance = TokenAmount::from_atto(10);
     rt.set_balance(balance.clone());
     rt.set_value(balance.clone());
-    rt.expect_value(balance);
+    rt.expect_payable(balance);
     rt.expect_validate_caller_any();
 
     let message_params = ExecParams {

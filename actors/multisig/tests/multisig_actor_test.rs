@@ -76,7 +76,7 @@ mod constructor_tests {
         };
 
         rt.set_value(TokenAmount::from_atto(100u8));
-        rt.expect_value(TokenAmount::from_atto(100u8));
+        rt.expect_payable(TokenAmount::from_atto(100u8));
         rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         let ret = rt.call::<MultisigActor>(
@@ -327,7 +327,7 @@ mod vesting_tests {
 
         rt.set_balance(MSIG_INITIAL_BALANCE.clone());
         rt.set_value(MSIG_INITIAL_BALANCE.clone());
-        rt.expect_value(MSIG_INITIAL_BALANCE.clone());
+        rt.expect_payable(MSIG_INITIAL_BALANCE.clone());
         h.construct_and_verify(&mut rt, 2, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
 
         // anne proposes that darlene receive inital balance
@@ -400,7 +400,7 @@ mod vesting_tests {
 
         rt.set_balance(MSIG_INITIAL_BALANCE.clone());
         rt.set_value(MSIG_INITIAL_BALANCE.clone());
-        rt.expect_value(MSIG_INITIAL_BALANCE.clone());
+        rt.expect_payable(MSIG_INITIAL_BALANCE.clone());
         h.construct_and_verify(&mut rt, 1, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ANNE);
@@ -430,7 +430,7 @@ mod vesting_tests {
 
         rt.set_balance(MSIG_INITIAL_BALANCE.clone());
         rt.set_value(MSIG_INITIAL_BALANCE.clone());
-        rt.expect_value(MSIG_INITIAL_BALANCE.clone());
+        rt.expect_payable(MSIG_INITIAL_BALANCE.clone());
         h.construct_and_verify(&mut rt, 2, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ANNE);
@@ -456,7 +456,7 @@ mod vesting_tests {
         let one = TokenAmount::from_atto(1u8);
         rt.set_balance(locked_balance.clone());
         rt.set_value(locked_balance.clone());
-        rt.expect_value(locked_balance.clone());
+        rt.expect_payable(locked_balance.clone());
         h.construct_and_verify(&mut rt, 1, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
 
         // expect nothing vested yet
@@ -1457,7 +1457,7 @@ mod approval_tests {
         let h = util::ActorHarness::new();
         rt.set_balance(send_value.clone());
         rt.set_value(send_value.clone());
-        rt.expect_value(send_value.clone());
+        rt.expect_payable(send_value.clone());
         h.construct_and_verify(&mut rt, 2, unlock_duration, start_epoch, signers);
 
         let fake_params = RawBytes::from(vec![1, 2, 3, 4]);

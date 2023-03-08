@@ -80,6 +80,7 @@ fn repay_debt_restricted_correctly() {
 
     rt.add_balance(fee_debt.clone());
     rt.set_value(fee_debt.clone());
+    rt.expect_payable(fee_debt.clone());
 
     rt.expect_send_simple(BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, None, fee_debt, None, ExitCode::OK);
 

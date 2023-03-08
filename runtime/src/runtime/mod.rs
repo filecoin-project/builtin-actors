@@ -257,7 +257,9 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// All state updates, including actor creation and balance transfers, are rejected in read_only calls.
     fn read_only(&self) -> bool;
 
-    /// Marks the receiver as payable meaning it can receive funds.
+    /// Marks the receiver as payable meaning it can receive funds and returns the value received
+    /// with this message.
+    ///
     /// Exported actor methods that receive funds must invoke this method before returning.
     fn payable(&mut self) -> TokenAmount;
 }

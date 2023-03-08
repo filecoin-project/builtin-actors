@@ -105,7 +105,7 @@ fn test_delegate_call_caller() {
     let return_data = U256::from(0x42);
 
     rt.set_value(TokenAmount::from_whole(123));
-    rt.expect_value(TokenAmount::from_whole(123));
+    rt.expect_payable(TokenAmount::from_whole(123));
     rt.expect_gas_available(10_000_000_000u64);
     rt.expect_send(
         target,

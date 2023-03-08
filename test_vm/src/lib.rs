@@ -774,7 +774,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         if res.is_ok() {
             if !self.caller_validated {
                 res = Err(actor_error!(assertion_failed, "failed to validate caller"));
-            } else if !self.payable && !self.msg.value.is_zero() {
+            } else if !(self.payable || self.msg.value.is_zero()) {
                 res = Err(actor_error!(
                     assertion_failed,
                     "payment received in method not marked payable"
