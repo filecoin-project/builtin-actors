@@ -208,7 +208,7 @@ impl EvmContractActor {
     pub fn invoke_contract_delegate<RT>(
         rt: &mut RT,
         params: DelegateCallParams,
-    ) -> Result<Vec<u8>, ActorError>
+    ) -> Result<DelegateCallReturn, ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
@@ -218,10 +218,20 @@ impl EvmContractActor {
         let mut system = System::load(rt).map_err(|e| {
             ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
         })?;
-        invoke_contract_inner(&mut system, params.input, &params.code, &params.caller, params.value)
+        let return_data = invoke_contract_inner(
+            &mut system,
+            params.input,
+            &params.code,
+            &params.caller,
+            params.value,
+        )?;
+        Ok(DelegateCallReturn { return_data })
     }
 
-    pub fn invoke_contract<RT>(rt: &mut RT, input_data: Vec<u8>) -> Result<Vec<u8>, ActorError>
+    pub fn invoke_contract<RT>(
+        rt: &mut RT,
+        params: InvokeContractParams,
+    ) -> Result<InvokeContractReturn, ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
@@ -235,12 +245,19 @@ impl EvmContractActor {
         let bytecode_cid = match system.get_bytecode() {
             Some(bytecode_cid) => bytecode_cid,
             // an EVM contract with no code returns immediately
-            None => return Ok(Vec::new()),
+            None => return Ok(InvokeContractReturn { output_data: Vec::new() }),
         };
 
         let received_value = system.rt.message().value_received();
         let caller = system.resolve_ethereum_address(&system.rt.message().caller()).unwrap();
-        invoke_contract_inner(&mut system, input_data, &bytecode_cid, &caller, received_value)
+        let data = invoke_contract_inner(
+            &mut system,
+            params.input_data,
+            &bytecode_cid,
+            &caller,
+            received_value,
+        )?;
+        Ok(InvokeContractReturn { output_data: data })
     }
 
     pub fn handle_filecoin_method<RT>(
@@ -254,21 +271,21 @@ impl EvmContractActor {
     {
         let params = args.unwrap_or(IpldBlock { codec: 0, data: vec![] });
         let input = handle_filecoin_method_input(method, params.codec, params.data.as_slice());
-        let output = Self::invoke_contract(rt, input)?;
-        handle_filecoin_method_output(&output)
+        let output = Self::invoke_contract(rt, InvokeContractParams { input_data: input })?;
+        handle_filecoin_method_output(&output.output_data)
     }
 
     /// Returns the contract's EVM bytecode, or `None` if the contract has been deleted (has called
     /// SELFDESTRUCT).
-    pub fn bytecode(rt: &mut impl Runtime) -> Result<Option<Cid>, ActorError> {
+    pub fn bytecode(rt: &mut impl Runtime) -> Result<BytecodeReturn, ActorError> {
         // Any caller can fetch the bytecode of a contract; this is now EXT* opcodes work.
         rt.validate_immediate_caller_accept_any()?;
 
         let state: State = rt.state()?;
         if is_dead(rt, &state) {
-            Ok(None)
+            Ok(BytecodeReturn { code: None })
         } else {
-            Ok(Some(state.bytecode))
+            Ok(BytecodeReturn { code: Some(state.bytecode) })
         }
     }
 
@@ -285,7 +302,10 @@ impl EvmContractActor {
         }
     }
 
-    pub fn storage_at<RT>(rt: &mut RT, params: GetStorageAtParams) -> Result<U256, ActorError>
+    pub fn storage_at<RT>(
+        rt: &mut RT,
+        params: GetStorageAtParams,
+    ) -> Result<GetStorageAtReturn, ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
@@ -295,9 +315,11 @@ impl EvmContractActor {
         rt.validate_immediate_caller_is([&Address::new_id(0)])?;
 
         // If the contract is dead, this will always return "0".
-        System::load(rt)?
+        let val = System::load(rt)?
             .get_storage(params.storage_key)
-            .context_code(ExitCode::USR_ASSERTION_FAILED, "failed to get storage key")
+            .context_code(ExitCode::USR_ASSERTION_FAILED, "failed to get storage key")?;
+
+        Ok(GetStorageAtReturn { storage: val })
     }
 }
 
@@ -400,15 +422,15 @@ impl ActorCode for EvmContractActor {
                 Ok(None)
             }
             Some(Method::InvokeContract) => {
-                let params = match args {
+                let data = match args {
                     None => vec![],
                     Some(p) => {
                         let BytesDe(p) = p.deserialize()?;
                         p
                     }
                 };
-                let value = Self::invoke_contract(rt, params)?;
-                Ok(IpldBlock::serialize_cbor(&BytesSer(&value))?)
+                let ret = Self::invoke_contract(rt, InvokeContractParams { input_data: data })?;
+                Ok(IpldBlock::serialize_cbor(&BytesSer(&ret.output_data))?)
             }
             Some(Method::GetBytecode) => {
                 let ret = Self::bytecode(rt)?;
@@ -434,8 +456,8 @@ impl ActorCode for EvmContractActor {
                         "method expects arguments".to_string()
                     })?
                     .deserialize()?;
-                let value = Self::invoke_contract_delegate(rt, params)?;
-                Ok(IpldBlock::serialize_cbor(&BytesSer(&value))?)
+                let ret = Self::invoke_contract_delegate(rt, params)?;
+                Ok(IpldBlock::serialize_cbor(&BytesSer(&ret.return_data))?)
             }
             Some(Method::Resurrect) => {
                 Self::resurrect(
