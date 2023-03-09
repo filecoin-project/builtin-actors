@@ -298,7 +298,7 @@ impl Actor {
 
     fn submit_porep_for_bulk_verify(
         rt: &mut impl Runtime,
-        seal_info: SealVerifyInfo,
+        params: SubmitPoRepForBulkVerifyParams,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
 
@@ -341,7 +341,7 @@ impl Actor {
                 }
             }
 
-            mmap.add(miner_addr.to_bytes().into(), seal_info).map_err(|e| {
+            mmap.add(miner_addr.to_bytes().into(), params.seal_info).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to insert proof into set")
             })?;
 
