@@ -19,6 +19,12 @@ pub type AllocationID = u64;
 pub type ClaimID = u64;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct ConstructorParams {
+    pub root_key: Address,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct VerifierParams {
     pub address: Address,
     #[serde(with = "bigint_ser")]
@@ -28,6 +34,12 @@ pub struct VerifierParams {
 pub type AddVerifierParams = VerifierParams;
 
 pub type AddVerifiedClientParams = VerifierParams;
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct RemoveVerifierParams {
+    pub verifier: Address,
+}
 
 /// DataCap is an integer number of bytes.
 /// We can introduce policy changes and replace this in the future.
