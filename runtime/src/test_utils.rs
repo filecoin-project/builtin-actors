@@ -511,10 +511,6 @@ impl<BS: Blockstore> MockRuntime<BS> {
         *self.balance.get_mut() += amount;
     }
 
-    pub fn set_value(&mut self, value: TokenAmount) {
-        self.value_received = value;
-    }
-
     pub fn set_caller(&mut self, code_id: Cid, address: Address) {
         // fail if called with a non-ID address, since the caller() method must always return an ID
         address.id().unwrap();
@@ -803,7 +799,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
     /// Set the value returned by `value_received()` and record the expectation that the method
     /// being called will invoke `payable`
     pub fn expect_payable(&mut self, amount: TokenAmount) {
-        self.set_value(amount);
+        self.value_received = amount;
         self.expectations.borrow_mut().expect_payable = true;
     }
 

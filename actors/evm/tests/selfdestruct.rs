@@ -125,6 +125,7 @@ fn test_selfdestruct_missing_beneficiary() {
         ExitCode::OK, // doesn't matter
         Some(ErrorNumber::NotFound),
     );
+    rt.expect_payable(TokenAmount::zero());
 
     // It still works even if the beneficiary doesn't exist.
 

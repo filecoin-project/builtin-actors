@@ -268,6 +268,7 @@ impl ActorHarness {
             IpldBlock::serialize_cbor(&self.worker_key).unwrap(),
             ExitCode::OK,
         );
+        rt.expect_payable(TokenAmount::zero());
 
         let result = rt
             .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
@@ -489,6 +490,7 @@ impl ActorHarness {
     ) -> Result<Option<IpldBlock>, ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addr);
         rt.expect_validate_caller_addr(self.caller_addrs());
+        rt.expect_payable(TokenAmount::zero());
 
         let params = CompactSectorNumbersParams { mask_sector_numbers: bf };
 
@@ -1645,6 +1647,8 @@ impl ActorHarness {
             );
         }
 
+        rt.expect_payable(TokenAmount::zero());
+
         let params = ApplyRewardParams { reward: amt, penalty: penalty };
         rt.call::<Actor>(Method::ApplyRewards as u64, IpldBlock::serialize_cbor(&params).unwrap())
             .unwrap();
@@ -2133,7 +2137,6 @@ impl ActorHarness {
         rt.expect_validate_caller_addr(self.caller_addrs());
 
         rt.add_balance(value.clone());
-        rt.set_value(value.clone());
         if expected_repaid_from_vest > &TokenAmount::zero() {
             let pledge_delta = expected_repaid_from_vest.neg();
             rt.expect_send_simple(

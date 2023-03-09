@@ -107,6 +107,7 @@ fn cannot_terminate_a_sector_when_the_challenge_window_is_open() {
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.worker);
     rt.expect_validate_caller_addr(h.caller_addrs());
+    rt.expect_payable(TokenAmount::zero());
     let res = rt.call::<Actor>(
         Method::TerminateSectors as u64,
         IpldBlock::serialize_cbor(&params).unwrap(),
@@ -178,6 +179,7 @@ fn owner_cannot_terminate_if_market_cron_fails() {
 
     rt.set_origin(h.worker);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.worker);
+    rt.expect_payable(TokenAmount::zero());
     assert_eq!(
         ExitCode::USR_ILLEGAL_STATE,
         rt.call::<Actor>(

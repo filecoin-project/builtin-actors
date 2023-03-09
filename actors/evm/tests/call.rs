@@ -401,19 +401,23 @@ fn test_native_call() {
     let mut rt = util::construct_and_verify(contract);
 
     rt.expect_validate_caller_any();
+    rt.expect_payable(TokenAmount::zero());
     let result = rt.call::<evm::EvmContractActor>(1024, None).unwrap();
     assert_eq!(result, None);
 
     rt.expect_validate_caller_any();
+    rt.expect_payable(TokenAmount::zero());
     let result = rt.call::<evm::EvmContractActor>(1025, None).unwrap();
     assert_eq!(result, Some(IpldBlock { codec: CBOR, data: "foobar".into() }));
 
     rt.expect_validate_caller_any();
+    rt.expect_payable(TokenAmount::zero());
     let mut err = rt.call::<evm::EvmContractActor>(1026, None).unwrap_err();
     assert_eq!(err.exit_code().value(), 42);
     assert!(err.take_data().is_none());
 
     rt.expect_validate_caller_any();
+    rt.expect_payable(TokenAmount::zero());
     let mut err = rt.call::<evm::EvmContractActor>(1027, None).unwrap_err();
     assert_eq!(err.exit_code().value(), 42);
     assert_eq!(err.take_data().unwrap().data, &b"foobar"[..]);
@@ -1177,6 +1181,7 @@ impl ContractTester {
         rt.set_origin(FILAddress::new_id(0));
         // first actor created is 0
         rt.set_delegated_address(0, Address::new_delegated(EAM_ACTOR_ID, &addr.0).unwrap());
+        rt.expect_payable(TokenAmount::zero());
 
         assert!(rt
             .call::<evm::EvmContractActor>(
@@ -1199,6 +1204,7 @@ impl ContractTester {
         self.rt.expect_validate_caller_any();
         self.rt.expect_gas_available(10_000_000);
         self.rt.expect_gas_available(10_000_000);
+        self.rt.expect_payable(TokenAmount::zero());
 
         let BytesDe(result) = self
             .rt

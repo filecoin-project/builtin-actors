@@ -11,8 +11,10 @@ use fil_actors_runtime::{
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{BytesDe, BytesSer};
+use fvm_shared::econ::TokenAmount;
 use fvm_shared::{address::Address, IDENTITY_HASH, IPLD_RAW};
 use lazy_static::lazy_static;
+use num_traits::Zero;
 
 use std::fmt::Debug;
 
@@ -39,6 +41,7 @@ pub fn init_construct_and_verify<F: FnOnce(&mut MockRuntime)>(
     // construct EVM actor
     rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
     rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
+    rt.expect_payable(TokenAmount::zero());
     initrt(&mut rt);
 
     // first actor created is 0
@@ -68,6 +71,7 @@ pub fn init_construct_and_verify<F: FnOnce(&mut MockRuntime)>(
 #[allow(dead_code)]
 pub fn invoke_contract(rt: &mut MockRuntime, input_data: &[u8]) -> Vec<u8> {
     rt.expect_validate_caller_any();
+    rt.expect_payable(TokenAmount::zero());
     let BytesDe(res) = rt
         .call::<evm::EvmContractActor>(
             evm::Method::InvokeContract as u64,

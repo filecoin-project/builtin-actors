@@ -122,7 +122,6 @@ fn create_2_payment_channels() {
 
         let balance = TokenAmount::from_atto(100);
         rt.set_balance(balance.clone());
-        rt.set_value(balance.clone());
         rt.expect_payable(balance.clone());
 
         let unique_address = Address::new_actor(paych);

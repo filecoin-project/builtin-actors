@@ -1,5 +1,7 @@
 use fil_actor_evm as evm;
 use fvm_ipld_encoding::{BytesSer, RawBytes};
+use fvm_shared::econ::TokenAmount;
+use num_traits::Zero;
 
 mod asm;
 mod util;
@@ -22,6 +24,7 @@ revert
 
     let mut rt = util::construct_and_verify(contract);
     rt.expect_validate_caller_any();
+    rt.expect_payable(TokenAmount::zero());
 
     let result = rt.call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, None);
     assert!(result.is_err());

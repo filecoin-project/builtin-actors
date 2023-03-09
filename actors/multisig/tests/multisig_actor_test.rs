@@ -75,7 +75,6 @@ mod constructor_tests {
             start_epoch: 100,
         };
 
-        rt.set_value(TokenAmount::from_atto(100u8));
         rt.expect_payable(TokenAmount::from_atto(100u8));
         rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
@@ -326,7 +325,6 @@ mod vesting_tests {
         let h = util::ActorHarness::new();
 
         rt.set_balance(MSIG_INITIAL_BALANCE.clone());
-        rt.set_value(MSIG_INITIAL_BALANCE.clone());
         rt.expect_payable(MSIG_INITIAL_BALANCE.clone());
         h.construct_and_verify(&mut rt, 2, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
 
@@ -367,7 +365,6 @@ mod vesting_tests {
         let h = util::ActorHarness::new();
 
         rt.set_balance(MSIG_INITIAL_BALANCE.clone());
-        rt.set_value(MSIG_INITIAL_BALANCE.clone());
         h.construct_and_verify(&mut rt, 2, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ANNE);
@@ -399,7 +396,6 @@ mod vesting_tests {
         let h = util::ActorHarness::new();
 
         rt.set_balance(MSIG_INITIAL_BALANCE.clone());
-        rt.set_value(MSIG_INITIAL_BALANCE.clone());
         rt.expect_payable(MSIG_INITIAL_BALANCE.clone());
         h.construct_and_verify(&mut rt, 1, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
 
@@ -429,7 +425,6 @@ mod vesting_tests {
         let h = util::ActorHarness::new();
 
         rt.set_balance(MSIG_INITIAL_BALANCE.clone());
-        rt.set_value(MSIG_INITIAL_BALANCE.clone());
         rt.expect_payable(MSIG_INITIAL_BALANCE.clone());
         h.construct_and_verify(&mut rt, 2, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
 
@@ -455,7 +450,6 @@ mod vesting_tests {
         let locked_balance = TokenAmount::from_atto(UNLOCK_DURATION - 1); // balance < duration
         let one = TokenAmount::from_atto(1u8);
         rt.set_balance(locked_balance.clone());
-        rt.set_value(locked_balance.clone());
         rt.expect_payable(locked_balance.clone());
         h.construct_and_verify(&mut rt, 1, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
 
@@ -514,7 +508,6 @@ mod vesting_tests {
         let h = util::ActorHarness::new();
 
         rt.set_balance(MSIG_INITIAL_BALANCE.clone());
-        rt.set_value(MSIG_INITIAL_BALANCE.clone());
         h.construct_and_verify(&mut rt, 1, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ANNE);
@@ -531,7 +524,6 @@ mod vesting_tests {
         h.construct_and_verify(&mut rt, 1, 0, START_EPOCH, vec![ANNE]);
         rt.set_caller(*MULTISIG_ACTOR_CODE_ID, MSIG);
         rt.set_balance(TokenAmount::from_atto(10u8));
-        rt.set_value(TokenAmount::from_atto(10u8));
 
         // lock up funds the actor doesn't have yet
         h.lock_balance(&mut rt, START_EPOCH, UNLOCK_DURATION, TokenAmount::from_atto(10u8))
@@ -1456,7 +1448,6 @@ mod approval_tests {
         let start_epoch = 10;
         let h = util::ActorHarness::new();
         rt.set_balance(send_value.clone());
-        rt.set_value(send_value.clone());
         rt.expect_payable(send_value.clone());
         h.construct_and_verify(&mut rt, 2, unlock_duration, start_epoch, signers);
 

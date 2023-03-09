@@ -16,6 +16,7 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use num_traits::Zero;
 
 #[test]
 fn call_create_new() {
@@ -58,6 +59,7 @@ fn call_create_new() {
         send_return,
         ExitCode::OK,
     );
+    rt.expect_payable(TokenAmount::zero());
 
     let result = rt
         .call::<eam::EamActor>(
@@ -125,8 +127,9 @@ fn call_create_external_over_placeholder() {
         send_return_ser,
         ExitCode::OK,
     );
-
     rt.expect_validate_caller_addr(vec![caller_id_addr]);
+    rt.expect_payable(TokenAmount::zero());
+
     let result = rt
         .call::<eam::EamActor>(
             eam::Method::CreateExternal as u64,
@@ -181,6 +184,7 @@ fn call_resurrect() {
         None,
         ExitCode::OK,
     );
+    rt.expect_payable(TokenAmount::zero());
 
     let result = rt
         .call::<eam::EamActor>(
@@ -245,6 +249,7 @@ fn call_create2() {
         send_return,
         ExitCode::OK,
     );
+    rt.expect_payable(TokenAmount::zero());
 
     let result = rt
         .call::<eam::EamActor>(

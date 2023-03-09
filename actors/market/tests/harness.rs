@@ -192,7 +192,6 @@ pub fn expect_provider_is_control_address(
 }
 
 pub fn add_provider_funds(rt: &mut MockRuntime, amount: TokenAmount, addrs: &MinerAddresses) {
-    rt.set_value(amount.clone());
     rt.expect_payable(amount.clone());
     rt.set_address_actor_type(addrs.provider, *MINER_ACTOR_CODE_ID);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.owner);
@@ -212,7 +211,6 @@ pub fn add_provider_funds(rt: &mut MockRuntime, amount: TokenAmount, addrs: &Min
 }
 
 pub fn add_participant_funds(rt: &mut MockRuntime, addr: Address, amount: TokenAmount) {
-    rt.set_value(amount.clone());
     rt.expect_payable(amount.clone());
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addr);
@@ -1066,6 +1064,7 @@ pub fn terminate_deals_raw(
 ) -> Result<Option<IpldBlock>, ActorError> {
     rt.set_caller(*MINER_ACTOR_CODE_ID, miner_addr);
     rt.expect_validate_caller_type(vec![Type::Miner]);
+    rt.expect_payable(TokenAmount::zero());
 
     let params = OnMinerSectorsTerminateParams { epoch: rt.epoch, deal_ids: deal_ids.to_vec() };
 

@@ -141,6 +141,7 @@ fn penalty_is_partially_burnt_and_stored_as_fee_debt() {
         None,
         ExitCode::OK,
     );
+    rt.expect_payable(TokenAmount::zero());
 
     let params = ApplyRewardParams { reward, penalty };
     rt.call::<Actor>(Method::ApplyRewards as u64, IpldBlock::serialize_cbor(&params).unwrap())
@@ -210,6 +211,7 @@ fn rewards_pay_back_fee_debt() {
         None,
         ExitCode::OK,
     );
+    rt.expect_payable(TokenAmount::zero());
 
     let params = ApplyRewardParams { reward: reward.clone(), penalty };
     rt.call::<Actor>(Method::ApplyRewards as u64, IpldBlock::serialize_cbor(&params).unwrap())
