@@ -52,6 +52,9 @@ macro_rules! actor_dispatch {
     (@target $rt:ident $args:ident $method:ident $func:ident raw) => {
         Self::$func($rt, $method, $args)
     };
+    (@target $rt:ident $args:ident $method:ident $func:ident default) => {{
+        $crate::dispatch_default($rt, Self::$func, &$args)
+    }};
     (@target $rt:ident $args:ident $method:ident $func:ident) => {
         $crate::dispatch($rt, Self::$func, &$args)
     };
@@ -86,6 +89,9 @@ macro_rules! actor_dispatch_unrestricted {
     (@target $rt:ident $args:ident $method:ident $func:ident raw) => {
         Self::$func($rt, $method, $args)
     };
+    (@target $rt:ident $args:ident $method:ident $func:ident default) => {{
+        $crate::dispatch_default($rt, Self::$func, &$args)
+    }};
     (@target $rt:ident $args:ident $method:ident $func:ident) => {
         $crate::dispatch($rt, Self::$func, &$args)
     };
@@ -116,6 +122,7 @@ impl<F, A> Dispatcher<F, A> {
 ///
 /// - Dispatching None/Some based on the number of parameters (0/1).
 /// - Returning None if the return type is `Result<(), ActorError>`.
+#[doc(hidden)]
 pub fn dispatch<'de, F, A, RT>(
     rt: &mut RT,
     func: F,
@@ -125,6 +132,22 @@ where
     Dispatcher<F, A>: Dispatch<'de, RT>,
 {
     Dispatcher::new(func).call(rt, arg)
+}
+
+/// Like [`dispatch`], but pass the default value to if there are no parameters.
+#[doc(hidden)]
+pub fn dispatch_default<'de, F, A, R, RT>(
+    rt: &mut RT,
+    func: F,
+    arg: &'de Option<IpldBlock>,
+) -> Result<Option<IpldBlock>, ActorError>
+where
+    F: FnOnce(&mut RT, A) -> Result<R, ActorError>,
+    A: Deserialize<'de> + Default,
+    R: Serialize,
+{
+    let arg = arg.as_ref().map(|b| b.deserialize()).transpose()?.unwrap_or_default();
+    maybe_into_block((func)(rt, arg)?)
 }
 
 /// Convert the passed value into an IPLD Block, or None if it's `()`.

@@ -31,7 +31,7 @@ pub mod runtime;
 pub mod util;
 
 mod dispatch;
-pub use dispatch::dispatch;
+pub use dispatch::{dispatch, dispatch_default};
 #[cfg(feature = "test_utils")]
 pub mod test_utils;
 

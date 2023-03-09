@@ -16,7 +16,7 @@ pub struct ConstructorParams {
 
 pub type ResurrectParams = ConstructorParams;
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Default, Serialize_tuple, Deserialize_tuple)]
 #[serde(transparent)]
 pub struct InvokeContractParams {
     #[serde(with = "strict_bytes")]
