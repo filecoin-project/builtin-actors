@@ -1,5 +1,4 @@
 use fil_actors_evm_shared::address::EthAddress;
-use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::{actor_error, ActorError, AsActorError, EAM_ACTOR_ADDR, INIT_ACTOR_ADDR};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
