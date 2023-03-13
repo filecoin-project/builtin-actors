@@ -68,6 +68,12 @@ pub struct ChangeWorkerAddressParams {
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct ChangeOwnerAddressParams {
+    pub new_owner: Address,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ChangePeerIDParams {
     #[serde(with = "strict_bytes")]
     pub new_id: Vec<u8>,

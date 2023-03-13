@@ -77,12 +77,12 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for Registry Actor
-    pub fn constructor(rt: &mut impl Runtime, root_key: Address) -> Result<(), ActorError> {
+    pub fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         // root should be an ID address
         let id_addr = rt
-            .resolve_address(&root_key)
+            .resolve_address(&params.root_key)
             .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "root should be an ID address")?;
 
         let st = State::new(rt.store(), Address::new_id(id_addr))
@@ -133,8 +133,11 @@ impl Actor {
         })
     }
 
-    pub fn remove_verifier(rt: &mut impl Runtime, params: Address) -> Result<(), ActorError> {
-        let verifier = resolve_to_actor_id(rt, &params, false)?;
+    pub fn remove_verifier(
+        rt: &mut impl Runtime,
+        params: RemoveVerifierParams,
+    ) -> Result<(), ActorError> {
+        let verifier = resolve_to_actor_id(rt, &params.verifier, false)?;
         let verifier = Address::new_id(verifier);
 
         rt.transaction(|st: &mut State, rt| {

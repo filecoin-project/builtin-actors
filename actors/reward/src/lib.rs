@@ -9,7 +9,6 @@ use fil_actors_runtime::{
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::{METHOD_CONSTRUCTOR, METHOD_SEND};
 use log::{error, warn};
@@ -52,10 +51,10 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for Reward actor
-    fn constructor(rt: &mut impl Runtime, params: Option<BigIntDe>) -> Result<(), ActorError> {
+    fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
-        if let Some(power) = params.map(|v| v.0) {
+        if let Some(power) = params.power.map(|v| v.0) {
             rt.create(&State::new(power))?;
             Ok(())
         } else {
@@ -191,11 +190,13 @@ impl Actor {
     /// epochs to compute the next epoch reward.
     fn update_network_kpi(
         rt: &mut impl Runtime,
-        params: Option<BigIntDe>,
+        params: UpdateNetworkKPIParams,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&STORAGE_POWER_ACTOR_ADDR))?;
-        let curr_realized_power =
-            params.ok_or_else(|| actor_error!(illegal_argument, "argument cannot be None"))?.0;
+        let curr_realized_power = params
+            .curr_realized_power
+            .ok_or_else(|| actor_error!(illegal_argument, "argument cannot be None"))?
+            .0;
 
         rt.transaction(|st: &mut State, rt| {
             let prev = st.epoch;

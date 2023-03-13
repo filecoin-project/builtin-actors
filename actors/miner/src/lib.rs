@@ -372,8 +372,11 @@ impl Actor {
     /// current owner address, revokes any existing proposal.
     /// If invoked by the previously proposed address, with the same proposal, changes the current owner address to be
     /// that proposed address.
-    fn change_owner_address(rt: &mut impl Runtime, params: Address) -> Result<(), ActorError> {
-        let new_address = params;
+    fn change_owner_address(
+        rt: &mut impl Runtime,
+        params: ChangeOwnerAddressParams,
+    ) -> Result<(), ActorError> {
+        let new_address = params.new_owner;
         // * Cannot match go checking for undef address, does go impl allow this to be
         // * deserialized over the wire? If so, a workaround will be needed
 

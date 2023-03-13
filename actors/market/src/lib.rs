@@ -108,7 +108,7 @@ impl Actor {
     }
 
     /// Deposits the received value into the balance held in escrow.
-    fn add_balance(rt: &mut impl Runtime, provider_or_client: Address) -> Result<(), ActorError> {
+    fn add_balance(rt: &mut impl Runtime, params: AddBalanceParams) -> Result<(), ActorError> {
         let msg_value = rt.message().value_received();
 
         if msg_value <= TokenAmount::zero() {
@@ -121,7 +121,7 @@ impl Actor {
 
         rt.validate_immediate_caller_accept_any()?;
 
-        let (nominal, _, _) = escrow_address(rt, &provider_or_client)?;
+        let (nominal, _, _) = escrow_address(rt, &params.provider_or_client)?;
 
         rt.transaction(|st: &mut State, rt| {
             st.add_balance_to_escrow_table(rt.store(), &nominal, &msg_value)?;
@@ -165,9 +165,10 @@ impl Actor {
     /// Returns the escrow balance and locked amount for an address.
     fn get_balance(
         rt: &mut impl Runtime,
-        account: Address,
+        params: GetBalanceParams,
     ) -> Result<GetBalanceReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
+        let account = params.account;
         let nominal = rt.resolve_address(&account).ok_or_else(|| {
             actor_error!(illegal_argument, "failed to resolve address {}", account)
         })?;
@@ -234,7 +235,6 @@ impl Actor {
                 provider_id
             ));
         }
-
         // Deals that passed `AuthenticateMessage` and other state-less checks.
         let mut validity_index: Vec<bool> = Vec::with_capacity(params.deals.len());
 
