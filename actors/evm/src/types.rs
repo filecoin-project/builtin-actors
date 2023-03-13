@@ -55,6 +55,7 @@ pub struct DelegateCallParams {
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
 pub struct DelegateCallReturn {
     #[serde(with = "strict_bytes")]
     pub return_data: Vec<u8>,
