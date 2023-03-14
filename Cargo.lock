@@ -2448,6 +2448,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_amt"
 version = "0.5.1"
+source = "git+https://github.com/helix-onchain/ref-fvm?branch=alex/remove-hashset-from-builtin-actors#9d1922038bc6b5d6cd03fcf928f023282ba8365e"
 dependencies = [
  "anyhow",
  "cid",
@@ -2462,6 +2463,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_bitfield"
 version = "0.5.4"
+source = "git+https://github.com/helix-onchain/ref-fvm?branch=alex/remove-hashset-from-builtin-actors#9d1922038bc6b5d6cd03fcf928f023282ba8365e"
 dependencies = [
  "fvm_ipld_encoding",
  "serde",
@@ -2472,6 +2474,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_blockstore"
 version = "0.1.1"
+source = "git+https://github.com/helix-onchain/ref-fvm?branch=alex/remove-hashset-from-builtin-actors#9d1922038bc6b5d6cd03fcf928f023282ba8365e"
 dependencies = [
  "anyhow",
  "cid",
@@ -2496,6 +2499,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_encoding"
 version = "0.3.3"
+source = "git+https://github.com/helix-onchain/ref-fvm?branch=alex/remove-hashset-from-builtin-actors#9d1922038bc6b5d6cd03fcf928f023282ba8365e"
 dependencies = [
  "anyhow",
  "cid",
@@ -2511,6 +2515,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_hamt"
 version = "0.6.1"
+source = "git+https://github.com/helix-onchain/ref-fvm?branch=alex/remove-hashset-from-builtin-actors#9d1922038bc6b5d6cd03fcf928f023282ba8365e"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -2548,6 +2553,7 @@ dependencies = [
 [[package]]
 name = "fvm_sdk"
 version = "3.0.0"
+source = "git+https://github.com/helix-onchain/ref-fvm?branch=alex/remove-hashset-from-builtin-actors#9d1922038bc6b5d6cd03fcf928f023282ba8365e"
 dependencies = [
  "cid",
  "fvm_ipld_encoding",
@@ -2561,6 +2567,7 @@ dependencies = [
 [[package]]
 name = "fvm_shared"
 version = "3.1.0"
+source = "git+https://github.com/helix-onchain/ref-fvm?branch=alex/remove-hashset-from-builtin-actors#9d1922038bc6b5d6cd03fcf928f023282ba8365e"
 dependencies = [
  "anyhow",
  "bitflags",
