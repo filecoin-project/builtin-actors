@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof, StoragePower};
@@ -129,10 +129,10 @@ pub struct Policy {
     pub chain_finality: ChainEpoch,
 
     /// Allowed post proof types for new miners
-    pub valid_post_proof_type: HashSet<RegisteredPoStProof>,
+    pub valid_post_proof_type: BTreeSet<RegisteredPoStProof>,
 
     /// Allowed pre commit proof types for new miners
-    pub valid_pre_commit_proof_type: HashSet<RegisteredSealProof>,
+    pub valid_pre_commit_proof_type: BTreeSet<RegisteredSealProof>,
 
     // --- verifreg policy
     /// Minimum verified deal size
@@ -206,7 +206,7 @@ impl Default for Policy {
             new_sectors_per_period_max: policy_constants::NEW_SECTORS_PER_PERIOD_MAX,
             chain_finality: policy_constants::CHAIN_FINALITY,
 
-            valid_post_proof_type: HashSet::<RegisteredPoStProof>::from([
+            valid_post_proof_type: BTreeSet::<RegisteredPoStProof>::from([
                 #[cfg(feature = "sector-2k")]
                 RegisteredPoStProof::StackedDRGWindow2KiBV1,
                 #[cfg(feature = "sector-8m")]
@@ -218,7 +218,7 @@ impl Default for Policy {
                 #[cfg(feature = "sector-64g")]
                 RegisteredPoStProof::StackedDRGWindow64GiBV1,
             ]),
-            valid_pre_commit_proof_type: HashSet::<RegisteredSealProof>::from([
+            valid_pre_commit_proof_type: BTreeSet::<RegisteredSealProof>::from([
                 #[cfg(feature = "sector-2k")]
                 RegisteredSealProof::StackedDRG2KiBV1P1,
                 #[cfg(feature = "sector-8m")]
