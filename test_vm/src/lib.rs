@@ -158,13 +158,13 @@ where
         let sys_st = SystemState::new(store).unwrap();
         let sys_head = v.put_store(&sys_st);
         let sys_value = faucet_total.clone(); // delegate faucet funds to system so we can construct faucet by sending to bls addr
-        v.set_actor(SYSTEM_ACTOR_ADDR, actor(*SYSTEM_ACTOR_CODE_ID, sys_head, 0, sys_value, None));
+        v.set_actor(&SYSTEM_ACTOR_ADDR, actor(*SYSTEM_ACTOR_CODE_ID, sys_head, 0, sys_value, None));
 
         // init
         let init_st = InitState::new(store, "integration-test".to_string()).unwrap();
         let init_head = v.put_store(&init_st);
         v.set_actor(
-            INIT_ACTOR_ADDR,
+            &INIT_ACTOR_ADDR,
             actor(*INIT_ACTOR_CODE_ID, init_head, 0, TokenAmount::zero(), None),
         );
 
@@ -172,7 +172,7 @@ where
 
         let reward_head = v.put_store(&RewardState::new(StoragePower::zero()));
         v.set_actor(
-            REWARD_ACTOR_ADDR,
+            &REWARD_ACTOR_ADDR,
             actor(*REWARD_ACTOR_CODE_ID, reward_head, 0, reward_total, None),
         );
 
@@ -189,30 +189,30 @@ where
         ];
         let cron_head = v.put_store(&CronState { entries: builtin_entries });
         v.set_actor(
-            CRON_ACTOR_ADDR,
+            &CRON_ACTOR_ADDR,
             actor(*CRON_ACTOR_CODE_ID, cron_head, 0, TokenAmount::zero(), None),
         );
 
         // power
         let power_head = v.put_store(&PowerState::new(&v.store).unwrap());
         v.set_actor(
-            STORAGE_POWER_ACTOR_ADDR,
+            &STORAGE_POWER_ACTOR_ADDR,
             actor(*POWER_ACTOR_CODE_ID, power_head, 0, TokenAmount::zero(), None),
         );
 
         // market
         let market_head = v.put_store(&MarketState::new(&v.store).unwrap());
         v.set_actor(
-            STORAGE_MARKET_ACTOR_ADDR,
+            &STORAGE_MARKET_ACTOR_ADDR,
             actor(*MARKET_ACTOR_CODE_ID, market_head, 0, TokenAmount::zero(), None),
         );
 
         // verifreg
         // initialize verifreg root signer
         v.apply_message(
-            INIT_ACTOR_ADDR,
-            Address::new_bls(VERIFREG_ROOT_KEY).unwrap(),
-            TokenAmount::zero(),
+            &INIT_ACTOR_ADDR,
+            &Address::new_bls(VERIFREG_ROOT_KEY).unwrap(),
+            &TokenAmount::zero(),
             METHOD_SEND,
             None::<RawBytes>,
         )
@@ -233,9 +233,9 @@ where
         .unwrap();
         let msig_ctor_ret: ExecReturn = v
             .apply_message(
-                SYSTEM_ACTOR_ADDR,
-                INIT_ACTOR_ADDR,
-                TokenAmount::zero(),
+                &SYSTEM_ACTOR_ADDR,
+                &INIT_ACTOR_ADDR,
+                &TokenAmount::zero(),
                 fil_actor_init::Method::Exec as u64,
                 Some(fil_actor_init::ExecParams {
                     code_cid: *MULTISIG_ACTOR_CODE_ID,
@@ -252,13 +252,13 @@ where
         // verifreg
         let verifreg_head = v.put_store(&VerifRegState::new(&v.store, root_msig_addr).unwrap());
         v.set_actor(
-            VERIFIED_REGISTRY_ACTOR_ADDR,
+            &VERIFIED_REGISTRY_ACTOR_ADDR,
             actor(*VERIFREG_ACTOR_CODE_ID, verifreg_head, 0, TokenAmount::zero(), None),
         );
 
         // Ethereum Address Manager
         v.set_actor(
-            EAM_ACTOR_ADDR,
+            &EAM_ACTOR_ADDR,
             actor(*EAM_ACTOR_CODE_ID, EMPTY_ARR_CID, 0, TokenAmount::zero(), None),
         );
 
@@ -266,22 +266,22 @@ where
         let datacap_head =
             v.put_store(&DataCapState::new(&v.store, VERIFIED_REGISTRY_ACTOR_ADDR).unwrap());
         v.set_actor(
-            DATACAP_TOKEN_ACTOR_ADDR,
+            &DATACAP_TOKEN_ACTOR_ADDR,
             actor(*DATACAP_TOKEN_ACTOR_CODE_ID, datacap_head, 0, TokenAmount::zero(), None),
         );
 
         // burnt funds
         let burnt_funds_head = v.put_store(&AccountState { address: BURNT_FUNDS_ACTOR_ADDR });
         v.set_actor(
-            BURNT_FUNDS_ACTOR_ADDR,
+            &BURNT_FUNDS_ACTOR_ADDR,
             actor(*ACCOUNT_ACTOR_CODE_ID, burnt_funds_head, 0, TokenAmount::zero(), None),
         );
 
         // create a faucet with 1 billion FIL for setting up test accounts
         v.apply_message(
-            SYSTEM_ACTOR_ADDR,
-            Address::new_bls(FAUCET_ROOT_KEY).unwrap(),
-            faucet_total,
+            &SYSTEM_ACTOR_ADDR,
+            &Address::new_bls(FAUCET_ROOT_KEY).unwrap(),
+            &faucet_total,
             METHOD_SEND,
             None::<RawBytes>,
         )
@@ -305,7 +305,7 @@ where
         }
     }
 
-    pub fn get_miner_balance(&self, maddr: Address) -> MinerBalances {
+    pub fn get_miner_balance(&self, maddr: &Address) -> MinerBalances {
         let a = self.get_actor(maddr).unwrap();
         let st = self.get_state::<MinerState>(maddr).unwrap();
         MinerBalances {
@@ -316,15 +316,15 @@ where
         }
     }
 
-    pub fn get_miner_info(&self, maddr: Address) -> MinerInfo {
+    pub fn get_miner_info(&self, maddr: &Address) -> MinerInfo {
         let st = self.get_state::<MinerState>(maddr).unwrap();
         self.store.get_cbor::<MinerInfo>(&st.info).unwrap().unwrap()
     }
 
     pub fn get_network_stats(&self) -> NetworkStats {
-        let power_state = self.get_state::<PowerState>(STORAGE_POWER_ACTOR_ADDR).unwrap();
-        let reward_state = self.get_state::<RewardState>(REWARD_ACTOR_ADDR).unwrap();
-        let market_state = self.get_state::<MarketState>(STORAGE_MARKET_ACTOR_ADDR).unwrap();
+        let power_state = self.get_state::<PowerState>(&STORAGE_POWER_ACTOR_ADDR).unwrap();
+        let reward_state = self.get_state::<RewardState>(&REWARD_ACTOR_ADDR).unwrap();
+        let market_state = self.get_state::<MarketState>(&STORAGE_MARKET_ACTOR_ADDR).unwrap();
 
         NetworkStats {
             total_raw_byte_power: power_state.total_raw_byte_power,
@@ -354,9 +354,9 @@ where
         self.store.put_cbor(obj, Code::Blake2b256).unwrap()
     }
 
-    pub fn get_actor(&self, addr: Address) -> Option<Actor> {
+    pub fn get_actor(&self, addr: &Address) -> Option<Actor> {
         // check for inclusion in cache of changed actors
-        if let Some(act) = self.actors_cache.borrow().get(&addr) {
+        if let Some(act) = self.actors_cache.borrow().get(addr) {
             return Some(act.clone());
         }
         // go to persisted map
@@ -365,14 +365,14 @@ where
                 .unwrap();
         let actor = actors.get(&addr.to_bytes()).unwrap().cloned();
         actor.iter().for_each(|a| {
-            self.actors_cache.borrow_mut().insert(addr, a.clone());
+            self.actors_cache.borrow_mut().insert(*addr, a.clone());
         });
         actor
     }
 
     // blindly overwrite the actor at this address whether it previously existed or not
-    pub fn set_actor(&self, key: Address, a: Actor) {
-        self.actors_cache.borrow_mut().insert(key, a);
+    pub fn set_actor(&self, key: &Address, a: Actor) {
+        self.actors_cache.borrow_mut().insert(*key, a);
         self.actors_dirty.replace(true);
     }
 
@@ -397,11 +397,11 @@ where
     }
 
     pub fn normalize_address(&self, addr: &Address) -> Option<Address> {
-        let st = self.get_state::<InitState>(INIT_ACTOR_ADDR).unwrap();
+        let st = self.get_state::<InitState>(&INIT_ACTOR_ADDR).unwrap();
         st.resolve_address::<BS>(self.store, addr).unwrap()
     }
 
-    pub fn get_state<T: DeserializeOwned>(&self, addr: Address) -> Option<T> {
+    pub fn get_state<T: DeserializeOwned>(&self, addr: &Address) -> Option<T> {
         let a_opt = self.get_actor(addr);
         if a_opt == None {
             return None;
@@ -410,7 +410,7 @@ where
         self.store.get_cbor::<T>(&a.head).unwrap()
     }
 
-    pub fn mutate_state<S, F>(&self, addr: Address, f: F)
+    pub fn mutate_state<S, F>(&self, addr: &Address, f: F)
     where
         S: Serialize + DeserializeOwned,
         F: FnOnce(&mut S),
@@ -428,13 +428,13 @@ where
 
     pub fn apply_message<S: serde::Serialize>(
         &self,
-        from: Address,
-        to: Address,
-        value: TokenAmount,
+        from: &Address,
+        to: &Address,
+        value: &TokenAmount,
         method: MethodNum,
         params: Option<S>,
     ) -> Result<MessageResult, TestVMError> {
-        let from_id = self.normalize_address(&from).unwrap();
+        let from_id = &self.normalize_address(from).unwrap();
         let mut a = self.get_actor(from_id).unwrap();
         let call_seq = a.call_seq_num;
         a.call_seq_num = call_seq + 1;
@@ -449,15 +449,15 @@ where
         // big.Mul(big.NewInt(1e9), big.NewInt(1e18))
         // make top level context with internal context
         let top = TopCtx {
-            originator_stable_addr: from,
+            originator_stable_addr: *from,
             originator_call_seq: call_seq,
             new_actor_addr_count: RefCell::new(0),
             circ_supply: TokenAmount::from_whole(1_000_000_000),
         };
         let msg = InternalMessage {
-            from: from_id,
-            to,
-            value,
+            from: *from_id,
+            to: *to,
+            value: value.clone(),
             method,
             params: params.map(|p| IpldBlock::serialize_cbor(&p).unwrap().unwrap()),
         };
@@ -623,7 +623,7 @@ where
 {
     fn resolve_target(&'invocation self, target: &Address) -> Result<(Actor, Address), ActorError> {
         if let Some(a) = self.v.normalize_address(target) {
-            if let Some(act) = self.v.get_actor(a) {
+            if let Some(act) = self.v.get_actor(&a) {
                 return Ok((act, a));
             }
         };
@@ -634,7 +634,7 @@ where
             Payload::Delegated(da)
             // Validate that there's an actor at the target ID (we don't care what is there,
             // just that something is there).
-            if self.v.get_actor(Address::new_id(da.namespace())).is_some() =>
+            if self.v.get_actor(&Address::new_id(da.namespace())).is_some() =>
                 {
                     false
                 }
@@ -654,13 +654,13 @@ where
             ));
         }
 
-        let mut st = self.v.get_state::<InitState>(INIT_ACTOR_ADDR).unwrap();
+        let mut st = self.v.get_state::<InitState>(&INIT_ACTOR_ADDR).unwrap();
         let (target_id, existing) = st.map_addresses_to_id(self.v.store, target, None).unwrap();
         assert!(!existing, "should never have existing actor when no f4 address is specified");
         let target_id_addr = Address::new_id(target_id);
-        let mut init_actor = self.v.get_actor(INIT_ACTOR_ADDR).unwrap();
+        let mut init_actor = self.v.get_actor(&INIT_ACTOR_ADDR).unwrap();
         init_actor.head = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
-        self.v.set_actor(INIT_ACTOR_ADDR, init_actor);
+        self.v.set_actor(&INIT_ACTOR_ADDR, init_actor);
 
         let new_actor_msg = InternalMessage {
             from: SYSTEM_ACTOR_ADDR,
@@ -693,7 +693,7 @@ where
             }
         }
 
-        Ok((self.v.get_actor(target_id_addr).unwrap(), target_id_addr))
+        Ok((self.v.get_actor(&target_id_addr).unwrap(), target_id_addr))
     }
 
     fn gather_trace(
@@ -720,7 +720,7 @@ where
         let prior_root = self.v.checkpoint();
 
         // Transfer funds
-        let mut from_actor = self.v.get_actor(self.msg.from).unwrap();
+        let mut from_actor = self.v.get_actor(&self.msg.from).unwrap();
         if !self.msg.value.is_zero() {
             if self.msg.value.is_negative() {
                 return Err(ActorError::unchecked(
@@ -744,9 +744,9 @@ where
 
         // Load, deduct, store from actor before loading to actor to handle self-send case
         from_actor.balance -= &self.msg.value;
-        self.v.set_actor(self.msg.from, from_actor);
+        self.v.set_actor(&self.msg.from, from_actor);
 
-        let (mut to_actor, to_addr) = self.resolve_target(&self.msg.to)?;
+        let (mut to_actor, ref to_addr) = self.resolve_target(&self.msg.to)?;
         to_actor.balance = to_actor.balance.add(&self.msg.value);
         self.v.set_actor(to_addr, to_actor);
 
@@ -811,7 +811,7 @@ where
                 ));
             }
         }
-        let addr = Address::new_id(actor_id);
+        let addr = &Address::new_id(actor_id);
         let actor = match self.v.get_actor(addr) {
             Some(mut act) if act.code == *PLACEHOLDER_ACTOR_CODE_ID => {
                 act.code = code_id;
@@ -940,7 +940,7 @@ where
             ));
         }
         self.caller_validated.replace(true);
-        let to_match = ACTOR_TYPES.get(&self.v.get_actor(self.msg.from).unwrap().code).unwrap();
+        let to_match = ACTOR_TYPES.get(&self.v.get_actor(&self.msg.from).unwrap().code).unwrap();
         if types.into_iter().any(|t| *t == *to_match) {
             return Ok(());
         }
@@ -951,7 +951,7 @@ where
     }
 
     fn current_balance(&self) -> TokenAmount {
-        self.v.get_actor(self.to()).unwrap().balance
+        self.v.get_actor(&self.to()).unwrap().balance
     }
 
     fn resolve_address(&self, addr: &Address) -> Option<ActorID> {
@@ -964,7 +964,7 @@ where
     }
 
     fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {
-        let maybe_act = self.v.get_actor(Address::new_id(*id));
+        let maybe_act = self.v.get_actor(&Address::new_id(*id));
         match maybe_act {
             None => None,
             Some(act) => Some(act.code),
@@ -972,7 +972,7 @@ where
     }
 
     fn lookup_delegated_address(&self, id: ActorID) -> Option<Address> {
-        self.v.get_actor(Address::new_id(id)).and_then(|act| act.predictable_address)
+        self.v.get_actor(&Address::new_id(id)).and_then(|act| act.predictable_address)
     }
 
     fn send(
@@ -1036,11 +1036,11 @@ where
     }
 
     fn get_state_root(&self) -> Result<Cid, ActorError> {
-        Ok(self.v.get_actor(self.to()).unwrap().head)
+        Ok(self.v.get_actor(&self.to()).unwrap().head)
     }
 
     fn set_state_root(&self, root: &Cid) -> Result<(), ActorError> {
-        let maybe_act = self.v.get_actor(self.to());
+        let maybe_act = self.v.get_actor(&self.to());
         match maybe_act {
             None => Err(ActorError::unchecked(
                 ExitCode::SYS_ASSERTION_FAILED,
@@ -1048,7 +1048,7 @@ where
             )),
             Some(mut act) if !self.read_only() => {
                 act.head = *root;
-                self.v.set_actor(self.to(), act);
+                self.v.set_actor(&self.to(), act);
                 Ok(())
             }
             _ => Err(ActorError::unchecked(
@@ -1068,7 +1068,7 @@ where
         let result = f(&mut st, self);
         self.allow_side_effects.replace(true);
         let ret = result?;
-        let mut act = self.v.get_actor(self.to()).unwrap();
+        let mut act = self.v.get_actor(&self.to()).unwrap();
         act.head = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
 
         if self.read_only {
@@ -1078,7 +1078,7 @@ where
             ));
         }
 
-        self.v.set_actor(self.to(), act);
+        self.v.set_actor(&self.to(), act);
         Ok(ret)
     }
 
@@ -1112,7 +1112,7 @@ where
     }
 
     fn actor_balance(&self, id: ActorID) -> Option<TokenAmount> {
-        self.v.get_actor(Address::new_id(id)).map(|act| act.balance)
+        self.v.get_actor(&Address::new_id(id)).map(|act| act.balance)
     }
 
     fn gas_available(&self) -> u64 {
