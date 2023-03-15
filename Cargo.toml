@@ -57,14 +57,14 @@ members = [
      "test_vm",
 ]
 
-[patch.crates-io]
-fvm_shared = { git = "https://github.com/helix-onchain/ref-fvm", branch = "alex/remove-hashset-from-builtin-actors" }
-fvm_sdk = { git = "https://github.com/helix-onchain/ref-fvm", branch = "alex/remove-hashset-from-builtin-actors" }
-fvm_ipld_hamt = { git = "https://github.com/helix-onchain/ref-fvm", branch = "alex/remove-hashset-from-builtin-actors" }
-fvm_ipld_amt = { git = "https://github.com/helix-onchain/ref-fvm", branch = "alex/remove-hashset-from-builtin-actors" }
-fvm_ipld_bitfield = { git = "https://github.com/helix-onchain/ref-fvm", branch = "alex/remove-hashset-from-builtin-actors" }
-fvm_ipld_encoding = { git = "https://github.com/helix-onchain/ref-fvm", branch = "alex/remove-hashset-from-builtin-actors" }
-fvm_ipld_blockstore = { git = "https://github.com/helix-onchain/ref-fvm", branch = "alex/remove-hashset-from-builtin-actors" }
+# [patch.crates-io]
+# fvm_shared = { git = "https://github.com/helix-onchain/ref-fvm", branch = "alex/remove-hashset-from-builtin-actors" }
+# fvm_sdk = { git = "https://github.com/helix-onchain/ref-fvm", branch = "alex/remove-hashset-from-builtin-actors" }
+# fvm_ipld_hamt = { git = "https://github.com/helix-onchain/ref-fvm", branch = "alex/remove-hashset-from-builtin-actors" }
+# fvm_ipld_amt = { git = "https://github.com/helix-onchain/ref-fvm", branch = "alex/remove-hashset-from-builtin-actors" }
+# fvm_ipld_bitfield = { git = "https://github.com/helix-onchain/ref-fvm", branch = "alex/remove-hashset-from-builtin-actors" }
+# fvm_ipld_encoding = { git = "https://github.com/helix-onchain/ref-fvm", branch = "alex/remove-hashset-from-builtin-actors" }
+# fvm_ipld_blockstore = { git = "https://github.com/helix-onchain/ref-fvm", branch = "alex/remove-hashset-from-builtin-actors" }
 # fvm_actor_utils = { git = "https://github.com/helix-onchain/filecoin", branch = "release/fvm-v3.1" }
 # frc42_dispatch = { git = "https://github.com/helix-onchain/filecoin", branch = "release/fvm-v3.1" }
 # frc46_token = { git = "https://github.com/helix-onchain/filecoin", branch = "release/fvm-v3.1" }

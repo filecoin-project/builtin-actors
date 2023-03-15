@@ -2448,7 +2448,8 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_amt"
 version = "0.5.1"
-source = "git+https://github.com/helix-onchain/ref-fvm?branch=alex/remove-hashset-from-builtin-actors#9d1922038bc6b5d6cd03fcf928f023282ba8365e"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e84f16d6927ce342ef86bd20fcc2d5bd498ed33ae6d7a22fea7a1b453488ec88"
 dependencies = [
  "anyhow",
  "cid",
@@ -2463,7 +2464,8 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_bitfield"
 version = "0.5.4"
-source = "git+https://github.com/helix-onchain/ref-fvm?branch=alex/remove-hashset-from-builtin-actors#9d1922038bc6b5d6cd03fcf928f023282ba8365e"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d1950291f40d2d1047eb0a4568f7ef6d5b4973452dcef012dffb1957fe483ff7"
 dependencies = [
  "fvm_ipld_encoding",
  "serde",
@@ -2474,7 +2476,8 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_blockstore"
 version = "0.1.1"
-source = "git+https://github.com/helix-onchain/ref-fvm?branch=alex/remove-hashset-from-builtin-actors#9d1922038bc6b5d6cd03fcf928f023282ba8365e"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "688239a96199577f6705a3f9689abfd795f867f91f5847bc7e236017cc672df7"
 dependencies = [
  "anyhow",
  "cid",
@@ -2499,7 +2502,8 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_encoding"
 version = "0.3.3"
-source = "git+https://github.com/helix-onchain/ref-fvm?branch=alex/remove-hashset-from-builtin-actors#9d1922038bc6b5d6cd03fcf928f023282ba8365e"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f0816a2a6df4853de08a723d261110d56a121aa313bc570fe9d248f0a4bc5288"
 dependencies = [
  "anyhow",
  "cid",
@@ -2515,7 +2519,8 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_hamt"
 version = "0.6.1"
-source = "git+https://github.com/helix-onchain/ref-fvm?branch=alex/remove-hashset-from-builtin-actors#9d1922038bc6b5d6cd03fcf928f023282ba8365e"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c942494dde990aeac314311bde34c787be99cab7d0836397a75556cbaa2c3e7"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -2553,7 +2558,8 @@ dependencies = [
 [[package]]
 name = "fvm_sdk"
 version = "3.0.0"
-source = "git+https://github.com/helix-onchain/ref-fvm?branch=alex/remove-hashset-from-builtin-actors#9d1922038bc6b5d6cd03fcf928f023282ba8365e"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2fef17308967cceb1d22f05003d60adb0d5b9ba53e34ace4ae04701eb7e6af02"
 dependencies = [
  "cid",
  "fvm_ipld_encoding",
@@ -2567,7 +2573,8 @@ dependencies = [
 [[package]]
 name = "fvm_shared"
 version = "3.1.0"
-source = "git+https://github.com/helix-onchain/ref-fvm?branch=alex/remove-hashset-from-builtin-actors#9d1922038bc6b5d6cd03fcf928f023282ba8365e"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "45742ae0f445a80121a97e9ee36fd0112f56e19daa5865fe458452ec6ff358f2"
 dependencies = [
  "anyhow",
  "bitflags",
