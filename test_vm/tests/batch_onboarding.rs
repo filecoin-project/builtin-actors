@@ -50,15 +50,15 @@ impl Onboarding {
 fn batch_onboarding(v2: bool) {
     let store = MemoryBlockstore::new();
     let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(10_000));
+    let addrs = create_accounts(&v, 1, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
     let (id_addr, _) = create_miner(
         &mut v,
-        owner,
-        worker,
+        &owner,
+        &worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from_whole(10_000),
+        &TokenAmount::from_whole(10_000),
     );
     let mut v = v.with_epoch(200);
 
@@ -98,8 +98,8 @@ fn batch_onboarding(v2: bool) {
                 &mut v,
                 item.pre_commit_sector_count,
                 item.pre_commit_batch_size,
-                worker,
-                id_addr,
+                &worker,
+                &id_addr,
                 seal_proof,
                 next_sector_no,
                 next_sector_no == 0,
@@ -116,8 +116,8 @@ fn batch_onboarding(v2: bool) {
             precommmits = precommmits[item.prove_commit_sector_count as usize..].to_vec();
             prove_commit_sectors(
                 &mut v,
-                worker,
-                id_addr,
+                &worker,
+                &id_addr,
                 to_prove,
                 item.prove_commit_aggregate_size,
             );
@@ -128,15 +128,15 @@ fn batch_onboarding(v2: bool) {
     let (dline_info, p_idx, v) = advance_to_proving_deadline(v, id_addr, 0);
 
     // submit post
-    let st = v.get_state::<MinerState>(id_addr).unwrap();
+    let st = v.get_state::<MinerState>(&id_addr).unwrap();
     let sector = st.get_sector(v.store, 0).unwrap().unwrap();
     let mut new_power = power_for_sector(seal_proof.sector_size().unwrap(), &sector);
     new_power.raw *= proven_count;
     new_power.qa *= proven_count;
 
-    submit_windowed_post(&v, worker, id_addr, dline_info, p_idx, Some(new_power.clone()));
+    submit_windowed_post(&v, &worker, &id_addr, dline_info, p_idx, Some(new_power.clone()));
 
-    let balances = v.get_miner_balance(id_addr);
+    let balances = v.get_miner_balance(&id_addr);
     assert!(balances.initial_pledge.is_positive());
 
     let network_stats = v.get_network_stats();
@@ -146,9 +146,9 @@ fn batch_onboarding(v2: bool) {
 
     apply_ok(
         &v,
-        SYSTEM_ACTOR_ADDR,
-        CRON_ACTOR_ADDR,
-        TokenAmount::zero(),
+        &SYSTEM_ACTOR_ADDR,
+        &CRON_ACTOR_ADDR,
+        &TokenAmount::zero(),
         CronMethod::EpochTick as u64,
         None::<RawBytes>,
     );
