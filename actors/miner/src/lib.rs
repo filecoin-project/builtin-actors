@@ -4654,7 +4654,7 @@ fn check_valid_post_proof_type(
     policy: &Policy,
     proof_type: RegisteredPoStProof,
 ) -> Result<(), ActorError> {
-    if policy.valid_post_proof_type.contains(&proof_type) {
+    if policy.valid_post_proof_type.contains(proof_type) {
         Ok(())
     } else {
         Err(actor_error!(
