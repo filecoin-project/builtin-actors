@@ -71,20 +71,20 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
 
     /// Validates the caller against some predicate.
     /// Exported actor methods must invoke at least one caller validation before returning.
-    fn validate_immediate_caller_accept_any(&mut self) -> Result<(), ActorError>;
-    fn validate_immediate_caller_is<'a, I>(&mut self, addresses: I) -> Result<(), ActorError>
+    fn validate_immediate_caller_accept_any(&self) -> Result<(), ActorError>;
+    fn validate_immediate_caller_is<'a, I>(&self, addresses: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Address>;
     /// Validates that the caller has a delegated address that is a member of
     /// one of the provided namespaces.
     /// Addresses must be of Protocol ID.
     fn validate_immediate_caller_namespace<I>(
-        &mut self,
+        &self,
         namespace_manager_addresses: I,
     ) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = u64>;
-    fn validate_immediate_caller_type<'a, I>(&mut self, types: I) -> Result<(), ActorError>
+    fn validate_immediate_caller_type<'a, I>(&self, types: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Type>;
 
@@ -129,7 +129,7 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// Initializes the state object.
     /// This is only valid when the state has not yet been initialized.
     /// NOTE: we should also limit this to being invoked during the constructor method
-    fn create<T: Serialize>(&mut self, obj: &T) -> Result<(), ActorError> {
+    fn create<T: Serialize>(&self, obj: &T) -> Result<(), ActorError> {
         let root = self.get_state_root()?;
         if root != EMPTY_ARR_CID {
             return Err(
@@ -155,7 +155,7 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     fn get_state_root(&self) -> Result<Cid, ActorError>;
 
     /// Sets the state-root.
-    fn set_state_root(&mut self, root: &Cid) -> Result<(), ActorError>;
+    fn set_state_root(&self, root: &Cid) -> Result<(), ActorError>;
 
     /// Loads a mutable copy of the state of the receiver, passes it to `f`,
     /// and after `f` completes puts the state object back to the store and sets it as
@@ -164,10 +164,10 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// During the call to `f`, execution is protected from side-effects, (including message send).
     ///
     /// Returns the result of `f`.
-    fn transaction<S, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
+    fn transaction<S, RT, F>(&self, f: F) -> Result<RT, ActorError>
     where
         S: Serialize + DeserializeOwned,
-        F: FnOnce(&mut S, &mut Self) -> Result<RT, ActorError>;
+        F: FnOnce(&mut S, &Self) -> Result<RT, ActorError>;
 
     /// Returns reference to blockstore
     fn store(&self) -> &Self::Blockstore;
@@ -200,12 +200,12 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// the actor even in the event of a chain re-org (whereas an ID-address might refer to a
     /// different actor after messages are re-ordered).
     /// Always an ActorExec address.
-    fn new_actor_address(&mut self) -> Result<Address, ActorError>;
+    fn new_actor_address(&self) -> Result<Address, ActorError>;
 
     /// Creates an actor with code `codeID`, an empty state, id `actor_id`, and an optional predictable address.
     /// May only be called by Init actor.
     fn create_actor(
-        &mut self,
+        &self,
         code_id: Cid,
         actor_id: ActorID,
         predictable_address: Option<Address>,
@@ -214,7 +214,7 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// Deletes the executing actor from the state tree, transferring any balance to beneficiary.
     /// Aborts if the beneficiary does not exist.
     /// May only be called by the actor itself.
-    fn delete_actor(&mut self, beneficiary: &Address) -> Result<(), ActorError>;
+    fn delete_actor(&self, beneficiary: &Address) -> Result<(), ActorError>;
 
     /// Returns whether the specified CodeCID belongs to a built-in actor.
     fn resolve_builtin_actor_type(&self, code_id: &Cid) -> Option<Type>;
@@ -235,7 +235,7 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
 
     /// ChargeGas charges specified amount of `gas` for execution.
     /// `name` provides information about gas charging point
-    fn charge_gas(&mut self, name: &'static str, compute: i64);
+    fn charge_gas(&self, name: &'static str, compute: i64);
 
     /// Returns the gas base fee (cost per unit) for the current epoch.
     fn base_fee(&self) -> TokenAmount;
