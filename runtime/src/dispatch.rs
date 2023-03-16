@@ -52,7 +52,7 @@ macro_rules! actor_dispatch {
     (@target $rt:ident $args:ident $method:ident $func:ident raw) => {
         Self::$func($rt, $method, $args)
     };
-    (@target $rt:ident $args:ident $method:ident $func:ident default) => {{
+    (@target $rt:ident $args:ident $method:ident $func:ident default_params) => {{
         $crate::dispatch_default($rt, Self::$func, &$args)
     }};
     (@target $rt:ident $args:ident $method:ident $func:ident) => {
@@ -89,7 +89,7 @@ macro_rules! actor_dispatch_unrestricted {
     (@target $rt:ident $args:ident $method:ident $func:ident raw) => {
         Self::$func($rt, $method, $args)
     };
-    (@target $rt:ident $args:ident $method:ident $func:ident default) => {{
+    (@target $rt:ident $args:ident $method:ident $func:ident default_params) => {{
         $crate::dispatch_default($rt, Self::$func, &$args)
     }};
     (@target $rt:ident $args:ident $method:ident $func:ident) => {

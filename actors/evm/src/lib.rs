@@ -406,7 +406,7 @@ impl ActorCode for EvmContractActor {
     type Methods = Method;
     actor_dispatch_unrestricted! {
         Constructor => constructor,
-        InvokeContract => invoke_contract [default],
+        InvokeContract => invoke_contract [default_params],
         GetBytecode => bytecode,
         GetBytecodeHash => bytecode_hash,
         GetStorageAt => storage_at,
