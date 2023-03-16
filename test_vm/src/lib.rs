@@ -72,6 +72,7 @@ use std::error::Error;
 use std::fmt;
 use std::ops::Add;
 
+pub mod executor;
 pub mod util;
 
 pub struct VM<'bs> {
