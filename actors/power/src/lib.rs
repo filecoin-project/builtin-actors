@@ -682,8 +682,7 @@ impl ActorCode for Actor {
     type Methods = Method;
     actor_dispatch! {
         Constructor => constructor,
-        CreateMiner => create_miner,
-        CreateMinerExported => create_miner,
+        CreateMiner|CreateMinerExported => create_miner,
         UpdateClaimedPower => update_claimed_power            ,
         EnrollCronEvent => enroll_cron_event,
         OnEpochTickEnd => on_epoch_tick_end,

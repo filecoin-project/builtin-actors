@@ -24,7 +24,7 @@ use crate::ActorError;
 /// ```
 #[macro_export]
 macro_rules! actor_dispatch {
-    ($($(#[$m:meta])* $(_)? $($method:ident)? => $func:ident $([$tag:ident])?,)*) => {
+    ($($(#[$m:meta])* $(_)? $($method:ident)|* => $func:ident $([$tag:ident])?,)*) => {
         fn invoke_method<RT>(
             rt: &mut RT,
             method: fvm_shared::MethodNum,
@@ -37,7 +37,7 @@ macro_rules! actor_dispatch {
             $crate::builtin::shared::restrict_internal_api(rt, method)?;
             match <Self::Methods as num_traits::FromPrimitive>::from_u64(method) {
                 $($(#[$m])*
-                  $crate::actor_dispatch!(@pattern $($method)?) =>
+                  $crate::actor_dispatch!(@pattern $($method)|*) =>
                   $crate::actor_dispatch!(@target rt args method $func $($tag)?),)*
                 None => Err(actor_error!(unhandled_message; "invalid method: {}", method)),
             }
@@ -46,8 +46,8 @@ macro_rules! actor_dispatch {
     (@pattern) => {
         None
     };
-    (@pattern $method:ident) => {
-        Some(Self::Methods::$method)
+    (@pattern $($method:ident)|+) => {
+        Some($(Self::Methods::$method)|+)
     };
     (@target $rt:ident $args:ident $method:ident $func:ident raw) => {
         Self::$func($rt, $method, $args)
@@ -62,7 +62,7 @@ macro_rules! actor_dispatch {
 
 #[macro_export]
 macro_rules! actor_dispatch_unrestricted {
-    ($($(#[$m:meta])* $(_)? $($method:ident)? => $func:ident $([$tag:ident])?,)*) => {
+    ($($(#[$m:meta])* $(_)? $($method:ident)|* => $func:ident $([$tag:ident])?,)*) => {
         fn invoke_method<RT>(
             rt: &mut RT,
             method: fvm_shared::MethodNum,
@@ -74,7 +74,7 @@ macro_rules! actor_dispatch_unrestricted {
         {
             match <Self::Methods as num_traits::FromPrimitive>::from_u64(method) {
                 $($(#[$m])*
-                  $crate::actor_dispatch!(@pattern $($method)?) =>
+                  $crate::actor_dispatch!(@pattern $($method)|*) =>
                   $crate::actor_dispatch!(@target rt args method $func $($tag)?),)*
                 None => Err(actor_error!(unhandled_message; "invalid method: {}", method)),
             }
@@ -83,8 +83,8 @@ macro_rules! actor_dispatch_unrestricted {
     (@pattern) => {
         None
     };
-    (@pattern $method:ident) => {
-        Some(Self::Methods::$method)
+    (@pattern $($method:ident)|+) => {
+        Some($(Self::Methods::$method)|+)
     };
     (@target $rt:ident $args:ident $method:ident $func:ident raw) => {
         Self::$func($rt, $method, $args)
