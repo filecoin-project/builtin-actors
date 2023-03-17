@@ -133,12 +133,12 @@ where
 /// Like [`dispatch`], but pass the default value to if there are no parameters.
 #[doc(hidden)]
 pub fn dispatch_default<'de, F, A, R, RT>(
-    rt: &mut RT,
+    rt: &RT,
     func: F,
     arg: &'de Option<IpldBlock>,
 ) -> Result<Option<IpldBlock>, ActorError>
 where
-    F: FnOnce(&mut RT, A) -> Result<R, ActorError>,
+    F: FnOnce(&RT, A) -> Result<R, ActorError>,
     A: Deserialize<'de> + Default,
     R: Serialize,
 {

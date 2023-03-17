@@ -446,7 +446,7 @@ mod clients {
         let allowance_verifier = verifier_allowance(&rt);
         h.add_verifier(&rt, &VERIFIER, &allowance_verifier).unwrap();
 
-        let allowance = allowance_verifier.clone() + 1;
+        let allowance = allowance_verifier + 1;
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
             h.add_client(&rt, &VERIFIER, &h.root, &allowance),

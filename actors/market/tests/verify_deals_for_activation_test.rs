@@ -121,7 +121,7 @@ fn verification_and_weights_for_verified_and_unverified_deals() {
     let datacap_required =
         TokenAmount::from_whole(verified_deal_1.piece_size.0 + verified_deal_2.piece_size.0);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal_ids = publish_deals(&rt, &MINER_ADDRESSES, &deals.clone(), datacap_required, 1);
+    let deal_ids = publish_deals(&rt, &MINER_ADDRESSES, &deals, datacap_required, 1);
     assert_eq!(4, deal_ids.len());
 
     let response = verify_deals_for_activation(
