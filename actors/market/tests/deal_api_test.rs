@@ -29,12 +29,12 @@ fn proposal_data() {
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let publish_epoch = ChainEpoch::from(1);
 
-    let mut rt = setup();
+    let rt = setup();
     rt.set_epoch(publish_epoch);
     let next_allocation_id = 1;
 
     let proposal = generate_deal_and_add_funds(
-        &mut rt,
+        &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         start_epoch,
@@ -42,7 +42,7 @@ fn proposal_data() {
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     let id = publish_deals(
-        &mut rt,
+        &rt,
         &MinerAddresses::default(),
         &[proposal.clone()],
         TokenAmount::zero(),
@@ -50,35 +50,35 @@ fn proposal_data() {
     )[0];
 
     let data: GetDealDataCommitmentReturn =
-        query_deal(&mut rt, Method::GetDealDataCommitmentExported, id);
+        query_deal(&rt, Method::GetDealDataCommitmentExported, id);
     assert_eq!(proposal.piece_cid, data.data);
     assert_eq!(proposal.piece_size, data.size);
 
-    let client: GetDealClientReturn = query_deal(&mut rt, Method::GetDealClientExported, id);
+    let client: GetDealClientReturn = query_deal(&rt, Method::GetDealClientExported, id);
     assert_eq!(proposal.client.id().unwrap(), client.client);
 
-    let provider: GetDealProviderReturn = query_deal(&mut rt, Method::GetDealProviderExported, id);
+    let provider: GetDealProviderReturn = query_deal(&rt, Method::GetDealProviderExported, id);
     assert_eq!(proposal.provider.id().unwrap(), provider.provider);
 
-    let label: GetDealLabelReturn = query_deal(&mut rt, Method::GetDealLabelExported, id);
+    let label: GetDealLabelReturn = query_deal(&rt, Method::GetDealLabelExported, id);
     assert_eq!(proposal.label, label.label);
 
-    let term: GetDealTermReturn = query_deal(&mut rt, Method::GetDealTermExported, id);
+    let term: GetDealTermReturn = query_deal(&rt, Method::GetDealTermExported, id);
     assert_eq!(proposal.start_epoch, term.start);
     assert_eq!(proposal.duration(), term.duration);
 
-    let price: GetDealTotalPriceReturn = query_deal(&mut rt, Method::GetDealTotalPriceExported, id);
+    let price: GetDealTotalPriceReturn = query_deal(&rt, Method::GetDealTotalPriceExported, id);
     assert_eq!(proposal.total_storage_fee(), price.total_price);
 
     let client_collateral: GetDealClientCollateralReturn =
-        query_deal(&mut rt, Method::GetDealClientCollateralExported, id);
+        query_deal(&rt, Method::GetDealClientCollateralExported, id);
     assert_eq!(proposal.client_collateral, client_collateral.collateral);
 
     let provider_collateral: GetDealProviderCollateralReturn =
-        query_deal(&mut rt, Method::GetDealProviderCollateralExported, id);
+        query_deal(&rt, Method::GetDealProviderCollateralExported, id);
     assert_eq!(proposal.provider_collateral, provider_collateral.collateral);
 
-    let verified: GetDealVerifiedReturn = query_deal(&mut rt, Method::GetDealVerifiedExported, id);
+    let verified: GetDealVerifiedReturn = query_deal(&rt, Method::GetDealVerifiedExported, id);
     assert_eq!(proposal.verified_deal, verified.verified);
 
     check_state(&rt);
@@ -90,12 +90,12 @@ fn activation() {
     let end_epoch = start_epoch + 180 * EPOCHS_IN_DAY;
     let publish_epoch = ChainEpoch::from(1);
 
-    let mut rt = setup();
+    let rt = setup();
     rt.set_epoch(publish_epoch);
     let next_allocation_id = 1;
 
     let proposal = generate_deal_and_add_funds(
-        &mut rt,
+        &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         start_epoch,
@@ -103,7 +103,7 @@ fn activation() {
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     let id = publish_deals(
-        &mut rt,
+        &rt,
         &MinerAddresses::default(),
         &[proposal.clone()],
         TokenAmount::zero(),
@@ -111,25 +111,25 @@ fn activation() {
     )[0];
 
     let activation: GetDealActivationReturn =
-        query_deal(&mut rt, Method::GetDealActivationExported, id);
+        query_deal(&rt, Method::GetDealActivationExported, id);
     assert_eq!(EPOCH_UNDEFINED, activation.activated);
     assert_eq!(EPOCH_UNDEFINED, activation.terminated);
 
     // activate the deal
     let activate_epoch = start_epoch - 2;
     rt.set_epoch(activate_epoch);
-    activate_deals(&mut rt, end_epoch + 1, PROVIDER_ADDR, activate_epoch, &[id]);
+    activate_deals(&rt, end_epoch + 1, PROVIDER_ADDR, activate_epoch, &[id]);
     let activation: GetDealActivationReturn =
-        query_deal(&mut rt, Method::GetDealActivationExported, id);
+        query_deal(&rt, Method::GetDealActivationExported, id);
     assert_eq!(activate_epoch, activation.activated);
     assert_eq!(EPOCH_UNDEFINED, activation.terminated);
 
     // terminate early
     let terminate_epoch = activate_epoch + 100;
     rt.set_epoch(terminate_epoch);
-    terminate_deals(&mut rt, PROVIDER_ADDR, &[id]);
+    terminate_deals(&rt, PROVIDER_ADDR, &[id]);
     let activation: GetDealActivationReturn =
-        query_deal(&mut rt, Method::GetDealActivationExported, id);
+        query_deal(&rt, Method::GetDealActivationExported, id);
     assert_eq!(activate_epoch, activation.activated);
     assert_eq!(terminate_epoch, activation.terminated);
 
@@ -144,27 +144,27 @@ fn activation() {
         None,
         ExitCode::OK,
     );
-    cron_tick(&mut rt);
+    cron_tick(&rt);
     expect_abort_contains_message(
         EX_DEAL_EXPIRED,
         "expired",
-        query_deal_raw(&mut rt, Method::GetDealActivationExported, id),
+        query_deal_raw(&rt, Method::GetDealActivationExported, id),
     );
 
     // Non-existent deal is NOT FOUND
     expect_abort_contains_message(
         ExitCode::USR_NOT_FOUND,
         "no such deal",
-        query_deal_raw(&mut rt, Method::GetDealActivationExported, id + 1),
+        query_deal_raw(&rt, Method::GetDealActivationExported, id + 1),
     );
 }
 
-fn query_deal<T: DeserializeOwned>(rt: &mut MockRuntime, method: Method, id: u64) -> T {
+fn query_deal<T: DeserializeOwned>(rt: &MockRuntime, method: Method, id: u64) -> T {
     query_deal_raw(rt, method, id).unwrap().unwrap().deserialize().unwrap()
 }
 
 fn query_deal_raw(
-    rt: &mut MockRuntime,
+    rt: &MockRuntime,
     method: Method,
     id: u64,
 ) -> Result<Option<IpldBlock>, ActorError> {

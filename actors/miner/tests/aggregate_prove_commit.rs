@@ -23,11 +23,11 @@ fn valid_precommits_then_aggregate_provecommit() {
     let period_offset = ChainEpoch::from(100);
 
     let actor = ActorHarness::new(period_offset);
-    let mut rt = actor.new_runtime();
+    let rt = actor.new_runtime();
     rt.add_balance(BIG_BALANCE.clone());
     let precommit_epoch = period_offset + 1;
     rt.set_epoch(precommit_epoch);
-    actor.construct_and_verify(&mut rt);
+    actor.construct_and_verify(&rt);
     let dl_info = actor.deadline(&rt);
 
     // make a good commitment for the proof to target
@@ -51,7 +51,7 @@ fn valid_precommits_then_aggregate_provecommit() {
         let precommit_params =
             actor.make_pre_commit_params(i, precommit_epoch - 1, expiration, vec![1]);
         let config = PreCommitConfig::new(Some(make_piece_cid("1".as_bytes())));
-        let precommit = actor.pre_commit_sector_and_get(&mut rt, precommit_params, config, i == 0);
+        let precommit = actor.pre_commit_sector_and_get(&rt, precommit_params, config, i == 0);
         precommits.push(precommit);
     }
 
@@ -69,7 +69,7 @@ fn valid_precommits_then_aggregate_provecommit() {
 
     actor
         .prove_commit_aggregate_sector(
-            &mut rt,
+            &rt,
             pcc,
             precommits,
             make_prove_commit_aggregate(&sector_nos_bf),

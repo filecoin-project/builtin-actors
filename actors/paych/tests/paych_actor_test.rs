@@ -47,11 +47,11 @@ lazy_static::lazy_static! {
         IpldBlock::serialize_cbor(&true).unwrap();
 }
 
-fn call(rt: &mut MockRuntime, method_num: u64, ser: Option<IpldBlock>) -> Option<IpldBlock> {
+fn call(rt: &MockRuntime, method_num: u64, ser: Option<IpldBlock>) -> Option<IpldBlock> {
     rt.call::<PaychActor>(method_num, ser).unwrap()
 }
 
-fn expect_abort(rt: &mut MockRuntime, method_num: u64, ser: Option<IpldBlock>, exp: ExitCode) {
+fn expect_abort(rt: &MockRuntime, method_num: u64, ser: Option<IpldBlock>, exp: ExitCode) {
     let err = rt.call::<PaychActor>(method_num, ser).unwrap_err();
     assert_eq!(exp, err.exit_code());
 }
@@ -104,15 +104,15 @@ mod paych_constructor {
     #[test]
     fn create_paych_actor_test() {
         let caller_addr = Address::new_id(TEST_CALLER_ADDR);
-        let mut rt = construct_runtime();
+        let rt = construct_runtime();
         rt.actor_code_cids.borrow_mut().insert(caller_addr, *ACCOUNT_ACTOR_CODE_ID);
-        construct_and_verify(&mut rt, Address::new_id(TEST_PAYER_ADDR), caller_addr);
+        construct_and_verify(&rt, Address::new_id(TEST_PAYER_ADDR), caller_addr);
         check_state(&rt);
     }
 
     #[test]
     fn actor_doesnt_exist_test() {
-        let mut rt = construct_runtime();
+        let rt = construct_runtime();
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         rt.expect_validate_caller_type(vec![Type::Init]);
         let params = ConstructorParams {
@@ -120,7 +120,7 @@ mod paych_constructor {
             from: Address::new_secp256k1(&[2; fvm_shared::address::SECP_PUB_LEN]).unwrap(),
         };
         expect_abort(
-            &mut rt,
+            &rt,
             METHOD_CONSTRUCTOR,
             IpldBlock::serialize_cbor(&params).unwrap(),
             ExitCode::USR_NOT_FOUND,
@@ -134,14 +134,14 @@ mod paych_constructor {
         let payee_addr = Address::new_id(103_u64);
         let payee_non_id = Address::new_bls(&[104; fvm_shared::address::BLS_PUB_LEN]).unwrap();
 
-        let mut rt = construct_runtime();
+        let rt = construct_runtime();
 
         rt.actor_code_cids.borrow_mut().insert(payee_addr, *ACCOUNT_ACTOR_CODE_ID);
 
         rt.id_addresses.borrow_mut().insert(payer_non_id, payer_addr);
         rt.id_addresses.borrow_mut().insert(payee_non_id, payee_addr);
 
-        construct_and_verify(&mut rt, payer_non_id, payee_non_id);
+        construct_and_verify(&rt, payer_non_id, payee_non_id);
         check_state(&rt);
     }
 
@@ -156,7 +156,7 @@ mod paych_constructor {
         let mut actor_code_cids = HashMap::default();
         actor_code_cids.insert(to_addr, *ACCOUNT_ACTOR_CODE_ID);
 
-        let mut rt = MockRuntime {
+        let rt = MockRuntime {
             receiver: paych_addr,
             caller: RefCell::new(caller_addr),
             caller_type: RefCell::new(*INIT_ACTOR_CODE_ID),
@@ -177,7 +177,7 @@ mod paych_constructor {
         rt.expect_validate_caller_type(vec![Type::Init]);
         let params = ConstructorParams { from: non_id_addr, to: to_addr };
         expect_abort(
-            &mut rt,
+            &rt,
             METHOD_CONSTRUCTOR,
             IpldBlock::serialize_cbor(&params).unwrap(),
             ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -194,7 +194,7 @@ mod paych_constructor {
         let mut actor_code_cids = HashMap::default();
         actor_code_cids.insert(from_addr, *ACCOUNT_ACTOR_CODE_ID);
 
-        let mut rt = MockRuntime {
+        let rt = MockRuntime {
             receiver: paych_addr,
             caller: RefCell::new(caller_addr),
             caller_type: RefCell::new(*INIT_ACTOR_CODE_ID),
@@ -215,7 +215,7 @@ mod paych_constructor {
         rt.expect_validate_caller_type(vec![Type::Init]);
         let params = ConstructorParams { from: from_addr, to: non_id_addr };
         expect_abort(
-            &mut rt,
+            &rt,
             METHOD_CONSTRUCTOR,
             IpldBlock::serialize_cbor(&params).unwrap(),
             ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -360,7 +360,7 @@ mod create_lane_tests {
             actor_code_cids.insert(payee_addr, *ACCOUNT_ACTOR_CODE_ID);
             actor_code_cids.insert(payer_addr, *ACCOUNT_ACTOR_CODE_ID);
 
-            let mut rt = MockRuntime {
+            let rt = MockRuntime {
                 receiver: paych_addr,
                 caller: RefCell::new(init_actor_addr),
                 caller_type: RefCell::new(*INIT_ACTOR_CODE_ID),
@@ -372,7 +372,7 @@ mod create_lane_tests {
 
             rt.id_addresses.borrow_mut().insert(paych_non_id, paych_addr);
 
-            construct_and_verify(&mut rt, payer_addr, payee_addr);
+            construct_and_verify(&rt, payer_addr, payee_addr);
 
             let sv = SignedVoucher {
                 time_lock_min: test_case.tl_min,
@@ -398,12 +398,12 @@ mod create_lane_tests {
                 } else {
                     ExitCode::OK
                 };
-                expect_authenticate_message(&mut rt, payer_addr, sv.clone(), exp_exit_code);
+                expect_authenticate_message(&rt, payer_addr, sv.clone(), exp_exit_code);
             }
 
             if test_case.exp_exit_code.is_success() {
                 call(
-                    &mut rt,
+                    &rt,
                     Method::UpdateChannelState as u64,
                     IpldBlock::serialize_cbor(&ucp).unwrap(),
                 );
@@ -418,7 +418,7 @@ mod create_lane_tests {
                 check_state(&rt);
             } else {
                 expect_abort(
-                    &mut rt,
+                    &rt,
                     Method::UpdateChannelState as u64,
                     IpldBlock::serialize_cbor(&ucp).unwrap(),
                     test_case.exp_exit_code,
@@ -435,7 +435,7 @@ mod update_channel_state_redeem {
 
     #[test]
     fn redeem_voucher_one_lane() {
-        let (mut rt, mut sv) = require_create_channel_with_lanes(1);
+        let (rt, mut sv) = require_create_channel_with_lanes(1);
         let state: PState = rt.get_state();
         let payee_addr = Address::new_id(PAYEE_ID);
 
@@ -446,10 +446,10 @@ mod update_channel_state_redeem {
 
         let payer_addr = Address::new_id(PAYER_ID);
 
-        expect_authenticate_message(&mut rt, payer_addr, sv.clone(), ExitCode::OK);
+        expect_authenticate_message(&rt, payer_addr, sv.clone(), ExitCode::OK);
 
         call(
-            &mut rt,
+            &rt,
             Method::UpdateChannelState as u64,
             IpldBlock::serialize_cbor(&UpdateChannelStateParams::from(sv)).unwrap(),
         );
@@ -469,7 +469,7 @@ mod update_channel_state_redeem {
 
     #[test]
     fn redeem_voucher_correct_lane() {
-        let (mut rt, mut sv) = require_create_channel_with_lanes(3);
+        let (rt, mut sv) = require_create_channel_with_lanes(3);
         let state: PState = rt.get_state();
         let payee_addr = Address::new_id(PAYEE_ID);
 
@@ -484,10 +484,10 @@ mod update_channel_state_redeem {
         sv.nonce = ls_to_update.nonce + 1;
         let payer_addr = Address::new_id(PAYER_ID);
 
-        expect_authenticate_message(&mut rt, payer_addr, sv.clone(), ExitCode::OK);
+        expect_authenticate_message(&rt, payer_addr, sv.clone(), ExitCode::OK);
 
         call(
-            &mut rt,
+            &rt,
             Method::UpdateChannelState as u64,
             IpldBlock::serialize_cbor(&UpdateChannelStateParams::from(sv.clone())).unwrap(),
         );
@@ -507,7 +507,7 @@ mod update_channel_state_redeem {
 
     #[test]
     fn redeem_voucher_nonce_reuse() {
-        let (mut rt, mut sv) = require_create_channel_with_lanes(3);
+        let (rt, mut sv) = require_create_channel_with_lanes(3);
         let state: PState = rt.get_state();
         let payee_addr = Address::new_id(PAYEE_ID);
 
@@ -519,10 +519,10 @@ mod update_channel_state_redeem {
 
         let payer_addr = Address::new_id(PAYER_ID);
 
-        expect_authenticate_message(&mut rt, payer_addr, sv.clone(), ExitCode::OK);
+        expect_authenticate_message(&rt, payer_addr, sv.clone(), ExitCode::OK);
 
         expect_abort(
-            &mut rt,
+            &rt,
             Method::UpdateChannelState as u64,
             IpldBlock::serialize_cbor(&UpdateChannelStateParams::from(sv)).unwrap(),
             ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -544,7 +544,7 @@ mod merge_tests {
         (rt, sv, state)
     }
 
-    fn failure_end(rt: &mut MockRuntime, sv: SignedVoucher, exp_exit_code: ExitCode) {
+    fn failure_end(rt: &MockRuntime, sv: SignedVoucher, exp_exit_code: ExitCode) {
         let payee_addr = Address::new_id(PAYEE_ID);
         expect_authenticate_message(rt, payee_addr, sv.clone(), ExitCode::OK);
 
@@ -560,7 +560,7 @@ mod merge_tests {
     #[test]
     fn merge_success() {
         let num_lanes = 3;
-        let (mut rt, mut sv, mut state) = construct_runtime(num_lanes);
+        let (rt, mut sv, mut state) = construct_runtime(num_lanes);
 
         let merge_to: LaneState = get_lane_state(&rt, &state.lane_states, 0);
         let merge_from: LaneState = get_lane_state(&rt, &state.lane_states, 1);
@@ -570,10 +570,10 @@ mod merge_tests {
 
         sv.merges = vec![Merge { lane: 1, nonce: merge_nonce }];
         let payee_addr = Address::new_id(PAYEE_ID);
-        expect_authenticate_message(&mut rt, payee_addr, sv.clone(), ExitCode::OK);
+        expect_authenticate_message(&rt, payee_addr, sv.clone(), ExitCode::OK);
 
         call(
-            &mut rt,
+            &rt,
             Method::UpdateChannelState as u64,
             IpldBlock::serialize_cbor(&UpdateChannelStateParams::from(sv.clone())).unwrap(),
         );
@@ -635,7 +635,7 @@ mod merge_tests {
 
         for tc in test_cases {
             let num_lanes = 2;
-            let (mut rt, mut sv, state) = construct_runtime(num_lanes);
+            let (rt, mut sv, state) = construct_runtime(num_lanes);
 
             rt.set_balance(TokenAmount::from_atto(tc.balance));
 
@@ -643,14 +643,14 @@ mod merge_tests {
             sv.nonce = tc.voucher;
             sv.merges = vec![Merge { lane: tc.lane, nonce: tc.merge }];
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
-            failure_end(&mut rt, sv, tc.exit);
+            failure_end(&rt, sv, tc.exit);
         }
     }
 
     #[test]
     fn invalid_merge_lane_999() {
         let num_lanes = 2;
-        let (mut rt, mut sv) = require_create_channel_with_lanes(num_lanes);
+        let (rt, mut sv) = require_create_channel_with_lanes(num_lanes);
         let state: PState = rt.get_state();
 
         sv.lane = 0;
@@ -658,17 +658,17 @@ mod merge_tests {
         sv.merges = vec![Merge { lane: 999, nonce: sv.nonce }];
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
-        failure_end(&mut rt, sv, ExitCode::USR_ILLEGAL_ARGUMENT);
+        failure_end(&rt, sv, ExitCode::USR_ILLEGAL_ARGUMENT);
     }
 
     #[test]
     fn lane_limit_exceeded() {
-        let (mut rt, mut sv, _) = construct_runtime(1);
+        let (rt, mut sv, _) = construct_runtime(1);
 
         sv.lane = MAX_LANE + 1;
         sv.nonce += 1;
         sv.amount = TokenAmount::from_atto(100);
-        failure_end(&mut rt, sv, ExitCode::USR_ILLEGAL_ARGUMENT);
+        failure_end(&rt, sv, ExitCode::USR_ILLEGAL_ARGUMENT);
     }
 }
 
@@ -679,7 +679,7 @@ mod update_channel_state_extra {
     const OTHER_ADDR: u64 = 104;
 
     fn construct_runtime(exit_code: ExitCode) -> (MockRuntime, SignedVoucher) {
-        let (mut rt, mut sv) = require_create_channel_with_lanes(1);
+        let (rt, mut sv) = require_create_channel_with_lanes(1);
         let state: PState = rt.get_state();
         let other_addr = Address::new_id(OTHER_ADDR);
         let fake_params = RawBytes::new(vec![1, 2, 3, 4]);
@@ -691,7 +691,7 @@ mod update_channel_state_extra {
             method: Method::UpdateChannelState as u64,
             data: fake_params.clone(),
         });
-        expect_authenticate_message(&mut rt, state.to, sv.clone(), ExitCode::OK);
+        expect_authenticate_message(&rt, state.to, sv.clone(), ExitCode::OK);
 
         rt.expect_send_simple(
             other_addr,
@@ -706,9 +706,9 @@ mod update_channel_state_extra {
 
     #[test]
     fn extra_call_succeed() {
-        let (mut rt, sv) = construct_runtime(ExitCode::OK);
+        let (rt, sv) = construct_runtime(ExitCode::OK);
         call(
-            &mut rt,
+            &rt,
             Method::UpdateChannelState as u64,
             IpldBlock::serialize_cbor(&UpdateChannelStateParams::from(sv)).unwrap(),
         );
@@ -718,9 +718,9 @@ mod update_channel_state_extra {
 
     #[test]
     fn extra_call_fail() {
-        let (mut rt, sv) = construct_runtime(ExitCode::USR_UNSPECIFIED);
+        let (rt, sv) = construct_runtime(ExitCode::USR_UNSPECIFIED);
         expect_abort(
-            &mut rt,
+            &rt,
             Method::UpdateChannelState as u64,
             IpldBlock::serialize_cbor(&UpdateChannelStateParams::from(sv)).unwrap(),
             ExitCode::USR_UNSPECIFIED,
@@ -732,12 +732,12 @@ mod update_channel_state_extra {
 
 #[test]
 fn update_channel_settling() {
-    let (mut rt, sv) = require_create_channel_with_lanes(1);
+    let (rt, sv) = require_create_channel_with_lanes(1);
     rt.epoch.replace(10);
     let state: PState = rt.get_state();
     rt.expect_validate_caller_addr(vec![state.from, state.to]);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
-    call(&mut rt, Method::Settle as u64, None);
+    call(&rt, Method::Settle as u64, None);
 
     let exp_settling_at = SETTLE_DELAY + 10;
     let state: PState = rt.get_state();
@@ -769,9 +769,9 @@ fn update_channel_settling() {
         ucp.sv.min_settle_height = tc.min_settle;
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
 
-        expect_authenticate_message(&mut rt, state.to, ucp.sv.clone(), ExitCode::OK);
+        expect_authenticate_message(&rt, state.to, ucp.sv.clone(), ExitCode::OK);
 
-        call(&mut rt, Method::UpdateChannelState as u64, IpldBlock::serialize_cbor(&ucp).unwrap());
+        call(&rt, Method::UpdateChannelState as u64, IpldBlock::serialize_cbor(&ucp).unwrap());
         let new_state: PState = rt.get_state();
         assert_eq!(tc.exp_settling_at, new_state.settling_at);
         assert_eq!(tc.exp_min_settle_height, new_state.min_settle_height);
@@ -785,15 +785,15 @@ mod secret_preimage {
 
     #[test]
     fn succeed_correct_secret() {
-        let (mut rt, sv) = require_create_channel_with_lanes(1);
+        let (rt, sv) = require_create_channel_with_lanes(1);
         let state: PState = rt.get_state();
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
 
         let ucp = UpdateChannelStateParams::from(sv.clone());
 
-        expect_authenticate_message(&mut rt, state.to, sv, ExitCode::OK);
+        expect_authenticate_message(&rt, state.to, sv, ExitCode::OK);
 
-        call(&mut rt, Method::UpdateChannelState as u64, IpldBlock::serialize_cbor(&ucp).unwrap());
+        call(&rt, Method::UpdateChannelState as u64, IpldBlock::serialize_cbor(&ucp).unwrap());
 
         rt.verify();
         check_state(&rt);
@@ -801,7 +801,7 @@ mod secret_preimage {
 
     #[test]
     fn incorrect_secret() {
-        let (mut rt, sv) = require_create_channel_with_lanes(1);
+        let (rt, sv) = require_create_channel_with_lanes(1);
 
         let state: PState = rt.get_state();
 
@@ -812,10 +812,10 @@ mod secret_preimage {
 
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
 
-        expect_authenticate_message(&mut rt, state.to, ucp.sv.clone(), ExitCode::OK);
+        expect_authenticate_message(&rt, state.to, ucp.sv.clone(), ExitCode::OK);
 
         expect_abort(
-            &mut rt,
+            &rt,
             Method::UpdateChannelState as u64,
             IpldBlock::serialize_cbor(&ucp).unwrap(),
             ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -833,13 +833,13 @@ mod actor_settle {
 
     #[test]
     fn adjust_settling_at() {
-        let (mut rt, _sv) = require_create_channel_with_lanes(1);
+        let (rt, _sv) = require_create_channel_with_lanes(1);
         rt.epoch.replace(EP);
         let mut state: PState = rt.get_state();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
 
-        call(&mut rt, Method::Settle as u64, None);
+        call(&rt, Method::Settle as u64, None);
 
         let exp_settling_at = EP + SETTLE_DELAY;
         state = rt.get_state();
@@ -850,20 +850,20 @@ mod actor_settle {
 
     #[test]
     fn call_twice() {
-        let (mut rt, _sv) = require_create_channel_with_lanes(1);
+        let (rt, _sv) = require_create_channel_with_lanes(1);
         rt.epoch.replace(EP);
         let state: PState = rt.get_state();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
-        call(&mut rt, Method::Settle as u64, None);
+        call(&rt, Method::Settle as u64, None);
 
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
-        expect_abort(&mut rt, Method::Settle as u64, None, ExitCode::USR_ILLEGAL_STATE);
+        expect_abort(&rt, Method::Settle as u64, None, ExitCode::USR_ILLEGAL_STATE);
     }
 
     #[test]
     fn settle_if_height_less() {
-        let (mut rt, mut sv) = require_create_channel_with_lanes(1);
+        let (rt, mut sv) = require_create_channel_with_lanes(1);
         rt.epoch.replace(EP);
         let mut state: PState = rt.get_state();
 
@@ -871,9 +871,9 @@ mod actor_settle {
         let ucp = UpdateChannelStateParams::from(sv.clone());
 
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
-        expect_authenticate_message(&mut rt, state.to, sv, ExitCode::OK);
+        expect_authenticate_message(&rt, state.to, sv, ExitCode::OK);
 
-        call(&mut rt, Method::UpdateChannelState as u64, IpldBlock::serialize_cbor(&ucp).unwrap());
+        call(&rt, Method::UpdateChannelState as u64, IpldBlock::serialize_cbor(&ucp).unwrap());
 
         state = rt.get_state();
         assert_eq!(state.settling_at, 0);
@@ -882,7 +882,7 @@ mod actor_settle {
         // Settle.
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
-        call(&mut rt, Method::Settle as u64, None);
+        call(&rt, Method::Settle as u64, None);
 
         state = rt.get_state();
         assert_eq!(state.settling_at, ucp.sv.min_settle_height);
@@ -893,19 +893,19 @@ mod actor_settle {
     fn voucher_invalid_after_settling() {
         const ERR_CHANNEL_STATE_UPDATE_AFTER_SETTLED: ExitCode = ExitCode::new(32);
 
-        let (mut rt, sv) = require_create_channel_with_lanes(1);
+        let (rt, sv) = require_create_channel_with_lanes(1);
         rt.epoch.replace(EP);
         let mut state: PState = rt.get_state();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
 
-        call(&mut rt, Method::Settle as u64, None);
+        call(&rt, Method::Settle as u64, None);
 
         state = rt.get_state();
         rt.epoch.replace(state.settling_at + 40);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
         expect_abort(
-            &mut rt,
+            &rt,
             Method::UpdateChannelState as u64,
             IpldBlock::serialize_cbor(&UpdateChannelStateParams::from(sv)).unwrap(),
             ERR_CHANNEL_STATE_UPDATE_AFTER_SETTLED,
@@ -920,7 +920,7 @@ mod actor_collect {
 
     #[test]
     fn happy_path() {
-        let (mut rt, _sv) = require_create_channel_with_lanes(1);
+        let (rt, _sv) = require_create_channel_with_lanes(1);
         let curr_epoch: ChainEpoch = 10;
         rt.epoch.replace(curr_epoch);
         let st: PState = rt.get_state();
@@ -928,7 +928,7 @@ mod actor_collect {
         // Settle.
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, st.from);
         rt.expect_validate_caller_addr(vec![st.from, st.to]);
-        call(&mut rt, Method::Settle as u64, None);
+        call(&rt, Method::Settle as u64, None);
 
         let st: PState = rt.get_state();
         assert_eq!(st.settling_at, SETTLE_DELAY + curr_epoch);
@@ -950,7 +950,7 @@ mod actor_collect {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, st.to);
         rt.expect_validate_caller_addr(vec![st.from, st.to]);
         rt.expect_delete_actor(st.from);
-        let res = call(&mut rt, Method::Collect as u64, None);
+        let res = call(&rt, Method::Collect as u64, None);
         assert!(res.is_none());
         check_state(&rt);
     }
@@ -979,14 +979,14 @@ mod actor_collect {
         ];
 
         for tc in test_cases {
-            let (mut rt, _sv) = require_create_channel_with_lanes(1);
+            let (rt, _sv) = require_create_channel_with_lanes(1);
             rt.epoch.replace(10);
             let mut state: PState = rt.get_state();
 
             if !tc.dont_settle {
                 rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
                 rt.expect_validate_caller_addr(vec![state.from, state.to]);
-                call(&mut rt, Method::Settle as u64, None);
+                call(&rt, Method::Settle as u64, None);
                 state = rt.get_state();
                 assert_eq!(state.settling_at, SETTLE_DELAY + *rt.epoch.borrow());
             }
@@ -1008,7 +1008,7 @@ mod actor_collect {
             // Collect.
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
             rt.expect_validate_caller_addr(vec![state.from, state.to]);
-            expect_abort(&mut rt, Method::Collect as u64, None, tc.exp_collect_exit);
+            expect_abort(&rt, Method::Collect as u64, None, tc.exp_collect_exit);
             check_state(&rt);
         }
     }
@@ -1026,7 +1026,7 @@ fn require_create_channel_with_lanes(num_lanes: u64) -> (MockRuntime, SignedVouc
     actor_code_cids.insert(payee_addr, *ACCOUNT_ACTOR_CODE_ID);
     actor_code_cids.insert(payer_addr, *ACCOUNT_ACTOR_CODE_ID);
 
-    let mut rt = MockRuntime {
+    let rt = MockRuntime {
         receiver: paych_addr,
         caller: RefCell::new(INIT_ACTOR_ADDR),
         caller_type: RefCell::new(*INIT_ACTOR_CODE_ID),
@@ -1037,7 +1037,7 @@ fn require_create_channel_with_lanes(num_lanes: u64) -> (MockRuntime, SignedVouc
         ..Default::default()
     };
 
-    construct_and_verify(&mut rt, payer_addr, payee_addr);
+    construct_and_verify(&rt, payer_addr, payee_addr);
 
     let mut last_sv = None;
     for i in 0..num_lanes {
@@ -1050,13 +1050,13 @@ fn require_create_channel_with_lanes(num_lanes: u64) -> (MockRuntime, SignedVouc
             nonce: i + 1,
         };
 
-        last_sv = Some(require_add_new_lane(&mut rt, lane_param));
+        last_sv = Some(require_add_new_lane(&rt, lane_param));
     }
 
     (rt, last_sv.unwrap())
 }
 
-fn require_add_new_lane(rt: &mut MockRuntime, param: LaneParams) -> SignedVoucher {
+fn require_add_new_lane(rt: &MockRuntime, param: LaneParams) -> SignedVoucher {
     let payee_addr = Address::new_id(103_u64);
     let sig = Signature::new_bls(vec![0, 1, 2, 3, 4, 5, 6, 7]);
     let mut sv = SignedVoucher {
@@ -1087,7 +1087,7 @@ fn require_add_new_lane(rt: &mut MockRuntime, param: LaneParams) -> SignedVouche
     sv
 }
 
-fn construct_and_verify(rt: &mut MockRuntime, sender: Address, receiver: Address) {
+fn construct_and_verify(rt: &MockRuntime, sender: Address, receiver: Address) {
     let params = ConstructorParams { from: sender, to: receiver };
     rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
     rt.expect_validate_caller_type(vec![Type::Init]);
@@ -1128,7 +1128,7 @@ fn assert_lane_states_length(rt: &MockRuntime, cid: &Cid, l: u64) {
 }
 
 fn expect_authenticate_message(
-    rt: &mut MockRuntime,
+    rt: &MockRuntime,
     payer_addr: Address,
     sv: SignedVoucher,
     exp_exit_code: ExitCode,

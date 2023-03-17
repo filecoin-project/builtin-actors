@@ -221,7 +221,7 @@ mod test_award_block_reward {
 
     #[test]
     fn total_mined_tracks_correctly() {
-        let mut rt = construct_and_verify(&StoragePower::from(1));
+        let rt = construct_and_verify(&StoragePower::from(1));
         let mut state: State = rt.get_state();
 
         assert_eq!(TokenAmount::zero(), state.total_storage_power_reward);
@@ -234,7 +234,7 @@ mod test_award_block_reward {
 
         for i in &[1000, 1000, 1000, 500] {
             assert!(award_block_reward(
-                &mut rt,
+                &rt,
                 *WINNER,
                 TokenAmount::zero(),
                 TokenAmount::zero(),
@@ -303,11 +303,11 @@ mod test_this_epoch_reward {
 
     #[test]
     fn successfully_fetch_reward_for_this_epoch() {
-        let mut rt = construct_and_verify(&StoragePower::from(1));
+        let rt = construct_and_verify(&StoragePower::from(1));
 
         let state: State = rt.get_state();
 
-        let resp: ThisEpochRewardReturn = this_epoch_reward(&mut rt);
+        let resp: ThisEpochRewardReturn = this_epoch_reward(&rt);
 
         assert_eq!(state.this_epoch_baseline_power, resp.this_epoch_baseline_power);
         assert_eq!(state.this_epoch_reward_smoothed, resp.this_epoch_reward_smoothed);
@@ -317,11 +317,11 @@ mod test_this_epoch_reward {
 #[test]
 fn test_successive_kpi_updates() {
     let power = StoragePower::from_i128(1 << 50).unwrap();
-    let mut rt = construct_and_verify(&power);
+    let rt = construct_and_verify(&power);
 
     for i in &[1, 2, 3] {
         rt.epoch.replace(ChainEpoch::from(*i));
-        update_network_kpi(&mut rt, &power);
+        update_network_kpi(&rt, &power);
     }
 }
 
@@ -347,7 +347,7 @@ fn construct_and_verify(curr_power: &StoragePower) -> MockRuntime {
 }
 
 fn award_block_reward(
-    rt: &mut MockRuntime,
+    rt: &MockRuntime,
     miner: Address,
     penalty: TokenAmount,
     gas_reward: TokenAmount,
@@ -394,7 +394,7 @@ fn award_block_reward(
     Ok(serialized_bytes)
 }
 
-fn this_epoch_reward(rt: &mut MockRuntime) -> ThisEpochRewardReturn {
+fn this_epoch_reward(rt: &MockRuntime) -> ThisEpochRewardReturn {
     rt.expect_validate_caller_any();
     let serialized_result = rt.call::<RewardActor>(Method::ThisEpochReward as u64, None).unwrap();
     let resp: ThisEpochRewardReturn = serialized_result.unwrap().deserialize().unwrap();
@@ -402,7 +402,7 @@ fn this_epoch_reward(rt: &mut MockRuntime) -> ThisEpochRewardReturn {
     resp
 }
 
-fn update_network_kpi(rt: &mut MockRuntime, curr_raw_power: &StoragePower) {
+fn update_network_kpi(rt: &MockRuntime, curr_raw_power: &StoragePower) {
     rt.set_caller(*POWER_ACTOR_CODE_ID, STORAGE_POWER_ACTOR_ADDR);
     rt.expect_validate_caller_addr(vec![STORAGE_POWER_ACTOR_ADDR]);
 

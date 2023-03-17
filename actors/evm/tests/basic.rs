@@ -26,7 +26,7 @@ fn basic_contract_construction_and_invocation() {
 fn simplecoin_test(bytecode: Vec<u8>) {
     let contract = Address::new_id(100);
 
-    let mut rt = util::init_construct_and_verify(bytecode, |rt| {
+    let rt = util::init_construct_and_verify(bytecode, |rt| {
         rt.actor_code_cids.borrow_mut().insert(contract, *EVM_ACTOR_CODE_ID);
         rt.set_origin(contract);
     });
@@ -41,7 +41,7 @@ fn simplecoin_test(bytecode: Vec<u8>) {
     let mut arg0 = vec![0u8; 32];
     solidity_params.append(&mut arg0);
 
-    let result = util::invoke_contract(&mut rt, &solidity_params);
+    let result = util::invoke_contract(&rt, &solidity_params);
     assert_eq!(U256::from_big_endian(&result), U256::from(0));
 
     // invoke contract -- getBalance
@@ -54,7 +54,7 @@ fn simplecoin_test(bytecode: Vec<u8>) {
     arg0[31] = 100; // the owner address
     solidity_params.append(&mut arg0);
 
-    let result = util::invoke_contract(&mut rt, &solidity_params);
+    let result = util::invoke_contract(&rt, &solidity_params);
     assert_eq!(U256::from_big_endian(&result), U256::from(10000));
 }
 
@@ -198,7 +198,7 @@ fn test_push_last_byte() {
     // bytecode where push32 opcode is the last/only byte
     let init_code = hex::decode("600180600b6000396000f37f").unwrap();
 
-    let mut rt = util::construct_and_verify(init_code);
+    let rt = util::construct_and_verify(init_code);
 
-    util::invoke_contract(&mut rt, &[]);
+    util::invoke_contract(&rt, &[]);
 }

@@ -33,9 +33,9 @@ pub fn new_runtime() -> MockRuntime {
 
 #[allow(dead_code)]
 pub fn new_harness() -> (Harness, MockRuntime) {
-    let mut rt = new_runtime();
+    let rt = new_runtime();
     let h = Harness { governor: VERIFIED_REGISTRY_ACTOR_ADDR };
-    h.construct_and_verify(&mut rt, &h.governor);
+    h.construct_and_verify(&rt, &h.governor);
     (h, rt)
 }
 
@@ -44,7 +44,7 @@ pub struct Harness {
 }
 
 impl Harness {
-    pub fn construct_and_verify(&self, rt: &mut MockRuntime, registry: &Address) {
+    pub fn construct_and_verify(&self, rt: &MockRuntime, registry: &Address) {
         rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         let ret = rt
@@ -63,7 +63,7 @@ impl Harness {
 
     pub fn mint(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         to: &Address,
         amount: &TokenAmount,
         operators: Vec<Address>,
@@ -108,7 +108,7 @@ impl Harness {
 
     pub fn destroy(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         owner: &Address,
         amount: &TokenAmount,
     ) -> Result<BurnReturn, ActorError> {
@@ -128,7 +128,7 @@ impl Harness {
 
     pub fn transfer(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         from: &Address,
         to: &Address,
         amount: &TokenAmount,
@@ -174,7 +174,7 @@ impl Harness {
 
     pub fn transfer_from(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         operator: &Address,
         from: &Address,
         to: &Address,
@@ -226,7 +226,7 @@ impl Harness {
     }
 
     // Reads a balance from state directly.
-    pub fn get_balance(&self, rt: &mut MockRuntime, address: &Address) -> TokenAmount {
+    pub fn get_balance(&self, rt: &MockRuntime, address: &Address) -> TokenAmount {
         rt.expect_validate_caller_any();
         let ret = rt
             .call::<DataCapActor>(

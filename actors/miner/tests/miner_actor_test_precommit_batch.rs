@@ -48,11 +48,11 @@ fn assert_simple_batch(
         use_v2_pre_commit_and_replica_update: v2,
         proving_period_offset: period_offset,
     });
-    let mut rt = h.new_runtime();
+    let rt = h.new_runtime();
 
     let precommit_epoch = period_offset + 1;
     rt.set_epoch(precommit_epoch);
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
     let dl_info = h.deadline(&rt);
 
     let sector_nos: Vec<SectorNumber> = (0..batch_size).map(|x| x as u64 + 100).collect();
@@ -97,7 +97,7 @@ fn assert_simple_batch(
             exit_code,
             error_str,
             h.pre_commit_sector_batch(
-                &mut rt,
+                &rt,
                 PreCommitSectorBatchParams { sectors },
                 &conf,
                 &base_fee,
@@ -113,7 +113,7 @@ fn assert_simple_batch(
         return;
     }
     let precommits = h.pre_commit_sector_batch_and_get(
-        &mut rt,
+        &rt,
         PreCommitSectorBatchParams { sectors: sectors.clone() },
         &conf,
         &base_fee,
@@ -282,14 +282,14 @@ mod miner_actor_precommit_batch {
             proving_period_offset: period_offset,
         });
 
-        let mut rt = h.new_runtime();
+        let rt = h.new_runtime();
 
         rt.set_balance(BIG_BALANCE.clone());
         rt.set_received(TokenAmount::zero());
 
         let precommit_epoch = period_offset + 1;
         rt.set_epoch(precommit_epoch);
-        h.construct_and_verify(&mut rt);
+        h.construct_and_verify(&rt);
         let dl_info = h.deadline(&rt);
 
         let sector_expiration =
@@ -304,7 +304,7 @@ mod miner_actor_precommit_batch {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             "sector expiration",
             h.pre_commit_sector_batch(
-                &mut rt,
+                &rt,
                 PreCommitSectorBatchParams { sectors },
                 &PreCommitBatchConfig { sector_deal_data: vec![], first_for_miner: true },
                 &TokenAmount::zero(),
@@ -322,14 +322,14 @@ mod miner_actor_precommit_batch {
             use_v2_pre_commit_and_replica_update: v2,
             proving_period_offset: period_offset,
         });
-        let mut rt = h.new_runtime();
+        let rt = h.new_runtime();
 
         rt.set_balance(BIG_BALANCE.clone());
         rt.set_received(TokenAmount::zero());
 
         let precommit_epoch = period_offset + 1;
         rt.set_epoch(precommit_epoch);
-        h.construct_and_verify(&mut rt);
+        h.construct_and_verify(&rt);
         let dl_info = h.deadline(&rt);
 
         let sector_expiration =
@@ -344,7 +344,7 @@ mod miner_actor_precommit_batch {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             "duplicate sector number 100",
             h.pre_commit_sector_batch(
-                &mut rt,
+                &rt,
                 PreCommitSectorBatchParams { sectors },
                 &PreCommitBatchConfig { sector_deal_data: vec![], first_for_miner: true },
                 &TokenAmount::zero(),
@@ -361,14 +361,14 @@ mod miner_actor_precommit_batch {
             use_v2_pre_commit_and_replica_update: true,
             proving_period_offset: period_offset,
         });
-        let mut rt = h.new_runtime();
+        let rt = h.new_runtime();
 
         rt.set_balance(BIG_BALANCE.clone());
         rt.set_received(TokenAmount::zero());
 
         let precommit_epoch = period_offset + 1;
         rt.set_epoch(precommit_epoch);
-        h.construct_and_verify(&mut rt);
+        h.construct_and_verify(&rt);
         let dl_info = h.deadline(&rt);
 
         let sector_expiration =
@@ -385,7 +385,7 @@ mod miner_actor_precommit_batch {
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.worker);
             rt.expect_validate_caller_addr(h.caller_addrs());
 
-            h.expect_query_network_info(&mut rt);
+            h.expect_query_network_info(&rt);
             let mut sector_deals = Vec::new();
             let mut sector_deal_data = Vec::new();
             for sector in &sectors {

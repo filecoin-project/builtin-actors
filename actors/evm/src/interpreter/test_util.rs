@@ -21,6 +21,7 @@ macro_rules! evm_unit_test {
         use $crate::interpreter::{execution::Machine, system::System, Output};
         use $crate::{Bytecode, EthAddress, ExecutionState};
 
+        #[allow(unused_mut)]
         let mut $rt = MockRuntime::default();
         $rt.in_call.replace(true);
         $init
@@ -54,7 +55,7 @@ macro_rules! evm_unit_test {
         use $crate::interpreter::{execution::Machine, system::System, Output};
         use $crate::{Bytecode, EthAddress, ExecutionState};
 
-        let mut rt = MockRuntime::default();
+        let rt = MockRuntime::default();
         rt.in_call.replace(true);
         let mut state = ExecutionState::new(
             EthAddress::from_id(1000),

@@ -30,8 +30,8 @@ fn setup() -> (ActorHarness, MockRuntime) {
     let precommit_epoch = 1;
 
     let h = ActorHarness::new(period_offset);
-    let mut rt = h.new_runtime();
-    h.construct_and_verify(&mut rt);
+    let rt = h.new_runtime();
+    h.construct_and_verify(&rt);
     rt.balance.replace(TokenAmount::from_atto(big_balance));
     rt.set_epoch(precommit_epoch);
 
@@ -40,25 +40,25 @@ fn setup() -> (ActorHarness, MockRuntime) {
 
 #[test]
 fn removes_sector_with_correct_accounting() {
-    let (mut h, mut rt) = setup();
+    let (mut h, rt) = setup();
 
     let sector_info =
-        h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION, Vec::new(), true);
+        h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, Vec::new(), true);
 
     assert_eq!(sector_info.len(), 1);
-    h.advance_and_submit_posts(&mut rt, &sector_info);
+    h.advance_and_submit_posts(&rt, &sector_info);
     let sector = sector_info.into_iter().next().unwrap();
 
     // A miner will pay the minimum of termination fee and locked funds. Add some locked funds to ensure
     // correct fee calculation is used.
-    h.apply_rewards(&mut rt, BIG_REWARDS.clone(), TokenAmount::zero());
+    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
     let state: State = rt.get_state();
     let initial_locked_funds = state.locked_funds;
 
     let expected_fee = calc_expected_fee_for_termination(&h, &rt, sector.clone());
 
     let sectors = bitfield_from_slice(&[sector.sector_number]);
-    h.terminate_sectors(&mut rt, &sectors, expected_fee.clone());
+    h.terminate_sectors(&rt, &sectors, expected_fee.clone());
 
     // expect sector to be marked as terminated and the early termination queue to be empty (having been fully processed)
     let state: State = rt.get_state();
@@ -80,13 +80,13 @@ fn removes_sector_with_correct_accounting() {
 
 #[test]
 fn cannot_terminate_a_sector_when_the_challenge_window_is_open() {
-    let (mut h, mut rt) = setup();
+    let (mut h, rt) = setup();
 
     let sector_info =
-        h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION, Vec::new(), true);
+        h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, Vec::new(), true);
 
     assert_eq!(sector_info.len(), 1);
-    h.advance_and_submit_posts(&mut rt, &sector_info);
+    h.advance_and_submit_posts(&rt, &sector_info);
     let sector = sector_info.into_iter().next().unwrap();
 
     let state: State = rt.get_state();
@@ -95,7 +95,7 @@ fn cannot_terminate_a_sector_when_the_challenge_window_is_open() {
         state.find_sector(&policy, rt.store(), sector.sector_number).unwrap();
 
     // advance into the deadline but not past it
-    h.advance_to_deadline(&mut rt, deadline_index);
+    h.advance_to_deadline(&rt, deadline_index);
 
     let params = TerminateSectorsParams {
         terminations: vec![TerminationDeclaration {
@@ -122,20 +122,15 @@ fn cannot_terminate_a_sector_when_the_challenge_window_is_open() {
 
 #[test]
 fn owner_cannot_terminate_if_market_cron_fails() {
-    let (mut h, mut rt) = setup();
+    let (mut h, rt) = setup();
 
     let deal_ids = vec![10];
-    let sector_info = h.commit_and_prove_sectors(
-        &mut rt,
-        1,
-        DEFAULT_SECTOR_EXPIRATION,
-        vec![deal_ids.clone()],
-        true,
-    );
+    let sector_info =
+        h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![deal_ids.clone()], true);
 
     assert_eq!(sector_info.len(), 1);
 
-    h.advance_and_submit_posts(&mut rt, &sector_info);
+    h.advance_and_submit_posts(&rt, &sector_info);
     let sector = sector_info.into_iter().next().unwrap();
 
     let state: State = rt.get_state();
@@ -147,7 +142,7 @@ fn owner_cannot_terminate_if_market_cron_fails() {
 
     rt.expect_validate_caller_addr(h.caller_addrs());
 
-    h.expect_query_network_info(&mut rt);
+    h.expect_query_network_info(&rt);
     rt.expect_send_simple(
         BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
@@ -205,15 +200,15 @@ fn owner_cannot_terminate_if_market_cron_fails() {
 
 #[test]
 fn system_can_terminate_if_market_cron_fails() {
-    let (mut h, mut rt) = setup();
+    let (mut h, rt) = setup();
 
     let deal_ids = vec![10];
     let sector_info =
-        h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![deal_ids], true);
+        h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![deal_ids], true);
 
     assert_eq!(sector_info.len(), 1);
 
-    h.advance_and_submit_posts(&mut rt, &sector_info);
+    h.advance_and_submit_posts(&rt, &sector_info);
     rt.expect_validate_caller_addr(vec![STORAGE_POWER_ACTOR_ADDR]);
 
     rt.set_origin(SYSTEM_ACTOR_ADDR);

@@ -69,14 +69,14 @@ pub fn new_runtime() -> MockRuntime {
 }
 
 // Sets the miner code/type for an actor ID
-pub fn add_miner(rt: &mut MockRuntime, id: ActorID) {
+pub fn add_miner(rt: &MockRuntime, id: ActorID) {
     rt.set_address_actor_type(Address::new_id(id), *MINER_ACTOR_CODE_ID);
 }
 
 pub fn new_harness() -> (Harness, MockRuntime) {
-    let mut rt = new_runtime();
+    let rt = new_runtime();
     let h = Harness { root: ROOT_ADDR };
-    h.construct_and_verify(&mut rt, &h.root);
+    h.construct_and_verify(&rt, &h.root);
     (h, rt)
 }
 
@@ -85,7 +85,7 @@ pub struct Harness {
 }
 
 impl Harness {
-    pub fn construct_and_verify(&self, rt: &mut MockRuntime, root_param: &Address) {
+    pub fn construct_and_verify(&self, rt: &MockRuntime, root_param: &Address) {
         rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         let ret = rt
@@ -106,7 +106,7 @@ impl Harness {
 
     pub fn add_verifier(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         verifier: &Address,
         allowance: &DataCap,
     ) -> Result<(), ActorError> {
@@ -115,7 +115,7 @@ impl Harness {
 
     pub fn add_verifier_with_existing_cap(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         verifier: &Address,
         allowance: &DataCap,
         cap: &DataCap, // Mocked data cap balance of the prospective verifier
@@ -145,11 +145,7 @@ impl Harness {
         Ok(())
     }
 
-    pub fn remove_verifier(
-        &self,
-        rt: &mut MockRuntime,
-        verifier: &Address,
-    ) -> Result<(), ActorError> {
+    pub fn remove_verifier(&self, rt: &MockRuntime, verifier: &Address) -> Result<(), ActorError> {
         rt.expect_validate_caller_addr(vec![self.root]);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.root);
         let ret = rt.call::<VerifregActor>(
@@ -187,7 +183,7 @@ impl Harness {
 
     pub fn add_client(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         verifier: &Address,
         client: &Address,
         allowance: &DataCap,
@@ -230,7 +226,7 @@ impl Harness {
     // TODO this should be implemented through a call to verifreg but for now it modifies state directly
     pub fn create_alloc(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         alloc: &Allocation,
     ) -> Result<AllocationID, ActorError> {
         let mut st: State = rt.get_state();
@@ -247,7 +243,7 @@ impl Harness {
 
     pub fn load_alloc(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         client: ActorID,
         id: AllocationID,
     ) -> Option<Allocation> {
@@ -259,7 +255,7 @@ impl Harness {
     // Invokes the ClaimAllocations actor method
     pub fn claim_allocations(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         provider: ActorID,
         claim_allocs: Vec<SectorAllocationClaim>,
         datacap_burnt: u64,
@@ -298,7 +294,7 @@ impl Harness {
     // Invokes the RemoveExpiredAllocations actor method.
     pub fn remove_expired_allocations(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         client: ActorID,
         allocation_ids: Vec<AllocationID>,
         expected_datacap: u64,
@@ -335,7 +331,7 @@ impl Harness {
     // Invokes the RemoveExpiredClaims actor method.
     pub fn remove_expired_claims(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         provider: ActorID,
         claim_ids: Vec<ClaimID>,
     ) -> Result<RemoveExpiredClaimsReturn, ActorError> {
@@ -354,12 +350,7 @@ impl Harness {
         Ok(ret)
     }
 
-    pub fn load_claim(
-        &self,
-        rt: &mut MockRuntime,
-        provider: ActorID,
-        id: ClaimID,
-    ) -> Option<Claim> {
+    pub fn load_claim(&self, rt: &MockRuntime, provider: ActorID, id: ClaimID) -> Option<Claim> {
         let st: State = rt.get_state();
         let mut claims = st.load_claims(rt.store()).unwrap();
         claims.get(provider, id).unwrap().cloned()
@@ -367,7 +358,7 @@ impl Harness {
 
     pub fn receive_tokens(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         payload: FRC46TokenReceived,
         expected_alloc_results: BatchReturn,
         expected_extension_results: BatchReturn,
@@ -412,7 +403,7 @@ impl Harness {
     }
 
     // Creates a claim directly in state.
-    pub fn create_claim(&self, rt: &mut MockRuntime, claim: &Claim) -> Result<ClaimID, ActorError> {
+    pub fn create_claim(&self, rt: &MockRuntime, claim: &Claim) -> Result<ClaimID, ActorError> {
         let mut st: State = rt.get_state();
         let mut claims = st.load_claims(rt.store()).unwrap();
         let id = st.next_allocation_id;
@@ -427,7 +418,7 @@ impl Harness {
 
     pub fn get_claims(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         provider: ActorID,
         claim_ids: Vec<ClaimID>,
     ) -> Result<GetClaimsReturn, ActorError> {
@@ -447,7 +438,7 @@ impl Harness {
 
     pub fn extend_claim_terms(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         params: &ExtendClaimTermsParams,
     ) -> Result<ExtendClaimTermsReturn, ActorError> {
         rt.expect_validate_caller_any();

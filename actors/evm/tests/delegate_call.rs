@@ -131,6 +131,6 @@ fn test_delegate_call_caller() {
         None,
     );
 
-    let result = util::invoke_contract(&mut rt, &contract_params);
+    let result = util::invoke_contract(&rt, &contract_params);
     assert_eq!(U256::from_big_endian(&result), return_data);
 }

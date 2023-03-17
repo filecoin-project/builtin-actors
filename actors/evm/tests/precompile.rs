@@ -45,13 +45,13 @@ return
 #[test]
 fn test_precompile_hash() {
     let contract = magic_precompile_contract();
-    let mut rt = util::construct_and_verify(contract);
+    let rt = util::construct_and_verify(contract);
 
     // invoke contract
     let contract_params = vec![0u8; 32];
 
     rt.expect_gas_available(10_000_000_000u64);
-    let result = util::invoke_contract(&mut rt, &contract_params);
+    let result = util::invoke_contract(&rt, &contract_params);
     let expected =
         hex_literal::hex!("ace8597929092c14bd028ede7b07727875788c7e130278b5afed41940d965aba");
     assert_eq!(
@@ -120,7 +120,7 @@ return
 
 #[test]
 fn test_native_lookup_delegated_address() {
-    let mut rt = util::construct_and_verify(tester_bytecode());
+    let rt = util::construct_and_verify(tester_bytecode());
 
     // f0 10101 is an EVM actor
     let evm_target = FILAddress::new_id(10101);
@@ -132,7 +132,7 @@ fn test_native_lookup_delegated_address() {
     let unknown_del = FILAddress::new_delegated(1234, "foobarboxy".as_bytes()).unwrap();
     rt.set_delegated_address(unknown_target.id().unwrap(), unknown_del);
 
-    fn test_lookup_address(rt: &mut MockRuntime, id: FILAddress, expected: Vec<u8>) {
+    fn test_lookup_address(rt: &MockRuntime, id: FILAddress, expected: Vec<u8>) {
         let test = PrecompileTest {
             precompile_address: NativePrecompile::LookupDelegatedAddress.eth_address(),
             output_size: 32,
@@ -146,15 +146,15 @@ fn test_native_lookup_delegated_address() {
         test.run_test(rt);
     }
 
-    test_lookup_address(&mut rt, evm_target, evm_del.to_bytes());
-    test_lookup_address(&mut rt, unknown_target, unknown_del.to_bytes());
-    test_lookup_address(&mut rt, FILAddress::new_id(11111), Vec::new());
+    test_lookup_address(&rt, evm_target, evm_del.to_bytes());
+    test_lookup_address(&rt, unknown_target, unknown_del.to_bytes());
+    test_lookup_address(&rt, FILAddress::new_id(11111), Vec::new());
 }
 
 #[test]
 fn test_resolve_delegated() {
     let bytecode = resolve_address_contract();
-    let mut rt = util::construct_and_verify(bytecode);
+    let rt = util::construct_and_verify(bytecode);
 
     // EVM actor
     let evm_target = FILAddress::new_id(10101);
@@ -184,7 +184,7 @@ fn test_resolve_delegated() {
     let bls = new_bls_addr(123);
     rt.add_id_address(bls, bls_target);
 
-    fn test_resolve(rt: &mut MockRuntime, addr: FILAddress, expected: Vec<u8>) {
+    fn test_resolve(rt: &MockRuntime, addr: FILAddress, expected: Vec<u8>) {
         rt.expect_gas_available(10_000_000_000u64);
         let input = addr.to_bytes();
         let result = util::invoke_contract(rt, &input);
@@ -194,16 +194,16 @@ fn test_resolve_delegated() {
         rt.reset();
     }
 
-    test_resolve(&mut rt, evm_del, id_to_vec(&evm_target));
-    test_resolve(&mut rt, unknown_del, id_to_vec(&unknown_target));
-    test_resolve(&mut rt, secp, id_to_vec(&secp_target));
-    test_resolve(&mut rt, bls, id_to_vec(&bls_target));
+    test_resolve(&rt, evm_del, id_to_vec(&evm_target));
+    test_resolve(&rt, unknown_del, id_to_vec(&unknown_target));
+    test_resolve(&rt, secp, id_to_vec(&secp_target));
+    test_resolve(&rt, bls, id_to_vec(&bls_target));
     // not found
-    test_resolve(&mut rt, unbound_del, vec![]);
+    test_resolve(&rt, unbound_del, vec![]);
 
     // invalid first param fails
     rt.expect_gas_available(10_000_000_000u64);
-    let result = util::invoke_contract(&mut rt, &[0xff; 1]);
+    let result = util::invoke_contract(&rt, &[0xff; 1]);
     rt.verify();
     assert_eq!(&[0u8], result.as_slice());
     rt.reset();
@@ -217,7 +217,7 @@ fn test_resolve_delegated() {
         v.extend_from_slice(&[0, 0, 0xff]);
         v
     };
-    let result = util::invoke_contract(&mut rt, &input);
+    let result = util::invoke_contract(&rt, &input);
     rt.verify();
     assert_eq!(&[0u8], result.as_slice());
     rt.reset();
@@ -227,7 +227,7 @@ fn test_resolve_delegated() {
 fn test_precompile_transfer() {
     let (init, body) = util::PrecompileTest::test_runner_assembly();
 
-    let mut rt =
+    let rt =
         util::construct_and_verify(asm::new_contract("precompile-tester", &init, &body).unwrap());
     rt.set_balance(TokenAmount::from_atto(100));
     // test invalid precompile address
@@ -251,7 +251,7 @@ fn test_precompile_transfer() {
             None,
             ExitCode::OK,
         );
-        test.run_test(&mut rt);
+        test.run_test(&rt);
     }
     assert_eq!(rt.get_balance(), TokenAmount::from_atto(98));
 }
@@ -260,7 +260,7 @@ fn test_precompile_transfer() {
 fn test_precompile_transfer_nothing() {
     let (init, body) = util::PrecompileTest::test_runner_assembly();
 
-    let mut rt =
+    let rt =
         util::construct_and_verify(asm::new_contract("precompile-tester", &init, &body).unwrap());
     rt.set_balance(TokenAmount::from_atto(100));
     // test invalid precompile address
@@ -275,7 +275,7 @@ fn test_precompile_transfer_nothing() {
             input: vec![0xff; 32],
             expected_return: vec![],
         };
-        test.run_test(&mut rt);
+        test.run_test(&rt);
     }
     assert_eq!(rt.get_balance(), TokenAmount::from_atto(100));
 }
@@ -283,11 +283,11 @@ fn test_precompile_transfer_nothing() {
 #[test]
 fn test_precompile_failure() {
     let bytecode = resolve_address_contract();
-    let mut rt = util::construct_and_verify(bytecode);
+    let rt = util::construct_and_verify(bytecode);
 
     // invalid input fails
     rt.expect_gas_available(10_000_000_000u64);
-    let result = util::invoke_contract(&mut rt, &[0xff; 32]);
+    let result = util::invoke_contract(&rt, &[0xff; 32]);
     rt.verify();
     assert_eq!(&[0u8], result.as_slice());
     rt.reset();
@@ -295,7 +295,7 @@ fn test_precompile_failure() {
     // not found succeeds with empty
     rt.expect_gas_available(10_000_000_000u64);
     let input = FILAddress::new_delegated(111, b"foo").unwrap().to_bytes();
-    let result = util::invoke_contract(&mut rt, &input);
+    let result = util::invoke_contract(&rt, &input);
     rt.verify();
     assert_eq!(&[1u8], result.as_slice());
     rt.reset();

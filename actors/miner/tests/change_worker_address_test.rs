@@ -22,8 +22,8 @@ fn setup() -> (ActorHarness, MockRuntime) {
     let period_offset = 100;
 
     let h = ActorHarness::new(period_offset);
-    let mut rt = h.new_runtime();
-    h.construct_and_verify(&mut rt);
+    let rt = h.new_runtime();
+    h.construct_and_verify(&rt);
     rt.balance.replace(BIG_BALANCE.clone());
 
     (h, rt)
@@ -31,7 +31,7 @@ fn setup() -> (ActorHarness, MockRuntime) {
 
 #[test]
 fn successfully_change_only_the_worker_address() {
-    let (h, mut rt) = setup();
+    let (h, rt) = setup();
 
     let original_control_addresses = h.control_addrs.clone();
     let new_worker = Address::new_id(999);
@@ -41,7 +41,7 @@ fn successfully_change_only_the_worker_address() {
     rt.set_epoch(current_epoch);
 
     let effective_epoch = current_epoch + rt.policy().worker_key_change_delay;
-    h.change_worker_address(&mut rt, new_worker, original_control_addresses.clone()).unwrap();
+    h.change_worker_address(&rt, new_worker, original_control_addresses.clone()).unwrap();
 
     // assert change has been made in state
     let pending_worker_key = h.get_info(&rt).pending_worker_key.unwrap();
@@ -53,7 +53,7 @@ fn successfully_change_only_the_worker_address() {
     rt.set_epoch(deadline.period_end());
     assert!(deadline.period_end() < effective_epoch);
 
-    h.confirm_change_worker_address(&mut rt).unwrap();
+    h.confirm_change_worker_address(&rt).unwrap();
 
     let info = h.get_info(&rt);
     assert_eq!(info.pending_worker_key.unwrap().new_worker, new_worker);
@@ -63,7 +63,7 @@ fn successfully_change_only_the_worker_address() {
     rt.set_epoch(effective_epoch);
 
     // enact worker change
-    h.confirm_change_worker_address(&mut rt).unwrap();
+    h.confirm_change_worker_address(&rt).unwrap();
 
     // assert address has changed
     let info = h.get_info(&rt);
@@ -78,7 +78,7 @@ fn successfully_change_only_the_worker_address() {
 
 #[test]
 fn change_and_confirm_worker_address_restricted_correctly() {
-    let (h, mut rt) = setup();
+    let (h, rt) = setup();
 
     let original_control_addresses = h.control_addrs.clone();
     let new_worker = Address::new_id(999);
@@ -149,7 +149,7 @@ fn change_and_confirm_worker_address_restricted_correctly() {
 
 #[test]
 fn change_cannot_be_overridden() {
-    let (h, mut rt) = setup();
+    let (h, rt) = setup();
 
     let original_control_addresses = h.control_addrs.clone();
     let (new_worker_1, new_worker_2) = (Address::new_id(999), Address::new_id(1023));
@@ -159,14 +159,14 @@ fn change_cannot_be_overridden() {
     rt.set_epoch(current_epoch);
 
     let effective_epoch = current_epoch + rt.policy().worker_key_change_delay;
-    h.change_worker_address(&mut rt, new_worker_1, original_control_addresses.clone()).unwrap();
+    h.change_worker_address(&rt, new_worker_1, original_control_addresses.clone()).unwrap();
 
     // no change if current epoch is less than effective epoch
     let deadline = h.deadline(&rt);
     rt.set_epoch(deadline.period_end());
 
     // attempt to change address again
-    h.change_worker_address(&mut rt, new_worker_2, original_control_addresses).unwrap();
+    h.change_worker_address(&rt, new_worker_2, original_control_addresses).unwrap();
 
     // assert change has not been modified
     let pending_worker_key = h.get_info(&rt).pending_worker_key.unwrap();
@@ -174,7 +174,7 @@ fn change_cannot_be_overridden() {
     assert_eq!(pending_worker_key.effective_at, effective_epoch);
 
     rt.set_epoch(effective_epoch);
-    h.confirm_change_worker_address(&mut rt).unwrap();
+    h.confirm_change_worker_address(&rt).unwrap();
 
     // assert original change is effected
     assert_eq!(new_worker_1, h.get_info(&rt).worker);
@@ -183,7 +183,7 @@ fn change_cannot_be_overridden() {
 
 #[test]
 fn successfully_resolve_and_change_only_control_addresses() {
-    let (h, mut rt) = setup();
+    let (h, rt) = setup();
 
     let (control_address_1, control_address_2) = (Address::new_id(555), Address::new_id(556));
     let control_address_2_non_id = new_bls_addr(42);
@@ -191,7 +191,7 @@ fn successfully_resolve_and_change_only_control_addresses() {
     rt.set_address_actor_type(control_address_1, *ACCOUNT_ACTOR_CODE_ID);
     rt.set_address_actor_type(control_address_2, *ACCOUNT_ACTOR_CODE_ID);
 
-    h.change_worker_address(&mut rt, h.worker, vec![control_address_1, control_address_2_non_id])
+    h.change_worker_address(&rt, h.worker, vec![control_address_1, control_address_2_non_id])
         .unwrap();
 
     // assert there is no worker change request and worker key is unchanged
@@ -205,7 +205,7 @@ fn successfully_resolve_and_change_only_control_addresses() {
 
 #[test]
 fn successfully_change_both_worker_and_control_addresses() {
-    let (h, mut rt) = setup();
+    let (h, rt) = setup();
 
     let new_worker = Address::new_id(999);
     let (control_address_1, control_address_2) = (Address::new_id(5001), Address::new_id(5002));
@@ -215,12 +215,11 @@ fn successfully_change_both_worker_and_control_addresses() {
     let current_epoch = 5;
     rt.set_epoch(current_epoch);
     let effective_epoch = current_epoch + rt.policy().worker_key_change_delay;
-    h.change_worker_address(&mut rt, new_worker, vec![control_address_1, control_address_2])
-        .unwrap();
+    h.change_worker_address(&rt, new_worker, vec![control_address_1, control_address_2]).unwrap();
 
     // set current epoch and update worker key
     rt.set_epoch(effective_epoch);
-    h.confirm_change_worker_address(&mut rt).unwrap();
+    h.confirm_change_worker_address(&rt).unwrap();
 
     // assert both worker and control addresses have changed
     let info = h.get_info(&rt);
@@ -232,9 +231,9 @@ fn successfully_change_both_worker_and_control_addresses() {
 
 #[test]
 fn successfully_clear_all_control_addresses() {
-    let (h, mut rt) = setup();
+    let (h, rt) = setup();
 
-    h.change_worker_address(&mut rt, h.worker, Vec::new()).unwrap();
+    h.change_worker_address(&rt, h.worker, Vec::new()).unwrap();
 
     // assert control addresses are cleared
     let info = h.get_info(&rt);
@@ -245,11 +244,11 @@ fn successfully_clear_all_control_addresses() {
 
 #[test]
 fn fails_if_control_addresses_length_exceeds_maximum_limit() {
-    let (h, mut rt) = setup();
+    let (h, rt) = setup();
 
     let control_addresses =
         (0..=rt.policy().max_control_addresses as u64).map(Address::new_id).collect_vec();
-    let result = h.change_worker_address(&mut rt, h.worker, control_addresses);
+    let result = h.change_worker_address(&rt, h.worker, control_addresses);
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "control addresses length",
@@ -262,9 +261,9 @@ fn fails_if_control_addresses_length_exceeds_maximum_limit() {
 
 #[test]
 fn fails_if_unable_to_resolve_control_address() {
-    let (h, mut rt) = setup();
+    let (h, rt) = setup();
     let control_address = new_bls_addr(42);
-    let result = h.change_worker_address(&mut rt, h.worker, vec![control_address]);
+    let result = h.change_worker_address(&rt, h.worker, vec![control_address]);
     expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
     rt.reset();
 
@@ -273,9 +272,9 @@ fn fails_if_unable_to_resolve_control_address() {
 
 #[test]
 fn fails_if_unable_to_resolve_worker_address() {
-    let (h, mut rt) = setup();
+    let (h, rt) = setup();
     let new_worker = new_bls_addr(42);
-    let result = h.change_worker_address(&mut rt, new_worker, vec![]);
+    let result = h.change_worker_address(&rt, new_worker, vec![]);
     expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
     rt.reset();
     h.check_state(&rt);
@@ -283,11 +282,11 @@ fn fails_if_unable_to_resolve_worker_address() {
 
 #[test]
 fn fails_if_worker_public_key_is_not_bls_but_id() {
-    let (mut h, mut rt) = setup();
+    let (mut h, rt) = setup();
     let new_worker = Address::new_id(999);
     h.worker_key = Address::new_id(505);
 
-    let result = h.change_worker_address(&mut rt, new_worker, vec![]);
+    let result = h.change_worker_address(&rt, new_worker, vec![]);
     expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
     rt.reset();
     h.check_state(&rt);
@@ -295,11 +294,11 @@ fn fails_if_worker_public_key_is_not_bls_but_id() {
 
 #[test]
 fn fails_if_worker_public_key_is_not_bls_but_secp() {
-    let (mut h, mut rt) = setup();
+    let (mut h, rt) = setup();
     let new_worker = Address::new_id(999);
     h.worker_key = Address::new_secp256k1(&[0x42; 65]).unwrap();
 
-    let result = h.change_worker_address(&mut rt, new_worker, vec![]);
+    let result = h.change_worker_address(&rt, new_worker, vec![]);
     expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
 
     h.check_state(&rt);
