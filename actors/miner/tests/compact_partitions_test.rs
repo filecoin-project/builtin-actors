@@ -68,7 +68,8 @@ fn compacting_a_partition_with_both_live_and_dead_sectors_removes_dead_sectors_r
     let sectors = sectors_info.iter().map(|info| info.sector_number).collect_vec();
 
     // terminate sector 1
-    rt.set_epoch(*rt.epoch.borrow() + 100);
+    let epoch = *rt.epoch.borrow();
+    rt.set_epoch(epoch + 100);
     h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
 
     let terminated_sector = &sectors_info[0];

@@ -567,7 +567,8 @@ fn sector_with_non_positive_lifetime_is_skipped_in_confirmation() {
     let precommit = h.pre_commit_sector_and_get(&rt, params, PreCommitConfig::default(), true);
 
     // precommit at correct epoch
-    rt.set_epoch(*rt.epoch.borrow() + rt.policy.pre_commit_challenge_delay + 1);
+    let epoch = *rt.epoch.borrow();
+    rt.set_epoch(epoch + rt.policy.pre_commit_challenge_delay + 1);
     h.prove_commit_sector(&rt, &precommit, h.make_prove_commit_params(sector_no)).unwrap();
 
     // confirm at sector expiration (this probably can't happen)

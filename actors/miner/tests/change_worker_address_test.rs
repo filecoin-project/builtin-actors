@@ -125,7 +125,8 @@ fn change_and_confirm_worker_address_restricted_correctly() {
     // confirmation time
 
     // move to deadline containing effective epoch
-    rt.set_epoch(*rt.epoch.borrow() + rt.policy.worker_key_change_delay);
+    let epoch = *rt.epoch.borrow();
+    rt.set_epoch(epoch + rt.policy.worker_key_change_delay);
 
     // fail to call the unexported method
 

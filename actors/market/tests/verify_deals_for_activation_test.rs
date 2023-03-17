@@ -101,7 +101,7 @@ fn verify_deal_and_activate_to_get_deal_space_for_verified_deal_proposal() {
 #[test]
 fn verification_and_weights_for_verified_and_unverified_deals() {
     let rt = setup();
-    let mut create_deal = |end_epoch, verified| {
+    let create_deal = |end_epoch, verified| {
         let mut deal =
             generate_deal_and_add_funds(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, end_epoch);
         deal.verified_deal = verified;

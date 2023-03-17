@@ -545,7 +545,8 @@ mod miner_actor_test_commitment {
             .unwrap();
         rt.replace_state(&st);
 
-        rt.set_epoch(*rt.epoch.borrow() + 2);
+        let epoch = *rt.epoch.borrow();
+        rt.set_epoch(epoch + 2);
 
         // Pre-commit with a deal in order to exercise non-zero deal weights.
         let precommit_params =
