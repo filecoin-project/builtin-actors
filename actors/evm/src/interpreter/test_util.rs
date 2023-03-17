@@ -1,5 +1,3 @@
-#![allow(unused_mut)]
-
 #[macro_export]
 macro_rules! evm_instruction {
     ($i:ident) => {
