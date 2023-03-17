@@ -19,7 +19,7 @@ use fvm_shared::error::ExitCode;
 
 #[test]
 fn call_create_new() {
-    let mut rt = construct_and_verify();
+    let rt = construct_and_verify();
 
     let id_addr = Address::new_id(110);
     let eth_addr = EthAddress(hex_literal::hex!("CAFEB0BA00000000000000000000000000000000"));
@@ -81,7 +81,7 @@ fn call_create_new() {
 
 #[test]
 fn call_create_external_over_placeholder() {
-    let mut rt = construct_and_verify();
+    let rt = construct_and_verify();
 
     let caller_id_addr = Address::new_id(110);
     let caller_eth_addr = EthAddress(hex_literal::hex!("CAFEB0BA00000000000000000000000000000000"));
@@ -149,7 +149,7 @@ fn call_create_external_over_placeholder() {
 
 #[test]
 fn call_resurrect() {
-    let mut rt = construct_and_verify();
+    let rt = construct_and_verify();
 
     let caller_id_addr = Address::new_id(110);
     let caller_eth_addr = EthAddress(hex_literal::hex!("CAFEB0BA00000000000000000000000000000000"));
@@ -201,7 +201,7 @@ fn call_resurrect() {
 
 #[test]
 fn call_create2() {
-    let mut rt = construct_and_verify();
+    let rt = construct_and_verify();
 
     let id_addr = Address::new_id(110);
     let eth_addr = EthAddress(hex_literal::hex!("CAFEB0BA00000000000000000000000000000000"));
@@ -267,7 +267,7 @@ fn call_create2() {
 }
 
 pub fn construct_and_verify() -> MockRuntime {
-    let mut rt = MockRuntime { receiver: Address::new_id(10), ..Default::default() };
+    let rt = MockRuntime { receiver: Address::new_id(10), ..Default::default() };
 
     // construct EAM singleton actor
     rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);

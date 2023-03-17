@@ -87,7 +87,7 @@ mod compute_data_commitment {
 
     #[test]
     fn success_on_empty_piece_info() {
-        let mut rt = setup();
+        let rt = setup();
         let input =
             SectorDataSpec { deal_ids: vec![], sector_type: RegisteredSealProof::StackedDRG8MiBV1 };
         let param = ComputeDataCommitmentParams { inputs: vec![input] };
@@ -197,7 +197,7 @@ mod compute_data_commitment {
 
     #[test]
     fn fail_when_deal_proposal_is_absent() {
-        let mut rt = setup();
+        let rt = setup();
         let input = SectorDataSpec {
             deal_ids: vec![1],
             sector_type: RegisteredSealProof::StackedDRG8MiBV1,

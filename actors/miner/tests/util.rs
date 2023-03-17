@@ -224,10 +224,10 @@ impl ActorHarness {
         rt.policy.valid_pre_commit_proof_type.insert(self.seal_proof_type);
 
         rt.receiver = self.receiver;
-        rt.actor_code_cids.insert(self.owner, *ACCOUNT_ACTOR_CODE_ID);
-        rt.actor_code_cids.insert(self.worker, *ACCOUNT_ACTOR_CODE_ID);
+        rt.actor_code_cids.borrow_mut().insert(self.owner, *ACCOUNT_ACTOR_CODE_ID);
+        rt.actor_code_cids.borrow_mut().insert(self.worker, *ACCOUNT_ACTOR_CODE_ID);
         for addr in &self.control_addrs {
-            rt.actor_code_cids.insert(*addr, *ACCOUNT_ACTOR_CODE_ID);
+            rt.actor_code_cids.borrow_mut().insert(*addr, *ACCOUNT_ACTOR_CODE_ID);
         }
 
         rt.hash_func = fixed_hasher(self.options.proving_period_offset);
@@ -252,10 +252,10 @@ impl ActorHarness {
             multi_addresses: vec![],
         };
 
-        rt.actor_code_cids.insert(self.owner, *ACCOUNT_ACTOR_CODE_ID);
-        rt.actor_code_cids.insert(self.worker, *ACCOUNT_ACTOR_CODE_ID);
+        rt.actor_code_cids.borrow_mut().insert(self.owner, *ACCOUNT_ACTOR_CODE_ID);
+        rt.actor_code_cids.borrow_mut().insert(self.worker, *ACCOUNT_ACTOR_CODE_ID);
         for a in self.control_addrs.iter() {
-            rt.actor_code_cids.insert(*a, *ACCOUNT_ACTOR_CODE_ID);
+            rt.actor_code_cids.borrow_mut().insert(*a, *ACCOUNT_ACTOR_CODE_ID);
         }
 
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
@@ -395,7 +395,7 @@ impl ActorHarness {
         first: bool,
         prove_cfg: ProveCommitConfig, // must be same length as num_sectors
     ) -> Vec<SectorOnChainInfo> {
-        let precommit_epoch = rt.epoch;
+        let precommit_epoch = *rt.epoch.borrow();
         let deadline = self.get_deadline_info(rt);
         let expiration =
             deadline.period_end() + lifetime_periods as i64 * rt.policy.wpost_proving_period;
@@ -450,7 +450,7 @@ impl ActorHarness {
         lifetime_periods: i64,
         deal_ids: Vec<DealID>,
     ) -> SectorOnChainInfo {
-        let precommit_epoch = rt.epoch;
+        let precommit_epoch = *rt.epoch.borrow();
         let deadline = self.deadline(rt);
         let expiration = deadline.period_end() + lifetime_periods * rt.policy.wpost_proving_period;
 
@@ -505,7 +505,7 @@ impl ActorHarness {
 
     pub fn get_deadline_info(&self, rt: &MockRuntime) -> DeadlineInfo {
         let state = self.get_state(rt);
-        state.recorded_deadline_info(&rt.policy, rt.epoch)
+        state.recorded_deadline_info(&rt.policy, *rt.epoch.borrow())
     }
 
     pub fn make_pre_commit_params(
@@ -706,7 +706,7 @@ impl ActorHarness {
             let dlinfo = new_deadline_info_from_offset_and_epoch(
                 &rt.policy,
                 state.proving_period_start,
-                rt.epoch,
+                *rt.epoch.borrow(),
             );
             let cron_params = make_deadline_cron_event_params(dlinfo.last());
             rt.expect_send_simple(
@@ -786,7 +786,7 @@ impl ActorHarness {
             let dlinfo = new_deadline_info_from_offset_and_epoch(
                 &rt.policy,
                 state.proving_period_start,
-                rt.epoch,
+                *rt.epoch.borrow(),
             );
             let cron_params = make_deadline_cron_event_params(dlinfo.last());
             rt.expect_send_simple(
@@ -1137,7 +1137,7 @@ impl ActorHarness {
             for pc in valid_pcs {
                 let spaces = cfg.deal_spaces(&pc.info.sector_number);
 
-                let duration = pc.info.expiration - rt.epoch;
+                let duration = pc.info.expiration - *rt.epoch.borrow();
                 let deal_weight = spaces.deal_space * duration;
                 let verified_deal_weight = spaces.verified_deal_space * duration;
                 if duration >= rt.policy.min_sector_expiration {
@@ -1185,7 +1185,7 @@ impl ActorHarness {
             self.advance_deadline(rt, CronConfig::empty());
             deadline = self.get_deadline_info(rt);
         }
-        rt.epoch = epoch;
+        rt.epoch.replace(epoch);
     }
 
     pub fn advance_to_deadline(&self, rt: &mut MockRuntime, dlidx: u64) -> DeadlineInfo {
@@ -1198,7 +1198,7 @@ impl ActorHarness {
 
     pub fn deadline(&self, rt: &MockRuntime) -> DeadlineInfo {
         let state = self.get_state(rt);
-        state.recorded_deadline_info(&rt.policy, rt.epoch)
+        state.recorded_deadline_info(&rt.policy, *rt.epoch.borrow())
     }
 
     pub fn advance_deadline(&self, rt: &mut MockRuntime, mut cfg: CronConfig) -> DeadlineInfo {
@@ -1206,18 +1206,18 @@ impl ActorHarness {
         let deadline = new_deadline_info_from_offset_and_epoch(
             &rt.policy,
             state.proving_period_start,
-            rt.epoch,
+            *rt.epoch.borrow(),
         );
 
         if state.deadline_cron_active {
-            rt.epoch = deadline.last();
+            rt.epoch.replace(deadline.last());
             cfg.expected_enrollment = deadline.last() + rt.policy.wpost_challenge_window;
             self.on_deadline_cron(rt, cfg);
         }
-        rt.epoch = deadline.next_open();
+        rt.epoch.replace(deadline.next_open());
 
         let state = self.get_state(rt);
-        state.deadline_info(&rt.policy, rt.epoch)
+        state.deadline_info(&rt.policy, *rt.epoch.borrow())
     }
 
     pub fn on_deadline_cron(&self, rt: &mut MockRuntime, cfg: CronConfig) {
@@ -1877,7 +1877,7 @@ impl ActorHarness {
 
     pub fn current_deadline(&self, rt: &MockRuntime) -> DeadlineInfo {
         let state = self.get_state(rt);
-        state.deadline_info(&rt.policy, rt.epoch)
+        state.deadline_info(&rt.policy, *rt.epoch.borrow())
     }
 
     fn power_pair_for_sectors(&self, sectors: &[SectorOnChainInfo]) -> PowerPair {
@@ -2045,7 +2045,7 @@ impl ActorHarness {
             let max_length = 8192;
             let size = deal_ids.len().min(max_length);
             let params = OnMinerSectorsTerminateParams {
-                epoch: rt.epoch,
+                epoch: *rt.epoch.borrow(),
                 deal_ids: deal_ids[0..size].to_owned(),
             };
             rt.expect_send_simple(
@@ -2552,7 +2552,7 @@ impl ActorHarness {
         rt: &mut MockRuntime,
         new_address: Address,
     ) -> Result<Option<IpldBlock>, ActorError> {
-        let expected = if rt.caller == self.owner {
+        let expected = if *rt.caller.borrow() == self.owner {
             self.owner
         } else {
             if let Some(pending_owner) = self.get_info(rt).pending_owner_address {
@@ -2832,7 +2832,7 @@ fn immediately_vesting_funds(rt: &MockRuntime, state: &State) -> TokenAmount {
     let vesting = rt.store.get_cbor::<VestingFunds>(&state.vesting_funds).unwrap().unwrap();
     let mut sum = TokenAmount::zero();
     for vf in vesting.funds {
-        if vf.epoch < rt.epoch {
+        if vf.epoch < *rt.epoch.borrow() {
             sum += vf.amount;
         } else {
             break;
@@ -3226,7 +3226,7 @@ impl CronControl {
         rt.set_epoch(dlinfo.next_open());
 
         self.require_cron_inactive(h, rt);
-        rt.epoch
+        *rt.epoch.borrow()
     }
 
     pub fn pre_commit_start_cron_expire_stop_cron(

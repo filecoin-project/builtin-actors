@@ -125,7 +125,7 @@ fn change_and_confirm_worker_address_restricted_correctly() {
     // confirmation time
 
     // move to deadline containing effective epoch
-    rt.set_epoch(rt.epoch + rt.policy.worker_key_change_delay);
+    rt.set_epoch(*rt.epoch.borrow() + rt.policy.worker_key_change_delay);
 
     // fail to call the unexported method
 
@@ -307,7 +307,7 @@ fn fails_if_worker_public_key_is_not_bls_but_secp() {
 
 #[test]
 fn fails_if_new_worker_address_does_not_have_a_code() {
-    let (h, mut rt) = setup();
+    let (h, rt) = setup();
 
     let new_worker = Address::new_id(5001);
 
@@ -326,7 +326,7 @@ fn fails_if_new_worker_address_does_not_have_a_code() {
 
 #[test]
 fn fails_if_new_worker_is_not_account_actor() {
-    let (h, mut rt) = setup();
+    let (h, rt) = setup();
 
     let new_worker = Address::new_id(999);
     rt.set_address_actor_type(new_worker, *MINER_ACTOR_CODE_ID);
@@ -345,7 +345,7 @@ fn fails_if_new_worker_is_not_account_actor() {
 
 #[test]
 fn fails_when_caller_is_not_the_owner() {
-    let (h, mut rt) = setup();
+    let (h, rt) = setup();
 
     let new_worker = Address::new_id(999);
     rt.set_address_actor_type(new_worker, *ACCOUNT_ACTOR_CODE_ID);

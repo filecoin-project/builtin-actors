@@ -192,7 +192,7 @@ fn fail_when_caller_is_not_a_storage_miner_actor() {
 
 #[test]
 fn fail_when_deal_proposal_is_not_found() {
-    let mut rt = setup();
+    let rt = setup();
 
     let params = VerifyDealsForActivationParams {
         sectors: vec![SectorDeals {

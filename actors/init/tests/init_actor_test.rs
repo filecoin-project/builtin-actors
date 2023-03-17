@@ -1,6 +1,8 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use std::cell::RefCell;
+
 use cid::Cid;
 use fil_actor_init::testing::check_state_invariants;
 use fil_actor_init::{
@@ -29,8 +31,8 @@ fn check_state(rt: &MockRuntime) {
 fn construct_runtime() -> MockRuntime {
     MockRuntime {
         receiver: Address::new_id(1000),
-        caller: SYSTEM_ACTOR_ADDR,
-        caller_type: *SYSTEM_ACTOR_CODE_ID,
+        caller: RefCell::new(SYSTEM_ACTOR_ADDR),
+        caller_type: RefCell::new(*SYSTEM_ACTOR_CODE_ID),
         ..Default::default()
     }
 }
@@ -63,7 +65,7 @@ fn repeated_robust_address() {
         let some_acc_actor = Address::new_id(1234);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, some_acc_actor);
 
-        rt.new_actor_addr = Some(unique_address);
+        rt.new_actor_addr.replace(Some(unique_address));
 
         // Next id
         let expected_id = 100;
@@ -89,7 +91,7 @@ fn repeated_robust_address() {
 
     // Simulate repeated robust address, as it could be a case with predictable address generation
     {
-        rt.new_actor_addr = Some(unique_address);
+        rt.new_actor_addr.replace(Some(unique_address));
 
         rt.expect_validate_caller_any();
         let exec_params = ExecParams {
@@ -121,10 +123,10 @@ fn create_2_payment_channels() {
         let paych = pay_channel_string.as_bytes();
 
         rt.set_balance(TokenAmount::from_atto(100));
-        rt.value_received = TokenAmount::from_atto(100);
+        rt.value_received.replace(TokenAmount::from_atto(100));
 
         let unique_address = Address::new_actor(paych);
-        rt.new_actor_addr = Some(Address::new_actor(paych));
+        rt.new_actor_addr.replace(Some(Address::new_actor(paych)));
 
         let expected_id = 100 + n;
         let expected_id_addr = Address::new_id(expected_id);
@@ -168,7 +170,7 @@ fn create_storage_miner() {
     rt.set_caller(*POWER_ACTOR_CODE_ID, STORAGE_POWER_ACTOR_ADDR);
 
     let unique_address = Address::new_actor(b"miner");
-    rt.new_actor_addr = Some(unique_address);
+    rt.new_actor_addr.replace(Some(unique_address));
 
     let expected_id = 100;
     let expected_id_addr = Address::new_id(expected_id);
@@ -216,7 +218,7 @@ fn create_multisig_actor() {
 
     // Assign addresses
     let unique_address = Address::new_actor(b"multisig");
-    rt.new_actor_addr = Some(unique_address);
+    rt.new_actor_addr.replace(Some(unique_address));
 
     // Next id
     let expected_id = 100;
@@ -251,7 +253,7 @@ fn sending_constructor_failure() {
 
     // Assign new address for the storage actor miner
     let unique_address = Address::new_actor(b"miner");
-    rt.new_actor_addr = Some(unique_address);
+    rt.new_actor_addr.replace(Some(unique_address));
 
     // Create the next id address
     let expected_id = 100;
@@ -293,7 +295,7 @@ fn call_exec4() {
 
     // Assign addresses
     let unique_address = Address::new_actor(b"test");
-    rt.new_actor_addr = Some(unique_address);
+    rt.new_actor_addr.replace(Some(unique_address));
 
     // Make the f4 addr
     let subaddr = b"foobar";
@@ -335,7 +337,7 @@ fn call_exec4() {
 
     // Try again and expect it to fail with "forbidden".
     let unique_address = Address::new_actor(b"test2");
-    rt.new_actor_addr = Some(unique_address);
+    rt.new_actor_addr.replace(Some(unique_address));
     let exec_err =
         exec4_and_verify(&mut rt, namespace, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params)
             .unwrap_err();
@@ -343,9 +345,9 @@ fn call_exec4() {
     assert_eq!(exec_err.exit_code(), ExitCode::USR_FORBIDDEN);
 
     // Delete and try again, it should still fail.
-    rt.actor_code_cids.remove(&resolved_id);
+    rt.actor_code_cids.borrow_mut().remove(&resolved_id);
     let unique_address = Address::new_actor(b"test2");
-    rt.new_actor_addr = Some(unique_address);
+    rt.new_actor_addr.replace(Some(unique_address));
     let exec_err =
         exec4_and_verify(&mut rt, namespace, subaddr, *MULTISIG_ACTOR_CODE_ID, &fake_params)
             .unwrap_err();
@@ -361,7 +363,7 @@ fn call_exec4_placeholder() {
 
     // Assign addresses
     let unique_address = Address::new_actor(b"test");
-    rt.new_actor_addr = Some(unique_address);
+    rt.new_actor_addr.replace(Some(unique_address));
 
     // Make the f4 addr
     let subaddr = b"foobar";

@@ -103,7 +103,7 @@ impl ActorHarness {
         let ret = self.propose(rt, to, value.clone(), method, params.clone());
         ret.unwrap().unwrap().deserialize::<ProposeReturn>().unwrap();
         // compute proposal hash
-        let txn = Transaction { to, value, method, params, approved: vec![rt.caller] };
+        let txn = Transaction { to, value, method, params, approved: vec![*rt.caller.borrow()] };
         compute_proposal_hash(&txn, rt).unwrap()
     }
 

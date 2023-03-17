@@ -17,6 +17,7 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{MethodNum, METHOD_SEND};
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 mod util;
@@ -41,9 +42,9 @@ fn construct_runtime(receiver: Address) -> MockRuntime {
     actor_code_cids.insert(test_darlene_addr, *ACCOUNT_ACTOR_CODE_ID);
     MockRuntime {
         receiver,
-        caller: SYSTEM_ACTOR_ADDR,
-        caller_type: *SYSTEM_ACTOR_CODE_ID,
-        actor_code_cids,
+        caller: RefCell::new(SYSTEM_ACTOR_ADDR),
+        caller_type: RefCell::new(*SYSTEM_ACTOR_CODE_ID),
+        actor_code_cids: RefCell::new(actor_code_cids),
         ..Default::default()
     }
 }
@@ -101,10 +102,10 @@ mod constructor_tests {
         let bob_non_id = Address::new_bls(&[2u8; BLS_PUB_LEN]).unwrap();
         let charlie_non_id = Address::new_bls(&[3u8; BLS_PUB_LEN]).unwrap();
 
-        let mut rt = construct_runtime(MSIG);
-        rt.id_addresses.insert(anne_non_id, ANNE);
-        rt.id_addresses.insert(bob_non_id, BOB);
-        rt.id_addresses.insert(charlie_non_id, CHARLIE);
+        let rt = construct_runtime(MSIG);
+        rt.id_addresses.borrow_mut().insert(anne_non_id, ANNE);
+        rt.id_addresses.borrow_mut().insert(bob_non_id, BOB);
+        rt.id_addresses.borrow_mut().insert(charlie_non_id, CHARLIE);
         let params = ConstructorParams {
             signers: vec![anne_non_id, bob_non_id, charlie_non_id],
             num_approvals_threshold: 2,
@@ -157,7 +158,7 @@ mod constructor_tests {
 
     #[test]
     fn test_construction_fail_to_construct_multisig_actor_with_0_signers() {
-        let mut rt = construct_runtime(MSIG);
+        let rt = construct_runtime(MSIG);
         let zero_signer_params = ConstructorParams {
             signers: Vec::new(),
             num_approvals_threshold: 1,
@@ -179,7 +180,7 @@ mod constructor_tests {
 
     #[test]
     fn test_construction_fail_to_construct_multisig_with_more_than_max_signers() {
-        let mut rt = construct_runtime(MSIG);
+        let rt = construct_runtime(MSIG);
         let mut signers = Vec::new();
         let mut i: u64 = 0;
         while i <= SIGNERS_MAX as u64 {
@@ -206,7 +207,7 @@ mod constructor_tests {
 
     #[test]
     fn fail_to_construct_multisig_with_more_approvals_than_signers() {
-        let mut rt = construct_runtime(MSIG);
+        let rt = construct_runtime(MSIG);
         let params = ConstructorParams {
             signers: vec![ANNE],
             num_approvals_threshold: 2,
@@ -227,7 +228,7 @@ mod constructor_tests {
 
     #[test]
     fn fail_to_contruct_multisig_if_a_signer_is_not_resolvable_to_id_address() {
-        let mut rt = construct_runtime(MSIG);
+        let rt = construct_runtime(MSIG);
         let anne_non_id = Address::new_bls(&[1u8; BLS_PUB_LEN]).unwrap();
         // no mapping to ANNE added to runtime
         let params = ConstructorParams {
@@ -258,7 +259,7 @@ mod constructor_tests {
 
     #[test]
     fn fail_to_construct_msig_with_duplicate_signers_all_id() {
-        let mut rt = construct_runtime(MSIG);
+        let rt = construct_runtime(MSIG);
         let params = ConstructorParams {
             signers: vec![ANNE, BOB, BOB],
             num_approvals_threshold: 2,
@@ -280,8 +281,8 @@ mod constructor_tests {
     #[test]
     fn fail_to_construct_msig_with_duplicate_signers_id_and_non_id() {
         let bob_non_id = Address::new_bls(&[2u8; BLS_PUB_LEN]).unwrap();
-        let mut rt = construct_runtime(MSIG);
-        rt.id_addresses.insert(bob_non_id, BOB);
+        let rt = construct_runtime(MSIG);
+        rt.id_addresses.borrow_mut().insert(bob_non_id, BOB);
         let params = ConstructorParams {
             signers: vec![ANNE, bob_non_id, BOB],
             num_approvals_threshold: 2,
@@ -826,7 +827,7 @@ fn test_add_signer() {
         let mut rt = construct_runtime(msig);
         let h = util::ActorHarness::new();
         for (src, target) in tc.id_addr_mapping {
-            rt.id_addresses.insert(src, target);
+            rt.id_addresses.borrow_mut().insert(src, target);
         }
 
         h.construct_and_verify(&mut rt, tc.initial_approvals, 0, 0, tc.initial_signers);
@@ -967,7 +968,7 @@ fn test_remove_signer() {
 
     for tc in test_cases {
         let mut rt = construct_runtime(msig);
-        rt.id_addresses.insert(anne_non_id, anne);
+        rt.id_addresses.borrow_mut().insert(anne_non_id, anne);
         let h = util::ActorHarness::new();
         h.construct_and_verify(&mut rt, tc.initial_approvals, 0, 0, tc.initial_signers);
 
@@ -1082,7 +1083,7 @@ fn test_signer_swap() {
 
     for tc in test_cases {
         let mut rt = construct_runtime(msig);
-        rt.id_addresses.insert(bob_non_id, bob);
+        rt.id_addresses.borrow_mut().insert(bob_non_id, bob);
         let h = util::ActorHarness::new();
         h.construct_and_verify(&mut rt, num_approvals, 0, 0, tc.initial_signers);
 

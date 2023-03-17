@@ -38,7 +38,7 @@ fn happy_path_withdraws_funds() {
 
 #[test]
 fn withdraw_funds_restricted_correctly() {
-    let (h, mut rt) = setup();
+    let (h, rt) = setup();
     rt.set_balance(BIG_BALANCE.clone());
     let amount_requested = ONE_PERCENT_BALANCE.clone();
 

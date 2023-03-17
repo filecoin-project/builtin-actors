@@ -20,7 +20,7 @@ revert
     )
     .unwrap();
 
-    let mut rt = util::construct_and_verify(contract);
+    let rt = util::construct_and_verify(contract);
     rt.expect_validate_caller_any();
 
     let result = rt.call::<evm::EvmContractActor>(evm::Method::InvokeContract as u64, None);

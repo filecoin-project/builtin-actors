@@ -88,7 +88,7 @@ fn prove_single_sector() {
     assert_eq!(precommit.info.seal_proof, sector.seal_proof);
     assert_eq!(precommit.info.sealed_cid, sector.sealed_cid);
     assert_eq!(precommit.info.deal_ids, sector.deal_ids);
-    assert_eq!(rt.epoch, sector.activation);
+    assert_eq!(*rt.epoch.borrow(), sector.activation);
     assert_eq!(precommit.info.expiration, sector.expiration);
 
     // expect precommit to have been removed
@@ -245,7 +245,7 @@ fn prove_sectors_from_batch_pre_commit() {
                 ProveCommitConfig::default(),
             )
             .unwrap();
-        assert_eq!(rt.epoch, sector.activation);
+        assert_eq!(*rt.epoch.borrow(), sector.activation);
         let st = h.get_state(&rt);
         let expected_deposits = 2 * pre_commit_deposit_for_power(
             &h.epoch_reward_smooth,
@@ -272,7 +272,7 @@ fn prove_sectors_from_batch_pre_commit() {
                 pcc,
             )
             .unwrap();
-        assert_eq!(rt.epoch, sector.activation);
+        assert_eq!(*rt.epoch.borrow(), sector.activation);
         let st = h.get_state(&rt);
         let expected_deposits = pre_commit_deposit_for_power(
             &h.epoch_reward_smooth,
@@ -299,7 +299,7 @@ fn prove_sectors_from_batch_pre_commit() {
                 pcc,
             )
             .unwrap();
-        assert_eq!(rt.epoch, sector.activation);
+        assert_eq!(*rt.epoch.borrow(), sector.activation);
         let st = h.get_state(&rt);
         assert!(st.pre_commit_deposits.is_zero());
 
@@ -446,9 +446,10 @@ fn prove_commit_aborts_if_pledge_requirement_not_met() {
 
     // precommit another sector so we may prove it
     let expiration = DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period + PERIOD_OFFSET - 1;
-    let precommit_epoch = rt.epoch + 1;
+    let precommit_epoch = *rt.epoch.borrow() + 1;
     rt.set_epoch(precommit_epoch);
-    let params = h.make_pre_commit_params(h.next_sector_no, rt.epoch - 1, expiration, vec![]);
+    let params =
+        h.make_pre_commit_params(h.next_sector_no, *rt.epoch.borrow() - 1, expiration, vec![]);
     let precommit = h.pre_commit_sector_and_get(&mut rt, params, PreCommitConfig::default(), false);
 
     // Confirm the unlocked PCD will not cover the new IP
@@ -496,14 +497,16 @@ fn drop_invalid_prove_commit_while_processing_valid_one() {
 
     // make two precommits
     let expiration = DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period + PERIOD_OFFSET - 1;
-    let precommit_epoch = rt.epoch + 1;
+    let precommit_epoch = *rt.epoch.borrow() + 1;
     rt.set_epoch(precommit_epoch);
-    let params_a = h.make_pre_commit_params(h.next_sector_no, rt.epoch - 1, expiration, vec![1]);
+    let params_a =
+        h.make_pre_commit_params(h.next_sector_no, *rt.epoch.borrow() - 1, expiration, vec![1]);
     let pre_commit_a =
         h.pre_commit_sector_and_get(&mut rt, params_a, PreCommitConfig::default(), true);
     let sector_no_a = h.next_sector_no;
     h.next_sector_no += 1;
-    let params_b = h.make_pre_commit_params(h.next_sector_no, rt.epoch - 1, expiration, vec![2]);
+    let params_b =
+        h.make_pre_commit_params(h.next_sector_no, *rt.epoch.borrow() - 1, expiration, vec![2]);
     let pre_commit_b =
         h.pre_commit_sector_and_get(&mut rt, params_b, PreCommitConfig::default(), false);
     let sector_no_b = h.next_sector_no;
@@ -570,7 +573,7 @@ fn sector_with_non_positive_lifetime_is_skipped_in_confirmation() {
     let precommit = h.pre_commit_sector_and_get(&mut rt, params, PreCommitConfig::default(), true);
 
     // precommit at correct epoch
-    rt.set_epoch(rt.epoch + rt.policy.pre_commit_challenge_delay + 1);
+    rt.set_epoch(*rt.epoch.borrow() + rt.policy.pre_commit_challenge_delay + 1);
     h.prove_commit_sector(&mut rt, &precommit, h.make_prove_commit_params(sector_no)).unwrap();
 
     // confirm at sector expiration (this probably can't happen)
@@ -620,7 +623,7 @@ fn verify_proof_does_not_vest_funds() {
     let _ = st
         .add_locked_funds(
             &rt.store,
-            rt.epoch,
+            *rt.epoch.borrow(),
             &TokenAmount::from_atto(1000),
             &VestSpec { initial_delay: 0, vest_period: 1, step_duration: 1, quantization: 1 },
         )

@@ -241,7 +241,7 @@ account:
     let native_target = FILAddress::new_id(0x8A);
     rt.set_address_actor_type(native_target, *PLACEHOLDER_ACTOR_CODE_ID);
 
-    let empty_hash = empty_bytecode_hash(&mut rt);
+    let empty_hash = empty_bytecode_hash(&rt);
 
     // a random hash value
     let bytecode = b"foo bar boxy";
@@ -296,7 +296,7 @@ account:
 
 #[test]
 fn test_getbytecodehash_method() {
-    let mut rt = util::construct_and_verify(Vec::new());
+    let rt = util::construct_and_verify(Vec::new());
     rt.expect_validate_caller_any();
 
     let res: BytecodeHash = rt
@@ -305,11 +305,11 @@ fn test_getbytecodehash_method() {
         .unwrap()
         .deserialize()
         .unwrap();
-    assert_eq!(<[u8; 32]>::from(res), empty_bytecode_hash(&mut rt))
+    assert_eq!(<[u8; 32]>::from(res), empty_bytecode_hash(&rt))
 }
 
 /// Keccak256 hash of &[]
-fn empty_bytecode_hash(rt: &mut impl Runtime) -> [u8; 32] {
+fn empty_bytecode_hash(rt: &impl Runtime) -> [u8; 32] {
     rt.hash(SupportedHashes::Keccak256, &[]).try_into().unwrap()
 }
 

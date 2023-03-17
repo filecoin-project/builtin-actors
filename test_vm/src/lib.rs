@@ -461,8 +461,8 @@ impl<'bs> VM<'bs> {
             v: self,
             top,
             msg,
-            allow_side_effects: true,
-            caller_validated: false,
+            allow_side_effects: RefCell::new(true),
+            caller_validated: RefCell::new(false),
             read_only: false,
             policy: &Policy::default(),
             subinvocations: RefCell::new(vec![]),
@@ -602,8 +602,8 @@ pub struct InvocationCtx<'invocation, 'bs> {
     v: &'invocation VM<'bs>,
     top: TopCtx,
     msg: InternalMessage,
-    allow_side_effects: bool,
-    caller_validated: bool,
+    allow_side_effects: RefCell<bool>,
+    caller_validated: RefCell<bool>,
     read_only: bool,
     policy: &'invocation Policy,
     subinvocations: RefCell<Vec<InvocationTrace>>,
@@ -663,8 +663,8 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 v: self.v,
                 top: self.top.clone(),
                 msg: new_actor_msg,
-                allow_side_effects: true,
-                caller_validated: false,
+                allow_side_effects: RefCell::new(true),
+                caller_validated: RefCell::new(false),
                 read_only: false,
                 policy: self.policy,
                 subinvocations: RefCell::new(vec![]),
@@ -768,7 +768,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             Type::EAM => EamActor::invoke_method(self, self.msg.method, params),
             Type::EthAccount => EthAccountActor::invoke_method(self, self.msg.method, params),
         };
-        if res.is_ok() && !self.caller_validated {
+        if res.is_ok() && !*self.caller_validated.borrow() {
             res = Err(actor_error!(assertion_failed, "failed to validate caller"));
         }
         if res.is_err() {
@@ -783,7 +783,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
     type Blockstore = &'bs MemoryBlockstore;
 
     fn create_actor(
-        &mut self,
+        &self,
         code_id: Cid,
         actor_id: ActorID,
         predictable_address: Option<Address>,
@@ -842,26 +842,26 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         ChainID::from(0)
     }
 
-    fn validate_immediate_caller_accept_any(&mut self) -> Result<(), ActorError> {
-        if self.caller_validated {
+    fn validate_immediate_caller_accept_any(&self) -> Result<(), ActorError> {
+        if *self.caller_validated.borrow() {
             Err(ActorError::unchecked(
                 ExitCode::SYS_ASSERTION_FAILED,
                 "caller double validated".to_string(),
             ))
         } else {
-            self.caller_validated = true;
+            self.caller_validated.replace(true);
             Ok(())
         }
     }
 
     fn validate_immediate_caller_namespace<I>(
-        &mut self,
+        &self,
         namespace_manager_addresses: I,
     ) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = u64>,
     {
-        if self.caller_validated {
+        if *self.caller_validated.borrow() {
             return Err(ActorError::unchecked(
                 ExitCode::SYS_ASSERTION_FAILED,
                 "caller double validated".to_string(),
@@ -893,17 +893,17 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         ))
     }
 
-    fn validate_immediate_caller_is<'a, I>(&mut self, addresses: I) -> Result<(), ActorError>
+    fn validate_immediate_caller_is<'a, I>(&self, addresses: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Address>,
     {
-        if self.caller_validated {
+        if *self.caller_validated.borrow() {
             return Err(ActorError::unchecked(
                 ExitCode::USR_ASSERTION_FAILED,
                 "caller double validated".to_string(),
             ));
         }
-        self.caller_validated = true;
+        self.caller_validated.replace(true);
         for addr in addresses {
             if *addr == self.msg.from {
                 return Ok(());
@@ -915,17 +915,17 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         ))
     }
 
-    fn validate_immediate_caller_type<'a, I>(&mut self, types: I) -> Result<(), ActorError>
+    fn validate_immediate_caller_type<'a, I>(&self, types: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Type>,
     {
-        if self.caller_validated {
+        if *self.caller_validated.borrow() {
             return Err(ActorError::unchecked(
                 ExitCode::SYS_ASSERTION_FAILED,
                 "caller double validated".to_string(),
             ));
         }
-        self.caller_validated = true;
+        self.caller_validated.replace(true);
         let to_match = ACTOR_TYPES.get(&self.v.get_actor(self.msg.from).unwrap().code).unwrap();
         if types.into_iter().any(|t| *t == *to_match) {
             return Ok(());
@@ -975,7 +975,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
             send_flags.set(SendFlags::READ_ONLY, true)
         }
 
-        if !self.allow_side_effects {
+        if !*self.allow_side_effects.borrow() {
             return Ok(Response { exit_code: ExitCode::SYS_ASSERTION_FAILED, return_data: None });
         }
 
@@ -984,8 +984,8 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
             v: self.v,
             top: self.top.clone(),
             msg: new_actor_msg,
-            allow_side_effects: true,
-            caller_validated: false,
+            allow_side_effects: RefCell::new(true),
+            caller_validated: RefCell::new(false),
             read_only: send_flags.read_only(),
             policy: self.policy,
             subinvocations: RefCell::new(vec![]),
@@ -1025,7 +1025,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         Ok(self.v.get_actor(self.to()).unwrap().head)
     }
 
-    fn set_state_root(&mut self, root: &Cid) -> Result<(), ActorError> {
+    fn set_state_root(&self, root: &Cid) -> Result<(), ActorError> {
         let maybe_act = self.v.get_actor(self.to());
         match maybe_act {
             None => Err(ActorError::unchecked(
@@ -1044,15 +1044,15 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         }
     }
 
-    fn transaction<S, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
+    fn transaction<S, RT, F>(&self, f: F) -> Result<RT, ActorError>
     where
         S: Serialize + DeserializeOwned,
-        F: FnOnce(&mut S, &mut Self) -> Result<RT, ActorError>,
+        F: FnOnce(&mut S, &Self) -> Result<RT, ActorError>,
     {
         let mut st = self.state::<S>().unwrap();
-        self.allow_side_effects = false;
+        self.allow_side_effects.replace(false);
         let result = f(&mut st, self);
-        self.allow_side_effects = true;
+        self.allow_side_effects.replace(true);
         let ret = result?;
         let mut act = self.v.get_actor(self.to()).unwrap();
         act.head = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
@@ -1068,14 +1068,14 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         Ok(ret)
     }
 
-    fn new_actor_address(&mut self) -> Result<Address, ActorError> {
+    fn new_actor_address(&self) -> Result<Address, ActorError> {
         let mut b = self.top.originator_stable_addr.to_bytes();
         b.extend_from_slice(&self.top.originator_call_seq.to_be_bytes());
         b.extend_from_slice(&self.top.new_actor_addr_count.borrow().to_be_bytes());
         Ok(Address::new_actor(&b))
     }
 
-    fn delete_actor(&mut self, _beneficiary: &Address) -> Result<(), ActorError> {
+    fn delete_actor(&self, _beneficiary: &Address) -> Result<(), ActorError> {
         panic!("TODO implement me")
     }
 
@@ -1091,7 +1091,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         self.top.circ_supply.clone()
     }
 
-    fn charge_gas(&mut self, _name: &'static str, _compute: i64) {}
+    fn charge_gas(&self, _name: &'static str, _compute: i64) {}
 
     fn base_fee(&self) -> TokenAmount {
         TokenAmount::zero()

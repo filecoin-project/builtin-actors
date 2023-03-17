@@ -129,7 +129,7 @@ fn recovery_fails_during_active_consensus_fault() {
 
     // consensus fault
     let test_addr = Address::new_id(1234);
-    let epoch = rt.epoch;
+    let epoch = *rt.epoch.borrow();
     h.report_consensus_fault(
         &mut rt,
         test_addr,

@@ -42,7 +42,7 @@ fn deal_end_after_deal_start() {
 #[test]
 fn current_epoch_greater_than_start_epoch() {
     let f = |rt: &mut MockRuntime, d: &mut DealProposal| {
-        d.start_epoch = rt.epoch - 1;
+        d.start_epoch = *rt.epoch.borrow() - 1;
     };
     assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
@@ -395,7 +395,7 @@ fn fail_when_deals_have_different_providers() {
 
 #[test]
 fn fail_when_no_deals_in_params() {
-    let mut rt = setup();
+    let rt = setup();
     let params = PublishStorageDealsParams { deals: vec![] };
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     rt.expect_validate_caller_any();
@@ -414,7 +414,7 @@ fn fail_to_resolve_provider_address() {
     let start_epoch = 10;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
 
-    let mut rt = setup();
+    let rt = setup();
     let mut deal = generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, start_epoch, end_epoch);
     deal.provider = new_bls_addr(100);
 
@@ -463,7 +463,7 @@ fn caller_is_not_the_same_as_the_worker_address_for_miner() {
 
 #[test]
 fn fails_if_provider_is_not_a_storage_miner_actor() {
-    let mut rt = setup();
+    let rt = setup();
 
     // deal provider will be a Storage Miner Actor.
     let p2 = Address::new_id(505);
@@ -513,8 +513,10 @@ fn fails_if_notify_deal_fails() {
     rt.expect_send_simple(
         PROVIDER_ADDR,
         ext::miner::IS_CONTROLLING_ADDRESS_EXPORTED,
-        IpldBlock::serialize_cbor(&ext::miner::IsControllingAddressParam { address: rt.caller })
-            .unwrap(),
+        IpldBlock::serialize_cbor(&ext::miner::IsControllingAddressParam {
+            address: *rt.caller.borrow(),
+        })
+        .unwrap(),
         TokenAmount::zero(),
         IpldBlock::serialize_cbor(&ext::miner::IsControllingAddressReturn { is_controlling: true })
             .unwrap(),

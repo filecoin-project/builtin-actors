@@ -43,7 +43,7 @@ cache:
 #[test]
 fn test_prevrandao() {
     let mut rt = util::construct_and_verify(prevrandao_contract());
-    rt.epoch = 101;
+    rt.epoch.replace(101);
 
     // simple test
     {

@@ -56,29 +56,29 @@ return
         })
         .collect();
 
-    rt.epoch = 0xffff + 2;
+    rt.epoch.replace(0xffff + 2);
     let result = util::invoke_contract(&mut rt, &[]);
     assert_eq!(
         String::from_utf8_lossy(&result.to_vec()),
         String::from_utf8_lossy(rt.tipset_cids[0xffff].hash().digest())
     );
 
-    rt.epoch = 0xffff + 256;
+    rt.epoch.replace(0xffff + 256);
     let result = util::invoke_contract(&mut rt, &[]);
     assert_eq!(
         String::from_utf8_lossy(&result.to_vec()),
         String::from_utf8_lossy(rt.tipset_cids[0xffff].hash().digest())
     );
 
-    rt.epoch = 0xffff;
+    rt.epoch.replace(0xffff);
     let result = util::invoke_contract(&mut rt, &[]);
     assert_eq!(&result, &[0u8; 32]);
 
-    rt.epoch = 0xffff - 1;
+    rt.epoch.replace(0xffff - 1);
     let result = util::invoke_contract(&mut rt, &[]);
     assert_eq!(&result, &[0u8; 32]);
 
-    rt.epoch = 0xffff + 257;
+    rt.epoch.replace(0xffff + 257);
     let result = util::invoke_contract(&mut rt, &[]);
     assert_eq!(&result, &[0u8; 32]);
 }
@@ -143,7 +143,7 @@ return
     .unwrap();
 
     let mut rt = util::construct_and_verify(contract);
-    rt.base_fee = TokenAmount::from_atto(123);
+    rt.base_fee.replace(TokenAmount::from_atto(123));
     rt.gas_premium = TokenAmount::from_atto(345);
     let result = util::invoke_contract(&mut rt, &[]);
     assert_eq!(U256::from_big_endian(&result), U256::from(123 + 345));
@@ -320,7 +320,7 @@ return
 
     let mut rt = util::construct_and_verify(contract);
     // set the _id_ address here (ensures we resolve it correctly internally).
-    rt.caller = Address::new_id(0);
+    rt.caller.replace(Address::new_id(0));
     let result = util::invoke_contract(&mut rt, &[]);
     let eth_address = &result[12..];
     // Make sure we prefer the eth address, if we have one.
@@ -345,7 +345,7 @@ return
     .unwrap();
 
     let mut rt = util::construct_and_verify(contract);
-    rt.origin = Address::new_id(10);
+    rt.origin.replace(Address::new_id(10));
     let result = util::invoke_contract(&mut rt, &[]);
     let eth_address = &result[12..];
     // Make sure we prefer the eth address, if we have one.

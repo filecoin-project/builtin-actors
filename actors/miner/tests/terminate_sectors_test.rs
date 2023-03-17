@@ -169,8 +169,11 @@ fn owner_cannot_terminate_if_market_cron_fails() {
     rt.expect_send_simple(
         STORAGE_MARKET_ACTOR_ADDR,
         ON_MINER_SECTORS_TERMINATE_METHOD,
-        IpldBlock::serialize_cbor(&OnMinerSectorsTerminateParams { epoch: rt.epoch, deal_ids })
-            .unwrap(),
+        IpldBlock::serialize_cbor(&OnMinerSectorsTerminateParams {
+            epoch: *rt.epoch.borrow(),
+            deal_ids,
+        })
+        .unwrap(),
         TokenAmount::zero(),
         None,
         ExitCode::USR_ILLEGAL_STATE,
@@ -253,7 +256,7 @@ fn calc_expected_fee_for_termination(
         &sector_power,
         INITIAL_PLEDGE_PROJECTION_PERIOD,
     );
-    let sector_age = rt.epoch - sector.activation;
+    let sector_age = *rt.epoch.borrow() - sector.activation;
     pledge_penalty_for_termination(
         &day_reward,
         sector_age,

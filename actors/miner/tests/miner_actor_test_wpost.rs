@@ -31,7 +31,7 @@ fn basic_post_and_dispute() {
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
     let mut rt = h.new_runtime();
-    rt.epoch = precommit_epoch;
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
@@ -104,7 +104,7 @@ fn invalid_submissions() {
     let mut h = ActorHarness::new(period_offset);
     let mut rt = h.new_runtime();
 
-    rt.epoch = precommit_epoch;
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
@@ -367,7 +367,7 @@ fn invalid_submissions() {
 
     // Deadline not open.
     {
-        rt.epoch += rt.policy.wpost_challenge_window;
+        rt.epoch.replace_with(|e| *e + rt.policy.wpost_challenge_window);
         let partition = miner::PoStPartition { index: pidx, skipped: make_empty_bitfield() };
         let params = miner::SubmitWindowedPoStParams {
             deadline: dlinfo.index,
@@ -390,7 +390,7 @@ fn invalid_submissions() {
         //      specs-actors test does sector assignment in an immutable deadline 0 forcing assignment to
         //      deadline 2.
         expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "invalid deadline", result);
-        rt.epoch = dlinfo.current_epoch;
+        rt.epoch.replace(dlinfo.current_epoch);
         rt.reset();
     }
 
@@ -426,7 +426,7 @@ fn invalid_submissions() {
             deadline: dlinfo.index,
             partitions: vec![partition],
             proofs: make_post_proofs(h.window_post_proof_type),
-            chain_commit_epoch: rt.epoch,
+            chain_commit_epoch: *rt.epoch.borrow(),
             chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
@@ -501,7 +501,7 @@ fn duplicate_proof_rejected() {
 
     let mut rt = h.new_runtime();
 
-    rt.epoch = precommit_epoch;
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
@@ -587,7 +587,7 @@ fn duplicate_proof_rejected_with_many_partitions() {
 
     let mut rt = h.new_runtime();
 
-    rt.epoch = precommit_epoch;
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
@@ -692,7 +692,7 @@ fn successful_recoveries_recover_power() {
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
     let mut rt = h.new_runtime();
-    rt.epoch = precommit_epoch;
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
@@ -765,7 +765,7 @@ fn skipped_faults_adjust_power() {
 
     let mut rt = h.new_runtime();
 
-    rt.epoch = precommit_epoch;
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
@@ -852,7 +852,7 @@ fn skipping_all_sectors_in_a_partition_rejected() {
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
     let mut rt = h.new_runtime();
-    rt.epoch = precommit_epoch;
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
@@ -901,7 +901,7 @@ fn skipped_recoveries_are_penalized_and_do_not_recover_power() {
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
     let mut rt = h.new_runtime();
-    rt.epoch = precommit_epoch;
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
@@ -954,7 +954,7 @@ fn skipping_a_fault_from_the_wrong_partition_is_an_error() {
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
     let mut rt = h.new_runtime();
-    rt.epoch = precommit_epoch;
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
@@ -1006,7 +1006,7 @@ fn cannot_dispute_posts_when_the_challenge_window_is_open() {
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
     let mut rt = h.new_runtime();
-    rt.epoch = precommit_epoch;
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
@@ -1058,7 +1058,7 @@ fn can_dispute_up_till_window_end_but_not_after() {
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
     let mut rt = h.new_runtime();
-    rt.epoch = precommit_epoch;
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
@@ -1072,7 +1072,7 @@ fn can_dispute_up_till_window_end_but_not_after() {
     let nextdl = miner::DeadlineInfo::new(
         state.proving_period_start,
         dlidx,
-        rt.epoch,
+        *rt.epoch.borrow(),
         rt.policy.wpost_period_deadlines,
         rt.policy.wpost_proving_period,
         rt.policy.wpost_challenge_window,
@@ -1086,11 +1086,11 @@ fn can_dispute_up_till_window_end_but_not_after() {
 
     // first, try to dispute right before the window end.
     // We expect this to fail "normally" (fail to disprove).
-    rt.epoch = window_end - 1;
+    rt.epoch.replace(window_end - 1);
     h.dispute_window_post(&mut rt, &nextdl, 0, &infos, None);
 
     // Now set the epoch at the window end. We expect a different error.
-    rt.epoch = window_end;
+    rt.epoch.replace(window_end);
 
     // Now try to dispute.
     let params = miner::DisputeWindowedPoStParams { deadline: dlidx, post_index: 0 };
@@ -1119,7 +1119,7 @@ fn cant_dispute_up_with_an_invalid_deadline() {
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
     let mut rt = h.new_runtime();
-    rt.epoch = precommit_epoch;
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
@@ -1146,7 +1146,7 @@ fn can_dispute_test_after_proving_period_changes() {
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
     let mut rt = h.new_runtime();
-    rt.epoch = precommit_epoch;
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);
@@ -1154,7 +1154,7 @@ fn can_dispute_test_after_proving_period_changes() {
     let period_start = h.deadline(&rt).next_period_start();
 
     // go to the next deadline 0
-    rt.epoch = period_start;
+    rt.epoch.replace(period_start);
 
     // fill one partition in each mutable deadline.
     let num_sectors = h.partition_size * (rt.policy.wpost_period_deadlines - 2);
@@ -1212,7 +1212,7 @@ fn can_dispute_test_after_proving_period_changes() {
     let target_dlinfo = miner::DeadlineInfo::new(
         period_start,
         46,
-        rt.epoch,
+        *rt.epoch.borrow(),
         rt.policy.wpost_period_deadlines,
         rt.policy.wpost_proving_period,
         rt.policy.wpost_challenge_window,
@@ -1232,7 +1232,7 @@ fn bad_post_fails_when_verified() {
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
     let mut rt = h.new_runtime();
-    rt.epoch = precommit_epoch;
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
     h.construct_and_verify(&mut rt);

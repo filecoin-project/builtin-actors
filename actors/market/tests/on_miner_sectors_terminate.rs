@@ -309,10 +309,10 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1436
 #[test]
 fn fail_when_caller_is_not_a_storage_miner_actor() {
-    let mut rt = setup();
+    let rt = setup();
     rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, PROVIDER_ADDR);
-    let params = OnMinerSectorsTerminateParams { epoch: rt.epoch, deal_ids: vec![] };
+    let params = OnMinerSectorsTerminateParams { epoch: *rt.epoch.borrow(), deal_ids: vec![] };
 
     // XXX: Which exit code is correct: SYS_FORBIDDEN(8) or USR_FORBIDDEN(18)?
     assert_eq!(

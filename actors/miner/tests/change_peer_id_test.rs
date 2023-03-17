@@ -33,7 +33,7 @@ fn successfully_change_peer_id() {
 
 #[test]
 fn change_peer_id_restricted_correctly() {
-    let (h, mut rt) = setup();
+    let (h, rt) = setup();
 
     let new_id = b"cthulhu".to_vec();
 

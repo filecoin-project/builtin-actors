@@ -27,7 +27,7 @@ fn setup() -> (ActorHarness, MockRuntime) {
 fn successfully_changes_the_worker_address() {
     let (h, mut rt) = setup();
 
-    let effective_epoch = rt.epoch + rt.policy().worker_key_change_delay;
+    let effective_epoch = *rt.epoch.borrow() + rt.policy().worker_key_change_delay;
     h.change_worker_address(&mut rt, NEW_WORKER, h.control_addrs.clone()).unwrap();
 
     // confirm at effective epoch
@@ -47,7 +47,7 @@ fn successfully_changes_the_worker_address() {
 fn does_nothing_before_the_effective_date() {
     let (h, mut rt) = setup();
 
-    let effective_epoch = rt.epoch + rt.policy().worker_key_change_delay;
+    let effective_epoch = *rt.epoch.borrow() + rt.policy().worker_key_change_delay;
     h.change_worker_address(&mut rt, NEW_WORKER, h.control_addrs.clone()).unwrap();
 
     // confirm right before the effective epoch

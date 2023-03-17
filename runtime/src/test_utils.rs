@@ -135,9 +135,9 @@ pub fn init_logging() -> Result<(), log::SetLoggerError> {
 }
 
 pub struct MockRuntime<BS = MemoryBlockstore> {
-    pub epoch: ChainEpoch,
+    pub epoch: RefCell<ChainEpoch>,
     pub miner: Address,
-    pub base_fee: TokenAmount,
+    pub base_fee: RefCell<TokenAmount>,
     pub chain_id: ChainID,
     pub id_addresses: RefCell<HashMap<Address, Address>>,
     pub delegated_addresses: RefCell<HashMap<ActorID, Address>>,
@@ -174,7 +174,7 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
     // policy
     pub policy: Policy,
 
-    pub circulating_supply: TokenAmount,
+    pub circulating_supply: RefCell<TokenAmount>,
 
     pub gas_limit: u64,
     pub gas_premium: TokenAmount,
@@ -505,10 +505,6 @@ impl<BS: Blockstore> MockRuntime<BS> {
         self.balance.replace_with(|b| b.clone() + amount);
     }
 
-    pub fn set_value(&self, value: TokenAmount) {
-        self.value_received.replace(value);
-    }
-
     pub fn set_caller(&self, code_id: Cid, address: Address) {
         // fail if called with a non-ID address, since the caller() method must always return an ID
         address.id().unwrap();
@@ -719,18 +715,18 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 
     #[allow(dead_code)]
-    pub fn set_base_fee(&mut self, base_fee: TokenAmount) {
-        self.base_fee = base_fee;
+    pub fn set_base_fee(&self, base_fee: TokenAmount) {
+        self.base_fee.replace(base_fee);
     }
 
     #[allow(dead_code)]
-    pub fn set_circulating_supply(&mut self, circ_supply: TokenAmount) {
-        self.circulating_supply = circ_supply;
+    pub fn set_circulating_supply(&self, circ_supply: TokenAmount) {
+        self.circulating_supply.replace(circ_supply);
     }
 
     #[allow(dead_code)]
-    pub fn set_epoch(&mut self, epoch: ChainEpoch) {
-        self.epoch = epoch;
+    pub fn set_epoch(&self, epoch: ChainEpoch) {
+        self.epoch.replace(epoch);
     }
 
     pub fn expect_get_randomness_from_tickets(
@@ -849,7 +845,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
 
     fn curr_epoch(&self) -> ChainEpoch {
         self.require_in_call();
-        self.epoch
+        *self.epoch.borrow()
     }
 
     fn validate_immediate_caller_accept_any(&self) -> Result<(), ActorError> {
@@ -1025,7 +1021,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
             .pop_front()
             .expect("unexpected call to get_randomness_from_tickets");
 
-        assert!(epoch <= self.epoch, "attempt to get randomness from future");
+        assert!(epoch <= *self.epoch.borrow(), "attempt to get randomness from future");
         assert_eq!(
             expected.tag, tag,
             "unexpected domain separation tag, expected: {:?}, actual: {:?}",
@@ -1058,7 +1054,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
             .pop_front()
             .expect("unexpected call to get_randomness_from_beacon");
 
-        assert!(epoch <= self.epoch, "attempt to get randomness from future");
+        assert!(epoch <= *self.epoch.borrow(), "attempt to get randomness from future");
         assert_eq!(
             expected.tag, tag,
             "unexpected domain separation tag, expected: {:?}, actual: {:?}",
@@ -1232,7 +1228,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
     }
 
     fn total_fil_circ_supply(&self) -> TokenAmount {
-        self.circulating_supply.clone()
+        self.circulating_supply.borrow().clone()
     }
 
     fn charge_gas(&self, _: &'static str, value: i64) {
@@ -1243,7 +1239,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
     }
 
     fn base_fee(&self) -> TokenAmount {
-        self.base_fee.clone()
+        self.base_fee.borrow().clone()
     }
 
     fn gas_available(&self) -> u64 {
@@ -1257,7 +1253,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
     }
 
     fn tipset_cid(&self, epoch: i64) -> Result<Cid, ActorError> {
-        let offset = self.epoch - epoch;
+        let offset = *self.epoch.borrow() - epoch;
         // Can't get tipset for:
         // - current or future epochs
         // - negative epochs

@@ -269,7 +269,8 @@ mod miner_actor_test_commitment {
 
         // Expires at current epoch
         {
-            let precommit_params = h.make_pre_commit_params(102, challenge_epoch, rt.epoch, vec![]);
+            let precommit_params =
+                h.make_pre_commit_params(102, challenge_epoch, *rt.epoch.borrow(), vec![]);
             let ret = h.pre_commit_sector(
                 &mut rt,
                 precommit_params,
@@ -287,7 +288,7 @@ mod miner_actor_test_commitment {
         // Expires before current epoch
         {
             let precommit_params =
-                h.make_pre_commit_params(102, challenge_epoch, rt.epoch - 1, vec![]);
+                h.make_pre_commit_params(102, challenge_epoch, *rt.epoch.borrow() - 1, vec![]);
             let ret = h.pre_commit_sector(
                 &mut rt,
                 precommit_params,
@@ -319,7 +320,7 @@ mod miner_actor_test_commitment {
 
         // Expires before min duration + max seal duration
         {
-            let expiration = rt.epoch
+            let expiration = *rt.epoch.borrow()
                 + rt.policy.min_sector_expiration
                 + max_prove_commit_duration(&rt.policy, h.seal_proof_type).unwrap()
                 - 1;
@@ -361,7 +362,7 @@ mod miner_actor_test_commitment {
         // Errors when expiry too far in the future (bis)
         {
             rt.set_epoch(precommit_epoch);
-            let expiration = rt.epoch + rt.policy.max_sector_expiration_extension + 1;
+            let expiration = *rt.epoch.borrow() + rt.policy.max_sector_expiration_extension + 1;
             let precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, expiration, vec![]);
             let ret = h.pre_commit_sector(
@@ -443,7 +444,7 @@ mod miner_actor_test_commitment {
             let st: State = rt.get_state();
             let fault = ConsensusFault {
                 target: h.receiver,
-                epoch: rt.epoch - 1,
+                epoch: *rt.epoch.borrow() - 1,
                 fault_type: ConsensusFaultType::DoubleForkMining,
             };
             let test_addr = Address::new_id(1234);
@@ -497,7 +498,7 @@ mod miner_actor_test_commitment {
                 deadline.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period;
             let precommit_params = h.make_pre_commit_params(
                 sector_number,
-                rt.epoch - 1,
+                *rt.epoch.borrow() - 1,
                 expiration,
                 make_deal_ids(limit + 1),
             );
@@ -518,7 +519,7 @@ mod miner_actor_test_commitment {
             let (mut rt, h, _) = setup(proof);
             let precommit_params = h.make_pre_commit_params(
                 sector_number,
-                rt.epoch - 1,
+                *rt.epoch.borrow() - 1,
                 expiration,
                 make_deal_ids(limit),
             );
@@ -599,14 +600,14 @@ mod miner_actor_test_commitment {
         let _ = st
             .add_locked_funds(
                 &rt.store,
-                rt.epoch,
+                *rt.epoch.borrow(),
                 &TokenAmount::from_atto(1000u16),
                 &VestSpec { initial_delay: 0, vest_period: 1, step_duration: 1, quantization: 1 },
             )
             .unwrap();
         rt.replace_state(&st);
 
-        rt.set_epoch(rt.epoch + 2);
+        rt.set_epoch(*rt.epoch.borrow() + 2);
 
         // Pre-commit with a deal in order to exercise non-zero deal weights.
         let precommit_params =

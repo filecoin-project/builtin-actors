@@ -1,6 +1,8 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use std::cell::RefCell;
+
 use fil_actor_cron::testing::check_state_invariants;
 use fil_actor_cron::{Actor as CronActor, ConstructorParams, Entry, State};
 use fil_actors_runtime::test_utils::*;
@@ -19,8 +21,8 @@ fn check_state(rt: &MockRuntime) {
 fn construct_runtime() -> MockRuntime {
     MockRuntime {
         receiver: Address::new_id(100),
-        caller: SYSTEM_ACTOR_ADDR,
-        caller_type: *SYSTEM_ACTOR_CODE_ID,
+        caller: RefCell::new(SYSTEM_ACTOR_ADDR),
+        caller_type: RefCell::new(*SYSTEM_ACTOR_CODE_ID),
         ..Default::default()
     }
 }

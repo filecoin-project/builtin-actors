@@ -77,7 +77,7 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for Registry Actor
-    pub fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
+    pub fn constructor(rt: &impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         // root should be an ID address
@@ -92,10 +92,7 @@ impl Actor {
         Ok(())
     }
 
-    pub fn add_verifier(
-        rt: &mut impl Runtime,
-        params: AddVerifierParams,
-    ) -> Result<(), ActorError> {
+    pub fn add_verifier(rt: &impl Runtime, params: AddVerifierParams) -> Result<(), ActorError> {
         if params.allowance < rt.policy().minimum_verified_allocation_size {
             return Err(actor_error!(
                 illegal_argument,
@@ -134,7 +131,7 @@ impl Actor {
     }
 
     pub fn remove_verifier(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: RemoveVerifierParams,
     ) -> Result<(), ActorError> {
         let verifier = resolve_to_actor_id(rt, &params.verifier, false)?;
@@ -147,7 +144,7 @@ impl Actor {
     }
 
     pub fn add_verified_client(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: AddVerifiedClientParams,
     ) -> Result<(), ActorError> {
         // The caller will be verified by checking table below
@@ -212,7 +209,7 @@ impl Actor {
 
     /// Removes DataCap allocated to a verified client.
     pub fn remove_verified_client_data_cap(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: RemoveDataCapParams,
     ) -> Result<RemoveDataCapReturn, ActorError> {
         let client = resolve_to_actor_id(rt, &params.verified_client_to_remove, false)?;
@@ -307,7 +304,7 @@ impl Actor {
     // When removed, the DataCap tokens are transferred back to the client.
     // If no allocations are specified, all eligible allocations are removed.
     pub fn remove_expired_allocations(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: RemoveExpiredAllocationsParams,
     ) -> Result<RemoveExpiredAllocationsReturn, ActorError> {
         // Since the allocations are expired, this is safe to be called by anyone.
@@ -370,7 +367,7 @@ impl Actor {
     // For each allocation claim, the registry checks that the provided piece CID
     // and size match that of the allocation.
     pub fn claim_allocations(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: ClaimAllocationsParams,
     ) -> Result<ClaimAllocationsReturn, ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
@@ -469,7 +466,7 @@ impl Actor {
 
     // get claims for a provider
     pub fn get_claims(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: GetClaimsParams,
     ) -> Result<GetClaimsReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -502,7 +499,7 @@ impl Actor {
     /// Note that this method can't extend the term past the original limit,
     /// even if the term has previously been extended past that by spending new datacap.
     pub fn extend_claim_terms(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: ExtendClaimTermsParams,
     ) -> Result<ExtendClaimTermsReturn, ActorError> {
         // Permissions are checked per-claim.
@@ -565,7 +562,7 @@ impl Actor {
     // A claim may be removed after its maximum term has elapsed (by anyone).
     // If no claims are specified, all eligible claims are removed.
     pub fn remove_expired_claims(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: RemoveExpiredClaimsParams,
     ) -> Result<RemoveExpiredClaimsReturn, ActorError> {
         // Since the claims are expired, this is safe to be called by anyone.
@@ -614,7 +611,7 @@ impl Actor {
     // or the transfer will be rejected.
     // Returns the ids of the created allocations.
     pub fn universal_receiver_hook(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: UniversalReceiverParams,
     ) -> Result<AllocationsResponse, ActorError> {
         // Accept only the data cap token.
@@ -717,7 +714,7 @@ fn is_verifier(rt: &impl Runtime, st: &State, address: Address) -> Result<bool, 
 }
 
 // Invokes Balance on the data cap token actor, and converts the result to whole units of data cap.
-fn balance(rt: &mut impl Runtime, owner: &Address) -> Result<DataCap, ActorError> {
+fn balance(rt: &impl Runtime, owner: &Address) -> Result<DataCap, ActorError> {
     let params = IpldBlock::serialize_cbor(owner)?;
     let x: TokenAmount = deserialize_block(
         extract_send_result(rt.send_simple(
@@ -733,7 +730,7 @@ fn balance(rt: &mut impl Runtime, owner: &Address) -> Result<DataCap, ActorError
 
 // Invokes Mint on a data cap token actor for whole units of data cap.
 fn mint(
-    rt: &mut impl Runtime,
+    rt: &impl Runtime,
     to: &Address,
     amount: &DataCap,
     operators: Vec<Address>,
@@ -751,7 +748,7 @@ fn mint(
 }
 
 // Invokes Burn on a data cap token actor for whole units of data cap.
-fn burn(rt: &mut impl Runtime, amount: &DataCap) -> Result<(), ActorError> {
+fn burn(rt: &impl Runtime, amount: &DataCap) -> Result<(), ActorError> {
     if amount.is_zero() {
         return Ok(());
     }
@@ -771,7 +768,7 @@ fn burn(rt: &mut impl Runtime, amount: &DataCap) -> Result<(), ActorError> {
 }
 
 // Invokes Destroy on a data cap token actor for whole units of data cap.
-fn destroy(rt: &mut impl Runtime, owner: &Address, amount: &DataCap) -> Result<(), ActorError> {
+fn destroy(rt: &impl Runtime, owner: &Address, amount: &DataCap) -> Result<(), ActorError> {
     if amount.is_zero() {
         return Ok(());
     }
@@ -788,7 +785,7 @@ fn destroy(rt: &mut impl Runtime, owner: &Address, amount: &DataCap) -> Result<(
 }
 
 // Invokes transfer on a data cap token actor for whole units of data cap.
-fn transfer(rt: &mut impl Runtime, to: ActorID, amount: &DataCap) -> Result<(), ActorError> {
+fn transfer(rt: &impl Runtime, to: ActorID, amount: &DataCap) -> Result<(), ActorError> {
     let token_amt = datacap_to_tokens(amount);
     let params = TransferParams {
         to: Address::new_id(to),
@@ -1034,7 +1031,7 @@ fn validate_claim_extension(
 }
 
 // Checks that an address corresponsds to a miner actor.
-fn check_miner_id(rt: &mut impl Runtime, id: ActorID) -> Result<(), ActorError> {
+fn check_miner_id(rt: &impl Runtime, id: ActorID) -> Result<(), ActorError> {
     let code_cid =
         rt.get_actor_code_cid(&id).with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
             format!("no code CID for provider {}", id)

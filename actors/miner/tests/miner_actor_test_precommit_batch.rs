@@ -297,7 +297,7 @@ mod miner_actor_precommit_batch {
         let sectors = vec![
             h.make_pre_commit_params(100, precommit_epoch - 1, sector_expiration, vec![]),
             h.make_pre_commit_params(101, precommit_epoch - 1, sector_expiration, vec![]),
-            h.make_pre_commit_params(102, precommit_epoch - 1, rt.epoch, vec![]), // Expires too soon
+            h.make_pre_commit_params(102, precommit_epoch - 1, *rt.epoch.borrow(), vec![]), // Expires too soon
         ];
 
         expect_abort_contains_message(
@@ -415,7 +415,7 @@ mod miner_actor_precommit_batch {
             let dlinfo = new_deadline_info_from_offset_and_epoch(
                 &rt.policy,
                 state.proving_period_start,
-                rt.epoch,
+                *rt.epoch.borrow(),
             );
             let cron_params = make_deadline_cron_event_params(dlinfo.last());
             rt.expect_send_simple(

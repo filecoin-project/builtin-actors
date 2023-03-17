@@ -52,7 +52,7 @@ fn insufficient_funds_for_aggregated_prove_commit_network_fee() {
     let balance = TokenAmount::from_whole(1000);
     rt.set_balance(balance.clone());
     let base_fee = TokenAmount::from_atto(10u64.pow(16));
-    rt.base_fee = base_fee.clone();
+    rt.base_fee.replace(base_fee.clone());
     assert!(aggregate_prove_commit_network_fee(precommits.len() as i64, &base_fee) > balance);
 
     let res = actor.prove_commit_aggregate_sector(
@@ -92,7 +92,7 @@ fn insufficient_funds_for_batch_precommit_network_fee() {
     let balance = TokenAmount::from_whole(1000);
     rt.set_balance(balance.clone());
     let base_fee = TokenAmount::from_atto(10u64.pow(16));
-    rt.base_fee = base_fee.clone();
+    rt.base_fee.replace(base_fee.clone());
     assert!(aggregate_pre_commit_network_fee(precommits.len() as i64, &base_fee) > balance);
 
     let res = actor.pre_commit_sector_batch(
@@ -139,7 +139,7 @@ fn insufficient_funds_for_batch_precommit_in_combination_of_fee_debt_and_network
 
     // set base fee extremely high so AggregateProveCommitNetworkFee is > 1000 FIL. Set balance to 1000 FIL to easily cover PCD but not network fee
     let base_fee = TokenAmount::from_atto(10u64.pow(16));
-    rt.base_fee = base_fee.clone();
+    rt.base_fee.replace(base_fee.clone());
     let net_fee = aggregate_pre_commit_network_fee(precommits.len() as i64, &base_fee);
 
     // setup miner to have fee debt equal to net fee
@@ -195,7 +195,7 @@ fn enough_funds_for_fee_debt_and_network_fee_but_not_for_pcd() {
 
     // set base fee and fee debt high
     let base_fee = TokenAmount::from_atto(10u64.pow(16));
-    rt.base_fee = base_fee.clone();
+    rt.base_fee.replace(base_fee.clone());
     let net_fee = aggregate_pre_commit_network_fee(precommits.len() as i64, &base_fee);
     // setup miner to have feed debt equal to net fee
     let mut state: State = rt.get_state();
@@ -250,7 +250,7 @@ fn enough_funds_for_everything() {
 
     // set base fee extremely high so AggregateProveCommitNetworkFee is > 1000 FIL. Set balance to 1000 FIL to easily cover PCD but not network fee
     let base_fee = TokenAmount::from_atto(10u64.pow(16));
-    rt.base_fee = base_fee.clone();
+    rt.base_fee.replace(base_fee.clone());
     let net_fee = aggregate_pre_commit_network_fee(precommits.len() as i64, &base_fee);
 
     // setup miner to have fee debt equal to net fee

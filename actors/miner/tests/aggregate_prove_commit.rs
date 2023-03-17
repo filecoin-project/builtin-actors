@@ -94,7 +94,7 @@ fn valid_precommits_then_aggregate_provecommit() {
     let verified_deal_weight = deal_spaces.verified_deal_space * duration;
     let qa_power = qa_power_for_weight(
         actor.sector_size,
-        expiration - rt.epoch,
+        expiration - *rt.epoch.borrow(),
         &deal_weight,
         &verified_deal_weight,
     );
@@ -117,7 +117,7 @@ fn valid_precommits_then_aggregate_provecommit() {
         assert_eq!(verified_deal_weight, sector.verified_deal_weight);
 
         // expect activation epoch to be current epoch
-        assert_eq!(rt.epoch, sector.activation);
+        assert_eq!(*rt.epoch.borrow(), sector.activation);
 
         // expect initial pledge of sector to be set
         assert_eq!(expected_initial_pledge, sector.initial_pledge);

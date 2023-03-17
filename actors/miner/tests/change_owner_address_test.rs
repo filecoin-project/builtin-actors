@@ -67,7 +67,7 @@ fn successful_change() {
 
 #[test]
 fn change_owner_address_restricted_correctly() {
-    let (h, mut rt) = setup();
+    let (h, rt) = setup();
 
     let params = IpldBlock::serialize_cbor(&NEW_ADDRESS).unwrap();
     rt.set_caller(*EVM_ACTOR_CODE_ID, h.owner);

@@ -96,7 +96,7 @@ fn create_miner_given_send_to_init_actor_fails_should_fail() {
 
     // owner send CreateMiner to Actor
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *OWNER);
-    rt.value_received = TokenAmount::from_atto(10);
+    rt.value_received.replace(TokenAmount::from_atto(10));
     rt.set_balance(TokenAmount::from_atto(10));
     rt.expect_validate_caller_any();
 
@@ -135,7 +135,7 @@ fn create_miner_given_send_to_init_actor_fails_should_fail() {
 
 #[test]
 fn claimed_power_given_caller_is_not_storage_miner_should_fail() {
-    let (h, mut rt) = setup();
+    let (h, rt) = setup();
 
     let params = UpdateClaimedPowerParams {
         raw_byte_delta: StoragePower::from(100),
@@ -159,7 +159,7 @@ fn claimed_power_given_caller_is_not_storage_miner_should_fail() {
 
 #[test]
 fn claimed_power_given_claim_does_not_exist_should_fail() {
-    let (h, mut rt) = setup();
+    let (h, rt) = setup();
 
     let params = UpdateClaimedPowerParams {
         raw_byte_delta: StoragePower::from(100),
@@ -419,7 +419,7 @@ fn all_of_one_miners_power_disappears_when_that_miner_dips_below_min_power_thres
 
 #[test]
 fn enroll_cron_epoch_given_negative_epoch_should_fail() {
-    let (h, mut rt) = setup();
+    let (h, rt) = setup();
 
     rt.set_caller(*MINER_ACTOR_CODE_ID, *MINER);
     rt.expect_validate_caller_type(vec![Type::Miner]);
@@ -1443,7 +1443,7 @@ mod submit_porep_for_bulk_verify_tests {
 
 #[test]
 fn create_miner_restricted_correctly() {
-    let (h, mut rt) = setup();
+    let (h, rt) = setup();
 
     let peer = "miner".as_bytes().to_vec();
     let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];

@@ -19,7 +19,7 @@ pub const FIRST_ACTOR_SPECIFIC_EXIT_CODE: u32 = 32;
 /// If an actor ID for the given address doesn't exist yet, it tries to create one by sending
 /// a zero balance to the given address.
 pub fn resolve_to_actor_id(
-    rt: &mut impl Runtime,
+    rt: &impl Runtime,
     address: &Address,
     check_existence: bool,
 ) -> Result<ActorID, ActorError> {
@@ -61,7 +61,7 @@ pub const FIRST_EXPORTED_METHOD_NUMBER: MethodNum = 1 << 24;
 // All method numbers below the FRC-42 range are restricted to built-in actors
 // (including the account and multisig actors).
 // Methods may subsequently enforce tighter restrictions.
-pub fn restrict_internal_api<RT>(rt: &mut RT, method: MethodNum) -> Result<(), ActorError>
+pub fn restrict_internal_api<RT>(rt: &RT, method: MethodNum) -> Result<(), ActorError>
 where
     RT: Runtime,
 {

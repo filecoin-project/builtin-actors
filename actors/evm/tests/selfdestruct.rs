@@ -26,7 +26,7 @@ fn test_selfdestruct() {
     let token_amount = TokenAmount::from_whole(2);
 
     let mut rt = util::init_construct_and_verify(bytecode.clone(), |rt| {
-        rt.actor_code_cids.insert(contract, *EVM_ACTOR_CODE_ID);
+        rt.actor_code_cids.borrow_mut().insert(contract, *EVM_ACTOR_CODE_ID);
         rt.set_origin(contract);
         rt.set_balance(token_amount.clone());
     });
@@ -107,8 +107,8 @@ fn test_selfdestruct_missing_beneficiary() {
     let contract = Address::new_id(100);
     let beneficiary = Address::new_id(1001);
 
-    let mut rt = util::init_construct_and_verify(bytecode, |rt| {
-        rt.actor_code_cids.insert(contract, *EVM_ACTOR_CODE_ID);
+    let rt = util::init_construct_and_verify(bytecode, |rt| {
+        rt.actor_code_cids.borrow_mut().insert(contract, *EVM_ACTOR_CODE_ID);
         rt.set_origin(contract);
     });
 

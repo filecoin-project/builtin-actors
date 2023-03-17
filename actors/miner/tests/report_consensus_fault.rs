@@ -42,7 +42,7 @@ fn mistargeted_report_rejected() {
     rt.set_epoch(1);
 
     let test_addr = Address::new_id(1234);
-    let epoch = rt.epoch;
+    let epoch = *rt.epoch.borrow();
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         h.report_consensus_fault(
@@ -65,7 +65,7 @@ fn report_consensus_fault_pays_reward_and_charges_fee() {
     rt.set_epoch(1);
 
     let test_addr = Address::new_id(1234);
-    let epoch = rt.epoch;
+    let epoch = *rt.epoch.borrow();
     let receiver = rt.receiver;
     h.report_consensus_fault(
         &mut rt,
@@ -126,7 +126,7 @@ fn double_report_of_consensus_fault_fails() {
     let report_epoch = 333;
     rt.set_epoch(report_epoch);
 
-    let fault1 = rt.epoch - 1;
+    let fault1 = *rt.epoch.borrow() - 1;
     h.report_consensus_fault(
         &mut rt,
         test_addr,
@@ -192,7 +192,7 @@ fn double_report_of_consensus_fault_fails() {
     .unwrap();
     let end_info = h.get_info(&rt);
     assert_eq!(
-        rt.epoch + rt.policy.consensus_fault_ineligibility_duration,
+        *rt.epoch.borrow() + rt.policy.consensus_fault_ineligibility_duration,
         end_info.consensus_fault_elapsed
     );
 

@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
 use frc46_token::token::types::{
     BurnReturn, MintReturn, TransferFromParams, TransferFromReturn, TransferParams, TransferReturn,
@@ -23,8 +25,8 @@ use fvm_ipld_encoding::ipld_block::IpldBlock;
 pub fn new_runtime() -> MockRuntime {
     MockRuntime {
         receiver: DATACAP_TOKEN_ACTOR_ADDR,
-        caller: SYSTEM_ACTOR_ADDR,
-        caller_type: *SYSTEM_ACTOR_CODE_ID,
+        caller: RefCell::new(SYSTEM_ACTOR_ADDR),
+        caller_type: RefCell::new(*SYSTEM_ACTOR_CODE_ID),
         ..Default::default()
     }
 }

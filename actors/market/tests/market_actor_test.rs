@@ -31,6 +31,7 @@ use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND};
 use regex::Regex;
+use std::cell::RefCell;
 use std::ops::Add;
 
 use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
@@ -54,10 +55,10 @@ fn test_remove_all_error() {
 // TODO add array stuff
 #[test]
 fn simple_construction() {
-    let mut rt = MockRuntime {
+    let rt = MockRuntime {
         receiver: Address::new_id(100),
-        caller: SYSTEM_ACTOR_ADDR,
-        caller_type: *INIT_ACTOR_CODE_ID,
+        caller: RefCell::new(SYSTEM_ACTOR_ADDR),
+        caller_type: RefCell::new(*INIT_ACTOR_CODE_ID),
         ..Default::default()
     };
 
@@ -194,7 +195,7 @@ fn adds_to_provider_escrow_funds() {
 
         for tc in &test_cases {
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *caller_addr);
-            rt.set_value(TokenAmount::from_atto(tc.delta));
+            rt.set_received(TokenAmount::from_atto(tc.delta));
             rt.expect_validate_caller_any();
             expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
@@ -394,7 +395,7 @@ fn adds_to_non_provider_funds() {
 
         for tc in &test_cases {
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *caller_addr);
-            rt.set_value(TokenAmount::from_atto(tc.delta));
+            rt.set_received(TokenAmount::from_atto(tc.delta));
             rt.expect_validate_caller_any();
             assert!(rt
                 .call::<MarketActor>(
@@ -511,7 +512,7 @@ fn fail_when_balance_is_zero() {
 
 #[test]
 fn fails_with_a_negative_withdraw_amount() {
-    let mut rt = setup();
+    let rt = setup();
 
     let params = WithdrawBalanceParams {
         provider_or_client: PROVIDER_ADDR,
@@ -790,12 +791,12 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     let client_resolved = Address::new_id(333);
 
     let mut rt = setup();
-    rt.actor_code_cids.insert(client_resolved, *ACCOUNT_ACTOR_CODE_ID);
-    rt.actor_code_cids.insert(provider_resolved, *MINER_ACTOR_CODE_ID);
+    rt.actor_code_cids.borrow_mut().insert(client_resolved, *ACCOUNT_ACTOR_CODE_ID);
+    rt.actor_code_cids.borrow_mut().insert(provider_resolved, *MINER_ACTOR_CODE_ID);
 
     // mappings for resolving address
-    rt.id_addresses.insert(client_bls, client_resolved);
-    rt.id_addresses.insert(provider_bls, provider_resolved);
+    rt.id_addresses.borrow_mut().insert(client_bls, client_resolved);
+    rt.id_addresses.borrow_mut().insert(provider_bls, provider_resolved);
 
     // generate deal and add required funds for deal
     let start_epoch = 42;
@@ -808,7 +809,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     // add funds for client using its BLS address -> will be resolved and persisted
     let amount = deal.client_balance_requirement();
 
-    rt.set_value(amount.clone());
+    rt.set_received(amount.clone());
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, client_resolved);
     rt.expect_validate_caller_any();
     assert!(rt
@@ -823,7 +824,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     assert_eq!(deal.client_balance_requirement(), get_balance(&mut rt, &client_resolved).balance);
 
     // add funds for provider using it's BLS address -> will be resolved and persisted
-    rt.value_received = deal.provider_collateral.clone();
+    rt.value_received.replace(deal.provider_collateral.clone());
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, OWNER_ADDR);
     rt.expect_validate_caller_any();
     expect_provider_control_address(&mut rt, provider_resolved, OWNER_ADDR, WORKER_ADDR);
@@ -1704,8 +1705,8 @@ fn locked_fund_tracking_states() {
     let sector_expiry = end_epoch + 400;
 
     let mut rt = setup();
-    rt.actor_code_cids.insert(p1, *MINER_ACTOR_CODE_ID);
-    rt.actor_code_cids.insert(c1, *ACCOUNT_ACTOR_CODE_ID);
+    rt.actor_code_cids.borrow_mut().insert(p1, *MINER_ACTOR_CODE_ID);
+    rt.actor_code_cids.borrow_mut().insert(c1, *ACCOUNT_ACTOR_CODE_ID);
     let st: State = rt.get_state();
 
     // assert values are zero
@@ -1915,7 +1916,7 @@ fn insufficient_client_balance_in_a_batch() {
     let provider_funds =
         deal1.provider_balance_requirement().add(deal2.provider_balance_requirement());
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, OWNER_ADDR);
-    rt.set_value(provider_funds);
+    rt.set_received(provider_funds);
     rt.expect_validate_caller_any();
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
@@ -2051,7 +2052,7 @@ fn insufficient_provider_balance_in_a_batch() {
 
     // Provider has enough for only the second deal
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, OWNER_ADDR);
-    rt.set_value(deal2.provider_balance_requirement().clone());
+    rt.set_received(deal2.provider_balance_requirement().clone());
     rt.expect_validate_caller_any();
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 
@@ -2164,7 +2165,7 @@ fn insufficient_provider_balance_in_a_batch() {
 fn add_balance_restricted_correctly() {
     let mut rt = setup();
     let amount = TokenAmount::from_atto(1000);
-    rt.set_value(amount);
+    rt.set_received(amount);
 
     // set caller to not-builtin
     rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(1234));
@@ -2208,7 +2209,7 @@ fn psd_restricted_correctly() {
 
     // Provider has enough funds
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, OWNER_ADDR);
-    rt.set_value(deal.provider_balance_requirement().clone());
+    rt.set_received(deal.provider_balance_requirement().clone());
     rt.expect_validate_caller_any();
     expect_provider_control_address(&mut rt, PROVIDER_ADDR, OWNER_ADDR, WORKER_ADDR);
 

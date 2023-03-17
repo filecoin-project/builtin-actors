@@ -94,9 +94,9 @@ pub fn setup() -> MockRuntime {
 
     let mut rt = MockRuntime {
         receiver: STORAGE_MARKET_ACTOR_ADDR,
-        caller: SYSTEM_ACTOR_ADDR,
-        caller_type: *INIT_ACTOR_CODE_ID,
-        actor_code_cids,
+        caller: RefCell::new(SYSTEM_ACTOR_ADDR),
+        caller_type: RefCell::new(*INIT_ACTOR_CODE_ID),
+        actor_code_cids: RefCell::new(actor_code_cids),
         balance: RefCell::new(TokenAmount::from_whole(10)),
         ..Default::default()
     };
@@ -108,16 +108,24 @@ pub fn setup() -> MockRuntime {
 
 /// Checks internal invariants of market state asserting none of them are broken.
 pub fn check_state(rt: &MockRuntime) {
-    let (_, acc) =
-        check_state_invariants(&rt.get_state::<State>(), rt.store(), &rt.get_balance(), rt.epoch);
+    let (_, acc) = check_state_invariants(
+        &rt.get_state::<State>(),
+        rt.store(),
+        &rt.get_balance(),
+        *rt.epoch.borrow(),
+    );
     acc.assert_empty();
 }
 
 /// Checks state, allowing expected invariants to fail. The invariants *must* fail in the
 /// provided order.
 pub fn check_state_with_expected(rt: &MockRuntime, expected_patterns: &[Regex]) {
-    let (_, acc) =
-        check_state_invariants(&rt.get_state::<State>(), rt.store(), &rt.get_balance(), rt.epoch);
+    let (_, acc) = check_state_invariants(
+        &rt.get_state::<State>(),
+        rt.store(),
+        &rt.get_balance(),
+        *rt.epoch.borrow(),
+    );
     acc.assert_expected(expected_patterns);
 }
 
@@ -192,7 +200,7 @@ pub fn expect_provider_is_control_address(
 }
 
 pub fn add_provider_funds(rt: &mut MockRuntime, amount: TokenAmount, addrs: &MinerAddresses) {
-    rt.set_value(amount.clone());
+    rt.set_received(amount.clone());
     rt.set_address_actor_type(addrs.provider, *MINER_ACTOR_CODE_ID);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.owner);
     rt.expect_validate_caller_any();
@@ -211,7 +219,7 @@ pub fn add_provider_funds(rt: &mut MockRuntime, amount: TokenAmount, addrs: &Min
 }
 
 pub fn add_participant_funds(rt: &mut MockRuntime, addr: Address, amount: TokenAmount) {
-    rt.set_value(amount.clone());
+    rt.set_received(amount.clone());
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addr);
 
@@ -470,8 +478,10 @@ pub fn publish_deals(
     rt.expect_send_simple(
         addrs.provider,
         ext::miner::IS_CONTROLLING_ADDRESS_EXPORTED,
-        IpldBlock::serialize_cbor(&ext::miner::IsControllingAddressParam { address: rt.caller })
-            .unwrap(),
+        IpldBlock::serialize_cbor(&ext::miner::IsControllingAddressParam {
+            address: *rt.caller.borrow(),
+        })
+        .unwrap(),
         TokenAmount::zero(),
         IpldBlock::serialize_cbor(&return_value).unwrap(),
         ExitCode::OK,
@@ -546,7 +556,7 @@ pub fn publish_deals(
         valid_deals.push(deal);
     }
 
-    let curr_epoch = rt.epoch;
+    let curr_epoch = *rt.epoch.borrow();
     let policy = Policy::default();
     for (client, cvd) in client_verified_deals {
         if cvd.deals.is_empty() {
@@ -1065,7 +1075,8 @@ pub fn terminate_deals_raw(
     rt.set_caller(*MINER_ACTOR_CODE_ID, miner_addr);
     rt.expect_validate_caller_type(vec![Type::Miner]);
 
-    let params = OnMinerSectorsTerminateParams { epoch: rt.epoch, deal_ids: deal_ids.to_vec() };
+    let params =
+        OnMinerSectorsTerminateParams { epoch: *rt.epoch.borrow(), deal_ids: deal_ids.to_vec() };
 
     rt.call::<MarketActor>(
         Method::OnMinerSectorsTerminate as u64,

@@ -313,8 +313,8 @@ mod tests {
 
     #[test]
     fn bn_recover() {
-        let mut rt = MockRuntime::default();
-        let mut system = System::create(&mut rt).unwrap();
+        let rt = MockRuntime::default();
+        let mut system = System::create(&rt).unwrap();
 
         let input = &hex!(
             "456e9aea5e197a1f1af7a3e85a3212fa4049a3ba34c2289b4c860fc0b0c64ef3" // h(ash)
@@ -356,8 +356,8 @@ mod tests {
         use super::sha256 as hash;
         let input = "foo bar baz boxy".as_bytes();
 
-        let mut rt = MockRuntime::default();
-        let mut system = System::create(&mut rt).unwrap();
+        let rt = MockRuntime::default();
+        let mut system = System::create(&rt).unwrap();
 
         let expected = hex!("ace8597929092c14bd028ede7b07727875788c7e130278b5afed41940d965aba");
         let res = hash(&mut system, input, PrecompileContext::default()).unwrap();
@@ -369,8 +369,8 @@ mod tests {
         use super::ripemd160 as hash;
         let input = "foo bar baz boxy".as_bytes();
 
-        let mut rt = MockRuntime::default();
-        let mut system = System::create(&mut rt).unwrap();
+        let rt = MockRuntime::default();
+        let mut system = System::create(&rt).unwrap();
 
         let expected = hex!("0000000000000000000000004cd7a0452bd3d682e4cbd5fa90f446d7285b156a");
         let res = hash(&mut system, input, PrecompileContext::default()).unwrap();
@@ -388,8 +388,8 @@ mod tests {
             "0A" // mod
         );
 
-        let mut rt = MockRuntime::default();
-        let mut system = System::create(&mut rt).unwrap();
+        let rt = MockRuntime::default();
+        let mut system = System::create(&rt).unwrap();
 
         let expected = hex!("08");
         let res = modexp(&mut system, input, PrecompileContext::default()).unwrap();
@@ -449,8 +449,8 @@ mod tests {
 
         #[test]
         fn bn_add() {
-            let mut rt = MockRuntime::default();
-            let mut system = System::create(&mut rt).unwrap();
+            let rt = MockRuntime::default();
+            let mut system = System::create(&rt).unwrap();
 
             let input = hex::decode(
                 "\
@@ -518,8 +518,8 @@ mod tests {
                 (modexp, "modexp_eip2565"),
             ];
 
-            let mut rt = MockRuntime::default();
-            let mut system = System::create(&mut rt).unwrap();
+            let rt = MockRuntime::default();
+            let mut system = System::create(&rt).unwrap();
 
             for (f, name) in tests {
                 let td = std::fs::read_to_string(format!("{TESTDATA_PATH}/{name}.json")).unwrap();
@@ -545,8 +545,8 @@ mod tests {
             let failures: &[(PrecompileFn<MockRuntime>, &'static str)] =
                 &[(blake2f, "fail-blake2f")];
 
-            let mut rt = MockRuntime::default();
-            let mut system = System::create(&mut rt).unwrap();
+            let rt = MockRuntime::default();
+            let mut system = System::create(&rt).unwrap();
 
             for (f, name) in failures {
                 let td = std::fs::read_to_string(format!("{TESTDATA_PATH}/{name}.json")).unwrap();
@@ -560,8 +560,8 @@ mod tests {
 
         #[test]
         fn bn_mul() {
-            let mut rt = MockRuntime::default();
-            let mut system = System::create(&mut rt).unwrap();
+            let rt = MockRuntime::default();
+            let mut system = System::create(&rt).unwrap();
 
             let input = hex::decode(
                 "\
@@ -613,8 +613,8 @@ mod tests {
 
         #[test]
         fn bn_pair() {
-            let mut rt = MockRuntime::default();
-            let mut system = System::create(&mut rt).unwrap();
+            let rt = MockRuntime::default();
+            let mut system = System::create(&rt).unwrap();
 
             let input = hex::decode(
                 "\
@@ -700,8 +700,8 @@ mod tests {
     #[test]
     fn blake2() {
         use super::blake2f;
-        let mut rt = MockRuntime::default();
-        let mut system = System::create(&mut rt).unwrap();
+        let rt = MockRuntime::default();
+        let mut system = System::create(&rt).unwrap();
 
         // // helper to turn EIP test cases into something readable
         // fn test_case_formatter(mut remaining: impl ToString) {

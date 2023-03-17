@@ -446,7 +446,7 @@ fn successfully_get_beneficiary() {
 
 #[test]
 fn get_beneficiary_correctly_restricted() {
-    let (h, mut rt) = setup();
+    let (h, rt) = setup();
 
     // set caller to not-builtin
     rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(1000));

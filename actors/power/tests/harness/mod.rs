@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use cid::Cid;
 use fil_actor_power::detail::GAS_ON_SUBMIT_VERIFY_SEAL;
 use fil_actor_power::ext::miner::ConfirmSectorProofsParams;
@@ -66,8 +68,8 @@ lazy_static! {
 pub fn new_runtime() -> MockRuntime {
     MockRuntime {
         receiver: STORAGE_POWER_ACTOR_ADDR,
-        caller: SYSTEM_ACTOR_ADDR,
-        caller_type: *SYSTEM_ACTOR_CODE_ID,
+        caller: RefCell::new(SYSTEM_ACTOR_ADDR),
+        caller_type: RefCell::new(*SYSTEM_ACTOR_CODE_ID),
         ..Default::default()
     }
 }
@@ -140,7 +142,7 @@ impl Harness {
         value: &TokenAmount,
     ) -> Result<(), ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *owner);
-        rt.set_value(value.clone());
+        rt.set_received(value.clone());
         rt.set_balance(value.clone());
         rt.expect_validate_caller_any();
 

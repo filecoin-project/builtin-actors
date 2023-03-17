@@ -94,9 +94,9 @@ mod paych_constructor {
 
         MockRuntime {
             receiver: paych_addr,
-            caller: caller_addr,
-            caller_type: *INIT_ACTOR_CODE_ID,
-            actor_code_cids,
+            caller: RefCell::new(caller_addr),
+            caller_type: RefCell::new(*INIT_ACTOR_CODE_ID),
+            actor_code_cids: RefCell::new(actor_code_cids),
             ..Default::default()
         }
     }
@@ -105,7 +105,7 @@ mod paych_constructor {
     fn create_paych_actor_test() {
         let caller_addr = Address::new_id(TEST_CALLER_ADDR);
         let mut rt = construct_runtime();
-        rt.actor_code_cids.insert(caller_addr, *ACCOUNT_ACTOR_CODE_ID);
+        rt.actor_code_cids.borrow_mut().insert(caller_addr, *ACCOUNT_ACTOR_CODE_ID);
         construct_and_verify(&mut rt, Address::new_id(TEST_PAYER_ADDR), caller_addr);
         check_state(&rt);
     }
@@ -136,10 +136,10 @@ mod paych_constructor {
 
         let mut rt = construct_runtime();
 
-        rt.actor_code_cids.insert(payee_addr, *ACCOUNT_ACTOR_CODE_ID);
+        rt.actor_code_cids.borrow_mut().insert(payee_addr, *ACCOUNT_ACTOR_CODE_ID);
 
-        rt.id_addresses.insert(payer_non_id, payer_addr);
-        rt.id_addresses.insert(payee_non_id, payee_addr);
+        rt.id_addresses.borrow_mut().insert(payer_non_id, payer_addr);
+        rt.id_addresses.borrow_mut().insert(payee_non_id, payee_addr);
 
         construct_and_verify(&mut rt, payer_non_id, payee_non_id);
         check_state(&rt);
@@ -158,9 +158,9 @@ mod paych_constructor {
 
         let mut rt = MockRuntime {
             receiver: paych_addr,
-            caller: caller_addr,
-            caller_type: *INIT_ACTOR_CODE_ID,
-            actor_code_cids,
+            caller: RefCell::new(caller_addr),
+            caller_type: RefCell::new(*INIT_ACTOR_CODE_ID),
+            actor_code_cids: RefCell::new(actor_code_cids),
             ..Default::default()
         };
 
@@ -196,9 +196,9 @@ mod paych_constructor {
 
         let mut rt = MockRuntime {
             receiver: paych_addr,
-            caller: caller_addr,
-            caller_type: *INIT_ACTOR_CODE_ID,
-            actor_code_cids,
+            caller: RefCell::new(caller_addr),
+            caller_type: RefCell::new(*INIT_ACTOR_CODE_ID),
+            actor_code_cids: RefCell::new(actor_code_cids),
             ..Default::default()
         };
 
@@ -362,15 +362,15 @@ mod create_lane_tests {
 
             let mut rt = MockRuntime {
                 receiver: paych_addr,
-                caller: init_actor_addr,
-                caller_type: *INIT_ACTOR_CODE_ID,
-                actor_code_cids,
-                epoch: test_case.epoch,
+                caller: RefCell::new(init_actor_addr),
+                caller_type: RefCell::new(*INIT_ACTOR_CODE_ID),
+                actor_code_cids: RefCell::new(actor_code_cids),
+                epoch: RefCell::new(test_case.epoch),
                 balance: RefCell::new(paych_balance.clone()),
                 ..Default::default()
             };
 
-            rt.id_addresses.insert(paych_non_id, paych_addr);
+            rt.id_addresses.borrow_mut().insert(paych_non_id, paych_addr);
 
             construct_and_verify(&mut rt, payer_addr, payee_addr);
 
@@ -537,7 +537,7 @@ mod merge_tests {
     use super::*;
 
     fn construct_runtime(num_lanes: u64) -> (MockRuntime, SignedVoucher, PState) {
-        let (mut rt, sv) = require_create_channel_with_lanes(num_lanes);
+        let (rt, sv) = require_create_channel_with_lanes(num_lanes);
         let state: PState = rt.get_state();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
@@ -733,7 +733,7 @@ mod update_channel_state_extra {
 #[test]
 fn update_channel_settling() {
     let (mut rt, sv) = require_create_channel_with_lanes(1);
-    rt.epoch = 10;
+    rt.epoch.replace(10);
     let state: PState = rt.get_state();
     rt.expect_validate_caller_addr(vec![state.from, state.to]);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
@@ -834,7 +834,7 @@ mod actor_settle {
     #[test]
     fn adjust_settling_at() {
         let (mut rt, _sv) = require_create_channel_with_lanes(1);
-        rt.epoch = EP;
+        rt.epoch.replace(EP);
         let mut state: PState = rt.get_state();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
@@ -851,7 +851,7 @@ mod actor_settle {
     #[test]
     fn call_twice() {
         let (mut rt, _sv) = require_create_channel_with_lanes(1);
-        rt.epoch = EP;
+        rt.epoch.replace(EP);
         let state: PState = rt.get_state();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
@@ -864,7 +864,7 @@ mod actor_settle {
     #[test]
     fn settle_if_height_less() {
         let (mut rt, mut sv) = require_create_channel_with_lanes(1);
-        rt.epoch = EP;
+        rt.epoch.replace(EP);
         let mut state: PState = rt.get_state();
 
         sv.min_settle_height = (EP + SETTLE_DELAY) + 1;
@@ -894,7 +894,7 @@ mod actor_settle {
         const ERR_CHANNEL_STATE_UPDATE_AFTER_SETTLED: ExitCode = ExitCode::new(32);
 
         let (mut rt, sv) = require_create_channel_with_lanes(1);
-        rt.epoch = EP;
+        rt.epoch.replace(EP);
         let mut state: PState = rt.get_state();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, state.from);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
@@ -902,7 +902,7 @@ mod actor_settle {
         call(&mut rt, Method::Settle as u64, None);
 
         state = rt.get_state();
-        rt.epoch = state.settling_at + 40;
+        rt.epoch.replace(state.settling_at + 40);
         rt.expect_validate_caller_addr(vec![state.from, state.to]);
         expect_abort(
             &mut rt,
@@ -922,7 +922,7 @@ mod actor_collect {
     fn happy_path() {
         let (mut rt, _sv) = require_create_channel_with_lanes(1);
         let curr_epoch: ChainEpoch = 10;
-        rt.epoch = curr_epoch;
+        rt.epoch.replace(curr_epoch);
         let st: PState = rt.get_state();
 
         // Settle.
@@ -935,7 +935,7 @@ mod actor_collect {
         rt.expect_validate_caller_addr(vec![st.from, st.to]);
 
         // wait for settlingat epoch
-        rt.epoch = st.settling_at + 1;
+        rt.epoch.replace(st.settling_at + 1);
 
         rt.expect_send_simple(
             st.to,
@@ -980,7 +980,7 @@ mod actor_collect {
 
         for tc in test_cases {
             let (mut rt, _sv) = require_create_channel_with_lanes(1);
-            rt.epoch = 10;
+            rt.epoch.replace(10);
             let mut state: PState = rt.get_state();
 
             if !tc.dont_settle {
@@ -988,11 +988,11 @@ mod actor_collect {
                 rt.expect_validate_caller_addr(vec![state.from, state.to]);
                 call(&mut rt, Method::Settle as u64, None);
                 state = rt.get_state();
-                assert_eq!(state.settling_at, SETTLE_DELAY + rt.epoch);
+                assert_eq!(state.settling_at, SETTLE_DELAY + *rt.epoch.borrow());
             }
 
             // "wait" for SettlingAt epoch
-            rt.epoch = state.settling_at + 1;
+            rt.epoch.replace(state.settling_at + 1);
 
             if !tc.dont_settle {
                 rt.expect_send_simple(
@@ -1028,12 +1028,12 @@ fn require_create_channel_with_lanes(num_lanes: u64) -> (MockRuntime, SignedVouc
 
     let mut rt = MockRuntime {
         receiver: paych_addr,
-        caller: INIT_ACTOR_ADDR,
-        caller_type: *INIT_ACTOR_CODE_ID,
-        actor_code_cids,
-        value_received: received,
+        caller: RefCell::new(INIT_ACTOR_ADDR),
+        caller_type: RefCell::new(*INIT_ACTOR_CODE_ID),
+        actor_code_cids: RefCell::new(actor_code_cids),
+        value_received: RefCell::new(received),
         balance: RefCell::new(balance),
-        epoch: curr_epoch,
+        epoch: RefCell::new(curr_epoch),
         ..Default::default()
     };
 
@@ -1093,9 +1093,9 @@ fn construct_and_verify(rt: &mut MockRuntime, sender: Address, receiver: Address
     rt.expect_validate_caller_type(vec![Type::Init]);
     call(rt, METHOD_CONSTRUCTOR, IpldBlock::serialize_cbor(&params).unwrap());
     rt.verify();
-    let sender_id = rt.id_addresses.get(&sender).unwrap_or(&sender);
-    let receiver_id = rt.id_addresses.get(&receiver).unwrap_or(&receiver);
-    verify_initial_state(rt, *sender_id, *receiver_id);
+    let sender_id = *rt.id_addresses.borrow().get(&sender).unwrap_or(&sender);
+    let receiver_id = *rt.id_addresses.borrow().get(&receiver).unwrap_or(&receiver);
+    verify_initial_state(rt, sender_id, receiver_id);
 }
 
 fn verify_initial_state(rt: &MockRuntime, sender: Address, receiver: Address) {

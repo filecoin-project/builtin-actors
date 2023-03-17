@@ -176,7 +176,7 @@ fn test_call() {
     let target = FILAddress::new_id(target_id);
     let evm_target = EthAddress(hex_literal::hex!("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"));
     let f4_target: FILAddress = evm_target.try_into().unwrap();
-    rt.actor_code_cids.insert(target, *EVM_ACTOR_CODE_ID);
+    rt.actor_code_cids.borrow_mut().insert(target, *EVM_ACTOR_CODE_ID);
     rt.set_delegated_address(target.id().unwrap(), f4_target);
 
     let evm_target_word = evm_target.as_evm_word();
@@ -223,7 +223,7 @@ fn test_transfer_nogas() {
     // create a mock actor and proxy a call through the proxy
     let target_id = 0x100;
     let target = FILAddress::new_id(target_id);
-    rt.actor_code_cids.insert(target, *EVM_ACTOR_CODE_ID);
+    rt.actor_code_cids.borrow_mut().insert(target, *EVM_ACTOR_CODE_ID);
 
     let evm_target_word = EthAddress::from_id(target_id).as_evm_word();
 
@@ -264,7 +264,7 @@ fn test_transfer_2300() {
     // create a mock actor and proxy a call through the proxy
     let target_id = 0x100;
     let target = FILAddress::new_id(target_id);
-    rt.actor_code_cids.insert(target, *EVM_ACTOR_CODE_ID);
+    rt.actor_code_cids.borrow_mut().insert(target, *EVM_ACTOR_CODE_ID);
 
     let evm_target_word = EthAddress::from_id(target_id).as_evm_word();
 
@@ -389,7 +389,7 @@ pub fn filecoin_call_actor_contract() -> Vec<u8> {
 #[test]
 fn test_reserved_method() {
     let contract = filecoin_fallback_contract();
-    let mut rt = util::construct_and_verify(contract);
+    let rt = util::construct_and_verify(contract);
 
     let code = rt.call::<evm::EvmContractActor>(0x42, None).unwrap_err().exit_code();
     assert_eq!(ExitCode::USR_UNHANDLED_MESSAGE, code);
@@ -398,7 +398,7 @@ fn test_reserved_method() {
 #[test]
 fn test_native_call() {
     let contract = filecoin_fallback_contract();
-    let mut rt = util::construct_and_verify(contract);
+    let rt = util::construct_and_verify(contract);
 
     rt.expect_validate_caller_any();
     let result = rt.call::<evm::EvmContractActor>(1024, None).unwrap();
@@ -468,7 +468,7 @@ fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_i
     // create a mock target and proxy a call through the proxy
     let target_id = 0x100;
     let target = FILAddress::new_id(target_id);
-    rt.actor_code_cids.insert(target, *EVM_ACTOR_CODE_ID);
+    rt.actor_code_cids.borrow_mut().insert(target, *EVM_ACTOR_CODE_ID);
 
     // dest + method with no data
     let mut contract_params = Vec::new();
@@ -1163,7 +1163,7 @@ impl ContractTester {
     fn new(addr: EthAddress, id: u64, contract_hex: &str) -> Self {
         init_logging().ok();
 
-        let mut rt = MockRuntime::default();
+        let rt = MockRuntime::default();
         let params = evm::ConstructorParams {
             creator: EthAddress::from_id(EAM_ACTOR_ID),
             initcode: hex::decode(contract_hex).unwrap().into(),

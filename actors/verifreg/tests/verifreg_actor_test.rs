@@ -54,14 +54,14 @@ mod construction {
         let mut rt = new_runtime();
         let h = Harness { root: ROOT_ADDR };
         let root_pubkey = Address::new_bls(&[7u8; BLS_PUB_LEN]).unwrap();
-        rt.id_addresses.insert(root_pubkey, h.root);
+        rt.id_addresses.borrow_mut().insert(root_pubkey, h.root);
         h.construct_and_verify(&mut rt, &root_pubkey);
         h.check_state(&rt);
     }
 
     #[test]
     fn construct_fails_if_root_unresolved() {
-        let mut rt = new_runtime();
+        let rt = new_runtime();
         let root_pubkey = Address::new_bls(&[7u8; BLS_PUB_LEN]).unwrap();
 
         rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
@@ -93,7 +93,7 @@ mod verifiers {
 
     #[test]
     fn add_verifier_requires_root_caller() {
-        let (h, mut rt) = new_harness();
+        let (h, rt) = new_harness();
         rt.expect_validate_caller_addr(vec![h.root]);
         rt.set_caller(*VERIFREG_ACTOR_CODE_ID, Address::new_id(501));
         let params =
@@ -110,7 +110,7 @@ mod verifiers {
 
     #[test]
     fn add_verifier_enforces_min_size() {
-        let (h, mut rt) = new_harness();
+        let (h, rt) = new_harness();
         let allowance: DataCap = rt.policy.minimum_verified_allocation_size.clone() - 1;
 
         let params = AddVerifierParams { address: *VERIFIER, allowance };
@@ -147,7 +147,7 @@ mod verifiers {
 
     #[test]
     fn add_verifier_rejects_unresolved_address() {
-        let (h, mut rt) = new_harness();
+        let (h, rt) = new_harness();
         let verifier_key_address = Address::new_secp256k1(&[3u8; 65]).unwrap();
         let allowance = verifier_allowance(&rt);
         // Expect runtime to attempt to create the actor, but don't add it to the mock's
@@ -184,7 +184,7 @@ mod verifiers {
         let (h, mut rt) = new_harness();
         let allowance = verifier_allowance(&rt);
         let pubkey_addr = Address::new_secp256k1(&[0u8; 65]).unwrap();
-        rt.id_addresses.insert(pubkey_addr, *VERIFIER);
+        rt.id_addresses.borrow_mut().insert(pubkey_addr, *VERIFIER);
         h.add_verifier(&mut rt, &pubkey_addr, &allowance).unwrap();
         h.check_state(&rt);
     }
@@ -230,7 +230,7 @@ mod verifiers {
         let (h, mut rt) = new_harness();
         let allowance = verifier_allowance(&rt);
         let verifier_pubkey = Address::new_bls(&[1u8; BLS_PUB_LEN]).unwrap();
-        rt.id_addresses.insert(verifier_pubkey, *VERIFIER);
+        rt.id_addresses.borrow_mut().insert(verifier_pubkey, *VERIFIER);
         // Add using pubkey address.
         h.add_verifier(&mut rt, &VERIFIER, &allowance).unwrap();
         // Remove using ID address.
@@ -304,7 +304,7 @@ mod clients {
         let allowance_client = client_allowance(&rt);
 
         let client_pubkey = Address::new_bls(&[7u8; BLS_PUB_LEN]).unwrap();
-        rt.id_addresses.insert(client_pubkey, *CLIENT);
+        rt.id_addresses.borrow_mut().insert(client_pubkey, *CLIENT);
 
         h.add_verifier(&mut rt, &VERIFIER, &allowance_verifier).unwrap();
         h.add_client(&mut rt, &VERIFIER, &client_pubkey, &allowance_client).unwrap();
@@ -1334,7 +1334,7 @@ mod datacap {
         // Allocation expires too late
         {
             let mut reqs = vec![make_alloc_req(&rt, PROVIDER1, SIZE)];
-            reqs[0].expiration = rt.epoch + MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION + 1;
+            reqs[0].expiration = *rt.epoch.borrow() + MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION + 1;
             let payload = make_receiver_hook_token_payload(CLIENT1, reqs, vec![], SIZE);
             expect_abort_contains_message(
                 ExitCode::USR_ILLEGAL_ARGUMENT,

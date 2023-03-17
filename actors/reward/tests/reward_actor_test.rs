@@ -1,6 +1,8 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use std::cell::RefCell;
+
 use fil_actor_reward::{
     ext, Actor as RewardActor, AwardBlockRewardParams, Method, State, ThisEpochRewardReturn,
     BASELINE_INITIAL_VALUE, PENALTY_MULTIPLIER,
@@ -86,7 +88,7 @@ mod test_award_block_reward {
 
     #[test]
     fn rejects_gas_reward_exceeding_balance() {
-        let mut rt = construct_and_verify(&StoragePower::default());
+        let rt = construct_and_verify(&StoragePower::default());
 
         rt.set_balance(TokenAmount::from_atto(9));
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
@@ -105,7 +107,7 @@ mod test_award_block_reward {
 
     #[test]
     fn rejects_negative_penalty_or_reward() {
-        let mut rt = construct_and_verify(&StoragePower::default());
+        let rt = construct_and_verify(&StoragePower::default());
         rt.set_balance(TokenAmount::from_whole(1));
 
         let reward_penalty_pairs = [(-1, 0), (0, -1)];
@@ -129,7 +131,7 @@ mod test_award_block_reward {
 
     #[test]
     fn rejects_zero_wincount() {
-        let mut rt = construct_and_verify(&StoragePower::default());
+        let rt = construct_and_verify(&StoragePower::default());
         rt.set_balance(TokenAmount::from_whole(1));
 
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
@@ -148,7 +150,7 @@ mod test_award_block_reward {
 
     #[test]
     fn pays_reward_and_tracks_penalty() {
-        let mut rt = construct_and_verify(&StoragePower::default());
+        let rt = construct_and_verify(&StoragePower::default());
         rt.set_balance(TokenAmount::from_whole(1_000_000_000));
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         let penalty: TokenAmount = TokenAmount::from_atto(100);
@@ -183,7 +185,7 @@ mod test_award_block_reward {
 
     #[test]
     fn pays_out_current_balance_when_reward_exceeds_total_balance() {
-        let mut rt = construct_and_verify(&StoragePower::from(1));
+        let rt = construct_and_verify(&StoragePower::from(1));
 
         // Total reward is a huge number, upon writing ~1e18, so 300 should be way less
         let small_reward = TokenAmount::from_atto(300);
@@ -248,7 +250,7 @@ mod test_award_block_reward {
 
     #[test]
     fn funds_are_sent_to_burnt_funds_actor_if_sending_locked_funds_to_miner_fails() {
-        let mut rt = construct_and_verify(&StoragePower::from(1));
+        let rt = construct_and_verify(&StoragePower::from(1));
         let mut state: State = rt.get_state();
 
         assert_eq!(TokenAmount::zero(), state.total_storage_power_reward);
@@ -318,16 +320,16 @@ fn test_successive_kpi_updates() {
     let mut rt = construct_and_verify(&power);
 
     for i in &[1, 2, 3] {
-        rt.epoch = ChainEpoch::from(*i);
+        rt.epoch.replace(ChainEpoch::from(*i));
         update_network_kpi(&mut rt, &power);
     }
 }
 
 fn construct_and_verify(curr_power: &StoragePower) -> MockRuntime {
-    let mut rt = MockRuntime {
+    let rt = MockRuntime {
         receiver: REWARD_ACTOR_ADDR,
-        caller: SYSTEM_ACTOR_ADDR,
-        caller_type: *SYSTEM_ACTOR_CODE_ID,
+        caller: RefCell::new(SYSTEM_ACTOR_ADDR),
+        caller_type: RefCell::new(*SYSTEM_ACTOR_CODE_ID),
         ..Default::default()
     };
     rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);

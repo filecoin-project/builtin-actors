@@ -68,7 +68,7 @@ fn compacting_a_partition_with_both_live_and_dead_sectors_removes_dead_sectors_r
     let sectors = sectors_info.iter().map(|info| info.sector_number).collect_vec();
 
     // terminate sector 1
-    rt.set_epoch(rt.epoch + 100);
+    rt.set_epoch(*rt.epoch.borrow() + 100);
     h.apply_rewards(&mut rt, BIG_REWARDS.clone(), TokenAmount::zero());
 
     let terminated_sector = &sectors_info[0];
@@ -86,7 +86,7 @@ fn compacting_a_partition_with_both_live_and_dead_sectors_removes_dead_sectors_r
         &sector_power,
         INITIAL_PLEDGE_PROJECTION_PERIOD,
     );
-    let sector_age = rt.epoch - terminated_sector.activation;
+    let sector_age = *rt.epoch.borrow() - terminated_sector.activation;
     let expected_fee = pledge_penalty_for_termination(
         &day_reward,
         sector_age,
@@ -101,7 +101,7 @@ fn compacting_a_partition_with_both_live_and_dead_sectors_removes_dead_sectors_r
     h.terminate_sectors(&mut rt, &bitfield_from_slice(&[sectors[0]]), expected_fee);
 
     // Wait WPoStProofChallengePeriod epochs so we can compact the sector.
-    let target_epoch = rt.epoch + rt.policy().wpost_dispute_window;
+    let target_epoch = *rt.epoch.borrow() + rt.policy().wpost_dispute_window;
     h.advance_to_epoch_with_cron(&mut rt, target_epoch);
 
     // compacting partition will remove sector 1 but retain sector 2,3 and 4
@@ -137,7 +137,7 @@ fn fail_to_compact_partitions_with_faults() {
     h.declare_faults(&mut rt, &sectors_info[0..1]);
 
     // Wait WPoStProofChallengePeriod epochs so we can compact the sector.
-    let target_epoch = rt.epoch + rt.policy().wpost_dispute_window;
+    let target_epoch = *rt.epoch.borrow() + rt.policy().wpost_dispute_window;
     h.advance_to_epoch_with_cron(&mut rt, target_epoch);
 
     let partition_id = 0;
@@ -157,9 +157,10 @@ fn fails_to_compact_partitions_with_unproven_sectors() {
     // sector) has elapsed. That'll let us commit, prove, then wait
     // finality epochs.
     let state: State = rt.get_state();
-    let deadline_epoch = new_deadline_info(rt.policy(), state.proving_period_start, 0, rt.epoch)
-        .next_not_elapsed()
-        .next_open();
+    let deadline_epoch =
+        new_deadline_info(rt.policy(), state.proving_period_start, 0, *rt.epoch.borrow())
+            .next_not_elapsed()
+            .next_open();
     rt.set_epoch(deadline_epoch);
 
     // create 2 sectors in partition 0
@@ -172,7 +173,7 @@ fn fails_to_compact_partitions_with_unproven_sectors() {
     );
 
     // Wait WPoStProofChallengePeriod epochs so we can compact the sector.
-    let target_epoch = rt.epoch + rt.policy().wpost_dispute_window;
+    let target_epoch = *rt.epoch.borrow() + rt.policy().wpost_dispute_window;
     h.advance_to_epoch_with_cron(&mut rt, target_epoch);
 
     let partition_id = 0;

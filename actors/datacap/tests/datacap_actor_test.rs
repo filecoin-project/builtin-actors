@@ -96,7 +96,7 @@ mod mint {
 
     #[test]
     fn requires_verifreg_caller() {
-        let (mut rt, h) = make_harness();
+        let (rt, h) = make_harness();
         let amt = TokenAmount::from_whole(1);
         let params = MintParams { to: *ALICE, amount: amt, operators: vec![] };
 

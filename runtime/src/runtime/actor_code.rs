@@ -13,7 +13,7 @@ pub trait ActorCode {
     /// Invokes method with runtime on the actor's code. Method number will match one
     /// defined by the Actor, and parameters will be serialized and used in execution
     fn invoke_method<RT>(
-        rt: &mut RT,
+        rt: &RT,
         method: MethodNum,
         params: Option<IpldBlock>,
     ) -> Result<Option<IpldBlock>, ActorError>

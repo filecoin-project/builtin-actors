@@ -33,6 +33,7 @@ use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH};
 use num_traits::{ToPrimitive, Zero};
+use std::cell::RefCell;
 use std::collections::HashMap;
 
 pub const ROOT_ADDR: Address = Address::new_id(101);
@@ -60,9 +61,9 @@ pub fn new_runtime() -> MockRuntime {
     actor_code_cids.insert(test_client4_addr, *ACCOUNT_ACTOR_CODE_ID);
     MockRuntime {
         receiver: VERIFIED_REGISTRY_ACTOR_ADDR,
-        caller: SYSTEM_ACTOR_ADDR,
-        caller_type: *SYSTEM_ACTOR_CODE_ID,
-        actor_code_cids,
+        caller: RefCell::new(SYSTEM_ACTOR_ADDR),
+        caller_type: RefCell::new(*SYSTEM_ACTOR_CODE_ID),
+        actor_code_cids: RefCell::new(actor_code_cids),
         ..Default::default()
     }
 }
@@ -222,7 +223,7 @@ impl Harness {
     }
 
     pub fn check_state(&self, rt: &MockRuntime) {
-        let (_, acc) = check_state_invariants(&rt.get_state(), rt.store(), rt.epoch);
+        let (_, acc) = check_state_invariants(&rt.get_state(), rt.store(), *rt.epoch.borrow());
         acc.assert_empty();
     }
 
@@ -483,7 +484,7 @@ pub fn make_alloc_req(rt: &MockRuntime, provider: ActorID, size: u64) -> Allocat
         size: PaddedPieceSize(size),
         term_min: MINIMUM_VERIFIED_ALLOCATION_TERM,
         term_max: MAXIMUM_VERIFIED_ALLOCATION_TERM,
-        expiration: rt.epoch + 100,
+        expiration: *rt.epoch.borrow() + 100,
     }
 }
 

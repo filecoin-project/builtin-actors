@@ -63,7 +63,7 @@ fn funds_vest() {
     // Vested FIL pays out on epochs with expected offset
     let quant_spec = QuantSpec { unit: REWARD_VESTING_SPEC.quantization, offset: PERIOD_OFFSET };
 
-    let curr_epoch = rt.epoch;
+    let curr_epoch = *rt.epoch.borrow();
     for (i, vf) in vesting_funds.funds.iter().enumerate() {
         let step =
             REWARD_VESTING_SPEC.initial_delay + (i as i64 + 1) * REWARD_VESTING_SPEC.step_duration;

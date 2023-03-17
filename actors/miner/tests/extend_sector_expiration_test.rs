@@ -94,7 +94,7 @@ fn rejects_extension_too_far_in_future(v2: bool) {
     // extend by even proving period after max
     rt.set_epoch(sector.expiration);
     let extension = rt.policy().wpost_proving_period + rt.policy().max_sector_expiration_extension;
-    let new_expiration = rt.epoch + extension;
+    let new_expiration = *rt.epoch.borrow() + extension;
 
     // find deadline and partition
     let state: State = rt.get_state();
@@ -337,7 +337,8 @@ fn supports_extensions_off_deadline_boundary(v2: bool) {
     // advance clock to expiration
     rt.set_epoch(new_sector.expiration);
     state.proving_period_start += rt.policy().wpost_proving_period
-        * ((rt.epoch - state.proving_period_start) / rt.policy().wpost_proving_period + 1);
+        * ((*rt.epoch.borrow() - state.proving_period_start) / rt.policy().wpost_proving_period
+            + 1);
     rt.replace_state(&state);
 
     // confirm it is not in sector's deadline to make sure we're testing extensions off the deadline boundary"

@@ -27,7 +27,7 @@ fn simplecoin_test(bytecode: Vec<u8>) {
     let contract = Address::new_id(100);
 
     let mut rt = util::init_construct_and_verify(bytecode, |rt| {
-        rt.actor_code_cids.insert(contract, *EVM_ACTOR_CODE_ID);
+        rt.actor_code_cids.borrow_mut().insert(contract, *EVM_ACTOR_CODE_ID);
         rt.set_origin(contract);
     });
 
@@ -84,7 +84,7 @@ return
         (asm::new_contract("get_bytecode", init, body).unwrap(), body_bytecode)
     };
 
-    let mut rt = util::construct_and_verify(init_code);
+    let rt = util::construct_and_verify(init_code);
 
     rt.reset();
     rt.expect_validate_caller_any();
@@ -114,14 +114,14 @@ sstore";
         asm::new_contract("get_storage_at", init, body).unwrap()
     };
 
-    let mut rt = util::construct_and_verify(init_code);
+    let rt = util::construct_and_verify(init_code);
 
     rt.reset();
     let params = evm::GetStorageAtParams { storage_key: 0x8965.into() };
 
     let sender = Address::new_id(0); // zero address because this method is not invokable on-chain
     rt.expect_validate_caller_addr(vec![sender]);
-    rt.caller = sender;
+    rt.caller.replace(sender);
 
     //
     // Get the storage key that was initialized in the init code.

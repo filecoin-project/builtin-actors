@@ -34,7 +34,7 @@ mod compact_sector_numbers_test {
             bitfield_from_slice(&[target_sector_num, target_sector_num + 1]),
         );
 
-        let precommit_epoch = rt.epoch;
+        let precommit_epoch = *rt.epoch.borrow();
         let deadline = h.deadline(&rt);
         let expiration = deadline.period_end()
             + DEFAULT_SECTOR_EXPIRATION as i64 * rt.policy.wpost_proving_period;
