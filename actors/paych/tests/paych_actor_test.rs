@@ -1169,7 +1169,7 @@ fn accept_arbitrary() {
 
     // reject < 2<<24
     rt.expect_validate_caller_any();
-    let result = rt.call::<PaychActor>(FIRST_EXPORTED_METHOD_NUMBER - 1, params.clone());
+    let result = rt.call::<PaychActor>(FIRST_EXPORTED_METHOD_NUMBER - 1, params);
     assert!(result.is_err());
 
     rt.verify();
