@@ -4,11 +4,14 @@
 use fvm_actor_utils::receiver::UniversalReceiverParams;
 use std::collections::BTreeSet;
 
+use fil_actors_runtime::FIRST_EXPORTED_METHOD_NUMBER;
 use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::MethodNum;
 use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
 use num_traits::Zero;
@@ -457,6 +460,19 @@ impl Actor {
         rt.validate_immediate_caller_accept_any()?;
         Ok(())
     }
+
+    pub fn fallback(
+        rt: &mut impl Runtime,
+        method: MethodNum,
+        _: Option<IpldBlock>,
+    ) -> Result<Option<IpldBlock>, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        if method >= FIRST_EXPORTED_METHOD_NUMBER {
+            Ok(None)
+        } else {
+            Err(actor_error!(unhandled_message; "invalid method: {}", method))
+        }
+    }
 }
 
 fn execute_transaction_if_approved(
@@ -569,5 +585,6 @@ impl ActorCode for Actor {
       ChangeNumApprovalsThreshold => change_num_approvals_threshold,
       LockBalance => lock_balance,
       UniversalReceiverHook => universal_receiver_hook,
+      _ => fallback [raw],
     }
 }
