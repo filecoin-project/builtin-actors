@@ -2423,8 +2423,7 @@ fn accept_arbitrary() {
     h.construct_and_verify(&mut rt, 2, 0, 0, vec![anne, bob]);
 
     // this is arbitrary
-    let params = IpldBlock::serialize_cbor(&vec![1u8, 2u8, 3u8])
-        .unwrap();
+    let params = IpldBlock::serialize_cbor(&vec![1u8, 2u8, 3u8]).unwrap();
 
     // accept >= 2<<24
     rt.expect_validate_caller_any();
