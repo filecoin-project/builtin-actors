@@ -27,7 +27,6 @@ use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sys::SendFlags;
-use fvm_shared::MethodNum;
 use fvm_shared::METHOD_CONSTRUCTOR;
 use num_traits::Zero;
 
@@ -1161,20 +1160,16 @@ fn accept_arbitrary() {
 
     // accept >= 2<<24
     rt.expect_validate_caller_any();
-    let result =
-        rt.call::<PaychActor>(FIRST_EXPORTED_METHOD_NUMBER as MethodNum, params.clone()).unwrap();
+    let result = rt.call::<PaychActor>(FIRST_EXPORTED_METHOD_NUMBER, params.clone()).unwrap();
     assert!(result.is_none());
 
     rt.expect_validate_caller_any();
-    let result = rt
-        .call::<PaychActor>(FIRST_EXPORTED_METHOD_NUMBER + 1 as MethodNum, params.clone())
-        .unwrap();
+    let result = rt.call::<PaychActor>(FIRST_EXPORTED_METHOD_NUMBER + 1, params.clone()).unwrap();
     assert!(result.is_none());
 
     // reject < 2<<24
     rt.expect_validate_caller_any();
-    let result =
-        rt.call::<PaychActor>(FIRST_EXPORTED_METHOD_NUMBER - 1 as MethodNum, params.clone());
+    let result = rt.call::<PaychActor>(FIRST_EXPORTED_METHOD_NUMBER - 1, params.clone());
     assert!(result.is_err());
 
     rt.verify();

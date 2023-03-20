@@ -2427,21 +2427,17 @@ fn accept_arbitrary() {
 
     // accept >= 2<<24
     rt.expect_validate_caller_any();
-    let result = rt
-        .call::<MultisigActor>(FIRST_EXPORTED_METHOD_NUMBER as MethodNum, params.clone())
-        .unwrap();
+    let result = rt.call::<MultisigActor>(FIRST_EXPORTED_METHOD_NUMBER, params.clone()).unwrap();
     assert!(result.is_none());
 
     rt.expect_validate_caller_any();
-    let result = rt
-        .call::<MultisigActor>(FIRST_EXPORTED_METHOD_NUMBER + 1 as MethodNum, params.clone())
-        .unwrap();
+    let result =
+        rt.call::<MultisigActor>(FIRST_EXPORTED_METHOD_NUMBER + 1, params.clone()).unwrap();
     assert!(result.is_none());
 
     // reject < 2<<24
     rt.expect_validate_caller_any();
-    let result =
-        rt.call::<MultisigActor>(FIRST_EXPORTED_METHOD_NUMBER - 1 as MethodNum, params.clone());
+    let result = rt.call::<MultisigActor>(FIRST_EXPORTED_METHOD_NUMBER - 1, params.clone());
     assert!(result.is_err());
 
     rt.verify();
