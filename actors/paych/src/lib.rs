@@ -11,12 +11,10 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::CBOR;
 use fvm_shared::address::Address;
 
-use fil_actors_runtime::FIRST_EXPORTED_METHOD_NUMBER;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sys::SendFlags;
-use fvm_shared::MethodNum;
 use fvm_shared::{METHOD_CONSTRUCTOR, METHOD_SEND};
 use num_derive::FromPrimitive;
 use num_traits::Zero;
@@ -300,19 +298,6 @@ impl Actor {
 
         Ok(())
     }
-
-    pub fn fallback(
-        rt: &mut impl Runtime,
-        method: MethodNum,
-        _: Option<IpldBlock>,
-    ) -> Result<Option<IpldBlock>, ActorError> {
-        rt.validate_immediate_caller_accept_any()?;
-        if method >= FIRST_EXPORTED_METHOD_NUMBER {
-            Ok(None)
-        } else {
-            Err(actor_error!(unhandled_message; "invalid method: {}", method))
-        }
-    }
 }
 
 #[inline]
@@ -339,6 +324,5 @@ impl ActorCode for Actor {
         UpdateChannelState => update_channel_state,
         Settle => settle,
         Collect => collect,
-        _ => fallback [raw],
     }
 }

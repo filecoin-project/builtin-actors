@@ -16,7 +16,6 @@ use fil_actor_paych::{
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::FIRST_EXPORTED_METHOD_NUMBER;
 use fil_actors_runtime::INIT_ACTOR_ADDR;
 use fvm_ipld_amt::Amt;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -1149,28 +1148,4 @@ fn expect_authenticate_message(
         exp_exit_code,
         None,
     )
-}
-
-#[test]
-fn accept_arbitrary() {
-    let (mut rt, _) = require_create_channel_with_lanes(1);
-
-    // this is arbitrary
-    let params = IpldBlock::serialize_cbor(&vec![1u8, 2u8, 3u8]).unwrap();
-
-    // accept >= 2<<24
-    rt.expect_validate_caller_any();
-    let result = rt.call::<PaychActor>(FIRST_EXPORTED_METHOD_NUMBER, params.clone()).unwrap();
-    assert!(result.is_none());
-
-    rt.expect_validate_caller_any();
-    let result = rt.call::<PaychActor>(FIRST_EXPORTED_METHOD_NUMBER + 1, params.clone()).unwrap();
-    assert!(result.is_none());
-
-    // reject < 2<<24
-    rt.expect_validate_caller_any();
-    let result = rt.call::<PaychActor>(FIRST_EXPORTED_METHOD_NUMBER - 1, params);
-    assert!(result.is_err());
-
-    rt.verify();
 }
