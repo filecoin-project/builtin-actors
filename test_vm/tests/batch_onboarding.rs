@@ -17,7 +17,7 @@ use test_vm::util::{
     advance_to_proving_deadline, apply_ok, create_accounts, create_miner,
     invariant_failure_patterns, precommit_sectors_v2, prove_commit_sectors, submit_windowed_post,
 };
-use test_vm::VM;
+use test_vm::TestVM;
 
 struct Onboarding {
     epoch_delay: i64,                 // epochs to advance since the prior action
@@ -49,7 +49,7 @@ impl Onboarding {
 #[test_case(true; "v2")]
 fn batch_onboarding(v2: bool) {
     let store = MemoryBlockstore::new();
-    let mut v = VM::new_with_singletons(&store);
+    let mut v = TestVM::new_with_singletons(&store);
     let addrs = create_accounts(&v, 1, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);

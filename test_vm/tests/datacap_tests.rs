@@ -12,7 +12,7 @@ use fil_actors_runtime::test_utils::make_piece_cid;
 use fil_actors_runtime::{DATACAP_TOKEN_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
 use fvm_shared::error::ExitCode;
 use test_vm::util::{apply_code, apply_ok, create_accounts, create_miner};
-use test_vm::VM;
+use test_vm::TestVM;
 
 use fil_actor_datacap::{Method as DataCapMethod, MintParams};
 use frc46_token::token::types::{GetAllowanceParams, TransferFromParams};
@@ -23,7 +23,7 @@ use fvm_ipld_encoding::RawBytes;
 fn datacap_transfer_scenario() {
     let policy = Policy::default();
     let store = MemoryBlockstore::new();
-    let mut v = VM::new_with_singletons(&store);
+    let mut v = TestVM::new_with_singletons(&store);
     let addrs = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
     let (client, operator, owner) = (addrs[0], addrs[1], addrs[2]);
 
@@ -203,7 +203,7 @@ fn datacap_transfer_scenario() {
 #[test]
 fn call_name_symbol() {
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(&store);
     let addrs = create_accounts(&v, 1, TokenAmount::from_whole(10_000));
     let sender = addrs[0];
 

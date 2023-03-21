@@ -75,7 +75,7 @@ use std::ops::Add;
 pub mod executor;
 pub mod util;
 
-pub struct VM<'bs> {
+pub struct TestVM<'bs> {
     pub store: &'bs MemoryBlockstore,
     pub state_root: RefCell<Cid>,
     total_fil: TokenAmount,
@@ -122,10 +122,10 @@ pub const TEST_FAUCET_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR +
 pub const FIRST_TEST_USER_ADDR: ActorID = FIRST_NON_SINGLETON_ADDR + 3;
 
 // accounts for verifreg root signer and msig
-impl<'bs> VM<'bs> {
-    pub fn new(store: &'bs MemoryBlockstore) -> VM<'bs> {
+impl<'bs> TestVM<'bs> {
+    pub fn new(store: &'bs MemoryBlockstore) -> TestVM<'bs> {
         let mut actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::new(store);
-        VM {
+        TestVM {
             store,
             state_root: RefCell::new(actors.flush().unwrap()),
             total_fil: TokenAmount::zero(),
@@ -141,11 +141,11 @@ impl<'bs> VM<'bs> {
         Self { total_fil, ..self }
     }
 
-    pub fn new_with_singletons(store: &'bs MemoryBlockstore) -> VM<'bs> {
+    pub fn new_with_singletons(store: &'bs MemoryBlockstore) -> TestVM<'bs> {
         let reward_total = TokenAmount::from_whole(1_100_000_000i64);
         let faucet_total = TokenAmount::from_whole(1_000_000_000i64);
 
-        let v = VM::new(store).with_total_fil(&reward_total + &faucet_total);
+        let v = TestVM::new(store).with_total_fil(&reward_total + &faucet_total);
 
         // system
         let sys_st = SystemState::new(store).unwrap();
@@ -284,9 +284,9 @@ impl<'bs> VM<'bs> {
         v
     }
 
-    pub fn with_epoch(self, epoch: ChainEpoch) -> VM<'bs> {
+    pub fn with_epoch(self, epoch: ChainEpoch) -> TestVM<'bs> {
         self.checkpoint();
-        VM {
+        TestVM {
             store: self.store,
             state_root: self.state_root.clone(),
             total_fil: self.total_fil,
@@ -600,7 +600,7 @@ pub const TEST_VM_RAND_ARRAY: [u8; 32] = [
 pub const TEST_VM_INVALID_POST: &str = "i_am_invalid_post";
 
 pub struct InvocationCtx<'invocation, 'bs> {
-    v: &'invocation VM<'bs>,
+    v: &'invocation TestVM<'bs>,
     top: TopCtx,
     msg: InternalMessage,
     allow_side_effects: RefCell<bool>,
@@ -1124,7 +1124,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
     }
 }
 
-impl Primitives for VM<'_> {
+impl Primitives for TestVM<'_> {
     // A "valid" signature has its bytes equal to the plaintext.
     // Anything else is considered invalid.
     fn verify_signature(

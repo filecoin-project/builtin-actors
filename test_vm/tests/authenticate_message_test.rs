@@ -7,7 +7,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 
 use test_vm::util::{apply_code, apply_ok, create_accounts, generate_deal_proposal};
-use test_vm::VM;
+use test_vm::TestVM;
 
 // Using a deal proposal as a serialized message, we confirm that:
 // - calls to Account::authenticate_message with valid signatures succeed
@@ -15,7 +15,7 @@ use test_vm::VM;
 #[test]
 fn account_authenticate_message() {
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(&store);
     let addr = create_accounts(&v, 1, TokenAmount::from_whole(10_000))[0];
 
     let proposal =

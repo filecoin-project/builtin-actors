@@ -15,7 +15,7 @@ use fvm_shared::sector::RegisteredPoStProof;
 use fvm_shared::METHOD_SEND;
 use test_vm::util::{apply_code, apply_ok, create_accounts, create_miner};
 use test_vm::Actor;
-use test_vm::VM;
+use test_vm::TestVM;
 
 #[cfg(test)]
 mod market_tests {
@@ -143,7 +143,7 @@ mod miner_tests {
 // 2. Send a withdraw message attempting to remove `requested` funds
 // 3. Assert correct return value and actor balance transfer
 fn assert_add_collateral_and_withdraw(
-    v: &VM,
+    v: &TestVM,
     collateral: TokenAmount,
     expected_withdrawn: TokenAmount,
     requested: TokenAmount,
@@ -219,20 +219,20 @@ fn assert_add_collateral_and_withdraw(
     assert_eq!(caller_initial_balance, c.balance);
 }
 
-fn require_actor(v: &VM, addr: Address) -> Actor {
+fn require_actor(v: &TestVM, addr: Address) -> Actor {
     v.get_actor(addr).unwrap()
 }
 
-fn market_setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Address) {
-    let v = VM::new_with_singletons(store);
+fn market_setup(store: &'_ MemoryBlockstore) -> (TestVM<'_>, Address) {
+    let v = TestVM::new_with_singletons(store);
     let initial_balance = TokenAmount::from_whole(6);
     let addrs = create_accounts(&v, 1, initial_balance);
     let caller = addrs[0];
     (v, caller)
 }
 
-fn miner_setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Address, Address, Address) {
-    let mut v = VM::new_with_singletons(store);
+fn miner_setup(store: &'_ MemoryBlockstore) -> (TestVM<'_>, Address, Address, Address) {
+    let mut v = TestVM::new_with_singletons(store);
     let initial_balance = TokenAmount::from_whole(10_000);
     let addrs = create_accounts(&v, 2, initial_balance);
     let (worker, owner) = (addrs[0], addrs[1]);

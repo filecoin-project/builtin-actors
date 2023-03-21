@@ -73,11 +73,16 @@ fn new_bls_from_rng(rng: &mut ChaCha8Rng) -> Address {
 
 const ACCOUNT_SEED: u64 = 93837778;
 
-pub fn create_accounts(v: &VM, count: u64, balance: TokenAmount) -> Vec<Address> {
+pub fn create_accounts(v: &TestVM, count: u64, balance: TokenAmount) -> Vec<Address> {
     create_accounts_seeded(v, count, balance, ACCOUNT_SEED)
 }
 
-pub fn create_accounts_seeded(v: &VM, count: u64, balance: TokenAmount, seed: u64) -> Vec<Address> {
+pub fn create_accounts_seeded(
+    v: &TestVM,
+    count: u64,
+    balance: TokenAmount,
+    seed: u64,
+) -> Vec<Address> {
     let pk_addrs = pk_addrs_from(seed, count);
     // Send funds from faucet to pk address, creating account actor
     for pk_addr in pk_addrs.clone() {
@@ -88,7 +93,7 @@ pub fn create_accounts_seeded(v: &VM, count: u64, balance: TokenAmount, seed: u6
 }
 
 pub fn apply_ok<S: Serialize>(
-    v: &VM,
+    v: &TestVM,
     from: Address,
     to: Address,
     value: TokenAmount,
@@ -99,7 +104,7 @@ pub fn apply_ok<S: Serialize>(
 }
 
 pub fn apply_code<S: Serialize>(
-    v: &VM,
+    v: &TestVM,
     from: Address,
     to: Address,
     value: TokenAmount,
@@ -112,7 +117,7 @@ pub fn apply_code<S: Serialize>(
     res.ret.map_or(RawBytes::default(), |b| RawBytes::new(b.data))
 }
 
-pub fn cron_tick(v: &VM) {
+pub fn cron_tick(v: &TestVM) {
     apply_ok(
         v,
         SYSTEM_ACTOR_ADDR,
@@ -124,7 +129,7 @@ pub fn cron_tick(v: &VM) {
 }
 
 pub fn create_miner(
-    v: &mut VM,
+    v: &mut TestVM,
     owner: Address,
     worker: Address,
     post_proof_type: RegisteredPoStProof,
@@ -157,7 +162,7 @@ pub fn create_miner(
 }
 
 pub fn miner_precommit_sector(
-    v: &VM,
+    v: &TestVM,
     worker: Address,
     miner_id: Address,
     seal_proof: RegisteredSealProof,
@@ -193,7 +198,12 @@ pub fn miner_precommit_sector(
     state.get_precommitted_sector(v.store, sector_number).unwrap().unwrap()
 }
 
-pub fn miner_prove_sector(v: &VM, worker: Address, miner_id: Address, sector_number: SectorNumber) {
+pub fn miner_prove_sector(
+    v: &TestVM,
+    worker: Address,
+    miner_id: Address,
+    sector_number: SectorNumber,
+) {
     let prove_commit_params = ProveCommitSectorParams { sector_number, proof: vec![] };
     apply_ok(
         v,
@@ -220,7 +230,7 @@ pub fn miner_prove_sector(v: &VM, worker: Address, miner_id: Address, sector_num
 
 #[allow(clippy::too_many_arguments)]
 pub fn precommit_sectors_v2(
-    v: &mut VM,
+    v: &mut TestVM,
     count: u64,
     batch_size: i64,
     worker: Address,
@@ -381,7 +391,7 @@ pub fn precommit_sectors_v2(
 
 #[allow(clippy::too_many_arguments)]
 pub fn precommit_sectors(
-    v: &mut VM,
+    v: &mut TestVM,
     count: u64,
     batch_size: i64,
     worker: Address,
@@ -406,7 +416,7 @@ pub fn precommit_sectors(
 }
 
 pub fn prove_commit_sectors(
-    v: &mut VM,
+    v: &mut TestVM,
     worker: Address,
     maddr: Address,
     precommits: Vec<SectorPreCommitOnChainInfo>,
@@ -470,7 +480,7 @@ pub fn prove_commit_sectors(
 
 #[allow(clippy::too_many_arguments)]
 pub fn miner_extend_sector_expiration2(
-    v: &VM,
+    v: &TestVM,
     worker: Address,
     miner_id: Address,
     deadline: u64,
@@ -546,24 +556,28 @@ pub fn miner_extend_sector_expiration2(
     .matches(v.take_invocations().last().unwrap());
 }
 
-pub fn advance_by_deadline_to_epoch(v: VM, maddr: Address, e: ChainEpoch) -> (VM, DeadlineInfo) {
+pub fn advance_by_deadline_to_epoch(
+    v: TestVM,
+    maddr: Address,
+    e: ChainEpoch,
+) -> (TestVM, DeadlineInfo) {
     // keep advancing until the epoch of interest is within the deadline
     // if e is dline.last() == dline.close -1 cron is not run
     let (v, dline_info) = advance_by_deadline(v, maddr, |dline_info| dline_info.close < e);
     (v.with_epoch(e), dline_info)
 }
 
-pub fn advance_by_deadline_to_index(v: VM, maddr: Address, i: u64) -> (VM, DeadlineInfo) {
+pub fn advance_by_deadline_to_index(v: TestVM, maddr: Address, i: u64) -> (TestVM, DeadlineInfo) {
     advance_by_deadline(v, maddr, |dline_info| dline_info.index != i)
 }
 
 pub fn advance_by_deadline_to_epoch_while_proving(
-    mut v: VM,
+    mut v: TestVM,
     maddr: Address,
     worker: Address,
     s: SectorNumber,
     e: ChainEpoch,
-) -> VM {
+) -> TestVM {
     let mut dline_info;
     let (d, p_idx) = sector_deadline(&v, maddr, s);
     loop {
@@ -586,17 +600,17 @@ pub fn advance_by_deadline_to_epoch_while_proving(
 }
 
 pub fn advance_to_proving_deadline(
-    v: VM,
+    v: TestVM,
     maddr: Address,
     s: SectorNumber,
-) -> (DeadlineInfo, u64, VM) {
+) -> (DeadlineInfo, u64, TestVM) {
     let (d, p) = sector_deadline(&v, maddr, s);
     let (v, dline_info) = advance_by_deadline_to_index(v, maddr, d);
     let v = v.with_epoch(dline_info.open);
     (dline_info, p, v)
 }
 
-fn advance_by_deadline<F>(mut v: VM, maddr: Address, more: F) -> (VM, DeadlineInfo)
+fn advance_by_deadline<F>(mut v: TestVM, maddr: Address, more: F) -> (TestVM, DeadlineInfo)
 where
     F: Fn(DeadlineInfo) -> bool,
 {
@@ -613,7 +627,7 @@ where
     }
 }
 
-pub fn miner_dline_info(v: &VM, m: Address) -> DeadlineInfo {
+pub fn miner_dline_info(v: &TestVM, m: Address) -> DeadlineInfo {
     let st = v.get_state::<MinerState>(m).unwrap();
     new_deadline_info_from_offset_and_epoch(
         &Policy::default(),
@@ -622,18 +636,24 @@ pub fn miner_dline_info(v: &VM, m: Address) -> DeadlineInfo {
     )
 }
 
-pub fn sector_deadline(v: &VM, m: Address, s: SectorNumber) -> (u64, u64) {
+pub fn sector_deadline(v: &TestVM, m: Address, s: SectorNumber) -> (u64, u64) {
     let st = v.get_state::<MinerState>(m).unwrap();
     st.find_sector(&Policy::default(), v.store, s).unwrap()
 }
 
-pub fn check_sector_active(v: &VM, m: Address, s: SectorNumber) -> bool {
+pub fn check_sector_active(v: &TestVM, m: Address, s: SectorNumber) -> bool {
     let (d_idx, p_idx) = sector_deadline(v, m, s);
     let st = v.get_state::<MinerState>(m).unwrap();
     st.check_sector_active(&Policy::default(), v.store, d_idx, p_idx, s, true).unwrap()
 }
 
-pub fn check_sector_faulty(v: &VM, m: Address, d_idx: u64, p_idx: u64, s: SectorNumber) -> bool {
+pub fn check_sector_faulty(
+    v: &TestVM,
+    m: Address,
+    d_idx: u64,
+    p_idx: u64,
+    s: SectorNumber,
+) -> bool {
     let st = v.get_state::<MinerState>(m).unwrap();
     let deadlines = st.load_deadlines(v.store).unwrap();
     let deadline = deadlines.load_deadline(&Policy::default(), v.store, d_idx).unwrap();
@@ -641,25 +661,25 @@ pub fn check_sector_faulty(v: &VM, m: Address, d_idx: u64, p_idx: u64, s: Sector
     partition.faults.get(s)
 }
 
-pub fn deadline_state(v: &VM, m: Address, d_idx: u64) -> Deadline {
+pub fn deadline_state(v: &TestVM, m: Address, d_idx: u64) -> Deadline {
     let st = v.get_state::<MinerState>(m).unwrap();
     let deadlines = st.load_deadlines(v.store).unwrap();
     deadlines.load_deadline(&Policy::default(), v.store, d_idx).unwrap()
 }
 
-pub fn sector_info(v: &VM, m: Address, s: SectorNumber) -> SectorOnChainInfo {
+pub fn sector_info(v: &TestVM, m: Address, s: SectorNumber) -> SectorOnChainInfo {
     let st = v.get_state::<MinerState>(m).unwrap();
     st.get_sector(v.store, s).unwrap().unwrap()
 }
 
-pub fn miner_power(v: &VM, m: Address) -> PowerPair {
+pub fn miner_power(v: &TestVM, m: Address) -> PowerPair {
     let st = v.get_state::<PowerState>(STORAGE_POWER_ACTOR_ADDR).unwrap();
     let claim = st.get_claim(v.store, &m).unwrap().unwrap();
     PowerPair::new(claim.raw_byte_power, claim.quality_adj_power)
 }
 
 pub fn declare_recovery(
-    v: &VM,
+    v: &TestVM,
     worker: Address,
     maddr: Address,
     deadline: u64,
@@ -685,7 +705,7 @@ pub fn declare_recovery(
 }
 
 pub fn submit_windowed_post(
-    v: &VM,
+    v: &TestVM,
     worker: Address,
     maddr: Address,
     dline_info: DeadlineInfo,
@@ -739,7 +759,7 @@ pub fn submit_windowed_post(
 }
 
 pub fn change_beneficiary(
-    v: &VM,
+    v: &TestVM,
     from: Address,
     maddr: Address,
     beneficiary_change_proposal: &ChangeBeneficiaryParams,
@@ -754,7 +774,7 @@ pub fn change_beneficiary(
     );
 }
 
-pub fn get_beneficiary(v: &VM, from: Address, m_addr: Address) -> GetBeneficiaryReturn {
+pub fn get_beneficiary(v: &TestVM, from: Address, m_addr: Address) -> GetBeneficiaryReturn {
     apply_ok(
         v,
         from,
@@ -767,7 +787,7 @@ pub fn get_beneficiary(v: &VM, from: Address, m_addr: Address) -> GetBeneficiary
     .unwrap()
 }
 
-pub fn change_owner_address(v: &VM, from: Address, m_addr: Address, new_miner_addr: Address) {
+pub fn change_owner_address(v: &TestVM, from: Address, m_addr: Address, new_miner_addr: Address) {
     apply_ok(
         v,
         from,
@@ -779,7 +799,7 @@ pub fn change_owner_address(v: &VM, from: Address, m_addr: Address, new_miner_ad
 }
 
 pub fn withdraw_balance(
-    v: &VM,
+    v: &TestVM,
     from: Address,
     m_addr: Address,
     to_withdraw_amount: TokenAmount,
@@ -818,7 +838,7 @@ pub fn withdraw_balance(
 }
 
 pub fn submit_invalid_post(
-    v: &VM,
+    v: &TestVM,
     worker: Address,
     maddr: Address,
     dline_info: DeadlineInfo,
@@ -844,7 +864,7 @@ pub fn submit_invalid_post(
     );
 }
 
-pub fn verifreg_add_verifier(v: &VM, verifier: Address, data_cap: StoragePower) {
+pub fn verifreg_add_verifier(v: &TestVM, verifier: Address, data_cap: StoragePower) {
     let add_verifier_params = VerifierParams { address: verifier, allowance: data_cap };
     // root address is msig, send proposal from root key
     let proposal = ProposeParams {
@@ -883,7 +903,12 @@ pub fn verifreg_add_verifier(v: &VM, verifier: Address, data_cap: StoragePower) 
     .matches(v.take_invocations().last().unwrap());
 }
 
-pub fn verifreg_add_client(v: &VM, verifier: Address, client: Address, allowance: StoragePower) {
+pub fn verifreg_add_client(
+    v: &TestVM,
+    verifier: Address,
+    client: Address,
+    allowance: StoragePower,
+) {
     let add_client_params =
         AddVerifiedClientParams { address: client, allowance: allowance.clone() };
     apply_ok(
@@ -918,7 +943,7 @@ pub fn verifreg_add_client(v: &VM, verifier: Address, client: Address, allowance
 }
 
 pub fn verifreg_extend_claim_terms(
-    v: &VM,
+    v: &TestVM,
     client: Address,
     provider: Address,
     claim: ClaimID,
@@ -942,7 +967,7 @@ pub fn verifreg_extend_claim_terms(
 }
 
 pub fn verifreg_remove_expired_allocations(
-    v: &VM,
+    v: &TestVM,
     caller: Address,
     client: Address,
     ids: Vec<AllocationID>,
@@ -980,7 +1005,7 @@ pub fn verifreg_remove_expired_allocations(
     .matches(v.take_invocations().last().unwrap());
 }
 
-pub fn datacap_get_balance(v: &VM, address: Address) -> TokenAmount {
+pub fn datacap_get_balance(v: &TestVM, address: Address) -> TokenAmount {
     let ret = apply_ok(
         v,
         address,
@@ -993,7 +1018,7 @@ pub fn datacap_get_balance(v: &VM, address: Address) -> TokenAmount {
 }
 
 pub fn datacap_extend_claim(
-    v: &VM,
+    v: &TestVM,
     client: Address,
     provider: Address,
     claim: ClaimID,
@@ -1066,7 +1091,7 @@ pub fn datacap_extend_claim(
     .matches(v.take_invocations().last().unwrap());
 }
 
-pub fn market_add_balance(v: &VM, sender: Address, beneficiary: Address, amount: TokenAmount) {
+pub fn market_add_balance(v: &TestVM, sender: Address, beneficiary: Address, amount: TokenAmount) {
     apply_ok(
         v,
         sender,
@@ -1079,7 +1104,7 @@ pub fn market_add_balance(v: &VM, sender: Address, beneficiary: Address, amount:
 
 #[allow(clippy::too_many_arguments)]
 pub fn market_publish_deal(
-    v: &VM,
+    v: &TestVM,
     worker: Address,
     deal_client: Address,
     miner_id: Address,
