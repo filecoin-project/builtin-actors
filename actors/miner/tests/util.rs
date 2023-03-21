@@ -2385,6 +2385,7 @@ impl ActorHarness {
     ) -> Result<Option<IpldBlock>, ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
+        self.expect_query_network_info(rt);
 
         let mut qa_delta = BigInt::zero();
         for extension in params.extensions.iter_mut() {
@@ -2469,6 +2470,7 @@ impl ActorHarness {
             }
         }
 
+        self.expect_query_network_info(rt);
         // Handle QA power updates
         for extension in params.extensions.iter_mut() {
             for sector_nr in extension.sectors.validate().unwrap().iter() {
