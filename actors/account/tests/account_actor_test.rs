@@ -160,7 +160,7 @@ fn authenticate_message() {
 }
 
 #[test]
-fn accept_arbitrary() {
+fn test_fallback() {
     let mut rt = MockRuntime { receiver: Address::new_id(100), ..Default::default() };
     rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
 

@@ -2413,7 +2413,7 @@ fn to_ipld_block(p: RawBytes) -> Option<IpldBlock> {
 }
 
 #[test]
-fn accept_arbitrary() {
+fn test_fallback() {
     let msig = Address::new_id(1000);
     let anne = Address::new_id(101);
     let bob = Address::new_id(102);
