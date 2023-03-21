@@ -1437,12 +1437,9 @@ impl ActorCode for Actor {
     type Methods = Method;
     actor_dispatch! {
         Constructor => constructor,
-        AddBalance => add_balance,
-        AddBalanceExported => add_balance,
-        WithdrawBalance => withdraw_balance,
-        WithdrawBalanceExported => withdraw_balance,
-        PublishStorageDeals => publish_storage_deals,
-        PublishStorageDealsExported => publish_storage_deals,
+        AddBalance|AddBalanceExported => add_balance,
+        WithdrawBalance|WithdrawBalanceExported => withdraw_balance,
+        PublishStorageDeals|PublishStorageDealsExported => publish_storage_deals,
         VerifyDealsForActivation => verify_deals_for_activation,
         ActivateDeals => activate_deals,
         OnMinerSectorsTerminate => on_miner_sectors_terminate,
