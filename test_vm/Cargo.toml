@@ -54,6 +54,9 @@ thiserror = "1.0.30"
 libsecp256k1 = { version = "0.7.1"}
 fil_actors_evm_shared = { version = "10.0.0", path = "../actors/evm/shared" }
 
+fvm-workbench-vm = { version = "0.1.0", git = "http://github.com/helix-onchain/fvm-workbench", branch = "main"}
+fvm-workbench-api = { version = "0.1.0", git = "http://github.com/helix-onchain/fvm-workbench", branch = "main"}
+
 [dev-dependencies]
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
 multihash = { version = "0.16.1", default-features = false }

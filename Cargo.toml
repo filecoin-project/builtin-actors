@@ -96,6 +96,11 @@ members = [
 #frc42_dispatch = { path = "../../filecoin/frc42_dispatch"}
 #frc46_token = { path = "../../filecoin/frc46_token"}
 
+
+[patch."http://github.com/helix-onchain/fvm-workbench"]
+fvm-workbench-vm = { path = "../../helix-onchain/fvm-workbench/vm" }
+fvm-workbench-api = { path = "../../helix-onchain/fvm-workbench/api" }
+
 [profile.wasm]
 inherits = "release"
 # This needs to be unwind, not abort, so that we can handle panics within our panic hook.
