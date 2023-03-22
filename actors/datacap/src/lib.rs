@@ -88,7 +88,7 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for DataCap Actor
-    pub fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
+    pub fn constructor(rt: &impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
         let governor = params.governor;
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
@@ -101,22 +101,22 @@ impl Actor {
         Ok(())
     }
 
-    pub fn name(rt: &mut impl Runtime) -> Result<NameReturn, ActorError> {
+    pub fn name(rt: &impl Runtime) -> Result<NameReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         Ok(NameReturn { name: "DataCap".to_string() })
     }
 
-    pub fn symbol(rt: &mut impl Runtime) -> Result<SymbolReturn, ActorError> {
+    pub fn symbol(rt: &impl Runtime) -> Result<SymbolReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         Ok(SymbolReturn { symbol: "DCAP".to_string() })
     }
 
-    pub fn granularity(rt: &mut impl Runtime) -> Result<GranularityReturn, ActorError> {
+    pub fn granularity(rt: &impl Runtime) -> Result<GranularityReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         Ok(GranularityReturn { granularity: DATACAP_GRANULARITY })
     }
 
-    pub fn total_supply(rt: &mut impl Runtime) -> Result<TotalSupplyReturn, ActorError> {
+    pub fn total_supply(rt: &impl Runtime) -> Result<TotalSupplyReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let mut st: State = rt.state()?;
         let msg = SyscallProvider { rt };
@@ -124,10 +124,7 @@ impl Actor {
         Ok(TotalSupplyReturn { supply: token.total_supply() })
     }
 
-    pub fn balance(
-        rt: &mut impl Runtime,
-        params: BalanceParams,
-    ) -> Result<BalanceReturn, ActorError> {
+    pub fn balance(rt: &impl Runtime, params: BalanceParams) -> Result<BalanceReturn, ActorError> {
         // NOTE: mutability and method caller here are awkward for a read-only call
         rt.validate_immediate_caller_accept_any()?;
         let mut st: State = rt.state()?;
@@ -137,7 +134,7 @@ impl Actor {
     }
 
     pub fn allowance(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: GetAllowanceParams,
     ) -> Result<GetAllowanceReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -154,7 +151,7 @@ impl Actor {
     /// Simultaneously sets the allowance for any specified operators to effectively infinite.
     /// Only the governor can call this method.
     /// This method is not part of the fungible token standard.
-    pub fn mint(rt: &mut impl Runtime, params: MintParams) -> Result<MintReturn, ActorError> {
+    pub fn mint(rt: &impl Runtime, params: MintParams) -> Result<MintReturn, ActorError> {
         let mut hook = rt
             .transaction(|st: &mut State, rt| {
                 // Only the governor can mint datacap tokens.
@@ -195,7 +192,7 @@ impl Actor {
     /// Only the governor can call this method.
     /// This method is not part of the fungible token standard, and is named distinctly from
     /// "burn" to reflect that distinction.
-    pub fn destroy(rt: &mut impl Runtime, params: DestroyParams) -> Result<BurnReturn, ActorError> {
+    pub fn destroy(rt: &impl Runtime, params: DestroyParams) -> Result<BurnReturn, ActorError> {
         rt.transaction(|st: &mut State, rt| {
             // Only the governor can destroy datacap tokens on behalf of a holder.
             rt.validate_immediate_caller_is(std::iter::once(&st.governor))?;
@@ -213,7 +210,7 @@ impl Actor {
     /// Data cap tokens are not generally transferable.
     /// Succeeds if the to or from address is the governor, otherwise always fails.
     pub fn transfer(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: TransferParams,
     ) -> Result<TransferReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -262,7 +259,7 @@ impl Actor {
     /// Data cap tokens are not generally transferable between addresses.
     /// Succeeds if the to address is the governor, otherwise always fails.
     pub fn transfer_from(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: TransferFromParams,
     ) -> Result<TransferFromReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -309,7 +306,7 @@ impl Actor {
     }
 
     pub fn increase_allowance(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: IncreaseAllowanceParams,
     ) -> Result<IncreaseAllowanceReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -328,7 +325,7 @@ impl Actor {
     }
 
     pub fn decrease_allowance(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: DecreaseAllowanceParams,
     ) -> Result<DecreaseAllowanceReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -347,7 +344,7 @@ impl Actor {
     }
 
     pub fn revoke_allowance(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: RevokeAllowanceParams,
     ) -> Result<RevokeAllowanceReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -365,7 +362,7 @@ impl Actor {
         .context("state transaction failed")
     }
 
-    pub fn burn(rt: &mut impl Runtime, params: BurnParams) -> Result<BurnReturn, ActorError> {
+    pub fn burn(rt: &impl Runtime, params: BurnParams) -> Result<BurnReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let owner = &rt.message().caller();
 
@@ -378,7 +375,7 @@ impl Actor {
     }
 
     pub fn burn_from(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: BurnFromParams,
     ) -> Result<BurnFromReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -397,7 +394,7 @@ impl Actor {
 /// Implementation of the token library's messenger trait in terms of the built-in actors'
 /// runtime library.
 struct SyscallProvider<'a, RT> {
-    rt: &'a mut RT,
+    rt: &'a RT,
 }
 
 impl<'a, RT> Syscalls for &SyscallProvider<'a, RT>

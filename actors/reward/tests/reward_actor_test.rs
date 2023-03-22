@@ -1,6 +1,8 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use std::cell::RefCell;
+
 use fil_actor_reward::{
     ext, Actor as RewardActor, AwardBlockRewardParams, Method, State, ThisEpochRewardReturn,
     BASELINE_INITIAL_VALUE, PENALTY_MULTIPLIER,
@@ -86,7 +88,7 @@ mod test_award_block_reward {
 
     #[test]
     fn rejects_gas_reward_exceeding_balance() {
-        let mut rt = construct_and_verify(&StoragePower::default());
+        let rt = construct_and_verify(&StoragePower::default());
 
         rt.set_balance(TokenAmount::from_atto(9));
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
@@ -105,7 +107,7 @@ mod test_award_block_reward {
 
     #[test]
     fn rejects_negative_penalty_or_reward() {
-        let mut rt = construct_and_verify(&StoragePower::default());
+        let rt = construct_and_verify(&StoragePower::default());
         rt.set_balance(TokenAmount::from_whole(1));
 
         let reward_penalty_pairs = [(-1, 0), (0, -1)];
@@ -129,7 +131,7 @@ mod test_award_block_reward {
 
     #[test]
     fn rejects_zero_wincount() {
-        let mut rt = construct_and_verify(&StoragePower::default());
+        let rt = construct_and_verify(&StoragePower::default());
         rt.set_balance(TokenAmount::from_whole(1));
 
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
@@ -148,7 +150,7 @@ mod test_award_block_reward {
 
     #[test]
     fn pays_reward_and_tracks_penalty() {
-        let mut rt = construct_and_verify(&StoragePower::default());
+        let rt = construct_and_verify(&StoragePower::default());
         rt.set_balance(TokenAmount::from_whole(1_000_000_000));
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         let penalty: TokenAmount = TokenAmount::from_atto(100);
@@ -183,7 +185,7 @@ mod test_award_block_reward {
 
     #[test]
     fn pays_out_current_balance_when_reward_exceeds_total_balance() {
-        let mut rt = construct_and_verify(&StoragePower::from(1));
+        let rt = construct_and_verify(&StoragePower::from(1));
 
         // Total reward is a huge number, upon writing ~1e18, so 300 should be way less
         let small_reward = TokenAmount::from_atto(300);
@@ -219,7 +221,7 @@ mod test_award_block_reward {
 
     #[test]
     fn total_mined_tracks_correctly() {
-        let mut rt = construct_and_verify(&StoragePower::from(1));
+        let rt = construct_and_verify(&StoragePower::from(1));
         let mut state: State = rt.get_state();
 
         assert_eq!(TokenAmount::zero(), state.total_storage_power_reward);
@@ -232,7 +234,7 @@ mod test_award_block_reward {
 
         for i in &[1000, 1000, 1000, 500] {
             assert!(award_block_reward(
-                &mut rt,
+                &rt,
                 *WINNER,
                 TokenAmount::zero(),
                 TokenAmount::zero(),
@@ -248,7 +250,7 @@ mod test_award_block_reward {
 
     #[test]
     fn funds_are_sent_to_burnt_funds_actor_if_sending_locked_funds_to_miner_fails() {
-        let mut rt = construct_and_verify(&StoragePower::from(1));
+        let rt = construct_and_verify(&StoragePower::from(1));
         let mut state: State = rt.get_state();
 
         assert_eq!(TokenAmount::zero(), state.total_storage_power_reward);
@@ -301,11 +303,11 @@ mod test_this_epoch_reward {
 
     #[test]
     fn successfully_fetch_reward_for_this_epoch() {
-        let mut rt = construct_and_verify(&StoragePower::from(1));
+        let rt = construct_and_verify(&StoragePower::from(1));
 
         let state: State = rt.get_state();
 
-        let resp: ThisEpochRewardReturn = this_epoch_reward(&mut rt);
+        let resp: ThisEpochRewardReturn = this_epoch_reward(&rt);
 
         assert_eq!(state.this_epoch_baseline_power, resp.this_epoch_baseline_power);
         assert_eq!(state.this_epoch_reward_smoothed, resp.this_epoch_reward_smoothed);
@@ -315,19 +317,19 @@ mod test_this_epoch_reward {
 #[test]
 fn test_successive_kpi_updates() {
     let power = StoragePower::from_i128(1 << 50).unwrap();
-    let mut rt = construct_and_verify(&power);
+    let rt = construct_and_verify(&power);
 
     for i in &[1, 2, 3] {
-        rt.epoch = ChainEpoch::from(*i);
-        update_network_kpi(&mut rt, &power);
+        rt.epoch.replace(ChainEpoch::from(*i));
+        update_network_kpi(&rt, &power);
     }
 }
 
 fn construct_and_verify(curr_power: &StoragePower) -> MockRuntime {
-    let mut rt = MockRuntime {
+    let rt = MockRuntime {
         receiver: REWARD_ACTOR_ADDR,
-        caller: SYSTEM_ACTOR_ADDR,
-        caller_type: *SYSTEM_ACTOR_CODE_ID,
+        caller: RefCell::new(SYSTEM_ACTOR_ADDR),
+        caller_type: RefCell::new(*SYSTEM_ACTOR_CODE_ID),
         ..Default::default()
     };
     rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
@@ -345,7 +347,7 @@ fn construct_and_verify(curr_power: &StoragePower) -> MockRuntime {
 }
 
 fn award_block_reward(
-    rt: &mut MockRuntime,
+    rt: &MockRuntime,
     miner: Address,
     penalty: TokenAmount,
     gas_reward: TokenAmount,
@@ -392,7 +394,7 @@ fn award_block_reward(
     Ok(serialized_bytes)
 }
 
-fn this_epoch_reward(rt: &mut MockRuntime) -> ThisEpochRewardReturn {
+fn this_epoch_reward(rt: &MockRuntime) -> ThisEpochRewardReturn {
     rt.expect_validate_caller_any();
     let serialized_result = rt.call::<RewardActor>(Method::ThisEpochReward as u64, None).unwrap();
     let resp: ThisEpochRewardReturn = serialized_result.unwrap().deserialize().unwrap();
@@ -400,7 +402,7 @@ fn this_epoch_reward(rt: &mut MockRuntime) -> ThisEpochRewardReturn {
     resp
 }
 
-fn update_network_kpi(rt: &mut MockRuntime, curr_raw_power: &StoragePower) {
+fn update_network_kpi(rt: &MockRuntime, curr_raw_power: &StoragePower) {
     rt.set_caller(*POWER_ACTOR_CODE_ID, STORAGE_POWER_ACTOR_ADDR);
     rt.expect_validate_caller_addr(vec![STORAGE_POWER_ACTOR_ADDR]);
 

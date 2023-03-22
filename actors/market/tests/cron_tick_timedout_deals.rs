@@ -28,17 +28,17 @@ const END_EPOCH: ChainEpoch = START_EPOCH + 200 * EPOCHS_IN_DAY;
 
 #[test]
 fn timed_out_deal_is_slashed_and_deleted() {
-    let mut rt = setup();
+    let rt = setup();
     let deal_id = generate_and_publish_deal(
-        &mut rt,
+        &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         START_EPOCH,
         END_EPOCH,
     );
-    let deal_proposal = get_deal_proposal(&mut rt, deal_id);
+    let deal_proposal = get_deal_proposal(&rt, deal_id);
 
-    let c_escrow = get_balance(&mut rt, &CLIENT_ADDR).balance;
+    let c_escrow = get_balance(&rt, &CLIENT_ADDR).balance;
 
     // do a cron tick for it -> should time out and get slashed
     rt.set_epoch(process_epoch(START_EPOCH, deal_id));
@@ -50,32 +50,32 @@ fn timed_out_deal_is_slashed_and_deleted() {
         None,
         ExitCode::OK,
     );
-    cron_tick(&mut rt);
+    cron_tick(&rt);
 
-    let client_acct = get_balance(&mut rt, &CLIENT_ADDR);
+    let client_acct = get_balance(&rt, &CLIENT_ADDR);
     assert_eq!(c_escrow, client_acct.balance);
     assert!(client_acct.locked.is_zero());
-    assert_account_zero(&mut rt, PROVIDER_ADDR);
-    assert_deal_deleted(&mut rt, deal_id, deal_proposal);
+    assert_account_zero(&rt, PROVIDER_ADDR);
+    assert_deal_deleted(&rt, deal_id, deal_proposal);
     check_state(&rt);
 }
 
 #[test]
 fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_longer_be_pending() {
     const START_EPOCH: ChainEpoch = 0;
-    let mut rt = setup();
+    let rt = setup();
     let deal_id = generate_and_publish_deal(
-        &mut rt,
+        &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         START_EPOCH,
         END_EPOCH,
     );
-    let deal_proposal = get_deal_proposal(&mut rt, deal_id);
+    let deal_proposal = get_deal_proposal(&rt, deal_id);
 
     // publishing will fail as it will be in pending
     let deal_proposal2 = generate_deal_and_add_funds(
-        &mut rt,
+        &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         START_EPOCH,
@@ -87,8 +87,8 @@ fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_l
         ClientDealProposal { proposal: deal_proposal2.clone(), client_signature: sig };
     let params = PublishStorageDealsParams { deals: vec![client_deal_proposal] };
     rt.expect_validate_caller_any();
-    expect_provider_is_control_address(&mut rt, PROVIDER_ADDR, WORKER_ADDR, true);
-    expect_query_network_info(&mut rt);
+    expect_provider_is_control_address(&rt, PROVIDER_ADDR, WORKER_ADDR, true);
+    expect_query_network_info(&rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     let auth_param = IpldBlock::serialize_cbor(&AuthenticateMessageParams {
         signature: buf.to_vec(),
@@ -127,25 +127,19 @@ fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_l
         None,
         ExitCode::OK,
     );
-    cron_tick(&mut rt);
-    assert_deal_deleted(&mut rt, deal_id, deal_proposal);
+    cron_tick(&rt);
+    assert_deal_deleted(&rt, deal_id, deal_proposal);
 
     // now publishing should work
-    generate_and_publish_deal(
-        &mut rt,
-        CLIENT_ADDR,
-        &MinerAddresses::default(),
-        START_EPOCH,
-        END_EPOCH,
-    );
+    generate_and_publish_deal(&rt, CLIENT_ADDR, &MinerAddresses::default(), START_EPOCH, END_EPOCH);
     check_state(&rt);
 }
 
 #[test]
 fn timed_out_and_verified_deals_are_slashed_deleted() {
-    let mut rt = setup();
+    let rt = setup();
     let mut deal1 = generate_deal_and_add_funds(
-        &mut rt,
+        &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         START_EPOCH,
@@ -153,7 +147,7 @@ fn timed_out_and_verified_deals_are_slashed_deleted() {
     );
     deal1.verified_deal = true;
     let mut deal2 = generate_deal_and_add_funds(
-        &mut rt,
+        &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         START_EPOCH,
@@ -163,7 +157,7 @@ fn timed_out_and_verified_deals_are_slashed_deleted() {
 
     // deal3 is NOT verified
     let deal3 = generate_deal_and_add_funds(
-        &mut rt,
+        &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         START_EPOCH,
@@ -173,7 +167,7 @@ fn timed_out_and_verified_deals_are_slashed_deleted() {
     //  publishing verified deals
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     let deal_ids = publish_deals(
-        &mut rt,
+        &rt,
         &MinerAddresses::default(),
         &[deal1.clone(), deal2.clone(), deal3.clone()],
         TokenAmount::from_whole(deal1.piece_size.0 * 10),
@@ -194,14 +188,14 @@ fn timed_out_and_verified_deals_are_slashed_deleted() {
         None,
         ExitCode::OK,
     );
-    cron_tick(&mut rt);
+    cron_tick(&rt);
 
     // a second cron tick for the same epoch should not change anything
-    cron_tick_no_change(&mut rt, CLIENT_ADDR, PROVIDER_ADDR);
+    cron_tick_no_change(&rt, CLIENT_ADDR, PROVIDER_ADDR);
 
-    assert_account_zero(&mut rt, PROVIDER_ADDR);
-    assert_deal_deleted(&mut rt, deal_ids[0], deal1);
-    assert_deal_deleted(&mut rt, deal_ids[1], deal2);
-    assert_deal_deleted(&mut rt, deal_ids[2], deal3);
+    assert_account_zero(&rt, PROVIDER_ADDR);
+    assert_deal_deleted(&rt, deal_ids[0], deal1);
+    assert_deal_deleted(&rt, deal_ids[1], deal2);
+    assert_deal_deleted(&rt, deal_ids[2], deal3);
     check_state(&rt);
 }

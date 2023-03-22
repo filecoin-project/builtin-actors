@@ -15,38 +15,35 @@ const PERIOD_OFFSET: ChainEpoch = 100;
 
 fn setup() -> (ActorHarness, MockRuntime) {
     let h = ActorHarness::new(PERIOD_OFFSET);
-    let mut rt = h.new_runtime();
+    let rt = h.new_runtime();
     rt.set_balance(BIG_BALANCE.clone());
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
     (h, rt)
 }
 
 #[test]
 fn invalid_report_rejected() {
-    let (h, mut rt) = setup();
+    let (h, rt) = setup();
 
     rt.set_epoch(1);
 
     let test_addr = Address::new_id(1234);
-    expect_abort(
-        ExitCode::USR_ILLEGAL_ARGUMENT,
-        h.report_consensus_fault(&mut rt, test_addr, None),
-    );
+    expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.report_consensus_fault(&rt, test_addr, None));
     rt.reset();
     check_state_invariants(rt.policy(), &h.get_state(&rt), rt.store(), &rt.get_balance());
 }
 
 #[test]
 fn mistargeted_report_rejected() {
-    let (h, mut rt) = setup();
+    let (h, rt) = setup();
     rt.set_epoch(1);
 
     let test_addr = Address::new_id(1234);
-    let epoch = rt.epoch;
+    let epoch = *rt.epoch.borrow();
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         h.report_consensus_fault(
-            &mut rt,
+            &rt,
             test_addr,
             Some(ConsensusFault {
                 target: Address::new_id(1234), // Not receiver
@@ -61,14 +58,14 @@ fn mistargeted_report_rejected() {
 
 #[test]
 fn report_consensus_fault_pays_reward_and_charges_fee() {
-    let (h, mut rt) = setup();
+    let (h, rt) = setup();
     rt.set_epoch(1);
 
     let test_addr = Address::new_id(1234);
-    let epoch = rt.epoch;
+    let epoch = *rt.epoch.borrow();
     let receiver = rt.receiver;
     h.report_consensus_fault(
-        &mut rt,
+        &rt,
         test_addr,
         Some(ConsensusFault {
             target: receiver,
@@ -82,7 +79,7 @@ fn report_consensus_fault_pays_reward_and_charges_fee() {
 
 #[test]
 fn report_consensus_fault_updates_consensus_fault_reported_field() {
-    let (h, mut rt) = setup();
+    let (h, rt) = setup();
     rt.set_epoch(1);
 
     let test_addr = Address::new_id(1234);
@@ -95,7 +92,7 @@ fn report_consensus_fault_updates_consensus_fault_reported_field() {
     rt.set_epoch(report_epoch);
 
     h.report_consensus_fault(
-        &mut rt,
+        &rt,
         test_addr,
         Some(ConsensusFault {
             target: receiver,
@@ -114,7 +111,7 @@ fn report_consensus_fault_updates_consensus_fault_reported_field() {
 
 #[test]
 fn double_report_of_consensus_fault_fails() {
-    let (h, mut rt) = setup();
+    let (h, rt) = setup();
     rt.set_epoch(1);
 
     let test_addr = Address::new_id(1234);
@@ -126,9 +123,9 @@ fn double_report_of_consensus_fault_fails() {
     let report_epoch = 333;
     rt.set_epoch(report_epoch);
 
-    let fault1 = rt.epoch - 1;
+    let fault1 = *rt.epoch.borrow() - 1;
     h.report_consensus_fault(
-        &mut rt,
+        &rt,
         test_addr,
         Some(ConsensusFault {
             target: receiver,
@@ -148,7 +145,7 @@ fn double_report_of_consensus_fault_fails() {
         ExitCode::USR_FORBIDDEN,
         "too old",
         h.report_consensus_fault(
-            &mut rt,
+            &rt,
             test_addr,
             Some(ConsensusFault {
                 target: receiver,
@@ -166,7 +163,7 @@ fn double_report_of_consensus_fault_fails() {
         ExitCode::USR_FORBIDDEN,
         "too old",
         h.report_consensus_fault(
-            &mut rt,
+            &rt,
             test_addr,
             Some(ConsensusFault {
                 target: receiver,
@@ -181,7 +178,7 @@ fn double_report_of_consensus_fault_fails() {
     rt.set_epoch(end_info.consensus_fault_elapsed + 1);
     let fault3 = end_info.consensus_fault_elapsed;
     h.report_consensus_fault(
-        &mut rt,
+        &rt,
         test_addr,
         Some(ConsensusFault {
             target: receiver,
@@ -192,7 +189,7 @@ fn double_report_of_consensus_fault_fails() {
     .unwrap();
     let end_info = h.get_info(&rt);
     assert_eq!(
-        rt.epoch + rt.policy.consensus_fault_ineligibility_duration,
+        *rt.epoch.borrow() + rt.policy.consensus_fault_ineligibility_duration,
         end_info.consensus_fault_elapsed
     );
 
@@ -202,7 +199,7 @@ fn double_report_of_consensus_fault_fails() {
         ExitCode::USR_FORBIDDEN,
         "too old",
         h.report_consensus_fault(
-            &mut rt,
+            &rt,
             test_addr,
             Some(ConsensusFault {
                 target: receiver,

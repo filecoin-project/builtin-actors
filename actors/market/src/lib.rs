@@ -99,7 +99,7 @@ pub enum Method {
 pub struct Actor;
 
 impl Actor {
-    pub fn constructor(rt: &mut impl Runtime) -> Result<(), ActorError> {
+    pub fn constructor(rt: &impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         let st = State::new(rt.store())?;
@@ -108,7 +108,7 @@ impl Actor {
     }
 
     /// Deposits the received value into the balance held in escrow.
-    fn add_balance(rt: &mut impl Runtime, params: AddBalanceParams) -> Result<(), ActorError> {
+    fn add_balance(rt: &impl Runtime, params: AddBalanceParams) -> Result<(), ActorError> {
         let msg_value = rt.message().value_received();
 
         if msg_value <= TokenAmount::zero() {
@@ -134,7 +134,7 @@ impl Actor {
     /// Attempt to withdraw the specified amount from the balance held in escrow.
     /// If less than the specified amount is available, yields the entire available balance.
     fn withdraw_balance(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: WithdrawBalanceParams,
     ) -> Result<WithdrawBalanceReturn, ActorError> {
         if params.amount < TokenAmount::zero() {
@@ -164,7 +164,7 @@ impl Actor {
 
     /// Returns the escrow balance and locked amount for an address.
     fn get_balance(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: GetBalanceParams,
     ) -> Result<GetBalanceReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -192,7 +192,7 @@ impl Actor {
 
     /// Publish a new set of storage deals (not yet included in a sector).
     fn publish_storage_deals(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: PublishStorageDealsParams,
     ) -> Result<PublishStorageDealsReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -488,7 +488,7 @@ impl Actor {
     /// Verify that a given set of storage deals is valid for a sector currently being PreCommitted
     /// and return UnsealedCID for the set of deals.
     fn verify_deals_for_activation(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: VerifyDealsForActivationParams,
     ) -> Result<VerifyDealsForActivationReturn, ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
@@ -528,7 +528,7 @@ impl Actor {
     }
     /// Activate a set of deals, returning the combined deal space and extra info for verified deals.
     fn activate_deals(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: ActivateDealsParams,
     ) -> Result<ActivateDealsResult, ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
@@ -622,7 +622,7 @@ impl Actor {
     /// Slash provider collateral, refund client collateral, and refund partial unpaid escrow
     /// amount to client.
     fn on_miner_sectors_terminate(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: OnMinerSectorsTerminateParams,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
@@ -684,7 +684,7 @@ impl Actor {
     }
 
     fn compute_data_commitment(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: ComputeDataCommitmentParams,
     ) -> Result<ComputeDataCommitmentReturn, ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
@@ -705,7 +705,7 @@ impl Actor {
         Ok(ComputeDataCommitmentReturn { commds })
     }
 
-    fn cron_tick(rt: &mut impl Runtime) -> Result<(), ActorError> {
+    fn cron_tick(rt: &impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&CRON_ACTOR_ADDR))?;
 
         let mut amount_slashed = TokenAmount::zero();
@@ -885,7 +885,7 @@ impl Actor {
     /// This will be available after the deal is published (whether or not is is activated)
     /// and up until some undefined period after it is terminated.
     fn get_deal_data_commitment(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: GetDealDataCommitmentParams,
     ) -> Result<GetDealDataCommitmentReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -895,7 +895,7 @@ impl Actor {
 
     /// Returns the client of a deal proposal.
     fn get_deal_client(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: GetDealClientParams,
     ) -> Result<GetDealClientReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -905,7 +905,7 @@ impl Actor {
 
     /// Returns the provider of a deal proposal.
     fn get_deal_provider(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: GetDealProviderParams,
     ) -> Result<GetDealProviderReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -915,7 +915,7 @@ impl Actor {
 
     /// Returns the label of a deal proposal.
     fn get_deal_label(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: GetDealLabelParams,
     ) -> Result<GetDealLabelReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -925,7 +925,7 @@ impl Actor {
 
     /// Returns the start epoch and duration (in epochs) of a deal proposal.
     fn get_deal_term(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: GetDealTermParams,
     ) -> Result<GetDealTermReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -935,7 +935,7 @@ impl Actor {
 
     /// Returns the total price that will be paid from the client to the provider for this deal.
     fn get_deal_total_price(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: GetDealTotalPriceParams,
     ) -> Result<GetDealTotalPriceReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -945,7 +945,7 @@ impl Actor {
 
     /// Returns the client collateral requirement for a deal proposal.
     fn get_deal_client_collateral(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: GetDealClientCollateralParams,
     ) -> Result<GetDealClientCollateralReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -955,7 +955,7 @@ impl Actor {
 
     /// Returns the provider collateral requirement for a deal proposal.
     fn get_deal_provider_collateral(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: GetDealProviderCollateralParams,
     ) -> Result<GetDealProviderCollateralReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -967,7 +967,7 @@ impl Actor {
     /// Note that the source of truth for verified allocations and claims is
     /// the verified registry actor.
     fn get_deal_verified(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: GetDealVerifiedParams,
     ) -> Result<GetDealVerifiedReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -981,7 +981,7 @@ impl Actor {
     /// Returns USR_NOT_FOUND if the deal doesn't exist (yet), or EX_DEAL_EXPIRED if the deal
     /// has been removed from state.
     fn get_deal_activation(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: GetDealActivationParams,
     ) -> Result<GetDealActivationReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -1147,7 +1147,7 @@ fn datacap_transfer_request(
 
 // Invokes transfer_from on the data cap token actor.
 fn transfer_from(
-    rt: &mut impl Runtime,
+    rt: &impl Runtime,
     params: TransferFromParams,
 ) -> Result<Vec<AllocationID>, ActorError> {
     let ret = extract_send_result(rt.send_simple(
@@ -1166,7 +1166,7 @@ fn transfer_from(
 }
 
 // Invokes BalanceOf on the data cap token actor.
-fn balance_of(rt: &mut impl Runtime, owner: &Address) -> Result<TokenAmount, ActorError> {
+fn balance_of(rt: &impl Runtime, owner: &Address) -> Result<TokenAmount, ActorError> {
     let params = IpldBlock::serialize_cbor(owner)?;
     let ret = extract_send_result(rt.send_simple(
         &DATACAP_TOKEN_ACTOR_ADDR,
@@ -1362,7 +1362,7 @@ pub(crate) fn deal_cid(proposal: &DealProposal) -> Result<Cid, ActorError> {
 }
 
 fn request_miner_control_addrs(
-    rt: &mut impl Runtime,
+    rt: &impl Runtime,
     miner_id: ActorID,
 ) -> Result<(Address, Address, Vec<Address>), ActorError> {
     let addrs: ext::miner::GetControlAddressesReturnParams =
@@ -1379,7 +1379,7 @@ fn request_miner_control_addrs(
 /// Resolves a provider or client address to the canonical form against which a balance should be held, and
 /// the designated recipient address of withdrawals (which is the same, for simple account parties).
 fn escrow_address(
-    rt: &mut impl Runtime,
+    rt: &impl Runtime,
     addr: &Address,
 ) -> Result<(Address, Address, Vec<Address>), ActorError> {
     // Resolve the provided address to the canonical form against which the balance is held.
@@ -1403,7 +1403,7 @@ fn escrow_address(
 }
 
 /// Requests the current epoch target block reward from the reward actor.
-fn request_current_baseline_power(rt: &mut impl Runtime) -> Result<StoragePower, ActorError> {
+fn request_current_baseline_power(rt: &impl Runtime) -> Result<StoragePower, ActorError> {
     let ret: ThisEpochRewardReturn = deserialize_block(extract_send_result(rt.send_simple(
         &REWARD_ACTOR_ADDR,
         ext::reward::THIS_EPOCH_REWARD_METHOD,
@@ -1416,7 +1416,7 @@ fn request_current_baseline_power(rt: &mut impl Runtime) -> Result<StoragePower,
 /// Requests the current network total power and pledge from the power actor.
 /// Returns a tuple of (raw_power, qa_power).
 fn request_current_network_power(
-    rt: &mut impl Runtime,
+    rt: &impl Runtime,
 ) -> Result<(StoragePower, StoragePower), ActorError> {
     let ret: ext::power::CurrentTotalPowerReturnParams =
         deserialize_block(extract_send_result(rt.send_simple(

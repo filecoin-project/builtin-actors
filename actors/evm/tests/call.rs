@@ -169,14 +169,14 @@ fn test_call() {
     let contract = call_proxy_contract();
 
     // construct the proxy
-    let mut rt = util::construct_and_verify(contract);
+    let rt = util::construct_and_verify(contract);
 
     // create a mock target and proxy a call through the proxy
     let target_id = 0x100;
     let target = FILAddress::new_id(target_id);
     let evm_target = EthAddress(hex_literal::hex!("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"));
     let f4_target: FILAddress = evm_target.try_into().unwrap();
-    rt.actor_code_cids.insert(target, *EVM_ACTOR_CODE_ID);
+    rt.actor_code_cids.borrow_mut().insert(target, *EVM_ACTOR_CODE_ID);
     rt.set_delegated_address(target.id().unwrap(), f4_target);
 
     let evm_target_word = evm_target.as_evm_word();
@@ -206,7 +206,7 @@ fn test_call() {
         None,
     );
 
-    let result = util::invoke_contract(&mut rt, &contract_params);
+    let result = util::invoke_contract(&rt, &contract_params);
     assert_eq!(U256::from_big_endian(&result), U256::from(0x42));
 }
 
@@ -218,12 +218,12 @@ fn test_transfer_nogas() {
     let contract = call_proxy_transfer_contract();
 
     // construct the proxy
-    let mut rt = util::construct_and_verify(contract);
+    let rt = util::construct_and_verify(contract);
 
     // create a mock actor and proxy a call through the proxy
     let target_id = 0x100;
     let target = FILAddress::new_id(target_id);
-    rt.actor_code_cids.insert(target, *EVM_ACTOR_CODE_ID);
+    rt.actor_code_cids.borrow_mut().insert(target, *EVM_ACTOR_CODE_ID);
 
     let evm_target_word = EthAddress::from_id(target_id).as_evm_word();
 
@@ -248,7 +248,7 @@ fn test_transfer_nogas() {
         None,
     );
 
-    let result = util::invoke_contract(&mut rt, &contract_params);
+    let result = util::invoke_contract(&rt, &contract_params);
     assert_eq!(U256::from_big_endian(&result), U256::from(0));
     rt.verify();
 }
@@ -259,12 +259,12 @@ fn test_transfer_2300() {
     let contract = call_proxy_gas2300_contract();
 
     // construct the proxy
-    let mut rt = util::construct_and_verify(contract);
+    let rt = util::construct_and_verify(contract);
 
     // create a mock actor and proxy a call through the proxy
     let target_id = 0x100;
     let target = FILAddress::new_id(target_id);
-    rt.actor_code_cids.insert(target, *EVM_ACTOR_CODE_ID);
+    rt.actor_code_cids.borrow_mut().insert(target, *EVM_ACTOR_CODE_ID);
 
     let evm_target_word = EthAddress::from_id(target_id).as_evm_word();
 
@@ -289,7 +289,7 @@ fn test_transfer_2300() {
         None,
     );
 
-    let result = util::invoke_contract(&mut rt, &contract_params);
+    let result = util::invoke_contract(&rt, &contract_params);
     assert_eq!(U256::from_big_endian(&result), U256::from(0));
     rt.verify();
 }
@@ -329,7 +329,7 @@ return
 "#;
 
     let contract = asm::new_contract("call-output-region", init, body).unwrap();
-    let mut rt = util::construct_and_verify(contract);
+    let rt = util::construct_and_verify(contract);
 
     let address = EthAddress(util::CONTRACT_ADDRESS);
 
@@ -353,7 +353,7 @@ return
         rt.expect_gas_available(10_000_000_000);
 
         let out = util::invoke_contract(
-            &mut rt,
+            &rt,
             &[
                 U256::from(output_size).to_bytes().to_vec(),
                 address.as_evm_word().to_bytes().to_vec(),
@@ -389,7 +389,7 @@ pub fn filecoin_call_actor_contract() -> Vec<u8> {
 #[test]
 fn test_reserved_method() {
     let contract = filecoin_fallback_contract();
-    let mut rt = util::construct_and_verify(contract);
+    let rt = util::construct_and_verify(contract);
 
     let code = rt.call::<evm::EvmContractActor>(0x42, None).unwrap_err().exit_code();
     assert_eq!(ExitCode::USR_UNHANDLED_MESSAGE, code);
@@ -398,7 +398,7 @@ fn test_reserved_method() {
 #[test]
 fn test_native_call() {
     let contract = filecoin_fallback_contract();
-    let mut rt = util::construct_and_verify(contract);
+    let rt = util::construct_and_verify(contract);
 
     rt.expect_validate_caller_any();
     let result = rt.call::<evm::EvmContractActor>(1024, None).unwrap();
@@ -463,12 +463,12 @@ fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_i
     const CALLACTOR_NUM_PARAMS: usize = 8;
 
     // construct the proxy
-    let mut rt = util::construct_and_verify(contract);
+    let rt = util::construct_and_verify(contract);
 
     // create a mock target and proxy a call through the proxy
     let target_id = 0x100;
     let target = FILAddress::new_id(target_id);
-    rt.actor_code_cids.insert(target, *EVM_ACTOR_CODE_ID);
+    rt.actor_code_cids.borrow_mut().insert(target, *EVM_ACTOR_CODE_ID);
 
     // dest + method with no data
     let mut contract_params = Vec::new();
@@ -577,7 +577,7 @@ fn test_callactor_inner(method_num: MethodNum, exit_code: ExitCode, valid_call_i
     };
 
     // invoke
-    test.run_test(&mut rt);
+    test.run_test(&rt);
 }
 
 #[test]
@@ -586,7 +586,7 @@ fn call_actor_weird_offset() {
         let (init, body) = util::PrecompileTest::test_runner_assembly();
         asm::new_contract("call_actor-precompile-test", &init, &body).unwrap()
     };
-    let mut rt = util::construct_and_verify(contract);
+    let rt = util::construct_and_verify(contract);
 
     let addr = Address::new_delegated(1234, b"foobarboxy").unwrap();
     let addr_bytes = addr.to_bytes();
@@ -629,7 +629,7 @@ fn call_actor_weird_offset() {
 
     let precompile_return = CallActorReturn::default();
 
-    test.run_test_expecting(&mut rt, precompile_return, util::PrecompileExit::Success);
+    test.run_test_expecting(&rt, precompile_return, util::PrecompileExit::Success);
 }
 
 #[test]
@@ -638,7 +638,7 @@ fn call_actor_overlapping() {
         let (init, body) = util::PrecompileTest::test_runner_assembly();
         asm::new_contract("call_actor-precompile-test", &init, &body).unwrap()
     };
-    let mut rt = util::construct_and_verify(contract);
+    let rt = util::construct_and_verify(contract);
     let addr = Address::new_delegated(1234, b"foobarboxy").unwrap();
 
     let mut call_params = CallActorParams::default();
@@ -679,7 +679,7 @@ fn call_actor_overlapping() {
     );
 
     test.input = call_params.into();
-    test.run_test_expecting(&mut rt, CallActorReturn::default(), util::PrecompileExit::Success);
+    test.run_test_expecting(&rt, CallActorReturn::default(), util::PrecompileExit::Success);
 }
 
 #[test]
@@ -688,7 +688,7 @@ fn call_actor_id_with_full_address() {
         let (init, body) = util::PrecompileTest::test_runner_assembly();
         asm::new_contract("call_actor-precompile-test", &init, &body).unwrap()
     };
-    let mut rt = util::construct_and_verify(contract);
+    let rt = util::construct_and_verify(contract);
     let addr = Address::new_delegated(1234, b"foobarboxy").unwrap();
     let actual_id_addr = 1234;
 
@@ -722,7 +722,7 @@ fn call_actor_id_with_full_address() {
     );
 
     test.input = call_params.into();
-    test.run_test_expecting(&mut rt, CallActorReturn::default(), util::PrecompileExit::Success);
+    test.run_test_expecting(&rt, CallActorReturn::default(), util::PrecompileExit::Success);
 }
 
 #[test]
@@ -731,7 +731,7 @@ fn call_actor_syscall_error() {
         let (init, body) = util::PrecompileTest::test_runner_assembly();
         asm::new_contract("call_actor-precompile-test", &init, &body).unwrap()
     };
-    let mut rt = util::construct_and_verify(contract);
+    let rt = util::construct_and_verify(contract);
     let addr = Address::new_delegated(1234, b"foobarboxy").unwrap();
 
     let mut call_params = CallActorParams::default();
@@ -768,7 +768,7 @@ fn call_actor_syscall_error() {
     );
 
     test.input = call_params.into();
-    test.run_test_expecting(&mut rt, expect, util::PrecompileExit::Success);
+    test.run_test_expecting(&rt, expect, util::PrecompileExit::Success);
 }
 
 #[cfg(test)]
@@ -780,7 +780,7 @@ mod call_actor_invalid {
             let (init, body) = util::PrecompileTest::test_runner_assembly();
             asm::new_contract("call_actor-precompile-test", &init, &body).unwrap()
         };
-        let mut rt = util::construct_and_verify(contract);
+        let rt = util::construct_and_verify(contract);
 
         let mut test = util::PrecompileTest {
             precompile_address: util::NativePrecompile::CallActor.eth_address(),
@@ -798,7 +798,7 @@ mod call_actor_invalid {
         }
 
         test.input = call_params.into();
-        test.run_test_expecting(&mut rt, vec![], util::PrecompileExit::Reverted);
+        test.run_test_expecting(&rt, vec![], util::PrecompileExit::Reverted);
     }
 
     #[test]
@@ -1163,7 +1163,7 @@ impl ContractTester {
     fn new(addr: EthAddress, id: u64, contract_hex: &str) -> Self {
         init_logging().ok();
 
-        let mut rt = MockRuntime::default();
+        let rt = MockRuntime::default();
         let params = evm::ConstructorParams {
             creator: EthAddress::from_id(EAM_ACTOR_ID),
             initcode: hex::decode(contract_hex).unwrap().into(),

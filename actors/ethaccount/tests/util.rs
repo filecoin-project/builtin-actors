@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use fil_actor_ethaccount::{EthAccountActor, Method};
 use fil_actors_runtime::test_utils::{MockRuntime, SYSTEM_ACTOR_CODE_ID};
 use fil_actors_runtime::EAM_ACTOR_ID;
@@ -10,15 +12,15 @@ pub const EOA: Address = Address::new_id(1000);
 pub fn new_runtime() -> MockRuntime {
     MockRuntime {
         receiver: EOA,
-        caller: SYSTEM_ACTOR_ADDR,
-        caller_type: *SYSTEM_ACTOR_CODE_ID,
+        caller: RefCell::new(SYSTEM_ACTOR_ADDR),
+        caller_type: RefCell::new(*SYSTEM_ACTOR_CODE_ID),
         ..Default::default()
     }
 }
 
 #[allow(dead_code)]
 pub fn setup() -> MockRuntime {
-    let mut rt = new_runtime();
+    let rt = new_runtime();
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
     rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
     rt.set_delegated_address(

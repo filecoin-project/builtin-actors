@@ -27,7 +27,7 @@ return
 
     let mut rt = util::construct_and_verify(contract);
     rt.tipset_timestamp = 123;
-    let result = util::invoke_contract(&mut rt, &[]);
+    let result = util::invoke_contract(&rt, &[]);
     assert_eq!(U256::from_big_endian(&result), U256::from(123));
 }
 
@@ -56,30 +56,30 @@ return
         })
         .collect();
 
-    rt.epoch = 0xffff + 2;
-    let result = util::invoke_contract(&mut rt, &[]);
+    rt.epoch.replace(0xffff + 2);
+    let result = util::invoke_contract(&rt, &[]);
     assert_eq!(
         String::from_utf8_lossy(&result.to_vec()),
         String::from_utf8_lossy(rt.tipset_cids[0xffff].hash().digest())
     );
 
-    rt.epoch = 0xffff + 256;
-    let result = util::invoke_contract(&mut rt, &[]);
+    rt.epoch.replace(0xffff + 256);
+    let result = util::invoke_contract(&rt, &[]);
     assert_eq!(
         String::from_utf8_lossy(&result.to_vec()),
         String::from_utf8_lossy(rt.tipset_cids[0xffff].hash().digest())
     );
 
-    rt.epoch = 0xffff;
-    let result = util::invoke_contract(&mut rt, &[]);
+    rt.epoch.replace(0xffff);
+    let result = util::invoke_contract(&rt, &[]);
     assert_eq!(&result, &[0u8; 32]);
 
-    rt.epoch = 0xffff - 1;
-    let result = util::invoke_contract(&mut rt, &[]);
+    rt.epoch.replace(0xffff - 1);
+    let result = util::invoke_contract(&rt, &[]);
     assert_eq!(&result, &[0u8; 32]);
 
-    rt.epoch = 0xffff + 257;
-    let result = util::invoke_contract(&mut rt, &[]);
+    rt.epoch.replace(0xffff + 257);
+    let result = util::invoke_contract(&rt, &[]);
     assert_eq!(&result, &[0u8; 32]);
 }
 
@@ -101,7 +101,7 @@ return
 
     let mut rt = util::construct_and_verify(contract);
     rt.chain_id = ChainID::from(1989);
-    let result = util::invoke_contract(&mut rt, &[]);
+    let result = util::invoke_contract(&rt, &[]);
     assert_eq!(U256::from_big_endian(&result), U256::from(1989));
 }
 
@@ -121,8 +121,8 @@ return
     )
     .unwrap();
 
-    let mut rt = util::construct_and_verify(contract);
-    let result = util::invoke_contract(&mut rt, &[]);
+    let rt = util::construct_and_verify(contract);
+    let result = util::invoke_contract(&rt, &[]);
     assert_eq!(U256::from_big_endian(&result), U256::from(10_000_000_000u64));
 }
 
@@ -143,9 +143,9 @@ return
     .unwrap();
 
     let mut rt = util::construct_and_verify(contract);
-    rt.base_fee = TokenAmount::from_atto(123);
+    rt.base_fee.replace(TokenAmount::from_atto(123));
     rt.gas_premium = TokenAmount::from_atto(345);
-    let result = util::invoke_contract(&mut rt, &[]);
+    let result = util::invoke_contract(&rt, &[]);
     assert_eq!(U256::from_big_endian(&result), U256::from(123 + 345));
 }
 
@@ -176,7 +176,7 @@ return
     let mut input_data = vec![0u8; 32];
     input_data[12] = 0xff;
     input_data[31] = 0x64;
-    let result = util::invoke_contract(&mut rt, &input_data);
+    let result = util::invoke_contract(&rt, &input_data);
     assert_eq!(U256::from_big_endian(&result), U256::from(123));
 }
 
@@ -202,10 +202,10 @@ return
     )
     .unwrap();
 
-    let mut rt = util::construct_and_verify(contract);
+    let rt = util::construct_and_verify(contract);
     let mut input_data = vec![0u8; 32];
     input_data[31] = 123;
-    let result = util::invoke_contract(&mut rt, &input_data);
+    let result = util::invoke_contract(&rt, &input_data);
     assert_eq!(U256::from_big_endian(&result), U256::from(0));
 }
 
@@ -226,8 +226,8 @@ return
     )
     .unwrap();
 
-    let mut rt = util::construct_and_verify(contract);
-    let result = util::invoke_contract(&mut rt, &[]);
+    let rt = util::construct_and_verify(contract);
+    let result = util::invoke_contract(&rt, &[]);
     assert_eq!(U256::from_big_endian(&result), U256::from(0));
 }
 
@@ -247,9 +247,9 @@ return
     )
     .unwrap();
 
-    let mut rt = util::construct_and_verify(contract);
+    let rt = util::construct_and_verify(contract);
     rt.expect_gas_available(123);
-    let result = util::invoke_contract(&mut rt, &[]);
+    let result = util::invoke_contract(&rt, &[]);
     assert_eq!(U256::from_big_endian(&result), U256::from(123));
 }
 
@@ -270,8 +270,8 @@ return
     )
     .unwrap();
 
-    let mut rt = util::construct_and_verify(contract);
-    let result = util::invoke_contract(&mut rt, &[]);
+    let rt = util::construct_and_verify(contract);
+    let result = util::invoke_contract(&rt, &[]);
     let eth_address = &result[12..];
     // Make sure we get an actual eth address, not an embedded ID address.
     assert_eq!(&eth_address, &util::CONTRACT_ADDRESS);
@@ -294,8 +294,8 @@ return
     )
     .unwrap();
 
-    let mut rt = util::construct_and_verify(contract);
-    let result = util::invoke_contract(&mut rt, &[]);
+    let rt = util::construct_and_verify(contract);
+    let result = util::invoke_contract(&rt, &[]);
     let eth_address = &result[12..];
     // The caller's address should be the init actor in this case.
     assert_eq!(&eth_address, &EthAddress::from_id(1).0);
@@ -318,10 +318,10 @@ return
     )
     .unwrap();
 
-    let mut rt = util::construct_and_verify(contract);
+    let rt = util::construct_and_verify(contract);
     // set the _id_ address here (ensures we resolve it correctly internally).
-    rt.caller = Address::new_id(0);
-    let result = util::invoke_contract(&mut rt, &[]);
+    rt.caller.replace(Address::new_id(0));
+    let result = util::invoke_contract(&rt, &[]);
     let eth_address = &result[12..];
     // Make sure we prefer the eth address, if we have one.
     assert_eq!(eth_address, util::CONTRACT_ADDRESS);
@@ -344,9 +344,9 @@ return
     )
     .unwrap();
 
-    let mut rt = util::construct_and_verify(contract);
-    rt.origin = Address::new_id(10);
-    let result = util::invoke_contract(&mut rt, &[]);
+    let rt = util::construct_and_verify(contract);
+    rt.origin.replace(Address::new_id(10));
+    let result = util::invoke_contract(&rt, &[]);
     let eth_address = &result[12..];
     // Make sure we prefer the eth address, if we have one.
     assert_eq!(eth_address, &EthAddress::from_id(10).0);
@@ -369,8 +369,8 @@ return
     )
     .unwrap();
 
-    let mut rt = util::construct_and_verify(contract);
-    let result = util::invoke_contract(&mut rt, &[]);
+    let rt = util::construct_and_verify(contract);
+    let result = util::invoke_contract(&rt, &[]);
     let eth_address = &result[12..];
     // Make sure we prefer the eth address, if we have one.
     assert_eq!(eth_address, util::CONTRACT_ADDRESS);

@@ -22,9 +22,9 @@ const DEFAULT_SECTOR_EXPIRATION: ChainEpoch = 220;
 #[test]
 fn info_getters() {
     let h = ActorHarness::new(PERIOD_OFFSET);
-    let mut rt = h.new_runtime();
+    let rt = h.new_runtime();
     rt.set_balance(BIG_BALANCE.clone());
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
 
     // set caller to not-builtin
     rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(1234));
@@ -96,13 +96,13 @@ fn info_getters() {
 #[test]
 fn collateral_getters() {
     let h = ActorHarness::new(PERIOD_OFFSET);
-    let mut rt = h.new_runtime();
+    let rt = h.new_runtime();
     rt.balance.replace(BIG_BALANCE.clone());
 
     let precommit_epoch = PERIOD_OFFSET + 1;
     rt.set_epoch(precommit_epoch);
 
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
     let dl_info = h.deadline(&rt);
 
     // Precommit a sector
@@ -115,7 +115,7 @@ fn collateral_getters() {
     let precommit_params =
         h.make_pre_commit_params(sector_no, precommit_epoch - 1, expiration, vec![]);
     let precommit =
-        h.pre_commit_sector_and_get(&mut rt, precommit_params, PreCommitConfig::empty(), true);
+        h.pre_commit_sector_and_get(&rt, precommit_params, PreCommitConfig::empty(), true);
 
     // run prove commit logic
     rt.set_epoch(prove_commit_epoch);
@@ -125,7 +125,7 @@ fn collateral_getters() {
 
     let sector = h
         .prove_commit_sector_and_confirm(
-            &mut rt,
+            &rt,
             &precommit,
             h.make_prove_commit_params(sector_no),
             pcc,

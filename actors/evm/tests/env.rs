@@ -35,9 +35,9 @@ impl TestEnv {
     /// Create a new test environment where the EVM actor code is already
     /// loaded under an actor address.
     pub fn new(evm_address: Address) -> Self {
-        let mut runtime = MockRuntime::new(TrackingBlockstore::new(MemoryBlockstore::new()));
+        let runtime = MockRuntime::new(TrackingBlockstore::new(MemoryBlockstore::new()));
 
-        runtime.actor_code_cids.insert(evm_address, *EVM_ACTOR_CODE_ID);
+        runtime.actor_code_cids.borrow_mut().insert(evm_address, *EVM_ACTOR_CODE_ID);
 
         Self { evm_address, runtime }
     }

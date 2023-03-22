@@ -188,7 +188,7 @@ where
 }
 
 impl EvmContractActor {
-    pub fn constructor<RT>(rt: &mut RT, params: ConstructorParams) -> Result<(), ActorError>
+    pub fn constructor<RT>(rt: &RT, params: ConstructorParams) -> Result<(), ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
@@ -197,7 +197,7 @@ impl EvmContractActor {
         initialize_evm_contract(&mut System::create(rt)?, params.creator, params.initcode.into())
     }
 
-    pub fn resurrect<RT>(rt: &mut RT, params: ResurrectParams) -> Result<(), ActorError>
+    pub fn resurrect<RT>(rt: &RT, params: ResurrectParams) -> Result<(), ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
@@ -207,7 +207,7 @@ impl EvmContractActor {
     }
 
     pub fn invoke_contract_delegate<RT>(
-        rt: &mut RT,
+        rt: &RT,
         params: DelegateCallParams,
     ) -> Result<DelegateCallReturn, ActorError>
     where
@@ -230,7 +230,7 @@ impl EvmContractActor {
     }
 
     pub fn invoke_contract<RT>(
-        rt: &mut RT,
+        rt: &RT,
         params: InvokeContractParams,
     ) -> Result<InvokeContractReturn, ActorError>
     where
@@ -262,7 +262,7 @@ impl EvmContractActor {
     }
 
     pub fn handle_filecoin_method<RT>(
-        rt: &mut RT,
+        rt: &RT,
         method: u64,
         args: Option<IpldBlock>,
     ) -> Result<Option<IpldBlock>, ActorError>
@@ -281,7 +281,7 @@ impl EvmContractActor {
 
     /// Returns the contract's EVM bytecode, or `None` if the contract has been deleted (has called
     /// SELFDESTRUCT).
-    pub fn bytecode(rt: &mut impl Runtime) -> Result<BytecodeReturn, ActorError> {
+    pub fn bytecode(rt: &impl Runtime) -> Result<BytecodeReturn, ActorError> {
         // Any caller can fetch the bytecode of a contract; this is now EXT* opcodes work.
         rt.validate_immediate_caller_accept_any()?;
 
@@ -293,7 +293,7 @@ impl EvmContractActor {
         }
     }
 
-    pub fn bytecode_hash(rt: &mut impl Runtime) -> Result<BytecodeHash, ActorError> {
+    pub fn bytecode_hash(rt: &impl Runtime) -> Result<BytecodeHash, ActorError> {
         // Any caller can fetch the bytecode hash of a contract; this is where EXTCODEHASH gets it's value for EVM contracts.
         rt.validate_immediate_caller_accept_any()?;
 
@@ -307,7 +307,7 @@ impl EvmContractActor {
     }
 
     pub fn storage_at<RT>(
-        rt: &mut RT,
+        rt: &RT,
         params: GetStorageAtParams,
     ) -> Result<GetStorageAtReturn, ActorError>
     where

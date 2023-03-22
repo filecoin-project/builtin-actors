@@ -558,7 +558,7 @@ mod tests {
         let output_data = vec![0xCA, 0xFE, 0xBA, 0xBE];
         evm_unit_test! {
             (rt) {
-                rt.in_call = true;
+                rt.in_call.replace(true);
                 rt.expect_send(
                     fil_dest,
                     crate::Method::InvokeContract as u64,
@@ -605,7 +605,7 @@ mod tests {
         let output_data = vec![0xCA, 0xFE, 0xBA, 0xBE];
         evm_unit_test! {
             (rt) {
-                rt.in_call = true;
+                rt.in_call.replace(true);
                 rt.expect_send(
                     fil_dest,
                     crate::Method::InvokeContract as u64,
@@ -651,7 +651,7 @@ mod tests {
         let input_data = vec![0x01, 0x02, 0x03, 0x04];
         evm_unit_test! {
             (rt) {
-                rt.in_call = true;
+                rt.in_call.replace(true);
                 rt.expect_send(
                     fil_dest,
                     crate::Method::InvokeContract as u64,
@@ -701,7 +701,7 @@ mod tests {
         output_data[31] = 0x04;
         evm_unit_test! {
             (rt) {
-                rt.in_call = true;
+                rt.in_call.replace(true);
                 rt.expect_gas_available(10_000_000_000);
             }
             (m) {
@@ -739,7 +739,7 @@ mod tests {
         let output_data = vec![0xCA, 0xFE, 0xBA, 0xBE];
         evm_unit_test! {
             (rt) {
-                rt.in_call = true;
+                rt.in_call.replace(true);
                 rt.receiver = receiver;
                 rt.set_address_actor_type(fil_dest, *EVM_ACTOR_CODE_ID);
 
@@ -812,7 +812,7 @@ mod tests {
         let output_data = vec![0xCA, 0xFE, 0xBA, 0xBE];
         evm_unit_test! {
             (rt) {
-                rt.in_call = true;
+                rt.in_call.replace(true);
                 rt.expect_send(
                     fil_dest,
                     crate::Method::InvokeContract as u64,

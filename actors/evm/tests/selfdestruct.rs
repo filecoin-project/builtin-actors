@@ -25,8 +25,8 @@ fn test_selfdestruct() {
 
     let token_amount = TokenAmount::from_whole(2);
 
-    let mut rt = util::init_construct_and_verify(bytecode.clone(), |rt| {
-        rt.actor_code_cids.insert(contract, *EVM_ACTOR_CODE_ID);
+    let rt = util::init_construct_and_verify(bytecode.clone(), |rt| {
+        rt.actor_code_cids.borrow_mut().insert(contract, *EVM_ACTOR_CODE_ID);
         rt.set_origin(contract);
         rt.set_balance(token_amount.clone());
     });
@@ -41,16 +41,13 @@ fn test_selfdestruct() {
 
     rt.expect_send_simple(beneficiary, METHOD_SEND, None, token_amount, None, ExitCode::OK);
 
-    assert!(util::invoke_contract(&mut rt, &selfdestruct_params).is_empty());
+    assert!(util::invoke_contract(&rt, &selfdestruct_params).is_empty());
     let state: State = rt.get_state();
     assert_eq!(state.tombstone, Some(Tombstone { origin: 100, nonce: 0 }));
     rt.verify();
 
     // Calls still work.
-    assert_eq!(
-        U256::from_big_endian(&util::invoke_contract(&mut rt, &returnone_params)),
-        U256::ONE
-    );
+    assert_eq!(U256::from_big_endian(&util::invoke_contract(&rt, &returnone_params)), U256::ONE);
     rt.verify();
 
     // Try to resurrect during the same "epoch". This should be forbidden.
@@ -70,14 +67,14 @@ fn test_selfdestruct() {
     // remaining funds, again).
     rt.expect_validate_caller_any();
     rt.expect_send_simple(beneficiary, METHOD_SEND, None, TokenAmount::zero(), None, ExitCode::OK);
-    assert!(util::invoke_contract(&mut rt, &selfdestruct_params).is_empty());
+    assert!(util::invoke_contract(&rt, &selfdestruct_params).is_empty());
     rt.verify();
 
     // Ok, call from a different origin so that the tombstone prevents any calls.
     rt.set_origin(beneficiary);
 
     // All calls should now do nothing (but still work).
-    assert!(util::invoke_contract(&mut rt, &returnone_params).is_empty());
+    assert!(util::invoke_contract(&rt, &returnone_params).is_empty());
     rt.verify();
 
     // We should now be able to resurrect.
@@ -93,10 +90,7 @@ fn test_selfdestruct() {
     rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR); // doesn't really matter
 
     // And calls should work again.
-    assert_eq!(
-        U256::from_big_endian(&util::invoke_contract(&mut rt, &returnone_params)),
-        U256::ONE
-    );
+    assert_eq!(U256::from_big_endian(&util::invoke_contract(&rt, &returnone_params)), U256::ONE);
     rt.verify();
 }
 
@@ -107,8 +101,8 @@ fn test_selfdestruct_missing_beneficiary() {
     let contract = Address::new_id(100);
     let beneficiary = Address::new_id(1001);
 
-    let mut rt = util::init_construct_and_verify(bytecode, |rt| {
-        rt.actor_code_cids.insert(contract, *EVM_ACTOR_CODE_ID);
+    let rt = util::init_construct_and_verify(bytecode, |rt| {
+        rt.actor_code_cids.borrow_mut().insert(contract, *EVM_ACTOR_CODE_ID);
         rt.set_origin(contract);
     });
 

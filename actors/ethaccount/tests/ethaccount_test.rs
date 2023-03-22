@@ -17,7 +17,7 @@ use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
 
 #[test]
 fn no_delegated_cant_deploy() {
-    let mut rt = new_runtime();
+    let rt = new_runtime();
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
     rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
     expect_abort_contains_message(
@@ -30,7 +30,7 @@ fn no_delegated_cant_deploy() {
 
 #[test]
 fn token_receiver() {
-    let mut rt = setup();
+    let rt = setup();
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(1234));
     rt.expect_validate_caller_any();

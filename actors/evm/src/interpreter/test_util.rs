@@ -19,8 +19,9 @@ macro_rules! evm_unit_test {
         use $crate::interpreter::{execution::Machine, system::System, Output};
         use $crate::{Bytecode, EthAddress, ExecutionState};
 
+        #[allow(unused_mut)]
         let mut $rt = MockRuntime::default();
-        $rt.in_call = true;
+        $rt.in_call.replace(true);
         $init
 
         let mut state = ExecutionState::new(
@@ -32,7 +33,7 @@ macro_rules! evm_unit_test {
 
         let code = vec![$($crate::evm_instruction!($inst)),*];
 
-        let mut system = System::new(&mut $rt, false);
+        let mut system = System::new(&$rt, false);
         let bytecode = Bytecode::new(code);
         #[allow(unused_mut)]
         let mut $machine = Machine {
@@ -52,8 +53,8 @@ macro_rules! evm_unit_test {
         use $crate::interpreter::{execution::Machine, system::System, Output};
         use $crate::{Bytecode, EthAddress, ExecutionState};
 
-        let mut rt = MockRuntime::default();
-        rt.in_call = true;
+        let rt = MockRuntime::default();
+        rt.in_call.replace(true);
         let mut state = ExecutionState::new(
             EthAddress::from_id(1000),
             EthAddress::from_id(1000),
@@ -63,7 +64,7 @@ macro_rules! evm_unit_test {
 
         let code = vec![$($crate::evm_instruction!($inst)),*];
 
-        let mut system = System::new(&mut rt, false);
+        let mut system = System::new(&rt, false);
         let bytecode = Bytecode::new(code);
         #[allow(unused_mut)]
         let mut $machine = Machine {

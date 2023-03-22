@@ -27,12 +27,12 @@ const PERIOD_OFFSET: ChainEpoch = 1808;
 #[test]
 fn funds_are_locked() {
     let h = ActorHarness::new(PERIOD_OFFSET);
-    let mut rt = h.new_runtime();
+    let rt = h.new_runtime();
     rt.set_balance(BIG_BALANCE.clone());
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
 
     let rwd = TokenAmount::from_atto(1_000_000);
-    h.apply_rewards(&mut rt, rwd, TokenAmount::zero());
+    h.apply_rewards(&rt, rwd, TokenAmount::zero());
 
     let expected = TokenAmount::from_atto(750_000);
     assert_eq!(expected, h.get_locked_funds(&rt));
@@ -41,9 +41,9 @@ fn funds_are_locked() {
 #[test]
 fn funds_vest() {
     let h = ActorHarness::new(PERIOD_OFFSET);
-    let mut rt = h.new_runtime();
+    let rt = h.new_runtime();
     rt.set_balance(BIG_BALANCE.clone());
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
     let st = h.get_state(&rt);
 
     let vesting_funds = st.load_vesting_funds(&rt.store).unwrap();
@@ -54,7 +54,7 @@ fn funds_vest() {
 
     // Lock some funds with AddLockedFund
     let amt = TokenAmount::from_atto(600_000);
-    h.apply_rewards(&mut rt, amt.clone(), TokenAmount::zero());
+    h.apply_rewards(&rt, amt.clone(), TokenAmount::zero());
     let st = h.get_state(&rt);
     let vesting_funds = st.load_vesting_funds(&rt.store).unwrap();
 
@@ -63,7 +63,7 @@ fn funds_vest() {
     // Vested FIL pays out on epochs with expected offset
     let quant_spec = QuantSpec { unit: REWARD_VESTING_SPEC.quantization, offset: PERIOD_OFFSET };
 
-    let curr_epoch = rt.epoch;
+    let curr_epoch = *rt.epoch.borrow();
     for (i, vf) in vesting_funds.funds.iter().enumerate() {
         let step =
             REWARD_VESTING_SPEC.initial_delay + (i as i64 + 1) * REWARD_VESTING_SPEC.step_duration;
@@ -88,14 +88,14 @@ fn funds_vest() {
 #[test]
 fn penalty_is_burnt() {
     let h = ActorHarness::new(PERIOD_OFFSET);
-    let mut rt = h.new_runtime();
+    let rt = h.new_runtime();
     rt.set_balance(BIG_BALANCE.clone());
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
 
     let rwd = TokenAmount::from_atto(600_000);
     let penalty = TokenAmount::from_atto(300_000);
     rt.add_balance(rwd.clone());
-    h.apply_rewards(&mut rt, rwd.clone(), penalty.clone());
+    h.apply_rewards(&rt, rwd.clone(), penalty.clone());
 
     let (mut expected_lock_amt, _) = locked_reward_from_reward(rwd);
     expected_lock_amt -= penalty;
@@ -110,9 +110,9 @@ fn penalty_is_burnt() {
 #[test]
 fn penalty_is_partially_burnt_and_stored_as_fee_debt() {
     let h = ActorHarness::new(PERIOD_OFFSET);
-    let mut rt = h.new_runtime();
+    let rt = h.new_runtime();
     rt.set_balance(BIG_BALANCE.clone());
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
     let st = h.get_state(&rt);
     assert!(st.fee_debt.is_zero());
 
@@ -159,20 +159,20 @@ fn penalty_is_partially_burnt_and_stored_as_fee_debt() {
 #[test]
 fn rewards_pay_back_fee_debt() {
     let h = ActorHarness::new(PERIOD_OFFSET);
-    let mut rt = h.new_runtime();
+    let rt = h.new_runtime();
     rt.set_balance(BIG_BALANCE.clone());
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
     let mut st = h.get_state(&rt);
 
     assert!(st.locked_funds.is_zero());
 
     let amt = rt.get_balance();
-    let available_before = h.get_available_balance(&mut rt).unwrap();
+    let available_before = h.get_available_balance(&rt).unwrap();
     assert!(available_before.is_positive());
     let init_fee_debt: TokenAmount = 2 * &amt; // FeeDebt twice total balance
     st.fee_debt = init_fee_debt.clone();
     rt.replace_state(&st);
-    let available_after = h.get_available_balance(&mut rt).unwrap();
+    let available_after = h.get_available_balance(&rt).unwrap();
     assert!(available_after.is_negative());
 
     rt.replace_state(&st);
@@ -219,7 +219,7 @@ fn rewards_pay_back_fee_debt() {
     let st = h.get_state(&rt);
     // balance funds used to pay off fee debt
     // available balance should be 2
-    let available_balance = h.get_available_balance(&mut rt).unwrap();
+    let available_balance = h.get_available_balance(&rt).unwrap();
     assert_eq!(available_before + reward - init_fee_debt - &remaining_locked, available_balance);
     assert!(!st.fee_debt.is_positive());
     // remaining funds locked in vesting table
