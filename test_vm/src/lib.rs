@@ -75,6 +75,88 @@ use std::ops::Add;
 pub mod executor;
 pub mod util;
 
+pub trait VM {
+    fn send_message(
+        &self,
+        from: Address,
+        to: Address,
+        value: TokenAmount,
+        method: MethodNum,
+        params: Option<IpldBlock>,
+    ) -> Result<MessageResult, TestVMError>;
+
+    fn resolve_address(&self, addr: &Address) -> Option<Address>;
+}
+
+impl<'bs> VM for TestVM<'bs> {
+    fn send_message(
+        &self,
+        from: Address,
+        to: Address,
+        value: TokenAmount,
+        method: MethodNum,
+        params: Option<IpldBlock>,
+    ) -> Result<MessageResult, TestVMError> {
+        let from_id = self.normalize_address(&from).unwrap();
+        let mut a = self.get_actor(from_id).unwrap();
+        let call_seq = a.call_seq_num;
+        a.call_seq_num = call_seq + 1;
+        // EthAccount abstractions turns Placeholders into EthAccounts
+        if a.code == *PLACEHOLDER_ACTOR_CODE_ID {
+            a.code = *ETHACCOUNT_ACTOR_CODE_ID;
+        }
+        self.set_actor(from_id, a);
+
+        let prior_root = self.checkpoint();
+
+        // big.Mul(big.NewInt(1e9), big.NewInt(1e18))
+        // make top level context with internal context
+        let top = TopCtx {
+            originator_stable_addr: from,
+            originator_call_seq: call_seq,
+            new_actor_addr_count: RefCell::new(0),
+            circ_supply: TokenAmount::from_whole(1_000_000_000),
+        };
+        let msg = InternalMessage { from: from_id, to, value, method, params };
+        let mut new_ctx = InvocationCtx {
+            v: self,
+            top,
+            msg,
+            allow_side_effects: true,
+            caller_validated: false,
+            read_only: false,
+            policy: &Policy::default(),
+            subinvocations: RefCell::new(vec![]),
+        };
+        let res = new_ctx.invoke();
+
+        let invoc = new_ctx.gather_trace(res.clone());
+        RefMut::map(self.invocations.borrow_mut(), |invocs| {
+            invocs.push(invoc);
+            invocs
+        });
+        match res {
+            Err(mut ae) => {
+                self.rollback(prior_root);
+                Ok(MessageResult {
+                    code: ae.exit_code(),
+                    message: ae.msg().to_string(),
+                    ret: ae.take_data(),
+                })
+            }
+            Ok(ret) => {
+                self.checkpoint();
+                Ok(MessageResult { code: ExitCode::OK, message: "OK".to_string(), ret })
+            }
+        }
+    }
+
+    fn resolve_address(&self, addr: &Address) -> Option<Address> {
+        let st = self.get_state::<InitState>(INIT_ACTOR_ADDR).unwrap();
+        st.resolve_address(self.store, addr).unwrap()
+    }
+}
+
 pub struct TestVM<'bs> {
     pub store: &'bs MemoryBlockstore,
     pub state_root: RefCell<Cid>,
@@ -546,6 +628,10 @@ impl<'bs> TestVM<'bs> {
             Ok(())
         })?;
         Ok(total)
+    }
+
+    pub fn vm(&self) -> &dyn VM {
+        self
     }
 }
 

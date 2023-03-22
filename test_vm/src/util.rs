@@ -77,6 +77,10 @@ pub fn create_accounts(v: &TestVM, count: u64, balance: TokenAmount) -> Vec<Addr
     create_accounts_seeded(v, count, balance, ACCOUNT_SEED)
 }
 
+pub fn create_accounts_(v: &dyn VM, count: u64, balance: TokenAmount) -> Vec<Address> {
+    create_accounts_seeded_(v, count, balance, ACCOUNT_SEED)
+}
+
 pub fn create_accounts_seeded(
     v: &TestVM,
     count: u64,
@@ -92,6 +96,21 @@ pub fn create_accounts_seeded(
     pk_addrs.iter().map(|&pk_addr| v.normalize_address(&pk_addr).unwrap()).collect()
 }
 
+fn create_accounts_seeded_(
+    v: &dyn VM,
+    count: u64,
+    balance: TokenAmount,
+    seed: u64,
+) -> Vec<Address> {
+    let pk_addrs = pk_addrs_from(seed, count);
+    // Send funds from faucet to pk address, creating account actor
+    for pk_addr in pk_addrs.clone() {
+        apply_ok_(v, TEST_FAUCET_ADDR, pk_addr, balance.clone(), METHOD_SEND, None::<RawBytes>);
+    }
+    // Normalize pk address to return id address of account actor
+    pk_addrs.iter().map(|&pk_addr| v.resolve_address(&pk_addr).unwrap()).collect()
+}
+
 pub fn apply_ok<S: Serialize>(
     v: &TestVM,
     from: Address,
@@ -101,6 +120,17 @@ pub fn apply_ok<S: Serialize>(
     params: Option<S>,
 ) -> RawBytes {
     apply_code(v, from, to, value, method, params, ExitCode::OK)
+}
+
+pub fn apply_ok_<S: Serialize>(
+    v: &dyn VM,
+    from: Address,
+    to: Address,
+    value: TokenAmount,
+    method: MethodNum,
+    params: Option<S>,
+) -> RawBytes {
+    apply_code_(v, from, to, value, method, params, ExitCode::OK)
 }
 
 pub fn apply_code<S: Serialize>(
@@ -113,6 +143,21 @@ pub fn apply_code<S: Serialize>(
     code: ExitCode,
 ) -> RawBytes {
     let res = v.apply_message(from, to, value, method, params).unwrap();
+    assert_eq!(code, res.code, "expected code {}, got {} ({})", code, res.code, res.message);
+    res.ret.map_or(RawBytes::default(), |b| RawBytes::new(b.data))
+}
+
+pub fn apply_code_<S: Serialize>(
+    v: &dyn VM,
+    from: Address,
+    to: Address,
+    value: TokenAmount,
+    method: MethodNum,
+    params: Option<S>,
+    code: ExitCode,
+) -> RawBytes {
+    let params = params.map(|p| IpldBlock::serialize_cbor(&p).unwrap().unwrap());
+    let res = v.send_message(from, to, value, method, params).unwrap();
     assert_eq!(code, res.code, "expected code {}, got {} ({})", code, res.code, res.message);
     res.ret.map_or(RawBytes::default(), |b| RawBytes::new(b.data))
 }
@@ -152,6 +197,39 @@ pub fn create_miner(
             balance,
             PowerMethod::CreateMiner as u64,
             Some(params),
+        )
+        .unwrap()
+        .ret
+        .unwrap()
+        .deserialize()
+        .unwrap();
+    (res.id_address, res.robust_address)
+}
+
+pub fn create_miner_(
+    v: &dyn VM,
+    owner: Address,
+    worker: Address,
+    post_proof_type: RegisteredPoStProof,
+    balance: TokenAmount,
+) -> (Address, Address) {
+    let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
+    let peer_id = "miner".as_bytes().to_vec();
+    let params = CreateMinerParams {
+        owner,
+        worker,
+        window_post_proof_type: post_proof_type,
+        peer: peer_id,
+        multiaddrs,
+    };
+
+    let res: CreateMinerReturn = v
+        .send_message(
+            owner,
+            STORAGE_POWER_ACTOR_ADDR,
+            balance,
+            PowerMethod::CreateMiner as u64,
+            Some(IpldBlock::serialize_cbor(&params).unwrap().unwrap()),
         )
         .unwrap()
         .ret
@@ -774,6 +852,22 @@ pub fn change_beneficiary(
     );
 }
 
+pub fn change_beneficiary_(
+    v: &dyn VM,
+    from: Address,
+    maddr: Address,
+    beneficiary_change_proposal: &ChangeBeneficiaryParams,
+) {
+    apply_ok_(
+        v,
+        from,
+        maddr,
+        TokenAmount::zero(),
+        MinerMethod::ChangeBeneficiary as u64,
+        Some(beneficiary_change_proposal.clone()),
+    );
+}
+
 pub fn get_beneficiary(v: &TestVM, from: Address, m_addr: Address) -> GetBeneficiaryReturn {
     apply_ok(
         v,
@@ -789,6 +883,17 @@ pub fn get_beneficiary(v: &TestVM, from: Address, m_addr: Address) -> GetBenefic
 
 pub fn change_owner_address(v: &TestVM, from: Address, m_addr: Address, new_miner_addr: Address) {
     apply_ok(
+        v,
+        from,
+        m_addr,
+        TokenAmount::zero(),
+        MinerMethod::ChangeOwnerAddress as u64,
+        Some(new_miner_addr),
+    );
+}
+
+pub fn change_owner_address_(v: &dyn VM, from: Address, m_addr: Address, new_miner_addr: Address) {
+    apply_ok_(
         v,
         from,
         m_addr,
