@@ -6226,6 +6226,7 @@ dependencies = [
  "anyhow",
  "bimap",
  "blake2b_simd",
+ "bls-signatures",
  "cid",
  "ethers 0.17.0",
  "fil_actor_account 10.0.0",

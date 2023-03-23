@@ -77,8 +77,13 @@ pub fn create_accounts(v: &TestVM, count: u64, balance: TokenAmount) -> Vec<Addr
     create_accounts_seeded(v, count, balance, ACCOUNT_SEED)
 }
 
-pub fn create_accounts_(v: &dyn VM, count: u64, balance: TokenAmount) -> Vec<Address> {
-    create_accounts_seeded_(v, count, balance, ACCOUNT_SEED)
+pub fn create_accounts_(
+    v: &dyn VM,
+    count: u64,
+    balance: TokenAmount,
+    typ: SignatureType,
+) -> Vec<Address> {
+    v.create_accounts_seeded(count, balance, typ, ACCOUNT_SEED).unwrap()
 }
 
 pub fn create_accounts_seeded(
@@ -94,21 +99,6 @@ pub fn create_accounts_seeded(
     }
     // Normalize pk address to return id address of account actor
     pk_addrs.iter().map(|&pk_addr| v.normalize_address(&pk_addr).unwrap()).collect()
-}
-
-fn create_accounts_seeded_(
-    v: &dyn VM,
-    count: u64,
-    balance: TokenAmount,
-    seed: u64,
-) -> Vec<Address> {
-    let pk_addrs = pk_addrs_from(seed, count);
-    // Send funds from faucet to pk address, creating account actor
-    for pk_addr in pk_addrs.clone() {
-        apply_ok_(v, TEST_FAUCET_ADDR, pk_addr, balance.clone(), METHOD_SEND, None::<RawBytes>);
-    }
-    // Normalize pk address to return id address of account actor
-    pk_addrs.iter().map(|&pk_addr| v.resolve_address(&pk_addr).unwrap()).collect()
 }
 
 pub fn apply_ok<S: Serialize>(

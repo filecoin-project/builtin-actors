@@ -54,6 +54,7 @@ thiserror = "1.0.30"
 libsecp256k1 = { version = "0.7.1"}
 fil_actors_evm_shared = { version = "10.0.0", path = "../actors/evm/shared" }
 
+bls-signatures = { version = "0.13", default-features = false }
 actors-v10 = { package = "fil_builtin_actors_bundle", version = "10.0.0", path = ".." } 
 fvm-workbench-vm = { version = "0.1.0", git = "http://github.com/helix-onchain/fvm-workbench", branch = "main"}
 fvm-workbench-api = { version = "0.1.0", git = "http://github.com/helix-onchain/fvm-workbench", branch = "main"}

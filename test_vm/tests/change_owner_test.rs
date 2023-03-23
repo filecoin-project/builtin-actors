@@ -2,6 +2,7 @@ use actors_v10;
 use fil_actor_miner::{ChangeBeneficiaryParams, Method as MinerMethod};
 use fil_actors_runtime::runtime::Policy;
 use fvm_ipld_blockstore::MemoryBlockstore;
+use fvm_shared::crypto::signature::SignatureType;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::RegisteredSealProof;
 use fvm_shared::state::StateTreeVersion;
@@ -33,7 +34,7 @@ fn change_owner_test(concrete_vm: ConcreteVM) {
     };
 
     // when the tests cases are merged, remove the match and use the concrete_vm directly
-    let addrs = create_accounts_(vm, 3, TokenAmount::from_whole(10_000));
+    let addrs = create_accounts_(vm, 3, TokenAmount::from_whole(10_000), SignatureType::BLS);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, new_owner, beneficiary) = (addrs[0], addrs[0], addrs[1], addrs[2]);
 
@@ -64,9 +65,7 @@ fn change_owner_test(concrete_vm: ConcreteVM) {
             // this block shouldn't compile unless the feature is enabled
             compilation_error;
         }
-        _ => {
-            unimplemented!("Only TestVM and BenchmarkVM are supported")
-        }
+        _ => {}
     }
 
     change_owner_address_(vm, new_owner, miner_id, new_owner);
@@ -78,10 +77,16 @@ fn change_owner_test(concrete_vm: ConcreteVM) {
             assert_eq!(new_owner, miner_info.owner);
             assert_eq!(new_owner, miner_info.beneficiary);
         }
-        ConcreteVM::BenchmarkVM(vm) => {}
+        #[cfg(feature = "benchmark")]
+        ConcreteVM::_BenchmarkVM(_) => {
+            // this block shouldn't compile unless the feature is enabled
+            compilation_error;
+        }
+        _ => {}
     }
 }
 
+// TODO: this would be gated by #[cfg(feature = "benchmark")] to prevent it running/compiling normally
 #[test]
 fn benchmark_change_owner_success() {
     println!("Running benchmark test");
@@ -99,7 +104,7 @@ fn benchmark_change_owner_success() {
 
     let mut bench = builder.build().unwrap();
     let w = ExecutionWrangler::new_default(&mut *bench);
-    let benchmarker = Benchmarker::new(w);
+    let benchmarker = Benchmarker::new(w, genesis);
     change_owner_test(ConcreteVM::BenchmarkVM(&benchmarker));
     println!("{:?}", benchmarker.execution_results.borrow());
 }

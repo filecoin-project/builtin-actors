@@ -46,6 +46,7 @@ use fvm_shared::chainid::ChainID;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::hash::SupportedHashes;
+use fvm_shared::crypto::signature::SignatureType;
 use fvm_shared::crypto::signature::{
     Signature, SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE,
 };
@@ -71,6 +72,8 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::ops::Add;
+use util::apply_ok_;
+use util::pk_addrs_from;
 
 pub mod bench;
 pub mod executor;
@@ -87,6 +90,13 @@ pub trait VM {
     ) -> Result<MessageResult, TestVMError>;
 
     fn resolve_address(&self, addr: &Address) -> Option<Address>;
+    fn create_accounts_seeded(
+        &self,
+        count: u64,
+        balance: TokenAmount,
+        typ: SignatureType,
+        seed: u64,
+    ) -> Result<Vec<Address>, TestVMError>;
 }
 
 impl<'bs> VM for TestVM<'bs> {
@@ -123,8 +133,8 @@ impl<'bs> VM for TestVM<'bs> {
             v: self,
             top,
             msg,
-            allow_side_effects: true,
-            caller_validated: false,
+            allow_side_effects: RefCell::new(true),
+            caller_validated: RefCell::new(false),
             read_only: false,
             policy: &Policy::default(),
             subinvocations: RefCell::new(vec![]),
@@ -155,6 +165,29 @@ impl<'bs> VM for TestVM<'bs> {
     fn resolve_address(&self, addr: &Address) -> Option<Address> {
         let st = self.get_state::<InitState>(INIT_ACTOR_ADDR).unwrap();
         st.resolve_address(self.store, addr).unwrap()
+    }
+
+    fn create_accounts_seeded(
+        &self,
+        count: u64,
+        balance: TokenAmount,
+        typ: SignatureType,
+        seed: u64,
+    ) -> Result<Vec<Address>, TestVMError> {
+        let pk_addrs = pk_addrs_from(seed, count);
+
+        for pk_addr in pk_addrs.clone() {
+            apply_ok_(
+                self,
+                TEST_FAUCET_ADDR,
+                pk_addr,
+                balance.clone(),
+                METHOD_SEND,
+                None::<RawBytes>,
+            );
+        }
+        // Normalize pk address to return id address of account actor
+        Ok(pk_addrs.iter().map(|&pk_addr| self.resolve_address(&pk_addr).unwrap()).collect())
     }
 }
 
