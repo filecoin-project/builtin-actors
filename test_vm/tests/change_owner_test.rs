@@ -1,9 +1,17 @@
+use actors_v10;
 use fil_actor_miner::{ChangeBeneficiaryParams, Method as MinerMethod};
+use fil_actors_runtime::runtime::Policy;
 use fvm_ipld_blockstore::MemoryBlockstore;
-use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
 use fvm_shared::sector::RegisteredSealProof;
+use fvm_shared::state::StateTreeVersion;
+use fvm_shared::version::NetworkVersion;
+use fvm_workbench_api::wrangler::ExecutionWrangler;
+use fvm_workbench_api::WorkbenchBuilder;
+use fvm_workbench_builtin_actors::genesis::{create_genesis_actors, GenesisSpec};
+use fvm_workbench_vm::builder::FvmBenchBuilder;
+use fvm_workbench_vm::externs::FakeExterns;
+use test_vm::bench::Benchmarker;
 use test_vm::util::{
     apply_code, change_beneficiary, change_beneficiary_, change_owner_address,
     change_owner_address_, create_accounts, create_accounts_, create_miner, create_miner_,
@@ -13,7 +21,7 @@ use test_vm::TestVM;
 
 enum ConcreteVM<'vm, 'bs> {
     TestVM(&'vm TestVM<'bs>),
-    _BenchmarkVM(()),
+    BenchmarkVM(&'vm Benchmarker<'vm>),
 }
 
 /// Sample test that can be injected with either a TestVM (rust execution, stack traceable etc) or a
@@ -21,7 +29,7 @@ enum ConcreteVM<'vm, 'bs> {
 fn change_owner_test(concrete_vm: ConcreteVM) {
     let vm = match concrete_vm {
         ConcreteVM::TestVM(tvm) => tvm.vm(),
-        ConcreteVM::_BenchmarkVM(_) => todo!(),
+        ConcreteVM::BenchmarkVM(vm) => vm,
     };
 
     // when the tests cases are merged, remove the match and use the concrete_vm directly
@@ -70,18 +78,30 @@ fn change_owner_test(concrete_vm: ConcreteVM) {
             assert_eq!(new_owner, miner_info.owner);
             assert_eq!(new_owner, miner_info.beneficiary);
         }
-        ConcreteVM::_BenchmarkVM(_) => todo!(),
+        ConcreteVM::BenchmarkVM(vm) => {}
     }
 }
 
-#[cfg(feature = "benchmark")]
 #[test]
 fn benchmark_change_owner_success() {
     println!("Running benchmark test");
-    let store = MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(&store);
-    change_owner_test(ConcreteVM::TestVM(&v));
-    v.assert_state_invariants();
+
+    let (mut builder, manifest_data_cid) = FvmBenchBuilder::new_with_bundle(
+        MemoryBlockstore::new(),
+        FakeExterns::new(),
+        NetworkVersion::V18,
+        StateTreeVersion::V5,
+        &actors_v10::BUNDLE_CAR,
+    )
+    .unwrap();
+    let spec = GenesisSpec::default(manifest_data_cid);
+    let genesis = create_genesis_actors(&mut builder, &spec).unwrap();
+
+    let mut bench = builder.build().unwrap();
+    let w = ExecutionWrangler::new_default(&mut *bench);
+    let benchmarker = Benchmarker::new(w);
+    change_owner_test(ConcreteVM::BenchmarkVM(&benchmarker));
+    println!("{:?}", benchmarker.execution_results.borrow());
 }
 
 #[cfg(not(feature = "benchmark"))]

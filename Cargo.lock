@@ -2306,7 +2306,24 @@ name = "fil_actor_account"
 version = "10.0.0"
 dependencies = [
  "anyhow",
- "fil_actors_runtime",
+ "fil_actors_runtime 10.0.0",
+ "frc42_dispatch",
+ "fvm_actor_utils",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_shared",
+ "num-derive",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
+name = "fil_actor_account"
+version = "10.0.0"
+source = "git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps#331102ce67c47b7ad33acf9ff32bde3f78e98d12"
+dependencies = [
+ "anyhow",
+ "fil_actors_runtime 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
  "frc42_dispatch",
  "fvm_actor_utils",
  "fvm_ipld_blockstore",
@@ -2340,7 +2357,22 @@ dependencies = [
 name = "fil_actor_cron"
 version = "10.0.0"
 dependencies = [
- "fil_actors_runtime",
+ "fil_actors_runtime 10.0.0",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_shared",
+ "log",
+ "num-derive",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
+name = "fil_actor_cron"
+version = "10.0.0"
+source = "git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps#331102ce67c47b7ad33acf9ff32bde3f78e98d12"
+dependencies = [
+ "fil_actors_runtime 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_shared",
@@ -2355,7 +2387,28 @@ name = "fil_actor_datacap"
 version = "10.0.0"
 dependencies = [
  "cid",
- "fil_actors_runtime",
+ "fil_actors_runtime 10.0.0",
+ "frc42_dispatch",
+ "frc46_token",
+ "fvm_actor_utils",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_ipld_hamt",
+ "fvm_shared",
+ "lazy_static",
+ "log",
+ "num-derive",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
+name = "fil_actor_datacap"
+version = "10.0.0"
+source = "git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps#331102ce67c47b7ad33acf9ff32bde3f78e98d12"
+dependencies = [
+ "cid",
+ "fil_actors_runtime 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
  "frc42_dispatch",
  "frc46_token",
  "fvm_actor_utils",
@@ -2376,9 +2429,31 @@ version = "10.0.0"
 dependencies = [
  "anyhow",
  "cid",
- "fil_actor_evm",
- "fil_actors_evm_shared",
- "fil_actors_runtime",
+ "fil_actor_evm 10.0.0",
+ "fil_actors_evm_shared 10.0.0",
+ "fil_actors_runtime 10.0.0",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_shared",
+ "hex-literal",
+ "log",
+ "multihash",
+ "num-derive",
+ "num-traits",
+ "rlp",
+ "serde",
+ "serde_tuple",
+]
+
+[[package]]
+name = "fil_actor_eam"
+version = "10.0.0"
+source = "git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps#331102ce67c47b7ad33acf9ff32bde3f78e98d12"
+dependencies = [
+ "anyhow",
+ "cid",
+ "fil_actors_evm_shared 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actors_runtime 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_shared",
@@ -2396,7 +2471,23 @@ dependencies = [
 name = "fil_actor_ethaccount"
 version = "10.0.0"
 dependencies = [
- "fil_actors_runtime",
+ "fil_actors_runtime 10.0.0",
+ "frc42_dispatch",
+ "fvm_actor_utils",
+ "fvm_ipld_encoding",
+ "fvm_shared",
+ "hex-literal",
+ "num-derive",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
+name = "fil_actor_ethaccount"
+version = "10.0.0"
+source = "git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps#331102ce67c47b7ad33acf9ff32bde3f78e98d12"
+dependencies = [
+ "fil_actors_runtime 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
  "frc42_dispatch",
  "fvm_actor_utils",
  "fvm_ipld_encoding",
@@ -2415,8 +2506,8 @@ dependencies = [
  "cid",
  "ethers 1.0.2",
  "etk-asm",
- "fil_actors_evm_shared",
- "fil_actors_runtime",
+ "fil_actors_evm_shared 10.0.0",
+ "fil_actors_runtime 10.0.0",
  "frc42_dispatch",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
@@ -2438,12 +2529,56 @@ dependencies = [
 ]
 
 [[package]]
+name = "fil_actor_evm"
+version = "10.0.0"
+source = "git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps#331102ce67c47b7ad33acf9ff32bde3f78e98d12"
+dependencies = [
+ "anyhow",
+ "cid",
+ "fil_actors_evm_shared 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actors_runtime 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "frc42_dispatch",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_ipld_kamt",
+ "fvm_shared",
+ "hex",
+ "hex-literal",
+ "log",
+ "multihash",
+ "num-derive",
+ "num-traits",
+ "serde",
+ "serde_tuple",
+ "substrate-bn",
+]
+
+[[package]]
 name = "fil_actor_init"
 version = "10.0.0"
 dependencies = [
  "anyhow",
  "cid",
- "fil_actors_runtime",
+ "fil_actors_runtime 10.0.0",
+ "frc42_dispatch",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_ipld_hamt",
+ "fvm_shared",
+ "log",
+ "num-derive",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
+name = "fil_actor_init"
+version = "10.0.0"
+source = "git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps#331102ce67c47b7ad33acf9ff32bde3f78e98d12"
+dependencies = [
+ "anyhow",
+ "cid",
+ "fil_actors_runtime 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
  "frc42_dispatch",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
@@ -2461,10 +2596,10 @@ version = "10.0.0"
 dependencies = [
  "anyhow",
  "cid",
- "fil_actor_power",
- "fil_actor_reward",
- "fil_actor_verifreg",
- "fil_actors_runtime",
+ "fil_actor_power 10.0.0",
+ "fil_actor_reward 10.0.0",
+ "fil_actor_verifreg 10.0.0",
+ "fil_actors_runtime 10.0.0",
  "frc42_dispatch",
  "frc46_token",
  "fvm_ipld_amt",
@@ -2486,17 +2621,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "fil_actor_market"
+version = "10.0.0"
+source = "git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps#331102ce67c47b7ad33acf9ff32bde3f78e98d12"
+dependencies = [
+ "anyhow",
+ "cid",
+ "fil_actors_runtime 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "frc42_dispatch",
+ "frc46_token",
+ "fvm_ipld_bitfield",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_ipld_hamt",
+ "fvm_shared",
+ "integer-encoding",
+ "libipld-core 0.13.1",
+ "log",
+ "num-derive",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
 name = "fil_actor_miner"
 version = "10.0.0"
 dependencies = [
  "anyhow",
  "byteorder",
  "cid",
- "fil_actor_account",
- "fil_actor_market",
- "fil_actor_power",
- "fil_actor_reward",
- "fil_actors_runtime",
+ "fil_actor_account 10.0.0",
+ "fil_actor_market 10.0.0",
+ "fil_actor_power 10.0.0",
+ "fil_actor_reward 10.0.0",
+ "fil_actors_runtime 10.0.0",
  "frc42_dispatch",
  "fvm_ipld_amt",
  "fvm_ipld_bitfield",
@@ -2516,12 +2674,37 @@ dependencies = [
 ]
 
 [[package]]
+name = "fil_actor_miner"
+version = "10.0.0"
+source = "git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps#331102ce67c47b7ad33acf9ff32bde3f78e98d12"
+dependencies = [
+ "anyhow",
+ "byteorder",
+ "cid",
+ "fil_actors_runtime 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "frc42_dispatch",
+ "fvm_ipld_amt",
+ "fvm_ipld_bitfield",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_ipld_hamt",
+ "fvm_shared",
+ "itertools 0.10.5",
+ "lazy_static",
+ "log",
+ "multihash",
+ "num-derive",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
 name = "fil_actor_multisig"
 version = "10.0.0"
 dependencies = [
  "anyhow",
  "cid",
- "fil_actors_runtime",
+ "fil_actors_runtime 10.0.0",
  "frc42_dispatch",
  "fvm_actor_utils",
  "fvm_ipld_blockstore",
@@ -2537,13 +2720,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "fil_actor_multisig"
+version = "10.0.0"
+source = "git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps#331102ce67c47b7ad33acf9ff32bde3f78e98d12"
+dependencies = [
+ "anyhow",
+ "cid",
+ "fil_actors_runtime 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "frc42_dispatch",
+ "fvm_actor_utils",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_ipld_hamt",
+ "fvm_shared",
+ "indexmap",
+ "integer-encoding",
+ "num-derive",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
 name = "fil_actor_paych"
 version = "10.0.0"
 dependencies = [
  "anyhow",
  "cid",
  "derive_builder 0.10.2",
- "fil_actors_runtime",
+ "fil_actors_runtime 10.0.0",
  "frc42_dispatch",
  "fvm_ipld_amt",
  "fvm_ipld_blockstore",
@@ -2556,8 +2760,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "fil_actor_paych"
+version = "10.0.0"
+source = "git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps#331102ce67c47b7ad33acf9ff32bde3f78e98d12"
+dependencies = [
+ "anyhow",
+ "cid",
+ "fil_actors_runtime 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "frc42_dispatch",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_shared",
+ "num-derive",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
 name = "fil_actor_placeholder"
 version = "10.0.0"
+
+[[package]]
+name = "fil_actor_placeholder"
+version = "10.0.0"
+source = "git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps#331102ce67c47b7ad33acf9ff32bde3f78e98d12"
 
 [[package]]
 name = "fil_actor_power"
@@ -2565,8 +2791,30 @@ version = "10.0.0"
 dependencies = [
  "anyhow",
  "cid",
- "fil_actor_reward",
- "fil_actors_runtime",
+ "fil_actor_reward 10.0.0",
+ "fil_actors_runtime 10.0.0",
+ "frc42_dispatch",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_ipld_hamt",
+ "fvm_shared",
+ "indexmap",
+ "integer-encoding",
+ "lazy_static",
+ "log",
+ "num-derive",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
+name = "fil_actor_power"
+version = "10.0.0"
+source = "git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps#331102ce67c47b7ad33acf9ff32bde3f78e98d12"
+dependencies = [
+ "anyhow",
+ "cid",
+ "fil_actors_runtime 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
  "frc42_dispatch",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
@@ -2585,7 +2833,7 @@ dependencies = [
 name = "fil_actor_reward"
 version = "10.0.0"
 dependencies = [
- "fil_actors_runtime",
+ "fil_actors_runtime 10.0.0",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_shared",
@@ -2598,12 +2846,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "fil_actor_reward"
+version = "10.0.0"
+source = "git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps#331102ce67c47b7ad33acf9ff32bde3f78e98d12"
+dependencies = [
+ "fil_actors_runtime 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_shared",
+ "lazy_static",
+ "log",
+ "num-derive",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
 name = "fil_actor_system"
 version = "10.0.0"
 dependencies = [
  "anyhow",
  "cid",
- "fil_actors_runtime",
+ "fil_actors_runtime 10.0.0",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_shared",
+ "num-derive",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
+name = "fil_actor_system"
+version = "10.0.0"
+source = "git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps#331102ce67c47b7ad33acf9ff32bde3f78e98d12"
+dependencies = [
+ "anyhow",
+ "cid",
+ "fil_actors_runtime 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "fvm_shared",
@@ -2618,7 +2898,29 @@ version = "10.0.0"
 dependencies = [
  "anyhow",
  "cid",
- "fil_actors_runtime",
+ "fil_actors_runtime 10.0.0",
+ "frc42_dispatch",
+ "frc46_token",
+ "fvm_actor_utils",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_ipld_hamt",
+ "fvm_shared",
+ "lazy_static",
+ "log",
+ "num-derive",
+ "num-traits",
+ "serde",
+]
+
+[[package]]
+name = "fil_actor_verifreg"
+version = "10.0.0"
+source = "git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps#331102ce67c47b7ad33acf9ff32bde3f78e98d12"
+dependencies = [
+ "anyhow",
+ "cid",
+ "fil_actors_runtime 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
  "frc42_dispatch",
  "frc46_token",
  "fvm_actor_utils",
@@ -2637,7 +2939,20 @@ dependencies = [
 name = "fil_actors_evm_shared"
 version = "10.0.0"
 dependencies = [
- "fil_actors_runtime",
+ "fil_actors_runtime 10.0.0",
+ "fvm_ipld_encoding",
+ "fvm_shared",
+ "hex",
+ "serde",
+ "uint",
+]
+
+[[package]]
+name = "fil_actors_evm_shared"
+version = "10.0.0"
+source = "git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps#331102ce67c47b7ad33acf9ff32bde3f78e98d12"
+dependencies = [
+ "fil_actors_runtime 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
  "fvm_ipld_encoding",
  "fvm_shared",
  "hex",
@@ -2683,29 +2998,88 @@ dependencies = [
 ]
 
 [[package]]
+name = "fil_actors_runtime"
+version = "10.0.0"
+source = "git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps#331102ce67c47b7ad33acf9ff32bde3f78e98d12"
+dependencies = [
+ "anyhow",
+ "byteorder",
+ "castaway",
+ "cid",
+ "fvm_ipld_amt",
+ "fvm_ipld_bitfield",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_encoding",
+ "fvm_ipld_hamt",
+ "fvm_sdk",
+ "fvm_shared",
+ "itertools 0.10.5",
+ "log",
+ "multihash",
+ "num",
+ "num-derive",
+ "num-traits",
+ "paste",
+ "regex",
+ "serde",
+ "serde_repr",
+ "sha2 0.10.6",
+ "thiserror",
+ "unsigned-varint",
+]
+
+[[package]]
 name = "fil_builtin_actors_bundle"
 version = "10.0.0"
 dependencies = [
  "cid",
  "clap",
- "fil_actor_account",
+ "fil_actor_account 10.0.0",
  "fil_actor_bundler",
- "fil_actor_cron",
- "fil_actor_datacap",
- "fil_actor_eam",
- "fil_actor_ethaccount",
- "fil_actor_evm",
- "fil_actor_init",
- "fil_actor_market",
- "fil_actor_miner",
- "fil_actor_multisig",
- "fil_actor_paych",
- "fil_actor_placeholder",
- "fil_actor_power",
- "fil_actor_reward",
- "fil_actor_system",
- "fil_actor_verifreg",
- "fil_actors_runtime",
+ "fil_actor_cron 10.0.0",
+ "fil_actor_datacap 10.0.0",
+ "fil_actor_eam 10.0.0",
+ "fil_actor_ethaccount 10.0.0",
+ "fil_actor_evm 10.0.0",
+ "fil_actor_init 10.0.0",
+ "fil_actor_market 10.0.0",
+ "fil_actor_miner 10.0.0",
+ "fil_actor_multisig 10.0.0",
+ "fil_actor_paych 10.0.0",
+ "fil_actor_placeholder 10.0.0",
+ "fil_actor_power 10.0.0",
+ "fil_actor_reward 10.0.0",
+ "fil_actor_system 10.0.0",
+ "fil_actor_verifreg 10.0.0",
+ "fil_actors_runtime 10.0.0",
+ "num-traits",
+]
+
+[[package]]
+name = "fil_builtin_actors_bundle"
+version = "10.0.0"
+source = "git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps#331102ce67c47b7ad33acf9ff32bde3f78e98d12"
+dependencies = [
+ "cid",
+ "clap",
+ "fil_actor_account 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actor_bundler",
+ "fil_actor_cron 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actor_datacap 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actor_eam 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actor_ethaccount 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actor_evm 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actor_init 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actor_market 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actor_miner 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actor_multisig 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actor_paych 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actor_placeholder 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actor_power 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actor_reward 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actor_system 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actor_verifreg 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actors_runtime 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
  "num-traits",
 ]
 
@@ -2716,19 +3090,19 @@ dependencies = [
  "anyhow",
  "bimap",
  "cid",
- "fil_actor_account",
- "fil_actor_cron",
- "fil_actor_datacap",
- "fil_actor_init",
- "fil_actor_market",
- "fil_actor_miner",
- "fil_actor_multisig",
- "fil_actor_paych",
- "fil_actor_power",
- "fil_actor_reward",
- "fil_actor_system",
- "fil_actor_verifreg",
- "fil_actors_runtime",
+ "fil_actor_account 10.0.0",
+ "fil_actor_cron 10.0.0",
+ "fil_actor_datacap 10.0.0",
+ "fil_actor_init 10.0.0",
+ "fil_actor_market 10.0.0",
+ "fil_actor_miner 10.0.0",
+ "fil_actor_multisig 10.0.0",
+ "fil_actor_paych 10.0.0",
+ "fil_actor_power 10.0.0",
+ "fil_actor_reward 10.0.0",
+ "fil_actor_system 10.0.0",
+ "fil_actor_verifreg 10.0.0",
+ "fil_actors_runtime 10.0.0",
  "frc46_token",
  "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
@@ -3160,6 +3534,45 @@ dependencies = [
  "fvm_shared",
  "itertools 0.10.5",
  "num-format",
+ "thiserror",
+]
+
+[[package]]
+name = "fvm-workbench-builtin-actors"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "blake2b_simd",
+ "bls-signatures",
+ "cid",
+ "fil_actor_account 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actor_cron 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actor_datacap 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actor_init 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actor_market 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actor_miner 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actor_multisig 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actor_paych 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actor_power 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actor_reward 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actor_system 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actor_verifreg 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_actors_runtime 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "fil_builtin_actors_bundle 10.0.0 (git+https://github.com/filecoin-project/builtin-actors?branch=alex/update-deps)",
+ "frc46_token",
+ "fvm",
+ "fvm-workbench-api",
+ "fvm-workbench-vm",
+ "fvm_ipld_amt",
+ "fvm_ipld_bitfield",
+ "fvm_ipld_blockstore",
+ "fvm_ipld_car",
+ "fvm_ipld_encoding",
+ "fvm_ipld_hamt",
+ "fvm_shared",
+ "libsecp256k1",
+ "multihash",
+ "rand_chacha",
  "thiserror",
 ]
 
@@ -5815,26 +6228,28 @@ dependencies = [
  "blake2b_simd",
  "cid",
  "ethers 0.17.0",
- "fil_actor_account",
- "fil_actor_cron",
- "fil_actor_datacap",
- "fil_actor_eam",
- "fil_actor_ethaccount",
- "fil_actor_evm",
- "fil_actor_init",
- "fil_actor_market",
- "fil_actor_miner",
- "fil_actor_multisig",
- "fil_actor_paych",
- "fil_actor_power",
- "fil_actor_reward",
- "fil_actor_system",
- "fil_actor_verifreg",
- "fil_actors_evm_shared",
- "fil_actors_runtime",
+ "fil_actor_account 10.0.0",
+ "fil_actor_cron 10.0.0",
+ "fil_actor_datacap 10.0.0",
+ "fil_actor_eam 10.0.0",
+ "fil_actor_ethaccount 10.0.0",
+ "fil_actor_evm 10.0.0",
+ "fil_actor_init 10.0.0",
+ "fil_actor_market 10.0.0",
+ "fil_actor_miner 10.0.0",
+ "fil_actor_multisig 10.0.0",
+ "fil_actor_paych 10.0.0",
+ "fil_actor_power 10.0.0",
+ "fil_actor_reward 10.0.0",
+ "fil_actor_system 10.0.0",
+ "fil_actor_verifreg 10.0.0",
+ "fil_actors_evm_shared 10.0.0",
+ "fil_actors_runtime 10.0.0",
+ "fil_builtin_actors_bundle 10.0.0",
  "fil_builtin_actors_state",
  "frc46_token",
  "fvm-workbench-api",
+ "fvm-workbench-builtin-actors",
  "fvm-workbench-vm",
  "fvm_actor_utils",
  "fvm_ipld_bitfield",
