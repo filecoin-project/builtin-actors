@@ -37,6 +37,7 @@ jobs:
       env:
         SCCACHE_CACHE_SIZE: 2G
         SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
+        CARGO_INCREMENTAL: 0
     - name: Running tests
       run: |
         cargo test --locked --all --no-fail-fast --exclude=fil_builtin_actors_bundle
@@ -84,6 +85,7 @@ jobs:
         # with the default name they would override each other.
         LLVM_PROFILE_FILE: "%m.profraw"
         RUSTFLAGS: "-Cinstrument-coverage"
+        CARGO_INCREMENTAL: 0
       run: cargo test --workspace --exclude fil_builtin_actors_bundle
     - name: Merge profiling data
       # Do *not* use sparse output. It leads to more lines that are not taken
