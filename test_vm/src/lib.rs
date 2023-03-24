@@ -171,7 +171,7 @@ impl<'bs> VM for TestVM<'bs> {
         &self,
         count: u64,
         balance: TokenAmount,
-        typ: SignatureType,
+        _typ: SignatureType,
         seed: u64,
     ) -> Result<Vec<Address>, TestVMError> {
         let pk_addrs = pk_addrs_from(seed, count);
@@ -516,9 +516,7 @@ impl<'bs> TestVM<'bs> {
 
     pub fn get_state<T: DeserializeOwned>(&self, addr: Address) -> Option<T> {
         let a_opt = self.get_actor(addr);
-        if a_opt == None {
-            return None;
-        };
+        a_opt.as_ref()?;
         let a = a_opt.unwrap();
         self.store.get_cbor::<T>(&a.head).unwrap()
     }

@@ -1,6 +1,5 @@
-use actors_v10;
-use fil_actor_miner::{ChangeBeneficiaryParams, Method as MinerMethod};
-use fil_actors_runtime::runtime::Policy;
+
+use fil_actor_miner::ChangeBeneficiaryParams;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::crypto::signature::SignatureType;
 use fvm_shared::econ::TokenAmount;
@@ -13,11 +12,7 @@ use fvm_workbench_builtin_actors::genesis::{create_genesis_actors, GenesisSpec};
 use fvm_workbench_vm::builder::FvmBenchBuilder;
 use fvm_workbench_vm::externs::FakeExterns;
 use test_vm::bench::Benchmarker;
-use test_vm::util::{
-    apply_code, change_beneficiary, change_beneficiary_, change_owner_address,
-    change_owner_address_, create_accounts, create_accounts_, create_miner, create_miner_,
-    get_beneficiary,
-};
+use test_vm::util::{change_beneficiary_, change_owner_address_, create_accounts_, create_miner_};
 use test_vm::TestVM;
 
 enum ConcreteVM<'vm, 'bs> {
@@ -87,6 +82,7 @@ fn change_owner_test(concrete_vm: ConcreteVM) {
 }
 
 // TODO: this would be gated by #[cfg(feature = "benchmark")] to prevent it running/compiling normally
+// #[cfg(feature = "benchmark")]
 #[test]
 fn benchmark_change_owner_success() {
     println!("Running benchmark test");
@@ -96,7 +92,7 @@ fn benchmark_change_owner_success() {
         FakeExterns::new(),
         NetworkVersion::V18,
         StateTreeVersion::V5,
-        &actors_v10::BUNDLE_CAR,
+        actors_v10::BUNDLE_CAR,
     )
     .unwrap();
     let spec = GenesisSpec::default(manifest_data_cid);

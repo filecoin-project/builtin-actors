@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 
 use fvm_ipld_encoding::{ipld_block::IpldBlock, RawBytes, DAG_CBOR};
-use fvm_shared::{address::Address, crypto::signature::SignatureType, ActorID, METHOD_SEND};
+use fvm_shared::{address::Address, crypto::signature::SignatureType, METHOD_SEND};
 use fvm_workbench_api::{wrangler::ExecutionWrangler, ExecutionResult};
 use fvm_workbench_builtin_actors::genesis::GenesisResult;
 use fvm_workbench_builtin_actors::util::*;
@@ -51,7 +51,7 @@ impl<'a> VM for Benchmarker<'a> {
 
     fn resolve_address(&self, addr: &Address) -> Option<Address> {
         let res = self.wrangler.borrow().resolve_address(addr).map_or(None, |a| a);
-        res.map(|id| Address::new_id(id))
+        res.map(Address::new_id)
     }
 
     fn create_accounts_seeded(
