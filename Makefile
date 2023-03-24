@@ -20,6 +20,17 @@ check:
 test:
 	cargo test --workspace
 
+# Runs coverage tests package by package, deleting test binaries in between to save disk space
+# and avoid running out of storage on CI workers
+ci-coverage:
+	@echo "Running coverage tests"
+	@for pkg in fil_actor_account fil_actor_cron; do \
+		echo "Running coverage tests for $$pkg"; \
+		cargo test --package $$pkg; \
+		echo "Deleting test binaries"; \
+		cargo clean; \
+	done
+
 # Release a new version. Specify the version "bump" with BUMP
 bump-version: check-clean deps-release check
 	cargo set-version --workspace --bump $(BUMP)
