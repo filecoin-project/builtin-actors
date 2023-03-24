@@ -97,10 +97,10 @@ members = [
 #frc46_token = { path = "../../filecoin/frc46_token"}
 
 
-[patch."http://github.com/helix-onchain/fvm-workbench"]
-fvm-workbench-vm = { path = "../../helix-onchain/fvm-workbench/vm" }
-fvm-workbench-api = { path = "../../helix-onchain/fvm-workbench/api" }
-fvm-workbench-builtin-actors = { path = "../../helix-onchain/fvm-workbench/builtin" }
+# [patch."http://github.com/helix-onchain/fvm-workbench"]
+# fvm-workbench-vm = { path = "../../helix-onchain/fvm-workbench/vm" }
+# fvm-workbench-api = { path = "../../helix-onchain/fvm-workbench/api" }
+# fvm-workbench-builtin-actors = { path = "../../helix-onchain/fvm-workbench/builtin" }
 
 [profile.wasm]
 inherits = "release"
