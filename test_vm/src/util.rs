@@ -77,7 +77,12 @@ pub fn create_accounts(v: &TestVM, count: u64, balance: TokenAmount) -> Vec<Addr
     create_accounts_seeded(v, count, balance, ACCOUNT_SEED)
 }
 
-pub fn create_accounts_seeded(v: &TestVM, count: u64, balance: TokenAmount, seed: u64) -> Vec<Address> {
+pub fn create_accounts_seeded(
+    v: &TestVM,
+    count: u64,
+    balance: TokenAmount,
+    seed: u64,
+) -> Vec<Address> {
     let pk_addrs = pk_addrs_from(seed, count);
     // Send funds from faucet to pk address, creating account actor
     for pk_addr in pk_addrs.clone() {
@@ -193,7 +198,12 @@ pub fn miner_precommit_sector(
     state.get_precommitted_sector(v.store, sector_number).unwrap().unwrap()
 }
 
-pub fn miner_prove_sector(v: &TestVM, worker: Address, miner_id: Address, sector_number: SectorNumber) {
+pub fn miner_prove_sector(
+    v: &TestVM,
+    worker: Address,
+    miner_id: Address,
+    sector_number: SectorNumber,
+) {
     let prove_commit_params = ProveCommitSectorParams { sector_number, proof: vec![] };
     apply_ok(
         v,
@@ -546,7 +556,11 @@ pub fn miner_extend_sector_expiration2(
     .matches(v.take_invocations().last().unwrap());
 }
 
-pub fn advance_by_deadline_to_epoch(v: TestVM, maddr: Address, e: ChainEpoch) -> (TestVM, DeadlineInfo) {
+pub fn advance_by_deadline_to_epoch(
+    v: TestVM,
+    maddr: Address,
+    e: ChainEpoch,
+) -> (TestVM, DeadlineInfo) {
     // keep advancing until the epoch of interest is within the deadline
     // if e is dline.last() == dline.close -1 cron is not run
     let (v, dline_info) = advance_by_deadline(v, maddr, |dline_info| dline_info.close < e);
@@ -633,7 +647,13 @@ pub fn check_sector_active(v: &TestVM, m: Address, s: SectorNumber) -> bool {
     st.check_sector_active(&Policy::default(), v.store, d_idx, p_idx, s, true).unwrap()
 }
 
-pub fn check_sector_faulty(v: &TestVM, m: Address, d_idx: u64, p_idx: u64, s: SectorNumber) -> bool {
+pub fn check_sector_faulty(
+    v: &TestVM,
+    m: Address,
+    d_idx: u64,
+    p_idx: u64,
+    s: SectorNumber,
+) -> bool {
     let st = v.get_state::<MinerState>(m).unwrap();
     let deadlines = st.load_deadlines(v.store).unwrap();
     let deadline = deadlines.load_deadline(&Policy::default(), v.store, d_idx).unwrap();
@@ -883,7 +903,12 @@ pub fn verifreg_add_verifier(v: &TestVM, verifier: Address, data_cap: StoragePow
     .matches(v.take_invocations().last().unwrap());
 }
 
-pub fn verifreg_add_client(v: &TestVM, verifier: Address, client: Address, allowance: StoragePower) {
+pub fn verifreg_add_client(
+    v: &TestVM,
+    verifier: Address,
+    client: Address,
+    allowance: StoragePower,
+) {
     let add_client_params =
         AddVerifiedClientParams { address: client, allowance: allowance.clone() };
     apply_ok(

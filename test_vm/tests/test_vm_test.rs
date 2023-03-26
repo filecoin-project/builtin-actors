@@ -10,7 +10,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
 use num_traits::Zero;
 use test_vm::util::pk_addrs_from;
-use test_vm::{actor, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, TestVM};
+use test_vm::{actor, TestVM, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR};
 
 #[test]
 fn state_control() {

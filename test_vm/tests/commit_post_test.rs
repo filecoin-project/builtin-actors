@@ -28,7 +28,7 @@ use test_vm::util::{
     create_accounts, create_miner, invariant_failure_patterns, precommit_sectors,
     submit_windowed_post,
 };
-use test_vm::{ExpectInvocation, TEST_VM_RAND_ARRAY, TestVM};
+use test_vm::{ExpectInvocation, TestVM, TEST_VM_RAND_ARRAY};
 
 struct SectorInfo {
     number: SectorNumber,

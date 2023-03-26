@@ -23,7 +23,7 @@ use num_traits::Zero;
 use test_vm::util::{
     apply_ok, create_accounts, create_miner, invariant_failure_patterns, miner_dline_info,
 };
-use test_vm::{ExpectInvocation, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, TestVM};
+use test_vm::{ExpectInvocation, TestVM, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR};
 
 #[test]
 fn create_miner_test() {

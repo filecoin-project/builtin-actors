@@ -16,7 +16,7 @@ use num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use test_vm::{
     util::{apply_ok, create_accounts},
-    TEST_FAUCET_ADDR, TestVM,
+    TestVM, TEST_FAUCET_ADDR,
 };
 
 // Generate a statically typed interface for the contracts.

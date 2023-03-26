@@ -28,7 +28,7 @@ use fil_actors_runtime::{
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use test_vm::util::{apply_code, apply_ok, create_accounts, verifreg_add_verifier};
-use test_vm::{ExpectInvocation, TEST_VERIFREG_ROOT_ADDR, TestVM};
+use test_vm::{ExpectInvocation, TestVM, TEST_VERIFREG_ROOT_ADDR};
 
 #[test]
 fn remove_datacap_simple_successful_path() {

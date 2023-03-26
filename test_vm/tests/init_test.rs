@@ -9,7 +9,7 @@ use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode, METHOD_SEND};
 use num_traits::Zero;
-use test_vm::{actor, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, TestVM};
+use test_vm::{actor, TestVM, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR};
 
 fn assert_placeholder_actor(exp_bal: TokenAmount, v: &TestVM, addr: Address) {
     let act = v.get_actor(addr).unwrap();
