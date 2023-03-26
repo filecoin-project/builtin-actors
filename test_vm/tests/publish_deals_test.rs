@@ -31,7 +31,7 @@ use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use test_vm::util::{
     apply_ok, bf_all, create_accounts, create_accounts_seeded, create_miner, verifreg_add_verifier,
 };
-use test_vm::{ExpectInvocation, VM};
+use test_vm::{ExpectInvocation, TestVM};
 
 struct Addrs {
     worker: Address,
@@ -53,8 +53,8 @@ fn token_defaults() -> (TokenAmount, TokenAmount, TokenAmount) {
 }
 
 // create miner and client and add collateral
-fn setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Addrs, ChainEpoch) {
-    let mut v = VM::new_with_singletons(store);
+fn setup(store: &'_ MemoryBlockstore) -> (TestVM<'_>, Addrs, ChainEpoch) {
+    let mut v = TestVM::new_with_singletons(store);
     let addrs = create_accounts(&v, 7, TokenAmount::from_whole(10_000));
     let (worker, client1, client2, not_miner, cheap_client, verifier, verified_client) =
         (addrs[0], addrs[1], addrs[2], addrs[3], addrs[4], addrs[5], addrs[6]);
@@ -607,7 +607,7 @@ struct DealOptions {
 
 struct DealBatcher<'bs> {
     deals: Vec<DealProposal>,
-    v: &'bs VM<'bs>,
+    v: &'bs TestVM<'bs>,
     default_provider: Address,
     default_piece_size: PaddedPieceSize,
     default_verified: bool,
@@ -620,7 +620,7 @@ struct DealBatcher<'bs> {
 
 impl<'bs> DealBatcher<'bs> {
     fn new(
-        v: &'bs VM<'bs>,
+        v: &'bs TestVM<'bs>,
         default_provider: Address,
         default_piece_size: PaddedPieceSize,
         default_verified: bool,

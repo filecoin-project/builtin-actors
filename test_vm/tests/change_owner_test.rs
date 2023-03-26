@@ -8,12 +8,12 @@ use test_vm::util::{
     apply_code, change_beneficiary, change_owner_address, create_accounts, create_miner,
     get_beneficiary,
 };
-use test_vm::VM;
+use test_vm::TestVM;
 
 #[test]
 fn change_owner_success() {
     let store = MemoryBlockstore::new();
-    let mut v = VM::new_with_singletons(&store);
+    let mut v = TestVM::new_with_singletons(&store);
     let addrs = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, new_owner, beneficiary) = (addrs[0], addrs[0], addrs[1], addrs[2]);
@@ -50,7 +50,7 @@ fn change_owner_success() {
 #[test]
 fn keep_beneficiary_when_owner_changed() {
     let store = MemoryBlockstore::new();
-    let mut v = VM::new_with_singletons(&store);
+    let mut v = TestVM::new_with_singletons(&store);
     let addrs = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, new_owner, beneficiary) = (addrs[0], addrs[0], addrs[1], addrs[2]);
@@ -92,7 +92,7 @@ fn keep_beneficiary_when_owner_changed() {
 #[test]
 fn change_owner_fail() {
     let store = MemoryBlockstore::new();
-    let mut v = VM::new_with_singletons(&store);
+    let mut v = TestVM::new_with_singletons(&store);
     let addrs = create_accounts(&v, 4, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, new_owner, addr) = (addrs[0], addrs[0], addrs[1], addrs[2]);

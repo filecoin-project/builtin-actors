@@ -31,12 +31,12 @@ use test_vm::util::{
     invariant_failure_patterns, make_bitfield, market_publish_deal, submit_windowed_post,
     verifreg_add_verifier,
 };
-use test_vm::{ExpectInvocation, VM};
+use test_vm::{ExpectInvocation, TestVM};
 
 #[test]
 fn terminate_sectors() {
     let store = MemoryBlockstore::new();
-    let mut v = VM::new_with_singletons(&store);
+    let mut v = TestVM::new_with_singletons(&store);
     let addrs = create_accounts(&v, 4, TokenAmount::from_whole(10_000));
     let (owner, verifier, unverified_client, verified_client) =
         (addrs[0], addrs[1], addrs[2], addrs[3]);

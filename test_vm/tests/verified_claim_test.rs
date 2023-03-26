@@ -35,7 +35,7 @@ use test_vm::util::{
     verifreg_add_client, verifreg_add_verifier, verifreg_extend_claim_terms,
     verifreg_remove_expired_allocations,
 };
-use test_vm::VM;
+use test_vm::TestVM;
 
 // Tests a scenario involving a verified deal from the built-in market, with associated
 // allocation and claim.
@@ -43,7 +43,7 @@ use test_vm::VM;
 #[test]
 fn verified_claim_scenario() {
     let store = MemoryBlockstore::new();
-    let mut v = VM::new_with_singletons(&store);
+    let mut v = TestVM::new_with_singletons(&store);
     let addrs = create_accounts(&v, 4, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client, verified_client2) =
@@ -339,7 +339,7 @@ fn verified_claim_scenario() {
 #[test]
 fn expired_allocations() {
     let store = MemoryBlockstore::new();
-    let mut v = VM::new_with_singletons(&store);
+    let mut v = TestVM::new_with_singletons(&store);
     let addrs = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);

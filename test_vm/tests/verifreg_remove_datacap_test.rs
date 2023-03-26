@@ -28,12 +28,12 @@ use fil_actors_runtime::{
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use test_vm::util::{apply_code, apply_ok, create_accounts, verifreg_add_verifier};
-use test_vm::{ExpectInvocation, TEST_VERIFREG_ROOT_ADDR, VM};
+use test_vm::{ExpectInvocation, TEST_VERIFREG_ROOT_ADDR, TestVM};
 
 #[test]
 fn remove_datacap_simple_successful_path() {
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(&store);
     let addrs = create_accounts(&v, 4, TokenAmount::from_whole(10_000));
     let (verifier1, verifier2, verified_client) = (addrs[0], addrs[1], addrs[2]);
 
@@ -283,7 +283,7 @@ fn remove_datacap_simple_successful_path() {
 #[test]
 fn remove_datacap_fails_on_verifreg() {
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(&store);
     let addrs = create_accounts(&v, 2, TokenAmount::from_whole(10_000));
     let (verifier1, verifier2) = (addrs[0], addrs[1]);
 

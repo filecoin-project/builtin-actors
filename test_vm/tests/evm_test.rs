@@ -16,7 +16,7 @@ use num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use test_vm::{
     util::{apply_ok, create_accounts},
-    TEST_FAUCET_ADDR, VM,
+    TEST_FAUCET_ADDR, TestVM,
 };
 
 // Generate a statically typed interface for the contracts.
@@ -38,7 +38,7 @@ struct ContractParams(#[serde(with = "strict_bytes")] pub Vec<u8>);
 #[test]
 fn test_evm_call() {
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(&store);
 
     let account = create_accounts(&v, 1, TokenAmount::from_whole(10_000))[0];
 
@@ -90,7 +90,7 @@ fn test_evm_call() {
 #[test]
 fn test_evm_create() {
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(&store);
 
     let account = create_accounts(&v, 1, TokenAmount::from_whole(10_000))[0];
 
@@ -233,7 +233,7 @@ fn test_evm_create() {
 #[test]
 fn test_evm_eth_create_external() {
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(&store);
 
     // create the EthAccount
     let eth_bits = hex_literal::hex!("FEEDFACECAFEBEEF000000000000000000000000");
@@ -289,7 +289,7 @@ fn test_evm_eth_create_external() {
 #[test]
 fn test_evm_empty_initcode() {
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(&store);
 
     let account = create_accounts(&v, 1, TokenAmount::from_whole(10_000))[0];
     let create_result = v
@@ -321,7 +321,7 @@ fn test_evm_staticcall() {
     // A -> staticcall -> B -> call -> C (write) FAIL
 
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(&store);
 
     let accounts = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
 
@@ -475,7 +475,7 @@ fn test_evm_delegatecall() {
     // A -> staticcall -> B -> delegatecall -> C (write) FAIL
 
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(&store);
 
     let accounts = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
 
@@ -613,7 +613,7 @@ fn test_evm_staticcall_delegatecall() {
     // A -> staticcall -> B -> delegatecall -> C (write) FAIL
 
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(&store);
 
     let accounts = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
 
@@ -710,7 +710,7 @@ fn test_evm_staticcall_delegatecall() {
 #[test]
 fn test_evm_init_revert_data() {
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(&store);
 
     let account = create_accounts(&v, 1, TokenAmount::from_whole(10_000))[0];
     let create_result = v
