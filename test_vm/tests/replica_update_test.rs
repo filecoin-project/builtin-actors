@@ -41,7 +41,7 @@ use test_vm::util::{
     market_publish_deal, miner_power, precommit_sectors, prove_commit_sectors, sector_info,
     submit_invalid_post, submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
 };
-use test_vm::VM;
+use test_vm::TestVM;
 // ---- Success cases ----
 
 // Tests that an active CC sector can be correctly upgraded, and the expected state changes occur
@@ -174,7 +174,7 @@ fn upgrade_and_miss_post(v2: bool) {
 fn prove_replica_update_multi_dline() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
-    let mut v = VM::new_with_singletons(store);
+    let mut v = TestVM::new_with_singletons(store);
     let addrs = create_accounts(&v, 1, TokenAmount::from_whole(1_000_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -313,7 +313,7 @@ fn prove_replica_update_multi_dline() {
 #[test]
 fn immutable_deadline_failure() {
     let store = &MemoryBlockstore::new();
-    let mut v = VM::new_with_singletons(store);
+    let mut v = TestVM::new_with_singletons(store);
     let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -364,7 +364,7 @@ fn immutable_deadline_failure() {
 fn unhealthy_sector_failure() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
-    let mut v = VM::new_with_singletons(store);
+    let mut v = TestVM::new_with_singletons(store);
     let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -419,7 +419,7 @@ fn unhealthy_sector_failure() {
 #[test]
 fn terminated_sector_failure() {
     let store = &MemoryBlockstore::new();
-    let mut v = VM::new_with_singletons(store);
+    let mut v = TestVM::new_with_singletons(store);
     let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -485,7 +485,7 @@ fn terminated_sector_failure() {
 fn bad_batch_size_failure() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
-    let mut v = VM::new_with_singletons(store);
+    let mut v = TestVM::new_with_singletons(store);
     let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -587,7 +587,7 @@ fn upgrade_bad_post_dispute() {
 fn bad_post_upgrade_dispute() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
-    let mut v = VM::new_with_singletons(store);
+    let mut v = TestVM::new_with_singletons(store);
     let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -750,7 +750,7 @@ fn extend_after_upgrade() {
 fn wrong_deadline_index_failure() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
-    let mut v = VM::new_with_singletons(store);
+    let mut v = TestVM::new_with_singletons(store);
     let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -807,7 +807,7 @@ fn wrong_deadline_index_failure() {
 fn wrong_partition_index_failure() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
-    let mut v = VM::new_with_singletons(store);
+    let mut v = TestVM::new_with_singletons(store);
     let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -864,7 +864,7 @@ fn wrong_partition_index_failure() {
 fn deal_included_in_multiple_sectors_failure() {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
-    let mut v = VM::new_with_singletons(store);
+    let mut v = TestVM::new_with_singletons(store);
     let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -992,7 +992,7 @@ fn deal_included_in_multiple_sectors_failure() {
 #[test]
 fn replica_update_verified_deal() {
     let store = &MemoryBlockstore::new();
-    let mut v = VM::new_with_singletons(store);
+    let mut v = TestVM::new_with_singletons(store);
     let addrs = create_accounts(&v, 3, TokenAmount::from_whole(100_000));
     let (worker, owner, client, verifier) = (addrs[0], addrs[0], addrs[1], addrs[2]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -1116,7 +1116,7 @@ fn replica_update_verified_deal() {
 #[test]
 fn replica_update_verified_deal_max_term_violated() {
     let store = &MemoryBlockstore::new();
-    let mut v = VM::new_with_singletons(store);
+    let mut v = TestVM::new_with_singletons(store);
     let addrs = create_accounts(&v, 3, TokenAmount::from_whole(100_000));
     let (worker, owner, client, verifier) = (addrs[0], addrs[0], addrs[1], addrs[2]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -1178,8 +1178,8 @@ fn replica_update_verified_deal_max_term_violated() {
 fn create_miner_and_upgrade_sector(
     store: &MemoryBlockstore,
     v2: bool,
-) -> (VM, SectorOnChainInfo, Address, Address, u64, u64, SectorSize) {
-    let mut v = VM::new_with_singletons(store);
+) -> (TestVM, SectorOnChainInfo, Address, Address, u64, u64, SectorSize) {
+    let mut v = TestVM::new_with_singletons(store);
     let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -1261,12 +1261,12 @@ fn create_miner_and_upgrade_sector(
 // - fastforwarding out of the proving period into a new deadline
 // This method assumes that this is a miners first and only sector
 fn create_sector(
-    mut v: VM,
+    mut v: TestVM,
     worker: Address,
     maddr: Address,
     sector_number: SectorNumber,
     seal_proof: RegisteredSealProof,
-) -> (VM, u64, u64) {
+) -> (TestVM, u64, u64) {
     // precommit
     let exp = v.get_epoch() + Policy::default().max_sector_expiration_extension;
     let precommits =
@@ -1329,7 +1329,7 @@ fn create_sector(
 }
 fn create_deals(
     num_deals: u32,
-    v: &VM,
+    v: &TestVM,
     client: Address,
     worker: Address,
     maddr: Address,
@@ -1339,7 +1339,7 @@ fn create_deals(
 
 fn create_verified_deals(
     num_deals: u32,
-    v: &VM,
+    v: &TestVM,
     client: Address,
     worker: Address,
     maddr: Address,
@@ -1351,7 +1351,7 @@ fn create_verified_deals(
 #[allow(clippy::too_many_arguments)]
 fn create_deals_frac(
     num_deals: u32,
-    v: &VM,
+    v: &TestVM,
     client: Address,
     worker: Address,
     maddr: Address,

@@ -22,7 +22,7 @@ use test_vm::util::{
     miner_precommit_sector, miner_prove_sector, submit_windowed_post, verifreg_add_client,
     verifreg_add_verifier,
 };
-use test_vm::{ExpectInvocation, VM};
+use test_vm::{ExpectInvocation, TestVM};
 
 #[test]
 fn extend_legacy_sector_with_deals() {
@@ -36,7 +36,7 @@ fn extend2_legacy_sector_with_deals() {
 
 #[allow(clippy::too_many_arguments)]
 fn extend(
-    v: &VM,
+    v: &TestVM,
     worker: Address,
     maddr: Address,
     deadline_index: u64,
@@ -107,7 +107,7 @@ fn extend(
 
 fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
     let store = MemoryBlockstore::new();
-    let mut v = VM::new_with_singletons(&store);
+    let mut v = TestVM::new_with_singletons(&store);
     let addrs = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
