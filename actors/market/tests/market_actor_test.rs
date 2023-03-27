@@ -16,7 +16,7 @@ use fil_actors_runtime::runtime::{builtins::Type, Policy, Runtime, RuntimePolicy
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
     make_empty_map, make_map_with_root_and_bitwidth, ActorError, BatchReturn, Map, SetMultimap,
-    BURNT_FUNDS_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    BURNT_FUNDS_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR, EPOCHS_IN_YEAR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
@@ -1492,9 +1492,9 @@ fn cron_reschedules_update_to_new_period() {
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
 
     // Publish a deal
-    let mut rt = setup();
+    let rt = setup();
     let deal_id = publish_and_activate_deal(
-        &mut rt,
+        &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         start_epoch,
@@ -1515,14 +1515,106 @@ fn cron_reschedules_update_to_new_period() {
     rt.replace_state(&st);
 
     let curr_epoch = rt.set_epoch(misscheduled_epoch);
-    cron_tick(&mut rt);
+    cron_tick(&rt);
 
     let st: State = rt.get_state();
-    let expected_epoch = next_update_epoch(deal_id, update_interval, curr_epoch);
+    let expected_epoch = next_update_epoch(deal_id, update_interval, curr_epoch + 1);
     assert_ne!(expected_epoch, curr_epoch);
     assert_ne!(expected_epoch, misscheduled_epoch + update_interval);
     let found = st.get_deals_for_epoch(rt.store(), expected_epoch).unwrap();
     assert_eq!([deal_id][..], found[..]);
+}
+
+#[test]
+fn cron_reschedules_update_to_new_period_boundary() {
+    let start_epoch = ChainEpoch::from(1);
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+
+    // Publish a deal
+    let rt = setup();
+    let deal_id = publish_and_activate_deal(
+        &rt,
+        CLIENT_ADDR,
+        &MinerAddresses::default(),
+        start_epoch,
+        end_epoch,
+        0,
+        end_epoch,
+    );
+    let update_interval = rt.policy().deal_updates_interval;
+
+    // Hack state to move the scheduled update.
+    let mut st: State = rt.get_state();
+    let expected_epoch = next_update_epoch(deal_id, update_interval, start_epoch);
+    // Schedule the update exactly where the current policy would have put it anyway,
+    // next time round (as if an old policy had an interval that was a multiple of the current one).
+    // We can confirm it's rescheduled to the next period rather than left behind.
+    let misscheduled_epoch = expected_epoch + update_interval;
+    st.remove_deals_by_epoch(rt.store(), &[expected_epoch]).unwrap();
+    st.put_deals_by_epoch(rt.store(), &[(misscheduled_epoch, deal_id)]).unwrap();
+    rt.replace_state(&st);
+
+    let curr_epoch = rt.set_epoch(misscheduled_epoch);
+    cron_tick(&rt);
+
+    let st: State = rt.get_state();
+    let expected_epoch = next_update_epoch(deal_id, update_interval, curr_epoch + 1);
+    assert_ne!(expected_epoch, curr_epoch);
+    // For all other mis-schedulings, these would be asserted non-equal, but
+    // for this case we expect a perfect increase of one update interval.
+    assert_eq!(expected_epoch, misscheduled_epoch + update_interval);
+    let found = st.get_deals_for_epoch(rt.store(), expected_epoch).unwrap();
+    assert_eq!([deal_id][..], found[..]);
+}
+
+#[test]
+fn cron_reschedules_many_updates() {
+    let start_epoch = ChainEpoch::from(10);
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let sector_expiry = start_epoch + 5 * EPOCHS_IN_YEAR;
+    // Set a short update interval so we can generate scheduling collisions.
+    let update_interval = 100;
+
+    // Publish a deal
+    let mut rt = setup();
+    rt.policy.deal_updates_interval = update_interval;
+    let deal_count = 2 * update_interval;
+    for i in 0..deal_count {
+        publish_and_activate_deal(
+            &rt,
+            CLIENT_ADDR,
+            &MinerAddresses::default(),
+            start_epoch,
+            end_epoch + i,
+            0,
+            sector_expiry,
+        );
+    }
+
+    let st: State = rt.get_state();
+    // Confirm two deals are scheduled for each epoch from start_epoch.
+    let first_updates = st.get_deals_for_epoch(rt.store(), start_epoch).unwrap();
+    for epoch in start_epoch..(start_epoch + update_interval) {
+        assert_eq!(2, st.get_deals_for_epoch(rt.store(), epoch).unwrap().len());
+    }
+
+    rt.set_epoch(start_epoch);
+    cron_tick(&rt);
+
+    let st: State = rt.get_state();
+    // Two deals removed from start_epoch
+    assert_eq!(0, st.get_deals_for_epoch(rt.store(), start_epoch).unwrap().len());
+
+    // Same two deals scheduled one interval later
+    let rescheduled = st.get_deals_for_epoch(rt.store(), start_epoch + update_interval).unwrap();
+    assert_eq!(first_updates, rescheduled);
+
+    for epoch in (start_epoch + 1)..(start_epoch + update_interval) {
+        rt.set_epoch(epoch);
+        cron_tick(&rt);
+        let st: State = rt.get_state();
+        assert_eq!(2, st.get_deals_for_epoch(rt.store(), epoch + update_interval).unwrap().len());
+    }
 }
 
 #[test]

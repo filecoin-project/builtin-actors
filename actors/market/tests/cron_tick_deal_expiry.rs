@@ -53,8 +53,6 @@ fn deal_is_correctly_processed_if_first_cron_after_expiry() {
 
 #[test]
 fn regular_payments_till_deal_expires_and_then_locked_funds_are_unlocked() {
-    // The logic of this test relies on deal ID == 0 so that it's scheduled for
-    // updated in the 0th epoch of every interval, and the start epoch being the same.
     let start_epoch = Policy::default().deal_updates_interval;
     let end_epoch = start_epoch + DURATION_EPOCHS;
     let rt = setup();
@@ -67,6 +65,9 @@ fn regular_payments_till_deal_expires_and_then_locked_funds_are_unlocked() {
         0,
         end_epoch,
     );
+    // The logic of this test relies on deal ID == 0 so that it's scheduled for
+    // updated in the 0th epoch of every interval, and the start epoch being the same.
+    assert_eq!(0, deal_id);
     let deal_proposal = get_deal_proposal(&rt, deal_id);
 
     // move the current epoch to startEpoch + 5 so payment is made

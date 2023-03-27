@@ -110,7 +110,7 @@ fn deal_is_slashed() {
 
 const START_EPOCH: ChainEpoch = 50;
 const DEAL_DURATION_EPOCHS: ChainEpoch = 200 * EPOCHS_IN_DAY;
-const END_EPOCH: ChainEpoch = 50 + DEAL_DURATION_EPOCHS;
+const END_EPOCH: ChainEpoch = START_EPOCH + DEAL_DURATION_EPOCHS;
 
 #[test]
 fn deal_is_slashed_at_the_end_epoch_should_not_be_slashed_and_should_be_considered_expired() {
