@@ -75,6 +75,39 @@ use std::ops::Add;
 
 pub mod util;
 
+// TODO: temporary name eventually should replace util mod completely
+pub mod vm_util;
+
+/// An abstract VM that is injected into integration tests
+pub trait VM<BS: Blockstore> {
+    /// Returns the underlying blockstore of the VM
+    fn blockstore(&self) -> Box<&BS>;
+
+    /// Get the state root of the specified actor
+    fn state_root(&self, address: &Address) -> Option<Cid>;
+
+    /// Get the current chain epoch
+    fn epoch(&self) -> ChainEpoch;
+
+    /// Get the ID for the specified address
+    fn resolve_id_address(&self, address: &Address) -> Option<Address>;
+
+    /// Send a message between the two specified actors
+    /// TODO: add a generic parameter to MessageResult to allow an extra value to be returned
+    fn execute_message(
+        &self,
+        from: &Address,
+        to: &Address,
+        value: &TokenAmount,
+        method: MethodNum,
+        params: Option<IpldBlock>,
+    ) -> Result<MessageResult, TestVMError>;
+
+    /// Sets the epoch to the specified value
+    fn set_epoch(&self, epoch: ChainEpoch);
+}
+
+/// An in-memory rust-execution VM for testing that yields sensible stack traces and debug info
 pub struct TestVM<'bs, BS>
 where
     BS: Blockstore,
@@ -85,7 +118,7 @@ where
     actors_dirty: RefCell<bool>,
     actors_cache: RefCell<HashMap<Address, Actor>>,
     network_version: NetworkVersion,
-    curr_epoch: ChainEpoch,
+    curr_epoch: RefCell<ChainEpoch>,
     invocations: RefCell<Vec<InvocationTrace>>,
 }
 
@@ -116,15 +149,108 @@ pub struct NetworkStats {
     pub total_client_storage_fee: TokenAmount,
 }
 
+// accounts for verifreg root signer and msig
 pub const VERIFREG_ROOT_KEY: &[u8] = &[200; fvm_shared::address::BLS_PUB_LEN];
 pub const TEST_VERIFREG_ROOT_SIGNER_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR);
 pub const TEST_VERIFREG_ROOT_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR + 1);
-// Account actor seeding funds created by new_with_singletons
+// account actor seeding funds created by new_with_singletons
 pub const FAUCET_ROOT_KEY: &[u8] = &[153; fvm_shared::address::BLS_PUB_LEN];
 pub const TEST_FAUCET_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR + 2);
 pub const FIRST_TEST_USER_ADDR: ActorID = FIRST_NON_SINGLETON_ADDR + 3;
 
-// accounts for verifreg root signer and msig
+impl<'bs, BS> VM<BS> for TestVM<'bs, BS>
+where
+    BS: Blockstore,
+{
+    fn blockstore(&self) -> Box<&BS> {
+        Box::new(self.store)
+    }
+
+    fn epoch(&self) -> ChainEpoch {
+        *self.curr_epoch.borrow()
+    }
+
+    fn execute_message(
+        &self,
+        from: &Address,
+        to: &Address,
+        value: &TokenAmount,
+        method: MethodNum,
+        params: Option<IpldBlock>,
+    ) -> Result<MessageResult, TestVMError> {
+        let from_id = &self.normalize_address(from).unwrap();
+        let mut a = self.get_actor(from_id).unwrap();
+        let call_seq = a.call_seq_num;
+        a.call_seq_num = call_seq + 1;
+        // EthAccount abstractions turns Placeholders into EthAccounts
+        if a.code == *PLACEHOLDER_ACTOR_CODE_ID {
+            a.code = *ETHACCOUNT_ACTOR_CODE_ID;
+        }
+        self.set_actor(from_id, a);
+
+        let prior_root = self.checkpoint();
+
+        // big.Mul(big.NewInt(1e9), big.NewInt(1e18))
+        // make top level context with internal context
+        let top = TopCtx {
+            originator_stable_addr: *from,
+            originator_call_seq: call_seq,
+            new_actor_addr_count: RefCell::new(0),
+            circ_supply: TokenAmount::from_whole(1_000_000_000),
+        };
+        let msg = InternalMessage { from: *from, to: *to, value: value.clone(), method, params };
+        let mut new_ctx = InvocationCtx {
+            v: self,
+            top,
+            msg,
+            allow_side_effects: RefCell::new(true),
+            caller_validated: RefCell::new(false),
+            read_only: false,
+            policy: &Policy::default(),
+            subinvocations: RefCell::new(vec![]),
+        };
+        let res = new_ctx.invoke();
+
+        let invoc = new_ctx.gather_trace(res.clone());
+        RefMut::map(self.invocations.borrow_mut(), |invocs| {
+            invocs.push(invoc);
+            invocs
+        });
+        match res {
+            Err(mut ae) => {
+                self.rollback(prior_root);
+                Ok(MessageResult {
+                    code: ae.exit_code(),
+                    message: ae.msg().to_string(),
+                    ret: ae.take_data(),
+                })
+            }
+            Ok(ret) => {
+                self.checkpoint();
+                Ok(MessageResult { code: ExitCode::OK, message: "OK".to_string(), ret })
+            }
+        }
+    }
+
+    fn state_root(&self, address: &Address) -> Option<Cid> {
+        let a_opt = self.get_actor(address);
+        if a_opt == None {
+            return None;
+        };
+        let a = a_opt.unwrap();
+        Some(a.head)
+    }
+
+    fn resolve_id_address(&self, address: &Address) -> Option<Address> {
+        let st = self.get_state::<InitState>(&INIT_ACTOR_ADDR).unwrap();
+        st.resolve_address::<BS>(self.store, address).unwrap()
+    }
+
+    fn set_epoch(&self, epoch: ChainEpoch) {
+        self.curr_epoch.replace(epoch);
+    }
+}
+
 impl<'bs, BS> TestVM<'bs, BS>
 where
     BS: Blockstore,
@@ -138,7 +264,7 @@ where
             actors_dirty: RefCell::new(false),
             actors_cache: RefCell::new(HashMap::new()),
             network_version: NetworkVersion::V16,
-            curr_epoch: ChainEpoch::zero(),
+            curr_epoch: RefCell::new(ChainEpoch::zero()),
             invocations: RefCell::new(vec![]),
         }
     }
@@ -300,7 +426,7 @@ where
             actors_dirty: RefCell::new(false),
             actors_cache: RefCell::new(HashMap::new()),
             network_version: self.network_version,
-            curr_epoch: epoch,
+            curr_epoch: RefCell::new(epoch),
             invocations: RefCell::new(vec![]),
         }
     }
@@ -423,7 +549,7 @@ where
     }
 
     pub fn get_epoch(&self) -> ChainEpoch {
-        self.curr_epoch
+        *self.curr_epoch.borrow()
     }
 
     pub fn apply_message<S: serde::Serialize>(
