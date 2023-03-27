@@ -28,7 +28,7 @@ use test_vm::{ExpectInvocation, TestVM, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR};
 #[test]
 fn create_miner_test() {
     let store = MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
 
     let owner = Address::new_bls(&[1; fvm_shared::address::BLS_PUB_LEN]).unwrap();
     v.apply_message(
@@ -99,7 +99,7 @@ fn create_miner_test() {
 #[test]
 fn test_cron_tick() {
     let store = MemoryBlockstore::new();
-    let mut vm = TestVM::new_with_singletons(&store);
+    let mut vm = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
 
     let addrs = create_accounts(&vm, 1, TokenAmount::from_whole(10_000));
 

@@ -113,7 +113,7 @@ macro_rules! get_state {
 // to match the Manifest implementation in the FVM.
 // It could be replaced with a custom mapping trait (while Rust doesn't support
 // abstract collection traits).
-pub fn check_state_invariants<'a, BS: Blockstore + Debug>(
+pub fn check_state_invariants<'a, BS: Blockstore>(
     manifest: &BiBTreeMap<Cid, Type>,
     policy: &Policy,
     tree: Tree<'a, BS>,

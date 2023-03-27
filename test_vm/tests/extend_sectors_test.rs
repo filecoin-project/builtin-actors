@@ -7,7 +7,7 @@ use fil_actor_power::{Method as PowerMethod, UpdateClaimedPowerParams};
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{DealWeight, EPOCHS_IN_DAY, STORAGE_POWER_ACTOR_ADDR};
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_blockstore::MemoryBlockstore;
+use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
@@ -35,8 +35,8 @@ fn extend2_legacy_sector_with_deals() {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn extend(
-    v: &TestVM,
+fn extend<BS: Blockstore>(
+    v: &TestVM<BS>,
     worker: Address,
     maddr: Address,
     deadline_index: u64,
@@ -107,7 +107,7 @@ fn extend(
 
 fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
     let store = MemoryBlockstore::new();
-    let mut v = TestVM::new_with_singletons(&store);
+    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     let addrs = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);

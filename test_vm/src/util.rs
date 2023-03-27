@@ -73,12 +73,16 @@ fn new_bls_from_rng(rng: &mut ChaCha8Rng) -> Address {
 
 const ACCOUNT_SEED: u64 = 93837778;
 
-pub fn create_accounts(v: &TestVM, count: u64, balance: TokenAmount) -> Vec<Address> {
+pub fn create_accounts<BS: Blockstore>(
+    v: &TestVM<BS>,
+    count: u64,
+    balance: TokenAmount,
+) -> Vec<Address> {
     create_accounts_seeded(v, count, balance, ACCOUNT_SEED)
 }
 
-pub fn create_accounts_seeded(
-    v: &TestVM,
+pub fn create_accounts_seeded<BS: Blockstore>(
+    v: &TestVM<BS>,
     count: u64,
     balance: TokenAmount,
     seed: u64,
@@ -92,8 +96,8 @@ pub fn create_accounts_seeded(
     pk_addrs.iter().map(|&pk_addr| v.normalize_address(&pk_addr).unwrap()).collect()
 }
 
-pub fn apply_ok<S: Serialize>(
-    v: &TestVM,
+pub fn apply_ok<BS: Blockstore, S: Serialize>(
+    v: &TestVM<BS>,
     from: Address,
     to: Address,
     value: TokenAmount,
@@ -103,8 +107,8 @@ pub fn apply_ok<S: Serialize>(
     apply_code(v, from, to, value, method, params, ExitCode::OK)
 }
 
-pub fn apply_code<S: Serialize>(
-    v: &TestVM,
+pub fn apply_code<BS: Blockstore, S: Serialize>(
+    v: &TestVM<BS>,
     from: Address,
     to: Address,
     value: TokenAmount,
@@ -117,7 +121,7 @@ pub fn apply_code<S: Serialize>(
     res.ret.map_or(RawBytes::default(), |b| RawBytes::new(b.data))
 }
 
-pub fn cron_tick(v: &TestVM) {
+pub fn cron_tick<BS: Blockstore>(v: &TestVM<BS>) {
     apply_ok(
         v,
         SYSTEM_ACTOR_ADDR,
@@ -128,8 +132,8 @@ pub fn cron_tick(v: &TestVM) {
     );
 }
 
-pub fn create_miner(
-    v: &mut TestVM,
+pub fn create_miner<BS: Blockstore>(
+    v: &mut TestVM<BS>,
     owner: Address,
     worker: Address,
     post_proof_type: RegisteredPoStProof,
@@ -161,8 +165,8 @@ pub fn create_miner(
     (res.id_address, res.robust_address)
 }
 
-pub fn miner_precommit_sector(
-    v: &TestVM,
+pub fn miner_precommit_sector<BS: Blockstore>(
+    v: &TestVM<BS>,
     worker: Address,
     miner_id: Address,
     seal_proof: RegisteredSealProof,
@@ -198,8 +202,8 @@ pub fn miner_precommit_sector(
     state.get_precommitted_sector(v.store, sector_number).unwrap().unwrap()
 }
 
-pub fn miner_prove_sector(
-    v: &TestVM,
+pub fn miner_prove_sector<BS: Blockstore>(
+    v: &TestVM<BS>,
     worker: Address,
     miner_id: Address,
     sector_number: SectorNumber,
@@ -229,8 +233,8 @@ pub fn miner_prove_sector(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn precommit_sectors_v2(
-    v: &mut TestVM,
+pub fn precommit_sectors_v2<BS: Blockstore>(
+    v: &mut TestVM<BS>,
     count: u64,
     batch_size: i64,
     worker: Address,
@@ -390,8 +394,8 @@ pub fn precommit_sectors_v2(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn precommit_sectors(
-    v: &mut TestVM,
+pub fn precommit_sectors<BS: Blockstore>(
+    v: &mut TestVM<BS>,
     count: u64,
     batch_size: i64,
     worker: Address,
@@ -415,8 +419,8 @@ pub fn precommit_sectors(
     )
 }
 
-pub fn prove_commit_sectors(
-    v: &mut TestVM,
+pub fn prove_commit_sectors<BS: Blockstore>(
+    v: &mut TestVM<BS>,
     worker: Address,
     maddr: Address,
     precommits: Vec<SectorPreCommitOnChainInfo>,
@@ -479,8 +483,8 @@ pub fn prove_commit_sectors(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn miner_extend_sector_expiration2(
-    v: &TestVM,
+pub fn miner_extend_sector_expiration2<BS: Blockstore>(
+    v: &TestVM<BS>,
     worker: Address,
     miner_id: Address,
     deadline: u64,
@@ -556,28 +560,32 @@ pub fn miner_extend_sector_expiration2(
     .matches(v.take_invocations().last().unwrap());
 }
 
-pub fn advance_by_deadline_to_epoch(
-    v: TestVM,
+pub fn advance_by_deadline_to_epoch<BS: Blockstore>(
+    v: TestVM<BS>,
     maddr: Address,
     e: ChainEpoch,
-) -> (TestVM, DeadlineInfo) {
+) -> (TestVM<BS>, DeadlineInfo) {
     // keep advancing until the epoch of interest is within the deadline
     // if e is dline.last() == dline.close -1 cron is not run
     let (v, dline_info) = advance_by_deadline(v, maddr, |dline_info| dline_info.close < e);
     (v.with_epoch(e), dline_info)
 }
 
-pub fn advance_by_deadline_to_index(v: TestVM, maddr: Address, i: u64) -> (TestVM, DeadlineInfo) {
+pub fn advance_by_deadline_to_index<BS: Blockstore>(
+    v: TestVM<BS>,
+    maddr: Address,
+    i: u64,
+) -> (TestVM<BS>, DeadlineInfo) {
     advance_by_deadline(v, maddr, |dline_info| dline_info.index != i)
 }
 
-pub fn advance_by_deadline_to_epoch_while_proving(
-    mut v: TestVM,
+pub fn advance_by_deadline_to_epoch_while_proving<BS: Blockstore>(
+    mut v: TestVM<BS>,
     maddr: Address,
     worker: Address,
     s: SectorNumber,
     e: ChainEpoch,
-) -> TestVM {
+) -> TestVM<BS> {
     let mut dline_info;
     let (d, p_idx) = sector_deadline(&v, maddr, s);
     loop {
@@ -599,19 +607,24 @@ pub fn advance_by_deadline_to_epoch_while_proving(
     }
 }
 
-pub fn advance_to_proving_deadline(
-    v: TestVM,
+pub fn advance_to_proving_deadline<BS: Blockstore>(
+    v: TestVM<BS>,
     maddr: Address,
     s: SectorNumber,
-) -> (DeadlineInfo, u64, TestVM) {
+) -> (DeadlineInfo, u64, TestVM<BS>) {
     let (d, p) = sector_deadline(&v, maddr, s);
     let (v, dline_info) = advance_by_deadline_to_index(v, maddr, d);
     let v = v.with_epoch(dline_info.open);
     (dline_info, p, v)
 }
 
-fn advance_by_deadline<F>(mut v: TestVM, maddr: Address, more: F) -> (TestVM, DeadlineInfo)
+fn advance_by_deadline<BS, F>(
+    mut v: TestVM<BS>,
+    maddr: Address,
+    more: F,
+) -> (TestVM<BS>, DeadlineInfo)
 where
+    BS: Blockstore,
     F: Fn(DeadlineInfo) -> bool,
 {
     loop {
@@ -627,7 +640,7 @@ where
     }
 }
 
-pub fn miner_dline_info(v: &TestVM, m: Address) -> DeadlineInfo {
+pub fn miner_dline_info<BS: Blockstore>(v: &TestVM<BS>, m: Address) -> DeadlineInfo {
     let st = v.get_state::<MinerState>(m).unwrap();
     new_deadline_info_from_offset_and_epoch(
         &Policy::default(),
@@ -636,19 +649,19 @@ pub fn miner_dline_info(v: &TestVM, m: Address) -> DeadlineInfo {
     )
 }
 
-pub fn sector_deadline(v: &TestVM, m: Address, s: SectorNumber) -> (u64, u64) {
+pub fn sector_deadline<BS: Blockstore>(v: &TestVM<BS>, m: Address, s: SectorNumber) -> (u64, u64) {
     let st = v.get_state::<MinerState>(m).unwrap();
     st.find_sector(&Policy::default(), v.store, s).unwrap()
 }
 
-pub fn check_sector_active(v: &TestVM, m: Address, s: SectorNumber) -> bool {
+pub fn check_sector_active<BS: Blockstore>(v: &TestVM<BS>, m: Address, s: SectorNumber) -> bool {
     let (d_idx, p_idx) = sector_deadline(v, m, s);
     let st = v.get_state::<MinerState>(m).unwrap();
     st.check_sector_active(&Policy::default(), v.store, d_idx, p_idx, s, true).unwrap()
 }
 
-pub fn check_sector_faulty(
-    v: &TestVM,
+pub fn check_sector_faulty<BS: Blockstore>(
+    v: &TestVM<BS>,
     m: Address,
     d_idx: u64,
     p_idx: u64,
@@ -661,25 +674,29 @@ pub fn check_sector_faulty(
     partition.faults.get(s)
 }
 
-pub fn deadline_state(v: &TestVM, m: Address, d_idx: u64) -> Deadline {
+pub fn deadline_state<BS: Blockstore>(v: &TestVM<BS>, m: Address, d_idx: u64) -> Deadline {
     let st = v.get_state::<MinerState>(m).unwrap();
     let deadlines = st.load_deadlines(v.store).unwrap();
     deadlines.load_deadline(&Policy::default(), v.store, d_idx).unwrap()
 }
 
-pub fn sector_info(v: &TestVM, m: Address, s: SectorNumber) -> SectorOnChainInfo {
+pub fn sector_info<BS: Blockstore>(
+    v: &TestVM<BS>,
+    m: Address,
+    s: SectorNumber,
+) -> SectorOnChainInfo {
     let st = v.get_state::<MinerState>(m).unwrap();
     st.get_sector(v.store, s).unwrap().unwrap()
 }
 
-pub fn miner_power(v: &TestVM, m: Address) -> PowerPair {
+pub fn miner_power<BS: Blockstore>(v: &TestVM<BS>, m: Address) -> PowerPair {
     let st = v.get_state::<PowerState>(STORAGE_POWER_ACTOR_ADDR).unwrap();
     let claim = st.get_claim(v.store, &m).unwrap().unwrap();
     PowerPair::new(claim.raw_byte_power, claim.quality_adj_power)
 }
 
-pub fn declare_recovery(
-    v: &TestVM,
+pub fn declare_recovery<BS: Blockstore>(
+    v: &TestVM<BS>,
     worker: Address,
     maddr: Address,
     deadline: u64,
@@ -704,8 +721,8 @@ pub fn declare_recovery(
     );
 }
 
-pub fn submit_windowed_post(
-    v: &TestVM,
+pub fn submit_windowed_post<BS: Blockstore>(
+    v: &TestVM<BS>,
     worker: Address,
     maddr: Address,
     dline_info: DeadlineInfo,
@@ -758,8 +775,8 @@ pub fn submit_windowed_post(
     .matches(v.take_invocations().last().unwrap());
 }
 
-pub fn change_beneficiary(
-    v: &TestVM,
+pub fn change_beneficiary<BS: Blockstore>(
+    v: &TestVM<BS>,
     from: Address,
     maddr: Address,
     beneficiary_change_proposal: &ChangeBeneficiaryParams,
@@ -774,7 +791,11 @@ pub fn change_beneficiary(
     );
 }
 
-pub fn get_beneficiary(v: &TestVM, from: Address, m_addr: Address) -> GetBeneficiaryReturn {
+pub fn get_beneficiary<BS: Blockstore>(
+    v: &TestVM<BS>,
+    from: Address,
+    m_addr: Address,
+) -> GetBeneficiaryReturn {
     apply_ok(
         v,
         from,
@@ -787,7 +808,12 @@ pub fn get_beneficiary(v: &TestVM, from: Address, m_addr: Address) -> GetBenefic
     .unwrap()
 }
 
-pub fn change_owner_address(v: &TestVM, from: Address, m_addr: Address, new_miner_addr: Address) {
+pub fn change_owner_address<BS: Blockstore>(
+    v: &TestVM<BS>,
+    from: Address,
+    m_addr: Address,
+    new_miner_addr: Address,
+) {
     apply_ok(
         v,
         from,
@@ -798,8 +824,8 @@ pub fn change_owner_address(v: &TestVM, from: Address, m_addr: Address, new_mine
     );
 }
 
-pub fn withdraw_balance(
-    v: &TestVM,
+pub fn withdraw_balance<BS: Blockstore>(
+    v: &TestVM<BS>,
     from: Address,
     m_addr: Address,
     to_withdraw_amount: TokenAmount,
@@ -837,8 +863,8 @@ pub fn withdraw_balance(
     assert_eq!(expect_withdraw_amount, withdraw_return.amount_withdrawn);
 }
 
-pub fn submit_invalid_post(
-    v: &TestVM,
+pub fn submit_invalid_post<BS: Blockstore>(
+    v: &TestVM<BS>,
     worker: Address,
     maddr: Address,
     dline_info: DeadlineInfo,
@@ -864,7 +890,11 @@ pub fn submit_invalid_post(
     );
 }
 
-pub fn verifreg_add_verifier(v: &TestVM, verifier: Address, data_cap: StoragePower) {
+pub fn verifreg_add_verifier<BS: Blockstore>(
+    v: &TestVM<BS>,
+    verifier: Address,
+    data_cap: StoragePower,
+) {
     let add_verifier_params = VerifierParams { address: verifier, allowance: data_cap };
     // root address is msig, send proposal from root key
     let proposal = ProposeParams {
@@ -903,8 +933,8 @@ pub fn verifreg_add_verifier(v: &TestVM, verifier: Address, data_cap: StoragePow
     .matches(v.take_invocations().last().unwrap());
 }
 
-pub fn verifreg_add_client(
-    v: &TestVM,
+pub fn verifreg_add_client<BS: Blockstore>(
+    v: &TestVM<BS>,
     verifier: Address,
     client: Address,
     allowance: StoragePower,
@@ -942,8 +972,8 @@ pub fn verifreg_add_client(
     .matches(v.take_invocations().last().unwrap());
 }
 
-pub fn verifreg_extend_claim_terms(
-    v: &TestVM,
+pub fn verifreg_extend_claim_terms<BS: Blockstore>(
+    v: &TestVM<BS>,
     client: Address,
     provider: Address,
     claim: ClaimID,
@@ -966,8 +996,8 @@ pub fn verifreg_extend_claim_terms(
     );
 }
 
-pub fn verifreg_remove_expired_allocations(
-    v: &TestVM,
+pub fn verifreg_remove_expired_allocations<BS: Blockstore>(
+    v: &TestVM<BS>,
     caller: Address,
     client: Address,
     ids: Vec<AllocationID>,
@@ -1005,7 +1035,7 @@ pub fn verifreg_remove_expired_allocations(
     .matches(v.take_invocations().last().unwrap());
 }
 
-pub fn datacap_get_balance(v: &TestVM, address: Address) -> TokenAmount {
+pub fn datacap_get_balance<BS: Blockstore>(v: &TestVM<BS>, address: Address) -> TokenAmount {
     let ret = apply_ok(
         v,
         address,
@@ -1017,8 +1047,8 @@ pub fn datacap_get_balance(v: &TestVM, address: Address) -> TokenAmount {
     deserialize(&ret, "balance of return value").unwrap()
 }
 
-pub fn datacap_extend_claim(
-    v: &TestVM,
+pub fn datacap_extend_claim<BS: Blockstore>(
+    v: &TestVM<BS>,
     client: Address,
     provider: Address,
     claim: ClaimID,
@@ -1091,7 +1121,12 @@ pub fn datacap_extend_claim(
     .matches(v.take_invocations().last().unwrap());
 }
 
-pub fn market_add_balance(v: &TestVM, sender: Address, beneficiary: Address, amount: TokenAmount) {
+pub fn market_add_balance<BS: Blockstore>(
+    v: &TestVM<BS>,
+    sender: Address,
+    beneficiary: Address,
+    amount: TokenAmount,
+) {
     apply_ok(
         v,
         sender,
@@ -1103,8 +1138,8 @@ pub fn market_add_balance(v: &TestVM, sender: Address, beneficiary: Address, amo
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn market_publish_deal(
-    v: &TestVM,
+pub fn market_publish_deal<BS: Blockstore>(
+    v: &TestVM<BS>,
     worker: Address,
     deal_client: Address,
     miner_id: Address,
