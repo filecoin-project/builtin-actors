@@ -1355,7 +1355,7 @@ fn fail_when_deal_is_activated_but_proposal_is_not_found() {
         &rt,
         &[
             Regex::new("no deal proposal for deal state \\d+").unwrap(),
-            Regex::new("pending proposal with cid \\w+ not found within proposals .*").unwrap(),
+            Regex::new("pending proposal with cid \\w+ not found within proposals").unwrap(),
             Regex::new("deal op found for deal id \\d+ with missing proposal at epoch \\d+")
                 .unwrap(),
         ],
