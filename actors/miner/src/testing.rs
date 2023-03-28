@@ -83,6 +83,14 @@ pub fn check_state_invariants<BS: Blockstore>(
                 if !sector.deal_ids.is_empty() {
                     miner_summary.sectors_with_deals.insert(sector_number);
                 }
+                acc.require(
+                    sector.activation <= sector.power_base_epoch,
+                    format!("invalid power base for {sector_number}"),
+                );
+                acc.require(
+                    sector.power_base_epoch < sector.expiration,
+                    format!("power base epoch is not before the sector expiration {sector_number}"),
+                );
                 Ok(())
             });
 
