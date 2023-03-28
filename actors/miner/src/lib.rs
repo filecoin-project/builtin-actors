@@ -1336,9 +1336,10 @@ impl Actor {
                     );
 
                     new_sector_info.replaced_day_reward = max(
-                        with_details.sector_info.expected_day_reward.clone(),
-                        with_details.sector_info.replaced_day_reward.clone(),
-                    );
+                        &with_details.sector_info.expected_day_reward,
+                        &with_details.sector_info.replaced_day_reward,
+                    )
+                    .clone();
                     new_sector_info.expected_day_reward = expected_reward_for_power(
                         &rew.this_epoch_reward_smoothed,
                         &pow.quality_adj_power_smoothed,
