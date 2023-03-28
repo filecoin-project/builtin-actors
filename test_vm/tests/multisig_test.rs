@@ -6,7 +6,7 @@ use fil_actor_multisig::{
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{make_map_with_root, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
-use fvm_ipld_blockstore::MemoryBlockstore;
+use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
@@ -22,7 +22,7 @@ use test_vm::{ExpectInvocation, TestVM};
 #[test]
 fn test_proposal_hash() {
     let store = MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     let addrs = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
     let alice = addrs[0];
     let bob = addrs[1];
@@ -102,7 +102,7 @@ fn test_proposal_hash() {
 fn test_delete_self() {
     let test = |threshold: usize, signers: u64, remove_idx: usize| {
         let store = MemoryBlockstore::new();
-        let v = TestVM::new_with_singletons(&store);
+        let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
         let addrs = create_accounts(&v, signers, TokenAmount::from_whole(10_000));
 
         let msig_addr = create_msig(&v, addrs.clone(), threshold as u64);
@@ -174,7 +174,7 @@ fn test_delete_self() {
 #[test]
 fn swap_self_1_of_2() {
     let store = MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     let addrs = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
 
     let (alice, bob, chuck) = (addrs[0], addrs[1], addrs[2]);
@@ -203,7 +203,7 @@ fn swap_self_1_of_2() {
 #[test]
 fn swap_self_2_of_3() {
     let store = MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     let addrs = create_accounts(&v, 4, TokenAmount::from_whole(10_000));
     let (alice, bob, chuck, dinesh) = (addrs[0], addrs[1], addrs[2], addrs[3]);
 
@@ -273,7 +273,7 @@ fn swap_self_2_of_3() {
     v.assert_state_invariants();
 }
 
-fn create_msig(v: &TestVM, signers: Vec<Address>, threshold: u64) -> Address {
+fn create_msig<BS: Blockstore>(v: &TestVM<BS>, signers: Vec<Address>, threshold: u64) -> Address {
     assert!(!signers.is_empty());
     let msig_ctor_params = serialize(
         &fil_actor_multisig::ConstructorParams {
@@ -301,7 +301,11 @@ fn create_msig(v: &TestVM, signers: Vec<Address>, threshold: u64) -> Address {
     msig_ctor_ret.id_address
 }
 
-fn check_txs(v: &TestVM, msig_addr: Address, mut expect_txns: Vec<(TxnID, Transaction)>) {
+fn check_txs<BS: Blockstore>(
+    v: &TestVM<BS>,
+    msig_addr: Address,
+    mut expect_txns: Vec<(TxnID, Transaction)>,
+) {
     let st = v.get_state::<MsigState>(msig_addr).unwrap();
     let ptx = make_map_with_root::<_, Transaction>(&st.pending_txs, v.store).unwrap();
     let mut actual_txns = Vec::new();

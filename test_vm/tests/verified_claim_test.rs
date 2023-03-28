@@ -43,7 +43,7 @@ use test_vm::TestVM;
 #[test]
 fn verified_claim_scenario() {
     let store = MemoryBlockstore::new();
-    let mut v = TestVM::new_with_singletons(&store);
+    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     let addrs = create_accounts(&v, 4, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client, verified_client2) =
@@ -339,7 +339,7 @@ fn verified_claim_scenario() {
 #[test]
 fn expired_allocations() {
     let store = MemoryBlockstore::new();
-    let mut v = TestVM::new_with_singletons(&store);
+    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     let addrs = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
