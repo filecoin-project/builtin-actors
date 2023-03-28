@@ -2,7 +2,6 @@ use fil_actor_market::{
     ClientDealProposal, DealProposal, Label, Method as MarketMethod, PublishStorageDealsParams,
     PublishStorageDealsReturn,
 };
-use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::crypto::signature::{Signature, SignatureType};
 
 use fil_actor_account::types::AuthenticateMessageParams;
@@ -54,8 +53,8 @@ fn token_defaults() -> (TokenAmount, TokenAmount, TokenAmount) {
 }
 
 // create miner and client and add collateral
-fn setup(store: &MemoryBlockstore) -> (TestVM<MemoryBlockstore>, Addrs, ChainEpoch) {
-    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
+fn setup(store: &'_ MemoryBlockstore) -> (TestVM<'_>, Addrs, ChainEpoch) {
+    let mut v = TestVM::new_with_singletons(store);
     let addrs = create_accounts(&v, 7, TokenAmount::from_whole(10_000));
     let (worker, client1, client2, not_miner, cheap_client, verifier, verified_client) =
         (addrs[0], addrs[1], addrs[2], addrs[3], addrs[4], addrs[5], addrs[6]);
@@ -606,12 +605,9 @@ struct DealOptions {
     client_collateral: Option<TokenAmount>,
 }
 
-struct DealBatcher<'bs, BS>
-where
-    BS: Blockstore,
-{
+struct DealBatcher<'bs> {
     deals: Vec<DealProposal>,
-    v: &'bs TestVM<'bs, BS>,
+    v: &'bs TestVM<'bs>,
     default_provider: Address,
     default_piece_size: PaddedPieceSize,
     default_verified: bool,
@@ -622,12 +618,9 @@ where
     default_client_collateral: TokenAmount,
 }
 
-impl<'bs, BS> DealBatcher<'bs, BS>
-where
-    BS: Blockstore,
-{
+impl<'bs> DealBatcher<'bs> {
     fn new(
-        v: &'bs TestVM<'bs, BS>,
+        v: &'bs TestVM<'bs>,
         default_provider: Address,
         default_piece_size: PaddedPieceSize,
         default_verified: bool,

@@ -5,13 +5,13 @@ use fil_actors_runtime::{
     test_utils::{EAM_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID, PLACEHOLDER_ACTOR_CODE_ID},
     EAM_ACTOR_ADDR, EAM_ACTOR_ID, INIT_ACTOR_ADDR,
 };
-use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
+use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode, METHOD_SEND};
 use num_traits::Zero;
 use test_vm::{actor, TestVM, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR};
 
-fn assert_placeholder_actor<BS: Blockstore>(exp_bal: TokenAmount, v: &TestVM<BS>, addr: Address) {
+fn assert_placeholder_actor(exp_bal: TokenAmount, v: &TestVM, addr: Address) {
     let act = v.get_actor(addr).unwrap();
     assert_eq!(EMPTY_ARR_CID, act.head);
     assert_eq!(*PLACEHOLDER_ACTOR_CODE_ID, act.code);
@@ -21,7 +21,7 @@ fn assert_placeholder_actor<BS: Blockstore>(exp_bal: TokenAmount, v: &TestVM<BS>
 #[test]
 fn placeholder_deploy() {
     let store = MemoryBlockstore::new();
-    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(&store);
 
     // Create a "fake" eam.
     v.set_actor(

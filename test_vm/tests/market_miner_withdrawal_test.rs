@@ -4,7 +4,6 @@ use fil_actor_miner::Method as MinerMethod;
 use fil_actor_miner::WithdrawBalanceParams as MinerWithdrawBalanceParams;
 use fil_actors_runtime::test_utils::{MARKET_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID};
 use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
-use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -143,8 +142,8 @@ mod miner_tests {
 // 1. Add collateral to escrow address
 // 2. Send a withdraw message attempting to remove `requested` funds
 // 3. Assert correct return value and actor balance transfer
-fn assert_add_collateral_and_withdraw<BS: Blockstore>(
-    v: &TestVM<BS>,
+fn assert_add_collateral_and_withdraw(
+    v: &TestVM,
     collateral: TokenAmount,
     expected_withdrawn: TokenAmount,
     requested: TokenAmount,
@@ -220,22 +219,20 @@ fn assert_add_collateral_and_withdraw<BS: Blockstore>(
     assert_eq!(caller_initial_balance, c.balance);
 }
 
-fn require_actor<BS: Blockstore>(v: &TestVM<BS>, addr: Address) -> Actor {
+fn require_actor(v: &TestVM, addr: Address) -> Actor {
     v.get_actor(addr).unwrap()
 }
 
-fn market_setup(store: &'_ MemoryBlockstore) -> (TestVM<MemoryBlockstore>, Address) {
-    let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
+fn market_setup(store: &'_ MemoryBlockstore) -> (TestVM<'_>, Address) {
+    let v = TestVM::new_with_singletons(store);
     let initial_balance = TokenAmount::from_whole(6);
     let addrs = create_accounts(&v, 1, initial_balance);
     let caller = addrs[0];
     (v, caller)
 }
 
-fn miner_setup(
-    store: &'_ MemoryBlockstore,
-) -> (TestVM<MemoryBlockstore>, Address, Address, Address) {
-    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
+fn miner_setup(store: &'_ MemoryBlockstore) -> (TestVM<'_>, Address, Address, Address) {
+    let mut v = TestVM::new_with_singletons(store);
     let initial_balance = TokenAmount::from_whole(10_000);
     let addrs = create_accounts(&v, 2, initial_balance);
     let (worker, owner) = (addrs[0], addrs[1]);

@@ -15,7 +15,7 @@ use test_vm::TestVM;
 #[test]
 fn account_authenticate_message() {
     let store = MemoryBlockstore::new();
-    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(&store);
     let addr = create_accounts(&v, 1, TokenAmount::from_whole(10_000))[0];
 
     let proposal =

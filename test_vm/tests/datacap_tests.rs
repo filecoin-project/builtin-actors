@@ -23,7 +23,7 @@ use fvm_ipld_encoding::RawBytes;
 fn datacap_transfer_scenario() {
     let policy = Policy::default();
     let store = MemoryBlockstore::new();
-    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let mut v = TestVM::new_with_singletons(&store);
     let addrs = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
     let (client, operator, owner) = (addrs[0], addrs[1], addrs[2]);
 
@@ -203,7 +203,7 @@ fn datacap_transfer_scenario() {
 #[test]
 fn call_name_symbol() {
     let store = MemoryBlockstore::new();
-    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(&store);
     let addrs = create_accounts(&v, 1, TokenAmount::from_whole(10_000));
     let sender = addrs[0];
 

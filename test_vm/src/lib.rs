@@ -34,7 +34,6 @@ use fil_actors_runtime::{
 use fil_actors_runtime::{MessageAccumulator, DATACAP_TOKEN_ACTOR_ADDR};
 use fil_builtin_actors_state::check::check_state_invariants;
 use fil_builtin_actors_state::check::Tree;
-use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::tuple::*;
@@ -75,11 +74,8 @@ use std::ops::Add;
 
 pub mod util;
 
-pub struct TestVM<'bs, BS>
-where
-    BS: Blockstore,
-{
-    pub store: &'bs BS,
+pub struct TestVM<'bs> {
+    pub store: &'bs MemoryBlockstore,
     pub state_root: RefCell<Cid>,
     total_fil: TokenAmount,
     actors_dirty: RefCell<bool>,
@@ -125,11 +121,8 @@ pub const TEST_FAUCET_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR +
 pub const FIRST_TEST_USER_ADDR: ActorID = FIRST_NON_SINGLETON_ADDR + 3;
 
 // accounts for verifreg root signer and msig
-impl<'bs, BS> TestVM<'bs, BS>
-where
-    BS: Blockstore,
-{
-    pub fn new(store: &'bs MemoryBlockstore) -> TestVM<'bs, MemoryBlockstore> {
+impl<'bs> TestVM<'bs> {
+    pub fn new(store: &'bs MemoryBlockstore) -> TestVM<'bs> {
         let mut actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::new(store);
         TestVM {
             store,
@@ -147,12 +140,11 @@ where
         Self { total_fil, ..self }
     }
 
-    pub fn new_with_singletons(store: &'bs MemoryBlockstore) -> TestVM<'bs, MemoryBlockstore> {
+    pub fn new_with_singletons(store: &'bs MemoryBlockstore) -> TestVM<'bs> {
         let reward_total = TokenAmount::from_whole(1_100_000_000i64);
         let faucet_total = TokenAmount::from_whole(1_000_000_000i64);
 
-        let v = TestVM::<'_, MemoryBlockstore>::new(store)
-            .with_total_fil(&reward_total + &faucet_total);
+        let v = TestVM::new(store).with_total_fil(&reward_total + &faucet_total);
 
         // system
         let sys_st = SystemState::new(store).unwrap();
@@ -291,7 +283,7 @@ where
         v
     }
 
-    pub fn with_epoch(self, epoch: ChainEpoch) -> TestVM<'bs, BS> {
+    pub fn with_epoch(self, epoch: ChainEpoch) -> TestVM<'bs> {
         self.checkpoint();
         TestVM {
             store: self.store,
@@ -360,9 +352,11 @@ where
             return Some(act.clone());
         }
         // go to persisted map
-        let actors =
-            Hamt::<&'bs BS, Actor, BytesKey, Sha256>::load(&self.state_root.borrow(), self.store)
-                .unwrap();
+        let actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::load(
+            &self.state_root.borrow(),
+            self.store,
+        )
+        .unwrap();
         let actor = actors.get(&addr.to_bytes()).unwrap().cloned();
         actor.iter().for_each(|a| {
             self.actors_cache.borrow_mut().insert(addr, a.clone());
@@ -378,9 +372,11 @@ where
 
     pub fn checkpoint(&self) -> Cid {
         // persist cache on top of latest checkpoint and clear
-        let mut actors =
-            Hamt::<&'bs BS, Actor, BytesKey, Sha256>::load(&self.state_root.borrow(), self.store)
-                .unwrap();
+        let mut actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::load(
+            &self.state_root.borrow(),
+            self.store,
+        )
+        .unwrap();
         for (addr, act) in self.actors_cache.borrow().iter() {
             actors.set(addr.to_bytes().into(), act.clone()).unwrap();
         }
@@ -398,7 +394,7 @@ where
 
     pub fn normalize_address(&self, addr: &Address) -> Option<Address> {
         let st = self.get_state::<InitState>(INIT_ACTOR_ADDR).unwrap();
-        st.resolve_address::<BS>(self.store, addr).unwrap()
+        st.resolve_address::<MemoryBlockstore>(self.store, addr).unwrap()
     }
 
     pub fn get_state<T: DeserializeOwned>(&self, addr: Address) -> Option<T> {
@@ -501,9 +497,11 @@ where
     /// Checks the state invariants and returns broken invariants.
     pub fn check_state_invariants(&self) -> anyhow::Result<MessageAccumulator> {
         self.checkpoint();
-        let actors =
-            Hamt::<&'bs BS, Actor, BytesKey, Sha256>::load(&self.state_root.borrow(), self.store)
-                .unwrap();
+        let actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::load(
+            &self.state_root.borrow(),
+            self.store,
+        )
+        .unwrap();
 
         let mut manifest = BiBTreeMap::new();
         actors
@@ -573,10 +571,7 @@ impl InternalMessage {
     }
 }
 
-impl<BS> MessageInfo for InvocationCtx<'_, '_, BS>
-where
-    BS: Blockstore,
-{
+impl MessageInfo for InvocationCtx<'_, '_> {
     fn nonce(&self) -> u64 {
         self.top.originator_call_seq
     }
@@ -603,11 +598,8 @@ pub const TEST_VM_RAND_ARRAY: [u8; 32] = [
 ];
 pub const TEST_VM_INVALID_POST: &str = "i_am_invalid_post";
 
-pub struct InvocationCtx<'invocation, 'bs, BS>
-where
-    BS: Blockstore,
-{
-    v: &'invocation TestVM<'bs, BS>,
+pub struct InvocationCtx<'invocation, 'bs> {
+    v: &'invocation TestVM<'bs>,
     top: TopCtx,
     msg: InternalMessage,
     allow_side_effects: RefCell<bool>,
@@ -617,10 +609,7 @@ where
     subinvocations: RefCell<Vec<InvocationTrace>>,
 }
 
-impl<'invocation, 'bs, BS> InvocationCtx<'invocation, 'bs, BS>
-where
-    BS: Blockstore,
-{
+impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
     fn resolve_target(&'invocation self, target: &Address) -> Result<(Actor, Address), ActorError> {
         if let Some(a) = self.v.normalize_address(target) {
             if let Some(act) = self.v.get_actor(a) {
@@ -790,11 +779,8 @@ where
     }
 }
 
-impl<'invocation, 'bs, BS> Runtime for InvocationCtx<'invocation, 'bs, BS>
-where
-    BS: Blockstore,
-{
-    type Blockstore = &'bs BS;
+impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
+    type Blockstore = &'bs MemoryBlockstore;
 
     fn create_actor(
         &self,
@@ -836,7 +822,7 @@ where
         Ok(())
     }
 
-    fn store(&self) -> &&'bs BS {
+    fn store(&self) -> &&'bs MemoryBlockstore {
         &self.v.store
     }
 
@@ -1137,10 +1123,7 @@ where
     }
 }
 
-impl<BS> Primitives for TestVM<'_, BS>
-where
-    BS: Blockstore,
-{
+impl Primitives for TestVM<'_> {
     // A "valid" signature has its bytes equal to the plaintext.
     // Anything else is considered invalid.
     fn verify_signature(
@@ -1196,10 +1179,7 @@ where
     }
 }
 
-impl<BS> Primitives for InvocationCtx<'_, '_, BS>
-where
-    BS: Blockstore,
-{
+impl Primitives for InvocationCtx<'_, '_> {
     fn verify_signature(
         &self,
         signature: &Signature,
@@ -1238,10 +1218,7 @@ where
     }
 }
 
-impl<BS> Verifier for InvocationCtx<'_, '_, BS>
-where
-    BS: Blockstore,
-{
+impl Verifier for InvocationCtx<'_, '_> {
     fn verify_seal(&self, _vi: &SealVerifyInfo) -> Result<(), anyhow::Error> {
         Ok(())
     }
@@ -1281,10 +1258,7 @@ where
     }
 }
 
-impl<BS> RuntimePolicy for InvocationCtx<'_, '_, BS>
-where
-    BS: Blockstore,
-{
+impl RuntimePolicy for InvocationCtx<'_, '_> {
     fn policy(&self) -> &Policy {
         self.policy
     }

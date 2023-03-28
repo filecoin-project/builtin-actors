@@ -44,8 +44,8 @@ struct MinerInfo {
     _miner_robust: Address,
 }
 
-fn setup(store: &'_ MemoryBlockstore) -> (TestVM<MemoryBlockstore>, MinerInfo, SectorInfo) {
-    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
+fn setup(store: &'_ MemoryBlockstore) -> (TestVM<'_>, MinerInfo, SectorInfo) {
+    let mut v = TestVM::new_with_singletons(store);
     let addrs = create_accounts(&v, 1, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
@@ -308,7 +308,7 @@ fn missed_first_post_deadline() {
 fn overdue_precommit() {
     let store = MemoryBlockstore::new();
     let policy = &Policy::default();
-    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let mut v = TestVM::new_with_singletons(&store);
     let addrs = create_accounts(&v, 1, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
@@ -422,7 +422,7 @@ fn overdue_precommit() {
 #[test]
 fn aggregate_bad_sector_number() {
     let store = MemoryBlockstore::new();
-    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let mut v = TestVM::new_with_singletons(&store);
     let addrs = create_accounts(&v, 1, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
@@ -503,7 +503,7 @@ fn aggregate_bad_sector_number() {
 fn aggregate_size_limits() {
     let oversized_batch = 820;
     let store = MemoryBlockstore::new();
-    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let mut v = TestVM::new_with_singletons(&store);
     let addrs = create_accounts(&v, 1, TokenAmount::from_whole(100_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
@@ -636,7 +636,7 @@ fn aggregate_size_limits() {
 #[test]
 fn aggregate_bad_sender() {
     let store = MemoryBlockstore::new();
-    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let mut v = TestVM::new_with_singletons(&store);
     let addrs = create_accounts(&v, 2, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
@@ -712,7 +712,7 @@ fn aggregate_bad_sender() {
 #[test]
 fn aggregate_one_precommit_expires() {
     let store = MemoryBlockstore::new();
-    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let mut v = TestVM::new_with_singletons(&store);
     let addrs = create_accounts(&v, 1, TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
