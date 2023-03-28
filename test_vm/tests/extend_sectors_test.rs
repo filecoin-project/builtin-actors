@@ -102,12 +102,24 @@ fn extend<BS: Blockstore>(
     ExpectInvocation {
         to: maddr,
         method: extension_method,
-        subinvocs: Some(vec![ExpectInvocation {
-            to: STORAGE_POWER_ACTOR_ADDR,
-            method: PowerMethod::UpdateClaimedPower as u64,
-            params: Some(Some(power_update_params)),
-            ..Default::default()
-        }]),
+        subinvocs: Some(vec![
+            ExpectInvocation {
+                to: REWARD_ACTOR_ADDR,
+                method: RewardMethod::ThisEpochReward as u64,
+                ..Default::default()
+            },
+            ExpectInvocation {
+                to: STORAGE_POWER_ACTOR_ADDR,
+                method: PowerMethod::CurrentTotalPower as u64,
+                ..Default::default()
+            },
+            ExpectInvocation {
+                to: STORAGE_POWER_ACTOR_ADDR,
+                method: PowerMethod::UpdateClaimedPower as u64,
+                params: Some(Some(power_update_params)),
+                ..Default::default()
+            },
+        ]),
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());

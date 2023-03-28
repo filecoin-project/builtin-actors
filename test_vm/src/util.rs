@@ -541,6 +541,16 @@ pub fn miner_extend_sector_expiration2<BS: Blockstore>(
             ..Default::default()
         })
     }
+    subinvocs.push(ExpectInvocation {
+        to: REWARD_ACTOR_ADDR,
+        method: RewardMethod::ThisEpochReward as u64,
+        ..Default::default()
+    });
+    subinvocs.push(ExpectInvocation {
+        to: STORAGE_POWER_ACTOR_ADDR,
+        method: PowerMethod::CurrentTotalPower as u64,
+        ..Default::default()
+    });
     if !power_delta.is_zero() {
         subinvocs.push(ExpectInvocation {
             to: STORAGE_POWER_ACTOR_ADDR,
