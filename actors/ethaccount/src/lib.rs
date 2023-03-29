@@ -26,7 +26,7 @@ pub struct EthAccountActor;
 
 impl EthAccountActor {
     /// Ethereum Account actor constructor.
-    /// NOTE: This method is NOT currently called from anywhere, instead the FVM just deploys EthAccounts.
+    /// NOTE: This method is NOT currently called from anywhere, instead the FVM just deploys EthAccounts(https://github.com/filecoin-project/ref-fvm/blob/c1bcbff0e1e22a7eed27590e521bd90093e2c78e/fvm/src/executor/default.rs#L427).
     pub fn constructor(rt: &impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 

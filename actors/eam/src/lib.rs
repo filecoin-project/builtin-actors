@@ -227,6 +227,7 @@ fn resolve_caller_external(rt: &impl Runtime) -> Result<(EthAddress, EthAddress)
 pub struct EamActor;
 
 impl EamActor {
+    /// NOTE: This method is NOT currently called from anywhere, as this actor doesn't maintain any state itself.
     pub fn constructor(rt: &impl Runtime) -> Result<(), ActorError> {
         let actor_id = rt.resolve_address(&rt.message().receiver()).unwrap();
         if actor_id != EAM_ACTOR_ID {
