@@ -292,8 +292,8 @@ const BATCH_DISCOUNT_NUM: u32 = 1;
 const BATCH_DISCOUNT_DENOM: u32 = 20;
 
 lazy_static! {
-    static ref ESTIMATED_SINGLE_PROVE_COMMIT_GAS_USAGE: BigInt = BigInt::from(49299973);
-    static ref ESTIMATED_SINGLE_PRE_COMMIT_GAS_USAGE: BigInt = BigInt::from(16433324);
+    static ref ESTIMATED_SINGLE_PROVE_COMMIT_GAS_USAGE: BigInt = BigInt::from(59159967);
+    static ref ESTIMATED_SINGLE_PRE_COMMIT_GAS_USAGE: BigInt = BigInt::from(17254990);
 }
 
 pub fn aggregate_prove_commit_network_fee(
