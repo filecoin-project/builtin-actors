@@ -1,6 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use std::cmp::max;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::iter;
@@ -1216,65 +1217,62 @@ impl Actor {
 
         let rew = request_current_epoch_block_reward(rt)?;
         let pow = request_current_total_power(rt)?;
+        let circulating_supply = rt.total_fil_circ_supply();
 
         let succeeded_sectors = rt.transaction(|state: &mut State, rt| {
             let mut succeeded = Vec::new();
-            let mut deadlines = state
-                .load_deadlines(rt.store())?;
+            let mut deadlines = state.load_deadlines(rt.store())?;
 
             let mut new_sectors = Vec::with_capacity(validated_updates.len());
             for &dl_idx in deadlines_to_load.iter() {
-                let mut deadline = deadlines
-                    .load_deadline(rt.policy(), rt.store(), dl_idx)
-                    .map_err(|e|
+                let mut deadline =
+                    deadlines.load_deadline(rt.policy(), rt.store(), dl_idx).map_err(|e| {
                         e.downcast_default(
                             ExitCode::USR_ILLEGAL_STATE,
                             format!("failed to load deadline {}", dl_idx),
                         )
-                    )?;
+                    })?;
 
-                let mut partitions = deadline
-                    .partitions_amt(rt.store())
-                    .map_err(|e|
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("failed to load partitions for deadline {}", dl_idx),
-                        )
-                    )?;
+                let mut partitions = deadline.partitions_amt(rt.store()).map_err(|e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        format!("failed to load partitions for deadline {}", dl_idx),
+                    )
+                })?;
 
                 let quant = state.quant_spec_for_deadline(rt.policy(), dl_idx);
 
                 for with_details in &decls_by_deadline[&dl_idx] {
-                    let update_proof_type = with_details.sector_info.seal_proof
-                        .registered_update_proof()
-                        .map_err(|_|
-                            actor_error!(
-                                illegal_state,
-                                "couldn't load update proof type"
-                            )
+                    let update_proof_type =
+                        with_details.sector_info.seal_proof.registered_update_proof().map_err(
+                            |_| actor_error!(illegal_state, "couldn't load update proof type"),
                         )?;
                     if with_details.update.update_proof_type != update_proof_type {
                         return Err(actor_error!(
                             illegal_argument,
-                            format!("unsupported update proof type {}", i64::from(with_details.update.update_proof_type))
+                            format!(
+                                "unsupported update proof type {}",
+                                i64::from(with_details.update.update_proof_type)
+                            )
                         ));
                     }
 
-                    rt.verify_replica_update(
-                        &ReplicaUpdateInfo {
-                            update_proof_type,
-                            new_sealed_cid: with_details.update.new_sealed_cid,
-                            old_sealed_cid: with_details.sector_info.sealed_cid,
-                            new_unsealed_cid: with_details.full_unsealed_cid,
-                            proof: with_details.update.replica_proof.clone(),
-                        }
-                    )
-                        .map_err(|e|
-                            e.downcast_default(
-                                ExitCode::USR_ILLEGAL_ARGUMENT,
-                                format!("failed to verify replica proof for sector {}", with_details.sector_info.sector_number),
-                            )
-                        )?;
+                    rt.verify_replica_update(&ReplicaUpdateInfo {
+                        update_proof_type,
+                        new_sealed_cid: with_details.update.new_sealed_cid,
+                        old_sealed_cid: with_details.sector_info.sealed_cid,
+                        new_unsealed_cid: with_details.full_unsealed_cid,
+                        proof: with_details.update.replica_proof.clone(),
+                    })
+                    .map_err(|e| {
+                        e.downcast_default(
+                            ExitCode::USR_ILLEGAL_ARGUMENT,
+                            format!(
+                                "failed to verify replica proof for sector {}",
+                                with_details.sector_info.sector_number
+                            ),
+                        )
+                    })?;
 
                     let mut new_sector_info = with_details.sector_info.clone();
 
@@ -1291,8 +1289,10 @@ impl Actor {
 
                     let duration = new_sector_info.expiration - new_sector_info.activation;
 
-                    new_sector_info.deal_weight = with_details.deal_spaces.deal_space.clone() * duration;
-                    new_sector_info.verified_deal_weight = with_details.deal_spaces.verified_deal_space.clone() * duration;
+                    new_sector_info.deal_weight =
+                        with_details.deal_spaces.deal_space.clone() * duration;
+                    new_sector_info.verified_deal_weight =
+                        with_details.deal_spaces.verified_deal_space.clone() * duration;
 
                     // compute initial pledge
                     let qa_pow = qa_power_for_weight(
@@ -1302,7 +1302,8 @@ impl Actor {
                         &new_sector_info.verified_deal_weight,
                     );
 
-                    new_sector_info.replaced_day_reward = with_details.sector_info.expected_day_reward.clone();
+                    new_sector_info.replaced_day_reward =
+                        with_details.sector_info.expected_day_reward.clone();
                     new_sector_info.expected_day_reward = expected_reward_for_power(
                         &rew.this_epoch_reward_smoothed,
                         &pow.quality_adj_power_smoothed,
@@ -1318,78 +1319,68 @@ impl Actor {
                     new_sector_info.replaced_sector_age =
                         ChainEpoch::max(0, rt.curr_epoch() - with_details.sector_info.activation);
 
-                    let initial_pledge_at_upgrade = initial_pledge_for_power(
-                        &qa_pow,
-                        &rew.this_epoch_baseline_power,
-                        &rew.this_epoch_reward_smoothed,
-                        &pow.quality_adj_power_smoothed,
-                        &rt.total_fil_circ_supply(),
+                    new_sector_info.initial_pledge = max(
+                        new_sector_info.initial_pledge,
+                        initial_pledge_for_power(
+                            &qa_pow,
+                            &rew.this_epoch_baseline_power,
+                            &rew.this_epoch_reward_smoothed,
+                            &pow.quality_adj_power_smoothed,
+                            &circulating_supply,
+                        ),
                     );
-
-                    if initial_pledge_at_upgrade > with_details.sector_info.initial_pledge {
-                        let deficit = &initial_pledge_at_upgrade - &with_details.sector_info.initial_pledge;
-
-                        let unlocked_balance = state
-                            .get_unlocked_balance(&rt.current_balance())
-                            .map_err(|_|
-                                actor_error!(illegal_state, "failed to calculate unlocked balance")
-                            )?;
-                        if unlocked_balance < deficit {
-                            return Err(actor_error!(
-                                insufficient_funds,
-                                "insufficient funds for new initial pledge requirement {}, available: {}, skipping sector {}",
-                                deficit,
-                                unlocked_balance,
-                                with_details.sector_info.sector_number
-                            ));
-                        }
-
-                        state.add_initial_pledge(&deficit).map_err(|_e|
-                            actor_error!(
-                                illegal_state,
-                                "failed to add initial pledge"
-                            )
-                        )?;
-
-                        new_sector_info.initial_pledge = initial_pledge_at_upgrade;
-                    }
 
                     let mut partition = partitions
                         .get(with_details.update.partition)
-                        .map_err(|e|
+                        .map_err(|e| {
                             e.downcast_default(
                                 ExitCode::USR_ILLEGAL_STATE,
-                                format!("failed to load deadline {} partition {}", with_details.update.deadline, with_details.update.partition),
+                                format!(
+                                    "failed to load deadline {} partition {}",
+                                    with_details.update.deadline, with_details.update.partition
+                                ),
                             )
-                        )?
+                        })?
                         .cloned()
-                        .ok_or_else(|| actor_error!(not_found, "no such deadline {} partition {}", dl_idx, with_details.update.partition))?;
+                        .ok_or_else(|| {
+                            actor_error!(
+                                not_found,
+                                "no such deadline {} partition {}",
+                                dl_idx,
+                                with_details.update.partition
+                            )
+                        })?;
 
                     let (partition_power_delta, partition_pledge_delta) = partition
-                        .replace_sectors(rt.store(),
-                                         &[with_details.sector_info.clone()],
-                                         &[new_sector_info.clone()],
-                                         info.sector_size,
-                                         quant,
+                        .replace_sectors(
+                            rt.store(),
+                            &[with_details.sector_info.clone()],
+                            &[new_sector_info.clone()],
+                            info.sector_size,
+                            quant,
                         )
                         .map_err(|e| {
                             e.downcast_default(
                                 ExitCode::USR_ILLEGAL_STATE,
-                                format!("failed to replace sector at deadline {} partition {}", with_details.update.deadline, with_details.update.partition),
+                                format!(
+                                    "failed to replace sector at deadline {} partition {}",
+                                    with_details.update.deadline, with_details.update.partition
+                                ),
                             )
                         })?;
 
                     power_delta += &partition_power_delta;
                     pledge_delta += &partition_pledge_delta;
 
-                    partitions
-                        .set(with_details.update.partition, partition)
-                        .map_err(|e| {
-                            e.downcast_default(
-                                ExitCode::USR_ILLEGAL_STATE,
-                                format!("failed to save deadline {} partition {}", with_details.update.deadline, with_details.update.partition),
-                            )
-                        })?;
+                    partitions.set(with_details.update.partition, partition).map_err(|e| {
+                        e.downcast_default(
+                            ExitCode::USR_ILLEGAL_STATE,
+                            format!(
+                                "failed to save deadline {} partition {}",
+                                with_details.update.deadline, with_details.update.partition
+                            ),
+                        )
+                    })?;
 
                     succeeded.push(new_sector_info.sector_number);
                     new_sectors.push(new_sector_info);
@@ -1402,14 +1393,14 @@ impl Actor {
                     )
                 })?;
 
-                deadlines
-                    .update_deadline(rt.policy(), rt.store(), dl_idx, &deadline)
-                    .map_err(|e| {
+                deadlines.update_deadline(rt.policy(), rt.store(), dl_idx, &deadline).map_err(
+                    |e| {
                         e.downcast_default(
                             ExitCode::USR_ILLEGAL_STATE,
                             format!("failed to save deadline {}", dl_idx),
                         )
-                    })?;
+                    },
+                )?;
             }
 
             let success_len = succeeded.len();
@@ -1432,10 +1423,7 @@ impl Actor {
 
             // Overwrite sector infos.
             sectors.store(new_sectors).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to update sector infos",
-                )
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to update sector infos")
             })?;
 
             state.sectors = sectors.amt.flush().map_err(|e| {
@@ -1445,9 +1433,31 @@ impl Actor {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines")
             })?;
 
-            BitField::try_from_bits(succeeded).map_err(|_| {
-                actor_error!(illegal_argument; "invalid sector number")
-            })
+            // Update pledge.
+            let current_balance = rt.current_balance();
+            if pledge_delta.is_positive() {
+                let unlocked_balance =
+                    state.get_unlocked_balance(&current_balance).map_err(|e| {
+                        actor_error!(illegal_state, "failed to calculate unlocked balance: {}", e)
+                    })?;
+                if unlocked_balance < pledge_delta {
+                    return Err(actor_error!(
+                    insufficient_funds,
+                    "insufficient funds for aggregate initial pledge requirement {}, available: {}",
+                    pledge_delta,
+                    unlocked_balance
+                ));
+                }
+            }
+
+            state
+                .add_initial_pledge(&pledge_delta)
+                .map_err(|e| actor_error!(illegal_state, "failed to add initial pledge: {}", e))?;
+
+            state.check_balance_invariants(&current_balance).map_err(balance_invariants_broken)?;
+
+            BitField::try_from_bits(succeeded)
+                .map_err(|_| actor_error!(illegal_argument; "invalid sector number"))
         })?;
 
         notify_pledge_changed(rt, &pledge_delta)?;
