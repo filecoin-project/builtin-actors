@@ -107,7 +107,7 @@ fn extend<BS: Blockstore>(
 
 fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
     let store = MemoryBlockstore::new();
-    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     let addrs = create_accounts(&v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
@@ -116,7 +116,7 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
 
     // create miner
     let miner_id = create_miner(
-        &mut v,
+        &v,
         &owner,
         &worker,
         seal_proof.registered_window_post_proof().unwrap(),

@@ -17,7 +17,7 @@ use test_vm::util::{
     advance_to_proving_deadline, apply_ok, create_accounts, create_miner,
     invariant_failure_patterns, precommit_sectors_v2, prove_commit_sectors, submit_windowed_post,
 };
-use test_vm::TestVM;
+use test_vm::{TestVM, VM};
 
 struct Onboarding {
     epoch_delay: i64,                 // epochs to advance since the prior action
@@ -60,7 +60,7 @@ fn batch_onboarding(v2: bool) {
         seal_proof.registered_window_post_proof().unwrap(),
         &TokenAmount::from_whole(10_000),
     );
-    let mut v = v.with_epoch(200);
+    v.set_epoch(200);
 
     // A series of pre-commit and prove-commit actions intended to cover paths including:
     // - different pre-commit batch sizes
@@ -91,7 +91,7 @@ fn batch_onboarding(v2: bool) {
 
     for item in vec_onboarding {
         let epoch = v.get_epoch();
-        v = v.with_epoch(epoch + item.epoch_delay);
+        v.set_epoch(epoch + item.epoch_delay);
 
         if item.pre_commit_sector_count > 0 {
             let mut new_precommits = precommit_sectors_v2(

@@ -99,13 +99,13 @@ fn create_miner_test() {
 #[test]
 fn test_cron_tick() {
     let store = MemoryBlockstore::new();
-    let mut vm = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let vm = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
 
     let addrs = create_accounts(&vm, 1, &TokenAmount::from_whole(10_000));
 
     // create a miner
     let (id_addr, robust_addr) = create_miner(
-        &mut vm,
+        &vm,
         &addrs[0],
         &addrs[0],
         RegisteredPoStProof::StackedDRGWindow32GiBV1,

@@ -55,7 +55,7 @@ fn token_defaults() -> (TokenAmount, TokenAmount, TokenAmount) {
 
 // create miner and client and add collateral
 fn setup(store: &MemoryBlockstore) -> (TestVM<MemoryBlockstore>, Addrs, ChainEpoch) {
-    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
     let addrs = create_accounts(&v, 7, &TokenAmount::from_whole(10_000));
     let (worker, client1, client2, not_miner, cheap_client, verifier, verified_client) =
         (addrs[0], addrs[1], addrs[2], addrs[3], addrs[4], addrs[5], addrs[6]);
@@ -66,7 +66,7 @@ fn setup(store: &MemoryBlockstore) -> (TestVM<MemoryBlockstore>, Addrs, ChainEpo
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
 
     let maddr = create_miner(
-        &mut v,
+        &v,
         &owner,
         &worker,
         seal_proof.registered_window_post_proof().unwrap(),
@@ -264,12 +264,12 @@ fn psd_not_enought_client_lockup_for_batch() {
 #[test]
 fn psd_not_enough_provider_lockup_for_batch() {
     let store = MemoryBlockstore::new();
-    let (mut v, a, deal_start) = setup(&store);
+    let (v, a, deal_start) = setup(&store);
 
     // note different seed, different address
     let cheap_worker = create_accounts_seeded(&v, 1, &TokenAmount::from_whole(10_000), 444)[0];
     let cheap_maddr = create_miner(
-        &mut v,
+        &v,
         &cheap_worker,
         &cheap_worker,
         fvm_shared::sector::RegisteredPoStProof::StackedDRGWindow32GiBV1,

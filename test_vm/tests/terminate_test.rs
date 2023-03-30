@@ -36,7 +36,7 @@ use test_vm::{ExpectInvocation, TestVM};
 #[test]
 fn terminate_sectors() {
     let store = MemoryBlockstore::new();
-    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     let addrs = create_accounts(&v, 4, &TokenAmount::from_whole(10_000));
     let (owner, verifier, unverified_client, verified_client) =
         (addrs[0], addrs[1], addrs[2], addrs[3]);
@@ -48,7 +48,7 @@ fn terminate_sectors() {
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
 
     let (miner_id_addr, miner_robust_addr) = create_miner(
-        &mut v,
+        &v,
         &owner,
         &worker,
         seal_proof.registered_window_post_proof().unwrap(),
@@ -163,7 +163,7 @@ fn terminate_sectors() {
         let state = deal_states.get(*id).unwrap();
         assert_eq!(None, state);
     }
-    //    precommit_sectors(&mut v, 1, 1, worker, robust_addr, seal_proof, sector_number, true, None);
+    //    precommit_sectors(&v, 1, 1, worker, robust_addr, seal_proof, sector_number, true, None);
     apply_ok(
         &v,
         &worker,

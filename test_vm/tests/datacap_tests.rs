@@ -23,14 +23,14 @@ use fvm_ipld_encoding::RawBytes;
 fn datacap_transfer_scenario() {
     let policy = Policy::default();
     let store = MemoryBlockstore::new();
-    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     let addrs = create_accounts(&v, 3, &TokenAmount::from_whole(10_000));
     let (client, operator, owner) = (addrs[0], addrs[1], addrs[2]);
 
     // need to allocate to an actual miner actor to pass verifreg receiver hook checks
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (maddr, _) = create_miner(
-        &mut v,
+        &v,
         &owner,
         &owner,
         seal_proof.registered_window_post_proof().unwrap(),
