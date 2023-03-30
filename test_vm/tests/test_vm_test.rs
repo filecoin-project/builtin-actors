@@ -27,8 +27,8 @@ fn state_control() {
         TokenAmount::from_atto(10u8),
         None,
     );
-    v.set_actor(addr1, a1.clone());
-    let out = v.get_actor(addr1).unwrap();
+    v.set_actor(&addr1, a1.clone());
+    let out = v.get_actor(&addr1).unwrap();
     assert_eq!(out, a1);
     let check = v.checkpoint();
 
@@ -39,14 +39,14 @@ fn state_control() {
         TokenAmount::from_atto(1u8),
         None,
     );
-    v.set_actor(addr2, a2.clone());
-    assert_eq!(v.get_actor(addr2).unwrap(), a2);
+    v.set_actor(&addr2, a2.clone());
+    assert_eq!(v.get_actor(&addr2).unwrap(), a2);
     // rollback removes a2 but not a1
     v.rollback(check);
 
     // a2 is gone
-    assert_eq!(None, v.get_actor(addr2));
-    assert_eq!(v.get_actor(addr1).unwrap(), a1);
+    assert_eq!(None, v.get_actor(&addr2));
+    assert_eq!(v.get_actor(&addr1).unwrap(), a1);
 
     let invariants_check = v.check_state_invariants();
     assert!(invariants_check.is_err());
@@ -60,8 +60,8 @@ fn assert_account_actor<BS: Blockstore>(
     v: &TestVM<BS>,
     addr: Address,
 ) {
-    let act = v.get_actor(addr).unwrap();
-    let st = v.get_state::<AccountState>(addr).unwrap();
+    let act = v.get_actor(&addr).unwrap();
+    let st = v.get_state::<AccountState>(&addr).unwrap();
     assert_eq!(exp_call_seq, act.call_seq_num);
     assert_eq!(*ACCOUNT_ACTOR_CODE_ID, act.code);
     assert_eq!(exp_bal, act.balance);
@@ -76,9 +76,9 @@ fn test_sent() {
     // send to uninitialized account actor
     let addr1 = Address::new_bls(&[1; fvm_shared::address::BLS_PUB_LEN]).unwrap();
     v.apply_message(
-        TEST_FAUCET_ADDR,
-        addr1,
-        TokenAmount::from_atto(42u8),
+        &TEST_FAUCET_ADDR,
+        &addr1,
+        &TokenAmount::from_atto(42u8),
         METHOD_SEND,
         None::<RawBytes>,
     )
@@ -88,25 +88,25 @@ fn test_sent() {
 
     // send from this account actor to another uninit account actor
     let addr2 = Address::new_bls(&[2; fvm_shared::address::BLS_PUB_LEN]).unwrap();
-    v.apply_message(addr1, addr2, TokenAmount::from_atto(41u8), METHOD_SEND, None::<RawBytes>)
+    v.apply_message(&addr1, &addr2, &TokenAmount::from_atto(41u8), METHOD_SEND, None::<RawBytes>)
         .unwrap();
     let expect_id_addr2 = Address::new_id(FIRST_TEST_USER_ADDR + 1);
     assert_account_actor(0, TokenAmount::from_atto(41u8), addr2, &v, expect_id_addr2);
 
     // send between two initialized account actors
-    v.apply_message(addr2, addr1, TokenAmount::from_atto(41u8), METHOD_SEND, None::<RawBytes>)
+    v.apply_message(&addr2, &addr1, &TokenAmount::from_atto(41u8), METHOD_SEND, None::<RawBytes>)
         .unwrap();
     assert_account_actor(1, TokenAmount::from_atto(42u8), addr1, &v, expect_id_addr1);
     assert_account_actor(1, TokenAmount::zero(), addr2, &v, expect_id_addr2);
 
     // self send is noop
-    v.apply_message(addr1, addr1, TokenAmount::from_atto(1u8), METHOD_SEND, None::<RawBytes>)
+    v.apply_message(&addr1, &addr1, &TokenAmount::from_atto(1u8), METHOD_SEND, None::<RawBytes>)
         .unwrap();
     assert_account_actor(2, TokenAmount::from_atto(42u8), addr1, &v, expect_id_addr1);
 
     // fail with insufficient funds
     let mres = v
-        .apply_message(addr2, addr1, TokenAmount::from_atto(1u8), METHOD_SEND, None::<RawBytes>)
+        .apply_message(&addr2, &addr1, &TokenAmount::from_atto(1u8), METHOD_SEND, None::<RawBytes>)
         .unwrap();
     assert_eq!(ExitCode::SYS_INSUFFICIENT_FUNDS, mres.code);
     assert_account_actor(2, TokenAmount::from_atto(42u8), addr1, &v, expect_id_addr1);
@@ -115,9 +115,9 @@ fn test_sent() {
     // fail to send to non existent id actor (vm doesn't create those on send)
     let mres = v
         .apply_message(
-            addr1,
-            Address::new_id(88),
-            TokenAmount::from_atto(1u8),
+            &addr1,
+            &Address::new_id(88),
+            &TokenAmount::from_atto(1u8),
             METHOD_SEND,
             None::<RawBytes>,
         )

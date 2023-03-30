@@ -129,9 +129,9 @@ mod miner_tests {
         let params = MinerWithdrawBalanceParams { amount_requested: one_fil };
         apply_code(
             &v,
-            worker,
-            m_addr,
-            TokenAmount::zero(),
+            &worker,
+            &m_addr,
+            &TokenAmount::zero(),
             MinerMethod::WithdrawBalance as u64,
             Some(params),
             ExitCode::USR_FORBIDDEN,
@@ -166,13 +166,13 @@ fn assert_add_collateral_and_withdraw<BS: Blockstore>(
     if collateral.is_positive() {
         match a_type {
             x if x == *MINER_ACTOR_CODE_ID => {
-                apply_ok(v, caller, escrow, collateral.clone(), METHOD_SEND, None::<RawBytes>)
+                apply_ok(v, &caller, &escrow, &collateral, METHOD_SEND, None::<RawBytes>)
             }
             x if x == *MARKET_ACTOR_CODE_ID => apply_ok(
                 v,
-                caller,
-                escrow,
-                collateral.clone(),
+                &caller,
+                &escrow,
+                &collateral,
                 MarketMethod::AddBalance as u64,
                 Some(caller),
             ),
@@ -189,9 +189,9 @@ fn assert_add_collateral_and_withdraw<BS: Blockstore>(
             let params = MinerWithdrawBalanceParams { amount_requested: requested };
             apply_ok(
                 v,
-                caller,
-                escrow,
-                TokenAmount::zero(),
+                &caller,
+                &escrow,
+                &TokenAmount::zero(),
                 MinerMethod::WithdrawBalance as u64,
                 Some(params),
             )
@@ -203,9 +203,9 @@ fn assert_add_collateral_and_withdraw<BS: Blockstore>(
                 MarketWithdrawBalanceParams { provider_or_client: caller, amount: requested };
             apply_ok(
                 v,
-                caller,
-                escrow,
-                TokenAmount::zero(),
+                &caller,
+                &escrow,
+                &TokenAmount::zero(),
                 MarketMethod::WithdrawBalance as u64,
                 Some(params),
             )
@@ -221,13 +221,13 @@ fn assert_add_collateral_and_withdraw<BS: Blockstore>(
 }
 
 fn require_actor<BS: Blockstore>(v: &TestVM<BS>, addr: Address) -> Actor {
-    v.get_actor(addr).unwrap()
+    v.get_actor(&addr).unwrap()
 }
 
 fn market_setup(store: &'_ MemoryBlockstore) -> (TestVM<MemoryBlockstore>, Address) {
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
     let initial_balance = TokenAmount::from_whole(6);
-    let addrs = create_accounts(&v, 1, initial_balance);
+    let addrs = create_accounts(&v, 1, &initial_balance);
     let caller = addrs[0];
     (v, caller)
 }
@@ -237,16 +237,16 @@ fn miner_setup(
 ) -> (TestVM<MemoryBlockstore>, Address, Address, Address) {
     let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
     let initial_balance = TokenAmount::from_whole(10_000);
-    let addrs = create_accounts(&v, 2, initial_balance);
+    let addrs = create_accounts(&v, 2, &initial_balance);
     let (worker, owner) = (addrs[0], addrs[1]);
 
     // create miner
     let (m_addr, _) = create_miner(
         &mut v,
-        owner,
-        worker,
+        &owner,
+        &worker,
         RegisteredPoStProof::StackedDRGWindow32GiBV1,
-        TokenAmount::zero(),
+        &TokenAmount::zero(),
     );
 
     (v, worker, owner, m_addr)

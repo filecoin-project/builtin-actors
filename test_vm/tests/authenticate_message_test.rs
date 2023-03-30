@@ -16,10 +16,10 @@ use test_vm::TestVM;
 fn account_authenticate_message() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
-    let addr = create_accounts(&v, 1, TokenAmount::from_whole(10_000))[0];
+    let addr = create_accounts(&v, 1, &TokenAmount::from_whole(10_000))[0];
 
     let proposal =
-        generate_deal_proposal(addr, addr, TokenAmount::zero(), TokenAmount::zero(), 0, 0);
+        generate_deal_proposal(&addr, &addr, &TokenAmount::zero(), &TokenAmount::zero(), 0, 0);
     let proposal_ser =
         RawBytes::serialize(proposal).expect("failed to marshal deal proposal").to_vec();
 
@@ -30,9 +30,9 @@ fn account_authenticate_message() {
     };
     apply_ok(
         &v,
-        addr,
-        addr,
-        TokenAmount::zero(),
+        &addr,
+        &addr,
+        &TokenAmount::zero(),
         AuthenticateMessageExported as u64,
         Some(authenticate_message_params),
     );
@@ -42,9 +42,9 @@ fn account_authenticate_message() {
         AuthenticateMessageParams { signature: vec![], message: proposal_ser };
     apply_code(
         &v,
-        addr,
-        addr,
-        TokenAmount::zero(),
+        &addr,
+        &addr,
+        &TokenAmount::zero(),
         AuthenticateMessageExported as u64,
         Some(authenticate_message_params),
         ExitCode::USR_ILLEGAL_ARGUMENT,

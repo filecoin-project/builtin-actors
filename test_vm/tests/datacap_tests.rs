@@ -24,17 +24,17 @@ fn datacap_transfer_scenario() {
     let policy = Policy::default();
     let store = MemoryBlockstore::new();
     let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
+    let addrs = create_accounts(&v, 3, &TokenAmount::from_whole(10_000));
     let (client, operator, owner) = (addrs[0], addrs[1], addrs[2]);
 
     // need to allocate to an actual miner actor to pass verifreg receiver hook checks
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (maddr, _) = create_miner(
         &mut v,
-        owner,
-        owner,
+        &owner,
+        &owner,
         seal_proof.registered_window_post_proof().unwrap(),
-        TokenAmount::from_whole(1_000),
+        &TokenAmount::from_whole(1_000),
     );
 
     let data_cap_amt = TokenAmount::from_whole(
@@ -45,9 +45,9 @@ fn datacap_transfer_scenario() {
     // cannot mint from non-verifreg
     apply_code(
         &v,
-        operator,
-        DATACAP_TOKEN_ACTOR_ADDR,
-        TokenAmount::zero(),
+        &operator,
+        &DATACAP_TOKEN_ACTOR_ADDR,
+        &TokenAmount::zero(),
         DataCapMethod::MintExported as u64,
         Some(mint_params.clone()),
         ExitCode::USR_FORBIDDEN,
@@ -56,9 +56,9 @@ fn datacap_transfer_scenario() {
     // mint datacap for client
     apply_ok(
         &v,
-        VERIFIED_REGISTRY_ACTOR_ADDR,
-        DATACAP_TOKEN_ACTOR_ADDR,
-        TokenAmount::zero(),
+        &VERIFIED_REGISTRY_ACTOR_ADDR,
+        &DATACAP_TOKEN_ACTOR_ADDR,
+        &TokenAmount::zero(),
         DataCapMethod::MintExported as u64,
         Some(mint_params),
     );
@@ -67,9 +67,9 @@ fn datacap_transfer_scenario() {
     apply_ok(
         &v,
         // anyone can call Allowance
-        owner,
-        DATACAP_TOKEN_ACTOR_ADDR,
-        TokenAmount::zero(),
+        &owner,
+        &DATACAP_TOKEN_ACTOR_ADDR,
+        &TokenAmount::zero(),
         DataCapMethod::AllowanceExported as u64,
         Some(GetAllowanceParams { owner: client, operator }),
     );
@@ -113,9 +113,9 @@ fn datacap_transfer_scenario() {
     .unwrap();
     apply_code(
         &v,
-        operator,
-        DATACAP_TOKEN_ACTOR_ADDR,
-        TokenAmount::zero(),
+        &operator,
+        &DATACAP_TOKEN_ACTOR_ADDR,
+        &TokenAmount::zero(),
         DataCapMethod::TransferFromExported as u64,
         Some(params_piece_too_small),
         ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -127,9 +127,9 @@ fn datacap_transfer_scenario() {
         TokenAmount::from_whole(MINIMUM_VERIFIED_ALLOCATION_SIZE + 1);
     apply_code(
         &v,
-        operator,
-        DATACAP_TOKEN_ACTOR_ADDR,
-        TokenAmount::zero(),
+        &operator,
+        &DATACAP_TOKEN_ACTOR_ADDR,
+        &TokenAmount::zero(),
         DataCapMethod::TransferFromExported as u64,
         Some(params_mismatched_datacap),
         ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -146,9 +146,9 @@ fn datacap_transfer_scenario() {
     .unwrap();
     apply_code(
         &v,
-        operator,
-        DATACAP_TOKEN_ACTOR_ADDR,
-        TokenAmount::zero(),
+        &operator,
+        &DATACAP_TOKEN_ACTOR_ADDR,
+        &TokenAmount::zero(),
         DataCapMethod::TransferFromExported as u64,
         Some(params_bad_term),
         ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -159,9 +159,9 @@ fn datacap_transfer_scenario() {
     params_bad_receiver.to = owner;
     apply_code(
         &v,
-        owner,
-        DATACAP_TOKEN_ACTOR_ADDR,
-        TokenAmount::zero(),
+        &owner,
+        &DATACAP_TOKEN_ACTOR_ADDR,
+        &TokenAmount::zero(),
         DataCapMethod::TransferFromExported as u64,
         Some(clone_params(&params_bad_receiver)),
         ExitCode::USR_FORBIDDEN, // ExitCode(19) because non-operator has insufficient allowance
@@ -170,9 +170,9 @@ fn datacap_transfer_scenario() {
     // cannot transfer with non-operator caller
     apply_code(
         &v,
-        owner,
-        DATACAP_TOKEN_ACTOR_ADDR,
-        TokenAmount::zero(),
+        &owner,
+        &DATACAP_TOKEN_ACTOR_ADDR,
+        &TokenAmount::zero(),
         DataCapMethod::TransferFromExported as u64,
         Some(clone_params(&transfer_from_params)),
         ExitCode::USR_INSUFFICIENT_FUNDS, // ExitCode(19) because non-operator has insufficient allowance
@@ -180,9 +180,9 @@ fn datacap_transfer_scenario() {
 
     apply_ok(
         &v,
-        operator,
-        DATACAP_TOKEN_ACTOR_ADDR,
-        TokenAmount::zero(),
+        &operator,
+        &DATACAP_TOKEN_ACTOR_ADDR,
+        &TokenAmount::zero(),
         DataCapMethod::TransferFromExported as u64,
         Some(clone_params(&transfer_from_params)),
     );
@@ -190,9 +190,9 @@ fn datacap_transfer_scenario() {
     // Datacap already spent, not enough left
     apply_code(
         &v,
-        operator,
-        DATACAP_TOKEN_ACTOR_ADDR,
-        TokenAmount::zero(),
+        &operator,
+        &DATACAP_TOKEN_ACTOR_ADDR,
+        &TokenAmount::zero(),
         DataCapMethod::TransferFromExported as u64,
         Some(transfer_from_params),
         ExitCode::USR_INSUFFICIENT_FUNDS,
@@ -204,14 +204,14 @@ fn datacap_transfer_scenario() {
 fn call_name_symbol() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 1, TokenAmount::from_whole(10_000));
+    let addrs = create_accounts(&v, 1, &TokenAmount::from_whole(10_000));
     let sender = addrs[0];
 
     let mut ret: String = apply_ok(
         &v,
-        sender,
-        DATACAP_TOKEN_ACTOR_ADDR,
-        TokenAmount::zero(),
+        &sender,
+        &DATACAP_TOKEN_ACTOR_ADDR,
+        &TokenAmount::zero(),
         DataCapMethod::NameExported as u64,
         None::<RawBytes>,
     )
@@ -221,9 +221,9 @@ fn call_name_symbol() {
 
     ret = apply_ok(
         &v,
-        sender,
-        DATACAP_TOKEN_ACTOR_ADDR,
-        TokenAmount::zero(),
+        &sender,
+        &DATACAP_TOKEN_ACTOR_ADDR,
+        &TokenAmount::zero(),
         DataCapMethod::SymbolExported as u64,
         None::<RawBytes>,
     )
