@@ -123,7 +123,7 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
         &TokenAmount::from_whole(1_000),
     )
     .0;
-    let mut v = v.with_epoch(200);
+    let v = v.with_epoch(200);
 
     //
     // publish verified deals
@@ -169,7 +169,7 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
     );
 
     // advance time to max seal duration and prove the sector
-    v = advance_by_deadline_to_epoch(v, miner_id, deal_start).0;
+    advance_by_deadline_to_epoch(&v, &miner_id, deal_start);
     miner_prove_sector(&v, &worker, &miner_id, sector_number);
     // trigger cron to validate the prove commit
     cron_tick(&v);
@@ -200,8 +200,8 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
     let initial_deal_weight = sector_info.deal_weight;
 
     // advance to proving period and submit post
-    let (deadline_info, partition_index, mut v) =
-        advance_to_proving_deadline(v, miner_id, sector_number);
+    let (deadline_info, partition_index) =
+        advance_to_proving_deadline(&v, &miner_id, sector_number);
 
     let expected_power_delta = PowerPair {
         raw: StoragePower::from(32u64 << 30),
@@ -218,21 +218,20 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
     );
 
     // move forward one deadline so advanceWhileProving doesn't fail double submitting posts
-    v = advance_by_deadline_to_index(
-        v,
-        miner_id,
+    advance_by_deadline_to_index(
+        &v,
+        &miner_id,
         deadline_info.index + 1 % policy.wpost_period_deadlines,
-    )
-    .0;
+    );
 
     // advance halfway through life and extend another 6 months
     // verified deal weight /= 2
     // power multiplier = (1/4)*10 + (3/4)*1 = 3.25
     // power delta = (10-3.25)*32GiB = 6.75*32GiB
-    v = advance_by_deadline_to_epoch_while_proving(
-        v,
-        miner_id,
-        worker,
+    advance_by_deadline_to_epoch_while_proving(
+        &v,
+        &miner_id,
+        &worker,
         sector_number,
         deal_start + 90 * EPOCHS_IN_DAY,
     );
@@ -263,10 +262,10 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
     // power multiplier = (1/3)*3.25 + (2/3)*1 = 1.75
     // power delta = (3.25 - 1.75)*32GiB = 1.5*32GiB
 
-    v = advance_by_deadline_to_epoch_while_proving(
-        v,
-        miner_id,
-        worker,
+    advance_by_deadline_to_epoch_while_proving(
+        &v,
+        &miner_id,
+        &worker,
         sector_number,
         deal_start + 180 * EPOCHS_IN_DAY,
     );

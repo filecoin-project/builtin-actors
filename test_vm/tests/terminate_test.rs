@@ -181,7 +181,7 @@ fn terminate_sectors() {
         }),
     );
     let prove_time = v.get_epoch() + Policy::default().pre_commit_challenge_delay + 1;
-    let v = advance_by_deadline_to_epoch(v, miner_id_addr, prove_time).0;
+    advance_by_deadline_to_epoch(&v, &miner_id_addr, prove_time);
 
     // prove commit, cron, advance to post time
     let prove_params = ProveCommitSectorParams { sector_number, proof: vec![] };
@@ -203,7 +203,7 @@ fn terminate_sectors() {
         )
         .unwrap();
     assert_eq!(ExitCode::OK, res.code);
-    let (dline_info, p_idx, v) = advance_to_proving_deadline(v, miner_id_addr, sector_number);
+    let (dline_info, p_idx) = advance_to_proving_deadline(&v, &miner_id_addr, sector_number);
     let d_idx = dline_info.index;
     let st = v.get_state::<MinerState>(&miner_id_addr).unwrap();
     let sector = st.get_sector(v.store, sector_number).unwrap().unwrap();
@@ -224,10 +224,10 @@ fn terminate_sectors() {
     // advance cron delay epochs so deals are active
     let start = dline_info.close;
     let v = v.with_epoch(start); // get out of proving deadline so we don't post twice
-    let v = advance_by_deadline_to_epoch_while_proving(
-        v,
-        miner_id_addr,
-        worker,
+    advance_by_deadline_to_epoch_while_proving(
+        &v,
+        &miner_id_addr,
+        &worker,
         sector_number,
         start + Policy::default().deal_updates_interval,
     );
@@ -318,9 +318,9 @@ fn terminate_sectors() {
     }
 
     // advance a market cron processing period to process terminations fully
-    let (v, _) = advance_by_deadline_to_epoch(
-        v,
-        miner_id_addr,
+    advance_by_deadline_to_epoch(
+        &v,
+        &miner_id_addr,
         termination_epoch + Policy::default().deal_updates_interval,
     );
     // because of rounding error it's annoying to compute exact withdrawable balance which is 2.9999.. FIL

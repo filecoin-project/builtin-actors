@@ -62,7 +62,7 @@ fn replica_update_full_path_success(v2: bool) {
     let sector_number = sector_info.sector_number;
 
     // submit post successfully
-    let (mut deadline_info, _, mut v) = advance_to_proving_deadline(v, miner_id, sector_number);
+    let (mut deadline_info, _) = advance_to_proving_deadline(&v, &miner_id, sector_number);
     submit_windowed_post(
         &v,
         &worker,
@@ -73,29 +73,19 @@ fn replica_update_full_path_success(v2: bool) {
     );
 
     // move out of the sector's deadline
-    v = advance_by_deadline_to_index(
-        v,
-        miner_id,
-        deadline_index + 1 % policy.wpost_period_deadlines,
-    )
-    .0;
+    advance_by_deadline_to_index(&v, &miner_id, deadline_index + 1 % policy.wpost_period_deadlines);
     assert!(check_sector_active(&v, &miner_id, sector_number));
 
     // miss next post, lose power, become faulty :'(
-    v = advance_by_deadline_to_index(v, miner_id, deadline_index).0;
-    v = advance_by_deadline_to_index(
-        v,
-        miner_id,
-        deadline_index + 1 % policy.wpost_period_deadlines,
-    )
-    .0;
+    advance_by_deadline_to_index(&v, &miner_id, deadline_index);
+    advance_by_deadline_to_index(&v, &miner_id, deadline_index + 1 % policy.wpost_period_deadlines);
     assert!(!check_sector_active(&v, &miner_id, sector_number));
     assert!(check_sector_faulty(&v, &miner_id, deadline_index, partition_index, sector_number));
 
     assert!(miner_power(&v, &miner_id).is_zero());
 
     declare_recovery(&v, &worker, &miner_id, deadline_index, partition_index, sector_number);
-    (deadline_info, _, v) = advance_to_proving_deadline(v, miner_id, sector_number);
+    (deadline_info, _) = advance_to_proving_deadline(&v, &miner_id, sector_number);
 
     submit_windowed_post(
         &v,
@@ -120,7 +110,7 @@ fn replica_update_full_path_success(v2: bool) {
 fn upgrade_and_miss_post(v2: bool) {
     let store = &MemoryBlockstore::new();
     let policy = Policy::default();
-    let (mut v, sector_info, worker, miner_id, deadline_index, partition_index, sector_size) =
+    let (v, sector_info, worker, miner_id, deadline_index, partition_index, sector_size) =
         create_miner_and_upgrade_sector(store, v2);
     let sector_number = sector_info.sector_number;
 
@@ -128,13 +118,8 @@ fn upgrade_and_miss_post(v2: bool) {
     assert!(!power_after_update.is_zero());
 
     // immediately miss post, lose power, become faulty
-    v = advance_by_deadline_to_index(v, miner_id, deadline_index).0;
-    v = advance_by_deadline_to_index(
-        v,
-        miner_id,
-        deadline_index + 1 % policy.wpost_period_deadlines,
-    )
-    .0;
+    advance_by_deadline_to_index(&v, &miner_id, deadline_index);
+    advance_by_deadline_to_index(&v, &miner_id, deadline_index + 1 % policy.wpost_period_deadlines);
     assert!(!check_sector_active(&v, &miner_id, sector_number));
     assert!(check_sector_faulty(&v, &miner_id, deadline_index, partition_index, sector_number));
 
@@ -150,7 +135,7 @@ fn upgrade_and_miss_post(v2: bool) {
     assert!(miner_power(&v, &miner_id).is_zero());
 
     declare_recovery(&v, &worker, &miner_id, deadline_index, partition_index, sector_number);
-    let (deadline_info, _, v) = advance_to_proving_deadline(v, miner_id, sector_number);
+    let (deadline_info, _) = advance_to_proving_deadline(&v, &miner_id, sector_number);
 
     submit_windowed_post(
         &v,
@@ -211,24 +196,24 @@ fn prove_replica_update_multi_dline() {
     let to_prove = precommits;
 
     let prove_time = v.get_epoch() + policy.pre_commit_challenge_delay + 1;
-    v = advance_by_deadline_to_epoch(v, maddr, prove_time).0;
+    advance_by_deadline_to_epoch(&v, &maddr, prove_time);
 
     prove_commit_sectors(&mut v, &worker, &maddr, to_prove, batch_size);
 
     /* This is a mess, but it just ensures activation of both partitions by posting, cronning and checking */
 
     // advance to proving period and submit post for first partition
-    let (deadline_info, partition_index, v) =
-        advance_to_proving_deadline(v, maddr, first_sector_number_p1);
+    let (deadline_info, partition_index) =
+        advance_to_proving_deadline(&v, &maddr, first_sector_number_p1);
 
     // first partition shouldn't be active until PoSt
     assert!(!check_sector_active(&v, &maddr, deadline_info.index));
     submit_windowed_post(&v, &worker, &maddr, deadline_info, partition_index, None);
 
     // move into the next deadline so that the first batch of created sectors are active
-    let (v, current_deadline_info) = advance_by_deadline_to_index(
-        v,
-        maddr,
+    let current_deadline_info = advance_by_deadline_to_index(
+        &v,
+        &maddr,
         deadline_info.index + 1 % policy.wpost_period_deadlines,
     );
 
@@ -244,9 +229,9 @@ fn prove_replica_update_multi_dline() {
     submit_windowed_post(&v, &worker, &maddr, current_deadline_info, 0, None);
 
     // move into the next deadline so that the second batch of created sectors are active
-    let (v, _) = advance_by_deadline_to_index(
-        v,
-        maddr,
+    advance_by_deadline_to_index(
+        &v,
+        &maddr,
         deadline_info.index + 2 % policy.wpost_period_deadlines,
     );
     assert!(check_sector_active(&v, &maddr, first_sector_number_p2));
@@ -329,13 +314,13 @@ fn immutable_deadline_failure() {
     let v = v.with_epoch(200);
 
     let sector_number = 100;
-    let (mut v, d_idx, p_idx) = create_sector(v, worker, maddr, sector_number, seal_proof);
+    let (v, d_idx, p_idx) = create_sector(v, worker, maddr, sector_number, seal_proof);
 
     // make some deals
     let deal_ids = create_deals(1, &v, worker, worker, maddr);
 
     // Advance back into the sector's deadline
-    v = advance_to_proving_deadline(v, maddr, sector_number).2;
+    advance_to_proving_deadline(&v, &maddr, sector_number);
 
     // replicaUpdate the sector
     let new_cid = make_sealed_cid(b"replica1");
@@ -380,14 +365,14 @@ fn unhealthy_sector_failure() {
     let v = v.with_epoch(200);
 
     let sector_number = 100;
-    let (mut v, d_idx, p_idx) = create_sector(v, worker, maddr, sector_number, seal_proof);
+    let (v, d_idx, p_idx) = create_sector(v, worker, maddr, sector_number, seal_proof);
 
     // make some deals
     let deal_ids = create_deals(1, &v, worker, worker, maddr);
 
     // ffw 2 days, missing posts
     let two_days_later = v.get_epoch() + policy.wpost_proving_period * 2;
-    v = advance_by_deadline_to_epoch(v, maddr, two_days_later).0;
+    advance_by_deadline_to_epoch(&v, &maddr, two_days_later);
     assert!(!check_sector_active(&v, &maddr, sector_number));
     assert!(check_sector_faulty(&v, &maddr, d_idx, p_idx, sector_number));
 
@@ -561,15 +546,10 @@ fn upgrade_bad_post_dispute() {
         create_miner_and_upgrade_sector(store, false);
     let sector_number = sector_info.sector_number;
 
-    let (deadline_info, _, mut v) = advance_to_proving_deadline(v, miner_id, sector_number);
+    let (deadline_info, _) = advance_to_proving_deadline(&v, &miner_id, sector_number);
     submit_invalid_post(&v, &worker, &miner_id, deadline_info, partition_index);
 
-    v = advance_by_deadline_to_index(
-        v,
-        miner_id,
-        deadline_index + 2 % policy.wpost_period_deadlines,
-    )
-    .0;
+    advance_by_deadline_to_index(&v, &miner_id, deadline_index + 2 % policy.wpost_period_deadlines);
 
     let dispute_params = DisputeWindowedPoStParams { deadline: deadline_index, post_index: 0 };
     apply_ok(
@@ -607,10 +587,10 @@ fn bad_post_upgrade_dispute() {
     let old_sector_info = sector_info(&v, &maddr, sector_number);
 
     // submit an invalid post
-    let (deadline_info, _, mut v) = advance_to_proving_deadline(v, maddr, sector_number);
+    let (deadline_info, _) = advance_to_proving_deadline(&v, &maddr, sector_number);
 
     submit_invalid_post(&v, &worker, &maddr, deadline_info, p_idx);
-    v = advance_by_deadline_to_index(v, maddr, d_idx + 2 % policy.wpost_period_deadlines).0;
+    advance_by_deadline_to_index(&v, &maddr, d_idx + 2 % policy.wpost_period_deadlines);
 
     // make some deals
     let deal_ids = create_deals(1, &v, worker, worker, maddr);
@@ -900,7 +880,7 @@ fn deal_included_in_multiple_sectors_failure() {
     assert!(miner_balance.pre_commit_deposit.is_positive());
 
     let prove_time = v.get_epoch() + policy.pre_commit_challenge_delay + 1;
-    v = advance_by_deadline_to_epoch(v, maddr, prove_time).0;
+    advance_by_deadline_to_epoch(&v, &maddr, prove_time);
 
     prove_commit_sectors(&mut v, &worker, &maddr, precommits, 100);
 
@@ -915,8 +895,8 @@ fn deal_included_in_multiple_sectors_failure() {
     );
 
     // advance to proving period and submit post
-    let (deadline_info, partition_index, mut v) =
-        advance_to_proving_deadline(v, maddr, first_sector_number);
+    let (deadline_info, partition_index) =
+        advance_to_proving_deadline(&v, &maddr, first_sector_number);
 
     // sector shouldn't be active until PoSt
     assert!(!check_sector_active(&v, &maddr, first_sector_number));
@@ -925,12 +905,11 @@ fn deal_included_in_multiple_sectors_failure() {
     submit_windowed_post(&v, &worker, &maddr, deadline_info, partition_index, None);
 
     // move into the next deadline so that the created sectors are mutable
-    v = advance_by_deadline_to_index(
-        v,
-        maddr,
+    advance_by_deadline_to_index(
+        &v,
+        &maddr,
         deadline_info.index + 1 % policy.wpost_period_deadlines,
-    )
-    .0;
+    );
 
     // sectors are now active!
     assert!(check_sector_active(&v, &maddr, first_sector_number));
@@ -1287,7 +1266,7 @@ fn create_sector<BS: Blockstore>(
 
     // prove commit
     let prove_time = v.get_epoch() + Policy::default().pre_commit_challenge_delay + 1;
-    let v = advance_by_deadline_to_epoch(v, maddr, prove_time).0;
+    advance_by_deadline_to_epoch(&v, &maddr, prove_time);
     let prove_commit_params = ProveCommitSectorParams { sector_number, proof: vec![] };
     apply_ok(
         &v,
@@ -1307,7 +1286,7 @@ fn create_sector<BS: Blockstore>(
         )
         .unwrap();
     assert_eq!(ExitCode::OK, res.code);
-    let (dline_info, p_idx, v) = advance_to_proving_deadline(v, maddr, sector_number);
+    let (dline_info, p_idx) = advance_to_proving_deadline(&v, &maddr, sector_number);
     let d_idx = dline_info.index;
     // not active until post
     assert!(!check_sector_active(&v, &maddr, sector_number));
@@ -1317,12 +1296,7 @@ fn create_sector<BS: Blockstore>(
     submit_windowed_post(&v, &worker, &maddr, dline_info, p_idx, Some(sector_power));
 
     // move to next deadline to activate power
-    let v = advance_by_deadline_to_index(
-        v,
-        maddr,
-        d_idx + 1 % Policy::default().wpost_period_deadlines,
-    )
-    .0;
+    advance_by_deadline_to_index(&v, &maddr, d_idx + 1 % Policy::default().wpost_period_deadlines);
 
     // hooray sector is now active
     assert!(check_sector_active(&v, &maddr, sector_number));

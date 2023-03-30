@@ -49,12 +49,12 @@ impl Onboarding {
 #[test_case(true; "v2")]
 fn batch_onboarding(v2: bool) {
     let store = MemoryBlockstore::new();
-    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     let addrs = create_accounts(&v, 1, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
     let (id_addr, _) = create_miner(
-        &mut v,
+        &v,
         &owner,
         &worker,
         seal_proof.registered_window_post_proof().unwrap(),
@@ -95,7 +95,7 @@ fn batch_onboarding(v2: bool) {
 
         if item.pre_commit_sector_count > 0 {
             let mut new_precommits = precommit_sectors_v2(
-                &mut v,
+                &v,
                 item.pre_commit_sector_count,
                 item.pre_commit_batch_size,
                 &worker,
@@ -114,18 +114,12 @@ fn batch_onboarding(v2: bool) {
         if item.prove_commit_sector_count > 0 {
             let to_prove = precommmits[..item.prove_commit_sector_count as usize].to_vec();
             precommmits = precommmits[item.prove_commit_sector_count as usize..].to_vec();
-            prove_commit_sectors(
-                &mut v,
-                &worker,
-                &id_addr,
-                to_prove,
-                item.prove_commit_aggregate_size,
-            );
+            prove_commit_sectors(&v, &worker, &id_addr, to_prove, item.prove_commit_aggregate_size);
             proven_count += item.prove_commit_sector_count;
         }
     }
 
-    let (dline_info, p_idx, v) = advance_to_proving_deadline(v, id_addr, 0);
+    let (dline_info, p_idx) = advance_to_proving_deadline(&v, &id_addr, 0);
 
     // submit post
     let st = v.get_state::<MinerState>(&id_addr).unwrap();

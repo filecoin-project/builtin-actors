@@ -75,9 +75,6 @@ use std::ops::Add;
 
 pub mod util;
 
-// TODO: temporary name eventually should replace util mod completely
-pub mod vm_util;
-
 /// An abstract VM that is injected into integration tests
 pub trait VM<BS: Blockstore> {
     /// Returns the underlying blockstore of the VM

@@ -28,7 +28,7 @@ use test_vm::util::{
     create_accounts, create_miner, invariant_failure_patterns, precommit_sectors,
     submit_windowed_post,
 };
-use test_vm::{ExpectInvocation, TestVM, TEST_VM_RAND_ARRAY};
+use test_vm::{ExpectInvocation, TestVM, TEST_VM_RAND_ARRAY, VM};
 
 struct SectorInfo {
     number: SectorNumber,
@@ -66,7 +66,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (TestVM<MemoryBlockstore>, MinerInfo, S
     assert!(balances.pre_commit_deposit.is_positive());
 
     let prove_time = v.get_epoch() + Policy::default().pre_commit_challenge_delay + 1;
-    let v = advance_by_deadline_to_epoch(v, id_addr, prove_time).0;
+    advance_by_deadline_to_epoch(&v, &id_addr, prove_time);
 
     // prove commit, cron, advance to post time
     let prove_params = ProveCommitSectorParams { sector_number, proof: vec![] };
@@ -152,8 +152,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (TestVM<MemoryBlockstore>, MinerInfo, S
     assert!(network_stats.total_bytes_committed.is_zero());
     assert!(network_stats.total_pledge_collateral.is_positive());
 
-    let (deadline_info, partition_index, v) =
-        advance_to_proving_deadline(v, id_addr, sector_number);
+    let (deadline_info, partition_index) = advance_to_proving_deadline(&v, &id_addr, sector_number);
     (
         v,
         MinerInfo {
@@ -334,7 +333,7 @@ fn overdue_precommit() {
     assert!(balances.pre_commit_deposit.is_positive());
 
     let prove_time = v.get_epoch() + max_prove_commit_duration(policy, seal_proof).unwrap() + 1;
-    v = advance_by_deadline_to_epoch(v, id_addr, prove_time).0;
+    advance_by_deadline_to_epoch(&v, &id_addr, prove_time);
 
     //
     // overdue precommit
@@ -342,10 +341,10 @@ fn overdue_precommit() {
 
     // advance time to precommit clean up epoch
     let cleanup_time = prove_time + policy.expired_pre_commit_clean_up_delay;
-    let (mut v, deadline_info) = advance_by_deadline_to_epoch(v, id_addr, cleanup_time);
+    let deadline_info = advance_by_deadline_to_epoch(&v, &id_addr, cleanup_time);
 
     // advance one more deadline so precommit clean up is reached
-    v = v.with_epoch(deadline_info.close);
+    v.set_epoch(deadline_info.close);
 
     // run cron which should clean up precommit
     apply_ok(
@@ -466,7 +465,7 @@ fn aggregate_bad_sector_number() {
     // advance time to max seal duration
 
     let prove_time = v.get_epoch() + policy.pre_commit_challenge_delay + 1;
-    let v = advance_by_deadline_to_epoch(v, id_addr, prove_time).0;
+    advance_by_deadline_to_epoch(&v, &id_addr, prove_time);
 
     // construct invalid bitfield with a non-committed sector number > abi.MaxSectorNumber
 
@@ -547,7 +546,7 @@ fn aggregate_size_limits() {
     // advance time to max seal duration
 
     let prove_time = v.get_epoch() + policy.pre_commit_challenge_delay + 1;
-    let v = advance_by_deadline_to_epoch(v, id_addr, prove_time).0;
+    advance_by_deadline_to_epoch(&v, &id_addr, prove_time);
 
     // Fail with too many sectors
 
@@ -680,7 +679,7 @@ fn aggregate_bad_sender() {
     // advance time to max seal duration
 
     let prove_time = v.get_epoch() + policy.pre_commit_challenge_delay + 1;
-    let v = advance_by_deadline_to_epoch(v, id_addr, prove_time).0;
+    advance_by_deadline_to_epoch(&v, &id_addr, prove_time);
 
     let prove_params = ProveCommitAggregateParams {
         sector_numbers: precommited_sector_nos,
@@ -749,7 +748,7 @@ fn aggregate_one_precommit_expires() {
     let early_pre_commit_invalid =
         early_precommit_time + max_prove_commit_duration(policy, seal_proof).unwrap() + 1;
 
-    v = advance_by_deadline_to_epoch(v, id_addr, early_pre_commit_invalid).0;
+    advance_by_deadline_to_epoch(&v, &id_addr, early_pre_commit_invalid);
 
     // later precommits
 
@@ -773,8 +772,8 @@ fn aggregate_one_precommit_expires() {
     // Advance minimum epochs past later precommits for later commits to be valid
 
     let prove_time = v.get_epoch() + policy.pre_commit_challenge_delay + 1;
-    let (mut v, deadline_info) = advance_by_deadline_to_epoch(v, id_addr, prove_time);
-    v = advance_by_deadline_to_epoch(v, id_addr, deadline_info.close).0;
+    let deadline_info = advance_by_deadline_to_epoch(&v, &id_addr, prove_time);
+    advance_by_deadline_to_epoch(&v, &id_addr, deadline_info.close);
 
     // Assert that precommit should not yet be cleaned up. This makes fixing this test easier if parameters change.
     assert!(
