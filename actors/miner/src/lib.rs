@@ -1,6 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use std::cmp::max;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::iter;
@@ -1216,6 +1217,7 @@ impl Actor {
 
         let rew = request_current_epoch_block_reward(rt)?;
         let pow = request_current_total_power(rt)?;
+        let circulating_supply = rt.total_fil_circ_supply();
 
         let succeeded_sectors = rt.transaction(|state: &mut State, rt| {
             let mut succeeded = Vec::new();
@@ -1318,41 +1320,16 @@ impl Actor {
                     new_sector_info.replaced_sector_age =
                         ChainEpoch::max(0, rt.curr_epoch() - with_details.sector_info.activation);
 
-                    let initial_pledge_at_upgrade = initial_pledge_for_power(
-                        &qa_pow,
-                        &rew.this_epoch_baseline_power,
-                        &rew.this_epoch_reward_smoothed,
-                        &pow.quality_adj_power_smoothed,
-                        &rt.total_fil_circ_supply(),
+                    new_sector_info.initial_pledge = max(
+                        new_sector_info.initial_pledge,
+                        initial_pledge_for_power(
+                            &qa_pow,
+                            &rew.this_epoch_baseline_power,
+                            &rew.this_epoch_reward_smoothed,
+                            &pow.quality_adj_power_smoothed,
+                            &circulating_supply,
+                        ),
                     );
-
-                    if initial_pledge_at_upgrade > with_details.sector_info.initial_pledge {
-                        let deficit = &initial_pledge_at_upgrade - &with_details.sector_info.initial_pledge;
-
-                        let unlocked_balance = state
-                            .get_unlocked_balance(&rt.current_balance())
-                            .map_err(|_|
-                                actor_error!(illegal_state, "failed to calculate unlocked balance")
-                            )?;
-                        if unlocked_balance < deficit {
-                            return Err(actor_error!(
-                                insufficient_funds,
-                                "insufficient funds for new initial pledge requirement {}, available: {}, skipping sector {}",
-                                deficit,
-                                unlocked_balance,
-                                with_details.sector_info.sector_number
-                            ));
-                        }
-
-                        state.add_initial_pledge(&deficit).map_err(|_e|
-                            actor_error!(
-                                illegal_state,
-                                "failed to add initial pledge"
-                            )
-                        )?;
-
-                        new_sector_info.initial_pledge = initial_pledge_at_upgrade;
-                    }
 
                     let mut partition = partitions
                         .get(with_details.update.partition)
@@ -1432,10 +1409,7 @@ impl Actor {
 
             // Overwrite sector infos.
             sectors.store(new_sectors).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to update sector infos",
-                )
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to update sector infos")
             })?;
 
             state.sectors = sectors.amt.flush().map_err(|e| {
@@ -1444,6 +1418,29 @@ impl Actor {
             state.save_deadlines(rt.store(), deadlines).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines")
             })?;
+
+            // Update pledge.
+            let current_balance = rt.current_balance();
+            if pledge_delta.is_positive() {
+                let unlocked_balance =
+                    state.get_unlocked_balance(&current_balance).map_err(|e| {
+                        actor_error!(illegal_state, "failed to calculate unlocked balance: {}", e)
+                    })?;
+                if unlocked_balance < pledge_delta {
+                    return Err(actor_error!(
+                    insufficient_funds,
+                    "insufficient funds for aggregate initial pledge requirement {}, available: {}",
+                    pledge_delta,
+                    unlocked_balance
+                ));
+                }
+            }
+
+            state
+                .add_initial_pledge(&pledge_delta)
+                .map_err(|e| actor_error!(illegal_state, "failed to add initial pledge: {}", e))?;
+
+            state.check_balance_invariants(&current_balance).map_err(balance_invariants_broken)?;
 
             BitField::try_from_bits(succeeded).map_err(|_| {
                 actor_error!(illegal_argument; "invalid sector number")
