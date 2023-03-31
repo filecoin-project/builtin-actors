@@ -3824,9 +3824,17 @@ fn extend_simple_qap_sector(
 
     new_sector.expiration = new_expiration;
     new_sector.power_base_epoch = curr_epoch;
-    if sector.verified_deal_weight > BigInt::zero() {
-        let old_duration = sector.expiration - sector.power_base_epoch;
-        let deal_space = &sector.deal_weight / old_duration;
+    let old_duration = sector.expiration - sector.power_base_epoch;
+    let new_duration = new_sector.expiration - sector.power_base_epoch;
+
+    // Update the non-verified deal weights. This won't change power, it'll just keep it the same
+    // relative to the updated power base epoch.
+    if sector.deal_weight.is_positive() {
+        new_sector.deal_weight = (&sector.deal_weight * new_duration) / old_duration;
+    }
+
+    // Update the verified deal weights, and pledge if necessary.
+    if sector.verified_deal_weight.is_positive() {
         let old_verified_deal_space = &sector.verified_deal_weight / old_duration;
         let (expected_verified_deal_space, new_verified_deal_space) = match claim_space_by_sector
             .get(&sector.sector_number)
@@ -3858,18 +3866,15 @@ fn extend_simple_qap_sector(
             ));
         }
 
-        new_sector.expiration = new_expiration;
-        // update deal weights to account for new duration
-        new_sector.deal_weight = deal_space * (new_sector.expiration - new_sector.power_base_epoch);
-        new_sector.verified_deal_weight = BigInt::from(*new_verified_deal_space)
-            * (new_sector.expiration - new_sector.power_base_epoch);
+        new_sector.verified_deal_weight = BigInt::from(*new_verified_deal_space) * new_duration;
+
+        // We only bother updating the pledge for verified deals as it can increase power.
         let qa_pow = qa_power_for_weight(
             sector_size,
-            new_sector.expiration - new_sector.power_base_epoch,
+            new_duration,
             &new_sector.deal_weight,
             &new_sector.verified_deal_weight,
         );
-        new_sector.power_base_epoch = curr_epoch;
         new_sector.expected_day_reward = expected_reward_for_power(
             &reward_stats.this_epoch_reward_smoothed,
             &power_stats.quality_adj_power_smoothed,
