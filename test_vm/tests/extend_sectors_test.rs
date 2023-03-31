@@ -243,10 +243,18 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
         deadline_info.index + 1 % policy.wpost_period_deadlines,
     );
 
-    // advance halfway through life and extend another 6 months
-    // verified deal weight /= 2
-    // power multiplier = (1/4)*10 + (3/4)*1 = 3.25
-    // power delta = (10-3.25)*32GiB = 6.75*32GiB
+    // Advance halfway through life and extend another 6 months. We need to spread the remaining 90
+    // days of 10x power over 90 + 180 days.
+    //
+    // subtract half the remaining deal weight:
+    //   - verified deal weight /= 2
+    //
+    // normalize 90 days of 10x power plus 180 days of 1x power over 90+180 days:
+    //   - multiplier = ((10 * 90) + (1 * 180)) / (90 + 180)
+    //   - multiplier = 4
+    //
+    // delta from the previous 10x power multiplier:
+    // - power delta = (10-4)*32GiB = 6*32GiB
     advance_by_deadline_to_epoch_while_proving(
         &v,
         &miner_id,
@@ -259,7 +267,7 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
 
     let mut expected_update_claimed_power_params = UpdateClaimedPowerParams {
         raw_byte_delta: StoragePower::zero(),
-        quality_adjusted_delta: StoragePower::from(-675 * (32i64 << 30) / 100),
+        quality_adjusted_delta: StoragePower::from(-6 * (32i64 << 30)),
     };
     let mut expected_update_claimed_power_params_ser =
         IpldBlock::serialize_cbor(&expected_update_claimed_power_params).unwrap().unwrap();
@@ -276,10 +284,23 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
         do_extend2,
     );
 
+    miner_state = v.get_state::<MinerState>(&miner_id).unwrap();
+    sector_info = miner_state.get_sector(&store, sector_number).unwrap().unwrap();
+    assert_eq!(180 * 2 * EPOCHS_IN_DAY, sector_info.expiration - sector_info.activation);
+    assert_eq!(initial_deal_weight, sector_info.deal_weight); // 0 space time, unchanged
+    assert_eq!(&initial_verified_deal_weight / 2, sector_info.verified_deal_weight);
+
     // advance to 6 months (original expiration) and extend another 6 months
-    // verified deal weight /= 2
-    // power multiplier = (1/3)*3.25 + (2/3)*1 = 1.75
-    // power delta = (3.25 - 1.75)*32GiB = 1.5*32GiB
+    //
+    // We're 1/3rd of the way through the last extension, so keep 2/3 of the power.
+    //   - verified deal weight *= 2/3
+    //
+    // normalize 180 days of 4x power plus 180 days of 1x power over 180+180 days:
+    //   - multiplier = ((4 * 180) + (1 * 180)) / (90 + 180)
+    //   - multiplier = 2.5
+    //
+    // delta from the previous 4x power multiplier:
+    // - power delta = (4-2.5)*32GiB = 1.5*32GiB
 
     advance_by_deadline_to_epoch_while_proving(
         &v,
@@ -313,8 +334,8 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
     sector_info = miner_state.get_sector(&store, sector_number).unwrap().unwrap();
     assert_eq!(180 * 3 * EPOCHS_IN_DAY, sector_info.expiration - sector_info.activation);
     assert_eq!(initial_deal_weight, sector_info.deal_weight); // 0 space time, unchanged
-    assert_eq!(initial_verified_deal_weight / 4, sector_info.verified_deal_weight);
-    // two halvings => 1/4 initial verified deal weight
+    assert_eq!(initial_verified_deal_weight / 3, sector_info.verified_deal_weight);
+    // 1/2 * 2/3 -> 1/3
 
     v.expect_state_invariants(
         &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
