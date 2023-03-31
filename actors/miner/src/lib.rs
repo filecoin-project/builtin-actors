@@ -28,7 +28,7 @@ use itertools::Itertools;
 use log::{error, info, warn};
 use multihash::Code::Blake2b256;
 use num_derive::FromPrimitive;
-use num_traits::Zero;
+use num_traits::{Signed, Zero};
 
 pub use beneficiary::*;
 pub use bitfield_queue::*;
@@ -3795,7 +3795,7 @@ fn extend_simple_qap_sector(
     new_sector.expiration = new_expiration;
     new_sector.power_base_epoch = curr_epoch;
     let old_duration = sector.expiration - sector.power_base_epoch;
-    let new_duration = new_sector.expiration - sector.power_base_epoch;
+    let new_duration = new_sector.expiration - new_sector.power_base_epoch;
 
     // Update the non-verified deal weights. This won't change power, it'll just keep it the same
     // relative to the updated power base epoch.
@@ -3881,6 +3881,7 @@ fn extend_non_simple_qap_sector(
     new_sector.expiration = new_expiration;
     new_sector.deal_weight = new_deal_weight;
     new_sector.verified_deal_weight = new_verified_deal_weight;
+    new_sector.power_base_epoch = curr_epoch;
 
     Ok(new_sector)
 }
