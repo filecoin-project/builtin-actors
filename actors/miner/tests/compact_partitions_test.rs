@@ -88,6 +88,7 @@ fn compacting_a_partition_with_both_live_and_dead_sectors_removes_dead_sectors_r
         INITIAL_PLEDGE_PROJECTION_PERIOD,
     );
     let sector_age = *rt.epoch.borrow() - terminated_sector.activation;
+    let extension_age = *rt.epoch.borrow() - terminated_sector.power_base_epoch;
     let expected_fee = pledge_penalty_for_termination(
         &day_reward,
         sector_age,
@@ -97,6 +98,7 @@ fn compacting_a_partition_with_both_live_and_dead_sectors_removes_dead_sectors_r
         &h.epoch_reward_smooth,
         &TokenAmount::zero(),
         0,
+        extension_age,
     );
 
     h.terminate_sectors(&rt, &bitfield_from_slice(&[sectors[0]]), expected_fee);

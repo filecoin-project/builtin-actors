@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use std::cmp;
+use std::ops::{DivAssign, MulAssign};
 
 use cid::{Cid, Version};
 use fil_actors_runtime::network::*;
@@ -22,6 +23,11 @@ use super::{PowerPair, BASE_REWARD_FOR_DISPUTED_WINDOW_POST};
 /// Precision used for making QA power calculations
 pub const SECTOR_QUALITY_PRECISION: i64 = 20;
 
+/// The minimum sector lifetime to which the SDM applies.
+pub const SECTOR_DURATION_MULTIPLIER_START: ChainEpoch = 540 * EPOCHS_IN_DAY;
+/// The sector lifetime at which the SDM maxes out.
+pub const SECTOR_DURATION_MULTIPLIER_END: ChainEpoch = 5 * EPOCHS_IN_YEAR;
+
 lazy_static! {
     /// Quality multiplier for committed capacity (no deals) in a sector
     pub static ref QUALITY_BASE_MULTIPLIER: BigInt = BigInt::from(10);
@@ -31,6 +37,9 @@ lazy_static! {
 
     /// Quality multiplier for verified deals in a sector
     pub static ref VERIFIED_DEAL_WEIGHT_MULTIPLIER: BigInt = BigInt::from(100);
+
+    /// Maximum quality multiplier due to SDM + Verified Deals
+    pub static ref MAX_WEIGHT_MULTIPLIER: BigInt = BigInt::from(200);
 }
 
 /// The maximum number of partitions that may be required to be loaded in a single invocation,
@@ -114,15 +123,36 @@ pub fn quality_for_weight(
     let scaled_up_weighted_sum_space_time: SectorQuality =
         weighted_sum_space_time << SECTOR_QUALITY_PRECISION;
 
-    scaled_up_weighted_sum_space_time
+    let quality = scaled_up_weighted_sum_space_time
         .div_floor(&sector_space_time)
-        .div_floor(&QUALITY_BASE_MULTIPLIER)
+        .div_floor(&QUALITY_BASE_MULTIPLIER);
+    // Apply SDM
+    sdm_scale(quality, duration)
+}
+
+/// Scale `value` by the sector duration multiplier for `duration`.
+pub fn sdm_scale<T>(mut value: T, duration: ChainEpoch) -> T
+where
+    T: MulAssign<ChainEpoch> + DivAssign<ChainEpoch>,
+{
+    if duration > SECTOR_DURATION_MULTIPLIER_START {
+        if duration > SECTOR_DURATION_MULTIPLIER_END {
+            log::error!("sector lifetime {duration} exceeded maximum expected lifetime {SECTOR_DURATION_MULTIPLIER_END}");
+            value *= 2;
+        } else {
+            let numerator = duration - SECTOR_DURATION_MULTIPLIER_START;
+            let denominator = SECTOR_DURATION_MULTIPLIER_END - SECTOR_DURATION_MULTIPLIER_START;
+            // scale from 1x to 2x.
+            value *= (numerator + denominator) * duration;
+            value /= denominator;
+        }
+    }
+    value
 }
 
 /// Returns maximum achievable QA power.
 pub fn qa_power_max(size: SectorSize) -> StoragePower {
-    (BigInt::from(size as u64) * &*VERIFIED_DEAL_WEIGHT_MULTIPLIER)
-        .div_floor(&QUALITY_BASE_MULTIPLIER)
+    (BigInt::from(size as u64) * &*MAX_WEIGHT_MULTIPLIER).div_floor(&QUALITY_BASE_MULTIPLIER)
 }
 
 /// Returns the power for a sector size and weight.

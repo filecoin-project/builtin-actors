@@ -120,6 +120,7 @@ fn rejects_extension_too_far_in_future(v2: bool) {
         ),
         res,
     );
+    rt.reset();
     h.check_state(&rt);
 }
 

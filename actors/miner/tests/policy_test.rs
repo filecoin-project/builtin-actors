@@ -1,4 +1,4 @@
-use fil_actor_miner::{qa_power_for_weight, quality_for_weight};
+use fil_actor_miner::{qa_power_for_weight, quality_for_weight, SECTOR_DURATION_MULTIPLIER_START};
 use fil_actor_miner::{
     DEAL_WEIGHT_MULTIPLIER, QUALITY_BASE_MULTIPLIER, SECTOR_QUALITY_PRECISION,
     VERIFIED_DEAL_WEIGHT_MULTIPLIER,
@@ -30,7 +30,7 @@ fn quality_is_independent_of_size_and_duration() {
         ChainEpoch::from(1),
         ChainEpoch::from(10),
         ChainEpoch::from(1000),
-        1000 * EPOCHS_IN_DAY,
+        SECTOR_DURATION_MULTIPLIER_START,
     ];
 
     for size in size_range {
@@ -104,7 +104,7 @@ fn empty_sector_has_power_equal_to_size() {
         ChainEpoch::from(1),
         ChainEpoch::from(10),
         ChainEpoch::from(1000),
-        1000 * EPOCHS_IN_DAY,
+        SECTOR_DURATION_MULTIPLIER_START,
     ];
     for size in size_range {
         for duration in &duration_range {
@@ -132,7 +132,7 @@ fn verified_sector_has_power_a_multiple_of_size() {
         ChainEpoch::from(1),
         ChainEpoch::from(10),
         ChainEpoch::from(1000),
-        1000 * EPOCHS_IN_DAY,
+        SECTOR_DURATION_MULTIPLIER_START,
     ];
     for size in size_range {
         for duration in &duration_range {

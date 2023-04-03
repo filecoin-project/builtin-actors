@@ -252,6 +252,8 @@ fn calc_expected_fee_for_termination(
         INITIAL_PLEDGE_PROJECTION_PERIOD,
     );
     let sector_age = *rt.epoch.borrow() - sector.activation;
+    let extension_age = *rt.epoch.borrow() - sector.power_base_epoch;
+
     pledge_penalty_for_termination(
         &day_reward,
         sector_age,
@@ -261,5 +263,6 @@ fn calc_expected_fee_for_termination(
         &h.epoch_reward_smooth,
         &TokenAmount::zero(),
         0,
+        extension_age,
     )
 }

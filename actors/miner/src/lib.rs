@@ -14,7 +14,7 @@ use fvm_ipld_bitfield::{BitField, Validate};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{from_slice, BytesDe, CborStore};
 use fvm_shared::address::{Address, Payload, Protocol};
-use fvm_shared::bigint::{BigInt, Integer};
+use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
@@ -2204,6 +2204,7 @@ impl Actor {
         let curr_epoch = rt.curr_epoch();
         let reward_stats = &request_current_epoch_block_reward(rt)?;
         let power_stats = &request_current_total_power(rt)?;
+        let circulating_supply = rt.total_fil_circ_supply();
 
         /* Loop over sectors and do extension */
         let (power_delta, pledge_delta) = rt.transaction(|state: &mut State, rt| {
@@ -2284,8 +2285,12 @@ impl Actor {
                                 extend_sector_committment_legacy(
                                     rt.policy(),
                                     curr_epoch,
+                                    reward_stats,
+                                    power_stats,
+                                    &circulating_supply,
                                     decl.new_expiration,
                                     sector,
+                                    info.sector_size,
                                 )
                             }
                             ExtensionKind::ExtendCommittment => match &inner.claims {
@@ -2298,6 +2303,7 @@ impl Actor {
                                     curr_epoch,
                                     reward_stats,
                                     power_stats,
+                                    &circulating_supply,
                                     decl.new_expiration,
                                     sector,
                                     info.sector_size,
@@ -2332,7 +2338,7 @@ impl Actor {
                         })?;
 
                     power_delta += &partition_power_delta;
-                    pledge_delta += partition_pledge_delta; // expected to be zero, see note below.
+                    pledge_delta += partition_pledge_delta;
 
                     partitions.set(decl.partition, partition).map_err(|e| {
                         e.downcast_default(
@@ -2395,13 +2401,31 @@ impl Actor {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines")
             })?;
 
+            let unlocked_balance =
+                state.get_unlocked_balance(&rt.current_balance()).map_err(|e| {
+                    actor_error!(illegal_state, "failed to calculate unlocked balance: {}", e)
+                })?;
+            if unlocked_balance < pledge_delta {
+                return Err(actor_error!(
+                    insufficient_funds,
+                    "insufficient funds for aggregate initial pledge requirement {}, available: {}",
+                    pledge_delta,
+                    unlocked_balance
+                ));
+            }
+
+            state
+                .add_initial_pledge(&pledge_delta)
+                .map_err(|e| actor_error!(illegal_state, "failed to add initial pledge: {}", e))?;
+
+            state
+                .check_balance_invariants(&rt.current_balance())
+                .map_err(balance_invariants_broken)?;
+
             Ok((power_delta, pledge_delta))
         })?;
 
         request_update_power(rt, power_delta)?;
-
-        // Note: the pledge delta is expected to be zero, since pledge is not re-calculated for the extension.
-        // But in case that ever changes, we can do the right thing here.
         notify_pledge_changed(rt, &pledge_delta)?;
         Ok(())
     }
@@ -3694,38 +3718,111 @@ fn extend_sector_committment(
     curr_epoch: ChainEpoch,
     reward_stats: &ThisEpochRewardReturn,
     power_stats: &ext::power::CurrentTotalPowerReturn,
+    circulating_supply: &TokenAmount,
     new_expiration: ChainEpoch,
     sector: &SectorOnChainInfo,
     sector_size: SectorSize,
     claim_space_by_sector: &BTreeMap<SectorNumber, (u64, u64)>,
 ) -> Result<SectorOnChainInfo, ActorError> {
     validate_extended_expiration(policy, curr_epoch, new_expiration, sector)?;
+    let mut new_sector = sector.clone();
+    new_sector.expiration = new_expiration;
+    new_sector.power_base_epoch = curr_epoch;
 
-    // all simple_qa_power sectors with VerifiedDealWeight > 0 MUST check all claims
-    if sector.simple_qa_power {
-        extend_simple_qap_sector(
-            policy,
-            new_expiration,
-            curr_epoch,
-            reward_stats,
-            power_stats,
-            sector,
-            sector_size,
-            claim_space_by_sector,
-        )
-    } else {
-        extend_non_simple_qap_sector(new_expiration, curr_epoch, sector)
+    let new_duration = new_sector.expiration - new_sector.power_base_epoch;
+    let old_duration = sector.expiration - sector.power_base_epoch;
+    let remaining_time = sector.expiration - curr_epoch;
+
+    if sector.deal_weight.is_positive() {
+        new_sector.deal_weight = (&sector.deal_weight * remaining_time) / old_duration;
     }
+
+    if sector.verified_deal_weight.is_positive() {
+        if !sector.simple_qa_power {
+            // divide by the old diration to get the verified deal size.
+            // multiply by the remaining time to calculate the remaining weight. This remaining
+            // weight will end up getting spread out over the _new_ duration.
+            new_sector.verified_deal_weight =
+                (&sector.verified_deal_weight * remaining_time) / old_duration;
+        } else {
+            let old_verified_deal_space = &sector.verified_deal_weight / old_duration;
+            let (expected_verified_deal_space, new_verified_deal_space) =
+                match claim_space_by_sector.get(&sector.sector_number) {
+                    None => {
+                        return Err(actor_error!(
+                        illegal_argument,
+                        "claim missing from declaration for sector {} with non-zero verified deal weight {}",
+                        sector.sector_number,
+                        &sector.verified_deal_weight
+                    ));
+                    }
+                    Some(space) => space,
+                };
+            // claims must be completely accounted for
+            if BigInt::from(*expected_verified_deal_space) != old_verified_deal_space {
+                return Err(actor_error!(illegal_argument,
+                    "declared verified deal space in claims ({}) does not match verified deal space ({}) for sector {}",
+                    expected_verified_deal_space, old_verified_deal_space, sector.sector_number));
+            }
+            // claim dropping is restricted to extensions at the end of a sector's life
+
+            let dropping_claims = expected_verified_deal_space != new_verified_deal_space;
+            if dropping_claims && remaining_time > policy.end_of_life_claim_drop_period {
+                return Err(actor_error!(
+                    forbidden,
+                    "attempt to drop claims with {} epochs > end of life claim drop period {} remaining",
+                    remaining_time,
+                    policy.end_of_life_claim_drop_period
+                ));
+            }
+
+            new_sector.verified_deal_weight = BigInt::from(*new_verified_deal_space) * new_duration;
+        }
+    }
+
+    let new_qa_pow = qa_power_for_sector(sector_size, &new_sector);
+    new_sector.expected_day_reward = expected_reward_for_power(
+        &reward_stats.this_epoch_reward_smoothed,
+        &power_stats.quality_adj_power_smoothed,
+        &new_qa_pow,
+        fil_actors_runtime::network::EPOCHS_IN_DAY,
+    );
+    new_sector.expected_storage_pledge = max(
+        new_sector.expected_storage_pledge,
+        expected_reward_for_power(
+            &reward_stats.this_epoch_reward_smoothed,
+            &power_stats.quality_adj_power_smoothed,
+            &new_qa_pow,
+            INITIAL_PLEDGE_PROJECTION_PERIOD,
+        ),
+    );
+    new_sector.replaced_day_reward =
+        max(sector.expected_day_reward.clone(), sector.replaced_day_reward.clone());
+    new_sector.initial_pledge = max(
+        new_sector.initial_pledge,
+        initial_pledge_for_power(
+            &new_qa_pow,
+            &reward_stats.this_epoch_baseline_power,
+            &reward_stats.this_epoch_reward_smoothed,
+            &power_stats.quality_adj_power_smoothed,
+            circulating_supply,
+        ),
+    );
+
+    Ok(new_sector)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn extend_sector_committment_legacy(
     policy: &Policy,
     curr_epoch: ChainEpoch,
+    reward_stats: &ThisEpochRewardReturn,
+    power_stats: &ext::power::CurrentTotalPowerReturn,
+    circulating_supply: &TokenAmount,
     new_expiration: ChainEpoch,
     sector: &SectorOnChainInfo,
+    sector_size: SectorSize,
 ) -> Result<SectorOnChainInfo, ActorError> {
-    validate_extended_expiration(policy, curr_epoch, new_expiration, sector)?;
-
     // it is an error to do legacy sector expiration on simple-qa power sectors with deal weight
     if sector.simple_qa_power
         && (sector.verified_deal_weight > BigInt::zero() || sector.deal_weight > BigInt::zero())
@@ -3736,7 +3833,17 @@ fn extend_sector_committment_legacy(
             sector.sector_number
         ));
     }
-    extend_non_simple_qap_sector(new_expiration, curr_epoch, sector)
+    extend_sector_committment(
+        policy,
+        curr_epoch,
+        reward_stats,
+        power_stats,
+        circulating_supply,
+        new_expiration,
+        sector,
+        sector_size,
+        &BTreeMap::new(),
+    )
 }
 
 fn validate_extended_expiration(
@@ -3777,119 +3884,6 @@ fn validate_extended_expiration(
 
     validate_expiration(policy, curr_epoch, sector.activation, new_expiration, sector.seal_proof)?;
     Ok(())
-}
-
-#[allow(clippy::too_many_arguments)]
-fn extend_simple_qap_sector(
-    policy: &Policy,
-    new_expiration: ChainEpoch,
-    curr_epoch: ChainEpoch,
-    reward_stats: &ThisEpochRewardReturn,
-    power_stats: &ext::power::CurrentTotalPowerReturn,
-    sector: &SectorOnChainInfo,
-    sector_size: SectorSize,
-    claim_space_by_sector: &BTreeMap<SectorNumber, (u64, u64)>,
-) -> Result<SectorOnChainInfo, ActorError> {
-    let mut new_sector = sector.clone();
-
-    new_sector.expiration = new_expiration;
-    new_sector.power_base_epoch = curr_epoch;
-    let old_duration = sector.expiration - sector.power_base_epoch;
-    let new_duration = new_sector.expiration - new_sector.power_base_epoch;
-
-    // Update the non-verified deal weights. This won't change power, it'll just keep it the same
-    // relative to the updated power base epoch.
-    if sector.deal_weight.is_positive() {
-        // (old_deal_weight) / old_duration -> old_space
-        // old_space * (old_expiration - curr_epoch) -> remaining spacetime in the deals.
-        new_sector.deal_weight =
-            &sector.deal_weight * (sector.expiration - curr_epoch) / old_duration;
-    }
-
-    // Update the verified deal weights, and pledge if necessary.
-    if sector.verified_deal_weight.is_positive() {
-        let old_verified_deal_space = &sector.verified_deal_weight / old_duration;
-        let (expected_verified_deal_space, new_verified_deal_space) = match claim_space_by_sector
-            .get(&sector.sector_number)
-        {
-            None => {
-                return Err(actor_error!(
-                        illegal_argument,
-                        "claim missing from declaration for sector {} with non-zero verified deal weight {}",
-                        sector.sector_number,
-                        &sector.verified_deal_weight
-                    ));
-            }
-            Some(space) => space,
-        };
-        // claims must be completely accounted for
-        if BigInt::from(*expected_verified_deal_space as i64) != old_verified_deal_space {
-            return Err(actor_error!(illegal_argument, "declared verified deal space in claims ({}) does not match verified deal space ({}) for sector {}", expected_verified_deal_space, old_verified_deal_space, sector.sector_number));
-        }
-        // claim dropping is restricted to extensions at the end of a sector's life
-
-        let dropping_claims = expected_verified_deal_space != new_verified_deal_space;
-        if dropping_claims && sector.expiration - curr_epoch > policy.end_of_life_claim_drop_period
-        {
-            return Err(actor_error!(
-                forbidden,
-                "attempt to drop claims with {} epochs > end of life claim drop period {} remaining",
-                sector.expiration - curr_epoch,
-                policy.end_of_life_claim_drop_period
-            ));
-        }
-
-        new_sector.verified_deal_weight = BigInt::from(*new_verified_deal_space) * new_duration;
-
-        // We only bother updating the pledge for verified deals as it can increase power.
-        let qa_pow = qa_power_for_weight(
-            sector_size,
-            new_duration,
-            &new_sector.deal_weight,
-            &new_sector.verified_deal_weight,
-        );
-        new_sector.expected_day_reward = expected_reward_for_power(
-            &reward_stats.this_epoch_reward_smoothed,
-            &power_stats.quality_adj_power_smoothed,
-            &qa_pow,
-            fil_actors_runtime::network::EPOCHS_IN_DAY,
-        );
-        new_sector.expected_storage_pledge = max(
-            sector.expected_storage_pledge.clone(),
-            expected_reward_for_power(
-                &reward_stats.this_epoch_reward_smoothed,
-                &power_stats.quality_adj_power_smoothed,
-                &qa_pow,
-                INITIAL_PLEDGE_PROJECTION_PERIOD,
-            ),
-        );
-        new_sector.replaced_day_reward =
-            max(sector.expected_day_reward.clone(), sector.replaced_day_reward.clone());
-    }
-
-    Ok(new_sector)
-}
-
-fn extend_non_simple_qap_sector(
-    new_expiration: ChainEpoch,
-    curr_epoch: ChainEpoch,
-    sector: &SectorOnChainInfo,
-) -> Result<SectorOnChainInfo, ActorError> {
-    let mut new_sector = sector.clone();
-    // Remove "spent" deal weights for non simple_qa_power sectors with deal weight > 0
-    let new_deal_weight = (&sector.deal_weight * (sector.expiration - curr_epoch))
-        .div_floor(&BigInt::from(sector.expiration - sector.power_base_epoch));
-
-    let new_verified_deal_weight = (&sector.verified_deal_weight
-        * (sector.expiration - curr_epoch))
-        .div_floor(&BigInt::from(sector.expiration - sector.power_base_epoch));
-
-    new_sector.expiration = new_expiration;
-    new_sector.deal_weight = new_deal_weight;
-    new_sector.verified_deal_weight = new_verified_deal_weight;
-    new_sector.power_base_epoch = curr_epoch;
-
-    Ok(new_sector)
 }
 
 // TODO: We're using the current power+epoch reward. Technically, we
@@ -4627,6 +4621,7 @@ fn termination_penalty(
             reward_estimate,
             &sector.replaced_day_reward,
             sector.power_base_epoch - sector.activation,
+            sector.expiration - sector.power_base_epoch,
         );
         total_fee += fee;
     }

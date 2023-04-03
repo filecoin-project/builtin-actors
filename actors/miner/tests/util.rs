@@ -2387,12 +2387,14 @@ impl ActorHarness {
         rt.expect_validate_caller_addr(self.caller_addrs());
         self.expect_query_network_info(rt);
 
+        let curr_epoch = *rt.epoch.borrow();
         let mut qa_delta = BigInt::zero();
         for extension in params.extensions.iter_mut() {
             for sector_nr in extension.sectors.validate().unwrap().iter() {
                 let sector = self.get_sector(&rt, sector_nr);
                 let mut new_sector = sector.clone();
                 new_sector.expiration = extension.new_expiration;
+                new_sector.power_base_epoch = curr_epoch;
                 qa_delta += qa_power_for_sector(self.sector_size, &new_sector)
                     - qa_power_for_sector(self.sector_size, &sector);
             }

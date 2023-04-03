@@ -58,6 +58,7 @@ fn when_undeclared_fault_fee_exceeds_expected_reward_returns_undeclared_fault_fe
         &reward_estimate(),
         &TokenAmount::zero(),
         0,
+        sector_age,
     );
 
     assert_eq!(undeclared_penalty(), fee);
@@ -81,6 +82,7 @@ fn when_expected_reward_exceeds_undeclared_fault_fee_returns_expected_reward() {
         &reward_estimate(),
         &TokenAmount::zero(),
         0,
+        sector_age,
     );
 
     // expect fee to be pledge + br * age * factor where br = pledge/initialPledgeFactor
@@ -107,6 +109,7 @@ fn sector_age_is_capped() {
         &reward_estimate(),
         &TokenAmount::zero(),
         0,
+        sector_age,
     );
 
     // expect fee to be pledge * br * age-cap * factor where br = pledge/initialPledgeFactor
@@ -138,6 +141,7 @@ fn fee_for_replacement_eq_fee_for_original_sector_when_power_br_are_unchanged() 
         &reward_estimate(),
         &TokenAmount::zero(),
         0,
+        sector_age,
     );
 
     // actual fee including replacement parameters
@@ -150,6 +154,7 @@ fn fee_for_replacement_eq_fee_for_original_sector_when_power_br_are_unchanged() 
         &reward_estimate(),
         &day_reward,
         sector_age - replacement_age,
+        sector_age,
     );
 
     assert_eq!(unreplaced_fee, actual_fee);
@@ -177,6 +182,7 @@ fn fee_for_replacement_eq_fee_for_same_sector_without_replacement_after_lifetime
         &reward_estimate(),
         &TokenAmount::zero(),
         0,
+        sector_age,
     );
 
     // actual fee including replacement parameters
@@ -188,6 +194,7 @@ fn fee_for_replacement_eq_fee_for_same_sector_without_replacement_after_lifetime
         &power,
         &reward_estimate(),
         &day_reward,
+        sector_age,
         sector_age,
     );
 
@@ -224,6 +231,7 @@ fn charges_for_replaced_sector_at_replaced_sector_day_rate() {
         &reward_estimate(),
         &old_day_reward,
         old_sector_age,
+        replacement_age,
     );
 
     assert_eq!(expected_fee, fee);
