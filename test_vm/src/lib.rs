@@ -86,6 +86,9 @@ pub trait VM<BS: Blockstore> {
     /// Get the current chain epoch
     fn epoch(&self) -> ChainEpoch;
 
+    /// Get the balance of the specified actor
+    fn balance(&self, address: &Address) -> TokenAmount;
+
     /// Get the ID for the specified address
     fn resolve_id_address(&self, address: &Address) -> Option<Address>;
 
@@ -245,6 +248,11 @@ where
 
     fn set_epoch(&self, epoch: ChainEpoch) {
         self.curr_epoch.replace(epoch);
+    }
+
+    fn balance(&self, address: &Address) -> TokenAmount {
+        let a = self.get_actor(address);
+        a.map_or(TokenAmount::zero(), |a| a.balance)
     }
 }
 

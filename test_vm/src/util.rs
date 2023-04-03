@@ -650,6 +650,16 @@ pub fn get_state<T: DeserializeOwned, BS: Blockstore>(v: &dyn VM<BS>, a: &Addres
     v.blockstore().get(&cid).unwrap().map(|slice| fvm_ipld_encoding::from_slice(&slice).unwrap())
 }
 
+pub fn miner_balance<BS: Blockstore>(v: &dyn VM<BS>, m: &Address) -> MinerBalances {
+    let st: MinerState = get_state(v, m).unwrap();
+    MinerBalances {
+        available_balance: st.get_available_balance(&v.balance(m)).unwrap(),
+        vesting_balance: st.locked_funds,
+        initial_pledge: st.initial_pledge,
+        pre_commit_deposit: st.pre_commit_deposits,
+    }
+}
+
 pub fn miner_dline_info<BS: Blockstore>(v: &dyn VM<BS>, m: &Address) -> DeadlineInfo {
     let st: MinerState = get_state(v, m).unwrap();
     new_deadline_info_from_offset_and_epoch(&Policy::default(), st.proving_period_start, v.epoch())
