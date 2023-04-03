@@ -407,7 +407,7 @@ pub fn precommit_sectors_v2<BS: Blockstore>(
 
 #[allow(clippy::too_many_arguments)]
 pub fn precommit_sectors<BS: Blockstore>(
-    v: &TestVM<BS>,
+    v: &dyn VM<BS>,
     count: u64,
     batch_size: i64,
     worker: &Address,
