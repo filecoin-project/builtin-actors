@@ -3830,7 +3830,10 @@ fn extend_simple_qap_sector(
     // Update the non-verified deal weights. This won't change power, it'll just keep it the same
     // relative to the updated power base epoch.
     if sector.deal_weight.is_positive() {
-        new_sector.deal_weight = (&sector.deal_weight * new_duration) / old_duration;
+        // (old_deal_weight) / old_duration -> old_space
+        // old_space * (old_expiration - curr_epoch) -> remaining spacetime in the deals.
+        new_sector.deal_weight =
+            &sector.deal_weight * (sector.expiration - curr_epoch) / old_duration;
     }
 
     // Update the verified deal weights, and pledge if necessary.
