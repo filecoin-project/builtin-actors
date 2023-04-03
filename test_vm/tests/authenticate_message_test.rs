@@ -1,22 +1,26 @@
 use fil_actor_account::types::AuthenticateMessageParams;
 use fil_actor_account::Method::AuthenticateMessageExported;
-use fvm_ipld_blockstore::MemoryBlockstore;
+use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 
 use test_vm::util::{apply_code, apply_ok, create_accounts, generate_deal_proposal};
-use test_vm::TestVM;
+use test_vm::{TestVM, VM};
 
-// Using a deal proposal as a serialized message, we confirm that:
-// - calls to Account::authenticate_message with valid signatures succeed
-// - calls to Account::authenticate_message with invalid signatures fail
 #[test]
 fn account_authenticate_message() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
-    let addr = create_accounts(&v, 1, &TokenAmount::from_whole(10_000))[0];
+    account_authenticate_message_test(&v);
+}
+
+/// Using a deal proposal as a serialized message, we confirm that:
+/// - calls to Account::authenticate_message with valid signatures succeed
+/// - calls to Account::authenticate_message with invalid signatures fail
+pub fn account_authenticate_message_test<BS: Blockstore>(v: &dyn VM<BS>) {
+    let addr = create_accounts(v, 1, &TokenAmount::from_whole(10_000))[0];
 
     let proposal =
         generate_deal_proposal(&addr, &addr, &TokenAmount::zero(), &TokenAmount::zero(), 0, 0);
@@ -29,7 +33,7 @@ fn account_authenticate_message() {
         message: proposal_ser.clone(),
     };
     apply_ok(
-        &v,
+        v,
         &addr,
         &addr,
         &TokenAmount::zero(),
@@ -41,7 +45,7 @@ fn account_authenticate_message() {
     let authenticate_message_params =
         AuthenticateMessageParams { signature: vec![], message: proposal_ser };
     apply_code(
-        &v,
+        v,
         &addr,
         &addr,
         &TokenAmount::zero(),
