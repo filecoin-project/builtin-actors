@@ -660,6 +660,11 @@ pub fn miner_balance<BS: Blockstore>(v: &dyn VM<BS>, m: &Address) -> MinerBalanc
     }
 }
 
+pub fn miner_info<BS: Blockstore>(v: &dyn VM<BS>, m: &Address) -> MinerInfo {
+    let st: MinerState = get_state(v, m).unwrap();
+    v.blockstore().get_cbor(&st.info).unwrap().unwrap()
+}
+
 pub fn miner_dline_info<BS: Blockstore>(v: &dyn VM<BS>, m: &Address) -> DeadlineInfo {
     let st: MinerState = get_state(v, m).unwrap();
     new_deadline_info_from_offset_and_epoch(&Policy::default(), st.proving_period_start, v.epoch())
