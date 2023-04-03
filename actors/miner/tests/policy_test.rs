@@ -1,4 +1,7 @@
-use fil_actor_miner::{qa_power_for_weight, quality_for_weight, SECTOR_DURATION_MULTIPLIER_START};
+use fil_actor_miner::{
+    qa_power_for_weight, quality_for_weight, sdm_scale, SECTOR_DURATION_MULTIPLIER_END,
+    SECTOR_DURATION_MULTIPLIER_MAX, SECTOR_DURATION_MULTIPLIER_START,
+};
 use fil_actor_miner::{
     DEAL_WEIGHT_MULTIPLIER, QUALITY_BASE_MULTIPLIER, SECTOR_QUALITY_PRECISION,
     VERIFIED_DEAL_WEIGHT_MULTIPLIER,
@@ -238,6 +241,31 @@ fn demonstrate_standard_sectors() {
         half_verified_power,
         qa_power_for_weight(sector_size, sector_duration, &BigInt::zero(), &(sector_weight / 2))
     );
+}
+
+#[test]
+fn test_sdm() {
+    const TEST_VALUE: i64 = 10;
+    assert_eq!(
+        sdm_scale(TEST_VALUE, SECTOR_DURATION_MULTIPLIER_END),
+        SECTOR_DURATION_MULTIPLIER_MAX * TEST_VALUE
+    );
+    assert_eq!(
+        sdm_scale(TEST_VALUE, SECTOR_DURATION_MULTIPLIER_END + 1),
+        SECTOR_DURATION_MULTIPLIER_MAX * TEST_VALUE
+    );
+
+    let half_way = SECTOR_DURATION_MULTIPLIER_START
+        + (SECTOR_DURATION_MULTIPLIER_END - SECTOR_DURATION_MULTIPLIER_START) / 2
+        + 1; // doesn't divide quite evenly
+    assert_eq!(
+        sdm_scale(TEST_VALUE, half_way),
+        ((SECTOR_DURATION_MULTIPLIER_MAX - 1) * TEST_VALUE) / 2 + TEST_VALUE
+    );
+
+    assert_eq!(sdm_scale(TEST_VALUE, SECTOR_DURATION_MULTIPLIER_START), TEST_VALUE);
+    assert_eq!(sdm_scale(TEST_VALUE, 0), TEST_VALUE);
+    assert_eq!(sdm_scale(TEST_VALUE, SECTOR_DURATION_MULTIPLIER_START - 1), TEST_VALUE);
 }
 
 fn weight(size: SectorSize, duration: ChainEpoch) -> BigInt {

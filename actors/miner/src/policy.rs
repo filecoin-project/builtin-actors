@@ -27,6 +27,8 @@ pub const SECTOR_QUALITY_PRECISION: i64 = 20;
 pub const SECTOR_DURATION_MULTIPLIER_START: ChainEpoch = 540 * EPOCHS_IN_DAY;
 /// The sector lifetime at which the SDM maxes out.
 pub const SECTOR_DURATION_MULTIPLIER_END: ChainEpoch = 5 * EPOCHS_IN_YEAR;
+/// The maximum sector duration multiplier.
+pub const SECTOR_DURATION_MULTIPLIER_MAX: i64 = 2;
 
 lazy_static! {
     /// Quality multiplier for committed capacity (no deals) in a sector
@@ -138,13 +140,34 @@ where
     if duration > SECTOR_DURATION_MULTIPLIER_START {
         if duration > SECTOR_DURATION_MULTIPLIER_END {
             log::error!("sector lifetime {duration} exceeded maximum expected lifetime {SECTOR_DURATION_MULTIPLIER_END}");
-            value *= 2;
+            value *= SECTOR_DURATION_MULTIPLIER_MAX;
         } else {
-            let numerator = duration - SECTOR_DURATION_MULTIPLIER_START;
-            let denominator = SECTOR_DURATION_MULTIPLIER_END - SECTOR_DURATION_MULTIPLIER_START;
-            // scale from 1x to 2x.
-            value *= (numerator + denominator) * duration;
-            value /= denominator;
+            // First, we compute the ratio (remember that `SDM_START < duration <= SDM_END`):
+            //
+            //     ratio = (duration - SDM_START) / (SDM_END - SDM_START)
+            //
+            // This is a number between 0 and 1 representing where we are between the SDM_START and
+            // SDM_END.
+            //
+            // Then we multiply that by the maximum multiplier minus 1, giving us a number between
+            // 0 and (MAX-1). We then add 1 giving us a number, M, between 1 and MAX:
+            //
+            //     M = (MAX - 1) (duration - SDM_START) / (SDM_END - SDM_START) + 1
+            //
+            //          m_numerator     (MAX - 1) (duration - SDM_START) + (SDM_END - SDM_START)
+            //     M = -------------  = ------------------------------------------------
+            //         m_denominator                     (SDM_START - SDM_END)
+            //
+            // And multiply the value by this ratio:
+            //
+            //     value *= M
+            //
+            let m_denominator = SECTOR_DURATION_MULTIPLIER_END - SECTOR_DURATION_MULTIPLIER_START;
+            let m_numerator = (SECTOR_DURATION_MULTIPLIER_MAX - 1)
+                * (duration - SECTOR_DURATION_MULTIPLIER_START)
+                + m_denominator;
+            value *= m_numerator;
+            value /= m_denominator;
         }
     }
     value
