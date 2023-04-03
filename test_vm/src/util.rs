@@ -124,6 +124,11 @@ pub fn apply_code<S: Serialize, BS: Blockstore>(
     res.ret.map_or(RawBytes::default(), |b| RawBytes::new(b.data))
 }
 
+/// Convenience function to create an IpldBlock from a serializable object
+pub fn serialize_ok<S: Serialize>(s: &S) -> IpldBlock {
+    IpldBlock::serialize_cbor(s).unwrap().unwrap()
+}
+
 pub fn cron_tick<BS: Blockstore>(v: &dyn VM<BS>) {
     apply_ok(
         v,
