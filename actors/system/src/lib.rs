@@ -66,6 +66,11 @@ impl Actor {
 
 impl ActorCode for Actor {
     type Methods = Method;
+
+    fn name() -> &'static str {
+        "System"
+    }
+
     actor_dispatch! {
         Constructor => constructor,
     }

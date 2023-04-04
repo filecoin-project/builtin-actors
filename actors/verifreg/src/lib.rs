@@ -1072,6 +1072,11 @@ fn can_claim_alloc(
 
 impl ActorCode for Actor {
     type Methods = Method;
+
+    fn name() -> &'static str {
+        "VerifiedRegistry"
+    }
+
     actor_dispatch! {
         Constructor => constructor,
         AddVerifier => add_verifier,

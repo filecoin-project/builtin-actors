@@ -4960,6 +4960,11 @@ fn balance_invariants_broken(e: Error) -> ActorError {
 
 impl ActorCode for Actor {
     type Methods = Method;
+
+    fn name() -> &'static str {
+        "StorageMiner"
+    }
+
     actor_dispatch! {
         Constructor => constructor,
         ControlAddresses => control_addresses,

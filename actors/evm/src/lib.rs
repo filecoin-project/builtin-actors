@@ -404,6 +404,11 @@ fn handle_filecoin_method_output(output: &[u8]) -> Result<Option<IpldBlock>, Act
 
 impl ActorCode for EvmContractActor {
     type Methods = Method;
+
+    fn name() -> &'static str {
+        "EVMContract"
+    }
+
     actor_dispatch_unrestricted! {
         Constructor => constructor,
         InvokeContract => invoke_contract [default_params],

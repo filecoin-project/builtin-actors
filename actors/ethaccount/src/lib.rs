@@ -67,6 +67,11 @@ impl EthAccountActor {
 
 impl ActorCode for EthAccountActor {
     type Methods = Method;
+
+    fn name() -> &'static str {
+        "EVMAccount"
+    }
+
     actor_dispatch! {
         Constructor => constructor,
         _ => fallback [raw],
