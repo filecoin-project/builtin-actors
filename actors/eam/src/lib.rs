@@ -290,6 +290,11 @@ impl EamActor {
 
 impl ActorCode for EamActor {
     type Methods = Method;
+
+    fn name() -> &'static str {
+        "EVMAddressManager"
+    }
+
     actor_dispatch_unrestricted! {
         Constructor => constructor,
         Create => create,
