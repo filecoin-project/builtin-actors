@@ -369,8 +369,8 @@ pub mod policy_constants {
     pub const MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION: i64 = 60 * EPOCHS_IN_DAY;
     pub const END_OF_LIFE_CLAIM_DROP_PERIOD: ChainEpoch = 30 * EPOCHS_IN_DAY;
 
-    /// DealUpdatesInterval is the number of blocks between payouts for deals
-    pub const DEAL_UPDATES_INTERVAL: i64 = EPOCHS_IN_DAY;
+    /// DealUpdatesInterval is the number of epochs between payouts for deals
+    pub const DEAL_UPDATES_INTERVAL: i64 = 30 * EPOCHS_IN_DAY;
 
     /// Numerator of the percentage of normalized cirulating
     /// supply that must be covered by provider collateral

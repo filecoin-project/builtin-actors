@@ -15,8 +15,6 @@ mod harness;
 
 use harness::*;
 
-const SECTOR_EXPIRY: ChainEpoch = 400 + 200 * EPOCHS_IN_DAY;
-
 #[test]
 fn deal_is_slashed() {
     struct Case {
@@ -83,7 +81,7 @@ fn deal_is_slashed() {
             tc.deal_start,
             tc.deal_end,
             tc.activation_epoch,
-            SECTOR_EXPIRY,
+            tc.deal_end,
         );
         let deal_proposal = get_deal_proposal(&rt, deal_id);
 
@@ -111,7 +109,8 @@ fn deal_is_slashed() {
 }
 
 const START_EPOCH: ChainEpoch = 50;
-const END_EPOCH: ChainEpoch = 50 + 200 * EPOCHS_IN_DAY;
+const DEAL_DURATION_EPOCHS: ChainEpoch = 200 * EPOCHS_IN_DAY;
+const END_EPOCH: ChainEpoch = START_EPOCH + DEAL_DURATION_EPOCHS;
 
 #[test]
 fn deal_is_slashed_at_the_end_epoch_should_not_be_slashed_and_should_be_considered_expired() {
@@ -123,7 +122,7 @@ fn deal_is_slashed_at_the_end_epoch_should_not_be_slashed_and_should_be_consider
         START_EPOCH,
         END_EPOCH,
         0,
-        SECTOR_EXPIRY,
+        END_EPOCH,
     );
     let deal_proposal = get_deal_proposal(&rt, deal_id);
 
@@ -152,15 +151,16 @@ fn deal_is_slashed_at_the_end_epoch_should_not_be_slashed_and_should_be_consider
 fn deal_payment_and_slashing_correctly_processed_in_same_crontick() {
     // start epoch should equal first processing epoch for logic to work
     let start_epoch: ChainEpoch = Policy::default().deal_updates_interval;
+    let end_epoch = start_epoch + DEAL_DURATION_EPOCHS;
     let rt = setup();
     let deal_id = publish_and_activate_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         start_epoch,
-        END_EPOCH,
+        end_epoch,
         0,
-        SECTOR_EXPIRY,
+        end_epoch,
     );
     let deal_proposal = get_deal_proposal(&rt, deal_id);
 
@@ -202,7 +202,7 @@ fn slash_multiple_deals_in_the_same_epoch() {
         START_EPOCH,
         END_EPOCH,
         0,
-        SECTOR_EXPIRY,
+        END_EPOCH,
     );
     let deal_proposal1 = get_deal_proposal(&rt, deal_id1);
 
@@ -213,7 +213,7 @@ fn slash_multiple_deals_in_the_same_epoch() {
         START_EPOCH,
         END_EPOCH + 1,
         0,
-        SECTOR_EXPIRY,
+        END_EPOCH + 1,
     );
     let deal_proposal2 = get_deal_proposal(&rt, deal_id2);
 
@@ -224,7 +224,7 @@ fn slash_multiple_deals_in_the_same_epoch() {
         START_EPOCH,
         END_EPOCH + 2,
         0,
-        SECTOR_EXPIRY,
+        END_EPOCH + 2,
     );
     let deal_proposal3 = get_deal_proposal(&rt, deal_id3);
 
@@ -263,14 +263,13 @@ fn regular_payments_till_deal_is_slashed_and_then_slashing_is_processed() {
         START_EPOCH,
         END_EPOCH,
         0,
-        SECTOR_EXPIRY,
+        END_EPOCH,
     );
     let deal_proposal = get_deal_proposal(&rt, deal_id);
 
     // move the current epoch to the process epoch + 5 so payment is made
     let process_start = process_epoch(START_EPOCH, deal_id);
-    let current = process_start + 5;
-    rt.set_epoch(current);
+    let current = rt.set_epoch(process_start + 5);
 
     // assert payment
     let (pay, slashed) =
@@ -280,17 +279,15 @@ fn regular_payments_till_deal_is_slashed_and_then_slashing_is_processed() {
 
     // Setting the current epoch to before the next schedule will NOT make any changes as the deal
     // is still not scheduled
-    let current = current + Policy::default().deal_updates_interval - 1;
-    rt.set_epoch(current);
+    rt.set_epoch(process_start + Policy::default().deal_updates_interval - 1);
     cron_tick_no_change(&rt, CLIENT_ADDR, PROVIDER_ADDR);
 
     // a second cron tick for the same epoch should not change anything
     cron_tick_no_change(&rt, CLIENT_ADDR, PROVIDER_ADDR);
 
     // make another payment
-    let current = current + 1;
-    rt.set_epoch(current);
-    let duration = Policy::default().deal_updates_interval;
+    let current = rt.set_epoch(process_start + Policy::default().deal_updates_interval);
+    let duration = Policy::default().deal_updates_interval - 5;
     let (pay, slashed) =
         cron_tick_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
     assert_eq!(pay, duration * &deal_proposal.storage_price_per_epoch);
@@ -299,23 +296,19 @@ fn regular_payments_till_deal_is_slashed_and_then_slashing_is_processed() {
     // a second cron tick for the same epoch should not change anything
     cron_tick_no_change(&rt, CLIENT_ADDR, PROVIDER_ADDR);
 
-    // now terminate the deal
-    let slash_epoch = current + 1;
-    rt.set_epoch(slash_epoch);
-    let duration = slash_epoch - current;
+    // now terminate the deal 1 epoch later
+    rt.set_epoch(process_start + Policy::default().deal_updates_interval + 1);
     terminate_deals(&rt, PROVIDER_ADDR, &[deal_id]);
 
     // Setting the epoch to anything less than next schedule will not make any change even though the deal is slashed
-    let current = current + Policy::default().deal_updates_interval - 1;
-    rt.set_epoch(current);
+    rt.set_epoch(process_start + 2 * Policy::default().deal_updates_interval - 1);
     cron_tick_no_change(&rt, CLIENT_ADDR, PROVIDER_ADDR);
 
     // next epoch for cron schedule  -> payment will be made and deal will be slashed
-    let current = current + 1;
-    rt.set_epoch(current);
+    let current = rt.set_epoch(process_start + 2 * Policy::default().deal_updates_interval);
     let (pay, slashed) =
         cron_tick_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
-    assert_eq!(pay, duration * &deal_proposal.storage_price_per_epoch);
+    assert_eq!(pay, 1 * &deal_proposal.storage_price_per_epoch);
     assert_eq!(slashed, deal_proposal.provider_collateral);
 
     // deal should be deleted as it should have expired
@@ -333,7 +326,7 @@ fn regular_payments_till_deal_expires_and_then_we_attempt_to_slash_it_but_it_wil
         START_EPOCH,
         END_EPOCH,
         0,
-        SECTOR_EXPIRY,
+        END_EPOCH,
     );
     let deal_proposal = get_deal_proposal(&rt, deal_id);
 

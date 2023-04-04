@@ -11,7 +11,7 @@ use std::{cell::RefCell, collections::HashMap};
 use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
 use fil_actor_market::ext::verifreg::{AllocationID, AllocationRequest, AllocationsResponse};
 use fil_actor_market::{
-    deal_id_key, ext, ext::miner::GetControlAddressesReturnParams, gen_rand_next_epoch,
+    deal_id_key, ext, ext::miner::GetControlAddressesReturnParams, next_update_epoch,
     testing::check_state_invariants, ActivateDealsParams, ActivateDealsResult,
     Actor as MarketActor, ClientDealProposal, DealArray, DealMetaArray, DealProposal, DealState,
     GetBalanceReturn, Label, MarketNotifyDealParams, Method, OnMinerSectorsTerminateParams,
@@ -376,8 +376,6 @@ pub fn delete_deal_proposal(rt: &MockRuntime, deal_id: DealID) {
     rt.replace_state(&st)
 }
 
-// if this is the first crontick for the deal, it's next tick will be scheduled at `desiredNextEpoch`
-// if this is not the first crontick, the `desiredNextEpoch` param is ignored.
 pub fn cron_tick_and_assert_balances(
     rt: &MockRuntime,
     client_addr: Address,
@@ -890,8 +888,7 @@ where
 }
 
 pub fn process_epoch(start_epoch: ChainEpoch, deal_id: DealID) -> ChainEpoch {
-    let policy = Policy::default();
-    gen_rand_next_epoch(&policy, start_epoch, deal_id)
+    next_update_epoch(deal_id, Policy::default().deal_updates_interval, start_epoch)
 }
 
 pub fn publish_and_activate_deal(
