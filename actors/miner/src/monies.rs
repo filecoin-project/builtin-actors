@@ -172,22 +172,28 @@ pub fn pledge_penalty_for_termination_lower_bound(
 }
 
 /// Penalty to locked pledge collateral for the termination of a sector before scheduled expiry.
-/// SectorAge is the time between the sector's activation and termination.
+///
+/// - `day_reward` is the expected daily reward recorded in the sector info.
+/// - `sector_age` is the time between the sector's activation and termination.
+/// - `storage_pledge` is the storage pledge recorded in the sector info.
+/// - `commitement_duration` is the time between the last power base change (sector extension,
+///    replica update, etc.) and the sector's expiration. This is the period used to compute the
+///    SDM.
 #[allow(clippy::too_many_arguments)]
 pub fn pledge_penalty_for_termination(
     day_reward: &TokenAmount,
     sector_age: ChainEpoch,
-    twenty_day_reward_at_activation: &TokenAmount,
+    storage_pledge: &TokenAmount,
     network_qa_power_estimate: &FilterEstimate,
     qa_sector_power: &StoragePower,
     reward_estimate: &FilterEstimate,
     replaced_day_reward: &TokenAmount,
     replaced_sector_age: ChainEpoch,
-    current_extension_age: ChainEpoch,
+    commitement_duration: ChainEpoch,
 ) -> TokenAmount {
     // max(SP(t), BR(StartEpoch, 20d) + BR(StartEpoch, 1d) * terminationRewardFactor * min(SectorAgeInDays, 140))
     // and sectorAgeInDays = sectorAge / EpochsInDay
-    let lifetime_cap = sdm_scale(TERMINATION_LIFETIME_CAP, current_extension_age) * EPOCHS_IN_DAY;
+    let lifetime_cap = sdm_scale(TERMINATION_LIFETIME_CAP, commitement_duration) * EPOCHS_IN_DAY;
     let capped_sector_age = std::cmp::min(sector_age, lifetime_cap);
 
     let mut expected_reward: TokenAmount = day_reward * capped_sector_age;
@@ -206,7 +212,7 @@ pub fn pledge_penalty_for_termination(
             network_qa_power_estimate,
             qa_sector_power,
         ),
-        twenty_day_reward_at_activation + (penalized_reward.div_floor(EPOCHS_IN_DAY)),
+        storage_pledge + (penalized_reward.div_floor(EPOCHS_IN_DAY)),
     )
 }
 
