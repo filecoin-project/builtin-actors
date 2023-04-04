@@ -709,6 +709,7 @@ fn extend_after_upgrade() {
     let (v, sector_info, worker, miner_id, deadline_index, partition_index, _) =
         create_miner_and_upgrade_sector(store, false);
     let sector_number = sector_info.sector_number;
+    let activation = sector_info.activation;
     let mut legacy_sector = sector_info;
     legacy_sector.simple_qa_power = false;
 
@@ -719,13 +720,12 @@ fn extend_after_upgrade() {
         st.sectors = sectors.amt.flush().unwrap();
     });
 
-    let extension_epoch = v.get_epoch();
     let extension_params = ExtendSectorExpirationParams {
         extensions: vec![ExpirationExtension {
             deadline: deadline_index,
             partition: partition_index,
             sectors: make_bitfield(&[sector_number]),
-            new_expiration: extension_epoch + policy.max_sector_expiration_extension - 1,
+            new_expiration: activation + policy.max_sector_expiration_extension - 1,
         }],
     };
 
@@ -742,7 +742,7 @@ fn extend_after_upgrade() {
     let final_sector_info = miner_state.get_sector(store, sector_number).unwrap().unwrap();
     assert_eq!(
         policy.max_sector_expiration_extension - 1,
-        final_sector_info.expiration - extension_epoch,
+        final_sector_info.expiration - activation,
     );
     v.assert_state_invariants();
 }
