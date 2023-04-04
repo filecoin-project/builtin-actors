@@ -313,7 +313,7 @@ fn fail_when_the_same_deal_id_is_passed_multiple_times() {
     };
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
-        "multiple times",
+        "duplicate deal",
         rt.call::<MarketActor>(
             Method::VerifyDealsForActivation as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),

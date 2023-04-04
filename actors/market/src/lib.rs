@@ -496,18 +496,17 @@ impl Actor {
         let curr_epoch = rt.curr_epoch();
 
         let st: State = rt.state()?;
-        let proposals = st.get_proposal_array(rt.store())?;
+        let proposal_array = st.get_proposal_array(rt.store())?;
 
         let mut sectors_data = Vec::with_capacity(params.sectors.len());
         for sector in params.sectors.iter() {
+            let sector_proposals = get_proposals(&proposal_array, &sector.deal_ids, st.next_id)?;
             let sector_size = sector
                 .sector_type
                 .sector_size()
                 .map_err(|e| actor_error!(illegal_argument, "sector size unknown: {}", e))?;
             validate_and_return_deal_space(
-                &proposals,
-                &sector.deal_ids,
-                st.next_id,
+                &sector_proposals,
                 &miner_addr,
                 sector.sector_expiry,
                 curr_epoch,
@@ -518,7 +517,7 @@ impl Actor {
             let commd = if sector.deal_ids.is_empty() {
                 None
             } else {
-                Some(compute_data_commitment(rt, &proposals, sector.sector_type, &sector.deal_ids)?)
+                Some(compute_data_commitment(rt, &sector_proposals, sector.sector_type)?)
             };
 
             sectors_data.push(SectorDealData { commd });
@@ -526,6 +525,7 @@ impl Actor {
 
         Ok(VerifyDealsForActivationReturn { sectors: sectors_data })
     }
+
     /// Activate a set of deals, returning the combined deal space and extra info for verified deals.
     fn activate_deals(
         rt: &impl Runtime,
@@ -536,13 +536,12 @@ impl Actor {
         let curr_epoch = rt.curr_epoch();
 
         let (deal_spaces, verified_infos) = rt.transaction(|st: &mut State, rt| {
-            let proposals = st.get_proposal_array(rt.store())?;
+            let proposal_array = st.get_proposal_array(rt.store())?;
+            let proposals = get_proposals(&proposal_array, &params.deal_ids, st.next_id)?;
 
             let deal_spaces = {
                 validate_and_return_deal_space(
                     &proposals,
-                    &params.deal_ids,
-                    st.next_id,
                     &miner_addr,
                     params.sector_expiry,
                     curr_epoch,
@@ -555,7 +554,7 @@ impl Actor {
             let mut verified_infos = Vec::new();
             let mut deal_states: Vec<(DealID, DealState)> = vec![];
 
-            for deal_id in params.deal_ids {
+            for (deal_id, proposal) in proposals {
                 // This construction could be replaced with a single "update deal state"
                 // state method, possibly batched over all deal ids at once.
                 let s = st.find_deal_state(rt.store(), deal_id)?;
@@ -567,8 +566,6 @@ impl Actor {
                         deal_id
                     ));
                 }
-
-                let proposal = st.get_proposal(rt.store(), deal_id)?;
 
                 let propc = rt_deal_cid(rt, &proposal)?;
 
@@ -690,16 +687,12 @@ impl Actor {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
 
         let st: State = rt.state()?;
-        let proposals = st.get_proposal_array(rt.store())?;
+        let proposal_array = st.get_proposal_array(rt.store())?;
 
         let mut commds = Vec::with_capacity(params.inputs.len());
         for comm_input in params.inputs.iter() {
-            commds.push(compute_data_commitment(
-                rt,
-                &proposals,
-                comm_input.sector_type,
-                &comm_input.deal_ids,
-            )?);
+            let proposed_deals = get_proposals(&proposal_array, &comm_input.deal_ids, st.next_id)?;
+            commds.push(compute_data_commitment(rt, &proposed_deals, comm_input.sector_type)?);
         }
 
         Ok(ComputeDataCommitmentReturn { commds })
@@ -1022,65 +1015,59 @@ impl Actor {
     }
 }
 
-fn compute_data_commitment<BS: Blockstore>(
-    rt: &impl Runtime,
-    proposals: &DealArray<BS>,
-    sector_type: RegisteredSealProof,
-    deal_ids: &[DealID],
-) -> Result<Cid, ActorError> {
-    let mut pieces = Vec::with_capacity(deal_ids.len());
-
-    for deal_id in deal_ids {
-        let deal = proposals
-            .get(*deal_id)
-            .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to get deal_id ({})", deal_id),
-                )
-            })?
-            .ok_or_else(|| actor_error!(not_found, "proposal doesn't exist ({})", deal_id))?;
-
-        pieces.push(PieceInfo { cid: deal.piece_cid, size: deal.piece_size });
-    }
-    rt.compute_unsealed_sector_cid(sector_type, &pieces).map_err(|e| {
-        e.downcast_default(ExitCode::USR_ILLEGAL_ARGUMENT, "failed to compute unsealed sector CID")
-    })
-}
-
-pub fn validate_and_return_deal_space<BS: Blockstore>(
-    proposals: &DealArray<BS>,
+fn get_proposals<BS: Blockstore>(
+    proposal_array: &DealArray<BS>,
     deal_ids: &[DealID],
     next_id: DealID,
-    miner_addr: &Address,
-    sector_expiry: ChainEpoch,
-    sector_activation: ChainEpoch,
-    sector_size: Option<SectorSize>,
-) -> Result<DealSpaces, ActorError> {
+) -> Result<Vec<(DealID, DealProposal)>, ActorError> {
+    let mut proposals = Vec::new();
     let mut seen_deal_ids = BTreeSet::new();
-    let mut deal_space = BigInt::zero();
-    let mut verified_deal_space = BigInt::zero();
-
     for deal_id in deal_ids {
         if !seen_deal_ids.insert(deal_id) {
-            return Err(actor_error!(
-                illegal_argument,
-                "deal id {} present multiple times",
-                deal_id
-            ));
+            return Err(actor_error!(illegal_argument, "duplicate deal ID {} in sector", deal_id));
         }
-
-        let proposal = proposals
+        let proposal = proposal_array
             .get(*deal_id)
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal")?
             .ok_or_else(|| {
-                if deal_id < &next_id {
+                if *deal_id < next_id {
                     ActorError::unchecked(EX_DEAL_EXPIRED, format!("deal {} expired", deal_id))
                 } else {
                     actor_error!(not_found, "no such deal {}", deal_id)
                 }
             })?;
+        proposals.push((*deal_id, proposal.clone()));
+    }
+    Ok(proposals)
+}
 
+fn compute_data_commitment(
+    rt: &impl Runtime,
+    proposals: &[(DealID, DealProposal)],
+    sector_type: RegisteredSealProof,
+) -> Result<Cid, ActorError> {
+    let mut pieces = Vec::with_capacity(proposals.len());
+
+    for (_, deal) in proposals {
+        pieces.push(PieceInfo { cid: deal.piece_cid, size: deal.piece_size });
+    }
+
+    rt.compute_unsealed_sector_cid(sector_type, &pieces).map_err(|e| {
+        e.downcast_default(ExitCode::USR_ILLEGAL_ARGUMENT, "failed to compute unsealed sector CID")
+    })
+}
+
+pub fn validate_and_return_deal_space(
+    proposals: &[(DealID, DealProposal)],
+    miner_addr: &Address,
+    sector_expiry: ChainEpoch,
+    sector_activation: ChainEpoch,
+    sector_size: Option<SectorSize>,
+) -> Result<DealSpaces, ActorError> {
+    let mut deal_space = BigInt::zero();
+    let mut verified_deal_space = BigInt::zero();
+
+    for (deal_id, proposal) in proposals {
         validate_deal_can_activate(proposal, miner_addr, sector_expiry, sector_activation)
             .with_context(|| format!("cannot activate deal {}", deal_id))?;
 
