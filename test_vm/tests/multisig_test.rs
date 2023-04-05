@@ -17,7 +17,7 @@ use integer_encoding::VarInt;
 use std::collections::HashSet;
 use std::iter::FromIterator;
 use test_vm::util::{apply_code, apply_ok, create_accounts};
-use test_vm::{ExpectInvocation, TestVM};
+use test_vm::{ExpectInvocation, TestVM, VM};
 
 #[test]
 fn test_proposal_hash() {

@@ -1,7 +1,8 @@
 use std::cmp::min;
 
+use fil_actor_verifreg::ext::datacap::MintParams;
 use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
-use frc46_token::token::types::{TransferFromParams, TransferParams};
+use frc46_token::token::types::{BurnParams, TransferFromParams, TransferParams};
 use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::{BytesDe, RawBytes};
@@ -225,18 +226,18 @@ pub fn miner_prove_sector<BS: Blockstore>(
         Some(prove_commit_params),
     );
 
-    // ExpectInvocation {
-    //     to: miner_id,
-    //     method: MinerMethod::ProveCommitSector as u64,
-    //     from: Some(worker),
-    //     subinvocs: Some(vec![ExpectInvocation {
-    //         to: STORAGE_POWER_ACTOR_ADDR,
-    //         method: PowerMethod::SubmitPoRepForBulkVerify as u64,
-    //         ..Default::default()
-    //     }]),
-    //     ..Default::default()
-    // }
-    // .matches(v.take_invocations().last().unwrap());
+    ExpectInvocation {
+        to: *miner_id,
+        method: MinerMethod::ProveCommitSector as u64,
+        from: Some(*worker),
+        subinvocs: Some(vec![ExpectInvocation {
+            to: STORAGE_POWER_ACTOR_ADDR,
+            method: PowerMethod::SubmitPoRepForBulkVerify as u64,
+            ..Default::default()
+        }]),
+        ..Default::default()
+    }
+    .matches(v.take_invocations().last().unwrap());
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -330,19 +331,19 @@ pub fn precommit_sectors_v2<BS: Blockstore>(
                 MinerMethod::PreCommitSectorBatch as u64,
                 Some(PreCommitSectorBatchParams { sectors: param_sectors.clone() }),
             );
-            // let expect = ExpectInvocation {
-            //     to: mid,
-            //     method: MinerMethod::PreCommitSectorBatch as u64,
-            //     params: Some(
-            //         IpldBlock::serialize_cbor(&PreCommitSectorBatchParams {
-            //             sectors: param_sectors,
-            //         })
-            //         .unwrap(),
-            //     ),
-            //     subinvocs: Some(invocs),
-            //     ..Default::default()
-            // };
-            // expect.matches(v.take_invocations().last().unwrap())
+            let expect = ExpectInvocation {
+                to: mid,
+                method: MinerMethod::PreCommitSectorBatch as u64,
+                params: Some(
+                    IpldBlock::serialize_cbor(&PreCommitSectorBatchParams {
+                        sectors: param_sectors,
+                    })
+                    .unwrap(),
+                ),
+                subinvocs: Some(invocs),
+                ..Default::default()
+            };
+            expect.matches(v.take_invocations().last().unwrap())
         } else {
             let mut param_sectors = Vec::<SectorPreCommitInfo>::new();
             let mut j = 0;
@@ -378,19 +379,20 @@ pub fn precommit_sectors_v2<BS: Blockstore>(
                 MinerMethod::PreCommitSectorBatch2 as u64,
                 Some(PreCommitSectorBatchParams2 { sectors: param_sectors.clone() }),
             );
-            // let expect = ExpectInvocation {
-            //     to: mid,
-            //     method: MinerMethod::PreCommitSectorBatch2 as u64,
-            //     params: Some(
-            //         IpldBlock::serialize_cbor(&PreCommitSectorBatchParams2 {
-            //             sectors: param_sectors,
-            //         })
-            //         .unwrap(),
-            //     ),
-            //     subinvocs: Some(invocs),
-            //     ..Default::default()
-            // };
-            // expect.matches(v.take_invocations().last().unwrap())
+
+            let expect = ExpectInvocation {
+                to: mid,
+                method: MinerMethod::PreCommitSectorBatch2 as u64,
+                params: Some(
+                    IpldBlock::serialize_cbor(&PreCommitSectorBatchParams2 {
+                        sectors: param_sectors,
+                    })
+                    .unwrap(),
+                ),
+                subinvocs: Some(invocs),
+                ..Default::default()
+            };
+            expect.matches(v.take_invocations().last().unwrap())
         }
     }
     // extract chain state
@@ -450,6 +452,9 @@ pub fn prove_commit_sectors<BS: Blockstore>(
             aggregate_proof: vec![],
         };
 
+        let prove_commit_aggregate_params_ser =
+            IpldBlock::serialize_cbor(&prove_commit_aggregate_params).unwrap();
+
         apply_ok(
             v,
             worker,
@@ -459,39 +464,36 @@ pub fn prove_commit_sectors<BS: Blockstore>(
             Some(prove_commit_aggregate_params),
         );
 
-        // let prove_commit_aggregate_params_ser =
-        //     IpldBlock::serialize_cbor(&prove_commit_aggregate_params).unwrap();
-
-        // ExpectInvocation {
-        //     to: maddr,
-        //     method: MinerMethod::ProveCommitAggregate as u64,
-        //     from: Some(worker),
-        //     params: Some(prove_commit_aggregate_params_ser),
-        //     subinvocs: Some(vec![
-        //         ExpectInvocation {
-        //             to: REWARD_ACTOR_ADDR,
-        //             method: RewardMethod::ThisEpochReward as u64,
-        //             ..Default::default()
-        //         },
-        //         ExpectInvocation {
-        //             to: STORAGE_POWER_ACTOR_ADDR,
-        //             method: PowerMethod::CurrentTotalPower as u64,
-        //             ..Default::default()
-        //         },
-        //         ExpectInvocation {
-        //             to: STORAGE_POWER_ACTOR_ADDR,
-        //             method: PowerMethod::UpdatePledgeTotal as u64,
-        //             ..Default::default()
-        //         },
-        //         ExpectInvocation {
-        //             to: BURNT_FUNDS_ACTOR_ADDR,
-        //             method: METHOD_SEND,
-        //             ..Default::default()
-        //         },
-        //     ]),
-        //     ..Default::default()
-        // }
-        // .matches(v.take_invocations().last().unwrap());
+        ExpectInvocation {
+            to: *maddr,
+            method: MinerMethod::ProveCommitAggregate as u64,
+            from: Some(*worker),
+            params: Some(prove_commit_aggregate_params_ser),
+            subinvocs: Some(vec![
+                ExpectInvocation {
+                    to: REWARD_ACTOR_ADDR,
+                    method: RewardMethod::ThisEpochReward as u64,
+                    ..Default::default()
+                },
+                ExpectInvocation {
+                    to: STORAGE_POWER_ACTOR_ADDR,
+                    method: PowerMethod::CurrentTotalPower as u64,
+                    ..Default::default()
+                },
+                ExpectInvocation {
+                    to: STORAGE_POWER_ACTOR_ADDR,
+                    method: PowerMethod::UpdatePledgeTotal as u64,
+                    ..Default::default()
+                },
+                ExpectInvocation {
+                    to: BURNT_FUNDS_ACTOR_ADDR,
+                    method: METHOD_SEND,
+                    ..Default::default()
+                },
+            ]),
+            ..Default::default()
+        }
+        .matches(v.take_invocations().last().unwrap());
     }
 }
 
@@ -563,15 +565,14 @@ pub fn miner_extend_sector_expiration2<BS: Blockstore>(
         });
     }
 
-    // TODO: review invocation datamodel
-    // ExpectInvocation {
-    //     to: miner_id,
-    //     method: MinerMethod::ExtendSectorExpiration2 as u64,
-    //     subinvocs: Some(subinvocs),
-    //     code: Some(ExitCode::OK),
-    //     ..Default::default()
-    // }
-    // .matches(v.take_invocations().last().unwrap());
+    ExpectInvocation {
+        to: *miner_id,
+        method: MinerMethod::ExtendSectorExpiration2 as u64,
+        subinvocs: Some(subinvocs),
+        code: Some(ExitCode::OK),
+        ..Default::default()
+    }
+    .matches(v.take_invocations().last().unwrap());
 }
 
 pub fn advance_by_deadline_to_epoch<BS: Blockstore>(
@@ -750,7 +751,7 @@ pub fn submit_windowed_post<BS: Blockstore>(
     maddr: &Address,
     dline_info: DeadlineInfo,
     partition_idx: u64,
-    _new_power: Option<PowerPair>,
+    new_power: Option<PowerPair>,
 ) {
     let params = SubmitWindowedPoStParams {
         deadline: dline_info.index,
@@ -770,32 +771,32 @@ pub fn submit_windowed_post<BS: Blockstore>(
         MinerMethod::SubmitWindowedPoSt as u64,
         Some(params),
     );
-    // let mut subinvocs = None;
-    // if let Some(new_pow) = new_power {
-    //     if new_pow == PowerPair::zero() {
-    //         subinvocs = Some(vec![])
-    //     } else {
-    //         let update_power_params = IpldBlock::serialize_cbor(&UpdateClaimedPowerParams {
-    //             raw_byte_delta: new_pow.raw,
-    //             quality_adjusted_delta: new_pow.qa,
-    //         })
-    //         .unwrap();
-    //         subinvocs = Some(vec![ExpectInvocation {
-    //             to: STORAGE_POWER_ACTOR_ADDR,
-    //             method: PowerMethod::UpdateClaimedPower as u64,
-    //             params: Some(update_power_params),
-    //             ..Default::default()
-    //         }]);
-    //     }
-    // }
+    let mut subinvocs = None;
+    if let Some(new_pow) = new_power {
+        if new_pow == PowerPair::zero() {
+            subinvocs = Some(vec![])
+        } else {
+            let update_power_params = IpldBlock::serialize_cbor(&UpdateClaimedPowerParams {
+                raw_byte_delta: new_pow.raw,
+                quality_adjusted_delta: new_pow.qa,
+            })
+            .unwrap();
+            subinvocs = Some(vec![ExpectInvocation {
+                to: STORAGE_POWER_ACTOR_ADDR,
+                method: PowerMethod::UpdateClaimedPower as u64,
+                params: Some(update_power_params),
+                ..Default::default()
+            }]);
+        }
+    }
 
-    // ExpectInvocation {
-    //     to: maddr,
-    //     method: MinerMethod::SubmitWindowedPoSt as u64,
-    //     subinvocs,
-    //     ..Default::default()
-    // }
-    // .matches(v.take_invocations().last().unwrap());
+    ExpectInvocation {
+        to: *maddr,
+        method: MinerMethod::SubmitWindowedPoSt as u64,
+        subinvocs,
+        ..Default::default()
+    }
+    .matches(v.take_invocations().last().unwrap());
 }
 
 pub fn change_beneficiary<BS: Blockstore>(
@@ -861,28 +862,28 @@ pub fn withdraw_balance<BS: Blockstore>(
         m_addr,
         &TokenAmount::zero(),
         MinerMethod::WithdrawBalance as u64,
-        Some(params),
+        Some(params.clone()),
     )
     .deserialize()
     .unwrap();
 
-    // if expect_withdraw_amount.is_positive() {
-    //     let withdraw_balance_params_se = IpldBlock::serialize_cbor(&params).unwrap();
-    //     ExpectInvocation {
-    //         from: Some(from),
-    //         to: m_addr,
-    //         method: MinerMethod::WithdrawBalance as u64,
-    //         params: Some(withdraw_balance_params_se),
-    //         subinvocs: Some(vec![ExpectInvocation {
-    //             to: from,
-    //             method: METHOD_SEND as u64,
-    //             value: Some(expect_withdraw_amount.clone()),
-    //             ..Default::default()
-    //         }]),
-    //         ..Default::default()
-    //     }
-    //     .matches(v.take_invocations().last().unwrap());
-    // }
+    if expect_withdraw_amount.is_positive() {
+        let withdraw_balance_params_se = IpldBlock::serialize_cbor(&params).unwrap();
+        ExpectInvocation {
+            from: Some(*from),
+            to: *m_addr,
+            method: MinerMethod::WithdrawBalance as u64,
+            params: Some(withdraw_balance_params_se),
+            subinvocs: Some(vec![ExpectInvocation {
+                to: *from,
+                method: METHOD_SEND as u64,
+                value: Some(expect_withdraw_amount.clone()),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        }
+        .matches(v.take_invocations().last().unwrap());
+    }
     assert_eq!(expect_withdraw_amount, &withdraw_return.amount_withdrawn);
 }
 
@@ -935,25 +936,25 @@ pub fn verifreg_add_verifier<BS: Blockstore>(
         MultisigMethod::Propose as u64,
         Some(proposal),
     );
-    // ExpectInvocation {
-    //     to: TEST_VERIFREG_ROOT_ADDR,
-    //     method: MultisigMethod::Propose as u64,
-    //     subinvocs: Some(vec![ExpectInvocation {
-    //         to: VERIFIED_REGISTRY_ACTOR_ADDR,
-    //         method: VerifregMethod::AddVerifier as u64,
-    //         params: Some(IpldBlock::serialize_cbor(&add_verifier_params).unwrap()),
-    //         subinvocs: Some(vec![ExpectInvocation {
-    //             to: DATACAP_TOKEN_ACTOR_ADDR,
-    //             method: DataCapMethod::BalanceExported as u64,
-    //             params: Some(IpldBlock::serialize_cbor(&verifier).unwrap()),
-    //             code: Some(ExitCode::OK),
-    //             ..Default::default()
-    //         }]),
-    //         ..Default::default()
-    //     }]),
-    //     ..Default::default()
-    // }
-    // .matches(v.take_invocations().last().unwrap());
+    ExpectInvocation {
+        to: TEST_VERIFREG_ROOT_ADDR,
+        method: MultisigMethod::Propose as u64,
+        subinvocs: Some(vec![ExpectInvocation {
+            to: VERIFIED_REGISTRY_ACTOR_ADDR,
+            method: VerifregMethod::AddVerifier as u64,
+            params: Some(IpldBlock::serialize_cbor(&add_verifier_params).unwrap()),
+            subinvocs: Some(vec![ExpectInvocation {
+                to: DATACAP_TOKEN_ACTOR_ADDR,
+                method: DataCapMethod::BalanceExported as u64,
+                params: Some(IpldBlock::serialize_cbor(&verifier).unwrap()),
+                code: Some(ExitCode::OK),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        }]),
+        ..Default::default()
+    }
+    .matches(v.take_invocations().last().unwrap());
 }
 
 pub fn verifreg_add_client<BS: Blockstore>(
@@ -962,7 +963,8 @@ pub fn verifreg_add_client<BS: Blockstore>(
     client: &Address,
     allowance: StoragePower,
 ) {
-    let add_client_params = AddVerifiedClientParams { address: *client, allowance };
+    let add_client_params =
+        AddVerifiedClientParams { address: *client, allowance: allowance.clone() };
     apply_ok(
         v,
         verifier,
@@ -971,27 +973,27 @@ pub fn verifreg_add_client<BS: Blockstore>(
         VerifregMethod::AddVerifiedClient as u64,
         Some(add_client_params),
     );
-    //     ExpectInvocation {
-    //         to: VERIFIED_REGISTRY_ACTOR_ADDR,
-    //         method: VerifregMethod::AddVerifiedClient as u64,
-    //         subinvocs: Some(vec![ExpectInvocation {
-    //             to: DATACAP_TOKEN_ACTOR_ADDR,
-    //             method: DataCapMethod::MintExported as u64,
-    //             params: Some(
-    //                 IpldBlock::serialize_cbor(&MintParams {
-    //                     to: client,
-    //                     amount: &TokenAmount::from_whole(allowance),
-    //                     operators: vec![STORAGE_MARKET_ACTOR_ADDR],
-    //                 })
-    //                 .unwrap(),
-    //             ),
-    //             code: Some(ExitCode::OK),
-    //             ..Default::default()
-    //         }]),
-    //         code: Some(ExitCode::OK),
-    //         ..Default::default()
-    //     }
-    //     .matches(v.take_invocations().last().unwrap());
+    ExpectInvocation {
+        to: VERIFIED_REGISTRY_ACTOR_ADDR,
+        method: VerifregMethod::AddVerifiedClient as u64,
+        subinvocs: Some(vec![ExpectInvocation {
+            to: DATACAP_TOKEN_ACTOR_ADDR,
+            method: DataCapMethod::MintExported as u64,
+            params: Some(
+                IpldBlock::serialize_cbor(&MintParams {
+                    to: *client,
+                    amount: TokenAmount::from_whole(allowance),
+                    operators: vec![STORAGE_MARKET_ACTOR_ADDR],
+                })
+                .unwrap(),
+            ),
+            code: Some(ExitCode::OK),
+            ..Default::default()
+        }]),
+        code: Some(ExitCode::OK),
+        ..Default::default()
+    }
+    .matches(v.take_invocations().last().unwrap());
 }
 
 pub fn verifreg_extend_claim_terms<BS: Blockstore>(
@@ -1023,7 +1025,7 @@ pub fn verifreg_remove_expired_allocations<BS: Blockstore>(
     caller: &Address,
     client: &Address,
     ids: Vec<AllocationID>,
-    _datacap_refund: u64,
+    datacap_refund: u64,
 ) {
     let params =
         RemoveExpiredAllocationsParams { client: client.id().unwrap(), allocation_ids: ids };
@@ -1035,26 +1037,26 @@ pub fn verifreg_remove_expired_allocations<BS: Blockstore>(
         VerifregMethod::RemoveExpiredAllocations as u64,
         Some(params),
     );
-    // ExpectInvocation {
-    //     to: VERIFIED_REGISTRY_ACTOR_ADDR,
-    //     method: VerifregMethod::RemoveExpiredAllocations as u64,
-    //     subinvocs: Some(vec![ExpectInvocation {
-    //         to: DATACAP_TOKEN_ACTOR_ADDR,
-    //         method: DataCapMethod::TransferExported as u64,
-    //         code: Some(ExitCode::OK),
-    //         params: Some(
-    //             IpldBlock::serialize_cbor(&TransferParams {
-    //                 to: client,
-    //                 amount: &TokenAmount::from_whole(datacap_refund),
-    //                 operator_data: Default::default(),
-    //             })
-    //             .unwrap(),
-    //         ),
-    //         ..Default::default()
-    //     }]),
-    //     ..Default::default()
-    // }
-    // .matches(v.take_invocations().last().unwrap());
+    ExpectInvocation {
+        to: VERIFIED_REGISTRY_ACTOR_ADDR,
+        method: VerifregMethod::RemoveExpiredAllocations as u64,
+        subinvocs: Some(vec![ExpectInvocation {
+            to: DATACAP_TOKEN_ACTOR_ADDR,
+            method: DataCapMethod::TransferExported as u64,
+            code: Some(ExitCode::OK),
+            params: Some(
+                IpldBlock::serialize_cbor(&TransferParams {
+                    to: *client,
+                    amount: TokenAmount::from_whole(datacap_refund),
+                    operator_data: Default::default(),
+                })
+                .unwrap(),
+            ),
+            ..Default::default()
+        }]),
+        ..Default::default()
+    }
+    .matches(v.take_invocations().last().unwrap());
 }
 
 pub fn datacap_get_balance<BS: Blockstore>(v: &dyn VM<BS>, address: &Address) -> TokenAmount {
@@ -1087,8 +1089,11 @@ pub fn datacap_extend_claim<BS: Blockstore>(
     };
     let token_amount = TokenAmount::from_whole(size);
     let operator_data = serialize(&payload, "allocation requests").unwrap();
-    let transfer_params =
-        TransferParams { to: VERIFIED_REGISTRY_ACTOR_ADDR, amount: token_amount, operator_data };
+    let transfer_params = TransferParams {
+        to: VERIFIED_REGISTRY_ACTOR_ADDR,
+        amount: token_amount.clone(),
+        operator_data: operator_data.clone(),
+    };
 
     apply_ok(
         v,
@@ -1099,45 +1104,45 @@ pub fn datacap_extend_claim<BS: Blockstore>(
         Some(transfer_params),
     );
 
-    // ExpectInvocation {
-    //     to: DATACAP_TOKEN_ACTOR_ADDR,
-    //     method: DataCapMethod::TransferExported as u64,
-    //     subinvocs: Some(vec![ExpectInvocation {
-    //         to: VERIFIED_REGISTRY_ACTOR_ADDR,
-    //         method: VerifregMethod::UniversalReceiverHook as u64,
-    //         code: Some(ExitCode::OK),
-    //         params: Some(
-    //             IpldBlock::serialize_cbor(&UniversalReceiverParams {
-    //                 type_: FRC46_TOKEN_TYPE,
-    //                 payload: serialize(
-    //                     &FRC46TokenReceived {
-    //                         from: client.id().unwrap(),
-    //                         to: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
-    //                         operator: client.id().unwrap(),
-    //                         amount: token_amount.clone(),
-    //                         operator_data,
-    //                         token_data: RawBytes::default(),
-    //                     },
-    //                     "token received params",
-    //                 )
-    //                 .unwrap(),
-    //             })
-    //             .unwrap(),
-    //         ),
-    //         subinvocs: Some(vec![ExpectInvocation {
-    //             to: DATACAP_TOKEN_ACTOR_ADDR,
-    //             method: DataCapMethod::BurnExported as u64,
-    //             code: Some(ExitCode::OK),
-    //             params: Some(
-    //                 IpldBlock::serialize_cbor(&BurnParams { amount: token_amount }).unwrap(),
-    //             ),
-    //             ..Default::default()
-    //         }]),
-    //         ..Default::default()
-    //     }]),
-    //     ..Default::default()
-    // }
-    // .matches(v.take_invocations().last().unwrap());
+    ExpectInvocation {
+        to: DATACAP_TOKEN_ACTOR_ADDR,
+        method: DataCapMethod::TransferExported as u64,
+        subinvocs: Some(vec![ExpectInvocation {
+            to: VERIFIED_REGISTRY_ACTOR_ADDR,
+            method: VerifregMethod::UniversalReceiverHook as u64,
+            code: Some(ExitCode::OK),
+            params: Some(
+                IpldBlock::serialize_cbor(&UniversalReceiverParams {
+                    type_: FRC46_TOKEN_TYPE,
+                    payload: serialize(
+                        &FRC46TokenReceived {
+                            from: client.id().unwrap(),
+                            to: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
+                            operator: client.id().unwrap(),
+                            amount: token_amount.clone(),
+                            operator_data,
+                            token_data: RawBytes::default(),
+                        },
+                        "token received params",
+                    )
+                    .unwrap(),
+                })
+                .unwrap(),
+            ),
+            subinvocs: Some(vec![ExpectInvocation {
+                to: DATACAP_TOKEN_ACTOR_ADDR,
+                method: DataCapMethod::BurnExported as u64,
+                code: Some(ExitCode::OK),
+                params: Some(
+                    IpldBlock::serialize_cbor(&BurnParams { amount: token_amount }).unwrap(),
+                ),
+                ..Default::default()
+            }]),
+            ..Default::default()
+        }]),
+        ..Default::default()
+    }
+    .matches(v.take_invocations().last().unwrap());
 }
 
 pub fn market_add_balance<BS: Blockstore>(

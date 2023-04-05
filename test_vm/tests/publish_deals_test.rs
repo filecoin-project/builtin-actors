@@ -32,6 +32,7 @@ use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use test_vm::util::{
     apply_ok, bf_all, create_accounts, create_accounts_seeded, create_miner, verifreg_add_verifier,
 };
+use test_vm::VM;
 use test_vm::{ExpectInvocation, TestVM};
 
 struct Addrs {

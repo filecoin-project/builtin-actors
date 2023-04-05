@@ -22,7 +22,7 @@ use test_vm::util::{
     miner_precommit_sector, miner_prove_sector, submit_windowed_post, verifreg_add_client,
     verifreg_add_verifier,
 };
-use test_vm::{ExpectInvocation, TestVM};
+use test_vm::{ExpectInvocation, TestVM, VM};
 
 #[test]
 fn extend_legacy_sector_with_deals() {

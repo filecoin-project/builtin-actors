@@ -31,7 +31,7 @@ use test_vm::util::{
     invariant_failure_patterns, make_bitfield, market_publish_deal, submit_windowed_post,
     verifreg_add_verifier,
 };
-use test_vm::{ExpectInvocation, TestVM};
+use test_vm::{ExpectInvocation, TestVM, VM};
 
 #[test]
 fn terminate_sectors() {

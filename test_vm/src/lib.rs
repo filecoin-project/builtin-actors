@@ -93,7 +93,6 @@ pub trait VM<BS: Blockstore> {
     fn resolve_id_address(&self, address: &Address) -> Option<Address>;
 
     /// Send a message between the two specified actors
-    /// TODO: add a generic parameter to MessageResult to allow an extra value to be returned
     fn execute_message(
         &self,
         from: &Address,
@@ -105,6 +104,9 @@ pub trait VM<BS: Blockstore> {
 
     /// Sets the epoch to the specified value
     fn set_epoch(&self, epoch: ChainEpoch);
+
+    /// Take all the invocations that have been made since the last call to this method
+    fn take_invocations(&self) -> Vec<InvocationTrace>;
 }
 
 /// An in-memory rust-execution VM for testing that yields sensible stack traces and debug info
@@ -253,6 +255,10 @@ where
     fn balance(&self, address: &Address) -> TokenAmount {
         let a = self.get_actor(address);
         a.map_or(TokenAmount::zero(), |a| a.balance)
+    }
+
+    fn take_invocations(&self) -> Vec<InvocationTrace> {
+        self.invocations.take()
     }
 }
 
@@ -623,10 +629,6 @@ where
                 Ok(MessageResult { code: ExitCode::OK, message: "OK".to_string(), ret })
             }
         }
-    }
-
-    pub fn take_invocations(&self) -> Vec<InvocationTrace> {
-        self.invocations.take()
     }
 
     /// Checks the state invariants and returns broken invariants.
