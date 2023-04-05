@@ -82,11 +82,6 @@ pub fn create_accounts<BS: Blockstore>(
     create_accounts_seeded(v, count, balance, ACCOUNT_SEED)
 }
 
-// Convert to ID-addr representation
-pub fn normalize_address<BS: Blockstore>(v: &dyn VM<BS>, addr: &Address) -> Option<Address> {
-    v.resolve_id_address(addr)
-}
-
 pub fn create_accounts_seeded<BS: Blockstore>(
     v: &dyn VM<BS>,
     count: u64,
@@ -99,7 +94,7 @@ pub fn create_accounts_seeded<BS: Blockstore>(
         apply_ok(v, &TEST_FAUCET_ADDR, &pk_addr, balance, METHOD_SEND, None::<RawBytes>);
     }
     // Normalize pk address to return id address of account actor
-    pk_addrs.iter().map(|pk_addr| normalize_address(v, pk_addr).unwrap()).collect()
+    pk_addrs.iter().map(|pk_addr| v.resolve_id_address(pk_addr).unwrap()).collect()
 }
 
 pub fn apply_ok<S: Serialize, BS: Blockstore>(
@@ -253,7 +248,7 @@ pub fn precommit_sectors_v2<BS: Blockstore>(
     exp: Option<ChainEpoch>,
     v2: bool,
 ) -> Vec<SectorPreCommitOnChainInfo> {
-    let mid = normalize_address(v, maddr).unwrap();
+    let mid = v.resolve_id_address(maddr).unwrap();
     let invocs_common = || -> Vec<ExpectInvocation> {
         vec![
             ExpectInvocation {
