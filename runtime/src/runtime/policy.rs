@@ -259,7 +259,8 @@ pub mod policy_constants {
     /// The period over which all a miner's active sectors will be challenged.
     pub const WPOST_PROVING_PERIOD: ChainEpoch = EPOCHS_IN_DAY;
     /// The duration of a deadline's challenge window, the period before a deadline when the challenge is available.
-    pub const WPOST_CHALLENGE_WINDOW: ChainEpoch = 30 * 60 / EPOCH_DURATION_SECONDS; // Half an hour (=48 per day)
+    // Half an hour (=48 per day)
+    pub const WPOST_CHALLENGE_WINDOW: ChainEpoch = 30 * 60 / EPOCH_DURATION_SECONDS;
     /// The number of non-overlapping PoSt deadlines in each proving period.
     pub const WPOST_PERIOD_DEADLINES: u64 = 48;
     /// The maximum distance back that a valid Window PoSt must commit to the current chain.
@@ -355,7 +356,7 @@ pub mod policy_constants {
     pub const CHAIN_FINALITY: ChainEpoch = 900;
 
     /// The number of total possible types (enum variants) of RegisteredPoStProof
-    pub const REGISTERED_POST_PROOF_VARIANTS: usize = 10;
+    pub const REGISTERED_POST_PROOF_VARIANTS: usize = 15;
 
     /// The number of total possible types (enum variants) of RegisteredSealProof
     pub const REGISTERED_SEAL_PROOF_VARIANTS: usize = 10;
@@ -409,25 +410,31 @@ impl ProofSet {
     /// Create a `ProofSet` for enabled `RegisteredPoStProof`s
     pub fn default_post_proofs() -> Self {
         let mut proofs = vec![false; policy_constants::REGISTERED_POST_PROOF_VARIANTS];
+        // TODO: v12: cleanup https://github.com/filecoin-project/builtin-actors/issues/1260
         #[cfg(feature = "sector-2k")]
         {
             proofs[i64::from(RegisteredPoStProof::StackedDRGWindow2KiBV1) as usize] = true;
+            proofs[i64::from(RegisteredPoStProof::StackedDRGWindow2KiBV1P1) as usize] = true;
         }
         #[cfg(feature = "sector-8m")]
         {
             proofs[i64::from(RegisteredPoStProof::StackedDRGWindow8MiBV1) as usize] = true;
+            proofs[i64::from(RegisteredPoStProof::StackedDRGWindow8MiBV1P1) as usize] = true;
         }
         #[cfg(feature = "sector-512m")]
         {
             proofs[i64::from(RegisteredPoStProof::StackedDRGWindow512MiBV1) as usize] = true;
+            proofs[i64::from(RegisteredPoStProof::StackedDRGWindow512MiBV1P1) as usize] = true;
         }
         #[cfg(feature = "sector-32g")]
         {
             proofs[i64::from(RegisteredPoStProof::StackedDRGWindow32GiBV1) as usize] = true;
+            proofs[i64::from(RegisteredPoStProof::StackedDRGWindow32GiBV1P1) as usize] = true;
         }
         #[cfg(feature = "sector-64g")]
         {
             proofs[i64::from(RegisteredPoStProof::StackedDRGWindow64GiBV1) as usize] = true;
+            proofs[i64::from(RegisteredPoStProof::StackedDRGWindow64GiBV1P1) as usize] = true;
         }
         ProofSet(proofs)
     }
