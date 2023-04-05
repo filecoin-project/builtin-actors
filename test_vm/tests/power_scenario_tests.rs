@@ -108,7 +108,7 @@ fn test_cron_tick() {
         &vm,
         &addrs[0],
         &addrs[0],
-        RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
         &TokenAmount::from_whole(10_000),
     );
 

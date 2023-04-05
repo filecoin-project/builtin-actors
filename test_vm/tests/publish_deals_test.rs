@@ -272,7 +272,7 @@ fn psd_not_enough_provider_lockup_for_batch() {
         &v,
         &cheap_worker,
         &cheap_worker,
-        fvm_shared::sector::RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        fvm_shared::sector::RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
         &TokenAmount::from_whole(100),
     )
     .0;

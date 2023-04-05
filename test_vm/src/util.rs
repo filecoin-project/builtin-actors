@@ -752,7 +752,7 @@ pub fn submit_windowed_post<BS: Blockstore>(
         deadline: dline_info.index,
         partitions: vec![PoStPartition { index: partition_idx, skipped: BitField::new() }],
         proofs: vec![PoStProof {
-            post_proof: RegisteredPoStProof::StackedDRGWindow32GiBV1,
+            post_proof: RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
             proof_bytes: vec![],
         }],
         chain_commit_epoch: dline_info.challenge,
@@ -893,7 +893,7 @@ pub fn submit_invalid_post<BS: Blockstore>(
         deadline: dline_info.index,
         partitions: vec![PoStPartition { index: partition_idx, skipped: BitField::new() }],
         proofs: vec![PoStProof {
-            post_proof: RegisteredPoStProof::StackedDRGWindow32GiBV1,
+            post_proof: RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
             proof_bytes: TEST_VM_INVALID_POST.as_bytes().to_vec(),
         }],
         chain_commit_epoch: dline_info.challenge,

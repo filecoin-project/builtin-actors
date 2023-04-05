@@ -245,7 +245,7 @@ fn miner_setup(
         &v,
         &owner,
         &worker,
-        RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
         &TokenAmount::zero(),
     );
 
