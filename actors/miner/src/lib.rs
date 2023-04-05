@@ -3739,7 +3739,7 @@ fn extend_sector_committment(
 
     if sector.verified_deal_weight.is_positive() {
         if !sector.simple_qa_power {
-            // divide by the old diration to get the verified deal size.
+            // divide by the old duration to get the verified deal size.
             // multiply by the remaining time to calculate the remaining weight. This remaining
             // weight will end up getting spread out over the _new_ duration.
             new_sector.verified_deal_weight =
