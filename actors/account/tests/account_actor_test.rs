@@ -18,7 +18,7 @@ use fil_actors_runtime::test_utils::*;
 #[test]
 fn construction() {
     fn construct(addr: Address, exit_code: ExitCode) {
-        let mut rt = MockRuntime { receiver: Address::new_id(100), ..Default::default() };
+        let rt = MockRuntime { receiver: Address::new_id(100), ..Default::default() };
         rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
 
@@ -61,7 +61,7 @@ fn construction() {
 
 #[test]
 fn token_receiver() {
-    let mut rt = MockRuntime { receiver: Address::new_id(100), ..Default::default() };
+    let rt = MockRuntime { receiver: Address::new_id(100), ..Default::default() };
     rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
 
@@ -89,7 +89,7 @@ fn token_receiver() {
 
 #[test]
 fn authenticate_message() {
-    let mut rt = MockRuntime { receiver: Address::new_id(100), ..Default::default() };
+    let rt = MockRuntime { receiver: Address::new_id(100), ..Default::default() };
     rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
 
     let addr = Address::new_secp256k1(&[2; fvm_shared::address::SECP_PUB_LEN]).unwrap();
@@ -121,7 +121,9 @@ fn authenticate_message() {
     assert!(rt
         .call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, params.clone())
         .unwrap()
-        .is_none());
+        .unwrap()
+        .deserialize::<bool>()
+        .unwrap());
 
     rt.verify();
 
@@ -148,7 +150,12 @@ fn authenticate_message() {
         plaintext: vec![],
         result: Ok(()),
     });
-    rt.call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, params).unwrap();
+    assert!(rt
+        .call::<AccountActor>(Method::AuthenticateMessageExported as MethodNum, params)
+        .unwrap()
+        .unwrap()
+        .deserialize::<bool>()
+        .unwrap());
 }
 
 fn check_state(rt: &MockRuntime) {

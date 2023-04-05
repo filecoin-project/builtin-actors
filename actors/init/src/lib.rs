@@ -40,7 +40,7 @@ pub struct Actor;
 
 impl Actor {
     /// Init actor constructor
-    pub fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
+    pub fn constructor(rt: &impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
         let sys_ref: &Address = &SYSTEM_ACTOR_ADDR;
         rt.validate_immediate_caller_is(std::iter::once(sys_ref))?;
         let state = State::new(rt.store(), params.network_name)?;
@@ -50,7 +50,7 @@ impl Actor {
     }
 
     /// Exec init actor
-    pub fn exec(rt: &mut impl Runtime, params: ExecParams) -> Result<ExecReturn, ActorError> {
+    pub fn exec(rt: &impl Runtime, params: ExecParams) -> Result<ExecReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
 
         log::trace!("called exec; params.code_cid: {:?}", &params.code_cid);
@@ -110,7 +110,7 @@ impl Actor {
     }
 
     /// Exec4 init actor
-    pub fn exec4(rt: &mut impl Runtime, params: Exec4Params) -> Result<Exec4Return, ActorError> {
+    pub fn exec4(rt: &impl Runtime, params: Exec4Params) -> Result<Exec4Return, ActorError> {
         if cfg!(feature = "m2-native") {
             rt.validate_immediate_caller_accept_any()?;
         } else {
@@ -170,14 +170,9 @@ impl Actor {
     }
 
     #[cfg(feature = "m2-native")]
-    pub fn install(
-        rt: &mut impl Runtime,
-        params: InstallParams,
-    ) -> Result<InstallReturn, ActorError> {
+    pub fn install(rt: &impl Runtime, params: InstallParams) -> Result<InstallReturn, ActorError> {
         use cid::multihash::Code;
-        use fil_actors_runtime::AsActorError;
         use fvm_ipld_blockstore::{Block, Blockstore};
-        use fvm_shared::error::ExitCode;
 
         rt.validate_immediate_caller_accept_any()?;
 
@@ -213,6 +208,11 @@ impl Actor {
 
 impl ActorCode for Actor {
     type Methods = Method;
+
+    fn name() -> &'static str {
+        "Init"
+    }
+
     actor_dispatch! {
         Constructor => constructor,
         Exec => exec,

@@ -17,7 +17,7 @@ fn make_sector(i: u64) -> SectorOnChainInfo {
     }
 }
 
-fn setup_sectors(store: &'_ MemoryBlockstore) -> Sectors<'_, MemoryBlockstore> {
+fn setup_sectors(store: &'_ MemoryBlockstore) -> Sectors<MemoryBlockstore> {
     sectors_arr_mbs(store, vec![make_sector(0), make_sector(1), make_sector(5)])
 }
 

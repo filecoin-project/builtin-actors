@@ -1,9 +1,11 @@
 use fil_actors_evm_shared::address::EthAddress;
-use fil_actors_evm_shared::uints::U256;
-use fil_actors_runtime::{actor_error, ActorError, AsActorError, EAM_ACTOR_ADDR, INIT_ACTOR_ADDR};
+use fil_actors_runtime::{
+    actor_dispatch_unrestricted, actor_error, ActorError, AsActorError, EAM_ACTOR_ADDR,
+    INIT_ACTOR_ADDR,
+};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::{BytesDe, BytesSer};
+use fvm_ipld_encoding::BytesSer;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -13,9 +15,8 @@ use crate::interpreter::{execute, Bytecode, ExecutionState, System};
 use crate::reader::ValueReader;
 use cid::Cid;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
+use fvm_shared::METHOD_CONSTRUCTOR;
 use num_derive::FromPrimitive;
-use num_traits::FromPrimitive;
 
 pub use types::*;
 
@@ -187,7 +188,7 @@ where
 }
 
 impl EvmContractActor {
-    pub fn constructor<RT>(rt: &mut RT, params: ConstructorParams) -> Result<(), ActorError>
+    pub fn constructor<RT>(rt: &RT, params: ConstructorParams) -> Result<(), ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
@@ -196,7 +197,7 @@ impl EvmContractActor {
         initialize_evm_contract(&mut System::create(rt)?, params.creator, params.initcode.into())
     }
 
-    pub fn resurrect<RT>(rt: &mut RT, params: ResurrectParams) -> Result<(), ActorError>
+    pub fn resurrect<RT>(rt: &RT, params: ResurrectParams) -> Result<(), ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
@@ -206,9 +207,9 @@ impl EvmContractActor {
     }
 
     pub fn invoke_contract_delegate<RT>(
-        rt: &mut RT,
+        rt: &RT,
         params: DelegateCallParams,
-    ) -> Result<Vec<u8>, ActorError>
+    ) -> Result<DelegateCallReturn, ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
@@ -218,10 +219,20 @@ impl EvmContractActor {
         let mut system = System::load(rt).map_err(|e| {
             ActorError::unspecified(format!("failed to create execution abstraction layer: {e:?}"))
         })?;
-        invoke_contract_inner(&mut system, params.input, &params.code, &params.caller, params.value)
+        let return_data = invoke_contract_inner(
+            &mut system,
+            params.input,
+            &params.code,
+            &params.caller,
+            params.value,
+        )?;
+        Ok(DelegateCallReturn { return_data })
     }
 
-    pub fn invoke_contract<RT>(rt: &mut RT, input_data: Vec<u8>) -> Result<Vec<u8>, ActorError>
+    pub fn invoke_contract<RT>(
+        rt: &RT,
+        params: InvokeContractParams,
+    ) -> Result<InvokeContractReturn, ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
@@ -235,16 +246,23 @@ impl EvmContractActor {
         let bytecode_cid = match system.get_bytecode() {
             Some(bytecode_cid) => bytecode_cid,
             // an EVM contract with no code returns immediately
-            None => return Ok(Vec::new()),
+            None => return Ok(InvokeContractReturn { output_data: Vec::new() }),
         };
 
         let received_value = system.rt.message().value_received();
         let caller = system.resolve_ethereum_address(&system.rt.message().caller()).unwrap();
-        invoke_contract_inner(&mut system, input_data, &bytecode_cid, &caller, received_value)
+        let data = invoke_contract_inner(
+            &mut system,
+            params.input_data,
+            &bytecode_cid,
+            &caller,
+            received_value,
+        )?;
+        Ok(InvokeContractReturn { output_data: data })
     }
 
     pub fn handle_filecoin_method<RT>(
-        rt: &mut RT,
+        rt: &RT,
         method: u64,
         args: Option<IpldBlock>,
     ) -> Result<Option<IpldBlock>, ActorError>
@@ -252,27 +270,30 @@ impl EvmContractActor {
         RT: Runtime,
         RT::Blockstore: Clone,
     {
+        if method <= EVM_MAX_RESERVED_METHOD {
+            return Err(actor_error!(unhandled_message; "Invalid method"));
+        }
         let params = args.unwrap_or(IpldBlock { codec: 0, data: vec![] });
         let input = handle_filecoin_method_input(method, params.codec, params.data.as_slice());
-        let output = Self::invoke_contract(rt, input)?;
-        handle_filecoin_method_output(&output)
+        let output = Self::invoke_contract(rt, InvokeContractParams { input_data: input })?;
+        handle_filecoin_method_output(&output.output_data)
     }
 
     /// Returns the contract's EVM bytecode, or `None` if the contract has been deleted (has called
     /// SELFDESTRUCT).
-    pub fn bytecode(rt: &mut impl Runtime) -> Result<Option<Cid>, ActorError> {
+    pub fn bytecode(rt: &impl Runtime) -> Result<BytecodeReturn, ActorError> {
         // Any caller can fetch the bytecode of a contract; this is now EXT* opcodes work.
         rt.validate_immediate_caller_accept_any()?;
 
         let state: State = rt.state()?;
         if is_dead(rt, &state) {
-            Ok(None)
+            Ok(BytecodeReturn { code: None })
         } else {
-            Ok(Some(state.bytecode))
+            Ok(BytecodeReturn { code: Some(state.bytecode) })
         }
     }
 
-    pub fn bytecode_hash(rt: &mut impl Runtime) -> Result<BytecodeHash, ActorError> {
+    pub fn bytecode_hash(rt: &impl Runtime) -> Result<BytecodeHash, ActorError> {
         // Any caller can fetch the bytecode hash of a contract; this is where EXTCODEHASH gets it's value for EVM contracts.
         rt.validate_immediate_caller_accept_any()?;
 
@@ -285,7 +306,10 @@ impl EvmContractActor {
         }
     }
 
-    pub fn storage_at<RT>(rt: &mut RT, params: GetStorageAtParams) -> Result<U256, ActorError>
+    pub fn storage_at<RT>(
+        rt: &RT,
+        params: GetStorageAtParams,
+    ) -> Result<GetStorageAtReturn, ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
@@ -295,9 +319,11 @@ impl EvmContractActor {
         rt.validate_immediate_caller_is([&Address::new_id(0)])?;
 
         // If the contract is dead, this will always return "0".
-        System::load(rt)?
+        let val = System::load(rt)?
             .get_storage(params.storage_key)
-            .context_code(ExitCode::USR_ASSERTION_FAILED, "failed to get storage key")
+            .context_code(ExitCode::USR_ASSERTION_FAILED, "failed to get storage key")?;
+
+        Ok(GetStorageAtReturn { storage: val })
     }
 }
 
@@ -380,81 +406,19 @@ fn handle_filecoin_method_output(output: &[u8]) -> Result<Option<IpldBlock>, Act
 
 impl ActorCode for EvmContractActor {
     type Methods = Method;
-    // TODO: Use actor_dispatch macros for this: https://github.com/filecoin-project/builtin-actors/issues/966
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        args: Option<IpldBlock>,
-    ) -> Result<Option<IpldBlock>, ActorError>
-    where
-        RT: Runtime,
-        RT::Blockstore: Clone,
-    {
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(
-                    rt,
-                    args.with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
-                        "method expects arguments".to_string()
-                    })?
-                    .deserialize()?,
-                )?;
-                Ok(None)
-            }
-            Some(Method::InvokeContract) => {
-                let params = match args {
-                    None => vec![],
-                    Some(p) => {
-                        let BytesDe(p) = p.deserialize()?;
-                        p
-                    }
-                };
-                let value = Self::invoke_contract(rt, params)?;
-                Ok(IpldBlock::serialize_cbor(&BytesSer(&value))?)
-            }
-            Some(Method::GetBytecode) => {
-                let ret = Self::bytecode(rt)?;
-                Ok(IpldBlock::serialize_dag_cbor(&ret)?)
-            }
-            Some(Method::GetBytecodeHash) => {
-                let hash = Self::bytecode_hash(rt)?;
-                Ok(IpldBlock::serialize_cbor(&hash)?)
-            }
-            Some(Method::GetStorageAt) => {
-                let value = Self::storage_at(
-                    rt,
-                    args.with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
-                        "method expects arguments".to_string()
-                    })?
-                    .deserialize()?,
-                )?;
-                Ok(IpldBlock::serialize_cbor(&value)?)
-            }
-            Some(Method::InvokeContractDelegate) => {
-                let params: DelegateCallParams = args
-                    .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
-                        "method expects arguments".to_string()
-                    })?
-                    .deserialize()?;
-                let value = Self::invoke_contract_delegate(rt, params)?;
-                Ok(IpldBlock::serialize_cbor(&BytesSer(&value))?)
-            }
-            Some(Method::Resurrect) => {
-                Self::resurrect(
-                    rt,
-                    args.with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
-                        "method expects arguments".to_string()
-                    })?
-                    .deserialize()?,
-                )?;
-                Ok(None)
-            }
-            None if method > EVM_MAX_RESERVED_METHOD => {
-                // We reserve all methods below EVM_MAX_RESERVED (<= 1023) method. This is a
-                // _subset_ of those reserved by FRC0042.
-                Self::handle_filecoin_method(rt, method, args)
-            }
-            None => Err(actor_error!(unhandled_message; "Invalid method")),
-        }
+
+    fn name() -> &'static str {
+        "EVMContract"
+    }
+
+    actor_dispatch_unrestricted! {
+        Constructor => constructor,
+        InvokeContract => invoke_contract [default_params],
+        GetBytecode => bytecode,
+        GetBytecodeHash => bytecode_hash,
+        GetStorageAt => storage_at,
+        InvokeContractDelegate => invoke_contract_delegate,
+        Resurrect => resurrect,
+        _ => handle_filecoin_method [raw],
     }
 }

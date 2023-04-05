@@ -185,7 +185,7 @@ mod tests {
             let [a, b] = getting.to_be_bytes();
             evm_unit_test! {
                 (rt) {
-                    rt.in_call = true;
+                    rt.in_call.replace(true);
                     rt.set_epoch(current);
                     rt.tipset_cids.resize(current as usize, Cid::default());
                     if let Some(cid) = insert {
@@ -259,7 +259,7 @@ mod tests {
         for basefee in [12345, u128::MAX, 0, 1].map(U256::from) {
             evm_unit_test! {
                 (rt) {
-                    rt.base_fee = TokenAmount::from(&basefee);
+                    rt.base_fee.replace(TokenAmount::from(&basefee));
                 }
                 (m) {
                     BASEFEE;
@@ -353,7 +353,7 @@ mod tests {
         let fil_addr = FilAddress::new_id(1000);
         evm_unit_test! {
             (rt) {
-                rt.in_call = true;
+                rt.in_call.replace(true);
                 rt.set_origin(fil_addr);
             }
             (m) {
@@ -372,7 +372,7 @@ mod tests {
         let fil_addr = FilAddress::new_delegated(EAM_ACTOR_ID, &addr_bytes).unwrap();
         evm_unit_test! {
             (rt) {
-                rt.in_call = true;
+                rt.in_call.replace(true);
                 rt.set_origin(fil_addr);
             }
             (m) {
@@ -403,7 +403,7 @@ mod tests {
         // Note: This is currently buggy, as the price needs to be capped by the MaxFeeCap.
         evm_unit_test! {
             (rt) {
-                rt.base_fee = TokenAmount::from_atto(1000);
+                rt.base_fee.replace(TokenAmount::from_atto(1000));
                 rt.gas_premium = TokenAmount::from_atto(1234);
             }
             (m) {

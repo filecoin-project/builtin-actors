@@ -43,13 +43,13 @@ fn prepare_env() -> TestEnv {
     };
 
     env.rt.receiver = env.receiver;
-    env.rt.actor_code_cids.insert(env.owner, *ACCOUNT_ACTOR_CODE_ID);
-    env.rt.actor_code_cids.insert(env.worker, *ACCOUNT_ACTOR_CODE_ID);
-    env.rt.actor_code_cids.insert(env.control_addrs[0], *ACCOUNT_ACTOR_CODE_ID);
-    env.rt.actor_code_cids.insert(env.control_addrs[1], *ACCOUNT_ACTOR_CODE_ID);
+    env.rt.actor_code_cids.borrow_mut().insert(env.owner, *ACCOUNT_ACTOR_CODE_ID);
+    env.rt.actor_code_cids.borrow_mut().insert(env.worker, *ACCOUNT_ACTOR_CODE_ID);
+    env.rt.actor_code_cids.borrow_mut().insert(env.control_addrs[0], *ACCOUNT_ACTOR_CODE_ID);
+    env.rt.actor_code_cids.borrow_mut().insert(env.control_addrs[1], *ACCOUNT_ACTOR_CODE_ID);
     env.rt.hash_func = Box::new(hash);
-    env.rt.caller = INIT_ACTOR_ADDR;
-    env.rt.caller_type = *INIT_ACTOR_CODE_ID;
+    env.rt.caller.replace(INIT_ACTOR_ADDR);
+    env.rt.caller_type.replace(*INIT_ACTOR_CODE_ID);
     env
 }
 
@@ -66,7 +66,7 @@ fn constructor_params(env: &TestEnv) -> ConstructorParams {
 
 #[test]
 fn simple_construction() {
-    let mut env = prepare_env();
+    let env = prepare_env();
     let params = constructor_params(&env);
 
     env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
@@ -108,7 +108,8 @@ fn simple_construction() {
     let proving_period_start = -2222;
     assert_eq!(proving_period_start, state.proving_period_start);
     // this is supposed to be the proving period cron
-    let dl_idx = (env.rt.epoch - proving_period_start) / env.rt.policy.wpost_challenge_window;
+    let dl_idx =
+        (*env.rt.epoch.borrow() - proving_period_start) / env.rt.policy.wpost_challenge_window;
     assert_eq!(dl_idx as u64, state.current_deadline);
 
     let deadlines = env.rt.store.get_cbor::<Deadlines>(&state.deadlines).unwrap().unwrap();
@@ -137,10 +138,10 @@ fn control_addresses_are_resolved_during_construction() {
     let control2id = Address::new_id(655);
 
     env.control_addrs = vec![control1, control2];
-    env.rt.actor_code_cids.insert(control1id, *ACCOUNT_ACTOR_CODE_ID);
-    env.rt.actor_code_cids.insert(control2id, *ACCOUNT_ACTOR_CODE_ID);
-    env.rt.id_addresses.insert(control1, control1id);
-    env.rt.id_addresses.insert(control2, control2id);
+    env.rt.actor_code_cids.borrow_mut().insert(control1id, *ACCOUNT_ACTOR_CODE_ID);
+    env.rt.actor_code_cids.borrow_mut().insert(control2id, *ACCOUNT_ACTOR_CODE_ID);
+    env.rt.id_addresses.borrow_mut().insert(control1, control1id);
+    env.rt.id_addresses.borrow_mut().insert(control2, control2id);
 
     let params = constructor_params(&env);
     env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);

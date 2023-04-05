@@ -22,10 +22,10 @@ fn fail_when_caller_is_not_the_provider_of_the_deal() {
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
 
-    let mut rt = setup();
+    let rt = setup();
     let provider2_addr = Address::new_id(201);
     let addrs = MinerAddresses { provider: provider2_addr, ..MinerAddresses::default() };
-    let deal_id = generate_and_publish_deal(&mut rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch);
+    let deal_id = generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch);
 
     let params = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry };
 
@@ -45,7 +45,7 @@ fn fail_when_caller_is_not_the_provider_of_the_deal() {
 
 #[test]
 fn fail_when_caller_is_not_a_storage_miner_actor() {
-    let mut rt = setup();
+    let rt = setup();
     rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, PROVIDER_ADDR);
 
@@ -64,7 +64,7 @@ fn fail_when_caller_is_not_a_storage_miner_actor() {
 
 #[test]
 fn fail_when_deal_has_not_been_published_before() {
-    let mut rt = setup();
+    let rt = setup();
     let params = ActivateDealsParams { deal_ids: vec![DealID::from(42u32)], sector_expiry: 0 };
 
     rt.expect_validate_caller_type(vec![Type::Miner]);
@@ -87,15 +87,15 @@ fn fail_when_deal_has_already_been_activated() {
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
 
-    let mut rt = setup();
+    let rt = setup();
     let deal_id = generate_and_publish_deal(
-        &mut rt,
+        &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
-    activate_deals(&mut rt, sector_expiry, PROVIDER_ADDR, 0, &[deal_id]);
+    activate_deals(&rt, sector_expiry, PROVIDER_ADDR, 0, &[deal_id]);
 
     rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
@@ -118,16 +118,16 @@ fn fail_when_deal_has_already_been_expired() {
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
 
-    let mut rt = setup();
+    let rt = setup();
     let deal_id = generate_and_publish_deal(
-        &mut rt,
+        &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
 
-    let deal_proposal = get_deal_proposal(&mut rt, deal_id);
+    let deal_proposal = get_deal_proposal(&rt, deal_id);
 
     let current = end_epoch + 25;
     rt.set_epoch(current);
@@ -140,9 +140,9 @@ fn fail_when_deal_has_already_been_expired() {
         ExitCode::OK,
     );
 
-    cron_tick(&mut rt);
+    cron_tick(&rt);
 
-    assert_deal_deleted(&mut rt, deal_id, deal_proposal);
+    assert_deal_deleted(&rt, deal_id, deal_proposal);
 
     let mut st: State = rt.get_state::<State>();
     st.next_id = deal_id + 1;
@@ -150,6 +150,6 @@ fn fail_when_deal_has_already_been_expired() {
     expect_abort_contains_message(
         EX_DEAL_EXPIRED,
         "expired",
-        activate_deals_raw(&mut rt, sector_expiry, PROVIDER_ADDR, 0, &[deal_id]),
+        activate_deals_raw(&rt, sector_expiry, PROVIDER_ADDR, 0, &[deal_id]),
     );
 }

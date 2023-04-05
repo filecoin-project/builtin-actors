@@ -81,7 +81,7 @@ non_existent:
         asm::new_contract("extcodesize", init, body).unwrap()
     };
 
-    let mut rt = util::construct_and_verify(bytecode);
+    let rt = util::construct_and_verify(bytecode);
 
     // a fake CID
     let bytecode_cid = Cid::try_from("baeaikaia").unwrap();
@@ -125,7 +125,7 @@ non_existent:
             None,
         );
 
-        let result = util::invoke_contract(&mut rt, &method);
+        let result = util::invoke_contract(&rt, &method);
         rt.verify();
         assert_eq!(U256::from_big_endian(&result), expected);
         rt.reset();
@@ -135,7 +135,7 @@ non_existent:
     let method = util::dispatch_num_word(1);
     let expected = U256::from(0x01);
     {
-        let result = util::invoke_contract(&mut rt, &method);
+        let result = util::invoke_contract(&rt, &method);
         rt.verify();
         assert_eq!(U256::from_big_endian(&result), expected);
         rt.reset();
@@ -145,7 +145,7 @@ non_existent:
     let method = util::dispatch_num_word(2);
     let expected = U256::from(0x00);
     {
-        let result = util::invoke_contract(&mut rt, &method);
+        let result = util::invoke_contract(&rt, &method);
         rt.verify();
         assert_eq!(U256::from_big_endian(&result), expected);
         rt.reset();
@@ -155,7 +155,7 @@ non_existent:
     let method = util::dispatch_num_word(3);
     let expected = U256::from(0x00);
     {
-        let result = util::invoke_contract(&mut rt, &method);
+        let result = util::invoke_contract(&rt, &method);
         rt.verify();
         assert_eq!(U256::from_big_endian(&result), expected);
         rt.reset();
@@ -165,7 +165,7 @@ non_existent:
     let method = util::dispatch_num_word(5);
     let expected = U256::from(0x00);
     {
-        let result = util::invoke_contract(&mut rt, &method);
+        let result = util::invoke_contract(&rt, &method);
         rt.verify();
         assert_eq!(U256::from_big_endian(&result), expected);
         rt.reset();
@@ -175,7 +175,7 @@ non_existent:
     let method = util::dispatch_num_word(4);
     let expected = U256::from(0x00);
     {
-        let result = util::invoke_contract(&mut rt, &method);
+        let result = util::invoke_contract(&rt, &method);
         rt.verify();
         assert_eq!(U256::from_big_endian(&result), expected);
         rt.reset();
@@ -227,7 +227,7 @@ account:
         asm::new_contract("extcodehash", init, body).unwrap()
     };
 
-    let mut rt = util::construct_and_verify(bytecode);
+    let rt = util::construct_and_verify(bytecode);
 
     // 0x88 is an EVM actor
     let evm_target = FILAddress::new_id(0x88);
@@ -241,7 +241,7 @@ account:
     let native_target = FILAddress::new_id(0x8A);
     rt.set_address_actor_type(native_target, *PLACEHOLDER_ACTOR_CODE_ID);
 
-    let empty_hash = empty_bytecode_hash(&mut rt);
+    let empty_hash = empty_bytecode_hash(&rt);
 
     // a random hash value
     let bytecode = b"foo bar boxy";
@@ -261,13 +261,13 @@ account:
     );
 
     // Evm code
-    let result = util::invoke_contract(&mut rt, &util::dispatch_num_word(0));
+    let result = util::invoke_contract(&rt, &util::dispatch_num_word(0));
     rt.verify();
     assert_eq!(U256::from_big_endian(&result), U256::from(bytecode_hash));
     rt.reset();
 
     // Native code is keccak256([0xfe])
-    let result = util::invoke_contract(&mut rt, &util::dispatch_num_word(1));
+    let result = util::invoke_contract(&rt, &util::dispatch_num_word(1));
     rt.verify();
     assert_eq!(
         U256::from_big_endian(&result),
@@ -276,13 +276,13 @@ account:
     rt.reset();
 
     // Non-existing contracts are 0
-    let result = util::invoke_contract(&mut rt, &util::dispatch_num_word(2));
+    let result = util::invoke_contract(&rt, &util::dispatch_num_word(2));
     rt.verify();
     assert_eq!(U256::from_big_endian(&result), U256::from(0));
     rt.reset();
 
     // _All_ existing accounts are empty hash
-    let result = util::invoke_contract(&mut rt, &util::dispatch_num_word(3));
+    let result = util::invoke_contract(&rt, &util::dispatch_num_word(3));
     rt.verify();
     assert_eq!(
         U256::from_big_endian(&result).to_bytes(),
@@ -296,7 +296,7 @@ account:
 
 #[test]
 fn test_getbytecodehash_method() {
-    let mut rt = util::construct_and_verify(Vec::new());
+    let rt = util::construct_and_verify(Vec::new());
     rt.expect_validate_caller_any();
 
     let res: BytecodeHash = rt
@@ -305,11 +305,11 @@ fn test_getbytecodehash_method() {
         .unwrap()
         .deserialize()
         .unwrap();
-    assert_eq!(<[u8; 32]>::from(res), empty_bytecode_hash(&mut rt))
+    assert_eq!(<[u8; 32]>::from(res), empty_bytecode_hash(&rt))
 }
 
 /// Keccak256 hash of &[]
-fn empty_bytecode_hash(rt: &mut impl Runtime) -> [u8; 32] {
+fn empty_bytecode_hash(rt: &impl Runtime) -> [u8; 32] {
     rt.hash(SupportedHashes::Keccak256, &[]).try_into().unwrap()
 }
 
@@ -380,7 +380,7 @@ precompile:
         asm::new_contract("extcodecopy", init, body).unwrap()
     };
 
-    let mut rt = util::construct_and_verify(bytecode);
+    let rt = util::construct_and_verify(bytecode);
 
     // 0x88 is an EVM actor
     let evm_target = FILAddress::new_id(0x88);
@@ -407,24 +407,24 @@ precompile:
         None,
     );
 
-    let result = util::invoke_contract(&mut rt, &util::dispatch_num_word(0));
+    let result = util::invoke_contract(&rt, &util::dispatch_num_word(0));
     rt.verify();
     assert_eq!(other_bytecode.as_slice(), result);
     rt.reset();
 
     // calling code copy on native actors return "invalid" instruction from EIP-141
-    let result = util::invoke_contract(&mut rt, &util::dispatch_num_word(1));
+    let result = util::invoke_contract(&rt, &util::dispatch_num_word(1));
     rt.verify();
     assert_eq!(vec![0xFE], result);
     rt.reset();
 
     // invalid addresses are flattened
-    let result = util::invoke_contract(&mut rt, &util::dispatch_num_word(2));
+    let result = util::invoke_contract(&rt, &util::dispatch_num_word(2));
     rt.verify();
     assert_eq!(U256::from_big_endian(&result), U256::from(0));
 
     // precompile addresses are flattened
-    let result = util::invoke_contract(&mut rt, &util::dispatch_num_word(3));
+    let result = util::invoke_contract(&rt, &util::dispatch_num_word(3));
     rt.verify();
     assert_eq!(U256::from_big_endian(&result), U256::from(0));
 }
@@ -470,7 +470,7 @@ init_extsize:
         asm::new_contract("ext_initcode", init, body).unwrap()
     };
 
-    let mut rt = util::init_construct_and_verify(bytecode, |rt| {
+    let rt = util::init_construct_and_verify(bytecode, |rt| {
         rt.expect_send(
             CONTRACT_ID,
             evm::Method::GetBytecodeHash as u64,
@@ -498,12 +498,12 @@ init_extsize:
     });
 
     // codehash
-    let result = util::invoke_contract(&mut rt, &util::dispatch_num_word(0));
+    let result = util::invoke_contract(&rt, &util::dispatch_num_word(0));
     rt.verify();
     assert_eq!(BytecodeHash::EMPTY.as_slice(), result);
 
     // codesize
-    let result = util::invoke_contract(&mut rt, &util::dispatch_num_word(1));
+    let result = util::invoke_contract(&rt, &util::dispatch_num_word(1));
     rt.verify();
     assert_eq!(U256::zero(), U256::from_big_endian(&result));
 }

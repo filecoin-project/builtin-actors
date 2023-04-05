@@ -16,6 +16,32 @@ pub struct ConstructorParams {
 
 pub type ResurrectParams = ConstructorParams;
 
+#[derive(Default, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct InvokeContractParams {
+    #[serde(with = "strict_bytes")]
+    pub input_data: Vec<u8>,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct InvokeContractReturn {
+    #[serde(with = "strict_bytes")]
+    pub output_data: Vec<u8>,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct BytecodeReturn {
+    pub code: Option<Cid>,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct GetStorageAtReturn {
+    pub storage: U256,
+}
+
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct DelegateCallParams {
     pub code: Cid,
@@ -26,6 +52,13 @@ pub struct DelegateCallParams {
     pub caller: EthAddress,
     /// The value passed in the original call.
     pub value: TokenAmount,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct DelegateCallReturn {
+    #[serde(with = "strict_bytes")]
+    pub return_data: Vec<u8>,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]

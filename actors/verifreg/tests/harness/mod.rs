@@ -1,18 +1,3 @@
-use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
-use frc46_token::token::types::{BurnParams, BurnReturn, TransferParams};
-use frc46_token::token::TOKEN_PRECISION;
-use fvm_actor_utils::receiver::UniversalReceiverParams;
-use fvm_ipld_encoding::RawBytes;
-use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser::{BigIntDe, BigIntSer};
-use fvm_shared::clock::ChainEpoch;
-use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
-use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::sector::SectorNumber;
-use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH};
-use num_traits::{ToPrimitive, Zero};
-
 use fil_actor_verifreg::testing::check_state_invariants;
 use fil_actor_verifreg::{
     ext, Actor as VerifregActor, AddVerifiedClientParams, AddVerifierParams, Allocation,
@@ -33,28 +18,65 @@ use fil_actors_runtime::{
     make_empty_map, ActorError, AsActorError, BatchReturn, DATACAP_TOKEN_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
+use frc46_token::token::types::{BurnParams, BurnReturn, TransferParams};
+use frc46_token::token::TOKEN_PRECISION;
+use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::RawBytes;
+use fvm_shared::address::Address;
+use fvm_shared::bigint::bigint_ser::{BigIntDe, BigIntSer};
+use fvm_shared::clock::ChainEpoch;
+use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
+use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::sector::SectorNumber;
+use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH};
+use num_traits::{ToPrimitive, Zero};
+use std::cell::RefCell;
+use std::collections::HashMap;
 
 pub const ROOT_ADDR: Address = Address::new_id(101);
 
+const TEST_VERIFIER_ADDR: u64 = 201;
+const TEST_VERIFIER2_ADDR: u64 = 202;
+const TEST_CLIENT_ADDR: u64 = 301;
+const TEST_CLIENT2_ADDR: u64 = 302;
+const TEST_CLIENT3_ADDR: u64 = 303;
+const TEST_CLIENT4_ADDR: u64 = 304;
+
 pub fn new_runtime() -> MockRuntime {
+    let test_verifier_addr = Address::new_id(TEST_VERIFIER_ADDR);
+    let test_verifier2_addr = Address::new_id(TEST_VERIFIER2_ADDR);
+    let test_client_addr = Address::new_id(TEST_CLIENT_ADDR);
+    let test_client2_addr = Address::new_id(TEST_CLIENT2_ADDR);
+    let test_client3_addr = Address::new_id(TEST_CLIENT3_ADDR);
+    let test_client4_addr = Address::new_id(TEST_CLIENT4_ADDR);
+    let mut actor_code_cids = HashMap::default();
+    actor_code_cids.insert(test_verifier_addr, *ACCOUNT_ACTOR_CODE_ID);
+    actor_code_cids.insert(test_verifier2_addr, *ACCOUNT_ACTOR_CODE_ID);
+    actor_code_cids.insert(test_client_addr, *ACCOUNT_ACTOR_CODE_ID);
+    actor_code_cids.insert(test_client2_addr, *ACCOUNT_ACTOR_CODE_ID);
+    actor_code_cids.insert(test_client3_addr, *ACCOUNT_ACTOR_CODE_ID);
+    actor_code_cids.insert(test_client4_addr, *ACCOUNT_ACTOR_CODE_ID);
     MockRuntime {
         receiver: VERIFIED_REGISTRY_ACTOR_ADDR,
-        caller: SYSTEM_ACTOR_ADDR,
-        caller_type: *SYSTEM_ACTOR_CODE_ID,
+        caller: RefCell::new(SYSTEM_ACTOR_ADDR),
+        caller_type: RefCell::new(*SYSTEM_ACTOR_CODE_ID),
+        actor_code_cids: RefCell::new(actor_code_cids),
         ..Default::default()
     }
 }
 
 // Sets the miner code/type for an actor ID
-pub fn add_miner(rt: &mut MockRuntime, id: ActorID) {
+pub fn add_miner(rt: &MockRuntime, id: ActorID) {
     rt.set_address_actor_type(Address::new_id(id), *MINER_ACTOR_CODE_ID);
 }
 
 pub fn new_harness() -> (Harness, MockRuntime) {
-    let mut rt = new_runtime();
+    let rt = new_runtime();
     let h = Harness { root: ROOT_ADDR };
-    h.construct_and_verify(&mut rt, &h.root);
+    h.construct_and_verify(&rt, &h.root);
     (h, rt)
 }
 
@@ -63,7 +85,7 @@ pub struct Harness {
 }
 
 impl Harness {
-    pub fn construct_and_verify(&self, rt: &mut MockRuntime, root_param: &Address) {
+    pub fn construct_and_verify(&self, rt: &MockRuntime, root_param: &Address) {
         rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         let ret = rt
@@ -84,7 +106,7 @@ impl Harness {
 
     pub fn add_verifier(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         verifier: &Address,
         allowance: &DataCap,
     ) -> Result<(), ActorError> {
@@ -93,7 +115,7 @@ impl Harness {
 
     pub fn add_verifier_with_existing_cap(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         verifier: &Address,
         allowance: &DataCap,
         cap: &DataCap, // Mocked data cap balance of the prospective verifier
@@ -123,11 +145,7 @@ impl Harness {
         Ok(())
     }
 
-    pub fn remove_verifier(
-        &self,
-        rt: &mut MockRuntime,
-        verifier: &Address,
-    ) -> Result<(), ActorError> {
+    pub fn remove_verifier(&self, rt: &MockRuntime, verifier: &Address) -> Result<(), ActorError> {
         rt.expect_validate_caller_addr(vec![self.root]);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.root);
         let ret = rt.call::<VerifregActor>(
@@ -165,7 +183,7 @@ impl Harness {
 
     pub fn add_client(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         verifier: &Address,
         client: &Address,
         allowance: &DataCap,
@@ -201,14 +219,14 @@ impl Harness {
     }
 
     pub fn check_state(&self, rt: &MockRuntime) {
-        let (_, acc) = check_state_invariants(&rt.get_state(), rt.store(), rt.epoch);
+        let (_, acc) = check_state_invariants(&rt.get_state(), rt.store(), *rt.epoch.borrow());
         acc.assert_empty();
     }
 
     // TODO this should be implemented through a call to verifreg but for now it modifies state directly
     pub fn create_alloc(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         alloc: &Allocation,
     ) -> Result<AllocationID, ActorError> {
         let mut st: State = rt.get_state();
@@ -225,7 +243,7 @@ impl Harness {
 
     pub fn load_alloc(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         client: ActorID,
         id: AllocationID,
     ) -> Option<Allocation> {
@@ -237,7 +255,7 @@ impl Harness {
     // Invokes the ClaimAllocations actor method
     pub fn claim_allocations(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         provider: ActorID,
         claim_allocs: Vec<SectorAllocationClaim>,
         datacap_burnt: u64,
@@ -276,7 +294,7 @@ impl Harness {
     // Invokes the RemoveExpiredAllocations actor method.
     pub fn remove_expired_allocations(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         client: ActorID,
         allocation_ids: Vec<AllocationID>,
         expected_datacap: u64,
@@ -313,7 +331,7 @@ impl Harness {
     // Invokes the RemoveExpiredClaims actor method.
     pub fn remove_expired_claims(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         provider: ActorID,
         claim_ids: Vec<ClaimID>,
     ) -> Result<RemoveExpiredClaimsReturn, ActorError> {
@@ -332,12 +350,7 @@ impl Harness {
         Ok(ret)
     }
 
-    pub fn load_claim(
-        &self,
-        rt: &mut MockRuntime,
-        provider: ActorID,
-        id: ClaimID,
-    ) -> Option<Claim> {
+    pub fn load_claim(&self, rt: &MockRuntime, provider: ActorID, id: ClaimID) -> Option<Claim> {
         let st: State = rt.get_state();
         let mut claims = st.load_claims(rt.store()).unwrap();
         claims.get(provider, id).unwrap().cloned()
@@ -345,7 +358,7 @@ impl Harness {
 
     pub fn receive_tokens(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         payload: FRC46TokenReceived,
         expected_alloc_results: BatchReturn,
         expected_extension_results: BatchReturn,
@@ -390,7 +403,7 @@ impl Harness {
     }
 
     // Creates a claim directly in state.
-    pub fn create_claim(&self, rt: &mut MockRuntime, claim: &Claim) -> Result<ClaimID, ActorError> {
+    pub fn create_claim(&self, rt: &MockRuntime, claim: &Claim) -> Result<ClaimID, ActorError> {
         let mut st: State = rt.get_state();
         let mut claims = st.load_claims(rt.store()).unwrap();
         let id = st.next_allocation_id;
@@ -405,7 +418,7 @@ impl Harness {
 
     pub fn get_claims(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         provider: ActorID,
         claim_ids: Vec<ClaimID>,
     ) -> Result<GetClaimsReturn, ActorError> {
@@ -425,7 +438,7 @@ impl Harness {
 
     pub fn extend_claim_terms(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         params: &ExtendClaimTermsParams,
     ) -> Result<ExtendClaimTermsReturn, ActorError> {
         rt.expect_validate_caller_any();
@@ -462,7 +475,7 @@ pub fn make_alloc_req(rt: &MockRuntime, provider: ActorID, size: u64) -> Allocat
         size: PaddedPieceSize(size),
         term_min: MINIMUM_VERIFIED_ALLOCATION_TERM,
         term_max: MAXIMUM_VERIFIED_ALLOCATION_TERM,
-        expiration: rt.epoch + 100,
+        expiration: *rt.epoch.borrow() + 100,
     }
 }
 

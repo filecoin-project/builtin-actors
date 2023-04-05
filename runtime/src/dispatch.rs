@@ -24,9 +24,9 @@ use crate::ActorError;
 /// ```
 #[macro_export]
 macro_rules! actor_dispatch {
-    ($($(#[$m:meta])* $(_)? $($method:ident)? => $func:ident $([$tag:ident])?,)*) => {
+    ($($(#[$m:meta])* $(_)? $($method:ident)|* => $func:ident $([$tag:ident])?,)*) => {
         fn invoke_method<RT>(
-            rt: &mut RT,
+            rt: &RT,
             method: fvm_shared::MethodNum,
             args: Option<fvm_ipld_encoding::ipld_block::IpldBlock>,
         ) -> Result<Option<fvm_ipld_encoding::ipld_block::IpldBlock>, $crate::ActorError>
@@ -37,7 +37,7 @@ macro_rules! actor_dispatch {
             $crate::builtin::shared::restrict_internal_api(rt, method)?;
             match <Self::Methods as num_traits::FromPrimitive>::from_u64(method) {
                 $($(#[$m])*
-                  $crate::actor_dispatch!(@pattern $($method)?) =>
+                  $crate::actor_dispatch!(@pattern $($method)|*) =>
                   $crate::actor_dispatch!(@target rt args method $func $($tag)?),)*
                 None => Err(actor_error!(unhandled_message; "invalid method: {}", method)),
             }
@@ -46,12 +46,15 @@ macro_rules! actor_dispatch {
     (@pattern) => {
         None
     };
-    (@pattern $method:ident) => {
-        Some(Self::Methods::$method)
+    (@pattern $($method:ident)|+) => {
+        Some($(Self::Methods::$method)|+)
     };
     (@target $rt:ident $args:ident $method:ident $func:ident raw) => {
         Self::$func($rt, $method, $args)
     };
+    (@target $rt:ident $args:ident $method:ident $func:ident default_params) => {{
+        $crate::dispatch_default($rt, Self::$func, &$args)
+    }};
     (@target $rt:ident $args:ident $method:ident $func:ident) => {
         $crate::dispatch($rt, Self::$func, &$args)
     };
@@ -59,9 +62,9 @@ macro_rules! actor_dispatch {
 
 #[macro_export]
 macro_rules! actor_dispatch_unrestricted {
-    ($($(#[$m:meta])* $(_)? $($method:ident)? => $func:ident $([$tag:ident])?,)*) => {
+    ($($(#[$m:meta])* $(_)? $($method:ident)|* => $func:ident $([$tag:ident])?,)*) => {
         fn invoke_method<RT>(
-            rt: &mut RT,
+            rt: &RT,
             method: fvm_shared::MethodNum,
             args: Option<fvm_ipld_encoding::ipld_block::IpldBlock>,
         ) -> Result<Option<fvm_ipld_encoding::ipld_block::IpldBlock>, $crate::ActorError>
@@ -71,7 +74,7 @@ macro_rules! actor_dispatch_unrestricted {
         {
             match <Self::Methods as num_traits::FromPrimitive>::from_u64(method) {
                 $($(#[$m])*
-                  $crate::actor_dispatch!(@pattern $($method)?) =>
+                  $crate::actor_dispatch!(@pattern $($method)|*) =>
                   $crate::actor_dispatch!(@target rt args method $func $($tag)?),)*
                 None => Err(actor_error!(unhandled_message; "invalid method: {}", method)),
             }
@@ -80,23 +83,22 @@ macro_rules! actor_dispatch_unrestricted {
     (@pattern) => {
         None
     };
-    (@pattern $method:ident) => {
-        Some(Self::Methods::$method)
+    (@pattern $($method:ident)|+) => {
+        Some($(Self::Methods::$method)|+)
     };
     (@target $rt:ident $args:ident $method:ident $func:ident raw) => {
         Self::$func($rt, $method, $args)
     };
+    (@target $rt:ident $args:ident $method:ident $func:ident default_params) => {{
+        $crate::dispatch_default($rt, Self::$func, &$args)
+    }};
     (@target $rt:ident $args:ident $method:ident $func:ident) => {
         $crate::dispatch($rt, Self::$func, &$args)
     };
 }
 
 pub trait Dispatch<'de, RT> {
-    fn call(
-        self,
-        rt: &mut RT,
-        args: &'de Option<IpldBlock>,
-    ) -> Result<Option<IpldBlock>, ActorError>;
+    fn call(self, rt: &RT, args: &'de Option<IpldBlock>) -> Result<Option<IpldBlock>, ActorError>;
 }
 
 pub struct Dispatcher<F, A> {
@@ -116,8 +118,9 @@ impl<F, A> Dispatcher<F, A> {
 ///
 /// - Dispatching None/Some based on the number of parameters (0/1).
 /// - Returning None if the return type is `Result<(), ActorError>`.
+#[doc(hidden)]
 pub fn dispatch<'de, F, A, RT>(
-    rt: &mut RT,
+    rt: &RT,
     func: F,
     arg: &'de Option<IpldBlock>,
 ) -> Result<Option<IpldBlock>, ActorError>
@@ -125,6 +128,22 @@ where
     Dispatcher<F, A>: Dispatch<'de, RT>,
 {
     Dispatcher::new(func).call(rt, arg)
+}
+
+/// Like [`dispatch`], but pass the default value to if there are no parameters.
+#[doc(hidden)]
+pub fn dispatch_default<'de, F, A, R, RT>(
+    rt: &RT,
+    func: F,
+    arg: &'de Option<IpldBlock>,
+) -> Result<Option<IpldBlock>, ActorError>
+where
+    F: FnOnce(&RT, A) -> Result<R, ActorError>,
+    A: Deserialize<'de> + Default,
+    R: Serialize,
+{
+    let arg = arg.as_ref().map(|b| b.deserialize()).transpose()?.unwrap_or_default();
+    maybe_into_block((func)(rt, arg)?)
 }
 
 /// Convert the passed value into an IPLD Block, or None if it's `()`.
@@ -138,14 +157,10 @@ fn maybe_into_block<T: Serialize>(v: T) -> Result<Option<IpldBlock>, ActorError>
 
 impl<'de, F, R, RT> Dispatch<'de, RT> for Dispatcher<F, ()>
 where
-    F: FnOnce(&mut RT) -> Result<R, ActorError>,
+    F: FnOnce(&RT) -> Result<R, ActorError>,
     R: Serialize,
 {
-    fn call(
-        self,
-        rt: &mut RT,
-        args: &'de Option<IpldBlock>,
-    ) -> Result<Option<IpldBlock>, ActorError> {
+    fn call(self, rt: &RT, args: &'de Option<IpldBlock>) -> Result<Option<IpldBlock>, ActorError> {
         match args {
             None => maybe_into_block((self.func)(rt)?),
             Some(_) => Err(ActorError::illegal_argument("method expects no arguments".into())),
@@ -155,15 +170,11 @@ where
 
 impl<'de, F, A, R, RT> Dispatch<'de, RT> for Dispatcher<F, (A,)>
 where
-    F: FnOnce(&mut RT, A) -> Result<R, ActorError>,
+    F: FnOnce(&RT, A) -> Result<R, ActorError>,
     A: Deserialize<'de>,
     R: Serialize,
 {
-    fn call(
-        self,
-        rt: &mut RT,
-        args: &'de Option<IpldBlock>,
-    ) -> Result<Option<IpldBlock>, ActorError> {
+    fn call(self, rt: &RT, args: &'de Option<IpldBlock>) -> Result<Option<IpldBlock>, ActorError> {
         match args {
             None => Err(ActorError::illegal_argument("method expects arguments".into())),
             Some(arg) => maybe_into_block((self.func)(rt, arg.deserialize()?)?),
@@ -186,29 +197,29 @@ fn test_dispatch() {
     struct MockRuntime;
     impl Runtime for MockRuntime {}
 
-    fn with_arg(_: &mut impl Runtime, foo: SomeArgs) -> Result<(), ActorError> {
+    fn with_arg(_: &impl Runtime, foo: SomeArgs) -> Result<(), ActorError> {
         assert_eq!(foo.foo, "foo");
         Ok(())
     }
 
-    fn with_arg_ret(_: &mut impl Runtime, foo: SomeArgs) -> Result<SomeArgs, ActorError> {
+    fn with_arg_ret(_: &impl Runtime, foo: SomeArgs) -> Result<SomeArgs, ActorError> {
         Ok(foo)
     }
 
-    fn without_arg(_: &mut impl Runtime) -> Result<(), ActorError> {
+    fn without_arg(_: &impl Runtime) -> Result<(), ActorError> {
         Ok(())
     }
 
-    let mut rt = MockRuntime;
+    let rt = MockRuntime;
     let arg = IpldBlock::serialize_cbor(&SomeArgs { foo: "foo".into() })
         .expect("failed to serialize arguments");
 
     // Correct dispatch
-    assert!(dispatch(&mut rt, with_arg, &arg).expect("failed to dispatch").is_none());
-    assert!(dispatch(&mut rt, without_arg, &None).expect("failed to dispatch").is_none());
-    assert_eq!(dispatch(&mut rt, with_arg_ret, &arg).expect("failed to dispatch"), arg);
+    assert!(dispatch(&rt, with_arg, &arg).expect("failed to dispatch").is_none());
+    assert!(dispatch(&rt, without_arg, &None).expect("failed to dispatch").is_none());
+    assert_eq!(dispatch(&rt, with_arg_ret, &arg).expect("failed to dispatch"), arg);
 
     // Incorrect dispatch
-    let _ = dispatch(&mut rt, with_arg, &None).expect_err("should have required an argument");
-    let _ = dispatch(&mut rt, without_arg, &arg).expect_err("should have required an argument");
+    let _ = dispatch(&rt, with_arg, &None).expect_err("should have required an argument");
+    let _ = dispatch(&rt, without_arg, &arg).expect_err("should have required an argument");
 }

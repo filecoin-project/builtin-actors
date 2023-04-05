@@ -69,12 +69,12 @@ return
 fn test_magic_calc() {
     let contract = magic_calc_contract();
 
-    let mut rt = util::construct_and_verify(contract);
+    let rt = util::construct_and_verify(contract);
 
     // invoke contract -- get_magic
     let contract_params = vec![0u8; 32];
 
-    let result = util::invoke_contract(&mut rt, &contract_params);
+    let result = util::invoke_contract(&rt, &contract_params);
     assert_eq!(U256::from_big_endian(&result), U256::from(0x42));
 
     // invoke contract -- add_magic
@@ -82,7 +82,7 @@ fn test_magic_calc() {
     contract_params[3] = 0x01;
     contract_params[35] = 0x01;
 
-    let result = util::invoke_contract(&mut rt, &contract_params);
+    let result = util::invoke_contract(&rt, &contract_params);
     assert_eq!(U256::from_big_endian(&result), U256::from(0x43));
 
     // invoke contract -- mul_magic
@@ -90,6 +90,6 @@ fn test_magic_calc() {
     contract_params[3] = 0x02;
     contract_params[35] = 0x02;
 
-    let result = util::invoke_contract(&mut rt, &contract_params);
+    let result = util::invoke_contract(&rt, &contract_params);
     assert_eq!(U256::from_big_endian(&result), U256::from(0x84));
 }

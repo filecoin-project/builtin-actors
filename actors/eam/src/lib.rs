@@ -111,7 +111,7 @@ fn can_assign_address(addr: &EthAddress) -> bool {
 }
 
 fn create_actor(
-    rt: &mut impl Runtime,
+    rt: &impl Runtime,
     creator: EthAddress,
     new_addr: EthAddress,
     initcode: Vec<u8>,
@@ -172,7 +172,7 @@ fn create_actor(
     Ok(Return::from_exec4(ret, new_addr))
 }
 
-fn resolve_eth_address(rt: &mut impl Runtime, actor_id: ActorID) -> Result<EthAddress, ActorError> {
+fn resolve_eth_address(rt: &impl Runtime, actor_id: ActorID) -> Result<EthAddress, ActorError> {
     match rt.lookup_delegated_address(actor_id).map(|a| *a.payload()) {
         Some(Payload::Delegated(addr)) if addr.namespace() == EAM_ACTOR_ID => Ok(EthAddress(
             addr.subaddress()
@@ -183,7 +183,7 @@ fn resolve_eth_address(rt: &mut impl Runtime, actor_id: ActorID) -> Result<EthAd
     }
 }
 
-fn resolve_caller_external(rt: &mut impl Runtime) -> Result<(EthAddress, EthAddress), ActorError> {
+fn resolve_caller_external(rt: &impl Runtime) -> Result<(EthAddress, EthAddress), ActorError> {
     let caller = rt.message().caller();
     let caller_id = caller.id().unwrap();
     let caller_code_cid = rt.get_actor_code_cid(&caller_id).expect("failed to lookup caller code");
@@ -227,7 +227,7 @@ fn resolve_caller_external(rt: &mut impl Runtime) -> Result<(EthAddress, EthAddr
 pub struct EamActor;
 
 impl EamActor {
-    pub fn constructor(rt: &mut impl Runtime) -> Result<(), ActorError> {
+    pub fn constructor(rt: &impl Runtime) -> Result<(), ActorError> {
         let actor_id = rt.resolve_address(&rt.message().receiver()).unwrap();
         if actor_id != EAM_ACTOR_ID {
             return Err(ActorError::forbidden(format!(
@@ -240,7 +240,7 @@ impl EamActor {
     /// Create a new contract per the EVM's CREATE rules.
     ///
     /// Permissions: May be called by the EVM.
-    pub fn create(rt: &mut impl Runtime, params: CreateParams) -> Result<CreateReturn, ActorError> {
+    pub fn create(rt: &impl Runtime, params: CreateParams) -> Result<CreateReturn, ActorError> {
         // We only allow EVM actors to call this.
         rt.validate_immediate_caller_type(&[Type::EVM])?;
         let caller_addr = resolve_eth_address(rt, rt.message().caller().id().unwrap())?;
@@ -255,10 +255,7 @@ impl EamActor {
     /// Create a new contract per the EVM's CREATE2 rules.
     ///
     /// Permissions: May be called by the EVM.
-    pub fn create2(
-        rt: &mut impl Runtime,
-        params: Create2Params,
-    ) -> Result<Create2Return, ActorError> {
+    pub fn create2(rt: &impl Runtime, params: Create2Params) -> Result<Create2Return, ActorError> {
         // We only allow EVM actors to call this.
         rt.validate_immediate_caller_type(&[Type::EVM])?;
         let caller_addr = resolve_eth_address(rt, rt.message().caller().id().unwrap())?;
@@ -278,7 +275,7 @@ impl EamActor {
     ///
     /// Permissions: May be called by builtin or eth accounts.
     pub fn create_external(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: CreateExternalParams,
     ) -> Result<CreateExternalReturn, ActorError> {
         // We only accept calls by top-level accounts.
@@ -293,6 +290,11 @@ impl EamActor {
 
 impl ActorCode for EamActor {
     type Methods = Method;
+
+    fn name() -> &'static str {
+        "EVMAddressManager"
+    }
+
     actor_dispatch_unrestricted! {
         Constructor => constructor,
         Create => create,
@@ -312,14 +314,14 @@ mod test {
 
     #[test]
     fn test_create_actor_rejects() {
-        let mut rt = MockRuntime::default();
+        let rt = MockRuntime::default();
         let creator = EthAddress::from_id(1);
 
         // Reject ID.
         let new_addr = EthAddress::from_id(8224);
         assert_eq!(
             ExitCode::USR_FORBIDDEN,
-            create_actor(&mut rt, creator, new_addr, Vec::new()).unwrap_err().exit_code()
+            create_actor(&rt, creator, new_addr, Vec::new()).unwrap_err().exit_code()
         );
 
         // Reject EVM Precompile.
@@ -327,21 +329,21 @@ mod test {
         new_addr.0[19] = 0x20;
         assert_eq!(
             ExitCode::USR_FORBIDDEN,
-            create_actor(&mut rt, creator, new_addr, Vec::new()).unwrap_err().exit_code()
+            create_actor(&rt, creator, new_addr, Vec::new()).unwrap_err().exit_code()
         );
 
         // Reject Native Precompile.
         new_addr.0[0] = 0xfe;
         assert_eq!(
             ExitCode::USR_FORBIDDEN,
-            create_actor(&mut rt, creator, new_addr, Vec::new()).unwrap_err().exit_code()
+            create_actor(&rt, creator, new_addr, Vec::new()).unwrap_err().exit_code()
         );
 
         // Reject Null.
         let new_addr = EthAddress::null();
         assert_eq!(
             ExitCode::USR_FORBIDDEN,
-            create_actor(&mut rt, creator, new_addr, Vec::new()).unwrap_err().exit_code()
+            create_actor(&rt, creator, new_addr, Vec::new()).unwrap_err().exit_code()
         );
     }
 

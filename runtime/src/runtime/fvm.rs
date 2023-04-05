@@ -32,6 +32,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 #[cfg(feature = "fake-proofs")]
 use sha2::{Digest, Sha256};
+use std::cell::RefCell;
 
 use crate::runtime::actor_blockstore::ActorBlockstore;
 use crate::runtime::builtins::Type;
@@ -46,9 +47,9 @@ pub struct FvmRuntime<B = ActorBlockstore> {
     blockstore: B,
     /// Indicates whether we are in a state transaction. During such, sending
     /// messages is prohibited.
-    in_transaction: bool,
+    in_transaction: RefCell<bool>,
     /// Indicates that the caller has been validated.
-    caller_validated: bool,
+    caller_validated: RefCell<bool>,
     /// The runtime policy
     policy: Policy,
 }
@@ -57,16 +58,16 @@ impl Default for FvmRuntime {
     fn default() -> Self {
         FvmRuntime {
             blockstore: ActorBlockstore,
-            in_transaction: false,
-            caller_validated: false,
+            in_transaction: RefCell::new(false),
+            caller_validated: RefCell::new(false),
             policy: Policy::default(),
         }
     }
 }
 
 impl<B> FvmRuntime<B> {
-    fn assert_not_validated(&mut self) -> Result<(), ActorError> {
-        if self.caller_validated {
+    fn assert_not_validated(&self) -> Result<(), ActorError> {
+        if *self.caller_validated.borrow() {
             return Err(actor_error!(
                 assertion_failed,
                 "Method must validate caller identity exactly once"
@@ -132,20 +133,20 @@ where
         fvm::network::chain_id()
     }
 
-    fn validate_immediate_caller_accept_any(&mut self) -> Result<(), ActorError> {
+    fn validate_immediate_caller_accept_any(&self) -> Result<(), ActorError> {
         self.assert_not_validated()?;
-        self.caller_validated = true;
+        self.caller_validated.replace(true);
         Ok(())
     }
 
-    fn validate_immediate_caller_is<'a, I>(&mut self, addresses: I) -> Result<(), ActorError>
+    fn validate_immediate_caller_is<'a, I>(&self, addresses: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Address>,
     {
         self.assert_not_validated()?;
         let caller_addr = self.message().caller();
         if addresses.into_iter().any(|a| *a == caller_addr) {
-            self.caller_validated = true;
+            self.caller_validated.replace(true);
             Ok(())
         } else {
             Err(actor_error!(forbidden;
@@ -154,7 +155,7 @@ where
         }
     }
 
-    fn validate_immediate_caller_namespace<I>(&mut self, addresses: I) -> Result<(), ActorError>
+    fn validate_immediate_caller_namespace<I>(&self, addresses: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = u64>,
     {
@@ -166,7 +167,7 @@ where
             .into_iter()
             .any(|a| matches!(caller_f4, Some(Payload::Delegated(d)) if d.namespace() == a))
         {
-            self.caller_validated = true;
+            self.caller_validated.replace(true);
             Ok(())
         } else {
             Err(actor_error!(forbidden;
@@ -175,7 +176,7 @@ where
         }
     }
 
-    fn validate_immediate_caller_type<'a, I>(&mut self, types: I) -> Result<(), ActorError>
+    fn validate_immediate_caller_type<'a, I>(&self, types: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Type>,
     {
@@ -188,7 +189,7 @@ where
 
         match self.resolve_builtin_actor_type(&caller_cid) {
             Some(typ) if types.into_iter().any(|t| *t == typ) => {
-                self.caller_validated = true;
+                self.caller_validated.replace(true);
                 Ok(())
             }
             _ => Err(actor_error!(forbidden;
@@ -260,14 +261,14 @@ where
         Ok(fvm::sself::root()?)
     }
 
-    fn set_state_root(&mut self, root: &Cid) -> Result<(), ActorError> {
+    fn set_state_root(&self, root: &Cid) -> Result<(), ActorError> {
         Ok(fvm::sself::set_root(root)?)
     }
 
-    fn transaction<S, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
+    fn transaction<S, RT, F>(&self, f: F) -> Result<RT, ActorError>
     where
         S: Serialize + DeserializeOwned,
-        F: FnOnce(&mut S, &mut Self) -> Result<RT, ActorError>,
+        F: FnOnce(&mut S, &Self) -> Result<RT, ActorError>,
     {
         let state_cid = fvm::sself::root()
             .map_err(|_| actor_error!(illegal_argument; "failed to get actor root state CID"))?;
@@ -277,9 +278,9 @@ where
             .map_err(|_| actor_error!(illegal_argument; "failed to get actor state"))?
             .expect("State does not exist for actor state root");
 
-        self.in_transaction = true;
+        self.in_transaction.replace(true);
         let result = f(&mut state, self);
-        self.in_transaction = false;
+        self.in_transaction.replace(false);
 
         let ret = result?;
         let new_root = ActorBlockstore.put_cbor(&state, Code::Blake2b256)
@@ -301,7 +302,7 @@ where
         gas_limit: Option<u64>,
         flags: SendFlags,
     ) -> Result<Response, SendError> {
-        if self.in_transaction {
+        if *self.in_transaction.borrow() {
             // Note: It's slightly improper to call this ErrorNumber::IllegalOperation,
             // since the error arises before getting to the VM.
             return Err(SendError(ErrorNumber::IllegalOperation));
@@ -310,17 +311,17 @@ where
         fvm::send::send(to, method, params, value, gas_limit, flags).map_err(SendError)
     }
 
-    fn new_actor_address(&mut self) -> Result<Address, ActorError> {
+    fn new_actor_address(&self) -> Result<Address, ActorError> {
         Ok(fvm::actor::next_actor_address())
     }
 
     fn create_actor(
-        &mut self,
+        &self,
         code_id: Cid,
         actor_id: ActorID,
         predictable_address: Option<Address>,
     ) -> Result<(), ActorError> {
-        if self.in_transaction {
+        if *self.in_transaction.borrow() {
             return Err(
                 actor_error!(assertion_failed; "create_actor is not allowed during transaction"),
             );
@@ -334,8 +335,8 @@ where
         })
     }
 
-    fn delete_actor(&mut self, beneficiary: &Address) -> Result<(), ActorError> {
-        if self.in_transaction {
+    fn delete_actor(&self, beneficiary: &Address) -> Result<(), ActorError> {
+        if *self.in_transaction.borrow() {
             return Err(
                 actor_error!(assertion_failed; "delete_actor is not allowed during transaction"),
             );
@@ -347,7 +348,7 @@ where
         fvm::network::total_fil_circ_supply()
     }
 
-    fn charge_gas(&mut self, name: &'static str, compute: i64) {
+    fn charge_gas(&self, name: &'static str, compute: i64) {
         fvm::gas::charge(name, compute as u64)
     }
 
@@ -568,7 +569,7 @@ where
 /// 5a. In case of error, aborts the execution with the emitted exit code, or
 /// 5b. In case of success, stores the return data as a block and returns the latter.
 pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
-    init_logging();
+    init_logging(C::name());
 
     std::panic::set_hook(Box::new(|info| {
         fvm::vm::abort(ExitCode::USR_ASSERTION_FAILED.value(), Some(&format!("{}", info)))
@@ -578,16 +579,16 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
     let params = fvm::message::params_raw(params).expect("params block invalid");
 
     // Construct a new runtime.
-    let mut rt = FvmRuntime::default();
+    let rt = FvmRuntime::default();
     // Invoke the method, aborting if the actor returns an errored exit code.
-    let ret = C::invoke_method(&mut rt, method, params).unwrap_or_else(|mut err| {
+    let ret = C::invoke_method(&rt, method, params).unwrap_or_else(|mut err| {
         fvm::vm::exit(err.exit_code().value(), err.take_data(), Some(err.msg()))
     });
 
     // Abort with "assertion failed" if the actor failed to validate the caller somewhere.
     // We do this after handling the error, because the actor may have encountered an error before
     // it even could validate the caller.
-    if !rt.caller_validated {
+    if !*rt.caller_validated.borrow() {
         fvm::vm::abort(ExitCode::USR_ASSERTION_FAILED.value(), Some("failed to validate caller"))
     }
 
@@ -608,8 +609,11 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
 ///
 /// Note: this is similar to fvm::debug::init_logging() from the FVM SDK, but
 /// that doesn't work (at FVM SDK v2.2).
-fn init_logging() {
-    struct Logger;
+fn init_logging(actor_name: &'static str) {
+    struct Logger {
+        actor_name: &'static str,
+        actor_id: ActorID,
+    }
 
     impl log::Log for Logger {
         fn enabled(&self, _: &log::Metadata) -> bool {
@@ -622,7 +626,13 @@ fn init_logging() {
             // But logging must have been enabled at initialisation time in order for
             // the logger to be installed.
             // There's currently no use for dynamically disabling logging, so just skip checking.
-            let msg = format!("[{}] {}", record.level(), record.args());
+            let msg = format!(
+                "[{}]<{}::{}> {}",
+                record.level(),
+                self.actor_name,
+                self.actor_id,
+                record.args()
+            );
             fvm::debug::log(msg);
         }
 
@@ -630,7 +640,8 @@ fn init_logging() {
     }
 
     if fvm::debug::enabled() {
-        log::set_logger(&Logger).expect("failed to enable logging");
+        let logger = Box::new(Logger { actor_name, actor_id: fvm::message::receiver() });
+        log::set_boxed_logger(logger).expect("failed to enable logging");
         log::set_max_level(log::LevelFilter::Trace);
     }
 }

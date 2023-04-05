@@ -77,12 +77,12 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for Registry Actor
-    pub fn constructor(rt: &mut impl Runtime, root_key: Address) -> Result<(), ActorError> {
+    pub fn constructor(rt: &impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         // root should be an ID address
         let id_addr = rt
-            .resolve_address(&root_key)
+            .resolve_address(&params.root_key)
             .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "root should be an ID address")?;
 
         let st = State::new(rt.store(), Address::new_id(id_addr))
@@ -92,10 +92,7 @@ impl Actor {
         Ok(())
     }
 
-    pub fn add_verifier(
-        rt: &mut impl Runtime,
-        params: AddVerifierParams,
-    ) -> Result<(), ActorError> {
+    pub fn add_verifier(rt: &impl Runtime, params: AddVerifierParams) -> Result<(), ActorError> {
         if params.allowance < rt.policy().minimum_verified_allocation_size {
             return Err(actor_error!(
                 illegal_argument,
@@ -105,8 +102,7 @@ impl Actor {
             ));
         }
 
-        let verifier = resolve_to_actor_id(rt, &params.address)?;
-
+        let verifier = resolve_to_actor_id(rt, &params.address, true)?;
         let verifier = Address::new_id(verifier);
 
         let st: State = rt.state()?;
@@ -134,20 +130,21 @@ impl Actor {
         })
     }
 
-    pub fn remove_verifier(rt: &mut impl Runtime, params: Address) -> Result<(), ActorError> {
-        let verifier = resolve_to_actor_id(rt, &params)?;
+    pub fn remove_verifier(
+        rt: &impl Runtime,
+        params: RemoveVerifierParams,
+    ) -> Result<(), ActorError> {
+        let verifier = resolve_to_actor_id(rt, &params.verifier, false)?;
         let verifier = Address::new_id(verifier);
 
-        let state: State = rt.state()?;
-        rt.validate_immediate_caller_is(std::iter::once(&state.root_key))?;
-
         rt.transaction(|st: &mut State, rt| {
+            rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
             st.remove_verifier(rt.store(), &verifier).context("failed to remove verifier")
         })
     }
 
     pub fn add_verified_client(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: AddVerifiedClientParams,
     ) -> Result<(), ActorError> {
         // The caller will be verified by checking table below
@@ -162,42 +159,41 @@ impl Actor {
             ));
         }
 
-        let client = resolve_to_actor_id(rt, &params.address)?;
+        let client = resolve_to_actor_id(rt, &params.address, true)?;
         let client = Address::new_id(client);
 
-        let st: State = rt.state()?;
-        if client == st.root_key {
-            return Err(actor_error!(illegal_argument, "root cannot be added as client"));
-        }
-
-        // Validate caller is one of the verifiers, i.e. has an allowance (even if zero).
-        let verifier = rt.message().caller();
-        let verifier_cap = st
-            .get_verifier_cap(rt.store(), &verifier)?
-            .ok_or_else(|| actor_error!(not_found, "caller {} is not a verifier", verifier))?;
-
-        // Disallow existing verifiers as clients.
-        if st.get_verifier_cap(rt.store(), &client)?.is_some() {
-            return Err(actor_error!(
-                illegal_argument,
-                "verifier {} cannot be added as a verified client",
-                client
-            ));
-        }
-
-        // Compute new verifier allowance.
-        if verifier_cap < params.allowance {
-            return Err(actor_error!(
-                illegal_argument,
-                "add more DataCap {} for client than allocated {}",
-                params.allowance,
-                verifier_cap
-            ));
-        }
-
-        // Reduce verifier's cap.
-        let new_verifier_cap = verifier_cap - &params.allowance;
         rt.transaction(|st: &mut State, rt| {
+            if client == st.root_key {
+                return Err(actor_error!(illegal_argument, "root cannot be added as client"));
+            }
+
+            // Validate caller is one of the verifiers, i.e. has an allowance (even if zero).
+            let verifier = rt.message().caller();
+            let verifier_cap = st
+                .get_verifier_cap(rt.store(), &verifier)?
+                .ok_or_else(|| actor_error!(not_found, "caller {} is not a verifier", verifier))?;
+
+            // Disallow existing verifiers as clients.
+            if st.get_verifier_cap(rt.store(), &client)?.is_some() {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "verifier {} cannot be added as a verified client",
+                    client
+                ));
+            }
+
+            // Compute new verifier allowance.
+            if verifier_cap < params.allowance {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "add more DataCap {} for client than allocated {}",
+                    params.allowance,
+                    verifier_cap
+                ));
+            }
+
+            // Reduce verifier's cap.
+            let new_verifier_cap = verifier_cap - &params.allowance;
             st.put_verifier(rt.store(), &verifier, &new_verifier_cap)
                 .context("failed to update verifier allowance")
         })?;
@@ -213,16 +209,16 @@ impl Actor {
 
     /// Removes DataCap allocated to a verified client.
     pub fn remove_verified_client_data_cap(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: RemoveDataCapParams,
     ) -> Result<RemoveDataCapReturn, ActorError> {
-        let client = resolve_to_actor_id(rt, &params.verified_client_to_remove)?;
+        let client = resolve_to_actor_id(rt, &params.verified_client_to_remove, false)?;
         let client = Address::new_id(client);
 
-        let verifier_1 = resolve_to_actor_id(rt, &params.verifier_request_1.verifier)?;
+        let verifier_1 = resolve_to_actor_id(rt, &params.verifier_request_1.verifier, true)?;
         let verifier_1 = Address::new_id(verifier_1);
 
-        let verifier_2 = resolve_to_actor_id(rt, &params.verifier_request_2.verifier)?;
+        let verifier_2 = resolve_to_actor_id(rt, &params.verifier_request_2.verifier, true)?;
         let verifier_2 = Address::new_id(verifier_2);
 
         if verifier_1 == verifier_2 {
@@ -308,7 +304,7 @@ impl Actor {
     // When removed, the DataCap tokens are transferred back to the client.
     // If no allocations are specified, all eligible allocations are removed.
     pub fn remove_expired_allocations(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: RemoveExpiredAllocationsParams,
     ) -> Result<RemoveExpiredAllocationsReturn, ActorError> {
         // Since the allocations are expired, this is safe to be called by anyone.
@@ -371,7 +367,7 @@ impl Actor {
     // For each allocation claim, the registry checks that the provided piece CID
     // and size match that of the allocation.
     pub fn claim_allocations(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: ClaimAllocationsParams,
     ) -> Result<ClaimAllocationsReturn, ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
@@ -470,7 +466,7 @@ impl Actor {
 
     // get claims for a provider
     pub fn get_claims(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: GetClaimsParams,
     ) -> Result<GetClaimsReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -503,7 +499,7 @@ impl Actor {
     /// Note that this method can't extend the term past the original limit,
     /// even if the term has previously been extended past that by spending new datacap.
     pub fn extend_claim_terms(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: ExtendClaimTermsParams,
     ) -> Result<ExtendClaimTermsReturn, ActorError> {
         // Permissions are checked per-claim.
@@ -566,7 +562,7 @@ impl Actor {
     // A claim may be removed after its maximum term has elapsed (by anyone).
     // If no claims are specified, all eligible claims are removed.
     pub fn remove_expired_claims(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: RemoveExpiredClaimsParams,
     ) -> Result<RemoveExpiredClaimsReturn, ActorError> {
         // Since the claims are expired, this is safe to be called by anyone.
@@ -615,7 +611,7 @@ impl Actor {
     // or the transfer will be rejected.
     // Returns the ids of the created allocations.
     pub fn universal_receiver_hook(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: UniversalReceiverParams,
     ) -> Result<AllocationsResponse, ActorError> {
         // Accept only the data cap token.
@@ -718,7 +714,7 @@ fn is_verifier(rt: &impl Runtime, st: &State, address: Address) -> Result<bool, 
 }
 
 // Invokes Balance on the data cap token actor, and converts the result to whole units of data cap.
-fn balance(rt: &mut impl Runtime, owner: &Address) -> Result<DataCap, ActorError> {
+fn balance(rt: &impl Runtime, owner: &Address) -> Result<DataCap, ActorError> {
     let params = IpldBlock::serialize_cbor(owner)?;
     let x: TokenAmount = deserialize_block(
         extract_send_result(rt.send_simple(
@@ -734,7 +730,7 @@ fn balance(rt: &mut impl Runtime, owner: &Address) -> Result<DataCap, ActorError
 
 // Invokes Mint on a data cap token actor for whole units of data cap.
 fn mint(
-    rt: &mut impl Runtime,
+    rt: &impl Runtime,
     to: &Address,
     amount: &DataCap,
     operators: Vec<Address>,
@@ -752,7 +748,7 @@ fn mint(
 }
 
 // Invokes Burn on a data cap token actor for whole units of data cap.
-fn burn(rt: &mut impl Runtime, amount: &DataCap) -> Result<(), ActorError> {
+fn burn(rt: &impl Runtime, amount: &DataCap) -> Result<(), ActorError> {
     if amount.is_zero() {
         return Ok(());
     }
@@ -772,7 +768,7 @@ fn burn(rt: &mut impl Runtime, amount: &DataCap) -> Result<(), ActorError> {
 }
 
 // Invokes Destroy on a data cap token actor for whole units of data cap.
-fn destroy(rt: &mut impl Runtime, owner: &Address, amount: &DataCap) -> Result<(), ActorError> {
+fn destroy(rt: &impl Runtime, owner: &Address, amount: &DataCap) -> Result<(), ActorError> {
     if amount.is_zero() {
         return Ok(());
     }
@@ -789,7 +785,7 @@ fn destroy(rt: &mut impl Runtime, owner: &Address, amount: &DataCap) -> Result<(
 }
 
 // Invokes transfer on a data cap token actor for whole units of data cap.
-fn transfer(rt: &mut impl Runtime, to: ActorID, amount: &DataCap) -> Result<(), ActorError> {
+fn transfer(rt: &impl Runtime, to: ActorID, amount: &DataCap) -> Result<(), ActorError> {
     let token_amt = datacap_to_tokens(amount);
     let params = TransferParams {
         to: Address::new_id(to),
@@ -874,7 +870,7 @@ fn remove_data_cap_request_is_valid(
 
     let payload = [SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP, b.bytes()].concat();
 
-    extract_send_result(rt.send(
+    if !extract_send_result(rt.send(
         &request.verifier,
         ext::account::AUTHENTICATE_MESSAGE_METHOD,
         IpldBlock::serialize_cbor(&ext::account::AuthenticateMessageParams {
@@ -885,8 +881,13 @@ fn remove_data_cap_request_is_valid(
         None,
         SendFlags::READ_ONLY,
     ))
-    .map_err(|e| e.wrap("proposal authentication failed"))?;
-    Ok(())
+    .and_then(deserialize_block)
+    .context("proposal authentication failed")?
+    {
+        Err(actor_error!(illegal_argument, "proposal authentication failed"))
+    } else {
+        Ok(())
+    }
 }
 
 // Deserializes and validates a receiver hook payload, expecting only an FRC-46 transfer.
@@ -1030,7 +1031,7 @@ fn validate_claim_extension(
 }
 
 // Checks that an address corresponsds to a miner actor.
-fn check_miner_id(rt: &mut impl Runtime, id: ActorID) -> Result<(), ActorError> {
+fn check_miner_id(rt: &impl Runtime, id: ActorID) -> Result<(), ActorError> {
     let code_cid =
         rt.get_actor_code_cid(&id).with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
             format!("no code CID for provider {}", id)
@@ -1071,22 +1072,22 @@ fn can_claim_alloc(
 
 impl ActorCode for Actor {
     type Methods = Method;
+
+    fn name() -> &'static str {
+        "VerifiedRegistry"
+    }
+
     actor_dispatch! {
         Constructor => constructor,
         AddVerifier => add_verifier,
         RemoveVerifier => remove_verifier,
-        AddVerifiedClient => add_verified_client,
-        AddVerifiedClientExported => add_verified_client,
+        AddVerifiedClient|AddVerifiedClientExported => add_verified_client,
         RemoveVerifiedClientDataCap => remove_verified_client_data_cap,
-        RemoveExpiredAllocations => remove_expired_allocations,
-        RemoveExpiredAllocationsExported => remove_expired_allocations,
+        RemoveExpiredAllocations|RemoveExpiredAllocationsExported => remove_expired_allocations,
         ClaimAllocations => claim_allocations,
-        GetClaims => get_claims,
-        GetClaimsExported => get_claims,
-        ExtendClaimTerms => extend_claim_terms,
-        ExtendClaimTermsExported => extend_claim_terms,
-        RemoveExpiredClaims => remove_expired_claims,
-        RemoveExpiredClaimsExported => remove_expired_claims,
+        GetClaims|GetClaimsExported => get_claims,
+        ExtendClaimTerms|ExtendClaimTermsExported => extend_claim_terms,
+        RemoveExpiredClaims|RemoveExpiredClaimsExported => remove_expired_claims,
         UniversalReceiverHook => universal_receiver_hook,
     }
 }

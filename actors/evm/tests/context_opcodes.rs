@@ -42,8 +42,8 @@ cache:
 
 #[test]
 fn test_prevrandao() {
-    let mut rt = util::construct_and_verify(prevrandao_contract());
-    rt.epoch = 101;
+    let rt = util::construct_and_verify(prevrandao_contract());
+    rt.epoch.replace(101);
 
     // simple test
     {
@@ -54,7 +54,7 @@ fn test_prevrandao() {
             [0u8; 32],
         );
 
-        let result = util::invoke_contract(&mut rt, &dispatch_num_word(0));
+        let result = util::invoke_contract(&rt, &dispatch_num_word(0));
         rt.verify();
         assert_eq!(result, [0u8; 32], "expected empty randomness");
         rt.reset();
@@ -72,7 +72,7 @@ fn test_prevrandao() {
             expected,
         );
 
-        let result = util::invoke_contract(&mut rt, &dispatch_num_word(0));
+        let result = util::invoke_contract(&rt, &dispatch_num_word(0));
         rt.verify();
         assert_eq!(result, expected, "expected random value {expected:?}");
         rt.reset();
@@ -89,7 +89,7 @@ fn test_prevrandao() {
         );
         let expected = [expected, expected].concat();
 
-        let result = util::invoke_contract(&mut rt, &dispatch_num_word(1));
+        let result = util::invoke_contract(&rt, &dispatch_num_word(1));
         rt.verify();
         assert_eq!(result, expected, "expected 2 of the same random value {expected:?}");
         rt.reset();

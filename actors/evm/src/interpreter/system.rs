@@ -84,7 +84,7 @@ impl EvmBytecode {
 /// Platform Abstraction Layer
 /// that bridges the FVM world to EVM world
 pub struct System<'r, RT: Runtime> {
-    pub rt: &'r mut RT,
+    pub rt: &'r RT,
 
     /// The current bytecode. This is usually only "none" when the actor is first constructed.
     /// (blake2b256(ipld_raw(bytecode)), keccak256(bytecode))
@@ -106,7 +106,7 @@ pub struct System<'r, RT: Runtime> {
 }
 
 impl<'r, RT: Runtime> System<'r, RT> {
-    pub(crate) fn new(rt: &'r mut RT, readonly: bool) -> Self
+    pub(crate) fn new(rt: &'r RT, readonly: bool) -> Self
     where
         RT::Blockstore: Clone,
     {
@@ -125,7 +125,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
 
     /// Resurrect the contract. This will return a new empty contract if, and only if, the contract
     /// is "dead".
-    pub fn resurrect(rt: &'r mut RT) -> Result<Self, ActorError>
+    pub fn resurrect(rt: &'r RT) -> Result<Self, ActorError>
     where
         RT::Blockstore: Clone,
     {
@@ -146,7 +146,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
 
     /// Create the contract. This will return a new empty contract if, and only if, the contract
     /// doesn't have any state.
-    pub fn create(rt: &'r mut RT) -> Result<Self, ActorError>
+    pub fn create(rt: &'r RT) -> Result<Self, ActorError>
     where
         RT::Blockstore: Clone,
     {
@@ -159,7 +159,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
     }
 
     /// Load the actor from state.
-    pub fn load(rt: &'r mut RT) -> Result<Self, ActorError>
+    pub fn load(rt: &'r RT) -> Result<Self, ActorError>
     where
         RT::Blockstore: Clone,
     {

@@ -52,7 +52,7 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for Multisig actor
-    pub fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
+    pub fn constructor(rt: &impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&INIT_ACTOR_ADDR))?;
 
         if params.signers.is_empty() {
@@ -71,7 +71,7 @@ impl Actor {
         let mut resolved_signers = Vec::with_capacity(params.signers.len());
         let mut dedup_signers = BTreeSet::new();
         for signer in &params.signers {
-            let resolved = resolve_to_actor_id(rt, signer)?;
+            let resolved = resolve_to_actor_id(rt, signer, true)?;
             if !dedup_signers.insert(resolved) {
                 return Err(
                     actor_error!(illegal_argument; "duplicate signer not allowed: {}", signer),
@@ -121,10 +121,7 @@ impl Actor {
     }
 
     /// Multisig actor propose function
-    pub fn propose(
-        rt: &mut impl Runtime,
-        params: ProposeParams,
-    ) -> Result<ProposeReturn, ActorError> {
+    pub fn propose(rt: &impl Runtime, params: ProposeParams) -> Result<ProposeReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let proposer: Address = rt.message().caller();
 
@@ -174,10 +171,7 @@ impl Actor {
     }
 
     /// Multisig actor approve function
-    pub fn approve(
-        rt: &mut impl Runtime,
-        params: TxnIDParams,
-    ) -> Result<ApproveReturn, ActorError> {
+    pub fn approve(rt: &impl Runtime, params: TxnIDParams) -> Result<ApproveReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let approver: Address = rt.message().caller();
 
@@ -209,7 +203,7 @@ impl Actor {
     }
 
     /// Multisig actor cancel function
-    pub fn cancel(rt: &mut impl Runtime, params: TxnIDParams) -> Result<(), ActorError> {
+    pub fn cancel(rt: &impl Runtime, params: TxnIDParams) -> Result<(), ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let caller_addr: Address = rt.message().caller();
 
@@ -254,10 +248,10 @@ impl Actor {
     }
 
     /// Multisig actor function to add signers to multisig
-    pub fn add_signer(rt: &mut impl Runtime, params: AddSignerParams) -> Result<(), ActorError> {
+    pub fn add_signer(rt: &impl Runtime, params: AddSignerParams) -> Result<(), ActorError> {
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
-        let resolved_new_signer = resolve_to_actor_id(rt, &params.signer)?;
+        let resolved_new_signer = resolve_to_actor_id(rt, &params.signer, true)?;
 
         rt.transaction(|st: &mut State, _| {
             if st.signers.len() >= SIGNERS_MAX {
@@ -282,13 +276,10 @@ impl Actor {
     }
 
     /// Multisig actor function to remove signers to multisig
-    pub fn remove_signer(
-        rt: &mut impl Runtime,
-        params: RemoveSignerParams,
-    ) -> Result<(), ActorError> {
+    pub fn remove_signer(rt: &impl Runtime, params: RemoveSignerParams) -> Result<(), ActorError> {
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
-        let resolved_old_signer = resolve_to_actor_id(rt, &params.signer)?;
+        let resolved_old_signer = resolve_to_actor_id(rt, &params.signer, false)?;
 
         rt.transaction(|st: &mut State, rt| {
             if !st.is_signer(&Address::new_id(resolved_old_signer)) {
@@ -332,11 +323,11 @@ impl Actor {
     }
 
     /// Multisig actor function to swap signers to multisig
-    pub fn swap_signer(rt: &mut impl Runtime, params: SwapSignerParams) -> Result<(), ActorError> {
+    pub fn swap_signer(rt: &impl Runtime, params: SwapSignerParams) -> Result<(), ActorError> {
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
-        let from_resolved = resolve_to_actor_id(rt, &params.from)?;
-        let to_resolved = resolve_to_actor_id(rt, &params.to)?;
+        let from_resolved = resolve_to_actor_id(rt, &params.from, false)?;
+        let to_resolved = resolve_to_actor_id(rt, &params.to, true)?;
 
         rt.transaction(|st: &mut State, rt| {
             if !st.is_signer(&Address::new_id(from_resolved)) {
@@ -362,7 +353,7 @@ impl Actor {
 
     /// Multisig actor function to change number of approvals needed
     pub fn change_num_approvals_threshold(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: ChangeNumApprovalsThresholdParams,
     ) -> Result<(), ActorError> {
         let receiver = rt.message().receiver();
@@ -383,10 +374,7 @@ impl Actor {
     }
 
     /// Multisig actor function to change number of approvals needed
-    pub fn lock_balance(
-        rt: &mut impl Runtime,
-        params: LockBalanceParams,
-    ) -> Result<(), ActorError> {
+    pub fn lock_balance(rt: &impl Runtime, params: LockBalanceParams) -> Result<(), ActorError> {
         let receiver = rt.message().receiver();
         rt.validate_immediate_caller_is(std::iter::once(&receiver))?;
 
@@ -410,7 +398,7 @@ impl Actor {
     }
 
     fn approve_transaction(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         tx_id: TxnID,
         mut txn: Transaction,
     ) -> Result<(bool, RawBytes, ExitCode), ActorError> {
@@ -451,7 +439,7 @@ impl Actor {
 
     // Always succeeds, accepting any transfers, so long as the params are valid `UniversalReceiverParams`.
     pub fn universal_receiver_hook(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         _params: UniversalReceiverParams,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -460,7 +448,7 @@ impl Actor {
 }
 
 fn execute_transaction_if_approved(
-    rt: &mut impl Runtime,
+    rt: &impl Runtime,
     st: &State,
     txn_id: TxnID,
     txn: &Transaction,
@@ -558,6 +546,11 @@ pub fn compute_proposal_hash(txn: &Transaction, sys: &dyn Primitives) -> anyhow:
 
 impl ActorCode for Actor {
     type Methods = Method;
+
+    fn name() -> &'static str {
+        "Multisig"
+    }
+
     actor_dispatch! {
       Constructor => constructor,
       Propose => propose,

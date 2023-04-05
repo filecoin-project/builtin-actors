@@ -55,7 +55,7 @@ pub struct Actor;
 
 impl Actor {
     /// System actor constructor.
-    pub fn constructor(rt: &mut impl Runtime) -> Result<(), ActorError> {
+    pub fn constructor(rt: &impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         let state = State::new(rt.store()).context("failed to construct state")?;
@@ -66,6 +66,11 @@ impl Actor {
 
 impl ActorCode for Actor {
     type Methods = Method;
+
+    fn name() -> &'static str {
+        "System"
+    }
+
     actor_dispatch! {
         Constructor => constructor,
     }
@@ -73,6 +78,8 @@ impl ActorCode for Actor {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+
     use fvm_shared::MethodNum;
 
     use fil_actors_runtime::test_utils::{MockRuntime, SYSTEM_ACTOR_CODE_ID};
@@ -83,15 +90,15 @@ mod tests {
     pub fn new_runtime() -> MockRuntime {
         MockRuntime {
             receiver: SYSTEM_ACTOR_ADDR,
-            caller: SYSTEM_ACTOR_ADDR,
-            caller_type: *SYSTEM_ACTOR_CODE_ID,
+            caller: RefCell::new(SYSTEM_ACTOR_ADDR),
+            caller_type: RefCell::new(*SYSTEM_ACTOR_CODE_ID),
             ..Default::default()
         }
     }
 
     #[test]
     fn construct_with_root_id() {
-        let mut rt = new_runtime();
+        let rt = new_runtime();
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
         rt.call::<Actor>(Method::Constructor as MethodNum, None).unwrap();

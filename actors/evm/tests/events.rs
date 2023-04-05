@@ -71,7 +71,7 @@ return
 fn test_events() {
     let contract = events_contract();
 
-    let mut rt = util::construct_and_verify(contract);
+    let rt = util::construct_and_verify(contract);
 
     // log zero with data
     let mut contract_params = vec![0u8; 32];
@@ -83,12 +83,12 @@ fn test_events() {
             value: vec![0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88],
         }],
     });
-    util::invoke_contract(&mut rt, &contract_params);
+    util::invoke_contract(&rt, &contract_params);
 
     // log zero without data
     contract_params[3] = 0x01;
     rt.expect_emitted_event(ActorEvent { entries: vec![] });
-    util::invoke_contract(&mut rt, &contract_params);
+    util::invoke_contract(&rt, &contract_params);
 
     // log four with data
     contract_params[3] = 0x02;
@@ -126,7 +126,7 @@ fn test_events() {
             },
         ],
     });
-    util::invoke_contract(&mut rt, &contract_params);
+    util::invoke_contract(&rt, &contract_params);
 
     rt.verify();
 }

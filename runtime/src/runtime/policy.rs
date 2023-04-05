@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof, StoragePower};
 use num_traits::FromPrimitive;
@@ -129,10 +127,10 @@ pub struct Policy {
     pub chain_finality: ChainEpoch,
 
     /// Allowed post proof types for new miners
-    pub valid_post_proof_type: HashSet<RegisteredPoStProof>,
+    pub valid_post_proof_type: ProofSet,
 
     /// Allowed pre commit proof types for new miners
-    pub valid_pre_commit_proof_type: HashSet<RegisteredSealProof>,
+    pub valid_pre_commit_proof_type: ProofSet,
 
     // --- verifreg policy
     /// Minimum verified deal size
@@ -206,31 +204,8 @@ impl Default for Policy {
             new_sectors_per_period_max: policy_constants::NEW_SECTORS_PER_PERIOD_MAX,
             chain_finality: policy_constants::CHAIN_FINALITY,
 
-            valid_post_proof_type: HashSet::<RegisteredPoStProof>::from([
-                #[cfg(feature = "sector-2k")]
-                RegisteredPoStProof::StackedDRGWindow2KiBV1,
-                #[cfg(feature = "sector-8m")]
-                RegisteredPoStProof::StackedDRGWindow8MiBV1,
-                #[cfg(feature = "sector-512m")]
-                RegisteredPoStProof::StackedDRGWindow512MiBV1,
-                #[cfg(feature = "sector-32g")]
-                RegisteredPoStProof::StackedDRGWindow32GiBV1,
-                #[cfg(feature = "sector-64g")]
-                RegisteredPoStProof::StackedDRGWindow64GiBV1,
-            ]),
-            valid_pre_commit_proof_type: HashSet::<RegisteredSealProof>::from([
-                #[cfg(feature = "sector-2k")]
-                RegisteredSealProof::StackedDRG2KiBV1P1,
-                #[cfg(feature = "sector-8m")]
-                RegisteredSealProof::StackedDRG8MiBV1P1,
-                #[cfg(feature = "sector-512m")]
-                RegisteredSealProof::StackedDRG512MiBV1P1,
-                #[cfg(feature = "sector-32g")]
-                RegisteredSealProof::StackedDRG32GiBV1P1,
-                #[cfg(feature = "sector-64g")]
-                RegisteredSealProof::StackedDRG64GiBV1P1,
-            ]),
-
+            valid_post_proof_type: ProofSet::default_post_proofs(),
+            valid_pre_commit_proof_type: ProofSet::default_seal_proofs(),
             minimum_verified_allocation_size: StoragePower::from_i32(
                 policy_constants::MINIMUM_VERIFIED_ALLOCATION_SIZE,
             )
@@ -380,6 +355,12 @@ pub mod policy_constants {
     /// This is a conservative value that is chosen via simulations of all known attacks.
     pub const CHAIN_FINALITY: ChainEpoch = 900;
 
+    /// The number of total possible types (enum variants) of RegisteredPoStProof
+    pub const REGISTERED_POST_PROOF_VARIANTS: usize = 10;
+
+    /// The number of total possible types (enum variants) of RegisteredSealProof
+    pub const REGISTERED_SEAL_PROOF_VARIANTS: usize = 10;
+
     #[cfg(not(feature = "small-deals"))]
     pub const MINIMUM_VERIFIED_ALLOCATION_SIZE: i32 = 1 << 20;
     #[cfg(feature = "small-deals")]
@@ -420,4 +401,76 @@ pub mod policy_constants {
         feature = "min-power-32g"
     )))]
     pub const MINIMUM_CONSENSUS_POWER: i64 = 10 << 40;
+}
+
+/// A set indicating which proofs are considered valid, optimised for lookup of a small number of
+/// sequential enum variants. Backed by an array of booleans where each index indicates if that
+/// proof type is valid
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+pub struct ProofSet(Vec<bool>);
+
+impl ProofSet {
+    /// Create a `ProofSet` for enabled `RegisteredPoStProof`s
+    pub fn default_post_proofs() -> Self {
+        let mut proofs = vec![false; policy_constants::REGISTERED_POST_PROOF_VARIANTS];
+        #[cfg(feature = "sector-2k")]
+        {
+            proofs[i64::from(RegisteredPoStProof::StackedDRGWindow2KiBV1) as usize] = true;
+        }
+        #[cfg(feature = "sector-8m")]
+        {
+            proofs[i64::from(RegisteredPoStProof::StackedDRGWindow8MiBV1) as usize] = true;
+        }
+        #[cfg(feature = "sector-512m")]
+        {
+            proofs[i64::from(RegisteredPoStProof::StackedDRGWindow512MiBV1) as usize] = true;
+        }
+        #[cfg(feature = "sector-32g")]
+        {
+            proofs[i64::from(RegisteredPoStProof::StackedDRGWindow32GiBV1) as usize] = true;
+        }
+        #[cfg(feature = "sector-64g")]
+        {
+            proofs[i64::from(RegisteredPoStProof::StackedDRGWindow64GiBV1) as usize] = true;
+        }
+        ProofSet(proofs)
+    }
+
+    /// Create a `ProofSet` for enabled `RegisteredSealProof`s
+    pub fn default_seal_proofs() -> Self {
+        let mut proofs = vec![false; policy_constants::REGISTERED_SEAL_PROOF_VARIANTS];
+        #[cfg(feature = "sector-2k")]
+        {
+            proofs[i64::from(RegisteredSealProof::StackedDRG2KiBV1P1) as usize] = true;
+        }
+        #[cfg(feature = "sector-8m")]
+        {
+            proofs[i64::from(RegisteredSealProof::StackedDRG8MiBV1P1) as usize] = true;
+        }
+        #[cfg(feature = "sector-512m")]
+        {
+            proofs[i64::from(RegisteredSealProof::StackedDRG512MiBV1P1) as usize] = true;
+        }
+        #[cfg(feature = "sector-32g")]
+        {
+            proofs[i64::from(RegisteredSealProof::StackedDRG32GiBV1P1) as usize] = true;
+        }
+        #[cfg(feature = "sector-64g")]
+        {
+            proofs[i64::from(RegisteredSealProof::StackedDRG64GiBV1P1) as usize] = true;
+        }
+        ProofSet(proofs)
+    }
+
+    /// Checks if the requested proof type exists in the set
+    pub fn contains<P: Into<i64>>(&self, proof: P) -> bool {
+        let index: i64 = proof.into();
+        *self.0.get(index as usize).unwrap_or(&false)
+    }
+
+    /// Adds the requested proof type to the set of valid proofs
+    pub fn insert<P: Into<i64>>(&mut self, proof: P) {
+        let index: i64 = proof.into();
+        self.0[index as usize] = true;
+    }
 }

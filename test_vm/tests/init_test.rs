@@ -5,14 +5,14 @@ use fil_actors_runtime::{
     test_utils::{EAM_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID, PLACEHOLDER_ACTOR_CODE_ID},
     EAM_ACTOR_ADDR, EAM_ACTOR_ID, INIT_ACTOR_ADDR,
 };
-use fvm_ipld_blockstore::MemoryBlockstore;
+use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode, METHOD_SEND};
 use num_traits::Zero;
-use test_vm::{actor, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
+use test_vm::{actor, TestVM, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR};
 
-fn assert_placeholder_actor(exp_bal: TokenAmount, v: &VM, addr: Address) {
-    let act = v.get_actor(addr).unwrap();
+fn assert_placeholder_actor<BS: Blockstore>(exp_bal: TokenAmount, v: &TestVM<BS>, addr: Address) {
+    let act = v.get_actor(&addr).unwrap();
     assert_eq!(EMPTY_ARR_CID, act.head);
     assert_eq!(*PLACEHOLDER_ACTOR_CODE_ID, act.code);
     assert_eq!(exp_bal, act.balance);
@@ -21,11 +21,11 @@ fn assert_placeholder_actor(exp_bal: TokenAmount, v: &VM, addr: Address) {
 #[test]
 fn placeholder_deploy() {
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
 
     // Create a "fake" eam.
     v.set_actor(
-        EAM_ACTOR_ADDR,
+        &EAM_ACTOR_ADDR,
         actor(*EAM_ACTOR_CODE_ID, EMPTY_ARR_CID, 0, TokenAmount::zero(), None),
     );
 
@@ -35,9 +35,9 @@ fn placeholder_deploy() {
     let addr = Address::new_delegated(EAM_ACTOR_ID, subaddr).unwrap();
     assert!(v
         .apply_message(
-            TEST_FAUCET_ADDR,
-            addr,
-            TokenAmount::from_atto(42u8),
+            &TEST_FAUCET_ADDR,
+            &addr,
+            &TokenAmount::from_atto(42u8),
             METHOD_SEND,
             None::<RawBytes>,
         )
@@ -64,9 +64,9 @@ fn placeholder_deploy() {
 
     let deploy = || {
         v.apply_message(
-            EAM_ACTOR_ADDR, // so this works even if "m2-native" is disabled.
-            INIT_ACTOR_ADDR,
-            TokenAmount::zero(),
+            &EAM_ACTOR_ADDR, // so this works even if "m2-native" is disabled.
+            &INIT_ACTOR_ADDR,
+            &TokenAmount::zero(),
             fil_actor_init::Method::Exec4 as u64,
             Some(fil_actor_init::Exec4Params {
                 code_cid: *MULTISIG_ACTOR_CODE_ID,
@@ -87,7 +87,7 @@ fn placeholder_deploy() {
     );
 
     // Make sure we kept the balance.
-    assert_eq!(v.get_actor(expect_id_addr).unwrap().balance, TokenAmount::from_atto(42u8));
+    assert_eq!(v.get_actor(&expect_id_addr).unwrap().balance, TokenAmount::from_atto(42u8));
 
     // Try to overwrite it.
     let msig_ctor_res = deploy();

@@ -54,7 +54,7 @@ fn test_create() {
     const GAS_SUBCALL: u64 = 63_000_000;
 
     let contract = magic_precompile_contract();
-    let mut rt = util::construct_and_verify(contract);
+    let rt = util::construct_and_verify(contract);
 
     let fake_eth_addr = EthAddress(hex_literal::hex!("CAFEB0BA00000000000000000000000000000000"));
     let fake_ret = eam::CreateReturn {
@@ -96,7 +96,7 @@ fn test_create() {
             None,
         );
 
-        let result = util::invoke_contract(&mut rt, &contract_params);
+        let result = util::invoke_contract(&rt, &contract_params);
         let result: [u8; 20] = result[12..].try_into().unwrap();
         let result = EthAddress(result);
         // make sure we arent doing weird things to EAM's return value
@@ -122,7 +122,7 @@ fn test_create() {
             None,
         );
 
-        let result = util::invoke_contract(&mut rt, &contract_params);
+        let result = util::invoke_contract(&rt, &contract_params);
         let result: [u8; 20] = result[12..].try_into().unwrap();
         let result = EthAddress(result);
         // make sure we arent doing weird things to EAM's return value
@@ -148,7 +148,7 @@ fn test_create() {
             None,
         );
 
-        let result = util::invoke_contract(&mut rt, &contract_params);
+        let result = util::invoke_contract(&rt, &contract_params);
         let result: [u8; 20] = result[12..].try_into().unwrap();
         let result = EthAddress(result);
         // make sure we arent doing weird things to EAM's return value
@@ -157,7 +157,7 @@ fn test_create() {
 
     // not enough funds -- create2
     {
-        let result = util::invoke_contract(&mut rt, &contract_params);
+        let result = util::invoke_contract(&rt, &contract_params);
         assert_eq!(&result[..], &[0; 32]);
     }
 
@@ -167,7 +167,7 @@ fn test_create() {
     {
         create_params.nonce += 3;
 
-        let result = util::invoke_contract(&mut rt, &contract_params);
+        let result = util::invoke_contract(&rt, &contract_params);
         assert_eq!(&result[..], &[0; 32]);
     }
 }

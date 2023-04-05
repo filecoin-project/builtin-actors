@@ -1,6 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use std::cmp::max;
 use std::collections::btree_map::Entry;
 use std::collections::BTreeMap;
 use std::iter;
@@ -153,7 +154,7 @@ pub struct Actor;
 
 impl Actor {
     pub fn constructor(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: MinerConstructorParams,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&INIT_ACTOR_ADDR))?;
@@ -230,7 +231,7 @@ impl Actor {
     }
 
     /// Returns the "controlling" addresses: the owner, the worker, and all control addresses
-    fn control_addresses(rt: &mut impl Runtime) -> Result<GetControlAddressesReturn, ActorError> {
+    fn control_addresses(rt: &impl Runtime) -> Result<GetControlAddressesReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let state: State = rt.state()?;
         let info = get_miner_info(rt.store(), &state)?;
@@ -242,7 +243,7 @@ impl Actor {
     }
 
     /// Returns the owner address, as well as the proposed new owner (if any).
-    fn get_owner(rt: &mut impl Runtime) -> Result<GetOwnerReturn, ActorError> {
+    fn get_owner(rt: &impl Runtime) -> Result<GetOwnerReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let state: State = rt.state()?;
         let info = get_miner_info(rt.store(), &state)?;
@@ -252,7 +253,7 @@ impl Actor {
     /// Returns whether the provided address is "controlling".
     /// The "controlling" addresses are the Owner, the Worker, and all Control Addresses.
     fn is_controlling_address(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: IsControllingAddressParam,
     ) -> Result<IsControllingAddressReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -273,7 +274,7 @@ impl Actor {
     }
 
     /// Returns the miner's sector size.
-    fn get_sector_size(rt: &mut impl Runtime) -> Result<GetSectorSizeReturn, ActorError> {
+    fn get_sector_size(rt: &impl Runtime) -> Result<GetSectorSizeReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let state: State = rt.state()?;
         let sector_size = get_miner_info(rt.store(), &state)?.sector_size;
@@ -283,9 +284,7 @@ impl Actor {
     /// Returns the available balance of this miner.
     /// This is calculated as actor balance - (vesting funds + pre-commit deposit + ip requirement + fee debt)
     /// Can go negative if the miner is in IP debt.
-    fn get_available_balance(
-        rt: &mut impl Runtime,
-    ) -> Result<GetAvailableBalanceReturn, ActorError> {
+    fn get_available_balance(rt: &impl Runtime) -> Result<GetAvailableBalanceReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let state: State = rt.state()?;
         let available_balance =
@@ -296,7 +295,7 @@ impl Actor {
     }
 
     /// Returns the funds vesting in this miner as a list of (vesting_epoch, vesting_amount) tuples.
-    fn get_vesting_funds(rt: &mut impl Runtime) -> Result<GetVestingFundsReturn, ActorError> {
+    fn get_vesting_funds(rt: &impl Runtime) -> Result<GetVestingFundsReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let state: State = rt.state()?;
         let vesting_funds = state
@@ -310,7 +309,7 @@ impl Actor {
     /// If an empty addresses vector is passed, the control addresses will be cleared.
     /// A worker change will be scheduled if the worker passed in the params is different from the existing worker.
     fn change_worker_address(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: ChangeWorkerAddressParams,
     ) -> Result<(), ActorError> {
         check_control_addresses(rt.policy(), &params.new_control_addresses)?;
@@ -355,7 +354,7 @@ impl Actor {
     }
 
     /// Triggers a worker address change if a change has been requested and its effective epoch has arrived.
-    fn confirm_change_worker_address(rt: &mut impl Runtime) -> Result<(), ActorError> {
+    fn confirm_change_worker_address(rt: &impl Runtime) -> Result<(), ActorError> {
         rt.transaction(|state: &mut State, rt| {
             let mut info = get_miner_info(rt.store(), state)?;
 
@@ -372,8 +371,11 @@ impl Actor {
     /// current owner address, revokes any existing proposal.
     /// If invoked by the previously proposed address, with the same proposal, changes the current owner address to be
     /// that proposed address.
-    fn change_owner_address(rt: &mut impl Runtime, params: Address) -> Result<(), ActorError> {
-        let new_address = params;
+    fn change_owner_address(
+        rt: &impl Runtime,
+        params: ChangeOwnerAddressParams,
+    ) -> Result<(), ActorError> {
+        let new_address = params.new_owner;
         // * Cannot match go checking for undef address, does go impl allow this to be
         // * deserialized over the wire? If so, a workaround will be needed
 
@@ -426,14 +428,14 @@ impl Actor {
     }
 
     /// Returns the Peer ID for this miner.
-    fn get_peer_id(rt: &mut impl Runtime) -> Result<GetPeerIDReturn, ActorError> {
+    fn get_peer_id(rt: &impl Runtime) -> Result<GetPeerIDReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let state: State = rt.state()?;
         let peer_id = get_miner_info(rt.store(), &state)?.peer_id;
         Ok(GetPeerIDReturn { peer_id })
     }
 
-    fn change_peer_id(rt: &mut impl Runtime, params: ChangePeerIDParams) -> Result<(), ActorError> {
+    fn change_peer_id(rt: &impl Runtime, params: ChangePeerIDParams) -> Result<(), ActorError> {
         let policy = rt.policy();
         check_peer_info(policy, &params.new_id, &[])?;
 
@@ -455,7 +457,7 @@ impl Actor {
     }
 
     /// Returns the multiaddresses set for this miner.
-    fn get_multiaddresses(rt: &mut impl Runtime) -> Result<GetMultiaddrsReturn, ActorError> {
+    fn get_multiaddresses(rt: &impl Runtime) -> Result<GetMultiaddrsReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let state: State = rt.state()?;
         let multi_addrs = get_miner_info(rt.store(), &state)?.multi_address;
@@ -463,7 +465,7 @@ impl Actor {
     }
 
     fn change_multiaddresses(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: ChangeMultiaddrsParams,
     ) -> Result<(), ActorError> {
         let policy = rt.policy();
@@ -488,7 +490,7 @@ impl Actor {
 
     /// Invoked by miner's worker address to submit their fallback post
     fn submit_windowed_post(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         mut params: SubmitWindowedPoStParams,
     ) -> Result<(), ActorError> {
         let current_epoch = rt.curr_epoch();
@@ -760,7 +762,7 @@ impl Actor {
     /// of these sectors. If valid, the sectors' deals are activated, sectors are assigned a deadline and charged pledge
     /// and precommit state is removed.
     fn prove_commit_aggregate(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: ProveCommitAggregateParams,
     ) -> Result<(), ActorError> {
         let sector_numbers = params.sector_numbers.validate().map_err(|e| {
@@ -937,7 +939,7 @@ impl Actor {
     }
 
     fn prove_replica_updates<RT>(
-        rt: &mut RT,
+        rt: &RT,
         params: ProveReplicaUpdatesParams,
     ) -> Result<BitField, ActorError>
     where
@@ -966,7 +968,7 @@ impl Actor {
     }
 
     fn prove_replica_updates2<RT>(
-        rt: &mut RT,
+        rt: &RT,
         params: ProveReplicaUpdatesParams2,
     ) -> Result<BitField, ActorError>
     where
@@ -992,7 +994,7 @@ impl Actor {
         Self::prove_replica_updates_inner(rt, updates)
     }
     fn prove_replica_updates_inner<RT>(
-        rt: &mut RT,
+        rt: &RT,
         updates: Vec<ReplicaUpdateInner>,
     ) -> Result<BitField, ActorError>
     where
@@ -1215,65 +1217,62 @@ impl Actor {
 
         let rew = request_current_epoch_block_reward(rt)?;
         let pow = request_current_total_power(rt)?;
+        let circulating_supply = rt.total_fil_circ_supply();
 
         let succeeded_sectors = rt.transaction(|state: &mut State, rt| {
             let mut succeeded = Vec::new();
-            let mut deadlines = state
-                .load_deadlines(rt.store())?;
+            let mut deadlines = state.load_deadlines(rt.store())?;
 
             let mut new_sectors = Vec::with_capacity(validated_updates.len());
             for &dl_idx in deadlines_to_load.iter() {
-                let mut deadline = deadlines
-                    .load_deadline(rt.policy(), rt.store(), dl_idx)
-                    .map_err(|e|
+                let mut deadline =
+                    deadlines.load_deadline(rt.policy(), rt.store(), dl_idx).map_err(|e| {
                         e.downcast_default(
                             ExitCode::USR_ILLEGAL_STATE,
                             format!("failed to load deadline {}", dl_idx),
                         )
-                    )?;
+                    })?;
 
-                let mut partitions = deadline
-                    .partitions_amt(rt.store())
-                    .map_err(|e|
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("failed to load partitions for deadline {}", dl_idx),
-                        )
-                    )?;
+                let mut partitions = deadline.partitions_amt(rt.store()).map_err(|e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        format!("failed to load partitions for deadline {}", dl_idx),
+                    )
+                })?;
 
                 let quant = state.quant_spec_for_deadline(rt.policy(), dl_idx);
 
                 for with_details in &decls_by_deadline[&dl_idx] {
-                    let update_proof_type = with_details.sector_info.seal_proof
-                        .registered_update_proof()
-                        .map_err(|_|
-                            actor_error!(
-                                illegal_state,
-                                "couldn't load update proof type"
-                            )
+                    let update_proof_type =
+                        with_details.sector_info.seal_proof.registered_update_proof().map_err(
+                            |_| actor_error!(illegal_state, "couldn't load update proof type"),
                         )?;
                     if with_details.update.update_proof_type != update_proof_type {
                         return Err(actor_error!(
                             illegal_argument,
-                            format!("unsupported update proof type {}", i64::from(with_details.update.update_proof_type))
+                            format!(
+                                "unsupported update proof type {}",
+                                i64::from(with_details.update.update_proof_type)
+                            )
                         ));
                     }
 
-                    rt.verify_replica_update(
-                        &ReplicaUpdateInfo {
-                            update_proof_type,
-                            new_sealed_cid: with_details.update.new_sealed_cid,
-                            old_sealed_cid: with_details.sector_info.sealed_cid,
-                            new_unsealed_cid: with_details.full_unsealed_cid,
-                            proof: with_details.update.replica_proof.clone(),
-                        }
-                    )
-                        .map_err(|e|
-                            e.downcast_default(
-                                ExitCode::USR_ILLEGAL_ARGUMENT,
-                                format!("failed to verify replica proof for sector {}", with_details.sector_info.sector_number),
-                            )
-                        )?;
+                    rt.verify_replica_update(&ReplicaUpdateInfo {
+                        update_proof_type,
+                        new_sealed_cid: with_details.update.new_sealed_cid,
+                        old_sealed_cid: with_details.sector_info.sealed_cid,
+                        new_unsealed_cid: with_details.full_unsealed_cid,
+                        proof: with_details.update.replica_proof.clone(),
+                    })
+                    .map_err(|e| {
+                        e.downcast_default(
+                            ExitCode::USR_ILLEGAL_ARGUMENT,
+                            format!(
+                                "failed to verify replica proof for sector {}",
+                                with_details.sector_info.sector_number
+                            ),
+                        )
+                    })?;
 
                     let mut new_sector_info = with_details.sector_info.clone();
 
@@ -1290,8 +1289,10 @@ impl Actor {
 
                     let duration = new_sector_info.expiration - new_sector_info.activation;
 
-                    new_sector_info.deal_weight = with_details.deal_spaces.deal_space.clone() * duration;
-                    new_sector_info.verified_deal_weight = with_details.deal_spaces.verified_deal_space.clone() * duration;
+                    new_sector_info.deal_weight =
+                        with_details.deal_spaces.deal_space.clone() * duration;
+                    new_sector_info.verified_deal_weight =
+                        with_details.deal_spaces.verified_deal_space.clone() * duration;
 
                     // compute initial pledge
                     let qa_pow = qa_power_for_weight(
@@ -1301,7 +1302,8 @@ impl Actor {
                         &new_sector_info.verified_deal_weight,
                     );
 
-                    new_sector_info.replaced_day_reward = with_details.sector_info.expected_day_reward.clone();
+                    new_sector_info.replaced_day_reward =
+                        with_details.sector_info.expected_day_reward.clone();
                     new_sector_info.expected_day_reward = expected_reward_for_power(
                         &rew.this_epoch_reward_smoothed,
                         &pow.quality_adj_power_smoothed,
@@ -1317,78 +1319,68 @@ impl Actor {
                     new_sector_info.replaced_sector_age =
                         ChainEpoch::max(0, rt.curr_epoch() - with_details.sector_info.activation);
 
-                    let initial_pledge_at_upgrade = initial_pledge_for_power(
-                        &qa_pow,
-                        &rew.this_epoch_baseline_power,
-                        &rew.this_epoch_reward_smoothed,
-                        &pow.quality_adj_power_smoothed,
-                        &rt.total_fil_circ_supply(),
+                    new_sector_info.initial_pledge = max(
+                        new_sector_info.initial_pledge,
+                        initial_pledge_for_power(
+                            &qa_pow,
+                            &rew.this_epoch_baseline_power,
+                            &rew.this_epoch_reward_smoothed,
+                            &pow.quality_adj_power_smoothed,
+                            &circulating_supply,
+                        ),
                     );
-
-                    if initial_pledge_at_upgrade > with_details.sector_info.initial_pledge {
-                        let deficit = &initial_pledge_at_upgrade - &with_details.sector_info.initial_pledge;
-
-                        let unlocked_balance = state
-                            .get_unlocked_balance(&rt.current_balance())
-                            .map_err(|_|
-                                actor_error!(illegal_state, "failed to calculate unlocked balance")
-                            )?;
-                        if unlocked_balance < deficit {
-                            return Err(actor_error!(
-                                insufficient_funds,
-                                "insufficient funds for new initial pledge requirement {}, available: {}, skipping sector {}",
-                                deficit,
-                                unlocked_balance,
-                                with_details.sector_info.sector_number
-                            ));
-                        }
-
-                        state.add_initial_pledge(&deficit).map_err(|_e|
-                            actor_error!(
-                                illegal_state,
-                                "failed to add initial pledge"
-                            )
-                        )?;
-
-                        new_sector_info.initial_pledge = initial_pledge_at_upgrade;
-                    }
 
                     let mut partition = partitions
                         .get(with_details.update.partition)
-                        .map_err(|e|
+                        .map_err(|e| {
                             e.downcast_default(
                                 ExitCode::USR_ILLEGAL_STATE,
-                                format!("failed to load deadline {} partition {}", with_details.update.deadline, with_details.update.partition),
+                                format!(
+                                    "failed to load deadline {} partition {}",
+                                    with_details.update.deadline, with_details.update.partition
+                                ),
                             )
-                        )?
+                        })?
                         .cloned()
-                        .ok_or_else(|| actor_error!(not_found, "no such deadline {} partition {}", dl_idx, with_details.update.partition))?;
+                        .ok_or_else(|| {
+                            actor_error!(
+                                not_found,
+                                "no such deadline {} partition {}",
+                                dl_idx,
+                                with_details.update.partition
+                            )
+                        })?;
 
                     let (partition_power_delta, partition_pledge_delta) = partition
-                        .replace_sectors(rt.store(),
-                                         &[with_details.sector_info.clone()],
-                                         &[new_sector_info.clone()],
-                                         info.sector_size,
-                                         quant,
+                        .replace_sectors(
+                            rt.store(),
+                            &[with_details.sector_info.clone()],
+                            &[new_sector_info.clone()],
+                            info.sector_size,
+                            quant,
                         )
                         .map_err(|e| {
                             e.downcast_default(
                                 ExitCode::USR_ILLEGAL_STATE,
-                                format!("failed to replace sector at deadline {} partition {}", with_details.update.deadline, with_details.update.partition),
+                                format!(
+                                    "failed to replace sector at deadline {} partition {}",
+                                    with_details.update.deadline, with_details.update.partition
+                                ),
                             )
                         })?;
 
                     power_delta += &partition_power_delta;
                     pledge_delta += &partition_pledge_delta;
 
-                    partitions
-                        .set(with_details.update.partition, partition)
-                        .map_err(|e| {
-                            e.downcast_default(
-                                ExitCode::USR_ILLEGAL_STATE,
-                                format!("failed to save deadline {} partition {}", with_details.update.deadline, with_details.update.partition),
-                            )
-                        })?;
+                    partitions.set(with_details.update.partition, partition).map_err(|e| {
+                        e.downcast_default(
+                            ExitCode::USR_ILLEGAL_STATE,
+                            format!(
+                                "failed to save deadline {} partition {}",
+                                with_details.update.deadline, with_details.update.partition
+                            ),
+                        )
+                    })?;
 
                     succeeded.push(new_sector_info.sector_number);
                     new_sectors.push(new_sector_info);
@@ -1401,14 +1393,14 @@ impl Actor {
                     )
                 })?;
 
-                deadlines
-                    .update_deadline(rt.policy(), rt.store(), dl_idx, &deadline)
-                    .map_err(|e| {
+                deadlines.update_deadline(rt.policy(), rt.store(), dl_idx, &deadline).map_err(
+                    |e| {
                         e.downcast_default(
                             ExitCode::USR_ILLEGAL_STATE,
                             format!("failed to save deadline {}", dl_idx),
                         )
-                    })?;
+                    },
+                )?;
             }
 
             let success_len = succeeded.len();
@@ -1431,10 +1423,7 @@ impl Actor {
 
             // Overwrite sector infos.
             sectors.store(new_sectors).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to update sector infos",
-                )
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to update sector infos")
             })?;
 
             state.sectors = sectors.amt.flush().map_err(|e| {
@@ -1444,9 +1433,31 @@ impl Actor {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines")
             })?;
 
-            BitField::try_from_bits(succeeded).map_err(|_| {
-                actor_error!(illegal_argument; "invalid sector number")
-            })
+            // Update pledge.
+            let current_balance = rt.current_balance();
+            if pledge_delta.is_positive() {
+                let unlocked_balance =
+                    state.get_unlocked_balance(&current_balance).map_err(|e| {
+                        actor_error!(illegal_state, "failed to calculate unlocked balance: {}", e)
+                    })?;
+                if unlocked_balance < pledge_delta {
+                    return Err(actor_error!(
+                    insufficient_funds,
+                    "insufficient funds for aggregate initial pledge requirement {}, available: {}",
+                    pledge_delta,
+                    unlocked_balance
+                ));
+                }
+            }
+
+            state
+                .add_initial_pledge(&pledge_delta)
+                .map_err(|e| actor_error!(illegal_state, "failed to add initial pledge: {}", e))?;
+
+            state.check_balance_invariants(&current_balance).map_err(balance_invariants_broken)?;
+
+            BitField::try_from_bits(succeeded)
+                .map_err(|_| actor_error!(illegal_argument; "invalid sector number"))
         })?;
 
         notify_pledge_changed(rt, &pledge_delta)?;
@@ -1456,7 +1467,7 @@ impl Actor {
     }
 
     fn dispute_windowed_post(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: DisputeWindowedPoStParams,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -1669,7 +1680,7 @@ impl Actor {
     /// Pledges to seal and commit a single sector.
     /// See PreCommitSectorBatch for details.
     fn pre_commit_sector(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: PreCommitSectorParams,
     ) -> Result<(), ActorError> {
         Self::pre_commit_sector_batch(rt, PreCommitSectorBatchParams { sectors: vec![params] })
@@ -1684,7 +1695,7 @@ impl Actor {
     /// This method calculates the sector's power, locks a pre-commit deposit for the sector, stores information about the
     /// sector in state and waits for it to be proven or expire.
     fn pre_commit_sector_batch(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: PreCommitSectorBatchParams,
     ) -> Result<(), ActorError> {
         let sectors = params
@@ -1721,7 +1732,7 @@ impl Actor {
     /// This method calculates the sector's power, locks a pre-commit deposit for the sector, stores information about the
     /// sector in state and waits for it to be proven or expire.
     fn pre_commit_sector_batch2(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: PreCommitSectorBatchParams2,
     ) -> Result<(), ActorError> {
         Self::pre_commit_sector_batch_inner(
@@ -1746,7 +1757,7 @@ impl Actor {
     /// This function combines old and new flows for PreCommit with use Option<CommpactCommD>
     /// The old PreCommits will call this with None, new ones with Some(CompactCommD).
     fn pre_commit_sector_batch_inner(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         sectors: Vec<SectorPreCommitInfoInner>,
     ) -> Result<(), ActorError> {
         let curr_epoch = rt.curr_epoch();
@@ -2008,7 +2019,7 @@ impl Actor {
     /// by the power actor.
     /// If valid, the power actor will call ConfirmSectorProofsValid at the end of the same epoch as this message.
     fn prove_commit_sector(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: ProveCommitSectorParams,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -2092,7 +2103,7 @@ impl Actor {
     }
 
     fn confirm_sector_proofs_valid(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: ConfirmSectorProofsParams,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(iter::once(&STORAGE_POWER_ACTOR_ADDR))?;
@@ -2126,7 +2137,7 @@ impl Actor {
     }
 
     fn check_sector_proven(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: CheckSectorProvenParams,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -2154,7 +2165,7 @@ impl Actor {
     /// The sector's power is recomputed for the new expiration.
     /// This method is legacy and should be replaced with calls to extend_sector_expiration2
     fn extend_sector_expiration(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: ExtendSectorExpirationParams,
     ) -> Result<(), ActorError> {
         let extend_expiration_inner =
@@ -2170,7 +2181,7 @@ impl Actor {
     // with FIL+ claims. Extension is only allowed if all claim max terms extend past new expiration
     // or claims are dropped.  Power only changes when claims are dropped.
     fn extend_sector_expiration2(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: ExtendSectorExpiration2Params,
     ) -> Result<(), ActorError> {
         let extend_expiration_inner = validate_extension_declarations(rt, params.extensions)?;
@@ -2182,7 +2193,7 @@ impl Actor {
     }
 
     fn extend_sector_expiration_inner(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         inner: ExtendExpirationsInner,
         kind: ExtensionKind,
     ) -> Result<(), ActorError> {
@@ -2404,7 +2415,7 @@ impl Actor {
     /// This function may be invoked with no new sectors to explicitly process the
     /// next batch of sectors.
     fn terminate_sectors(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: TerminateSectorsParams,
     ) -> Result<TerminateSectorsReturn, ActorError> {
         // Note: this cannot terminate pre-committed but un-proven sectors.
@@ -2556,10 +2567,7 @@ impl Actor {
         Ok(TerminateSectorsReturn { done: !more })
     }
 
-    fn declare_faults(
-        rt: &mut impl Runtime,
-        params: DeclareFaultsParams,
-    ) -> Result<(), ActorError> {
+    fn declare_faults(rt: &impl Runtime, params: DeclareFaultsParams) -> Result<(), ActorError> {
         {
             let policy = rt.policy();
             if params.faults.len() as u64 > policy.declarations_max {
@@ -2696,7 +2704,7 @@ impl Actor {
     }
 
     fn declare_faults_recovered(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: DeclareFaultsRecoveredParams,
     ) -> Result<(), ActorError> {
         {
@@ -2837,7 +2845,7 @@ impl Actor {
     /// Removed sectors are removed from state entirely.
     /// May not be invoked if the deadline has any un-processed early terminations.
     fn compact_partitions(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: CompactPartitionsParams,
     ) -> Result<(), ActorError> {
         {
@@ -2974,7 +2982,7 @@ impl Actor {
     /// For example, if sectors 1-99 and 101-200 have been allocated, sector number
     /// 99 can be masked out to collapse these two ranges into one.
     fn compact_sector_numbers(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: CompactSectorNumbersParams,
     ) -> Result<(), ActorError> {
         let mask_sector_numbers = params
@@ -3013,7 +3021,7 @@ impl Actor {
     }
 
     /// Locks up some amount of a the miner's unlocked balance (including funds received alongside the invoking message).
-    fn apply_rewards(rt: &mut impl Runtime, params: ApplyRewardParams) -> Result<(), ActorError> {
+    fn apply_rewards(rt: &impl Runtime, params: ApplyRewardParams) -> Result<(), ActorError> {
         if params.reward.is_negative() {
             return Err(actor_error!(
                 illegal_argument,
@@ -3091,7 +3099,7 @@ impl Actor {
     }
 
     fn report_consensus_fault(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: ReportConsensusFaultParams,
     ) -> Result<(), ActorError> {
         // Note: only the first report of any fault is processed because it sets the
@@ -3196,7 +3204,7 @@ impl Actor {
     }
 
     fn withdraw_balance(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: WithdrawBalanceParams,
     ) -> Result<WithdrawBalanceReturn, ActorError> {
         if params.amount_requested.is_negative() {
@@ -3302,7 +3310,7 @@ impl Actor {
     /// if applicable, any current beneficiary that has time and quota remaining.
     //// See FIP-0029, https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0029.md
     fn change_beneficiary(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: ChangeBeneficiaryParams,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -3431,7 +3439,7 @@ impl Actor {
     // GetBeneficiary retrieves the currently active and proposed beneficiary information.
     // This method is for use by other actors (such as those acting as beneficiaries),
     // and to abstract the state representation for clients.
-    fn get_beneficiary(rt: &mut impl Runtime) -> Result<GetBeneficiaryReturn, ActorError> {
+    fn get_beneficiary(rt: &impl Runtime) -> Result<GetBeneficiaryReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let st: State = rt.state()?;
         let info = get_miner_info(rt.store(), &st)?;
@@ -3445,7 +3453,7 @@ impl Actor {
         })
     }
 
-    fn repay_debt(rt: &mut impl Runtime) -> Result<(), ActorError> {
+    fn repay_debt(rt: &impl Runtime) -> Result<(), ActorError> {
         let (from_vesting, from_balance, state) = rt.transaction(|state: &mut State, rt| {
             let info = get_miner_info(rt.store(), state)?;
             rt.validate_immediate_caller_is(
@@ -3475,7 +3483,7 @@ impl Actor {
     }
 
     fn on_deferred_cron_event(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: DeferredCronEventParams,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&STORAGE_POWER_ACTOR_ADDR))?;
@@ -3613,7 +3621,7 @@ fn validate_legacy_extension_declarations(
 }
 
 fn validate_extension_declarations(
-    rt: &mut impl Runtime,
+    rt: &impl Runtime,
     extensions: Vec<ExpirationExtension2>,
 ) -> Result<ExtendExpirationsInner, ActorError> {
     let mut claim_space_by_sector = BTreeMap::<SectorNumber, (u64, u64)>::new();
@@ -3826,7 +3834,7 @@ fn extend_non_simple_qap_sector(
 // should use the power/reward at the time of termination.
 // https://github.com/filecoin-project/specs-actors/v6/pull/648
 fn process_early_terminations(
-    rt: &mut impl Runtime,
+    rt: &impl Runtime,
     reward_smoothed: &FilterEstimate,
     quality_adj_power_smoothed: &FilterEstimate,
 ) -> Result</* more */ bool, ActorError> {
@@ -3949,7 +3957,7 @@ fn process_early_terminations(
 
 /// Invoked at the end of the last epoch for each proving deadline.
 fn handle_proving_deadline(
-    rt: &mut impl Runtime,
+    rt: &impl Runtime,
     reward_smoothed: &FilterEstimate,
     quality_adj_power_smoothed: &FilterEstimate,
 ) -> Result<(), ActorError> {
@@ -4141,7 +4149,7 @@ fn validate_expiration(
 }
 
 fn enroll_cron_event(
-    rt: &mut impl Runtime,
+    rt: &impl Runtime,
     event_epoch: ChainEpoch,
     cb: CronEventPayload,
 ) -> Result<(), ActorError> {
@@ -4158,7 +4166,7 @@ fn enroll_cron_event(
     Ok(())
 }
 
-fn request_update_power(rt: &mut impl Runtime, delta: PowerPair) -> Result<(), ActorError> {
+fn request_update_power(rt: &impl Runtime, delta: PowerPair) -> Result<(), ActorError> {
     if delta.is_zero() {
         return Ok(());
     }
@@ -4180,7 +4188,7 @@ fn request_update_power(rt: &mut impl Runtime, delta: PowerPair) -> Result<(), A
 }
 
 fn request_terminate_deals(
-    rt: &mut impl Runtime,
+    rt: &impl Runtime,
     epoch: ChainEpoch,
     deal_ids: Vec<DealID>,
 ) -> Result<(), ActorError> {
@@ -4209,7 +4217,7 @@ fn request_terminate_deals(
     Ok(())
 }
 
-fn schedule_early_termination_work(rt: &mut impl Runtime) -> Result<(), ActorError> {
+fn schedule_early_termination_work(rt: &impl Runtime) -> Result<(), ActorError> {
     info!("scheduling early terminations with cron...");
     enroll_cron_event(
         rt,
@@ -4271,7 +4279,7 @@ fn verify_windowed_post(
 }
 
 fn get_verify_info(
-    rt: &mut impl Runtime,
+    rt: &impl Runtime,
     params: SealVerifyParams,
     unsealed_cid: CompactCommD,
 ) -> Result<SealVerifyInfo, ActorError> {
@@ -4315,7 +4323,7 @@ fn get_verify_info(
 }
 
 fn request_deal_data(
-    rt: &mut impl Runtime,
+    rt: &impl Runtime,
     sectors: &[ext::market::SectorDeals],
 ) -> Result<ext::market::VerifyDealsForActivationReturn, ActorError> {
     // Short-circuit if there are no deals in any of the sectors.
@@ -4340,7 +4348,7 @@ fn request_deal_data(
 /// Requests the current epoch target block reward from the reward actor.
 /// return value includes reward, smoothed estimate of reward, and baseline power
 fn request_current_epoch_block_reward(
-    rt: &mut impl Runtime,
+    rt: &impl Runtime,
 ) -> Result<ThisEpochRewardReturn, ActorError> {
     deserialize_block(
         extract_send_result(rt.send_simple(
@@ -4355,7 +4363,7 @@ fn request_current_epoch_block_reward(
 
 /// Requests the current network total power and pledge from the power actor.
 fn request_current_total_power(
-    rt: &mut impl Runtime,
+    rt: &impl Runtime,
 ) -> Result<ext::power::CurrentTotalPowerReturn, ActorError> {
     deserialize_block(
         extract_send_result(rt.send_simple(
@@ -4370,7 +4378,7 @@ fn request_current_total_power(
 
 /// Resolves an address to an ID address and verifies that it is address of an account actor with an associated BLS key.
 /// The worker must be BLS since the worker key will be used alongside a BLS-VRF.
-fn resolve_worker_address(rt: &mut impl Runtime, raw: Address) -> Result<ActorID, ActorError> {
+fn resolve_worker_address(rt: &impl Runtime, raw: Address) -> Result<ActorID, ActorError> {
     let resolved = rt
         .resolve_address(&raw)
         .ok_or_else(|| actor_error!(illegal_argument, "unable to resolve address: {}", raw))?;
@@ -4405,7 +4413,7 @@ fn resolve_worker_address(rt: &mut impl Runtime, raw: Address) -> Result<ActorID
     Ok(resolved)
 }
 
-fn burn_funds(rt: &mut impl Runtime, amount: TokenAmount) -> Result<(), ActorError> {
+fn burn_funds(rt: &impl Runtime, amount: TokenAmount) -> Result<(), ActorError> {
     log::debug!("storage provder {} burning {}", rt.message().receiver(), amount);
     if amount.is_positive() {
         extract_send_result(rt.send_simple(&BURNT_FUNDS_ACTOR_ADDR, METHOD_SEND, None, amount))?;
@@ -4413,10 +4421,7 @@ fn burn_funds(rt: &mut impl Runtime, amount: TokenAmount) -> Result<(), ActorErr
     Ok(())
 }
 
-fn notify_pledge_changed(
-    rt: &mut impl Runtime,
-    pledge_delta: &TokenAmount,
-) -> Result<(), ActorError> {
+fn notify_pledge_changed(rt: &impl Runtime, pledge_delta: &TokenAmount) -> Result<(), ActorError> {
     if !pledge_delta.is_zero() {
         extract_send_result(rt.send_simple(
             &STORAGE_POWER_ACTOR_ADDR,
@@ -4429,7 +4434,7 @@ fn notify_pledge_changed(
 }
 
 fn get_claims(
-    rt: &mut impl Runtime,
+    rt: &impl Runtime,
     ids: &Vec<ext::verifreg::ClaimID>,
 ) -> Result<Vec<ext::verifreg::Claim>, ActorError> {
     let params = ext::verifreg::GetClaimsParams {
@@ -4651,7 +4656,7 @@ fn check_valid_post_proof_type(
     policy: &Policy,
     proof_type: RegisteredPoStProof,
 ) -> Result<(), ActorError> {
-    if policy.valid_post_proof_type.contains(&proof_type) {
+    if policy.valid_post_proof_type.contains(proof_type) {
         Ok(())
     } else {
         Err(actor_error!(
@@ -4697,7 +4702,7 @@ fn check_peer_info(
 }
 
 fn confirm_sector_proofs_valid_internal(
-    rt: &mut impl Runtime,
+    rt: &impl Runtime,
     pre_commits: Vec<SectorPreCommitOnChainInfo>,
     this_epoch_baseline_power: &BigInt,
     this_epoch_reward_smoothed: &FilterEstimate,
@@ -4880,7 +4885,7 @@ fn confirm_sector_proofs_valid_internal(
 // returns an error in case of a fatal programmer error
 // returns Ok(None) in case deal activation or verified allocation claim fails
 fn activate_deals_and_claim_allocations(
-    rt: &mut impl Runtime,
+    rt: &impl Runtime,
     deal_ids: Vec<DealID>,
     sector_expiry: ChainEpoch,
     sector_number: SectorNumber,
@@ -4955,13 +4960,16 @@ fn balance_invariants_broken(e: Error) -> ActorError {
 
 impl ActorCode for Actor {
     type Methods = Method;
+
+    fn name() -> &'static str {
+        "StorageMiner"
+    }
+
     actor_dispatch! {
         Constructor => constructor,
         ControlAddresses => control_addresses,
-        ChangeWorkerAddress => change_worker_address,
-        ChangeWorkerAddressExported => change_worker_address,
-        ChangePeerID => change_peer_id,
-        ChangePeerIDExported=> change_peer_id,
+        ChangeWorkerAddress|ChangeWorkerAddressExported => change_worker_address,
+        ChangePeerID|ChangePeerIDExported => change_peer_id,
         SubmitWindowedPoSt => submit_windowed_post,
         PreCommitSector => pre_commit_sector,
         ProveCommitSector => prove_commit_sector,
@@ -4973,29 +4981,22 @@ impl ActorCode for Actor {
         CheckSectorProven => check_sector_proven,
         ApplyRewards => apply_rewards,
         ReportConsensusFault => report_consensus_fault,
-        WithdrawBalance => withdraw_balance,
-        WithdrawBalanceExported => withdraw_balance,
+        WithdrawBalance|WithdrawBalanceExported => withdraw_balance,
         ConfirmSectorProofsValid => confirm_sector_proofs_valid,
-        ChangeMultiaddrs => change_multiaddresses,
-        ChangeMultiaddrsExported => change_multiaddresses,
+        ChangeMultiaddrs|ChangeMultiaddrsExported => change_multiaddresses,
         CompactPartitions => compact_partitions,
         CompactSectorNumbers => compact_sector_numbers,
-        ConfirmChangeWorkerAddress => confirm_change_worker_address,
-        ConfirmChangeWorkerAddressExported => confirm_change_worker_address,
-        RepayDebt => repay_debt,
-        RepayDebtExported => repay_debt,
-        ChangeOwnerAddress => change_owner_address,
-        ChangeOwnerAddressExported => change_owner_address,
+        ConfirmChangeWorkerAddress|ConfirmChangeWorkerAddressExported => confirm_change_worker_address,
+        RepayDebt|RepayDebtExported => repay_debt,
+        ChangeOwnerAddress|ChangeOwnerAddressExported => change_owner_address,
         DisputeWindowedPoSt => dispute_windowed_post,
         PreCommitSectorBatch => pre_commit_sector_batch,
         ProveCommitAggregate => prove_commit_aggregate,
         ProveReplicaUpdates => prove_replica_updates,
         PreCommitSectorBatch2 => pre_commit_sector_batch2,
         ProveReplicaUpdates2 => prove_replica_updates2,
-        ChangeBeneficiary => change_beneficiary,
-        ChangeBeneficiaryExported => change_beneficiary,
-        GetBeneficiary => get_beneficiary,
-        GetBeneficiaryExported => get_beneficiary,
+        ChangeBeneficiary|ChangeBeneficiaryExported => change_beneficiary,
+        GetBeneficiary|GetBeneficiaryExported => get_beneficiary,
         ExtendSectorExpiration2 => extend_sector_expiration2,
         GetOwnerExported => get_owner,
         IsControllingAddressExported => is_controlling_address,
