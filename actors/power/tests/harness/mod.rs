@@ -79,7 +79,7 @@ pub fn new_harness() -> Harness {
     Harness {
         miner_seq: 0,
         seal_proof: RegisteredSealProof::StackedDRG32GiBV1P1,
-        window_post_proof: RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        window_post_proof: RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
         this_epoch_baseline_power: StoragePower::from(1i64 << 50),
         this_epoch_reward_smoothed: FilterEstimate::new(rwd.atto().clone(), BigInt::zero()),
     }
