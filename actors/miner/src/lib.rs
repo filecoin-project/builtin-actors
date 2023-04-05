@@ -3884,11 +3884,14 @@ fn extend_simple_qap_sector(
             &qa_pow,
             fil_actors_runtime::network::EPOCHS_IN_DAY,
         );
-        new_sector.expected_storage_pledge = expected_reward_for_power(
-            &reward_stats.this_epoch_reward_smoothed,
-            &power_stats.quality_adj_power_smoothed,
-            &qa_pow,
-            INITIAL_PLEDGE_PROJECTION_PERIOD,
+        new_sector.expected_storage_pledge = max(
+            sector.expected_storage_pledge.clone(),
+            expected_reward_for_power(
+                &reward_stats.this_epoch_reward_smoothed,
+                &power_stats.quality_adj_power_smoothed,
+                &qa_pow,
+                INITIAL_PLEDGE_PROJECTION_PERIOD,
+            ),
         );
         new_sector.replaced_day_reward =
             max(sector.expected_day_reward.clone(), sector.replaced_day_reward.clone());
