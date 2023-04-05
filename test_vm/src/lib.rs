@@ -84,7 +84,7 @@ pub trait VM<BS: Blockstore> {
     fn state_root(&self, address: &Address) -> Option<Cid>;
 
     /// Get the current chain epoch
-    fn epoch(&self) -> ChainEpoch;
+    fn get_epoch(&self) -> ChainEpoch;
 
     /// Get the balance of the specified actor
     fn balance(&self, address: &Address) -> TokenAmount;
@@ -168,7 +168,7 @@ where
         Box::new(self.store)
     }
 
-    fn epoch(&self) -> ChainEpoch {
+    fn get_epoch(&self) -> ChainEpoch {
         *self.curr_epoch.borrow()
     }
 
@@ -557,10 +557,6 @@ where
         f(&mut st);
         a.head = self.store.put_cbor(&st, Code::Blake2b256).unwrap();
         self.set_actor(addr, a);
-    }
-
-    pub fn get_epoch(&self) -> ChainEpoch {
-        *self.curr_epoch.borrow()
     }
 
     pub fn apply_message<S: serde::Serialize>(

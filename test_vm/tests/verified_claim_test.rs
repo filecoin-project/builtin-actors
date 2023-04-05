@@ -35,7 +35,7 @@ use test_vm::util::{
     verifreg_add_client, verifreg_add_verifier, verifreg_extend_claim_terms,
     verifreg_remove_expired_allocations,
 };
-use test_vm::TestVM;
+use test_vm::{TestVM, VM};
 
 // Tests a scenario involving a verified deal from the built-in market, with associated
 // allocation and claim.
