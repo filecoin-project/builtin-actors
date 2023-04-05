@@ -43,11 +43,12 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
     actor_dispatch, actor_error, deserialize_block, extract_send_result, ActorContext,
-    ActorDowncast, ActorError, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
-    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    ActorDowncast, ActorError, AsActorError, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR,
+    REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::version::NetworkVersion;
 pub use monies::*;
 pub use partition_state::*;
 pub use policy::*;
@@ -162,6 +163,14 @@ impl Actor {
         check_control_addresses(rt.policy(), &params.control_addresses)?;
         check_peer_info(rt.policy(), &params.peer_id, &params.multi_addresses)?;
         check_valid_post_proof_type(rt.policy(), params.window_post_proof_type)?;
+        // TODO: v12: cleanup https://github.com/filecoin-project/builtin-actors/issues/1260
+        if !is_window_post_proof_v1p1(params.window_post_proof_type) {
+            return Err(actor_error!(
+                illegal_argument,
+                "unsupported window post proof type: {:?}",
+                params.window_post_proof_type
+            ));
+        }
 
         let owner = rt.resolve_address(&params.owner).ok_or_else(|| {
             actor_error!(illegal_argument, "unable to resolve owner address: {}", params.owner)
@@ -554,12 +563,33 @@ impl Actor {
 
             // Make sure the miner is using the correct proof type.
             if params.proofs[0].post_proof != info.window_post_proof_type {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "expected proof of type {:?}, got {:?}",
-                    params.proofs[0].post_proof,
-                    info.window_post_proof_type
-                ));
+                // Special for nv19: Allow the v1 version of v1p1 post proof types
+                let nv = rt.network_version();
+                // TODO: v12: cleanup https://github.com/filecoin-project/builtin-actors/issues/1260
+                if nv == NetworkVersion::V19 {
+                    let info_v1_proof_type =
+                        convert_window_post_proof_v1p1_to_v1(info.window_post_proof_type)
+                            .context_code(
+                                ExitCode::USR_ILLEGAL_STATE,
+                                "failed to convert to v1 window post proof",
+                            )?;
+                    if info_v1_proof_type != params.proofs[0].post_proof {
+                        return Err(actor_error!(
+                            illegal_argument,
+                            "expected proof of type {:?} or {:?}, got {:?}",
+                            info_v1_proof_type,
+                            info.window_post_proof_type,
+                            params.proofs[0].post_proof
+                        ));
+                    }
+                } else {
+                    return Err(actor_error!(
+                        illegal_argument,
+                        "expected proof of type {:?}, got {:?}",
+                        info.window_post_proof_type,
+                        params.proofs[0].post_proof
+                    ));
+                }
             }
 
             // Make sure the proof size doesn't exceed the max. We could probably check for an exact match, but this is safer.

@@ -410,7 +410,7 @@ pub struct CronEvent {
     pub callback_payload: RawBytes,
 }
 
-/// Returns the minimum storage power required for each seal proof types.
+/// Returns the minimum storage power required for each PoSt proof type.
 pub fn consensus_miner_min_power(
     policy: &Policy,
     p: RegisteredPoStProof,
@@ -426,7 +426,12 @@ pub fn consensus_miner_min_power(
         | StackedDRGWindow8MiBV1
         | StackedDRGWindow512MiBV1
         | StackedDRGWindow32GiBV1
-        | StackedDRGWindow64GiBV1 => Ok(policy.minimum_consensus_power.clone()),
+        | StackedDRGWindow64GiBV1
+        | StackedDRGWindow2KiBV1P1
+        | StackedDRGWindow8MiBV1P1
+        | StackedDRGWindow512MiBV1P1
+        | StackedDRGWindow32GiBV1P1
+        | StackedDRGWindow64GiBV1P1 => Ok(policy.minimum_consensus_power.clone()),
         Invalid(i) => Err(anyhow::anyhow!("unsupported proof type: {}", i)),
     }
 }
