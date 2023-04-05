@@ -1298,13 +1298,13 @@ pub fn market_publish_deal<BS: Blockstore>(
         method: MARKET_NOTIFY_DEAL_METHOD,
         ..Default::default()
     });
-    // ExpectInvocation {
-    //     to: STORAGE_MARKET_ACTOR_ADDR,
-    //     method: MarketMethod::PublishStorageDeals as u64,
-    //     subinvocs: Some(expect_publish_invocs),
-    //     ..Default::default()
-    // }
-    // .matches(v.take_invocations().last().unwrap());
+    ExpectInvocation {
+        to: STORAGE_MARKET_ACTOR_ADDR,
+        method: MarketMethod::PublishStorageDeals as u64,
+        subinvocs: Some(expect_publish_invocs),
+        ..Default::default()
+    }
+    .matches(v.take_invocations().last().unwrap());
 
     ret
 }
