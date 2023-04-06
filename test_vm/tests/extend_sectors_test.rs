@@ -361,27 +361,27 @@ fn extend_updated_sector_with_claim() {
         &TokenAmount::from_whole(1_000),
     )
     .0;
-    let mut v = v.with_epoch(200);
+    let v = v.with_epoch(200);
 
     //
     // Precommit, prove and PoSt empty sector (more fully tested in TestCommitPoStFlow)
     //
 
-    let expiration = v.get_epoch() + 360 * EPOCHS_IN_DAY;
+    let expiration = v.epoch() + 360 * EPOCHS_IN_DAY;
 
     miner_precommit_sector(&v, &worker, &miner_id, seal_proof, sector_number, vec![], expiration);
 
     // advance time by a day and prove the sector
-    let prove_epoch = v.get_epoch() + EPOCHS_IN_DAY;
-    v = advance_by_deadline_to_epoch(v, miner_id, prove_epoch).0;
+    let prove_epoch = v.epoch() + EPOCHS_IN_DAY;
+    advance_by_deadline_to_epoch(&v, &miner_id, prove_epoch);
     miner_prove_sector(&v, &worker, &miner_id, sector_number);
     // trigger cron to validate the prove commit
     cron_tick(&v);
 
     // advance to proving period and submit post
 
-    let (deadline_info, partition_index, mut v) =
-        advance_to_proving_deadline(v, miner_id, sector_number);
+    let (deadline_info, partition_index) =
+        advance_to_proving_deadline(&v, &miner_id, sector_number);
 
     let expected_power_delta =
         PowerPair { raw: StoragePower::from(32u64 << 30), qa: StoragePower::from(32u64 << 30) };
@@ -396,12 +396,11 @@ fn extend_updated_sector_with_claim() {
     );
 
     // move forward one deadline so sector is mutable
-    v = advance_by_deadline_to_index(
-        v,
-        miner_id,
+    advance_by_deadline_to_index(
+        &v,
+        &miner_id,
         deadline_info.index + 1 % policy.wpost_period_deadlines,
-    )
-    .0;
+    );
 
     // Inspect basic sector info
 
@@ -423,7 +422,7 @@ fn extend_updated_sector_with_claim() {
     market_add_balance(&v, &worker, &miner_id, &TokenAmount::from_whole(64));
 
     // create 1 verified deal for total sector capacity
-    let deal_start = v.get_epoch() + EPOCHS_IN_DAY;
+    let deal_start = v.epoch() + EPOCHS_IN_DAY;
     let deal_ids = market_publish_deal(
         &v,
         &worker,
@@ -523,7 +522,7 @@ fn extend_updated_sector_with_claim() {
     assert_eq!(StoragePower::zero(), sector_info_after_update.deal_weight); // 0 space time
 
     assert_eq!(
-        DealWeight::from((sector_info_after_update.expiration - v.get_epoch()) * (32i64 << 30)),
+        DealWeight::from((sector_info_after_update.expiration - v.epoch()) * (32i64 << 30)),
         sector_info_after_update.verified_deal_weight
     ); // 32 GiB * the remaining life of the sector
 
@@ -562,7 +561,7 @@ fn extend_updated_sector_with_claim() {
     assert_eq!(StoragePower::zero(), sector_info_after_extension.deal_weight); // 0 space time
 
     assert_eq!(
-        DealWeight::from((sector_info_after_extension.expiration - v.get_epoch()) * (32i64 << 30)),
+        DealWeight::from((sector_info_after_extension.expiration - v.epoch()) * (32i64 << 30)),
         sector_info_after_extension.verified_deal_weight
     ); // 32 GiB * the remaining life of the sector
 }
