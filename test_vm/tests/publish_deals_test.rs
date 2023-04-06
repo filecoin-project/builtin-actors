@@ -126,8 +126,7 @@ fn setup(store: &MemoryBlockstore) -> (TestVM<MemoryBlockstore>, Addrs, ChainEpo
         Some(maddr),
     );
 
-    let deal_start =
-        v.get_epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
+    let deal_start = v.epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
     (
         v,
         Addrs { worker, client1, client2, not_miner, cheap_client, maddr, verified_client },
@@ -187,7 +186,7 @@ fn psd_start_time_in_past() {
     let (v, a, deal_start) = setup(&store);
     let mut batcher =
         DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
-    let bad_deal_start = v.get_epoch() - 1;
+    let bad_deal_start = v.epoch() - 1;
     batcher.stage(
         a.client1,
         "deal0",

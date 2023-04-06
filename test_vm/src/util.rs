@@ -183,7 +183,7 @@ pub fn miner_precommit_sector<BS: Blockstore>(
         seal_proof,
         sector_number,
         sealed_cid,
-        seal_rand_epoch: v.get_epoch() - 1,
+        seal_rand_epoch: v.epoch() - 1,
         deal_ids,
         expiration,
         replace_capacity: false,
@@ -280,7 +280,7 @@ pub fn precommit_sectors_v2<BS: Blockstore>(
     };
     let expiration = match exp {
         None => {
-            v.get_epoch()
+            v.epoch()
                 + Policy::default().min_sector_expiration
                 + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap()
         }
@@ -300,7 +300,7 @@ pub fn precommit_sectors_v2<BS: Blockstore>(
                     seal_proof,
                     sector_number,
                     sealed_cid: make_sealed_cid(format!("sn: {}", sector_number).as_bytes()),
-                    seal_rand_epoch: v.get_epoch() - 1,
+                    seal_rand_epoch: v.epoch() - 1,
                     deal_ids: vec![],
                     expiration,
                     ..Default::default()
@@ -348,7 +348,7 @@ pub fn precommit_sectors_v2<BS: Blockstore>(
                     seal_proof,
                     sector_number,
                     sealed_cid: make_sealed_cid(format!("sn: {}", sector_number).as_bytes()),
-                    seal_rand_epoch: v.get_epoch() - 1,
+                    seal_rand_epoch: v.epoch() - 1,
                     deal_ids: vec![],
                     expiration,
                     unsealed_cid: CompactCommD::new(None),
@@ -636,7 +636,7 @@ where
         }
         v.set_epoch(dline_info.last());
         cron_tick(v);
-        let next = v.get_epoch() + 1;
+        let next = v.epoch() + 1;
         v.set_epoch(next);
     }
 }
@@ -663,11 +663,7 @@ pub fn miner_info<BS: Blockstore>(v: &dyn VM<BS>, m: &Address) -> MinerInfo {
 
 pub fn miner_dline_info<BS: Blockstore>(v: &dyn VM<BS>, m: &Address) -> DeadlineInfo {
     let st: MinerState = get_state(v, m).unwrap();
-    new_deadline_info_from_offset_and_epoch(
-        &Policy::default(),
-        st.proving_period_start,
-        v.get_epoch(),
-    )
+    new_deadline_info_from_offset_and_epoch(&Policy::default(), st.proving_period_start, v.epoch())
 }
 
 pub fn sector_deadline<BS: Blockstore>(v: &dyn VM<BS>, m: &Address, s: SectorNumber) -> (u64, u64) {
@@ -1233,7 +1229,7 @@ pub fn market_publish_deal<BS: Blockstore>(
         let deal_term = deal.end_epoch - deal.start_epoch;
         let token_amount = TokenAmount::from_whole(deal.piece_size.0 as i64);
         let alloc_expiration =
-            min(deal.start_epoch, v.get_epoch() + MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION);
+            min(deal.start_epoch, v.epoch() + MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION);
 
         expect_publish_invocs.push(ExpectInvocation {
             to: DATACAP_TOKEN_ACTOR_ADDR,

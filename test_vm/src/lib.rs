@@ -84,7 +84,7 @@ pub trait VM<BS: Blockstore> {
     fn state_root(&self, address: &Address) -> Option<Cid>;
 
     /// Get the current chain epoch
-    fn get_epoch(&self) -> ChainEpoch;
+    fn epoch(&self) -> ChainEpoch;
 
     /// Get the balance of the specified actor
     fn balance(&self, address: &Address) -> TokenAmount;
@@ -168,7 +168,7 @@ where
         Box::new(self.store)
     }
 
-    fn get_epoch(&self) -> ChainEpoch {
+    fn epoch(&self) -> ChainEpoch {
         *self.curr_epoch.borrow()
     }
 
@@ -644,13 +644,7 @@ where
 
         let policy = Policy::default();
         let state_tree = Tree::load(&self.store, &self.state_root.borrow()).unwrap();
-        check_state_invariants(
-            &manifest,
-            &policy,
-            state_tree,
-            &self.total_fil,
-            self.get_epoch() - 1,
-        )
+        check_state_invariants(&manifest, &policy, state_tree, &self.total_fil, self.epoch() - 1)
     }
 
     /// Asserts state invariants are held without any errors.
@@ -978,7 +972,7 @@ where
     }
 
     fn curr_epoch(&self) -> ChainEpoch {
-        self.v.get_epoch()
+        self.v.epoch()
     }
 
     fn chain_id(&self) -> ChainID {

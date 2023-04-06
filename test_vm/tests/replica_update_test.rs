@@ -178,7 +178,7 @@ fn prove_replica_update_multi_dline() {
     let batch_size = 100;
     let first_sector_number_p1 = 0;
     let first_sector_number_p2 = seal_proof.window_post_partitions_sector().unwrap();
-    let expiration = v.get_epoch() + policy.max_sector_expiration_extension;
+    let expiration = v.epoch() + policy.max_sector_expiration_extension;
 
     let new_precommits = precommit_sectors(
         &v,
@@ -195,7 +195,7 @@ fn prove_replica_update_multi_dline() {
     let precommits = new_precommits;
     let to_prove = precommits;
 
-    let prove_time = v.get_epoch() + policy.pre_commit_challenge_delay + 1;
+    let prove_time = v.epoch() + policy.pre_commit_challenge_delay + 1;
     advance_by_deadline_to_epoch(&v, &maddr, prove_time);
 
     prove_commit_sectors(&v, &worker, &maddr, to_prove, batch_size);
@@ -371,7 +371,7 @@ fn unhealthy_sector_failure() {
     let deal_ids = create_deals(1, &v, worker, worker, maddr);
 
     // ffw 2 days, missing posts
-    let two_days_later = v.get_epoch() + policy.wpost_proving_period * 2;
+    let two_days_later = v.epoch() + policy.wpost_proving_period * 2;
     advance_by_deadline_to_epoch(&v, &maddr, two_days_later);
     assert!(!check_sector_active(&v, &maddr, sector_number));
     assert!(check_sector_faulty(&v, &maddr, d_idx, p_idx, sector_number));
@@ -704,7 +704,7 @@ fn extend_after_upgrade() {
             deadline: deadline_index,
             partition: partition_index,
             sectors: make_bitfield(&[sector_number]),
-            new_expiration: v.get_epoch() + policy.max_sector_expiration_extension - 1,
+            new_expiration: v.epoch() + policy.max_sector_expiration_extension - 1,
         }],
     };
 
@@ -879,7 +879,7 @@ fn deal_included_in_multiple_sectors_failure() {
     let miner_balance = v.get_miner_balance(&maddr);
     assert!(miner_balance.pre_commit_deposit.is_positive());
 
-    let prove_time = v.get_epoch() + policy.pre_commit_challenge_delay + 1;
+    let prove_time = v.epoch() + policy.pre_commit_challenge_delay + 1;
     advance_by_deadline_to_epoch(&v, &maddr, prove_time);
 
     prove_commit_sectors(&v, &worker, &maddr, precommits, 100);
@@ -1004,7 +1004,7 @@ fn replica_update_verified_deal() {
         client,
         worker,
         maddr,
-        old_sector_info.expiration - v.get_epoch() - policy.market_default_allocation_term_buffer,
+        old_sector_info.expiration - v.epoch() - policy.market_default_allocation_term_buffer,
     );
 
     // replica update
@@ -1121,7 +1121,7 @@ fn replica_update_verified_deal_max_term_violated() {
 
     let old_sector_info = sector_info(&v, &maddr, sector_number);
     // term max of claim is 1 epoch less than the remaining sector lifetime causing get claims validation failure
-    let sector_lifetime = old_sector_info.expiration - v.get_epoch();
+    let sector_lifetime = old_sector_info.expiration - v.epoch();
     let deal_ids = create_verified_deals(
         1,
         &v,
@@ -1247,7 +1247,7 @@ fn create_sector<BS: Blockstore>(
     seal_proof: RegisteredSealProof,
 ) -> (TestVM<BS>, u64, u64) {
     // precommit
-    let exp = v.get_epoch() + Policy::default().max_sector_expiration_extension;
+    let exp = v.epoch() + Policy::default().max_sector_expiration_extension;
     let precommits =
         precommit_sectors(&v, 1, 1, &worker, &maddr, seal_proof, sector_number, true, Some(exp));
     assert_eq!(1, precommits.len());
@@ -1256,7 +1256,7 @@ fn create_sector<BS: Blockstore>(
     assert!(balances.pre_commit_deposit.is_positive());
 
     // prove commit
-    let prove_time = v.get_epoch() + Policy::default().pre_commit_challenge_delay + 1;
+    let prove_time = v.epoch() + Policy::default().pre_commit_challenge_delay + 1;
     advance_by_deadline_to_epoch(&v, &maddr, prove_time);
     let prove_commit_params = ProveCommitSectorParams { sector_number, proof: vec![] };
     apply_ok(
@@ -1352,7 +1352,7 @@ fn create_deals_frac<BS: Blockstore>(
     );
 
     let mut ids = Vec::<DealID>::new();
-    let deal_start = v.get_epoch() + Policy::default().pre_commit_challenge_delay + 1;
+    let deal_start = v.epoch() + Policy::default().pre_commit_challenge_delay + 1;
 
     for i in 0..num_deals {
         let deals = market_publish_deal(

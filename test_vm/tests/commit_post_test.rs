@@ -65,7 +65,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (TestVM<MemoryBlockstore>, MinerInfo, S
     let balances = v.get_miner_balance(&id_addr);
     assert!(balances.pre_commit_deposit.is_positive());
 
-    let prove_time = v.get_epoch() + Policy::default().pre_commit_challenge_delay + 1;
+    let prove_time = v.epoch() + Policy::default().pre_commit_challenge_delay + 1;
     advance_by_deadline_to_epoch(&v, &id_addr, prove_time);
 
     // prove commit, cron, advance to post time
@@ -332,7 +332,7 @@ fn overdue_precommit() {
     let balances = v.get_miner_balance(&id_addr);
     assert!(balances.pre_commit_deposit.is_positive());
 
-    let prove_time = v.get_epoch() + max_prove_commit_duration(policy, seal_proof).unwrap() + 1;
+    let prove_time = v.epoch() + max_prove_commit_duration(policy, seal_proof).unwrap() + 1;
     advance_by_deadline_to_epoch(&v, &id_addr, prove_time);
 
     //
@@ -464,7 +464,7 @@ fn aggregate_bad_sector_number() {
 
     // advance time to max seal duration
 
-    let prove_time = v.get_epoch() + policy.pre_commit_challenge_delay + 1;
+    let prove_time = v.epoch() + policy.pre_commit_challenge_delay + 1;
     advance_by_deadline_to_epoch(&v, &id_addr, prove_time);
 
     // construct invalid bitfield with a non-committed sector number > abi.MaxSectorNumber
@@ -545,7 +545,7 @@ fn aggregate_size_limits() {
 
     // advance time to max seal duration
 
-    let prove_time = v.get_epoch() + policy.pre_commit_challenge_delay + 1;
+    let prove_time = v.epoch() + policy.pre_commit_challenge_delay + 1;
     advance_by_deadline_to_epoch(&v, &id_addr, prove_time);
 
     // Fail with too many sectors
@@ -678,7 +678,7 @@ fn aggregate_bad_sender() {
 
     // advance time to max seal duration
 
-    let prove_time = v.get_epoch() + policy.pre_commit_challenge_delay + 1;
+    let prove_time = v.epoch() + policy.pre_commit_challenge_delay + 1;
     advance_by_deadline_to_epoch(&v, &id_addr, prove_time);
 
     let prove_params = ProveCommitAggregateParams {
@@ -732,7 +732,7 @@ fn aggregate_one_precommit_expires() {
     let sector_number: SectorNumber = 100;
 
     // early precommit
-    let early_precommit_time = v.get_epoch();
+    let early_precommit_time = v.epoch();
     let early_precommits = precommit_sectors(
         &v,
         1,
@@ -771,7 +771,7 @@ fn aggregate_one_precommit_expires() {
 
     // Advance minimum epochs past later precommits for later commits to be valid
 
-    let prove_time = v.get_epoch() + policy.pre_commit_challenge_delay + 1;
+    let prove_time = v.epoch() + policy.pre_commit_challenge_delay + 1;
     let deadline_info = advance_by_deadline_to_epoch(&v, &id_addr, prove_time);
     advance_by_deadline_to_epoch(&v, &id_addr, deadline_info.close);
 

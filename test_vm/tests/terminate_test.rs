@@ -102,7 +102,7 @@ fn terminate_sectors() {
 
     // create 3 deals, some verified and some not
     let mut deal_ids = vec![];
-    let deal_start = v.get_epoch() + Policy::default().pre_commit_challenge_delay + 1;
+    let deal_start = v.epoch() + Policy::default().pre_commit_challenge_delay + 1;
     let deals = market_publish_deal(
         &v,
         &worker,
@@ -174,13 +174,13 @@ fn terminate_sectors() {
             seal_proof,
             sector_number,
             sealed_cid,
-            seal_rand_epoch: v.get_epoch() - 1,
+            seal_rand_epoch: v.epoch() - 1,
             deal_ids: deal_ids.clone(),
-            expiration: v.get_epoch() + 220 * EPOCHS_IN_DAY,
+            expiration: v.epoch() + 220 * EPOCHS_IN_DAY,
             ..Default::default()
         }),
     );
-    let prove_time = v.get_epoch() + Policy::default().pre_commit_challenge_delay + 1;
+    let prove_time = v.epoch() + Policy::default().pre_commit_challenge_delay + 1;
     advance_by_deadline_to_epoch(&v, &miner_id_addr, prove_time);
 
     // prove commit, cron, advance to post time
@@ -308,7 +308,7 @@ fn terminate_sectors() {
     assert!(pow_st.total_pledge_collateral.is_zero());
 
     // termination slashes deals in market state
-    let termination_epoch = v.get_epoch();
+    let termination_epoch = v.epoch();
     let st = v.get_state::<MarketState>(&STORAGE_MARKET_ACTOR_ADDR).unwrap();
     let deal_states = DealMetaArray::load(&st.states, v.store).unwrap();
     for id in deal_ids.iter() {

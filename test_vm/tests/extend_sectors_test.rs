@@ -139,8 +139,7 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
     market_add_balance(&v, &worker, &miner_id, &TokenAmount::from_whole(64));
 
     // create 1 verified deal for total sector capacity for 6 months
-    let deal_start =
-        v.get_epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
+    let deal_start = v.epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
     let deals = market_publish_deal(
         &v,
         &worker,

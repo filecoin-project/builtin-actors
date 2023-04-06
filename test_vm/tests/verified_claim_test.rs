@@ -73,8 +73,7 @@ fn verified_claim_scenario() {
     market_add_balance(&v, &worker, &miner_id, &TokenAmount::from_whole(64));
 
     // Publish a verified deal for total sector capacity with min term of 6 months
-    let deal_start =
-        v.get_epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
+    let deal_start = v.epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
     let deal_term_min = 180 * EPOCHS_IN_DAY;
 
     let deal_size = 32u64 << 30;
@@ -232,7 +231,7 @@ fn verified_claim_scenario() {
 
     // Another client extends the claim beyond the initial maximum term.
     let original_max_term = policy.maximum_verified_allocation_term;
-    let new_claim_expiry_epoch = v.get_epoch() + policy.maximum_verified_allocation_term;
+    let new_claim_expiry_epoch = v.epoch() + policy.maximum_verified_allocation_term;
     let new_max_term = new_claim_expiry_epoch - claim.term_start;
     assert!(new_max_term > original_max_term);
 
@@ -365,7 +364,7 @@ fn expired_allocations() {
 
     // Publish 2 verified deals
     let deal1_start =
-        v.get_epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
+        v.epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
     let deal_term_min = 180 * EPOCHS_IN_DAY;
 
     let deal_size = 32u64 << 30;

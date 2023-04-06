@@ -120,9 +120,9 @@ fn test_cron_tick() {
         seal_proof,
         sector_number,
         sealed_cid,
-        seal_rand_epoch: vm.get_epoch() - 1,
+        seal_rand_epoch: vm.epoch() - 1,
         deal_ids: vec![],
-        expiration: vm.get_epoch()
+        expiration: vm.epoch()
             + MIN_SECTOR_EXPIRATION
             + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap()
             + 100,

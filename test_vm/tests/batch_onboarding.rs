@@ -90,7 +90,7 @@ fn batch_onboarding(v2: bool) {
     let mut precommmits: Vec<SectorPreCommitOnChainInfo> = vec![];
 
     for item in vec_onboarding {
-        let epoch = v.get_epoch();
+        let epoch = v.epoch();
         v.set_epoch(epoch + item.epoch_delay);
 
         if item.pre_commit_sector_count > 0 {

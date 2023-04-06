@@ -80,7 +80,7 @@ fn datacap_transfer_scenario() {
         size: PaddedPieceSize(MINIMUM_VERIFIED_ALLOCATION_SIZE as u64),
         term_min: policy.minimum_verified_allocation_term,
         term_max: policy.maximum_verified_allocation_term,
-        expiration: v.get_epoch() + policy.maximum_verified_allocation_expiration,
+        expiration: v.epoch() + policy.maximum_verified_allocation_expiration,
     };
     let transfer_from_params = TransferFromParams {
         to: VERIFIED_REGISTRY_ACTOR_ADDR,
