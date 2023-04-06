@@ -345,7 +345,7 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
 #[test]
 fn extend_updated_sector_with_claim() {
     let store = MemoryBlockstore::new();
-    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     let addrs = create_accounts(&v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
@@ -354,7 +354,7 @@ fn extend_updated_sector_with_claim() {
 
     // create miner
     let miner_id = create_miner(
-        &mut v,
+        &v,
         &owner,
         &worker,
         seal_proof.registered_window_post_proof().unwrap(),
@@ -407,10 +407,9 @@ fn extend_updated_sector_with_claim() {
     let miner_state = v.get_state::<MinerState>(&miner_id).unwrap();
     let initial_sector_info = miner_state.get_sector(&store, sector_number).unwrap().unwrap();
     assert_eq!(expiration, initial_sector_info.expiration);
-    assert_eq!(StoragePower::zero(), initial_sector_info.deal_weight); // 0 space time
-    assert_eq!(StoragePower::zero(), initial_sector_info.verified_deal_weight); // 0 space time
-
-    // publish verified deals
+    assert!(initial_sector_info.deal_weight.is_zero()); // 0 space time
+    assert!(initial_sector_info.verified_deal_weight.is_zero()); // 0 space time
+                                                                 // publish verified deals
 
     // register verifier then verified client
     let datacap = StoragePower::from(32_u128 << 40);
@@ -528,6 +527,10 @@ fn extend_updated_sector_with_claim() {
 
     // extend the updated sector
 
+    // For clarity in checking power_base_epoch, we increment epoch by 1
+    let curr_epoch = v.epoch();
+    let v = v.with_epoch(curr_epoch + 1);
+
     let market_state: MarketState = v.get_state(&STORAGE_MARKET_ACTOR_ADDR).unwrap();
     let deal_states = DealMetaArray::load(&market_state.states, v.store).unwrap();
     let deal_state = deal_states.get(deal_ids[0]).unwrap().unwrap();
@@ -564,4 +567,11 @@ fn extend_updated_sector_with_claim() {
         DealWeight::from((sector_info_after_extension.expiration - v.epoch()) * (32i64 << 30)),
         sector_info_after_extension.verified_deal_weight
     ); // 32 GiB * the remaining life of the sector
+
+    assert_eq!(sector_info_after_extension.power_base_epoch, v.epoch());
+    assert_eq!(sector_info_after_update.activation, sector_info_after_extension.activation);
+    assert_eq!(
+        sector_info_after_extension.replaced_day_reward,
+        sector_info_after_update.expected_day_reward
+    );
 }

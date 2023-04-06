@@ -364,6 +364,14 @@ fn check_deal_states_against_sectors(
         };
 
         acc.require(
+            deal.sector_start_epoch >= sector_deal.sector_start,
+            format!(
+                "deal state start {} does not match sector start {} for miner {}",
+                deal.sector_start_epoch, sector_deal.sector_start, deal.provider
+            ),
+        );
+
+        acc.require(
             deal.sector_start_epoch <= sector_deal.sector_expiration,
             format!(
                 "deal state start {} activated after sector expiration {} for miner {}",

@@ -1315,10 +1315,7 @@ impl Actor {
                     // Skip checking if CID is defined because it cannot be so in Rust
 
                     new_sector_info.deal_ids = with_details.update.deals.clone();
-
-                    if !with_details.deal_spaces.verified_deal_space.is_zero() {
-                        new_sector_info.power_base_epoch = rt.curr_epoch();
-                    }
+                    new_sector_info.power_base_epoch = rt.curr_epoch();
 
                     let duration = new_sector_info.expiration - new_sector_info.power_base_epoch;
 
@@ -3871,7 +3868,8 @@ fn extend_simple_qap_sector(
 
         new_sector.verified_deal_weight = BigInt::from(*new_verified_deal_space) * new_duration;
 
-        // We only bother updating the pledge for verified deals as it can increase power.
+        // We only bother updating the expected_day_reward, expected_storage_pledge, and replaced_day_reward
+        //  for verified deals, as it can increase power.
         let qa_pow = qa_power_for_weight(
             sector_size,
             new_duration,

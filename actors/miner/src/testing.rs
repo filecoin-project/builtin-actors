@@ -76,9 +76,13 @@ pub fn check_state_invariants<BS: Blockstore>(
                     ),
                 );
                 sector.deal_ids.iter().for_each(|&deal| {
-                    miner_summary
-                        .deals
-                        .insert(deal, DealSummary { sector_expiration: sector.expiration });
+                    miner_summary.deals.insert(
+                        deal,
+                        DealSummary {
+                            sector_start: sector.activation,
+                            sector_expiration: sector.expiration,
+                        },
+                    );
                 });
                 if !sector.deal_ids.is_empty() {
                     miner_summary.sectors_with_deals.insert(sector_number);
@@ -139,6 +143,7 @@ pub fn check_state_invariants<BS: Blockstore>(
 }
 
 pub struct DealSummary {
+    pub sector_start: ChainEpoch,
     pub sector_expiration: ChainEpoch,
 }
 
