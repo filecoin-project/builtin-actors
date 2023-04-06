@@ -22,7 +22,7 @@ use test_vm::util::{
     miner_precommit_sector, miner_prove_sector, submit_windowed_post, verifreg_add_client,
     verifreg_add_verifier,
 };
-use test_vm::{ExpectInvocation, TestVM};
+use test_vm::{ExpectInvocation, TestVM, VM};
 
 #[test]
 fn extend_legacy_sector_with_deals() {
@@ -107,7 +107,7 @@ fn extend<BS: Blockstore>(
 
 fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
     let store = MemoryBlockstore::new();
-    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     let addrs = create_accounts(&v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
@@ -116,14 +116,14 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
 
     // create miner
     let miner_id = create_miner(
-        &mut v,
+        &v,
         &owner,
         &worker,
         seal_proof.registered_window_post_proof().unwrap(),
         &TokenAmount::from_whole(1_000),
     )
     .0;
-    let mut v = v.with_epoch(200);
+    let v = v.with_epoch(200);
 
     //
     // publish verified deals
@@ -139,8 +139,7 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
     market_add_balance(&v, &worker, &miner_id, &TokenAmount::from_whole(64));
 
     // create 1 verified deal for total sector capacity for 6 months
-    let deal_start =
-        v.get_epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
+    let deal_start = v.epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
     let deals = market_publish_deal(
         &v,
         &worker,
@@ -169,7 +168,7 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
     );
 
     // advance time to max seal duration and prove the sector
-    v = advance_by_deadline_to_epoch(v, miner_id, deal_start).0;
+    advance_by_deadline_to_epoch(&v, &miner_id, deal_start);
     miner_prove_sector(&v, &worker, &miner_id, sector_number);
     // trigger cron to validate the prove commit
     cron_tick(&v);
@@ -200,8 +199,8 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
     let initial_deal_weight = sector_info.deal_weight;
 
     // advance to proving period and submit post
-    let (deadline_info, partition_index, mut v) =
-        advance_to_proving_deadline(v, miner_id, sector_number);
+    let (deadline_info, partition_index) =
+        advance_to_proving_deadline(&v, &miner_id, sector_number);
 
     let expected_power_delta = PowerPair {
         raw: StoragePower::from(32u64 << 30),
@@ -218,21 +217,20 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
     );
 
     // move forward one deadline so advanceWhileProving doesn't fail double submitting posts
-    v = advance_by_deadline_to_index(
-        v,
-        miner_id,
+    advance_by_deadline_to_index(
+        &v,
+        &miner_id,
         deadline_info.index + 1 % policy.wpost_period_deadlines,
-    )
-    .0;
+    );
 
     // advance halfway through life and extend another 6 months
     // verified deal weight /= 2
     // power multiplier = (1/4)*10 + (3/4)*1 = 3.25
     // power delta = (10-3.25)*32GiB = 6.75*32GiB
-    v = advance_by_deadline_to_epoch_while_proving(
-        v,
-        miner_id,
-        worker,
+    advance_by_deadline_to_epoch_while_proving(
+        &v,
+        &miner_id,
+        &worker,
         sector_number,
         deal_start + 90 * EPOCHS_IN_DAY,
     );
@@ -263,10 +261,10 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
     // power multiplier = (1/3)*3.25 + (2/3)*1 = 1.75
     // power delta = (3.25 - 1.75)*32GiB = 1.5*32GiB
 
-    v = advance_by_deadline_to_epoch_while_proving(
-        v,
-        miner_id,
-        worker,
+    advance_by_deadline_to_epoch_while_proving(
+        &v,
+        &miner_id,
+        &worker,
         sector_number,
         deal_start + 180 * EPOCHS_IN_DAY,
     );

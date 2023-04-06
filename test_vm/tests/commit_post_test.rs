@@ -28,7 +28,7 @@ use test_vm::util::{
     create_accounts, create_miner, invariant_failure_patterns, precommit_sectors,
     submit_windowed_post,
 };
-use test_vm::{ExpectInvocation, TestVM, TEST_VM_RAND_ARRAY};
+use test_vm::{ExpectInvocation, TestVM, TEST_VM_RAND_ARRAY, VM};
 
 struct SectorInfo {
     number: SectorNumber,
@@ -45,28 +45,28 @@ struct MinerInfo {
 }
 
 fn setup(store: &'_ MemoryBlockstore) -> (TestVM<MemoryBlockstore>, MinerInfo, SectorInfo) {
-    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
     let addrs = create_accounts(&v, 1, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
     let (id_addr, robust_addr) = create_miner(
-        &mut v,
+        &v,
         &owner,
         &worker,
         seal_proof.registered_window_post_proof().unwrap(),
         &TokenAmount::from_whole(10_000),
     );
-    let mut v = v.with_epoch(200);
+    let v = v.with_epoch(200);
 
     // precommit and advance to prove commit time
     let sector_number: SectorNumber = 100;
-    precommit_sectors(&mut v, 1, 1, &worker, &id_addr, seal_proof, sector_number, true, None);
+    precommit_sectors(&v, 1, 1, &worker, &id_addr, seal_proof, sector_number, true, None);
 
     let balances = v.get_miner_balance(&id_addr);
     assert!(balances.pre_commit_deposit.is_positive());
 
-    let prove_time = v.get_epoch() + Policy::default().pre_commit_challenge_delay + 1;
-    let v = advance_by_deadline_to_epoch(v, id_addr, prove_time).0;
+    let prove_time = v.epoch() + Policy::default().pre_commit_challenge_delay + 1;
+    advance_by_deadline_to_epoch(&v, &id_addr, prove_time);
 
     // prove commit, cron, advance to post time
     let prove_params = ProveCommitSectorParams { sector_number, proof: vec![] };
@@ -152,8 +152,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (TestVM<MemoryBlockstore>, MinerInfo, S
     assert!(network_stats.total_bytes_committed.is_zero());
     assert!(network_stats.total_pledge_collateral.is_positive());
 
-    let (deadline_info, partition_index, v) =
-        advance_to_proving_deadline(v, id_addr, sector_number);
+    let (deadline_info, partition_index) = advance_to_proving_deadline(&v, &id_addr, sector_number);
     (
         v,
         MinerInfo {
@@ -236,10 +235,10 @@ fn skip_sector() {
 #[test]
 fn missed_first_post_deadline() {
     let store = MemoryBlockstore::new();
-    let (mut v, miner_info, sector_info) = setup(&store);
+    let (v, miner_info, sector_info) = setup(&store);
 
     // move to proving period end
-    v = v.with_epoch(sector_info.deadline_info.last());
+    v.set_epoch(sector_info.deadline_info.last());
 
     // Run cron to detect missing PoSt
 
@@ -308,24 +307,24 @@ fn missed_first_post_deadline() {
 fn overdue_precommit() {
     let store = MemoryBlockstore::new();
     let policy = &Policy::default();
-    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     let addrs = create_accounts(&v, 1, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
     let id_addr = create_miner(
-        &mut v,
+        &v,
         &owner,
         &worker,
         seal_proof.registered_window_post_proof().unwrap(),
         &TokenAmount::from_whole(10_000),
     )
     .0;
-    let mut v = v.with_epoch(200);
+    let v = v.with_epoch(200);
 
     // precommit and advance to prove commit time
     let sector_number: SectorNumber = 100;
     let precommit =
-        precommit_sectors(&mut v, 1, 1, &worker, &id_addr, seal_proof, sector_number, true, None)
+        precommit_sectors(&v, 1, 1, &worker, &id_addr, seal_proof, sector_number, true, None)
             .get(0)
             .unwrap()
             .clone();
@@ -333,8 +332,8 @@ fn overdue_precommit() {
     let balances = v.get_miner_balance(&id_addr);
     assert!(balances.pre_commit_deposit.is_positive());
 
-    let prove_time = v.get_epoch() + max_prove_commit_duration(policy, seal_proof).unwrap() + 1;
-    v = advance_by_deadline_to_epoch(v, id_addr, prove_time).0;
+    let prove_time = v.epoch() + max_prove_commit_duration(policy, seal_proof).unwrap() + 1;
+    advance_by_deadline_to_epoch(&v, &id_addr, prove_time);
 
     //
     // overdue precommit
@@ -342,10 +341,10 @@ fn overdue_precommit() {
 
     // advance time to precommit clean up epoch
     let cleanup_time = prove_time + policy.expired_pre_commit_clean_up_delay;
-    let (mut v, deadline_info) = advance_by_deadline_to_epoch(v, id_addr, cleanup_time);
+    let deadline_info = advance_by_deadline_to_epoch(&v, &id_addr, cleanup_time);
 
     // advance one more deadline so precommit clean up is reached
-    v = v.with_epoch(deadline_info.close);
+    v.set_epoch(deadline_info.close);
 
     // run cron which should clean up precommit
     apply_ok(
@@ -422,18 +421,18 @@ fn overdue_precommit() {
 #[test]
 fn aggregate_bad_sector_number() {
     let store = MemoryBlockstore::new();
-    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     let addrs = create_accounts(&v, 1, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
     let (id_addr, robust_addr) = create_miner(
-        &mut v,
+        &v,
         &owner,
         &worker,
         seal_proof.registered_window_post_proof().unwrap(),
         &TokenAmount::from_whole(10_000),
     );
-    let mut v = v.with_epoch(200);
+    let v = v.with_epoch(200);
     let policy = &Policy::default();
 
     //
@@ -444,7 +443,7 @@ fn aggregate_bad_sector_number() {
     let sector_number: SectorNumber = 100;
     let mut precommited_sector_nos = BitField::try_from_bits(
         precommit_sectors(
-            &mut v,
+            &v,
             4,
             policy.pre_commit_sector_batch_max_size as i64,
             &worker,
@@ -465,8 +464,8 @@ fn aggregate_bad_sector_number() {
 
     // advance time to max seal duration
 
-    let prove_time = v.get_epoch() + policy.pre_commit_challenge_delay + 1;
-    let v = advance_by_deadline_to_epoch(v, id_addr, prove_time).0;
+    let prove_time = v.epoch() + policy.pre_commit_challenge_delay + 1;
+    advance_by_deadline_to_epoch(&v, &id_addr, prove_time);
 
     // construct invalid bitfield with a non-committed sector number > abi.MaxSectorNumber
 
@@ -503,18 +502,18 @@ fn aggregate_bad_sector_number() {
 fn aggregate_size_limits() {
     let oversized_batch = 820;
     let store = MemoryBlockstore::new();
-    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     let addrs = create_accounts(&v, 1, &TokenAmount::from_whole(100_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
     let (id_addr, robust_addr) = create_miner(
-        &mut v,
+        &v,
         &owner,
         &worker,
         seal_proof.registered_window_post_proof().unwrap(),
         &TokenAmount::from_whole(100_000),
     );
-    let mut v = v.with_epoch(200);
+    let v = v.with_epoch(200);
     let policy = &Policy::default();
 
     //
@@ -525,7 +524,7 @@ fn aggregate_size_limits() {
     let sector_number: SectorNumber = 100;
     let precommited_sector_nos = BitField::try_from_bits(
         precommit_sectors(
-            &mut v,
+            &v,
             oversized_batch,
             policy.pre_commit_sector_batch_max_size as i64,
             &worker,
@@ -546,8 +545,8 @@ fn aggregate_size_limits() {
 
     // advance time to max seal duration
 
-    let prove_time = v.get_epoch() + policy.pre_commit_challenge_delay + 1;
-    let v = advance_by_deadline_to_epoch(v, id_addr, prove_time).0;
+    let prove_time = v.epoch() + policy.pre_commit_challenge_delay + 1;
+    advance_by_deadline_to_epoch(&v, &id_addr, prove_time);
 
     // Fail with too many sectors
 
@@ -636,18 +635,18 @@ fn aggregate_size_limits() {
 #[test]
 fn aggregate_bad_sender() {
     let store = MemoryBlockstore::new();
-    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     let addrs = create_accounts(&v, 2, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
     let (id_addr, robust_addr) = create_miner(
-        &mut v,
+        &v,
         &owner,
         &worker,
         seal_proof.registered_window_post_proof().unwrap(),
         &TokenAmount::from_whole(10_000),
     );
-    let mut v = v.with_epoch(200);
+    let v = v.with_epoch(200);
     let policy = &Policy::default();
 
     //
@@ -658,7 +657,7 @@ fn aggregate_bad_sender() {
     let sector_number: SectorNumber = 100;
     let precommited_sector_nos = BitField::try_from_bits(
         precommit_sectors(
-            &mut v,
+            &v,
             4,
             policy.pre_commit_sector_batch_max_size as i64,
             &worker,
@@ -679,8 +678,8 @@ fn aggregate_bad_sender() {
 
     // advance time to max seal duration
 
-    let prove_time = v.get_epoch() + policy.pre_commit_challenge_delay + 1;
-    let v = advance_by_deadline_to_epoch(v, id_addr, prove_time).0;
+    let prove_time = v.epoch() + policy.pre_commit_challenge_delay + 1;
+    advance_by_deadline_to_epoch(&v, &id_addr, prove_time);
 
     let prove_params = ProveCommitAggregateParams {
         sector_numbers: precommited_sector_nos,
@@ -712,18 +711,18 @@ fn aggregate_bad_sender() {
 #[test]
 fn aggregate_one_precommit_expires() {
     let store = MemoryBlockstore::new();
-    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     let addrs = create_accounts(&v, 1, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
     let (id_addr, robust_addr) = create_miner(
-        &mut v,
+        &v,
         &owner,
         &worker,
         seal_proof.registered_window_post_proof().unwrap(),
         &TokenAmount::from_whole(10_000),
     );
-    let mut v = v.with_epoch(200);
+    let v = v.with_epoch(200);
     let policy = &Policy::default();
 
     //
@@ -733,9 +732,9 @@ fn aggregate_one_precommit_expires() {
     let sector_number: SectorNumber = 100;
 
     // early precommit
-    let early_precommit_time = v.get_epoch();
+    let early_precommit_time = v.epoch();
     let early_precommits = precommit_sectors(
-        &mut v,
+        &v,
         1,
         policy.pre_commit_sector_batch_max_size as i64,
         &worker,
@@ -749,12 +748,12 @@ fn aggregate_one_precommit_expires() {
     let early_pre_commit_invalid =
         early_precommit_time + max_prove_commit_duration(policy, seal_proof).unwrap() + 1;
 
-    v = advance_by_deadline_to_epoch(v, id_addr, early_pre_commit_invalid).0;
+    advance_by_deadline_to_epoch(&v, &id_addr, early_pre_commit_invalid);
 
     // later precommits
 
     let later_precommits = precommit_sectors(
-        &mut v,
+        &v,
         3,
         policy.pre_commit_sector_batch_max_size as i64,
         &worker,
@@ -772,9 +771,9 @@ fn aggregate_one_precommit_expires() {
 
     // Advance minimum epochs past later precommits for later commits to be valid
 
-    let prove_time = v.get_epoch() + policy.pre_commit_challenge_delay + 1;
-    let (mut v, deadline_info) = advance_by_deadline_to_epoch(v, id_addr, prove_time);
-    v = advance_by_deadline_to_epoch(v, id_addr, deadline_info.close).0;
+    let prove_time = v.epoch() + policy.pre_commit_challenge_delay + 1;
+    let deadline_info = advance_by_deadline_to_epoch(&v, &id_addr, prove_time);
+    advance_by_deadline_to_epoch(&v, &id_addr, deadline_info.close);
 
     // Assert that precommit should not yet be cleaned up. This makes fixing this test easier if parameters change.
     assert!(

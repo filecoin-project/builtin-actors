@@ -12,7 +12,7 @@ use fil_actors_runtime::test_utils::make_piece_cid;
 use fil_actors_runtime::{DATACAP_TOKEN_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
 use fvm_shared::error::ExitCode;
 use test_vm::util::{apply_code, apply_ok, create_accounts, create_miner};
-use test_vm::TestVM;
+use test_vm::{TestVM, VM};
 
 use fil_actor_datacap::{Method as DataCapMethod, MintParams};
 use frc46_token::token::types::{GetAllowanceParams, TransferFromParams};
@@ -23,14 +23,14 @@ use fvm_ipld_encoding::RawBytes;
 fn datacap_transfer_scenario() {
     let policy = Policy::default();
     let store = MemoryBlockstore::new();
-    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     let addrs = create_accounts(&v, 3, &TokenAmount::from_whole(10_000));
     let (client, operator, owner) = (addrs[0], addrs[1], addrs[2]);
 
     // need to allocate to an actual miner actor to pass verifreg receiver hook checks
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (maddr, _) = create_miner(
-        &mut v,
+        &v,
         &owner,
         &owner,
         seal_proof.registered_window_post_proof().unwrap(),
@@ -80,7 +80,7 @@ fn datacap_transfer_scenario() {
         size: PaddedPieceSize(MINIMUM_VERIFIED_ALLOCATION_SIZE as u64),
         term_min: policy.minimum_verified_allocation_term,
         term_max: policy.maximum_verified_allocation_term,
-        expiration: v.get_epoch() + policy.maximum_verified_allocation_expiration,
+        expiration: v.epoch() + policy.maximum_verified_allocation_expiration,
     };
     let transfer_from_params = TransferFromParams {
         to: VERIFIED_REGISTRY_ACTOR_ADDR,

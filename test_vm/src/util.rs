@@ -1,5 +1,6 @@
 use std::cmp::min;
 
+use fil_actor_verifreg::ext::datacap::MintParams;
 use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
 use frc46_token::token::types::{BurnParams, TransferFromParams, TransferParams};
 use fvm_actor_utils::receiver::UniversalReceiverParams;
@@ -19,7 +20,7 @@ use serde::Serialize;
 
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_cron::Method as CronMethod;
-use fil_actor_datacap::{Method as DataCapMethod, MintParams};
+use fil_actor_datacap::Method as DataCapMethod;
 use fil_actor_market::ext::verifreg::{
     AllocationRequest, AllocationRequests, ClaimExtensionRequest,
 };
@@ -74,7 +75,7 @@ fn new_bls_from_rng(rng: &mut ChaCha8Rng) -> Address {
 const ACCOUNT_SEED: u64 = 93837778;
 
 pub fn create_accounts<BS: Blockstore>(
-    v: &TestVM<BS>,
+    v: &dyn VM<BS>,
     count: u64,
     balance: &TokenAmount,
 ) -> Vec<Address> {
@@ -82,12 +83,9 @@ pub fn create_accounts<BS: Blockstore>(
 }
 
 pub fn create_accounts_seeded<BS: Blockstore>(
-    v: &TestVM<BS>,
-
+    v: &dyn VM<BS>,
     count: u64,
-
     balance: &TokenAmount,
-
     seed: u64,
 ) -> Vec<Address> {
     let pk_addrs = pk_addrs_from(seed, count);
@@ -96,11 +94,11 @@ pub fn create_accounts_seeded<BS: Blockstore>(
         apply_ok(v, &TEST_FAUCET_ADDR, &pk_addr, balance, METHOD_SEND, None::<RawBytes>);
     }
     // Normalize pk address to return id address of account actor
-    pk_addrs.iter().map(|&pk_addr| v.normalize_address(&pk_addr).unwrap()).collect()
+    pk_addrs.iter().map(|pk_addr| v.resolve_id_address(pk_addr).unwrap()).collect()
 }
 
-pub fn apply_ok<BS: Blockstore, S: Serialize>(
-    v: &TestVM<BS>,
+pub fn apply_ok<S: Serialize, BS: Blockstore>(
+    v: &dyn VM<BS>,
     from: &Address,
     to: &Address,
     value: &TokenAmount,
@@ -110,8 +108,8 @@ pub fn apply_ok<BS: Blockstore, S: Serialize>(
     apply_code(v, from, to, value, method, params, ExitCode::OK)
 }
 
-pub fn apply_code<BS: Blockstore, S: Serialize>(
-    v: &TestVM<BS>,
+pub fn apply_code<S: Serialize, BS: Blockstore>(
+    v: &dyn VM<BS>,
     from: &Address,
     to: &Address,
     value: &TokenAmount,
@@ -119,12 +117,13 @@ pub fn apply_code<BS: Blockstore, S: Serialize>(
     params: Option<S>,
     code: ExitCode,
 ) -> RawBytes {
-    let res = v.apply_message(from, to, value, method, params).unwrap();
+    let params = params.map(|p| IpldBlock::serialize_cbor(&p).unwrap().unwrap());
+    let res = v.execute_message(from, to, value, method, params).unwrap();
     assert_eq!(code, res.code, "expected code {}, got {} ({})", code, res.code, res.message);
     res.ret.map_or(RawBytes::default(), |b| RawBytes::new(b.data))
 }
 
-pub fn cron_tick<BS: Blockstore>(v: &TestVM<BS>) {
+pub fn cron_tick<BS: Blockstore>(v: &dyn VM<BS>) {
     apply_ok(
         v,
         &SYSTEM_ACTOR_ADDR,
@@ -136,7 +135,7 @@ pub fn cron_tick<BS: Blockstore>(v: &TestVM<BS>) {
 }
 
 pub fn create_miner<BS: Blockstore>(
-    v: &mut TestVM<BS>,
+    v: &dyn VM<BS>,
     owner: &Address,
     worker: &Address,
     post_proof_type: RegisteredPoStProof,
@@ -152,8 +151,9 @@ pub fn create_miner<BS: Blockstore>(
         multiaddrs,
     };
 
+    let params = IpldBlock::serialize_cbor(&params).unwrap().unwrap();
     let res: CreateMinerReturn = v
-        .apply_message(
+        .execute_message(
             owner,
             &STORAGE_POWER_ACTOR_ADDR,
             balance,
@@ -169,7 +169,7 @@ pub fn create_miner<BS: Blockstore>(
 }
 
 pub fn miner_precommit_sector<BS: Blockstore>(
-    v: &TestVM<BS>,
+    v: &dyn VM<BS>,
     worker: &Address,
     miner_id: &Address,
     seal_proof: RegisteredSealProof,
@@ -183,7 +183,7 @@ pub fn miner_precommit_sector<BS: Blockstore>(
         seal_proof,
         sector_number,
         sealed_cid,
-        seal_rand_epoch: v.get_epoch() - 1,
+        seal_rand_epoch: v.epoch() - 1,
         deal_ids,
         expiration,
         replace_capacity: false,
@@ -201,17 +201,14 @@ pub fn miner_precommit_sector<BS: Blockstore>(
         Some(params),
     );
 
-    let state: MinerState = v.get_state(miner_id).unwrap();
-    state.get_precommitted_sector(v.store, sector_number).unwrap().unwrap()
+    let state: MinerState = get_state(v, miner_id).unwrap();
+    state.get_precommitted_sector(*v.blockstore(), sector_number).unwrap().unwrap()
 }
 
 pub fn miner_prove_sector<BS: Blockstore>(
-    v: &TestVM<BS>,
-
+    v: &dyn VM<BS>,
     worker: &Address,
-
     miner_id: &Address,
-
     sector_number: SectorNumber,
 ) {
     let prove_commit_params = ProveCommitSectorParams { sector_number, proof: vec![] };
@@ -240,7 +237,7 @@ pub fn miner_prove_sector<BS: Blockstore>(
 
 #[allow(clippy::too_many_arguments)]
 pub fn precommit_sectors_v2<BS: Blockstore>(
-    v: &mut TestVM<BS>,
+    v: &dyn VM<BS>,
     count: u64,
     batch_size: i64,
     worker: &Address,
@@ -251,7 +248,7 @@ pub fn precommit_sectors_v2<BS: Blockstore>(
     exp: Option<ChainEpoch>,
     v2: bool,
 ) -> Vec<SectorPreCommitOnChainInfo> {
-    let mid = v.normalize_address(maddr).unwrap();
+    let mid = v.resolve_id_address(maddr).unwrap();
     let invocs_common = || -> Vec<ExpectInvocation> {
         vec![
             ExpectInvocation {
@@ -283,7 +280,7 @@ pub fn precommit_sectors_v2<BS: Blockstore>(
     };
     let expiration = match exp {
         None => {
-            v.get_epoch()
+            v.epoch()
                 + Policy::default().min_sector_expiration
                 + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap()
         }
@@ -303,7 +300,7 @@ pub fn precommit_sectors_v2<BS: Blockstore>(
                     seal_proof,
                     sector_number,
                     sealed_cid: make_sealed_cid(format!("sn: {}", sector_number).as_bytes()),
-                    seal_rand_epoch: v.get_epoch() - 1,
+                    seal_rand_epoch: v.epoch() - 1,
                     deal_ids: vec![],
                     expiration,
                     ..Default::default()
@@ -351,7 +348,7 @@ pub fn precommit_sectors_v2<BS: Blockstore>(
                     seal_proof,
                     sector_number,
                     sealed_cid: make_sealed_cid(format!("sn: {}", sector_number).as_bytes()),
-                    seal_rand_epoch: v.get_epoch() - 1,
+                    seal_rand_epoch: v.epoch() - 1,
                     deal_ids: vec![],
                     expiration,
                     unsealed_cid: CompactCommD::new(None),
@@ -377,6 +374,7 @@ pub fn precommit_sectors_v2<BS: Blockstore>(
                 MinerMethod::PreCommitSectorBatch2 as u64,
                 Some(PreCommitSectorBatchParams2 { sectors: param_sectors.clone() }),
             );
+
             let expect = ExpectInvocation {
                 to: mid,
                 method: MinerMethod::PreCommitSectorBatch2 as u64,
@@ -393,15 +391,20 @@ pub fn precommit_sectors_v2<BS: Blockstore>(
         }
     }
     // extract chain state
-    let mstate = v.get_state::<MinerState>(&mid).unwrap();
+    let mstate: MinerState = get_state(v, &mid).unwrap();
     (0..count)
-        .map(|i| mstate.get_precommitted_sector(v.store, sector_number_base + i).unwrap().unwrap())
+        .map(|i| {
+            mstate
+                .get_precommitted_sector(*v.blockstore(), sector_number_base + i)
+                .unwrap()
+                .unwrap()
+        })
         .collect()
 }
 
 #[allow(clippy::too_many_arguments)]
 pub fn precommit_sectors<BS: Blockstore>(
-    v: &mut TestVM<BS>,
+    v: &dyn VM<BS>,
     count: u64,
     batch_size: i64,
     worker: &Address,
@@ -426,7 +429,7 @@ pub fn precommit_sectors<BS: Blockstore>(
 }
 
 pub fn prove_commit_sectors<BS: Blockstore>(
-    v: &mut TestVM<BS>,
+    v: &dyn VM<BS>,
     worker: &Address,
     maddr: &Address,
     precommits: Vec<SectorPreCommitOnChainInfo>,
@@ -443,6 +446,7 @@ pub fn prove_commit_sectors<BS: Blockstore>(
             sector_numbers: make_bitfield(b.as_slice()),
             aggregate_proof: vec![],
         };
+
         let prove_commit_aggregate_params_ser =
             IpldBlock::serialize_cbor(&prove_commit_aggregate_params).unwrap();
 
@@ -490,7 +494,7 @@ pub fn prove_commit_sectors<BS: Blockstore>(
 
 #[allow(clippy::too_many_arguments)]
 pub fn miner_extend_sector_expiration2<BS: Blockstore>(
-    v: &TestVM<BS>,
+    v: &dyn VM<BS>,
     worker: &Address,
     miner_id: &Address,
     deadline: u64,
@@ -567,142 +571,151 @@ pub fn miner_extend_sector_expiration2<BS: Blockstore>(
 }
 
 pub fn advance_by_deadline_to_epoch<BS: Blockstore>(
-    v: TestVM<BS>,
-    maddr: Address,
+    v: &dyn VM<BS>,
+    maddr: &Address,
     e: ChainEpoch,
-) -> (TestVM<BS>, DeadlineInfo) {
+) -> DeadlineInfo {
     // keep advancing until the epoch of interest is within the deadline
     // if e is dline.last() == dline.close -1 cron is not run
-    let (v, dline_info) = advance_by_deadline(v, maddr, |dline_info| dline_info.close < e);
-    (v.with_epoch(e), dline_info)
+    let dline_info = advance_by_deadline(v, maddr, |dline_info| dline_info.close < e);
+    v.set_epoch(e);
+    dline_info
 }
 
 pub fn advance_by_deadline_to_index<BS: Blockstore>(
-    v: TestVM<BS>,
-    maddr: Address,
+    v: &dyn VM<BS>,
+    maddr: &Address,
     i: u64,
-) -> (TestVM<BS>, DeadlineInfo) {
+) -> DeadlineInfo {
     advance_by_deadline(v, maddr, |dline_info| dline_info.index != i)
 }
 
 pub fn advance_by_deadline_to_epoch_while_proving<BS: Blockstore>(
-    mut v: TestVM<BS>,
-    maddr: Address,
-    worker: Address,
+    v: &dyn VM<BS>,
+    maddr: &Address,
+    worker: &Address,
     s: SectorNumber,
     e: ChainEpoch,
-) -> TestVM<BS> {
+) {
     let mut dline_info;
-    let (d, p_idx) = sector_deadline(&v, &maddr, s);
+    let (d, p_idx) = sector_deadline(v, maddr, s);
     loop {
         // stop if either we reach deadline of e or the proving deadline for sector s
-        (v, dline_info) = advance_by_deadline(v, maddr, |dline_info| {
+        dline_info = advance_by_deadline(v, maddr, |dline_info| {
             dline_info.index != d && dline_info.close < e
         });
         if dline_info.close > e {
             // in the case e is within the proving deadline don't post, leave that to the caller
-            return v.with_epoch(e);
+            v.set_epoch(e);
+            return;
         }
-        submit_windowed_post(&v, &worker, &maddr, dline_info, p_idx, None);
-        v = advance_by_deadline_to_index(
-            v,
-            maddr,
-            d + 1 % &Policy::default().wpost_period_deadlines,
-        )
-        .0
+        submit_windowed_post(v, worker, maddr, dline_info, p_idx, None);
+        advance_by_deadline_to_index(v, maddr, d + 1 % &Policy::default().wpost_period_deadlines);
     }
 }
 
 pub fn advance_to_proving_deadline<BS: Blockstore>(
-    v: TestVM<BS>,
-    maddr: Address,
+    v: &dyn VM<BS>,
+    maddr: &Address,
     s: SectorNumber,
-) -> (DeadlineInfo, u64, TestVM<BS>) {
-    let (d, p) = sector_deadline(&v, &maddr, s);
-    let (v, dline_info) = advance_by_deadline_to_index(v, maddr, d);
-    let v = v.with_epoch(dline_info.open);
-    (dline_info, p, v)
+) -> (DeadlineInfo, u64) {
+    let (d, p) = sector_deadline(v, maddr, s);
+    let dline_info = advance_by_deadline_to_index(v, maddr, d);
+    v.set_epoch(dline_info.open);
+    (dline_info, p)
 }
 
-fn advance_by_deadline<BS, F>(
-    mut v: TestVM<BS>,
-    maddr: Address,
-    more: F,
-) -> (TestVM<BS>, DeadlineInfo)
+fn advance_by_deadline<BS: Blockstore, F>(v: &dyn VM<BS>, maddr: &Address, more: F) -> DeadlineInfo
 where
-    BS: Blockstore,
     F: Fn(DeadlineInfo) -> bool,
 {
     loop {
-        let dline_info = miner_dline_info(&v, &maddr);
+        let dline_info = miner_dline_info(v, maddr);
         if !more(dline_info) {
-            return (v, dline_info);
+            return dline_info;
         }
-        v = v.with_epoch(dline_info.last());
-
-        cron_tick(&v);
-        let next = v.get_epoch() + 1;
-        v = v.with_epoch(next);
+        v.set_epoch(dline_info.last());
+        cron_tick(v);
+        let next = v.epoch() + 1;
+        v.set_epoch(next);
     }
 }
 
-pub fn miner_dline_info<BS: Blockstore>(v: &TestVM<BS>, m: &Address) -> DeadlineInfo {
-    let st = v.get_state::<MinerState>(m).unwrap();
-    new_deadline_info_from_offset_and_epoch(
-        &Policy::default(),
-        st.proving_period_start,
-        v.get_epoch(),
-    )
+pub fn get_state<T: DeserializeOwned, BS: Blockstore>(v: &dyn VM<BS>, a: &Address) -> Option<T> {
+    let cid = v.state_root(a).unwrap();
+    v.blockstore().get(&cid).unwrap().map(|slice| fvm_ipld_encoding::from_slice(&slice).unwrap())
 }
 
-pub fn sector_deadline<BS: Blockstore>(v: &TestVM<BS>, m: &Address, s: SectorNumber) -> (u64, u64) {
-    let st = v.get_state::<MinerState>(m).unwrap();
-    st.find_sector(&Policy::default(), v.store, s).unwrap()
+pub fn miner_balance<BS: Blockstore>(v: &dyn VM<BS>, m: &Address) -> MinerBalances {
+    let st: MinerState = get_state(v, m).unwrap();
+    MinerBalances {
+        available_balance: st.get_available_balance(&v.balance(m)).unwrap(),
+        vesting_balance: st.locked_funds,
+        initial_pledge: st.initial_pledge,
+        pre_commit_deposit: st.pre_commit_deposits,
+    }
 }
 
-pub fn check_sector_active<BS: Blockstore>(v: &TestVM<BS>, m: &Address, s: SectorNumber) -> bool {
+pub fn miner_info<BS: Blockstore>(v: &dyn VM<BS>, m: &Address) -> MinerInfo {
+    let st: MinerState = get_state(v, m).unwrap();
+    v.blockstore().get_cbor(&st.info).unwrap().unwrap()
+}
+
+pub fn miner_dline_info<BS: Blockstore>(v: &dyn VM<BS>, m: &Address) -> DeadlineInfo {
+    let st: MinerState = get_state(v, m).unwrap();
+    new_deadline_info_from_offset_and_epoch(&Policy::default(), st.proving_period_start, v.epoch())
+}
+
+pub fn sector_deadline<BS: Blockstore>(v: &dyn VM<BS>, m: &Address, s: SectorNumber) -> (u64, u64) {
+    let st: MinerState = get_state(v, m).unwrap();
+    st.find_sector(&Policy::default(), *v.blockstore(), s).unwrap()
+}
+
+pub fn check_sector_active<BS: Blockstore>(v: &dyn VM<BS>, m: &Address, s: SectorNumber) -> bool {
     let (d_idx, p_idx) = sector_deadline(v, m, s);
-    let st = v.get_state::<MinerState>(m).unwrap();
-    st.check_sector_active(&Policy::default(), v.store, d_idx, p_idx, s, true).unwrap()
+    let st: MinerState = get_state(v, m).unwrap();
+    st.check_sector_active(&Policy::default(), *v.blockstore(), d_idx, p_idx, s, true).unwrap()
 }
 
 pub fn check_sector_faulty<BS: Blockstore>(
-    v: &TestVM<BS>,
+    v: &dyn VM<BS>,
     m: &Address,
     d_idx: u64,
     p_idx: u64,
     s: SectorNumber,
 ) -> bool {
-    let st = v.get_state::<MinerState>(m).unwrap();
-    let deadlines = st.load_deadlines(v.store).unwrap();
-    let deadline = deadlines.load_deadline(&Policy::default(), v.store, d_idx).unwrap();
-    let partition = deadline.load_partition(v.store, p_idx).unwrap();
+    let st: MinerState = get_state(v, m).unwrap();
+    let bs = *v.blockstore();
+    let deadlines = st.load_deadlines(bs).unwrap();
+    let deadline = deadlines.load_deadline(&Policy::default(), bs, d_idx).unwrap();
+    let partition = deadline.load_partition(bs, p_idx).unwrap();
     partition.faults.get(s)
 }
 
-pub fn deadline_state<BS: Blockstore>(v: &TestVM<BS>, m: &Address, d_idx: u64) -> Deadline {
-    let st = v.get_state::<MinerState>(m).unwrap();
-    let deadlines = st.load_deadlines(v.store).unwrap();
-    deadlines.load_deadline(&Policy::default(), v.store, d_idx).unwrap()
+pub fn deadline_state<BS: Blockstore>(v: &dyn VM<BS>, m: &Address, d_idx: u64) -> Deadline {
+    let st: MinerState = get_state(v, m).unwrap();
+    let bs = *v.blockstore();
+    let deadlines = st.load_deadlines(bs).unwrap();
+    deadlines.load_deadline(&Policy::default(), bs, d_idx).unwrap()
 }
 
 pub fn sector_info<BS: Blockstore>(
-    v: &TestVM<BS>,
+    v: &dyn VM<BS>,
     m: &Address,
     s: SectorNumber,
 ) -> SectorOnChainInfo {
-    let st = v.get_state::<MinerState>(m).unwrap();
-    st.get_sector(v.store, s).unwrap().unwrap()
+    let st: MinerState = get_state(v, m).unwrap();
+    st.get_sector(*v.blockstore(), s).unwrap().unwrap()
 }
 
-pub fn miner_power<BS: Blockstore>(v: &TestVM<BS>, m: &Address) -> PowerPair {
-    let st = v.get_state::<PowerState>(&STORAGE_POWER_ACTOR_ADDR).unwrap();
-    let claim = st.get_claim(v.store, m).unwrap().unwrap();
+pub fn miner_power<BS: Blockstore>(v: &dyn VM<BS>, m: &Address) -> PowerPair {
+    let st: PowerState = get_state(v, &STORAGE_POWER_ACTOR_ADDR).unwrap();
+    let claim = st.get_claim(*v.blockstore(), m).unwrap().unwrap();
     PowerPair::new(claim.raw_byte_power, claim.quality_adj_power)
 }
 
 pub fn declare_recovery<BS: Blockstore>(
-    v: &TestVM<BS>,
+    v: &dyn VM<BS>,
     worker: &Address,
     maddr: &Address,
     deadline: u64,
@@ -728,7 +741,7 @@ pub fn declare_recovery<BS: Blockstore>(
 }
 
 pub fn submit_windowed_post<BS: Blockstore>(
-    v: &TestVM<BS>,
+    v: &dyn VM<BS>,
     worker: &Address,
     maddr: &Address,
     dline_info: DeadlineInfo,
@@ -782,7 +795,7 @@ pub fn submit_windowed_post<BS: Blockstore>(
 }
 
 pub fn change_beneficiary<BS: Blockstore>(
-    v: &TestVM<BS>,
+    v: &dyn VM<BS>,
     from: &Address,
     maddr: &Address,
     beneficiary_change_proposal: &ChangeBeneficiaryParams,
@@ -798,7 +811,7 @@ pub fn change_beneficiary<BS: Blockstore>(
 }
 
 pub fn get_beneficiary<BS: Blockstore>(
-    v: &TestVM<BS>,
+    v: &dyn VM<BS>,
     from: &Address,
     m_addr: &Address,
 ) -> GetBeneficiaryReturn {
@@ -815,7 +828,7 @@ pub fn get_beneficiary<BS: Blockstore>(
 }
 
 pub fn change_owner_address<BS: Blockstore>(
-    v: &TestVM<BS>,
+    v: &dyn VM<BS>,
     from: &Address,
     m_addr: &Address,
     new_miner_addr: &Address,
@@ -831,7 +844,7 @@ pub fn change_owner_address<BS: Blockstore>(
 }
 
 pub fn withdraw_balance<BS: Blockstore>(
-    v: &TestVM<BS>,
+    v: &dyn VM<BS>,
     from: &Address,
     m_addr: &Address,
     to_withdraw_amount: &TokenAmount,
@@ -870,7 +883,7 @@ pub fn withdraw_balance<BS: Blockstore>(
 }
 
 pub fn submit_invalid_post<BS: Blockstore>(
-    v: &TestVM<BS>,
+    v: &dyn VM<BS>,
     worker: &Address,
     maddr: &Address,
     dline_info: DeadlineInfo,
@@ -897,7 +910,7 @@ pub fn submit_invalid_post<BS: Blockstore>(
 }
 
 pub fn verifreg_add_verifier<BS: Blockstore>(
-    v: &TestVM<BS>,
+    v: &dyn VM<BS>,
     verifier: &Address,
     data_cap: StoragePower,
 ) {
@@ -940,7 +953,7 @@ pub fn verifreg_add_verifier<BS: Blockstore>(
 }
 
 pub fn verifreg_add_client<BS: Blockstore>(
-    v: &TestVM<BS>,
+    v: &dyn VM<BS>,
     verifier: &Address,
     client: &Address,
     allowance: StoragePower,
@@ -979,7 +992,7 @@ pub fn verifreg_add_client<BS: Blockstore>(
 }
 
 pub fn verifreg_extend_claim_terms<BS: Blockstore>(
-    v: &TestVM<BS>,
+    v: &dyn VM<BS>,
     client: &Address,
     provider: &Address,
     claim: ClaimID,
@@ -1003,7 +1016,7 @@ pub fn verifreg_extend_claim_terms<BS: Blockstore>(
 }
 
 pub fn verifreg_remove_expired_allocations<BS: Blockstore>(
-    v: &TestVM<BS>,
+    v: &dyn VM<BS>,
     caller: &Address,
     client: &Address,
     ids: Vec<AllocationID>,
@@ -1041,7 +1054,7 @@ pub fn verifreg_remove_expired_allocations<BS: Blockstore>(
     .matches(v.take_invocations().last().unwrap());
 }
 
-pub fn datacap_get_balance<BS: Blockstore>(v: &TestVM<BS>, address: &Address) -> TokenAmount {
+pub fn datacap_get_balance<BS: Blockstore>(v: &dyn VM<BS>, address: &Address) -> TokenAmount {
     let ret = apply_ok(
         v,
         address,
@@ -1054,7 +1067,7 @@ pub fn datacap_get_balance<BS: Blockstore>(v: &TestVM<BS>, address: &Address) ->
 }
 
 pub fn datacap_extend_claim<BS: Blockstore>(
-    v: &TestVM<BS>,
+    v: &dyn VM<BS>,
     client: &Address,
     provider: &Address,
     claim: ClaimID,
@@ -1128,7 +1141,7 @@ pub fn datacap_extend_claim<BS: Blockstore>(
 }
 
 pub fn market_add_balance<BS: Blockstore>(
-    v: &TestVM<BS>,
+    v: &dyn VM<BS>,
     sender: &Address,
     beneficiary: &Address,
     amount: &TokenAmount,
@@ -1145,7 +1158,7 @@ pub fn market_add_balance<BS: Blockstore>(
 
 #[allow(clippy::too_many_arguments)]
 pub fn market_publish_deal<BS: Blockstore>(
-    v: &TestVM<BS>,
+    v: &dyn VM<BS>,
     worker: &Address,
     deal_client: &Address,
     miner_id: &Address,
@@ -1216,12 +1229,12 @@ pub fn market_publish_deal<BS: Blockstore>(
         let deal_term = deal.end_epoch - deal.start_epoch;
         let token_amount = TokenAmount::from_whole(deal.piece_size.0 as i64);
         let alloc_expiration =
-            min(deal.start_epoch, v.curr_epoch + MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION);
+            min(deal.start_epoch, v.epoch() + MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION);
 
         expect_publish_invocs.push(ExpectInvocation {
             to: DATACAP_TOKEN_ACTOR_ADDR,
             method: DataCapMethod::BalanceExported as u64,
-            params: Some(IpldBlock::serialize_cbor(deal_client).unwrap()),
+            params: Some(IpldBlock::serialize_cbor(&deal_client).unwrap()),
             code: Some(ExitCode::OK),
             ..Default::default()
         });

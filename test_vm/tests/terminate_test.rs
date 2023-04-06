@@ -31,12 +31,12 @@ use test_vm::util::{
     invariant_failure_patterns, make_bitfield, market_publish_deal, submit_windowed_post,
     verifreg_add_verifier,
 };
-use test_vm::{ExpectInvocation, TestVM};
+use test_vm::{ExpectInvocation, TestVM, VM};
 
 #[test]
 fn terminate_sectors() {
     let store = MemoryBlockstore::new();
-    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     let addrs = create_accounts(&v, 4, &TokenAmount::from_whole(10_000));
     let (owner, verifier, unverified_client, verified_client) =
         (addrs[0], addrs[1], addrs[2], addrs[3]);
@@ -48,7 +48,7 @@ fn terminate_sectors() {
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
 
     let (miner_id_addr, miner_robust_addr) = create_miner(
-        &mut v,
+        &v,
         &owner,
         &worker,
         seal_proof.registered_window_post_proof().unwrap(),
@@ -102,7 +102,7 @@ fn terminate_sectors() {
 
     // create 3 deals, some verified and some not
     let mut deal_ids = vec![];
-    let deal_start = v.get_epoch() + Policy::default().pre_commit_challenge_delay + 1;
+    let deal_start = v.epoch() + Policy::default().pre_commit_challenge_delay + 1;
     let deals = market_publish_deal(
         &v,
         &worker,
@@ -163,7 +163,7 @@ fn terminate_sectors() {
         let state = deal_states.get(*id).unwrap();
         assert_eq!(None, state);
     }
-    //    precommit_sectors(&mut v, 1, 1, worker, robust_addr, seal_proof, sector_number, true, None);
+    //    precommit_sectors(&v, 1, 1, worker, robust_addr, seal_proof, sector_number, true, None);
     apply_ok(
         &v,
         &worker,
@@ -174,14 +174,14 @@ fn terminate_sectors() {
             seal_proof,
             sector_number,
             sealed_cid,
-            seal_rand_epoch: v.get_epoch() - 1,
+            seal_rand_epoch: v.epoch() - 1,
             deal_ids: deal_ids.clone(),
-            expiration: v.get_epoch() + 220 * EPOCHS_IN_DAY,
+            expiration: v.epoch() + 220 * EPOCHS_IN_DAY,
             ..Default::default()
         }),
     );
-    let prove_time = v.get_epoch() + Policy::default().pre_commit_challenge_delay + 1;
-    let v = advance_by_deadline_to_epoch(v, miner_id_addr, prove_time).0;
+    let prove_time = v.epoch() + Policy::default().pre_commit_challenge_delay + 1;
+    advance_by_deadline_to_epoch(&v, &miner_id_addr, prove_time);
 
     // prove commit, cron, advance to post time
     let prove_params = ProveCommitSectorParams { sector_number, proof: vec![] };
@@ -203,7 +203,7 @@ fn terminate_sectors() {
         )
         .unwrap();
     assert_eq!(ExitCode::OK, res.code);
-    let (dline_info, p_idx, v) = advance_to_proving_deadline(v, miner_id_addr, sector_number);
+    let (dline_info, p_idx) = advance_to_proving_deadline(&v, &miner_id_addr, sector_number);
     let d_idx = dline_info.index;
     let st = v.get_state::<MinerState>(&miner_id_addr).unwrap();
     let sector = st.get_sector(v.store, sector_number).unwrap().unwrap();
@@ -224,10 +224,10 @@ fn terminate_sectors() {
     // advance cron delay epochs so deals are active
     let start = dline_info.close;
     let v = v.with_epoch(start); // get out of proving deadline so we don't post twice
-    let v = advance_by_deadline_to_epoch_while_proving(
-        v,
-        miner_id_addr,
-        worker,
+    advance_by_deadline_to_epoch_while_proving(
+        &v,
+        &miner_id_addr,
+        &worker,
         sector_number,
         start + Policy::default().deal_updates_interval,
     );
@@ -308,7 +308,7 @@ fn terminate_sectors() {
     assert!(pow_st.total_pledge_collateral.is_zero());
 
     // termination slashes deals in market state
-    let termination_epoch = v.get_epoch();
+    let termination_epoch = v.epoch();
     let st = v.get_state::<MarketState>(&STORAGE_MARKET_ACTOR_ADDR).unwrap();
     let deal_states = DealMetaArray::load(&st.states, v.store).unwrap();
     for id in deal_ids.iter() {
@@ -318,9 +318,9 @@ fn terminate_sectors() {
     }
 
     // advance a market cron processing period to process terminations fully
-    let (v, _) = advance_by_deadline_to_epoch(
-        v,
-        miner_id_addr,
+    advance_by_deadline_to_epoch(
+        &v,
+        &miner_id_addr,
         termination_epoch + Policy::default().deal_updates_interval,
     );
     // because of rounding error it's annoying to compute exact withdrawable balance which is 2.9999.. FIL
