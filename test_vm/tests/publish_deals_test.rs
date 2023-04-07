@@ -636,7 +636,7 @@ fn psd_deal_duration_too_long() {
 
     batcher.stage(a.client1, "deal1", DealOptions::default());
 
-    //bad deal - duration > 1278
+    //bad deal - duration > max deal
     batcher.stage(
         a.client1,
         "deal2",

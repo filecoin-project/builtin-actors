@@ -8,11 +8,10 @@ use fil_actor_miner::{
 use fil_actor_power::{Method as PowerMethod, UpdateClaimedPowerParams};
 use fil_actor_reward::Method as RewardMethod;
 use fil_actor_verifreg::Method as VerifregMethod;
-use fil_actors_runtime::runtime::policy_constants::MAX_SECTOR_EXPIRATION_EXTENSION;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
 use fil_actors_runtime::{
-    DealWeight, EPOCHS_IN_DAY, EPOCHS_IN_YEAR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    DealWeight, EPOCHS_IN_DAY, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
     STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_bitfield::BitField;
@@ -582,7 +581,7 @@ fn extend_updated_sector_with_claim() {
 }
 
 #[test]
-fn extend_sector_to_2_years() {
+fn extend_sector_up_to_max_relative_extension() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     let addrs = create_accounts(&v, 3, &TokenAmount::from_whole(10_000));
@@ -634,7 +633,7 @@ fn extend_sector_to_2_years() {
         advance_to_proving_deadline(&v, &miner_id, sector_number);
 
     let expected_power_delta =
-        PowerPair { raw: StoragePower::from(32u64 << 30), qa: StoragePower::from((32u64 << 30)) };
+        PowerPair { raw: StoragePower::from(32u64 << 30), qa: StoragePower::from(32u64 << 30) };
 
     submit_windowed_post(
         &v,
@@ -652,16 +651,8 @@ fn extend_sector_to_2_years() {
         deadline_info.index + 1 % policy.wpost_period_deadlines,
     );
 
-    // Advance halfway through life and extend the sector to the max sector duration: 1278*EPOCH_IN_DAYs
-    advance_by_deadline_to_epoch_while_proving(
-        &v,
-        &miner_id,
-        &worker,
-        sector_number,
-        sector_start + 90 * EPOCHS_IN_DAY,
-    );
-
-    let new_expiration = sector_start + policy.max_sector_expiration_extension;
+    // Extend the sector by the max relative extension.
+    let new_expiration = v.epoch() + policy.max_sector_expiration_extension;
 
     extend(
         &v,
@@ -677,14 +668,7 @@ fn extend_sector_to_2_years() {
 
     miner_state = v.get_state::<MinerState>(&miner_id).unwrap();
     sector_info = miner_state.get_sector(&store, sector_number).unwrap().unwrap();
-    assert_eq!(
-        policy.max_sector_expiration_extension,
-        sector_info.expiration - sector_info.activation
-    );
-
-    v.expect_state_invariants(
-        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
-    );
+    assert_eq!(policy.max_sector_expiration_extension, sector_info.expiration - v.epoch());
 }
 
 #[test]
@@ -747,7 +731,7 @@ fn commit_sector_with_max_duration_deal() {
         &miner_id,
         seal_proof,
         sector_number,
-        vec![],
+        deals,
         deal_start + deal_lifetime,
     );
 
@@ -757,17 +741,14 @@ fn commit_sector_with_max_duration_deal() {
     // trigger cron to validate the prove commit
     cron_tick(&v);
 
-    // inspect sector info
-    let mut miner_state = v.get_state::<MinerState>(&miner_id).unwrap();
-    let mut sector_info = miner_state.get_sector(&store, sector_number).unwrap().unwrap();
-    assert_eq!(deal_lifetime, sector_info.expiration - sector_info.activation);
-
     // advance to proving period and submit post
     let (deadline_info, partition_index) =
         advance_to_proving_deadline(&v, &miner_id, sector_number);
 
-    let expected_power_delta =
-        PowerPair { raw: StoragePower::from(32u64 << 30), qa: StoragePower::from((32u64 << 30)) };
+    let expected_power_delta = PowerPair {
+        raw: StoragePower::from(32u64 << 30),
+        qa: 10 * StoragePower::from(32u64 << 30),
+    };
 
     submit_windowed_post(
         &v,
@@ -777,4 +758,8 @@ fn commit_sector_with_max_duration_deal() {
         partition_index,
         Some(expected_power_delta),
     );
+    // inspect sector info
+    let miner_state = v.get_state::<MinerState>(&miner_id).unwrap();
+    let sector_info = miner_state.get_sector(&store, sector_number).unwrap().unwrap();
+    assert_eq!(deal_lifetime, sector_info.expiration - sector_info.activation);
 }
