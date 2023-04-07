@@ -174,7 +174,7 @@ pub fn qa_power_for_weight(
 
 /// Returns the quality-adjusted power for a sector.
 pub fn qa_power_for_sector(size: SectorSize, sector: &SectorOnChainInfo) -> StoragePower {
-    let duration = sector.expiration - sector.activation;
+    let duration = sector.expiration - sector.power_base_epoch;
     qa_power_for_weight(size, duration, &sector.deal_weight, &sector.verified_deal_weight)
 }
 
