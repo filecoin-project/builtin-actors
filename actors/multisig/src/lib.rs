@@ -450,7 +450,7 @@ impl Actor {
     }
 
     pub fn fallback(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         method: MethodNum,
         _: Option<IpldBlock>,
     ) -> Result<Option<IpldBlock>, ActorError> {

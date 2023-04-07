@@ -161,7 +161,7 @@ fn authenticate_message() {
 
 #[test]
 fn test_fallback() {
-    let mut rt = MockRuntime { receiver: Address::new_id(100), ..Default::default() };
+    let rt = MockRuntime { receiver: Address::new_id(100), ..Default::default() };
     rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
 
     let addr = Address::new_secp256k1(&[2; fvm_shared::address::SECP_PUB_LEN]).unwrap();
