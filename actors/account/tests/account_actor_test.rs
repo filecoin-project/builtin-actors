@@ -187,7 +187,7 @@ fn test_fallback() {
     let result = rt.call::<AccountActor>(FIRST_EXPORTED_METHOD_NUMBER + 1, params.clone()).unwrap();
     assert!(result.is_none());
 
-    // reject < 2<<24
+    // reject < 1<<24
     rt.expect_validate_caller_any();
     let result = rt.call::<AccountActor>(FIRST_EXPORTED_METHOD_NUMBER - 1, params);
     assert!(result.is_err());
