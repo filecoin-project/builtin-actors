@@ -1343,11 +1343,14 @@ impl Actor {
                         &qa_pow,
                         fil_actors_runtime::network::EPOCHS_IN_DAY,
                     );
-                    new_sector_info.expected_storage_pledge = expected_reward_for_power(
-                        &rew.this_epoch_reward_smoothed,
-                        &pow.quality_adj_power_smoothed,
-                        &qa_pow,
-                        INITIAL_PLEDGE_PROJECTION_PERIOD,
+                    new_sector_info.expected_storage_pledge = max(
+                        new_sector_info.expected_storage_pledge,
+                        expected_reward_for_power(
+                            &rew.this_epoch_reward_smoothed,
+                            &pow.quality_adj_power_smoothed,
+                            &qa_pow,
+                            INITIAL_PLEDGE_PROJECTION_PERIOD,
+                        ),
                     );
 
                     new_sector_info.initial_pledge = max(
