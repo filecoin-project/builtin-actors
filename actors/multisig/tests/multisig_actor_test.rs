@@ -2406,9 +2406,9 @@ fn test_fallback() {
     let anne = Address::new_id(101);
     let bob = Address::new_id(102);
 
-    let mut rt = construct_runtime(msig);
+    let rt = construct_runtime(msig);
     let h = util::ActorHarness::new();
-    h.construct_and_verify(&mut rt, 2, 0, 0, vec![anne, bob]);
+    h.construct_and_verify(&rt, 2, 0, 0, vec![anne, bob]);
 
     // this is arbitrary
     let params = IpldBlock::serialize_cbor(&vec![1u8, 2u8, 3u8]).unwrap();
