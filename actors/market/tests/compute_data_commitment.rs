@@ -28,24 +28,24 @@ mod compute_data_commitment {
         let start_epoch = 10;
         let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
 
-        let mut rt = setup();
+        let rt = setup();
         let deal_id1 = generate_and_publish_deal(
-            &mut rt,
+            &rt,
             CLIENT_ADDR,
             &MinerAddresses::default(),
             start_epoch,
             end_epoch,
         );
-        let d1 = get_deal_proposal(&mut rt, deal_id1);
+        let d1 = get_deal_proposal(&rt, deal_id1);
 
         let deal_id2 = generate_and_publish_deal(
-            &mut rt,
+            &rt,
             CLIENT_ADDR,
             &MinerAddresses::default(),
             start_epoch,
             end_epoch + 1,
         );
-        let d2 = get_deal_proposal(&mut rt, deal_id2);
+        let d2 = get_deal_proposal(&rt, deal_id2);
 
         let input = SectorDataSpec {
             deal_ids: vec![deal_id1, deal_id2],
@@ -87,7 +87,7 @@ mod compute_data_commitment {
 
     #[test]
     fn success_on_empty_piece_info() {
-        let mut rt = setup();
+        let rt = setup();
         let input =
             SectorDataSpec { deal_ids: vec![], sector_type: RegisteredSealProof::StackedDRG8MiBV1 };
         let param = ComputeDataCommitmentParams { inputs: vec![input] };
@@ -124,24 +124,24 @@ mod compute_data_commitment {
         let start_epoch = 10;
         let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
 
-        let mut rt = setup();
+        let rt = setup();
         let deal_id1 = generate_and_publish_deal(
-            &mut rt,
+            &rt,
             CLIENT_ADDR,
             &MinerAddresses::default(),
             start_epoch,
             end_epoch,
         );
-        let d1 = get_deal_proposal(&mut rt, deal_id1);
+        let d1 = get_deal_proposal(&rt, deal_id1);
 
         let deal_id2 = generate_and_publish_deal(
-            &mut rt,
+            &rt,
             CLIENT_ADDR,
             &MinerAddresses::default(),
             start_epoch,
             end_epoch + 1,
         );
-        let d2 = get_deal_proposal(&mut rt, deal_id2);
+        let d2 = get_deal_proposal(&rt, deal_id2);
 
         let param = ComputeDataCommitmentParams {
             inputs: vec![
@@ -197,7 +197,7 @@ mod compute_data_commitment {
 
     #[test]
     fn fail_when_deal_proposal_is_absent() {
-        let mut rt = setup();
+        let rt = setup();
         let input = SectorDataSpec {
             deal_ids: vec![1],
             sector_type: RegisteredSealProof::StackedDRG8MiBV1,
@@ -220,15 +220,15 @@ mod compute_data_commitment {
         let start_epoch = 10;
         let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
 
-        let mut rt = setup();
+        let rt = setup();
         let deal_id = generate_and_publish_deal(
-            &mut rt,
+            &rt,
             CLIENT_ADDR,
             &MinerAddresses::default(),
             start_epoch,
             end_epoch,
         );
-        let d = get_deal_proposal(&mut rt, deal_id);
+        let d = get_deal_proposal(&rt, deal_id);
         let input = SectorDataSpec {
             deal_ids: vec![deal_id],
             sector_type: RegisteredSealProof::StackedDRG8MiBV1,
@@ -260,9 +260,9 @@ mod compute_data_commitment {
         let start_epoch = 10;
         let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
 
-        let mut rt = setup();
+        let rt = setup();
         let deal_id1 = generate_and_publish_deal(
-            &mut rt,
+            &rt,
             CLIENT_ADDR,
             &MinerAddresses::default(),
             start_epoch,
@@ -306,16 +306,16 @@ mod compute_data_commitment {
         let start_epoch = 10;
         let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
 
-        let mut rt = setup();
+        let rt = setup();
         let deal_id1 = generate_and_publish_deal(
-            &mut rt,
+            &rt,
             CLIENT_ADDR,
             &MinerAddresses::default(),
             start_epoch,
             end_epoch,
         );
         let deal_id2 = generate_and_publish_deal(
-            &mut rt,
+            &rt,
             CLIENT_ADDR,
             &MinerAddresses::default(),
             start_epoch,

@@ -171,7 +171,7 @@ mod tests {
     fn test_extcodesize() {
         evm_unit_test! {
             (rt) {
-                rt.in_call = true;
+                rt.in_call.replace(true);
 
                 let addr = FilAddress::new_id(1001);
                 rt.set_address_actor_type(addr, *EVM_ACTOR_CODE_ID);
@@ -207,7 +207,7 @@ mod tests {
     fn test_extcodesize_nonexist() {
         evm_unit_test! {
             (rt) {
-                rt.in_call = true;
+                rt.in_call.replace(true);
             }
             (m) {
                 EXTCODESIZE;
@@ -226,7 +226,7 @@ mod tests {
 
         evm_unit_test! {
             (rt) {
-                rt.in_call = true;
+                rt.in_call.replace(true);
 
                 let addr = FilAddress::new_id(1001);
                 rt.set_address_actor_type(addr, *EVM_ACTOR_CODE_ID);
@@ -265,7 +265,7 @@ mod tests {
 
         evm_unit_test! {
             (rt) {
-                rt.in_call = true;
+                rt.in_call.replace(true);
 
                 let addr = FilAddress::new_id(1001);
                 rt.set_address_actor_type(addr, *EVM_ACTOR_CODE_ID);
@@ -304,7 +304,7 @@ mod tests {
 
         evm_unit_test! {
             (rt) {
-                rt.in_call = true;
+                rt.in_call.replace(true);
 
                 let addr = FilAddress::new_id(1001);
                 rt.set_address_actor_type(addr, *EVM_ACTOR_CODE_ID);
@@ -344,7 +344,7 @@ mod tests {
 
         evm_unit_test! {
             (rt) {
-                rt.in_call = true;
+                rt.in_call.replace(true);
 
                 let addr = FilAddress::new_id(1001);
                 rt.set_address_actor_type(addr, *EVM_ACTOR_CODE_ID);
@@ -379,7 +379,7 @@ mod tests {
     fn test_extcodehash_nonexist() {
         evm_unit_test! {
             (rt) {
-                rt.in_call = true;
+                rt.in_call.replace(true);
             }
             (m) {
                 EXTCODEHASH;

@@ -1,7 +1,7 @@
 #![allow(clippy::all)]
 
 use fil_actor_miner as miner;
-use fil_actor_miner::PowerPair;
+use fil_actor_miner::{PowerPair, SubmitWindowedPoStParams};
 use fil_actors_runtime::runtime::DomainSeparationTag;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_bitfield::BitField;
@@ -15,6 +15,7 @@ use fvm_shared::sector::RegisteredSealProof;
 mod util;
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::version::NetworkVersion;
 use num_traits::Zero;
 use util::*;
 
@@ -30,27 +31,27 @@ fn basic_post_and_dispute() {
     let mut h = ActorHarness::new(period_offset);
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
-    let mut rt = h.new_runtime();
-    rt.epoch = precommit_epoch;
+    let rt = h.new_runtime();
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
 
-    let sectors = h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![], true);
+    let sectors = h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![], true);
     let sector = sectors[0].clone();
     let pwr = miner::power_for_sector(h.sector_size, &sector);
 
     // Skip to the right deadline
     let state = h.get_state(&rt);
     let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, sector.sector_number).unwrap();
-    let dlinfo = h.advance_to_deadline(&mut rt, dlidx);
+    let dlinfo = h.advance_to_deadline(&rt, dlidx);
 
     // Submit PoSt
     let post_partitions =
         vec![miner::PoStPartition { index: pidx, skipped: make_empty_bitfield() }];
     let post_sectors = vec![sector.clone()];
     h.submit_window_post(
-        &mut rt,
+        &rt,
         &dlinfo,
         post_partitions,
         post_sectors,
@@ -67,7 +68,7 @@ fn basic_post_and_dispute() {
     assert_bitfield_equals(&posts[0].partitions, &deadline_bits);
 
     // Advance to end-of-deadline cron to verify no penalties.
-    h.advance_deadline(&mut rt, CronConfig::empty());
+    h.advance_deadline(&rt, CronConfig::empty());
     h.check_state(&rt);
 
     // Proofs should exist in snapshot.
@@ -79,7 +80,7 @@ fn basic_post_and_dispute() {
 
     // Try a failed dispute.
     let dispute_sectors = vec![sector];
-    h.dispute_window_post(&mut rt, &dlinfo, 0, &dispute_sectors, None);
+    h.dispute_window_post(&rt, &dlinfo, 0, &dispute_sectors, None);
 
     // Now a successful dispute.
     let expected_fee = miner::pledge_penalty_for_invalid_windowpost(
@@ -93,7 +94,7 @@ fn basic_post_and_dispute() {
         expected_reward: Some(miner::BASE_REWARD_FOR_DISPUTED_WINDOW_POST.clone()),
         expected_pledge_delta: None,
     };
-    h.dispute_window_post(&mut rt, &dlinfo, 0, &dispute_sectors, Some(expected_result));
+    h.dispute_window_post(&rt, &dlinfo, 0, &dispute_sectors, Some(expected_result));
 }
 
 #[test]
@@ -102,21 +103,21 @@ fn invalid_submissions() {
     let precommit_epoch = ChainEpoch::from(1);
 
     let mut h = ActorHarness::new(period_offset);
-    let mut rt = h.new_runtime();
+    let rt = h.new_runtime();
 
-    rt.epoch = precommit_epoch;
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
 
-    let sectors = h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![], true);
+    let sectors = h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![], true);
     let sector = sectors[0].clone();
     let pwr = miner::power_for_sector(h.sector_size, &sector);
 
     // Skip to the due deadline.
     let state = h.get_state(&rt);
     let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, sector.sector_number).unwrap();
-    let dlinfo = h.advance_to_deadline(&mut rt, dlidx);
+    let dlinfo = h.advance_to_deadline(&rt, dlidx);
 
     // Invalid deadline.
     {
@@ -129,7 +130,7 @@ fn invalid_submissions() {
             chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
-            &mut rt,
+            &rt,
             &dlinfo,
             vec![sector.clone()],
             params,
@@ -150,7 +151,7 @@ fn invalid_submissions() {
             chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
-            &mut rt,
+            &rt,
             &dlinfo,
             vec![sector.clone()],
             params,
@@ -178,7 +179,7 @@ fn invalid_submissions() {
             chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
-            &mut rt,
+            &rt,
             &dlinfo,
             vec![sector.clone()],
             params,
@@ -203,7 +204,7 @@ fn invalid_submissions() {
             chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
-            &mut rt,
+            &rt,
             &dlinfo,
             vec![sector.clone()],
             params,
@@ -224,7 +225,7 @@ fn invalid_submissions() {
             chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
-            &mut rt,
+            &rt,
             &dlinfo,
             vec![sector.clone()],
             params,
@@ -249,7 +250,7 @@ fn invalid_submissions() {
             chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
-            &mut rt,
+            &rt,
             &dlinfo,
             vec![sector.clone()],
             params,
@@ -274,7 +275,7 @@ fn invalid_submissions() {
             chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
-            &mut rt,
+            &rt,
             &dlinfo,
             vec![sector.clone()],
             params,
@@ -299,7 +300,7 @@ fn invalid_submissions() {
             chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
-            &mut rt,
+            &rt,
             &dlinfo,
             vec![sector.clone()],
             params,
@@ -326,7 +327,7 @@ fn invalid_submissions() {
             chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
-            &mut rt,
+            &rt,
             &dlinfo,
             vec![sector.clone()],
             params,
@@ -351,7 +352,7 @@ fn invalid_submissions() {
             chain_commit_rand: Randomness(b"123456789012345678901234567890123".to_vec()),
         };
         let result = h.submit_window_post_raw(
-            &mut rt,
+            &rt,
             &dlinfo,
             vec![sector.clone()],
             params,
@@ -367,7 +368,7 @@ fn invalid_submissions() {
 
     // Deadline not open.
     {
-        rt.epoch += rt.policy.wpost_challenge_window;
+        rt.epoch.replace_with(|e| *e + rt.policy.wpost_challenge_window);
         let partition = miner::PoStPartition { index: pidx, skipped: make_empty_bitfield() };
         let params = miner::SubmitWindowedPoStParams {
             deadline: dlinfo.index,
@@ -377,7 +378,7 @@ fn invalid_submissions() {
             chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
-            &mut rt,
+            &rt,
             &dlinfo,
             vec![sector.clone()],
             params,
@@ -390,7 +391,7 @@ fn invalid_submissions() {
         //      specs-actors test does sector assignment in an immutable deadline 0 forcing assignment to
         //      deadline 2.
         expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "invalid deadline", result);
-        rt.epoch = dlinfo.current_epoch;
+        rt.epoch.replace(dlinfo.current_epoch);
         rt.reset();
     }
 
@@ -405,7 +406,7 @@ fn invalid_submissions() {
             chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
-            &mut rt,
+            &rt,
             &dlinfo,
             vec![sector.clone()],
             params,
@@ -426,11 +427,11 @@ fn invalid_submissions() {
             deadline: dlinfo.index,
             partitions: vec![partition],
             proofs: make_post_proofs(h.window_post_proof_type),
-            chain_commit_epoch: rt.epoch,
+            chain_commit_epoch: *rt.epoch.borrow(),
             chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
-            &mut rt,
+            &rt,
             &dlinfo,
             vec![sector.clone()],
             params,
@@ -455,7 +456,7 @@ fn invalid_submissions() {
             chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
-            &mut rt,
+            &rt,
             &dlinfo,
             vec![sector.clone()],
             params,
@@ -480,7 +481,7 @@ fn invalid_submissions() {
             chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         h.submit_window_post_raw(
-            &mut rt,
+            &rt,
             &dlinfo,
             vec![sector],
             params,
@@ -499,28 +500,28 @@ fn duplicate_proof_rejected() {
     let mut h = ActorHarness::new(period_offset);
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
-    let mut rt = h.new_runtime();
+    let rt = h.new_runtime();
 
-    rt.epoch = precommit_epoch;
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
 
-    let sectors = h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![], true);
+    let sectors = h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![], true);
     let sector = sectors[0].clone();
     let pwr = miner::power_for_sector(h.sector_size, &sector);
 
     // Skip to the due deadline.
     let state = h.get_state(&rt);
     let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, sector.sector_number).unwrap();
-    let dlinfo = h.advance_to_deadline(&mut rt, dlidx);
+    let dlinfo = h.advance_to_deadline(&rt, dlidx);
 
     // Submit PoSt
     let post_partitions =
         vec![miner::PoStPartition { index: pidx, skipped: make_empty_bitfield() }];
     let post_sectors = vec![sector.clone()];
     h.submit_window_post(
-        &mut rt,
+        &rt,
         &dlinfo,
         post_partitions,
         post_sectors,
@@ -549,7 +550,7 @@ fn duplicate_proof_rejected() {
         chain_commit_rand: Randomness(commit_rand.clone().into()),
     };
 
-    h.expect_query_network_info(&mut rt);
+    h.expect_query_network_info(&rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.worker);
 
     // From version 7, a duplicate is explicitly rejected.
@@ -573,7 +574,7 @@ fn duplicate_proof_rejected() {
     rt.reset();
 
     // Advance to end-of-deadline cron to verify no penalties.
-    h.advance_deadline(&mut rt, CronConfig::empty());
+    h.advance_deadline(&rt, CronConfig::empty());
     h.check_state(&rt);
 }
 
@@ -585,17 +586,17 @@ fn duplicate_proof_rejected_with_many_partitions() {
     let mut h = ActorHarness::new(period_offset);
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
-    let mut rt = h.new_runtime();
+    let rt = h.new_runtime();
 
-    rt.epoch = precommit_epoch;
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
 
     // Commit more sectors than fit in one partition in every eligible deadline, overflowing to a second partition.
     let sectors_to_commit = (rt.policy.wpost_period_deadlines - 2) * h.partition_size + 1;
     let sectors = h.commit_and_prove_sectors(
-        &mut rt,
+        &rt,
         sectors_to_commit as usize,
         DEFAULT_SECTOR_EXPIRATION,
         vec![],
@@ -606,7 +607,7 @@ fn duplicate_proof_rejected_with_many_partitions() {
     // Skip to the due deadline.
     let state = h.get_state(&rt);
     let (dlidx, _) = state.find_sector(&rt.policy, &rt.store, last_sector.sector_number).unwrap();
-    let dlinfo = h.advance_to_deadline(&mut rt, dlidx);
+    let dlinfo = h.advance_to_deadline(&rt, dlidx);
 
     {
         // Submit PoSt for partition 0 on its own.
@@ -616,7 +617,7 @@ fn duplicate_proof_rejected_with_many_partitions() {
             (0..h.partition_size).map(|i| sectors[i as usize].clone()).collect();
         let pwr = miner::power_for_sectors(h.sector_size, &sectors_to_prove);
         h.submit_window_post(
-            &mut rt,
+            &rt,
             &dlinfo,
             post_partitions,
             sectors_to_prove,
@@ -646,7 +647,7 @@ fn duplicate_proof_rejected_with_many_partitions() {
             chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
         let result = h.submit_window_post_raw(
-            &mut rt,
+            &rt,
             &dlinfo,
             sectors_to_prove,
             params,
@@ -666,7 +667,7 @@ fn duplicate_proof_rejected_with_many_partitions() {
         let sectors_to_prove = vec![last_sector.clone()];
         let pwr = miner::power_for_sectors(h.sector_size, &sectors_to_prove);
         h.submit_window_post(
-            &mut rt,
+            &rt,
             &dlinfo,
             post_partitions,
             sectors_to_prove,
@@ -679,7 +680,7 @@ fn duplicate_proof_rejected_with_many_partitions() {
     }
 
     // Advance to end-of-deadline cron to verify no penalties.
-    h.advance_deadline(&mut rt, CronConfig::empty());
+    h.advance_deadline(&rt, CronConfig::empty());
     h.check_state(&rt);
 }
 
@@ -691,47 +692,47 @@ fn successful_recoveries_recover_power() {
     let mut h = ActorHarness::new(period_offset);
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
-    let mut rt = h.new_runtime();
-    rt.epoch = precommit_epoch;
+    let rt = h.new_runtime();
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
 
-    let infos = h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![], true);
+    let infos = h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![], true);
     let pwr = miner::power_for_sectors(h.sector_size, &infos);
 
-    h.apply_rewards(&mut rt, BIG_REWARDS.clone(), TokenAmount::zero());
+    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
     let initial_locked = h.get_locked_funds(&rt);
 
     // Submit first PoSt to ensure we are sufficiently early to add a fault
     // advance to next proving period
-    h.advance_and_submit_posts(&mut rt, &infos);
+    h.advance_and_submit_posts(&rt, &infos);
 
     // advance deadline and declare fault
-    h.advance_deadline(&mut rt, CronConfig::empty());
-    h.declare_faults(&mut rt, &infos);
+    h.advance_deadline(&rt, CronConfig::empty());
+    h.declare_faults(&rt, &infos);
 
     // advance a deadline and declare recovery
-    h.advance_deadline(&mut rt, CronConfig::empty());
+    h.advance_deadline(&rt, CronConfig::empty());
 
     // declare recovery
     let state = h.get_state(&rt);
     let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, infos[0].sector_number).unwrap();
     let mut bf = BitField::new();
     bf.set(infos[0].sector_number);
-    h.declare_recoveries(&mut rt, dlidx, pidx, bf, TokenAmount::zero()).unwrap();
+    h.declare_recoveries(&rt, dlidx, pidx, bf, TokenAmount::zero()).unwrap();
 
     // advance to epoch when submitPoSt is due
     let mut dlinfo = h.deadline(&rt);
     while dlinfo.index != dlidx {
-        dlinfo = h.advance_deadline(&mut rt, CronConfig::empty());
+        dlinfo = h.advance_deadline(&rt, CronConfig::empty());
     }
 
     // Now submit PoSt
     // Power should return for recovered sector.
     let cfg = PoStConfig::with_expected_power_delta(&pwr);
     let partition = miner::PoStPartition { index: pidx, skipped: make_empty_bitfield() };
-    h.submit_window_post(&mut rt, &dlinfo, vec![partition], infos.clone(), cfg);
+    h.submit_window_post(&rt, &dlinfo, vec![partition], infos.clone(), cfg);
 
     // faulty power has been removed, partition no longer has faults or recoveries
     let (deadline, partition) = h.find_sector(&rt, infos[0].sector_number);
@@ -748,7 +749,7 @@ fn successful_recoveries_recover_power() {
     assert!(posts.is_empty());
 
     // Next deadline cron does not charge for the fault
-    h.advance_deadline(&mut rt, CronConfig::empty());
+    h.advance_deadline(&rt, CronConfig::empty());
 
     assert_eq!(initial_locked, h.get_locked_funds(&rt));
 
@@ -763,16 +764,16 @@ fn skipped_faults_adjust_power() {
     let mut h = ActorHarness::new(period_offset);
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
-    let mut rt = h.new_runtime();
+    let rt = h.new_runtime();
 
-    rt.epoch = precommit_epoch;
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
 
-    let infos = h.commit_and_prove_sectors(&mut rt, 2, DEFAULT_SECTOR_EXPIRATION, vec![], true);
+    let infos = h.commit_and_prove_sectors(&rt, 2, DEFAULT_SECTOR_EXPIRATION, vec![], true);
 
-    h.apply_rewards(&mut rt, BIG_REWARDS.clone(), TokenAmount::zero());
+    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
 
     // Skip to the due deadline.
     let state = h.get_state(&rt);
@@ -780,7 +781,7 @@ fn skipped_faults_adjust_power() {
     let (dlidx2, pidx2) = state.find_sector(&rt.policy, &rt.store, infos[1].sector_number).unwrap();
     assert_eq!(dlidx, dlidx2);
 
-    let mut dlinfo = h.advance_to_deadline(&mut rt, dlidx);
+    let mut dlinfo = h.advance_to_deadline(&rt, dlidx);
 
     // Now submit PoSt with a skipped fault for first sector
     // First sector's power should not be activated.
@@ -790,7 +791,7 @@ fn skipped_faults_adjust_power() {
     let partition =
         miner::PoStPartition { index: pidx, skipped: make_bitfield(&[infos1[0].sector_number]) };
     h.submit_window_post(
-        &mut rt,
+        &rt,
         &dlinfo,
         vec![partition],
         infos2.clone(),
@@ -799,11 +800,11 @@ fn skipped_faults_adjust_power() {
 
     // expect continued fault fee to be charged during cron
     let fault_fee = h.continued_fault_penalty(&infos1);
-    dlinfo = h.advance_deadline(&mut rt, CronConfig::with_continued_faults_penalty(fault_fee));
+    dlinfo = h.advance_deadline(&rt, CronConfig::with_continued_faults_penalty(fault_fee));
 
     // advance to next proving period, expect no fees
     while dlinfo.index != dlidx {
-        dlinfo = h.advance_deadline(&mut rt, CronConfig::empty());
+        dlinfo = h.advance_deadline(&rt, CronConfig::empty());
     }
 
     // Attempt to skip second sector
@@ -820,7 +821,7 @@ fn skipped_faults_adjust_power() {
 
     // Now all sectors are faulty so there's nothing to prove.
     let result = h.submit_window_post_raw(
-        &mut rt,
+        &rt,
         &dlinfo,
         infos2.clone(),
         params,
@@ -834,7 +835,7 @@ fn skipped_faults_adjust_power() {
     let pwr_delta = -miner::power_for_sectors(h.sector_size, &infos2);
     let fault_fee = h.continued_fault_penalty(&infos1);
     h.advance_deadline(
-        &mut rt,
+        &rt,
         CronConfig::with_detected_faults_power_delta_and_continued_faults_penalty(
             &pwr_delta, fault_fee,
         ),
@@ -851,15 +852,15 @@ fn skipping_all_sectors_in_a_partition_rejected() {
     let mut h = ActorHarness::new(period_offset);
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
-    let mut rt = h.new_runtime();
-    rt.epoch = precommit_epoch;
+    let rt = h.new_runtime();
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
 
-    let infos = h.commit_and_prove_sectors(&mut rt, 2, DEFAULT_SECTOR_EXPIRATION, vec![], true);
+    let infos = h.commit_and_prove_sectors(&rt, 2, DEFAULT_SECTOR_EXPIRATION, vec![], true);
 
-    h.apply_rewards(&mut rt, BIG_REWARDS.clone(), TokenAmount::zero());
+    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
 
     // Skip to the due deadline.
     let state = h.get_state(&rt);
@@ -868,7 +869,7 @@ fn skipping_all_sectors_in_a_partition_rejected() {
     assert_eq!(dlidx, dlidx2);
     assert_eq!(pidx, pidx2);
 
-    let dlinfo = h.advance_to_deadline(&mut rt, dlidx);
+    let dlinfo = h.advance_to_deadline(&rt, dlidx);
 
     // PoSt with all sectors skipped fails to validate, leaving power un-activated.
     let partition = miner::PoStPartition {
@@ -882,13 +883,12 @@ fn skipping_all_sectors_in_a_partition_rejected() {
         chain_commit_epoch: dlinfo.challenge,
         chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
     };
-    let result =
-        h.submit_window_post_raw(&mut rt, &dlinfo, infos.clone(), params, PoStConfig::empty());
+    let result = h.submit_window_post_raw(&rt, &dlinfo, infos.clone(), params, PoStConfig::empty());
     expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, result);
     rt.reset();
 
     // These sectors are detected faulty and pay no penalty this time.
-    h.advance_deadline(&mut rt, CronConfig::with_continued_faults_penalty(TokenAmount::zero()));
+    h.advance_deadline(&rt, CronConfig::with_continued_faults_penalty(TokenAmount::zero()));
     h.check_state(&rt);
 }
 
@@ -900,47 +900,47 @@ fn skipped_recoveries_are_penalized_and_do_not_recover_power() {
     let mut h = ActorHarness::new(period_offset);
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
-    let mut rt = h.new_runtime();
-    rt.epoch = precommit_epoch;
+    let rt = h.new_runtime();
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
 
-    let infos = h.commit_and_prove_sectors(&mut rt, 2, DEFAULT_SECTOR_EXPIRATION, vec![], true);
+    let infos = h.commit_and_prove_sectors(&rt, 2, DEFAULT_SECTOR_EXPIRATION, vec![], true);
 
-    h.apply_rewards(&mut rt, BIG_REWARDS.clone(), TokenAmount::zero());
+    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
 
     // Submit first PoSt to ensure we are sufficiently early to add a fault
     // advance to next proving period
-    h.advance_and_submit_posts(&mut rt, &infos);
+    h.advance_and_submit_posts(&rt, &infos);
 
     // advance deadline and declare fault on the first sector
     let infos1 = vec![infos[0].clone()];
-    h.advance_deadline(&mut rt, CronConfig::empty());
-    h.declare_faults(&mut rt, &infos1);
+    h.advance_deadline(&rt, CronConfig::empty());
+    h.declare_faults(&rt, &infos1);
 
     // advance a deadline and declare recovery
-    h.advance_deadline(&mut rt, CronConfig::empty());
+    h.advance_deadline(&rt, CronConfig::empty());
 
     // declare recovery
     let state = h.get_state(&rt);
     let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, infos[0].sector_number).unwrap();
     let mut bf = BitField::new();
     bf.set(infos[0].sector_number);
-    h.declare_recoveries(&mut rt, dlidx, pidx, bf, TokenAmount::zero()).unwrap();
+    h.declare_recoveries(&rt, dlidx, pidx, bf, TokenAmount::zero()).unwrap();
 
     // Skip to the due deadline.
-    let dlinfo = h.advance_to_deadline(&mut rt, dlidx);
+    let dlinfo = h.advance_to_deadline(&rt, dlidx);
 
     // Now submit PoSt and skip recovered sector.
     // No power should be returned
     let partition =
         miner::PoStPartition { index: pidx, skipped: make_bitfield(&[infos[0].sector_number]) };
-    h.submit_window_post(&mut rt, &dlinfo, vec![partition], infos.clone(), PoStConfig::empty());
+    h.submit_window_post(&rt, &dlinfo, vec![partition], infos.clone(), PoStConfig::empty());
 
     // sector will be charged ongoing fee at proving period cron
     let ongoing_fee = h.continued_fault_penalty(&infos1);
-    h.advance_deadline(&mut rt, CronConfig::with_continued_faults_penalty(ongoing_fee));
+    h.advance_deadline(&rt, CronConfig::with_continued_faults_penalty(ongoing_fee));
 
     h.check_state(&rt);
 }
@@ -953,23 +953,23 @@ fn skipping_a_fault_from_the_wrong_partition_is_an_error() {
     let mut h = ActorHarness::new(period_offset);
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
-    let mut rt = h.new_runtime();
-    rt.epoch = precommit_epoch;
+    let rt = h.new_runtime();
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
 
     // create enough sectors that one will be in a different partition
     // TODO: remove magic number and derive from seal proof based parameter
     const N: usize = 95;
-    let infos = h.commit_and_prove_sectors(&mut rt, N, DEFAULT_SECTOR_EXPIRATION, vec![], true);
+    let infos = h.commit_and_prove_sectors(&rt, N, DEFAULT_SECTOR_EXPIRATION, vec![], true);
 
     // Skip to the due deadline.
     let state = h.get_state(&rt);
     let (dlidx0, pidx0) = state.find_sector(&rt.policy, &rt.store, infos[0].sector_number).unwrap();
     let (dlidx1, pidx1) =
         state.find_sector(&rt.policy, &rt.store, infos[N - 1].sector_number).unwrap();
-    let dlinfo = h.advance_to_deadline(&mut rt, dlidx0);
+    let dlinfo = h.advance_to_deadline(&rt, dlidx0);
 
     // if these assertions no longer hold, the test must be changed
     assert!(dlidx0 < dlidx1);
@@ -987,7 +987,7 @@ fn skipping_a_fault_from_the_wrong_partition_is_an_error() {
         chain_commit_epoch: dlinfo.challenge,
         chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
     };
-    let result = h.submit_window_post_raw(&mut rt, &dlinfo, infos, params, PoStConfig::empty());
+    let result = h.submit_window_post_raw(&rt, &dlinfo, infos, params, PoStConfig::empty());
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "skipped faults contains sectors outside partition",
@@ -1005,25 +1005,25 @@ fn cannot_dispute_posts_when_the_challenge_window_is_open() {
     let mut h = ActorHarness::new(period_offset);
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
-    let mut rt = h.new_runtime();
-    rt.epoch = precommit_epoch;
+    let rt = h.new_runtime();
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
 
-    let infos = h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![], true);
+    let infos = h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![], true);
     let sector = infos[0].clone();
     let pwr = miner::power_for_sector(h.sector_size, &sector);
 
     // Skip to the due deadline.
     let state = h.get_state(&rt);
     let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, sector.sector_number).unwrap();
-    let dlinfo = h.advance_to_deadline(&mut rt, dlidx);
+    let dlinfo = h.advance_to_deadline(&rt, dlidx);
 
     // Submit PoSt
     let partition = miner::PoStPartition { index: pidx, skipped: make_empty_bitfield() };
     h.submit_window_post(
-        &mut rt,
+        &rt,
         &dlinfo,
         vec![partition],
         infos,
@@ -1035,7 +1035,7 @@ fn cannot_dispute_posts_when_the_challenge_window_is_open() {
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.worker);
     rt.expect_validate_caller_any();
-    h.expect_query_network_info(&mut rt);
+    h.expect_query_network_info(&rt);
 
     let result = rt.call::<miner::Actor>(
         miner::Method::DisputeWindowedPoSt as u64,
@@ -1057,13 +1057,13 @@ fn can_dispute_up_till_window_end_but_not_after() {
     let mut h = ActorHarness::new(period_offset);
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
-    let mut rt = h.new_runtime();
-    rt.epoch = precommit_epoch;
+    let rt = h.new_runtime();
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
 
-    let infos = h.commit_and_prove_sectors(&mut rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![], true);
+    let infos = h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![], true);
     let sector = infos[0].clone();
 
     let state = h.get_state(&rt);
@@ -1072,7 +1072,7 @@ fn can_dispute_up_till_window_end_but_not_after() {
     let nextdl = miner::DeadlineInfo::new(
         state.proving_period_start,
         dlidx,
-        rt.epoch,
+        *rt.epoch.borrow(),
         rt.policy.wpost_period_deadlines,
         rt.policy.wpost_proving_period,
         rt.policy.wpost_challenge_window,
@@ -1081,22 +1081,22 @@ fn can_dispute_up_till_window_end_but_not_after() {
     )
     .next_not_elapsed();
 
-    h.advance_and_submit_posts(&mut rt, &infos);
+    h.advance_and_submit_posts(&rt, &infos);
     let window_end = nextdl.close + rt.policy.wpost_dispute_window;
 
     // first, try to dispute right before the window end.
     // We expect this to fail "normally" (fail to disprove).
-    rt.epoch = window_end - 1;
-    h.dispute_window_post(&mut rt, &nextdl, 0, &infos, None);
+    rt.epoch.replace(window_end - 1);
+    h.dispute_window_post(&rt, &nextdl, 0, &infos, None);
 
     // Now set the epoch at the window end. We expect a different error.
-    rt.epoch = window_end;
+    rt.epoch.replace(window_end);
 
     // Now try to dispute.
     let params = miner::DisputeWindowedPoStParams { deadline: dlidx, post_index: 0 };
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.worker);
     rt.expect_validate_caller_any();
-    h.expect_query_network_info(&mut rt);
+    h.expect_query_network_info(&rt);
 
     let result = rt.call::<miner::Actor>(
         miner::Method::DisputeWindowedPoSt as u64,
@@ -1118,11 +1118,11 @@ fn cant_dispute_up_with_an_invalid_deadline() {
     let mut h = ActorHarness::new(period_offset);
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
-    let mut rt = h.new_runtime();
-    rt.epoch = precommit_epoch;
+    let rt = h.new_runtime();
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
 
     let params = miner::DisputeWindowedPoStParams { deadline: 50, post_index: 0 };
 
@@ -1145,16 +1145,16 @@ fn can_dispute_test_after_proving_period_changes() {
     let mut h = ActorHarness::new(period_offset);
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
-    let mut rt = h.new_runtime();
-    rt.epoch = precommit_epoch;
+    let rt = h.new_runtime();
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
 
     let period_start = h.deadline(&rt).next_period_start();
 
     // go to the next deadline 0
-    rt.epoch = period_start;
+    rt.epoch.replace(period_start);
 
     // fill one partition in each mutable deadline.
     let num_sectors = h.partition_size * (rt.policy.wpost_period_deadlines - 2);
@@ -1162,7 +1162,7 @@ fn can_dispute_test_after_proving_period_changes() {
     // creates a partition in every deadline except 0 and 47
     // TODO: when fixing last wpost test verify that this is true
     let sectors = h.commit_and_prove_sectors(
-        &mut rt,
+        &rt,
         num_sectors as usize,
         DEFAULT_SECTOR_EXPIRATION,
         vec![],
@@ -1171,7 +1171,7 @@ fn can_dispute_test_after_proving_period_changes() {
 
     // prove every sector once to activate power. This
     // simplifies the test a bit.
-    h.advance_and_submit_posts(&mut rt, &sectors);
+    h.advance_and_submit_posts(&rt, &sectors);
 
     // Make sure we're in the correct deadline. We should
     // finish at deadline 2 because precommit takes some
@@ -1212,7 +1212,7 @@ fn can_dispute_test_after_proving_period_changes() {
     let target_dlinfo = miner::DeadlineInfo::new(
         period_start,
         46,
-        rt.epoch,
+        *rt.epoch.borrow(),
         rt.policy.wpost_period_deadlines,
         rt.policy.wpost_proving_period,
         rt.policy.wpost_challenge_window,
@@ -1220,7 +1220,7 @@ fn can_dispute_test_after_proving_period_changes() {
         rt.policy.fault_declaration_cutoff,
     );
 
-    h.dispute_window_post(&mut rt, &target_dlinfo, 0, &target_sectors, Some(post_dispute_result));
+    h.dispute_window_post(&rt, &target_dlinfo, 0, &target_sectors, Some(post_dispute_result));
 }
 
 #[test]
@@ -1231,17 +1231,17 @@ fn bad_post_fails_when_verified() {
     let mut h = ActorHarness::new(period_offset);
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
-    let mut rt = h.new_runtime();
-    rt.epoch = precommit_epoch;
+    let rt = h.new_runtime();
+    rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
 
-    let infos = h.commit_and_prove_sectors(&mut rt, 2, DEFAULT_SECTOR_EXPIRATION, vec![], true);
+    let infos = h.commit_and_prove_sectors(&rt, 2, DEFAULT_SECTOR_EXPIRATION, vec![], true);
     let power_for_sectors =
         &miner::power_for_sectors(h.sector_size, &vec![infos[0].clone(), infos[1].clone()]);
 
-    h.apply_rewards(&mut rt, BIG_REWARDS.clone(), TokenAmount::zero());
+    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
 
     let state = h.get_state(&rt);
     let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, infos[0].sector_number).unwrap();
@@ -1251,13 +1251,13 @@ fn bad_post_fails_when_verified() {
 
     // Become faulty
 
-    h.advance_to_deadline(&mut rt, dlidx);
-    h.advance_deadline(&mut rt, CronConfig::empty());
-    h.advance_to_deadline(&mut rt, dlidx);
+    h.advance_to_deadline(&rt, dlidx);
+    h.advance_deadline(&rt, CronConfig::empty());
+    h.advance_to_deadline(&rt, dlidx);
 
     let fault_fee = h.continued_fault_penalty(&vec![infos[0].clone(), infos[1].clone()]);
     h.advance_deadline(
-        &mut rt,
+        &rt,
         CronConfig::with_detected_faults_power_delta_and_continued_faults_penalty(
             &PowerPair::zero(),
             fault_fee,
@@ -1269,10 +1269,10 @@ fn bad_post_fails_when_verified() {
     let mut bf = BitField::new();
     bf.set(infos[0].sector_number);
     bf.set(infos[1].sector_number);
-    h.declare_recoveries(&mut rt, dlidx, pidx, bf, TokenAmount::zero()).unwrap();
+    h.declare_recoveries(&rt, dlidx, pidx, bf, TokenAmount::zero()).unwrap();
 
     // Now submit a PoSt, but a BAD one
-    let dlinfo = h.advance_to_deadline(&mut rt, dlidx);
+    let dlinfo = h.advance_to_deadline(&rt, dlidx);
 
     let partition = miner::PoStPartition { index: pidx, skipped: make_bitfield(&[]) };
     let mut post_config = PoStConfig::with_expected_power_delta(power_for_sectors);
@@ -1286,7 +1286,7 @@ fn bad_post_fails_when_verified() {
         chain_commit_epoch: dlinfo.challenge,
         chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
     };
-    let result = h.submit_window_post_raw(&mut rt, &dlinfo, infos, params, post_config);
+    let result = h.submit_window_post_raw(&rt, &dlinfo, infos, params, post_config);
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "invalid post was submitted",
@@ -1294,4 +1294,118 @@ fn bad_post_fails_when_verified() {
     );
     rt.reset();
     h.check_state(&rt);
+}
+
+#[test]
+fn can_submit_v1_proof_types_nv19() {
+    struct TestCase {
+        desc: &'static str,
+        nv: NetworkVersion,
+        seal_proof_type: RegisteredSealProof,
+        post_proof_type: RegisteredPoStProof,
+        exit_code: ExitCode,
+        error_msg: String,
+    }
+
+    let tests = [
+        TestCase {
+            desc: "can submit v1 proof in nv19",
+            nv: NetworkVersion::V19,
+            seal_proof_type: RegisteredSealProof::StackedDRG32GiBV1P1,
+            post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1,
+            exit_code: ExitCode::OK,
+            error_msg: "".to_string(),
+        },
+        TestCase {
+            desc: "can submit v1p1 proof in nv19",
+            nv: NetworkVersion::V19,
+            seal_proof_type: RegisteredSealProof::StackedDRG32GiBV1P1,
+            post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
+            exit_code: ExitCode::OK,
+            error_msg: "".to_string(),
+        },
+        TestCase {
+            desc: "can submit v1p1 proof in nv20",
+            nv: NetworkVersion::V20,
+            seal_proof_type: RegisteredSealProof::StackedDRG32GiBV1P1,
+            post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
+            exit_code: ExitCode::OK,
+            error_msg: "".to_string(),
+        },
+        TestCase {
+            desc: "can NOT submit v1 proof in nv20",
+            nv: NetworkVersion::V20,
+            seal_proof_type: RegisteredSealProof::StackedDRG32GiBV1P1,
+            post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1,
+            exit_code: ExitCode::USR_ILLEGAL_ARGUMENT,
+            error_msg:
+                "expected proof of type StackedDRGWindow32GiBV1P1, got StackedDRGWindow32GiBV1"
+                    .to_string(),
+        },
+    ];
+
+    for tc in tests {
+        println!("Testing: {}", tc.desc);
+        let period_offset = ChainEpoch::from(100);
+        let precommit_epoch = ChainEpoch::from(1);
+
+        let mut h = ActorHarness::new(period_offset);
+        h.set_proof_type(tc.seal_proof_type);
+
+        let mut rt = h.new_runtime();
+        rt.network_version = tc.nv;
+        // in nv19 policy, both V1 and V1P1 are "valid" post proof types
+        rt.policy.valid_post_proof_type.insert(RegisteredPoStProof::StackedDRGWindow32GiBV1);
+        rt.policy.valid_post_proof_type.insert(RegisteredPoStProof::StackedDRGWindow32GiBV1P1);
+        rt.epoch.replace(precommit_epoch);
+        rt.balance.replace(BIG_BALANCE.clone());
+
+        h.construct_and_verify(&rt);
+
+        let info = h.get_info(&rt);
+        // No matter what post proof type the test uses, the miner info should be V1P1
+        assert_eq!(info.window_post_proof_type, RegisteredPoStProof::StackedDRGWindow32GiBV1P1);
+
+        let sectors = h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![], true);
+        let sector = sectors[0].clone();
+        let pwr = miner::power_for_sector(h.sector_size, &sector);
+
+        // Skip to the right deadline
+        let state = h.get_state(&rt);
+        let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, sector.sector_number).unwrap();
+        let dlinfo = h.advance_to_deadline(&rt, dlidx);
+
+        // Submit PoSt
+        let post_partitions =
+            vec![miner::PoStPartition { index: pidx, skipped: make_empty_bitfield() }];
+        let post_sectors = vec![sector.clone()];
+        let params = SubmitWindowedPoStParams {
+            deadline: dlidx,
+            partitions: post_partitions,
+            proofs: make_post_proofs(tc.post_proof_type),
+            chain_commit_epoch: dlinfo.challenge,
+            chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
+        };
+
+        if tc.exit_code.is_success() {
+            h.submit_window_post_raw(
+                &rt,
+                &dlinfo,
+                post_sectors,
+                params,
+                PoStConfig::with_expected_power_delta(&pwr),
+            )
+            .unwrap();
+        } else {
+            rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.worker);
+            rt.expect_validate_caller_addr(h.caller_addrs());
+            let result = rt.call::<miner::Actor>(
+                miner::Method::SubmitWindowedPoSt as u64,
+                IpldBlock::serialize_cbor(&params).unwrap(),
+            );
+            expect_abort_contains_message(tc.exit_code, &tc.error_msg, result);
+        }
+
+        rt.verify();
+    }
 }

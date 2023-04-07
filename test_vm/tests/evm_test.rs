@@ -16,7 +16,7 @@ use num_traits::Zero;
 use serde::{Deserialize, Serialize};
 use test_vm::{
     util::{apply_ok, create_accounts},
-    TEST_FAUCET_ADDR, VM,
+    TestVM, TEST_FAUCET_ADDR,
 };
 
 // Generate a statically typed interface for the contracts.
@@ -38,9 +38,9 @@ struct ContractParams(#[serde(with = "strict_bytes")] pub Vec<u8>);
 #[test]
 fn test_evm_call() {
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
 
-    let account = create_accounts(&v, 1, TokenAmount::from_whole(10_000))[0];
+    let account = create_accounts(&v, 1, &TokenAmount::from_whole(10_000))[0];
 
     let address = id_to_eth(account.id().unwrap());
     let (client, _mock) = Provider::mocked();
@@ -51,9 +51,9 @@ fn test_evm_call() {
 
     let create_result = v
         .apply_message(
-            account,
-            EAM_ACTOR_ADDR,
-            TokenAmount::zero(),
+            &account,
+            &EAM_ACTOR_ADDR,
+            &TokenAmount::zero(),
             fil_actor_eam::Method::CreateExternal as u64,
             Some(fil_actor_eam::CreateExternalParams(bytecode)),
         )
@@ -71,9 +71,9 @@ fn test_evm_call() {
     let contract_params = contract.enter().calldata().expect("should serialize");
     let call_result = v
         .apply_message(
-            account,
-            create_return.robust_address.unwrap(),
-            TokenAmount::zero(),
+            &account,
+            &create_return.robust_address.unwrap(),
+            &TokenAmount::zero(),
             fil_actor_evm::Method::InvokeContract as u64,
             Some(ContractParams(contract_params.to_vec())),
         )
@@ -90,9 +90,9 @@ fn test_evm_call() {
 #[test]
 fn test_evm_create() {
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
 
-    let account = create_accounts(&v, 1, TokenAmount::from_whole(10_000))[0];
+    let account = create_accounts(&v, 1, &TokenAmount::from_whole(10_000))[0];
 
     let address = id_to_eth(account.id().unwrap());
     let (client, _mock) = Provider::mocked();
@@ -105,9 +105,9 @@ fn test_evm_create() {
 
     let create_result = v
         .apply_message(
-            account,
-            EAM_ACTOR_ADDR,
-            TokenAmount::zero(),
+            &account,
+            &EAM_ACTOR_ADDR,
+            &TokenAmount::zero(),
             fil_actor_eam::Method::CreateExternal as u64,
             Some(fil_actor_eam::CreateExternalParams(bytecode)),
         )
@@ -127,9 +127,9 @@ fn test_evm_create() {
             let call_params = create_func.calldata().expect("should serialize");
             let call_result = v
                 .apply_message(
-                    account,
-                    create_return.robust_address.unwrap(),
-                    TokenAmount::zero(),
+                    &account,
+                    &create_return.robust_address.unwrap(),
+                    &TokenAmount::zero(),
                     fil_actor_evm::Method::InvokeContract as u64,
                     Some(ContractParams(call_params.to_vec())),
                 )
@@ -154,9 +154,9 @@ fn test_evm_create() {
             let call_params = func.calldata().expect("should serialize");
             let call_result = v
                 .apply_message(
-                    account,
-                    child_addr,
-                    TokenAmount::zero(),
+                    &account,
+                    &child_addr,
+                    &TokenAmount::zero(),
                     fil_actor_evm::Method::InvokeContract as u64,
                     Some(ContractParams(call_params.to_vec())),
                 )
@@ -180,9 +180,9 @@ fn test_evm_create() {
             let call_params = func.calldata().expect("should serialize");
             let call_result = v
                 .apply_message(
-                    account,
-                    child_addr,
-                    TokenAmount::zero(),
+                    &account,
+                    &child_addr,
+                    &TokenAmount::zero(),
                     fil_actor_evm::Method::InvokeContract as u64,
                     Some(ContractParams(call_params.to_vec())),
                 )
@@ -200,9 +200,9 @@ fn test_evm_create() {
             let call_params = func.calldata().expect("should serialize");
             let call_result = v
                 .apply_message(
-                    account,
-                    child_addr,
-                    TokenAmount::zero(),
+                    &account,
+                    &child_addr,
+                    &TokenAmount::zero(),
                     fil_actor_evm::Method::InvokeContract as u64,
                     Some(ContractParams(call_params.to_vec())),
                 )
@@ -233,30 +233,30 @@ fn test_evm_create() {
 #[test]
 fn test_evm_eth_create_external() {
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
 
     // create the EthAccount
     let eth_bits = hex_literal::hex!("FEEDFACECAFEBEEF000000000000000000000000");
     let eth_addr = Address::new_delegated(EAM_ACTOR_ID, &eth_bits).unwrap();
     apply_ok(
         &v,
-        TEST_FAUCET_ADDR,
-        eth_addr,
-        TokenAmount::from_whole(10_000),
+        &TEST_FAUCET_ADDR,
+        &eth_addr,
+        &TokenAmount::from_whole(10_000),
         METHOD_SEND,
         None::<RawBytes>,
     );
     let account = v.normalize_address(&eth_addr).unwrap();
-    let mut actor = v.get_actor(account).unwrap();
+    let mut actor = v.get_actor(&account).unwrap();
     actor.code = *ETHACCOUNT_ACTOR_CODE_ID;
-    v.set_actor(account, actor);
+    v.set_actor(&account, actor);
 
     // now create an empty contract
     let create_result = v
         .apply_message(
-            account,
-            EAM_ACTOR_ADDR,
-            TokenAmount::zero(),
+            &account,
+            &EAM_ACTOR_ADDR,
+            &TokenAmount::zero(),
             fil_actor_eam::Method::CreateExternal as u64,
             Some(fil_actor_eam::CreateExternalParams(vec![])),
         )
@@ -276,9 +276,9 @@ fn test_evm_eth_create_external() {
 
     let call_result = v
         .apply_message(
-            account,
-            robust_addr,
-            TokenAmount::zero(),
+            &account,
+            &robust_addr,
+            &TokenAmount::zero(),
             fil_actor_evm::Method::InvokeContract as u64,
             Some(ContractParams(vec![])),
         )
@@ -289,14 +289,14 @@ fn test_evm_eth_create_external() {
 #[test]
 fn test_evm_empty_initcode() {
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
 
-    let account = create_accounts(&v, 1, TokenAmount::from_whole(10_000))[0];
+    let account = create_accounts(&v, 1, &TokenAmount::from_whole(10_000))[0];
     let create_result = v
         .apply_message(
-            account,
-            EAM_ACTOR_ADDR,
-            TokenAmount::zero(),
+            &account,
+            &EAM_ACTOR_ADDR,
+            &TokenAmount::zero(),
             fil_actor_eam::Method::CreateExternal as u64,
             Some(fil_actor_eam::CreateExternalParams(vec![])),
         )
@@ -321,9 +321,9 @@ fn test_evm_staticcall() {
     // A -> staticcall -> B -> call -> C (write) FAIL
 
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
 
-    let accounts = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
+    let accounts = create_accounts(&v, 3, &TokenAmount::from_whole(10_000));
 
     let bytecode =
         hex::decode(include_str!("../../actors/evm/tests/contracts/callvariants.hex")).unwrap();
@@ -333,9 +333,9 @@ fn test_evm_staticcall() {
         .map(|account| {
             let create_result = v
                 .apply_message(
-                    *account,
-                    EAM_ACTOR_ADDR,
-                    TokenAmount::zero(),
+                    account,
+                    &EAM_ACTOR_ADDR,
+                    &TokenAmount::zero(),
                     fil_actor_eam::Method::CreateExternal as u64,
                     Some(fil_actor_eam::CreateExternalParams(bytecode.clone())),
                 )
@@ -352,7 +352,7 @@ fn test_evm_staticcall() {
 
             // Make sure we deployed an EVM actor.
             assert_eq!(
-                &v.get_actor(Address::new_id(create_return.actor_id)).unwrap().code,
+                &v.get_actor(&Address::new_id(create_return.actor_id)).unwrap().code,
                 &*EVM_ACTOR_CODE_ID
             );
 
@@ -371,9 +371,9 @@ fn test_evm_staticcall() {
 
         let call_result = v
             .apply_message(
-                A_act,
-                A_robust_addr,
-                TokenAmount::zero(),
+                &A_act,
+                &A_robust_addr,
+                &TokenAmount::zero(),
                 fil_actor_evm::Method::InvokeContract as u64,
                 Some(ContractParams(params.to_vec())),
             )
@@ -399,9 +399,9 @@ fn test_evm_staticcall() {
 
         let call_result = v
             .apply_message(
-                A_act,
-                A_robust_addr,
-                TokenAmount::zero(),
+                &A_act,
+                &A_robust_addr,
+                &TokenAmount::zero(),
                 fil_actor_evm::Method::InvokeContract as u64,
                 Some(ContractParams(params.to_vec())),
             )
@@ -422,9 +422,9 @@ fn test_evm_staticcall() {
 
         let call_result = v
             .apply_message(
-                A_act,
-                A_robust_addr,
-                TokenAmount::zero(),
+                &A_act,
+                &A_robust_addr,
+                &TokenAmount::zero(),
                 fil_actor_evm::Method::InvokeContract as u64,
                 Some(ContractParams(params.to_vec())),
             )
@@ -452,9 +452,9 @@ fn test_evm_staticcall() {
 
         let call_result = v
             .apply_message(
-                A_act,
-                A_robust_addr,
-                TokenAmount::zero(),
+                &A_act,
+                &A_robust_addr,
+                &TokenAmount::zero(),
                 fil_actor_evm::Method::InvokeContract as u64,
                 Some(ContractParams(params.to_vec())),
             )
@@ -475,9 +475,9 @@ fn test_evm_delegatecall() {
     // A -> staticcall -> B -> delegatecall -> C (write) FAIL
 
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
 
-    let accounts = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
+    let accounts = create_accounts(&v, 3, &TokenAmount::from_whole(10_000));
 
     let bytecode =
         hex::decode(include_str!("../../actors/evm/tests/contracts/callvariants.hex")).unwrap();
@@ -487,9 +487,9 @@ fn test_evm_delegatecall() {
         .map(|account| {
             let create_result = v
                 .apply_message(
-                    *account,
-                    EAM_ACTOR_ADDR,
-                    TokenAmount::zero(),
+                    account,
+                    &EAM_ACTOR_ADDR,
+                    &TokenAmount::zero(),
                     fil_actor_eam::Method::CreateExternal as u64,
                     Some(fil_actor_eam::CreateExternalParams(bytecode.clone())),
                 )
@@ -506,7 +506,7 @@ fn test_evm_delegatecall() {
 
             // Make sure we deployed an EVM actor.
             assert_eq!(
-                &v.get_actor(Address::new_id(create_return.actor_id)).unwrap().code,
+                &v.get_actor(&Address::new_id(create_return.actor_id)).unwrap().code,
                 &*EVM_ACTOR_CODE_ID
             );
 
@@ -525,9 +525,9 @@ fn test_evm_delegatecall() {
 
         let call_result = v
             .apply_message(
-                A_act,
-                A_robust_addr,
-                TokenAmount::zero(),
+                &A_act,
+                &A_robust_addr,
+                &TokenAmount::zero(),
                 fil_actor_evm::Method::InvokeContract as u64,
                 Some(ContractParams(params.to_vec())),
             )
@@ -553,9 +553,9 @@ fn test_evm_delegatecall() {
 
         let call_result = v
             .apply_message(
-                A_act,
-                A_robust_addr,
-                TokenAmount::zero(),
+                &A_act,
+                &A_robust_addr,
+                &TokenAmount::zero(),
                 fil_actor_evm::Method::InvokeContract as u64,
                 Some(ContractParams(params.to_vec())),
             )
@@ -583,9 +583,9 @@ fn test_evm_delegatecall() {
 
         let call_result = v
             .apply_message(
-                A_act,
-                A_robust_addr,
-                value.clone(),
+                &A_act,
+                &A_robust_addr,
+                &value,
                 fil_actor_evm::Method::InvokeContract as u64,
                 Some(ContractParams(params.to_vec())),
             )
@@ -613,9 +613,9 @@ fn test_evm_staticcall_delegatecall() {
     // A -> staticcall -> B -> delegatecall -> C (write) FAIL
 
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
 
-    let accounts = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
+    let accounts = create_accounts(&v, 3, &TokenAmount::from_whole(10_000));
 
     let bytecode =
         hex::decode(include_str!("../../actors/evm/tests/contracts/callvariants.hex")).unwrap();
@@ -625,9 +625,9 @@ fn test_evm_staticcall_delegatecall() {
         .map(|account| {
             let create_result = v
                 .apply_message(
-                    *account,
-                    EAM_ACTOR_ADDR,
-                    TokenAmount::zero(),
+                    account,
+                    &EAM_ACTOR_ADDR,
+                    &TokenAmount::zero(),
                     fil_actor_eam::Method::CreateExternal as u64,
                     Some(fil_actor_eam::CreateExternalParams(bytecode.clone())),
                 )
@@ -644,7 +644,7 @@ fn test_evm_staticcall_delegatecall() {
 
             // Make sure we deployed an EVM actor.
             assert_eq!(
-                &v.get_actor(Address::new_id(create_return.actor_id)).unwrap().code,
+                &v.get_actor(&Address::new_id(create_return.actor_id)).unwrap().code,
                 &*EVM_ACTOR_CODE_ID
             );
 
@@ -665,9 +665,9 @@ fn test_evm_staticcall_delegatecall() {
 
         let call_result = v
             .apply_message(
-                A_act,
-                A_robust_addr,
-                TokenAmount::zero(),
+                &A_act,
+                &A_robust_addr,
+                &TokenAmount::zero(),
                 fil_actor_evm::Method::InvokeContract as u64,
                 Some(ContractParams(params.to_vec())),
             )
@@ -696,9 +696,9 @@ fn test_evm_staticcall_delegatecall() {
 
         let call_result = v
             .apply_message(
-                A_act,
-                A_robust_addr,
-                TokenAmount::zero(),
+                &A_act,
+                &A_robust_addr,
+                &TokenAmount::zero(),
                 fil_actor_evm::Method::InvokeContract as u64,
                 Some(ContractParams(params.to_vec())),
             )
@@ -710,14 +710,14 @@ fn test_evm_staticcall_delegatecall() {
 #[test]
 fn test_evm_init_revert_data() {
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
 
-    let account = create_accounts(&v, 1, TokenAmount::from_whole(10_000))[0];
+    let account = create_accounts(&v, 1, &TokenAmount::from_whole(10_000))[0];
     let create_result = v
         .apply_message(
-            account,
-            EAM_ACTOR_ADDR,
-            TokenAmount::zero(),
+            &account,
+            &EAM_ACTOR_ADDR,
+            &TokenAmount::zero(),
             fil_actor_eam::Method::CreateExternal as u64,
             // init code:
             // PUSH1 0x42; PUSH1 0x0; MSTORE;

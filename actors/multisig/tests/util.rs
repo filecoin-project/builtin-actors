@@ -27,7 +27,7 @@ impl ActorHarness {
 
     pub fn construct_and_verify(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         initial_approvals: u64,
         unlock_duration: ChainEpoch,
         start_epoch: ChainEpoch,
@@ -50,7 +50,7 @@ impl ActorHarness {
 
     pub fn add_signer(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         signer: Address,
         increase: bool,
     ) -> Result<Option<IpldBlock>, ActorError> {
@@ -64,7 +64,7 @@ impl ActorHarness {
 
     pub fn remove_signer(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         signer: Address,
         decrease: bool,
     ) -> Result<Option<IpldBlock>, ActorError> {
@@ -80,7 +80,7 @@ impl ActorHarness {
 
     pub fn swap_signers(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         old_signer: Address,
         new_signer: Address,
     ) -> Result<Option<IpldBlock>, ActorError> {
@@ -94,7 +94,7 @@ impl ActorHarness {
 
     pub fn propose_ok(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         to: Address,
         value: TokenAmount,
         method: MethodNum,
@@ -103,18 +103,13 @@ impl ActorHarness {
         let ret = self.propose(rt, to, value.clone(), method, params.clone());
         ret.unwrap().unwrap().deserialize::<ProposeReturn>().unwrap();
         // compute proposal hash
-        let txn = Transaction { to, value, method, params, approved: vec![rt.caller] };
+        let txn = Transaction { to, value, method, params, approved: vec![*rt.caller.borrow()] };
         compute_proposal_hash(&txn, rt).unwrap()
     }
 
     // requires that the approval finishes the transaction and that the resulting invocation succeeds.
     // returns the (raw) output of the successful invocation.
-    pub fn approve_ok(
-        &self,
-        rt: &mut MockRuntime,
-        txn_id: TxnID,
-        proposal_hash: [u8; 32],
-    ) -> RawBytes {
+    pub fn approve_ok(&self, rt: &MockRuntime, txn_id: TxnID, proposal_hash: [u8; 32]) -> RawBytes {
         let ret = self.approve(rt, txn_id, proposal_hash).unwrap();
         let approve_ret = ret.unwrap().deserialize::<ApproveReturn>().unwrap();
         assert_eq!(ExitCode::OK, approve_ret.code);
@@ -123,7 +118,7 @@ impl ActorHarness {
 
     pub fn propose(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         to: Address,
         value: TokenAmount,
         method: MethodNum,
@@ -141,7 +136,7 @@ impl ActorHarness {
 
     pub fn approve(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         txn_id: TxnID,
         proposal_hash: [u8; 32],
     ) -> Result<Option<IpldBlock>, ActorError> {
@@ -158,7 +153,7 @@ impl ActorHarness {
 
     pub fn cancel(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         txn_id: TxnID,
         proposal_hash: [u8; 32],
     ) -> Result<Option<IpldBlock>, ActorError> {
@@ -175,7 +170,7 @@ impl ActorHarness {
 
     pub fn lock_balance(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         start: ChainEpoch,
         duration: ChainEpoch,
         amount: TokenAmount,
@@ -193,7 +188,7 @@ impl ActorHarness {
 
     pub fn change_num_approvals_threshold(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         new_threshold: u64,
     ) -> Result<Option<IpldBlock>, ActorError> {
         rt.expect_validate_caller_addr(vec![rt.receiver]);

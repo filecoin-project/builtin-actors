@@ -6,7 +6,7 @@ use fil_actor_multisig::{
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{make_map_with_root, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
-use fvm_ipld_blockstore::MemoryBlockstore;
+use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
@@ -17,16 +17,16 @@ use integer_encoding::VarInt;
 use std::collections::HashSet;
 use std::iter::FromIterator;
 use test_vm::util::{apply_code, apply_ok, create_accounts};
-use test_vm::{ExpectInvocation, VM};
+use test_vm::{ExpectInvocation, TestVM, VM};
 
 #[test]
 fn test_proposal_hash() {
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let addrs = create_accounts(&v, 3, &TokenAmount::from_whole(10_000));
     let alice = addrs[0];
     let bob = addrs[1];
-    let sys_act_start_bal = v.get_actor(SYSTEM_ACTOR_ADDR).unwrap().balance;
+    let sys_act_start_bal = v.get_actor(&SYSTEM_ACTOR_ADDR).unwrap().balance;
 
     let msig_addr = create_msig(&v, addrs, 2);
 
@@ -40,9 +40,9 @@ fn test_proposal_hash() {
     };
     apply_ok(
         &v,
-        alice,
-        msig_addr,
-        fil_delta.clone(),
+        &alice,
+        &msig_addr,
+        &fil_delta,
         MsigMethod::Propose as u64,
         Some(propose_send_sys_params),
     );
@@ -58,9 +58,9 @@ fn test_proposal_hash() {
     let wrong_approval_params = TxnIDParams { id: TxnID(0), proposal_hash: wrong_hash.to_vec() };
     apply_code(
         &v,
-        bob,
-        msig_addr,
-        TokenAmount::zero(),
+        &bob,
+        &msig_addr,
+        &TokenAmount::zero(),
         MsigMethod::Approve as u64,
         Some(wrong_approval_params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -78,9 +78,9 @@ fn test_proposal_hash() {
         TxnIDParams { id: TxnID(0), proposal_hash: correct_hash.to_vec() };
     apply_ok(
         &v,
-        bob,
-        msig_addr,
-        TokenAmount::zero(),
+        &bob,
+        &msig_addr,
+        &TokenAmount::zero(),
         MsigMethod::Approve as u64,
         Some(correct_approval_params),
     );
@@ -94,7 +94,7 @@ fn test_proposal_hash() {
         ..Default::default()
     };
     expect.matches(v.take_invocations().last().unwrap());
-    assert_eq!(sys_act_start_bal + fil_delta, v.get_actor(SYSTEM_ACTOR_ADDR).unwrap().balance);
+    assert_eq!(sys_act_start_bal + fil_delta, v.get_actor(&SYSTEM_ACTOR_ADDR).unwrap().balance);
     v.assert_state_invariants();
 }
 
@@ -102,8 +102,8 @@ fn test_proposal_hash() {
 fn test_delete_self() {
     let test = |threshold: usize, signers: u64, remove_idx: usize| {
         let store = MemoryBlockstore::new();
-        let v = VM::new_with_singletons(&store);
-        let addrs = create_accounts(&v, signers, TokenAmount::from_whole(10_000));
+        let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+        let addrs = create_accounts(&v, signers, &TokenAmount::from_whole(10_000));
 
         let msig_addr = create_msig(&v, addrs.clone(), threshold as u64);
 
@@ -120,9 +120,9 @@ fn test_delete_self() {
         // first proposal goes ok and should have txnid = 0
         apply_ok(
             &v,
-            addrs[0],
-            msig_addr,
-            TokenAmount::zero(),
+            &addrs[0],
+            &msig_addr,
+            &TokenAmount::zero(),
             MsigMethod::Propose as u64,
             Some(propose_remove_params),
         );
@@ -135,9 +135,9 @@ fn test_delete_self() {
         for addr in addrs.iter().take(threshold).skip(1) {
             apply_ok(
                 &v,
-                *addr,
-                msig_addr,
-                TokenAmount::zero(),
+                addr,
+                &msig_addr,
+                &TokenAmount::zero(),
                 MsigMethod::Approve as u64,
                 Some(approve_remove_signer.clone()),
             );
@@ -147,9 +147,9 @@ fn test_delete_self() {
             // txnid not found when third approval gets processed indicating that the transaction has gone through successfully
             apply_code(
                 &v,
-                addrs[threshold],
-                msig_addr,
-                TokenAmount::zero(),
+                &addrs[threshold],
+                &msig_addr,
+                &TokenAmount::zero(),
                 MsigMethod::Approve as u64,
                 Some(approve_remove_signer),
                 ExitCode::USR_NOT_FOUND,
@@ -159,7 +159,7 @@ fn test_delete_self() {
         check_txs(&v, msig_addr, vec![]);
         // assert signers == original signers minus removed
         let old_signers: HashSet<Address> = HashSet::from_iter(addrs.clone());
-        let st = v.get_state::<MsigState>(msig_addr).unwrap();
+        let st = v.get_state::<MsigState>(&msig_addr).unwrap();
         let new_signers: HashSet<Address> = HashSet::from_iter(st.signers);
         let diff: Vec<&Address> = old_signers.symmetric_difference(&new_signers).collect();
         assert_eq!(vec![&(addrs[remove_idx])], diff);
@@ -174,8 +174,8 @@ fn test_delete_self() {
 #[test]
 fn swap_self_1_of_2() {
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 3, TokenAmount::from_whole(10_000));
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let addrs = create_accounts(&v, 3, &TokenAmount::from_whole(10_000));
 
     let (alice, bob, chuck) = (addrs[0], addrs[1], addrs[2]);
     let msig_addr = create_msig(&v, vec![alice, bob], 1);
@@ -189,13 +189,13 @@ fn swap_self_1_of_2() {
     // alice succeeds when trying to execute the tx swapping alice for chuck
     apply_ok(
         &v,
-        alice,
-        msig_addr,
-        TokenAmount::zero(),
+        &alice,
+        &msig_addr,
+        &TokenAmount::zero(),
         MsigMethod::Propose as u64,
         Some(propose_swap_signer_params),
     );
-    let st = v.get_state::<MsigState>(msig_addr).unwrap();
+    let st = v.get_state::<MsigState>(&msig_addr).unwrap();
     assert_eq!(vec![bob, chuck], st.signers);
     v.assert_state_invariants();
 }
@@ -203,8 +203,8 @@ fn swap_self_1_of_2() {
 #[test]
 fn swap_self_2_of_3() {
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 4, TokenAmount::from_whole(10_000));
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let addrs = create_accounts(&v, 4, &TokenAmount::from_whole(10_000));
     let (alice, bob, chuck, dinesh) = (addrs[0], addrs[1], addrs[2], addrs[3]);
 
     let msig_addr = create_msig(&v, vec![alice, bob, chuck], 2);
@@ -221,9 +221,9 @@ fn swap_self_2_of_3() {
     // proposal from swapped addr goes ok with txnid 0
     apply_ok(
         &v,
-        alice,
-        msig_addr,
-        TokenAmount::zero(),
+        &alice,
+        &msig_addr,
+        &TokenAmount::zero(),
         MsigMethod::Propose as u64,
         Some(propose_swap_signer_params),
     );
@@ -232,13 +232,13 @@ fn swap_self_2_of_3() {
     let approve_swap_signer_params = TxnIDParams { id: TxnID(0), proposal_hash: vec![] };
     apply_ok(
         &v,
-        bob,
-        msig_addr,
-        TokenAmount::zero(),
+        &bob,
+        &msig_addr,
+        &TokenAmount::zero(),
         MsigMethod::Approve as u64,
         Some(approve_swap_signer_params),
     );
-    let st = v.get_state::<MsigState>(msig_addr).unwrap();
+    let st = v.get_state::<MsigState>(&msig_addr).unwrap();
     assert_eq!(vec![bob, chuck, dinesh], st.signers);
 
     // Case 2: swapped out is approver, swap dinesh for alice, dinesh is removed
@@ -253,27 +253,27 @@ fn swap_self_2_of_3() {
     // proposal from non swapped goes ok, txnid = 1
     apply_ok(
         &v,
-        bob,
-        msig_addr,
-        TokenAmount::zero(),
+        &bob,
+        &msig_addr,
+        &TokenAmount::zero(),
         MsigMethod::Propose as u64,
         Some(propose_swap_signer_params),
     );
     let approve_swap_signer_params = TxnIDParams { id: TxnID(1), proposal_hash: vec![] };
     apply_ok(
         &v,
-        dinesh,
-        msig_addr,
-        TokenAmount::zero(),
+        &dinesh,
+        &msig_addr,
+        &TokenAmount::zero(),
         MsigMethod::Approve as u64,
         Some(approve_swap_signer_params),
     );
-    let st = v.get_state::<MsigState>(msig_addr).unwrap();
+    let st = v.get_state::<MsigState>(&msig_addr).unwrap();
     assert_eq!(vec![bob, chuck, alice], st.signers);
     v.assert_state_invariants();
 }
 
-fn create_msig(v: &VM, signers: Vec<Address>, threshold: u64) -> Address {
+fn create_msig<BS: Blockstore>(v: &TestVM<BS>, signers: Vec<Address>, threshold: u64) -> Address {
     assert!(!signers.is_empty());
     let msig_ctor_params = serialize(
         &fil_actor_multisig::ConstructorParams {
@@ -287,9 +287,9 @@ fn create_msig(v: &VM, signers: Vec<Address>, threshold: u64) -> Address {
     .unwrap();
     let msig_ctor_ret: ExecReturn = apply_ok(
         v,
-        signers[0],
-        INIT_ACTOR_ADDR,
-        TokenAmount::zero(),
+        &signers[0],
+        &INIT_ACTOR_ADDR,
+        &TokenAmount::zero(),
         fil_actor_init::Method::Exec as u64,
         Some(fil_actor_init::ExecParams {
             code_cid: *MULTISIG_ACTOR_CODE_ID,
@@ -301,8 +301,12 @@ fn create_msig(v: &VM, signers: Vec<Address>, threshold: u64) -> Address {
     msig_ctor_ret.id_address
 }
 
-fn check_txs(v: &VM, msig_addr: Address, mut expect_txns: Vec<(TxnID, Transaction)>) {
-    let st = v.get_state::<MsigState>(msig_addr).unwrap();
+fn check_txs<BS: Blockstore>(
+    v: &TestVM<BS>,
+    msig_addr: Address,
+    mut expect_txns: Vec<(TxnID, Transaction)>,
+) {
+    let st = v.get_state::<MsigState>(&msig_addr).unwrap();
     let ptx = make_map_with_root::<_, Transaction>(&st.pending_txs, v.store).unwrap();
     let mut actual_txns = Vec::new();
     ptx.for_each(|k, txn: &Transaction| {

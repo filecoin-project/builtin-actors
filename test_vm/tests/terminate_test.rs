@@ -31,13 +31,13 @@ use test_vm::util::{
     invariant_failure_patterns, make_bitfield, market_publish_deal, submit_windowed_post,
     verifreg_add_verifier,
 };
-use test_vm::{ExpectInvocation, VM};
+use test_vm::{ExpectInvocation, TestVM, VM};
 
 #[test]
 fn terminate_sectors() {
     let store = MemoryBlockstore::new();
-    let mut v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 4, TokenAmount::from_whole(10_000));
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let addrs = create_accounts(&v, 4, &TokenAmount::from_whole(10_000));
     let (owner, verifier, unverified_client, verified_client) =
         (addrs[0], addrs[1], addrs[2], addrs[3]);
     let worker = owner;
@@ -48,15 +48,15 @@ fn terminate_sectors() {
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
 
     let (miner_id_addr, miner_robust_addr) = create_miner(
-        &mut v,
-        owner,
-        worker,
+        &v,
+        &owner,
+        &worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        miner_balance,
+        &miner_balance,
     );
 
     // publish verified and unverified deals
-    verifreg_add_verifier(&v, verifier, StoragePower::from_i64(32 << 40_i64).unwrap());
+    verifreg_add_verifier(&v, &verifier, StoragePower::from_i64(32 << 40_i64).unwrap());
 
     let add_client_params = VerifierParams {
         address: verified_client,
@@ -64,9 +64,9 @@ fn terminate_sectors() {
     };
     apply_ok(
         &v,
-        verifier,
-        VERIFIED_REGISTRY_ACTOR_ADDR,
-        TokenAmount::zero(),
+        &verifier,
+        &VERIFIED_REGISTRY_ACTOR_ADDR,
+        &TokenAmount::zero(),
         VerifregMethod::AddVerifiedClient as u64,
         Some(add_client_params),
     );
@@ -75,17 +75,17 @@ fn terminate_sectors() {
     let collateral = TokenAmount::from_whole(3);
     apply_ok(
         &v,
-        unverified_client,
-        STORAGE_MARKET_ACTOR_ADDR,
-        collateral.clone(),
+        &unverified_client,
+        &STORAGE_MARKET_ACTOR_ADDR,
+        &collateral,
         MarketMethod::AddBalance as u64,
         Some(unverified_client),
     );
     apply_ok(
         &v,
-        verified_client,
-        STORAGE_MARKET_ACTOR_ADDR,
-        collateral,
+        &verified_client,
+        &STORAGE_MARKET_ACTOR_ADDR,
+        &collateral,
         MarketMethod::AddBalance as u64,
         Some(verified_client),
     );
@@ -93,21 +93,21 @@ fn terminate_sectors() {
     let miner_collateral = TokenAmount::from_whole(64);
     apply_ok(
         &v,
-        worker,
-        STORAGE_MARKET_ACTOR_ADDR,
-        miner_collateral.clone(),
+        &worker,
+        &STORAGE_MARKET_ACTOR_ADDR,
+        &miner_collateral,
         MarketMethod::AddBalance as u64,
         Some(miner_id_addr),
     );
 
     // create 3 deals, some verified and some not
     let mut deal_ids = vec![];
-    let deal_start = v.get_epoch() + Policy::default().pre_commit_challenge_delay + 1;
+    let deal_start = v.epoch() + Policy::default().pre_commit_challenge_delay + 1;
     let deals = market_publish_deal(
         &v,
-        worker,
-        verified_client,
-        miner_id_addr,
+        &worker,
+        &verified_client,
+        &miner_id_addr,
         "deal1".to_string(),
         PaddedPieceSize(1 << 30),
         true,
@@ -119,9 +119,9 @@ fn terminate_sectors() {
     }
     let deals = market_publish_deal(
         &v,
-        worker,
-        verified_client,
-        miner_id_addr,
+        &worker,
+        &verified_client,
+        &miner_id_addr,
         "deal2".to_string(),
         PaddedPieceSize(1 << 32),
         true,
@@ -133,9 +133,9 @@ fn terminate_sectors() {
     }
     let deals = market_publish_deal(
         &v,
-        worker,
-        unverified_client,
-        miner_id_addr,
+        &worker,
+        &unverified_client,
+        &miner_id_addr,
         "deal3".to_string(),
         PaddedPieceSize(1 << 34),
         false,
@@ -148,73 +148,73 @@ fn terminate_sectors() {
 
     let res = v
         .apply_message(
-            SYSTEM_ACTOR_ADDR,
-            CRON_ACTOR_ADDR,
-            TokenAmount::zero(),
+            &SYSTEM_ACTOR_ADDR,
+            &CRON_ACTOR_ADDR,
+            &TokenAmount::zero(),
             CronMethod::EpochTick as u64,
             None::<RawBytes>,
         )
         .unwrap();
     assert_eq!(ExitCode::OK, res.code);
-    let st = v.get_state::<MarketState>(STORAGE_MARKET_ACTOR_ADDR).unwrap();
+    let st = v.get_state::<MarketState>(&STORAGE_MARKET_ACTOR_ADDR).unwrap();
     let deal_states = DealMetaArray::load(&st.states, v.store).unwrap();
     for id in deal_ids.iter() {
         // deals are pending and don't yet have deal states
         let state = deal_states.get(*id).unwrap();
         assert_eq!(None, state);
     }
-    //    precommit_sectors(&mut v, 1, 1, worker, robust_addr, seal_proof, sector_number, true, None);
+    //    precommit_sectors(&v, 1, 1, worker, robust_addr, seal_proof, sector_number, true, None);
     apply_ok(
         &v,
-        worker,
-        miner_robust_addr,
-        TokenAmount::zero(),
+        &worker,
+        &miner_robust_addr,
+        &TokenAmount::zero(),
         MinerMethod::PreCommitSector as u64,
         Some(PreCommitSectorParams {
             seal_proof,
             sector_number,
             sealed_cid,
-            seal_rand_epoch: v.get_epoch() - 1,
+            seal_rand_epoch: v.epoch() - 1,
             deal_ids: deal_ids.clone(),
-            expiration: v.get_epoch() + 220 * EPOCHS_IN_DAY,
+            expiration: v.epoch() + 220 * EPOCHS_IN_DAY,
             ..Default::default()
         }),
     );
-    let prove_time = v.get_epoch() + Policy::default().pre_commit_challenge_delay + 1;
-    let v = advance_by_deadline_to_epoch(v, miner_id_addr, prove_time).0;
+    let prove_time = v.epoch() + Policy::default().pre_commit_challenge_delay + 1;
+    advance_by_deadline_to_epoch(&v, &miner_id_addr, prove_time);
 
     // prove commit, cron, advance to post time
     let prove_params = ProveCommitSectorParams { sector_number, proof: vec![] };
     apply_ok(
         &v,
-        worker,
-        miner_robust_addr,
-        TokenAmount::zero(),
+        &worker,
+        &miner_robust_addr,
+        &TokenAmount::zero(),
         MinerMethod::ProveCommitSector as u64,
         Some(prove_params),
     );
     let res = v
         .apply_message(
-            SYSTEM_ACTOR_ADDR,
-            CRON_ACTOR_ADDR,
-            TokenAmount::zero(),
+            &SYSTEM_ACTOR_ADDR,
+            &CRON_ACTOR_ADDR,
+            &TokenAmount::zero(),
             CronMethod::EpochTick as u64,
             None::<RawBytes>,
         )
         .unwrap();
     assert_eq!(ExitCode::OK, res.code);
-    let (dline_info, p_idx, v) = advance_to_proving_deadline(v, miner_id_addr, sector_number);
+    let (dline_info, p_idx) = advance_to_proving_deadline(&v, &miner_id_addr, sector_number);
     let d_idx = dline_info.index;
-    let st = v.get_state::<MinerState>(miner_id_addr).unwrap();
+    let st = v.get_state::<MinerState>(&miner_id_addr).unwrap();
     let sector = st.get_sector(v.store, sector_number).unwrap().unwrap();
     let sector_power = power_for_sector(seal_proof.sector_size().unwrap(), &sector);
-    submit_windowed_post(&v, worker, miner_id_addr, dline_info, p_idx, Some(sector_power));
+    submit_windowed_post(&v, &worker, &miner_id_addr, dline_info, p_idx, Some(sector_power));
     let v = v.with_epoch(dline_info.last());
 
     v.apply_message(
-        SYSTEM_ACTOR_ADDR,
-        CRON_ACTOR_ADDR,
-        TokenAmount::zero(),
+        &SYSTEM_ACTOR_ADDR,
+        &CRON_ACTOR_ADDR,
+        &TokenAmount::zero(),
         CronMethod::EpochTick as u64,
         None::<RawBytes>,
     )
@@ -224,16 +224,16 @@ fn terminate_sectors() {
     // advance cron delay epochs so deals are active
     let start = dline_info.close;
     let v = v.with_epoch(start); // get out of proving deadline so we don't post twice
-    let v = advance_by_deadline_to_epoch_while_proving(
-        v,
-        miner_id_addr,
-        worker,
+    advance_by_deadline_to_epoch_while_proving(
+        &v,
+        &miner_id_addr,
+        &worker,
         sector_number,
         start + Policy::default().deal_updates_interval,
     );
 
     // market cron updates deal states indication deals are no longer pending
-    let st = v.get_state::<MarketState>(STORAGE_MARKET_ACTOR_ADDR).unwrap();
+    let st = v.get_state::<MarketState>(&STORAGE_MARKET_ACTOR_ADDR).unwrap();
     let deal_states = DealMetaArray::load(&st.states, v.store).unwrap();
     for id in deal_ids.iter() {
         let state = deal_states.get(*id).unwrap().unwrap();
@@ -244,9 +244,9 @@ fn terminate_sectors() {
     // Terminate Sector
     apply_ok(
         &v,
-        worker,
-        miner_robust_addr,
-        TokenAmount::zero(),
+        &worker,
+        &miner_robust_addr,
+        &TokenAmount::zero(),
         MinerMethod::TerminateSectors as u64,
         Some(TerminateSectorsParams {
             terminations: vec![TerminationDeclaration {
@@ -295,11 +295,11 @@ fn terminate_sectors() {
     }
     .matches(v.take_invocations().last().unwrap());
 
-    let miner_balances = v.get_miner_balance(miner_id_addr);
+    let miner_balances = v.get_miner_balance(&miner_id_addr);
     assert!(miner_balances.initial_pledge.is_zero());
     assert!(miner_balances.pre_commit_deposit.is_zero());
 
-    let pow_st = v.get_state::<PowerState>(STORAGE_POWER_ACTOR_ADDR).unwrap();
+    let pow_st = v.get_state::<PowerState>(&STORAGE_POWER_ACTOR_ADDR).unwrap();
     assert_eq!(0, pow_st.miner_above_min_power_count);
     assert!(pow_st.total_raw_byte_power.is_zero());
     assert!(pow_st.total_quality_adj_power.is_zero());
@@ -308,8 +308,8 @@ fn terminate_sectors() {
     assert!(pow_st.total_pledge_collateral.is_zero());
 
     // termination slashes deals in market state
-    let termination_epoch = v.get_epoch();
-    let st = v.get_state::<MarketState>(STORAGE_MARKET_ACTOR_ADDR).unwrap();
+    let termination_epoch = v.epoch();
+    let st = v.get_state::<MarketState>(&STORAGE_MARKET_ACTOR_ADDR).unwrap();
     let deal_states = DealMetaArray::load(&st.states, v.store).unwrap();
     for id in deal_ids.iter() {
         let state = deal_states.get(*id).unwrap().unwrap();
@@ -318,9 +318,9 @@ fn terminate_sectors() {
     }
 
     // advance a market cron processing period to process terminations fully
-    let (v, _) = advance_by_deadline_to_epoch(
-        v,
-        miner_id_addr,
+    advance_by_deadline_to_epoch(
+        &v,
+        &miner_id_addr,
         termination_epoch + Policy::default().deal_updates_interval,
     );
     // because of rounding error it's annoying to compute exact withdrawable balance which is 2.9999.. FIL
@@ -328,9 +328,9 @@ fn terminate_sectors() {
     let withdrawal = TokenAmount::from_whole(2);
     apply_ok(
         &v,
-        verified_client,
-        STORAGE_MARKET_ACTOR_ADDR,
-        TokenAmount::zero(),
+        &verified_client,
+        &STORAGE_MARKET_ACTOR_ADDR,
+        &TokenAmount::zero(),
         MarketMethod::WithdrawBalance as u64,
         Some(WithdrawBalanceParams {
             provider_or_client: verified_client,
@@ -352,9 +352,9 @@ fn terminate_sectors() {
 
     apply_ok(
         &v,
-        worker,
-        STORAGE_MARKET_ACTOR_ADDR,
-        TokenAmount::zero(),
+        &worker,
+        &STORAGE_MARKET_ACTOR_ADDR,
+        &TokenAmount::zero(),
         MarketMethod::WithdrawBalance as u64,
         Some(WithdrawBalanceParams { provider_or_client: miner_id_addr, amount: miner_collateral }),
     );

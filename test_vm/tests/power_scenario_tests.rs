@@ -23,18 +23,18 @@ use num_traits::Zero;
 use test_vm::util::{
     apply_ok, create_accounts, create_miner, invariant_failure_patterns, miner_dline_info,
 };
-use test_vm::{ExpectInvocation, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
+use test_vm::{ExpectInvocation, TestVM, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
 
 #[test]
 fn create_miner_test() {
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
 
     let owner = Address::new_bls(&[1; fvm_shared::address::BLS_PUB_LEN]).unwrap();
     v.apply_message(
-        TEST_FAUCET_ADDR,
-        owner,
-        TokenAmount::from_atto(10_000u32),
+        &TEST_FAUCET_ADDR,
+        &owner,
+        &TokenAmount::from_atto(10_000u32),
         METHOD_SEND,
         None::<RawBytes>,
     )
@@ -51,9 +51,9 @@ fn create_miner_test() {
 
     let res = v
         .apply_message(
-            owner,
-            STORAGE_POWER_ACTOR_ADDR,
-            TokenAmount::from_atto(1000u32),
+            &owner,
+            &STORAGE_POWER_ACTOR_ADDR,
+            &TokenAmount::from_atto(1000u32),
             PowerMethod::CreateMiner as u64,
             Some(params.clone()),
         )
@@ -99,17 +99,17 @@ fn create_miner_test() {
 #[test]
 fn test_cron_tick() {
     let store = MemoryBlockstore::new();
-    let mut vm = VM::new_with_singletons(&store);
+    let vm = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
 
-    let addrs = create_accounts(&vm, 1, TokenAmount::from_whole(10_000));
+    let addrs = create_accounts(&vm, 1, &TokenAmount::from_whole(10_000));
 
     // create a miner
     let (id_addr, robust_addr) = create_miner(
-        &mut vm,
-        addrs[0],
-        addrs[0],
-        RegisteredPoStProof::StackedDRGWindow32GiBV1,
-        TokenAmount::from_whole(10_000),
+        &vm,
+        &addrs[0],
+        &addrs[0],
+        RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
+        &TokenAmount::from_whole(10_000),
     );
 
     // create precommit
@@ -120,9 +120,9 @@ fn test_cron_tick() {
         seal_proof,
         sector_number,
         sealed_cid,
-        seal_rand_epoch: vm.get_epoch() - 1,
+        seal_rand_epoch: vm.epoch() - 1,
         deal_ids: vec![],
-        expiration: vm.get_epoch()
+        expiration: vm.epoch()
             + MIN_SECTOR_EXPIRATION
             + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap()
             + 100,
@@ -131,15 +131,15 @@ fn test_cron_tick() {
 
     apply_ok(
         &vm,
-        addrs[0],
-        robust_addr,
-        TokenAmount::zero(),
+        &addrs[0],
+        &robust_addr,
+        &TokenAmount::zero(),
         MinerMethod::PreCommitSector as u64,
         Some(precommit_params),
     );
 
     // find epoch of miner's next cron task (precommit:1, enrollCron:2)
-    let cron_epoch = miner_dline_info(&vm, id_addr).last() - 1;
+    let cron_epoch = miner_dline_info(&vm, &id_addr).last() - 1;
 
     // create new vm at epoch 1 less than epoch requested by miner
     let v = vm.with_epoch(cron_epoch);
@@ -147,9 +147,9 @@ fn test_cron_tick() {
     // run cron and expect a call to miner and a call to update reward actor params
     apply_ok(
         &v,
-        CRON_ACTOR_ADDR,
-        STORAGE_POWER_ACTOR_ADDR,
-        TokenAmount::zero(),
+        &CRON_ACTOR_ADDR,
+        &STORAGE_POWER_ACTOR_ADDR,
+        &TokenAmount::zero(),
         PowerMethod::OnEpochTickEnd as u64,
         None::<RawBytes>,
     );
@@ -184,9 +184,9 @@ fn test_cron_tick() {
     // run cron and expect a call to miner and a a call to update reward actor params
     apply_ok(
         &v,
-        CRON_ACTOR_ADDR,
-        STORAGE_POWER_ACTOR_ADDR,
-        TokenAmount::zero(),
+        &CRON_ACTOR_ADDR,
+        &STORAGE_POWER_ACTOR_ADDR,
+        &TokenAmount::zero(),
         PowerMethod::OnEpochTickEnd as u64,
         None::<RawBytes>,
     );

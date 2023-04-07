@@ -1,7 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     convert::TryFrom,
-    fmt::Debug,
 };
 
 use cid::Cid;
@@ -61,7 +60,7 @@ pub struct StateSummary {
 }
 
 /// Checks internal invariants of market state
-pub fn check_state_invariants<BS: Blockstore + Debug>(
+pub fn check_state_invariants<BS: Blockstore>(
     state: &State,
     store: &BS,
     balance: &TokenAmount,
@@ -229,7 +228,10 @@ pub fn check_state_invariants<BS: Blockstore + Debug>(
             let ret = pending_proposals.for_each(|key, _| {
                 let proposal_cid = Cid::try_from(key.0.to_owned())?;
 
-                acc.require(proposal_cids.contains(&proposal_cid), format!("pending proposal with cid {proposal_cid} not found within proposals {pending_proposals:?}"));
+                acc.require(
+                    proposal_cids.contains(&proposal_cid),
+                    format!("pending proposal with cid {proposal_cid} not found within proposals"),
+                );
 
                 pending_proposal_count += 1;
                 Ok(())

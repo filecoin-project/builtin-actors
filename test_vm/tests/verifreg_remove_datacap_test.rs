@@ -28,13 +28,13 @@ use fil_actors_runtime::{
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use test_vm::util::{apply_code, apply_ok, create_accounts, verifreg_add_verifier};
-use test_vm::{ExpectInvocation, TEST_VERIFREG_ROOT_ADDR, VM};
+use test_vm::{ExpectInvocation, TestVM, TEST_VERIFREG_ROOT_ADDR, VM};
 
 #[test]
 fn remove_datacap_simple_successful_path() {
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 4, TokenAmount::from_whole(10_000));
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let addrs = create_accounts(&v, 4, &TokenAmount::from_whole(10_000));
     let (verifier1, verifier2, verified_client) = (addrs[0], addrs[1], addrs[2]);
 
     let verifier1_id_addr = v.normalize_address(&verifier1).unwrap();
@@ -44,8 +44,8 @@ fn remove_datacap_simple_successful_path() {
     let allowance_to_remove: StoragePower = verifier_allowance.clone().div(2);
 
     // register verifier1 and verifier2
-    verifreg_add_verifier(&v, verifier1, verifier_allowance.clone());
-    verifreg_add_verifier(&v, verifier2, verifier_allowance.clone());
+    verifreg_add_verifier(&v, &verifier1, verifier_allowance.clone());
+    verifreg_add_verifier(&v, &verifier2, verifier_allowance.clone());
 
     // register the verified client
     let add_verified_client_params =
@@ -57,9 +57,9 @@ fn remove_datacap_simple_successful_path() {
     };
     apply_ok(
         &v,
-        verifier1,
-        VERIFIED_REGISTRY_ACTOR_ADDR,
-        TokenAmount::zero(),
+        &verifier1,
+        &VERIFIED_REGISTRY_ACTOR_ADDR,
+        &TokenAmount::zero(),
         VerifregMethod::AddVerifiedClient as u64,
         Some(add_verified_client_params.clone()),
     );
@@ -80,7 +80,7 @@ fn remove_datacap_simple_successful_path() {
     .matches(v.take_invocations().last().unwrap());
 
     // state checks on the 2 verifiers and the client
-    let mut v_st = v.get_state::<VerifregState>(VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
+    let mut v_st = v.get_state::<VerifregState>(&VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
     let verifiers =
         make_map_with_root_and_bitwidth::<_, BigIntDe>(&v_st.verifiers, &store, HAMT_BIT_WIDTH)
             .unwrap();
@@ -93,7 +93,7 @@ fn remove_datacap_simple_successful_path() {
         verifiers.get(&verifier2_id_addr.to_bytes()).unwrap().unwrap();
     assert_eq!(verifier_allowance, *verifier2_data_cap);
 
-    let token_st = v.get_state::<DataCapState>(DATACAP_TOKEN_ACTOR_ADDR).unwrap();
+    let token_st = v.get_state::<DataCapState>(&DATACAP_TOKEN_ACTOR_ADDR).unwrap();
     let balance = token_st.balance(&store, verified_client_id_addr.id().unwrap()).unwrap();
     assert_eq!(balance, TokenAmount::from_whole(verifier_allowance.to_i64().unwrap()));
 
@@ -150,9 +150,9 @@ fn remove_datacap_simple_successful_path() {
 
     let remove_datacap_ret: RemoveDataCapReturn = apply_ok(
         &v,
-        TEST_VERIFREG_ROOT_ADDR,
-        VERIFIED_REGISTRY_ACTOR_ADDR,
-        TokenAmount::zero(),
+        &TEST_VERIFREG_ROOT_ADDR,
+        &VERIFIED_REGISTRY_ACTOR_ADDR,
+        &TokenAmount::zero(),
         VerifregMethod::RemoveVerifiedClientDataCap as u64,
         Some(remove_datacap_params.clone()),
     )
@@ -170,14 +170,14 @@ fn remove_datacap_simple_successful_path() {
     assert_eq!(allowance_to_remove, remove_datacap_ret.data_cap_removed);
 
     // confirm client's allowance has fallen by half
-    let token_st = v.get_state::<DataCapState>(DATACAP_TOKEN_ACTOR_ADDR).unwrap();
+    let token_st = v.get_state::<DataCapState>(&DATACAP_TOKEN_ACTOR_ADDR).unwrap();
     let balance = token_st.balance(&store, verified_client_id_addr.id().unwrap()).unwrap();
     assert_eq!(
         balance,
         TokenAmount::from_whole(verifier_allowance.sub(&allowance_to_remove).to_i64().unwrap())
     );
 
-    v_st = v.get_state::<VerifregState>(VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
+    v_st = v.get_state::<VerifregState>(&VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
     // confirm proposalIds has changed as expected
     proposal_ids =
         make_map_with_root_and_bitwidth(&v_st.remove_data_cap_proposal_ids, &store, HAMT_BIT_WIDTH)
@@ -234,9 +234,9 @@ fn remove_datacap_simple_successful_path() {
 
     let remove_datacap_ret: RemoveDataCapReturn = apply_ok(
         &v,
-        TEST_VERIFREG_ROOT_ADDR,
-        VERIFIED_REGISTRY_ACTOR_ADDR,
-        TokenAmount::zero(),
+        &TEST_VERIFREG_ROOT_ADDR,
+        &VERIFIED_REGISTRY_ACTOR_ADDR,
+        &TokenAmount::zero(),
         VerifregMethod::RemoveVerifiedClientDataCap as u64,
         Some(remove_datacap_params.clone()),
     )
@@ -254,12 +254,12 @@ fn remove_datacap_simple_successful_path() {
     assert_eq!(allowance_to_remove, remove_datacap_ret.data_cap_removed);
 
     // confirm client has no balance
-    let token_st = v.get_state::<DataCapState>(DATACAP_TOKEN_ACTOR_ADDR).unwrap();
+    let token_st = v.get_state::<DataCapState>(&DATACAP_TOKEN_ACTOR_ADDR).unwrap();
     let balance = token_st.balance(&store, verified_client_id_addr.id().unwrap()).unwrap();
     assert_eq!(balance, TokenAmount::zero());
 
     // confirm proposalIds has changed as expected
-    v_st = v.get_state::<VerifregState>(VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
+    v_st = v.get_state::<VerifregState>(&VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
     proposal_ids =
         make_map_with_root_and_bitwidth(&v_st.remove_data_cap_proposal_ids, &store, HAMT_BIT_WIDTH)
             .unwrap();
@@ -283,8 +283,8 @@ fn remove_datacap_simple_successful_path() {
 #[test]
 fn remove_datacap_fails_on_verifreg() {
     let store = MemoryBlockstore::new();
-    let v = VM::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 2, TokenAmount::from_whole(10_000));
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let addrs = create_accounts(&v, 2, &TokenAmount::from_whole(10_000));
     let (verifier1, verifier2) = (addrs[0], addrs[1]);
 
     let verifier1_id_addr = v.normalize_address(&verifier1).unwrap();
@@ -293,8 +293,8 @@ fn remove_datacap_fails_on_verifreg() {
     let allowance_to_remove: StoragePower = DataCap::from(100);
 
     // register verifier1 and verifier2
-    verifreg_add_verifier(&v, verifier1, verifier_allowance.clone());
-    verifreg_add_verifier(&v, verifier2, verifier_allowance);
+    verifreg_add_verifier(&v, &verifier1, verifier_allowance.clone());
+    verifreg_add_verifier(&v, &verifier2, verifier_allowance);
 
     let remove_proposal = RemoveDataCapProposal {
         verified_client: VERIFIED_REGISTRY_ACTOR_ADDR,
@@ -327,9 +327,9 @@ fn remove_datacap_fails_on_verifreg() {
 
     apply_code(
         &v,
-        TEST_VERIFREG_ROOT_ADDR,
-        VERIFIED_REGISTRY_ACTOR_ADDR,
-        TokenAmount::zero(),
+        &TEST_VERIFREG_ROOT_ADDR,
+        &VERIFIED_REGISTRY_ACTOR_ADDR,
+        &TokenAmount::zero(),
         VerifregMethod::RemoveVerifiedClientDataCap as u64,
         Some(remove_datacap_params),
         ExitCode::USR_ILLEGAL_ARGUMENT,

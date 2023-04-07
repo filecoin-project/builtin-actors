@@ -1,10 +1,10 @@
 [package]
 name = "fil_actor_reward"
 description = "Builtin reward actor for Filecoin"
-version = "10.0.0"
+version = "11.0.0-alpha.1"
 license = "MIT OR Apache-2.0"
 authors = ["ChainSafe Systems <info@chainsafe.io>", "Protocol Labs", "Filecoin Core Devs"]
-edition = "2018"
+edition = "2021"
 repository = "https://github.com/filecoin-project/builtin-actors"
 keywords = ["filecoin", "web3", "wasm"]
 
@@ -14,8 +14,8 @@ keywords = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-fil_actors_runtime = { version = "10.0.0", path = "../../runtime" }
-fvm_shared = { version = "3.0.0", default-features = false }
+fil_actors_runtime = { version = "11.0.0-alpha.1", path = "../../runtime" }
+fvm_shared = { version = "3.2.0", default-features = false }
 num-traits = "0.2.14"
 num-derive = "0.3.3"
 log = "0.4.14"

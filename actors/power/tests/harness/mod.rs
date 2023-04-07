@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+
 use cid::Cid;
 use fil_actor_power::detail::GAS_ON_SUBMIT_VERIFY_SEAL;
 use fil_actor_power::ext::miner::ConfirmSectorProofsParams;
@@ -66,8 +68,8 @@ lazy_static! {
 pub fn new_runtime() -> MockRuntime {
     MockRuntime {
         receiver: STORAGE_POWER_ACTOR_ADDR,
-        caller: SYSTEM_ACTOR_ADDR,
-        caller_type: *SYSTEM_ACTOR_CODE_ID,
+        caller: RefCell::new(SYSTEM_ACTOR_ADDR),
+        caller_type: RefCell::new(*SYSTEM_ACTOR_CODE_ID),
         ..Default::default()
     }
 }
@@ -77,16 +79,16 @@ pub fn new_harness() -> Harness {
     Harness {
         miner_seq: 0,
         seal_proof: RegisteredSealProof::StackedDRG32GiBV1P1,
-        window_post_proof: RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        window_post_proof: RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
         this_epoch_baseline_power: StoragePower::from(1i64 << 50),
         this_epoch_reward_smoothed: FilterEstimate::new(rwd.atto().clone(), BigInt::zero()),
     }
 }
 
 pub fn setup() -> (Harness, MockRuntime) {
-    let mut rt = new_runtime();
+    let rt = new_runtime();
     let h = new_harness();
-    h.construct(&mut rt);
+    h.construct(&rt);
     (h, rt)
 }
 
@@ -100,14 +102,14 @@ pub struct Harness {
 }
 
 impl Harness {
-    pub fn construct(&self, rt: &mut MockRuntime) {
+    pub fn construct(&self, rt: &MockRuntime) {
         rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         rt.call::<PowerActor>(Method::Constructor as MethodNum, None).unwrap();
         rt.verify()
     }
 
-    pub fn construct_and_verify(&self, rt: &mut MockRuntime) {
+    pub fn construct_and_verify(&self, rt: &MockRuntime) {
         self.construct(rt);
         let st: State = rt.get_state();
         assert_eq!(StoragePower::zero(), st.total_raw_byte_power);
@@ -129,7 +131,7 @@ impl Harness {
     #[allow(clippy::too_many_arguments)]
     pub fn create_miner(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         owner: &Address,
         worker: &Address,
         miner: &Address,
@@ -140,7 +142,7 @@ impl Harness {
         value: &TokenAmount,
     ) -> Result<(), ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *owner);
-        rt.set_value(value.clone());
+        rt.set_received(value.clone());
         rt.set_balance(value.clone());
         rt.expect_validate_caller_any();
 
@@ -181,7 +183,7 @@ impl Harness {
 
     pub fn create_miner_basic(
         &mut self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         owner: Address,
         worker: Address,
         miner: Address,
@@ -211,7 +213,7 @@ impl Harness {
         keys.iter().map(|k| Address::from_bytes(k).unwrap()).collect::<Vec<_>>()
     }
 
-    pub fn miner_count(&self, rt: &mut MockRuntime) -> i64 {
+    pub fn miner_count(&self, rt: &MockRuntime) -> i64 {
         rt.expect_validate_caller_any();
         let ret: MinerCountReturn = rt
             .call::<PowerActor>(Method::MinerCountExported as MethodNum, None)
@@ -232,7 +234,7 @@ impl Harness {
         st.get_claim(rt.store(), miner).unwrap()
     }
 
-    pub fn delete_claim(&mut self, rt: &mut MockRuntime, miner: &Address) {
+    pub fn delete_claim(&mut self, rt: &MockRuntime, miner: &Address) {
         let mut state: State = rt.get_state();
 
         let mut claims =
@@ -246,7 +248,7 @@ impl Harness {
 
     pub fn enroll_cron_event(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         epoch: ChainEpoch,
         miner_address: &Address,
         payload: &RawBytes,
@@ -289,7 +291,7 @@ impl Harness {
         acc.assert_empty();
     }
 
-    pub fn update_pledge_total(&self, rt: &mut MockRuntime, miner: Address, delta: &TokenAmount) {
+    pub fn update_pledge_total(&self, rt: &MockRuntime, miner: Address, delta: &TokenAmount) {
         let st: State = rt.get_state();
         let prev = st.total_pledge_collateral;
 
@@ -306,7 +308,7 @@ impl Harness {
         assert_eq!(prev + delta, st.total_pledge_collateral);
     }
 
-    pub fn current_power_total(&self, rt: &mut MockRuntime) -> CurrentTotalPowerReturn {
+    pub fn current_power_total(&self, rt: &MockRuntime) -> CurrentTotalPowerReturn {
         rt.expect_validate_caller_any();
         let ret: CurrentTotalPowerReturn = rt
             .call::<PowerActor>(Method::CurrentTotalPower as u64, None)
@@ -320,7 +322,7 @@ impl Harness {
 
     pub fn update_claimed_power(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         miner: Address,
         raw_delta: &StoragePower,
         qa_delta: &StoragePower,
@@ -358,7 +360,7 @@ impl Harness {
 
     pub fn expect_total_power_eager(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         expected_raw: &StoragePower,
         expected_qa: &StoragePower,
     ) {
@@ -369,12 +371,12 @@ impl Harness {
         assert_eq!(expected_qa, &quality_adj_power);
     }
 
-    pub fn expect_total_pledge_eager(&self, rt: &mut MockRuntime, expected_pledge: &TokenAmount) {
+    pub fn expect_total_pledge_eager(&self, rt: &MockRuntime, expected_pledge: &TokenAmount) {
         let st: State = rt.get_state();
         assert_eq!(expected_pledge, &st.total_pledge_collateral);
     }
 
-    pub fn expect_miners_above_min_power(&self, rt: &mut MockRuntime, count: i64) {
+    pub fn expect_miners_above_min_power(&self, rt: &MockRuntime, count: i64) {
         rt.expect_validate_caller_any();
         let ret: MinerConsensusCountReturn = rt
             .call::<PowerActor>(Method::MinerConsensusCountExported as MethodNum, None)
@@ -386,7 +388,7 @@ impl Harness {
         assert_eq!(count, ret.miner_consensus_count);
     }
 
-    pub fn expect_query_network_info(&self, rt: &mut MockRuntime) {
+    pub fn expect_query_network_info(&self, rt: &MockRuntime) {
         let current_reward = ThisEpochRewardReturn {
             this_epoch_baseline_power: self.this_epoch_baseline_power.clone(),
             this_epoch_reward_smoothed: self.this_epoch_reward_smoothed.clone(),
@@ -404,7 +406,7 @@ impl Harness {
 
     pub fn on_epoch_tick_end(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         current_epoch: ChainEpoch,
         expected_raw_power: &StoragePower,
         confirmed_sectors: Vec<ConfirmedSectorSend>,
@@ -458,7 +460,7 @@ impl Harness {
 
     pub fn submit_porep_for_bulk_verify(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         miner_address: Address,
         seal_info: SealVerifyInfo,
         expect_success: bool,

@@ -51,7 +51,7 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for Reward actor
-    fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
+    fn constructor(rt: &impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         if let Some(power) = params.power.map(|v| v.0) {
@@ -73,7 +73,7 @@ impl Actor {
     /// The reward is reduced before the residual is credited to the block producer, by:
     /// - a penalty amount, provided as a parameter, which is burnt,
     fn award_block_reward(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: AwardBlockRewardParams,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
@@ -176,7 +176,7 @@ impl Actor {
     /// The award value used for the current epoch, updated at the end of an epoch
     /// through cron tick.  In the case previous epochs were null blocks this
     /// is the reward value as calculated at the last non-null epoch.
-    fn this_epoch_reward(rt: &mut impl Runtime) -> Result<ThisEpochRewardReturn, ActorError> {
+    fn this_epoch_reward(rt: &impl Runtime) -> Result<ThisEpochRewardReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let st: State = rt.state()?;
         Ok(ThisEpochRewardReturn {
@@ -189,7 +189,7 @@ impl Actor {
     /// This is only invoked for non-empty tipsets, but catches up any number of null
     /// epochs to compute the next epoch reward.
     fn update_network_kpi(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: UpdateNetworkKPIParams,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&STORAGE_POWER_ACTOR_ADDR))?;
@@ -217,6 +217,11 @@ impl Actor {
 
 impl ActorCode for Actor {
     type Methods = Method;
+
+    fn name() -> &'static str {
+        "Reward"
+    }
+
     actor_dispatch! {
         Constructor => constructor,
         AwardBlockReward => award_block_reward,

@@ -27,11 +27,11 @@ pub const CONTRACT_ADDRESS: [u8; 20] =
 #[allow(unused)]
 pub const CONTRACT_ID: Address = Address::new_id(0);
 
-pub fn init_construct_and_verify<F: FnOnce(&mut MockRuntime)>(
+pub fn init_construct_and_verify<F: FnOnce(&MockRuntime)>(
     initcode: Vec<u8>,
     initrt: F,
 ) -> MockRuntime {
-    let mut rt = MockRuntime::default();
+    let rt = MockRuntime::default();
 
     // enable logging to std
     test_utils::init_logging().ok();
@@ -39,7 +39,7 @@ pub fn init_construct_and_verify<F: FnOnce(&mut MockRuntime)>(
     // construct EVM actor
     rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
     rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
-    initrt(&mut rt);
+    initrt(&rt);
 
     // first actor created is 0
     rt.set_delegated_address(0, Address::new_delegated(EAM_ACTOR_ID, &CONTRACT_ADDRESS).unwrap());
@@ -66,7 +66,7 @@ pub fn init_construct_and_verify<F: FnOnce(&mut MockRuntime)>(
 }
 
 #[allow(dead_code)]
-pub fn invoke_contract(rt: &mut MockRuntime, input_data: &[u8]) -> Vec<u8> {
+pub fn invoke_contract(rt: &MockRuntime, input_data: &[u8]) -> Vec<u8> {
     rt.expect_validate_caller_any();
     let BytesDe(res) = rt
         .call::<evm::EvmContractActor>(
@@ -183,7 +183,7 @@ impl Debug for PrecompileTest {
 
 impl PrecompileTest {
     #[allow(dead_code)]
-    pub fn run_test(&self, rt: &mut MockRuntime) {
+    pub fn run_test(&self, rt: &MockRuntime) {
         rt.expect_gas_available(self.gas_avaliable);
         log::trace!("{:#?}", &self);
         // first byte is precompile number, second is output buffer size, rest is input to precompile
@@ -218,7 +218,7 @@ impl PrecompileTest {
     #[allow(dead_code)]
     pub fn run_test_expecting<T: Into<Vec<u8>>>(
         &mut self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         expecting: T,
         call_exit: PrecompileExit,
     ) {

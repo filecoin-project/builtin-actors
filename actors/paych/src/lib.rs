@@ -49,7 +49,7 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for Payment channel actor
-    pub fn constructor(rt: &mut impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
+    pub fn constructor(rt: &impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
         // Only InitActor can create a payment channel actor. It creates the actor on
         // behalf of the payer/payee.
         rt.validate_immediate_caller_type(std::iter::once(&Type::Init))?;
@@ -70,7 +70,7 @@ impl Actor {
     }
 
     pub fn update_channel_state(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: UpdateChannelStateParams,
     ) -> Result<(), ActorError> {
         let st: State = rt.state()?;
@@ -264,7 +264,7 @@ impl Actor {
         })
     }
 
-    pub fn settle(rt: &mut impl Runtime) -> Result<(), ActorError> {
+    pub fn settle(rt: &impl Runtime) -> Result<(), ActorError> {
         rt.transaction(|st: &mut State, rt| {
             rt.validate_immediate_caller_is([st.from, st.to].iter())?;
 
@@ -281,7 +281,7 @@ impl Actor {
         })
     }
 
-    pub fn collect(rt: &mut impl Runtime) -> Result<(), ActorError> {
+    pub fn collect(rt: &impl Runtime) -> Result<(), ActorError> {
         let st: State = rt.state()?;
         rt.validate_immediate_caller_is(&[st.from, st.to])?;
 
@@ -319,6 +319,11 @@ where
 
 impl ActorCode for Actor {
     type Methods = Method;
+
+    fn name() -> &'static str {
+        "PaymentChannel"
+    }
+
     actor_dispatch! {
         Constructor => constructor,
         UpdateChannelState => update_channel_state,

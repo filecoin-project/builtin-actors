@@ -68,7 +68,7 @@ fn test_delegate_call_caller() {
     let target = FILAddress::new_id(target_id);
     let evm_target = EthAddress(hex_literal::hex!("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"));
     let f4_target: FILAddress = evm_target.try_into().unwrap();
-    rt.actor_code_cids.insert(target, *EVM_ACTOR_CODE_ID);
+    rt.actor_code_cids.borrow_mut().insert(target, *EVM_ACTOR_CODE_ID);
     rt.set_delegated_address(target.id().unwrap(), f4_target);
     rt.receiver = target;
 
@@ -77,7 +77,7 @@ fn test_delegate_call_caller() {
     let evm_caller = EthAddress(util::CONTRACT_ADDRESS);
     let f4_caller = evm_caller.try_into().unwrap();
     rt.set_delegated_address(caller.id().unwrap(), f4_caller);
-    rt.caller = caller;
+    rt.caller.replace(caller);
 
     let evm_target_word = evm_target.as_evm_word();
 
@@ -104,7 +104,7 @@ fn test_delegate_call_caller() {
     // expected return data
     let return_data = U256::from(0x42);
 
-    rt.set_value(TokenAmount::from_whole(123));
+    rt.set_received(TokenAmount::from_whole(123));
     rt.expect_gas_available(10_000_000_000u64);
     rt.expect_send(
         target,
@@ -131,6 +131,6 @@ fn test_delegate_call_caller() {
         None,
     );
 
-    let result = util::invoke_contract(&mut rt, &contract_params);
+    let result = util::invoke_contract(&rt, &contract_params);
     assert_eq!(U256::from_big_endian(&result), return_data);
 }

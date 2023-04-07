@@ -135,19 +135,19 @@ pub fn init_logging() -> Result<(), log::SetLoggerError> {
 }
 
 pub struct MockRuntime<BS = MemoryBlockstore> {
-    pub epoch: ChainEpoch,
+    pub epoch: RefCell<ChainEpoch>,
     pub miner: Address,
-    pub base_fee: TokenAmount,
+    pub base_fee: RefCell<TokenAmount>,
     pub chain_id: ChainID,
-    pub id_addresses: HashMap<Address, Address>,
-    pub delegated_addresses: HashMap<ActorID, Address>,
-    pub actor_code_cids: HashMap<Address, Cid>,
-    pub new_actor_addr: Option<Address>,
+    pub id_addresses: RefCell<HashMap<Address, Address>>,
+    pub delegated_addresses: RefCell<HashMap<ActorID, Address>>,
+    pub actor_code_cids: RefCell<HashMap<Address, Cid>>,
+    pub new_actor_addr: RefCell<Option<Address>>,
     pub receiver: Address,
-    pub caller: Address,
-    pub caller_type: Cid,
-    pub origin: Address,
-    pub value_received: TokenAmount,
+    pub caller: RefCell<Address>,
+    pub caller_type: RefCell<Cid>,
+    pub origin: RefCell<Address>,
+    pub value_received: RefCell<TokenAmount>,
     #[allow(clippy::type_complexity)]
     pub hash_func: Box<dyn Fn(SupportedHashes, &[u8]) -> ([u8; 64], usize)>,
     #[allow(clippy::type_complexity)]
@@ -160,13 +160,13 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
     pub network_version: NetworkVersion,
 
     // Actor State
-    pub state: Option<Cid>,
+    pub state: RefCell<Option<Cid>>,
     pub balance: RefCell<TokenAmount>,
 
     // VM Impl
-    pub in_call: bool,
+    pub in_call: RefCell<bool>,
     pub store: Rc<BS>,
-    pub in_transaction: bool,
+    pub in_transaction: RefCell<bool>,
 
     // Expectations
     pub expectations: RefCell<Expectations>,
@@ -174,7 +174,7 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
     // policy
     pub policy: Policy,
 
-    pub circulating_supply: TokenAmount,
+    pub circulating_supply: RefCell<TokenAmount>,
 
     pub gas_limit: u64,
     pub gas_premium: TokenAmount,
@@ -337,9 +337,9 @@ impl<BS> MockRuntime<BS> {
             actor_code_cids: Default::default(),
             new_actor_addr: Default::default(),
             receiver: Address::new_id(0),
-            caller: Address::new_id(0),
+            caller: RefCell::new(Address::new_id(0)),
             caller_type: Default::default(),
-            origin: Address::new_id(0),
+            origin: RefCell::new(Address::new_id(0)),
             value_received: Default::default(),
             hash_func: Box::new(hash),
             recover_secp_pubkey_fn: Box::new(recover_secp_public_key),
@@ -486,99 +486,95 @@ impl<BS: Blockstore> MockRuntime<BS> {
     ///// Runtime access for tests /////
 
     pub fn get_state<T: DeserializeOwned>(&self) -> T {
-        self.store_get(self.state.as_ref().unwrap())
+        self.store_get(self.state.borrow().as_ref().unwrap())
     }
 
-    pub fn replace_state<T: Serialize>(&mut self, obj: &T) {
-        self.state = Some(self.store_put(obj));
+    pub fn replace_state<T: Serialize>(&self, obj: &T) {
+        self.state.replace(Some(self.store_put(obj)));
     }
 
-    pub fn set_balance(&mut self, amount: TokenAmount) {
-        *self.balance.get_mut() = amount;
+    pub fn set_balance(&self, amount: TokenAmount) {
+        self.balance.replace(amount);
     }
 
     pub fn get_balance(&self) -> TokenAmount {
         self.balance.borrow().to_owned()
     }
 
-    pub fn add_balance(&mut self, amount: TokenAmount) {
-        *self.balance.get_mut() += amount;
+    pub fn add_balance(&self, amount: TokenAmount) {
+        self.balance.replace_with(|b| b.clone() + amount);
     }
 
-    pub fn set_value(&mut self, value: TokenAmount) {
-        self.value_received = value;
-    }
-
-    pub fn set_caller(&mut self, code_id: Cid, address: Address) {
+    pub fn set_caller(&self, code_id: Cid, address: Address) {
         // fail if called with a non-ID address, since the caller() method must always return an ID
         address.id().unwrap();
-        self.caller = address;
-        self.caller_type = code_id;
-        self.actor_code_cids.insert(address, code_id);
+        self.caller.replace(address);
+        self.caller_type.replace(code_id);
+        self.actor_code_cids.borrow_mut().insert(address, code_id);
     }
 
-    pub fn set_origin(&mut self, address: Address) {
-        self.origin = address;
+    pub fn set_origin(&self, address: Address) {
+        self.origin.replace(address);
     }
 
-    pub fn set_address_actor_type(&mut self, address: Address, actor_type: Cid) {
-        self.actor_code_cids.insert(address, actor_type);
+    pub fn set_address_actor_type(&self, address: Address, actor_type: Cid) {
+        self.actor_code_cids.borrow_mut().insert(address, actor_type);
     }
 
     pub fn get_id_address(&self, address: &Address) -> Option<Address> {
         if address.protocol() == Protocol::ID {
             return Some(*address);
         }
-        self.id_addresses.get(address).cloned()
+        self.id_addresses.borrow().get(address).cloned()
     }
 
-    pub fn add_id_address(&mut self, source: Address, target: Address) {
+    pub fn add_id_address(&self, source: Address, target: Address) {
         assert_eq!(target.protocol(), Protocol::ID, "target must use ID address protocol");
-        self.id_addresses.insert(source, target);
+        self.id_addresses.borrow_mut().insert(source, target);
     }
 
-    pub fn set_delegated_address(&mut self, source: ActorID, target: Address) {
+    pub fn set_delegated_address(&self, source: ActorID, target: Address) {
         assert_eq!(
             target.protocol(),
             Protocol::Delegated,
             "target must use Delegated address protocol"
         );
-        self.delegated_addresses.insert(source, target);
-        self.id_addresses.insert(target, Address::new_id(source));
+        self.delegated_addresses.borrow_mut().insert(source, target);
+        self.id_addresses.borrow_mut().insert(target, Address::new_id(source));
     }
 
     pub fn call<A: ActorCode>(
-        &mut self,
+        &self,
         method_num: MethodNum,
         params: Option<IpldBlock>,
     ) -> Result<Option<IpldBlock>, ActorError> {
-        self.in_call = true;
-        let prev_state = self.state;
+        self.in_call.replace(true);
+        let prev_state = *self.state.borrow();
         let res = A::invoke_method(self, method_num, params);
 
         if res.is_err() {
-            self.state = prev_state;
+            self.state.replace(prev_state);
         }
-        self.in_call = false;
+        self.in_call.replace(false);
         res
     }
 
     /// Verifies that all mock expectations have been met (and resets the expectations).
-    pub fn verify(&mut self) {
+    pub fn verify(&self) {
         self.expectations.borrow_mut().verify()
     }
 
     /// Clears all mock expectations.
-    pub fn reset(&mut self) {
+    pub fn reset(&self) {
         self.expectations.borrow_mut().reset();
     }
 
     ///// Mock expectations /////
 
     #[allow(dead_code)]
-    pub fn expect_validate_caller_addr(&mut self, addr: Vec<Address>) {
+    pub fn expect_validate_caller_addr(&self, addr: Vec<Address>) {
         assert!(!addr.is_empty(), "addrs must be non-empty");
-        self.expectations.get_mut().expect_validate_caller_addr = Some(addr);
+        self.expectations.borrow_mut().expect_validate_caller_addr = Some(addr);
     }
 
     #[allow(dead_code)]
@@ -619,7 +615,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 
     #[allow(dead_code)]
-    pub fn expect_validate_caller_type(&mut self, types: Vec<Type>) {
+    pub fn expect_validate_caller_type(&self, types: Vec<Type>) {
         assert!(!types.is_empty(), "addrs must be non-empty");
         self.expectations.borrow_mut().expect_validate_caller_type = Some(types);
     }
@@ -636,13 +632,13 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 
     #[allow(dead_code)]
-    pub fn expect_delete_actor(&mut self, beneficiary: Address) {
+    pub fn expect_delete_actor(&self, beneficiary: Address) {
         self.expectations.borrow_mut().expect_delete_actor = Some(beneficiary);
     }
 
     #[allow(dead_code)]
     pub fn expect_send_simple(
-        &mut self,
+        &self,
         to: Address,
         method: MethodNum,
         params: Option<IpldBlock>,
@@ -666,7 +662,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
     #[allow(dead_code)]
     #[allow(clippy::too_many_arguments)]
     pub fn expect_send(
-        &mut self,
+        &self,
         to: Address,
         method: MethodNum,
         params: Option<IpldBlock>,
@@ -692,7 +688,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
 
     #[allow(dead_code)]
     pub fn expect_create_actor(
-        &mut self,
+        &self,
         code_id: Cid,
         actor_id: ActorID,
         predictable_address: Option<Address>,
@@ -702,39 +698,40 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 
     #[allow(dead_code)]
-    pub fn expect_verify_seal(&mut self, seal: SealVerifyInfo, exit_code: ExitCode) {
+    pub fn expect_verify_seal(&self, seal: SealVerifyInfo, exit_code: ExitCode) {
         let a = ExpectVerifySeal { seal, exit_code };
         self.expectations.borrow_mut().expect_verify_seal = Some(a);
     }
 
     #[allow(dead_code)]
-    pub fn expect_verify_post(&mut self, post: WindowPoStVerifyInfo, exit_code: ExitCode) {
+    pub fn expect_verify_post(&self, post: WindowPoStVerifyInfo, exit_code: ExitCode) {
         let a = ExpectVerifyPoSt { post, exit_code };
         self.expectations.borrow_mut().expect_verify_post = Some(a);
     }
 
     #[allow(dead_code)]
-    pub fn set_received(&mut self, amount: TokenAmount) {
-        self.value_received = amount;
+    pub fn set_received(&self, amount: TokenAmount) {
+        self.value_received.replace(amount);
     }
 
     #[allow(dead_code)]
-    pub fn set_base_fee(&mut self, base_fee: TokenAmount) {
-        self.base_fee = base_fee;
+    pub fn set_base_fee(&self, base_fee: TokenAmount) {
+        self.base_fee.replace(base_fee);
     }
 
     #[allow(dead_code)]
-    pub fn set_circulating_supply(&mut self, circ_supply: TokenAmount) {
-        self.circulating_supply = circ_supply;
+    pub fn set_circulating_supply(&self, circ_supply: TokenAmount) {
+        self.circulating_supply.replace(circ_supply);
     }
 
     #[allow(dead_code)]
-    pub fn set_epoch(&mut self, epoch: ChainEpoch) {
-        self.epoch = epoch;
+    pub fn set_epoch(&self, epoch: ChainEpoch) -> ChainEpoch {
+        self.epoch.replace(epoch);
+        epoch
     }
 
     pub fn expect_get_randomness_from_tickets(
-        &mut self,
+        &self,
         tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: Vec<u8>,
@@ -746,7 +743,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
 
     #[allow(dead_code)]
     pub fn expect_get_randomness_from_beacon(
-        &mut self,
+        &self,
         tag: DomainSeparationTag,
         epoch: ChainEpoch,
         entropy: Vec<u8>,
@@ -758,7 +755,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
 
     #[allow(dead_code)]
     pub fn expect_batch_verify_seals(
-        &mut self,
+        &self,
         input: Vec<SealVerifyInfo>,
         result: anyhow::Result<Vec<bool>>,
     ) {
@@ -768,7 +765,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
 
     #[allow(dead_code)]
     pub fn expect_aggregate_verify_seals(
-        &mut self,
+        &self,
         in_svis: Vec<AggregateSealVerifyInfo>,
         in_proof: Vec<u8>,
         result: anyhow::Result<()>,
@@ -778,30 +775,30 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 
     #[allow(dead_code)]
-    pub fn expect_replica_verify(&mut self, input: ReplicaUpdateInfo, result: anyhow::Result<()>) {
+    pub fn expect_replica_verify(&self, input: ReplicaUpdateInfo, result: anyhow::Result<()>) {
         let a = ExpectReplicaVerify { input, result };
         self.expectations.borrow_mut().expect_replica_verify = Some(a);
     }
 
     #[allow(dead_code)]
-    pub fn expect_gas_charge(&mut self, value: i64) {
+    pub fn expect_gas_charge(&self, value: i64) {
         self.expectations.borrow_mut().expect_gas_charge.push_back(value);
     }
 
     #[allow(dead_code)]
-    pub fn expect_gas_available(&mut self, value: u64) {
+    pub fn expect_gas_available(&self, value: u64) {
         self.expectations.borrow_mut().expect_gas_available.push_back(value);
     }
 
     #[allow(dead_code)]
-    pub fn expect_emitted_event(&mut self, event: ActorEvent) {
+    pub fn expect_emitted_event(&self, event: ActorEvent) {
         self.expectations.borrow_mut().expect_emitted_events.push_back(event)
     }
 
     ///// Private helpers /////
 
     fn require_in_call(&self) {
-        assert!(self.in_call, "invalid runtime invocation outside of method call")
+        assert!(*self.in_call.borrow(), "invalid runtime invocation outside of method call")
     }
 
     fn store_put<T: Serialize>(&self, o: &T) -> Cid {
@@ -819,16 +816,16 @@ impl<BS> MessageInfo for MockRuntime<BS> {
     }
 
     fn caller(&self) -> Address {
-        self.caller
+        *self.caller.borrow()
     }
     fn origin(&self) -> Address {
-        self.origin
+        *self.origin.borrow()
     }
     fn receiver(&self) -> Address {
         self.receiver
     }
     fn value_received(&self) -> TokenAmount {
-        self.value_received.clone()
+        self.value_received.borrow().clone()
     }
     fn gas_premium(&self) -> TokenAmount {
         self.gas_premium.clone()
@@ -849,10 +846,10 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
 
     fn curr_epoch(&self) -> ChainEpoch {
         self.require_in_call();
-        self.epoch
+        *self.epoch.borrow()
     }
 
-    fn validate_immediate_caller_accept_any(&mut self) -> Result<(), ActorError> {
+    fn validate_immediate_caller_accept_any(&self) -> Result<(), ActorError> {
         self.require_in_call();
         assert!(
             self.expectations.borrow_mut().expect_validate_caller_any,
@@ -862,7 +859,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         Ok(())
     }
 
-    fn validate_immediate_caller_is<'a, I>(&mut self, addresses: I) -> Result<(), ActorError>
+    fn validate_immediate_caller_is<'a, I>(&self, addresses: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Address>,
     {
@@ -896,7 +893,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         ))
     }
 
-    fn validate_immediate_caller_namespace<I>(&mut self, namespaces: I) -> Result<(), ActorError>
+    fn validate_immediate_caller_namespace<I>(&self, namespaces: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = u64>,
     {
@@ -942,7 +939,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         ))
     }
 
-    fn validate_immediate_caller_type<'a, I>(&mut self, types: I) -> Result<(), ActorError>
+    fn validate_immediate_caller_type<'a, I>(&self, types: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Type>,
     {
@@ -961,7 +958,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
             types, expected_caller_type,
         );
 
-        if let Some(call_type) = self.resolve_builtin_actor_type(&self.caller_type) {
+        if let Some(call_type) = self.resolve_builtin_actor_type(&*self.caller_type.borrow()) {
             for expected in &types {
                 if &call_type == expected {
                     self.expectations.borrow_mut().expect_validate_caller_type = None;
@@ -1004,12 +1001,12 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
 
     fn lookup_delegated_address(&self, id: ActorID) -> Option<Address> {
         self.require_in_call();
-        self.delegated_addresses.get(&id).copied()
+        self.delegated_addresses.borrow().get(&id).copied()
     }
 
     fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {
         self.require_in_call();
-        self.actor_code_cids.get(&Address::new_id(*id)).cloned()
+        self.actor_code_cids.borrow().get(&Address::new_id(*id)).cloned()
     }
 
     fn get_randomness_from_tickets(
@@ -1025,7 +1022,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
             .pop_front()
             .expect("unexpected call to get_randomness_from_tickets");
 
-        assert!(epoch <= self.epoch, "attempt to get randomness from future");
+        assert!(epoch <= *self.epoch.borrow(), "attempt to get randomness from future");
         assert_eq!(
             expected.tag, tag,
             "unexpected domain separation tag, expected: {:?}, actual: {:?}",
@@ -1058,7 +1055,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
             .pop_front()
             .expect("unexpected call to get_randomness_from_beacon");
 
-        assert!(epoch <= self.epoch, "attempt to get randomness from future");
+        assert!(epoch <= *self.epoch.borrow(), "attempt to get randomness from future");
         assert_eq!(
             expected.tag, tag,
             "unexpected domain separation tag, expected: {:?}, actual: {:?}",
@@ -1078,42 +1075,42 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         Ok(expected.out)
     }
 
-    fn create<T: Serialize>(&mut self, obj: &T) -> Result<(), ActorError> {
-        if self.state.is_some() {
+    fn create<T: Serialize>(&self, obj: &T) -> Result<(), ActorError> {
+        if self.state.borrow().is_some() {
             return Err(actor_error!(illegal_state; "state already constructed"));
         }
-        self.state = Some(self.store_put(obj));
+        self.state.replace(Some(self.store_put(obj)));
         Ok(())
     }
 
     fn state<T: DeserializeOwned>(&self) -> Result<T, ActorError> {
-        Ok(self.store_get(self.state.as_ref().unwrap()))
+        Ok(self.store_get(self.state.borrow().as_ref().unwrap()))
     }
 
     fn get_state_root(&self) -> Result<Cid, ActorError> {
-        Ok(self.state.unwrap_or(EMPTY_ARR_CID))
+        Ok(self.state.borrow().unwrap_or(EMPTY_ARR_CID))
     }
 
-    fn set_state_root(&mut self, root: &Cid) -> Result<(), ActorError> {
-        self.state = Some(*root);
+    fn set_state_root(&self, root: &Cid) -> Result<(), ActorError> {
+        self.state.replace(Some(*root));
         Ok(())
     }
 
-    fn transaction<S, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
+    fn transaction<S, RT, F>(&self, f: F) -> Result<RT, ActorError>
     where
         S: Serialize + DeserializeOwned,
-        F: FnOnce(&mut S, &mut Self) -> Result<RT, ActorError>,
+        F: FnOnce(&mut S, &Self) -> Result<RT, ActorError>,
     {
-        if self.in_transaction {
+        if *self.in_transaction.borrow() {
             return Err(actor_error!(assertion_failed; "nested transaction"));
         }
         let mut read_only = self.state()?;
-        self.in_transaction = true;
+        self.in_transaction.replace(true);
         let ret = f(&mut read_only, self);
         if ret.is_ok() {
-            self.state = Some(self.store_put(&read_only));
+            self.state.replace(Some(self.store_put(&read_only)));
         }
-        self.in_transaction = false;
+        self.in_transaction.replace(false);
         ret
     }
 
@@ -1131,7 +1128,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         send_flags: SendFlags,
     ) -> Result<Response, SendError> {
         self.require_in_call();
-        if self.in_transaction {
+        if *self.in_transaction.borrow() {
             return Ok(Response { exit_code: ExitCode::USR_ASSERTION_FAILED, return_data: None });
         }
 
@@ -1168,21 +1165,22 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         Ok(Response { exit_code: expected_msg.exit_code, return_data: expected_msg.send_return })
     }
 
-    fn new_actor_address(&mut self) -> Result<Address, ActorError> {
+    fn new_actor_address(&self) -> Result<Address, ActorError> {
         self.require_in_call();
-        let ret = *self.new_actor_addr.as_ref().expect("unexpected call to new actor address");
-        self.new_actor_addr = None;
+        let ret =
+            *self.new_actor_addr.borrow().as_ref().expect("unexpected call to new actor address");
+        self.new_actor_addr.replace(None);
         Ok(ret)
     }
 
     fn create_actor(
-        &mut self,
+        &self,
         code_id: Cid,
         actor_id: ActorID,
         predictable_address: Option<Address>,
     ) -> Result<(), ActorError> {
         self.require_in_call();
-        if self.in_transaction {
+        if *self.in_transaction.borrow() {
             return Err(actor_error!(assertion_failed; "side-effect within transaction"));
         }
         let expect_create_actor = self
@@ -1201,9 +1199,9 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         Ok(())
     }
 
-    fn delete_actor(&mut self, addr: &Address) -> Result<(), ActorError> {
+    fn delete_actor(&self, addr: &Address) -> Result<(), ActorError> {
         self.require_in_call();
-        if self.in_transaction {
+        if *self.in_transaction.borrow() {
             return Err(actor_error!(assertion_failed; "side-effect within transaction"));
         }
         let exp_act = self.expectations.borrow_mut().expect_delete_actor.take();
@@ -1231,10 +1229,10 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
     }
 
     fn total_fil_circ_supply(&self) -> TokenAmount {
-        self.circulating_supply.clone()
+        self.circulating_supply.borrow().clone()
     }
 
-    fn charge_gas(&mut self, _: &'static str, value: i64) {
+    fn charge_gas(&self, _: &'static str, value: i64) {
         let mut exs = self.expectations.borrow_mut();
         assert!(!exs.expect_gas_charge.is_empty(), "unexpected gas charge {:?}", value);
         let expected = exs.expect_gas_charge.pop_front().unwrap();
@@ -1242,7 +1240,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
     }
 
     fn base_fee(&self) -> TokenAmount {
-        self.base_fee.clone()
+        self.base_fee.borrow().clone()
     }
 
     fn gas_available(&self) -> u64 {
@@ -1256,7 +1254,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
     }
 
     fn tipset_cid(&self, epoch: i64) -> Result<Cid, ActorError> {
-        let offset = self.epoch - epoch;
+        let offset = *self.epoch.borrow() - epoch;
         // Can't get tipset for:
         // - current or future epochs
         // - negative epochs

@@ -27,7 +27,7 @@ pub struct EthAccountActor;
 impl EthAccountActor {
     /// Ethereum Account actor constructor.
     /// NOTE: This method is NOT currently called from anywhere, instead the FVM just deploys EthAccounts.
-    pub fn constructor(rt: &mut impl Runtime) -> Result<(), ActorError> {
+    pub fn constructor(rt: &impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         match rt
@@ -52,7 +52,7 @@ impl EthAccountActor {
 
     // Always succeeds, accepting any transfers.
     pub fn fallback(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         method: MethodNum,
         _: Option<IpldBlock>,
     ) -> Result<Option<IpldBlock>, ActorError> {
@@ -67,6 +67,11 @@ impl EthAccountActor {
 
 impl ActorCode for EthAccountActor {
     type Methods = Method;
+
+    fn name() -> &'static str {
+        "EVMAccount"
+    }
+
     actor_dispatch! {
         Constructor => constructor,
         _ => fallback [raw],

@@ -4,6 +4,7 @@ use fil_actor_miner::Method as MinerMethod;
 use fil_actor_miner::WithdrawBalanceParams as MinerWithdrawBalanceParams;
 use fil_actors_runtime::test_utils::{MARKET_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID};
 use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
+use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -15,7 +16,7 @@ use fvm_shared::sector::RegisteredPoStProof;
 use fvm_shared::METHOD_SEND;
 use test_vm::util::{apply_code, apply_ok, create_accounts, create_miner};
 use test_vm::Actor;
-use test_vm::VM;
+use test_vm::TestVM;
 
 #[cfg(test)]
 mod market_tests {
@@ -128,9 +129,9 @@ mod miner_tests {
         let params = MinerWithdrawBalanceParams { amount_requested: one_fil };
         apply_code(
             &v,
-            worker,
-            m_addr,
-            TokenAmount::zero(),
+            &worker,
+            &m_addr,
+            &TokenAmount::zero(),
             MinerMethod::WithdrawBalance as u64,
             Some(params),
             ExitCode::USR_FORBIDDEN,
@@ -142,8 +143,8 @@ mod miner_tests {
 // 1. Add collateral to escrow address
 // 2. Send a withdraw message attempting to remove `requested` funds
 // 3. Assert correct return value and actor balance transfer
-fn assert_add_collateral_and_withdraw(
-    v: &VM,
+fn assert_add_collateral_and_withdraw<BS: Blockstore>(
+    v: &TestVM<BS>,
     collateral: TokenAmount,
     expected_withdrawn: TokenAmount,
     requested: TokenAmount,
@@ -165,13 +166,13 @@ fn assert_add_collateral_and_withdraw(
     if collateral.is_positive() {
         match a_type {
             x if x == *MINER_ACTOR_CODE_ID => {
-                apply_ok(v, caller, escrow, collateral.clone(), METHOD_SEND, None::<RawBytes>)
+                apply_ok(v, &caller, &escrow, &collateral, METHOD_SEND, None::<RawBytes>)
             }
             x if x == *MARKET_ACTOR_CODE_ID => apply_ok(
                 v,
-                caller,
-                escrow,
-                collateral.clone(),
+                &caller,
+                &escrow,
+                &collateral,
                 MarketMethod::AddBalance as u64,
                 Some(caller),
             ),
@@ -188,9 +189,9 @@ fn assert_add_collateral_and_withdraw(
             let params = MinerWithdrawBalanceParams { amount_requested: requested };
             apply_ok(
                 v,
-                caller,
-                escrow,
-                TokenAmount::zero(),
+                &caller,
+                &escrow,
+                &TokenAmount::zero(),
                 MinerMethod::WithdrawBalance as u64,
                 Some(params),
             )
@@ -202,9 +203,9 @@ fn assert_add_collateral_and_withdraw(
                 MarketWithdrawBalanceParams { provider_or_client: caller, amount: requested };
             apply_ok(
                 v,
-                caller,
-                escrow,
-                TokenAmount::zero(),
+                &caller,
+                &escrow,
+                &TokenAmount::zero(),
                 MarketMethod::WithdrawBalance as u64,
                 Some(params),
             )
@@ -219,31 +220,33 @@ fn assert_add_collateral_and_withdraw(
     assert_eq!(caller_initial_balance, c.balance);
 }
 
-fn require_actor(v: &VM, addr: Address) -> Actor {
-    v.get_actor(addr).unwrap()
+fn require_actor<BS: Blockstore>(v: &TestVM<BS>, addr: Address) -> Actor {
+    v.get_actor(&addr).unwrap()
 }
 
-fn market_setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Address) {
-    let v = VM::new_with_singletons(store);
+fn market_setup(store: &'_ MemoryBlockstore) -> (TestVM<MemoryBlockstore>, Address) {
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
     let initial_balance = TokenAmount::from_whole(6);
-    let addrs = create_accounts(&v, 1, initial_balance);
+    let addrs = create_accounts(&v, 1, &initial_balance);
     let caller = addrs[0];
     (v, caller)
 }
 
-fn miner_setup(store: &'_ MemoryBlockstore) -> (VM<'_>, Address, Address, Address) {
-    let mut v = VM::new_with_singletons(store);
+fn miner_setup(
+    store: &'_ MemoryBlockstore,
+) -> (TestVM<MemoryBlockstore>, Address, Address, Address) {
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
     let initial_balance = TokenAmount::from_whole(10_000);
-    let addrs = create_accounts(&v, 2, initial_balance);
+    let addrs = create_accounts(&v, 2, &initial_balance);
     let (worker, owner) = (addrs[0], addrs[1]);
 
     // create miner
     let (m_addr, _) = create_miner(
-        &mut v,
-        owner,
-        worker,
-        RegisteredPoStProof::StackedDRGWindow32GiBV1,
-        TokenAmount::zero(),
+        &v,
+        &owner,
+        &worker,
+        RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
+        &TokenAmount::zero(),
     );
 
     (v, worker, owner, m_addr)

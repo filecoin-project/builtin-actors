@@ -78,7 +78,7 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for StoragePower actor
-    fn constructor(rt: &mut impl Runtime) -> Result<(), ActorError> {
+    fn constructor(rt: &impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         let st = State::new(rt.store()).map_err(|e| {
@@ -89,7 +89,7 @@ impl Actor {
     }
 
     fn create_miner(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: CreateMinerParams,
     ) -> Result<CreateMinerReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -153,14 +153,13 @@ impl Actor {
             })?;
             Ok(())
         })?;
-        println!("12345");
         Ok(CreateMinerReturn { id_address, robust_address })
     }
 
     /// Adds or removes claimed power for the calling actor.
     /// May only be invoked by a miner actor.
     fn update_claimed_power(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: UpdateClaimedPowerParams,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
@@ -197,7 +196,7 @@ impl Actor {
     }
 
     fn enroll_cron_event(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: EnrollCronEventParams,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
@@ -236,7 +235,7 @@ impl Actor {
         Ok(())
     }
 
-    fn on_epoch_tick_end(rt: &mut impl Runtime) -> Result<(), ActorError> {
+    fn on_epoch_tick_end(rt: &impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&CRON_ACTOR_ADDR))?;
 
         let rewret: ThisEpochRewardReturn = deserialize_block(
@@ -252,7 +251,7 @@ impl Actor {
         if let Err(e) = Self::process_batch_proof_verifies(rt, &rewret) {
             error!("unexpected error processing batch proof verifies: {}. Skipping all verification for epoch {}", e, rt.curr_epoch());
         }
-        Self::process_deferred_cron_events(rt, rewret.clone())?;
+        Self::process_deferred_cron_events(rt, rewret)?;
 
         let this_epoch_raw_byte_power = rt.transaction(|st: &mut State, _| {
             let (raw_byte_power, qa_power) = st.current_total_power();
@@ -278,7 +277,7 @@ impl Actor {
     }
 
     fn update_pledge_total(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: UpdatePledgeTotalParams,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
@@ -297,7 +296,7 @@ impl Actor {
     }
 
     fn submit_porep_for_bulk_verify(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: SubmitPoRepForBulkVerifyParams,
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
@@ -361,7 +360,7 @@ impl Actor {
     /// The returned values are frozen during the cron tick before this epoch
     /// so that this method returns consistent values while processing all messages
     /// of an epoch.
-    fn current_total_power(rt: &mut impl Runtime) -> Result<CurrentTotalPowerReturn, ActorError> {
+    fn current_total_power(rt: &impl Runtime) -> Result<CurrentTotalPowerReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let st: State = rt.state()?;
 
@@ -378,7 +377,7 @@ impl Actor {
     /// of all miners that have more than the consensus minimum amount of storage active.
     /// This value is static over an epoch, and does NOT get updated as messages are executed.
     /// It is recalculated after all messages at an epoch have been executed.
-    fn network_raw_power(rt: &mut impl Runtime) -> Result<NetworkRawPowerReturn, ActorError> {
+    fn network_raw_power(rt: &impl Runtime) -> Result<NetworkRawPowerReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let st: State = rt.state()?;
 
@@ -389,7 +388,7 @@ impl Actor {
     /// and whether the miner has more than the consensus minimum amount of storage active.
     /// The raw power is defined as the active (i.e. non-faulty) byte commitments of the miner.
     fn miner_raw_power(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: MinerRawPowerParams,
     ) -> Result<MinerRawPowerReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
@@ -403,7 +402,7 @@ impl Actor {
 
     /// Returns the total number of miners created, regardless of whether or not
     /// they have any pledged storage.
-    fn miner_count(rt: &mut impl Runtime) -> Result<MinerCountReturn, ActorError> {
+    fn miner_count(rt: &impl Runtime) -> Result<MinerCountReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let st: State = rt.state()?;
 
@@ -412,9 +411,7 @@ impl Actor {
 
     /// Returns the total number of miners that have more than the consensus minimum amount of storage active.
     /// Active means that the storage must not be faulty.
-    fn miner_consensus_count(
-        rt: &mut impl Runtime,
-    ) -> Result<MinerConsensusCountReturn, ActorError> {
+    fn miner_consensus_count(rt: &impl Runtime) -> Result<MinerConsensusCountReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let st: State = rt.state()?;
 
@@ -422,7 +419,7 @@ impl Actor {
     }
 
     fn process_batch_proof_verifies(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         rewret: &ThisEpochRewardReturn,
     ) -> Result<(), String> {
         let mut miners: Vec<(Address, usize)> = Vec::new();
@@ -559,7 +556,7 @@ impl Actor {
     }
 
     fn process_deferred_cron_events(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         rewret: ThisEpochRewardReturn,
     ) -> Result<(), ActorError> {
         let rt_epoch = rt.curr_epoch();
@@ -680,10 +677,14 @@ impl Actor {
 
 impl ActorCode for Actor {
     type Methods = Method;
+
+    fn name() -> &'static str {
+        "StoragePower"
+    }
+
     actor_dispatch! {
         Constructor => constructor,
-        CreateMiner => create_miner,
-        CreateMinerExported => create_miner,
+        CreateMiner|CreateMinerExported => create_miner,
         UpdateClaimedPower => update_claimed_power            ,
         EnrollCronEvent => enroll_cron_event,
         OnEpochTickEnd => on_epoch_tick_end,

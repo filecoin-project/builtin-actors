@@ -32,7 +32,7 @@ use num_traits::Zero;
 
 #[test]
 fn deal_end_after_deal_start() {
-    let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+    let f = |_rt: &MockRuntime, d: &mut DealProposal| {
         d.start_epoch = 10;
         d.end_epoch = 9;
     };
@@ -41,15 +41,15 @@ fn deal_end_after_deal_start() {
 
 #[test]
 fn current_epoch_greater_than_start_epoch() {
-    let f = |rt: &mut MockRuntime, d: &mut DealProposal| {
-        d.start_epoch = rt.epoch - 1;
+    let f = |rt: &MockRuntime, d: &mut DealProposal| {
+        d.start_epoch = *rt.epoch.borrow() - 1;
     };
     assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
 }
 
 #[test]
 fn deal_duration_greater_than_max_deal_duration() {
-    let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+    let f = |_rt: &MockRuntime, d: &mut DealProposal| {
         d.start_epoch = ChainEpoch::from(10);
         d.end_epoch = d.start_epoch + (540 * EPOCHS_IN_DAY) + 1
     };
@@ -58,7 +58,7 @@ fn deal_duration_greater_than_max_deal_duration() {
 
 #[test]
 fn negative_price_per_epoch() {
-    let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+    let f = |_rt: &MockRuntime, d: &mut DealProposal| {
         d.storage_price_per_epoch = TokenAmount::from_atto(-1);
     };
     assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
@@ -66,7 +66,7 @@ fn negative_price_per_epoch() {
 
 #[test]
 fn price_per_epoch_greater_than_total_filecoin() {
-    let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+    let f = |_rt: &MockRuntime, d: &mut DealProposal| {
         d.storage_price_per_epoch = &*TOTAL_FILECOIN + TokenAmount::from_atto(1);
     };
     assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
@@ -74,7 +74,7 @@ fn price_per_epoch_greater_than_total_filecoin() {
 
 #[test]
 fn negative_provider_collateral() {
-    let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+    let f = |_rt: &MockRuntime, d: &mut DealProposal| {
         d.provider_collateral = TokenAmount::from_atto(-1);
     };
     assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
@@ -82,7 +82,7 @@ fn negative_provider_collateral() {
 
 #[test]
 fn provider_collateral_greater_than_max_collateral() {
-    let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+    let f = |_rt: &MockRuntime, d: &mut DealProposal| {
         d.provider_collateral = &*TOTAL_FILECOIN + TokenAmount::from_atto(1);
     };
     assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
@@ -90,7 +90,7 @@ fn provider_collateral_greater_than_max_collateral() {
 
 #[test]
 fn provider_collateral_less_than_bound() {
-    let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+    let f = |_rt: &MockRuntime, d: &mut DealProposal| {
         let circ_supply = TokenAmount::from_atto(1i64 << 50);
         let (provider_min, _) = deal_provider_collateral_bounds(
             &Policy::default(),
@@ -106,7 +106,7 @@ fn provider_collateral_less_than_bound() {
 
 #[test]
 fn negative_client_collateral() {
-    let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+    let f = |_rt: &MockRuntime, d: &mut DealProposal| {
         d.client_collateral = TokenAmount::from_atto(-1);
     };
     assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
@@ -114,7 +114,7 @@ fn negative_client_collateral() {
 
 #[test]
 fn client_collateral_greater_than_max_collateral() {
-    let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+    let f = |_rt: &MockRuntime, d: &mut DealProposal| {
         d.client_collateral = &*TOTAL_FILECOIN + TokenAmount::from_atto(1);
     };
     assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
@@ -122,7 +122,7 @@ fn client_collateral_greater_than_max_collateral() {
 
 #[test]
 fn client_does_not_have_enough_balance_for_collateral() {
-    let f = |rt: &mut MockRuntime, d: &mut DealProposal| {
+    let f = |rt: &MockRuntime, d: &mut DealProposal| {
         add_participant_funds(
             rt,
             CLIENT_ADDR,
@@ -135,7 +135,7 @@ fn client_does_not_have_enough_balance_for_collateral() {
 
 #[test]
 fn provider_does_not_have_enough_balance_for_collateral() {
-    let f = |rt: &mut MockRuntime, d: &mut DealProposal| {
+    let f = |rt: &MockRuntime, d: &mut DealProposal| {
         add_participant_funds(rt, CLIENT_ADDR, d.client_balance_requirement());
         add_provider_funds(
             rt,
@@ -148,7 +148,7 @@ fn provider_does_not_have_enough_balance_for_collateral() {
 
 #[test]
 fn client_address_does_not_exist() {
-    let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+    let f = |_rt: &MockRuntime, d: &mut DealProposal| {
         d.client = Address::new_id(1);
     };
     assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
@@ -156,7 +156,7 @@ fn client_address_does_not_exist() {
 
 #[test]
 fn unable_to_resolve_client_address() {
-    let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+    let f = |_rt: &MockRuntime, d: &mut DealProposal| {
         d.client = new_bls_addr(1);
     };
     assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
@@ -164,13 +164,13 @@ fn unable_to_resolve_client_address() {
 
 #[test]
 fn signature_is_invalid() {
-    let f = |_rt: &mut MockRuntime, _d: &mut DealProposal| {};
+    let f = |_rt: &MockRuntime, _d: &mut DealProposal| {};
     assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, false);
 }
 
 #[test]
 fn no_entry_for_client_in_locked_balance_table() {
-    let f = |rt: &mut MockRuntime, d: &mut DealProposal| {
+    let f = |rt: &MockRuntime, d: &mut DealProposal| {
         add_provider_funds(rt, d.provider_collateral.clone(), &MinerAddresses::default());
     };
     assert_deal_failure(false, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
@@ -178,7 +178,7 @@ fn no_entry_for_client_in_locked_balance_table() {
 
 #[test]
 fn no_entry_for_provider_in_locked_balance_table() {
-    let f = |rt: &mut MockRuntime, d: &mut DealProposal| {
+    let f = |rt: &MockRuntime, d: &mut DealProposal| {
         add_participant_funds(rt, CLIENT_ADDR, d.client_balance_requirement());
     };
     assert_deal_failure(false, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
@@ -186,7 +186,7 @@ fn no_entry_for_provider_in_locked_balance_table() {
 
 #[test]
 fn bad_piece_cid() {
-    let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+    let f = |_rt: &MockRuntime, d: &mut DealProposal| {
         d.piece_cid = Cid::default();
     };
     assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
@@ -194,7 +194,7 @@ fn bad_piece_cid() {
 
 #[test]
 fn zero_piece_size() {
-    let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+    let f = |_rt: &MockRuntime, d: &mut DealProposal| {
         d.piece_size = PaddedPieceSize(0u64);
     };
     assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
@@ -202,7 +202,7 @@ fn zero_piece_size() {
 
 #[test]
 fn piece_size_less_than_128_bytes() {
-    let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+    let f = |_rt: &MockRuntime, d: &mut DealProposal| {
         d.piece_size = PaddedPieceSize(64u64);
     };
     assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
@@ -210,7 +210,7 @@ fn piece_size_less_than_128_bytes() {
 
 #[test]
 fn piece_size_is_not_a_power_of_2() {
-    let f = |_rt: &mut MockRuntime, d: &mut DealProposal| {
+    let f = |_rt: &MockRuntime, d: &mut DealProposal| {
         d.piece_size = PaddedPieceSize(254u64);
     };
     assert_deal_failure(true, f, ExitCode::USR_ILLEGAL_ARGUMENT, true);
@@ -218,17 +218,17 @@ fn piece_size_is_not_a_power_of_2() {
 
 #[test]
 fn fail_when_client_has_some_funds_but_not_enough_for_a_deal() {
-    let mut rt = setup();
+    let rt = setup();
 
     let amount = TokenAmount::from_atto(100u8);
-    add_participant_funds(&mut rt, CLIENT_ADDR, amount.clone());
+    add_participant_funds(&rt, CLIENT_ADDR, amount.clone());
     let start_epoch = 42;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let deal1 = generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, start_epoch, end_epoch);
     assert!(amount < deal1.client_balance_requirement());
-    add_provider_funds(&mut rt, deal1.clone().provider_collateral, &MinerAddresses::default());
+    add_provider_funds(&rt, deal1.clone().provider_collateral, &MinerAddresses::default());
     publish_deals_expect_abort(
-        &mut rt,
+        &rt,
         &MinerAddresses::default(),
         deal1,
         ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -242,13 +242,13 @@ fn fail_when_provider_has_some_funds_but_not_enough_for_a_deal() {
     let start_epoch = 10;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
 
-    let mut rt = setup();
+    let rt = setup();
 
     let amount = TokenAmount::from_atto(1u8);
-    add_provider_funds(&mut rt, amount.clone(), &MinerAddresses::default());
+    add_provider_funds(&rt, amount.clone(), &MinerAddresses::default());
     let deal1 = generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, start_epoch, end_epoch);
     assert!(amount < deal1.client_balance_requirement());
-    add_participant_funds(&mut rt, CLIENT_ADDR, deal1.client_balance_requirement());
+    add_participant_funds(&rt, CLIENT_ADDR, deal1.client_balance_requirement());
 
     let buf = RawBytes::serialize(deal1.clone()).expect("failed to marshal deal proposal");
     let sig = Signature::new_bls(buf.to_vec());
@@ -257,8 +257,8 @@ fn fail_when_provider_has_some_funds_but_not_enough_for_a_deal() {
     };
 
     rt.expect_validate_caller_any();
-    expect_provider_is_control_address(&mut rt, PROVIDER_ADDR, WORKER_ADDR, true);
-    expect_query_network_info(&mut rt);
+    expect_provider_is_control_address(&rt, PROVIDER_ADDR, WORKER_ADDR, true);
+    expect_query_network_info(&rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
 
     let auth_param = IpldBlock::serialize_cbor(&AuthenticateMessageParams {
@@ -296,12 +296,12 @@ fn fail_when_deals_have_different_providers() {
     let start_epoch = 10;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
 
-    let mut rt = setup();
+    let rt = setup();
     let st: State = rt.get_state();
     let next_deal_id = st.next_id;
 
     let deal1 = generate_deal_and_add_funds(
-        &mut rt,
+        &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         start_epoch,
@@ -309,7 +309,7 @@ fn fail_when_deals_have_different_providers() {
     );
     let m2 = MinerAddresses { provider: Address::new_id(1000), ..MinerAddresses::default() };
 
-    let deal2 = generate_deal_and_add_funds(&mut rt, CLIENT_ADDR, &m2, 1, end_epoch);
+    let deal2 = generate_deal_and_add_funds(&rt, CLIENT_ADDR, &m2, 1, end_epoch);
 
     let buf1 = RawBytes::serialize(deal1.clone()).expect("failed to marshal deal proposal");
     let buf2 = RawBytes::serialize(deal2.clone()).expect("failed to marshal deal proposal");
@@ -323,8 +323,8 @@ fn fail_when_deals_have_different_providers() {
     };
 
     rt.expect_validate_caller_any();
-    expect_provider_is_control_address(&mut rt, PROVIDER_ADDR, WORKER_ADDR, true);
-    expect_query_network_info(&mut rt);
+    expect_provider_is_control_address(&rt, PROVIDER_ADDR, WORKER_ADDR, true);
+    expect_query_network_info(&rt);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     let authenticate_param1 = IpldBlock::serialize_cbor(&AuthenticateMessageParams {
         signature: buf1.to_vec(),
@@ -395,7 +395,7 @@ fn fail_when_deals_have_different_providers() {
 
 #[test]
 fn fail_when_no_deals_in_params() {
-    let mut rt = setup();
+    let rt = setup();
     let params = PublishStorageDealsParams { deals: vec![] };
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     rt.expect_validate_caller_any();
@@ -414,7 +414,7 @@ fn fail_to_resolve_provider_address() {
     let start_epoch = 10;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
 
-    let mut rt = setup();
+    let rt = setup();
     let mut deal = generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, start_epoch, end_epoch);
     deal.provider = new_bls_addr(100);
 
@@ -439,7 +439,7 @@ fn caller_is_not_the_same_as_the_worker_address_for_miner() {
     let start_epoch = 10;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
 
-    let mut rt = setup();
+    let rt = setup();
     let deal = generate_deal_proposal(CLIENT_ADDR, PROVIDER_ADDR, start_epoch, end_epoch);
     let sig = Signature::new_bls("does not matter".as_bytes().to_vec());
     let params = PublishStorageDealsParams {
@@ -447,7 +447,7 @@ fn caller_is_not_the_same_as_the_worker_address_for_miner() {
     };
 
     rt.expect_validate_caller_any();
-    expect_provider_is_control_address(&mut rt, PROVIDER_ADDR, Address::new_id(999), false);
+    expect_provider_is_control_address(&rt, PROVIDER_ADDR, Address::new_id(999), false);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(999));
     expect_abort(
         ExitCode::USR_FORBIDDEN,
@@ -463,7 +463,7 @@ fn caller_is_not_the_same_as_the_worker_address_for_miner() {
 
 #[test]
 fn fails_if_provider_is_not_a_storage_miner_actor() {
-    let mut rt = setup();
+    let rt = setup();
 
     // deal provider will be a Storage Miner Actor.
     let p2 = Address::new_id(505);
@@ -491,10 +491,10 @@ fn fails_if_provider_is_not_a_storage_miner_actor() {
 
 #[test]
 fn fails_if_notify_deal_fails() {
-    let mut rt = setup();
+    let rt = setup();
 
     let deal = generate_deal_and_add_funds(
-        &mut rt,
+        &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         ChainEpoch::from(42),
@@ -513,14 +513,16 @@ fn fails_if_notify_deal_fails() {
     rt.expect_send_simple(
         PROVIDER_ADDR,
         ext::miner::IS_CONTROLLING_ADDRESS_EXPORTED,
-        IpldBlock::serialize_cbor(&ext::miner::IsControllingAddressParam { address: rt.caller })
-            .unwrap(),
+        IpldBlock::serialize_cbor(&ext::miner::IsControllingAddressParam {
+            address: *rt.caller.borrow(),
+        })
+        .unwrap(),
         TokenAmount::zero(),
         IpldBlock::serialize_cbor(&ext::miner::IsControllingAddressReturn { is_controlling: true })
             .unwrap(),
         ExitCode::OK,
     );
-    expect_query_network_info(&mut rt);
+    expect_query_network_info(&rt);
 
     rt.expect_send(
         CLIENT_ADDR,

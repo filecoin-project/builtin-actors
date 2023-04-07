@@ -34,6 +34,7 @@ use fil_actors_runtime::{
 use fil_actors_runtime::{MessageAccumulator, DATACAP_TOKEN_ACTOR_ADDR};
 use fil_builtin_actors_state::check::check_state_invariants;
 use fil_builtin_actors_state::check::Tree;
+use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::tuple::*;
@@ -74,14 +75,52 @@ use std::ops::Add;
 
 pub mod util;
 
-pub struct VM<'bs> {
-    pub store: &'bs MemoryBlockstore,
+/// An abstract VM that is injected into integration tests
+pub trait VM<BS: Blockstore> {
+    /// Returns the underlying blockstore of the VM
+    fn blockstore(&self) -> Box<&BS>;
+
+    /// Get the state root of the specified actor
+    fn state_root(&self, address: &Address) -> Option<Cid>;
+
+    /// Get the current chain epoch
+    fn epoch(&self) -> ChainEpoch;
+
+    /// Get the balance of the specified actor
+    fn balance(&self, address: &Address) -> TokenAmount;
+
+    /// Get the ID for the specified address
+    fn resolve_id_address(&self, address: &Address) -> Option<Address>;
+
+    /// Send a message between the two specified actors
+    fn execute_message(
+        &self,
+        from: &Address,
+        to: &Address,
+        value: &TokenAmount,
+        method: MethodNum,
+        params: Option<IpldBlock>,
+    ) -> Result<MessageResult, TestVMError>;
+
+    /// Sets the epoch to the specified value
+    fn set_epoch(&self, epoch: ChainEpoch);
+
+    /// Take all the invocations that have been made since the last call to this method
+    fn take_invocations(&self) -> Vec<InvocationTrace>;
+}
+
+/// An in-memory rust-execution VM for testing that yields sensible stack traces and debug info
+pub struct TestVM<'bs, BS>
+where
+    BS: Blockstore,
+{
+    pub store: &'bs BS,
     pub state_root: RefCell<Cid>,
     total_fil: TokenAmount,
     actors_dirty: RefCell<bool>,
     actors_cache: RefCell<HashMap<Address, Actor>>,
     network_version: NetworkVersion,
-    curr_epoch: ChainEpoch,
+    curr_epoch: RefCell<ChainEpoch>,
     invocations: RefCell<Vec<InvocationTrace>>,
 }
 
@@ -112,26 +151,131 @@ pub struct NetworkStats {
     pub total_client_storage_fee: TokenAmount,
 }
 
+// accounts for verifreg root signer and msig
 pub const VERIFREG_ROOT_KEY: &[u8] = &[200; fvm_shared::address::BLS_PUB_LEN];
 pub const TEST_VERIFREG_ROOT_SIGNER_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR);
 pub const TEST_VERIFREG_ROOT_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR + 1);
-// Account actor seeding funds created by new_with_singletons
+// account actor seeding funds created by new_with_singletons
 pub const FAUCET_ROOT_KEY: &[u8] = &[153; fvm_shared::address::BLS_PUB_LEN];
 pub const TEST_FAUCET_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR + 2);
 pub const FIRST_TEST_USER_ADDR: ActorID = FIRST_NON_SINGLETON_ADDR + 3;
 
-// accounts for verifreg root signer and msig
-impl<'bs> VM<'bs> {
-    pub fn new(store: &'bs MemoryBlockstore) -> VM<'bs> {
+impl<'bs, BS> VM<BS> for TestVM<'bs, BS>
+where
+    BS: Blockstore,
+{
+    fn blockstore(&self) -> Box<&BS> {
+        Box::new(self.store)
+    }
+
+    fn epoch(&self) -> ChainEpoch {
+        *self.curr_epoch.borrow()
+    }
+
+    fn execute_message(
+        &self,
+        from: &Address,
+        to: &Address,
+        value: &TokenAmount,
+        method: MethodNum,
+        params: Option<IpldBlock>,
+    ) -> Result<MessageResult, TestVMError> {
+        let from_id = &self.normalize_address(from).unwrap();
+        let mut a = self.get_actor(from_id).unwrap();
+        let call_seq = a.call_seq_num;
+        a.call_seq_num = call_seq + 1;
+        // EthAccount abstractions turns Placeholders into EthAccounts
+        if a.code == *PLACEHOLDER_ACTOR_CODE_ID {
+            a.code = *ETHACCOUNT_ACTOR_CODE_ID;
+        }
+        self.set_actor(from_id, a);
+
+        let prior_root = self.checkpoint();
+
+        // big.Mul(big.NewInt(1e9), big.NewInt(1e18))
+        // make top level context with internal context
+        let top = TopCtx {
+            originator_stable_addr: *from,
+            originator_call_seq: call_seq,
+            new_actor_addr_count: RefCell::new(0),
+            circ_supply: TokenAmount::from_whole(1_000_000_000),
+        };
+        let msg = InternalMessage { from: *from, to: *to, value: value.clone(), method, params };
+        let mut new_ctx = InvocationCtx {
+            v: self,
+            top,
+            msg,
+            allow_side_effects: RefCell::new(true),
+            caller_validated: RefCell::new(false),
+            read_only: false,
+            policy: &Policy::default(),
+            subinvocations: RefCell::new(vec![]),
+        };
+        let res = new_ctx.invoke();
+
+        let invoc = new_ctx.gather_trace(res.clone());
+        RefMut::map(self.invocations.borrow_mut(), |invocs| {
+            invocs.push(invoc);
+            invocs
+        });
+        match res {
+            Err(mut ae) => {
+                self.rollback(prior_root);
+                Ok(MessageResult {
+                    code: ae.exit_code(),
+                    message: ae.msg().to_string(),
+                    ret: ae.take_data(),
+                })
+            }
+            Ok(ret) => {
+                self.checkpoint();
+                Ok(MessageResult { code: ExitCode::OK, message: "OK".to_string(), ret })
+            }
+        }
+    }
+
+    fn state_root(&self, address: &Address) -> Option<Cid> {
+        let a_opt = self.get_actor(address);
+        if a_opt == None {
+            return None;
+        };
+        let a = a_opt.unwrap();
+        Some(a.head)
+    }
+
+    fn resolve_id_address(&self, address: &Address) -> Option<Address> {
+        let st = self.get_state::<InitState>(&INIT_ACTOR_ADDR).unwrap();
+        st.resolve_address::<BS>(self.store, address).unwrap()
+    }
+
+    fn set_epoch(&self, epoch: ChainEpoch) {
+        self.curr_epoch.replace(epoch);
+    }
+
+    fn balance(&self, address: &Address) -> TokenAmount {
+        let a = self.get_actor(address);
+        a.map_or(TokenAmount::zero(), |a| a.balance)
+    }
+
+    fn take_invocations(&self) -> Vec<InvocationTrace> {
+        self.invocations.take()
+    }
+}
+
+impl<'bs, BS> TestVM<'bs, BS>
+where
+    BS: Blockstore,
+{
+    pub fn new(store: &'bs MemoryBlockstore) -> TestVM<'bs, MemoryBlockstore> {
         let mut actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::new(store);
-        VM {
+        TestVM {
             store,
             state_root: RefCell::new(actors.flush().unwrap()),
             total_fil: TokenAmount::zero(),
             actors_dirty: RefCell::new(false),
             actors_cache: RefCell::new(HashMap::new()),
             network_version: NetworkVersion::V16,
-            curr_epoch: ChainEpoch::zero(),
+            curr_epoch: RefCell::new(ChainEpoch::zero()),
             invocations: RefCell::new(vec![]),
         }
     }
@@ -140,23 +284,24 @@ impl<'bs> VM<'bs> {
         Self { total_fil, ..self }
     }
 
-    pub fn new_with_singletons(store: &'bs MemoryBlockstore) -> VM<'bs> {
+    pub fn new_with_singletons(store: &'bs MemoryBlockstore) -> TestVM<'bs, MemoryBlockstore> {
         let reward_total = TokenAmount::from_whole(1_100_000_000i64);
         let faucet_total = TokenAmount::from_whole(1_000_000_000i64);
 
-        let v = VM::new(store).with_total_fil(&reward_total + &faucet_total);
+        let v = TestVM::<'_, MemoryBlockstore>::new(store)
+            .with_total_fil(&reward_total + &faucet_total);
 
         // system
         let sys_st = SystemState::new(store).unwrap();
         let sys_head = v.put_store(&sys_st);
         let sys_value = faucet_total.clone(); // delegate faucet funds to system so we can construct faucet by sending to bls addr
-        v.set_actor(SYSTEM_ACTOR_ADDR, actor(*SYSTEM_ACTOR_CODE_ID, sys_head, 0, sys_value, None));
+        v.set_actor(&SYSTEM_ACTOR_ADDR, actor(*SYSTEM_ACTOR_CODE_ID, sys_head, 0, sys_value, None));
 
         // init
         let init_st = InitState::new(store, "integration-test".to_string()).unwrap();
         let init_head = v.put_store(&init_st);
         v.set_actor(
-            INIT_ACTOR_ADDR,
+            &INIT_ACTOR_ADDR,
             actor(*INIT_ACTOR_CODE_ID, init_head, 0, TokenAmount::zero(), None),
         );
 
@@ -164,7 +309,7 @@ impl<'bs> VM<'bs> {
 
         let reward_head = v.put_store(&RewardState::new(StoragePower::zero()));
         v.set_actor(
-            REWARD_ACTOR_ADDR,
+            &REWARD_ACTOR_ADDR,
             actor(*REWARD_ACTOR_CODE_ID, reward_head, 0, reward_total, None),
         );
 
@@ -181,30 +326,30 @@ impl<'bs> VM<'bs> {
         ];
         let cron_head = v.put_store(&CronState { entries: builtin_entries });
         v.set_actor(
-            CRON_ACTOR_ADDR,
+            &CRON_ACTOR_ADDR,
             actor(*CRON_ACTOR_CODE_ID, cron_head, 0, TokenAmount::zero(), None),
         );
 
         // power
         let power_head = v.put_store(&PowerState::new(&v.store).unwrap());
         v.set_actor(
-            STORAGE_POWER_ACTOR_ADDR,
+            &STORAGE_POWER_ACTOR_ADDR,
             actor(*POWER_ACTOR_CODE_ID, power_head, 0, TokenAmount::zero(), None),
         );
 
         // market
         let market_head = v.put_store(&MarketState::new(&v.store).unwrap());
         v.set_actor(
-            STORAGE_MARKET_ACTOR_ADDR,
+            &STORAGE_MARKET_ACTOR_ADDR,
             actor(*MARKET_ACTOR_CODE_ID, market_head, 0, TokenAmount::zero(), None),
         );
 
         // verifreg
         // initialize verifreg root signer
         v.apply_message(
-            INIT_ACTOR_ADDR,
-            Address::new_bls(VERIFREG_ROOT_KEY).unwrap(),
-            TokenAmount::zero(),
+            &INIT_ACTOR_ADDR,
+            &Address::new_bls(VERIFREG_ROOT_KEY).unwrap(),
+            &TokenAmount::zero(),
             METHOD_SEND,
             None::<RawBytes>,
         )
@@ -225,9 +370,9 @@ impl<'bs> VM<'bs> {
         .unwrap();
         let msig_ctor_ret: ExecReturn = v
             .apply_message(
-                SYSTEM_ACTOR_ADDR,
-                INIT_ACTOR_ADDR,
-                TokenAmount::zero(),
+                &SYSTEM_ACTOR_ADDR,
+                &INIT_ACTOR_ADDR,
+                &TokenAmount::zero(),
                 fil_actor_init::Method::Exec as u64,
                 Some(fil_actor_init::ExecParams {
                     code_cid: *MULTISIG_ACTOR_CODE_ID,
@@ -244,13 +389,13 @@ impl<'bs> VM<'bs> {
         // verifreg
         let verifreg_head = v.put_store(&VerifRegState::new(&v.store, root_msig_addr).unwrap());
         v.set_actor(
-            VERIFIED_REGISTRY_ACTOR_ADDR,
+            &VERIFIED_REGISTRY_ACTOR_ADDR,
             actor(*VERIFREG_ACTOR_CODE_ID, verifreg_head, 0, TokenAmount::zero(), None),
         );
 
         // Ethereum Address Manager
         v.set_actor(
-            EAM_ACTOR_ADDR,
+            &EAM_ACTOR_ADDR,
             actor(*EAM_ACTOR_CODE_ID, EMPTY_ARR_CID, 0, TokenAmount::zero(), None),
         );
 
@@ -258,22 +403,22 @@ impl<'bs> VM<'bs> {
         let datacap_head =
             v.put_store(&DataCapState::new(&v.store, VERIFIED_REGISTRY_ACTOR_ADDR).unwrap());
         v.set_actor(
-            DATACAP_TOKEN_ACTOR_ADDR,
+            &DATACAP_TOKEN_ACTOR_ADDR,
             actor(*DATACAP_TOKEN_ACTOR_CODE_ID, datacap_head, 0, TokenAmount::zero(), None),
         );
 
         // burnt funds
         let burnt_funds_head = v.put_store(&AccountState { address: BURNT_FUNDS_ACTOR_ADDR });
         v.set_actor(
-            BURNT_FUNDS_ACTOR_ADDR,
+            &BURNT_FUNDS_ACTOR_ADDR,
             actor(*ACCOUNT_ACTOR_CODE_ID, burnt_funds_head, 0, TokenAmount::zero(), None),
         );
 
         // create a faucet with 1 billion FIL for setting up test accounts
         v.apply_message(
-            SYSTEM_ACTOR_ADDR,
-            Address::new_bls(FAUCET_ROOT_KEY).unwrap(),
-            faucet_total,
+            &SYSTEM_ACTOR_ADDR,
+            &Address::new_bls(FAUCET_ROOT_KEY).unwrap(),
+            &faucet_total,
             METHOD_SEND,
             None::<RawBytes>,
         )
@@ -283,21 +428,21 @@ impl<'bs> VM<'bs> {
         v
     }
 
-    pub fn with_epoch(self, epoch: ChainEpoch) -> VM<'bs> {
+    pub fn with_epoch(self, epoch: ChainEpoch) -> TestVM<'bs, BS> {
         self.checkpoint();
-        VM {
+        TestVM {
             store: self.store,
             state_root: self.state_root.clone(),
             total_fil: self.total_fil,
             actors_dirty: RefCell::new(false),
             actors_cache: RefCell::new(HashMap::new()),
             network_version: self.network_version,
-            curr_epoch: epoch,
+            curr_epoch: RefCell::new(epoch),
             invocations: RefCell::new(vec![]),
         }
     }
 
-    pub fn get_miner_balance(&self, maddr: Address) -> MinerBalances {
+    pub fn get_miner_balance(&self, maddr: &Address) -> MinerBalances {
         let a = self.get_actor(maddr).unwrap();
         let st = self.get_state::<MinerState>(maddr).unwrap();
         MinerBalances {
@@ -308,15 +453,15 @@ impl<'bs> VM<'bs> {
         }
     }
 
-    pub fn get_miner_info(&self, maddr: Address) -> MinerInfo {
+    pub fn get_miner_info(&self, maddr: &Address) -> MinerInfo {
         let st = self.get_state::<MinerState>(maddr).unwrap();
         self.store.get_cbor::<MinerInfo>(&st.info).unwrap().unwrap()
     }
 
     pub fn get_network_stats(&self) -> NetworkStats {
-        let power_state = self.get_state::<PowerState>(STORAGE_POWER_ACTOR_ADDR).unwrap();
-        let reward_state = self.get_state::<RewardState>(REWARD_ACTOR_ADDR).unwrap();
-        let market_state = self.get_state::<MarketState>(STORAGE_MARKET_ACTOR_ADDR).unwrap();
+        let power_state = self.get_state::<PowerState>(&STORAGE_POWER_ACTOR_ADDR).unwrap();
+        let reward_state = self.get_state::<RewardState>(&REWARD_ACTOR_ADDR).unwrap();
+        let market_state = self.get_state::<MarketState>(&STORAGE_MARKET_ACTOR_ADDR).unwrap();
 
         NetworkStats {
             total_raw_byte_power: power_state.total_raw_byte_power,
@@ -346,37 +491,33 @@ impl<'bs> VM<'bs> {
         self.store.put_cbor(obj, Code::Blake2b256).unwrap()
     }
 
-    pub fn get_actor(&self, addr: Address) -> Option<Actor> {
+    pub fn get_actor(&self, addr: &Address) -> Option<Actor> {
         // check for inclusion in cache of changed actors
-        if let Some(act) = self.actors_cache.borrow().get(&addr) {
+        if let Some(act) = self.actors_cache.borrow().get(addr) {
             return Some(act.clone());
         }
         // go to persisted map
-        let actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::load(
-            &self.state_root.borrow(),
-            self.store,
-        )
-        .unwrap();
+        let actors =
+            Hamt::<&'bs BS, Actor, BytesKey, Sha256>::load(&self.state_root.borrow(), self.store)
+                .unwrap();
         let actor = actors.get(&addr.to_bytes()).unwrap().cloned();
         actor.iter().for_each(|a| {
-            self.actors_cache.borrow_mut().insert(addr, a.clone());
+            self.actors_cache.borrow_mut().insert(*addr, a.clone());
         });
         actor
     }
 
     // blindly overwrite the actor at this address whether it previously existed or not
-    pub fn set_actor(&self, key: Address, a: Actor) {
-        self.actors_cache.borrow_mut().insert(key, a);
+    pub fn set_actor(&self, key: &Address, a: Actor) {
+        self.actors_cache.borrow_mut().insert(*key, a);
         self.actors_dirty.replace(true);
     }
 
     pub fn checkpoint(&self) -> Cid {
         // persist cache on top of latest checkpoint and clear
-        let mut actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::load(
-            &self.state_root.borrow(),
-            self.store,
-        )
-        .unwrap();
+        let mut actors =
+            Hamt::<&'bs BS, Actor, BytesKey, Sha256>::load(&self.state_root.borrow(), self.store)
+                .unwrap();
         for (addr, act) in self.actors_cache.borrow().iter() {
             actors.set(addr.to_bytes().into(), act.clone()).unwrap();
         }
@@ -393,11 +534,11 @@ impl<'bs> VM<'bs> {
     }
 
     pub fn normalize_address(&self, addr: &Address) -> Option<Address> {
-        let st = self.get_state::<InitState>(INIT_ACTOR_ADDR).unwrap();
-        st.resolve_address::<MemoryBlockstore>(self.store, addr).unwrap()
+        let st = self.get_state::<InitState>(&INIT_ACTOR_ADDR).unwrap();
+        st.resolve_address::<BS>(self.store, addr).unwrap()
     }
 
-    pub fn get_state<T: DeserializeOwned>(&self, addr: Address) -> Option<T> {
+    pub fn get_state<T: DeserializeOwned>(&self, addr: &Address) -> Option<T> {
         let a_opt = self.get_actor(addr);
         if a_opt == None {
             return None;
@@ -406,7 +547,7 @@ impl<'bs> VM<'bs> {
         self.store.get_cbor::<T>(&a.head).unwrap()
     }
 
-    pub fn mutate_state<S, F>(&self, addr: Address, f: F)
+    pub fn mutate_state<S, F>(&self, addr: &Address, f: F)
     where
         S: Serialize + DeserializeOwned,
         F: FnOnce(&mut S),
@@ -418,19 +559,15 @@ impl<'bs> VM<'bs> {
         self.set_actor(addr, a);
     }
 
-    pub fn get_epoch(&self) -> ChainEpoch {
-        self.curr_epoch
-    }
-
     pub fn apply_message<S: serde::Serialize>(
         &self,
-        from: Address,
-        to: Address,
-        value: TokenAmount,
+        from: &Address,
+        to: &Address,
+        value: &TokenAmount,
         method: MethodNum,
         params: Option<S>,
     ) -> Result<MessageResult, TestVMError> {
-        let from_id = self.normalize_address(&from).unwrap();
+        let from_id = &self.normalize_address(from).unwrap();
         let mut a = self.get_actor(from_id).unwrap();
         let call_seq = a.call_seq_num;
         a.call_seq_num = call_seq + 1;
@@ -445,15 +582,15 @@ impl<'bs> VM<'bs> {
         // big.Mul(big.NewInt(1e9), big.NewInt(1e18))
         // make top level context with internal context
         let top = TopCtx {
-            originator_stable_addr: from,
+            originator_stable_addr: *from,
             originator_call_seq: call_seq,
             new_actor_addr_count: RefCell::new(0),
             circ_supply: TokenAmount::from_whole(1_000_000_000),
         };
         let msg = InternalMessage {
-            from: from_id,
-            to,
-            value,
+            from: *from_id,
+            to: *to,
+            value: value.clone(),
             method,
             params: params.map(|p| IpldBlock::serialize_cbor(&p).unwrap().unwrap()),
         };
@@ -461,8 +598,8 @@ impl<'bs> VM<'bs> {
             v: self,
             top,
             msg,
-            allow_side_effects: true,
-            caller_validated: false,
+            allow_side_effects: RefCell::new(true),
+            caller_validated: RefCell::new(false),
             read_only: false,
             policy: &Policy::default(),
             subinvocations: RefCell::new(vec![]),
@@ -490,18 +627,12 @@ impl<'bs> VM<'bs> {
         }
     }
 
-    pub fn take_invocations(&self) -> Vec<InvocationTrace> {
-        self.invocations.take()
-    }
-
     /// Checks the state invariants and returns broken invariants.
     pub fn check_state_invariants(&self) -> anyhow::Result<MessageAccumulator> {
         self.checkpoint();
-        let actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::load(
-            &self.state_root.borrow(),
-            self.store,
-        )
-        .unwrap();
+        let actors =
+            Hamt::<&'bs BS, Actor, BytesKey, Sha256>::load(&self.state_root.borrow(), self.store)
+                .unwrap();
 
         let mut manifest = BiBTreeMap::new();
         actors
@@ -513,13 +644,7 @@ impl<'bs> VM<'bs> {
 
         let policy = Policy::default();
         let state_tree = Tree::load(&self.store, &self.state_root.borrow()).unwrap();
-        check_state_invariants(
-            &manifest,
-            &policy,
-            state_tree,
-            &self.total_fil,
-            self.get_epoch() - 1,
-        )
+        check_state_invariants(&manifest, &policy, state_tree, &self.total_fil, self.epoch() - 1)
     }
 
     /// Asserts state invariants are held without any errors.
@@ -571,7 +696,10 @@ impl InternalMessage {
     }
 }
 
-impl MessageInfo for InvocationCtx<'_, '_> {
+impl<BS> MessageInfo for InvocationCtx<'_, '_, BS>
+where
+    BS: Blockstore,
+{
     fn nonce(&self) -> u64 {
         self.top.originator_call_seq
     }
@@ -598,21 +726,27 @@ pub const TEST_VM_RAND_ARRAY: [u8; 32] = [
 ];
 pub const TEST_VM_INVALID_POST: &str = "i_am_invalid_post";
 
-pub struct InvocationCtx<'invocation, 'bs> {
-    v: &'invocation VM<'bs>,
+pub struct InvocationCtx<'invocation, 'bs, BS>
+where
+    BS: Blockstore,
+{
+    v: &'invocation TestVM<'bs, BS>,
     top: TopCtx,
     msg: InternalMessage,
-    allow_side_effects: bool,
-    caller_validated: bool,
+    allow_side_effects: RefCell<bool>,
+    caller_validated: RefCell<bool>,
     read_only: bool,
     policy: &'invocation Policy,
     subinvocations: RefCell<Vec<InvocationTrace>>,
 }
 
-impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
+impl<'invocation, 'bs, BS> InvocationCtx<'invocation, 'bs, BS>
+where
+    BS: Blockstore,
+{
     fn resolve_target(&'invocation self, target: &Address) -> Result<(Actor, Address), ActorError> {
         if let Some(a) = self.v.normalize_address(target) {
-            if let Some(act) = self.v.get_actor(a) {
+            if let Some(act) = self.v.get_actor(&a) {
                 return Ok((act, a));
             }
         };
@@ -623,7 +757,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             Payload::Delegated(da)
             // Validate that there's an actor at the target ID (we don't care what is there,
             // just that something is there).
-            if self.v.get_actor(Address::new_id(da.namespace())).is_some() =>
+            if self.v.get_actor(&Address::new_id(da.namespace())).is_some() =>
                 {
                     false
                 }
@@ -643,13 +777,13 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             ));
         }
 
-        let mut st = self.v.get_state::<InitState>(INIT_ACTOR_ADDR).unwrap();
+        let mut st = self.v.get_state::<InitState>(&INIT_ACTOR_ADDR).unwrap();
         let (target_id, existing) = st.map_addresses_to_id(self.v.store, target, None).unwrap();
         assert!(!existing, "should never have existing actor when no f4 address is specified");
         let target_id_addr = Address::new_id(target_id);
-        let mut init_actor = self.v.get_actor(INIT_ACTOR_ADDR).unwrap();
+        let mut init_actor = self.v.get_actor(&INIT_ACTOR_ADDR).unwrap();
         init_actor.head = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
-        self.v.set_actor(INIT_ACTOR_ADDR, init_actor);
+        self.v.set_actor(&INIT_ACTOR_ADDR, init_actor);
 
         let new_actor_msg = InternalMessage {
             from: SYSTEM_ACTOR_ADDR,
@@ -663,8 +797,8 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 v: self.v,
                 top: self.top.clone(),
                 msg: new_actor_msg,
-                allow_side_effects: true,
-                caller_validated: false,
+                allow_side_effects: RefCell::new(true),
+                caller_validated: RefCell::new(false),
                 read_only: false,
                 policy: self.policy,
                 subinvocations: RefCell::new(vec![]),
@@ -682,7 +816,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             }
         }
 
-        Ok((self.v.get_actor(target_id_addr).unwrap(), target_id_addr))
+        Ok((self.v.get_actor(&target_id_addr).unwrap(), target_id_addr))
     }
 
     fn gather_trace(
@@ -709,7 +843,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         let prior_root = self.v.checkpoint();
 
         // Transfer funds
-        let mut from_actor = self.v.get_actor(self.msg.from).unwrap();
+        let mut from_actor = self.v.get_actor(&self.msg.from).unwrap();
         if !self.msg.value.is_zero() {
             if self.msg.value.is_negative() {
                 return Err(ActorError::unchecked(
@@ -733,9 +867,9 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
 
         // Load, deduct, store from actor before loading to actor to handle self-send case
         from_actor.balance -= &self.msg.value;
-        self.v.set_actor(self.msg.from, from_actor);
+        self.v.set_actor(&self.msg.from, from_actor);
 
-        let (mut to_actor, to_addr) = self.resolve_target(&self.msg.to)?;
+        let (mut to_actor, ref to_addr) = self.resolve_target(&self.msg.to)?;
         to_actor.balance = to_actor.balance.add(&self.msg.value);
         self.v.set_actor(to_addr, to_actor);
 
@@ -768,7 +902,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             Type::EAM => EamActor::invoke_method(self, self.msg.method, params),
             Type::EthAccount => EthAccountActor::invoke_method(self, self.msg.method, params),
         };
-        if res.is_ok() && !self.caller_validated {
+        if res.is_ok() && !*self.caller_validated.borrow() {
             res = Err(actor_error!(assertion_failed, "failed to validate caller"));
         }
         if res.is_err() {
@@ -779,11 +913,14 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
     }
 }
 
-impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
-    type Blockstore = &'bs MemoryBlockstore;
+impl<'invocation, 'bs, BS> Runtime for InvocationCtx<'invocation, 'bs, BS>
+where
+    BS: Blockstore,
+{
+    type Blockstore = &'bs BS;
 
     fn create_actor(
-        &mut self,
+        &self,
         code_id: Cid,
         actor_id: ActorID,
         predictable_address: Option<Address>,
@@ -797,7 +934,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
                 ));
             }
         }
-        let addr = Address::new_id(actor_id);
+        let addr = &Address::new_id(actor_id);
         let actor = match self.v.get_actor(addr) {
             Some(mut act) if act.code == *PLACEHOLDER_ACTOR_CODE_ID => {
                 act.code = code_id;
@@ -822,7 +959,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         Ok(())
     }
 
-    fn store(&self) -> &&'bs MemoryBlockstore {
+    fn store(&self) -> &&'bs BS {
         &self.v.store
     }
 
@@ -835,33 +972,33 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
     }
 
     fn curr_epoch(&self) -> ChainEpoch {
-        self.v.get_epoch()
+        self.v.epoch()
     }
 
     fn chain_id(&self) -> ChainID {
         ChainID::from(0)
     }
 
-    fn validate_immediate_caller_accept_any(&mut self) -> Result<(), ActorError> {
-        if self.caller_validated {
+    fn validate_immediate_caller_accept_any(&self) -> Result<(), ActorError> {
+        if *self.caller_validated.borrow() {
             Err(ActorError::unchecked(
                 ExitCode::SYS_ASSERTION_FAILED,
                 "caller double validated".to_string(),
             ))
         } else {
-            self.caller_validated = true;
+            self.caller_validated.replace(true);
             Ok(())
         }
     }
 
     fn validate_immediate_caller_namespace<I>(
-        &mut self,
+        &self,
         namespace_manager_addresses: I,
     ) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = u64>,
     {
-        if self.caller_validated {
+        if *self.caller_validated.borrow() {
             return Err(ActorError::unchecked(
                 ExitCode::SYS_ASSERTION_FAILED,
                 "caller double validated".to_string(),
@@ -893,17 +1030,17 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         ))
     }
 
-    fn validate_immediate_caller_is<'a, I>(&mut self, addresses: I) -> Result<(), ActorError>
+    fn validate_immediate_caller_is<'a, I>(&self, addresses: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Address>,
     {
-        if self.caller_validated {
+        if *self.caller_validated.borrow() {
             return Err(ActorError::unchecked(
                 ExitCode::USR_ASSERTION_FAILED,
                 "caller double validated".to_string(),
             ));
         }
-        self.caller_validated = true;
+        self.caller_validated.replace(true);
         for addr in addresses {
             if *addr == self.msg.from {
                 return Ok(());
@@ -915,18 +1052,18 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         ))
     }
 
-    fn validate_immediate_caller_type<'a, I>(&mut self, types: I) -> Result<(), ActorError>
+    fn validate_immediate_caller_type<'a, I>(&self, types: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Type>,
     {
-        if self.caller_validated {
+        if *self.caller_validated.borrow() {
             return Err(ActorError::unchecked(
                 ExitCode::SYS_ASSERTION_FAILED,
                 "caller double validated".to_string(),
             ));
         }
-        self.caller_validated = true;
-        let to_match = ACTOR_TYPES.get(&self.v.get_actor(self.msg.from).unwrap().code).unwrap();
+        self.caller_validated.replace(true);
+        let to_match = ACTOR_TYPES.get(&self.v.get_actor(&self.msg.from).unwrap().code).unwrap();
         if types.into_iter().any(|t| *t == *to_match) {
             return Ok(());
         }
@@ -937,7 +1074,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
     }
 
     fn current_balance(&self) -> TokenAmount {
-        self.v.get_actor(self.to()).unwrap().balance
+        self.v.get_actor(&self.to()).unwrap().balance
     }
 
     fn resolve_address(&self, addr: &Address) -> Option<ActorID> {
@@ -950,7 +1087,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
     }
 
     fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {
-        let maybe_act = self.v.get_actor(Address::new_id(*id));
+        let maybe_act = self.v.get_actor(&Address::new_id(*id));
         match maybe_act {
             None => None,
             Some(act) => Some(act.code),
@@ -958,7 +1095,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
     }
 
     fn lookup_delegated_address(&self, id: ActorID) -> Option<Address> {
-        self.v.get_actor(Address::new_id(id)).and_then(|act| act.predictable_address)
+        self.v.get_actor(&Address::new_id(id)).and_then(|act| act.predictable_address)
     }
 
     fn send(
@@ -975,7 +1112,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
             send_flags.set(SendFlags::READ_ONLY, true)
         }
 
-        if !self.allow_side_effects {
+        if !*self.allow_side_effects.borrow() {
             return Ok(Response { exit_code: ExitCode::SYS_ASSERTION_FAILED, return_data: None });
         }
 
@@ -984,8 +1121,8 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
             v: self.v,
             top: self.top.clone(),
             msg: new_actor_msg,
-            allow_side_effects: true,
-            caller_validated: false,
+            allow_side_effects: RefCell::new(true),
+            caller_validated: RefCell::new(false),
             read_only: send_flags.read_only(),
             policy: self.policy,
             subinvocations: RefCell::new(vec![]),
@@ -1022,11 +1159,11 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
     }
 
     fn get_state_root(&self) -> Result<Cid, ActorError> {
-        Ok(self.v.get_actor(self.to()).unwrap().head)
+        Ok(self.v.get_actor(&self.to()).unwrap().head)
     }
 
-    fn set_state_root(&mut self, root: &Cid) -> Result<(), ActorError> {
-        let maybe_act = self.v.get_actor(self.to());
+    fn set_state_root(&self, root: &Cid) -> Result<(), ActorError> {
+        let maybe_act = self.v.get_actor(&self.to());
         match maybe_act {
             None => Err(ActorError::unchecked(
                 ExitCode::SYS_ASSERTION_FAILED,
@@ -1034,7 +1171,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
             )),
             Some(mut act) if !self.read_only() => {
                 act.head = *root;
-                self.v.set_actor(self.to(), act);
+                self.v.set_actor(&self.to(), act);
                 Ok(())
             }
             _ => Err(ActorError::unchecked(
@@ -1044,17 +1181,17 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         }
     }
 
-    fn transaction<S, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
+    fn transaction<S, RT, F>(&self, f: F) -> Result<RT, ActorError>
     where
         S: Serialize + DeserializeOwned,
-        F: FnOnce(&mut S, &mut Self) -> Result<RT, ActorError>,
+        F: FnOnce(&mut S, &Self) -> Result<RT, ActorError>,
     {
         let mut st = self.state::<S>().unwrap();
-        self.allow_side_effects = false;
+        self.allow_side_effects.replace(false);
         let result = f(&mut st, self);
-        self.allow_side_effects = true;
+        self.allow_side_effects.replace(true);
         let ret = result?;
-        let mut act = self.v.get_actor(self.to()).unwrap();
+        let mut act = self.v.get_actor(&self.to()).unwrap();
         act.head = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
 
         if self.read_only {
@@ -1064,18 +1201,18 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
             ));
         }
 
-        self.v.set_actor(self.to(), act);
+        self.v.set_actor(&self.to(), act);
         Ok(ret)
     }
 
-    fn new_actor_address(&mut self) -> Result<Address, ActorError> {
+    fn new_actor_address(&self) -> Result<Address, ActorError> {
         let mut b = self.top.originator_stable_addr.to_bytes();
         b.extend_from_slice(&self.top.originator_call_seq.to_be_bytes());
         b.extend_from_slice(&self.top.new_actor_addr_count.borrow().to_be_bytes());
         Ok(Address::new_actor(&b))
     }
 
-    fn delete_actor(&mut self, _beneficiary: &Address) -> Result<(), ActorError> {
+    fn delete_actor(&self, _beneficiary: &Address) -> Result<(), ActorError> {
         panic!("TODO implement me")
     }
 
@@ -1091,14 +1228,14 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         self.top.circ_supply.clone()
     }
 
-    fn charge_gas(&mut self, _name: &'static str, _compute: i64) {}
+    fn charge_gas(&self, _name: &'static str, _compute: i64) {}
 
     fn base_fee(&self) -> TokenAmount {
         TokenAmount::zero()
     }
 
     fn actor_balance(&self, id: ActorID) -> Option<TokenAmount> {
-        self.v.get_actor(Address::new_id(id)).map(|act| act.balance)
+        self.v.get_actor(&Address::new_id(id)).map(|act| act.balance)
     }
 
     fn gas_available(&self) -> u64 {
@@ -1123,7 +1260,10 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
     }
 }
 
-impl Primitives for VM<'_> {
+impl<BS> Primitives for TestVM<'_, BS>
+where
+    BS: Blockstore,
+{
     // A "valid" signature has its bytes equal to the plaintext.
     // Anything else is considered invalid.
     fn verify_signature(
@@ -1179,7 +1319,10 @@ impl Primitives for VM<'_> {
     }
 }
 
-impl Primitives for InvocationCtx<'_, '_> {
+impl<BS> Primitives for InvocationCtx<'_, '_, BS>
+where
+    BS: Blockstore,
+{
     fn verify_signature(
         &self,
         signature: &Signature,
@@ -1218,7 +1361,10 @@ impl Primitives for InvocationCtx<'_, '_> {
     }
 }
 
-impl Verifier for InvocationCtx<'_, '_> {
+impl<BS> Verifier for InvocationCtx<'_, '_, BS>
+where
+    BS: Blockstore,
+{
     fn verify_seal(&self, _vi: &SealVerifyInfo) -> Result<(), anyhow::Error> {
         Ok(())
     }
@@ -1258,7 +1404,10 @@ impl Verifier for InvocationCtx<'_, '_> {
     }
 }
 
-impl RuntimePolicy for InvocationCtx<'_, '_> {
+impl<BS> RuntimePolicy for InvocationCtx<'_, '_, BS>
+where
+    BS: Blockstore,
+{
     fn policy(&self) -> &Policy {
         self.policy
     }

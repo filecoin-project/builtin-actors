@@ -1,6 +1,8 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use std::cell::RefCell;
+
 use fil_actor_cron::testing::check_state_invariants;
 use fil_actor_cron::{Actor as CronActor, ConstructorParams, Entry, State};
 use fil_actors_runtime::test_utils::*;
@@ -19,17 +21,17 @@ fn check_state(rt: &MockRuntime) {
 fn construct_runtime() -> MockRuntime {
     MockRuntime {
         receiver: Address::new_id(100),
-        caller: SYSTEM_ACTOR_ADDR,
-        caller_type: *SYSTEM_ACTOR_CODE_ID,
+        caller: RefCell::new(SYSTEM_ACTOR_ADDR),
+        caller_type: RefCell::new(*SYSTEM_ACTOR_CODE_ID),
         ..Default::default()
     }
 }
 
 #[test]
 fn construct_with_empty_entries() {
-    let mut rt = construct_runtime();
+    let rt = construct_runtime();
 
-    construct_and_verify(&mut rt, &ConstructorParams { entries: vec![] });
+    construct_and_verify(&rt, &ConstructorParams { entries: vec![] });
     let state: State = rt.get_state();
 
     assert_eq!(state.entries, vec![]);
@@ -38,7 +40,7 @@ fn construct_with_empty_entries() {
 
 #[test]
 fn construct_with_entries() {
-    let mut rt = construct_runtime();
+    let rt = construct_runtime();
 
     let entry1 = Entry { receiver: Address::new_id(1001), method_num: 1001 };
     let entry2 = Entry { receiver: Address::new_id(1002), method_num: 1002 };
@@ -47,7 +49,7 @@ fn construct_with_entries() {
 
     let params = ConstructorParams { entries: vec![entry1, entry2, entry3, entry4] };
 
-    construct_and_verify(&mut rt, &params);
+    construct_and_verify(&rt, &params);
 
     let state: State = rt.get_state();
 
@@ -57,15 +59,15 @@ fn construct_with_entries() {
 
 #[test]
 fn epoch_tick_with_empty_entries() {
-    let mut rt = construct_runtime();
+    let rt = construct_runtime();
 
-    construct_and_verify(&mut rt, &ConstructorParams { entries: vec![] });
-    epoch_tick_and_verify(&mut rt);
+    construct_and_verify(&rt, &ConstructorParams { entries: vec![] });
+    epoch_tick_and_verify(&rt);
 }
 
 #[test]
 fn epoch_tick_with_entries() {
-    let mut rt = construct_runtime();
+    let rt = construct_runtime();
 
     let entry1 = Entry { receiver: Address::new_id(1001), method_num: 1001 };
     let entry2 = Entry { receiver: Address::new_id(1002), method_num: 1002 };
@@ -76,7 +78,7 @@ fn epoch_tick_with_entries() {
         entries: vec![entry1.clone(), entry2.clone(), entry3.clone(), entry4.clone()],
     };
 
-    construct_and_verify(&mut rt, &params);
+    construct_and_verify(&rt, &params);
 
     // ExitCodes dont matter here
     rt.expect_send_simple(
@@ -112,10 +114,10 @@ fn epoch_tick_with_entries() {
         ExitCode::OK,
     );
 
-    epoch_tick_and_verify(&mut rt);
+    epoch_tick_and_verify(&rt);
 }
 
-fn construct_and_verify(rt: &mut MockRuntime, params: &ConstructorParams) {
+fn construct_and_verify(rt: &MockRuntime, params: &ConstructorParams) {
     rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
     let ret = rt.call::<CronActor>(1, IpldBlock::serialize_cbor(&params).unwrap()).unwrap();
@@ -123,7 +125,7 @@ fn construct_and_verify(rt: &mut MockRuntime, params: &ConstructorParams) {
     rt.verify();
 }
 
-fn epoch_tick_and_verify(rt: &mut MockRuntime) {
+fn epoch_tick_and_verify(rt: &MockRuntime) {
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
     let ret = rt.call::<CronActor>(2, None).unwrap();
     assert!(ret.is_none());

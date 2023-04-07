@@ -43,13 +43,13 @@ fn prepare_env() -> TestEnv {
     };
 
     env.rt.receiver = env.receiver;
-    env.rt.actor_code_cids.insert(env.owner, *ACCOUNT_ACTOR_CODE_ID);
-    env.rt.actor_code_cids.insert(env.worker, *ACCOUNT_ACTOR_CODE_ID);
-    env.rt.actor_code_cids.insert(env.control_addrs[0], *ACCOUNT_ACTOR_CODE_ID);
-    env.rt.actor_code_cids.insert(env.control_addrs[1], *ACCOUNT_ACTOR_CODE_ID);
+    env.rt.actor_code_cids.borrow_mut().insert(env.owner, *ACCOUNT_ACTOR_CODE_ID);
+    env.rt.actor_code_cids.borrow_mut().insert(env.worker, *ACCOUNT_ACTOR_CODE_ID);
+    env.rt.actor_code_cids.borrow_mut().insert(env.control_addrs[0], *ACCOUNT_ACTOR_CODE_ID);
+    env.rt.actor_code_cids.borrow_mut().insert(env.control_addrs[1], *ACCOUNT_ACTOR_CODE_ID);
     env.rt.hash_func = Box::new(hash);
-    env.rt.caller = INIT_ACTOR_ADDR;
-    env.rt.caller_type = *INIT_ACTOR_CODE_ID;
+    env.rt.caller.replace(INIT_ACTOR_ADDR);
+    env.rt.caller_type.replace(*INIT_ACTOR_CODE_ID);
     env
 }
 
@@ -58,7 +58,7 @@ fn constructor_params(env: &TestEnv) -> ConstructorParams {
         owner: env.owner,
         worker: env.worker,
         control_addresses: env.control_addrs.clone(),
-        window_post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        window_post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
         peer_id: env.peer_id.clone(),
         multi_addresses: env.multiaddrs.clone(),
     }
@@ -66,7 +66,7 @@ fn constructor_params(env: &TestEnv) -> ConstructorParams {
 
 #[test]
 fn simple_construction() {
-    let mut env = prepare_env();
+    let env = prepare_env();
     let params = constructor_params(&env);
 
     env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
@@ -95,7 +95,7 @@ fn simple_construction() {
     assert_eq!(env.control_addrs, info.control_addresses);
     assert_eq!(env.peer_id, info.peer_id);
     assert_eq!(env.multiaddrs, info.multi_address);
-    assert_eq!(RegisteredPoStProof::StackedDRGWindow32GiBV1, info.window_post_proof_type);
+    assert_eq!(RegisteredPoStProof::StackedDRGWindow32GiBV1P1, info.window_post_proof_type);
     assert_eq!(SectorSize::_32GiB, info.sector_size);
     assert_eq!(2349, info.window_post_partition_sectors);
 
@@ -108,7 +108,8 @@ fn simple_construction() {
     let proving_period_start = -2222;
     assert_eq!(proving_period_start, state.proving_period_start);
     // this is supposed to be the proving period cron
-    let dl_idx = (env.rt.epoch - proving_period_start) / env.rt.policy.wpost_challenge_window;
+    let dl_idx =
+        (*env.rt.epoch.borrow() - proving_period_start) / env.rt.policy.wpost_challenge_window;
     assert_eq!(dl_idx as u64, state.current_deadline);
 
     let deadlines = env.rt.store.get_cbor::<Deadlines>(&state.deadlines).unwrap().unwrap();
@@ -137,10 +138,10 @@ fn control_addresses_are_resolved_during_construction() {
     let control2id = Address::new_id(655);
 
     env.control_addrs = vec![control1, control2];
-    env.rt.actor_code_cids.insert(control1id, *ACCOUNT_ACTOR_CODE_ID);
-    env.rt.actor_code_cids.insert(control2id, *ACCOUNT_ACTOR_CODE_ID);
-    env.rt.id_addresses.insert(control1, control1id);
-    env.rt.id_addresses.insert(control2, control2id);
+    env.rt.actor_code_cids.borrow_mut().insert(control1id, *ACCOUNT_ACTOR_CODE_ID);
+    env.rt.actor_code_cids.borrow_mut().insert(control2id, *ACCOUNT_ACTOR_CODE_ID);
+    env.rt.id_addresses.borrow_mut().insert(control1, control1id);
+    env.rt.id_addresses.borrow_mut().insert(control2, control2id);
 
     let params = constructor_params(&env);
     env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
