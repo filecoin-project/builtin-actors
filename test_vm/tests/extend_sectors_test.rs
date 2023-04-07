@@ -8,10 +8,11 @@ use fil_actor_miner::{
 use fil_actor_power::{Method as PowerMethod, UpdateClaimedPowerParams};
 use fil_actor_reward::Method as RewardMethod;
 use fil_actor_verifreg::Method as VerifregMethod;
+use fil_actors_runtime::runtime::policy_constants::MAX_SECTOR_EXPIRATION_EXTENSION;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
 use fil_actors_runtime::{
-    DealWeight, EPOCHS_IN_DAY, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    DealWeight, EPOCHS_IN_DAY, EPOCHS_IN_YEAR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
     STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_bitfield::BitField;
@@ -51,7 +52,7 @@ fn extend<BS: Blockstore>(
     partition_index: u64,
     sector_number: SectorNumber,
     new_expiration: ChainEpoch,
-    power_update_params: IpldBlock,
+    power_update_params: Option<IpldBlock>,
     v2: bool,
 ) {
     let extension_method = match v2 {
@@ -99,27 +100,32 @@ fn extend<BS: Blockstore>(
         }
     };
 
+    let mut expect_invoke = vec![
+        ExpectInvocation {
+            to: REWARD_ACTOR_ADDR,
+            method: RewardMethod::ThisEpochReward as u64,
+            ..Default::default()
+        },
+        ExpectInvocation {
+            to: STORAGE_POWER_ACTOR_ADDR,
+            method: PowerMethod::CurrentTotalPower as u64,
+            ..Default::default()
+        },
+    ];
+
+    if power_update_params.is_some() {
+        expect_invoke.push(ExpectInvocation {
+            to: STORAGE_POWER_ACTOR_ADDR,
+            method: PowerMethod::UpdateClaimedPower as u64,
+            params: Some(power_update_params),
+            ..Default::default()
+        });
+    }
+
     ExpectInvocation {
         to: maddr,
         method: extension_method,
-        subinvocs: Some(vec![
-            ExpectInvocation {
-                to: REWARD_ACTOR_ADDR,
-                method: RewardMethod::ThisEpochReward as u64,
-                ..Default::default()
-            },
-            ExpectInvocation {
-                to: STORAGE_POWER_ACTOR_ADDR,
-                method: PowerMethod::CurrentTotalPower as u64,
-                ..Default::default()
-            },
-            ExpectInvocation {
-                to: STORAGE_POWER_ACTOR_ADDR,
-                method: PowerMethod::UpdateClaimedPower as u64,
-                params: Some(Some(power_update_params)),
-                ..Default::default()
-            },
-        ]),
+        subinvocs: Some(expect_invoke),
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
@@ -244,8 +250,7 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
     );
 
     // Advance halfway through life and extend another 6 months. We need to spread the remaining 90
-    // days of 10x power over 90 + 180 days.
-    //
+    // days of 10x power over 90 + 180 days
     // subtract half the remaining deal weight:
     //   - verified deal weight /= 2
     //
@@ -280,7 +285,7 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
         partition_index,
         sector_number,
         new_expiration,
-        expected_update_claimed_power_params_ser,
+        Some(expected_update_claimed_power_params_ser),
         do_extend2,
     );
 
@@ -326,7 +331,7 @@ fn extend_legacy_sector_with_deals_inner(do_extend2: bool) {
         partition_index,
         sector_number,
         new_expiration,
-        expected_update_claimed_power_params_ser,
+        Some(expected_update_claimed_power_params_ser),
         do_extend2,
     );
 
@@ -573,5 +578,203 @@ fn extend_updated_sector_with_claim() {
     assert_eq!(
         sector_info_after_extension.replaced_day_reward,
         sector_info_after_update.expected_day_reward
+    );
+}
+
+#[test]
+fn extend_sector_to_2_years() {
+    let store = MemoryBlockstore::new();
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let addrs = create_accounts(&v, 3, &TokenAmount::from_whole(10_000));
+    let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
+    let (owner, worker) = (addrs[0], addrs[0]);
+    let sector_number: SectorNumber = 100;
+    let policy = Policy::default();
+
+    // create miner
+    let miner_id = create_miner(
+        &v,
+        &owner,
+        &worker,
+        seal_proof.registered_window_post_proof().unwrap(),
+        &TokenAmount::from_whole(1_000),
+    )
+    .0;
+    let v = v.with_epoch(200);
+
+    //
+    // Precommit, prove and PoSt empty sector (more fully tested in TestCommitPoStFlow)
+    //
+    let sector_start =
+        v.epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
+
+    miner_precommit_sector(
+        &v,
+        &worker,
+        &miner_id,
+        seal_proof,
+        sector_number,
+        vec![],
+        sector_start + 180 * EPOCHS_IN_DAY,
+    );
+
+    // advance time to max seal duration and prove the sector
+    advance_by_deadline_to_epoch(&v, &miner_id, sector_start);
+    miner_prove_sector(&v, &worker, &miner_id, sector_number);
+    // trigger cron to validate the prove commit
+    cron_tick(&v);
+
+    // inspect sector info
+    let mut miner_state = v.get_state::<MinerState>(&miner_id).unwrap();
+    let mut sector_info = miner_state.get_sector(&store, sector_number).unwrap().unwrap();
+    assert_eq!(180 * EPOCHS_IN_DAY, sector_info.expiration - sector_info.activation);
+
+    // advance to proving period and submit post
+    let (deadline_info, partition_index) =
+        advance_to_proving_deadline(&v, &miner_id, sector_number);
+
+    let expected_power_delta =
+        PowerPair { raw: StoragePower::from(32u64 << 30), qa: StoragePower::from((32u64 << 30)) };
+
+    submit_windowed_post(
+        &v,
+        &worker,
+        &miner_id,
+        deadline_info,
+        partition_index,
+        Some(expected_power_delta),
+    );
+
+    // move forward one deadline so advanceWhileProving doesn't fail double submitting posts
+    advance_by_deadline_to_index(
+        &v,
+        &miner_id,
+        deadline_info.index + 1 % policy.wpost_period_deadlines,
+    );
+
+    // Advance halfway through life and extend the sector to the max sector duration: 1278*EPOCH_IN_DAYs
+    advance_by_deadline_to_epoch_while_proving(
+        &v,
+        &miner_id,
+        &worker,
+        sector_number,
+        sector_start + 90 * EPOCHS_IN_DAY,
+    );
+
+    let new_expiration = sector_start + policy.max_sector_expiration_extension;
+
+    extend(
+        &v,
+        worker,
+        miner_id,
+        deadline_info.index,
+        partition_index,
+        sector_number,
+        new_expiration,
+        None,
+        false,
+    );
+
+    miner_state = v.get_state::<MinerState>(&miner_id).unwrap();
+    sector_info = miner_state.get_sector(&store, sector_number).unwrap().unwrap();
+    assert_eq!(
+        policy.max_sector_expiration_extension,
+        sector_info.expiration - sector_info.activation
+    );
+
+    v.expect_state_invariants(
+        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+    );
+}
+
+#[test]
+fn commit_sector_with_max_duration_deal() {
+    let store = MemoryBlockstore::new();
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let addrs = create_accounts(&v, 3, &TokenAmount::from_whole(10_000));
+    let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
+    let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
+    let sector_number: SectorNumber = 100;
+    let policy = Policy::default();
+
+    // create miner
+    let miner_id = create_miner(
+        &v,
+        &owner,
+        &worker,
+        seal_proof.registered_window_post_proof().unwrap(),
+        &TokenAmount::from_whole(1_000),
+    )
+    .0;
+    let v = v.with_epoch(200);
+
+    //
+    // publish verified deals
+    //
+
+    // register verifier then verified client
+    let datacap = StoragePower::from(32_u128 << 40);
+    verifreg_add_verifier(&v, &verifier, datacap.clone());
+    verifreg_add_client(&v, &verifier, &verified_client, datacap);
+
+    // add market collateral for clients and miner
+    market_add_balance(&v, &verified_client, &verified_client, &TokenAmount::from_whole(3));
+    market_add_balance(&v, &worker, &miner_id, &TokenAmount::from_whole(64));
+
+    let deal_lifetime = policy.max_sector_expiration_extension
+        - max_prove_commit_duration(&policy, seal_proof).unwrap_or_default();
+    // create 1 verified deal for total sector capacity for 6 months
+    let deal_start = v.epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
+    let deals = market_publish_deal(
+        &v,
+        &worker,
+        &verified_client,
+        &miner_id,
+        "deal1".to_string(),
+        PaddedPieceSize(32u64 << 30),
+        true,
+        deal_start,
+        deal_lifetime,
+    )
+    .ids;
+
+    //
+    // Precommit, prove and PoSt empty sector (more fully tested in TestCommitPoStFlow)
+    //
+    miner_precommit_sector(
+        &v,
+        &worker,
+        &miner_id,
+        seal_proof,
+        sector_number,
+        vec![],
+        deal_start + deal_lifetime,
+    );
+
+    // advance time to max seal duration and prove the sector
+    advance_by_deadline_to_epoch(&v, &miner_id, deal_start);
+    miner_prove_sector(&v, &worker, &miner_id, sector_number);
+    // trigger cron to validate the prove commit
+    cron_tick(&v);
+
+    // inspect sector info
+    let mut miner_state = v.get_state::<MinerState>(&miner_id).unwrap();
+    let mut sector_info = miner_state.get_sector(&store, sector_number).unwrap().unwrap();
+    assert_eq!(deal_lifetime, sector_info.expiration - sector_info.activation);
+
+    // advance to proving period and submit post
+    let (deadline_info, partition_index) =
+        advance_to_proving_deadline(&v, &miner_id, sector_number);
+
+    let expected_power_delta =
+        PowerPair { raw: StoragePower::from(32u64 << 30), qa: StoragePower::from((32u64 << 30)) };
+
+    submit_windowed_post(
+        &v,
+        &worker,
+        &miner_id,
+        deadline_info,
+        partition_index,
+        Some(expected_power_delta),
     );
 }
