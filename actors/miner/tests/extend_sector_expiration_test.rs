@@ -23,6 +23,7 @@ use fvm_shared::{
 use std::collections::HashMap;
 
 mod util;
+
 use fil_actors_runtime::runtime::Policy;
 use itertools::Itertools;
 use test_case::test_case;
@@ -946,7 +947,7 @@ fn assert_sector_verified_space(
     let new_sector = h.get_sector(rt, sector_number);
     assert_eq!(
         DealWeight::from(v_deal_space),
-        new_sector.verified_deal_weight / (new_sector.expiration - new_sector.activation)
+        new_sector.verified_deal_weight / (new_sector.expiration - new_sector.power_base_epoch)
     );
 }
 
