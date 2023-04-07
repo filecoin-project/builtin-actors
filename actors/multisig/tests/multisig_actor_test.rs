@@ -6,6 +6,7 @@ use fil_actor_multisig::{
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::FIRST_EXPORTED_METHOD_NUMBER;
 use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
 use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -2397,4 +2398,35 @@ fn token_receiver() {
 
 fn to_ipld_block(p: RawBytes) -> Option<IpldBlock> {
     Some(IpldBlock { codec: CBOR, data: p.to_vec() })
+}
+
+#[test]
+fn test_fallback() {
+    let msig = Address::new_id(1000);
+    let anne = Address::new_id(101);
+    let bob = Address::new_id(102);
+
+    let rt = construct_runtime(msig);
+    let h = util::ActorHarness::new();
+    h.construct_and_verify(&rt, 2, 0, 0, vec![anne, bob]);
+
+    // this is arbitrary
+    let params = IpldBlock::serialize_cbor(&vec![1u8, 2u8, 3u8]).unwrap();
+
+    // accept >= 2<<24
+    rt.expect_validate_caller_any();
+    let result = rt.call::<MultisigActor>(FIRST_EXPORTED_METHOD_NUMBER, params.clone()).unwrap();
+    assert!(result.is_none());
+
+    rt.expect_validate_caller_any();
+    let result =
+        rt.call::<MultisigActor>(FIRST_EXPORTED_METHOD_NUMBER + 1, params.clone()).unwrap();
+    assert!(result.is_none());
+
+    // reject < 2<<24
+    rt.expect_validate_caller_any();
+    let result = rt.call::<MultisigActor>(FIRST_EXPORTED_METHOD_NUMBER - 1, params);
+    assert!(result.is_err());
+
+    rt.verify();
 }

@@ -14,6 +14,7 @@ use fil_actor_account::types::AuthenticateMessageParams;
 use fil_actor_account::{testing::check_state_invariants, Actor as AccountActor, Method, State};
 use fil_actors_runtime::builtin::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::FIRST_EXPORTED_METHOD_NUMBER;
 
 #[test]
 fn construction() {
@@ -156,6 +157,42 @@ fn authenticate_message() {
         .unwrap()
         .deserialize::<bool>()
         .unwrap());
+}
+
+#[test]
+fn test_fallback() {
+    let rt = MockRuntime { receiver: Address::new_id(100), ..Default::default() };
+    rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
+
+    let addr = Address::new_secp256k1(&[2; fvm_shared::address::SECP_PUB_LEN]).unwrap();
+    rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
+    rt.call::<AccountActor>(
+        Method::Constructor as MethodNum,
+        IpldBlock::serialize_cbor(&addr).unwrap(),
+    )
+    .unwrap();
+
+    let state: State = rt.get_state();
+    assert_eq!(state.address, addr);
+
+    // this is arbitrary
+    let params = IpldBlock::serialize_cbor(&vec![1u8, 2u8, 3u8]).unwrap();
+
+    // accept >= 2<<24
+    rt.expect_validate_caller_any();
+    let result = rt.call::<AccountActor>(FIRST_EXPORTED_METHOD_NUMBER, params.clone()).unwrap();
+    assert!(result.is_none());
+
+    rt.expect_validate_caller_any();
+    let result = rt.call::<AccountActor>(FIRST_EXPORTED_METHOD_NUMBER + 1, params.clone()).unwrap();
+    assert!(result.is_none());
+
+    // reject < 1<<24
+    rt.expect_validate_caller_any();
+    let result = rt.call::<AccountActor>(FIRST_EXPORTED_METHOD_NUMBER - 1, params);
+    assert!(result.is_err());
+
+    rt.verify();
 }
 
 fn check_state(rt: &MockRuntime) {
