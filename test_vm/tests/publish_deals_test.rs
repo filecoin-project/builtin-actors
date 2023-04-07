@@ -513,6 +513,7 @@ fn psd_bad_sig() {
     };
 
     let invalid_sig_bytes = "very_invalid_sig".as_bytes().to_vec();
+
     let publish_params = PublishStorageDealsParams {
         deals: vec![ClientDealProposal {
             proposal: proposal.clone(),
@@ -522,7 +523,6 @@ fn psd_bad_sig() {
             },
         }],
     };
-
     let ret = v
         .apply_message(
             &a.worker,
@@ -591,6 +591,61 @@ fn psd_all_deals_are_good() {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0, 1, 2, 3, 4], good_inputs);
+    v.assert_state_invariants();
+}
+
+#[test]
+fn psd_valid_deals_with_ones_longer_than_540() {
+    let store = MemoryBlockstore::new();
+    let (v, a, deal_start) = setup(&store);
+    let mut batcher =
+        DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+
+    // good deals
+    batcher.stage(
+        a.client1,
+        "deal0",
+        DealOptions { deal_lifetime: Option::from(541 * EPOCHS_IN_DAY), ..Default::default() },
+    );
+    batcher.stage(
+        a.client1,
+        "deal1",
+        DealOptions { deal_lifetime: Option::from(1278 * EPOCHS_IN_DAY), ..Default::default() },
+    );
+    batcher.stage(a.client1, "deal2", DealOptions::default());
+
+    let deal_ret = batcher.publish_ok(a.worker);
+    let good_inputs = bf_all(deal_ret.valid_deals);
+    assert_eq!(vec![0, 1, 2], good_inputs);
+    v.assert_state_invariants();
+}
+
+#[test]
+fn psd_deal_duration_too_long() {
+    let store = MemoryBlockstore::new();
+    let (v, a, deal_start) = setup(&store);
+    let mut batcher =
+        DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+
+    // good deals
+    batcher.stage(
+        a.client1,
+        "deal0",
+        DealOptions { deal_lifetime: Option::from(541 * EPOCHS_IN_DAY), ..Default::default() },
+    );
+
+    batcher.stage(a.client1, "deal1", DealOptions::default());
+
+    //bad deal - duration > max deal
+    batcher.stage(
+        a.client1,
+        "deal2",
+        DealOptions { deal_lifetime: Option::from(1279 * EPOCHS_IN_DAY), ..Default::default() },
+    );
+
+    let deal_ret = batcher.publish_ok(a.worker);
+    let good_inputs = bf_all(deal_ret.valid_deals);
+    assert_eq!(vec![0, 1], good_inputs);
     v.assert_state_invariants();
 }
 

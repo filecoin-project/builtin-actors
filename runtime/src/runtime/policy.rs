@@ -337,7 +337,7 @@ pub mod policy_constants {
     /// Maximum number of epochs past the current epoch a sector may be set to expire.
     /// The actual maximum extension will be the minimum of CurrEpoch + MaximumSectorExpirationExtension
     /// and sector.ActivationEpoch+sealProof.SectorMaximumLifetime()
-    pub const MAX_SECTOR_EXPIRATION_EXTENSION: i64 = 540 * EPOCHS_IN_DAY;
+    pub const MAX_SECTOR_EXPIRATION_EXTENSION: i64 = 1278 * EPOCHS_IN_DAY;
 
     /// Ratio of sector size to maximum deals per sector.
     /// The maximum number of deals is the sector size divided by this number (2^27)
