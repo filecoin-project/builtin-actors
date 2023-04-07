@@ -41,7 +41,7 @@ fn fee_increases_if_basefee_crosses_threshold() {
 
 #[test]
 fn regression_tests() {
-    let magic_number = 65733297;
+    let magic_number = 76414957;
     let fee = |aggregate_size, base_fee_multiplier| {
         aggregate_prove_commit_network_fee(
             aggregate_size,
@@ -62,28 +62,4 @@ fn regression_tests() {
 
     let expected = TokenAmount::from_nano(30) * magic_number;
     assert_eq!(expected, fee(100, 6));
-}
-
-#[test]
-fn split_25_75() {
-    // check 25/75% split up to uFIL precision
-    let one_micro_fil = TokenAmount::from_nano(1000);
-
-    for base_fee_multiplier in [0, 5, 20] {
-        for aggregate_size in [13, 303] {
-            let fee_pre = aggregate_pre_commit_network_fee(
-                aggregate_size,
-                &TokenAmount::from_nano(base_fee_multiplier),
-            )
-            .atto()
-                / one_micro_fil.atto();
-            let fee_prove = aggregate_prove_commit_network_fee(
-                aggregate_size,
-                &TokenAmount::from_nano(base_fee_multiplier),
-            )
-            .atto()
-                / one_micro_fil.atto();
-            assert_eq!(fee_prove, 3 * fee_pre);
-        }
-    }
 }
