@@ -21,22 +21,24 @@ use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof};
 use fvm_shared::METHOD_SEND;
 use num_traits::Zero;
 use test_vm::util::{
-    apply_ok, create_accounts, create_miner, invariant_failure_patterns, miner_dline_info,
+    apply_ok, assert_invariants, create_accounts, create_miner, expect_invariants,
+    invariant_failure_patterns, miner_dline_info, serialize_ok,
 };
 use test_vm::{ExpectInvocation, TestVM, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
 
+// TODO: this test relies specifically on with_epoch behavior not available in VM trait
 #[test]
 fn create_miner_test() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
 
     let owner = Address::new_bls(&[1; fvm_shared::address::BLS_PUB_LEN]).unwrap();
-    v.apply_message(
+    v.execute_message(
         &TEST_FAUCET_ADDR,
         &owner,
         &TokenAmount::from_atto(10_000u32),
         METHOD_SEND,
-        None::<RawBytes>,
+        None,
     )
     .unwrap();
     let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
@@ -50,12 +52,12 @@ fn create_miner_test() {
     };
 
     let res = v
-        .apply_message(
+        .execute_message(
             &owner,
             &STORAGE_POWER_ACTOR_ADDR,
             &TokenAmount::from_atto(1000u32),
             PowerMethod::CreateMiner as u64,
-            Some(params.clone()),
+            Some(serialize_ok(&params)),
         )
         .unwrap();
 
@@ -93,7 +95,7 @@ fn create_miner_test() {
         ..Default::default()
     };
     expect.matches(v.take_invocations().last().unwrap());
-    v.assert_state_invariants();
+    assert_invariants(&v)
 }
 
 #[test]
@@ -225,7 +227,5 @@ fn test_cron_tick() {
     }
     .matches(v.take_invocations().first().unwrap());
 
-    v.expect_state_invariants(
-        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
-    );
+    expect_invariants(&v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
