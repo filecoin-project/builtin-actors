@@ -29,6 +29,8 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
+use test_vm::util::assert_invariants;
+use test_vm::util::serialize_ok;
 use test_vm::util::{
     apply_ok, bf_all, create_accounts, create_accounts_seeded, create_miner, verifreg_add_verifier,
 };
@@ -135,11 +137,15 @@ fn setup(store: &MemoryBlockstore) -> (TestVM<MemoryBlockstore>, Addrs, ChainEpo
 }
 
 #[test]
-fn psd_mistmatched_provider() {
+fn psd_mismatched_provider() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
+    psd_mismatched_provider_test(&v, a, deal_start);
+}
+
+fn psd_mismatched_provider_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
     let mut batcher =
-        DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
 
     // good deal
     batcher.stage(a.client1, "deal0", DealOptions::default());
@@ -156,15 +162,20 @@ fn psd_mistmatched_provider() {
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0, 2], good_inputs);
 
-    v.assert_state_invariants();
+    assert_invariants(v)
 }
 
 #[test]
 fn psd_bad_piece_size() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
+
+    psd_bad_piece_size_test(&v, a, deal_start);
+}
+
+fn psd_bad_piece_size_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
     let mut batcher =
-        DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
     // bad deal piece size too small
     batcher.stage(
         a.client1,
@@ -177,15 +188,20 @@ fn psd_bad_piece_size() {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![1], good_inputs);
-    v.assert_state_invariants();
+
+    assert_invariants(v)
 }
 
 #[test]
 fn psd_start_time_in_past() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
+    psd_start_time_in_past_test(&v, a, deal_start);
+}
+
+fn psd_start_time_in_past_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
     let mut batcher =
-        DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
     let bad_deal_start = v.epoch() - 1;
     batcher.stage(
         a.client1,
@@ -197,15 +213,24 @@ fn psd_start_time_in_past() {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![1], good_inputs);
-    v.assert_state_invariants();
+
+    assert_invariants(v)
 }
 
 #[test]
 fn psd_client_address_cannot_be_resolved() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
+    psd_client_address_cannot_be_resolved_test(&v, a, deal_start);
+}
+
+fn psd_client_address_cannot_be_resolved_test<BS: Blockstore>(
+    v: &dyn VM<BS>,
+    a: Addrs,
+    deal_start: i64,
+) {
     let mut batcher =
-        DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
     let bad_client = Address::new_id(5_000_000);
     batcher.stage(a.client1, "deal0", DealOptions::default());
     batcher.stage(bad_client, "deal1", DealOptions::default());
@@ -213,33 +238,48 @@ fn psd_client_address_cannot_be_resolved() {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0], good_inputs);
-    v.assert_state_invariants();
+
+    assert_invariants(v)
 }
 
 #[test]
 fn psd_no_client_lockup() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
+    psd_no_client_lockup_test(&v, a, deal_start);
+}
+
+fn psd_no_client_lockup_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
     let mut batcher =
-        DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
     batcher.stage(a.cheap_client, "deal0", DealOptions::default());
     batcher.stage(a.client1, "deal1", DealOptions::default());
 
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![1], good_inputs);
-    v.assert_state_invariants();
+
+    assert_invariants(v)
 }
 
 #[test]
 fn psd_not_enought_client_lockup_for_batch() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
+
+    psd_not_enough_client_lockup_for_batch_test(&v, a, deal_start);
+}
+
+fn psd_not_enough_client_lockup_for_batch_test<BS: Blockstore>(
+    v: &dyn VM<BS>,
+    a: Addrs,
+    deal_start: i64,
+) {
     // Add one lifetime cost to cheap_client's market balance but attempt to make 3 deals
     let (default_price, _, default_client_collateral) = token_defaults();
     let one_lifetime_cost = default_client_collateral + DEAL_LIFETIME * default_price;
     apply_ok(
-        &v,
+        v,
         &a.cheap_client,
         &STORAGE_MARKET_ACTOR_ADDR,
         &one_lifetime_cost,
@@ -248,7 +288,7 @@ fn psd_not_enought_client_lockup_for_batch() {
     );
 
     let mut batcher =
-        DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
     // good
     batcher.stage(a.cheap_client, "deal0", DealOptions::default());
     // bad -- insufficient funds
@@ -258,7 +298,8 @@ fn psd_not_enought_client_lockup_for_batch() {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0], good_inputs);
-    v.assert_state_invariants();
+
+    assert_invariants(v)
 }
 
 #[test]
@@ -266,10 +307,18 @@ fn psd_not_enough_provider_lockup_for_batch() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
 
+    psd_not_enough_provider_lockup_for_batch_test(&v, deal_start, a);
+}
+
+fn psd_not_enough_provider_lockup_for_batch_test<BS: Blockstore>(
+    v: &dyn VM<BS>,
+    deal_start: i64,
+    a: Addrs,
+) {
     // note different seed, different address
-    let cheap_worker = create_accounts_seeded(&v, 1, &TokenAmount::from_whole(10_000), 444)[0];
+    let cheap_worker = create_accounts_seeded(v, 1, &TokenAmount::from_whole(10_000), 444)[0];
     let cheap_maddr = create_miner(
-        &v,
+        v,
         &cheap_worker,
         &cheap_worker,
         fvm_shared::sector::RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
@@ -279,7 +328,7 @@ fn psd_not_enough_provider_lockup_for_batch() {
     // add one deal of collateral to provider's market account
     let default_provider_collateral = token_defaults().1;
     apply_ok(
-        &v,
+        v,
         &cheap_worker,
         &STORAGE_MARKET_ACTOR_ADDR,
         &default_provider_collateral,
@@ -287,7 +336,7 @@ fn psd_not_enough_provider_lockup_for_batch() {
         Some(cheap_maddr),
     );
     let mut batcher = DealBatcher::new(
-        &v,
+        v,
         cheap_maddr,
         PaddedPieceSize(1 << 30),
         false,
@@ -301,15 +350,20 @@ fn psd_not_enough_provider_lockup_for_batch() {
     let deal_ret = batcher.publish_ok(cheap_worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0], good_inputs);
-    v.assert_state_invariants();
+
+    assert_invariants(v)
 }
 
 #[test]
 fn psd_duplicate_deal_in_batch() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
+    psd_duplicate_deal_in_batch_test(&v, a, deal_start);
+}
+
+fn psd_duplicate_deal_in_batch_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
     let mut batcher =
-        DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
 
     // good deals
     batcher.stage(a.client1, "deal0", DealOptions::default());
@@ -328,15 +382,20 @@ fn psd_duplicate_deal_in_batch() {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0, 1, 4], good_inputs);
-    v.assert_state_invariants();
+
+    assert_invariants(v)
 }
 
 #[test]
 fn psd_duplicate_deal_in_state() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
+    psd_duplicate_deal_in_state_test(&v, a, deal_start);
+}
+
+fn psd_duplicate_deal_in_state_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
     let mut batcher =
-        DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
 
     batcher.stage(a.client2, "deal0", DealOptions::default());
     let deal_ret1 = batcher.publish_ok(a.worker);
@@ -344,7 +403,7 @@ fn psd_duplicate_deal_in_state() {
     assert_eq!(vec![0], good_inputs1);
 
     let mut batcher =
-        DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
     batcher.stage(a.client2, "deal1", DealOptions::default());
     // duplicate in batch
     batcher.stage(a.client2, "deal1", DealOptions::default());
@@ -354,15 +413,24 @@ fn psd_duplicate_deal_in_state() {
     let deal_ret2 = batcher.publish_ok(a.worker);
     let good_inputs2 = bf_all(deal_ret2.valid_deals);
     assert_eq!(vec![0], good_inputs2);
-    v.assert_state_invariants();
+
+    assert_invariants(v)
 }
 
 #[test]
 fn psd_verified_deal_fails_getting_datacap() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
+    psd_verified_deal_fails_getting_datacap_test(&v, a, deal_start);
+}
+
+fn psd_verified_deal_fails_getting_datacap_test<BS: Blockstore>(
+    v: &dyn VM<BS>,
+    a: Addrs,
+    deal_start: i64,
+) {
     let mut batcher =
-        DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
 
     batcher.stage(a.verified_client, "deal0", DealOptions::default());
     // good verified deal that uses up all datacap
@@ -389,27 +457,36 @@ fn psd_verified_deal_fails_getting_datacap() {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0, 1], good_inputs);
-    v.assert_state_invariants();
+
+    assert_invariants(v)
 }
 
 #[test]
 fn psd_random_assortment_of_failures() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
+    psd_random_assortment_of_failures_test(&v, a, deal_start);
+}
+
+fn psd_random_assortment_of_failures_test<BS: Blockstore>(
+    v: &dyn VM<BS>,
+    a: Addrs,
+    deal_start: i64,
+) {
     let mut batcher =
-        DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
     // Add one lifetime cost to cheap_client's market balance but attempt to make 3 deals
     let (default_price, _, default_client_collateral) = token_defaults();
     let one_lifetime_cost = default_client_collateral + DEAL_LIFETIME * default_price;
     apply_ok(
-        &v,
+        v,
         &a.cheap_client,
         &STORAGE_MARKET_ACTOR_ADDR,
         &one_lifetime_cost,
         MarketMethod::AddBalance as u64,
         Some(a.cheap_client),
     );
-    let broke_client = create_accounts_seeded(&v, 1, &TokenAmount::zero(), 555)[0];
+    let broke_client = create_accounts_seeded(v, 1, &TokenAmount::zero(), 555)[0];
 
     batcher.stage(
         a.verified_client,
@@ -458,15 +535,20 @@ fn psd_random_assortment_of_failures() {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0, 2, 8], good_inputs);
-    v.assert_state_invariants();
+
+    assert_invariants(v)
 }
 
 #[test]
 fn psd_all_deals_are_bad() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
+    psd_all_deals_are_bad_test(&v, a, deal_start);
+}
+
+fn psd_all_deals_are_bad_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
     let mut batcher =
-        DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
     let bad_client = Address::new_id(1000);
 
     batcher.stage(
@@ -488,13 +570,18 @@ fn psd_all_deals_are_bad() {
     );
 
     batcher.publish_fail(a.worker);
-    v.assert_state_invariants();
+
+    assert_invariants(v)
 }
 
 #[test]
 fn psd_bad_sig() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
+    psd_bad_sig_test(&v, a, deal_start);
+}
+
+fn psd_bad_sig_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
     let (storage_price_per_epoch, provider_collateral, client_collateral) = token_defaults();
 
     let deal_label = "deal0".to_string();
@@ -524,12 +611,12 @@ fn psd_bad_sig() {
         }],
     };
     let ret = v
-        .apply_message(
+        .execute_message(
             &a.worker,
             &STORAGE_MARKET_ACTOR_ADDR,
             &TokenAmount::zero(),
             MarketMethod::PublishStorageDeals as u64,
-            Some(publish_params),
+            Some(serialize_ok(&publish_params)),
         )
         .unwrap();
     assert_eq!(ExitCode::USR_ILLEGAL_ARGUMENT, ret.code);
@@ -571,15 +658,19 @@ fn psd_bad_sig() {
     }
     .matches(v.take_invocations().last().unwrap());
 
-    v.assert_state_invariants();
+    assert_invariants(v)
 }
 
 #[test]
 fn psd_all_deals_are_good() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
+    all_deals_are_good_test(&v, a, deal_start);
+}
+
+fn all_deals_are_good_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
     let mut batcher =
-        DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
 
     // good deals
     batcher.stage(a.client1, "deal0", DealOptions::default());
@@ -591,15 +682,24 @@ fn psd_all_deals_are_good() {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0, 1, 2, 3, 4], good_inputs);
-    v.assert_state_invariants();
+
+    assert_invariants(v)
 }
 
 #[test]
 fn psd_valid_deals_with_ones_longer_than_540() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
+    psd_valid_deals_with_ones_longer_than_540_test(&v, a, deal_start);
+}
+
+fn psd_valid_deals_with_ones_longer_than_540_test<BS: Blockstore>(
+    v: &dyn VM<BS>,
+    a: Addrs,
+    deal_start: i64,
+) {
     let mut batcher =
-        DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
 
     // good deals
     batcher.stage(
@@ -617,15 +717,20 @@ fn psd_valid_deals_with_ones_longer_than_540() {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0, 1, 2], good_inputs);
-    v.assert_state_invariants();
+
+    assert_invariants(v)
 }
 
 #[test]
 fn psd_deal_duration_too_long() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
+    psd_deal_duration_too_long_test(&v, a, deal_start);
+}
+
+fn psd_deal_duration_too_long_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
     let mut batcher =
-        DealBatcher::new(&v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
 
     // good deals
     batcher.stage(
@@ -646,7 +751,8 @@ fn psd_deal_duration_too_long() {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0, 1], good_inputs);
-    v.assert_state_invariants();
+
+    assert_invariants(v)
 }
 
 #[derive(Clone, Default)]
@@ -661,12 +767,12 @@ struct DealOptions {
     client_collateral: Option<TokenAmount>,
 }
 
-struct DealBatcher<'bs, BS>
+struct DealBatcher<'vm, BS>
 where
     BS: Blockstore,
 {
     deals: Vec<DealProposal>,
-    v: &'bs TestVM<'bs, BS>,
+    v: &'vm dyn VM<BS>,
     default_provider: Address,
     default_piece_size: PaddedPieceSize,
     default_verified: bool,
@@ -677,12 +783,12 @@ where
     default_client_collateral: TokenAmount,
 }
 
-impl<'bs, BS> DealBatcher<'bs, BS>
+impl<'vm, BS> DealBatcher<'vm, BS>
 where
     BS: Blockstore,
 {
     fn new(
-        v: &'bs TestVM<'bs, BS>,
+        v: &'vm dyn VM<BS>,
         default_provider: Address,
         default_piece_size: PaddedPieceSize,
         default_verified: bool,
@@ -795,12 +901,12 @@ where
         let publish_params = PublishStorageDealsParams { deals: params_deals };
         let ret = self
             .v
-            .apply_message(
+            .execute_message(
                 &sender,
                 &STORAGE_MARKET_ACTOR_ADDR,
                 &TokenAmount::zero(),
                 MarketMethod::PublishStorageDeals as u64,
-                Some(publish_params),
+                Some(serialize_ok(&publish_params)),
             )
             .unwrap();
         assert_eq!(ExitCode::USR_ILLEGAL_ARGUMENT, ret.code);
