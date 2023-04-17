@@ -38,6 +38,7 @@ use num_traits::Zero;
 
 use anyhow::anyhow;
 use fvm_ipld_encoding::tuple::*;
+use fvm_shared::deal::DealID;
 
 use fil_actor_account::testing as account;
 use fil_actor_cron::testing as cron;
