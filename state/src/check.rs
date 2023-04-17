@@ -331,70 +331,93 @@ fn check_deal_states_against_sectors(
     miner_summaries: &HashMap<Address, miner::StateSummary>,
     market_summary: &market::StateSummary,
 ) {
-    // Check that all active deals are included within a non-terminated sector.
-    // We cannot check that all deals referenced within a sector are in the market, because deals
-    // can be terminated independently of the sector in which they are included.
     for (deal_id, deal) in &market_summary.deals {
         if deal.sector_start_epoch == -1 {
-            // deal hasn't been activated yet, make no assertions about sector state
             continue;
         }
 
-        let miner_summary = if let Some(miner_summary) = miner_summaries.get(&deal.provider) {
-            miner_summary
-        } else {
-            acc.add(format!(
-                "provider {} for deal {} not found among miners",
-                deal.provider, &deal_id
-            ));
-            continue;
+        let miner_summary = match miner_summaries.get(&deal.provider) {
+            Some(miner_summary) => miner_summary,
+            None => {
+                add_missing_provider_error(acc, &deal.provider, &deal_id);
+                continue;
+            }
         };
 
-        let sector_deal = if let Some(sector_deal) = miner_summary.deals.get(deal_id) {
-            sector_deal
-        } else {
-            acc.require(
-                deal.slash_epoch >= 0,
-                format!(
-                    "un-slashed deal {deal_id} not referenced in active sectors of miner {}",
-                    deal.provider
-                ),
-            );
-            continue;
+        let sector_deal = match miner_summary.deals.get(deal_id) {
+            Some(sector_deal) => sector_deal,
+            None => {
+                require_unslashed_deal_in_active_sectors(acc, deal, &deal_id);
+                continue;
+            }
         };
 
-        acc.require(
-            deal.sector_start_epoch >= sector_deal.sector_start,
-            format!(
-                "deal state start {} does not match sector start {} for miner {}",
-                deal.sector_start_epoch, sector_deal.sector_start, deal.provider
-            ),
-        );
-
-        acc.require(
-            deal.sector_start_epoch <= sector_deal.sector_expiration,
-            format!(
-                "deal state start {} activated after sector expiration {} for miner {}",
-                deal.sector_start_epoch, sector_deal.sector_expiration, deal.provider
-            ),
-        );
-
-        acc.require(
-            deal.last_update_epoch <= sector_deal.sector_expiration,
-            format!(
-                "deal state update at {} after sector expiration {} for miner {}",
-                deal.last_update_epoch, sector_deal.sector_expiration, deal.provider
-            ),
-        );
-
-        acc.require(
-            deal.slash_epoch <= sector_deal.sector_expiration,
-            format!(
-                "deal state slashed at {} after sector expiration {} for miner {}",
-                deal.slash_epoch, sector_deal.sector_expiration, deal.provider
-            ),
-        );
+        check_deal_and_sector_consistency(acc, deal, &deal_id, sector_deal);
     }
+}
+
+fn add_missing_provider_error(
+    acc: &MessageAccumulator,
+    provider: &Address,
+    deal_id: &DealID,
+) {
+    acc.add(format!(
+        "provider {} for deal {} not found among miners",
+        provider, deal_id
+    ));
+}
+
+fn require_unslashed_deal_in_active_sectors(
+    acc: &MessageAccumulator,
+    deal: &Deal,
+    deal_id: &DealID,
+) {
+    acc.require(
+        deal.slash_epoch >= 0,
+        format!(
+            "un-slashed deal {deal_id} not referenced in active sectors of miner {}",
+            deal.provider
+        ),
+    );
+}
+
+fn check_deal_and_sector_consistency(
+    acc: &MessageAccumulator,
+    deal: &Deal,
+    deal_id: &DealID,
+    sector_deal: &SectorDeal,
+) {
+    acc.require(
+        deal.sector_start_epoch >= sector_deal.sector_start,
+        format!(
+            "deal state start {} does not match sector start {} for miner {}",
+            deal.sector_start_epoch, sector_deal.sector_start, deal.provider
+        ),
+    );
+
+    acc.require(
+        deal.sector_start_epoch <= sector_deal.sector_expiration,
+        format!(
+            "deal state start {} activated after sector expiration {} for miner {}",
+            deal.sector_start_epoch, sector_deal.sector_expiration, deal.provider
+        ),
+    );
+
+    acc.require(
+        deal.last_update_epoch <= sector_deal.sector_expiration,
+        format!(
+            "deal state update at {} after sector expiration {} for miner {}",
+            deal.last_update_epoch, sector_deal.sector_expiration, deal.provider
+        ),
+    );
+
+    acc.require(
+        deal.slash_epoch <= sector_deal.sector_expiration,
+        format!(
+            "deal state slashed at {} after sector expiration {} for miner {}",
+            deal.slash_epoch, sector_deal.sector_expiration, deal.provider
+        ),
+    );
 }
 
 fn check_verifreg_against_datacap(
