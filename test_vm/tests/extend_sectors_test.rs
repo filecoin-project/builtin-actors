@@ -530,7 +530,10 @@ fn extend_updated_sector_with_claim() {
     assert_eq!(StoragePower::zero(), sector_info_after_extension.deal_weight); // 0 space time
 
     assert_eq!(
-        DealWeight::from((sector_info_after_extension.expiration - v.epoch()) * (32i64 << 30)),
+        DealWeight::from(
+            (sector_info_after_extension.expiration - sector_info_after_update.activation)
+                * (32i64 << 30)
+        ),
         sector_info_after_extension.verified_deal_weight
     ); // 32 GiB * the remaining life of the sector
 
