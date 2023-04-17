@@ -681,7 +681,7 @@ fn terminate_after_upgrade() {
     v.assert_state_invariants();
 }
 
-// Tests that an active CC sector can be correctly upgraded, and then the sector can be extended
+// Tests that an active CC sector can be correctly upgraded, and then the sector can be terminated
 #[test]
 fn extend_after_upgrade() {
     let store = &MemoryBlockstore::new();
@@ -699,13 +699,12 @@ fn extend_after_upgrade() {
         st.sectors = sectors.amt.flush().unwrap();
     });
 
-    let extension_epoch = v.epoch();
     let extension_params = ExtendSectorExpirationParams {
         extensions: vec![ExpirationExtension {
             deadline: deadline_index,
             partition: partition_index,
             sectors: make_bitfield(&[sector_number]),
-            new_expiration: extension_epoch + policy.max_sector_expiration_extension - 1,
+            new_expiration: v.epoch() + policy.max_sector_expiration_extension - 1,
         }],
     };
 
@@ -722,7 +721,7 @@ fn extend_after_upgrade() {
     let final_sector_info = miner_state.get_sector(store, sector_number).unwrap().unwrap();
     assert_eq!(
         policy.max_sector_expiration_extension - 1,
-        final_sector_info.expiration - extension_epoch,
+        final_sector_info.expiration - final_sector_info.activation
     );
     v.assert_state_invariants();
 }

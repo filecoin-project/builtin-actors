@@ -2385,7 +2385,6 @@ impl ActorHarness {
     ) -> Result<Option<IpldBlock>, ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
-        self.expect_query_network_info(rt);
 
         let mut qa_delta = BigInt::zero();
         for extension in params.extensions.iter_mut() {
@@ -2470,14 +2469,12 @@ impl ActorHarness {
             }
         }
 
-        self.expect_query_network_info(rt);
         // Handle QA power updates
         for extension in params.extensions.iter_mut() {
             for sector_nr in extension.sectors.validate().unwrap().iter() {
                 let sector = self.get_sector(&rt, sector_nr);
                 let mut new_sector = sector.clone();
                 new_sector.expiration = extension.new_expiration;
-                new_sector.power_base_epoch = *rt.epoch.borrow();
                 qa_delta += qa_power_for_sector(self.sector_size, &new_sector)
                     - qa_power_for_sector(self.sector_size, &sector);
             }
@@ -2490,14 +2487,13 @@ impl ActorHarness {
                     }
                 }
                 let sector = self.get_sector(&rt, sector_claim.sector_number);
-                let old_duration = sector.expiration - sector.power_base_epoch;
+                let old_duration = sector.expiration - sector.activation;
                 let old_verified_deal_space = &sector.verified_deal_weight / old_duration;
                 let new_verified_deal_space = old_verified_deal_space - dropped_space;
                 let mut new_sector = sector.clone();
                 new_sector.expiration = extension.new_expiration;
-                new_sector.power_base_epoch = *rt.epoch.borrow();
                 new_sector.verified_deal_weight = BigInt::from(new_verified_deal_space)
-                    * (new_sector.expiration - new_sector.power_base_epoch);
+                    * (new_sector.expiration - new_sector.activation);
                 qa_delta += qa_power_for_sector(self.sector_size, &new_sector)
                     - qa_power_for_sector(self.sector_size, &sector);
             }
