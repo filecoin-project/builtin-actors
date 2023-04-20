@@ -81,7 +81,7 @@ pub trait VM<BS: Blockstore> {
     fn blockstore(&self) -> Box<&BS>;
 
     /// Get the state root of the specified actor
-    fn state_root(&self, address: &Address) -> Option<Cid>;
+    fn actor_root(&self, address: &Address) -> Option<Cid>;
 
     /// Get the current chain epoch
     fn epoch(&self) -> ChainEpoch;
@@ -107,6 +107,21 @@ pub trait VM<BS: Blockstore> {
 
     /// Take all the invocations that have been made since the last call to this method
     fn take_invocations(&self) -> Vec<InvocationTrace>;
+
+    /// Get information about an actor
+    fn actor(&self, address: &Address) -> Option<Actor>;
+
+    /// Build a map of all actors in the system and their type
+    fn actor_manifest(&self) -> BiBTreeMap<Cid, Type>;
+
+    /// Get the current runtime policy
+    fn policy(&self) -> Policy;
+
+    /// Get the root Cid of the state tree
+    fn state_root(&self) -> Cid;
+
+    /// Get the total amount of FIL in circulation
+    fn total_fil(&self) -> TokenAmount;
 }
 
 /// An in-memory rust-execution VM for testing that yields sensible stack traces and debug info
@@ -234,7 +249,7 @@ where
         }
     }
 
-    fn state_root(&self, address: &Address) -> Option<Cid> {
+    fn actor_root(&self, address: &Address) -> Option<Cid> {
         let a_opt = self.get_actor(address);
         if a_opt == None {
             return None;
@@ -259,6 +274,48 @@ where
 
     fn take_invocations(&self) -> Vec<InvocationTrace> {
         self.invocations.take()
+    }
+
+    fn actor(&self, address: &Address) -> Option<Actor> {
+        // check for inclusion in cache of changed actors
+        if let Some(act) = self.actors_cache.borrow().get(address) {
+            return Some(act.clone());
+        }
+        // go to persisted map
+        let actors =
+            Hamt::<&'bs BS, Actor, BytesKey, Sha256>::load(&self.state_root.borrow(), self.store)
+                .unwrap();
+        let actor = actors.get(&address.to_bytes()).unwrap().cloned();
+        actor.iter().for_each(|a| {
+            self.actors_cache.borrow_mut().insert(*address, a.clone());
+        });
+        actor
+    }
+
+    fn actor_manifest(&self) -> BiBTreeMap<Cid, Type> {
+        let actors =
+            Hamt::<&'bs BS, Actor, BytesKey, Sha256>::load(&self.state_root.borrow(), self.store)
+                .unwrap();
+        let mut manifest = BiBTreeMap::new();
+        actors
+            .for_each(|_, actor| {
+                manifest.insert(actor.code, ACTOR_TYPES.get(&actor.code).unwrap().to_owned());
+                Ok(())
+            })
+            .unwrap();
+        manifest
+    }
+
+    fn policy(&self) -> Policy {
+        Policy::default()
+    }
+
+    fn state_root(&self) -> Cid {
+        *self.state_root.borrow()
+    }
+
+    fn total_fil(&self) -> TokenAmount {
+        self.total_fil.clone()
     }
 }
 

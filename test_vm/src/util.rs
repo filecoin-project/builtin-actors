@@ -1,6 +1,7 @@
 use std::cmp::min;
 
 use fil_actor_verifreg::ext::datacap::MintParams;
+use fil_builtin_actors_state::check::check_state_invariants;
 use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
 use frc46_token::token::types::{BurnParams, TransferFromParams, TransferParams};
 use fvm_actor_utils::receiver::UniversalReceiverParams;
@@ -652,7 +653,7 @@ where
 }
 
 pub fn get_state<T: DeserializeOwned, BS: Blockstore>(v: &dyn VM<BS>, a: &Address) -> Option<T> {
-    let cid = v.state_root(a).unwrap();
+    let cid = v.actor_root(a).unwrap();
     v.blockstore().get(&cid).unwrap().map(|slice| fvm_ipld_encoding::from_slice(&slice).unwrap())
 }
 
@@ -818,6 +819,24 @@ pub fn change_beneficiary<BS: Blockstore>(
         MinerMethod::ChangeBeneficiary as u64,
         Some(beneficiary_change_proposal.clone()),
     );
+}
+
+pub fn check_invariants<BS: Blockstore>(vm: &dyn VM<BS>) -> anyhow::Result<MessageAccumulator> {
+    check_state_invariants(
+        &vm.actor_manifest(),
+        &vm.policy(),
+        Tree::load(*vm.blockstore(), &vm.state_root()).unwrap(),
+        &vm.total_fil(),
+        vm.epoch() - 1,
+    )
+}
+
+pub fn assert_invariants<BS: Blockstore>(vm: &dyn VM<BS>) {
+    check_invariants(vm).unwrap().assert_empty()
+}
+
+pub fn expect_invariants<BS: Blockstore>(vm: &dyn VM<BS>, expected_patterns: &[Regex]) {
+    check_invariants(vm).unwrap().assert_expected(expected_patterns)
 }
 
 pub fn get_beneficiary<BS: Blockstore>(
