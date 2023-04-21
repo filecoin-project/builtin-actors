@@ -106,6 +106,29 @@ pub fn setup() -> MockRuntime {
     rt
 }
 
+pub fn setup_with_policy(policy: Policy) -> MockRuntime {
+    let actor_code_cids = HashMap::from([
+        (OWNER_ADDR, *ACCOUNT_ACTOR_CODE_ID),
+        (WORKER_ADDR, *ACCOUNT_ACTOR_CODE_ID),
+        (PROVIDER_ADDR, *MINER_ACTOR_CODE_ID),
+        (CLIENT_ADDR, *ACCOUNT_ACTOR_CODE_ID),
+    ]);
+
+    let rt = MockRuntime {
+        receiver: STORAGE_MARKET_ACTOR_ADDR,
+        caller: RefCell::new(SYSTEM_ACTOR_ADDR),
+        caller_type: RefCell::new(*INIT_ACTOR_CODE_ID),
+        actor_code_cids: RefCell::new(actor_code_cids),
+        balance: RefCell::new(TokenAmount::from_whole(10)),
+        policy,
+        ..Default::default()
+    };
+
+    construct_and_verify(&rt);
+
+    rt
+}
+
 /// Checks internal invariants of market state asserting none of them are broken.
 pub fn check_state(rt: &MockRuntime) {
     let (_, acc) = check_state_invariants(
@@ -757,11 +780,11 @@ pub fn expect_query_network_info(rt: &MockRuntime) {
     );
 }
 
-pub fn assert_n_good_deals<BS>(dobe: &SetMultimap<BS>, epoch: ChainEpoch, n: isize)
+pub fn assert_n_good_deals<BS>(dobe: &SetMultimap<BS>, epoch: ChainEpoch, n: isize, policy: &Policy)
 where
     BS: fvm_ipld_blockstore::Blockstore,
 {
-    let deal_updates_interval = Policy::default().deal_updates_interval;
+    let deal_updates_interval = policy.deal_updates_interval;
     let mut count = 0;
     dobe.for_each(epoch, |id| {
         assert_eq!(epoch % deal_updates_interval, (id as i64) % deal_updates_interval);

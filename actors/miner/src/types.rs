@@ -347,13 +347,13 @@ pub struct SectorOnChainInfo {
     pub verified_deal_weight: DealWeight,
     /// Pledge collected to commit this sector
     pub initial_pledge: TokenAmount,
-    /// Expected one day projection of reward for sector computed at activation / update / extension time
+    /// Expected one day projection of reward for sector computed at activation time
     pub expected_day_reward: TokenAmount,
-    /// Expected twenty day projection of reward for sector computed at activation / update / extension time
+    /// Expected twenty day projection of reward for sector computed at activation time
     pub expected_storage_pledge: TokenAmount,
-    /// Epoch at which this sector's power was most recently updated
-    pub power_base_epoch: ChainEpoch,
-    /// Maximum day reward this sector has had in previous iterations (zero for brand new sectors)
+    /// Age of sector this sector replaced or zero
+    pub replaced_sector_age: ChainEpoch,
+    /// Day reward of sector this sector replace or zero
     pub replaced_day_reward: TokenAmount,
     /// The original SealedSectorCID, only gets set on the first ReplicaUpdate
     pub sector_key_cid: Option<Cid>,

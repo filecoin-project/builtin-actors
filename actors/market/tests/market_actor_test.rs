@@ -555,12 +555,12 @@ fn fails_if_withdraw_from_provider_funds_is_not_initiated_by_the_owner_or_worker
 
 #[test]
 fn deal_starts_on_day_boundary() {
-    let deal_updates_interval = Policy::default().deal_updates_interval;
-    let start_epoch = deal_updates_interval; // 2880
+    let deal_updates_interval = 101; // small number for testing
+    let start_epoch = deal_updates_interval;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let publish_epoch = ChainEpoch::from(1);
 
-    let rt = setup();
+    let rt = setup_with_policy(Policy { deal_updates_interval, ..Default::default() });
     rt.set_epoch(publish_epoch);
 
     for i in 0..(3 * deal_updates_interval) {
@@ -582,15 +582,15 @@ fn deal_starts_on_day_boundary() {
     let store = &rt.store;
     let dobe = SetMultimap::from_root(store, &st.deal_ops_by_epoch).unwrap();
     for e in deal_updates_interval..(2 * deal_updates_interval) {
-        assert_n_good_deals(&dobe, e, 3);
+        assert_n_good_deals(&dobe, e, 3, &rt.policy);
     }
 
     // DOBE has no deals scheduled in the previous or next day
     for e in 0..deal_updates_interval {
-        assert_n_good_deals(&dobe, e, 0);
+        assert_n_good_deals(&dobe, e, 0, &rt.policy);
     }
     for e in (2 * deal_updates_interval)..(3 * deal_updates_interval) {
-        assert_n_good_deals(&dobe, e, 0);
+        assert_n_good_deals(&dobe, e, 0, &rt.policy);
     }
 }
 
@@ -622,11 +622,11 @@ fn deal_starts_partway_through_day() {
     let store = &rt.store;
     let dobe = SetMultimap::from_root(store, &st.deal_ops_by_epoch).unwrap();
     for e in interval..(interval + start_epoch) {
-        assert_n_good_deals(&dobe, e, 1);
+        assert_n_good_deals(&dobe, e, 1, &rt.policy);
     }
     // Nothing scheduled between 0 and interval
     for e in 0..interval {
-        assert_n_good_deals(&dobe, e, 0);
+        assert_n_good_deals(&dobe, e, 0, &rt.policy);
     }
 
     // Now add another 500 deals
@@ -647,7 +647,7 @@ fn deal_starts_partway_through_day() {
     let store = &rt.store;
     let dobe = SetMultimap::from_root(store, &st.deal_ops_by_epoch).unwrap();
     for e in start_epoch..(start_epoch + 500) {
-        assert_n_good_deals(&dobe, e, 1);
+        assert_n_good_deals(&dobe, e, 1, &rt.policy);
     }
 }
 
