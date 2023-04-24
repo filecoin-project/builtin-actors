@@ -11,7 +11,7 @@ use fil_actor_ethaccount::EthAccountActor;
 use fil_actor_evm::EvmContractActor;
 use fil_actor_init::{Actor as InitActor, ExecReturn, State as InitState};
 use fil_actor_market::{Actor as MarketActor, Method as MarketMethod, State as MarketState};
-use fil_actor_miner::{Actor as MinerActor, MinerInfo, State as MinerState};
+use fil_actor_miner::{Actor as MinerActor, MinerInfo};
 use fil_actor_multisig::Actor as MultisigActor;
 use fil_actor_paych::Actor as PaychActor;
 use fil_actor_power::{Actor as PowerActor, Method as MethodPower, State as PowerState};
@@ -32,13 +32,12 @@ use fil_actors_runtime::{
     SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fil_actors_runtime::{MessageAccumulator, DATACAP_TOKEN_ACTOR_ADDR};
-use fil_builtin_actors_state::check::check_state_invariants;
 use fil_builtin_actors_state::check::Tree;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{CborStore, RawBytes};
+use fvm_ipld_encoding::CborStore;
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
 use fvm_shared::address::Address;
 use fvm_shared::address::Payload;
@@ -72,6 +71,9 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::ops::Add;
+
+use crate::util::get_state;
+use crate::util::serialize_ok;
 
 pub mod util;
 
@@ -195,7 +197,7 @@ where
         method: MethodNum,
         params: Option<IpldBlock>,
     ) -> Result<MessageResult, TestVMError> {
-        let from_id = &self.normalize_address(from).unwrap();
+        let from_id = &self.resolve_id_address(from).unwrap();
         let mut a = self.get_actor(from_id).unwrap();
         let call_seq = a.call_seq_num;
         a.call_seq_num = call_seq + 1;
@@ -256,7 +258,7 @@ where
     }
 
     fn resolve_id_address(&self, address: &Address) -> Option<Address> {
-        let st = self.get_state::<InitState>(&INIT_ACTOR_ADDR).unwrap();
+        let st: InitState = get_state(self, &INIT_ACTOR_ADDR).unwrap();
         st.resolve_address::<BS>(self.store, address).unwrap()
     }
 
@@ -400,16 +402,16 @@ where
 
         // verifreg
         // initialize verifreg root signer
-        v.apply_message(
+        v.execute_message(
             &INIT_ACTOR_ADDR,
             &Address::new_bls(VERIFREG_ROOT_KEY).unwrap(),
             &TokenAmount::zero(),
             METHOD_SEND,
-            None::<RawBytes>,
+            None,
         )
         .unwrap();
         let verifreg_root_signer =
-            v.normalize_address(&Address::new_bls(VERIFREG_ROOT_KEY).unwrap()).unwrap();
+            v.resolve_id_address(&Address::new_bls(VERIFREG_ROOT_KEY).unwrap()).unwrap();
         assert_eq!(TEST_VERIFREG_ROOT_SIGNER_ADDR, verifreg_root_signer);
         // verifreg root msig
         let msig_ctor_params = serialize(
@@ -423,15 +425,15 @@ where
         )
         .unwrap();
         let msig_ctor_ret: ExecReturn = v
-            .apply_message(
+            .execute_message(
                 &SYSTEM_ACTOR_ADDR,
                 &INIT_ACTOR_ADDR,
                 &TokenAmount::zero(),
                 fil_actor_init::Method::Exec as u64,
-                Some(fil_actor_init::ExecParams {
+                Some(serialize_ok(&fil_actor_init::ExecParams {
                     code_cid: *MULTISIG_ACTOR_CODE_ID,
                     constructor_params: msig_ctor_params,
-                }),
+                })),
             )
             .unwrap()
             .ret
@@ -469,12 +471,12 @@ where
         );
 
         // create a faucet with 1 billion FIL for setting up test accounts
-        v.apply_message(
+        v.execute_message(
             &SYSTEM_ACTOR_ADDR,
             &Address::new_bls(FAUCET_ROOT_KEY).unwrap(),
             &faucet_total,
             METHOD_SEND,
-            None::<RawBytes>,
+            None,
         )
         .unwrap();
 
@@ -494,22 +496,6 @@ where
             curr_epoch: RefCell::new(epoch),
             invocations: RefCell::new(vec![]),
         }
-    }
-
-    pub fn get_miner_balance(&self, maddr: &Address) -> MinerBalances {
-        let a = self.get_actor(maddr).unwrap();
-        let st = self.get_state::<MinerState>(maddr).unwrap();
-        MinerBalances {
-            available_balance: st.get_available_balance(&a.balance).unwrap(),
-            vesting_balance: st.locked_funds,
-            initial_pledge: st.initial_pledge,
-            pre_commit_deposit: st.pre_commit_deposits,
-        }
-    }
-
-    pub fn get_miner_info(&self, maddr: &Address) -> MinerInfo {
-        let st = self.get_state::<MinerState>(maddr).unwrap();
-        self.store.get_cbor::<MinerInfo>(&st.info).unwrap().unwrap()
     }
 
     pub fn put_store<S>(&self, obj: &S) -> Cid
@@ -561,17 +547,6 @@ where
         self.actors_dirty.replace(false);
     }
 
-    pub fn normalize_address(&self, addr: &Address) -> Option<Address> {
-        let st = self.get_state::<InitState>(&INIT_ACTOR_ADDR).unwrap();
-        st.resolve_address::<BS>(self.store, addr).unwrap()
-    }
-
-    pub fn get_state<T: DeserializeOwned>(&self, addr: &Address) -> Option<T> {
-        let a_opt = self.get_actor(addr);
-        let a = a_opt.as_ref()?;
-        self.store.get_cbor::<T>(&a.head).unwrap()
-    }
-
     pub fn mutate_state<S, F>(&self, addr: &Address, f: F)
     where
         S: Serialize + DeserializeOwned,
@@ -582,105 +557,6 @@ where
         f(&mut st);
         a.head = self.store.put_cbor(&st, Code::Blake2b256).unwrap();
         self.set_actor(addr, a);
-    }
-
-    pub fn apply_message<S: serde::Serialize>(
-        &self,
-        from: &Address,
-        to: &Address,
-        value: &TokenAmount,
-        method: MethodNum,
-        params: Option<S>,
-    ) -> Result<MessageResult, TestVMError> {
-        let from_id = &self.normalize_address(from).unwrap();
-        let mut a = self.get_actor(from_id).unwrap();
-        let call_seq = a.call_seq_num;
-        a.call_seq_num = call_seq + 1;
-        // EthAccount abstractions turns Placeholders into EthAccounts
-        if a.code == *PLACEHOLDER_ACTOR_CODE_ID {
-            a.code = *ETHACCOUNT_ACTOR_CODE_ID;
-        }
-        self.set_actor(from_id, a);
-
-        let prior_root = self.checkpoint();
-
-        // big.Mul(big.NewInt(1e9), big.NewInt(1e18))
-        // make top level context with internal context
-        let top = TopCtx {
-            originator_stable_addr: *from,
-            originator_call_seq: call_seq,
-            new_actor_addr_count: RefCell::new(0),
-            circ_supply: TokenAmount::from_whole(1_000_000_000),
-        };
-        let msg = InternalMessage {
-            from: *from_id,
-            to: *to,
-            value: value.clone(),
-            method,
-            params: params.map(|p| IpldBlock::serialize_cbor(&p).unwrap().unwrap()),
-        };
-        let mut new_ctx = InvocationCtx {
-            v: self,
-            top,
-            msg,
-            allow_side_effects: RefCell::new(true),
-            caller_validated: RefCell::new(false),
-            read_only: false,
-            policy: &Policy::default(),
-            subinvocations: RefCell::new(vec![]),
-        };
-        let res = new_ctx.invoke();
-
-        let invoc = new_ctx.gather_trace(res.clone());
-        RefMut::map(self.invocations.borrow_mut(), |invocs| {
-            invocs.push(invoc);
-            invocs
-        });
-        match res {
-            Err(mut ae) => {
-                self.rollback(prior_root);
-                Ok(MessageResult {
-                    code: ae.exit_code(),
-                    message: ae.msg().to_string(),
-                    ret: ae.take_data(),
-                })
-            }
-            Ok(ret) => {
-                self.checkpoint();
-                Ok(MessageResult { code: ExitCode::OK, message: "OK".to_string(), ret })
-            }
-        }
-    }
-
-    /// Checks the state invariants and returns broken invariants.
-    pub fn check_state_invariants(&self) -> anyhow::Result<MessageAccumulator> {
-        self.checkpoint();
-        let actors =
-            Hamt::<&'bs BS, Actor, BytesKey, Sha256>::load(&self.state_root.borrow(), self.store)
-                .unwrap();
-
-        let mut manifest = BiBTreeMap::new();
-        actors
-            .for_each(|_, actor| {
-                manifest.insert(actor.code, ACTOR_TYPES.get(&actor.code).unwrap().to_owned());
-                Ok(())
-            })
-            .unwrap();
-
-        let policy = Policy::default();
-        let state_tree = Tree::load(&self.store, &self.state_root.borrow()).unwrap();
-        check_state_invariants(&manifest, &policy, state_tree, &self.total_fil, self.epoch() - 1)
-    }
-
-    /// Asserts state invariants are held without any errors.
-    pub fn assert_state_invariants(&self) {
-        self.check_state_invariants().unwrap().assert_empty()
-    }
-
-    /// Checks state, allowing expected invariants to fail. The invariants *must* fail in the
-    /// provided order.
-    pub fn expect_state_invariants(&self, expected_patterns: &[Regex]) {
-        self.check_state_invariants().unwrap().assert_expected(expected_patterns)
     }
 
     pub fn get_total_actor_balance(
@@ -770,7 +646,7 @@ where
     BS: Blockstore,
 {
     fn resolve_target(&'invocation self, target: &Address) -> Result<(Actor, Address), ActorError> {
-        if let Some(a) = self.v.normalize_address(target) {
+        if let Some(a) = self.v.resolve_id_address(target) {
             if let Some(act) = self.v.get_actor(&a) {
                 return Ok((act, a));
             }
@@ -802,7 +678,7 @@ where
             ));
         }
 
-        let mut st = self.v.get_state::<InitState>(&INIT_ACTOR_ADDR).unwrap();
+        let mut st: InitState = get_state(self.v, &INIT_ACTOR_ADDR).unwrap();
         let (target_id, existing) = st.map_addresses_to_id(self.v.store, target, None).unwrap();
         assert!(!existing, "should never have existing actor when no f4 address is specified");
         let target_id_addr = Address::new_id(target_id);
@@ -1103,7 +979,7 @@ where
     }
 
     fn resolve_address(&self, addr: &Address) -> Option<ActorID> {
-        if let Some(normalize_addr) = self.v.normalize_address(addr) {
+        if let Some(normalize_addr) = self.v.resolve_id_address(addr) {
             if let &Payload::ID(id) = normalize_addr.payload() {
                 return Some(id);
             }
