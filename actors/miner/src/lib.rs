@@ -838,6 +838,13 @@ impl Actor {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get precommits")
             })?;
 
+        if precommits.is_empty() {
+            return Err(actor_error!(
+                illegal_state,
+                "bitfield non-empty but zero precommits read from state"
+            ));
+        }
+
         // validate each precommit
         let mut precommits_to_confirm = Vec::new();
         for (i, precommit) in precommits.iter().enumerate() {
@@ -920,12 +927,6 @@ impl Actor {
         }
 
         let seal_proof = precommits[0].info.seal_proof;
-        if precommits.is_empty() {
-            return Err(actor_error!(
-                illegal_state,
-                "bitfield non-empty but zero precommits read from state"
-            ));
-        }
         rt.verify_aggregate_seals(&AggregateSealVerifyProofAndInfos {
             miner: miner_actor_id,
             seal_proof,
