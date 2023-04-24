@@ -215,7 +215,7 @@ where
             new_actor_addr_count: RefCell::new(0),
             circ_supply: TokenAmount::from_whole(1_000_000_000),
         };
-        let msg = InternalMessage { from: *from, to: *to, value: value.clone(), method, params };
+        let msg = InternalMessage { from: *from_id, to: *to, value: value.clone(), method, params };
         let mut new_ctx = InvocationCtx {
             v: self,
             top,
