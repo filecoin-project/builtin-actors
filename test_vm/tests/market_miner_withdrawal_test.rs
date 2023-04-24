@@ -235,17 +235,17 @@ fn market_setup(store: &'_ MemoryBlockstore) -> (TestVM<MemoryBlockstore>, Addre
 fn miner_setup(
     store: &'_ MemoryBlockstore,
 ) -> (TestVM<MemoryBlockstore>, Address, Address, Address) {
-    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
     let initial_balance = TokenAmount::from_whole(10_000);
     let addrs = create_accounts(&v, 2, &initial_balance);
     let (worker, owner) = (addrs[0], addrs[1]);
 
     // create miner
     let (m_addr, _) = create_miner(
-        &mut v,
+        &v,
         &owner,
         &worker,
-        RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
         &TokenAmount::zero(),
     );
 

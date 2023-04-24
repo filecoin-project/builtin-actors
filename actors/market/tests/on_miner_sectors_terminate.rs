@@ -6,7 +6,6 @@ use std::convert::TryInto;
 use fil_actor_market::{Actor as MarketActor, Method, OnMinerSectorsTerminateParams};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::builtins::Type;
-use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
@@ -19,7 +18,6 @@ mod harness;
 
 use harness::*;
 
-// Converted from https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1274
 #[test]
 fn terminate_multiple_deals_from_multiple_providers() {
     let start_epoch = 10;
@@ -142,14 +140,12 @@ fn terminate_valid_deals_along_with_just_expired_deal() {
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1346
 #[test]
 fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
-    let deal_updates_interval = Policy::default().deal_updates_interval;
     let start_epoch = 10;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
-    let current_epoch = 5;
 
     let rt = setup();
-    rt.set_epoch(current_epoch);
+    let current_epoch = rt.set_epoch(5);
 
     let deal1 = generate_deal_and_add_funds(
         &rt,
@@ -163,7 +159,7 @@ fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
         CLIENT_ADDR,
         &MinerAddresses::default(),
         start_epoch,
-        end_epoch - deal_updates_interval,
+        end_epoch - 10, // Expires earlier
     );
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);

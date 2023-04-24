@@ -725,8 +725,9 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 
     #[allow(dead_code)]
-    pub fn set_epoch(&self, epoch: ChainEpoch) {
+    pub fn set_epoch(&self, epoch: ChainEpoch) -> ChainEpoch {
         self.epoch.replace(epoch);
+        epoch
     }
 
     pub fn expect_get_randomness_from_tickets(

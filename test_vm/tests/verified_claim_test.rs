@@ -35,7 +35,7 @@ use test_vm::util::{
     verifreg_add_client, verifreg_add_verifier, verifreg_extend_claim_terms,
     verifreg_remove_expired_allocations,
 };
-use test_vm::TestVM;
+use test_vm::{TestVM, VM};
 
 // Tests a scenario involving a verified deal from the built-in market, with associated
 // allocation and claim.
@@ -43,7 +43,7 @@ use test_vm::TestVM;
 #[test]
 fn verified_claim_scenario() {
     let store = MemoryBlockstore::new();
-    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     let addrs = create_accounts(&v, 4, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client, verified_client2) =
@@ -53,13 +53,13 @@ fn verified_claim_scenario() {
 
     // Create miner
     let (miner_id, _) = create_miner(
-        &mut v,
+        &v,
         &owner,
         &worker,
         seal_proof.registered_window_post_proof().unwrap(),
         &TokenAmount::from_whole(1_000),
     );
-    let mut v = v.with_epoch(200);
+    let v = v.with_epoch(200);
 
     // Register verifier and verified clients
     let datacap = StoragePower::from(32_u128 << 40);
@@ -73,8 +73,7 @@ fn verified_claim_scenario() {
     market_add_balance(&v, &worker, &miner_id, &TokenAmount::from_whole(64));
 
     // Publish a verified deal for total sector capacity with min term of 6 months
-    let deal_start =
-        v.get_epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
+    let deal_start = v.epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
     let deal_term_min = 180 * EPOCHS_IN_DAY;
 
     let deal_size = 32u64 << 30;
@@ -104,7 +103,7 @@ fn verified_claim_scenario() {
     );
 
     // Advance time to max seal duration and prove the sector
-    v = advance_by_deadline_to_epoch(v, miner_id, deal_start).0;
+    advance_by_deadline_to_epoch(&v, &miner_id, deal_start);
     miner_prove_sector(&v, &worker, &miner_id, sector_number);
     // Trigger cron to validate the prove commit
     cron_tick(&v);
@@ -167,8 +166,8 @@ fn verified_claim_scenario() {
     );
 
     // Advance to proving period and submit post
-    let (deadline_info, partition_index, v) =
-        advance_to_proving_deadline(v, miner_id, sector_number);
+    let (deadline_info, partition_index) =
+        advance_to_proving_deadline(&v, &miner_id, sector_number);
 
     let expected_power =
         PowerPair { raw: StoragePower::from(deal_size), qa: StoragePower::from(10 * deal_size) };
@@ -188,17 +187,17 @@ fn verified_claim_scenario() {
     assert_eq!(power_claim.quality_adj_power, expected_power.qa);
 
     // move forward one deadline so advanceWhileProving doesn't fail double submitting posts.
-    let (mut v, _) = advance_by_deadline_to_index(
-        v,
-        miner_id,
+    advance_by_deadline_to_index(
+        &v,
+        &miner_id,
         deadline_info.index + 1 % policy.wpost_period_deadlines,
     );
 
     // Advance past the deal's minimum term (the claim remains valid).
-    v = advance_by_deadline_to_epoch_while_proving(
-        v,
-        miner_id,
-        worker,
+    advance_by_deadline_to_epoch_while_proving(
+        &v,
+        &miner_id,
+        &worker,
         sector_number,
         deal_start + deal_term_min + 10,
     );
@@ -222,17 +221,17 @@ fn verified_claim_scenario() {
     );
 
     // Advance toward the sector's expiration
-    v = advance_by_deadline_to_epoch_while_proving(
-        v,
-        miner_id,
-        worker,
+    advance_by_deadline_to_epoch_while_proving(
+        &v,
+        &miner_id,
+        &worker,
         sector_number,
         extended_expiration_1 - 100,
     );
 
     // Another client extends the claim beyond the initial maximum term.
     let original_max_term = policy.maximum_verified_allocation_term;
-    let new_claim_expiry_epoch = v.get_epoch() + policy.maximum_verified_allocation_term;
+    let new_claim_expiry_epoch = v.epoch() + policy.maximum_verified_allocation_term;
     let new_max_term = new_claim_expiry_epoch - claim.term_start;
     assert!(new_max_term > original_max_term);
 
@@ -253,10 +252,10 @@ fn verified_claim_scenario() {
     );
 
     // Advance toward the sector's new expiration
-    v = advance_by_deadline_to_epoch_while_proving(
-        v,
-        miner_id,
-        worker,
+    advance_by_deadline_to_epoch_while_proving(
+        &v,
+        &miner_id,
+        &worker,
         sector_number,
         extended_expiration_2 - 30 * EPOCHS_IN_DAY,
     );
@@ -306,10 +305,10 @@ fn verified_claim_scenario() {
     );
 
     // Advance sector to expiration
-    v = advance_by_deadline_to_epoch_while_proving(
-        v,
-        miner_id,
-        worker,
+    advance_by_deadline_to_epoch_while_proving(
+        &v,
+        &miner_id,
+        &worker,
         sector_number,
         extended_expiration_2,
     );
@@ -339,14 +338,14 @@ fn verified_claim_scenario() {
 #[test]
 fn expired_allocations() {
     let store = MemoryBlockstore::new();
-    let mut v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     let addrs = create_accounts(&v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
 
     // Create miner
     let (miner_id, _) = create_miner(
-        &mut v,
+        &v,
         &owner,
         &worker,
         seal_proof.registered_window_post_proof().unwrap(),
@@ -365,7 +364,7 @@ fn expired_allocations() {
 
     // Publish 2 verified deals
     let deal1_start =
-        v.get_epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
+        v.epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
     let deal_term_min = 180 * EPOCHS_IN_DAY;
 
     let deal_size = 32u64 << 30;

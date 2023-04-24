@@ -1754,7 +1754,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_account"
-version = "11.0.0-alpha.1"
+version = "11.0.0"
 dependencies = [
  "anyhow",
  "fil_actors_runtime",
@@ -1789,7 +1789,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_cron"
-version = "11.0.0-alpha.1"
+version = "11.0.0"
 dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
@@ -1803,7 +1803,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_datacap"
-version = "11.0.0-alpha.1"
+version = "11.0.0"
 dependencies = [
  "cid",
  "fil_actors_runtime",
@@ -1823,7 +1823,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_eam"
-version = "11.0.0-alpha.1"
+version = "11.0.0"
 dependencies = [
  "anyhow",
  "cid",
@@ -1845,7 +1845,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_ethaccount"
-version = "11.0.0-alpha.1"
+version = "11.0.0"
 dependencies = [
  "fil_actors_runtime",
  "frc42_dispatch",
@@ -1860,7 +1860,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_evm"
-version = "11.0.0-alpha.1"
+version = "11.0.0"
 dependencies = [
  "anyhow",
  "cid",
@@ -1890,7 +1890,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_init"
-version = "11.0.0-alpha.1"
+version = "11.0.0"
 dependencies = [
  "anyhow",
  "cid",
@@ -1908,7 +1908,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_market"
-version = "11.0.0-alpha.1"
+version = "11.0.0"
 dependencies = [
  "anyhow",
  "cid",
@@ -1938,7 +1938,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_miner"
-version = "11.0.0-alpha.1"
+version = "11.0.0"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -1968,7 +1968,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_multisig"
-version = "11.0.0-alpha.1"
+version = "11.0.0"
 dependencies = [
  "anyhow",
  "cid",
@@ -1989,7 +1989,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_paych"
-version = "11.0.0-alpha.1"
+version = "11.0.0"
 dependencies = [
  "anyhow",
  "cid",
@@ -2008,11 +2008,11 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_placeholder"
-version = "11.0.0-alpha.1"
+version = "11.0.0"
 
 [[package]]
 name = "fil_actor_power"
-version = "11.0.0-alpha.1"
+version = "11.0.0"
 dependencies = [
  "anyhow",
  "cid",
@@ -2034,7 +2034,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_reward"
-version = "11.0.0-alpha.1"
+version = "11.0.0"
 dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_blockstore",
@@ -2050,7 +2050,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_system"
-version = "11.0.0-alpha.1"
+version = "11.0.0"
 dependencies = [
  "anyhow",
  "cid",
@@ -2065,7 +2065,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actor_verifreg"
-version = "11.0.0-alpha.1"
+version = "11.0.0"
 dependencies = [
  "anyhow",
  "cid",
@@ -2086,7 +2086,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actors_evm_shared"
-version = "11.0.0-alpha.1"
+version = "11.0.0"
 dependencies = [
  "fil_actors_runtime",
  "fvm_ipld_encoding",
@@ -2098,7 +2098,7 @@ dependencies = [
 
 [[package]]
 name = "fil_actors_runtime"
-version = "11.0.0-alpha.1"
+version = "11.0.0"
 dependencies = [
  "anyhow",
  "blake2b_simd",
@@ -2135,7 +2135,7 @@ dependencies = [
 
 [[package]]
 name = "fil_builtin_actors_bundle"
-version = "11.0.0-alpha.1"
+version = "11.0.0"
 dependencies = [
  "cid",
  "clap",
@@ -2162,7 +2162,7 @@ dependencies = [
 
 [[package]]
 name = "fil_builtin_actors_state"
-version = "11.0.0-alpha.1"
+version = "11.0.0"
 dependencies = [
  "anyhow",
  "bimap",
@@ -2240,9 +2240,9 @@ dependencies = [
 
 [[package]]
 name = "frc42_dispatch"
-version = "3.1.0"
+version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4dc594c941eba1d5a9474f595c6d0f9d752fa333b672755bbe7c23d30f64282"
+checksum = "c6fda233581861602b8c1c0922a44d79977cb0f56cfe1c3b71eafb589d1da749"
 dependencies = [
  "frc42_hasher",
  "frc42_macros",
@@ -2254,9 +2254,9 @@ dependencies = [
 
 [[package]]
 name = "frc42_hasher"
-version = "1.4.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d6caf7fa3028536d11b1ff94a63bd1d60926ff7366b25b2a94d07bd23190f459"
+checksum = "ad1cf7cebdc57c39906ba8b1148cde4a633cd76614131b983eb4c07f35c735d0"
 dependencies = [
  "fvm_sdk",
  "fvm_shared",
@@ -2265,9 +2265,9 @@ dependencies = [
 
 [[package]]
 name = "frc42_macros"
-version = "1.1.0"
+version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c57201a8c3c26b41c4234a0f68b123ec2c33c958d31d09a3a780c345256e7928"
+checksum = "9479347c6b83b53f1c041045e9954e3213bb6d1cfc9d2f2927340765a1aabd58"
 dependencies = [
  "blake2b_simd",
  "frc42_hasher",
@@ -2278,9 +2278,9 @@ dependencies = [
 
 [[package]]
 name = "frc46_token"
-version = "5.0.0"
+version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c0a7c3f316549c34350c5713ee6885fcaece30a83399c54681016dfc6faa671e"
+checksum = "f03b2e4912228bdb9b6d24e7cea4d2d671ec04a8e55f0edc88540b8ceaeea83a"
 dependencies = [
  "anyhow",
  "cid",
@@ -2428,9 +2428,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_actor_utils"
-version = "5.0.0"
+version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2ca7d35816608fb36ecc01448938d7827820051390459abb573fdad2aff626b1"
+checksum = "b57882eb67bc56aa67087c584767596c41e54bdd16151a65058177256e860572"
 dependencies = [
  "anyhow",
  "cid",
@@ -2557,9 +2557,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_sdk"
-version = "3.0.0"
+version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2fef17308967cceb1d22f05003d60adb0d5b9ba53e34ace4ae04701eb7e6af02"
+checksum = "db8ac1214ca6c31bcbb4e2e7461cd17af18e0496b9053547d465f15c8d8429a7"
 dependencies = [
  "cid",
  "fvm_ipld_encoding",
@@ -2572,28 +2572,24 @@ dependencies = [
 
 [[package]]
 name = "fvm_shared"
-version = "3.1.0"
+version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "45742ae0f445a80121a97e9ee36fd0112f56e19daa5865fe458452ec6ff358f2"
+checksum = "674e86afc2ce02808d24f578296f105b13c23300e60e0eac331c4c1575beabb5"
 dependencies = [
  "anyhow",
  "bitflags",
  "blake2b_simd",
- "byteorder",
  "cid",
  "data-encoding",
  "data-encoding-macro",
- "fvm_ipld_blockstore",
  "fvm_ipld_encoding",
  "lazy_static",
- "log",
  "multihash",
  "num-bigint",
  "num-derive",
  "num-integer",
  "num-traits",
  "serde",
- "serde_repr",
  "serde_tuple",
  "thiserror",
  "unsigned-varint",
@@ -4481,7 +4477,7 @@ dependencies = [
 
 [[package]]
 name = "test_vm"
-version = "11.0.0-alpha.1"
+version = "11.0.0"
 dependencies = [
  "anyhow",
  "bimap",

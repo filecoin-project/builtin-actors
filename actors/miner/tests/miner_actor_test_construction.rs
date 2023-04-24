@@ -58,7 +58,7 @@ fn constructor_params(env: &TestEnv) -> ConstructorParams {
         owner: env.owner,
         worker: env.worker,
         control_addresses: env.control_addrs.clone(),
-        window_post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        window_post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
         peer_id: env.peer_id.clone(),
         multi_addresses: env.multiaddrs.clone(),
     }
@@ -95,7 +95,7 @@ fn simple_construction() {
     assert_eq!(env.control_addrs, info.control_addresses);
     assert_eq!(env.peer_id, info.peer_id);
     assert_eq!(env.multiaddrs, info.multi_address);
-    assert_eq!(RegisteredPoStProof::StackedDRGWindow32GiBV1, info.window_post_proof_type);
+    assert_eq!(RegisteredPoStProof::StackedDRGWindow32GiBV1P1, info.window_post_proof_type);
     assert_eq!(SectorSize::_32GiB, info.sector_size);
     assert_eq!(2349, info.window_post_partition_sectors);
 

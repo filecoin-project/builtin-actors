@@ -19,12 +19,13 @@ jobs:
         network: [ 'mainnet', 'caterpillarnet', 'butterflynet', 'calibrationnet', 'devnet', 'testing', 'testing-fake-proofs', 'wallaby', 'hyperspace', 'devnet-wasm' ]
     steps:
     - name: Checking out
-      uses: actions/checkout@v2
-    - name: Install Rust toolchain
-      uses: ./.github/actions/rust-cargo-run
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        command: version
+      uses: actions/checkout@v3
+    - name: Setting up cache
+      uses: pl-strflt/rust-sccache-action@v1
+      env:
+        SCCACHE_CACHE_SIZE: 2G
+        SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
+        CACHE_SKIP_SAVE: true
     - name: Writing bundle
       env:
         BUILD_FIL_NETWORK: ${{ matrix.network }}

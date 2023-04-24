@@ -58,6 +58,42 @@ pub fn can_extend_seal_proof_type(_proof: RegisteredSealProof) -> bool {
     true
 }
 
+/// Convert the v1_1 PoSt Proof type to the older v1 types (used in nv18 and below)
+pub fn convert_window_post_proof_v1p1_to_v1(
+    rpp: RegisteredPoStProof,
+) -> Result<RegisteredPoStProof, String> {
+    match rpp {
+        RegisteredPoStProof::StackedDRGWindow2KiBV1P1 => {
+            Ok(RegisteredPoStProof::StackedDRGWindow2KiBV1)
+        }
+        RegisteredPoStProof::StackedDRGWindow8MiBV1P1 => {
+            Ok(RegisteredPoStProof::StackedDRGWindow8MiBV1)
+        }
+        RegisteredPoStProof::StackedDRGWindow512MiBV1P1 => {
+            Ok(RegisteredPoStProof::StackedDRGWindow512MiBV1)
+        }
+        RegisteredPoStProof::StackedDRGWindow32GiBV1P1 => {
+            Ok(RegisteredPoStProof::StackedDRGWindow32GiBV1)
+        }
+        RegisteredPoStProof::StackedDRGWindow64GiBV1P1 => {
+            Ok(RegisteredPoStProof::StackedDRGWindow64GiBV1)
+        }
+        i => Err(format!("not a v1p1 proof type: {:?}", i)),
+    }
+}
+
+/// Convert the v1_1 PoSt Proof type to the older v1 types (used in nv18 and below)
+pub fn is_window_post_proof_v1p1(rpp: RegisteredPoStProof) -> bool {
+    matches!(
+        rpp,
+        RegisteredPoStProof::StackedDRGWindow2KiBV1P1
+            | RegisteredPoStProof::StackedDRGWindow8MiBV1P1
+            | RegisteredPoStProof::StackedDRGWindow512MiBV1P1
+            | RegisteredPoStProof::StackedDRGWindow32GiBV1P1
+            | RegisteredPoStProof::StackedDRGWindow64GiBV1P1
+    )
+}
+
 /// Maximum duration to allow for the sealing process for seal algorithms.
 /// Dependent on algorithm and sector size
 pub fn max_prove_commit_duration(

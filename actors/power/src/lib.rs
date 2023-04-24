@@ -153,7 +153,6 @@ impl Actor {
             })?;
             Ok(())
         })?;
-        println!("12345");
         Ok(CreateMinerReturn { id_address, robust_address })
     }
 

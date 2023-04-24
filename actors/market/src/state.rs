@@ -4,7 +4,6 @@
 use crate::balance_table::BalanceTable;
 use crate::ext::verifreg::AllocationID;
 use cid::Cid;
-use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
     actor_error, make_empty_map, make_map_with_root_and_bitwidth, ActorError, Array, AsActorError,
     Set, SetMultimap,
@@ -573,15 +572,13 @@ impl State {
     ////////////////////////////////////////////////////////////////////////////////
     // Deal state operations
     ////////////////////////////////////////////////////////////////////////////////
-    #[allow(clippy::too_many_arguments)]
-    pub fn put_pending_deal_state<BS>(
+    pub fn process_deal_update<BS>(
         &mut self,
         store: &BS,
-        policy: &Policy,
         state: &DealState,
         deal: &DealProposal,
         epoch: ChainEpoch,
-    ) -> Result<(TokenAmount, ChainEpoch, bool), ActorError>
+    ) -> Result<(TokenAmount, bool), ActorError>
     where
         BS: Blockstore,
     {
@@ -600,7 +597,7 @@ impl State {
         // This would be the case that the first callback somehow triggers before it is scheduled to
         // This is expected not to be able to happen
         if deal.start_epoch > epoch {
-            return Ok((TokenAmount::zero(), EPOCH_UNDEFINED, false));
+            return Ok((TokenAmount::zero(), false));
         }
 
         let payment_end_epoch = if ever_slashed {
@@ -662,20 +659,14 @@ impl State {
             self.slash_balance(store, &deal.provider, &slashed, Reason::ProviderCollateral)
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "slashing balance")?;
 
-            return Ok((slashed, EPOCH_UNDEFINED, true));
+            return Ok((slashed, true));
         }
 
         if epoch >= deal.end_epoch {
             self.process_deal_expired(store, deal, state)?;
-            return Ok((TokenAmount::zero(), EPOCH_UNDEFINED, true));
+            return Ok((TokenAmount::zero(), true));
         }
-
-        // We're explicitly not inspecting the end epoch and may process a deal's expiration late,
-        // in order to prevent an outsider from loading a cron tick by activating too many deals
-        // with the same end epoch.
-        let next = epoch + policy.deal_updates_interval;
-
-        Ok((TokenAmount::zero(), next, false))
+        Ok((TokenAmount::zero(), false))
     }
 
     /// Deal start deadline elapsed without appearing in a proven sector.

@@ -1343,7 +1343,7 @@ mod submit_porep_for_bulk_verify_tests {
         let comm_d = make_piece_cid("commD".as_bytes());
 
         let info = SealVerifyInfo {
-            registered_proof: fvm_shared::sector::RegisteredSealProof::StackedDRG32GiBV1,
+            registered_proof: fvm_shared::sector::RegisteredSealProof::StackedDRG32GiBV1P1,
             deal_ids: Vec::new(),
             randomness: SealRandomness::default(),
             interactive_randomness: InteractiveSealRandomness::default(),
@@ -1380,7 +1380,7 @@ mod submit_porep_for_bulk_verify_tests {
 
         fn create_basic_seal_info(id: u64) -> SealVerifyInfo {
             SealVerifyInfo {
-                registered_proof: fvm_shared::sector::RegisteredSealProof::StackedDRG32GiBV1,
+                registered_proof: fvm_shared::sector::RegisteredSealProof::StackedDRG32GiBV1P1,
                 deal_ids: Vec::new(),
                 randomness: SealRandomness::default(),
                 interactive_randomness: InteractiveSealRandomness::default(),

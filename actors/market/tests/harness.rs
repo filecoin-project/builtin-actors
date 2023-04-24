@@ -11,7 +11,7 @@ use std::{cell::RefCell, collections::HashMap};
 use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
 use fil_actor_market::ext::verifreg::{AllocationID, AllocationRequest, AllocationsResponse};
 use fil_actor_market::{
-    deal_id_key, ext, ext::miner::GetControlAddressesReturnParams, gen_rand_next_epoch,
+    deal_id_key, ext, ext::miner::GetControlAddressesReturnParams, next_update_epoch,
     testing::check_state_invariants, ActivateDealsParams, ActivateDealsResult,
     Actor as MarketActor, ClientDealProposal, DealArray, DealMetaArray, DealProposal, DealState,
     GetBalanceReturn, Label, MarketNotifyDealParams, Method, OnMinerSectorsTerminateParams,
@@ -98,6 +98,29 @@ pub fn setup() -> MockRuntime {
         caller_type: RefCell::new(*INIT_ACTOR_CODE_ID),
         actor_code_cids: RefCell::new(actor_code_cids),
         balance: RefCell::new(TokenAmount::from_whole(10)),
+        ..Default::default()
+    };
+
+    construct_and_verify(&rt);
+
+    rt
+}
+
+pub fn setup_with_policy(policy: Policy) -> MockRuntime {
+    let actor_code_cids = HashMap::from([
+        (OWNER_ADDR, *ACCOUNT_ACTOR_CODE_ID),
+        (WORKER_ADDR, *ACCOUNT_ACTOR_CODE_ID),
+        (PROVIDER_ADDR, *MINER_ACTOR_CODE_ID),
+        (CLIENT_ADDR, *ACCOUNT_ACTOR_CODE_ID),
+    ]);
+
+    let rt = MockRuntime {
+        receiver: STORAGE_MARKET_ACTOR_ADDR,
+        caller: RefCell::new(SYSTEM_ACTOR_ADDR),
+        caller_type: RefCell::new(*INIT_ACTOR_CODE_ID),
+        actor_code_cids: RefCell::new(actor_code_cids),
+        balance: RefCell::new(TokenAmount::from_whole(10)),
+        policy,
         ..Default::default()
     };
 
@@ -376,8 +399,6 @@ pub fn delete_deal_proposal(rt: &MockRuntime, deal_id: DealID) {
     rt.replace_state(&st)
 }
 
-// if this is the first crontick for the deal, it's next tick will be scheduled at `desiredNextEpoch`
-// if this is not the first crontick, the `desiredNextEpoch` param is ignored.
 pub fn cron_tick_and_assert_balances(
     rt: &MockRuntime,
     client_addr: Address,
@@ -759,11 +780,11 @@ pub fn expect_query_network_info(rt: &MockRuntime) {
     );
 }
 
-pub fn assert_n_good_deals<BS>(dobe: &SetMultimap<BS>, epoch: ChainEpoch, n: isize)
+pub fn assert_n_good_deals<BS>(dobe: &SetMultimap<BS>, epoch: ChainEpoch, n: isize, policy: &Policy)
 where
     BS: fvm_ipld_blockstore::Blockstore,
 {
-    let deal_updates_interval = Policy::default().deal_updates_interval;
+    let deal_updates_interval = policy.deal_updates_interval;
     let mut count = 0;
     dobe.for_each(epoch, |id| {
         assert_eq!(epoch % deal_updates_interval, (id as i64) % deal_updates_interval);
@@ -890,8 +911,7 @@ where
 }
 
 pub fn process_epoch(start_epoch: ChainEpoch, deal_id: DealID) -> ChainEpoch {
-    let policy = Policy::default();
-    gen_rand_next_epoch(&policy, start_epoch, deal_id)
+    next_update_epoch(deal_id, Policy::default().deal_updates_interval, start_epoch)
 }
 
 pub fn publish_and_activate_deal(
