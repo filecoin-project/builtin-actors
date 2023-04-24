@@ -6,10 +6,9 @@ use fil_actors_runtime::{
     EAM_ACTOR_ADDR, EAM_ACTOR_ID, INIT_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode, METHOD_SEND};
 use num_traits::Zero;
-use test_vm::{actor, TestVM, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR};
+use test_vm::{actor, util::serialize_ok, TestVM, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
 
 fn assert_placeholder_actor<BS: Blockstore>(exp_bal: TokenAmount, v: &TestVM<BS>, addr: Address) {
     let act = v.get_actor(&addr).unwrap();
@@ -33,22 +32,23 @@ fn placeholder_deploy() {
 
     let subaddr = b"foobar";
     let addr = Address::new_delegated(EAM_ACTOR_ID, subaddr).unwrap();
-    assert!(v
-        .apply_message(
+    assert!(
+        v.execute_message(
             &TEST_FAUCET_ADDR,
             &addr,
             &TokenAmount::from_atto(42u8),
             METHOD_SEND,
-            None::<RawBytes>,
+            None,
         )
         .unwrap()
         .code
-        .is_success());
+        .is_success()
+    );
     let expect_id_addr = Address::new_id(FIRST_TEST_USER_ADDR);
     assert_placeholder_actor(TokenAmount::from_atto(42u8), &v, expect_id_addr);
 
     // Make sure we assigned the right f4 address.
-    assert_eq!(v.normalize_address(&addr).unwrap(), expect_id_addr);
+    assert_eq!(v.resolve_id_address(&addr).unwrap(), expect_id_addr);
 
     // Deploy a multisig to the placeholder.
     let msig_ctor_params = serialize(
@@ -63,16 +63,16 @@ fn placeholder_deploy() {
     .unwrap();
 
     let deploy = || {
-        v.apply_message(
+        v.execute_message(
             &EAM_ACTOR_ADDR, // so this works even if "m2-native" is disabled.
             &INIT_ACTOR_ADDR,
             &TokenAmount::zero(),
             fil_actor_init::Method::Exec4 as u64,
-            Some(fil_actor_init::Exec4Params {
+            Some(serialize_ok(&fil_actor_init::Exec4Params {
                 code_cid: *MULTISIG_ACTOR_CODE_ID,
                 constructor_params: msig_ctor_params.clone(),
                 subaddress: subaddr[..].to_owned().into(),
-            }),
+            })),
         )
         .unwrap()
     };
