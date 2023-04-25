@@ -57,13 +57,13 @@ bundle-calibrationnet:
 bundle-devnet:
 	BUILD_FIL_NETWORK=devnet cargo run -- -o output/builtin-actors-devnet.car
 
-bundle-wallaby: deps-build
+bundle-wallaby:
 	BUILD_FIL_NETWORK=wallaby cargo run -- -o output/builtin-actors-wallaby.car
 
-bundle-hyperspace: deps-build
+bundle-hyperspace:
 	BUILD_FIL_NETWORK=hyperspace cargo run -- -o output/builtin-actors-hyperspace.car
 
-bundle-devnet-wasm: deps-build
+bundle-devnet-wasm:
 	BUILD_FIL_NETWORK=devnet-wasm cargo run -- -o output/builtin-actors-devnet-wasm.car
 
 bundle-testing:
