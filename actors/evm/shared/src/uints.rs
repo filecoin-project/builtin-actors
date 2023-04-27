@@ -81,12 +81,6 @@ impl U256 {
             return U256::ZERO;
         }
 
-        // min-negative-value can't be represented as a positive value, but we don't need to.
-        // NOTE: we've already checked that 'second' isn't zero above.
-        if (self, other) == (&U256::I128_MIN, &U256::ONE) {
-            return U256::I128_MIN;
-        }
-
         let mut first = *self;
         let mut second = *other;
 
@@ -253,6 +247,10 @@ mod tests {
 
         assert_eq!(U256::I128_MIN.i256_div(&minus_one), U256::I128_MIN);
         assert_eq!(U256::I128_MIN.i256_div(&one), U256::I128_MIN);
+        assert_eq!(
+            U256::I128_MIN.i256_div(&two),
+            U256([0, 0, 0, i64::MIN as u64 + (i64::MIN as u64 >> 1)])
+        );
         assert_eq!(one.i256_div(&U256::I128_MIN), zero);
         assert_eq!(max_value.i256_div(&one), max_value);
         assert_eq!(max_value.i256_div(&minus_one), neg_max_value);
