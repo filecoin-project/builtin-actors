@@ -552,15 +552,6 @@ impl Actor {
                 info.control_addresses.iter().chain(&[info.worker, info.owner]),
             )?;
 
-            // Verify that the miner has passed exactly 1 proof.
-            if params.proofs.len() != 1 {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "expected exactly one proof, got {}",
-                    params.proofs.len()
-                ));
-            }
-
             // Make sure the miner is using the correct proof type.
             if params.proofs[0].post_proof != info.window_post_proof_type {
                 // Special for nv19: Allow the v1 version of v1p1 post proof types
