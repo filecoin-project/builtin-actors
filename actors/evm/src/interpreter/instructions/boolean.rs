@@ -102,7 +102,7 @@ mod test {
             }
         }
 
-        assert_eq!(slt(U256::I128_MIN, U256::ZERO), U256::ONE);
+        assert_eq!(slt(U256::I256_MIN, U256::ZERO), U256::ONE);
         assert_eq!(slt(U256::ZERO, U256::from(i128::MAX).i256_neg()), U256::ZERO);
         assert_eq!(slt(U256::ZERO, U256::from(i128::MAX)), U256::ONE);
     }
@@ -121,14 +121,14 @@ mod test {
             }
         }
 
-        assert_eq!(sgt(U256::I128_MIN, U256::ZERO), U256::ZERO);
+        assert_eq!(sgt(U256::I256_MIN, U256::ZERO), U256::ZERO);
         assert_eq!(sgt(U256::ZERO, U256::from(i128::MAX).i256_neg()), U256::ONE);
         assert_eq!(sgt(U256::ZERO, U256::from(i128::MAX)), U256::ZERO);
     }
 
     #[test]
     fn test_eq() {
-        assert_eq!(eq(U256::I128_MIN, U256::ZERO), U256::ZERO);
+        assert_eq!(eq(U256::I256_MIN, U256::ZERO), U256::ZERO);
         assert_eq!(eq(U256::ZERO, U256::from(i128::MAX).i256_neg()), U256::ZERO);
         assert_eq!(eq(U256::ZERO, U256::from(i128::MAX)), U256::ZERO);
         assert_eq!(eq(U256::ZERO, (U256::MAX).i256_neg()), U256::ZERO);
@@ -138,7 +138,7 @@ mod test {
 
     #[test]
     fn test_iszero() {
-        assert_eq!(iszero(U256::I128_MIN), U256::ZERO);
+        assert_eq!(iszero(U256::I256_MIN), U256::ZERO);
         assert_eq!(iszero(U256::MAX), U256::ZERO);
         assert_eq!(iszero(U256::MAX.i256_neg()), U256::ZERO);
         assert_eq!(iszero(U256::ONE), U256::ZERO);
