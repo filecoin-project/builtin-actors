@@ -25,8 +25,8 @@ use fvm_shared::sector::{PoStProof, RegisteredSealProof, SectorNumber, MAX_SECTO
 use fvm_shared::METHOD_SEND;
 use test_vm::util::{
     advance_by_deadline_to_epoch, advance_to_proving_deadline, apply_code, apply_ok,
-    create_accounts, create_miner, invariant_failure_patterns, precommit_sectors,
-    submit_windowed_post,
+    create_accounts, create_miner, get_network_stats, invariant_failure_patterns,
+    precommit_sectors, submit_windowed_post,
 };
 use test_vm::{ExpectInvocation, TestVM, TEST_VM_RAND_ARRAY, VM};
 
@@ -148,7 +148,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (TestVM<MemoryBlockstore>, MinerInfo, S
 
     // power unproven so network stats are the same
 
-    let network_stats = v.get_network_stats();
+    let network_stats = get_network_stats(&v);
     assert!(network_stats.total_bytes_committed.is_zero());
     assert!(network_stats.total_pledge_collateral.is_positive());
 
@@ -225,7 +225,7 @@ fn skip_sector() {
     assert!(balances.initial_pledge.is_positive());
 
     // power unproven so network stats are the same
-    let network_stats = v.get_network_stats();
+    let network_stats = get_network_stats(&v);
     assert!(network_stats.total_bytes_committed.is_zero());
     assert!(network_stats.total_pledge_collateral.is_positive());
 
@@ -294,7 +294,7 @@ fn missed_first_post_deadline() {
     .matches(v.take_invocations().last().unwrap());
 
     // power unproven so network stats are the same
-    let network_stats = v.get_network_stats();
+    let network_stats = get_network_stats(&v);
     assert!(network_stats.total_bytes_committed.is_zero());
     assert!(network_stats.total_pledge_collateral.is_positive());
 
@@ -407,7 +407,7 @@ fn overdue_precommit() {
     assert!(balances.initial_pledge.is_zero());
     assert!(balances.pre_commit_deposit.is_zero());
 
-    let network_stats = v.get_network_stats();
+    let network_stats = get_network_stats(&v);
     assert!(network_stats.total_bytes_committed.is_zero());
     assert!(network_stats.total_pledge_collateral.is_zero());
     assert!(network_stats.total_raw_byte_power.is_zero());
