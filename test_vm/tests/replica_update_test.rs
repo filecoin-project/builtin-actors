@@ -37,9 +37,10 @@ use test_case::test_case;
 use test_vm::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline,
     apply_code, apply_ok, bf_all, check_sector_active, check_sector_faulty, create_accounts,
-    create_miner, deadline_state, declare_recovery, invariant_failure_patterns, make_bitfield,
-    market_publish_deal, miner_power, precommit_sectors, prove_commit_sectors, sector_info,
-    submit_invalid_post, submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
+    create_miner, deadline_state, declare_recovery, get_network_stats, invariant_failure_patterns,
+    make_bitfield, market_publish_deal, miner_power, precommit_sectors, prove_commit_sectors,
+    sector_info, submit_invalid_post, submit_windowed_post, verifreg_add_client,
+    verifreg_add_verifier,
 };
 use test_vm::TestVM;
 // ---- Success cases ----
@@ -670,7 +671,7 @@ fn terminate_after_upgrade() {
     assert!(miner_balances.initial_pledge.is_zero());
     assert!(miner_balances.pre_commit_deposit.is_zero());
 
-    let network_stats = v.get_network_stats();
+    let network_stats = get_network_stats(&v);
     assert!(network_stats.miner_above_min_power_count.is_zero());
     assert!(network_stats.total_raw_byte_power.is_zero());
     assert!(network_stats.total_quality_adj_power.is_zero());

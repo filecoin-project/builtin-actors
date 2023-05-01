@@ -1,4 +1,4 @@
-use fvm_ipld_blockstore::MemoryBlockstore;
+use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PaddedPieceSize;
@@ -20,17 +20,22 @@ use fvm_ipld_encoding::RawBytes;
 
 /* Mint a token for client and transfer it to a receiver, exercising error cases */
 #[test]
-fn datacap_transfer_scenario() {
-    let policy = Policy::default();
+fn datacap_transfer() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 3, &TokenAmount::from_whole(10_000));
+
+    datacap_transfer_test(&v);
+}
+
+fn datacap_transfer_test<BS: Blockstore>(v: &dyn VM<BS>) {
+    let policy = Policy::default();
+    let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let (client, operator, owner) = (addrs[0], addrs[1], addrs[2]);
 
     // need to allocate to an actual miner actor to pass verifreg receiver hook checks
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (maddr, _) = create_miner(
-        &v,
+        v,
         &owner,
         &owner,
         seal_proof.registered_window_post_proof().unwrap(),
@@ -44,7 +49,7 @@ fn datacap_transfer_scenario() {
 
     // cannot mint from non-verifreg
     apply_code(
-        &v,
+        v,
         &operator,
         &DATACAP_TOKEN_ACTOR_ADDR,
         &TokenAmount::zero(),
@@ -55,7 +60,7 @@ fn datacap_transfer_scenario() {
 
     // mint datacap for client
     apply_ok(
-        &v,
+        v,
         &VERIFIED_REGISTRY_ACTOR_ADDR,
         &DATACAP_TOKEN_ACTOR_ADDR,
         &TokenAmount::zero(),
@@ -65,7 +70,7 @@ fn datacap_transfer_scenario() {
 
     // confirm allowance was set to infinity
     apply_ok(
-        &v,
+        v,
         // anyone can call Allowance
         &owner,
         &DATACAP_TOKEN_ACTOR_ADDR,
@@ -112,7 +117,7 @@ fn datacap_transfer_scenario() {
     )
     .unwrap();
     apply_code(
-        &v,
+        v,
         &operator,
         &DATACAP_TOKEN_ACTOR_ADDR,
         &TokenAmount::zero(),
@@ -126,7 +131,7 @@ fn datacap_transfer_scenario() {
     params_mismatched_datacap.amount =
         TokenAmount::from_whole(MINIMUM_VERIFIED_ALLOCATION_SIZE + 1);
     apply_code(
-        &v,
+        v,
         &operator,
         &DATACAP_TOKEN_ACTOR_ADDR,
         &TokenAmount::zero(),
@@ -145,7 +150,7 @@ fn datacap_transfer_scenario() {
     )
     .unwrap();
     apply_code(
-        &v,
+        v,
         &operator,
         &DATACAP_TOKEN_ACTOR_ADDR,
         &TokenAmount::zero(),
@@ -158,7 +163,7 @@ fn datacap_transfer_scenario() {
     let mut params_bad_receiver = clone_params(&transfer_from_params);
     params_bad_receiver.to = owner;
     apply_code(
-        &v,
+        v,
         &owner,
         &DATACAP_TOKEN_ACTOR_ADDR,
         &TokenAmount::zero(),
@@ -169,7 +174,7 @@ fn datacap_transfer_scenario() {
 
     // cannot transfer with non-operator caller
     apply_code(
-        &v,
+        v,
         &owner,
         &DATACAP_TOKEN_ACTOR_ADDR,
         &TokenAmount::zero(),
@@ -179,7 +184,7 @@ fn datacap_transfer_scenario() {
     );
 
     apply_ok(
-        &v,
+        v,
         &operator,
         &DATACAP_TOKEN_ACTOR_ADDR,
         &TokenAmount::zero(),
@@ -189,7 +194,7 @@ fn datacap_transfer_scenario() {
 
     // Datacap already spent, not enough left
     apply_code(
-        &v,
+        v,
         &operator,
         &DATACAP_TOKEN_ACTOR_ADDR,
         &TokenAmount::zero(),
@@ -204,11 +209,16 @@ fn datacap_transfer_scenario() {
 fn call_name_symbol() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 1, &TokenAmount::from_whole(10_000));
+
+    call_name_symbol_test(&v);
+}
+
+fn call_name_symbol_test<BS: Blockstore>(v: &dyn VM<BS>) {
+    let addrs = create_accounts(v, 1, &TokenAmount::from_whole(10_000));
     let sender = addrs[0];
 
     let mut ret: String = apply_ok(
-        &v,
+        v,
         &sender,
         &DATACAP_TOKEN_ACTOR_ADDR,
         &TokenAmount::zero(),
@@ -220,7 +230,7 @@ fn call_name_symbol() {
     assert_eq!("DataCap", ret, "expected name DataCap, got {}", ret);
 
     ret = apply_ok(
-        &v,
+        v,
         &sender,
         &DATACAP_TOKEN_ACTOR_ADDR,
         &TokenAmount::zero(),

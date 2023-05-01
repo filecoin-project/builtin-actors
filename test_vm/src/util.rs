@@ -1,6 +1,7 @@
 use std::cmp::min;
 
 use fil_actor_verifreg::ext::datacap::MintParams;
+use fil_builtin_actors_state::check::check_state_invariants;
 use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
 use frc46_token::token::types::{BurnParams, TransferFromParams, TransferParams};
 use fvm_actor_utils::receiver::UniversalReceiverParams;
@@ -652,7 +653,7 @@ where
 }
 
 pub fn get_state<T: DeserializeOwned, BS: Blockstore>(v: &dyn VM<BS>, a: &Address) -> Option<T> {
-    let cid = v.state_root(a).unwrap();
+    let cid = v.actor_root(a).unwrap();
     v.blockstore().get(&cid).unwrap().map(|slice| fvm_ipld_encoding::from_slice(&slice).unwrap())
 }
 
@@ -818,6 +819,50 @@ pub fn change_beneficiary<BS: Blockstore>(
         MinerMethod::ChangeBeneficiary as u64,
         Some(beneficiary_change_proposal.clone()),
     );
+}
+
+pub fn check_invariants<BS: Blockstore>(vm: &dyn VM<BS>) -> anyhow::Result<MessageAccumulator> {
+    check_state_invariants(
+        &vm.actor_manifest(),
+        &vm.policy(),
+        Tree::load(*vm.blockstore(), &vm.state_root()).unwrap(),
+        &vm.total_fil(),
+        vm.epoch() - 1,
+    )
+}
+
+pub fn assert_invariants<BS: Blockstore>(vm: &dyn VM<BS>) {
+    check_invariants(vm).unwrap().assert_empty()
+}
+
+pub fn expect_invariants<BS: Blockstore>(vm: &dyn VM<BS>, expected_patterns: &[Regex]) {
+    check_invariants(vm).unwrap().assert_expected(expected_patterns)
+}
+
+pub fn get_network_stats<BS: Blockstore>(vm: &dyn VM<BS>) -> NetworkStats {
+    let power_state: PowerState = get_state(vm, &STORAGE_POWER_ACTOR_ADDR).unwrap();
+    let reward_state: RewardState = get_state(vm, &REWARD_ACTOR_ADDR).unwrap();
+    let market_state: MarketState = get_state(vm, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
+
+    NetworkStats {
+        total_raw_byte_power: power_state.total_raw_byte_power,
+        total_bytes_committed: power_state.total_bytes_committed,
+        total_quality_adj_power: power_state.total_quality_adj_power,
+        total_qa_bytes_committed: power_state.total_qa_bytes_committed,
+        total_pledge_collateral: power_state.total_pledge_collateral,
+        this_epoch_raw_byte_power: power_state.this_epoch_raw_byte_power,
+        this_epoch_quality_adj_power: power_state.this_epoch_quality_adj_power,
+        this_epoch_pledge_collateral: power_state.this_epoch_pledge_collateral,
+        miner_count: power_state.miner_count,
+        miner_above_min_power_count: power_state.miner_above_min_power_count,
+        this_epoch_reward: reward_state.this_epoch_reward,
+        this_epoch_reward_smoothed: reward_state.this_epoch_reward_smoothed,
+        this_epoch_baseline_power: reward_state.this_epoch_baseline_power,
+        total_storage_power_reward: reward_state.total_storage_power_reward,
+        total_client_locked_collateral: market_state.total_client_locked_collateral,
+        total_provider_locked_collateral: market_state.total_provider_locked_collateral,
+        total_client_storage_fee: market_state.total_client_storage_fee,
+    }
 }
 
 pub fn get_beneficiary<BS: Blockstore>(
