@@ -81,7 +81,7 @@ pub trait VM<BS: Blockstore> {
     fn blockstore(&self) -> Box<&BS>;
 
     /// Get the state root of the specified actor
-    fn state_root(&self, address: &Address) -> Option<Cid>;
+    fn actor_root(&self, address: &Address) -> Option<Cid>;
 
     /// Get the current chain epoch
     fn epoch(&self) -> ChainEpoch;
@@ -107,6 +107,21 @@ pub trait VM<BS: Blockstore> {
 
     /// Take all the invocations that have been made since the last call to this method
     fn take_invocations(&self) -> Vec<InvocationTrace>;
+
+    /// Get information about an actor
+    fn actor(&self, address: &Address) -> Option<Actor>;
+
+    /// Build a map of all actors in the system and their type
+    fn actor_manifest(&self) -> BiBTreeMap<Cid, Type>;
+
+    /// Get the current runtime policy
+    fn policy(&self) -> Policy;
+
+    /// Get the root Cid of the state tree
+    fn state_root(&self) -> Cid;
+
+    /// Get the total amount of FIL in circulation
+    fn total_fil(&self) -> TokenAmount;
 }
 
 /// An in-memory rust-execution VM for testing that yields sensible stack traces and debug info
@@ -234,7 +249,7 @@ where
         }
     }
 
-    fn state_root(&self, address: &Address) -> Option<Cid> {
+    fn actor_root(&self, address: &Address) -> Option<Cid> {
         let a_opt = self.get_actor(address);
         if a_opt == None {
             return None;
@@ -259,6 +274,48 @@ where
 
     fn take_invocations(&self) -> Vec<InvocationTrace> {
         self.invocations.take()
+    }
+
+    fn actor(&self, address: &Address) -> Option<Actor> {
+        // check for inclusion in cache of changed actors
+        if let Some(act) = self.actors_cache.borrow().get(address) {
+            return Some(act.clone());
+        }
+        // go to persisted map
+        let actors =
+            Hamt::<&'bs BS, Actor, BytesKey, Sha256>::load(&self.state_root.borrow(), self.store)
+                .unwrap();
+        let actor = actors.get(&address.to_bytes()).unwrap().cloned();
+        actor.iter().for_each(|a| {
+            self.actors_cache.borrow_mut().insert(*address, a.clone());
+        });
+        actor
+    }
+
+    fn actor_manifest(&self) -> BiBTreeMap<Cid, Type> {
+        let actors =
+            Hamt::<&'bs BS, Actor, BytesKey, Sha256>::load(&self.state_root.borrow(), self.store)
+                .unwrap();
+        let mut manifest = BiBTreeMap::new();
+        actors
+            .for_each(|_, actor| {
+                manifest.insert(actor.code, ACTOR_TYPES.get(&actor.code).unwrap().to_owned());
+                Ok(())
+            })
+            .unwrap();
+        manifest
+    }
+
+    fn policy(&self) -> Policy {
+        Policy::default()
+    }
+
+    fn state_root(&self) -> Cid {
+        *self.state_root.borrow()
+    }
+
+    fn total_fil(&self) -> TokenAmount {
+        self.total_fil.clone()
     }
 }
 
@@ -456,32 +513,6 @@ where
     pub fn get_miner_info(&self, maddr: &Address) -> MinerInfo {
         let st = self.get_state::<MinerState>(maddr).unwrap();
         self.store.get_cbor::<MinerInfo>(&st.info).unwrap().unwrap()
-    }
-
-    pub fn get_network_stats(&self) -> NetworkStats {
-        let power_state = self.get_state::<PowerState>(&STORAGE_POWER_ACTOR_ADDR).unwrap();
-        let reward_state = self.get_state::<RewardState>(&REWARD_ACTOR_ADDR).unwrap();
-        let market_state = self.get_state::<MarketState>(&STORAGE_MARKET_ACTOR_ADDR).unwrap();
-
-        NetworkStats {
-            total_raw_byte_power: power_state.total_raw_byte_power,
-            total_bytes_committed: power_state.total_bytes_committed,
-            total_quality_adj_power: power_state.total_quality_adj_power,
-            total_qa_bytes_committed: power_state.total_qa_bytes_committed,
-            total_pledge_collateral: power_state.total_pledge_collateral,
-            this_epoch_raw_byte_power: power_state.this_epoch_raw_byte_power,
-            this_epoch_quality_adj_power: power_state.this_epoch_quality_adj_power,
-            this_epoch_pledge_collateral: power_state.this_epoch_pledge_collateral,
-            miner_count: power_state.miner_count,
-            miner_above_min_power_count: power_state.miner_above_min_power_count,
-            this_epoch_reward: reward_state.this_epoch_reward,
-            this_epoch_reward_smoothed: reward_state.this_epoch_reward_smoothed,
-            this_epoch_baseline_power: reward_state.this_epoch_baseline_power,
-            total_storage_power_reward: reward_state.total_storage_power_reward,
-            total_client_locked_collateral: market_state.total_client_locked_collateral,
-            total_provider_locked_collateral: market_state.total_provider_locked_collateral,
-            total_client_storage_fee: market_state.total_client_storage_fee,
-        }
     }
 
     pub fn put_store<S>(&self, obj: &S) -> Cid

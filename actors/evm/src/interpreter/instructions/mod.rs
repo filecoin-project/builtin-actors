@@ -58,7 +58,7 @@ macro_rules! def_primop {
     ($op:ident () => $impl:path) => {
         def_op!{ $op (m) => {
             m.state.stack.ensure_one();
-            let result = $impl($($arg),*);
+            let result = $impl();
             m.state.stack.push_unchecked(result);
             m.pc += 1;
             Ok(())

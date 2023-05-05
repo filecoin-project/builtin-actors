@@ -14,7 +14,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
 use test_case::test_case;
 use test_vm::util::{
-    advance_to_proving_deadline, apply_ok, create_accounts, create_miner,
+    advance_to_proving_deadline, apply_ok, create_accounts, create_miner, get_network_stats,
     invariant_failure_patterns, precommit_sectors_v2, prove_commit_sectors, submit_windowed_post,
 };
 use test_vm::{TestVM, VM};
@@ -133,7 +133,7 @@ fn batch_onboarding(v2: bool) {
     let balances = v.get_miner_balance(&id_addr);
     assert!(balances.initial_pledge.is_positive());
 
-    let network_stats = v.get_network_stats();
+    let network_stats = get_network_stats(&v);
     let sector_size = seal_proof.sector_size().unwrap() as u64;
     assert_eq!(network_stats.total_bytes_committed, BigInt::from(sector_size * proven_count));
     assert!(network_stats.total_pledge_collateral.is_positive());
