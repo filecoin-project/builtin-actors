@@ -881,7 +881,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     let balance_of_return = TokenAmount::from_whole(2048);
     rt.expect_send_simple(
         DATACAP_TOKEN_ACTOR_ADDR,
-        ext::datacap::BALANCE_OF_METHOD as u64,
+        ext::datacap::BALANCE_OF_METHOD,
         IpldBlock::serialize_cbor(&balance_of_params).unwrap(),
         TokenAmount::zero(),
         IpldBlock::serialize_cbor(&balance_of_return).unwrap(),
@@ -911,7 +911,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
     };
     rt.expect_send_simple(
         DATACAP_TOKEN_ACTOR_ADDR,
-        ext::datacap::TRANSFER_FROM_METHOD as u64,
+        ext::datacap::TRANSFER_FROM_METHOD,
         IpldBlock::serialize_cbor(&transfer_params).unwrap(),
         TokenAmount::zero(),
         IpldBlock::serialize_cbor(&transfer_return).unwrap(),
@@ -2072,7 +2072,7 @@ fn insufficient_client_balance_in_a_batch() {
 
     rt.expect_send(
         deal1.client,
-        AUTHENTICATE_MESSAGE_METHOD as u64,
+        AUTHENTICATE_MESSAGE_METHOD,
         authenticate_param1,
         TokenAmount::zero(),
         None,
@@ -2083,7 +2083,7 @@ fn insufficient_client_balance_in_a_batch() {
     );
     rt.expect_send(
         deal2.client,
-        AUTHENTICATE_MESSAGE_METHOD as u64,
+        AUTHENTICATE_MESSAGE_METHOD,
         authenticate_param2,
         TokenAmount::zero(),
         None,
@@ -2212,7 +2212,7 @@ fn insufficient_provider_balance_in_a_batch() {
 
     rt.expect_send(
         deal1.client,
-        AUTHENTICATE_MESSAGE_METHOD as u64,
+        AUTHENTICATE_MESSAGE_METHOD,
         authenticate_param1,
         TokenAmount::zero(),
         None,
@@ -2223,7 +2223,7 @@ fn insufficient_provider_balance_in_a_batch() {
     );
     rt.expect_send(
         deal2.client,
-        AUTHENTICATE_MESSAGE_METHOD as u64,
+        AUTHENTICATE_MESSAGE_METHOD,
         authenticate_param2,
         TokenAmount::zero(),
         None,
@@ -2367,7 +2367,7 @@ fn psd_restricted_correctly() {
 
     rt.expect_send(
         deal.client,
-        AUTHENTICATE_MESSAGE_METHOD as u64,
+        AUTHENTICATE_MESSAGE_METHOD,
         authenticate_param1,
         TokenAmount::zero(),
         None,

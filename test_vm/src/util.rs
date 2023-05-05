@@ -926,7 +926,7 @@ pub fn withdraw_balance<BS: Blockstore>(
             params: Some(withdraw_balance_params_se),
             subinvocs: Some(vec![ExpectInvocation {
                 to: *from,
-                method: METHOD_SEND as u64,
+                method: METHOD_SEND,
                 value: Some(expect_withdraw_amount.clone()),
                 ..Default::default()
             }]),

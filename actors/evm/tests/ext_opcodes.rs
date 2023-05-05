@@ -288,7 +288,7 @@ account:
         U256::from_big_endian(&result).to_bytes(),
         empty_hash.as_slice(),
         "expected empty hash: {}, got {}",
-        hex::encode(&empty_hash),
+        hex::encode(empty_hash),
         hex::encode(&result)
     );
     rt.reset();

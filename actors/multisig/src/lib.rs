@@ -512,9 +512,9 @@ fn execute_transaction_if_approved(
     Ok((applied, out, code))
 }
 
-fn get_transaction<'bs, 'm, BS, RT>(
+fn get_transaction<'m, BS, RT>(
     rt: &RT,
-    ptx: &'m Map<'bs, BS, Transaction>,
+    ptx: &'m Map<'_, BS, Transaction>,
     txn_id: TxnID,
     proposal_hash: Vec<u8>,
 ) -> Result<&'m Transaction, ActorError>

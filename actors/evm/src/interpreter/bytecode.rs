@@ -15,7 +15,7 @@ impl Bytecode {
         let mut jumpdest = vec![false; bytecode.len()];
         let mut i = 0;
         while i < bytecode.len() {
-            if bytecode[i] == opcodes::JUMPDEST as u8 {
+            if bytecode[i] == opcodes::JUMPDEST {
                 jumpdest[i] = true;
                 i += 1;
             } else if bytecode[i] >= opcodes::PUSH1 && bytecode[i] <= opcodes::PUSH32 {

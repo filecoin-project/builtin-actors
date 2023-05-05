@@ -36,7 +36,7 @@ mod state;
 pub mod testing;
 mod types;
 
-pub const DATACAP_GRANULARITY: u64 = TOKEN_PRECISION as u64;
+pub const DATACAP_GRANULARITY: u64 = TOKEN_PRECISION;
 
 lazy_static! {
     // > 800 EiB

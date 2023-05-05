@@ -16,15 +16,17 @@ pub struct BeneficiaryTerm {
     pub expiration: ChainEpoch,
 }
 
-impl BeneficiaryTerm {
-    pub fn default() -> BeneficiaryTerm {
+impl Default for BeneficiaryTerm {
+    fn default() -> BeneficiaryTerm {
         BeneficiaryTerm {
             quota: TokenAmount::zero(),
             expiration: 0,
             used_quota: TokenAmount::zero(),
         }
     }
+}
 
+impl BeneficiaryTerm {
     pub fn new(
         quota: TokenAmount,
         used_quota: TokenAmount,

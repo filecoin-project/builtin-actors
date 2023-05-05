@@ -79,7 +79,7 @@ fn setup(store: &MemoryBlockstore) -> (TestVM<MemoryBlockstore>, Addrs, ChainEpo
     verifreg_add_verifier(&v, &verifier, StoragePower::from((32_u64 << 40) as u128));
     let add_client_params = AddVerifiedClientParams {
         address: verified_client,
-        allowance: StoragePower::from((1_u64 << 32) as u64),
+        allowance: StoragePower::from(1_u64 << 32),
     };
     apply_ok(
         &v,

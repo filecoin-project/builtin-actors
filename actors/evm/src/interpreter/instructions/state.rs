@@ -99,7 +99,7 @@ mod test {
         evm_unit_test! {
             (rt) {
                 // 0xff id address gets balance
-                rt.actor_balances.insert(id as u64, TokenAmount::from_atto(balance));
+                rt.actor_balances.insert(id, TokenAmount::from_atto(balance));
             }
             (m) {
                 PUSH0;

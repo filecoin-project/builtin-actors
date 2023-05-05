@@ -121,7 +121,7 @@ fn assert_simple_batch(
 
     // Check precommits
     let st: State = rt.get_state();
-    for i in (0..batch_size).map(|i| i as usize) {
+    for i in 0..batch_size {
         assert_eq!(precommit_epoch, precommits[i].pre_commit_epoch);
         assert_eq!(conf.sector_deal_data[i].commd, precommits[i].info.unsealed_cid.0);
 

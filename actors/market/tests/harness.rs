@@ -510,7 +510,7 @@ pub fn publish_deals(
         // Expect an invocation of authenticate_message to verify the signature.
         rt.expect_send(
             deal.client,
-            ext::account::AUTHENTICATE_MESSAGE_METHOD as u64,
+            ext::account::AUTHENTICATE_MESSAGE_METHOD,
             IpldBlock::serialize_cbor(&AuthenticateMessageParams {
                 signature: "does not matter".as_bytes().to_vec(),
                 message: buf.to_vec(),
@@ -532,7 +532,7 @@ pub fn publish_deals(
             if client_verified_deals.get(&client_id).is_none() {
                 rt.expect_send_simple(
                     DATACAP_TOKEN_ACTOR_ADDR,
-                    ext::datacap::BALANCE_OF_METHOD as u64,
+                    ext::datacap::BALANCE_OF_METHOD,
                     IpldBlock::serialize_cbor(&deal.client).unwrap(),
                     TokenAmount::zero(),
                     IpldBlock::serialize_cbor(&clients_datacap_balance).unwrap(),
@@ -594,7 +594,7 @@ pub fn publish_deals(
         };
         rt.expect_send_simple(
             DATACAP_TOKEN_ACTOR_ADDR,
-            ext::datacap::TRANSFER_FROM_METHOD as u64,
+            ext::datacap::TRANSFER_FROM_METHOD,
             IpldBlock::serialize_cbor(&params).unwrap(),
             TokenAmount::zero(),
             IpldBlock::serialize_cbor(&TransferFromReturn {

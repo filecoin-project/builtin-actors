@@ -83,13 +83,13 @@ mod mint {
         assert_eq!(amt, ret.supply);
         assert_eq!(amt, ret.balance);
         assert_eq!(amt, h.get_supply(&rt));
-        assert_eq!(amt, h.get_balance(&rt, &*ALICE));
+        assert_eq!(amt, h.get_balance(&rt, &ALICE));
 
         let ret = h.mint(&rt, &BOB, &amt, vec![]).unwrap();
         assert_eq!(&amt * 2, ret.supply);
         assert_eq!(amt, ret.balance);
         assert_eq!(&amt * 2, h.get_supply(&rt));
-        assert_eq!(amt, h.get_balance(&rt, &*BOB));
+        assert_eq!(amt, h.get_balance(&rt, &BOB));
 
         h.check_state(&rt);
     }

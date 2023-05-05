@@ -1117,7 +1117,7 @@ fn transfer_from(
 ) -> Result<Vec<AllocationID>, ActorError> {
     let ret = extract_send_result(rt.send_simple(
         &DATACAP_TOKEN_ACTOR_ADDR,
-        ext::datacap::TRANSFER_FROM_METHOD as u64,
+        ext::datacap::TRANSFER_FROM_METHOD,
         IpldBlock::serialize_cbor(&params)?,
         TokenAmount::zero(),
     ))
@@ -1135,7 +1135,7 @@ fn balance_of(rt: &impl Runtime, owner: &Address) -> Result<TokenAmount, ActorEr
     let params = IpldBlock::serialize_cbor(owner)?;
     let ret = extract_send_result(rt.send_simple(
         &DATACAP_TOKEN_ACTOR_ADDR,
-        ext::datacap::BALANCE_OF_METHOD as u64,
+        ext::datacap::BALANCE_OF_METHOD,
         params,
         TokenAmount::zero(),
     ))
