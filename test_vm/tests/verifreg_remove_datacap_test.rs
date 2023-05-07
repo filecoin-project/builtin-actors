@@ -345,7 +345,7 @@ fn expect_remove_datacap(
 ) -> ExpectInvocation {
     let payload1 = [
         SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP,
-        RawBytes::serialize(&RemoveDataCapProposal {
+        RawBytes::serialize(RemoveDataCapProposal {
             removal_proposal_id: proposal_id1,
             data_cap_amount: params.data_cap_amount_to_remove.clone(),
             verified_client: params.verified_client_to_remove,
@@ -356,7 +356,7 @@ fn expect_remove_datacap(
     .concat();
     let payload2 = [
         SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP,
-        RawBytes::serialize(&RemoveDataCapProposal {
+        RawBytes::serialize(RemoveDataCapProposal {
             removal_proposal_id: proposal_id2,
             data_cap_amount: params.data_cap_amount_to_remove.clone(),
             verified_client: params.verified_client_to_remove,

@@ -272,12 +272,8 @@ impl Actor {
         };
         let state: State = rt.state()?;
         let info = get_miner_info(rt.store(), &state)?;
-        let is_controlling = info
-            .control_addresses
-            .iter()
-            .chain(&[info.worker, info.owner])
-            .into_iter()
-            .any(|a| *a == input);
+        let is_controlling =
+            info.control_addresses.iter().chain(&[info.worker, info.owner]).any(|a| *a == input);
 
         Ok(IsControllingAddressReturn { is_controlling })
     }
@@ -1544,7 +1540,7 @@ impl Actor {
 
                 // Find the proving period start for the deadline in question.
                 let mut pp_start = dl_info.period_start;
-                if dl_info.index < params.deadline as u64 {
+                if dl_info.index < params.deadline {
                     pp_start -= policy.wpost_proving_period
                 }
                 let target_deadline =
@@ -4529,7 +4525,7 @@ fn get_claims(
     let claims_ret: ext::verifreg::GetClaimsReturn =
         deserialize_block(extract_send_result(rt.send_simple(
             &VERIFIED_REGISTRY_ACTOR_ADDR,
-            ext::verifreg::GET_CLAIMS_METHOD as u64,
+            ext::verifreg::GET_CLAIMS_METHOD,
             IpldBlock::serialize_cbor(&params)?,
             TokenAmount::zero(),
         ))?)?;

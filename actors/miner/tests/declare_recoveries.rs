@@ -20,8 +20,7 @@ const PERIOD_OFFSET: ChainEpoch = 100;
 #[test]
 fn recovery_happy_path() {
     let (mut h, rt) = setup();
-    let one_sector =
-        h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION as u64, vec![], true);
+    let one_sector = h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![], true);
 
     // advance to first proving period and submit so we'll have time to declare the fault next cycle
     h.advance_and_submit_posts(&rt, &one_sector);
@@ -51,8 +50,7 @@ fn recovery_happy_path() {
 #[test]
 fn recovery_must_pay_back_fee_debt() {
     let (mut h, rt) = setup();
-    let one_sector =
-        h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION as u64, vec![], true);
+    let one_sector = h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![], true);
 
     // advance to first proving period and submit so we'll have time to declare the fault next cycle
     h.advance_and_submit_posts(&rt, &one_sector);
@@ -124,8 +122,7 @@ fn recovery_must_pay_back_fee_debt() {
 #[test]
 fn recovery_fails_during_active_consensus_fault() {
     let (mut h, rt) = setup();
-    let one_sector =
-        h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION as u64, vec![], true);
+    let one_sector = h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![], true);
 
     // consensus fault
     let test_addr = Address::new_id(1234);

@@ -339,7 +339,7 @@ fn fail_when_deals_have_different_providers() {
 
     rt.expect_send(
         deal1.client,
-        AUTHENTICATE_MESSAGE_METHOD as u64,
+        AUTHENTICATE_MESSAGE_METHOD,
         authenticate_param1,
         TokenAmount::zero(),
         None,
@@ -350,7 +350,7 @@ fn fail_when_deals_have_different_providers() {
     );
     rt.expect_send(
         deal2.client,
-        AUTHENTICATE_MESSAGE_METHOD as u64,
+        AUTHENTICATE_MESSAGE_METHOD,
         authenticate_param2,
         TokenAmount::zero(),
         None,
@@ -526,7 +526,7 @@ fn fails_if_notify_deal_fails() {
 
     rt.expect_send(
         CLIENT_ADDR,
-        AUTHENTICATE_MESSAGE_METHOD as u64,
+        AUTHENTICATE_MESSAGE_METHOD,
         IpldBlock::serialize_cbor(&AuthenticateMessageParams {
             signature: sig.bytes,
             message: buf.to_vec(),

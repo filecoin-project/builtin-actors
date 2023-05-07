@@ -958,7 +958,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
             types, expected_caller_type,
         );
 
-        if let Some(call_type) = self.resolve_builtin_actor_type(&*self.caller_type.borrow()) {
+        if let Some(call_type) = self.resolve_builtin_actor_type(&self.caller_type.borrow()) {
             for expected in &types {
                 if &call_type == expected {
                     self.expectations.borrow_mut().expect_validate_caller_type = None;

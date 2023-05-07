@@ -82,7 +82,7 @@ fn test_evm_call() {
     let BytesDe(return_value) =
         call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
     let evm_ret: u32 = contract
-        .decode_output(&contract.enter().function.name, &return_value)
+        .decode_output(&contract.enter().function.name, return_value)
         .expect("failed to decode return");
     assert_eq!(0, evm_ret, "expected contract to return 0 on success");
 }
@@ -142,7 +142,7 @@ fn test_evm_create() {
             let BytesDe(return_value) =
                 call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
             factory
-                .decode_output(&create_func.function.name, &return_value)
+                .decode_output(&create_func.function.name, return_value)
                 .expect("failed to decode return")
         };
 
@@ -169,7 +169,7 @@ fn test_evm_create() {
             let BytesDe(return_value) =
                 call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
             let res: u32 = factory_child
-                .decode_output(&func.function.name, &return_value)
+                .decode_output(&func.function.name, return_value)
                 .expect("failed to decode return");
             assert_eq!(res, 42);
         }

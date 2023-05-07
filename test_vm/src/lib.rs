@@ -251,10 +251,7 @@ where
 
     fn actor_root(&self, address: &Address) -> Option<Cid> {
         let a_opt = self.get_actor(address);
-        if a_opt == None {
-            return None;
-        };
-        let a = a_opt.unwrap();
+        let a = a_opt.as_ref()?;
         Some(a.head)
     }
 
@@ -571,10 +568,7 @@ where
 
     pub fn get_state<T: DeserializeOwned>(&self, addr: &Address) -> Option<T> {
         let a_opt = self.get_actor(addr);
-        if a_opt == None {
-            return None;
-        };
-        let a = a_opt.unwrap();
+        let a = a_opt.as_ref()?;
         self.store.get_cbor::<T>(&a.head).unwrap()
     }
 

@@ -1046,7 +1046,7 @@ fn require_create_channel_with_lanes(num_lanes: u64) -> (MockRuntime, SignedVouc
             from: payer_addr,
             to: payee_addr,
             amt: (TokenAmount::from_atto(i + 1)),
-            lane: i as u64,
+            lane: i,
             nonce: i + 1,
         };
 
