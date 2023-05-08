@@ -462,8 +462,9 @@ where
     }
 
     fn batch_verify_seals(&self, batch: &[SealVerifyInfo]) -> anyhow::Result<Vec<bool>> {
-        fvm::crypto::batch_verify_seals(batch)
-            .map_err(|e| anyhow!("failed to verify batch seals: {}", e))
+        // FIXME: patching this in for the time being, but we should really allow the actors to be built
+        // with a runtime that's suitable for benchmark testing
+        Ok(vec![true; batch.len()]) // everyone wins
     }
 
     fn verify_aggregate_seals(

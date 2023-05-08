@@ -425,6 +425,8 @@ impl Actor {
         let mut miners: Vec<(Address, usize)> = Vec::new();
         let mut infos: Vec<SealVerifyInfo> = Vec::new();
         let mut st_err: Option<String> = None;
+
+        debug!("Processing Batch Proof Verifies");
         let this_epoch_qa_power_smoothed = rt
             .transaction(|st: &mut State, rt| {
                 let result = Ok(st.this_epoch_qa_power_smoothed.clone());
@@ -435,6 +437,7 @@ impl Actor {
                     }
                     Some(batch) => batch,
                 };
+                debug!("Had a valid batch");
                 let mmap = match Multimap::from_root(
                     rt.store(),
                     batch,
@@ -459,6 +462,7 @@ impl Actor {
                         return result;
                     }
                 };
+                debug!("Had valid claims");
 
                 if let Err(e) = mmap.for_all::<_, SealVerifyInfo>(|k, arr| {
                     let addr = match Address::from_bytes(&k.0) {
@@ -467,6 +471,8 @@ impl Actor {
                             return Err(anyhow!("failed to parse address key: {}", e));
                         }
                     };
+
+                    debug!("Addr: {:?}", addr);
 
                     let contains_claim = match claims.contains_key(&addr.to_bytes()) {
                         Ok(contains_claim) => contains_claim,
@@ -477,6 +483,8 @@ impl Actor {
                         debug!("skipping batch verifies for unknown miner: {}", addr);
                         return Ok(());
                     }
+
+                    debug!("Contains claims");
 
                     let num_proofs: usize = arr.count().try_into()?;
                     infos.reserve(num_proofs);
@@ -514,7 +522,11 @@ impl Actor {
         let res =
             rt.batch_verify_seals(&infos).map_err(|e| format!("failed to batch verify: {}", e))?;
 
+        debug!("Batch verify seals result {:?}", res);
+
         let mut res_iter = infos.iter().zip(res.iter().copied());
+
+        debug!("Miners {:?}", miners);
         for (m, count) in miners {
             let successful: Vec<_> = res_iter
                 .by_ref()
@@ -530,6 +542,8 @@ impl Actor {
                     move |snum| seen.insert(*snum)
                 })
                 .collect();
+
+            debug!("Miner {:?} success {:?}", m, successful);
 
             // Result intentionally ignored
             if successful.is_empty() {
@@ -585,7 +599,7 @@ impl Actor {
                         format!("failed to load cron events at {}", epoch),
                     )
                 })?;
-
+                debug!("epoch {} events: {:?}", epoch, epoch_events);
                 if epoch_events.is_empty() {
                     continue;
                 }

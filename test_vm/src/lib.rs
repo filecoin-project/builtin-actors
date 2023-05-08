@@ -124,6 +124,7 @@ where
     invocations: RefCell<Vec<InvocationTrace>>,
 }
 
+#[derive(Debug)]
 pub struct MinerBalances {
     pub available_balance: TokenAmount,
     pub vesting_balance: TokenAmount,
