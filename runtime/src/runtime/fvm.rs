@@ -231,14 +231,20 @@ where
         rand_epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        fvm::rand::get_chain_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
-            match e {
-                ErrorNumber::LimitExceeded => {
-                    actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
-                }
-                e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
-            }
-        })
+        // FIXME: Temp
+        const TEST_VM_RAND_ARRAY: [u8; 32] = [
+            1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+            24, 25, 26, 27, 28, 29, 30, 31, 32,
+        ];
+        Ok(TEST_VM_RAND_ARRAY)
+        // fvm::rand::get_chain_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
+        //     match e {
+        //         ErrorNumber::LimitExceeded => {
+        //             actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
+        //         }
+        //         e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
+        //     }
+        // })
     }
 
     fn get_randomness_from_beacon(

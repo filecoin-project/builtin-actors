@@ -437,7 +437,6 @@ impl Actor {
                     }
                     Some(batch) => batch,
                 };
-                debug!("Had a valid batch");
                 let mmap = match Multimap::from_root(
                     rt.store(),
                     batch,
@@ -462,7 +461,6 @@ impl Actor {
                         return result;
                     }
                 };
-                debug!("Had valid claims");
 
                 if let Err(e) = mmap.for_all::<_, SealVerifyInfo>(|k, arr| {
                     let addr = match Address::from_bytes(&k.0) {
@@ -483,8 +481,6 @@ impl Actor {
                         debug!("skipping batch verifies for unknown miner: {}", addr);
                         return Ok(());
                     }
-
-                    debug!("Contains claims");
 
                     let num_proofs: usize = arr.count().try_into()?;
                     infos.reserve(num_proofs);
@@ -526,7 +522,6 @@ impl Actor {
 
         let mut res_iter = infos.iter().zip(res.iter().copied());
 
-        debug!("Miners {:?}", miners);
         for (m, count) in miners {
             let successful: Vec<_> = res_iter
                 .by_ref()
@@ -542,8 +537,6 @@ impl Actor {
                     move |snum| seen.insert(*snum)
                 })
                 .collect();
-
-            debug!("Miner {:?} success {:?}", m, successful);
 
             // Result intentionally ignored
             if successful.is_empty() {
@@ -599,7 +592,6 @@ impl Actor {
                         format!("failed to load cron events at {}", epoch),
                     )
                 })?;
-                debug!("epoch {} events: {:?}", epoch, epoch_events);
                 if epoch_events.is_empty() {
                     continue;
                 }
