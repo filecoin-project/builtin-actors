@@ -7,15 +7,16 @@ use fil_actors_runtime::runtime::policy_constants::{
     MAX_AGGREGATED_SECTORS, PRE_COMMIT_SECTOR_BATCH_MAX_SIZE,
 };
 use fil_actors_runtime::CRON_ACTOR_ADDR;
-use fvm_ipld_blockstore::MemoryBlockstore;
+use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::{BigInt, Zero};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
 use test_case::test_case;
 use test_vm::util::{
-    advance_to_proving_deadline, apply_ok, create_accounts, create_miner, get_network_stats,
-    invariant_failure_patterns, precommit_sectors_v2, prove_commit_sectors, submit_windowed_post,
+    advance_to_proving_deadline, apply_ok, create_accounts, create_miner, expect_invariants,
+    get_network_stats, get_state, invariant_failure_patterns, miner_balance, precommit_sectors_v2,
+    prove_commit_sectors, submit_windowed_post,
 };
 use test_vm::{TestVM, VM};
 
@@ -50,11 +51,18 @@ impl Onboarding {
 fn batch_onboarding(v2: bool) {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 1, &TokenAmount::from_whole(10_000));
-    let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
+
+    batch_onboarding_test(&v, v2);
+}
+
+pub fn batch_onboarding_test<BS: Blockstore>(v: &dyn VM<BS>, v2: bool) {
+    let seal_proof = &RegisteredSealProof::StackedDRG32GiBV1P1;
+
+    let mut proven_count = 0;
+    let addrs = create_accounts(v, 1, &TokenAmount::from_whole(10_000));
     let (owner, worker) = (addrs[0], addrs[0]);
     let (id_addr, _) = create_miner(
-        &v,
+        v,
         &owner,
         &worker,
         seal_proof.registered_window_post_proof().unwrap(),
@@ -76,7 +84,6 @@ fn batch_onboarding(v2: bool) {
     let mut next_sector_no: SectorNumber = 0;
     #[allow(unused_variables)]
     let mut pre_committed_count = 0;
-    let mut proven_count = 0;
 
     let vec_onboarding = vec![
         Onboarding::new(0, 10, PRE_COMMIT_SECTOR_BATCH_MAX_SIZE as i64, 0, 0),
@@ -95,12 +102,12 @@ fn batch_onboarding(v2: bool) {
 
         if item.pre_commit_sector_count > 0 {
             let mut new_precommits = precommit_sectors_v2(
-                &v,
+                v,
                 item.pre_commit_sector_count,
                 item.pre_commit_batch_size,
                 &worker,
                 &id_addr,
-                seal_proof,
+                *seal_proof,
                 next_sector_no,
                 next_sector_no == 0,
                 None,
@@ -114,32 +121,32 @@ fn batch_onboarding(v2: bool) {
         if item.prove_commit_sector_count > 0 {
             let to_prove = precommmits[..item.prove_commit_sector_count as usize].to_vec();
             precommmits = precommmits[item.prove_commit_sector_count as usize..].to_vec();
-            prove_commit_sectors(&v, &worker, &id_addr, to_prove, item.prove_commit_aggregate_size);
+            prove_commit_sectors(v, &worker, &id_addr, to_prove, item.prove_commit_aggregate_size);
             proven_count += item.prove_commit_sector_count;
         }
     }
 
-    let (dline_info, p_idx) = advance_to_proving_deadline(&v, &id_addr, 0);
+    let (dline_info, p_idx) = advance_to_proving_deadline(v, &id_addr, 0);
 
     // submit post
-    let st = v.get_state::<MinerState>(&id_addr).unwrap();
-    let sector = st.get_sector(v.store, 0).unwrap().unwrap();
+    let st: MinerState = get_state(v, &id_addr).unwrap();
+    let sector = st.get_sector(*v.blockstore(), 0).unwrap().unwrap();
     let mut new_power = power_for_sector(seal_proof.sector_size().unwrap(), &sector);
     new_power.raw *= proven_count;
     new_power.qa *= proven_count;
 
-    submit_windowed_post(&v, &worker, &id_addr, dline_info, p_idx, Some(new_power.clone()));
+    submit_windowed_post(v, &worker, &id_addr, dline_info, p_idx, Some(new_power.clone()));
 
-    let balances = v.get_miner_balance(&id_addr);
+    let balances = miner_balance(v, &id_addr);
     assert!(balances.initial_pledge.is_positive());
 
-    let network_stats = get_network_stats(&v);
+    let network_stats = get_network_stats(v);
     let sector_size = seal_proof.sector_size().unwrap() as u64;
     assert_eq!(network_stats.total_bytes_committed, BigInt::from(sector_size * proven_count));
     assert!(network_stats.total_pledge_collateral.is_positive());
 
     apply_ok(
-        &v,
+        v,
         &SYSTEM_ACTOR_ADDR,
         &CRON_ACTOR_ADDR,
         &TokenAmount::zero(),
@@ -147,7 +154,10 @@ fn batch_onboarding(v2: bool) {
         None::<RawBytes>,
     );
 
-    v.expect_state_invariants(
-        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
-    );
+    let network_stats = get_network_stats(v);
+    let sector_size = seal_proof.sector_size().unwrap() as u64;
+    assert_eq!(network_stats.total_bytes_committed, BigInt::from(sector_size * proven_count));
+    assert!(network_stats.total_pledge_collateral.is_positive());
+
+    expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
