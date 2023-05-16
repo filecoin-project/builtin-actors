@@ -441,7 +441,7 @@ fn aggregate_bad_sector_number_test<BS: Blockstore>(v: &dyn VM<BS>) {
         precommit_sectors(
             v,
             4,
-            policy.pre_commit_sector_batch_max_size as i64,
+            policy.pre_commit_sector_batch_max_size,
             &worker,
             &id_addr,
             seal_proof,
@@ -515,7 +515,7 @@ fn aggregate_size_limits_test<BS: Blockstore>(v: &dyn VM<BS>) {
         precommit_sectors(
             v,
             oversized_batch,
-            policy.pre_commit_sector_batch_max_size as i64,
+            policy.pre_commit_sector_batch_max_size,
             &worker,
             &id_addr,
             seal_proof,
@@ -619,7 +619,7 @@ fn aggregate_bad_sender_test<BS: Blockstore>(v: &dyn VM<BS>) {
         precommit_sectors(
             v,
             4,
-            policy.pre_commit_sector_batch_max_size as i64,
+            policy.pre_commit_sector_batch_max_size,
             &worker,
             &id_addr,
             seal_proof,
@@ -689,7 +689,7 @@ fn aggregate_one_precommit_expires_test<BS: Blockstore>(v: &dyn VM<BS>) {
     let early_precommits = precommit_sectors(
         v,
         1,
-        policy.pre_commit_sector_batch_max_size as i64,
+        policy.pre_commit_sector_batch_max_size,
         &worker,
         &id_addr,
         seal_proof,
@@ -708,7 +708,7 @@ fn aggregate_one_precommit_expires_test<BS: Blockstore>(v: &dyn VM<BS>) {
     let later_precommits = precommit_sectors(
         v,
         3,
-        policy.pre_commit_sector_batch_max_size as i64,
+        policy.pre_commit_sector_batch_max_size,
         &worker,
         &id_addr,
         seal_proof,

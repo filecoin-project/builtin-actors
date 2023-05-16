@@ -1026,8 +1026,8 @@ fn deal_included_in_multiple_sectors_failure_test<BS: Blockstore>(v: &dyn VM<BS>
     let first_sector_number = 100;
     let precommits = precommit_sectors(
         v,
-        policy.min_aggregated_sectors,
-        policy.pre_commit_sector_batch_max_size as i64,
+        policy.min_aggregated_sectors as usize,
+        policy.pre_commit_sector_batch_max_size,
         &worker,
         &maddr,
         seal_proof,

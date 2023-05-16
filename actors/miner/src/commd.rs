@@ -14,6 +14,17 @@ impl CompactCommD {
     pub fn new(commd: Option<Cid>) -> Self {
         CompactCommD(commd)
     }
+
+    // A CompactCommD representing zero data.
+    pub fn empty() -> Self {
+        CompactCommD(None)
+    }
+
+    // A CompactCommD representing some non-zero data.
+    pub fn of(c: Cid) -> Self {
+        CompactCommD(Some(c))
+    }
+
     pub fn get_cid(&self, seal_proof: RegisteredSealProof) -> Result<Cid, ActorError> {
         match self.0 {
             Some(ref x) => Ok(*x),
