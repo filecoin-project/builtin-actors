@@ -1,7 +1,3 @@
-use std::ops::{Div, Sub};
-
-use fil_actor_account::types::AuthenticateMessageParams;
-use fil_actor_account::Method as AccountMethod;
 use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::{to_vec, RawBytes};
 use fvm_shared::bigint::bigint_ser::BigIntDe;
@@ -12,6 +8,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::HAMT_BIT_WIDTH;
 use num_traits::ToPrimitive;
+use std::ops::{Div, Sub};
 
 use fil_actor_datacap::{
     DestroyParams, Method as DataCapMethod, MintParams, State as DataCapState,
@@ -27,10 +24,13 @@ use fil_actors_runtime::{
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::address::Address;
+use test_vm::expects::Expect;
+use test_vm::trace::ExpectInvocation;
 use test_vm::util::{
     apply_code, apply_ok, assert_invariants, create_accounts, get_state, verifreg_add_verifier,
 };
-use test_vm::{ExpectInvocation, TestVM, TEST_VERIFREG_ROOT_ADDR, VM};
+use test_vm::{TestVM, TEST_VERIFREG_ROOT_ADDR, VM};
 
 #[test]
 fn remove_datacap_simple_successful_path() {
@@ -71,10 +71,12 @@ fn remove_datacap_simple_successful_path_test<BS: Blockstore>(v: &dyn VM<BS>) {
     );
 
     ExpectInvocation {
+        from: verifier1,
         to: VERIFIED_REGISTRY_ACTOR_ADDR,
         method: VerifregMethod::AddVerifiedClient as u64,
         params: Some(IpldBlock::serialize_cbor(&add_verified_client_params).unwrap()),
         subinvocs: Some(vec![ExpectInvocation {
+            from: VERIFIED_REGISTRY_ACTOR_ADDR,
             to: DATACAP_TOKEN_ACTOR_ADDR,
             method: DataCapMethod::MintExported as u64,
             params: Some(IpldBlock::serialize_cbor(&mint_params).unwrap()),
@@ -169,6 +171,7 @@ fn remove_datacap_simple_successful_path_test<BS: Blockstore>(v: &dyn VM<BS>) {
     .unwrap();
 
     expect_remove_datacap(
+        &TEST_VERIFREG_ROOT_ADDR,
         &remove_datacap_params,
         RemoveDataCapProposalID { id: 0 },
         RemoveDataCapProposalID { id: 0 },
@@ -256,6 +259,7 @@ fn remove_datacap_simple_successful_path_test<BS: Blockstore>(v: &dyn VM<BS>) {
     .unwrap();
 
     expect_remove_datacap(
+        &TEST_VERIFREG_ROOT_ADDR,
         &remove_datacap_params,
         RemoveDataCapProposalID { id: 1 },
         RemoveDataCapProposalID { id: 1 },
@@ -358,6 +362,7 @@ fn remove_datacap_fails_on_verifreg_test<BS: Blockstore>(v: &dyn VM<BS>) {
 }
 
 fn expect_remove_datacap(
+    sender: &Address,
     params: &RemoveDataCapParams,
     proposal_id1: RemoveDataCapProposalID,
     proposal_id2: RemoveDataCapProposalID,
@@ -385,48 +390,30 @@ fn expect_remove_datacap(
     ]
     .concat();
     ExpectInvocation {
+        from: *sender,
         to: VERIFIED_REGISTRY_ACTOR_ADDR,
         method: VerifregMethod::RemoveVerifiedClientDataCap as u64,
         params: Some(IpldBlock::serialize_cbor(&params).unwrap()),
-        code: Some(ExitCode::OK),
         subinvocs: Some(vec![
+            Expect::frc44_authenticate(
+                VERIFIED_REGISTRY_ACTOR_ADDR,
+                params.verifier_request_1.verifier,
+                payload1.clone(),
+                payload1,
+            ),
+            Expect::frc44_authenticate(
+                VERIFIED_REGISTRY_ACTOR_ADDR,
+                params.verifier_request_2.verifier,
+                payload2.clone(),
+                payload2,
+            ),
+            Expect::frc42_balance(
+                VERIFIED_REGISTRY_ACTOR_ADDR,
+                DATACAP_TOKEN_ACTOR_ADDR,
+                params.verified_client_to_remove,
+            ),
             ExpectInvocation {
-                to: params.verifier_request_1.verifier,
-                method: AccountMethod::AuthenticateMessageExported as u64,
-                params: Some(
-                    IpldBlock::serialize_cbor(&AuthenticateMessageParams {
-                        signature: payload1.clone(),
-                        message: payload1,
-                    })
-                    .unwrap(),
-                ),
-                code: Some(ExitCode::OK),
-                subinvocs: None,
-                ..Default::default()
-            },
-            ExpectInvocation {
-                to: params.verifier_request_2.verifier,
-                method: AccountMethod::AuthenticateMessageExported as u64,
-                params: Some(
-                    IpldBlock::serialize_cbor(&AuthenticateMessageParams {
-                        signature: payload2.clone(),
-                        message: payload2,
-                    })
-                    .unwrap(),
-                ),
-                code: Some(ExitCode::OK),
-                subinvocs: None,
-                ..Default::default()
-            },
-            ExpectInvocation {
-                to: DATACAP_TOKEN_ACTOR_ADDR,
-                method: DataCapMethod::BalanceExported as u64,
-                params: Some(IpldBlock::serialize_cbor(&params.verified_client_to_remove).unwrap()),
-                code: Some(ExitCode::OK),
-                subinvocs: None,
-                ..Default::default()
-            },
-            ExpectInvocation {
+                from: VERIFIED_REGISTRY_ACTOR_ADDR,
                 to: DATACAP_TOKEN_ACTOR_ADDR,
                 method: DataCapMethod::DestroyExported as u64,
                 params: Some(
@@ -438,7 +425,6 @@ fn expect_remove_datacap(
                     })
                     .unwrap(),
                 ),
-                code: Some(ExitCode::OK),
                 subinvocs: None,
                 ..Default::default()
             },

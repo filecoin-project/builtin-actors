@@ -4502,6 +4502,7 @@ dependencies = [
  "fil_actors_evm_shared",
  "fil_actors_runtime",
  "fil_builtin_actors_state",
+ "frc42_dispatch",
  "frc46_token",
  "fvm_actor_utils",
  "fvm_ipld_bitfield",

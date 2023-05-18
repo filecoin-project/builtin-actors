@@ -4,13 +4,9 @@ use fil_actor_miner::{
     PreCommitSectorParams, MIN_SECTOR_EXPIRATION,
 };
 use fil_actor_power::{CreateMinerParams, Method as PowerMethod};
-use fil_actor_reward::Method as RewardMethod;
-
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::make_sealed_cid;
-use fil_actors_runtime::{
-    CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
-};
+use fil_actors_runtime::{CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
 use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::address::Address;
@@ -20,11 +16,13 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof};
 use fvm_shared::METHOD_SEND;
 use num_traits::Zero;
+use test_vm::expects::Expect;
+use test_vm::trace::ExpectInvocation;
 use test_vm::util::{
     apply_ok, assert_invariants, create_accounts, create_miner, expect_invariants,
     invariant_failure_patterns, miner_dline_info, serialize_ok,
 };
-use test_vm::{ExpectInvocation, TestVM, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
+use test_vm::{TestVM, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
 
 #[test]
 fn power_create_miner() {
@@ -46,10 +44,11 @@ fn power_create_miner_test<BS: Blockstore>(v: &dyn VM<BS>) {
     .unwrap();
     let multiaddrs = vec![BytesDe("multiaddr".as_bytes().to_vec())];
     let peer_id = "miner".as_bytes().to_vec();
+    let post_proof = RegisteredPoStProof::StackedDRGWindow32GiBV1P1;
     let params = CreateMinerParams {
         owner,
         worker: owner,
-        window_post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        window_post_proof_type: post_proof,
         peer: peer_id.clone(),
         multiaddrs: multiaddrs.clone(),
     };
@@ -64,8 +63,10 @@ fn power_create_miner_test<BS: Blockstore>(v: &dyn VM<BS>) {
         )
         .unwrap();
 
+    let owner_id = v.resolve_id_address(&owner).unwrap();
     let expect = ExpectInvocation {
         // send to power actor
+        from: owner_id,
         to: STORAGE_POWER_ACTOR_ADDR,
         method: PowerMethod::CreateMiner as u64,
         params: Some(IpldBlock::serialize_cbor(&params).unwrap()),
@@ -73,17 +74,19 @@ fn power_create_miner_test<BS: Blockstore>(v: &dyn VM<BS>) {
         subinvocs: Some(vec![
             // request init actor construct miner
             ExpectInvocation {
+                from: STORAGE_POWER_ACTOR_ADDR,
                 to: INIT_ACTOR_ADDR,
                 method: InitMethod::Exec as u64,
                 subinvocs: Some(vec![ExpectInvocation {
                     // init then calls miner constructor
+                    from: INIT_ACTOR_ADDR,
                     to: Address::new_id(FIRST_TEST_USER_ADDR + 1),
                     method: MinerMethod::Constructor as u64,
                     params: Some(
                         IpldBlock::serialize_cbor(&MinerConstructorParams {
                             owner,
                             worker: owner,
-                            window_post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1,
+                            window_post_proof_type: post_proof,
                             peer_id,
                             control_addresses: vec![],
                             multi_addresses: multiaddrs,
@@ -160,25 +163,15 @@ fn test_cron_tick() {
         None::<RawBytes>,
     );
 
-    // expect miner call to be missing
     ExpectInvocation {
         // original send to storage power actor
+        from: CRON_ACTOR_ADDR,
         to: STORAGE_POWER_ACTOR_ADDR,
         method: PowerMethod::OnEpochTickEnd as u64,
         subinvocs: Some(vec![
-            // get data from reward actor for any eventual calls to confirmsectorproofsparams
-            ExpectInvocation {
-                to: REWARD_ACTOR_ADDR,
-                method: RewardMethod::ThisEpochReward as u64,
-                ..Default::default()
-            },
-            // expect call to reward to update kpi
-            ExpectInvocation {
-                to: REWARD_ACTOR_ADDR,
-                method: RewardMethod::UpdateNetworkKPI as u64,
-                from: Some(STORAGE_POWER_ACTOR_ADDR),
-                ..Default::default()
-            },
+            Expect::reward_this_epoch(STORAGE_POWER_ACTOR_ADDR),
+            // expect miner call to be missing
+            Expect::reward_update_kpi(),
         ]),
         ..Default::default()
     }
@@ -198,32 +191,23 @@ fn test_cron_tick() {
     );
 
     let sub_invocs = vec![
-        // get data from reward and power for any eventual calls to confirmsectorproofsvalid
-        ExpectInvocation {
-            to: REWARD_ACTOR_ADDR,
-            method: RewardMethod::ThisEpochReward as u64,
-            ..Default::default()
-        },
+        Expect::reward_this_epoch(STORAGE_POWER_ACTOR_ADDR),
         // expect call back to miner that was set up in create miner
         ExpectInvocation {
+            from: STORAGE_POWER_ACTOR_ADDR,
             to: id_addr,
             method: MinerMethod::OnDeferredCronEvent as u64,
-            from: Some(STORAGE_POWER_ACTOR_ADDR),
             value: Some(TokenAmount::zero()),
+            // Subinvocs unchecked
             ..Default::default()
         },
-        // expect call to reward to update kpi
-        ExpectInvocation {
-            to: REWARD_ACTOR_ADDR,
-            method: RewardMethod::UpdateNetworkKPI as u64,
-            from: Some(STORAGE_POWER_ACTOR_ADDR),
-            ..Default::default()
-        },
+        Expect::reward_update_kpi(),
     ];
 
     // expect call to miner
     ExpectInvocation {
         // original send to storage power actor
+        from: CRON_ACTOR_ADDR,
         to: STORAGE_POWER_ACTOR_ADDR,
         method: PowerMethod::OnEpochTickEnd as u64,
         subinvocs: Some(sub_invocs),

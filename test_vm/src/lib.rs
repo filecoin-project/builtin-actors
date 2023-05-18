@@ -71,11 +71,14 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::fmt;
 use std::ops::Add;
+use trace::InvocationTrace;
 
 use crate::util::get_state;
 use crate::util::serialize_ok;
 
 pub mod deals;
+pub mod expects;
+pub mod trace;
 pub mod util;
 
 /// An abstract VM that is injected into integration tests
@@ -592,12 +595,6 @@ pub struct InternalMessage {
     params: Option<IpldBlock>,
 }
 
-impl InternalMessage {
-    pub fn value(&self) -> TokenAmount {
-        self.value.clone()
-    }
-}
-
 impl<BS> MessageInfo for InvocationCtx<'_, '_, BS>
 where
     BS: Blockstore,
@@ -734,7 +731,16 @@ where
             Ok((_, addr)) => addr, // use normalized address in trace
             _ => self.msg.to, // if target resolution fails don't fail whole invoke, just use non normalized
         };
-        InvocationTrace { msg, code, ret, subinvocations: self.subinvocations.take() }
+        InvocationTrace {
+            from: msg.from,
+            to: msg.to,
+            value: msg.value,
+            method: msg.method,
+            params: msg.params,
+            code,
+            ret,
+            subinvocations: self.subinvocations.take(),
+        }
     }
 
     fn to(&'_ self) -> Address {
@@ -1339,132 +1345,6 @@ pub fn actor(
     predictable_address: Option<Address>,
 ) -> Actor {
     Actor { code, head, call_seq_num, balance, predictable_address }
-}
-
-#[derive(Clone)]
-pub struct InvocationTrace {
-    pub msg: InternalMessage,
-    pub code: ExitCode,
-    pub ret: Option<IpldBlock>,
-    pub subinvocations: Vec<InvocationTrace>,
-}
-
-pub struct ExpectInvocation {
-    pub to: Address,
-    // required
-    pub method: MethodNum,
-    // required
-    pub code: Option<ExitCode>,
-    pub from: Option<Address>,
-    pub value: Option<TokenAmount>,
-    pub params: Option<Option<IpldBlock>>,
-    pub ret: Option<Option<IpldBlock>>,
-    pub subinvocs: Option<Vec<ExpectInvocation>>,
-}
-
-impl ExpectInvocation {
-    // testing method that panics on no match
-    pub fn matches(&self, invoc: &InvocationTrace) {
-        let id = format!("[{}:{}]", invoc.msg.to, invoc.msg.method);
-        self.quick_match(invoc, String::new());
-        if let Some(c) = self.code {
-            assert_eq!(
-                c, invoc.code,
-                "{} unexpected code expected: {}, was: {}",
-                id, c, invoc.code
-            );
-        }
-        if let Some(f) = self.from {
-            assert_eq!(
-                f, invoc.msg.from,
-                "{} unexpected from addr: expected: {}, was: {} ",
-                id, f, invoc.msg.from
-            );
-        }
-        if let Some(v) = &self.value {
-            assert_eq!(
-                v, &invoc.msg.value,
-                "{} unexpected value: expected: {}, was: {} ",
-                id, v, invoc.msg.value
-            );
-        }
-        if let Some(p) = &self.params {
-            assert_eq!(
-                p, &invoc.msg.params,
-                "{} unexpected params: expected: {:x?}, was: {:x?}",
-                id, p, invoc.msg.params
-            );
-        }
-        if let Some(r) = &self.ret {
-            assert_eq!(
-                r, &invoc.ret,
-                "{} unexpected ret: expected: {:x?}, was: {:x?}",
-                id, r, invoc.ret
-            );
-        }
-        if let Some(expect_subinvocs) = &self.subinvocs {
-            let subinvocs = &invoc.subinvocations;
-
-            let panic_str = format!(
-                "unexpected subinvocs:\n expected: \n[\n{}]\n was:\n[\n{}]\n",
-                self.fmt_expect_invocs(expect_subinvocs),
-                self.fmt_invocs(subinvocs)
-            );
-            assert!(subinvocs.len() == expect_subinvocs.len(), "{}", panic_str);
-
-            for (i, invoc) in subinvocs.iter().enumerate() {
-                let expect_invoc = expect_subinvocs.get(i).unwrap();
-                // only try to match if required fields match
-                expect_invoc.quick_match(invoc, panic_str.clone());
-                expect_invoc.matches(invoc);
-            }
-        }
-    }
-
-    pub fn fmt_invocs(&self, invocs: &[InvocationTrace]) -> String {
-        invocs
-            .iter()
-            .enumerate()
-            .map(|(i, invoc)| format!("{}: [{}:{}],\n", i, invoc.msg.to, invoc.msg.method))
-            .collect()
-    }
-
-    pub fn fmt_expect_invocs(&self, invocs: &[ExpectInvocation]) -> String {
-        invocs
-            .iter()
-            .enumerate()
-            .map(|(i, invoc)| format!("{}: [{}:{}],\n", i, invoc.to, invoc.method))
-            .collect()
-    }
-
-    pub fn quick_match(&self, invoc: &InvocationTrace, extra_msg: String) {
-        let id = format!("[{}:{}]", invoc.msg.to, invoc.msg.method);
-        assert_eq!(
-            self.to, invoc.msg.to,
-            "{} unexpected to addr: expected: {}, was: {} \n{}",
-            id, self.to, invoc.msg.to, extra_msg
-        );
-        assert_eq!(
-            self.method, invoc.msg.method,
-            "{} unexpected method: expected: {}, was: {} \n{}",
-            id, self.method, invoc.msg.from, extra_msg
-        );
-    }
-}
-
-impl Default for ExpectInvocation {
-    fn default() -> Self {
-        Self {
-            method: 0,
-            to: Address::new_id(0),
-            code: None,
-            from: None,
-            value: None,
-            params: None,
-            ret: None,
-            subinvocs: None,
-        }
-    }
 }
 
 #[derive(Debug)]

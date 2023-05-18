@@ -6,15 +6,13 @@ use fil_actor_miner::{
     power_for_sector, Method as MinerMethod, PreCommitSectorParams, ProveCommitSectorParams,
     State as MinerState, TerminateSectorsParams, TerminationDeclaration,
 };
-use fil_actor_power::{Method as PowerMethod, State as PowerState};
-use fil_actor_reward::Method as RewardMethod;
+use fil_actor_power::State as PowerState;
 use fil_actor_verifreg::{Method as VerifregMethod, VerifierParams};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
-    test_utils::*, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR,
-    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
+    test_utils::*, CRON_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_shared::bigint::Zero;
@@ -22,15 +20,17 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
-use fvm_shared::METHOD_SEND;
 use num_traits::cast::FromPrimitive;
+use std::ops::Neg;
+use test_vm::expects::Expect;
+use test_vm::trace::ExpectInvocation;
 use test_vm::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_to_proving_deadline, apply_ok, create_accounts, create_miner, expect_invariants,
     get_state, invariant_failure_patterns, make_bitfield, market_publish_deal, miner_balance,
     submit_windowed_post, verifreg_add_verifier,
 };
-use test_vm::{ExpectInvocation, TestVM, VM};
+use test_vm::{TestVM, VM};
 
 #[test]
 fn terminate_sectors() {
@@ -211,7 +211,7 @@ fn terminate_sectors_test<BS: Blockstore>(v: &dyn VM<BS>) {
     let st: MinerState = get_state(v, &miner_id_addr).unwrap();
     let sector = st.get_sector(*v.blockstore(), sector_number).unwrap().unwrap();
     let sector_power = power_for_sector(seal_proof.sector_size().unwrap(), &sector);
-    submit_windowed_post(v, &worker, &miner_id_addr, dline_info, p_idx, Some(sector_power));
+    submit_windowed_post(v, &worker, &miner_id_addr, dline_info, p_idx, Some(sector_power.clone()));
     v.set_epoch(dline_info.last());
 
     v.execute_message(
@@ -244,6 +244,7 @@ fn terminate_sectors_test<BS: Blockstore>(v: &dyn VM<BS>) {
         assert!(state.last_updated_epoch > 0);
         assert_eq!(-1, state.slash_epoch);
     }
+    let epoch = v.epoch();
 
     // Terminate Sector
     apply_ok(
@@ -261,39 +262,16 @@ fn terminate_sectors_test<BS: Blockstore>(v: &dyn VM<BS>) {
         }),
     );
     ExpectInvocation {
+        from: worker,
         to: miner_id_addr,
         method: MinerMethod::TerminateSectors as u64,
         subinvocs: Some(vec![
-            ExpectInvocation {
-                to: REWARD_ACTOR_ADDR,
-                method: RewardMethod::ThisEpochReward as u64,
-                ..Default::default()
-            },
-            ExpectInvocation {
-                to: STORAGE_POWER_ACTOR_ADDR,
-                method: PowerMethod::CurrentTotalPower as u64,
-                ..Default::default()
-            },
-            ExpectInvocation {
-                to: BURNT_FUNDS_ACTOR_ADDR,
-                method: METHOD_SEND,
-                ..Default::default()
-            },
-            ExpectInvocation {
-                to: STORAGE_POWER_ACTOR_ADDR,
-                method: PowerMethod::UpdatePledgeTotal as u64,
-                ..Default::default()
-            },
-            ExpectInvocation {
-                to: STORAGE_MARKET_ACTOR_ADDR,
-                method: MarketMethod::OnMinerSectorsTerminate as u64,
-                ..Default::default()
-            },
-            ExpectInvocation {
-                to: STORAGE_POWER_ACTOR_ADDR,
-                method: PowerMethod::UpdateClaimedPower as u64,
-                ..Default::default()
-            },
+            Expect::reward_this_epoch(miner_id_addr),
+            Expect::power_current_total(miner_id_addr),
+            Expect::burn(miner_id_addr, None),
+            Expect::power_update_pledge(miner_id_addr, None),
+            Expect::market_sectors_terminate(miner_id_addr, epoch, deal_ids.clone()),
+            Expect::power_update_claim(miner_id_addr, sector_power.neg()),
         ]),
         ..Default::default()
     }
@@ -342,14 +320,14 @@ fn terminate_sectors_test<BS: Blockstore>(v: &dyn VM<BS>) {
         }),
     );
     ExpectInvocation {
+        from: verified_client,
         to: STORAGE_MARKET_ACTOR_ADDR,
         method: MarketMethod::WithdrawBalance as u64,
-        subinvocs: Some(vec![ExpectInvocation {
-            to: verified_client,
-            method: METHOD_SEND,
-            value: Some(withdrawal),
-            ..Default::default()
-        }]),
+        subinvocs: Some(vec![Expect::send(
+            STORAGE_MARKET_ACTOR_ADDR,
+            verified_client,
+            Some(withdrawal),
+        )]),
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
@@ -363,7 +341,7 @@ fn terminate_sectors_test<BS: Blockstore>(v: &dyn VM<BS>) {
         Some(WithdrawBalanceParams { provider_or_client: miner_id_addr, amount: miner_collateral }),
     );
 
-    let value_withdrawn = v.take_invocations().last().unwrap().subinvocations[1].msg.value();
+    let value_withdrawn = v.take_invocations().last().unwrap().subinvocations[1].value.clone();
     // miner add 64 balance. Each of 3 deals required 2 FIL collateral, so provider collateral should have been
     // slashed by 6 FIL. Miner's remaining market balance should be 64 - 6 + payment, where payment is for storage
     // before the slash and should be << 1 FIL. Actual amount withdrawn should be between 58 and 59 FIL.
