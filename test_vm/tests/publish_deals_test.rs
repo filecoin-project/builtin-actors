@@ -1,6 +1,5 @@
 use fil_actor_market::{
     ClientDealProposal, DealProposal, Label, Method as MarketMethod, PublishStorageDealsParams,
-    PublishStorageDealsReturn,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::crypto::signature::{Signature, SignatureType};
@@ -29,6 +28,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
+use test_vm::deals::{DealBatcher, DealOptions};
 use test_vm::util::assert_invariants;
 use test_vm::util::serialize_ok;
 use test_vm::util::{
@@ -48,13 +48,6 @@ struct Addrs {
 }
 
 const DEAL_LIFETIME: ChainEpoch = 181 * EPOCHS_IN_DAY;
-
-fn token_defaults() -> (TokenAmount, TokenAmount, TokenAmount) {
-    let price_per_epoch = TokenAmount::from_atto(1 << 20);
-    let provider_collateral = TokenAmount::from_whole(2);
-    let client_collateral = TokenAmount::from_whole(1);
-    (price_per_epoch, provider_collateral, client_collateral)
-}
 
 // create miner and client and add collateral
 fn setup(store: &MemoryBlockstore) -> (TestVM<MemoryBlockstore>, Addrs, ChainEpoch) {
@@ -144,19 +137,15 @@ fn psd_mismatched_provider() {
 }
 
 fn psd_mismatched_provider_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
-    let mut batcher =
-        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+    let opts = DealOptions { deal_start, ..DealOptions::default() };
+    let mut batcher = DealBatcher::new(v, opts);
 
     // good deal
-    batcher.stage(a.client1, "deal0", DealOptions::default());
+    batcher.stage(a.client1, a.maddr);
     // bad deal, provider doesn't match worker
-    batcher.stage(
-        a.client1,
-        "deal1",
-        DealOptions { provider: Some(a.not_miner), ..Default::default() },
-    );
+    batcher.stage(a.client1, a.not_miner);
     //good deal
-    batcher.stage(a.client1, "deal2", DealOptions::default());
+    batcher.stage(a.client1, a.maddr);
 
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
@@ -174,16 +163,17 @@ fn psd_bad_piece_size() {
 }
 
 fn psd_bad_piece_size_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
-    let mut batcher =
-        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+    let opts = DealOptions { deal_start, ..DealOptions::default() };
+    let mut batcher = DealBatcher::new(v, opts.clone());
+
     // bad deal piece size too small
-    batcher.stage(
+    batcher.stage_with_opts(
         a.client1,
-        "deal0",
-        DealOptions { piece_size: Some(PaddedPieceSize(0)), ..Default::default() },
+        a.maddr,
+        DealOptions { piece_size: PaddedPieceSize(0), ..opts },
     );
     // good deal
-    batcher.stage(a.client1, "deal1", DealOptions::default());
+    batcher.stage(a.client1, a.maddr);
 
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
@@ -200,15 +190,12 @@ fn psd_start_time_in_past() {
 }
 
 fn psd_start_time_in_past_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
-    let mut batcher =
-        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+    let opts = DealOptions { deal_start, ..DealOptions::default() };
+    let mut batcher = DealBatcher::new(v, opts.clone());
+
     let bad_deal_start = v.epoch() - 1;
-    batcher.stage(
-        a.client1,
-        "deal0",
-        DealOptions { deal_start: Some(bad_deal_start), ..Default::default() },
-    );
-    batcher.stage(a.client1, "deal1", DealOptions::default());
+    batcher.stage_with_opts(a.client1, a.maddr, DealOptions { deal_start: bad_deal_start, ..opts });
+    batcher.stage(a.client1, a.maddr);
 
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
@@ -229,11 +216,11 @@ fn psd_client_address_cannot_be_resolved_test<BS: Blockstore>(
     a: Addrs,
     deal_start: i64,
 ) {
-    let mut batcher =
-        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+    let opts = DealOptions { deal_start, ..DealOptions::default() };
+    let mut batcher = DealBatcher::new(v, opts);
     let bad_client = Address::new_id(5_000_000);
-    batcher.stage(a.client1, "deal0", DealOptions::default());
-    batcher.stage(bad_client, "deal1", DealOptions::default());
+    batcher.stage(a.client1, a.maddr);
+    batcher.stage(bad_client, a.maddr);
 
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
@@ -250,10 +237,10 @@ fn psd_no_client_lockup() {
 }
 
 fn psd_no_client_lockup_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
-    let mut batcher =
-        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
-    batcher.stage(a.cheap_client, "deal0", DealOptions::default());
-    batcher.stage(a.client1, "deal1", DealOptions::default());
+    let opts = DealOptions { deal_start, ..DealOptions::default() };
+    let mut batcher = DealBatcher::new(v, opts);
+    batcher.stage(a.cheap_client, a.maddr);
+    batcher.stage(a.client1, a.maddr);
 
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
@@ -263,7 +250,7 @@ fn psd_no_client_lockup_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_star
 }
 
 #[test]
-fn psd_not_enought_client_lockup_for_batch() {
+fn psd_not_enough_client_lockup_for_batch() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
 
@@ -275,9 +262,11 @@ fn psd_not_enough_client_lockup_for_batch_test<BS: Blockstore>(
     a: Addrs,
     deal_start: i64,
 ) {
+    let opts = DealOptions { deal_start, ..DealOptions::default() };
+    let mut batcher = DealBatcher::new(v, opts.clone());
+
     // Add one lifetime cost to cheap_client's market balance but attempt to make 3 deals
-    let (default_price, _, default_client_collateral) = token_defaults();
-    let one_lifetime_cost = default_client_collateral + DEAL_LIFETIME * default_price;
+    let one_lifetime_cost = opts.client_collateral + DEAL_LIFETIME * opts.price_per_epoch;
     apply_ok(
         v,
         &a.cheap_client,
@@ -287,13 +276,11 @@ fn psd_not_enough_client_lockup_for_batch_test<BS: Blockstore>(
         Some(a.cheap_client),
     );
 
-    let mut batcher =
-        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
     // good
-    batcher.stage(a.cheap_client, "deal0", DealOptions::default());
+    batcher.stage(a.cheap_client, a.maddr);
     // bad -- insufficient funds
-    batcher.stage(a.cheap_client, "deal1", DealOptions::default());
-    batcher.stage(a.cheap_client, "deal2", DealOptions::default());
+    batcher.stage(a.cheap_client, a.maddr);
+    batcher.stage(a.cheap_client, a.maddr);
 
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
@@ -326,27 +313,21 @@ fn psd_not_enough_provider_lockup_for_batch_test<BS: Blockstore>(
     )
     .0;
     // add one deal of collateral to provider's market account
-    let default_provider_collateral = token_defaults().1;
+    let opts = DealOptions { deal_start, ..DealOptions::default() };
+    let mut batcher = DealBatcher::new(v, opts.clone());
+
     apply_ok(
         v,
         &cheap_worker,
         &STORAGE_MARKET_ACTOR_ADDR,
-        &default_provider_collateral,
+        &opts.provider_collateral,
         MarketMethod::AddBalance as u64,
         Some(cheap_maddr),
     );
-    let mut batcher = DealBatcher::new(
-        v,
-        cheap_maddr,
-        PaddedPieceSize(1 << 30),
-        false,
-        deal_start,
-        DEAL_LIFETIME,
-    );
     // good deal
-    batcher.stage(a.client1, "deal0", DealOptions::default());
+    batcher.stage(a.client1, cheap_maddr);
     // bad deal insufficient funds on provider
-    batcher.stage(a.client2, "deal1", DealOptions::default());
+    batcher.stage(a.client2, cheap_maddr);
     let deal_ret = batcher.publish_ok(cheap_worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0], good_inputs);
@@ -362,22 +343,22 @@ fn psd_duplicate_deal_in_batch() {
 }
 
 fn psd_duplicate_deal_in_batch_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
-    let mut batcher =
-        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+    let opts = DealOptions { deal_start, ..DealOptions::default() };
+    let mut batcher = DealBatcher::new(v, opts);
 
     // good deals
-    batcher.stage(a.client1, "deal0", DealOptions::default());
-    batcher.stage(a.client1, "deal1", DealOptions::default());
+    batcher.stage_with_label(a.client1, a.maddr, "deal0".to_string());
+    batcher.stage_with_label(a.client1, a.maddr, "deal1".to_string());
 
     // bad duplicates
-    batcher.stage(a.client1, "deal0", DealOptions::default());
-    batcher.stage(a.client1, "deal0", DealOptions::default());
+    batcher.stage_with_label(a.client1, a.maddr, "deal0".to_string());
+    batcher.stage_with_label(a.client1, a.maddr, "deal0".to_string());
 
     // good
-    batcher.stage(a.client1, "deal2", DealOptions::default());
+    batcher.stage_with_label(a.client1, a.maddr, "deal2".to_string());
 
     // bad
-    batcher.stage(a.client1, "deal1", DealOptions::default());
+    batcher.stage_with_label(a.client1, a.maddr, "deal1".to_string());
 
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
@@ -394,25 +375,24 @@ fn psd_duplicate_deal_in_state() {
 }
 
 fn psd_duplicate_deal_in_state_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
-    let mut batcher =
-        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+    let opts = DealOptions { deal_start, ..DealOptions::default() };
+    let mut batcher = DealBatcher::new(v, opts.clone());
 
-    batcher.stage(a.client2, "deal0", DealOptions::default());
+    batcher.stage(a.client2, a.maddr);
     let deal_ret1 = batcher.publish_ok(a.worker);
     let good_inputs1 = bf_all(deal_ret1.valid_deals);
     assert_eq!(vec![0], good_inputs1);
 
-    let mut batcher =
-        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
-    batcher.stage(a.client2, "deal1", DealOptions::default());
+    let mut batcher = DealBatcher::new(v, opts);
+    // duplicate in state from previous dealer
+    batcher.stage(a.client2, a.maddr);
     // duplicate in batch
-    batcher.stage(a.client2, "deal1", DealOptions::default());
-    // duplicate in state
-    batcher.stage(a.client2, "deal0", DealOptions::default());
+    batcher.stage_with_label(a.client2, a.maddr, "deal1".to_string());
+    batcher.stage_with_label(a.client2, a.maddr, "deal1".to_string());
 
     let deal_ret2 = batcher.publish_ok(a.worker);
     let good_inputs2 = bf_all(deal_ret2.valid_deals);
-    assert_eq!(vec![0], good_inputs2);
+    assert_eq!(vec![1], good_inputs2);
 
     assert_invariants(v)
 }
@@ -429,29 +409,21 @@ fn psd_verified_deal_fails_getting_datacap_test<BS: Blockstore>(
     a: Addrs,
     deal_start: i64,
 ) {
-    let mut batcher =
-        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+    let opts = DealOptions { deal_start, ..DealOptions::default() };
+    let mut batcher = DealBatcher::new(v, opts.clone());
 
-    batcher.stage(a.verified_client, "deal0", DealOptions::default());
-    // good verified deal that uses up all datacap
-    batcher.stage(
+    batcher.stage(a.verified_client, a.maddr);
+    // good verified deal that uses up all data cap
+    batcher.stage_with_opts(
         a.verified_client,
-        "deal1",
-        DealOptions {
-            piece_size: Some(PaddedPieceSize(1_u64 << 32)),
-            verified: Some(true),
-            ..Default::default()
-        },
+        a.maddr,
+        DealOptions { piece_size: PaddedPieceSize(1 << 32), verified: true, ..opts.clone() },
     );
     // bad verified deal, no data cap left
-    batcher.stage(
+    batcher.stage_with_opts(
         a.verified_client,
-        "deal2",
-        DealOptions {
-            piece_size: Some(PaddedPieceSize(1_u64 << 32)),
-            verified: Some(true),
-            ..Default::default()
-        },
+        a.maddr,
+        DealOptions { piece_size: PaddedPieceSize(1 << 32), verified: true, ..opts },
     );
 
     let deal_ret = batcher.publish_ok(a.worker);
@@ -473,11 +445,10 @@ fn psd_random_assortment_of_failures_test<BS: Blockstore>(
     a: Addrs,
     deal_start: i64,
 ) {
-    let mut batcher =
-        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+    let opts = DealOptions { deal_start, ..DealOptions::default() };
+    let mut batcher = DealBatcher::new(v, opts.clone());
     // Add one lifetime cost to cheap_client's market balance but attempt to make 3 deals
-    let (default_price, _, default_client_collateral) = token_defaults();
-    let one_lifetime_cost = default_client_collateral + DEAL_LIFETIME * default_price;
+    let one_lifetime_cost = &opts.client_collateral + DEAL_LIFETIME * &opts.price_per_epoch;
     apply_ok(
         v,
         &a.cheap_client,
@@ -488,49 +459,39 @@ fn psd_random_assortment_of_failures_test<BS: Blockstore>(
     );
     let broke_client = create_accounts_seeded(v, 1, &TokenAmount::zero(), 555)[0];
 
-    batcher.stage(
+    batcher.stage_with_opts_label(
         a.verified_client,
-        "deal1",
-        DealOptions {
-            piece_size: Some(PaddedPieceSize(1u64 << 32)),
-            verified: Some(true),
-            ..Default::default()
-        },
+        a.maddr,
+        "foo".to_string(),
+        DealOptions { piece_size: PaddedPieceSize(1 << 32), verified: true, ..opts.clone() },
     );
     // duplicate
-    batcher.stage(
+    batcher.stage_with_opts_label(
         a.verified_client,
-        "deal1",
-        DealOptions {
-            piece_size: Some(PaddedPieceSize(1u64 << 32)),
-            verified: Some(true),
-            ..Default::default()
-        },
+        a.maddr,
+        "foo".to_string(),
+        DealOptions { piece_size: PaddedPieceSize(1 << 32), verified: true, ..opts.clone() },
     );
-    batcher.stage(a.cheap_client, "deal2", DealOptions::default());
+    batcher.stage(a.cheap_client, a.maddr);
     // no client funds
-    batcher.stage(broke_client, "deal3", DealOptions::default());
+    batcher.stage(broke_client, a.maddr);
     // provider addr does not match
-    batcher.stage(
-        a.client1,
-        "deal4",
-        DealOptions { provider: Some(a.client2), ..Default::default() },
-    );
+    batcher.stage(a.client1, a.client2);
     // insufficient data cap
-    batcher.stage(
+    batcher.stage_with_opts(
         a.verified_client,
-        "deal5",
-        DealOptions { verified: Some(true), ..Default::default() },
+        a.maddr,
+        DealOptions { verified: true, ..opts.clone() },
     );
     // cheap client out of funds
-    batcher.stage(a.cheap_client, "deal6", DealOptions::default());
+    batcher.stage(a.cheap_client, a.maddr);
     // provider collateral too low
-    batcher.stage(
+    batcher.stage_with_opts(
         a.client2,
-        "deal7",
-        DealOptions { provider_collateral: Some(TokenAmount::zero()), ..Default::default() },
+        a.maddr,
+        DealOptions { provider_collateral: TokenAmount::zero(), ..opts },
     );
-    batcher.stage(a.client1, "deal8", DealOptions::default());
+    batcher.stage(a.client1, a.maddr);
 
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
@@ -547,30 +508,25 @@ fn psd_all_deals_are_bad() {
 }
 
 fn psd_all_deals_are_bad_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
-    let mut batcher =
-        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+    let opts = DealOptions { deal_start, ..DealOptions::default() };
+    let mut batcher = DealBatcher::new(v, opts.clone());
     let bad_client = Address::new_id(1000);
 
-    batcher.stage(
+    batcher.stage_with_opts(
         a.client1,
-        "deal0",
-        DealOptions { provider_collateral: Some(TokenAmount::zero()), ..Default::default() },
+        a.maddr,
+        DealOptions { provider_collateral: TokenAmount::zero(), ..opts.clone() },
     );
-    batcher.stage(
+    batcher.stage(a.client1, a.client2);
+    batcher.stage_with_opts(a.client1, a.maddr, DealOptions { verified: true, ..opts.clone() });
+    batcher.stage(bad_client, a.maddr);
+    batcher.stage_with_opts(
         a.client1,
-        "deal1",
-        DealOptions { provider: Some(a.client2), ..Default::default() },
-    );
-    batcher.stage(a.client1, "deal2", DealOptions { verified: Some(true), ..Default::default() });
-    batcher.stage(bad_client, "deal3", DealOptions::default());
-    batcher.stage(
-        a.client1,
-        "deal4",
-        DealOptions { piece_size: Some(PaddedPieceSize(0)), ..Default::default() },
+        a.maddr,
+        DealOptions { piece_size: PaddedPieceSize(0), ..opts },
     );
 
     batcher.publish_fail(a.worker);
-
     assert_invariants(v)
 }
 
@@ -582,8 +538,8 @@ fn psd_bad_sig() {
 }
 
 fn psd_bad_sig_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
-    let (storage_price_per_epoch, provider_collateral, client_collateral) = token_defaults();
-
+    let DealOptions { price_per_epoch, provider_collateral, client_collateral, .. } =
+        DealOptions::default();
     let deal_label = "deal0".to_string();
     let proposal = DealProposal {
         piece_cid: make_piece_cid(deal_label.as_bytes()),
@@ -594,7 +550,7 @@ fn psd_bad_sig_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
         label: Label::String(deal_label),
         start_epoch: deal_start,
         end_epoch: deal_start + DEAL_LIFETIME,
-        storage_price_per_epoch,
+        storage_price_per_epoch: price_per_epoch,
         provider_collateral,
         client_collateral,
     };
@@ -669,15 +625,15 @@ fn psd_all_deals_are_good() {
 }
 
 fn all_deals_are_good_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
-    let mut batcher =
-        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+    let opts = DealOptions { deal_start, ..DealOptions::default() };
+    let mut batcher = DealBatcher::new(v, opts);
 
     // good deals
-    batcher.stage(a.client1, "deal0", DealOptions::default());
-    batcher.stage(a.client1, "deal1", DealOptions::default());
-    batcher.stage(a.client1, "deal2", DealOptions::default());
-    batcher.stage(a.client1, "deal3", DealOptions::default());
-    batcher.stage(a.client1, "deal4", DealOptions::default());
+    batcher.stage(a.client1, a.maddr);
+    batcher.stage(a.client1, a.maddr);
+    batcher.stage(a.client1, a.maddr);
+    batcher.stage(a.client1, a.maddr);
+    batcher.stage(a.client1, a.maddr);
 
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
@@ -698,21 +654,21 @@ fn psd_valid_deals_with_ones_longer_than_540_test<BS: Blockstore>(
     a: Addrs,
     deal_start: i64,
 ) {
-    let mut batcher =
-        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+    let opts = DealOptions { deal_start, ..DealOptions::default() };
+    let mut batcher = DealBatcher::new(v, opts.clone());
 
     // good deals
-    batcher.stage(
+    batcher.stage_with_opts(
         a.client1,
-        "deal0",
-        DealOptions { deal_lifetime: Option::from(541 * EPOCHS_IN_DAY), ..Default::default() },
+        a.maddr,
+        DealOptions { deal_lifetime: 541 * EPOCHS_IN_DAY, ..opts.clone() },
     );
-    batcher.stage(
+    batcher.stage_with_opts(
         a.client1,
-        "deal1",
-        DealOptions { deal_lifetime: Option::from(1278 * EPOCHS_IN_DAY), ..Default::default() },
+        a.maddr,
+        DealOptions { deal_lifetime: 1278 * EPOCHS_IN_DAY, ..opts },
     );
-    batcher.stage(a.client1, "deal2", DealOptions::default());
+    batcher.stage(a.client1, a.maddr);
 
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
@@ -729,23 +685,22 @@ fn psd_deal_duration_too_long() {
 }
 
 fn psd_deal_duration_too_long_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
-    let mut batcher =
-        DealBatcher::new(v, a.maddr, PaddedPieceSize(1 << 30), false, deal_start, DEAL_LIFETIME);
+    let opts = DealOptions { deal_start, ..DealOptions::default() };
+    let mut batcher = DealBatcher::new(v, opts.clone());
 
     // good deals
-    batcher.stage(
+    batcher.stage_with_opts(
         a.client1,
-        "deal0",
-        DealOptions { deal_lifetime: Option::from(541 * EPOCHS_IN_DAY), ..Default::default() },
+        a.maddr,
+        DealOptions { deal_lifetime: 541 * EPOCHS_IN_DAY, ..opts.clone() },
     );
-
-    batcher.stage(a.client1, "deal1", DealOptions::default());
+    batcher.stage(a.client1, a.maddr);
 
     //bad deal - duration > max deal
-    batcher.stage(
+    batcher.stage_with_opts(
         a.client1,
-        "deal2",
-        DealOptions { deal_lifetime: Option::from(1279 * EPOCHS_IN_DAY), ..Default::default() },
+        a.maddr,
+        DealOptions { deal_lifetime: 1279 * EPOCHS_IN_DAY, ..opts },
     );
 
     let deal_ret = batcher.publish_ok(a.worker);
@@ -753,162 +708,4 @@ fn psd_deal_duration_too_long_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, dea
     assert_eq!(vec![0, 1], good_inputs);
 
     assert_invariants(v)
-}
-
-#[derive(Clone, Default)]
-struct DealOptions {
-    provider: Option<Address>,
-    piece_size: Option<PaddedPieceSize>,
-    verified: Option<bool>,
-    deal_start: Option<ChainEpoch>,
-    deal_lifetime: Option<ChainEpoch>,
-    price_per_epoch: Option<TokenAmount>,
-    provider_collateral: Option<TokenAmount>,
-    client_collateral: Option<TokenAmount>,
-}
-
-struct DealBatcher<'vm, BS>
-where
-    BS: Blockstore,
-{
-    deals: Vec<DealProposal>,
-    v: &'vm dyn VM<BS>,
-    default_provider: Address,
-    default_piece_size: PaddedPieceSize,
-    default_verified: bool,
-    default_deal_start: ChainEpoch,
-    default_deal_lifetime: ChainEpoch,
-    default_price_per_epoch: TokenAmount,
-    default_provider_collateral: TokenAmount,
-    default_client_collateral: TokenAmount,
-}
-
-impl<'vm, BS> DealBatcher<'vm, BS>
-where
-    BS: Blockstore,
-{
-    fn new(
-        v: &'vm dyn VM<BS>,
-        default_provider: Address,
-        default_piece_size: PaddedPieceSize,
-        default_verified: bool,
-        default_deal_start: ChainEpoch,
-        default_deal_lifetime: ChainEpoch,
-    ) -> Self {
-        let (default_price_per_epoch, default_provider_collateral, default_client_collateral) =
-            token_defaults();
-        DealBatcher {
-            deals: vec![],
-            v,
-            default_provider,
-            default_piece_size,
-            default_verified,
-            default_deal_start,
-            default_deal_lifetime,
-            default_price_per_epoch,
-            default_provider_collateral,
-            default_client_collateral,
-        }
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    pub fn stage(&mut self, client: Address, deal_label: &str, opts: DealOptions) {
-        let opts = self.default_opts(opts);
-        let label = Label::String(deal_label.to_string());
-        let deal = DealProposal {
-            piece_cid: make_piece_cid(deal_label.as_bytes()),
-            piece_size: opts.piece_size.unwrap(),
-            verified_deal: opts.verified.unwrap(),
-            client,
-            provider: opts.provider.unwrap(),
-            label,
-            start_epoch: opts.deal_start.unwrap(),
-            end_epoch: opts.deal_start.unwrap() + opts.deal_lifetime.unwrap(),
-            storage_price_per_epoch: opts.price_per_epoch.unwrap(),
-            provider_collateral: opts.provider_collateral.unwrap(),
-            client_collateral: opts.client_collateral.unwrap(),
-        };
-        self.deals.push(deal)
-    }
-
-    pub fn default_opts(&self, in_opts: DealOptions) -> DealOptions {
-        let mut opts = in_opts.clone();
-        if in_opts.provider.is_none() {
-            opts.provider = Some(self.default_provider)
-        }
-        if in_opts.piece_size.is_none() {
-            opts.piece_size = Some(self.default_piece_size)
-        }
-        if in_opts.verified.is_none() {
-            opts.verified = Some(self.default_verified)
-        }
-        if in_opts.deal_start.is_none() {
-            opts.deal_start = Some(self.default_deal_start)
-        }
-        if in_opts.deal_lifetime.is_none() {
-            opts.deal_lifetime = Some(self.default_deal_lifetime)
-        }
-        if in_opts.price_per_epoch.is_none() {
-            opts.price_per_epoch = Some(self.default_price_per_epoch.clone())
-        }
-        if in_opts.provider_collateral.is_none() {
-            opts.provider_collateral = Some(self.default_provider_collateral.clone())
-        }
-        if in_opts.client_collateral.is_none() {
-            opts.client_collateral = Some(self.default_client_collateral.clone())
-        }
-        opts
-    }
-
-    pub fn publish_ok(&mut self, sender: Address) -> PublishStorageDealsReturn {
-        let params_deals = self
-            .deals
-            .iter_mut()
-            .map(|deal| ClientDealProposal {
-                proposal: deal.clone(),
-                client_signature: Signature {
-                    sig_type: SignatureType::BLS,
-                    bytes: serialize(deal, "serializing deal proposal").unwrap().to_vec(),
-                },
-            })
-            .collect();
-        let publish_params = PublishStorageDealsParams { deals: params_deals };
-        let ret: PublishStorageDealsReturn = apply_ok(
-            self.v,
-            &sender,
-            &STORAGE_MARKET_ACTOR_ADDR,
-            &TokenAmount::zero(),
-            MarketMethod::PublishStorageDeals as u64,
-            Some(publish_params),
-        )
-        .deserialize()
-        .unwrap();
-        ret
-    }
-
-    pub fn publish_fail(&mut self, sender: Address) {
-        let params_deals = self
-            .deals
-            .iter_mut()
-            .map(|deal| ClientDealProposal {
-                proposal: deal.clone(),
-                client_signature: Signature {
-                    sig_type: SignatureType::BLS,
-                    bytes: serialize(deal, "serializing deal proposal").unwrap().to_vec(),
-                },
-            })
-            .collect();
-        let publish_params = PublishStorageDealsParams { deals: params_deals };
-        let ret = self
-            .v
-            .execute_message(
-                &sender,
-                &STORAGE_MARKET_ACTOR_ADDR,
-                &TokenAmount::zero(),
-                MarketMethod::PublishStorageDeals as u64,
-                Some(serialize_ok(&publish_params)),
-            )
-            .unwrap();
-        assert_eq!(ExitCode::USR_ILLEGAL_ARGUMENT, ret.code);
-    }
 }

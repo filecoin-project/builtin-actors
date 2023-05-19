@@ -75,6 +75,7 @@ use std::ops::Add;
 use crate::util::get_state;
 use crate::util::serialize_ok;
 
+pub mod deals;
 pub mod util;
 
 /// An abstract VM that is injected into integration tests
