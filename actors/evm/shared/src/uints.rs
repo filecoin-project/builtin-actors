@@ -37,7 +37,7 @@ impl U256 {
     pub const BITS: u32 = 256;
     pub const ZERO: Self = U256::from_u64(0);
     pub const ONE: Self = U256::from_u64(1);
-    pub const I128_MIN: Self = U256([0, 0, 0, i64::MIN as u64]);
+    pub const I256_MIN: Self = U256([0, 0, 0, i64::MIN as u64]);
 
     #[inline(always)]
     pub const fn from_u128_words(high: u128, low: u128) -> U256 {
@@ -245,13 +245,13 @@ mod tests {
         let max_value = U256::from(2).pow(255.into()) - 1;
         let neg_max_value = U256::from(2).pow(255.into()) - 1;
 
-        assert_eq!(U256::I128_MIN.i256_div(&minus_one), U256::I128_MIN);
-        assert_eq!(U256::I128_MIN.i256_div(&one), U256::I128_MIN);
+        assert_eq!(U256::I256_MIN.i256_div(&minus_one), U256::I256_MIN);
+        assert_eq!(U256::I256_MIN.i256_div(&one), U256::I256_MIN);
         assert_eq!(
-            U256::I128_MIN.i256_div(&two),
+            U256::I256_MIN.i256_div(&two),
             U256([0, 0, 0, i64::MIN as u64 + (i64::MIN as u64 >> 1)])
         );
-        assert_eq!(one.i256_div(&U256::I128_MIN), zero);
+        assert_eq!(one.i256_div(&U256::I256_MIN), zero);
         assert_eq!(max_value.i256_div(&one), max_value);
         assert_eq!(max_value.i256_div(&minus_one), neg_max_value);
         assert_eq!(one_hundred.i256_div(&minus_one), neg_one_hundred);
@@ -281,8 +281,8 @@ mod tests {
         assert_eq!(U256::ZERO.i256_mod(&U256::ZERO), U256::ZERO);
 
         assert_eq!(minus_one.i256_mod(&two), minus_one);
-        assert_eq!(U256::I128_MIN.i256_mod(&one), 0);
-        assert_eq!(one.i256_mod(&U256::I128_MIN), one);
+        assert_eq!(U256::I256_MIN.i256_mod(&one), 0);
+        assert_eq!(one.i256_mod(&U256::I256_MIN), one);
         assert_eq!(one.i256_mod(&U256::from(i128::MAX)), one);
 
         assert_eq!(max_value.i256_mod(&minus_one), zero);
