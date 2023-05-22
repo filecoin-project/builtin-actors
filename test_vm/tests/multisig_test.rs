@@ -16,8 +16,10 @@ use fvm_shared::METHOD_SEND;
 use integer_encoding::VarInt;
 use std::collections::HashSet;
 use std::iter::FromIterator;
+use test_vm::expects::Expect;
+use test_vm::trace::ExpectInvocation;
 use test_vm::util::{apply_code, apply_ok, assert_invariants, create_accounts, get_state};
-use test_vm::{ExpectInvocation, TestVM, VM};
+use test_vm::{TestVM, VM};
 
 #[test]
 fn proposal_hash() {
@@ -91,11 +93,12 @@ fn proposal_hash_test<BS: Blockstore>(v: &dyn VM<BS>, addrs: &[Address]) -> Toke
         Some(correct_approval_params),
     );
     let expect = ExpectInvocation {
+        from: bob,
         to: msig_addr,
         method: MsigMethod::Approve as u64,
         subinvocs: Some(vec![
             // Tx goes through to fund the system actor
-            ExpectInvocation { to: SYSTEM_ACTOR_ADDR, method: METHOD_SEND, ..Default::default() },
+            Expect::send(msig_addr, SYSTEM_ACTOR_ADDR, Some(fil_delta.clone())),
         ]),
         ..Default::default()
     };

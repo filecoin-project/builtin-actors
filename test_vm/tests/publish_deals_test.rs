@@ -7,18 +7,11 @@ use fvm_shared::crypto::signature::{Signature, SignatureType};
 use fil_actor_account::types::AuthenticateMessageParams;
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_miner::max_prove_commit_duration;
-use fil_actor_miner::Method as MinerMethod;
-use fil_actor_power::Method as PowerMethod;
-use fil_actor_reward::Method as RewardMethod;
-
 use fil_actor_verifreg::{AddVerifiedClientParams, Method as VerifregMethod};
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{
-    test_utils::*, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
-};
+use fil_actors_runtime::{test_utils::*, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
@@ -29,13 +22,15 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use test_vm::deals::{DealBatcher, DealOptions};
+use test_vm::expects::Expect;
+use test_vm::trace::ExpectInvocation;
 use test_vm::util::assert_invariants;
 use test_vm::util::serialize_ok;
 use test_vm::util::{
     apply_ok, bf_all, create_accounts, create_accounts_seeded, create_miner, verifreg_add_verifier,
 };
+use test_vm::TestVM;
 use test_vm::VM;
-use test_vm::{ExpectInvocation, TestVM};
 
 struct Addrs {
     worker: Address,
@@ -578,25 +573,15 @@ fn psd_bad_sig_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
     assert_eq!(ExitCode::USR_ILLEGAL_ARGUMENT, ret.code);
 
     ExpectInvocation {
+        from: a.worker,
         to: STORAGE_MARKET_ACTOR_ADDR,
         method: MarketMethod::PublishStorageDeals as u64,
         subinvocs: Some(vec![
+            Expect::miner_is_controlling_address(STORAGE_MARKET_ACTOR_ADDR, a.maddr, a.worker),
+            Expect::reward_this_epoch(STORAGE_MARKET_ACTOR_ADDR),
+            Expect::power_current_total(STORAGE_MARKET_ACTOR_ADDR),
             ExpectInvocation {
-                to: a.maddr,
-                method: MinerMethod::IsControllingAddressExported as u64,
-                ..Default::default()
-            },
-            ExpectInvocation {
-                to: REWARD_ACTOR_ADDR,
-                method: RewardMethod::ThisEpochReward as u64,
-                ..Default::default()
-            },
-            ExpectInvocation {
-                to: STORAGE_POWER_ACTOR_ADDR,
-                method: PowerMethod::CurrentTotalPower as u64,
-                ..Default::default()
-            },
-            ExpectInvocation {
+                from: STORAGE_MARKET_ACTOR_ADDR,
                 to: a.client1,
                 method: AccountMethod::AuthenticateMessageExported as u64,
                 params: Some(
@@ -606,10 +591,11 @@ fn psd_bad_sig_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
                     })
                     .unwrap(),
                 ),
-                code: Some(ExitCode::USR_ILLEGAL_ARGUMENT),
+                code: ExitCode::USR_ILLEGAL_ARGUMENT,
                 ..Default::default()
             },
         ]),
+        code: ExitCode::USR_ILLEGAL_ARGUMENT,
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());

@@ -374,20 +374,20 @@ pub struct ApplyRewardParams {
     pub penalty: TokenAmount,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Serialize_tuple, Deserialize_tuple)]
 pub struct DisputeWindowedPoStParams {
     pub deadline: u64,
     pub post_index: u64, // only one is allowed at a time to avoid loading too many sector infos.
 }
 
-#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct ProveCommitAggregateParams {
     pub sector_numbers: BitField,
     #[serde(with = "strict_bytes")]
     pub aggregate_proof: Vec<u8>,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ReplicaUpdate {
     pub sector_number: SectorNumber,
     pub deadline: u64,
@@ -399,12 +399,12 @@ pub struct ReplicaUpdate {
     pub replica_proof: Vec<u8>,
 }
 
-#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ProveReplicaUpdatesParams {
     pub updates: Vec<ReplicaUpdate>,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ReplicaUpdate2 {
     pub sector_number: SectorNumber,
     pub deadline: u64,
@@ -417,12 +417,12 @@ pub struct ReplicaUpdate2 {
     pub replica_proof: Vec<u8>,
 }
 
-#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ProveReplicaUpdatesParams2 {
     pub updates: Vec<ReplicaUpdate2>,
 }
 
-#[derive(Debug, Clone, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ChangeBeneficiaryParams {
     pub new_beneficiary: Address,
     pub new_quota: TokenAmount,
@@ -439,43 +439,43 @@ impl ChangeBeneficiaryParams {
     }
 }
 
-#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ActiveBeneficiary {
     pub beneficiary: Address,
     pub term: BeneficiaryTerm,
 }
 
-#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct GetBeneficiaryReturn {
     pub active: ActiveBeneficiary,
     pub proposed: Option<PendingBeneficiaryChange>,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct GetOwnerReturn {
     pub owner: Address,
     pub proposed: Option<Address>,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 #[serde(transparent)]
 pub struct IsControllingAddressParam {
     pub address: Address,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 #[serde(transparent)]
 pub struct IsControllingAddressReturn {
     pub is_controlling: bool,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 #[serde(transparent)]
 pub struct GetSectorSizeReturn {
     pub sector_size: SectorSize,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 #[serde(transparent)]
 pub struct GetAvailableBalanceReturn {
     pub available_balance: TokenAmount,
@@ -486,13 +486,13 @@ pub struct GetVestingFundsReturn {
     pub vesting_funds: Vec<(ChainEpoch, TokenAmount)>,
 }
 
-#[derive(Debug, Default, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct GetPeerIDReturn {
     #[serde(with = "strict_bytes")]
     pub peer_id: Vec<u8>,
 }
 
-#[derive(Debug, Default, PartialEq, Eq, Clone, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct GetMultiaddrsReturn {
     pub multi_addrs: Vec<BytesDe>,
 }

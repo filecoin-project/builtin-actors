@@ -1,17 +1,3 @@
-use fil_actor_cron::Method as CronMethod;
-use fil_actor_market::Method as MarketMethod;
-use fil_actor_miner::{
-    max_prove_commit_duration, power_for_sector, DeadlineInfo, Method as MinerMethod,
-    PoStPartition, ProveCommitAggregateParams, ProveCommitSectorParams, State as MinerState,
-    SubmitWindowedPoStParams,
-};
-use fil_actor_power::{Method as PowerMethod, State as PowerState};
-use fil_actor_reward::Method as RewardMethod;
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{
-    BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
-    STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -22,13 +8,27 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{PoStProof, RegisteredSealProof, SectorNumber, MAX_SECTOR_NUMBER};
-use fvm_shared::METHOD_SEND;
+
+use fil_actor_cron::Method as CronMethod;
+use fil_actor_market::Method as MarketMethod;
+use fil_actor_miner::{
+    max_prove_commit_duration, power_for_sector, DeadlineInfo, Method as MinerMethod,
+    PoStPartition, ProveCommitAggregateParams, ProveCommitSectorParams, State as MinerState,
+    SubmitWindowedPoStParams,
+};
+use fil_actor_power::{Method as PowerMethod, State as PowerState};
+use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::{
+    CRON_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+};
+use test_vm::expects::Expect;
+use test_vm::trace::ExpectInvocation;
 use test_vm::util::{
     advance_by_deadline_to_epoch, advance_to_proving_deadline, apply_code, apply_ok,
     assert_invariants, create_accounts, create_miner, expect_invariants, get_network_stats,
     get_state, invariant_failure_patterns, miner_balance, precommit_sectors, submit_windowed_post,
 };
-use test_vm::{ExpectInvocation, TestVM, TEST_VM_RAND_ARRAY, VM};
+use test_vm::{TestVM, TEST_VM_RAND_ARRAY, VM};
 
 struct SectorInfo {
     number: SectorNumber,
@@ -80,14 +80,11 @@ fn setup(store: &'_ MemoryBlockstore) -> (TestVM<MemoryBlockstore>, MinerInfo, S
         Some(prove_params),
     );
     ExpectInvocation {
+        from: worker,
         to: id_addr,
         method: MinerMethod::ProveCommitSector as u64,
         params: Some(prove_params_ser),
-        subinvocs: Some(vec![ExpectInvocation {
-            to: STORAGE_POWER_ACTOR_ADDR,
-            method: PowerMethod::SubmitPoRepForBulkVerify as u64,
-            ..Default::default()
-        }]),
+        subinvocs: Some(vec![Expect::power_submit_porep(id_addr)]),
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
@@ -106,33 +103,24 @@ fn setup(store: &'_ MemoryBlockstore) -> (TestVM<MemoryBlockstore>, MinerInfo, S
         method: CronMethod::EpochTick as u64,
         subinvocs: Some(vec![
             ExpectInvocation {
+                from: CRON_ACTOR_ADDR,
                 to: STORAGE_POWER_ACTOR_ADDR,
                 method: PowerMethod::OnEpochTickEnd as u64,
                 subinvocs: Some(vec![
+                    Expect::reward_this_epoch(STORAGE_POWER_ACTOR_ADDR),
                     ExpectInvocation {
-                        to: REWARD_ACTOR_ADDR,
-                        method: RewardMethod::ThisEpochReward as u64,
-                        ..Default::default()
-                    },
-                    ExpectInvocation {
+                        from: STORAGE_POWER_ACTOR_ADDR,
                         to: id_addr,
                         method: MinerMethod::ConfirmSectorProofsValid as u64,
-                        subinvocs: Some(vec![ExpectInvocation {
-                            to: STORAGE_POWER_ACTOR_ADDR,
-                            method: PowerMethod::UpdatePledgeTotal as u64,
-                            ..Default::default()
-                        }]),
+                        subinvocs: Some(vec![Expect::power_update_pledge(id_addr, None)]),
                         ..Default::default()
                     },
-                    ExpectInvocation {
-                        to: REWARD_ACTOR_ADDR,
-                        method: RewardMethod::UpdateNetworkKPI as u64,
-                        ..Default::default()
-                    },
+                    Expect::reward_update_kpi(),
                 ]),
                 ..Default::default()
             },
             ExpectInvocation {
+                from: CRON_ACTOR_ADDR,
                 to: STORAGE_MARKET_ACTOR_ADDR,
                 method: MarketMethod::CronTick as u64,
                 ..Default::default()
@@ -279,33 +267,24 @@ fn missed_first_post_deadline_test<BS: Blockstore>(
         params: None,
         subinvocs: Some(vec![
             ExpectInvocation {
+                from: CRON_ACTOR_ADDR,
                 to: STORAGE_POWER_ACTOR_ADDR,
                 method: PowerMethod::OnEpochTickEnd as u64,
                 subinvocs: Some(vec![
+                    Expect::reward_this_epoch(STORAGE_POWER_ACTOR_ADDR),
                     ExpectInvocation {
-                        to: REWARD_ACTOR_ADDR,
-                        method: RewardMethod::ThisEpochReward as u64,
-                        ..Default::default()
-                    },
-                    ExpectInvocation {
+                        from: STORAGE_POWER_ACTOR_ADDR,
                         to: miner_info.miner_id,
                         method: MinerMethod::OnDeferredCronEvent as u64,
-                        subinvocs: Some(vec![ExpectInvocation {
-                            to: STORAGE_POWER_ACTOR_ADDR,
-                            method: PowerMethod::EnrollCronEvent as u64,
-                            ..Default::default()
-                        }]),
+                        subinvocs: Some(vec![Expect::power_enrol_cron(miner_info.miner_id)]),
                         ..Default::default()
                     },
-                    ExpectInvocation {
-                        to: REWARD_ACTOR_ADDR,
-                        method: RewardMethod::UpdateNetworkKPI as u64,
-                        ..Default::default()
-                    },
+                    Expect::reward_update_kpi(),
                 ]),
                 ..Default::default()
             },
             ExpectInvocation {
+                from: CRON_ACTOR_ADDR,
                 to: STORAGE_MARKET_ACTOR_ADDR,
                 method: MarketMethod::CronTick as u64,
                 ..Default::default()
@@ -387,38 +366,28 @@ fn overdue_precommit_test<BS: Blockstore>(v: &dyn VM<BS>) {
         params: None,
         subinvocs: Some(vec![
             ExpectInvocation {
+                from: CRON_ACTOR_ADDR,
                 to: STORAGE_POWER_ACTOR_ADDR,
                 method: PowerMethod::OnEpochTickEnd as u64,
                 subinvocs: Some(vec![
+                    Expect::reward_this_epoch(STORAGE_POWER_ACTOR_ADDR),
                     ExpectInvocation {
-                        to: REWARD_ACTOR_ADDR,
-                        method: RewardMethod::ThisEpochReward as u64,
-                        ..Default::default()
-                    },
-                    ExpectInvocation {
+                        from: STORAGE_POWER_ACTOR_ADDR,
                         to: id_addr,
                         method: MinerMethod::OnDeferredCronEvent as u64,
                         subinvocs: Some(vec![
-                            ExpectInvocation {
-                                // The call to burnt funds indicates the overdue precommit has been penalized
-                                to: BURNT_FUNDS_ACTOR_ADDR,
-                                method: METHOD_SEND,
-                                value: Option::from(precommit.pre_commit_deposit),
-                                ..Default::default()
-                            },
+                            // The call to burnt funds indicates the overdue precommit has been penalized
+                            Expect::burn(id_addr, Some(precommit.pre_commit_deposit)),
                             // No re-enrollment of cron because burning of PCD discontinues miner cron scheduling
                         ]),
                         ..Default::default()
                     },
-                    ExpectInvocation {
-                        to: REWARD_ACTOR_ADDR,
-                        method: RewardMethod::UpdateNetworkKPI as u64,
-                        ..Default::default()
-                    },
+                    Expect::reward_update_kpi(),
                 ]),
                 ..Default::default()
             },
             ExpectInvocation {
+                from: CRON_ACTOR_ADDR,
                 to: STORAGE_MARKET_ACTOR_ADDR,
                 method: MarketMethod::CronTick as u64,
                 ..Default::default()
@@ -498,29 +467,19 @@ fn aggregate_bad_sector_number_test<BS: Blockstore>(v: &dyn VM<BS>) {
 
     precommited_sector_nos.set(MAX_SECTOR_NUMBER + 1);
 
-    let prove_params = ProveCommitAggregateParams {
-        sector_numbers: precommited_sector_nos,
+    let params = ProveCommitAggregateParams {
+        sector_numbers: precommited_sector_nos.clone(),
         aggregate_proof: vec![],
     };
-    let prove_params_ser = IpldBlock::serialize_cbor(&prove_params).unwrap();
     apply_code(
         v,
         &worker,
         &robust_addr,
         &TokenAmount::zero(),
         MinerMethod::ProveCommitAggregate as u64,
-        Some(prove_params),
+        Some(params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
-    ExpectInvocation {
-        to: id_addr,
-        method: MinerMethod::ProveCommitAggregate as u64,
-        params: Some(prove_params_ser),
-        subinvocs: Some(vec![]),
-        ..Default::default()
-    }
-    .matches(v.take_invocations().last().unwrap());
-
     expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
 
@@ -578,81 +537,53 @@ fn aggregate_size_limits_test<BS: Blockstore>(v: &dyn VM<BS>) {
     advance_by_deadline_to_epoch(v, &id_addr, prove_time);
 
     // Fail with too many sectors
-    let mut prove_params = ProveCommitAggregateParams {
+    let params = ProveCommitAggregateParams {
         sector_numbers: precommited_sector_nos.clone(),
         aggregate_proof: vec![],
     };
-    let mut prove_params_ser = IpldBlock::serialize_cbor(&prove_params).unwrap();
     apply_code(
         v,
         &worker,
         &robust_addr,
         &TokenAmount::zero(),
         MinerMethod::ProveCommitAggregate as u64,
-        Some(prove_params),
+        Some(params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
-    ExpectInvocation {
-        to: id_addr,
-        method: MinerMethod::ProveCommitAggregate as u64,
-        params: Some(prove_params_ser),
-        subinvocs: Some(vec![]),
-        ..Default::default()
-    }
-    .matches(v.take_invocations().last().unwrap());
 
     // Fail with too few sectors
     let too_few_sector_nos_bf =
         precommited_sector_nos.slice(0, policy.min_aggregated_sectors - 1).unwrap();
-    prove_params = ProveCommitAggregateParams {
+    let params = ProveCommitAggregateParams {
         sector_numbers: too_few_sector_nos_bf,
         aggregate_proof: vec![],
     };
-    prove_params_ser = IpldBlock::serialize_cbor(&prove_params).unwrap();
     apply_code(
         v,
         &worker,
         &robust_addr,
         &TokenAmount::zero(),
         MinerMethod::ProveCommitAggregate as u64,
-        Some(prove_params),
+        Some(params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
-    ExpectInvocation {
-        to: id_addr,
-        method: MinerMethod::ProveCommitAggregate as u64,
-        params: Some(prove_params_ser),
-        subinvocs: Some(vec![]),
-        ..Default::default()
-    }
-    .matches(v.take_invocations().last().unwrap());
 
     // Fail with proof too big
     let just_right_sectors_no_bf =
         precommited_sector_nos.slice(0, policy.max_aggregated_sectors).unwrap();
-    prove_params = ProveCommitAggregateParams {
+    let params = ProveCommitAggregateParams {
         sector_numbers: just_right_sectors_no_bf,
         aggregate_proof: vec![0; policy.max_aggregated_proof_size + 1],
     };
-
-    prove_params_ser = IpldBlock::serialize_cbor(&prove_params).unwrap();
     apply_code(
         v,
         &worker,
         &robust_addr,
         &TokenAmount::zero(),
         MinerMethod::ProveCommitAggregate as u64,
-        Some(prove_params),
+        Some(params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
-    ExpectInvocation {
-        to: id_addr,
-        method: MinerMethod::ProveCommitAggregate as u64,
-        params: Some(prove_params_ser),
-        subinvocs: Some(vec![]),
-        ..Default::default()
-    }
-    .matches(v.take_invocations().last().unwrap());
 
     expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
@@ -710,29 +641,19 @@ fn aggregate_bad_sender_test<BS: Blockstore>(v: &dyn VM<BS>) {
     let prove_time = v.epoch() + policy.pre_commit_challenge_delay + 1;
     advance_by_deadline_to_epoch(v, &id_addr, prove_time);
 
-    let prove_params = ProveCommitAggregateParams {
+    let params = ProveCommitAggregateParams {
         sector_numbers: precommited_sector_nos,
         aggregate_proof: vec![],
     };
-    let prove_params_ser = IpldBlock::serialize_cbor(&prove_params).unwrap();
     apply_code(
         v,
         &addrs[1],
         &robust_addr,
         &TokenAmount::zero(),
         MinerMethod::ProveCommitAggregate as u64,
-        Some(prove_params),
+        Some(params),
         ExitCode::USR_FORBIDDEN,
     );
-    ExpectInvocation {
-        to: id_addr,
-        method: MinerMethod::ProveCommitAggregate as u64,
-        params: Some(prove_params_ser),
-        subinvocs: Some(vec![]),
-        ..Default::default()
-    }
-    .matches(v.take_invocations().last().unwrap());
-
     expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
 
@@ -834,30 +755,15 @@ fn aggregate_one_precommit_expires_test<BS: Blockstore>(v: &dyn VM<BS>) {
         Some(prove_params),
     );
     ExpectInvocation {
+        from: worker,
         to: id_addr,
         method: MinerMethod::ProveCommitAggregate as u64,
         params: Some(prove_params_ser),
         subinvocs: Some(vec![
-            ExpectInvocation {
-                to: REWARD_ACTOR_ADDR,
-                method: RewardMethod::ThisEpochReward as u64,
-                ..Default::default()
-            },
-            ExpectInvocation {
-                to: STORAGE_POWER_ACTOR_ADDR,
-                method: PowerMethod::CurrentTotalPower as u64,
-                ..Default::default()
-            },
-            ExpectInvocation {
-                to: STORAGE_POWER_ACTOR_ADDR,
-                method: PowerMethod::UpdatePledgeTotal as u64,
-                ..Default::default()
-            },
-            ExpectInvocation {
-                to: BURNT_FUNDS_ACTOR_ADDR,
-                method: METHOD_SEND,
-                ..Default::default()
-            },
+            Expect::reward_this_epoch(id_addr),
+            Expect::power_current_total(id_addr),
+            Expect::power_update_pledge(id_addr, None),
+            Expect::burn(id_addr, None),
         ]),
         ..Default::default()
     }

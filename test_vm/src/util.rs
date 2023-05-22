@@ -1,9 +1,7 @@
 use std::cmp::min;
 
-use fil_actor_verifreg::ext::datacap::MintParams;
-use fil_builtin_actors_state::check::check_state_invariants;
 use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
-use frc46_token::token::types::{BurnParams, TransferFromParams, TransferParams};
+use frc46_token::token::types::{TransferFromParams, TransferParams};
 use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::{BytesDe, RawBytes};
@@ -19,7 +17,6 @@ use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use serde::Serialize;
 
-use fil_actor_account::Method as AccountMethod;
 use fil_actor_cron::Method as CronMethod;
 use fil_actor_datacap::Method as DataCapMethod;
 use fil_actor_market::ext::verifreg::{
@@ -30,9 +27,9 @@ use fil_actor_market::{
     PublishStorageDealsReturn, MARKET_NOTIFY_DEAL_METHOD,
 };
 use fil_actor_miner::{
-    aggregate_pre_commit_network_fee, max_prove_commit_duration,
-    new_deadline_info_from_offset_and_epoch, ChangeBeneficiaryParams, CompactCommD, Deadline,
-    DeadlineInfo, DeclareFaultsRecoveredParams, ExpirationExtension2,
+    aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee,
+    max_prove_commit_duration, new_deadline_info_from_offset_and_epoch, ChangeBeneficiaryParams,
+    CompactCommD, Deadline, DeadlineInfo, DeclareFaultsRecoveredParams, ExpirationExtension2,
     ExtendSectorExpiration2Params, GetBeneficiaryReturn, Method as MinerMethod, PoStPartition,
     PowerPair, PreCommitSectorBatchParams, PreCommitSectorBatchParams2, PreCommitSectorParams,
     ProveCommitAggregateParams, ProveCommitSectorParams, RecoveryDeclaration, SectorClaim,
@@ -41,19 +38,21 @@ use fil_actor_miner::{
 };
 use fil_actor_multisig::Method as MultisigMethod;
 use fil_actor_multisig::ProposeParams;
-use fil_actor_power::{
-    CreateMinerParams, CreateMinerReturn, Method as PowerMethod, UpdateClaimedPowerParams,
-};
-use fil_actor_reward::Method as RewardMethod;
+use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMethod};
+use fil_actor_verifreg::ext::datacap::MintParams;
 use fil_actor_verifreg::{
     AddVerifiedClientParams, AllocationID, ClaimID, ClaimTerm, ExtendClaimTermsParams,
-    GetClaimsParams, Method as VerifregMethod, RemoveExpiredAllocationsParams, VerifierParams,
+    Method as VerifregMethod, RemoveExpiredAllocationsParams, VerifierParams,
 };
 use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::runtime::policy_constants::{
     MARKET_DEFAULT_ALLOCATION_TERM_BUFFER, MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION,
 };
+use fil_actors_runtime::{DATACAP_TOKEN_ACTOR_ID, VERIFIED_REGISTRY_ACTOR_ID};
+use fil_builtin_actors_state::check::check_state_invariants;
 
+use crate::expects::Expect;
+use crate::trace::ExpectInvocation;
 use crate::*;
 
 // Generate count addresses by seeding an rng
@@ -228,10 +227,11 @@ pub fn miner_prove_sector<BS: Blockstore>(
     );
 
     ExpectInvocation {
+        from: *worker,
         to: *miner_id,
         method: MinerMethod::ProveCommitSector as u64,
-        from: Some(*worker),
         subinvocs: Some(vec![ExpectInvocation {
+            from: *miner_id,
             to: STORAGE_POWER_ACTOR_ADDR,
             method: PowerMethod::SubmitPoRepForBulkVerify as u64,
             ..Default::default()
@@ -255,35 +255,6 @@ pub fn precommit_sectors_v2<BS: Blockstore>(
     v2: bool,
 ) -> Vec<SectorPreCommitOnChainInfo> {
     let mid = v.resolve_id_address(maddr).unwrap();
-    let invocs_common = || -> Vec<ExpectInvocation> {
-        vec![
-            ExpectInvocation {
-                to: REWARD_ACTOR_ADDR,
-                method: RewardMethod::ThisEpochReward as u64,
-                ..Default::default()
-            },
-            ExpectInvocation {
-                to: STORAGE_POWER_ACTOR_ADDR,
-                method: PowerMethod::CurrentTotalPower as u64,
-                ..Default::default()
-            },
-        ]
-    };
-    let invoc_first = || -> ExpectInvocation {
-        ExpectInvocation {
-            to: STORAGE_POWER_ACTOR_ADDR,
-            method: PowerMethod::EnrollCronEvent as u64,
-            ..Default::default()
-        }
-    };
-    let invoc_net_fee = |fee: TokenAmount| -> ExpectInvocation {
-        ExpectInvocation {
-            to: BURNT_FUNDS_ACTOR_ADDR,
-            method: METHOD_SEND,
-            value: Some(fee),
-            ..Default::default()
-        }
-    };
     let expiration = match exp {
         None => {
             v.epoch()
@@ -296,7 +267,7 @@ pub fn precommit_sectors_v2<BS: Blockstore>(
     let mut sector_idx = 0u64;
     while sector_idx < count {
         let msg_sector_idx_base = sector_idx;
-        let mut invocs = invocs_common();
+        let mut invocs = vec![Expect::reward_this_epoch(mid), Expect::power_current_total(mid)];
         if !v2 {
             let mut param_sectors = Vec::<PreCommitSectorParams>::new();
             let mut j = 0;
@@ -315,13 +286,16 @@ pub fn precommit_sectors_v2<BS: Blockstore>(
                 j += 1;
             }
             if param_sectors.len() > 1 {
-                invocs.push(invoc_net_fee(aggregate_pre_commit_network_fee(
-                    param_sectors.len() as i64,
-                    &TokenAmount::zero(),
-                )));
+                invocs.push(Expect::burn(
+                    mid,
+                    Some(aggregate_pre_commit_network_fee(
+                        param_sectors.len() as i64,
+                        &TokenAmount::zero(),
+                    )),
+                ));
             }
             if expect_cron_enroll && msg_sector_idx_base == 0 {
-                invocs.push(invoc_first());
+                invocs.push(Expect::power_enrol_cron(mid));
             }
 
             apply_ok(
@@ -333,6 +307,7 @@ pub fn precommit_sectors_v2<BS: Blockstore>(
                 Some(PreCommitSectorBatchParams { sectors: param_sectors.clone() }),
             );
             let expect = ExpectInvocation {
+                from: *worker,
                 to: mid,
                 method: MinerMethod::PreCommitSectorBatch as u64,
                 params: Some(
@@ -363,13 +338,16 @@ pub fn precommit_sectors_v2<BS: Blockstore>(
                 j += 1;
             }
             if param_sectors.len() > 1 {
-                invocs.push(invoc_net_fee(aggregate_pre_commit_network_fee(
-                    param_sectors.len() as i64,
-                    &TokenAmount::zero(),
-                )));
+                invocs.push(Expect::burn(
+                    mid,
+                    Some(aggregate_pre_commit_network_fee(
+                        param_sectors.len() as i64,
+                        &TokenAmount::zero(),
+                    )),
+                ));
             }
             if expect_cron_enroll && msg_sector_idx_base == 0 {
-                invocs.push(invoc_first());
+                invocs.push(Expect::power_enrol_cron(mid));
             }
 
             apply_ok(
@@ -382,6 +360,7 @@ pub fn precommit_sectors_v2<BS: Blockstore>(
             );
 
             let expect = ExpectInvocation {
+                from: *worker,
                 to: mid,
                 method: MinerMethod::PreCommitSectorBatch2 as u64,
                 params: Some(
@@ -465,32 +444,18 @@ pub fn prove_commit_sectors<BS: Blockstore>(
             Some(prove_commit_aggregate_params),
         );
 
+        let expected_fee =
+            aggregate_prove_commit_network_fee(to_prove.len() as i64, &TokenAmount::zero());
         ExpectInvocation {
+            from: *worker,
             to: *maddr,
             method: MinerMethod::ProveCommitAggregate as u64,
-            from: Some(*worker),
             params: Some(prove_commit_aggregate_params_ser),
             subinvocs: Some(vec![
-                ExpectInvocation {
-                    to: REWARD_ACTOR_ADDR,
-                    method: RewardMethod::ThisEpochReward as u64,
-                    ..Default::default()
-                },
-                ExpectInvocation {
-                    to: STORAGE_POWER_ACTOR_ADDR,
-                    method: PowerMethod::CurrentTotalPower as u64,
-                    ..Default::default()
-                },
-                ExpectInvocation {
-                    to: STORAGE_POWER_ACTOR_ADDR,
-                    method: PowerMethod::UpdatePledgeTotal as u64,
-                    ..Default::default()
-                },
-                ExpectInvocation {
-                    to: BURNT_FUNDS_ACTOR_ADDR,
-                    method: METHOD_SEND,
-                    ..Default::default()
-                },
+                Expect::reward_this_epoch(*maddr),
+                Expect::power_current_total(*maddr),
+                Expect::power_update_pledge(*maddr, None),
+                Expect::burn(*maddr, Some(expected_fee)),
             ]),
             ..Default::default()
         }
@@ -502,7 +467,7 @@ pub fn prove_commit_sectors<BS: Blockstore>(
 pub fn miner_extend_sector_expiration2<BS: Blockstore>(
     v: &dyn VM<BS>,
     worker: &Address,
-    miner_id: &Address,
+    miner: &Address,
     deadline: u64,
     partition: u64,
     sectors_without_claims: Vec<u64>,
@@ -523,7 +488,7 @@ pub fn miner_extend_sector_expiration2<BS: Blockstore>(
     apply_ok(
         v,
         worker,
-        miner_id,
+        miner,
         &TokenAmount::zero(),
         MinerMethod::ExtendSectorExpiration2 as u64,
         Some(extension_params),
@@ -537,50 +502,19 @@ pub fn miner_extend_sector_expiration2<BS: Blockstore>(
 
     let mut subinvocs = vec![];
     if !claim_ids.is_empty() {
-        subinvocs.push(ExpectInvocation {
-            to: VERIFIED_REGISTRY_ACTOR_ADDR,
-            method: VerifregMethod::GetClaims as u64,
-            code: Some(ExitCode::OK),
-            params: Some(
-                IpldBlock::serialize_cbor(&GetClaimsParams {
-                    provider: miner_id.id().unwrap(),
-                    claim_ids,
-                })
-                .unwrap(),
-            ),
-            ..Default::default()
-        })
+        subinvocs.push(Expect::verifreg_get_claims(*miner, miner.id().unwrap(), claim_ids))
     }
-    subinvocs.push(ExpectInvocation {
-        to: REWARD_ACTOR_ADDR,
-        method: RewardMethod::ThisEpochReward as u64,
-        ..Default::default()
-    });
-    subinvocs.push(ExpectInvocation {
-        to: STORAGE_POWER_ACTOR_ADDR,
-        method: PowerMethod::CurrentTotalPower as u64,
-        ..Default::default()
-    });
+    subinvocs.push(Expect::reward_this_epoch(*miner));
+    subinvocs.push(Expect::power_current_total(*miner));
     if !power_delta.is_zero() {
-        subinvocs.push(ExpectInvocation {
-            to: STORAGE_POWER_ACTOR_ADDR,
-            method: PowerMethod::UpdateClaimedPower as u64,
-            params: Some(
-                IpldBlock::serialize_cbor(&UpdateClaimedPowerParams {
-                    raw_byte_delta: power_delta.raw,
-                    quality_adjusted_delta: power_delta.qa,
-                })
-                .unwrap(),
-            ),
-            ..Default::default()
-        });
+        subinvocs.push(Expect::power_update_claim(*miner, power_delta));
     }
 
     ExpectInvocation {
-        to: *miner_id,
+        from: *worker,
+        to: *miner,
         method: MinerMethod::ExtendSectorExpiration2 as u64,
         subinvocs: Some(subinvocs),
-        code: Some(ExitCode::OK),
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
@@ -782,26 +716,17 @@ pub fn submit_windowed_post<BS: Blockstore>(
         MinerMethod::SubmitWindowedPoSt as u64,
         Some(params),
     );
-    let mut subinvocs = None;
+    let mut subinvocs = None; // Unchecked unless provided
     if let Some(new_pow) = new_power {
         if new_pow == PowerPair::zero() {
             subinvocs = Some(vec![])
         } else {
-            let update_power_params = IpldBlock::serialize_cbor(&UpdateClaimedPowerParams {
-                raw_byte_delta: new_pow.raw,
-                quality_adjusted_delta: new_pow.qa,
-            })
-            .unwrap();
-            subinvocs = Some(vec![ExpectInvocation {
-                to: STORAGE_POWER_ACTOR_ADDR,
-                method: PowerMethod::UpdateClaimedPower as u64,
-                params: Some(update_power_params),
-                ..Default::default()
-            }]);
+            subinvocs = Some(vec![Expect::power_update_claim(*maddr, new_pow)])
         }
     }
 
     ExpectInvocation {
+        from: *worker,
         to: *maddr,
         method: MinerMethod::SubmitWindowedPoSt as u64,
         subinvocs,
@@ -925,16 +850,15 @@ pub fn withdraw_balance<BS: Blockstore>(
     if expect_withdraw_amount.is_positive() {
         let withdraw_balance_params_se = IpldBlock::serialize_cbor(&params).unwrap();
         ExpectInvocation {
-            from: Some(*from),
+            from: *from,
             to: *m_addr,
             method: MinerMethod::WithdrawBalance as u64,
             params: Some(withdraw_balance_params_se),
-            subinvocs: Some(vec![ExpectInvocation {
-                to: *from,
-                method: METHOD_SEND,
-                value: Some(expect_withdraw_amount.clone()),
-                ..Default::default()
-            }]),
+            subinvocs: Some(vec![Expect::send(
+                *m_addr,
+                *from,
+                Some(expect_withdraw_amount.clone()),
+            )]),
             ..Default::default()
         }
         .matches(v.take_invocations().last().unwrap());
@@ -992,19 +916,19 @@ pub fn verifreg_add_verifier<BS: Blockstore>(
         Some(proposal),
     );
     ExpectInvocation {
+        from: TEST_VERIFREG_ROOT_SIGNER_ADDR,
         to: TEST_VERIFREG_ROOT_ADDR,
         method: MultisigMethod::Propose as u64,
         subinvocs: Some(vec![ExpectInvocation {
+            from: TEST_VERIFREG_ROOT_ADDR,
             to: VERIFIED_REGISTRY_ACTOR_ADDR,
             method: VerifregMethod::AddVerifier as u64,
             params: Some(IpldBlock::serialize_cbor(&add_verifier_params).unwrap()),
-            subinvocs: Some(vec![ExpectInvocation {
-                to: DATACAP_TOKEN_ACTOR_ADDR,
-                method: DataCapMethod::BalanceExported as u64,
-                params: Some(IpldBlock::serialize_cbor(&verifier).unwrap()),
-                code: Some(ExitCode::OK),
-                ..Default::default()
-            }]),
+            subinvocs: Some(vec![Expect::frc42_balance(
+                VERIFIED_REGISTRY_ACTOR_ADDR,
+                DATACAP_TOKEN_ACTOR_ADDR,
+                *verifier,
+            )]),
             ..Default::default()
         }]),
         ..Default::default()
@@ -1028,24 +952,34 @@ pub fn verifreg_add_client<BS: Blockstore>(
         VerifregMethod::AddVerifiedClient as u64,
         Some(add_client_params),
     );
+    let allowance_tokens = TokenAmount::from_whole(allowance);
     ExpectInvocation {
+        from: *verifier,
         to: VERIFIED_REGISTRY_ACTOR_ADDR,
         method: VerifregMethod::AddVerifiedClient as u64,
         subinvocs: Some(vec![ExpectInvocation {
+            from: VERIFIED_REGISTRY_ACTOR_ADDR,
             to: DATACAP_TOKEN_ACTOR_ADDR,
             method: DataCapMethod::MintExported as u64,
             params: Some(
                 IpldBlock::serialize_cbor(&MintParams {
                     to: *client,
-                    amount: TokenAmount::from_whole(allowance),
+                    amount: allowance_tokens.clone(),
                     operators: vec![STORAGE_MARKET_ACTOR_ADDR],
                 })
                 .unwrap(),
             ),
-            code: Some(ExitCode::OK),
+            subinvocs: Some(vec![Expect::frc46_receiver(
+                DATACAP_TOKEN_ACTOR_ADDR,
+                *client,
+                DATACAP_TOKEN_ACTOR_ID,
+                client.id().unwrap(),
+                VERIFIED_REGISTRY_ACTOR_ID,
+                allowance_tokens,
+                None,
+            )]),
             ..Default::default()
         }]),
-        code: Some(ExitCode::OK),
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
@@ -1093,12 +1027,13 @@ pub fn verifreg_remove_expired_allocations<BS: Blockstore>(
         Some(params),
     );
     ExpectInvocation {
+        from: *caller,
         to: VERIFIED_REGISTRY_ACTOR_ADDR,
         method: VerifregMethod::RemoveExpiredAllocations as u64,
         subinvocs: Some(vec![ExpectInvocation {
+            from: VERIFIED_REGISTRY_ACTOR_ADDR,
             to: DATACAP_TOKEN_ACTOR_ADDR,
             method: DataCapMethod::TransferExported as u64,
-            code: Some(ExitCode::OK),
             params: Some(
                 IpldBlock::serialize_cbor(&TransferParams {
                     to: *client,
@@ -1107,6 +1042,15 @@ pub fn verifreg_remove_expired_allocations<BS: Blockstore>(
                 })
                 .unwrap(),
             ),
+            subinvocs: Some(vec![Expect::frc46_receiver(
+                DATACAP_TOKEN_ACTOR_ADDR,
+                *client,
+                VERIFIED_REGISTRY_ACTOR_ID,
+                client.id().unwrap(),
+                VERIFIED_REGISTRY_ACTOR_ID,
+                TokenAmount::from_whole(datacap_refund),
+                None,
+            )]),
             ..Default::default()
         }]),
         ..Default::default()
@@ -1160,12 +1104,13 @@ pub fn datacap_extend_claim<BS: Blockstore>(
     );
 
     ExpectInvocation {
+        from: *client,
         to: DATACAP_TOKEN_ACTOR_ADDR,
         method: DataCapMethod::TransferExported as u64,
         subinvocs: Some(vec![ExpectInvocation {
+            from: DATACAP_TOKEN_ACTOR_ADDR,
             to: VERIFIED_REGISTRY_ACTOR_ADDR,
             method: VerifregMethod::UniversalReceiverHook as u64,
-            code: Some(ExitCode::OK),
             params: Some(
                 IpldBlock::serialize_cbor(&UniversalReceiverParams {
                     type_: FRC46_TOKEN_TYPE,
@@ -1184,15 +1129,11 @@ pub fn datacap_extend_claim<BS: Blockstore>(
                 })
                 .unwrap(),
             ),
-            subinvocs: Some(vec![ExpectInvocation {
-                to: DATACAP_TOKEN_ACTOR_ADDR,
-                method: DataCapMethod::BurnExported as u64,
-                code: Some(ExitCode::OK),
-                params: Some(
-                    IpldBlock::serialize_cbor(&BurnParams { amount: token_amount }).unwrap(),
-                ),
-                ..Default::default()
-            }]),
+            subinvocs: Some(vec![Expect::frc46_burn(
+                VERIFIED_REGISTRY_ACTOR_ADDR,
+                DATACAP_TOKEN_ACTOR_ADDR,
+                token_amount,
+            )]),
             ..Default::default()
         }]),
         ..Default::default()
@@ -1229,7 +1170,7 @@ pub fn market_publish_deal<BS: Blockstore>(
     deal_lifetime: ChainEpoch,
 ) -> PublishStorageDealsReturn {
     let label = Label::String(deal_label.to_string());
-    let deal = DealProposal {
+    let proposal = DealProposal {
         piece_cid: make_piece_cid(deal_label.as_bytes()),
         piece_size,
         verified_deal,
@@ -1243,13 +1184,14 @@ pub fn market_publish_deal<BS: Blockstore>(
         client_collateral: TokenAmount::from_whole(1),
     };
 
+    let signature = Signature {
+        sig_type: SignatureType::BLS,
+        bytes: serialize(&proposal, "deal proposal").unwrap().to_vec(),
+    };
     let publish_params = PublishStorageDealsParams {
         deals: vec![ClientDealProposal {
-            proposal: deal.clone(),
-            client_signature: Signature {
-                sig_type: SignatureType::BLS,
-                bytes: serialize(&deal, "deal proposal").unwrap().to_vec(),
-            },
+            proposal: proposal.clone(),
+            client_signature: signature.clone(),
         }],
     };
     let ret: PublishStorageDealsReturn = apply_ok(
@@ -1263,46 +1205,42 @@ pub fn market_publish_deal<BS: Blockstore>(
     .deserialize()
     .unwrap();
 
+    let proposal_bytes = serialize(&proposal, "deal proposal").unwrap();
+
     let mut expect_publish_invocs = vec![
         ExpectInvocation {
+            from: STORAGE_MARKET_ACTOR_ADDR,
             to: *miner_id,
             method: MinerMethod::IsControllingAddressExported as u64,
             ..Default::default()
         },
-        ExpectInvocation {
-            to: REWARD_ACTOR_ADDR,
-            method: RewardMethod::ThisEpochReward as u64,
-            ..Default::default()
-        },
-        ExpectInvocation {
-            to: STORAGE_POWER_ACTOR_ADDR,
-            method: PowerMethod::CurrentTotalPower as u64,
-            ..Default::default()
-        },
-        ExpectInvocation {
-            to: *deal_client,
-            method: AccountMethod::AuthenticateMessageExported as u64,
-            ..Default::default()
-        },
+        Expect::reward_this_epoch(STORAGE_MARKET_ACTOR_ADDR),
+        Expect::power_current_total(STORAGE_MARKET_ACTOR_ADDR),
+        Expect::frc44_authenticate(
+            STORAGE_MARKET_ACTOR_ADDR,
+            *deal_client,
+            proposal_bytes.to_vec(),
+            signature.bytes,
+        ),
     ];
     if verified_deal {
-        let deal_term = deal.end_epoch - deal.start_epoch;
-        let token_amount = TokenAmount::from_whole(deal.piece_size.0 as i64);
+        let deal_term = proposal.end_epoch - proposal.start_epoch;
+        let token_amount = TokenAmount::from_whole(proposal.piece_size.0 as i64);
         let alloc_expiration =
-            min(deal.start_epoch, v.epoch() + MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION);
+            min(proposal.start_epoch, v.epoch() + MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION);
 
         expect_publish_invocs.push(ExpectInvocation {
+            from: STORAGE_MARKET_ACTOR_ADDR,
             to: DATACAP_TOKEN_ACTOR_ADDR,
             method: DataCapMethod::BalanceExported as u64,
             params: Some(IpldBlock::serialize_cbor(&deal_client).unwrap()),
-            code: Some(ExitCode::OK),
             ..Default::default()
         });
         let alloc_reqs = AllocationRequests {
             allocations: vec![AllocationRequest {
                 provider: miner_id.id().unwrap(),
-                data: deal.piece_cid,
-                size: deal.piece_size,
+                data: proposal.piece_cid,
+                size: proposal.piece_size,
                 term_min: deal_term,
                 term_max: deal_term + MARKET_DEFAULT_ALLOCATION_TERM_BUFFER,
                 expiration: alloc_expiration,
@@ -1310,6 +1248,7 @@ pub fn market_publish_deal<BS: Blockstore>(
             extensions: vec![],
         };
         expect_publish_invocs.push(ExpectInvocation {
+            from: STORAGE_MARKET_ACTOR_ADDR,
             to: DATACAP_TOKEN_ACTOR_ADDR,
             method: DataCapMethod::TransferFromExported as u64,
             params: Some(
@@ -1321,8 +1260,8 @@ pub fn market_publish_deal<BS: Blockstore>(
                 })
                 .unwrap(),
             ),
-            code: Some(ExitCode::OK),
             subinvocs: Some(vec![ExpectInvocation {
+                from: DATACAP_TOKEN_ACTOR_ADDR,
                 to: VERIFIED_REGISTRY_ACTOR_ADDR,
                 method: VerifregMethod::UniversalReceiverHook as u64,
                 params: Some(
@@ -1343,18 +1282,19 @@ pub fn market_publish_deal<BS: Blockstore>(
                     })
                     .unwrap(),
                 ),
-                code: Some(ExitCode::OK),
                 ..Default::default()
             }]),
             ..Default::default()
         })
     }
     expect_publish_invocs.push(ExpectInvocation {
+        from: STORAGE_MARKET_ACTOR_ADDR,
         to: *deal_client,
         method: MARKET_NOTIFY_DEAL_METHOD,
         ..Default::default()
     });
     ExpectInvocation {
+        from: *worker,
         to: STORAGE_MARKET_ACTOR_ADDR,
         method: MarketMethod::PublishStorageDeals as u64,
         subinvocs: Some(expect_publish_invocs),

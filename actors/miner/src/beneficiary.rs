@@ -48,7 +48,7 @@ impl BeneficiaryTerm {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct PendingBeneficiaryChange {
     pub new_beneficiary: Address,
     pub new_quota: TokenAmount,
