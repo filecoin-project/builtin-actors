@@ -93,6 +93,7 @@ pub enum Method {
     GetDealProviderCollateralExported = frc42_dispatch::method_hash!("GetDealProviderCollateral"),
     GetDealVerifiedExported = frc42_dispatch::method_hash!("GetDealVerified"),
     GetDealActivationExported = frc42_dispatch::method_hash!("GetDealActivation"),
+    ActivateDealsBatchExported = frc42_dispatch::method_hash!("ActivateDealsBatch"),
 }
 
 /// Market Actor
@@ -530,12 +531,36 @@ impl Actor {
         Ok(VerifyDealsForActivationReturn { sectors: sectors_data })
     }
 
+    fn activate_deals_batch(
+        rt: &impl Runtime,
+        params: ActivateDealsBatchParams,
+    ) -> Result<ActivateDealsBatchResult, ActorError> {
+        rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
+
+        let mut sectors = Vec::new();
+
+        for (activate_params, sector_number) in params.sectors {
+            let expiry = activate_params.sector_expiry;
+            let res = Self::activate_deals_inner(rt, activate_params)?;
+            sectors.push((res, sector_number, expiry));
+        }
+
+        Ok(ActivateDealsBatchResult { sectors })
+    }
+
     /// Activate a set of deals, returning the combined deal space and extra info for verified deals.
     fn activate_deals(
         rt: &impl Runtime,
         params: ActivateDealsParams,
     ) -> Result<ActivateDealsResult, ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
+        Self::activate_deals_inner(rt, params)
+    }
+
+    fn activate_deals_inner(
+        rt: &impl Runtime,
+        params: ActivateDealsParams,
+    ) -> Result<ActivateDealsResult, ActorError> {
         let miner_addr = rt.message().caller();
         let curr_epoch = rt.curr_epoch();
 
@@ -608,7 +633,7 @@ impl Actor {
                         slash_epoch: EPOCH_UNDEFINED,
                         verified_claim: allocation,
                     },
-                ));
+                ))
             }
 
             st.put_deal_states(rt.store(), &deal_states)?;
@@ -1418,5 +1443,6 @@ impl ActorCode for Actor {
         GetDealProviderCollateralExported => get_deal_provider_collateral,
         GetDealVerifiedExported => get_deal_verified,
         GetDealActivationExported => get_deal_activation,
+        ActivateDealsBatchExported => activate_deals_batch,
     }
 }

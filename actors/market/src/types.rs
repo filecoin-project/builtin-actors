@@ -13,6 +13,7 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::sector::SectorNumber;
 use fvm_shared::ActorID;
 
 use crate::Label;
@@ -115,6 +116,16 @@ pub struct ActivateDealsResult {
     #[serde(with = "bigint_ser")]
     pub nonverified_deal_space: BigInt,
     pub verified_infos: Vec<VerifiedDealInfo>,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+pub struct ActivateDealsBatchParams {
+    pub sectors: Vec<(ActivateDealsParams, SectorNumber)>,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+pub struct ActivateDealsBatchResult {
+    pub sectors: Vec<(ActivateDealsResult, SectorNumber, ChainEpoch)>,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]

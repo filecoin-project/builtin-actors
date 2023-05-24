@@ -24,6 +24,8 @@ pub mod market {
     pub const ACTIVATE_DEALS_METHOD: u64 = 6;
     pub const ON_MINER_SECTORS_TERMINATE_METHOD: u64 = 7;
     pub const COMPUTE_DATA_COMMITMENT_METHOD: u64 = 8;
+    pub const ACTIVATE_DEALS_BATCH_EXPORTED: u64 =
+        frc42_dispatch::method_hash!("ActivateDealsBatch");
 
     #[derive(Serialize_tuple, Deserialize_tuple)]
     pub struct SectorDeals {
@@ -36,6 +38,16 @@ pub mod market {
     pub struct ActivateDealsParams {
         pub deal_ids: Vec<DealID>,
         pub sector_expiry: ChainEpoch,
+    }
+
+    #[derive(Serialize_tuple, Deserialize_tuple)]
+    pub struct ActivateDealsBatchParams {
+        pub sectors: Vec<(ActivateDealsParams, SectorNumber)>,
+    }
+
+    #[derive(Serialize_tuple, Deserialize_tuple)]
+    pub struct ActivateDealsBatchResult {
+        pub sectors: Vec<(ActivateDealsResult, SectorNumber, ChainEpoch)>,
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
@@ -160,6 +172,8 @@ pub mod verifreg {
 
     pub const GET_CLAIMS_METHOD: u64 = 10;
     pub const CLAIM_ALLOCATIONS_METHOD: u64 = 9;
+    pub const CLAIM_ALLOCATIONS_BATCH_METHOD: u64 =
+        frc42_dispatch::method_hash!("ClaimAllocationsBatch");
 
     pub type ClaimID = u64;
     pub type AllocationID = u64;
@@ -215,5 +229,15 @@ pub mod verifreg {
         pub batch_info: BatchReturn,
         #[serde(with = "bigint_ser")]
         pub claimed_space: BigInt,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+    pub struct ClaimAllocationsBatchParams {
+        pub claims: Vec<ClaimAllocationsParams>,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+    pub struct ClaimAllocationsBatchReturn {
+        pub claims: Vec<ClaimAllocationsReturn>,
     }
 }

@@ -144,6 +144,16 @@ pub struct ClaimAllocationsReturn {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct ClaimAllocationsBatchParams {
+    pub claims: Vec<ClaimAllocationsParams>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct ClaimAllocationsBatchReturn {
+    pub claims: Vec<ClaimAllocationsReturn>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ClaimTerm {
     pub provider: ActorID,
     pub claim_id: ClaimID,
