@@ -375,12 +375,13 @@ impl Actor {
         }
 
         let mut rets: Vec<ClaimAllocationsReturn> = Vec::new();
+        let mut total_datacap_claimed = DataCap::zero();
 
-        for p in params.claims {
-            let mut datacap_claimed = DataCap::zero();
-            let mut ret_gen = BatchReturnGen::new(p.sectors.len());
-            let all_or_nothing = p.all_or_nothing;
-            rt.transaction(|st: &mut State, rt| {
+        rt.transaction(|st: &mut State, rt| {
+            for p in params.claims {
+                let mut datacap_claimed = DataCap::zero();
+                let mut ret_gen = BatchReturnGen::new(p.sectors.len());
+                let all_or_nothing = p.all_or_nothing;
                 let mut claims = st.load_claims(rt.store())?;
                 let mut allocs = st.load_allocs(rt.store())?;
 
@@ -448,23 +449,25 @@ impl Actor {
                 }
                 st.save_allocs(&mut allocs)?;
                 st.save_claims(&mut claims)?;
-                Ok(())
-            })
-            .context("state transaction failed")?;
-            let batch_info = ret_gen.gen();
-            if all_or_nothing && !batch_info.all_ok() {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "all or nothing call contained failures: {}",
-                    batch_info.to_string()
-                ));
+                let batch_info = ret_gen.gen();
+                if all_or_nothing && !batch_info.all_ok() {
+                    return Err(actor_error!(
+                        illegal_argument,
+                        "all or nothing call contained failures: {}",
+                        batch_info.to_string()
+                    ));
+                }
+
+                // accumulate burnt datacap
+                total_datacap_claimed += datacap_claimed.clone();
+                rets.push(ClaimAllocationsReturn { batch_info, claimed_space: datacap_claimed });
             }
+            Ok(())
+        })
+        .context("state transaction failed")?;
 
-            // Burn the datacap tokens from verified registry's own balance.
-            burn(rt, &datacap_claimed)?;
-
-            rets.push(ClaimAllocationsReturn { batch_info, claimed_space: datacap_claimed });
-        }
+        // burn all the claimed datacap
+        burn(rt, &total_datacap_claimed)?;
 
         Ok(ClaimAllocationsBatchReturn { claims: rets })
     }
