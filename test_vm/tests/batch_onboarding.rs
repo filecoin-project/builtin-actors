@@ -21,20 +21,20 @@ use test_vm::util::{
 use test_vm::{TestVM, VM};
 
 struct Onboarding {
-    epoch_delay: i64,                 // epochs to advance since the prior action
-    pre_commit_sector_count: u64,     // sectors to batch pre-commit
-    pre_commit_batch_size: i64,       // batch size (multiple batches if committing more)
-    prove_commit_sector_count: u64,   // sectors to aggregate prove-commit
-    prove_commit_aggregate_size: i64, // aggregate size (multiple aggregates if proving more)
+    epoch_delay: i64,                   // epochs to advance since the prior action
+    pre_commit_sector_count: usize,     // sectors to batch pre-commit
+    pre_commit_batch_size: usize,       // batch size (multiple batches if committing more)
+    prove_commit_sector_count: usize,   // sectors to aggregate prove-commit
+    prove_commit_aggregate_size: usize, // aggregate size (multiple aggregates if proving more)
 }
 
 impl Onboarding {
     fn new(
         epoch_delay: i64,
-        pre_commit_sector_count: u64,
-        pre_commit_batch_size: i64,
-        prove_commit_sector_count: u64,
-        prove_commit_aggregate_size: i64,
+        pre_commit_sector_count: usize,
+        pre_commit_batch_size: usize,
+        prove_commit_sector_count: usize,
+        prove_commit_aggregate_size: usize,
     ) -> Self {
         Self {
             epoch_delay,
@@ -46,6 +46,7 @@ impl Onboarding {
     }
 }
 
+// Test for batch pre-commit and aggregate prove-commit onboarding sectors (no deals).
 #[test_case(false; "v1")]
 #[test_case(true; "v2")]
 fn batch_onboarding(v2: bool) {
@@ -86,9 +87,9 @@ pub fn batch_onboarding_test<BS: Blockstore>(v: &dyn VM<BS>, v2: bool) {
     let mut pre_committed_count = 0;
 
     let vec_onboarding = vec![
-        Onboarding::new(0, 10, PRE_COMMIT_SECTOR_BATCH_MAX_SIZE as i64, 0, 0),
+        Onboarding::new(0, 10, PRE_COMMIT_SECTOR_BATCH_MAX_SIZE, 0, 0),
         Onboarding::new(1, 20, 12, 0, 0),
-        Onboarding::new(PRE_COMMIT_CHALLENGE_DELAY + 1, 0, 0, 8, MAX_AGGREGATED_SECTORS as i64),
+        Onboarding::new(PRE_COMMIT_CHALLENGE_DELAY + 1, 0, 0, 8, MAX_AGGREGATED_SECTORS as usize),
         Onboarding::new(1, 0, 0, 8, 4),
         Onboarding::new(1, 10, 4, 0, 0),
         Onboarding::new(PRE_COMMIT_CHALLENGE_DELAY + 1, 0, 0, 24, 10),
@@ -105,6 +106,7 @@ pub fn batch_onboarding_test<BS: Blockstore>(v: &dyn VM<BS>, v2: bool) {
                 v,
                 item.pre_commit_sector_count,
                 item.pre_commit_batch_size,
+                vec![],
                 &worker,
                 &id_addr,
                 *seal_proof,
@@ -114,13 +116,13 @@ pub fn batch_onboarding_test<BS: Blockstore>(v: &dyn VM<BS>, v2: bool) {
                 v2,
             );
             precommmits.append(&mut new_precommits);
-            next_sector_no += item.pre_commit_sector_count;
+            next_sector_no += item.pre_commit_sector_count as u64;
             pre_committed_count += item.pre_commit_sector_count;
         }
 
         if item.prove_commit_sector_count > 0 {
-            let to_prove = precommmits[..item.prove_commit_sector_count as usize].to_vec();
-            precommmits = precommmits[item.prove_commit_sector_count as usize..].to_vec();
+            let to_prove = precommmits[..item.prove_commit_sector_count].to_vec();
+            precommmits = precommmits[item.prove_commit_sector_count..].to_vec();
             prove_commit_sectors(v, &worker, &id_addr, to_prove, item.prove_commit_aggregate_size);
             proven_count += item.prove_commit_sector_count;
         }
@@ -142,7 +144,10 @@ pub fn batch_onboarding_test<BS: Blockstore>(v: &dyn VM<BS>, v2: bool) {
 
     let network_stats = get_network_stats(v);
     let sector_size = seal_proof.sector_size().unwrap() as u64;
-    assert_eq!(network_stats.total_bytes_committed, BigInt::from(sector_size * proven_count));
+    assert_eq!(
+        network_stats.total_bytes_committed,
+        BigInt::from(sector_size * proven_count as u64)
+    );
     assert!(network_stats.total_pledge_collateral.is_positive());
 
     apply_ok(
@@ -156,7 +161,10 @@ pub fn batch_onboarding_test<BS: Blockstore>(v: &dyn VM<BS>, v2: bool) {
 
     let network_stats = get_network_stats(v);
     let sector_size = seal_proof.sector_size().unwrap() as u64;
-    assert_eq!(network_stats.total_bytes_committed, BigInt::from(sector_size * proven_count));
+    assert_eq!(
+        network_stats.total_bytes_committed,
+        BigInt::from(sector_size * proven_count as u64)
+    );
     assert!(network_stats.total_pledge_collateral.is_positive());
 
     expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);

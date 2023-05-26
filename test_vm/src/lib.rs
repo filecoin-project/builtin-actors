@@ -1,7 +1,7 @@
+use crate::fakes::FakePrimitives;
 use anyhow::anyhow;
 use bimap::BiBTreeMap;
 use cid::multihash::Code;
-use cid::multihash::MultihashDigest;
 use cid::Cid;
 use fil_actor_account::{Actor as AccountActor, State as AccountState};
 use fil_actor_cron::{Actor as CronActor, Entry as CronEntry, State as CronState};
@@ -78,6 +78,7 @@ use crate::util::serialize_ok;
 
 pub mod deals;
 pub mod expects;
+pub mod fakes;
 pub mod trace;
 pub mod util;
 
@@ -120,6 +121,9 @@ pub trait VM<BS: Blockstore> {
     /// Build a map of all actors in the system and their type
     fn actor_manifest(&self) -> BiBTreeMap<Cid, Type>;
 
+    /// Provides access to VM primitives
+    fn primitives(&self) -> &FakePrimitives;
+
     /// Get the current runtime policy
     fn policy(&self) -> Policy;
 
@@ -135,6 +139,7 @@ pub struct TestVM<'bs, BS>
 where
     BS: Blockstore,
 {
+    pub primitives: FakePrimitives,
     pub store: &'bs BS,
     pub state_root: RefCell<Cid>,
     total_fil: TokenAmount,
@@ -320,6 +325,10 @@ where
     fn total_fil(&self) -> TokenAmount {
         self.total_fil.clone()
     }
+
+    fn primitives(&self) -> &FakePrimitives {
+        &self.primitives
+    }
 }
 
 impl<'bs, BS> TestVM<'bs, BS>
@@ -329,6 +338,7 @@ where
     pub fn new(store: &'bs MemoryBlockstore) -> TestVM<'bs, MemoryBlockstore> {
         let mut actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::new(store);
         TestVM {
+            primitives: FakePrimitives {},
             store,
             state_root: RefCell::new(actors.flush().unwrap()),
             total_fil: TokenAmount::zero(),
@@ -491,6 +501,7 @@ where
     pub fn with_epoch(self, epoch: ChainEpoch) -> TestVM<'bs, BS> {
         self.checkpoint();
         TestVM {
+            primitives: FakePrimitives {},
             store: self.store,
             state_root: self.state_root.clone(),
             total_fil: self.total_fil,
@@ -1168,65 +1179,6 @@ where
     }
 }
 
-impl<BS> Primitives for TestVM<'_, BS>
-where
-    BS: Blockstore,
-{
-    // A "valid" signature has its bytes equal to the plaintext.
-    // Anything else is considered invalid.
-    fn verify_signature(
-        &self,
-        signature: &Signature,
-        _signer: &Address,
-        plaintext: &[u8],
-    ) -> Result<(), anyhow::Error> {
-        if signature.bytes != plaintext {
-            return Err(anyhow::format_err!(
-                "invalid signature (mock sig validation expects siggy bytes to be equal to plaintext)"
-            ));
-        }
-        Ok(())
-    }
-
-    fn hash_blake2b(&self, data: &[u8]) -> [u8; 32] {
-        blake2b_simd::Params::new()
-            .hash_length(32)
-            .to_state()
-            .update(data)
-            .finalize()
-            .as_bytes()
-            .try_into()
-            .unwrap()
-    }
-
-    fn compute_unsealed_sector_cid(
-        &self,
-        _proof_type: RegisteredSealProof,
-        _pieces: &[PieceInfo],
-    ) -> Result<Cid, anyhow::Error> {
-        Ok(make_piece_cid(b"unsealed from itest vm"))
-    }
-
-    fn hash(&self, hasher: SupportedHashes, data: &[u8]) -> Vec<u8> {
-        let hasher = Code::try_from(hasher as u64).unwrap(); // supported hashes are all implemented in multihash
-        hasher.digest(data).digest().to_owned()
-    }
-
-    fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
-        let hasher = Code::try_from(hasher as u64).unwrap();
-        let (len, buf, ..) = hasher.digest(data).into_inner();
-        (buf, len as usize)
-    }
-
-    fn recover_secp_public_key(
-        &self,
-        hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
-        signature: &[u8; SECP_SIG_LEN],
-    ) -> Result<[u8; SECP_PUB_LEN], anyhow::Error> {
-        recover_secp_public_key(hash, signature).map_err(|_| anyhow!("failed to recover pubkey"))
-    }
-}
-
 impl<BS> Primitives for InvocationCtx<'_, '_, BS>
 where
     BS: Blockstore,
@@ -1237,11 +1189,11 @@ where
         signer: &Address,
         plaintext: &[u8],
     ) -> Result<(), anyhow::Error> {
-        self.v.verify_signature(signature, signer, plaintext)
+        self.v.primitives.verify_signature(signature, signer, plaintext)
     }
 
     fn hash_blake2b(&self, data: &[u8]) -> [u8; 32] {
-        self.v.hash_blake2b(data)
+        self.v.primitives.hash_blake2b(data)
     }
 
     fn compute_unsealed_sector_cid(
@@ -1249,15 +1201,15 @@ where
         proof_type: RegisteredSealProof,
         pieces: &[PieceInfo],
     ) -> Result<Cid, anyhow::Error> {
-        self.v.compute_unsealed_sector_cid(proof_type, pieces)
+        self.v.primitives.compute_unsealed_sector_cid(proof_type, pieces)
     }
 
     fn hash(&self, hasher: SupportedHashes, data: &[u8]) -> Vec<u8> {
-        self.v.hash(hasher, data)
+        self.v.primitives.hash(hasher, data)
     }
 
     fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
-        self.v.hash_64(hasher, data)
+        self.v.primitives.hash_64(hasher, data)
     }
 
     fn recover_secp_public_key(
@@ -1265,7 +1217,7 @@ where
         hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
         signature: &[u8; SECP_SIG_LEN],
     ) -> Result<[u8; SECP_PUB_LEN], anyhow::Error> {
-        self.v.recover_secp_public_key(hash, signature)
+        self.v.primitives.recover_secp_public_key(hash, signature)
     }
 }
 

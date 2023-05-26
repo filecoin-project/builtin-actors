@@ -24,7 +24,7 @@ use fil_actor_market::ext::verifreg::{
 };
 use fil_actor_market::{
     ClientDealProposal, DealProposal, Label, Method as MarketMethod, PublishStorageDealsParams,
-    PublishStorageDealsReturn, MARKET_NOTIFY_DEAL_METHOD,
+    PublishStorageDealsReturn, SectorDeals, MARKET_NOTIFY_DEAL_METHOD,
 };
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee,
@@ -241,11 +241,17 @@ pub fn miner_prove_sector<BS: Blockstore>(
     .matches(v.take_invocations().last().unwrap());
 }
 
+pub struct PrecommitMetadata {
+    pub deals: Vec<DealID>,
+    pub commd: CompactCommD,
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn precommit_sectors_v2<BS: Blockstore>(
     v: &dyn VM<BS>,
-    count: u64,
-    batch_size: i64,
+    count: usize,
+    batch_size: usize,
+    metadata: Vec<PrecommitMetadata>, // Per-sector deal metadata, or empty vector for no deals.
     worker: &Address,
     maddr: &Address,
     seal_proof: RegisteredSealProof,
@@ -264,7 +270,9 @@ pub fn precommit_sectors_v2<BS: Blockstore>(
         Some(e) => e,
     };
 
-    let mut sector_idx = 0u64;
+    let mut sector_idx: usize = 0;
+    let no_deals = PrecommitMetadata { deals: vec![], commd: CompactCommD::default() };
+    let mut sectors_with_deals: Vec<SectorDeals> = vec![];
     while sector_idx < count {
         let msg_sector_idx_base = sector_idx;
         let mut invocs = vec![Expect::reward_this_epoch(mid), Expect::power_current_total(mid)];
@@ -272,18 +280,29 @@ pub fn precommit_sectors_v2<BS: Blockstore>(
             let mut param_sectors = Vec::<PreCommitSectorParams>::new();
             let mut j = 0;
             while j < batch_size && sector_idx < count {
-                let sector_number = sector_number_base + sector_idx;
+                let sector_number = sector_number_base + sector_idx as u64;
+                let sector_meta = metadata.get(sector_idx).unwrap_or(&no_deals);
                 param_sectors.push(PreCommitSectorParams {
                     seal_proof,
                     sector_number,
                     sealed_cid: make_sealed_cid(format!("sn: {}", sector_number).as_bytes()),
                     seal_rand_epoch: v.epoch() - 1,
-                    deal_ids: vec![],
+                    deal_ids: sector_meta.deals.clone().clone(),
                     expiration,
                     ..Default::default()
                 });
+                if !sector_meta.deals.is_empty() {
+                    sectors_with_deals.push(SectorDeals {
+                        sector_type: seal_proof,
+                        sector_expiry: expiration,
+                        deal_ids: sector_meta.deals.clone(),
+                    });
+                }
                 sector_idx += 1;
                 j += 1;
+            }
+            if !sectors_with_deals.is_empty() {
+                invocs.push(Expect::market_verify_deals(mid, sectors_with_deals.clone()));
             }
             if param_sectors.len() > 1 {
                 invocs.push(Expect::burn(
@@ -324,18 +343,29 @@ pub fn precommit_sectors_v2<BS: Blockstore>(
             let mut param_sectors = Vec::<SectorPreCommitInfo>::new();
             let mut j = 0;
             while j < batch_size && sector_idx < count {
-                let sector_number = sector_number_base + sector_idx;
+                let sector_number = sector_number_base + sector_idx as u64;
+                let sector_meta = metadata.get(sector_idx).unwrap_or(&no_deals);
                 param_sectors.push(SectorPreCommitInfo {
                     seal_proof,
                     sector_number,
                     sealed_cid: make_sealed_cid(format!("sn: {}", sector_number).as_bytes()),
                     seal_rand_epoch: v.epoch() - 1,
-                    deal_ids: vec![],
+                    deal_ids: sector_meta.deals.clone(),
                     expiration,
-                    unsealed_cid: CompactCommD::new(None),
+                    unsealed_cid: sector_meta.commd.clone(),
                 });
+                if !sector_meta.deals.is_empty() {
+                    sectors_with_deals.push(SectorDeals {
+                        sector_type: seal_proof,
+                        sector_expiry: expiration,
+                        deal_ids: sector_meta.deals.clone(),
+                    });
+                }
                 sector_idx += 1;
                 j += 1;
+            }
+            if !sectors_with_deals.is_empty() {
+                invocs.push(Expect::market_verify_deals(mid, sectors_with_deals.clone()));
             }
             if param_sectors.len() > 1 {
                 invocs.push(Expect::burn(
@@ -380,7 +410,7 @@ pub fn precommit_sectors_v2<BS: Blockstore>(
     (0..count)
         .map(|i| {
             mstate
-                .get_precommitted_sector(*v.blockstore(), sector_number_base + i)
+                .get_precommitted_sector(*v.blockstore(), sector_number_base + i as u64)
                 .unwrap()
                 .unwrap()
         })
@@ -390,8 +420,8 @@ pub fn precommit_sectors_v2<BS: Blockstore>(
 #[allow(clippy::too_many_arguments)]
 pub fn precommit_sectors<BS: Blockstore>(
     v: &dyn VM<BS>,
-    count: u64,
-    batch_size: i64,
+    count: usize,
+    batch_size: usize,
     worker: &Address,
     maddr: &Address,
     seal_proof: RegisteredSealProof,
@@ -403,6 +433,7 @@ pub fn precommit_sectors<BS: Blockstore>(
         v,
         count,
         batch_size,
+        vec![], // no deals
         worker,
         maddr,
         seal_proof,
@@ -418,11 +449,11 @@ pub fn prove_commit_sectors<BS: Blockstore>(
     worker: &Address,
     maddr: &Address,
     precommits: Vec<SectorPreCommitOnChainInfo>,
-    aggregate_size: i64,
+    aggregate_size: usize,
 ) {
     let mut precommit_infos = precommits.as_slice();
     while !precommit_infos.is_empty() {
-        let batch_size = min(aggregate_size, precommit_infos.len() as i64) as usize;
+        let batch_size = min(aggregate_size, precommit_infos.len());
         let to_prove = &precommit_infos[0..batch_size];
         precommit_infos = &precommit_infos[batch_size..];
         let b: Vec<u64> = to_prove.iter().map(|p| p.info.sector_number).collect();

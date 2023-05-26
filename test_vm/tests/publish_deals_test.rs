@@ -1,26 +1,26 @@
-use fil_actor_market::{
-    ClientDealProposal, DealProposal, Label, Method as MarketMethod, PublishStorageDealsParams,
-};
 use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_blockstore::MemoryBlockstore;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::address::Address;
+use fvm_shared::bigint::Zero;
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::signature::{Signature, SignatureType};
+use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
+use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 
 use fil_actor_account::types::AuthenticateMessageParams;
 use fil_actor_account::Method as AccountMethod;
+use fil_actor_market::{
+    ClientDealProposal, DealProposal, Label, Method as MarketMethod, PublishStorageDealsParams,
+};
 use fil_actor_miner::max_prove_commit_duration;
 use fil_actor_verifreg::{AddVerifiedClientParams, Method as VerifregMethod};
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{test_utils::*, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
-use fvm_ipld_blockstore::MemoryBlockstore;
-use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_shared::address::Address;
-use fvm_shared::bigint::Zero;
-use fvm_shared::clock::ChainEpoch;
-use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
-use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use test_vm::deals::{DealBatcher, DealOptions};
 use test_vm::expects::Expect;
 use test_vm::trace::ExpectInvocation;

@@ -323,6 +323,36 @@ impl State {
         Ok(())
     }
 
+    pub fn get_pending_deal_allocation_ids<BS>(
+        &mut self,
+        store: &BS,
+        deal_id_keys: &[BytesKey],
+    ) -> Result<Vec<AllocationID>, ActorError>
+    where
+        BS: Blockstore,
+    {
+        let pending_deal_allocation_ids = make_map_with_root_and_bitwidth(
+            &self.pending_deal_allocation_ids,
+            store,
+            HAMT_BIT_WIDTH,
+        )
+        .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load pending deal allocation id's")?;
+
+        let mut allocation_ids: Vec<AllocationID> = vec![];
+        deal_id_keys.iter().try_for_each(|deal_id| -> Result<(), ActorError> {
+            let allocation_id = pending_deal_allocation_ids.get(&deal_id.clone()).context_code(
+                ExitCode::USR_ILLEGAL_STATE,
+                "failed to get pending deal allocation id",
+            )?;
+            allocation_ids.push(
+                *allocation_id.ok_or(ActorError::not_found("no such deal proposal".to_string()))?,
+            );
+            Ok(())
+        })?;
+
+        Ok(allocation_ids)
+    }
+
     pub fn remove_pending_deal_allocation_id<BS>(
         &mut self,
         store: &BS,
