@@ -19,7 +19,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::reward::ThisEpochRewardReturn;
-use fvm_shared::sector::{RegisteredSealProof, SectorSize, StoragePower};
+use fvm_shared::sector::{RegisteredSealProof, SectorNumber, SectorSize, StoragePower};
 use fvm_shared::{ActorID, METHOD_CONSTRUCTOR, METHOD_SEND};
 use integer_encoding::VarInt;
 use log::info;
@@ -531,21 +531,127 @@ impl Actor {
         Ok(VerifyDealsForActivationReturn { sectors: sectors_data })
     }
 
+    /// Activate a batch of deals across sectors, returning the combined deal space and extra info
+    /// for sectors that were successfully activated
     fn activate_deals_batch(
         rt: &impl Runtime,
         params: ActivateDealsBatchParams,
     ) -> Result<ActivateDealsBatchResult, ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
+        Self::activate_deals_batch_inner(rt, params)
+    }
 
-        let mut sectors = Vec::new();
+    fn activate_deals_batch_inner(
+        rt: &impl Runtime,
+        params: ActivateDealsBatchParams,
+    ) -> Result<ActivateDealsBatchResult, ActorError> {
+        let miner_addr = rt.message().caller();
+        let curr_epoch = rt.curr_epoch();
 
-        for (activate_params, sector_number) in params.sectors {
-            let expiry = activate_params.sector_expiry;
-            let res = Self::activate_deals_inner(rt, activate_params)?;
-            sectors.push((res, sector_number, expiry));
-        }
+        let activated_sectors = rt.transaction(|st: &mut State, rt| {
+            let mut activated_sectors: Vec<(ActivateDealsResult, SectorNumber, ChainEpoch)> =
+                Vec::new();
 
-        Ok(ActivateDealsBatchResult { sectors })
+            for (sector_params, sector_number) in params.sectors {
+                let proposal_array = st.get_proposal_array(rt.store())?;
+                let proposals =
+                    get_proposals(&proposal_array, &sector_params.deal_ids, st.next_id)?;
+
+                // Check deals in this sector, skipping activation if unable to validate
+                let deal_spaces = match validate_and_return_deal_space(
+                    &proposals,
+                    &miner_addr,
+                    sector_params.sector_expiry,
+                    curr_epoch,
+                    None,
+                ) {
+                    Ok(deal_spaces) => deal_spaces,
+                    Err(e) => {
+                        info!(
+                            "failed to validate deal proposals from sector {} for activation: {}",
+                            sector_number, e
+                        );
+                        continue;
+                    }
+                };
+
+                // Update deal states
+                let mut verified_infos = Vec::new();
+                let mut deal_states: Vec<(DealID, DealState)> = vec![];
+
+                for (deal_id, proposal) in proposals {
+                    // This construction could be replaced with a single "update deal state"
+                    // state method, possibly batched over all deal ids at once.
+                    let s = st.find_deal_state(rt.store(), deal_id)?;
+
+                    if s.is_some() {
+                        return Err(actor_error!(
+                            illegal_argument,
+                            "deal {} already activated",
+                            deal_id
+                        ));
+                    }
+
+                    let propc = rt_deal_cid(rt, &proposal)?;
+
+                    // Confirm the deal is in the pending proposals queue.
+                    // It will be removed from this queue later, during cron.
+                    let has = st.has_pending_deal(rt.store(), propc)?;
+
+                    if !has {
+                        return Err(actor_error!(
+                            illegal_state,
+                            "tried to activate deal that was not in the pending set ({})",
+                            propc
+                        ));
+                    }
+
+                    // Extract and remove any verified allocation ID for the pending deal.
+                    let allocation = st
+                        .remove_pending_deal_allocation_id(rt.store(), &deal_id_key(deal_id))?
+                        .unwrap_or((BytesKey(vec![]), NO_ALLOCATION_ID))
+                        .1;
+
+                    if allocation != NO_ALLOCATION_ID {
+                        verified_infos.push(VerifiedDealInfo {
+                            client: proposal.client.id().unwrap(),
+                            allocation_id: allocation,
+                            data: proposal.piece_cid,
+                            size: proposal.piece_size,
+                        })
+                    }
+
+                    deal_states.push((
+                        deal_id,
+                        DealState {
+                            sector_start_epoch: curr_epoch,
+                            last_updated_epoch: EPOCH_UNDEFINED,
+                            slash_epoch: EPOCH_UNDEFINED,
+                            verified_claim: allocation,
+                        },
+                    ))
+                }
+
+                st.put_deal_states(rt.store(), &deal_states)?;
+
+                activated_sectors.push((
+                    ActivateDealsResult {
+                        nonverified_deal_space: deal_spaces.deal_space,
+                        verified_infos,
+                    },
+                    sector_number,
+                    sector_params.sector_expiry,
+                ));
+            }
+
+            if activated_sectors.is_empty() {
+                return Err(actor_error!(illegal_argument, "all sectors failed to activated"));
+            }
+
+            Ok(activated_sectors)
+        })?;
+
+        Ok(ActivateDealsBatchResult { sectors: activated_sectors })
     }
 
     /// Activate a set of deals, returning the combined deal space and extra info for verified deals.

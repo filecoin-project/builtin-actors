@@ -4799,7 +4799,6 @@ fn confirm_sector_proofs_valid_internal(
     let activation = rt.curr_epoch();
 
     // Pre-commits for new sectors.
-    // TODO: either all the pre_commits are valid or it aborts. we should handle the case where only some are valid
     let deal_spaces = batch_activate_deals_and_claim_allocations(rt, pre_commits.clone())?;
     if deal_spaces.is_none() {
         return Err(actor_error!(illegal_argument, "all prove commits failed to validate"));
@@ -4818,7 +4817,6 @@ fn confirm_sector_proofs_valid_internal(
         let mut new_sectors = Vec::<SectorOnChainInfo>::new();
         let mut total_pledge = TokenAmount::zero();
 
-        // FIXME: this is hacky and wrong, the deal space needs to be calculated per sector
         for (pre_commit, deal_spaces) in pre_commits.iter().zip(deal_spaces.iter()) {
             // compute initial pledge
             let duration = pre_commit.info.expiration - activation;
@@ -4967,7 +4965,7 @@ fn batch_activate_deals_and_claim_allocations(
         })
         .collect();
 
-    // check and activate storage deals. Abort if checks failed
+    // check and activate storage deals, returns the activated claims
     let batch_activate_raw = extract_send_result(rt.send_simple(
         &STORAGE_MARKET_ACTOR_ADDR,
         ext::market::ACTIVATE_DEALS_BATCH_EXPORTED,
@@ -4982,7 +4980,7 @@ fn batch_activate_deals_and_claim_allocations(
         }
     };
 
-    let sector_claims: Vec<ext::verifreg::ClaimAllocationsParams> = batch_activate_res
+    let activated_claims: Vec<ext::verifreg::ClaimAllocationsParams> = batch_activate_res
         .sectors
         .iter()
         .map(|(a, b, c)| ClaimAllocationsParams {
@@ -5006,7 +5004,7 @@ fn batch_activate_deals_and_claim_allocations(
         &VERIFIED_REGISTRY_ACTOR_ADDR,
         ext::verifreg::CLAIM_ALLOCATIONS_BATCH_METHOD,
         IpldBlock::serialize_cbor(&ext::verifreg::ClaimAllocationsBatchParams {
-            claims: sector_claims,
+            claims: activated_claims,
         })?,
         TokenAmount::zero(),
     ));

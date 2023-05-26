@@ -11,8 +11,8 @@ use num_traits::Zero;
 
 use fil_actor_market::{deal_id_key, DealProposal};
 use fil_actor_miner::{
-    max_prove_commit_duration, power_for_sector, CompactCommD, SectorPreCommitOnChainInfo,
-    State as MinerState,
+    max_prove_commit_duration, power_for_sector, CompactCommD, SectorPreCommitInfo,
+    SectorPreCommitOnChainInfo, State as MinerState,
 };
 use fil_actor_miner::{Method as MinerMethod, ProveCommitAggregateParams};
 use fil_actors_runtime::runtime::policy::policy_constants::PRE_COMMIT_CHALLENGE_DELAY;
@@ -94,7 +94,7 @@ pub fn batch_onboarding_deals_test<BS: Blockstore>(v: &dyn VM<BS>) {
         .collect();
 
     // Pre-commit as single batch.
-    let precommits = precommit_sectors_v2(
+    let mut precommits = precommit_sectors_v2(
         v,
         BATCH_SIZE,
         BATCH_SIZE,
@@ -108,6 +108,13 @@ pub fn batch_onboarding_deals_test<BS: Blockstore>(v: &dyn VM<BS>) {
         PRECOMMIT_V2,
     );
     let first_sector_no = precommits[0].info.sector_number;
+
+    // add a bad precommit to the batch
+    precommits.push(SectorPreCommitOnChainInfo {
+        info: SectorPreCommitInfo { ..Default::default() },
+        pre_commit_deposit: TokenAmount::from_atto(1000),
+        pre_commit_epoch: ChainEpoch::default(),
+    });
 
     // Prove-commit as a single aggregate.
     v.set_epoch(v.epoch() + PRE_COMMIT_CHALLENGE_DELAY + 1);
