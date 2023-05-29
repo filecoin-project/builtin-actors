@@ -137,10 +137,17 @@ pub struct ClaimAllocationsParams {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct ClaimAllocationsReturn {
-    pub batch_info: BatchReturn,
+pub struct SectorAllocationClaimResult {
     #[serde(with = "bigint_ser")]
     pub claimed_space: BigInt,
+    pub sector: SectorNumber,
+    pub sector_expiry: ChainEpoch,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct ClaimAllocationsReturn {
+    pub batch_info: BatchReturn,
+    pub claim_results: Vec<SectorAllocationClaimResult>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]

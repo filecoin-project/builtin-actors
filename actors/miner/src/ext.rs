@@ -57,7 +57,7 @@ pub mod market {
         }
     }
 
-    #[derive(Serialize_tuple, Deserialize_tuple)]
+    #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
     pub struct ActivateDealsResult {
         #[serde(with = "bigint_ser")]
         pub nonverified_deal_space: BigInt,
@@ -210,10 +210,18 @@ pub mod verifreg {
         pub sectors: Vec<SectorAllocationClaim>,
         pub all_or_nothing: bool,
     }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+    pub struct SectorAllocationClaimResult {
+        #[serde(with = "bigint_ser")]
+        pub claimed_space: BigInt,
+        pub sector: SectorNumber,
+        pub sector_expiry: ChainEpoch,
+    }
+
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
     pub struct ClaimAllocationsReturn {
         pub batch_info: BatchReturn,
-        #[serde(with = "bigint_ser")]
-        pub claimed_space: BigInt,
+        pub claim_results: Vec<SectorAllocationClaimResult>,
     }
 }

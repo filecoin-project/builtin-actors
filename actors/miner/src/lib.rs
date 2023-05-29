@@ -10,6 +10,7 @@ use std::ops::Neg;
 use anyhow::{anyhow, Error};
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
 use cid::Cid;
+use ext::market::ActivateDealsResult;
 use fvm_ipld_bitfield::{BitField, Validate};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{from_slice, BytesDe, CborStore};
@@ -4795,43 +4796,26 @@ fn confirm_sector_proofs_valid_internal(
     // Ideally, we'd combine some of these operations, but at least we have
     // a constant number of them.
     let activation = rt.curr_epoch();
-    // Pre-commits for new sectors.
-    let mut valid_pre_commits = Vec::default();
 
-    for pre_commit in pre_commits {
-        match activate_deals_and_claim_allocations(
-            rt,
-            pre_commit.clone().info.deal_ids,
-            pre_commit.info.expiration,
-            pre_commit.info.sector_number,
-        )? {
+    let activated_sectors: Vec<(SectorPreCommitOnChainInfo, ext::market::DealSpaces)> =
+        match batch_activate_deals_and_claim_allocations(rt, pre_commits, false)? {
             None => {
-                info!(
-                    "failed to activate deals on sector {}, dropping from prove commit set",
-                    pre_commit.info.sector_number,
-                );
-                continue;
+                return Err(actor_error!(illegal_argument, "all prove commits failed to validate"));
             }
-            Some(deal_spaces) => valid_pre_commits.push((pre_commit, deal_spaces)),
+            Some(activated_sectors) => activated_sectors,
         };
-    }
-
-    // When all prove commits have failed abort early
-    if valid_pre_commits.is_empty() {
-        return Err(actor_error!(illegal_argument, "all prove commits failed to validate"));
-    }
 
     let (total_pledge, newly_vested) = rt.transaction(|state: &mut State, rt| {
         let policy = rt.policy();
         let store = rt.store();
         let info = get_miner_info(store, state)?;
 
-        let mut new_sector_numbers = Vec::<SectorNumber>::with_capacity(valid_pre_commits.len());
+        let mut new_sector_numbers = Vec::<SectorNumber>::with_capacity(activated_sectors.len());
         let mut deposit_to_unlock = TokenAmount::zero();
         let mut new_sectors = Vec::<SectorOnChainInfo>::new();
         let mut total_pledge = TokenAmount::zero();
 
-        for (pre_commit, deal_spaces) in valid_pre_commits {
+        for (pre_commit, deal_spaces) in activated_sectors {
             // compute initial pledge
             let duration = pre_commit.info.expiration - activation;
 
@@ -4962,6 +4946,123 @@ fn confirm_sector_proofs_valid_internal(
     Ok(())
 }
 
+fn batch_activate_deals_and_claim_allocations(
+    rt: &impl Runtime,
+    pre_commits: Vec<SectorPreCommitOnChainInfo>,
+    all_or_nothing: bool,
+) -> Result<Option<Vec<(SectorPreCommitOnChainInfo, ext::market::DealSpaces)>>, ActorError> {
+    // non-verified deal space
+    let mut activation_results = Vec::new();
+
+    // TODO: https://github.com/filecoin-project/builtin-actors/pull/1303 enable activation batching
+    for pre_commit in pre_commits {
+        // Check (and activate) storage deals associated to sector
+        let deal_ids = pre_commit.info.deal_ids.clone();
+        if deal_ids.is_empty() {
+            activation_results.push((
+                pre_commit,
+                ActivateDealsResult {
+                    nonverified_deal_space: BigInt::default(),
+                    verified_infos: Vec::default(),
+                },
+            ));
+            continue;
+        }
+
+        let activate_raw = extract_send_result(rt.send_simple(
+            &STORAGE_MARKET_ACTOR_ADDR,
+            ext::market::ACTIVATE_DEALS_METHOD,
+            IpldBlock::serialize_cbor(&ext::market::ActivateDealsParams {
+                deal_ids,
+                sector_expiry: pre_commit.info.expiration,
+            })?,
+            TokenAmount::zero(),
+        ));
+        let activate_res: ext::market::ActivateDealsResult = match activate_raw {
+            Ok(res) => deserialize_block(res)?,
+            Err(e) => {
+                info!(
+                    "error activating deals on sector {}: {}",
+                    pre_commit.info.sector_number,
+                    e.msg()
+                );
+                if all_or_nothing {
+                    return Ok(None);
+                } else {
+                    continue;
+                }
+            }
+        };
+
+        activation_results.push((pre_commit, activate_res));
+    }
+
+    // When all prove commits have failed abort early
+    if activation_results.is_empty() {
+        return Err(actor_error!(illegal_argument, "all sectors failed to activate"));
+    }
+
+    // Claims aggregated across all sectors
+    let mut sectors_claims = Vec::new();
+    for (pre_commit, activate_res) in activation_results.clone() {
+        let mut sector_claims = activate_res
+            .verified_infos
+            .iter()
+            .map(|info| ext::verifreg::SectorAllocationClaim {
+                client: info.client,
+                allocation_id: info.allocation_id,
+                data: info.data,
+                size: info.size,
+                sector: pre_commit.info.sector_number,
+                sector_expiry: pre_commit.info.expiration,
+            })
+            .collect();
+        sectors_claims.append(&mut sector_claims);
+    }
+
+    // TODO: skip claiming datacap if no sectors have any verified deals
+    // if sectors_claims.is_empty()
+
+    let claim_raw = extract_send_result(rt.send_simple(
+        &VERIFIED_REGISTRY_ACTOR_ADDR,
+        ext::verifreg::CLAIM_ALLOCATIONS_METHOD,
+        IpldBlock::serialize_cbor(&ext::verifreg::ClaimAllocationsParams {
+            sectors: sectors_claims,
+            all_or_nothing: true,
+        })?,
+        TokenAmount::zero(),
+    ));
+
+    let claim_res: ext::verifreg::ClaimAllocationsReturn = match claim_raw {
+        Ok(res) => deserialize_block(res)?,
+        Err(e) => {
+            info!("error claiming allocations for batch {}", e.msg());
+            return Ok(None);
+        }
+    };
+
+    let activation_and_claim_results: Vec<(SectorPreCommitOnChainInfo, ext::market::DealSpaces)> =
+        activation_results
+            .iter()
+            .map(|(pre_commit, activation_result)| {
+                let verified_deal_space = claim_res
+                    .claim_results
+                    .iter()
+                    .filter(|c| pre_commit.info.sector_number == c.sector)
+                    .fold(BigInt::zero(), |acc, c| acc + c.claimed_space.clone());
+                (
+                    pre_commit.clone(),
+                    ext::market::DealSpaces {
+                        verified_deal_space,
+                        deal_space: activation_result.nonverified_deal_space.clone(),
+                    },
+                )
+            })
+            .collect();
+
+    Ok(Some(activation_and_claim_results))
+}
+
 // activate deals with builtin market and claim allocations with verified registry actor
 // returns an error in case of a fatal programmer error
 // returns Ok(None) in case deal activation or verified allocation claim fails
@@ -5027,7 +5128,10 @@ fn activate_deals_and_claim_allocations(
     };
     Ok(Some(ext::market::DealSpaces {
         deal_space: activate_res.nonverified_deal_space,
-        verified_deal_space: claim_res.claimed_space,
+        verified_deal_space: claim_res
+            .claim_results
+            .iter()
+            .fold(BigInt::zero(), |acc, claim_result| acc + claim_result.claimed_space.clone()),
     }))
 }
 
