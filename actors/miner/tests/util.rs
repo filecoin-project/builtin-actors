@@ -1116,31 +1116,32 @@ impl ActorHarness {
             }
         }
 
-        let claim_allocation_params =
-            ClaimAllocationsParams { sectors: sectors_claims.clone(), all_or_nothing: true };
+        if !sectors_claims.is_empty() {
+            let claim_allocation_params =
+                ClaimAllocationsParams { sectors: sectors_claims.clone(), all_or_nothing: true };
 
-        // TODO handle failures of claim allocations
-        // use exit code map for claim allocations in config
+            // TODO handle failures of claim allocations
+            // use exit code map for claim allocations in config
 
-        let claim_allocs_ret = ClaimAllocationsReturn {
-            batch_info: BatchReturn::ok(sectors_claims.len() as u32),
-            claim_results: sectors_claims
-                .iter()
-                .map(|claim| SectorAllocationClaimResult {
-                    claimed_space: claim.size.0.into(),
-                    sector: claim.sector,
-                    sector_expiry: claim.sector_expiry,
-                })
-                .collect(),
-        };
-        rt.expect_send_simple(
-            VERIFIED_REGISTRY_ACTOR_ADDR,
-            CLAIM_ALLOCATIONS_METHOD as u64,
-            IpldBlock::serialize_cbor(&claim_allocation_params).unwrap(),
-            TokenAmount::zero(),
-            IpldBlock::serialize_cbor(&claim_allocs_ret).unwrap(),
-            ExitCode::OK,
-        );
+            let claim_allocs_ret = ClaimAllocationsReturn {
+                batch_info: BatchReturn::ok(sectors_claims.len() as u32),
+                claim_results: sectors_claims
+                    .iter()
+                    .map(|claim| SectorAllocationClaimResult {
+                        claimed_space: claim.size.0.into(),
+                        sector: claim.sector,
+                    })
+                    .collect(),
+            };
+            rt.expect_send_simple(
+                VERIFIED_REGISTRY_ACTOR_ADDR,
+                CLAIM_ALLOCATIONS_METHOD as u64,
+                IpldBlock::serialize_cbor(&claim_allocation_params).unwrap(),
+                TokenAmount::zero(),
+                IpldBlock::serialize_cbor(&claim_allocs_ret).unwrap(),
+                ExitCode::OK,
+            );
+        }
 
         if !valid_pcs.is_empty() {
             let mut expected_pledge = TokenAmount::zero();

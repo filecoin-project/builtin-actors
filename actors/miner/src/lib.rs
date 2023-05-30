@@ -5020,29 +5020,44 @@ fn batch_activate_deals_and_claim_allocations(
         sectors_claims.append(&mut sector_claims);
     }
 
-    // TODO: skip claiming datacap if no sectors have any verified deals
-    // if sectors_claims.is_empty()
+    if sectors_claims.is_empty() {
+        Ok(Some(
+            activation_results
+                .iter()
+                .map(|(pre_commit, activation_result)| {
+                    (
+                        pre_commit.clone(),
+                        ext::market::DealSpaces {
+                            verified_deal_space: BigInt::default(),
+                            deal_space: activation_result.nonverified_deal_space.clone(),
+                        },
+                    )
+                })
+                .collect(),
+        ))
+    } else {
+        let claim_raw = extract_send_result(rt.send_simple(
+            &VERIFIED_REGISTRY_ACTOR_ADDR,
+            ext::verifreg::CLAIM_ALLOCATIONS_METHOD,
+            IpldBlock::serialize_cbor(&ext::verifreg::ClaimAllocationsParams {
+                sectors: sectors_claims,
+                all_or_nothing: true,
+            })?,
+            TokenAmount::zero(),
+        ));
 
-    let claim_raw = extract_send_result(rt.send_simple(
-        &VERIFIED_REGISTRY_ACTOR_ADDR,
-        ext::verifreg::CLAIM_ALLOCATIONS_METHOD,
-        IpldBlock::serialize_cbor(&ext::verifreg::ClaimAllocationsParams {
-            sectors: sectors_claims,
-            all_or_nothing: true,
-        })?,
-        TokenAmount::zero(),
-    ));
+        let claim_res: ext::verifreg::ClaimAllocationsReturn = match claim_raw {
+            Ok(res) => deserialize_block(res)?,
+            Err(e) => {
+                info!("error claiming allocations for batch {}", e.msg());
+                return Ok(None);
+            }
+        };
 
-    let claim_res: ext::verifreg::ClaimAllocationsReturn = match claim_raw {
-        Ok(res) => deserialize_block(res)?,
-        Err(e) => {
-            info!("error claiming allocations for batch {}", e.msg());
-            return Ok(None);
-        }
-    };
-
-    let activation_and_claim_results: Vec<(SectorPreCommitOnChainInfo, ext::market::DealSpaces)> =
-        activation_results
+        let activation_and_claim_results: Vec<(
+            SectorPreCommitOnChainInfo,
+            ext::market::DealSpaces,
+        )> = activation_results
             .iter()
             .map(|(pre_commit, activation_result)| {
                 let verified_deal_space = claim_res
@@ -5060,7 +5075,8 @@ fn batch_activate_deals_and_claim_allocations(
             })
             .collect();
 
-    Ok(Some(activation_and_claim_results))
+        Ok(Some(activation_and_claim_results))
+    }
 }
 
 // activate deals with builtin market and claim allocations with verified registry actor

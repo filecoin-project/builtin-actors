@@ -216,7 +216,6 @@ pub mod verifreg {
         #[serde(with = "bigint_ser")]
         pub claimed_space: BigInt,
         pub sector: SectorNumber,
-        pub sector_expiry: ChainEpoch,
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]

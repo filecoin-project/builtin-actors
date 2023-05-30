@@ -449,7 +449,6 @@ impl Actor {
                     sector_allocations.push(SectorAllocationClaimResult {
                         claimed_space: claim_alloc.size.0.into(),
                         sector: claim_alloc.sector,
-                        sector_expiry: claim_alloc.sector_expiry,
                     });
                 }
                 st.save_allocs(&mut allocs)?;
