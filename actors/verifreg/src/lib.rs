@@ -372,90 +372,88 @@ impl Actor {
     ) -> Result<ClaimAllocationsReturn, ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         let provider = rt.message().caller().id().unwrap();
-        if params.sectors.is_empty() {
+        if params.allocations.is_empty() {
             return Err(actor_error!(illegal_argument, "claim allocations called with no claims"));
         }
         let mut datacap_claimed = DataCap::zero();
-        let mut ret_gen = BatchReturnGen::new(params.sectors.len());
+        let mut ret_gen = BatchReturnGen::new(params.allocations.len());
         let all_or_nothing = params.all_or_nothing;
-        let sector_claims = rt
-            .transaction(|st: &mut State, rt| {
-                let mut claims = st.load_claims(rt.store())?;
-                let mut allocs = st.load_allocs(rt.store())?;
+        let mut sector_claims = Vec::new();
+        rt.transaction(|st: &mut State, rt| {
+            let mut claims = st.load_claims(rt.store())?;
+            let mut allocs = st.load_allocs(rt.store())?;
 
-                let mut sector_allocations = Vec::new();
-
-                for claim_alloc in params.sectors {
-                    let maybe_alloc = state::get_allocation(
-                        &mut allocs,
-                        claim_alloc.client,
-                        claim_alloc.allocation_id,
-                    )?;
-                    let alloc: &Allocation = match maybe_alloc {
-                        None => {
-                            ret_gen.add_fail(ExitCode::USR_NOT_FOUND);
-                            info!(
-                                "no allocation {} for client {}",
-                                claim_alloc.allocation_id, claim_alloc.client,
-                            );
-                            continue;
-                        }
-                        Some(a) => a,
-                    };
-
-                    if !can_claim_alloc(&claim_alloc, provider, alloc, rt.curr_epoch()) {
-                        ret_gen.add_fail(ExitCode::USR_FORBIDDEN);
+            for claim_alloc in params.allocations {
+                let maybe_alloc = state::get_allocation(
+                    &mut allocs,
+                    claim_alloc.client,
+                    claim_alloc.allocation_id,
+                )?;
+                let alloc: &Allocation = match maybe_alloc {
+                    None => {
+                        ret_gen.add_fail(ExitCode::USR_NOT_FOUND);
                         info!(
-                            "invalid sector {:?} for allocation {}",
-                            claim_alloc.sector, claim_alloc.allocation_id,
+                            "no allocation {} for client {}",
+                            claim_alloc.allocation_id, claim_alloc.client,
                         );
                         continue;
                     }
+                    Some(a) => a,
+                };
 
-                    let new_claim = Claim {
-                        provider,
-                        client: alloc.client,
-                        data: alloc.data,
-                        size: alloc.size,
-                        term_min: alloc.term_min,
-                        term_max: alloc.term_max,
-                        term_start: rt.curr_epoch(),
-                        sector: claim_alloc.sector,
-                    };
-
-                    let inserted = claims
-                        .put_if_absent(provider, claim_alloc.allocation_id, new_claim)
-                        .context_code(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("failed to write claim {}", claim_alloc.allocation_id),
-                        )?;
-                    if !inserted {
-                        ret_gen.add_fail(ExitCode::USR_ILLEGAL_STATE);
-                        // should be unreachable since claim and alloc can't exist at once
-                        info!(
-                            "claim for allocation {} could not be inserted as it already exists",
-                            claim_alloc.allocation_id,
-                        );
-                        continue;
-                    }
-
-                    allocs.remove(claim_alloc.client, claim_alloc.allocation_id).context_code(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to remove allocation {}", claim_alloc.allocation_id),
-                    )?;
-
-                    datacap_claimed += DataCap::from(claim_alloc.size.0);
-                    ret_gen.add_success();
-                    sector_allocations.push(SectorAllocationClaimResult {
-                        claimed_space: claim_alloc.size.0.into(),
-                        sector: claim_alloc.sector,
-                    });
+                if !can_claim_alloc(&claim_alloc, provider, alloc, rt.curr_epoch()) {
+                    ret_gen.add_fail(ExitCode::USR_FORBIDDEN);
+                    info!(
+                        "invalid sector {:?} for allocation {}",
+                        claim_alloc.sector, claim_alloc.allocation_id,
+                    );
+                    continue;
                 }
-                st.save_allocs(&mut allocs)?;
-                st.save_claims(&mut claims)?;
-                Ok(sector_allocations)
-            })
-            .context("state transaction failed")?;
+
+                let new_claim = Claim {
+                    provider,
+                    client: alloc.client,
+                    data: alloc.data,
+                    size: alloc.size,
+                    term_min: alloc.term_min,
+                    term_max: alloc.term_max,
+                    term_start: rt.curr_epoch(),
+                    sector: claim_alloc.sector,
+                };
+
+                let inserted = claims
+                    .put_if_absent(provider, claim_alloc.allocation_id, new_claim)
+                    .context_code(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        format!("failed to write claim {}", claim_alloc.allocation_id),
+                    )?;
+                if !inserted {
+                    ret_gen.add_fail(ExitCode::USR_ILLEGAL_STATE);
+                    // should be unreachable since claim and alloc can't exist at once
+                    info!(
+                        "claim for allocation {} could not be inserted as it already exists",
+                        claim_alloc.allocation_id,
+                    );
+                    continue;
+                }
+
+                allocs.remove(claim_alloc.client, claim_alloc.allocation_id).context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    format!("failed to remove allocation {}", claim_alloc.allocation_id),
+                )?;
+
+                datacap_claimed += DataCap::from(claim_alloc.size.0);
+                ret_gen.add_success();
+                sector_claims.push(SectorAllocationClaimResult {
+                    claimed_space: claim_alloc.size.0.into(),
+                    sector: claim_alloc.sector,
+                });
+            }
+            st.save_allocs(&mut allocs)?;
+            st.save_claims(&mut claims)?;
+            Ok(())
+        })
+        .context("state transaction failed")?;
         let batch_info = ret_gen.gen();
         if all_or_nothing && !batch_info.all_ok() {
             return Err(actor_error!(

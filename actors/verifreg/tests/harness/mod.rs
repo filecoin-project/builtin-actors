@@ -278,7 +278,7 @@ impl Harness {
             );
         }
 
-        let params = ClaimAllocationsParams { sectors: claim_allocs, all_or_nothing };
+        let params = ClaimAllocationsParams { allocations: claim_allocs, all_or_nothing };
         let ret = rt
             .call::<VerifregActor>(
                 Method::ClaimAllocations as MethodNum,

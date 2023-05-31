@@ -5040,7 +5040,7 @@ fn batch_activate_deals_and_claim_allocations(
             &VERIFIED_REGISTRY_ACTOR_ADDR,
             ext::verifreg::CLAIM_ALLOCATIONS_METHOD,
             IpldBlock::serialize_cbor(&ext::verifreg::ClaimAllocationsParams {
-                sectors: sectors_claims,
+                allocations: sectors_claims,
                 all_or_nothing: true,
             })?,
             TokenAmount::zero(),
@@ -5130,7 +5130,7 @@ fn activate_deals_and_claim_allocations(
         &VERIFIED_REGISTRY_ACTOR_ADDR,
         ext::verifreg::CLAIM_ALLOCATIONS_METHOD,
         IpldBlock::serialize_cbor(&ext::verifreg::ClaimAllocationsParams {
-            sectors: sector_claims,
+            allocations: sector_claims,
             all_or_nothing: true,
         })?,
         TokenAmount::zero(),

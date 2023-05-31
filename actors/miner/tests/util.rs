@@ -1117,8 +1117,10 @@ impl ActorHarness {
         }
 
         if !sectors_claims.is_empty() {
-            let claim_allocation_params =
-                ClaimAllocationsParams { sectors: sectors_claims.clone(), all_or_nothing: true };
+            let claim_allocation_params = ClaimAllocationsParams {
+                allocations: sectors_claims.clone(),
+                all_or_nothing: true,
+            };
 
             // TODO handle failures of claim allocations
             // use exit code map for claim allocations in config

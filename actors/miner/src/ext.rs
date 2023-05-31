@@ -207,7 +207,7 @@ pub mod verifreg {
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
     pub struct ClaimAllocationsParams {
-        pub sectors: Vec<SectorAllocationClaim>,
+        pub allocations: Vec<SectorAllocationClaim>,
         pub all_or_nothing: bool,
     }
 
