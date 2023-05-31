@@ -5012,7 +5012,7 @@ fn batch_activate_deals_and_claim_allocations(
     }
 
     // When all prove commits have failed abort early
-    if activation_results.is_empty() {
+    if activation_results.iter().all(|res| res.is_none()) {
         return Err(actor_error!(illegal_argument, "all sectors failed to activate"));
     }
 

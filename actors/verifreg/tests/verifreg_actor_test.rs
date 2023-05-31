@@ -705,8 +705,8 @@ mod allocs_claims {
             reqs[1].size = PaddedPieceSize(size + 1);
             let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
             assert_eq!(ret.claim_results.len(), 2);
-            assert!(!ret.claim_results[0].claimed_space.is_zero());
-            assert!(!ret.claim_results[1].claimed_space.is_zero());
+            assert!(ret.claim_results[0].claimed_space.is_zero());
+            assert!(ret.claim_results[1].claimed_space.is_zero());
             assert_eq!(total_claimed_space(&ret), BigInt::zero());
             h.check_state(&rt);
         }
