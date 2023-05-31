@@ -706,14 +706,6 @@ impl Actor {
     }
 }
 
-// Gets the total claimed_power_across sectors for a claim_allocation
-pub fn total_claimed_space(claim_allocations_ret: &ClaimAllocationsReturn) -> BigInt {
-    claim_allocations_ret
-        .claim_results
-        .iter()
-        .fold(BigInt::zero(), |acc, claim_result| acc + claim_result.claimed_space.clone())
-}
-
 // Checks whether an address has a verifier entry (which could be zero).
 fn is_verifier(rt: &impl Runtime, st: &State, address: Address) -> Result<bool, ActorError> {
     let verifiers =

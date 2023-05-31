@@ -15,9 +15,10 @@ lazy_static! {
 }
 
 mod util {
-    use fvm_shared::sector::StoragePower;
-
+    use fil_actor_verifreg::ClaimAllocationsReturn;
     use fil_actors_runtime::test_utils::MockRuntime;
+    use fvm_shared::{bigint::BigInt, sector::StoragePower};
+    use num_traits::Zero;
 
     pub fn verifier_allowance(rt: &MockRuntime) -> StoragePower {
         rt.policy.minimum_verified_allocation_size.clone() + 42
@@ -25,6 +26,14 @@ mod util {
 
     pub fn client_allowance(rt: &MockRuntime) -> StoragePower {
         verifier_allowance(rt) - 1
+    }
+
+    // Gets the total claimed_power_across sectors for a claim_allocation
+    pub fn total_claimed_space(claim_allocations_ret: &ClaimAllocationsReturn) -> BigInt {
+        claim_allocations_ret
+            .claim_results
+            .iter()
+            .fold(BigInt::zero(), |acc, claim_result| acc + claim_result.claimed_space.clone())
     }
 }
 
@@ -502,8 +511,8 @@ mod allocs_claims {
     use std::str::FromStr;
 
     use fil_actor_verifreg::{
-        total_claimed_space, Actor, AllocationID, ClaimTerm, DataCap, ExtendClaimTermsParams,
-        GetClaimsParams, GetClaimsReturn, Method, State,
+        Actor, AllocationID, ClaimTerm, DataCap, ExtendClaimTermsParams, GetClaimsParams,
+        GetClaimsReturn, Method, State,
     };
     use fil_actor_verifreg::{Claim, ExtendClaimTermsReturn};
     use fil_actors_runtime::runtime::policy_constants::{
@@ -516,6 +525,7 @@ mod allocs_claims {
     use fil_actors_runtime::FailCode;
     use harness::*;
 
+    use crate::util::total_claimed_space;
     use crate::*;
 
     const CLIENT1: ActorID = 101;
