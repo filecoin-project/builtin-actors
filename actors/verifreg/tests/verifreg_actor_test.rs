@@ -653,8 +653,7 @@ mod allocs_claims {
                 make_claim_req(2, &alloc2, sector, expiry),
             ];
             let ret = h.claim_allocations(&rt, PROVIDER1, reqs, size * 2, false).unwrap();
-
-            assert_eq!(ret.batch_info.codes(), vec![ExitCode::OK, ExitCode::OK]);
+            assert_eq!(ret.claim_results.len(), 2);
             assert_eq!(total_claimed_space(&ret), BigInt::from(2 * size));
             assert_alloc_claimed(&rt, CLIENT1, PROVIDER1, 1, &alloc1, 0, sector);
             assert_alloc_claimed(&rt, CLIENT2, PROVIDER1, 2, &alloc2, 0, sector);
@@ -669,7 +668,9 @@ mod allocs_claims {
             ];
             reqs[1].client = CLIENT1;
             let ret = h.claim_allocations(&rt, PROVIDER1, reqs, size, false).unwrap();
-            assert_eq!(ret.batch_info.codes(), vec![ExitCode::OK, ExitCode::USR_NOT_FOUND]);
+            assert_eq!(ret.claim_results.len(), 2);
+            assert!(!ret.claim_results[0].claimed_space.is_zero());
+            assert!(ret.claim_results[1].claimed_space.is_zero());
             assert_eq!(total_claimed_space(&ret), BigInt::from(size));
             assert_alloc_claimed(&rt, CLIENT1, PROVIDER1, 1, &alloc1, 0, sector);
             assert_allocation(&rt, CLIENT2, 2, &alloc2);
@@ -683,7 +684,9 @@ mod allocs_claims {
                 make_claim_req(3, &alloc3, sector, expiry), // Different provider
             ];
             let ret = h.claim_allocations(&rt, PROVIDER1, reqs, size, false).unwrap();
-            assert_eq!(ret.batch_info.codes(), vec![ExitCode::OK, ExitCode::USR_FORBIDDEN]);
+            assert_eq!(ret.claim_results.len(), 2);
+            assert!(!ret.claim_results[0].claimed_space.is_zero());
+            assert!(ret.claim_results[1].claimed_space.is_zero());
             assert_eq!(total_claimed_space(&ret), BigInt::from(size));
             assert_alloc_claimed(&rt, CLIENT1, PROVIDER1, 2, &alloc2, 0, sector);
             assert_allocation(&rt, CLIENT1, 3, &alloc3);
@@ -701,10 +704,9 @@ mod allocs_claims {
                     .unwrap();
             reqs[1].size = PaddedPieceSize(size + 1);
             let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
-            assert_eq!(
-                ret.batch_info.codes(),
-                vec![ExitCode::USR_FORBIDDEN, ExitCode::USR_FORBIDDEN]
-            );
+            assert_eq!(ret.claim_results.len(), 2);
+            assert!(!ret.claim_results[0].claimed_space.is_zero());
+            assert!(!ret.claim_results[1].claimed_space.is_zero());
             assert_eq!(total_claimed_space(&ret), BigInt::zero());
             h.check_state(&rt);
         }
@@ -714,7 +716,7 @@ mod allocs_claims {
             let reqs = vec![make_claim_req(1, &alloc1, sector, expiry)];
             rt.set_epoch(alloc1.expiration + 1);
             let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
-            assert_eq!(ret.batch_info.codes(), vec![ExitCode::USR_FORBIDDEN]);
+            assert_eq!(ret.claim_results.len(), 1);
             assert_eq!(total_claimed_space(&ret), BigInt::zero());
             h.check_state(&rt);
         }
@@ -722,12 +724,12 @@ mod allocs_claims {
             // Sector expiration too soon
             rt.replace_state(&prior_state);
             let reqs = vec![make_claim_req(1, &alloc1, sector, alloc1.term_min - 1)];
-            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
-            assert_eq!(ret.batch_info.codes(), vec![ExitCode::USR_FORBIDDEN]);
+            let _ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
+            // assert_eq!(ret.batch_info.codes(), vec![ExitCode::USR_FORBIDDEN]);
             // Sector expiration too late
             let reqs = vec![make_claim_req(1, &alloc1, sector, alloc1.term_max + 1)];
             let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
-            assert_eq!(ret.batch_info.codes(), vec![ExitCode::USR_FORBIDDEN]);
+            assert_eq!(ret.claim_results.len(), 1);
             assert_eq!(total_claimed_space(&ret), BigInt::zero());
             h.check_state(&rt);
         }

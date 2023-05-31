@@ -44,7 +44,7 @@ use fil_actor_miner::ext::verifreg::{
 };
 
 use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime, RuntimePolicy};
-use fil_actors_runtime::{test_utils::*, BatchReturn, BatchReturnGen};
+use fil_actors_runtime::{test_utils::*, BatchReturnGen};
 use fil_actors_runtime::{
     ActorDowncast, ActorError, Array, DealWeight, MessageAccumulator, BURNT_FUNDS_ACTOR_ADDR,
     INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
@@ -1126,13 +1126,9 @@ impl ActorHarness {
             // use exit code map for claim allocations in config
 
             let claim_allocs_ret = ClaimAllocationsReturn {
-                batch_info: BatchReturn::ok(sectors_claims.len() as u32),
                 claim_results: sectors_claims
                     .iter()
-                    .map(|claim| SectorAllocationClaimResult {
-                        claimed_space: claim.size.0.into(),
-                        sector: claim.sector,
-                    })
+                    .map(|claim| SectorAllocationClaimResult { claimed_space: claim.size.0.into() })
                     .collect(),
             };
             rt.expect_send_simple(

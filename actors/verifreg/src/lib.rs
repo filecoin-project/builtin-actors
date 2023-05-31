@@ -366,6 +366,8 @@ impl Actor {
     // Called by storage provider actor to claim allocations for data provably committed to storage.
     // For each allocation claim, the registry checks that the provided piece CID
     // and size match that of the allocation.
+    // When all_or_nothing is false, returns a vec of claimed spaces parallel to the requested
+    // allocations where failed allocations are represented by DataCap::zero
     pub fn claim_allocations(
         rt: &impl Runtime,
         params: ClaimAllocationsParams,
@@ -375,7 +377,7 @@ impl Actor {
         if params.allocations.is_empty() {
             return Err(actor_error!(illegal_argument, "claim allocations called with no claims"));
         }
-        let mut datacap_claimed = DataCap::zero();
+        let mut total_datacap_claimed = DataCap::zero();
         let mut ret_gen = BatchReturnGen::new(params.allocations.len());
         let all_or_nothing = params.all_or_nothing;
         let mut sector_claims = Vec::new();
@@ -396,6 +398,7 @@ impl Actor {
                             "no allocation {} for client {}",
                             claim_alloc.allocation_id, claim_alloc.client,
                         );
+                        sector_claims.push(SectorAllocationClaimResult::default());
                         continue;
                     }
                     Some(a) => a,
@@ -407,6 +410,7 @@ impl Actor {
                         "invalid sector {:?} for allocation {}",
                         claim_alloc.sector, claim_alloc.allocation_id,
                     );
+                    sector_claims.push(SectorAllocationClaimResult::default());
                     continue;
                 }
 
@@ -434,6 +438,7 @@ impl Actor {
                         "claim for allocation {} could not be inserted as it already exists",
                         claim_alloc.allocation_id,
                     );
+                    sector_claims.push(SectorAllocationClaimResult::default());
                     continue;
                 }
 
@@ -442,12 +447,10 @@ impl Actor {
                     format!("failed to remove allocation {}", claim_alloc.allocation_id),
                 )?;
 
-                datacap_claimed += DataCap::from(claim_alloc.size.0);
+                total_datacap_claimed += DataCap::from(claim_alloc.size.0);
                 ret_gen.add_success();
-                sector_claims.push(SectorAllocationClaimResult {
-                    claimed_space: claim_alloc.size.0.into(),
-                    sector: claim_alloc.sector,
-                });
+                sector_claims
+                    .push(SectorAllocationClaimResult { claimed_space: claim_alloc.size.0.into() });
             }
             st.save_allocs(&mut allocs)?;
             st.save_claims(&mut claims)?;
@@ -464,9 +467,9 @@ impl Actor {
         }
 
         // Burn the datacap tokens from verified registry's own balance.
-        burn(rt, &datacap_claimed)?;
+        burn(rt, &total_datacap_claimed)?;
 
-        Ok(ClaimAllocationsReturn { batch_info, claim_results: sector_claims })
+        Ok(ClaimAllocationsReturn { claim_results: sector_claims })
     }
 
     // get claims for a provider
