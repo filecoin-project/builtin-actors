@@ -221,6 +221,8 @@ pub mod verifreg {
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
     #[serde(transparent)]
     pub struct ClaimAllocationsReturn {
+        /// claim_results is parallel to ClaimAllocationsParams.allocations with failed allocations
+        /// being represented by claimed_space == BigInt::zero()
         pub claim_results: Vec<SectorAllocationClaimResult>,
     }
 }
