@@ -380,13 +380,6 @@ pub struct DisputeWindowedPoStParams {
     pub post_index: u64, // only one is allowed at a time to avoid loading too many sector infos.
 }
 
-#[derive(Debug, Clone)]
-pub struct DealsActivationInfo {
-    pub deal_ids: Vec<DealID>,
-    pub sector_expiry: ChainEpoch,
-    pub sector_number: SectorNumber,
-}
-
 #[derive(Debug, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct ProveCommitAggregateParams {
     pub sector_numbers: BitField,

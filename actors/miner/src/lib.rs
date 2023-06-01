@@ -3594,6 +3594,13 @@ struct ExtendExpirationsInner {
     claims: Option<BTreeMap<SectorNumber, (u64, u64)>>,
 }
 
+#[derive(Debug, Clone)]
+pub struct DealsActivationInfo {
+    pub deal_ids: Vec<DealID>,
+    pub sector_expiry: ChainEpoch,
+    pub sector_number: SectorNumber,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ValidatedExpirationExtension {
     pub deadline: u64,
@@ -4797,7 +4804,7 @@ fn confirm_sector_proofs_valid_internal(
     // a constant number of them.
     let activation = rt.curr_epoch();
 
-    let deals_activation_infos = pre_commits
+    let deals_activation_infos: Vec<DealsActivationInfo> = pre_commits
         .iter()
         .map(|pc| DealsActivationInfo {
             deal_ids: pc.info.deal_ids.clone(),
@@ -4807,7 +4814,7 @@ fn confirm_sector_proofs_valid_internal(
         .collect();
 
     let activated_sectors =
-        batch_activate_deals_and_claim_allocations(rt, deals_activation_infos, false)?;
+        batch_activate_deals_and_claim_allocations(rt, &deals_activation_infos)?;
 
     let (total_pledge, newly_vested) = rt.transaction(|state: &mut State, rt| {
         let policy = rt.policy();
@@ -4956,10 +4963,13 @@ fn confirm_sector_proofs_valid_internal(
     Ok(())
 }
 
+/// Activates the deals then claims allocations for any verified deals
+/// The returned vector is parallel (with same length and corresponding indices) to the requested
+/// activations. If activation a deal set fails, a None entry appears in the vector. If the final
+/// ClaimAllocations fails, the function returns an error.
 fn batch_activate_deals_and_claim_allocations(
     rt: &impl Runtime,
-    activation_infos: Vec<DealsActivationInfo>,
-    all_or_nothing: bool,
+    activation_infos: &[DealsActivationInfo],
 ) -> Result<Vec<Option<ext::market::DealSpaces>>, ActorError> {
     // Fills with ActivateDealResults per DealActivationInfo
     // ActivateDeals implicitly succeeds when no deal_ids are specified
@@ -4967,7 +4977,7 @@ fn batch_activate_deals_and_claim_allocations(
     let mut activation_results = Vec::new();
 
     // TODO: https://github.com/filecoin-project/builtin-actors/pull/1303 enable activation batching
-    for activation_info in activation_infos.clone() {
+    for activation_info in activation_infos {
         // Check (and activate) storage deals associated to sector
         let deal_ids = activation_info.deal_ids.clone();
         if deal_ids.is_empty() {
@@ -4987,33 +4997,23 @@ fn batch_activate_deals_and_claim_allocations(
             })?,
             TokenAmount::zero(),
         ));
-        let activate_res: ext::market::ActivateDealsResult = match activate_raw {
-            Ok(res) => deserialize_block(res)?,
+        let activate_res: Option<ext::market::ActivateDealsResult> = match activate_raw {
+            Ok(res) => Some(deserialize_block(res)?),
             Err(e) => {
-                if all_or_nothing {
-                    return Err(actor_error!(
-                        illegal_argument,
-                        "failed to activate {:?} but all_or_nothing was true",
-                        activation_info
-                    ));
-                } else {
-                    info!(
-                        "error activating deals on sector {}: {}",
-                        activation_info.sector_number,
-                        e.msg()
-                    );
-                    activation_results.push(None);
-                    continue;
-                }
+                info!(
+                    "error activating deals on sector {}: {}",
+                    activation_info.sector_number,
+                    e.msg()
+                );
+                None
             }
         };
-
-        activation_results.push(Some(activate_res));
+        activation_results.push(activate_res);
     }
 
     // When all prove commits have failed abort early
-    if activation_results.iter().all(|res| res.is_none()) {
-        return Err(actor_error!(illegal_argument, "all sectors failed to activate"));
+    if activation_results.iter().all(Option::is_none) {
+        return Err(actor_error!(illegal_argument, "all deals failed to activate"));
     }
 
     // Flattened claims across all sectors
@@ -5050,36 +5050,38 @@ fn batch_activate_deals_and_claim_allocations(
                     all_or_nothing: true,
                 })?,
                 TokenAmount::zero(),
-            ));
+            ))?;
 
-            let claim_res: ext::verifreg::ClaimAllocationsReturn = match claim_raw {
-                Ok(res) => deserialize_block(res)?,
-                Err(e) => {
-                    info!("error claiming allocations for batch {}", e.msg());
-                    return Err(actor_error!(
-                        illegal_argument,
-                        "failed to claim allocation during batch activation: {}",
-                        e.msg()
-                    ));
-                }
-            };
+            let claim_res: ext::verifreg::ClaimAllocationsReturn = deserialize_block(claim_raw)
+                .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
+                    "failed to claim allocations during batch activation"
+                })?;
 
             claim_res.claim_results
         }
     };
 
-    let mut claim_res = claim_res.iter();
+    // claim res is an iterator of successful claim results parallel to `sector_claims`
+    let mut claim_res = claim_res.into_iter();
 
     // reassociate the verified claims within each sector to the original activation requests
     let activation_and_claim_results: Vec<Option<ext::market::DealSpaces>> = activation_results
         .iter()
         .map(|activation_res| {
-            activation_res.as_ref().map(|res| ext::market::DealSpaces {
-                verified_deal_space: claim_res
+            // not all deals were activated but we return explicit None corresponding to unactivated requests
+            activation_res.as_ref().map(|res| {
+                // each activation contributed as many claims as verified_info entries it had
+                let number_of_claims = res.verified_infos.len();
+                // we consume these claim results from the iterator, then reduce the claims into one
+                // value for the original activation request
+                let verified_deal_space = claim_res
                     .by_ref()
-                    .take(res.verified_infos.len())
-                    .fold(BigInt::zero(), |acc, claim_res| acc + claim_res.claimed_space.clone()),
-                deal_space: res.nonverified_deal_space.clone(),
+                    .take(number_of_claims)
+                    .fold(BigInt::zero(), |acc, claim| acc + claim.claimed_space);
+                ext::market::DealSpaces {
+                    verified_deal_space,
+                    deal_space: res.nonverified_deal_space.clone(),
+                }
             })
         })
         .collect();

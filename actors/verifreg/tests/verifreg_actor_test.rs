@@ -724,8 +724,10 @@ mod allocs_claims {
             // Sector expiration too soon
             rt.replace_state(&prior_state);
             let reqs = vec![make_claim_req(1, &alloc1, sector, alloc1.term_min - 1)];
-            let _ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
-            // assert_eq!(ret.batch_info.codes(), vec![ExitCode::USR_FORBIDDEN]);
+            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
+            assert_eq!(ret.claim_results.len(), 1);
+            assert_eq!(total_claimed_space(&ret), BigInt::zero());
+
             // Sector expiration too late
             let reqs = vec![make_claim_req(1, &alloc1, sector, alloc1.term_max + 1)];
             let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();

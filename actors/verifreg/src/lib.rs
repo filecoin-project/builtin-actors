@@ -363,24 +363,27 @@ impl Actor {
         })
     }
 
-    // Called by storage provider actor to claim allocations for data provably committed to storage.
-    // For each allocation claim, the registry checks that the provided piece CID
-    // and size match that of the allocation.
-    // When all_or_nothing is false, returns a vec of claimed spaces parallel to the requested
-    // allocations where failed allocations are represented by DataCap::zero
+    /// Called by storage provider actor to claim allocations for data provably committed to storage.
+    /// For each allocation claim, the registry checks that the provided piece CID
+    /// and size match that of the allocation.
+    /// Returns a vec of claimed spaces parallel (with same length and corresponding indices) to
+    /// the requested allocations. When `all_or_nothing` is false, failed claims are represented by
+    /// DataCap::zero() entry in the result vec. When `all_or_nothing` is enabled, any failure to
+    /// claim results in the entire function returning an error.
     pub fn claim_allocations(
         rt: &impl Runtime,
         params: ClaimAllocationsParams,
     ) -> Result<ClaimAllocationsReturn, ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
-        let provider = rt.message().caller().id().unwrap();
         if params.allocations.is_empty() {
             return Err(actor_error!(illegal_argument, "claim allocations called with no claims"));
         }
+
+        let provider = rt.message().caller().id().unwrap();
         let mut total_datacap_claimed = DataCap::zero();
         let mut ret_gen = BatchReturnGen::new(params.allocations.len());
-        let all_or_nothing = params.all_or_nothing;
         let mut sector_claims = Vec::new();
+
         rt.transaction(|st: &mut State, rt| {
             let mut claims = st.load_claims(rt.store())?;
             let mut allocs = st.load_allocs(rt.store())?;
@@ -458,7 +461,7 @@ impl Actor {
         })
         .context("state transaction failed")?;
         let batch_info = ret_gen.gen();
-        if all_or_nothing && !batch_info.all_ok() {
+        if params.all_or_nothing && !batch_info.all_ok() {
             return Err(actor_error!(
                 illegal_argument,
                 "all or nothing call contained failures: {}",
