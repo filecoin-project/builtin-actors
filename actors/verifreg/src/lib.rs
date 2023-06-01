@@ -381,7 +381,6 @@ impl Actor {
 
         let provider = rt.message().caller().id().unwrap();
         let mut total_datacap_claimed = DataCap::zero();
-        let mut ret_gen = BatchReturnGen::new(params.allocations.len());
         let mut sector_claims = Vec::new();
 
         rt.transaction(|st: &mut State, rt| {
@@ -396,7 +395,6 @@ impl Actor {
                 )?;
                 let alloc: &Allocation = match maybe_alloc {
                     None => {
-                        ret_gen.add_fail(ExitCode::USR_NOT_FOUND);
                         info!(
                             "no allocation {} for client {}",
                             claim_alloc.allocation_id, claim_alloc.client,
@@ -408,7 +406,6 @@ impl Actor {
                 };
 
                 if !can_claim_alloc(&claim_alloc, provider, alloc, rt.curr_epoch()) {
-                    ret_gen.add_fail(ExitCode::USR_FORBIDDEN);
                     info!(
                         "invalid sector {:?} for allocation {}",
                         claim_alloc.sector, claim_alloc.allocation_id,
@@ -435,7 +432,6 @@ impl Actor {
                         format!("failed to write claim {}", claim_alloc.allocation_id),
                     )?;
                 if !inserted {
-                    ret_gen.add_fail(ExitCode::USR_ILLEGAL_STATE);
                     // should be unreachable since claim and alloc can't exist at once
                     info!(
                         "claim for allocation {} could not be inserted as it already exists",
@@ -451,7 +447,6 @@ impl Actor {
                 )?;
 
                 total_datacap_claimed += DataCap::from(claim_alloc.size.0);
-                ret_gen.add_success();
                 sector_claims
                     .push(SectorAllocationClaimResult { claimed_space: claim_alloc.size.0.into() });
             }
@@ -460,12 +455,11 @@ impl Actor {
             Ok(())
         })
         .context("state transaction failed")?;
-        let batch_info = ret_gen.gen();
-        if params.all_or_nothing && !batch_info.all_ok() {
+        if params.all_or_nothing && sector_claims.iter().any(|c| c.claimed_space.is_zero()) {
             return Err(actor_error!(
                 illegal_argument,
-                "all or nothing call contained failures: {}",
-                batch_info.to_string()
+                "all or nothing call contained failures: {:?}",
+                sector_claims
             ));
         }
 
