@@ -15,9 +15,10 @@ lazy_static! {
 }
 
 mod util {
-    use fvm_shared::sector::StoragePower;
-
+    use fil_actor_verifreg::ClaimAllocationsReturn;
     use fil_actors_runtime::test_utils::MockRuntime;
+    use fvm_shared::{bigint::BigInt, sector::StoragePower};
+    use num_traits::Zero;
 
     pub fn verifier_allowance(rt: &MockRuntime) -> StoragePower {
         rt.policy.minimum_verified_allocation_size.clone() + 42
@@ -25,6 +26,14 @@ mod util {
 
     pub fn client_allowance(rt: &MockRuntime) -> StoragePower {
         verifier_allowance(rt) - 1
+    }
+
+    // Gets the total claimed_power_across sectors for a claim_allocation
+    pub fn total_claimed_space(claim_allocations_ret: &ClaimAllocationsReturn) -> BigInt {
+        claim_allocations_ret
+            .claim_results
+            .iter()
+            .fold(BigInt::zero(), |acc, claim_result| acc + claim_result.claimed_space.clone())
     }
 }
 
@@ -516,6 +525,7 @@ mod allocs_claims {
     use fil_actors_runtime::FailCode;
     use harness::*;
 
+    use crate::util::total_claimed_space;
     use crate::*;
 
     const CLIENT1: ActorID = 101;
@@ -643,9 +653,8 @@ mod allocs_claims {
                 make_claim_req(2, &alloc2, sector, expiry),
             ];
             let ret = h.claim_allocations(&rt, PROVIDER1, reqs, size * 2, false).unwrap();
-
-            assert_eq!(ret.batch_info.codes(), vec![ExitCode::OK, ExitCode::OK]);
-            assert_eq!(ret.claimed_space, BigInt::from(2 * size));
+            assert_eq!(ret.claim_results.len(), 2);
+            assert_eq!(total_claimed_space(&ret), BigInt::from(2 * size));
             assert_alloc_claimed(&rt, CLIENT1, PROVIDER1, 1, &alloc1, 0, sector);
             assert_alloc_claimed(&rt, CLIENT2, PROVIDER1, 2, &alloc2, 0, sector);
             h.check_state(&rt);
@@ -659,8 +668,10 @@ mod allocs_claims {
             ];
             reqs[1].client = CLIENT1;
             let ret = h.claim_allocations(&rt, PROVIDER1, reqs, size, false).unwrap();
-            assert_eq!(ret.batch_info.codes(), vec![ExitCode::OK, ExitCode::USR_NOT_FOUND]);
-            assert_eq!(ret.claimed_space, BigInt::from(size));
+            assert_eq!(ret.claim_results.len(), 2);
+            assert!(!ret.claim_results[0].claimed_space.is_zero());
+            assert!(ret.claim_results[1].claimed_space.is_zero());
+            assert_eq!(total_claimed_space(&ret), BigInt::from(size));
             assert_alloc_claimed(&rt, CLIENT1, PROVIDER1, 1, &alloc1, 0, sector);
             assert_allocation(&rt, CLIENT2, 2, &alloc2);
             h.check_state(&rt);
@@ -673,8 +684,10 @@ mod allocs_claims {
                 make_claim_req(3, &alloc3, sector, expiry), // Different provider
             ];
             let ret = h.claim_allocations(&rt, PROVIDER1, reqs, size, false).unwrap();
-            assert_eq!(ret.batch_info.codes(), vec![ExitCode::OK, ExitCode::USR_FORBIDDEN]);
-            assert_eq!(ret.claimed_space, BigInt::from(size));
+            assert_eq!(ret.claim_results.len(), 2);
+            assert!(!ret.claim_results[0].claimed_space.is_zero());
+            assert!(ret.claim_results[1].claimed_space.is_zero());
+            assert_eq!(total_claimed_space(&ret), BigInt::from(size));
             assert_alloc_claimed(&rt, CLIENT1, PROVIDER1, 2, &alloc2, 0, sector);
             assert_allocation(&rt, CLIENT1, 3, &alloc3);
             h.check_state(&rt);
@@ -691,11 +704,10 @@ mod allocs_claims {
                     .unwrap();
             reqs[1].size = PaddedPieceSize(size + 1);
             let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
-            assert_eq!(
-                ret.batch_info.codes(),
-                vec![ExitCode::USR_FORBIDDEN, ExitCode::USR_FORBIDDEN]
-            );
-            assert_eq!(ret.claimed_space, BigInt::zero());
+            assert_eq!(ret.claim_results.len(), 2);
+            assert!(ret.claim_results[0].claimed_space.is_zero());
+            assert!(ret.claim_results[1].claimed_space.is_zero());
+            assert_eq!(total_claimed_space(&ret), BigInt::zero());
             h.check_state(&rt);
         }
         {
@@ -704,8 +716,8 @@ mod allocs_claims {
             let reqs = vec![make_claim_req(1, &alloc1, sector, expiry)];
             rt.set_epoch(alloc1.expiration + 1);
             let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
-            assert_eq!(ret.batch_info.codes(), vec![ExitCode::USR_FORBIDDEN]);
-            assert_eq!(ret.claimed_space, BigInt::zero());
+            assert_eq!(ret.claim_results.len(), 1);
+            assert_eq!(total_claimed_space(&ret), BigInt::zero());
             h.check_state(&rt);
         }
         {
@@ -713,12 +725,14 @@ mod allocs_claims {
             rt.replace_state(&prior_state);
             let reqs = vec![make_claim_req(1, &alloc1, sector, alloc1.term_min - 1)];
             let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
-            assert_eq!(ret.batch_info.codes(), vec![ExitCode::USR_FORBIDDEN]);
+            assert_eq!(ret.claim_results.len(), 1);
+            assert_eq!(total_claimed_space(&ret), BigInt::zero());
+
             // Sector expiration too late
             let reqs = vec![make_claim_req(1, &alloc1, sector, alloc1.term_max + 1)];
             let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
-            assert_eq!(ret.batch_info.codes(), vec![ExitCode::USR_FORBIDDEN]);
-            assert_eq!(ret.claimed_space, BigInt::zero());
+            assert_eq!(ret.claim_results.len(), 1);
+            assert_eq!(total_claimed_space(&ret), BigInt::zero());
             h.check_state(&rt);
         }
     }

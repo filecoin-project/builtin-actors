@@ -132,15 +132,23 @@ pub struct SectorAllocationClaim {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ClaimAllocationsParams {
-    pub sectors: Vec<SectorAllocationClaim>,
+    pub allocations: Vec<SectorAllocationClaim>,
     pub all_or_nothing: bool,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct ClaimAllocationsReturn {
-    pub batch_info: BatchReturn,
+#[derive(Clone, Debug, PartialEq, Eq, Default, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct SectorAllocationClaimResult {
     #[serde(with = "bigint_ser")]
     pub claimed_space: BigInt,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct ClaimAllocationsReturn {
+    /// claim_results is parallel to ClaimAllocationsParams.allocations with failed allocations
+    /// being represented by claimed_space == BigInt::zero()
+    pub claim_results: Vec<SectorAllocationClaimResult>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]

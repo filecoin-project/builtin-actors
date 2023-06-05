@@ -9,7 +9,8 @@ use fil_actor_market::{
 use fil_actor_miner::ext::market::ON_MINER_SECTORS_TERMINATE_METHOD;
 use fil_actor_miner::ext::power::{UPDATE_CLAIMED_POWER_METHOD, UPDATE_PLEDGE_TOTAL_METHOD};
 use fil_actor_miner::ext::verifreg::{
-    ClaimAllocationsParams, ClaimAllocationsReturn, SectorAllocationClaim, CLAIM_ALLOCATIONS_METHOD,
+    ClaimAllocationsParams, ClaimAllocationsReturn, SectorAllocationClaim,
+    SectorAllocationClaimResult, CLAIM_ALLOCATIONS_METHOD,
 };
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee, consensus_fault_penalty,
@@ -43,7 +44,7 @@ use fil_actor_miner::ext::verifreg::{
 };
 
 use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime, RuntimePolicy};
-use fil_actors_runtime::{test_utils::*, BatchReturn, BatchReturnGen};
+use fil_actors_runtime::{test_utils::*, BatchReturnGen};
 use fil_actors_runtime::{
     ActorDowncast, ActorError, Array, DealWeight, MessageAccumulator, BURNT_FUNDS_ACTOR_ADDR,
     INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
@@ -1053,6 +1054,9 @@ impl ActorHarness {
         pcs: &[SectorPreCommitOnChainInfo],
     ) {
         let mut valid_pcs = Vec::new();
+        // claim FIL+ allocations
+        let mut sectors_claims: Vec<SectorAllocationClaim> = Vec::new();
+
         for pc in pcs {
             if !pc.info.deal_ids.is_empty() {
                 let deal_spaces = cfg.deal_spaces(&pc.info.sector_number);
@@ -1091,8 +1095,7 @@ impl ActorHarness {
                         valid_pcs.push(pc);
                     }
                 } else {
-                    // calim FIL+ allocations
-                    let sector_claims = ret
+                    let mut sector_claims: Vec<SectorAllocationClaim> = ret
                         .verified_infos
                         .iter()
                         .map(|info| SectorAllocationClaim {
@@ -1104,29 +1107,38 @@ impl ActorHarness {
                             sector_expiry: pc.info.expiration,
                         })
                         .collect();
-
-                    let claim_allocation_params =
-                        ClaimAllocationsParams { sectors: sector_claims, all_or_nothing: true };
-
-                    // TODO handle failures of claim allocations
-                    // use exit code map for claim allocations in config
+                    sectors_claims.append(&mut sector_claims);
                     valid_pcs.push(pc);
-                    let claim_allocs_ret = ClaimAllocationsReturn {
-                        batch_info: BatchReturn::ok(ret.verified_infos.len() as u32),
-                        claimed_space: deal_spaces.verified_deal_space,
-                    };
-                    rt.expect_send_simple(
-                        VERIFIED_REGISTRY_ACTOR_ADDR,
-                        CLAIM_ALLOCATIONS_METHOD as u64,
-                        IpldBlock::serialize_cbor(&claim_allocation_params).unwrap(),
-                        TokenAmount::zero(),
-                        IpldBlock::serialize_cbor(&claim_allocs_ret).unwrap(),
-                        ExitCode::OK,
-                    );
                 }
             } else {
+                // empty deal ids
                 valid_pcs.push(pc);
             }
+        }
+
+        if !sectors_claims.is_empty() {
+            let claim_allocation_params = ClaimAllocationsParams {
+                allocations: sectors_claims.clone(),
+                all_or_nothing: true,
+            };
+
+            // TODO handle failures of claim allocations
+            // use exit code map for claim allocations in config
+
+            let claim_allocs_ret = ClaimAllocationsReturn {
+                claim_results: sectors_claims
+                    .iter()
+                    .map(|claim| SectorAllocationClaimResult { claimed_space: claim.size.0.into() })
+                    .collect(),
+            };
+            rt.expect_send_simple(
+                VERIFIED_REGISTRY_ACTOR_ADDR,
+                CLAIM_ALLOCATIONS_METHOD as u64,
+                IpldBlock::serialize_cbor(&claim_allocation_params).unwrap(),
+                TokenAmount::zero(),
+                IpldBlock::serialize_cbor(&claim_allocs_ret).unwrap(),
+                ExitCode::OK,
+            );
         }
 
         if !valid_pcs.is_empty() {
