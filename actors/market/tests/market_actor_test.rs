@@ -5,10 +5,10 @@ use fil_actor_market::balance_table::BALANCE_TABLE_BITWIDTH;
 use fil_actor_market::policy::detail::DEAL_MAX_LABEL_SIZE;
 use fil_actor_market::{
     deal_id_key, ext, next_update_epoch, ActivateDealsParams, Actor as MarketActor,
-    BatchActivateDealsParams, ClientDealProposal, DealArray, DealMetaArray, Label,
-    MarketNotifyDealParams, Method, PublishStorageDealsParams, PublishStorageDealsReturn, State,
-    WithdrawBalanceParams, EX_DEAL_EXPIRED, MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID,
-    PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
+    BatchActivateDealsParams, BatchActivateDealsResult, ClientDealProposal, DealArray,
+    DealMetaArray, Label, MarketNotifyDealParams, Method, PublishStorageDealsParams,
+    PublishStorageDealsReturn, State, WithdrawBalanceParams, EX_DEAL_EXPIRED,
+    MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
 };
 use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
@@ -1693,13 +1693,15 @@ fn fail_when_current_epoch_greater_than_start_epoch_of_deal() {
     rt.set_epoch(start_epoch + 1);
     let params = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry };
     let params = BatchActivateDealsParams { sectors: vec![params] };
-    expect_abort(
-        ExitCode::USR_ILLEGAL_ARGUMENT,
-        rt.call::<MarketActor>(
+    let res = rt
+        .call::<MarketActor>(
             Method::BatchActivateDeals as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
-        ),
-    );
+        )
+        .unwrap()
+        .unwrap();
+    let res: BatchActivateDealsResult = IpldBlock::deserialize(&res).unwrap();
+    assert_eq!(res.sectors, vec![None]);
 
     rt.verify();
     check_state(&rt);
@@ -1723,13 +1725,15 @@ fn fail_when_end_epoch_of_deal_greater_than_sector_expiry() {
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
     let params = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry: end_epoch - 1 };
     let params = BatchActivateDealsParams { sectors: vec![params] };
-    expect_abort(
-        ExitCode::USR_ILLEGAL_ARGUMENT,
-        rt.call::<MarketActor>(
+    let res = rt
+        .call::<MarketActor>(
             Method::BatchActivateDeals as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
-        ),
-    );
+        )
+        .unwrap()
+        .unwrap();
+    let res: BatchActivateDealsResult = IpldBlock::deserialize(&res).unwrap();
+    assert_eq!(res.sectors, vec![None]);
 
     rt.verify();
     check_state(&rt);
@@ -1764,13 +1768,15 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
     let params = ActivateDealsParams { deal_ids: vec![deal_id1, deal_id2], sector_expiry };
     let params = BatchActivateDealsParams { sectors: vec![params] };
-    expect_abort(
-        ExitCode::USR_ILLEGAL_ARGUMENT,
-        rt.call::<MarketActor>(
+    let res = rt
+        .call::<MarketActor>(
             Method::BatchActivateDeals as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
-        ),
-    );
+        )
+        .unwrap()
+        .unwrap();
+    let res: BatchActivateDealsResult = IpldBlock::deserialize(&res).unwrap();
+    assert_eq!(res.sectors, vec![None]);
     rt.verify();
 
     // no state for deal2 means deal2 activation has failed
