@@ -305,7 +305,18 @@ pub fn activate_deals(
     deal_ids: &[DealID],
 ) -> BatchActivateDealsResult {
     let ret = activate_deals_raw(rt, sector_expiry, provider, current_epoch, deal_ids).unwrap();
-    ret.unwrap().deserialize().expect("VerifyDealsForActivation failed!")
+
+    let ret: BatchActivateDealsResult =
+        ret.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
+
+    for (d, res) in deal_ids.iter().zip(&ret.sectors) {
+        if res.is_some() {
+            let s = get_deal_state(rt, *d);
+            assert_eq!(current_epoch, s.sector_start_epoch);
+        }
+    }
+
+    ret
 }
 
 pub fn activate_deals_raw(
@@ -328,10 +339,6 @@ pub fn activate_deals_raw(
     )?;
     rt.verify();
 
-    for d in deal_ids {
-        let s = get_deal_state(rt, *d);
-        assert_eq!(current_epoch, s.sector_start_epoch);
-    }
     Ok(ret)
 }
 

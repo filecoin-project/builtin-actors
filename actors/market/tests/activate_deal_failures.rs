@@ -1,8 +1,8 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_actor_market::BatchActivateDealsParams;
-use fil_actor_market::{ActivateDealsParams, Actor as MarketActor, Method, State, EX_DEAL_EXPIRED};
+use fil_actor_market::{ActivateDealsParams, Actor as MarketActor, Method, State};
+use fil_actor_market::{BatchActivateDealsParams, BatchActivateDealsResult};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::test_utils::*;
@@ -33,13 +33,16 @@ fn fail_when_caller_is_not_the_provider_of_the_deal() {
 
     rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
-    expect_abort(
-        ExitCode::USR_FORBIDDEN,
-        rt.call::<MarketActor>(
+
+    let res = rt
+        .call::<MarketActor>(
             Method::BatchActivateDeals as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
-        ),
-    );
+        )
+        .unwrap()
+        .unwrap();
+    let res: BatchActivateDealsResult = IpldBlock::deserialize(&res).unwrap();
+    assert_eq!(res.sectors, vec![None]);
 
     rt.verify();
     check_state(&rt);
@@ -76,13 +79,15 @@ fn fail_when_deal_has_not_been_published_before() {
 
     rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
-    expect_abort(
-        ExitCode::USR_NOT_FOUND,
-        rt.call::<MarketActor>(
+    let res = rt
+        .call::<MarketActor>(
             Method::BatchActivateDeals as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
-        ),
-    );
+        )
+        .unwrap()
+        .unwrap();
+    let res: BatchActivateDealsResult = IpldBlock::deserialize(&res).unwrap();
+    assert_eq!(res.sectors, vec![None]);
 
     rt.verify();
     check_state(&rt);
@@ -110,13 +115,15 @@ fn fail_when_deal_has_already_been_activated() {
     let sector_activation = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry };
     let params = BatchActivateDealsParams { sectors: vec![sector_activation] };
 
-    expect_abort(
-        ExitCode::USR_ILLEGAL_ARGUMENT,
-        rt.call::<MarketActor>(
+    let res = rt
+        .call::<MarketActor>(
             Method::BatchActivateDeals as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
-        ),
-    );
+        )
+        .unwrap()
+        .unwrap();
+    let res: BatchActivateDealsResult = IpldBlock::deserialize(&res).unwrap();
+    assert_eq!(res.sectors, vec![None]);
 
     rt.verify();
     check_state(&rt);
@@ -157,9 +164,6 @@ fn fail_when_deal_has_already_been_expired() {
     let mut st: State = rt.get_state::<State>();
     st.next_id = deal_id + 1;
 
-    expect_abort_contains_message(
-        EX_DEAL_EXPIRED,
-        "expired",
-        activate_deals_raw(&rt, sector_expiry, PROVIDER_ADDR, 0, &[deal_id]),
-    );
+    let res = activate_deals(&rt, sector_expiry, PROVIDER_ADDR, 0, &[deal_id]);
+    assert_eq!(res.sectors, vec![None])
 }
