@@ -1111,6 +1111,14 @@ impl ActorHarness {
                 }
             } else {
                 // empty deal ids
+                sector_activation_params.push(ActivateDealsParams {
+                    deal_ids: vec![],
+                    sector_expiry: pc.info.expiration,
+                });
+                sector_activation_results.push(Some(ActivateDealsResult {
+                    nonverified_deal_space: BigInt::zero(),
+                    verified_infos: vec![],
+                }));
                 valid_pcs.push(pc);
             }
         }
