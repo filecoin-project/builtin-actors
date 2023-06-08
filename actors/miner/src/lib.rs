@@ -10,7 +10,6 @@ use std::ops::Neg;
 use anyhow::{anyhow, Error};
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
 use cid::Cid;
-use ext::market::ActivateDealsResult;
 use fvm_ipld_bitfield::{BitField, Validate};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{from_slice, BytesDe, CborStore};
@@ -4968,54 +4967,36 @@ fn batch_activate_deals_and_claim_allocations(
     rt: &impl Runtime,
     activation_infos: &[DealsActivationInfo],
 ) -> Result<Vec<Option<ext::market::DealSpaces>>, ActorError> {
-    // Fills with ActivateDealResults per DealActivationInfo
-    // ActivateDeals implicitly succeeds when no deal_ids are specified
-    // If deal activation fails, a None is recorded in place
-    let mut activation_results = Vec::new();
+    let mut sector_activation_params = Vec::new();
 
-    // TODO: https://github.com/filecoin-project/builtin-actors/pull/1303 enable activation batching
     for activation_info in activation_infos {
-        // Check (and activate) storage deals associated to sector
-        let deal_ids = activation_info.deal_ids.clone();
-        if deal_ids.is_empty() {
-            activation_results.push(Some(ActivateDealsResult {
-                nonverified_deal_space: BigInt::default(),
-                verified_infos: Vec::default(),
-            }));
-            continue;
-        }
-
-        let activate_raw = extract_send_result(rt.send_simple(
-            &STORAGE_MARKET_ACTOR_ADDR,
-            ext::market::ACTIVATE_DEALS_METHOD,
-            IpldBlock::serialize_cbor(&ext::market::ActivateDealsParams {
-                deal_ids,
-                sector_expiry: activation_info.sector_expiry,
-            })?,
-            TokenAmount::zero(),
-        ));
-        let activate_res: Option<ext::market::ActivateDealsResult> = match activate_raw {
-            Ok(res) => Some(deserialize_block(res)?),
-            Err(e) => {
-                info!(
-                    "error activating deals on sector {}: {}",
-                    activation_info.sector_number,
-                    e.msg()
-                );
-                None
-            }
-        };
-        activation_results.push(activate_res);
+        sector_activation_params.push(ext::market::ActivateDealsParams {
+            deal_ids: activation_info.deal_ids.clone(),
+            sector_expiry: activation_info.sector_expiry,
+        });
     }
 
+    let activate_raw = extract_send_result(rt.send_simple(
+        &STORAGE_MARKET_ACTOR_ADDR,
+        ext::market::BATCH_ACTIVATE_DEALS_METHOD,
+        IpldBlock::serialize_cbor(&ext::market::BatchActivateDealsParams {
+            sectors: sector_activation_params,
+        })?,
+        TokenAmount::zero(),
+    ))?;
+    let activation_results: ext::market::BatchActivateDealsResult =
+        deserialize_block(activate_raw)?;
+
     // When all prove commits have failed abort early
-    if activation_results.iter().all(Option::is_none) {
+    if activation_results.sectors.iter().all(Option::is_none) {
         return Err(actor_error!(illegal_argument, "all deals failed to activate"));
     }
 
     // Flattened claims across all sectors
     let mut sectors_claims = Vec::new();
-    for (activation_info, activate_res) in activation_infos.iter().zip(activation_results.clone()) {
+    for (activation_info, activate_res) in
+        activation_infos.iter().zip(activation_results.sectors.clone())
+    {
         if activate_res.is_none() {
             continue;
         }
@@ -5063,6 +5044,7 @@ fn batch_activate_deals_and_claim_allocations(
 
     // reassociate the verified claims within each sector to the original activation requests
     let activation_and_claim_results: Vec<Option<ext::market::DealSpaces>> = activation_results
+        .sectors
         .iter()
         .map(|activation_res| {
             // not all deals were activated but we return explicit None corresponding to unactivated requests

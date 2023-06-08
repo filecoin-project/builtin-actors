@@ -1084,7 +1084,7 @@ impl ActorHarness {
 
                 rt.expect_send_simple(
                     STORAGE_MARKET_ACTOR_ADDR,
-                    MarketMethod::ActivateDeals as u64,
+                    MarketMethod::BatchActivateDeals as u64,
                     IpldBlock::serialize_cbor(&activate_params).unwrap(),
                     TokenAmount::zero(),
                     IpldBlock::serialize_cbor(&ret).unwrap(),

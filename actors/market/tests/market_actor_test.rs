@@ -1695,7 +1695,7 @@ fn fail_when_current_epoch_greater_than_start_epoch_of_deal() {
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MarketActor>(
-            Method::ActivateDeals as u64,
+            Method::BatchActivateDeals as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
         ),
     );
@@ -1724,7 +1724,7 @@ fn fail_when_end_epoch_of_deal_greater_than_sector_expiry() {
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MarketActor>(
-            Method::ActivateDeals as u64,
+            Method::BatchActivateDeals as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
         ),
     );
@@ -1764,7 +1764,7 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MarketActor>(
-            Method::ActivateDeals as u64,
+            Method::BatchActivateDeals as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
         ),
     );

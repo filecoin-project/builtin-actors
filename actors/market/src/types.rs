@@ -103,6 +103,12 @@ pub struct ActivateDealsParams {
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+#[serde(transparent)]
+pub struct BatchActivateDealsParams {
+    pub sectors: Vec<ActivateDealsParams>,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 pub struct VerifiedDealInfo {
     pub client: ActorID,
     pub allocation_id: AllocationID,
@@ -115,6 +121,12 @@ pub struct ActivateDealsResult {
     #[serde(with = "bigint_ser")]
     pub nonverified_deal_space: BigInt,
     pub verified_infos: Vec<VerifiedDealInfo>,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+#[serde(transparent)]
+pub struct BatchActivateDealsResult {
+    pub sectors: Vec<Option<ActivateDealsResult>>,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]

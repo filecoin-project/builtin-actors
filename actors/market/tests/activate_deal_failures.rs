@@ -34,7 +34,7 @@ fn fail_when_caller_is_not_the_provider_of_the_deal() {
     expect_abort(
         ExitCode::USR_FORBIDDEN,
         rt.call::<MarketActor>(
-            Method::ActivateDeals as u64,
+            Method::BatchActivateDeals as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
         ),
     );
@@ -53,7 +53,7 @@ fn fail_when_caller_is_not_a_storage_miner_actor() {
     expect_abort(
         ExitCode::USR_FORBIDDEN,
         rt.call::<MarketActor>(
-            Method::ActivateDeals as u64,
+            Method::BatchActivateDeals as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
         ),
     );
@@ -72,7 +72,7 @@ fn fail_when_deal_has_not_been_published_before() {
     expect_abort(
         ExitCode::USR_NOT_FOUND,
         rt.call::<MarketActor>(
-            Method::ActivateDeals as u64,
+            Method::BatchActivateDeals as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
         ),
     );
@@ -103,7 +103,7 @@ fn fail_when_deal_has_already_been_activated() {
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MarketActor>(
-            Method::ActivateDeals as u64,
+            Method::BatchActivateDeals as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
         ),
     );

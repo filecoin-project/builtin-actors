@@ -47,7 +47,7 @@ impl Expect {
         ExpectInvocation {
             from,
             to: STORAGE_MARKET_ACTOR_ADDR,
-            method: fil_actor_market::Method::ActivateDeals as u64,
+            method: fil_actor_market::Method::BatchActivateDeals as u64,
             params: Some(params),
             value: Some(TokenAmount::zero()),
             subinvocs: Some(vec![]),

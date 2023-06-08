@@ -74,7 +74,7 @@ pub enum Method {
     WithdrawBalance = 3,
     PublishStorageDeals = 4,
     VerifyDealsForActivation = 5,
-    ActivateDeals = 6,
+    BatchActivateDeals = 6,
     OnMinerSectorsTerminate = 7,
     ComputeDataCommitment = 8,
     CronTick = 9,
@@ -531,92 +531,99 @@ impl Actor {
     }
 
     /// Activate a set of deals, returning the combined deal space and extra info for verified deals.
-    fn activate_deals(
+    fn batch_activate_deals(
         rt: &impl Runtime,
-        params: ActivateDealsParams,
-    ) -> Result<ActivateDealsResult, ActorError> {
+        params: BatchActivateDealsParams,
+    ) -> Result<BatchActivateDealsResult, ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         let miner_addr = rt.message().caller();
         let curr_epoch = rt.curr_epoch();
 
-        let (deal_spaces, verified_infos) = rt.transaction(|st: &mut State, rt| {
-            let proposal_array = st.get_proposal_array(rt.store())?;
-            let proposals = get_proposals(&proposal_array, &params.deal_ids, st.next_id)?;
+        let sector_results = rt.transaction(|st: &mut State, rt| {
+            let mut sector_results: Vec<Option<ActivateDealsResult>> = Vec::new();
+            for p in params.sectors {
+                let proposal_array = st.get_proposal_array(rt.store())?;
+                let proposals = get_proposals(&proposal_array, &p.deal_ids, st.next_id)?;
 
-            let deal_spaces = {
-                validate_and_return_deal_space(
-                    &proposals,
-                    &miner_addr,
-                    params.sector_expiry,
-                    curr_epoch,
-                    None,
-                )
-                .context("failed to validate deal proposals for activation")?
-            };
+                let deal_spaces = {
+                    validate_and_return_deal_space(
+                        &proposals,
+                        &miner_addr,
+                        p.sector_expiry,
+                        curr_epoch,
+                        None,
+                    )
+                    .context("failed to validate deal proposals for activation")?
+                };
 
-            // Update deal states
-            let mut verified_infos = Vec::new();
-            let mut deal_states: Vec<(DealID, DealState)> = vec![];
+                // Update deal states
+                let mut verified_infos = Vec::new();
+                let mut deal_states: Vec<(DealID, DealState)> = vec![];
 
-            for (deal_id, proposal) in proposals {
-                // This construction could be replaced with a single "update deal state"
-                // state method, possibly batched over all deal ids at once.
-                let s = st.find_deal_state(rt.store(), deal_id)?;
+                for (deal_id, proposal) in proposals {
+                    // This construction could be replaced with a single "update deal state"
+                    // state method, possibly batched over all deal ids at once.
+                    let s = st.find_deal_state(rt.store(), deal_id)?;
 
-                if s.is_some() {
-                    return Err(actor_error!(
-                        illegal_argument,
-                        "deal {} already activated",
-                        deal_id
+                    if s.is_some() {
+                        return Err(actor_error!(
+                            illegal_argument,
+                            "deal {} already activated",
+                            deal_id
+                        ));
+                    }
+
+                    let propc = rt_deal_cid(rt, &proposal)?;
+
+                    // Confirm the deal is in the pending proposals queue.
+                    // It will be removed from this queue later, during cron.
+                    let has = st.has_pending_deal(rt.store(), propc)?;
+
+                    if !has {
+                        return Err(actor_error!(
+                            illegal_state,
+                            "tried to activate deal that was not in the pending set ({})",
+                            propc
+                        ));
+                    }
+
+                    // Extract and remove any verified allocation ID for the pending deal.
+                    let allocation = st
+                        .remove_pending_deal_allocation_id(rt.store(), &deal_id_key(deal_id))?
+                        .unwrap_or((BytesKey(vec![]), NO_ALLOCATION_ID))
+                        .1;
+
+                    if allocation != NO_ALLOCATION_ID {
+                        verified_infos.push(VerifiedDealInfo {
+                            client: proposal.client.id().unwrap(),
+                            allocation_id: allocation,
+                            data: proposal.piece_cid,
+                            size: proposal.piece_size,
+                        })
+                    }
+
+                    deal_states.push((
+                        deal_id,
+                        DealState {
+                            sector_start_epoch: curr_epoch,
+                            last_updated_epoch: EPOCH_UNDEFINED,
+                            slash_epoch: EPOCH_UNDEFINED,
+                            verified_claim: allocation,
+                        },
                     ));
                 }
 
-                let propc = rt_deal_cid(rt, &proposal)?;
+                st.put_deal_states(rt.store(), &deal_states)?;
 
-                // Confirm the deal is in the pending proposals queue.
-                // It will be removed from this queue later, during cron.
-                let has = st.has_pending_deal(rt.store(), propc)?;
-
-                if !has {
-                    return Err(actor_error!(
-                        illegal_state,
-                        "tried to activate deal that was not in the pending set ({})",
-                        propc
-                    ));
-                }
-
-                // Extract and remove any verified allocation ID for the pending deal.
-                let allocation = st
-                    .remove_pending_deal_allocation_id(rt.store(), &deal_id_key(deal_id))?
-                    .unwrap_or((BytesKey(vec![]), NO_ALLOCATION_ID))
-                    .1;
-
-                if allocation != NO_ALLOCATION_ID {
-                    verified_infos.push(VerifiedDealInfo {
-                        client: proposal.client.id().unwrap(),
-                        allocation_id: allocation,
-                        data: proposal.piece_cid,
-                        size: proposal.piece_size,
-                    })
-                }
-
-                deal_states.push((
-                    deal_id,
-                    DealState {
-                        sector_start_epoch: curr_epoch,
-                        last_updated_epoch: EPOCH_UNDEFINED,
-                        slash_epoch: EPOCH_UNDEFINED,
-                        verified_claim: allocation,
-                    },
-                ));
+                sector_results.push(Some(ActivateDealsResult {
+                    nonverified_deal_space: deal_spaces.deal_space,
+                    verified_infos,
+                }));
             }
-
-            st.put_deal_states(rt.store(), &deal_states)?;
-
-            Ok((deal_spaces, verified_infos))
+            Ok(sector_results)
         })?;
 
-        Ok(ActivateDealsResult { nonverified_deal_space: deal_spaces.deal_space, verified_infos })
+        Ok(BatchActivateDealsResult { sectors: sector_results })
     }
 
     /// Terminate a set of deals in response to their containing sector being terminated.
@@ -631,10 +638,12 @@ impl Actor {
 
         rt.transaction(|st: &mut State, rt| {
             let mut deal_states: Vec<(DealID, DealState)> = vec![];
+            // TODO: if "continue", make sure to add a None to the results
 
             for id in params.deal_ids {
-                let deal = st.find_proposal(rt.store(), id)?;
+                // TODO: if no deals, return success
 
+                let deal = st.find_proposal(rt.store(), id)?;
                 // The deal may have expired and been deleted before the sector is terminated.
                 // Nothing to do, but continue execution for the other deals.
                 if deal.is_none() {
@@ -1403,7 +1412,7 @@ impl ActorCode for Actor {
         WithdrawBalance|WithdrawBalanceExported => withdraw_balance,
         PublishStorageDeals|PublishStorageDealsExported => publish_storage_deals,
         VerifyDealsForActivation => verify_deals_for_activation,
-        ActivateDeals => activate_deals,
+        BatchActivateDeals => batch_activate_deals,
         OnMinerSectorsTerminate => on_miner_sectors_terminate,
         ComputeDataCommitment => compute_data_commitment,
         CronTick => cron_tick,

@@ -21,7 +21,7 @@ pub mod market {
     use super::*;
 
     pub const VERIFY_DEALS_FOR_ACTIVATION_METHOD: u64 = 5;
-    pub const ACTIVATE_DEALS_METHOD: u64 = 6;
+    pub const BATCH_ACTIVATE_DEALS_METHOD: u64 = 6;
     pub const ON_MINER_SECTORS_TERMINATE_METHOD: u64 = 7;
     pub const COMPUTE_DATA_COMMITMENT_METHOD: u64 = 8;
 
@@ -36,6 +36,12 @@ pub mod market {
     pub struct ActivateDealsParams {
         pub deal_ids: Vec<DealID>,
         pub sector_expiry: ChainEpoch,
+    }
+
+    #[derive(Serialize_tuple, Deserialize_tuple)]
+    #[serde(transparent)]
+    pub struct BatchActivateDealsParams {
+        pub sectors: Vec<ActivateDealsParams>,
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
@@ -62,6 +68,12 @@ pub mod market {
         #[serde(with = "bigint_ser")]
         pub nonverified_deal_space: BigInt,
         pub verified_infos: Vec<VerifiedDealInfo>,
+    }
+
+    #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
+    #[serde(transparent)]
+    pub struct BatchActivateDealsResult {
+        pub sectors: Vec<Option<ActivateDealsResult>>,
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple, Clone, Default)]
