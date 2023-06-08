@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use cid::Cid;
+use fil_actor_market::{BatchActivateDealsParams, BatchActivateDealsResult};
 use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
 use num_traits::{FromPrimitive, Zero};
 use regex::Regex;
@@ -12,12 +13,12 @@ use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MES
 use fil_actor_market::ext::verifreg::{AllocationID, AllocationRequest, AllocationsResponse};
 use fil_actor_market::{
     deal_id_key, ext, ext::miner::GetControlAddressesReturnParams, next_update_epoch,
-    testing::check_state_invariants, ActivateDealsParams, ActivateDealsResult,
-    Actor as MarketActor, ClientDealProposal, DealArray, DealMetaArray, DealProposal, DealState,
-    GetBalanceReturn, Label, MarketNotifyDealParams, Method, OnMinerSectorsTerminateParams,
-    PublishStorageDealsParams, PublishStorageDealsReturn, SectorDeals, State,
-    VerifyDealsForActivationParams, VerifyDealsForActivationReturn, WithdrawBalanceParams,
-    WithdrawBalanceReturn, MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID, PROPOSALS_AMT_BITWIDTH,
+    testing::check_state_invariants, ActivateDealsParams, Actor as MarketActor, ClientDealProposal,
+    DealArray, DealMetaArray, DealProposal, DealState, GetBalanceReturn, Label,
+    MarketNotifyDealParams, Method, OnMinerSectorsTerminateParams, PublishStorageDealsParams,
+    PublishStorageDealsReturn, SectorDeals, State, VerifyDealsForActivationParams,
+    VerifyDealsForActivationReturn, WithdrawBalanceParams, WithdrawBalanceReturn,
+    MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID, PROPOSALS_AMT_BITWIDTH,
 };
 use fil_actor_power::{CurrentTotalPowerReturn, Method as PowerMethod};
 use fil_actor_reward::Method as RewardMethod;
@@ -302,7 +303,7 @@ pub fn activate_deals(
     provider: Address,
     current_epoch: ChainEpoch,
     deal_ids: &[DealID],
-) -> ActivateDealsResult {
+) -> BatchActivateDealsResult {
     let ret = activate_deals_raw(rt, sector_expiry, provider, current_epoch, deal_ids).unwrap();
     ret.unwrap().deserialize().expect("VerifyDealsForActivation failed!")
 }
@@ -319,6 +320,7 @@ pub fn activate_deals_raw(
     rt.expect_validate_caller_type(vec![Type::Miner]);
 
     let params = ActivateDealsParams { deal_ids: deal_ids.to_vec(), sector_expiry };
+    let params = BatchActivateDealsParams { sectors: vec![params] };
 
     let ret = rt.call::<MarketActor>(
         Method::BatchActivateDeals as u64,

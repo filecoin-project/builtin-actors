@@ -1,6 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use fil_actor_market::BatchActivateDealsParams;
 use fil_actor_market::{ActivateDealsParams, Actor as MarketActor, Method, State, EX_DEAL_EXPIRED};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::builtins::Type;
@@ -27,7 +28,8 @@ fn fail_when_caller_is_not_the_provider_of_the_deal() {
     let addrs = MinerAddresses { provider: provider2_addr, ..MinerAddresses::default() };
     let deal_id = generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch);
 
-    let params = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry };
+    let sector_activation = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry };
+    let params = BatchActivateDealsParams { sectors: vec![sector_activation] };
 
     rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
@@ -49,7 +51,9 @@ fn fail_when_caller_is_not_a_storage_miner_actor() {
     rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, PROVIDER_ADDR);
 
-    let params = ActivateDealsParams { deal_ids: vec![], sector_expiry: 0 };
+    let sector_activation = ActivateDealsParams { deal_ids: vec![], sector_expiry: 0 };
+    let params = BatchActivateDealsParams { sectors: vec![sector_activation] };
+
     expect_abort(
         ExitCode::USR_FORBIDDEN,
         rt.call::<MarketActor>(
@@ -65,7 +69,10 @@ fn fail_when_caller_is_not_a_storage_miner_actor() {
 #[test]
 fn fail_when_deal_has_not_been_published_before() {
     let rt = setup();
-    let params = ActivateDealsParams { deal_ids: vec![DealID::from(42u32)], sector_expiry: 0 };
+
+    let sector_activation =
+        ActivateDealsParams { deal_ids: vec![DealID::from(42u32)], sector_expiry: 0 };
+    let params = BatchActivateDealsParams { sectors: vec![sector_activation] };
 
     rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
@@ -99,7 +106,10 @@ fn fail_when_deal_has_already_been_activated() {
 
     rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
-    let params = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry };
+
+    let sector_activation = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry };
+    let params = BatchActivateDealsParams { sectors: vec![sector_activation] };
+
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         rt.call::<MarketActor>(
