@@ -541,6 +541,7 @@ impl Actor {
 
         let sector_results = rt.transaction(|st: &mut State, rt| {
             let mut sector_results: Vec<Option<ActivateDealsResult>> = Vec::new();
+            let mut deal_states: Vec<(DealID, DealState)> = vec![];
             for p in params.sectors {
                 let proposal_array = st.get_proposal_array(rt.store())?;
                 let proposals = get_proposals(&proposal_array, &p.deal_ids, st.next_id)?;
@@ -558,7 +559,6 @@ impl Actor {
 
                 // Update deal states
                 let mut verified_infos = Vec::new();
-                let mut deal_states: Vec<(DealID, DealState)> = vec![];
 
                 for (deal_id, proposal) in proposals {
                     // This construction could be replaced with a single "update deal state"
@@ -613,13 +613,12 @@ impl Actor {
                     ));
                 }
 
-                st.put_deal_states(rt.store(), &deal_states)?;
-
                 sector_results.push(Some(ActivateDealsResult {
                     nonverified_deal_space: deal_spaces.deal_space,
                     verified_infos,
                 }));
             }
+            st.put_deal_states(rt.store(), &deal_states)?;
             Ok(sector_results)
         })?;
 

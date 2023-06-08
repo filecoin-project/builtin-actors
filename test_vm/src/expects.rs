@@ -13,7 +13,8 @@ use num_traits::Zero;
 use fil_actor_account::types::AuthenticateMessageParams;
 use fil_actor_datacap::BalanceParams;
 use fil_actor_market::{
-    ActivateDealsParams, OnMinerSectorsTerminateParams, SectorDeals, VerifyDealsForActivationParams,
+    ActivateDealsParams, BatchActivateDealsParams, OnMinerSectorsTerminateParams, SectorDeals,
+    VerifyDealsForActivationParams,
 };
 use fil_actor_miner::ext::verifreg::ClaimID;
 use fil_actor_miner::{IsControllingAddressParam, PowerPair};
@@ -41,9 +42,10 @@ impl Expect {
         deals: Vec<DealID>,
         sector_expiry: ChainEpoch,
     ) -> ExpectInvocation {
-        let params =
-            IpldBlock::serialize_cbor(&ActivateDealsParams { deal_ids: deals, sector_expiry })
-                .unwrap();
+        let params = IpldBlock::serialize_cbor(&BatchActivateDealsParams {
+            sectors: vec![ActivateDealsParams { deal_ids: deals, sector_expiry }],
+        })
+        .unwrap();
         ExpectInvocation {
             from,
             to: STORAGE_MARKET_ACTOR_ADDR,

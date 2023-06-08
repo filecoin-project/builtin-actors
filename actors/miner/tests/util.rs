@@ -2,9 +2,9 @@
 
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
-    ActivateDealsParams, ActivateDealsResult, DealSpaces, Method as MarketMethod,
-    OnMinerSectorsTerminateParams, SectorDealData, SectorDeals, VerifiedDealInfo,
-    VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
+    ActivateDealsParams, ActivateDealsResult, BatchActivateDealsParams, BatchActivateDealsResult,
+    DealSpaces, Method as MarketMethod, OnMinerSectorsTerminateParams, SectorDealData, SectorDeals,
+    VerifiedDealInfo, VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
 };
 use fil_actor_miner::ext::market::ON_MINER_SECTORS_TERMINATE_METHOD;
 use fil_actor_miner::ext::power::{UPDATE_CLAIMED_POWER_METHOD, UPDATE_PLEDGE_TOTAL_METHOD};
@@ -1054,8 +1054,13 @@ impl ActorHarness {
         pcs: &[SectorPreCommitOnChainInfo],
     ) {
         let mut valid_pcs = Vec::new();
+
         // claim FIL+ allocations
         let mut sectors_claims: Vec<SectorAllocationClaim> = Vec::new();
+
+        // build expectations per sector
+        let mut sector_activation_params: Vec<ActivateDealsParams> = Vec::new();
+        let mut sector_activation_results: Vec<Option<ActivateDealsResult>> = Vec::new();
 
         for pc in pcs {
             if !pc.info.deal_ids.is_empty() {
@@ -1064,14 +1069,7 @@ impl ActorHarness {
                     deal_ids: pc.info.deal_ids.clone(),
                     sector_expiry: pc.info.expiration,
                 };
-
-                let mut activate_deals_exit = ExitCode::OK;
-                match cfg.verify_deals_exit.get(&pc.info.sector_number) {
-                    Some(exit_code) => {
-                        activate_deals_exit = *exit_code;
-                    }
-                    None => (),
-                }
+                sector_activation_params.push(activate_params);
 
                 let ret = ActivateDealsResult {
                     nonverified_deal_space: deal_spaces.deal_space,
@@ -1082,14 +1080,15 @@ impl ActorHarness {
                         .unwrap_or_default(),
                 };
 
-                rt.expect_send_simple(
-                    STORAGE_MARKET_ACTOR_ADDR,
-                    MarketMethod::BatchActivateDeals as u64,
-                    IpldBlock::serialize_cbor(&activate_params).unwrap(),
-                    TokenAmount::zero(),
-                    IpldBlock::serialize_cbor(&ret).unwrap(),
-                    activate_deals_exit,
-                );
+                let mut activate_deals_exit = ExitCode::OK;
+                match cfg.verify_deals_exit.get(&pc.info.sector_number) {
+                    Some(exit_code) => {
+                        activate_deals_exit = *exit_code;
+                        sector_activation_results.push(None);
+                    }
+                    None => sector_activation_results.push(Some(ret.clone())),
+                }
+
                 if ret.verified_infos.is_empty() {
                     if activate_deals_exit == ExitCode::OK {
                         valid_pcs.push(pc);
@@ -1115,6 +1114,21 @@ impl ActorHarness {
                 valid_pcs.push(pc);
             }
         }
+
+        rt.expect_send_simple(
+            STORAGE_MARKET_ACTOR_ADDR,
+            MarketMethod::BatchActivateDeals as u64,
+            IpldBlock::serialize_cbor(&BatchActivateDealsParams {
+                sectors: sector_activation_params,
+            })
+            .unwrap(),
+            TokenAmount::zero(),
+            IpldBlock::serialize_cbor(&BatchActivateDealsResult {
+                sectors: sector_activation_results,
+            })
+            .unwrap(),
+            ExitCode::OK,
+        );
 
         if !sectors_claims.is_empty() {
             let claim_allocation_params = ClaimAllocationsParams {
