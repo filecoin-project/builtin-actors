@@ -429,7 +429,6 @@ fn expired_allocations_test<BS: Blockstore>(v: &dyn VM<BS>) {
     expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
 
-
 #[test]
 fn deal_passes_claim_fails() {
     let store = MemoryBlockstore::new();
@@ -463,7 +462,7 @@ fn deal_passes_claim_fails() {
     let deal_start = v.epoch() + v.policy().maximum_verified_allocation_expiration + 1;
     let sector_start = deal_start;
     let deal_term_min = 180 * EPOCHS_IN_DAY;
-    let deal_size = (32u64 << 30) / 2 ;
+    let deal_size = (32u64 << 30) / 2;
     // Deal is published so far in advance of prove commit that allocation will expire epoch before sector is committed
     let bad_deal = market_publish_deal(
         &v,
@@ -489,11 +488,12 @@ fn deal_passes_claim_fails() {
         true,
         deal_start,
         deal_term_min,
-    ).ids[0];
+    )
+    .ids[0];
 
     // Client datacap balance reduced
     assert_eq!(
-        TokenAmount::from_whole(datacap.clone()) - TokenAmount::from_whole(2*deal_size),
+        TokenAmount::from_whole(datacap.clone()) - TokenAmount::from_whole(2 * deal_size),
         datacap_get_balance(&v, &verified_client)
     );
 
@@ -501,7 +501,11 @@ fn deal_passes_claim_fails() {
     // First sector claims a deal with unexpired allocation
     // Second sector claims a deal with expired allocation
     let sector_term = deal_term_min + MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
-    advance_by_deadline_to_epoch(&v, &miner_id, sector_start - max_prove_commit_duration(&Policy::default(), seal_proof).unwrap());
+    advance_by_deadline_to_epoch(
+        &v,
+        &miner_id,
+        sector_start - max_prove_commit_duration(&Policy::default(), seal_proof).unwrap(),
+    );
     let sector_number_a = 0;
     let _precommit = miner_precommit_sector(
         &v,
