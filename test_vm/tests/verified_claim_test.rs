@@ -493,7 +493,7 @@ fn deal_passes_claim_fails() {
 
     // Client datacap balance reduced
     assert_eq!(
-        TokenAmount::from_whole(datacap.clone()) - TokenAmount::from_whole(2 * deal_size),
+        TokenAmount::from_whole(datacap) - TokenAmount::from_whole(2 * deal_size),
         datacap_get_balance(&v, &verified_client)
     );
 
