@@ -531,6 +531,9 @@ impl Actor {
     }
 
     /// Activate a set of deals, returning the combined deal space and extra info for verified deals.
+    /// Returns a vector of activation results parallel and corresponding to the params. Sectors
+    /// empty of deals are implicitly considered activated and return an empty ActivateDealsResult,
+    /// whereas errors during activation cause a None to be returned in place.
     fn batch_activate_deals(
         rt: &impl Runtime,
         params: BatchActivateDealsParams,
@@ -685,6 +688,14 @@ impl Actor {
                         ));
                     }
 
+                    match st.put_deal_states(rt.store(), &deal_states) {
+                        Ok(_) => {}
+                        Err(e) => {
+                            log::warn!("failed to add new deals {:?}", e);
+                            return None;
+                        }
+                    }
+
                     Some(ActivateDealsResult {
                         nonverified_deal_space: deal_spaces.deal_space,
                         verified_infos,
@@ -692,7 +703,6 @@ impl Actor {
                 })
                 .collect();
 
-            st.put_deal_states(rt.store(), &deal_states)?;
             Ok(sector_results)
         })?;
 

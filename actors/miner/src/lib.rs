@@ -4976,16 +4976,33 @@ fn batch_activate_deals_and_claim_allocations(
         });
     }
 
-    let activate_raw = extract_send_result(rt.send_simple(
-        &STORAGE_MARKET_ACTOR_ADDR,
-        ext::market::BATCH_ACTIVATE_DEALS_METHOD,
-        IpldBlock::serialize_cbor(&ext::market::BatchActivateDealsParams {
-            sectors: sector_activation_params,
-        })?,
-        TokenAmount::zero(),
-    ))?;
-    let activation_results: ext::market::BatchActivateDealsResult =
-        deserialize_block(activate_raw)?;
+    let activation_results = match sector_activation_params.iter().all(|p| p.deal_ids.is_empty()) {
+        true => {
+            let activation_results = sector_activation_params
+                .iter()
+                .map(|_| {
+                    Some(ext::market::ActivateDealsResult {
+                        nonverified_deal_space: BigInt::default(),
+                        verified_infos: Vec::default(),
+                    })
+                })
+                .collect();
+            ext::market::BatchActivateDealsResult { sectors: activation_results }
+        }
+        false => {
+            let activate_raw = extract_send_result(rt.send_simple(
+                &STORAGE_MARKET_ACTOR_ADDR,
+                ext::market::BATCH_ACTIVATE_DEALS_METHOD,
+                IpldBlock::serialize_cbor(&ext::market::BatchActivateDealsParams {
+                    sectors: sector_activation_params,
+                })?,
+                TokenAmount::zero(),
+            ))?;
+            let activation_results: ext::market::BatchActivateDealsResult =
+                deserialize_block(activate_raw)?;
+            activation_results
+        }
+    };
 
     // When all prove commits have failed abort early
     if activation_results.sectors.iter().all(Option::is_none) {

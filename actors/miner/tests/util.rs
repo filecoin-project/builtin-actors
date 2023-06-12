@@ -1123,20 +1123,22 @@ impl ActorHarness {
             }
         }
 
-        rt.expect_send_simple(
-            STORAGE_MARKET_ACTOR_ADDR,
-            MarketMethod::BatchActivateDeals as u64,
-            IpldBlock::serialize_cbor(&BatchActivateDealsParams {
-                sectors: sector_activation_params,
-            })
-            .unwrap(),
-            TokenAmount::zero(),
-            IpldBlock::serialize_cbor(&BatchActivateDealsResult {
-                sectors: sector_activation_results,
-            })
-            .unwrap(),
-            ExitCode::OK,
-        );
+        if !sector_activation_params.iter().all(|p| p.deal_ids.is_empty()) {
+            rt.expect_send_simple(
+                STORAGE_MARKET_ACTOR_ADDR,
+                MarketMethod::BatchActivateDeals as u64,
+                IpldBlock::serialize_cbor(&BatchActivateDealsParams {
+                    sectors: sector_activation_params,
+                })
+                .unwrap(),
+                TokenAmount::zero(),
+                IpldBlock::serialize_cbor(&BatchActivateDealsResult {
+                    sectors: sector_activation_results,
+                })
+                .unwrap(),
+                ExitCode::OK,
+            );
+        }
 
         if !sectors_claims.is_empty() {
             let claim_allocation_params = ClaimAllocationsParams {
