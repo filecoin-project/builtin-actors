@@ -28,12 +28,12 @@ use fil_actors_runtime::{
 
 use test_vm::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
-    advance_by_deadline_to_index, advance_to_proving_deadline, apply_ok, create_accounts,
-    create_miner, cron_tick, datacap_extend_claim, datacap_get_balance, expect_invariants,
-    get_state, invariant_failure_patterns, market_add_balance, market_publish_deal,
-    miner_extend_sector_expiration2, miner_precommit_sector, miner_prove_sector, sector_deadline,
-    submit_windowed_post, verifreg_add_client, verifreg_add_verifier, verifreg_extend_claim_terms,
-    verifreg_remove_expired_allocations, assert_invariants,
+    advance_by_deadline_to_index, advance_to_proving_deadline, apply_ok, assert_invariants,
+    create_accounts, create_miner, cron_tick, datacap_extend_claim, datacap_get_balance,
+    expect_invariants, get_state, invariant_failure_patterns, market_add_balance,
+    market_publish_deal, miner_extend_sector_expiration2, miner_precommit_sector,
+    miner_prove_sector, sector_deadline, submit_windowed_post, verifreg_add_client,
+    verifreg_add_verifier, verifreg_extend_claim_terms, verifreg_remove_expired_allocations,
 };
 use test_vm::{TestVM, VM};
 
@@ -436,7 +436,7 @@ fn deal_passes_claim_fails() {
     deal_passes_claim_fails_test(&v);
 }
 
-fn deal_passes_claim_fails_test<BS: Blockstore>(v: &dyn VM<BS>){
+fn deal_passes_claim_fails_test<BS: Blockstore>(v: &dyn VM<BS>) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
