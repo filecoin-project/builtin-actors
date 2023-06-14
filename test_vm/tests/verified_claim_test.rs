@@ -33,7 +33,7 @@ use test_vm::util::{
     get_state, invariant_failure_patterns, market_add_balance, market_publish_deal,
     miner_extend_sector_expiration2, miner_precommit_sector, miner_prove_sector, sector_deadline,
     submit_windowed_post, verifreg_add_client, verifreg_add_verifier, verifreg_extend_claim_terms,
-    verifreg_remove_expired_allocations,
+    verifreg_remove_expired_allocations, assert_invariants,
 };
 use test_vm::{TestVM, VM};
 
@@ -433,15 +433,17 @@ fn expired_allocations_test<BS: Blockstore>(v: &dyn VM<BS>) {
 fn deal_passes_claim_fails() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    deal_passes_claim_fails_test(&v);
+}
 
-    // setup miner, verifreg client, make deals, prove sector
-    let addrs = create_accounts(&v, 3, &TokenAmount::from_whole(10_000));
+fn deal_passes_claim_fails_test<BS: Blockstore>(v: &dyn VM<BS>){
+    let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
 
     // Create miner
     let (miner_id, _) = create_miner(
-        &v,
+        v,
         &owner,
         &worker,
         seal_proof.registered_window_post_proof().unwrap(),
@@ -451,12 +453,12 @@ fn deal_passes_claim_fails() {
 
     // Register verifier and verified clients
     let datacap = StoragePower::from(32_u128 << 40);
-    verifreg_add_verifier(&v, &verifier, &datacap * 2);
-    verifreg_add_client(&v, &verifier, &verified_client, datacap.clone());
+    verifreg_add_verifier(v, &verifier, &datacap * 2);
+    verifreg_add_client(v, &verifier, &verified_client, datacap.clone());
 
     // Add market collateral for client and miner
-    market_add_balance(&v, &verified_client, &verified_client, &TokenAmount::from_whole(3));
-    market_add_balance(&v, &worker, &miner_id, &TokenAmount::from_whole(64));
+    market_add_balance(v, &verified_client, &verified_client, &TokenAmount::from_whole(3));
+    market_add_balance(v, &worker, &miner_id, &TokenAmount::from_whole(64));
 
     // Publish verified deal
     let deal_start = v.epoch() + v.policy().maximum_verified_allocation_expiration + 1;
@@ -465,7 +467,7 @@ fn deal_passes_claim_fails() {
     let deal_size = (32u64 << 30) / 2;
     // Deal is published so far in advance of prove commit that allocation will expire epoch before sector is committed
     let bad_deal = market_publish_deal(
-        &v,
+        v,
         &worker,
         &verified_client,
         &miner_id,
@@ -477,9 +479,9 @@ fn deal_passes_claim_fails() {
     )
     .ids[0];
     // good deal is published 1 epoch later so that allocation will not expire
-    advance_by_deadline_to_epoch(&v, &miner_id, v.epoch() + 1);
+    advance_by_deadline_to_epoch(v, &miner_id, v.epoch() + 1);
     let deal = market_publish_deal(
-        &v,
+        v,
         &worker,
         &verified_client,
         &miner_id,
@@ -494,7 +496,7 @@ fn deal_passes_claim_fails() {
     // Client datacap balance reduced
     assert_eq!(
         TokenAmount::from_whole(datacap) - TokenAmount::from_whole(2 * deal_size),
-        datacap_get_balance(&v, &verified_client)
+        datacap_get_balance(v, &verified_client)
     );
 
     // Precommit and prove two sectors for the max term allowed by the deal.
@@ -502,13 +504,13 @@ fn deal_passes_claim_fails() {
     // Second sector claims a deal with expired allocation
     let sector_term = deal_term_min + MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
     advance_by_deadline_to_epoch(
-        &v,
+        v,
         &miner_id,
         sector_start - max_prove_commit_duration(&Policy::default(), seal_proof).unwrap(),
     );
     let sector_number_a = 0;
     let _precommit = miner_precommit_sector(
-        &v,
+        v,
         &worker,
         &miner_id,
         seal_proof,
@@ -518,7 +520,7 @@ fn deal_passes_claim_fails() {
     );
     let sector_number_b = 1;
     let _precommit = miner_precommit_sector(
-        &v,
+        v,
         &worker,
         &miner_id,
         seal_proof,
@@ -528,16 +530,16 @@ fn deal_passes_claim_fails() {
     );
 
     // Advance time and prove the sector
-    println!("precommit epoch {}, prove commit epoch {sector_start}, max pc duration {}, bad deal start {deal_start}, deal_end {}, bad deal end {}, sector expire {}", v.epoch(),  max_prove_commit_duration(&Policy::default(), seal_proof).unwrap(), sector_start + deal_term_min, deal_start + deal_term_min, deal_start + sector_term);
-    advance_by_deadline_to_epoch(&v, &miner_id, sector_start);
-    miner_prove_sector(&v, &worker, &miner_id, sector_number_a);
-    miner_prove_sector(&v, &worker, &miner_id, sector_number_b);
-    cron_tick(&v);
+    advance_by_deadline_to_epoch(v, &miner_id, sector_start);
+    miner_prove_sector(v, &worker, &miner_id, sector_number_a);
+    miner_prove_sector(v, &worker, &miner_id, sector_number_b);
+    cron_tick(v);
+    v.set_epoch(v.epoch() + 1);
 
     // check that deal is not activated
 
     // Verify deal state.
-    let market_state: MarketState = get_state(&v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
+    let market_state: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
     let deal_states = DealMetaArray::load(&market_state.states, *v.blockstore()).unwrap();
     // bad deal sector can't be confirmed for commit so bad deal must not be included
     let bad_deal_state = deal_states.get(bad_deal).unwrap();
@@ -547,7 +549,7 @@ fn deal_passes_claim_fails() {
     assert_eq!(None, deal_state);
 
     // Verify sector info
-    let miner_state: MinerState = get_state(&v, &miner_id).unwrap();
+    let miner_state: MinerState = get_state(v, &miner_id).unwrap();
     // bad deal sector can't be confirmed for commit because alloc can't be claimed
     let sector_info_b = miner_state.get_sector(*v.blockstore(), sector_number_b).unwrap();
     assert_eq!(None, sector_info_b);
@@ -556,5 +558,5 @@ fn deal_passes_claim_fails() {
     assert_eq!(None, sector_info_a);
 
     // run check before last change and confirm that we hit the expected broken state error
-    expect_invariants(&v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
+    assert_invariants(v);
 }
