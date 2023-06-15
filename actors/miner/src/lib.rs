@@ -4970,30 +4970,26 @@ fn batch_activate_deals_and_claim_allocations(
     rt: &impl Runtime,
     activation_infos: &[DealsActivationInfo],
 ) -> Result<Vec<Option<ext::market::DealSpaces>>, ActorError> {
-    let mut sector_activation_params = Vec::new();
-
-    for activation_info in activation_infos {
-        sector_activation_params.push(ext::market::SectorDeals {
-            deal_ids: activation_info.deal_ids.clone(),
-            sector_expiry: activation_info.sector_expiry,
-            sector_type: activation_info.sector_type,
-        });
-    }
-
-    let activation_results = match sector_activation_params.iter().all(|p| p.deal_ids.is_empty()) {
-        true => {
-            let activation_results = sector_activation_params
+    let activation_results = match activation_infos.iter().all(|p| p.deal_ids.is_empty()) {
+        true => ext::market::BatchActivateDealsResult {
+            // if all sectors are empty of deals, skip calling the market actor
+            sectors: vec![
+                Some(ext::market::DealActivation {
+                    nonverified_deal_space: BigInt::default(),
+                    verified_infos: Vec::default(),
+                });
+                activation_infos.len()
+            ],
+        },
+        false => {
+            let sector_activation_params = activation_infos
                 .iter()
-                .map(|_| {
-                    Some(ext::market::DealActivation {
-                        nonverified_deal_space: BigInt::default(),
-                        verified_infos: Vec::default(),
-                    })
+                .map(|activation_info| ext::market::SectorDeals {
+                    deal_ids: activation_info.deal_ids.clone(),
+                    sector_expiry: activation_info.sector_expiry,
+                    sector_type: activation_info.sector_type,
                 })
                 .collect();
-            ext::market::BatchActivateDealsResult { sectors: activation_results }
-        }
-        false => {
             let activate_raw = extract_send_result(rt.send_simple(
                 &STORAGE_MARKET_ACTOR_ADDR,
                 ext::market::BATCH_ACTIVATE_DEALS_METHOD,
