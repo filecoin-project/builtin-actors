@@ -135,7 +135,7 @@ fn activation_after_deal_start_epoch_but_before_it_is_processed_fails() {
     rt.set_epoch(curr_epoch);
 
     let res = activate_deals(&rt, SECTOR_EXPIRY, PROVIDER_ADDR, curr_epoch, &[deal_id]);
-    assert_eq!(res.sectors, vec![None]);
+    assert_eq!(res.activation_results.codes(), vec![ExitCode::USR_ILLEGAL_ARGUMENT]);
     check_state(&rt);
 }
 

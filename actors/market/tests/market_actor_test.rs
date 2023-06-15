@@ -1705,7 +1705,7 @@ fn fail_when_current_epoch_greater_than_start_epoch_of_deal() {
         .unwrap()
         .unwrap();
     let res: BatchActivateDealsResult = IpldBlock::deserialize(&res).unwrap();
-    assert_eq!(res.sectors, vec![None]);
+    assert_eq!(res.activation_results.codes(), vec![ExitCode::USR_ILLEGAL_ARGUMENT]);
 
     rt.verify();
     check_state(&rt);
@@ -1741,7 +1741,7 @@ fn fail_when_end_epoch_of_deal_greater_than_sector_expiry() {
         .unwrap()
         .unwrap();
     let res: BatchActivateDealsResult = IpldBlock::deserialize(&res).unwrap();
-    assert_eq!(res.sectors, vec![None]);
+    assert_eq!(res.activation_results.codes(), vec![ExitCode::USR_ILLEGAL_ARGUMENT]);
 
     rt.verify();
     check_state(&rt);
@@ -1788,7 +1788,7 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
         .unwrap()
         .unwrap();
     let res: BatchActivateDealsResult = IpldBlock::deserialize(&res).unwrap();
-    assert_eq!(res.sectors, vec![None]);
+    assert_eq!(res.activation_results.codes(), vec![ExitCode::USR_ILLEGAL_ARGUMENT]);
     rt.verify();
 
     // no state for deal2 means deal2 activation has failed

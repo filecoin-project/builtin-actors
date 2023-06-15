@@ -1060,7 +1060,8 @@ impl ActorHarness {
 
         // build expectations per sector
         let mut sector_activation_params: Vec<SectorDeals> = Vec::new();
-        let mut sector_activation_results: Vec<Option<DealActivation>> = Vec::new();
+        let mut sector_activations: Vec<DealActivation> = Vec::new();
+        let mut sector_activation_results = BatchReturnGen::new(pcs.len());
 
         for pc in pcs {
             if !pc.info.deal_ids.is_empty() {
@@ -1085,9 +1086,12 @@ impl ActorHarness {
                 match cfg.verify_deals_exit.get(&pc.info.sector_number) {
                     Some(exit_code) => {
                         activate_deals_exit = *exit_code;
-                        sector_activation_results.push(None);
+                        sector_activation_results.add_fail(*exit_code);
                     }
-                    None => sector_activation_results.push(Some(ret.clone())),
+                    None => {
+                        sector_activations.push(ret.clone());
+                        sector_activation_results.add_success();
+                    }
                 }
 
                 if ret.verified_infos.is_empty() {
@@ -1117,10 +1121,11 @@ impl ActorHarness {
                     sector_expiry: pc.info.expiration,
                     sector_type: RegisteredSealProof::StackedDRG8MiBV1,
                 });
-                sector_activation_results.push(Some(DealActivation {
+                sector_activations.push(DealActivation {
                     nonverified_deal_space: BigInt::zero(),
                     verified_infos: vec![],
-                }));
+                });
+                sector_activation_results.add_success();
                 valid_pcs.push(pc);
             }
         }
@@ -1135,7 +1140,8 @@ impl ActorHarness {
                 .unwrap(),
                 TokenAmount::zero(),
                 IpldBlock::serialize_cbor(&BatchActivateDealsResult {
-                    sectors: sector_activation_results,
+                    activations: sector_activations,
+                    activation_results: sector_activation_results.gen(),
                 })
                 .unwrap(),
                 ExitCode::OK,

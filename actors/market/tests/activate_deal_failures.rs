@@ -1,7 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_actor_market::{Actor as MarketActor, Method, SectorDeals, State};
+use fil_actor_market::{Actor as MarketActor, Method, SectorDeals, State, EX_DEAL_EXPIRED};
 use fil_actor_market::{BatchActivateDealsParams, BatchActivateDealsResult};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::builtins::Type;
@@ -47,7 +47,7 @@ fn fail_when_caller_is_not_the_provider_of_the_deal() {
         .unwrap()
         .unwrap();
     let res: BatchActivateDealsResult = IpldBlock::deserialize(&res).unwrap();
-    assert_eq!(res.sectors, vec![None]);
+    assert_eq!(res.activation_results.codes(), vec![ExitCode::USR_FORBIDDEN]);
 
     rt.verify();
     check_state(&rt);
@@ -99,7 +99,7 @@ fn fail_when_deal_has_not_been_published_before() {
         .unwrap()
         .unwrap();
     let res: BatchActivateDealsResult = IpldBlock::deserialize(&res).unwrap();
-    assert_eq!(res.sectors, vec![None]);
+    assert_eq!(res.activation_results.codes(), vec![ExitCode::USR_NOT_FOUND]);
 
     rt.verify();
     check_state(&rt);
@@ -136,7 +136,7 @@ fn fail_when_deal_has_already_been_activated() {
         .unwrap()
         .unwrap();
     let res: BatchActivateDealsResult = IpldBlock::deserialize(&res).unwrap();
-    assert_eq!(res.sectors, vec![None]);
+    assert_eq!(res.activation_results.codes(), vec![ExitCode::USR_ILLEGAL_ARGUMENT]);
 
     rt.verify();
     check_state(&rt);
@@ -178,5 +178,5 @@ fn fail_when_deal_has_already_been_expired() {
     st.next_id = deal_id + 1;
 
     let res = activate_deals(&rt, sector_expiry, PROVIDER_ADDR, 0, &[deal_id]);
-    assert_eq!(res.sectors, vec![None])
+    assert_eq!(res.activation_results.codes(), vec![EX_DEAL_EXPIRED])
 }

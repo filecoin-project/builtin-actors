@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use cid::multihash::{Code, MultihashDigest, MultihashGeneric};
 use cid::Cid;
-use fil_actors_runtime::{extract_send_result, FIRST_ACTOR_SPECIFIC_EXIT_CODE};
+use fil_actors_runtime::{extract_send_result, BatchReturnGen, FIRST_ACTOR_SPECIFIC_EXIT_CODE};
 use frc46_token::token::types::{BalanceReturn, TransferFromParams, TransferFromReturn};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
@@ -542,131 +542,85 @@ impl Actor {
         let miner_addr = rt.message().caller();
         let curr_epoch = rt.curr_epoch();
 
-        let sector_results = rt.transaction(|st: &mut State, rt| {
+        let (activations, batch_ret) = rt.transaction(|st: &mut State, rt| {
             let mut deal_states: Vec<(DealID, DealState)> = vec![];
+            let mut batch_gen = BatchReturnGen::new(params.sectors.len());
+            let mut activations: Vec<DealActivation> = vec![];
 
-            let sector_results: Vec<Option<DealActivation>> = params
-                .sectors
-                .iter()
-                .map(|p| {
-                    if p.deal_ids.is_empty() {
-                        return Some(DealActivation {
-                            nonverified_deal_space: BigInt::default(),
-                            verified_infos: Vec::default(),
-                        });
+            for p in params.sectors {
+                let proposal_array = st.get_proposal_array(rt.store())?;
+
+                if p.deal_ids.is_empty() {
+                    activations.push(DealActivation {
+                        nonverified_deal_space: BigInt::default(),
+                        verified_infos: Vec::default(),
+                    });
+                    batch_gen.add_success();
+                    continue;
+                }
+
+                let proposals = match get_proposals(&proposal_array, &p.deal_ids, st.next_id) {
+                    Ok(proposals) => proposals,
+                    Err(e) => {
+                        log::warn!("failed to get proposals for deals {:?}: {:?}", p.deal_ids, e);
+                        batch_gen.add_fail(e.exit_code());
+                        continue;
                     }
+                };
 
-                    let proposal_array = match st.get_proposal_array(rt.store()) {
-                        Ok(proposal_array) => proposal_array,
-                        Err(e) => {
-                            log::warn!("failed to activate deals {:?}: {}", p.deal_ids, e);
-                            return None;
-                        }
-                    };
-                    let proposals = match get_proposals(&proposal_array, &p.deal_ids, st.next_id) {
-                        Ok(proposals) => proposals,
-                        Err(e) => {
-                            log::warn!("failed to activate deals {:?}: {}", p.deal_ids, e);
-                            return None;
-                        }
-                    };
+                let deal_spaces = match validate_and_return_deal_space(
+                    &proposals,
+                    &miner_addr,
+                    p.sector_expiry,
+                    curr_epoch,
+                    None,
+                ) {
+                    Ok(ds) => ds,
+                    Err(e) => {
+                        log::warn!("failed validate deals {:?}: {}", p.deal_ids, e);
+                        batch_gen.add_fail(e.exit_code());
+                        continue;
+                    }
+                };
 
-                    let deal_spaces = match validate_and_return_deal_space(
-                        &proposals,
-                        &miner_addr,
-                        p.sector_expiry,
-                        curr_epoch,
-                        None,
-                    ) {
-                        Ok(ds) => ds,
-                        Err(e) => {
-                            log::warn!("failed to activate deals {:?}: {}", p.deal_ids, e);
-                            return None;
-                        }
-                    };
+                // Update deal states
+                let mut verified_infos = Vec::new();
 
-                    // Update deal states
-                    let mut verified_infos = Vec::new();
-
-                    for (deal_id, proposal) in proposals {
+                // This construction could be replaced with a single "update deal state"
+                // state method, possibly batched over all deal ids at once.
+                let update_result: Result<(), ActorError> =
+                    proposals.into_iter().try_for_each(|(deal_id, proposal)| {
                         // This construction could be replaced with a single "update deal state"
                         // state method, possibly batched over all deal ids at once.
-                        let s = match st.find_deal_state(rt.store(), deal_id) {
-                            Ok(s) => s,
-                            Err(e) => {
-                                log::warn!(
-                                    "failed to activate deals {:?} due to error in {}: {}",
-                                    p.deal_ids,
-                                    deal_id,
-                                    e
-                                );
-                                return None;
-                            }
-                        };
+                        let s = st.find_deal_state(rt.store(), deal_id)?;
 
                         if s.is_some() {
-                            log::warn!(
-                                "skipping activation of deals {:?} as deal {} is already activated",
-                                p.deal_ids,
+                            return Err(actor_error!(
+                                illegal_argument,
+                                "deal {} already activated",
                                 deal_id
-                            );
-                            return None;
+                            ));
                         }
 
-                        let propc = match rt_deal_cid(rt, &proposal) {
-                            Ok(propc) => propc,
-                            Err(e) => {
-                                log::warn!(
-                                    "failed to activate deals {:?} due to error in {}: {}",
-                                    p.deal_ids,
-                                    deal_id,
-                                    e
-                                );
-                                return None;
-                            }
-                        };
+                        let propc = rt_deal_cid(rt, &proposal)?;
 
                         // Confirm the deal is in the pending proposals queue.
                         // It will be removed from this queue later, during cron.
-                        let has = match st.has_pending_deal(rt.store(), propc) {
-                            Ok(has) => has,
-                            Err(e) => {
-                                log::warn!(
-                                    "failed to activate deals {:?} due to error in {}: {}",
-                                    p.deal_ids,
-                                    deal_id,
-                                    e
-                                );
-                                return None;
-                            }
-                        };
+                        let has = st.has_pending_deal(rt.store(), propc)?;
 
                         if !has {
-                            log::warn!(
+                            return Err(actor_error!(
+                                illegal_state,
                                 "tried to activate deal that was not in the pending set ({})",
                                 propc
-                            );
-                            return None;
+                            ));
                         }
 
                         // Extract and remove any verified allocation ID for the pending deal.
-                        let allocation = match st
-                            .remove_pending_deal_allocation_id(rt.store(), &deal_id_key(deal_id))
-                        {
-                            Ok(allocation) => allocation,
-                            Err(e) => {
-                                log::warn!(
-                                    "failed to activate deals {:?} due to error in {}: {}",
-                                    p.deal_ids,
-                                    deal_id,
-                                    e
-                                );
-                                return None;
-                            }
-                        };
-
-                        let allocation =
-                            allocation.unwrap_or((BytesKey(vec![]), NO_ALLOCATION_ID)).1;
+                        let allocation = st
+                            .remove_pending_deal_allocation_id(rt.store(), &deal_id_key(deal_id))?
+                            .unwrap_or((BytesKey(vec![]), NO_ALLOCATION_ID))
+                            .1;
 
                         if allocation != NO_ALLOCATION_ID {
                             verified_infos.push(VerifiedDealInfo {
@@ -686,21 +640,30 @@ impl Actor {
                                 verified_claim: allocation,
                             },
                         ));
-                    }
+                        Ok(())
+                    });
 
-                    Some(DealActivation {
-                        nonverified_deal_space: deal_spaces.deal_space,
-                        verified_infos,
-                    })
-                })
-                .collect();
+                match update_result {
+                    Ok(_) => {
+                        activations.push(DealActivation {
+                            nonverified_deal_space: deal_spaces.deal_space,
+                            verified_infos,
+                        });
+                        batch_gen.add_success();
+                    }
+                    Err(e) => {
+                        log::warn!("failed to activate deals {:?}: {}", p.deal_ids, e);
+                        batch_gen.add_fail(e.exit_code());
+                    }
+                }
+            }
 
             st.put_deal_states(rt.store(), &deal_states)?;
 
-            Ok(sector_results)
+            Ok((activations, batch_gen.gen()))
         })?;
 
-        Ok(BatchActivateDealsResult { sectors: sector_results })
+        Ok(BatchActivateDealsResult { activations, activation_results: batch_ret })
     }
 
     /// Terminate a set of deals in response to their containing sector being terminated.

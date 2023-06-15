@@ -317,9 +317,10 @@ pub fn activate_deals(
     let ret: BatchActivateDealsResult =
         ret.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
 
-    for (d, res) in deal_ids.iter().zip(&ret.sectors) {
-        if res.is_some() {
-            let s = get_deal_state(rt, *d);
+    // batch size was 1
+    if ret.activation_results.all_ok() {
+        for deal in deal_ids {
+            let s = get_deal_state(rt, *deal);
             assert_eq!(current_epoch, s.sector_start_epoch);
         }
     }

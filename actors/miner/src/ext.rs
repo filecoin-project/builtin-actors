@@ -65,9 +65,9 @@ pub mod market {
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
-    #[serde(transparent)]
     pub struct BatchActivateDealsResult {
-        pub sectors: Vec<Option<DealActivation>>,
+        pub activation_results: BatchReturn,
+        pub activations: Vec<DealActivation>,
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple, Clone, Default)]

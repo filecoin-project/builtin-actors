@@ -50,7 +50,7 @@ fn verify_deal_and_activate_to_get_deal_space_for_unverified_deal_proposal() {
         |_| None,
     );
     let a_response = activate_deals(&rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, &[deal_id]);
-    let s_response = a_response.sectors[0].clone().unwrap();
+    let s_response = a_response.activations.get(0).unwrap();
     assert_eq!(1, v_response.sectors.len());
     assert_eq!(Some(make_piece_cid("1".as_bytes())), v_response.sectors[0].commd);
     assert!(s_response.verified_infos.is_empty());
@@ -85,7 +85,7 @@ fn verify_deal_and_activate_to_get_deal_space_for_verified_deal_proposal() {
     );
 
     let a_response = activate_deals(&rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, &[deal_id]);
-    let s_response = a_response.sectors[0].clone().unwrap();
+    let s_response = a_response.activations.get(0).unwrap();
 
     assert_eq!(1, response.sectors.len());
     assert_eq!(Some(make_piece_cid("1".as_bytes())), response.sectors[0].commd);
@@ -149,7 +149,7 @@ fn verification_and_weights_for_verified_and_unverified_deals() {
         BigInt::from(unverified_deal_1.piece_size.0 + unverified_deal_2.piece_size.0);
 
     let a_response = activate_deals(&rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, &deal_ids);
-    let s_response = a_response.sectors[0].clone().unwrap();
+    let s_response = a_response.activations.get(0).unwrap();
 
     assert_eq!(1, response.sectors.len());
     let returned_verified_space: BigInt =
