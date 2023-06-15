@@ -2,7 +2,7 @@
 
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
-    ActivateDealsParams, ActivateDealsResult, BatchActivateDealsParams, BatchActivateDealsResult,
+    ActivateDealsParams, BatchActivateDealsParams, BatchActivateDealsResult, DealActivation,
     DealSpaces, Method as MarketMethod, OnMinerSectorsTerminateParams, SectorDealData, SectorDeals,
     VerifiedDealInfo, VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
 };
@@ -1060,7 +1060,7 @@ impl ActorHarness {
 
         // build expectations per sector
         let mut sector_activation_params: Vec<ActivateDealsParams> = Vec::new();
-        let mut sector_activation_results: Vec<Option<ActivateDealsResult>> = Vec::new();
+        let mut sector_activation_results: Vec<Option<DealActivation>> = Vec::new();
 
         for pc in pcs {
             if !pc.info.deal_ids.is_empty() {
@@ -1071,7 +1071,7 @@ impl ActorHarness {
                 };
                 sector_activation_params.push(activate_params);
 
-                let ret = ActivateDealsResult {
+                let ret = DealActivation {
                     nonverified_deal_space: deal_spaces.deal_space,
                     verified_infos: cfg
                         .verified_deal_infos
@@ -1115,7 +1115,7 @@ impl ActorHarness {
                     deal_ids: vec![],
                     sector_expiry: pc.info.expiration,
                 });
-                sector_activation_results.push(Some(ActivateDealsResult {
+                sector_activation_results.push(Some(DealActivation {
                     nonverified_deal_space: BigInt::zero(),
                     verified_infos: vec![],
                 }));

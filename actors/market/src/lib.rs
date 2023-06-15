@@ -545,12 +545,12 @@ impl Actor {
         let sector_results = rt.transaction(|st: &mut State, rt| {
             let mut deal_states: Vec<(DealID, DealState)> = vec![];
 
-            let sector_results: Vec<Option<ActivateDealsResult>> = params
+            let sector_results: Vec<Option<DealActivation>> = params
                 .sectors
                 .iter()
                 .map(|p| {
                     if p.deal_ids.is_empty() {
-                        return Some(ActivateDealsResult {
+                        return Some(DealActivation {
                             nonverified_deal_space: BigInt::default(),
                             verified_infos: Vec::default(),
                         });
@@ -696,7 +696,7 @@ impl Actor {
                         }
                     }
 
-                    Some(ActivateDealsResult {
+                    Some(DealActivation {
                         nonverified_deal_space: deal_spaces.deal_space,
                         verified_infos,
                     })

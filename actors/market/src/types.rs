@@ -117,7 +117,7 @@ pub struct VerifiedDealInfo {
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct ActivateDealsResult {
+pub struct DealActivation {
     #[serde(with = "bigint_ser")]
     pub nonverified_deal_space: BigInt,
     pub verified_infos: Vec<VerifiedDealInfo>,
@@ -126,7 +126,7 @@ pub struct ActivateDealsResult {
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 #[serde(transparent)]
 pub struct BatchActivateDealsResult {
-    pub sectors: Vec<Option<ActivateDealsResult>>,
+    pub sectors: Vec<Option<DealActivation>>,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]

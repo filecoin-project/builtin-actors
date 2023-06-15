@@ -4981,7 +4981,7 @@ fn batch_activate_deals_and_claim_allocations(
             let activation_results = sector_activation_params
                 .iter()
                 .map(|_| {
-                    Some(ext::market::ActivateDealsResult {
+                    Some(ext::market::DealActivation {
                         nonverified_deal_space: BigInt::default(),
                         verified_infos: Vec::default(),
                     })
