@@ -592,7 +592,9 @@ impl Actor {
                     proposals.into_iter().try_for_each(|(deal_id, proposal)| {
                         // This construction could be replaced with a single "update deal state"
                         // state method, possibly batched over all deal ids at once.
-                        let s = st.find_deal_state(rt.store(), deal_id)?;
+                        let s = st
+                            .find_deal_state(rt.store(), deal_id)
+                            .context(format!("error looking up deal state for {}", deal_id))?;
 
                         if s.is_some() {
                             return Err(actor_error!(
@@ -618,7 +620,11 @@ impl Actor {
 
                         // Extract and remove any verified allocation ID for the pending deal.
                         let allocation = st
-                            .remove_pending_deal_allocation_id(rt.store(), &deal_id_key(deal_id))?
+                            .remove_pending_deal_allocation_id(rt.store(), &deal_id_key(deal_id))
+                            .context(format!(
+                                "failed to remove pending deal allocation id {}",
+                                deal_id
+                            ))?
                             .unwrap_or((BytesKey(vec![]), NO_ALLOCATION_ID))
                             .1;
 
