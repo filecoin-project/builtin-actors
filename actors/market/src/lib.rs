@@ -688,20 +688,14 @@ impl Actor {
                         ));
                     }
 
-                    match st.put_deal_states(rt.store(), &deal_states) {
-                        Ok(_) => {}
-                        Err(e) => {
-                            log::warn!("failed to add new deals {:?}", e);
-                            return None;
-                        }
-                    }
-
                     Some(DealActivation {
                         nonverified_deal_space: deal_spaces.deal_space,
                         verified_infos,
                     })
                 })
                 .collect();
+
+            st.put_deal_states(rt.store(), &deal_states)?;
 
             Ok(sector_results)
         })?;
