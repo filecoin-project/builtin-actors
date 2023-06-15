@@ -33,15 +33,9 @@ pub mod market {
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple)]
-    pub struct ActivateDealsParams {
-        pub deal_ids: Vec<DealID>,
-        pub sector_expiry: ChainEpoch,
-    }
-
-    #[derive(Serialize_tuple, Deserialize_tuple)]
     #[serde(transparent)]
     pub struct BatchActivateDealsParams {
-        pub sectors: Vec<ActivateDealsParams>,
+        pub sectors: Vec<SectorDeals>,
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple, Clone)]

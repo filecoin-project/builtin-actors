@@ -2,8 +2,8 @@
 
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
-    ActivateDealsParams, BatchActivateDealsParams, BatchActivateDealsResult, DealActivation,
-    DealSpaces, Method as MarketMethod, OnMinerSectorsTerminateParams, SectorDealData, SectorDeals,
+    BatchActivateDealsParams, BatchActivateDealsResult, DealActivation, DealSpaces,
+    Method as MarketMethod, OnMinerSectorsTerminateParams, SectorDealData, SectorDeals,
     VerifiedDealInfo, VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
 };
 use fil_actor_miner::ext::market::ON_MINER_SECTORS_TERMINATE_METHOD;
@@ -1059,15 +1059,16 @@ impl ActorHarness {
         let mut sectors_claims: Vec<SectorAllocationClaim> = Vec::new();
 
         // build expectations per sector
-        let mut sector_activation_params: Vec<ActivateDealsParams> = Vec::new();
+        let mut sector_activation_params: Vec<SectorDeals> = Vec::new();
         let mut sector_activation_results: Vec<Option<DealActivation>> = Vec::new();
 
         for pc in pcs {
             if !pc.info.deal_ids.is_empty() {
                 let deal_spaces = cfg.deal_spaces(&pc.info.sector_number);
-                let activate_params = ActivateDealsParams {
+                let activate_params = SectorDeals {
                     deal_ids: pc.info.deal_ids.clone(),
                     sector_expiry: pc.info.expiration,
+                    sector_type: pc.info.seal_proof,
                 };
                 sector_activation_params.push(activate_params);
 
@@ -1111,9 +1112,10 @@ impl ActorHarness {
                 }
             } else {
                 // empty deal ids
-                sector_activation_params.push(ActivateDealsParams {
+                sector_activation_params.push(SectorDeals {
                     deal_ids: vec![],
                     sector_expiry: pc.info.expiration,
+                    sector_type: RegisteredSealProof::StackedDRG8MiBV1,
                 });
                 sector_activation_results.push(Some(DealActivation {
                     nonverified_deal_space: BigInt::zero(),

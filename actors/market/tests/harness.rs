@@ -13,12 +13,12 @@ use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MES
 use fil_actor_market::ext::verifreg::{AllocationID, AllocationRequest, AllocationsResponse};
 use fil_actor_market::{
     deal_id_key, ext, ext::miner::GetControlAddressesReturnParams, next_update_epoch,
-    testing::check_state_invariants, ActivateDealsParams, Actor as MarketActor, ClientDealProposal,
-    DealArray, DealMetaArray, DealProposal, DealState, GetBalanceReturn, Label,
-    MarketNotifyDealParams, Method, OnMinerSectorsTerminateParams, PublishStorageDealsParams,
-    PublishStorageDealsReturn, SectorDeals, State, VerifyDealsForActivationParams,
-    VerifyDealsForActivationReturn, WithdrawBalanceParams, WithdrawBalanceReturn,
-    MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID, PROPOSALS_AMT_BITWIDTH,
+    testing::check_state_invariants, Actor as MarketActor, ClientDealProposal, DealArray,
+    DealMetaArray, DealProposal, DealState, GetBalanceReturn, Label, MarketNotifyDealParams,
+    Method, OnMinerSectorsTerminateParams, PublishStorageDealsParams, PublishStorageDealsReturn,
+    SectorDeals, State, VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
+    WithdrawBalanceParams, WithdrawBalanceReturn, MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID,
+    PROPOSALS_AMT_BITWIDTH,
 };
 use fil_actor_power::{CurrentTotalPowerReturn, Method as PowerMethod};
 use fil_actor_reward::Method as RewardMethod;
@@ -41,7 +41,7 @@ use fvm_shared::crypto::signature::Signature;
 use fvm_shared::deal::DealID;
 use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
 use fvm_shared::reward::ThisEpochRewardReturn;
-use fvm_shared::sector::StoragePower;
+use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::sys::SendFlags;
 use fvm_shared::{
@@ -304,7 +304,15 @@ pub fn activate_deals(
     current_epoch: ChainEpoch,
     deal_ids: &[DealID],
 ) -> BatchActivateDealsResult {
-    let ret = activate_deals_raw(rt, sector_expiry, provider, current_epoch, deal_ids).unwrap();
+    let ret = activate_deals_raw(
+        rt,
+        sector_expiry,
+        RegisteredSealProof::StackedDRG8MiBV1,
+        provider,
+        current_epoch,
+        deal_ids,
+    )
+    .unwrap();
 
     let ret: BatchActivateDealsResult =
         ret.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
@@ -322,6 +330,7 @@ pub fn activate_deals(
 pub fn activate_deals_raw(
     rt: &MockRuntime,
     sector_expiry: ChainEpoch,
+    sector_type: RegisteredSealProof,
     provider: Address,
     current_epoch: ChainEpoch,
     deal_ids: &[DealID],
@@ -330,7 +339,7 @@ pub fn activate_deals_raw(
     rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
     rt.expect_validate_caller_type(vec![Type::Miner]);
 
-    let params = ActivateDealsParams { deal_ids: deal_ids.to_vec(), sector_expiry };
+    let params = SectorDeals { deal_ids: deal_ids.to_vec(), sector_expiry, sector_type };
     let params = BatchActivateDealsParams { sectors: vec![params] };
 
     let ret = rt.call::<MarketActor>(
@@ -900,6 +909,7 @@ pub fn process_epoch(start_epoch: ChainEpoch, deal_id: DealID) -> ChainEpoch {
     next_update_epoch(deal_id, Policy::default().deal_updates_interval, start_epoch)
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn publish_and_activate_deal(
     rt: &MockRuntime,
     client: Address,

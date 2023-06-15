@@ -4,11 +4,11 @@
 use fil_actor_market::balance_table::BALANCE_TABLE_BITWIDTH;
 use fil_actor_market::policy::detail::DEAL_MAX_LABEL_SIZE;
 use fil_actor_market::{
-    deal_id_key, ext, next_update_epoch, ActivateDealsParams, Actor as MarketActor,
-    BatchActivateDealsParams, BatchActivateDealsResult, ClientDealProposal, DealArray,
-    DealMetaArray, Label, MarketNotifyDealParams, Method, PublishStorageDealsParams,
-    PublishStorageDealsReturn, State, WithdrawBalanceParams, EX_DEAL_EXPIRED,
-    MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
+    deal_id_key, ext, next_update_epoch, Actor as MarketActor, BatchActivateDealsParams,
+    BatchActivateDealsResult, ClientDealProposal, DealArray, DealMetaArray, Label,
+    MarketNotifyDealParams, Method, PublishStorageDealsParams, PublishStorageDealsReturn,
+    SectorDeals, State, WithdrawBalanceParams, EX_DEAL_EXPIRED, MARKET_NOTIFY_DEAL_METHOD,
+    NO_ALLOCATION_ID, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
 };
 use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
@@ -29,7 +29,7 @@ use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::sector::StoragePower;
+use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND};
 use regex::Regex;
 use std::cell::RefCell;
@@ -1691,7 +1691,11 @@ fn fail_when_current_epoch_greater_than_start_epoch_of_deal() {
     rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
     rt.set_epoch(start_epoch + 1);
-    let params = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry };
+    let params = SectorDeals {
+        deal_ids: vec![deal_id],
+        sector_expiry,
+        sector_type: RegisteredSealProof::StackedDRG8MiBV1,
+    };
     let params = BatchActivateDealsParams { sectors: vec![params] };
     let res = rt
         .call::<MarketActor>(
@@ -1723,7 +1727,11 @@ fn fail_when_end_epoch_of_deal_greater_than_sector_expiry() {
 
     rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
-    let params = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry: end_epoch - 1 };
+    let params = SectorDeals {
+        deal_ids: vec![deal_id],
+        sector_expiry: end_epoch - 1,
+        sector_type: RegisteredSealProof::StackedDRG8MiBV1,
+    };
     let params = BatchActivateDealsParams { sectors: vec![params] };
     let res = rt
         .call::<MarketActor>(
@@ -1766,7 +1774,11 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
 
     rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
-    let params = ActivateDealsParams { deal_ids: vec![deal_id1, deal_id2], sector_expiry };
+    let params = SectorDeals {
+        deal_ids: vec![deal_id1, deal_id2],
+        sector_expiry,
+        sector_type: RegisteredSealProof::StackedDRG8MiBV1,
+    };
     let params = BatchActivateDealsParams { sectors: vec![params] };
     let res = rt
         .call::<MarketActor>(

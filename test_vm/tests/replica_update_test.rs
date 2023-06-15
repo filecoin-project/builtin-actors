@@ -1204,7 +1204,12 @@ fn replica_update_verified_deal_test<BS: Blockstore>(v: &dyn VM<BS>) {
         to: maddr,
         method: MinerMethod::ProveReplicaUpdates2 as u64,
         subinvocs: Some(vec![
-            Expect::market_activate_deals(maddr, deal_ids.clone(), old_sector_info.expiration),
+            Expect::market_activate_deals(
+                maddr,
+                deal_ids.clone(),
+                old_sector_info.expiration,
+                old_sector_info.seal_proof,
+            ),
             ExpectInvocation {
                 from: maddr,
                 to: VERIFIED_REGISTRY_ACTOR_ADDR,

@@ -1158,6 +1158,7 @@ impl Actor {
                 deal_ids: usi.update.deals.clone(),
                 sector_number: usi.update.sector_number,
                 sector_expiry: usi.sector_info.expiration,
+                sector_type: usi.sector_info.seal_proof,
             })
             .collect();
         let deals_spaces = batch_activate_deals_and_claim_allocations(rt, &activation_infos)?;
@@ -3595,6 +3596,7 @@ pub struct DealsActivationInfo {
     pub deal_ids: Vec<DealID>,
     pub sector_expiry: ChainEpoch,
     pub sector_number: SectorNumber,
+    pub sector_type: RegisteredSealProof,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -4806,6 +4808,7 @@ fn confirm_sector_proofs_valid_internal(
             deal_ids: pc.info.deal_ids.clone(),
             sector_expiry: pc.info.expiration,
             sector_number: pc.info.sector_number,
+            sector_type: pc.info.seal_proof,
         })
         .collect();
 
@@ -4970,9 +4973,10 @@ fn batch_activate_deals_and_claim_allocations(
     let mut sector_activation_params = Vec::new();
 
     for activation_info in activation_infos {
-        sector_activation_params.push(ext::market::ActivateDealsParams {
+        sector_activation_params.push(ext::market::SectorDeals {
             deal_ids: activation_info.deal_ids.clone(),
             sector_expiry: activation_info.sector_expiry,
+            sector_type: activation_info.sector_type,
         });
     }
 

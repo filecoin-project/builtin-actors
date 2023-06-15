@@ -97,15 +97,9 @@ pub struct SectorDealData {
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct ActivateDealsParams {
-    pub deal_ids: Vec<DealID>,
-    pub sector_expiry: ChainEpoch,
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 #[serde(transparent)]
 pub struct BatchActivateDealsParams {
-    pub sectors: Vec<ActivateDealsParams>,
+    pub sectors: Vec<SectorDeals>,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]

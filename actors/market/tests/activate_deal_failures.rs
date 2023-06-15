@@ -1,7 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_actor_market::{ActivateDealsParams, Actor as MarketActor, Method, State};
+use fil_actor_market::{Actor as MarketActor, Method, SectorDeals, State};
 use fil_actor_market::{BatchActivateDealsParams, BatchActivateDealsResult};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::builtins::Type;
@@ -11,6 +11,7 @@ use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::deal::DealID;
 use fvm_shared::error::ExitCode;
+use fvm_shared::sector::RegisteredSealProof;
 use fvm_shared::METHOD_SEND;
 
 mod harness;
@@ -28,7 +29,11 @@ fn fail_when_caller_is_not_the_provider_of_the_deal() {
     let addrs = MinerAddresses { provider: provider2_addr, ..MinerAddresses::default() };
     let deal_id = generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch);
 
-    let sector_activation = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry };
+    let sector_activation = SectorDeals {
+        deal_ids: vec![deal_id],
+        sector_expiry,
+        sector_type: fvm_shared::sector::RegisteredSealProof::StackedDRG8MiBV1,
+    };
     let params = BatchActivateDealsParams { sectors: vec![sector_activation] };
 
     rt.expect_validate_caller_type(vec![Type::Miner]);
@@ -54,7 +59,11 @@ fn fail_when_caller_is_not_a_storage_miner_actor() {
     rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, PROVIDER_ADDR);
 
-    let sector_activation = ActivateDealsParams { deal_ids: vec![], sector_expiry: 0 };
+    let sector_activation = SectorDeals {
+        deal_ids: vec![],
+        sector_expiry: 0,
+        sector_type: RegisteredSealProof::StackedDRG8MiBV1,
+    };
     let params = BatchActivateDealsParams { sectors: vec![sector_activation] };
 
     expect_abort(
@@ -73,8 +82,11 @@ fn fail_when_caller_is_not_a_storage_miner_actor() {
 fn fail_when_deal_has_not_been_published_before() {
     let rt = setup();
 
-    let sector_activation =
-        ActivateDealsParams { deal_ids: vec![DealID::from(42u32)], sector_expiry: 0 };
+    let sector_activation = SectorDeals {
+        deal_ids: vec![DealID::from(42u32)],
+        sector_expiry: 0,
+        sector_type: RegisteredSealProof::StackedDRG8MiBV1,
+    };
     let params = BatchActivateDealsParams { sectors: vec![sector_activation] };
 
     rt.expect_validate_caller_type(vec![Type::Miner]);
@@ -98,6 +110,7 @@ fn fail_when_deal_has_already_been_activated() {
     let start_epoch = 10;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
+    let sector_type = RegisteredSealProof::StackedDRG8MiBV1;
 
     let rt = setup();
     let deal_id = generate_and_publish_deal(
@@ -112,7 +125,7 @@ fn fail_when_deal_has_already_been_activated() {
     rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
 
-    let sector_activation = ActivateDealsParams { deal_ids: vec![deal_id], sector_expiry };
+    let sector_activation = SectorDeals { deal_ids: vec![deal_id], sector_expiry, sector_type };
     let params = BatchActivateDealsParams { sectors: vec![sector_activation] };
 
     let res = rt
