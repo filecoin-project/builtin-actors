@@ -4957,9 +4957,8 @@ fn confirm_sector_proofs_valid_internal(
 }
 
 /// Activates the deals then claims allocations for any verified deals
-/// The returned vector is parallel (with same length and corresponding indices) to the requested
-/// activations. If activation a deal set fails, a None entry appears in the vector. If the final
-/// ClaimAllocations fails, the function returns an error.
+/// Successfully activated sectors have their DealSpaces returned
+/// Failure to claim datacap for any verified deal results in the whole batch failing
 fn batch_activate_deals_and_claim_allocations(
     rt: &impl Runtime,
     activation_infos: &[DealsActivationInfo],
@@ -5027,7 +5026,10 @@ fn batch_activate_deals_and_claim_allocations(
     }
 
     let claim_res = match verified_claims.is_empty() {
-        true => Vec::default(),
+        true => ext::verifreg::ClaimAllocationsReturn {
+            claim_results: BatchReturn::empty(),
+            claims: Vec::default(),
+        },
         false => {
             let claim_raw = extract_send_result(rt.send_simple(
                 &VERIFIED_REGISTRY_ACTOR_ADDR,
@@ -5041,24 +5043,27 @@ fn batch_activate_deals_and_claim_allocations(
             .context(format!("error claiming allocations on batch {:?}", activation_infos))?;
 
             let claim_res: ext::verifreg::ClaimAllocationsReturn = deserialize_block(claim_raw)?;
-
-            claim_res.claim_results
+            claim_res
         }
     };
 
-    // claim res is an iterator of successful claim results parallel to `sector_claims`
-    let mut claim_res = claim_res.into_iter();
+    assert!(
+        claim_res.claim_results.all_ok(),
+        "batch return of claim allocations contains errors but request was all_or_nothing {:?}",
+        claim_res
+    );
 
-    // reassociate the verified claims per sector with other DealActivation information
+    let mut claims = claim_res.claims.into_iter();
+    // reassociate the verified claims with corresponding DealActivation information
     let activation_and_claim_results: Vec<ext::market::DealSpaces> = batch_res
         .activations
         .iter()
         .map(|deal_activation| {
             // each activation contributed as many claims as verified_info entries it had
             let number_of_claims = deal_activation.verified_infos.len();
-            // we consume these claim results from the iterator, then combine the claims into one
+            // we consume these claims from the iterator, then combine the claims into one
             // value per DealActivation
-            let verified_deal_space = claim_res
+            let verified_deal_space = claims
                 .by_ref()
                 .take(number_of_claims)
                 .fold(BigInt::zero(), |acc, claim| acc + claim.claimed_space);

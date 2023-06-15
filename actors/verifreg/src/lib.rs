@@ -375,14 +375,14 @@ impl Actor {
         params: ClaimAllocationsParams,
     ) -> Result<ClaimAllocationsReturn, ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
+        let provider = rt.message().caller().id().unwrap();
         if params.allocations.is_empty() {
             return Err(actor_error!(illegal_argument, "claim allocations called with no claims"));
         }
 
-        let provider = rt.message().caller().id().unwrap();
         let mut total_datacap_claimed = DataCap::zero();
         let mut sector_claims = Vec::new();
-
+        let mut ret_gen = BatchReturnGen::new(params.allocations.len());
         rt.transaction(|st: &mut State, rt| {
             let mut claims = st.load_claims(rt.store())?;
             let mut allocs = st.load_allocs(rt.store())?;
@@ -395,22 +395,22 @@ impl Actor {
                 )?;
                 let alloc: &Allocation = match maybe_alloc {
                     None => {
+                        ret_gen.add_fail(ExitCode::USR_NOT_FOUND);
                         info!(
                             "no allocation {} for client {}",
                             claim_alloc.allocation_id, claim_alloc.client,
                         );
-                        sector_claims.push(SectorAllocationClaimResult::default());
                         continue;
                     }
                     Some(a) => a,
                 };
 
                 if !can_claim_alloc(&claim_alloc, provider, alloc, rt.curr_epoch()) {
+                    ret_gen.add_fail(ExitCode::USR_FORBIDDEN);
                     info!(
                         "invalid sector {:?} for allocation {}",
                         claim_alloc.sector, claim_alloc.allocation_id,
                     );
-                    sector_claims.push(SectorAllocationClaimResult::default());
                     continue;
                 }
 
@@ -432,12 +432,12 @@ impl Actor {
                         format!("failed to write claim {}", claim_alloc.allocation_id),
                     )?;
                 if !inserted {
+                    ret_gen.add_fail(ExitCode::USR_ILLEGAL_STATE);
                     // should be unreachable since claim and alloc can't exist at once
                     info!(
                         "claim for allocation {} could not be inserted as it already exists",
                         claim_alloc.allocation_id,
                     );
-                    sector_claims.push(SectorAllocationClaimResult::default());
                     continue;
                 }
 
@@ -449,6 +449,7 @@ impl Actor {
                 total_datacap_claimed += DataCap::from(claim_alloc.size.0);
                 sector_claims
                     .push(SectorAllocationClaimResult { claimed_space: claim_alloc.size.0.into() });
+                ret_gen.add_success();
             }
             st.save_allocs(&mut allocs)?;
             st.save_claims(&mut claims)?;
@@ -466,7 +467,7 @@ impl Actor {
         // Burn the datacap tokens from verified registry's own balance.
         burn(rt, &total_datacap_claimed)?;
 
-        Ok(ClaimAllocationsReturn { claim_results: sector_claims })
+        Ok(ClaimAllocationsReturn { claim_results: ret_gen.gen(), claims: sector_claims })
     }
 
     // get claims for a provider
