@@ -550,15 +550,6 @@ impl Actor {
             for p in params.sectors {
                 let proposal_array = st.get_proposal_array(rt.store())?;
 
-                if p.deal_ids.is_empty() {
-                    activations.push(DealActivation {
-                        nonverified_deal_space: BigInt::default(),
-                        verified_infos: Vec::default(),
-                    });
-                    batch_gen.add_success();
-                    continue;
-                }
-
                 let proposals = match get_proposals(&proposal_array, &p.deal_ids, st.next_id) {
                     Ok(proposals) => proposals,
                     Err(e) => {
