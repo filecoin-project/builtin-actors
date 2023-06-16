@@ -456,18 +456,19 @@ impl Actor {
             Ok(())
         })
         .context("state transaction failed")?;
-        if params.all_or_nothing && sector_claims.iter().any(|c| c.claimed_space.is_zero()) {
+        let batch_info = ret_gen.gen();
+        if params.all_or_nothing && !batch_info.all_ok() {
             return Err(actor_error!(
                 illegal_argument,
-                "all or nothing call contained failures: {:?}",
-                sector_claims
+                "all or nothing call contained failures: {}",
+                batch_info.to_string()
             ));
         }
 
         // Burn the datacap tokens from verified registry's own balance.
         burn(rt, &total_datacap_claimed)?;
 
-        Ok(ClaimAllocationsReturn { claim_results: ret_gen.gen(), claims: sector_claims })
+        Ok(ClaimAllocationsReturn { claim_results: batch_info, claims: sector_claims })
     }
 
     // get claims for a provider

@@ -4963,7 +4963,7 @@ fn batch_activate_deals_and_claim_allocations(
     rt: &impl Runtime,
     activation_infos: &[DealsActivationInfo],
 ) -> Result<(BatchReturn, Vec<ext::market::DealSpaces>), ActorError> {
-    let batch_res = match activation_infos.iter().all(|p| p.deal_ids.is_empty()) {
+    let batch_activation_res = match activation_infos.iter().all(|p| p.deal_ids.is_empty()) {
         true => ext::market::BatchActivateDealsResult {
             // if all sectors are empty of deals, skip calling the market actor
             activations: vec![
@@ -4998,17 +4998,18 @@ fn batch_activate_deals_and_claim_allocations(
     };
 
     // When all prove commits have failed abort early
-    if batch_res.activation_results.success_count == 0 {
+    if batch_activation_res.activation_results.success_count == 0 {
         return Err(actor_error!(illegal_argument, "all deals failed to activate"));
     }
 
     // Filter the DealsActivationInfo for successfully activated sectors
-    let successful_activation_infos = batch_res.activation_results.successes(activation_infos);
+    let successful_activation_infos =
+        batch_activation_res.activation_results.successes(activation_infos);
 
     // Get a flattened list of verified claims for all activated sectors
     let mut verified_claims = Vec::new();
     for (activation_info, activate_res) in
-        successful_activation_infos.iter().zip(&batch_res.activations)
+        successful_activation_infos.iter().zip(&batch_activation_res.activations)
     {
         let mut sector_claims = activate_res
             .verified_infos
@@ -5048,14 +5049,14 @@ fn batch_activate_deals_and_claim_allocations(
     };
 
     assert!(
-        claim_res.claim_results.all_ok(),
-        "batch return of claim allocations contains errors but request was all_or_nothing {:?}",
+        claim_res.claim_results.all_ok() || claim_res.claim_results.success_count == 0,
+        "batch return of claim allocations partially succeeded but request was all_or_nothing {:?}",
         claim_res
     );
 
     let mut claims = claim_res.claims.into_iter();
     // reassociate the verified claims with corresponding DealActivation information
-    let activation_and_claim_results: Vec<ext::market::DealSpaces> = batch_res
+    let activation_and_claim_results: Vec<ext::market::DealSpaces> = batch_activation_res
         .activations
         .iter()
         .map(|deal_activation| {
@@ -5075,7 +5076,7 @@ fn batch_activate_deals_and_claim_allocations(
         .collect();
 
     // Return the deal spaces for activated sectors only
-    Ok((batch_res.activation_results, activation_and_claim_results))
+    Ok((batch_activation_res.activation_results, activation_and_claim_results))
 }
 
 // XXX: probably better to push this one level down into state

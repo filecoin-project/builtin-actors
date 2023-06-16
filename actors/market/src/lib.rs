@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use std::cmp::min;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use cid::multihash::{Code, MultihashDigest, MultihashGeneric};
 use cid::Cid;
@@ -530,10 +530,9 @@ impl Actor {
         Ok(VerifyDealsForActivationReturn { sectors: sectors_data })
     }
 
-    /// Activate a set of deals, returning the combined deal space and extra info for verified deals.
-    /// Returns a vector of activation results parallel and corresponding to the params. Sectors
-    /// empty of deals are implicitly considered activated and return an empty ActivateDealsResult,
-    /// whereas errors during activation cause a None to be returned in place.
+    /// Activate a set of deals, returning the deal space and extra info for sectors containing
+    /// verified deals. Sectors are activated in parameter-defined order and can fail independently of
+    /// each other with the responsible ExitCode recorded in a BatchReturn.
     fn batch_activate_deals(
         rt: &impl Runtime,
         params: BatchActivateDealsParams,
@@ -546,9 +545,19 @@ impl Actor {
             let mut deal_states: Vec<(DealID, DealState)> = vec![];
             let mut batch_gen = BatchReturnGen::new(params.sectors.len());
             let mut activations: Vec<DealActivation> = vec![];
+            let mut activated_deals: HashSet<DealID> = HashSet::new();
 
             for p in params.sectors {
                 let proposal_array = st.get_proposal_array(rt.store())?;
+
+                if p.deal_ids.iter().any(|id| activated_deals.contains(id)) {
+                    log::warn!(
+                        "failed to activate sector containing duplicate deals {:?}",
+                        p.deal_ids
+                    );
+                    batch_gen.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
+                    continue;
+                }
 
                 let proposals = match get_proposals(&proposal_array, &p.deal_ids, st.next_id) {
                     Ok(proposals) => proposals,
@@ -637,6 +646,7 @@ impl Actor {
                                 verified_claim: allocation,
                             },
                         ));
+                        activated_deals.insert(deal_id);
                         Ok(())
                     });
 
