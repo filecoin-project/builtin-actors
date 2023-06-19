@@ -305,13 +305,16 @@ pub fn activate_deals(
     current_epoch: ChainEpoch,
     deal_ids: &[DealID],
 ) -> BatchActivateDealsResult {
-    let ret = activate_deals_raw(
+    rt.set_epoch(current_epoch);
+
+    let ret = batch_activate_deals_raw(
         rt,
-        sector_expiry,
-        RegisteredSealProof::StackedDRG8MiBV1,
         provider,
-        current_epoch,
-        deal_ids,
+        vec![SectorDeals {
+            deal_ids: deal_ids.into(),
+            sector_expiry,
+            sector_type: RegisteredSealProof::StackedDRG8MiBV1,
+        }],
     )
     .unwrap();
 
@@ -327,30 +330,6 @@ pub fn activate_deals(
     }
 
     ret
-}
-
-pub fn activate_deals_raw(
-    rt: &MockRuntime,
-    sector_expiry: ChainEpoch,
-    sector_type: RegisteredSealProof,
-    provider: Address,
-    current_epoch: ChainEpoch,
-    deal_ids: &[DealID],
-) -> Result<Option<IpldBlock>, ActorError> {
-    rt.set_epoch(current_epoch);
-    rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
-    rt.expect_validate_caller_type(vec![Type::Miner]);
-
-    let params = SectorDeals { deal_ids: deal_ids.to_vec(), sector_expiry, sector_type };
-    let params = BatchActivateDealsParams { sectors: vec![params] };
-
-    let ret = rt.call::<MarketActor>(
-        Method::BatchActivateDeals as u64,
-        IpldBlock::serialize_cbor(&params).unwrap(),
-    )?;
-    rt.verify();
-
-    Ok(ret)
 }
 
 /// Batch activate deals across multiple sectors
