@@ -51,7 +51,7 @@ impl BatchReturn {
 
     /// Returns a subset of items corresponding to the successful indices.
     /// Panics if `items` is not the same length as this batch return.
-    pub fn successes<T: Clone>(&self, items: &[T]) -> Vec<T> {
+    pub fn successes<'i, T>(&self, items: &'i [T]) -> Vec<&'i T> {
         if items.len() != self.size() {
             panic!("items length {} does not match batch size {}", items.len(), self.size());
         }
@@ -61,7 +61,7 @@ impl BatchReturn {
             if fail_idx < self.fail_codes.len() && idx == self.fail_codes[fail_idx].idx as usize {
                 fail_idx += 1;
             } else {
-                ret.push(item.clone())
+                ret.push(item)
             }
         }
         ret

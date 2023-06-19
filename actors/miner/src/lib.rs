@@ -1166,7 +1166,7 @@ impl Actor {
             batch_activate_deals_and_claim_allocations(rt, &activation_infos)?;
 
         // associate the successfully activated sectors with the ReplicaUpdateInner and SectorOnChainInfo
-        let validated_updates: Vec<(UpdateAndSectorInfo, ext::market::DealSpaces)> =
+        let validated_updates: Vec<(&UpdateAndSectorInfo, ext::market::DealSpaces)> =
             batch_return.successes(&update_sector_infos).into_iter().zip(deals_spaces).collect();
 
         if validated_updates.is_empty() {

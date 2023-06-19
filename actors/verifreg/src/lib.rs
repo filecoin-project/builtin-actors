@@ -317,12 +317,12 @@ impl Actor {
             .transaction(|st: &mut State, rt| {
                 let mut allocs = st.load_allocs(rt.store())?;
 
-                let to_remove: Vec<AllocationID>;
+                let to_remove: Vec<&AllocationID>;
                 if params.allocation_ids.is_empty() {
                     // Find all expired allocations for the client.
                     considered = expiration::find_expired(&mut allocs, params.client, curr_epoch)?;
                     batch_ret = BatchReturn::ok(considered.len() as u32);
-                    to_remove = considered.clone();
+                    to_remove = considered.iter().collect();
                 } else {
                     considered = params.allocation_ids.clone();
                     batch_ret = expiration::check_expired(
@@ -335,7 +335,7 @@ impl Actor {
                 }
 
                 for id in to_remove {
-                    let existing = allocs.remove(params.client, id).context_code(
+                    let existing = allocs.remove(params.client, *id).context_code(
                         ExitCode::USR_ILLEGAL_STATE,
                         format!("failed to remove allocation {}", id),
                     )?;
@@ -579,12 +579,12 @@ impl Actor {
         let mut considered = Vec::<ClaimID>::new();
         rt.transaction(|st: &mut State, rt| {
             let mut claims = st.load_claims(rt.store())?;
-            let to_remove: Vec<ClaimID>;
+            let to_remove: Vec<&ClaimID>;
             if params.claim_ids.is_empty() {
                 // Find all expired claims for the provider.
                 considered = expiration::find_expired(&mut claims, params.provider, curr_epoch)?;
                 batch_ret = BatchReturn::ok(considered.len() as u32);
-                to_remove = considered.clone();
+                to_remove = considered.iter().collect();
             } else {
                 considered = params.claim_ids.clone();
                 batch_ret = expiration::check_expired(
@@ -597,7 +597,7 @@ impl Actor {
             }
 
             for id in to_remove {
-                claims.remove(params.provider, id).context_code(
+                claims.remove(params.provider, *id).context_code(
                     ExitCode::USR_ILLEGAL_STATE,
                     format!("failed to remove claim {}", id),
                 )?;
