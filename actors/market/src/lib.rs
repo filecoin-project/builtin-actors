@@ -590,8 +590,6 @@ impl Actor {
                 // state method, possibly batched over all deal ids at once.
                 let update_result: Result<(), ActorError> =
                     proposals.into_iter().try_for_each(|(deal_id, proposal)| {
-                        // This construction could be replaced with a single "update deal state"
-                        // state method, possibly batched over all deal ids at once.
                         let s = st
                             .find_deal_state(rt.store(), deal_id)
                             .context(format!("error looking up deal state for {}", deal_id))?;

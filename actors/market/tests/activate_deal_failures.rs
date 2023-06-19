@@ -1,8 +1,8 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use fil_actor_market::BatchActivateDealsParams;
 use fil_actor_market::{Actor as MarketActor, Method, SectorDeals, State, EX_DEAL_EXPIRED};
-use fil_actor_market::{BatchActivateDealsParams, BatchActivateDealsResult};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::test_utils::*;
@@ -29,24 +29,8 @@ fn fail_when_caller_is_not_the_provider_of_the_deal() {
     let addrs = MinerAddresses { provider: provider2_addr, ..MinerAddresses::default() };
     let deal_id = generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch);
 
-    let sector_activation = SectorDeals {
-        deal_ids: vec![deal_id],
-        sector_expiry,
-        sector_type: fvm_shared::sector::RegisteredSealProof::StackedDRG8MiBV1,
-    };
-    let params = BatchActivateDealsParams { sectors: vec![sector_activation] };
+    let res = batch_activate_deals(&rt, PROVIDER_ADDR, &[(sector_expiry, vec![deal_id])]);
 
-    rt.expect_validate_caller_type(vec![Type::Miner]);
-    rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
-
-    let res = rt
-        .call::<MarketActor>(
-            Method::BatchActivateDeals as u64,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-        )
-        .unwrap()
-        .unwrap();
-    let res: BatchActivateDealsResult = IpldBlock::deserialize(&res).unwrap();
     assert_eq!(res.activation_results.codes(), vec![ExitCode::USR_FORBIDDEN]);
 
     rt.verify();
@@ -82,23 +66,7 @@ fn fail_when_caller_is_not_a_storage_miner_actor() {
 fn fail_when_deal_has_not_been_published_before() {
     let rt = setup();
 
-    let sector_activation = SectorDeals {
-        deal_ids: vec![DealID::from(42u32)],
-        sector_expiry: 0,
-        sector_type: RegisteredSealProof::StackedDRG8MiBV1,
-    };
-    let params = BatchActivateDealsParams { sectors: vec![sector_activation] };
-
-    rt.expect_validate_caller_type(vec![Type::Miner]);
-    rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
-    let res = rt
-        .call::<MarketActor>(
-            Method::BatchActivateDeals as u64,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-        )
-        .unwrap()
-        .unwrap();
-    let res: BatchActivateDealsResult = IpldBlock::deserialize(&res).unwrap();
+    let res = batch_activate_deals(&rt, PROVIDER_ADDR, &[(0, vec![DealID::from(42u32)])]);
     assert_eq!(res.activation_results.codes(), vec![ExitCode::USR_NOT_FOUND]);
 
     rt.verify();
@@ -110,7 +78,6 @@ fn fail_when_deal_has_already_been_activated() {
     let start_epoch = 10;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
-    let sector_type = RegisteredSealProof::StackedDRG8MiBV1;
 
     let rt = setup();
     let deal_id = generate_and_publish_deal(
@@ -122,20 +89,7 @@ fn fail_when_deal_has_already_been_activated() {
     );
     activate_deals(&rt, sector_expiry, PROVIDER_ADDR, 0, &[deal_id]);
 
-    rt.expect_validate_caller_type(vec![Type::Miner]);
-    rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
-
-    let sector_activation = SectorDeals { deal_ids: vec![deal_id], sector_expiry, sector_type };
-    let params = BatchActivateDealsParams { sectors: vec![sector_activation] };
-
-    let res = rt
-        .call::<MarketActor>(
-            Method::BatchActivateDeals as u64,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-        )
-        .unwrap()
-        .unwrap();
-    let res: BatchActivateDealsResult = IpldBlock::deserialize(&res).unwrap();
+    let res = batch_activate_deals(&rt, PROVIDER_ADDR, &[(sector_expiry, vec![deal_id])]);
     assert_eq!(res.activation_results.codes(), vec![ExitCode::USR_ILLEGAL_ARGUMENT]);
 
     rt.verify();

@@ -297,6 +297,7 @@ pub fn withdraw_client_balance(
     );
 }
 
+/// Activate a single sector of deals
 pub fn activate_deals(
     rt: &MockRuntime,
     sector_expiry: ChainEpoch,
@@ -342,6 +343,58 @@ pub fn activate_deals_raw(
 
     let params = SectorDeals { deal_ids: deal_ids.to_vec(), sector_expiry, sector_type };
     let params = BatchActivateDealsParams { sectors: vec![params] };
+
+    let ret = rt.call::<MarketActor>(
+        Method::BatchActivateDeals as u64,
+        IpldBlock::serialize_cbor(&params).unwrap(),
+    )?;
+    rt.verify();
+
+    Ok(ret)
+}
+
+/// Batch activate deals across multiple sectors
+/// For each sector, provide its expiry and a list of unique, valid deal ids contained within
+pub fn batch_activate_deals(
+    rt: &MockRuntime,
+    provider: Address,
+    sectors: &[(ChainEpoch, Vec<DealID>)],
+) -> BatchActivateDealsResult {
+    let sectors_deals: Vec<SectorDeals> = sectors
+        .iter()
+        .map(|(sector_expiry, deal_ids)| SectorDeals {
+            deal_ids: deal_ids.clone(),
+            sector_expiry: *sector_expiry,
+            sector_type: RegisteredSealProof::StackedDRG8MiBV1,
+        })
+        .collect();
+    let ret = batch_activate_deals_raw(rt, provider, sectors_deals).unwrap();
+
+    let ret: BatchActivateDealsResult =
+        ret.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
+
+    // check all deals were activated correctly
+    if ret.activation_results.all_ok() {
+        for (epoch, deal_ids) in sectors {
+            for deal in deal_ids {
+                let s = get_deal_state(rt, *deal);
+                assert_eq!(epoch, &s.sector_start_epoch);
+            }
+        }
+    }
+
+    ret
+}
+
+pub fn batch_activate_deals_raw(
+    rt: &MockRuntime,
+    provider: Address,
+    sectors_deals: Vec<SectorDeals>,
+) -> Result<Option<IpldBlock>, ActorError> {
+    rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
+
+    let params = BatchActivateDealsParams { sectors: sectors_deals };
 
     let ret = rt.call::<MarketActor>(
         Method::BatchActivateDeals as u64,

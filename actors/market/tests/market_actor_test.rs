@@ -4,15 +4,14 @@
 use fil_actor_market::balance_table::BALANCE_TABLE_BITWIDTH;
 use fil_actor_market::policy::detail::DEAL_MAX_LABEL_SIZE;
 use fil_actor_market::{
-    deal_id_key, ext, next_update_epoch, Actor as MarketActor, BatchActivateDealsParams,
-    BatchActivateDealsResult, ClientDealProposal, DealArray, DealMetaArray, Label,
-    MarketNotifyDealParams, Method, PublishStorageDealsParams, PublishStorageDealsReturn,
-    SectorDeals, State, WithdrawBalanceParams, EX_DEAL_EXPIRED, MARKET_NOTIFY_DEAL_METHOD,
-    NO_ALLOCATION_ID, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
+    deal_id_key, ext, next_update_epoch, Actor as MarketActor, ClientDealProposal, DealArray,
+    DealMetaArray, Label, MarketNotifyDealParams, Method, PublishStorageDealsParams,
+    PublishStorageDealsReturn, State, WithdrawBalanceParams, EX_DEAL_EXPIRED,
+    MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
 };
 use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::runtime::{builtins::Type, Policy, Runtime, RuntimePolicy};
+use fil_actors_runtime::runtime::{Policy, Runtime, RuntimePolicy};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
     make_empty_map, make_map_with_root_and_bitwidth, ActorError, BatchReturn, Map, SetMultimap,
@@ -29,7 +28,7 @@ use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::sector::{RegisteredSealProof, StoragePower};
+use fvm_shared::sector::StoragePower;
 use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND};
 use regex::Regex;
 use std::cell::RefCell;
@@ -1688,23 +1687,8 @@ fn fail_when_current_epoch_greater_than_start_epoch_of_deal() {
         end_epoch,
     );
 
-    rt.expect_validate_caller_type(vec![Type::Miner]);
-    rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
     rt.set_epoch(start_epoch + 1);
-    let params = SectorDeals {
-        deal_ids: vec![deal_id],
-        sector_expiry,
-        sector_type: RegisteredSealProof::StackedDRG8MiBV1,
-    };
-    let params = BatchActivateDealsParams { sectors: vec![params] };
-    let res = rt
-        .call::<MarketActor>(
-            Method::BatchActivateDeals as u64,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-        )
-        .unwrap()
-        .unwrap();
-    let res: BatchActivateDealsResult = IpldBlock::deserialize(&res).unwrap();
+    let res = batch_activate_deals(&rt, PROVIDER_ADDR, &[(sector_expiry, vec![deal_id])]);
     assert_eq!(res.activation_results.codes(), vec![ExitCode::USR_ILLEGAL_ARGUMENT]);
 
     rt.verify();
@@ -1725,22 +1709,7 @@ fn fail_when_end_epoch_of_deal_greater_than_sector_expiry() {
         end_epoch,
     );
 
-    rt.expect_validate_caller_type(vec![Type::Miner]);
-    rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
-    let params = SectorDeals {
-        deal_ids: vec![deal_id],
-        sector_expiry: end_epoch - 1,
-        sector_type: RegisteredSealProof::StackedDRG8MiBV1,
-    };
-    let params = BatchActivateDealsParams { sectors: vec![params] };
-    let res = rt
-        .call::<MarketActor>(
-            Method::BatchActivateDeals as u64,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-        )
-        .unwrap()
-        .unwrap();
-    let res: BatchActivateDealsResult = IpldBlock::deserialize(&res).unwrap();
+    let res = batch_activate_deals(&rt, PROVIDER_ADDR, &[(end_epoch - 1, vec![deal_id])]);
     assert_eq!(res.activation_results.codes(), vec![ExitCode::USR_ILLEGAL_ARGUMENT]);
 
     rt.verify();
@@ -1772,22 +1741,8 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
         end_epoch + 1,
     );
 
-    rt.expect_validate_caller_type(vec![Type::Miner]);
-    rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
-    let params = SectorDeals {
-        deal_ids: vec![deal_id1, deal_id2],
-        sector_expiry,
-        sector_type: RegisteredSealProof::StackedDRG8MiBV1,
-    };
-    let params = BatchActivateDealsParams { sectors: vec![params] };
-    let res = rt
-        .call::<MarketActor>(
-            Method::BatchActivateDeals as u64,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-        )
-        .unwrap()
-        .unwrap();
-    let res: BatchActivateDealsResult = IpldBlock::deserialize(&res).unwrap();
+    let res =
+        batch_activate_deals(&rt, PROVIDER_ADDR, &[(sector_expiry, vec![deal_id1, deal_id2])]);
     assert_eq!(res.activation_results.codes(), vec![ExitCode::USR_ILLEGAL_ARGUMENT]);
     rt.verify();
 
