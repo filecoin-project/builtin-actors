@@ -297,6 +297,20 @@ pub fn withdraw_client_balance(
     );
 }
 
+pub fn create_deal(
+    rt: &MockRuntime,
+    client_addr: Address,
+    miner_addrs: &MinerAddresses,
+    start_epoch: ChainEpoch,
+    end_epoch: ChainEpoch,
+    verified: bool,
+) -> DealProposal {
+    let mut deal =
+        generate_deal_and_add_funds(rt, client_addr, miner_addrs, start_epoch, end_epoch);
+    deal.verified_deal = verified;
+    deal
+}
+
 /// Activate a single sector of deals
 pub fn activate_deals(
     rt: &MockRuntime,
@@ -353,14 +367,7 @@ pub fn batch_activate_deals(
         ret.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
 
     // check all deals were activated correctly
-    if ret.activation_results.all_ok() {
-        for (epoch, deal_ids) in sectors {
-            for deal in deal_ids {
-                let s = get_deal_state(rt, *deal);
-                assert_eq!(epoch, &s.sector_start_epoch);
-            }
-        }
-    }
+    assert!(ret.activation_results.all_ok());
 
     ret
 }
