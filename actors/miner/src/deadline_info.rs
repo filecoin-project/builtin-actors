@@ -132,20 +132,24 @@ impl DeadlineInfo {
 
     /// Returns the next instance of this deadline that has not yet elapsed.
     pub fn next_not_elapsed(self) -> Self {
-        std::iter::successors(Some(self), |info| {
-            Some(Self::new(
-                info.next_period_start(),
-                info.index,
-                info.current_epoch,
-                self.w_post_period_deadlines,
-                self.w_post_proving_period,
-                self.w_post_challenge_window,
-                self.w_post_challenge_lookback,
-                self.fault_declaration_cutoff,
-            ))
-        })
-        .find(|info| !info.has_elapsed())
-        .unwrap() // the iterator is infinite, so `find` won't ever return `None`
+        if !self.has_elapsed() {
+            return self;
+        }
+
+        // has elapsed, advance by some multiples of w_post_proving_period
+        let gap = self.current_epoch - self.close;
+        let delta_periods = 1 + gap / self.w_post_proving_period;
+
+        Self::new(
+            self.period_start + self.w_post_proving_period * delta_periods,
+            self.index,
+            self.current_epoch,
+            self.w_post_period_deadlines,
+            self.w_post_proving_period,
+            self.w_post_challenge_window,
+            self.w_post_challenge_lookback,
+            self.fault_declaration_cutoff,
+        )
     }
 
     pub fn quant_spec(&self) -> QuantSpec {
