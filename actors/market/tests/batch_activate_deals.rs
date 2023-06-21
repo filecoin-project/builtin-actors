@@ -13,9 +13,7 @@ mod harness;
 use harness::*;
 
 const START_EPOCH: ChainEpoch = 10;
-const CURR_EPOCH: ChainEpoch = START_EPOCH;
 const END_EPOCH: ChainEpoch = 200 * EPOCHS_IN_DAY;
-const SECTOR_EXPIRY: ChainEpoch = END_EPOCH + 200;
 const MINER_ADDRESSES: MinerAddresses = MinerAddresses {
     owner: OWNER_ADDR,
     worker: WORKER_ADDR,
@@ -186,6 +184,67 @@ fn handles_sectors_empty_of_deals_gracefully() {
     // deal should have activated
     let deal_1 = get_deal_state(&rt, id_1);
     assert_eq!(0, deal_1.sector_start_epoch);
+
+    check_state(&rt);
+}
+
+#[test]
+fn fails_to_activate_sectors_containing_duplicate_deals() {
+    let rt = setup();
+    let deal_1 = create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH, false);
+    let deal_2 = create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH + 1, END_EPOCH, false);
+    let deal_3 = create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH + 2, END_EPOCH, false);
+
+    let next_allocation_id = 1;
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+    let deal_ids = publish_deals(
+        &rt,
+        &MINER_ADDRESSES,
+        &[deal_1, deal_2, deal_3],
+        TokenAmount::zero(),
+        next_allocation_id,
+    );
+    assert_eq!(3, deal_ids.len());
+
+    let id_1 = deal_ids[0];
+    let id_2 = deal_ids[1];
+    let id_3 = deal_ids[2];
+
+    let sector_type = RegisteredSealProof::StackedDRG8MiBV1;
+    // group into sectors
+    let sectors_deals = vec![
+        // activate deal 1
+        SectorDeals { deal_ids: vec![id_1], sector_type, sector_expiry: END_EPOCH },
+        // duplicate id_1 so no deals activated here
+        SectorDeals { deal_ids: vec![id_3, id_1, id_2], sector_type, sector_expiry: END_EPOCH }, // duplicate with sector 1 so all fail
+        // since id_3 wasn't activated earlier this is a valid request
+        SectorDeals { deal_ids: vec![id_3], sector_type, sector_expiry: END_EPOCH },
+    ];
+
+    let res = batch_activate_deals_raw(&rt, PROVIDER_ADDR, sectors_deals).unwrap();
+    let res: BatchActivateDealsResult =
+        res.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
+
+    // all sectors should succeed
+    assert_eq!(
+        vec![ExitCode::OK, ExitCode::USR_ILLEGAL_ARGUMENT, ExitCode::OK],
+        res.activation_results.codes()
+    );
+    // should treat empty sectors as success
+    assert_eq!(2, res.activation_results.success_count);
+
+    // deal should have activated
+    let deal_1 = get_deal_state(&rt, id_1);
+    assert_eq!(0, deal_1.sector_start_epoch);
+
+    let deal_3 = get_deal_state(&rt, id_3);
+    assert_eq!(0, deal_3.sector_start_epoch);
+
+    // no state for deal2 means deal2 was not activated
+    let st: State = rt.get_state();
+    let states = DealMetaArray::load(&st.states, &rt.store).unwrap();
+    let s = states.get(id_2).unwrap();
+    assert!(s.is_none());
 
     check_state(&rt);
 }

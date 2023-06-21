@@ -1,8 +1,8 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_actor_market::BatchActivateDealsParams;
 use fil_actor_market::{Actor as MarketActor, Method, SectorDeals, State, EX_DEAL_EXPIRED};
+use fil_actor_market::{BatchActivateDealsParams, BatchActivateDealsResult};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::test_utils::*;
@@ -29,7 +29,18 @@ fn fail_when_caller_is_not_the_provider_of_the_deal() {
     let addrs = MinerAddresses { provider: provider2_addr, ..MinerAddresses::default() };
     let deal_id = generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch);
 
-    let res = batch_activate_deals(&rt, PROVIDER_ADDR, &[(sector_expiry, vec![deal_id])]);
+    let res = batch_activate_deals_raw(
+        &rt,
+        PROVIDER_ADDR,
+        vec![SectorDeals {
+            sector_expiry,
+            sector_type: RegisteredSealProof::StackedDRG8MiBV1,
+            deal_ids: vec![deal_id],
+        }],
+    )
+    .unwrap();
+    let res: BatchActivateDealsResult =
+        res.unwrap().deserialize().expect("BatchActivateDealsResult failed to deserialize");
 
     assert_eq!(res.activation_results.codes(), vec![ExitCode::USR_FORBIDDEN]);
 
@@ -66,7 +77,19 @@ fn fail_when_caller_is_not_a_storage_miner_actor() {
 fn fail_when_deal_has_not_been_published_before() {
     let rt = setup();
 
-    let res = batch_activate_deals(&rt, PROVIDER_ADDR, &[(0, vec![DealID::from(42u32)])]);
+    let res = batch_activate_deals_raw(
+        &rt,
+        PROVIDER_ADDR,
+        vec![SectorDeals {
+            sector_type: RegisteredSealProof::StackedDRG8MiBV1,
+            sector_expiry: EPOCHS_IN_DAY,
+            deal_ids: vec![DealID::from(42u32)],
+        }],
+    )
+    .unwrap();
+    let res: BatchActivateDealsResult =
+        res.unwrap().deserialize().expect("BatchActivateDealsResult failed to deserialize");
+
     assert_eq!(res.activation_results.codes(), vec![ExitCode::USR_NOT_FOUND]);
 
     rt.verify();
@@ -89,7 +112,19 @@ fn fail_when_deal_has_already_been_activated() {
     );
     activate_deals(&rt, sector_expiry, PROVIDER_ADDR, 0, &[deal_id]);
 
-    let res = batch_activate_deals(&rt, PROVIDER_ADDR, &[(sector_expiry, vec![deal_id])]);
+    let res = batch_activate_deals_raw(
+        &rt,
+        PROVIDER_ADDR,
+        vec![SectorDeals {
+            sector_type: RegisteredSealProof::StackedDRG8MiBV1,
+            sector_expiry,
+            deal_ids: vec![deal_id],
+        }],
+    )
+    .unwrap();
+    let res: BatchActivateDealsResult =
+        res.unwrap().deserialize().expect("BatchActivateDealsResult failed to deserialize");
+
     assert_eq!(res.activation_results.codes(), vec![ExitCode::USR_ILLEGAL_ARGUMENT]);
 
     rt.verify();

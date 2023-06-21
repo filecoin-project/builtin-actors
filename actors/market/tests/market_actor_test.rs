@@ -4,10 +4,11 @@
 use fil_actor_market::balance_table::BALANCE_TABLE_BITWIDTH;
 use fil_actor_market::policy::detail::DEAL_MAX_LABEL_SIZE;
 use fil_actor_market::{
-    deal_id_key, ext, next_update_epoch, Actor as MarketActor, ClientDealProposal, DealArray,
-    DealMetaArray, Label, MarketNotifyDealParams, Method, PublishStorageDealsParams,
-    PublishStorageDealsReturn, State, WithdrawBalanceParams, EX_DEAL_EXPIRED,
-    MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
+    deal_id_key, ext, next_update_epoch, Actor as MarketActor, BatchActivateDealsResult,
+    ClientDealProposal, DealArray, DealMetaArray, Label, MarketNotifyDealParams, Method,
+    PublishStorageDealsParams, PublishStorageDealsReturn, SectorDeals, State,
+    WithdrawBalanceParams, EX_DEAL_EXPIRED, MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID,
+    PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
 };
 use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
@@ -28,7 +29,7 @@ use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::sector::StoragePower;
+use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND};
 use regex::Regex;
 use std::cell::RefCell;
@@ -1688,7 +1689,20 @@ fn fail_when_current_epoch_greater_than_start_epoch_of_deal() {
     );
 
     rt.set_epoch(start_epoch + 1);
-    let res = batch_activate_deals(&rt, PROVIDER_ADDR, &[(sector_expiry, vec![deal_id])]);
+    let res = batch_activate_deals_raw(
+        &rt,
+        PROVIDER_ADDR,
+        vec![SectorDeals {
+            sector_expiry,
+            sector_type: RegisteredSealProof::StackedDRG8MiBV1,
+            deal_ids: vec![deal_id],
+        }],
+    )
+    .unwrap();
+
+    let res: BatchActivateDealsResult =
+        res.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
+
     assert_eq!(res.activation_results.codes(), vec![ExitCode::USR_ILLEGAL_ARGUMENT]);
 
     rt.verify();
@@ -1709,7 +1723,20 @@ fn fail_when_end_epoch_of_deal_greater_than_sector_expiry() {
         end_epoch,
     );
 
-    let res = batch_activate_deals(&rt, PROVIDER_ADDR, &[(end_epoch - 1, vec![deal_id])]);
+    let res = batch_activate_deals_raw(
+        &rt,
+        PROVIDER_ADDR,
+        vec![SectorDeals {
+            sector_expiry: end_epoch - 1,
+            sector_type: RegisteredSealProof::StackedDRG8MiBV1,
+            deal_ids: vec![deal_id],
+        }],
+    )
+    .unwrap();
+
+    let res: BatchActivateDealsResult =
+        res.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
+
     assert_eq!(res.activation_results.codes(), vec![ExitCode::USR_ILLEGAL_ARGUMENT]);
 
     rt.verify();
@@ -1731,7 +1758,7 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
         start_epoch,
         end_epoch,
     );
-    activate_deals(&rt, sector_expiry, PROVIDER_ADDR, 0, &[deal_id1]);
+    batch_activate_deals(&rt, PROVIDER_ADDR, &[(sector_expiry, vec![deal_id1])]);
 
     let deal_id2 = generate_and_publish_deal(
         &rt,
@@ -1741,8 +1768,19 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
         end_epoch + 1,
     );
 
-    let res =
-        batch_activate_deals(&rt, PROVIDER_ADDR, &[(sector_expiry, vec![deal_id1, deal_id2])]);
+    let res = batch_activate_deals_raw(
+        &rt,
+        PROVIDER_ADDR,
+        vec![SectorDeals {
+            sector_expiry,
+            sector_type: RegisteredSealProof::StackedDRG8MiBV1,
+            deal_ids: vec![deal_id1, deal_id2],
+        }],
+    )
+    .unwrap();
+    let res: BatchActivateDealsResult =
+        res.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
+
     assert_eq!(res.activation_results.codes(), vec![ExitCode::USR_ILLEGAL_ARGUMENT]);
     rt.verify();
 

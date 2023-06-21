@@ -4992,8 +4992,7 @@ fn batch_activate_deals_and_claim_allocations(
                 })?,
                 TokenAmount::zero(),
             ))?;
-            let batch_res: ext::market::BatchActivateDealsResult = deserialize_block(activate_raw)?;
-            batch_res
+            deserialize_block::<ext::market::BatchActivateDealsResult>(activate_raw)?
         }
     };
 
