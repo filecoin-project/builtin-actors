@@ -412,10 +412,6 @@ impl Deadline {
 
         // try filling up the last partition first.
         for partition_idx in partitions.count().saturating_sub(1).. {
-            if sectors.is_empty() {
-                break;
-            }
-
             // Get/create partition to update.
             let mut partition = match partitions.get(partition_idx)? {
                 Some(partition) => partition.clone(),
@@ -449,7 +445,11 @@ impl Deadline {
 
             // Record deadline -> partition mapping so we can later update the deadlines.
             partition_deadline_updates
-                .extend(partition_new_sectors.iter().map(|s| (s.expiration, partition_idx)))
+                .extend(partition_new_sectors.iter().map(|s| (s.expiration, partition_idx)));
+
+            if sectors.is_empty() {
+                break;
+            }
         }
 
         // Save partitions back.
