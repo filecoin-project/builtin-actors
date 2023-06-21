@@ -39,7 +39,7 @@ pub struct Policy {
     pub wpost_period_deadlines: u64,
     /// The maximum distance back that a valid Window PoSt must commit to the current chain.
     pub wpost_max_chain_commit_age: ChainEpoch,
-    /// WPoStDisputeWindow is the period after a challenge window ends during which
+    /// WPoStDisputeWindow is the period after a Window PoSt window ends during which
     /// PoSts submitted during that period may be disputed.
     pub wpost_dispute_window: ChainEpoch,
 
