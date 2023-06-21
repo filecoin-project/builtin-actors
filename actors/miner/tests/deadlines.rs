@@ -12,6 +12,61 @@ fn quantization_spec_rounds_to_the_next_deadline() {
     assert_eq!(d.next_not_elapsed().last(), quant.quantize_up(curr));
 }
 
+#[test]
+fn next_not_elapsed_checking() {
+    let policy = Policy::default();
+
+    let deadline_duration = policy.wpost_proving_period / policy.wpost_period_deadlines as i64;
+
+    // case 1: when !deadline.has_elapsed(), next_not_elapsed() returns the same deadline
+    {
+        for deadline_idx in 0..policy.wpost_period_deadlines {
+            let period_start = 2;
+            let curr = 1 + deadline_idx as i64 * deadline_duration;
+            let d = new_deadline_info(&policy, period_start, deadline_idx, curr);
+            assert!(!d.has_elapsed());
+            assert_eq!(d.clone().next_not_elapsed(), d);
+        }
+    }
+
+    // case 2: when deadline.has_elapsed(), and ddl.current_epoch-ddl.close is in range [times*w_post_proving_period, (times+1)*w_post_proving_period), next_not_elapsed() advances period_start by (times+1)*w_post_proving_period
+    {
+        for times in [0, 1, 2, 10] {
+            for deadline_idx in 0..policy.wpost_period_deadlines {
+                // test gap is times*w_post_proving_period
+                {
+                    let period_start = 2 as i64;
+                    let curr = period_start
+                        + (deadline_idx + 1) as i64 * deadline_duration
+                        + times * policy.wpost_proving_period;
+                    let d = new_deadline_info(&policy, period_start, deadline_idx, curr);
+                    assert!(d.has_elapsed());
+                    assert_eq!(curr - d.close, times * policy.wpost_proving_period);
+                    assert_eq!(
+                        d.clone().next_not_elapsed().period_start,
+                        period_start + (times + 1) * policy.wpost_proving_period
+                    );
+                }
+                // test gap is (times+1)*w_post_proving_period-1
+                {
+                    let period_start = 2 as i64;
+                    let curr = period_start
+                        + (deadline_idx + 1) as i64 * deadline_duration as i64
+                        + (times + 1) * policy.wpost_proving_period
+                        - 1;
+                    let d = new_deadline_info(&policy, period_start, deadline_idx, curr);
+                    assert!(d.has_elapsed());
+                    assert_eq!(curr - d.close, (times + 1) * policy.wpost_proving_period - 1);
+                    assert_eq!(
+                        d.clone().next_not_elapsed().period_start,
+                        period_start + (times + 1) * policy.wpost_proving_period
+                    );
+                }
+            }
+        }
+    }
+}
+
 // All proving periods equivalent mod WPoStProving period should give equivalent
 // dlines for a given epoch. Only the offset property should matter
 #[test]
