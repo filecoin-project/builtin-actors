@@ -25,7 +25,7 @@ fn next_not_elapsed_checking() {
             let curr = 1 + deadline_idx as i64 * deadline_duration;
             let d = new_deadline_info(&policy, period_start, deadline_idx, curr);
             assert!(!d.has_elapsed());
-            assert_eq!(d.clone().next_not_elapsed(), d);
+            assert_eq!(d.next_not_elapsed(), d);
         }
     }
 
@@ -35,7 +35,7 @@ fn next_not_elapsed_checking() {
             for deadline_idx in 0..policy.wpost_period_deadlines {
                 // test gap is times*w_post_proving_period
                 {
-                    let period_start = 2 as i64;
+                    let period_start = 2i64;
                     let curr = period_start
                         + (deadline_idx + 1) as i64 * deadline_duration
                         + times * policy.wpost_proving_period;
@@ -43,22 +43,22 @@ fn next_not_elapsed_checking() {
                     assert!(d.has_elapsed());
                     assert_eq!(curr - d.close, times * policy.wpost_proving_period);
                     assert_eq!(
-                        d.clone().next_not_elapsed().period_start,
+                        d.next_not_elapsed().period_start,
                         period_start + (times + 1) * policy.wpost_proving_period
                     );
                 }
                 // test gap is (times+1)*w_post_proving_period-1
                 {
-                    let period_start = 2 as i64;
+                    let period_start = 2i64;
                     let curr = period_start
-                        + (deadline_idx + 1) as i64 * deadline_duration as i64
+                        + (deadline_idx + 1) as i64 * deadline_duration
                         + (times + 1) * policy.wpost_proving_period
                         - 1;
                     let d = new_deadline_info(&policy, period_start, deadline_idx, curr);
                     assert!(d.has_elapsed());
                     assert_eq!(curr - d.close, (times + 1) * policy.wpost_proving_period - 1);
                     assert_eq!(
-                        d.clone().next_not_elapsed().period_start,
+                        d.next_not_elapsed().period_start,
                         period_start + (times + 1) * policy.wpost_proving_period
                     );
                 }
