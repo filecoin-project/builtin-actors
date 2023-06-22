@@ -62,6 +62,7 @@ pub mod market {
         #[serde(with = "bigint_ser")]
         pub nonverified_deal_space: BigInt,
         pub verified_infos: Vec<VerifiedDealInfo>,
+        pub commd: Option<Cid>,
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
@@ -70,13 +71,6 @@ pub mod market {
         pub activations: Vec<DealActivation>,
     }
 
-    #[derive(Serialize_tuple, Deserialize_tuple, Clone, Default)]
-    pub struct DealSpaces {
-        #[serde(with = "bigint_ser")]
-        pub deal_space: BigInt,
-        #[serde(with = "bigint_ser")]
-        pub verified_deal_space: BigInt,
-    }
     #[derive(Serialize_tuple)]
     pub struct ComputeDataCommitmentParamsRef<'a> {
         pub inputs: &'a [SectorDataSpec],

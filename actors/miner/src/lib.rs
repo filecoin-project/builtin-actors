@@ -1166,48 +1166,27 @@ impl Actor {
             batch_activate_deals_and_claim_allocations(rt, &activation_infos)?;
 
         // associate the successfully activated sectors with the ReplicaUpdateInner and SectorOnChainInfo
-        let validated_updates: Vec<(&UpdateAndSectorInfo, ext::market::DealSpaces)> =
+        let validated_updates: Vec<(&UpdateAndSectorInfo, ActivatedSectorInfo)> =
             batch_return.successes(&update_sector_infos).into_iter().zip(deals_spaces).collect();
 
         if validated_updates.is_empty() {
             return Err(actor_error!(illegal_argument, "no valid updates"));
         }
 
-        let sectors_deals: Vec<ext::market::SectorDeals> = validated_updates
-            .iter()
-            .map(|(usi, _)| ext::market::SectorDeals {
-                deal_ids: usi.update.deals.clone(),
-                sector_expiry: usi.sector_info.expiration,
-                sector_type: usi.sector_info.seal_proof,
-            })
-            .collect();
-
         // Errors past this point cause the prove_replica_updates call to fail (no more skipping sectors)
-        let deal_data = request_deal_data(rt, &sectors_deals)?;
-        if deal_data.sectors.len() != validated_updates.len() {
-            return Err(actor_error!(
-                illegal_state,
-                "deal weight request returned {} records, expected {}",
-                deal_data.sectors.len(),
-                validated_updates.len()
-            ));
-        }
-
         struct UpdateWithDetails<'a> {
             update: &'a ReplicaUpdateInner,
             sector_info: &'a SectorOnChainInfo,
-            deal_spaces: &'a ext::market::DealSpaces,
+            deal_space: &'a BigInt,
+            verified_deal_space: &'a BigInt,
             full_unsealed_cid: Cid,
         }
 
         // Group declarations by deadline
         let mut decls_by_deadline = BTreeMap::<u64, Vec<UpdateWithDetails>>::new();
         let mut deadlines_to_load = Vec::<u64>::new();
-        for ((usi, deal_spaces), deal_data) in
-            validated_updates.iter().zip(deal_data.sectors.iter())
-        {
-            let computed_commd =
-                CompactCommD::new(deal_data.commd).get_cid(usi.sector_info.seal_proof)?;
+        for (usi, asi) in validated_updates.iter() {
+            let computed_commd = asi.commd.get_cid(usi.sector_info.seal_proof)?;
             if let Some(ref declared_commd) = usi.update.new_unsealed_cid {
                 if !declared_commd.eq(&computed_commd) {
                     info!(
@@ -1224,7 +1203,8 @@ impl Actor {
             decls_by_deadline.entry(dl).or_default().push(UpdateWithDetails {
                 update: usi.update,
                 sector_info: &usi.sector_info,
-                deal_spaces,
+                deal_space: &asi.deal_space,
+                verified_deal_space: &asi.verified_deal_space,
                 full_unsealed_cid: computed_commd,
             });
         }
@@ -1303,10 +1283,9 @@ impl Actor {
 
                     let duration = new_sector_info.expiration - new_sector_info.power_base_epoch;
 
-                    new_sector_info.deal_weight =
-                        with_details.deal_spaces.deal_space.clone() * duration;
+                    new_sector_info.deal_weight = with_details.deal_space.clone() * duration;
                     new_sector_info.verified_deal_weight =
-                        with_details.deal_spaces.verified_deal_space.clone() * duration;
+                        with_details.verified_deal_space.clone() * duration;
 
                     // compute initial pledge
                     let qa_pow = qa_power_for_weight(
@@ -3606,6 +3585,13 @@ pub struct ValidatedExpirationExtension {
     pub new_expiration: ChainEpoch,
 }
 
+#[derive(Clone)]
+pub struct ActivatedSectorInfo {
+    pub deal_space: BigInt,
+    pub verified_deal_space: BigInt,
+    pub commd: CompactCommD,
+}
+
 #[allow(clippy::too_many_arguments)] // validate mut prevents implementing From
 impl From<ExpirationExtension2> for ValidatedExpirationExtension {
     fn from(e2: ExpirationExtension2) -> Self {
@@ -4962,7 +4948,7 @@ fn confirm_sector_proofs_valid_internal(
 fn batch_activate_deals_and_claim_allocations(
     rt: &impl Runtime,
     activation_infos: &[DealsActivationInfo],
-) -> Result<(BatchReturn, Vec<ext::market::DealSpaces>), ActorError> {
+) -> Result<(BatchReturn, Vec<ActivatedSectorInfo>), ActorError> {
     let batch_activation_res = match activation_infos.iter().all(|p| p.deal_ids.is_empty()) {
         true => ext::market::BatchActivateDealsResult {
             // if all sectors are empty of deals, skip calling the market actor
@@ -4970,6 +4956,7 @@ fn batch_activate_deals_and_claim_allocations(
                 ext::market::DealActivation {
                     nonverified_deal_space: BigInt::default(),
                     verified_infos: Vec::default(),
+                    commd: None,
                 };
                 activation_infos.len()
             ],
@@ -5055,7 +5042,7 @@ fn batch_activate_deals_and_claim_allocations(
 
     let mut claims = claim_res.claims.into_iter();
     // reassociate the verified claims with corresponding DealActivation information
-    let activation_and_claim_results: Vec<ext::market::DealSpaces> = batch_activation_res
+    let activation_and_claim_results: Vec<ActivatedSectorInfo> = batch_activation_res
         .activations
         .iter()
         .map(|deal_activation| {
@@ -5067,9 +5054,10 @@ fn batch_activate_deals_and_claim_allocations(
                 .by_ref()
                 .take(number_of_claims)
                 .fold(BigInt::zero(), |acc, claim| acc + claim.claimed_space);
-            ext::market::DealSpaces {
+            ActivatedSectorInfo {
                 verified_deal_space,
                 deal_space: deal_activation.nonverified_deal_space.clone(),
+                commd: CompactCommD(deal_activation.commd),
             }
         })
         .collect();

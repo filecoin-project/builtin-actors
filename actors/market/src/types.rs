@@ -116,6 +116,7 @@ pub struct DealActivation {
     #[serde(with = "bigint_ser")]
     pub nonverified_deal_space: BigInt,
     pub verified_infos: Vec<VerifiedDealInfo>,
+    pub commd: Option<Cid>,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]

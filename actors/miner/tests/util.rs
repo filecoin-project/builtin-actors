@@ -1080,6 +1080,7 @@ impl ActorHarness {
                         .get(&pc.info.sector_number)
                         .cloned()
                         .unwrap_or_default(),
+                    commd: None,
                 };
 
                 let mut activate_deals_exit = ExitCode::OK;
@@ -1124,6 +1125,7 @@ impl ActorHarness {
                 sector_activations.push(DealActivation {
                     nonverified_deal_space: BigInt::zero(),
                     verified_infos: vec![],
+                    commd: None,
                 });
                 sector_activation_results.add_success();
                 valid_pcs.push(pc);
