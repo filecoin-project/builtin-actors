@@ -33,6 +33,8 @@ pub struct Policy {
 
     /// The period over which all a miner's active sectors will be challenged.
     pub wpost_proving_period: ChainEpoch,
+    // The duration of a deadline's proving window.
+    pub wpost_deadline_window: ChainEpoch,
     /// The duration of a deadline's challenge window, the period before a deadline when the challenge is available.
     pub wpost_challenge_window: ChainEpoch,
     /// The number of non-overlapping PoSt deadlines in each proving period.
@@ -178,6 +180,8 @@ impl Default for Policy {
             expired_pre_commit_clean_up_delay: policy_constants::EXPIRED_PRE_COMMIT_CLEAN_UP_DELAY,
             wpost_proving_period: policy_constants::WPOST_PROVING_PERIOD,
             wpost_challenge_window: policy_constants::WPOST_CHALLENGE_WINDOW,
+            wpost_deadline_window: policy_constants::WPOST_PROVING_PERIOD
+                / policy_constants::WPOST_PERIOD_DEADLINES as i64,
             wpost_period_deadlines: policy_constants::WPOST_PERIOD_DEADLINES,
             wpost_max_chain_commit_age: policy_constants::WPOST_MAX_CHAIN_COMMIT_AGE,
             wpost_dispute_window: policy_constants::WPOST_DISPUTE_WINDOW,
