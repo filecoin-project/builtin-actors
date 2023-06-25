@@ -3027,9 +3027,10 @@ impl Actor {
                     info.control_addresses.iter().chain(&[info.worker, info.owner]),
                 )?;
 
+                let current_deadline = state.deadline_info(policy, rt.curr_epoch());
                 if !deadline_available_for_compaction(
                     policy,
-                    state.current_proving_period_start(policy, rt.curr_epoch()),
+                    current_deadline.period_start,
                     params.from_deadline,
                     rt.curr_epoch(),
                 ) {
@@ -3045,7 +3046,7 @@ impl Actor {
 
                 if !deadline_available_for_compaction(
                     policy,
-                    state.current_proving_period_start(policy, rt.curr_epoch()),
+                    current_deadline.period_start,
                     params.to_deadline,
                     rt.curr_epoch(),
                 ) {
@@ -3059,7 +3060,6 @@ impl Actor {
                     ));
                 }
 
-                let current_deadline = state.deadline_info(policy, rt.curr_epoch());
                 if !deadline_available_for_move(
                     policy,
                     params.from_deadline,
