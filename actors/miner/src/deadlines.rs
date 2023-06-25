@@ -138,8 +138,7 @@ pub fn new_deadline_info_from_offset_and_epoch(
 ) -> DeadlineInfo {
     let q = QuantSpec { unit: policy.wpost_proving_period, offset: period_start_seed };
     let current_period_start = q.quantize_down(current_epoch);
-    let current_deadline_idx = ((current_epoch - current_period_start)
-        / policy.wpost_deadline_window) as u64
-        % policy.wpost_period_deadlines;
+    let current_deadline_idx =
+        ((current_epoch - current_period_start) / policy.wpost_deadline_window) as u64;
     new_deadline_info(policy, current_period_start, current_deadline_idx, current_epoch)
 }
