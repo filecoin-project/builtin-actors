@@ -128,6 +128,26 @@ pub fn deadline_available_for_compaction(
         )
 }
 
+// the distance between from_deadline and to_deadline clockwise in deadline unit.
+fn deadline_distance(policy: &Policy, from_deadline: u64, to_deadline: u64) -> u64 {
+    if to_deadline > from_deadline {
+        to_deadline - from_deadline
+    } else {
+        policy.wpost_period_deadlines - from_deadline + to_deadline
+    }
+}
+
+// only allow moving to a nearer deadline from current one
+pub fn deadline_available_for_move(
+    policy: &Policy,
+    from_deadline: u64,
+    to_deadline: u64,
+    current_deadline: u64,
+) -> bool {
+    deadline_distance(policy, current_deadline, to_deadline)
+        < deadline_distance(policy, current_deadline, from_deadline)
+}
+
 // Determine current period start and deadline index directly from current epoch and
 // the offset implied by the proving period. This works correctly even for the state
 // of a miner actor without an active deadline cron
