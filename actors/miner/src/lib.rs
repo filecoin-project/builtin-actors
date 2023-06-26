@@ -2996,7 +2996,10 @@ impl Actor {
         Ok(())
     }
 
-    fn move_partitions(rt: &impl Runtime, params: MovePartitionsParams) -> Result<(), ActorError> {
+    fn move_partitions(
+        rt: &impl Runtime,
+        mut params: MovePartitionsParams,
+    ) -> Result<(), ActorError> {
         {
             let policy = rt.policy();
             if params.from_deadline == params.to_deadline {
@@ -3016,9 +3019,7 @@ impl Actor {
                 ));
             }
 
-            let partitions = params.partitions.validate().map_err(|e| {
-                actor_error!(illegal_argument, "failed to parse partitions bitfield: {}", e)
-            })?;
+            let partitions = &mut params.partitions;
 
             rt.transaction(|state: &mut State, rt| {
                 let info = get_miner_info(rt.store(), state)?;
@@ -3093,6 +3094,22 @@ impl Actor {
                             format!("failed to load deadline {}", params.to_deadline),
                         )
                     })?;
+
+                if partitions.len() == 0 {
+                    let partitions_amt = from_deadline.partitions_amt(rt.store()).map_err(|e| {
+                        e.downcast_default(
+                            ExitCode::USR_ILLEGAL_STATE,
+                            format!(
+                                "failed to load partitions for deadline {}",
+                                params.from_deadline
+                            ),
+                        )
+                    })?;
+
+                    for partition_idx in 0..partitions_amt.count() {
+                        partitions.set(partition_idx);
+                    }
+                }
 
                 let (live, dead, removed_power) = from_deadline
                     .remove_partitions(store, partitions, from_quant)
