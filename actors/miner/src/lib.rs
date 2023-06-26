@@ -3000,192 +3000,186 @@ impl Actor {
         rt: &impl Runtime,
         mut params: MovePartitionsParams,
     ) -> Result<(), ActorError> {
+        let policy = rt.policy();
+        if params.from_deadline == params.to_deadline {
+            return Err(actor_error!(illegal_argument, "from_deadline == to_deadline"));
+        }
+        if params.from_deadline >= policy.wpost_period_deadlines
+            || params.to_deadline >= policy.wpost_period_deadlines
         {
-            let policy = rt.policy();
-            if params.from_deadline == params.to_deadline {
-                return Err(actor_error!(illegal_argument, "from_deadline == to_deadline"));
-            }
-            if params.from_deadline >= policy.wpost_period_deadlines
-                || params.to_deadline >= policy.wpost_period_deadlines
-            {
+            return Err(actor_error!(
+                illegal_argument,
+                "invalid deadline {}",
+                if params.from_deadline >= policy.wpost_period_deadlines {
+                    params.from_deadline
+                } else {
+                    params.to_deadline
+                }
+            ));
+        }
+
+        let partitions = &mut params.partitions;
+
+        rt.transaction(|state: &mut State, rt| {
+            let info = get_miner_info(rt.store(), state)?;
+
+            rt.validate_immediate_caller_is(
+                info.control_addresses.iter().chain(&[info.worker, info.owner]),
+            )?;
+
+            let current_deadline = state.deadline_info(policy, rt.curr_epoch());
+            if !deadline_available_for_compaction(
+                policy,
+                current_deadline.period_start,
+                params.from_deadline,
+                rt.curr_epoch(),
+            ) {
                 return Err(actor_error!(
-                    illegal_argument,
-                    "invalid deadline {}",
-                    if params.from_deadline >= policy.wpost_period_deadlines {
-                        params.from_deadline
-                    } else {
-                        params.to_deadline
-                    }
+                    forbidden,
+                    "cannot move from deadline {} during its challenge window, \
+                        or the prior challenge window,
+                        or before {} epochs have passed since its last challenge window ended",
+                    params.from_deadline,
+                    policy.wpost_dispute_window
                 ));
             }
 
-            let partitions = &mut params.partitions;
-
-            rt.transaction(|state: &mut State, rt| {
-                let info = get_miner_info(rt.store(), state)?;
-
-                rt.validate_immediate_caller_is(
-                    info.control_addresses.iter().chain(&[info.worker, info.owner]),
-                )?;
-
-                let current_deadline = state.deadline_info(policy, rt.curr_epoch());
-                if !deadline_available_for_compaction(
-                    policy,
-                    current_deadline.period_start,
-                    params.from_deadline,
-                    rt.curr_epoch(),
-                ) {
-                    return Err(actor_error!(
-                        forbidden,
-                        "cannot move from deadline {} during its challenge window, \
+            if !deadline_available_for_compaction(
+                policy,
+                current_deadline.period_start,
+                params.to_deadline,
+                rt.curr_epoch(),
+            ) {
+                return Err(actor_error!(
+                    forbidden,
+                    "cannot move to deadline {} during its challenge window, \
                         or the prior challenge window,
                         or before {} epochs have passed since its last challenge window ended",
-                        params.from_deadline,
-                        policy.wpost_dispute_window
-                    ));
-                }
-
-                if !deadline_available_for_compaction(
-                    policy,
-                    current_deadline.period_start,
                     params.to_deadline,
-                    rt.curr_epoch(),
-                ) {
-                    return Err(actor_error!(
-                        forbidden,
-                        "cannot move to deadline {} during its challenge window, \
-                        or the prior challenge window,
-                        or before {} epochs have passed since its last challenge window ended",
-                        params.to_deadline,
-                        policy.wpost_dispute_window
-                    ));
-                }
+                    policy.wpost_dispute_window
+                ));
+            }
 
-                if !deadline_available_for_move(
-                    policy,
-                    params.from_deadline,
-                    params.to_deadline,
-                    current_deadline.index,
-                ) {
-                    return Err(actor_error!(
-                        forbidden,
-                        "cannot move to a deadline which is further from current deadline"
-                    ));
-                }
+            if !deadline_available_for_move(
+                policy,
+                params.from_deadline,
+                params.to_deadline,
+                current_deadline.index,
+            ) {
+                return Err(actor_error!(
+                    forbidden,
+                    "cannot move to a deadline which is further from current deadline"
+                ));
+            }
 
-                let store = rt.store();
+            let store = rt.store();
 
-                let from_quant = state.quant_spec_for_deadline(policy, params.from_deadline);
-                let to_quant = state.quant_spec_for_deadline(policy, params.to_deadline);
-                let mut deadlines =
-                    state.load_deadlines(store).map_err(|e| e.wrap("failed to load deadlines"))?;
+            let from_quant = state.quant_spec_for_deadline(policy, params.from_deadline);
+            let to_quant = state.quant_spec_for_deadline(policy, params.to_deadline);
+            let mut deadlines =
+                state.load_deadlines(store).map_err(|e| e.wrap("failed to load deadlines"))?;
 
-                let mut from_deadline =
-                    deadlines.load_deadline(policy, store, params.from_deadline).map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("failed to load deadline {}", params.from_deadline),
-                        )
-                    })?;
-                let mut to_deadline =
-                    deadlines.load_deadline(policy, store, params.to_deadline).map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("failed to load deadline {}", params.to_deadline),
-                        )
-                    })?;
-
-                if partitions.len() == 0 {
-                    let partitions_amt = from_deadline.partitions_amt(rt.store()).map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!(
-                                "failed to load partitions for deadline {}",
-                                params.from_deadline
-                            ),
-                        )
-                    })?;
-
-                    for partition_idx in 0..partitions_amt.count() {
-                        partitions.set(partition_idx);
-                    }
-                }
-
-                let (live, dead, removed_power) = from_deadline
-                    .remove_partitions(store, partitions, from_quant)
-                    .map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!(
-                                "failed to remove partitions from deadline {}",
-                                params.from_deadline
-                            ),
-                        )
-                    })?;
-
-                state.delete_sectors(store, &dead).map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to delete dead sectors")
-                })?;
-
-                let sectors = state.load_sector_infos(store, &live).map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load moved sectors")
-                })?;
-                let proven = true;
-                let added_power = to_deadline
-                    .add_sectors(
-                        store,
-                        info.window_post_partition_sectors,
-                        proven,
-                        &sectors,
-                        info.sector_size,
-                        to_quant,
+            let mut from_deadline =
+                deadlines.load_deadline(policy, store, params.from_deadline).map_err(|e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        format!("failed to load deadline {}", params.from_deadline),
                     )
-                    .map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            "failed to add back moved sectors",
-                        )
-                    })?;
+                })?;
+            let mut to_deadline =
+                deadlines.load_deadline(policy, store, params.to_deadline).map_err(|e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        format!("failed to load deadline {}", params.to_deadline),
+                    )
+                })?;
 
-                if removed_power != added_power {
-                    return Err(actor_error!(
-                        illegal_state,
-                        "power changed when compacting partitions: was {:?}, is now {:?}",
-                        removed_power,
-                        added_power
-                    ));
+            if partitions.len() == 0 {
+                let partitions_amt = from_deadline.partitions_amt(rt.store()).map_err(|e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        format!("failed to load partitions for deadline {}", params.from_deadline),
+                    )
+                })?;
+
+                for partition_idx in 0..partitions_amt.count() {
+                    partitions.set(partition_idx);
                 }
+            }
 
-                deadlines
-                    .update_deadline(policy, store, params.from_deadline, &from_deadline)
-                    .map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("failed to update deadline {}", params.from_deadline),
-                        )
-                    })?;
-                deadlines
-                    .update_deadline(policy, store, params.to_deadline, &from_deadline)
-                    .map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            format!("failed to update deadline {}", params.to_deadline),
-                        )
-                    })?;
-
-                state.save_deadlines(store, deadlines).map_err(|e| {
+            let (live, dead, removed_power) =
+                from_deadline.remove_partitions(store, partitions, from_quant).map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
                         format!(
-                            "failed to save deadline when move_partitions from {} to {}",
-                            params.from_deadline, params.to_deadline
+                            "failed to remove partitions from deadline {}",
+                            params.from_deadline
                         ),
                     )
                 })?;
 
-                Ok(())
+            state.delete_sectors(store, &dead).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to delete dead sectors")
             })?;
-        }
+
+            let sectors = state.load_sector_infos(store, &live).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load moved sectors")
+            })?;
+            let proven = true;
+            let added_power = to_deadline
+                .add_sectors(
+                    store,
+                    info.window_post_partition_sectors,
+                    proven,
+                    &sectors,
+                    info.sector_size,
+                    to_quant,
+                )
+                .map_err(|e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        "failed to add back moved sectors",
+                    )
+                })?;
+
+            if removed_power != added_power {
+                return Err(actor_error!(
+                    illegal_state,
+                    "power changed when compacting partitions: was {:?}, is now {:?}",
+                    removed_power,
+                    added_power
+                ));
+            }
+
+            deadlines
+                .update_deadline(policy, store, params.from_deadline, &from_deadline)
+                .map_err(|e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        format!("failed to update deadline {}", params.from_deadline),
+                    )
+                })?;
+            deadlines.update_deadline(policy, store, params.to_deadline, &from_deadline).map_err(
+                |e| {
+                    e.downcast_default(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        format!("failed to update deadline {}", params.to_deadline),
+                    )
+                },
+            )?;
+
+            state.save_deadlines(store, deadlines).map_err(|e| {
+                e.downcast_default(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    format!(
+                        "failed to save deadline when move_partitions from {} to {}",
+                        params.from_deadline, params.to_deadline
+                    ),
+                )
+            })?;
+
+            Ok(())
+        })?;
 
         Ok(())
     }
