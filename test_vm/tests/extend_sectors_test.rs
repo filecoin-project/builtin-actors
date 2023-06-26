@@ -452,6 +452,7 @@ fn extend_updated_sector_with_claim() {
                 miner_id,
                 deal_ids.clone(),
                 initial_sector_info.expiration,
+                initial_sector_info.seal_proof,
             ),
             ExpectInvocation {
                 from: miner_id,

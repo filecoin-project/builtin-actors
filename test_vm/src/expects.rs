@@ -7,13 +7,15 @@ use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::sector::RegisteredSealProof;
 use fvm_shared::{ActorID, METHOD_SEND};
 use num_traits::Zero;
 
 use fil_actor_account::types::AuthenticateMessageParams;
 use fil_actor_datacap::BalanceParams;
 use fil_actor_market::{
-    ActivateDealsParams, OnMinerSectorsTerminateParams, SectorDeals, VerifyDealsForActivationParams,
+    BatchActivateDealsParams, OnMinerSectorsTerminateParams, SectorDeals,
+    VerifyDealsForActivationParams,
 };
 use fil_actor_miner::ext::verifreg::ClaimID;
 use fil_actor_miner::{IsControllingAddressParam, PowerPair};
@@ -40,14 +42,16 @@ impl Expect {
         from: Address,
         deals: Vec<DealID>,
         sector_expiry: ChainEpoch,
+        sector_type: RegisteredSealProof,
     ) -> ExpectInvocation {
-        let params =
-            IpldBlock::serialize_cbor(&ActivateDealsParams { deal_ids: deals, sector_expiry })
-                .unwrap();
+        let params = IpldBlock::serialize_cbor(&BatchActivateDealsParams {
+            sectors: vec![SectorDeals { deal_ids: deals, sector_expiry, sector_type }],
+        })
+        .unwrap();
         ExpectInvocation {
             from,
             to: STORAGE_MARKET_ACTOR_ADDR,
-            method: fil_actor_market::Method::ActivateDeals as u64,
+            method: fil_actor_market::Method::BatchActivateDeals as u64,
             params: Some(params),
             value: Some(TokenAmount::zero()),
             subinvocs: Some(vec![]),

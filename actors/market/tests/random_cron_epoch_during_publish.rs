@@ -3,7 +3,6 @@
 
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::error::ExitCode;
@@ -135,10 +134,8 @@ fn activation_after_deal_start_epoch_but_before_it_is_processed_fails() {
     let curr_epoch = START_EPOCH + 1;
     rt.set_epoch(curr_epoch);
 
-    expect_abort(
-        ExitCode::USR_ILLEGAL_ARGUMENT,
-        activate_deals_raw(&rt, SECTOR_EXPIRY, PROVIDER_ADDR, curr_epoch, &[deal_id]),
-    );
+    let res = activate_deals(&rt, SECTOR_EXPIRY, PROVIDER_ADDR, curr_epoch, &[deal_id]);
+    assert_eq!(res.activation_results.codes(), vec![ExitCode::USR_ILLEGAL_ARGUMENT]);
     check_state(&rt);
 }
 

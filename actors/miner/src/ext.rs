@@ -21,7 +21,7 @@ pub mod market {
     use super::*;
 
     pub const VERIFY_DEALS_FOR_ACTIVATION_METHOD: u64 = 5;
-    pub const ACTIVATE_DEALS_METHOD: u64 = 6;
+    pub const BATCH_ACTIVATE_DEALS_METHOD: u64 = 6;
     pub const ON_MINER_SECTORS_TERMINATE_METHOD: u64 = 7;
     pub const COMPUTE_DATA_COMMITMENT_METHOD: u64 = 8;
 
@@ -33,9 +33,9 @@ pub mod market {
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple)]
-    pub struct ActivateDealsParams {
-        pub deal_ids: Vec<DealID>,
-        pub sector_expiry: ChainEpoch,
+    #[serde(transparent)]
+    pub struct BatchActivateDealsParams {
+        pub sectors: Vec<SectorDeals>,
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
@@ -58,10 +58,16 @@ pub mod market {
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
-    pub struct ActivateDealsResult {
+    pub struct DealActivation {
         #[serde(with = "bigint_ser")]
         pub nonverified_deal_space: BigInt,
         pub verified_infos: Vec<VerifiedDealInfo>,
+    }
+
+    #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
+    pub struct BatchActivateDealsResult {
+        pub activation_results: BatchReturn,
+        pub activations: Vec<DealActivation>,
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple, Clone, Default)]
@@ -219,10 +225,8 @@ pub mod verifreg {
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-    #[serde(transparent)]
     pub struct ClaimAllocationsReturn {
-        /// claim_results is parallel to ClaimAllocationsParams.allocations with failed allocations
-        /// being represented by claimed_space == BigInt::zero()
-        pub claim_results: Vec<SectorAllocationClaimResult>,
+        pub claim_results: BatchReturn,
+        pub claims: Vec<SectorAllocationClaimResult>,
     }
 }

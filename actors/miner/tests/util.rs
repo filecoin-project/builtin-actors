@@ -2,9 +2,9 @@
 
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
-    ActivateDealsParams, ActivateDealsResult, DealSpaces, Method as MarketMethod,
-    OnMinerSectorsTerminateParams, SectorDealData, SectorDeals, VerifiedDealInfo,
-    VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
+    BatchActivateDealsParams, BatchActivateDealsResult, DealActivation, DealSpaces,
+    Method as MarketMethod, OnMinerSectorsTerminateParams, SectorDealData, SectorDeals,
+    VerifiedDealInfo, VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
 };
 use fil_actor_miner::ext::market::ON_MINER_SECTORS_TERMINATE_METHOD;
 use fil_actor_miner::ext::power::{UPDATE_CLAIMED_POWER_METHOD, UPDATE_PLEDGE_TOTAL_METHOD};
@@ -44,7 +44,7 @@ use fil_actor_miner::ext::verifreg::{
 };
 
 use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime, RuntimePolicy};
-use fil_actors_runtime::{test_utils::*, BatchReturnGen};
+use fil_actors_runtime::{test_utils::*, BatchReturn, BatchReturnGen};
 use fil_actors_runtime::{
     ActorDowncast, ActorError, Array, DealWeight, MessageAccumulator, BURNT_FUNDS_ACTOR_ADDR,
     INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
@@ -1054,26 +1054,26 @@ impl ActorHarness {
         pcs: &[SectorPreCommitOnChainInfo],
     ) {
         let mut valid_pcs = Vec::new();
+
         // claim FIL+ allocations
         let mut sectors_claims: Vec<SectorAllocationClaim> = Vec::new();
+
+        // build expectations per sector
+        let mut sector_activation_params: Vec<SectorDeals> = Vec::new();
+        let mut sector_activations: Vec<DealActivation> = Vec::new();
+        let mut sector_activation_results = BatchReturnGen::new(pcs.len());
 
         for pc in pcs {
             if !pc.info.deal_ids.is_empty() {
                 let deal_spaces = cfg.deal_spaces(&pc.info.sector_number);
-                let activate_params = ActivateDealsParams {
+                let activate_params = SectorDeals {
                     deal_ids: pc.info.deal_ids.clone(),
                     sector_expiry: pc.info.expiration,
+                    sector_type: pc.info.seal_proof,
                 };
+                sector_activation_params.push(activate_params);
 
-                let mut activate_deals_exit = ExitCode::OK;
-                match cfg.verify_deals_exit.get(&pc.info.sector_number) {
-                    Some(exit_code) => {
-                        activate_deals_exit = *exit_code;
-                    }
-                    None => (),
-                }
-
-                let ret = ActivateDealsResult {
+                let ret = DealActivation {
                     nonverified_deal_space: deal_spaces.deal_space,
                     verified_infos: cfg
                         .verified_deal_infos
@@ -1082,14 +1082,18 @@ impl ActorHarness {
                         .unwrap_or_default(),
                 };
 
-                rt.expect_send_simple(
-                    STORAGE_MARKET_ACTOR_ADDR,
-                    MarketMethod::ActivateDeals as u64,
-                    IpldBlock::serialize_cbor(&activate_params).unwrap(),
-                    TokenAmount::zero(),
-                    IpldBlock::serialize_cbor(&ret).unwrap(),
-                    activate_deals_exit,
-                );
+                let mut activate_deals_exit = ExitCode::OK;
+                match cfg.verify_deals_exit.get(&pc.info.sector_number) {
+                    Some(exit_code) => {
+                        activate_deals_exit = *exit_code;
+                        sector_activation_results.add_fail(*exit_code);
+                    }
+                    None => {
+                        sector_activations.push(ret.clone());
+                        sector_activation_results.add_success();
+                    }
+                }
+
                 if ret.verified_infos.is_empty() {
                     if activate_deals_exit == ExitCode::OK {
                         valid_pcs.push(pc);
@@ -1112,8 +1116,36 @@ impl ActorHarness {
                 }
             } else {
                 // empty deal ids
+                sector_activation_params.push(SectorDeals {
+                    deal_ids: vec![],
+                    sector_expiry: pc.info.expiration,
+                    sector_type: RegisteredSealProof::StackedDRG8MiBV1,
+                });
+                sector_activations.push(DealActivation {
+                    nonverified_deal_space: BigInt::zero(),
+                    verified_infos: vec![],
+                });
+                sector_activation_results.add_success();
                 valid_pcs.push(pc);
             }
+        }
+
+        if !sector_activation_params.iter().all(|p| p.deal_ids.is_empty()) {
+            rt.expect_send_simple(
+                STORAGE_MARKET_ACTOR_ADDR,
+                MarketMethod::BatchActivateDeals as u64,
+                IpldBlock::serialize_cbor(&BatchActivateDealsParams {
+                    sectors: sector_activation_params,
+                })
+                .unwrap(),
+                TokenAmount::zero(),
+                IpldBlock::serialize_cbor(&BatchActivateDealsResult {
+                    activations: sector_activations,
+                    activation_results: sector_activation_results.gen(),
+                })
+                .unwrap(),
+                ExitCode::OK,
+            );
         }
 
         if !sectors_claims.is_empty() {
@@ -1124,12 +1156,12 @@ impl ActorHarness {
 
             // TODO handle failures of claim allocations
             // use exit code map for claim allocations in config
-
             let claim_allocs_ret = ClaimAllocationsReturn {
-                claim_results: sectors_claims
+                claims: sectors_claims
                     .iter()
                     .map(|claim| SectorAllocationClaimResult { claimed_space: claim.size.0.into() })
                     .collect(),
+                claim_results: BatchReturn::ok(sectors_claims.len() as u32),
             };
             rt.expect_send_simple(
                 VERIFIED_REGISTRY_ACTOR_ADDR,

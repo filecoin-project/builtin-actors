@@ -4,6 +4,7 @@
 use super::ext::verifreg::AllocationID;
 use cid::Cid;
 use fil_actors_runtime::Array;
+use fil_actors_runtime::BatchReturn;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::strict_bytes;
 use fvm_ipld_encoding::tuple::*;
@@ -97,9 +98,9 @@ pub struct SectorDealData {
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct ActivateDealsParams {
-    pub deal_ids: Vec<DealID>,
-    pub sector_expiry: ChainEpoch,
+#[serde(transparent)]
+pub struct BatchActivateDealsParams {
+    pub sectors: Vec<SectorDeals>,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
@@ -111,10 +112,16 @@ pub struct VerifiedDealInfo {
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct ActivateDealsResult {
+pub struct DealActivation {
     #[serde(with = "bigint_ser")]
     pub nonverified_deal_space: BigInt,
     pub verified_infos: Vec<VerifiedDealInfo>,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+pub struct BatchActivateDealsResult {
+    pub activation_results: BatchReturn,
+    pub activations: Vec<DealActivation>,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
