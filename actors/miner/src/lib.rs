@@ -3027,7 +3027,106 @@ impl Actor {
                 info.control_addresses.iter().chain(&[info.worker, info.owner]),
             )?;
 
+            let store = rt.store();
             let current_deadline = state.deadline_info(policy, rt.curr_epoch());
+            {
+                // Load the target deadline
+                let deadlines_current = state
+                    .load_deadlines(rt.store())
+                    .map_err(|e| e.wrap("failed to load deadlines"))?;
+
+                let dl_current = deadlines_current
+                    .load_deadline(policy, rt.store(), params.from_deadline)
+                    .map_err(|e| {
+                        e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load deadline")
+                    })?;
+
+                let proofs_snapshot =
+                    dl_current.optimistic_proofs_snapshot_amt(store).map_err(|e| {
+                        e.downcast_default(
+                            ExitCode::USR_ILLEGAL_STATE,
+                            "failed to load proofs snapshot",
+                        )
+                    })?;
+
+                let partitions_snapshot =
+                    dl_current.partitions_snapshot_amt(store).map_err(|e| {
+                        e.downcast_default(
+                            ExitCode::USR_ILLEGAL_STATE,
+                            "failed to load partitions snapshot",
+                        )
+                    })?;
+
+                // Load sectors for the dispute.
+                let sectors =
+                    Sectors::load(rt.store(), &dl_current.sectors_snapshot).map_err(|e| {
+                        e.downcast_default(
+                            ExitCode::USR_ILLEGAL_STATE,
+                            "failed to load sectors array",
+                        )
+                    })?;
+
+                proofs_snapshot
+                    .for_each(|_, window_proof| {
+                        let mut all_sectors =
+                            Vec::<BitField>::with_capacity(window_proof.partitions.len() as usize);
+                        let mut all_ignored =
+                            Vec::<BitField>::with_capacity(window_proof.partitions.len() as usize);
+
+                        for partition_idx in window_proof.partitions.iter() {
+                            let partition = partitions_snapshot
+                                .get(partition_idx)
+                                .map_err(|e| {
+                                    e.downcast_default(
+                                        ExitCode::USR_ILLEGAL_STATE,
+                                        "failed to load partitions snapshot for proof",
+                                    )
+                                })?
+                                .ok_or_else(|| {
+                                    actor_error!(
+                                        illegal_state,
+                                        "failed to load partitions snapshot for proof"
+                                    )
+                                })?;
+                            all_sectors.push(partition.sectors.clone());
+                            all_ignored.push(partition.terminated.clone());
+                            all_ignored.push(partition.faults.clone());
+                        }
+
+                        // Load sector infos for proof, substituting a known-good sector for known-faulty sectors.
+                        // Note: this is slightly sub-optimal, loading info for the recovering sectors again after they were already
+                        // loaded above.
+                        let sector_infos = sectors
+                            .load_for_proof(
+                                &BitField::union(&all_sectors),
+                                &BitField::union(&all_ignored),
+                            )
+                            .map_err(|e| {
+                                e.downcast_default(
+                                    ExitCode::USR_ILLEGAL_STATE,
+                                    "failed to load sectors for post verification",
+                                )
+                            })?;
+                        if !verify_windowed_post(
+                            rt,
+                            current_deadline.challenge,
+                            &sector_infos,
+                            window_proof.proofs.clone(),
+                        )
+                        .map_err(|e| e.wrap("window post failed"))?
+                        {
+                            return Err(actor_error!(
+                                illegal_argument,
+                                "invalid post was submitted"
+                            )
+                            .into());
+                        }
+                        Ok(())
+                    })
+                    .map_err(|e| {
+                        e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "while removing partitions")
+                    })?;
+            }
             if !deadline_available_for_compaction(
                 policy,
                 current_deadline.period_start,
@@ -3071,8 +3170,6 @@ impl Actor {
                     "cannot move to a deadline which is further from current deadline"
                 ));
             }
-
-            let store = rt.store();
 
             let from_quant = state.quant_spec_for_deadline(policy, params.from_deadline);
             let to_quant = state.quant_spec_for_deadline(policy, params.to_deadline);
