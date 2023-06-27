@@ -46,8 +46,8 @@ use fil_actor_miner::ext::verifreg::{
 use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime, RuntimePolicy};
 use fil_actors_runtime::{test_utils::*, BatchReturn, BatchReturnGen};
 use fil_actors_runtime::{
-    ActorDowncast, ActorError, Array, DealWeight, MessageAccumulator, BURNT_FUNDS_ACTOR_ADDR,
-    INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    ActorError, Array, DealWeight, MessageAccumulator, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR,
+    REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_amt::Amt;
@@ -1897,9 +1897,8 @@ impl ActorHarness {
         st: &State,
     ) -> HashMap<ChainEpoch, Vec<u64>> {
         let quant = st.quant_spec_every_deadline(&rt.policy);
-        let queue = BitFieldQueue::new(&rt.store, &st.pre_committed_sectors_cleanup, quant)
-            .map_err(|e| e.downcast_wrap("failed to load pre-commit clean up queue"))
-            .unwrap();
+        let queue =
+            BitFieldQueue::new(&rt.store, &st.pre_committed_sectors_cleanup, quant).unwrap();
         let mut expirations: HashMap<ChainEpoch, Vec<u64>> = HashMap::new();
         queue
             .amt

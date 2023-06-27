@@ -52,9 +52,7 @@ fn fail_if_all_declared_sectors_are_not_in_the_partition() {
 
     let err: ActorError = partition
         .record_skipped_faults(&store, &sector_arr, SECTOR_SIZE, QUANT_SPEC, EXP, &skipped)
-        .unwrap_err()
-        .downcast()
-        .unwrap();
+        .unwrap_err();
     assert_eq!(ExitCode::USR_ILLEGAL_ARGUMENT, err.exit_code());
 }
 
