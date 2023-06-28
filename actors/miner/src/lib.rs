@@ -3000,7 +3000,6 @@ impl Actor {
         rt: &impl Runtime,
         mut params: MovePartitionsParams,
     ) -> Result<(), ActorError> {
-        
         if params.from_deadline == params.to_deadline {
             return Err(actor_error!(illegal_argument, "from_deadline == to_deadline"));
         }
@@ -3015,8 +3014,6 @@ impl Actor {
                 params.to_deadline
             ));
         }
-
-        let partitions = &mut params.partitions;
 
         rt.transaction(|state: &mut State, rt| {
             let info = get_miner_info(rt.store(), state)?;
@@ -3196,6 +3193,7 @@ impl Actor {
                     )
                 })?;
 
+            let partitions = &mut params.partitions;
             if partitions.len() == 0 {
                 let partitions_amt = from_deadline.partitions_amt(rt.store()).map_err(|e| {
                     e.downcast_default(
