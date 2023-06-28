@@ -71,11 +71,9 @@ pub struct PublishStorageDealsReturn {
     pub valid_deals: BitField,
 }
 
-// Changed since V2:
-// - Array of Sectors rather than just one
-// - Removed SectorStart
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 pub struct VerifyDealsForActivationParams {
+    /// Deals to verify, grouped by sector.
     pub sectors: Vec<SectorDeals>,
 }
 
@@ -100,9 +98,11 @@ pub struct SectorDealData {
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 #[serde(transparent)]
 pub struct BatchActivateDealsParams {
+    /// Deals to activate, grouped by sector.
     pub sectors: Vec<SectorDeals>,
 }
 
+// Information about a verified deal that has been activated.
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 pub struct VerifiedDealInfo {
     pub client: ActorID,
@@ -111,16 +111,21 @@ pub struct VerifiedDealInfo {
     pub size: PaddedPieceSize,
 }
 
+// Information about a sector-grouping of deals that have been activated.
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 pub struct DealActivation {
+    /// The total size of the non-verified deals activated.
     #[serde(with = "bigint_ser")]
     pub nonverified_deal_space: BigInt,
+    /// Information about each verified deal activated.
     pub verified_infos: Vec<VerifiedDealInfo>,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 pub struct BatchActivateDealsResult {
+    /// Status of each sector grouping of deals.
     pub activation_results: BatchReturn,
+    /// Activation information for the sector groups that were activated.
     pub activations: Vec<DealActivation>,
 }
 
