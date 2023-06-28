@@ -3023,19 +3023,38 @@ impl Actor {
         rt.transaction(|state: &mut State, rt| {
             let info = get_miner_info(rt.store(), state)?;
 
-            rt.validate_immediate_caller_is(
-                info.control_addresses.iter().chain(&[info.worker, info.owner]),
-            )?;
+            rt.validate_immediate_caller_is(&[info.worker, info.owner])?;
 
             let store = rt.store();
             let current_deadline = state.deadline_info(policy, rt.curr_epoch());
-            {
-                // Load the target deadline
-                let deadlines_current = state
-                    .load_deadlines(rt.store())
-                    .map_err(|e| e.wrap("failed to load deadlines"))?;
+            let mut deadlines =
+                state.load_deadlines(store).map_err(|e| e.wrap("failed to load deadlines"))?;
 
-                let dl_current = deadlines_current
+            // only try to do synchronous Window Post verification if from_deadline doesn't satisfy deadline_available_for_compaction
+            if !deadline_available_for_compaction(
+                policy,
+                current_deadline.period_start,
+                params.from_deadline,
+                rt.curr_epoch(),
+            ) {
+                // the heavy path: try to do synchronous Window Post verification
+                
+                // current deadline must be in the dispute window to satisfy the condition of synchronous Window POST verification
+                if !deadline_available_for_optimistic_post_dispute(
+                    policy,
+                    current_deadline.period_start,
+                    params.from_deadline,
+                    rt.curr_epoch(),
+                ) {
+                    return Err(actor_error!(
+                        forbidden,
+                        "cannot move from deadline {} when !deadline_available_for_compaction && !deadline_available_for_optimistic_post_dispute",
+                        params.from_deadline
+                    ));
+                }
+
+
+                let dl_current = deadlines
                     .load_deadline(policy, rt.store(), params.from_deadline)
                     .map_err(|e| {
                         e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load deadline")
@@ -3090,7 +3109,12 @@ impl Actor {
                                 })?;
                             all_sectors.push(partition.sectors.clone());
                             all_ignored.push(partition.terminated.clone());
-                            all_ignored.push(partition.faults.clone());
+                            // fail early since remove_partitions will fail when there're faults anyway.
+                            if !partition.faults.is_empty() {
+                                return Err(anyhow::anyhow!("unable to do synchronous Window POST verification while there're faults in from deadline {}",
+                                    params.from_deadline
+                                ));
+                            }
                         }
 
                         // Load sector infos for proof, substituting a known-good sector for known-faulty sectors.
@@ -3127,21 +3151,6 @@ impl Actor {
                         e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "while removing partitions")
                     })?;
             }
-            if !deadline_available_for_compaction(
-                policy,
-                current_deadline.period_start,
-                params.from_deadline,
-                rt.curr_epoch(),
-            ) {
-                return Err(actor_error!(
-                    forbidden,
-                    "cannot move from deadline {} during its challenge window, \
-                        or the prior challenge window,
-                        or before {} epochs have passed since its last challenge window ended",
-                    params.from_deadline,
-                    policy.wpost_dispute_window
-                ));
-            }
 
             if !deadline_available_for_compaction(
                 policy,
@@ -3173,8 +3182,6 @@ impl Actor {
 
             let from_quant = state.quant_spec_for_deadline(policy, params.from_deadline);
             let to_quant = state.quant_spec_for_deadline(policy, params.to_deadline);
-            let mut deadlines =
-                state.load_deadlines(store).map_err(|e| e.wrap("failed to load deadlines"))?;
 
             let mut from_deadline =
                 deadlines.load_deadline(policy, store, params.from_deadline).map_err(|e| {
