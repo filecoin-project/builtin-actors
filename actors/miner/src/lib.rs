@@ -3000,10 +3000,11 @@ impl Actor {
         rt: &impl Runtime,
         mut params: MovePartitionsParams,
     ) -> Result<(), ActorError> {
-        let policy = rt.policy();
+        
         if params.from_deadline == params.to_deadline {
             return Err(actor_error!(illegal_argument, "from_deadline == to_deadline"));
         }
+        let policy = rt.policy();
         if params.from_deadline >= policy.wpost_period_deadlines
             || params.to_deadline >= policy.wpost_period_deadlines
         {
