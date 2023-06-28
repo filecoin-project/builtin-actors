@@ -130,7 +130,7 @@ pub fn deadline_available_for_compaction(
 
 // the distance between from_deadline and to_deadline clockwise in deadline unit.
 fn deadline_distance(policy: &Policy, from_deadline: u64, to_deadline: u64) -> u64 {
-    if to_deadline > from_deadline {
+    if to_deadline >= from_deadline {
         to_deadline - from_deadline
     } else {
         policy.wpost_period_deadlines - from_deadline + to_deadline
