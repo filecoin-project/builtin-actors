@@ -3010,12 +3010,9 @@ impl Actor {
         {
             return Err(actor_error!(
                 illegal_argument,
-                "invalid deadline {}",
-                if params.from_deadline >= policy.wpost_period_deadlines {
-                    params.from_deadline
-                } else {
-                    params.to_deadline
-                }
+                "invalid param, from_deadline: {}, to_deadline: {}",
+                params.from_deadline,
+                params.to_deadline
             ));
         }
 
