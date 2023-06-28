@@ -3193,7 +3193,7 @@ impl Actor {
                 })?;
 
             let partitions = &mut params.partitions;
-            if partitions.len() == 0 {
+            if partitions.is_empty() {
                 let partitions_amt = from_deadline.partitions_amt(rt.store()).map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
