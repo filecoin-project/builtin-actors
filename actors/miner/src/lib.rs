@@ -3033,7 +3033,6 @@ impl Actor {
                 rt.curr_epoch(),
             ) {
                 // the heavy path: try to do synchronous Window Post verification
-                
                 // current deadline must be in the dispute window to satisfy the condition of synchronous Window POST verification
                 if !deadline_available_for_optimistic_post_dispute(
                     policy,
