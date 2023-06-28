@@ -3263,7 +3263,7 @@ impl Actor {
                         format!("failed to update deadline {}", params.from_deadline),
                     )
                 })?;
-            deadlines.update_deadline(policy, store, params.to_deadline, &from_deadline).map_err(
+            deadlines.update_deadline(policy, store, params.to_deadline, &to_deadline).map_err(
                 |e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
