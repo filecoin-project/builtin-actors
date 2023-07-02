@@ -530,9 +530,10 @@ impl Actor {
         Ok(VerifyDealsForActivationReturn { sectors: sectors_data })
     }
 
-    /// Activate a set of deals, returning the deal space and extra info for sectors containing
-    /// verified deals. Sectors are activated in parameter-defined order and can fail independently of
-    /// each other with the responsible ExitCode recorded in a BatchReturn.
+    /// Activate a set of deals grouped by sector, returning the size and
+    /// extra info about verified deals.
+    /// Sectors' deals are activated in parameter-defined order.
+    /// Each sector's deals are activated or fail as a group, but independently of other sectors.
     fn batch_activate_deals(
         rt: &impl Runtime,
         params: BatchActivateDealsParams,

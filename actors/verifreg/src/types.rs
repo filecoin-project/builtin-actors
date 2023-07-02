@@ -133,6 +133,7 @@ pub struct SectorAllocationClaim {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ClaimAllocationsParams {
     pub allocations: Vec<SectorAllocationClaim>,
+    // Whether to abort entirely if any claim fails.
     pub all_or_nothing: bool,
 }
 
@@ -145,7 +146,9 @@ pub struct SectorAllocationClaimResult {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ClaimAllocationsReturn {
+    // Success/failure indication for each claim.
     pub claim_results: BatchReturn,
+    // The claimed space for each successful claim, in order.
     pub claims: Vec<SectorAllocationClaimResult>,
 }
 

@@ -366,10 +366,9 @@ impl Actor {
     /// Called by storage provider actor to claim allocations for data provably committed to storage.
     /// For each allocation claim, the registry checks that the provided piece CID
     /// and size match that of the allocation.
-    /// Returns a vec of claimed spaces parallel (with same length and corresponding indices) to
-    /// the requested allocations. When `all_or_nothing` is false, failed claims are represented by
-    /// DataCap::zero() entry in the result vec. When `all_or_nothing` is enabled, any failure to
-    /// claim results in the entire function returning an error.
+    /// Returns an indicator of success for each claim, and the size of each successful claim.
+    /// When `all_or_nothing` is enabled, any failure to claim results in the entire
+    /// method returning an error.
     pub fn claim_allocations(
         rt: &impl Runtime,
         params: ClaimAllocationsParams,
