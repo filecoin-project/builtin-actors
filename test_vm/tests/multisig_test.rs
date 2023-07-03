@@ -32,7 +32,7 @@ fn proposal_hash() {
     assert_invariants(&v)
 }
 
-fn proposal_hash_test<BS: Blockstore>(v: &dyn VM<BS>, addrs: &[Address]) -> TokenAmount {
+fn proposal_hash_test<BS: Blockstore>(v: &dyn VM, addrs: &[Address]) -> TokenAmount {
     let alice = addrs[0];
     let bob = addrs[1];
     let msig_addr = create_msig(v, addrs, 2);
@@ -186,7 +186,7 @@ fn swap_self_1_of_2() {
     swap_self_1_of_2_test(&v);
 }
 
-fn swap_self_1_of_2_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn swap_self_1_of_2_test<BS: Blockstore>(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let (alice, bob, chuck) = (addrs[0], addrs[1], addrs[2]);
     let msig_addr = create_msig(v, &[alice, bob], 1);
@@ -218,7 +218,7 @@ fn swap_self_2_of_3() {
     swap_self_2_of_3_test(&v);
 }
 
-fn swap_self_2_of_3_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn swap_self_2_of_3_test<BS: Blockstore>(v: &dyn VM) {
     let addrs = create_accounts(v, 4, &TokenAmount::from_whole(10_000));
     let (alice, bob, chuck, dinesh) = (addrs[0], addrs[1], addrs[2], addrs[3]);
 
@@ -289,7 +289,7 @@ fn swap_self_2_of_3_test<BS: Blockstore>(v: &dyn VM<BS>) {
     assert_invariants(v)
 }
 
-fn create_msig<BS: Blockstore>(v: &dyn VM<BS>, signers: &[Address], threshold: u64) -> Address {
+fn create_msig<BS: Blockstore>(v: &dyn VM, signers: &[Address], threshold: u64) -> Address {
     assert!(!signers.is_empty());
     let msig_ctor_params = serialize(
         &fil_actor_multisig::ConstructorParams {
@@ -318,7 +318,7 @@ fn create_msig<BS: Blockstore>(v: &dyn VM<BS>, signers: &[Address], threshold: u
 }
 
 fn check_txs<BS: Blockstore>(
-    v: &dyn VM<BS>,
+    v: &dyn VM,
     msig_addr: Address,
     mut expect_txns: Vec<(TxnID, Transaction)>,
 ) {

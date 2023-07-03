@@ -72,7 +72,7 @@ fn replica_update_full_path_success(v2: bool) {
 
 #[allow(clippy::too_many_arguments)]
 fn replica_update_full_path_success_test<BS: Blockstore>(
-    v: &dyn VM<BS>,
+    v: &dyn VM,
     sector_info: SectorOnChainInfo,
     miner_id: Address,
     worker: Address,
@@ -148,7 +148,7 @@ fn upgrade_and_miss_post(v2: bool) {
 
 #[allow(clippy::too_many_arguments)]
 fn upgrade_and_miss_post_test<BS: Blockstore>(
-    v: &dyn VM<BS>,
+    v: &dyn VM,
     sector_info: SectorOnChainInfo,
     miner_id: Address,
     deadline_index: u64,
@@ -209,7 +209,7 @@ fn prove_replica_update_multi_dline() {
     prove_replica_update_multi_dline_test(&v);
 }
 
-fn prove_replica_update_multi_dline_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn prove_replica_update_multi_dline_test<BS: Blockstore>(v: &dyn VM) {
     let policy = Policy::default();
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(1_000_000));
     let (worker, owner) = (addrs[0], addrs[0]);
@@ -355,7 +355,7 @@ fn immutable_deadline_failure() {
     immutable_deadline_failure_test(&v);
 }
 
-fn immutable_deadline_failure_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn immutable_deadline_failure_test<BS: Blockstore>(v: &dyn VM) {
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -410,7 +410,7 @@ fn unhealthy_sector_failure() {
     unhealthy_sector_failure_test(&v);
 }
 
-fn unhealthy_sector_failure_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn unhealthy_sector_failure_test<BS: Blockstore>(v: &dyn VM) {
     let policy = Policy::default();
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
@@ -469,7 +469,7 @@ fn terminated_sector_failure() {
     terminated_sector_failure_test(&v);
 }
 
-fn terminated_sector_failure_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn terminated_sector_failure_test<BS: Blockstore>(v: &dyn VM) {
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -539,7 +539,7 @@ fn bad_batch_size_failure() {
     bad_batch_size_failure_test(&v);
 }
 
-fn bad_batch_size_failure_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn bad_batch_size_failure_test<BS: Blockstore>(v: &dyn VM) {
     let policy = Policy::default();
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
@@ -600,7 +600,7 @@ fn no_dispute_after_upgrade() {
 }
 
 fn nodispute_after_upgrade_test<BS: Blockstore>(
-    v: &dyn VM<BS>,
+    v: &dyn VM,
     deadline_index: u64,
     worker: Address,
     miner_id: Address,
@@ -636,7 +636,7 @@ fn upgrade_bad_post_dispute() {
 }
 
 fn upgrade_bad_post_dispute_test<BS: Blockstore>(
-    v: &dyn VM<BS>,
+    v: &dyn VM,
     sector_info: SectorOnChainInfo,
     miner_id: Address,
     worker: Address,
@@ -671,7 +671,7 @@ fn bad_post_upgrade_dispute() {
     bad_post_upgrade_dispute_test(&v);
 }
 
-fn bad_post_upgrade_dispute_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn bad_post_upgrade_dispute_test<BS: Blockstore>(v: &dyn VM) {
     let policy = Policy::default();
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
@@ -763,7 +763,7 @@ fn terminate_after_upgrade() {
 }
 
 fn terminate_after_upgrade_test<BS: Blockstore>(
-    v: &dyn VM<BS>,
+    v: &dyn VM,
     sector_info: SectorOnChainInfo,
     worker: Address,
     miner_id: Address,
@@ -835,7 +835,7 @@ fn extend_after_upgrade() {
 
 #[allow(clippy::too_many_arguments)]
 fn extend_after_upgrade_test<BS: Blockstore>(
-    v: &dyn VM<BS>,
+    v: &dyn VM,
     miner_id: Address,
     store: &MemoryBlockstore,
     worker: Address,
@@ -881,7 +881,7 @@ fn wrong_deadline_index_failure() {
     wrong_deadline_index_failure_test(&v);
 }
 
-fn wrong_deadline_index_failure_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn wrong_deadline_index_failure_test<BS: Blockstore>(v: &dyn VM) {
     let policy = Policy::default();
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
@@ -944,7 +944,7 @@ fn wrong_partition_index_failure() {
     wrong_partition_index_failure_test(&v);
 }
 
-fn wrong_partition_index_failure_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn wrong_partition_index_failure_test<BS: Blockstore>(v: &dyn VM) {
     let policy = Policy::default();
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
@@ -1006,7 +1006,7 @@ fn deal_included_in_multiple_sectors_failure() {
     deal_included_in_multiple_sectors_failure_test(&v);
 }
 
-fn deal_included_in_multiple_sectors_failure_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn deal_included_in_multiple_sectors_failure_test<BS: Blockstore>(v: &dyn VM) {
     let policy = Policy::default();
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
@@ -1137,7 +1137,7 @@ fn replica_update_verified_deal() {
     replica_update_verified_deal_test(&v);
 }
 
-fn replica_update_verified_deal_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn replica_update_verified_deal_test<BS: Blockstore>(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(100_000));
     let (worker, owner, client, verifier) = (addrs[0], addrs[0], addrs[1], addrs[2]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -1252,7 +1252,7 @@ fn replica_update_verified_deal_max_term_violated() {
     replica_update_verified_deal_max_term_violated_test(&v);
 }
 
-fn replica_update_verified_deal_max_term_violated_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn replica_update_verified_deal_max_term_violated_test<BS: Blockstore>(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(100_000));
     let (worker, owner, client, verifier) = (addrs[0], addrs[0], addrs[1], addrs[2]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -1397,7 +1397,7 @@ fn create_miner_and_upgrade_sector(
 // - fastforwarding out of the proving period into a new deadline
 // This method assumes that this is a miners first and only sector
 fn create_sector<BS: Blockstore>(
-    v: &dyn VM<BS>,
+    v: &dyn VM,
     worker: Address,
     maddr: Address,
     sector_number: SectorNumber,
@@ -1460,7 +1460,7 @@ fn create_sector<BS: Blockstore>(
 }
 fn create_deals<BS: Blockstore>(
     num_deals: u32,
-    v: &dyn VM<BS>,
+    v: &dyn VM,
     client: Address,
     worker: Address,
     maddr: Address,
@@ -1470,7 +1470,7 @@ fn create_deals<BS: Blockstore>(
 
 fn create_verified_deals<BS: Blockstore>(
     num_deals: u32,
-    v: &dyn VM<BS>,
+    v: &dyn VM,
     client: Address,
     worker: Address,
     maddr: Address,
@@ -1482,7 +1482,7 @@ fn create_verified_deals<BS: Blockstore>(
 #[allow(clippy::too_many_arguments)]
 fn create_deals_frac<BS: Blockstore>(
     num_deals: u32,
-    v: &dyn VM<BS>,
+    v: &dyn VM,
     client: Address,
     worker: Address,
     maddr: Address,

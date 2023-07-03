@@ -56,7 +56,7 @@ fn batch_onboarding(v2: bool) {
     batch_onboarding_test(&v, v2);
 }
 
-pub fn batch_onboarding_test<BS: Blockstore>(v: &dyn VM<BS>, v2: bool) {
+pub fn batch_onboarding_test<BS: Blockstore>(v: &dyn VM, v2: bool) {
     let seal_proof = &RegisteredSealProof::StackedDRG32GiBV1P1;
 
     let mut proven_count = 0;

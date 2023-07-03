@@ -45,21 +45,15 @@ impl Default for DealOptions {
 // A helper for staging and publishing deals.
 // Note that this doesn't check trace expectations,
 // see https://github.com/filecoin-project/builtin-actors/issues/1302.
-pub struct DealBatcher<'vm, BS>
-where
-    BS: Blockstore,
-{
-    v: &'vm dyn VM<BS>,
+pub struct DealBatcher<'vm> {
+    v: &'vm dyn VM,
     deals: Vec<DealProposal>,
     default_options: DealOptions,
     published: bool,
 }
 
-impl<'vm, BS> DealBatcher<'vm, BS>
-where
-    BS: Blockstore,
-{
-    pub fn new(v: &'vm dyn VM<BS>, opts: DealOptions) -> Self {
+impl<'vm> DealBatcher<'vm> {
+    pub fn new(v: &'vm dyn VM, opts: DealOptions) -> Self {
         DealBatcher { v, deals: vec![], default_options: opts, published: false }
     }
 

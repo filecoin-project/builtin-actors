@@ -17,7 +17,7 @@ fn change_owner_success() {
     change_owner_success_test(&v);
 }
 
-fn change_owner_success_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn change_owner_success_test<BS: Blockstore>(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, new_owner, beneficiary) = (addrs[0], addrs[0], addrs[1], addrs[2]);
@@ -58,7 +58,7 @@ fn keep_beneficiary_when_owner_changed() {
     keep_beneficiary_when_owner_changed_test(&v);
 }
 
-fn keep_beneficiary_when_owner_changed_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn keep_beneficiary_when_owner_changed_test<BS: Blockstore>(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, new_owner, beneficiary) = (addrs[0], addrs[0], addrs[1], addrs[2]);
@@ -104,7 +104,7 @@ fn change_owner_fail() {
     change_owner_fail_test(&v);
 }
 
-fn change_owner_fail_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn change_owner_fail_test<BS: Blockstore>(v: &dyn VM) {
     let addrs = create_accounts(v, 4, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, new_owner, addr) = (addrs[0], addrs[0], addrs[1], addrs[2]);

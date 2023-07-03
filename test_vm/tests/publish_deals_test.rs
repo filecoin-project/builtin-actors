@@ -131,7 +131,7 @@ fn psd_mismatched_provider() {
     psd_mismatched_provider_test(&v, a, deal_start);
 }
 
-fn psd_mismatched_provider_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
+fn psd_mismatched_provider_test<BS: Blockstore>(v: &dyn VM, a: Addrs, deal_start: i64) {
     let opts = DealOptions { deal_start, ..DealOptions::default() };
     let mut batcher = DealBatcher::new(v, opts);
 
@@ -157,7 +157,7 @@ fn psd_bad_piece_size() {
     psd_bad_piece_size_test(&v, a, deal_start);
 }
 
-fn psd_bad_piece_size_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
+fn psd_bad_piece_size_test<BS: Blockstore>(v: &dyn VM, a: Addrs, deal_start: i64) {
     let opts = DealOptions { deal_start, ..DealOptions::default() };
     let mut batcher = DealBatcher::new(v, opts.clone());
 
@@ -184,7 +184,7 @@ fn psd_start_time_in_past() {
     psd_start_time_in_past_test(&v, a, deal_start);
 }
 
-fn psd_start_time_in_past_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
+fn psd_start_time_in_past_test<BS: Blockstore>(v: &dyn VM, a: Addrs, deal_start: i64) {
     let opts = DealOptions { deal_start, ..DealOptions::default() };
     let mut batcher = DealBatcher::new(v, opts.clone());
 
@@ -207,7 +207,7 @@ fn psd_client_address_cannot_be_resolved() {
 }
 
 fn psd_client_address_cannot_be_resolved_test<BS: Blockstore>(
-    v: &dyn VM<BS>,
+    v: &dyn VM,
     a: Addrs,
     deal_start: i64,
 ) {
@@ -231,7 +231,7 @@ fn psd_no_client_lockup() {
     psd_no_client_lockup_test(&v, a, deal_start);
 }
 
-fn psd_no_client_lockup_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
+fn psd_no_client_lockup_test<BS: Blockstore>(v: &dyn VM, a: Addrs, deal_start: i64) {
     let opts = DealOptions { deal_start, ..DealOptions::default() };
     let mut batcher = DealBatcher::new(v, opts);
     batcher.stage(a.cheap_client, a.maddr);
@@ -253,7 +253,7 @@ fn psd_not_enough_client_lockup_for_batch() {
 }
 
 fn psd_not_enough_client_lockup_for_batch_test<BS: Blockstore>(
-    v: &dyn VM<BS>,
+    v: &dyn VM,
     a: Addrs,
     deal_start: i64,
 ) {
@@ -293,7 +293,7 @@ fn psd_not_enough_provider_lockup_for_batch() {
 }
 
 fn psd_not_enough_provider_lockup_for_batch_test<BS: Blockstore>(
-    v: &dyn VM<BS>,
+    v: &dyn VM,
     deal_start: i64,
     a: Addrs,
 ) {
@@ -337,7 +337,7 @@ fn psd_duplicate_deal_in_batch() {
     psd_duplicate_deal_in_batch_test(&v, a, deal_start);
 }
 
-fn psd_duplicate_deal_in_batch_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
+fn psd_duplicate_deal_in_batch_test<BS: Blockstore>(v: &dyn VM, a: Addrs, deal_start: i64) {
     let opts = DealOptions { deal_start, ..DealOptions::default() };
     let mut batcher = DealBatcher::new(v, opts);
 
@@ -369,7 +369,7 @@ fn psd_duplicate_deal_in_state() {
     psd_duplicate_deal_in_state_test(&v, a, deal_start);
 }
 
-fn psd_duplicate_deal_in_state_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
+fn psd_duplicate_deal_in_state_test<BS: Blockstore>(v: &dyn VM, a: Addrs, deal_start: i64) {
     let opts = DealOptions { deal_start, ..DealOptions::default() };
     let mut batcher = DealBatcher::new(v, opts.clone());
 
@@ -400,7 +400,7 @@ fn psd_verified_deal_fails_getting_datacap() {
 }
 
 fn psd_verified_deal_fails_getting_datacap_test<BS: Blockstore>(
-    v: &dyn VM<BS>,
+    v: &dyn VM,
     a: Addrs,
     deal_start: i64,
 ) {
@@ -435,11 +435,7 @@ fn psd_random_assortment_of_failures() {
     psd_random_assortment_of_failures_test(&v, a, deal_start);
 }
 
-fn psd_random_assortment_of_failures_test<BS: Blockstore>(
-    v: &dyn VM<BS>,
-    a: Addrs,
-    deal_start: i64,
-) {
+fn psd_random_assortment_of_failures_test<BS: Blockstore>(v: &dyn VM, a: Addrs, deal_start: i64) {
     let opts = DealOptions { deal_start, ..DealOptions::default() };
     let mut batcher = DealBatcher::new(v, opts.clone());
     // Add one lifetime cost to cheap_client's market balance but attempt to make 3 deals
@@ -502,7 +498,7 @@ fn psd_all_deals_are_bad() {
     psd_all_deals_are_bad_test(&v, a, deal_start);
 }
 
-fn psd_all_deals_are_bad_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
+fn psd_all_deals_are_bad_test<BS: Blockstore>(v: &dyn VM, a: Addrs, deal_start: i64) {
     let opts = DealOptions { deal_start, ..DealOptions::default() };
     let mut batcher = DealBatcher::new(v, opts.clone());
     let bad_client = Address::new_id(1000);
@@ -532,7 +528,7 @@ fn psd_bad_sig() {
     psd_bad_sig_test(&v, a, deal_start);
 }
 
-fn psd_bad_sig_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
+fn psd_bad_sig_test<BS: Blockstore>(v: &dyn VM, a: Addrs, deal_start: i64) {
     let DealOptions { price_per_epoch, provider_collateral, client_collateral, .. } =
         DealOptions::default();
     let deal_label = "deal0".to_string();
@@ -610,7 +606,7 @@ fn psd_all_deals_are_good() {
     all_deals_are_good_test(&v, a, deal_start);
 }
 
-fn all_deals_are_good_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
+fn all_deals_are_good_test<BS: Blockstore>(v: &dyn VM, a: Addrs, deal_start: i64) {
     let opts = DealOptions { deal_start, ..DealOptions::default() };
     let mut batcher = DealBatcher::new(v, opts);
 
@@ -636,7 +632,7 @@ fn psd_valid_deals_with_ones_longer_than_540() {
 }
 
 fn psd_valid_deals_with_ones_longer_than_540_test<BS: Blockstore>(
-    v: &dyn VM<BS>,
+    v: &dyn VM,
     a: Addrs,
     deal_start: i64,
 ) {
@@ -670,7 +666,7 @@ fn psd_deal_duration_too_long() {
     psd_deal_duration_too_long_test(&v, a, deal_start);
 }
 
-fn psd_deal_duration_too_long_test<BS: Blockstore>(v: &dyn VM<BS>, a: Addrs, deal_start: i64) {
+fn psd_deal_duration_too_long_test<BS: Blockstore>(v: &dyn VM, a: Addrs, deal_start: i64) {
     let opts = DealOptions { deal_start, ..DealOptions::default() };
     let mut batcher = DealBatcher::new(v, opts.clone());
 

@@ -39,7 +39,7 @@ fn batch_onboarding_deals() {
 }
 
 // Tests batch onboarding of sectors with verified deals.
-pub fn batch_onboarding_deals_test<BS: Blockstore>(v: &dyn VM<BS>) {
+pub fn batch_onboarding_deals_test<BS: Blockstore>(v: &dyn VM) {
     let deal_duration: ChainEpoch = Policy::default().min_sector_expiration;
     let sector_duration: ChainEpoch =
         deal_duration + Policy::default().market_default_allocation_term_buffer;
@@ -140,7 +140,7 @@ pub fn batch_onboarding_deals_test<BS: Blockstore>(v: &dyn VM<BS>) {
 }
 
 fn publish_deals<BS: Blockstore>(
-    v: &dyn VM<BS>,
+    v: &dyn VM,
     client: Address,
     provider: Address,
     worker: Address,
@@ -167,7 +167,7 @@ fn publish_deals<BS: Blockstore>(
 // the information necessary to check expectations of deal activation and FIL+ claims.
 // https://github.com/filecoin-project/builtin-actors/issues/1302
 pub fn prove_commit_aggregate<BS: Blockstore>(
-    v: &dyn VM<BS>,
+    v: &dyn VM,
     worker: &Address,
     maddr: &Address,
     precommits: Vec<SectorPreCommitOnChainInfo>,

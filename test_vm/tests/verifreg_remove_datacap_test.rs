@@ -39,7 +39,7 @@ fn remove_datacap_simple_successful_path() {
     remove_datacap_simple_successful_path_test(&v);
 }
 
-fn remove_datacap_simple_successful_path_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn remove_datacap_simple_successful_path_test<BS: Blockstore>(v: &dyn VM) {
     let addrs = create_accounts(v, 4, &TokenAmount::from_whole(10_000));
     let (verifier1, verifier2, verified_client) = (addrs[0], addrs[1], addrs[2]);
 
@@ -306,7 +306,7 @@ fn remove_datacap_fails_on_verifreg() {
     remove_datacap_fails_on_verifreg_test(&v);
 }
 
-fn remove_datacap_fails_on_verifreg_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn remove_datacap_fails_on_verifreg_test<BS: Blockstore>(v: &dyn VM) {
     let addrs = create_accounts(v, 2, &TokenAmount::from_whole(10_000));
     let (verifier1, verifier2) = (addrs[0], addrs[1]);
 

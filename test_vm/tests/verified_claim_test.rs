@@ -47,7 +47,7 @@ fn verified_claim_scenario() {
     verified_claim_scenario_test(&v);
 }
 
-fn verified_claim_scenario_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn verified_claim_scenario_test<BS: Blockstore>(v: &dyn VM) {
     let addrs = create_accounts(v, 4, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client, verified_client2) =
@@ -344,7 +344,7 @@ fn expired_allocations() {
     expired_allocations_test(&v);
 }
 
-fn expired_allocations_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn expired_allocations_test<BS: Blockstore>(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
@@ -436,7 +436,7 @@ fn deal_passes_claim_fails() {
     deal_passes_claim_fails_test(&v);
 }
 
-fn deal_passes_claim_fails_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn deal_passes_claim_fails_test<BS: Blockstore>(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);

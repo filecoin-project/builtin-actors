@@ -162,7 +162,7 @@ fn submit_post_succeeds() {
 }
 
 fn submit_post_succeeds_test<BS: Blockstore>(
-    v: &dyn VM<BS>,
+    v: &dyn VM,
     miner_info: MinerInfo,
     sector_info: SectorInfo,
 ) {
@@ -193,11 +193,7 @@ fn skip_sector() {
     skip_sector_test(&v, sector_info, miner_info);
 }
 
-fn skip_sector_test<BS: Blockstore>(
-    v: &dyn VM<BS>,
-    sector_info: SectorInfo,
-    miner_info: MinerInfo,
-) {
+fn skip_sector_test<BS: Blockstore>(v: &dyn VM, sector_info: SectorInfo, miner_info: MinerInfo) {
     // submit post, but skip the only sector in it
     let params = SubmitWindowedPoStParams {
         deadline: sector_info.deadline_info.index,
@@ -244,7 +240,7 @@ fn missed_first_post_deadline() {
 }
 
 fn missed_first_post_deadline_test<BS: Blockstore>(
-    v: &dyn VM<BS>,
+    v: &dyn VM,
     sector_info: SectorInfo,
     miner_info: MinerInfo,
 ) {
@@ -310,7 +306,7 @@ fn overdue_precommit() {
     overdue_precommit_test(&v);
 }
 
-fn overdue_precommit_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn overdue_precommit_test<BS: Blockstore>(v: &dyn VM) {
     let policy = &Policy::default();
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -417,7 +413,7 @@ fn aggregate_bad_sector_number() {
     aggregate_bad_sector_number_test(&v);
 }
 
-fn aggregate_bad_sector_number_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn aggregate_bad_sector_number_test<BS: Blockstore>(v: &dyn VM) {
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
@@ -490,7 +486,7 @@ fn aggregate_size_limits() {
     aggregate_size_limits_test(&v);
 }
 
-fn aggregate_size_limits_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn aggregate_size_limits_test<BS: Blockstore>(v: &dyn VM) {
     let oversized_batch = 820;
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -595,7 +591,7 @@ fn aggregate_bad_sender() {
     aggregate_bad_sender_test(&v);
 }
 
-fn aggregate_bad_sender_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn aggregate_bad_sender_test<BS: Blockstore>(v: &dyn VM) {
     let addrs = create_accounts(v, 2, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
@@ -664,7 +660,7 @@ fn aggregate_one_precommit_expires() {
     aggregate_one_precommit_expires_test(&v);
 }
 
-fn aggregate_one_precommit_expires_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn aggregate_one_precommit_expires_test<BS: Blockstore>(v: &dyn VM) {
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);

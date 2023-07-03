@@ -47,7 +47,7 @@ fn extend2_legacy_sector_with_deals() {
 
 #[allow(clippy::too_many_arguments)]
 fn extend<BS: Blockstore>(
-    v: &dyn VM<BS>,
+    v: &dyn VM,
     worker: Address,
     maddr: Address,
     deadline_index: u64,
@@ -122,7 +122,7 @@ fn extend<BS: Blockstore>(
 // TODO: remove usage of _v_concrete which is currently required by mutate_state
 // https://github.com/filecoin-project/builtin-actors/issues/1297
 fn extend_legacy_sector_with_deals_inner<BS: Blockstore>(
-    v: &dyn VM<BS>,
+    v: &dyn VM,
     do_extend2: bool,
     _v_concrete: &TestVM<BS>,
 ) {
@@ -638,7 +638,7 @@ fn commit_sector_with_max_duration_deal() {
     commit_sector_with_max_duration_deal_test(&v);
 }
 
-fn commit_sector_with_max_duration_deal_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn commit_sector_with_max_duration_deal_test<BS: Blockstore>(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);

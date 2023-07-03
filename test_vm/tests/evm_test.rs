@@ -46,7 +46,7 @@ fn evm_call() {
     evm_call_test(&v);
 }
 
-fn evm_call_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn evm_call_test<BS: Blockstore>(v: &dyn VM) {
     let account = create_accounts(v, 1, &TokenAmount::from_whole(10_000))[0];
     let address = id_to_eth(account.id().unwrap());
     let (client, _mock) = Provider::mocked();
@@ -102,7 +102,7 @@ fn evm_create() {
     evm_create_test(&v);
 }
 
-fn evm_create_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn evm_create_test<BS: Blockstore>(v: &dyn VM) {
     let account = create_accounts(v, 1, &TokenAmount::from_whole(10_000))[0];
 
     let address = id_to_eth(account.id().unwrap());
@@ -252,7 +252,7 @@ fn evm_eth_create_external() {
 // Concrete use of TestVM is required here to run `set_actor`
 // Removing it will depend on https://github.com/filecoin-project/builtin-actors/issues/1297
 fn evm_eth_create_external_test<BS: Blockstore>(
-    v: &dyn VM<BS>,
+    v: &dyn VM,
     _v_concrete: &TestVM<MemoryBlockstore>,
 ) {
     // create the EthAccount
@@ -318,7 +318,7 @@ fn evm_empty_initcode() {
     evm_empty_initcode_test(&v);
 }
 
-fn evm_empty_initcode_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn evm_empty_initcode_test<BS: Blockstore>(v: &dyn VM) {
     let account = create_accounts(v, 1, &TokenAmount::from_whole(10_000))[0];
     let create_result = v
         .execute_message(
@@ -346,7 +346,7 @@ fn evm_staticcall() {
 }
 
 #[allow(non_snake_case)]
-fn evm_staticcall_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn evm_staticcall_test<BS: Blockstore>(v: &dyn VM) {
     // test scenarios:
     // one hop:
     // A -> staticcall -> B (read) OK
@@ -503,7 +503,7 @@ fn evm_delegatecall() {
 }
 
 #[allow(non_snake_case)]
-fn evm_delegatecall_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn evm_delegatecall_test<BS: Blockstore>(v: &dyn VM) {
     // test scenarios:
     // one hop:
     // A -> delegatecall -> B (read) OK
@@ -644,7 +644,7 @@ fn evm_staticcall_delegatecall() {
 }
 
 #[allow(non_snake_case)]
-fn evm_staticcall_delegatecall_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn evm_staticcall_delegatecall_test<BS: Blockstore>(v: &dyn VM) {
     // test scenarios:
     // one hop:
     // A -> delegatecall -> B (read) OK
@@ -752,7 +752,7 @@ fn evm_init_revert_data() {
     evm_init_revert_data_test(&v);
 }
 
-fn evm_init_revert_data_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn evm_init_revert_data_test<BS: Blockstore>(v: &dyn VM) {
     let account = create_accounts(v, 1, &TokenAmount::from_whole(10_000))[0];
     let create_result = v
         .execute_message(

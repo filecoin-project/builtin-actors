@@ -10,7 +10,7 @@ use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode, METHOD_SE
 use num_traits::Zero;
 use test_vm::{actor, util::serialize_ok, TestVM, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
 
-fn assert_placeholder_actor<BS: Blockstore>(exp_bal: TokenAmount, v: &dyn VM<BS>, addr: Address) {
+fn assert_placeholder_actor<BS: Blockstore>(exp_bal: TokenAmount, v: &dyn VM, addr: Address) {
     let act = v.actor(&addr).unwrap();
     assert_eq!(EMPTY_ARR_CID, act.head);
     assert_eq!(*PLACEHOLDER_ACTOR_CODE_ID, act.code);

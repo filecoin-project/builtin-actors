@@ -39,7 +39,7 @@ fn terminate_sectors() {
     terminate_sectors_test(&v);
 }
 
-fn terminate_sectors_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn terminate_sectors_test<BS: Blockstore>(v: &dyn VM) {
     let addrs = create_accounts(v, 4, &TokenAmount::from_whole(10_000));
     let (owner, verifier, unverified_client, verified_client) =
         (addrs[0], addrs[1], addrs[2], addrs[3]);

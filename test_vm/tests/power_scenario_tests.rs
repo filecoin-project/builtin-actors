@@ -32,7 +32,7 @@ fn power_create_miner() {
     power_create_miner_test(&v);
 }
 
-fn power_create_miner_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn power_create_miner_test<BS: Blockstore>(v: &dyn VM) {
     let owner = Address::new_bls(&[1; fvm_shared::address::BLS_PUB_LEN]).unwrap();
     v.execute_message(
         &TEST_FAUCET_ADDR,
