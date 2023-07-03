@@ -4,7 +4,6 @@ use fil_actor_miner::Method as MinerMethod;
 use fil_actor_miner::WithdrawBalanceParams as MinerWithdrawBalanceParams;
 use fil_actors_runtime::test_utils::{MARKET_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID};
 use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
-use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -17,6 +16,7 @@ use fvm_shared::METHOD_SEND;
 use test_vm::util::{apply_code, apply_ok, create_accounts, create_miner};
 use test_vm::Actor;
 use test_vm::TestVM;
+use test_vm::VM;
 
 #[cfg(test)]
 mod market_tests {
@@ -25,11 +25,16 @@ mod market_tests {
     #[test]
     fn withdraw_all_funds() {
         let store = MemoryBlockstore::new();
-        let (v, caller) = market_setup(&store);
+        let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+        withdraw_all_funds_test(&v);
+    }
+
+    fn withdraw_all_funds_test(v: &dyn VM) {
+        let caller = market_setup(v);
 
         let three_fil = TokenAmount::from_whole(3);
         assert_add_collateral_and_withdraw(
-            &v,
+            v,
             three_fil.clone(),
             three_fil.clone(),
             three_fil,
@@ -41,13 +46,19 @@ mod market_tests {
     #[test]
     fn withdraw_as_much_as_possible() {
         let store = MemoryBlockstore::new();
-        let (v, caller) = market_setup(&store);
+        let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+
+        withdraw_as_much_as_possible_test(&v);
+    }
+
+    fn withdraw_as_much_as_possible_test(v: &dyn VM) {
+        let caller = market_setup(v);
 
         // Add 2 FIL of collateral and attempt to withdraw 3
         let two_fil = TokenAmount::from_whole(2);
         let three_fil = TokenAmount::from_whole(3);
         assert_add_collateral_and_withdraw(
-            &v,
+            v,
             two_fil.clone(),
             two_fil,
             three_fil,
@@ -59,12 +70,17 @@ mod market_tests {
     #[test]
     fn withdraw_0() {
         let store = MemoryBlockstore::new();
-        let (v, caller) = market_setup(&store);
+        let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+        withdraw_0_test(&v);
+    }
+
+    fn withdraw_0_test(v: &dyn VM) {
+        let caller = market_setup(v);
 
         // Add 0 FIL of collateral and attempt to withdraw 3
         let three_fil = TokenAmount::from_whole(3);
         assert_add_collateral_and_withdraw(
-            &v,
+            v,
             TokenAmount::zero(),
             TokenAmount::zero(),
             three_fil,
@@ -81,11 +97,17 @@ mod miner_tests {
     #[test]
     fn withdraw_all_funds() {
         let store = MemoryBlockstore::new();
-        let (v, _, owner, m_addr) = miner_setup(&store);
+        let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+
+        withdraw_all_funds_test(&v);
+    }
+
+    fn withdraw_all_funds_test(v: &dyn VM) {
+        let (_, owner, m_addr) = miner_setup(v);
 
         let three_fil = TokenAmount::from_whole(3);
         assert_add_collateral_and_withdraw(
-            &v,
+            v,
             three_fil.clone(),
             three_fil.clone(),
             three_fil,
@@ -97,21 +119,29 @@ mod miner_tests {
     #[test]
     fn withdraw_as_much_as_possible() {
         let store = MemoryBlockstore::new();
-        let (v, _, owner, m_addr) = miner_setup(&store);
+        let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+        withdraw_as_much_as_possible_test(&v);
+    }
 
+    fn withdraw_as_much_as_possible_test(v: &dyn VM) {
+        let (_, owner, m_addr) = miner_setup(v);
         let two_fil = TokenAmount::from_whole(2);
         let three_fil = TokenAmount::from_whole(3);
-        assert_add_collateral_and_withdraw(&v, two_fil.clone(), two_fil, three_fil, m_addr, owner);
+        assert_add_collateral_and_withdraw(v, two_fil.clone(), two_fil, three_fil, m_addr, owner);
     }
 
     #[test]
     fn withdraw_0() {
         let store = MemoryBlockstore::new();
-        let (v, _, owner, m_addr) = miner_setup(&store);
+        let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+        withdraw_0_test(&v);
+    }
 
+    fn withdraw_0_test(v: &dyn VM) {
+        let (_, owner, m_addr) = miner_setup(v);
         let three_fil = TokenAmount::from_whole(3);
         assert_add_collateral_and_withdraw(
-            &v,
+            v,
             TokenAmount::zero(),
             TokenAmount::zero(),
             three_fil,
@@ -123,14 +153,18 @@ mod miner_tests {
     #[test]
     fn withdraw_from_non_owner_address_fails() {
         let store = MemoryBlockstore::new();
-        let (v, worker, _, m_addr) = miner_setup(&store);
+        let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+        withdraw_from_non_owner_address_fails_test(&v)
+    }
 
+    fn withdraw_from_non_owner_address_fails_test(v: &dyn VM) {
+        let (ref worker, _, ref miner) = miner_setup(v);
         let one_fil = TokenAmount::from_whole(1);
         let params = MinerWithdrawBalanceParams { amount_requested: one_fil };
         apply_code(
-            &v,
-            &worker,
-            &m_addr,
+            v,
+            worker,
+            miner,
             &TokenAmount::zero(),
             MinerMethod::WithdrawBalance as u64,
             Some(params),
@@ -143,8 +177,8 @@ mod miner_tests {
 // 1. Add collateral to escrow address
 // 2. Send a withdraw message attempting to remove `requested` funds
 // 3. Assert correct return value and actor balance transfer
-fn assert_add_collateral_and_withdraw<BS: Blockstore>(
-    v: &TestVM<BS>,
+fn assert_add_collateral_and_withdraw(
+    v: &dyn VM,
     collateral: TokenAmount,
     expected_withdrawn: TokenAmount,
     requested: TokenAmount,
@@ -220,34 +254,29 @@ fn assert_add_collateral_and_withdraw<BS: Blockstore>(
     assert_eq!(caller_initial_balance, c.balance);
 }
 
-fn require_actor<BS: Blockstore>(v: &TestVM<BS>, addr: Address) -> Actor {
-    v.get_actor(&addr).unwrap()
+fn require_actor(v: &dyn VM, addr: Address) -> Actor {
+    v.actor(&addr).unwrap()
 }
 
-fn market_setup(store: &'_ MemoryBlockstore) -> (TestVM<MemoryBlockstore>, Address) {
-    let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
+fn market_setup(v: &dyn VM) -> Address {
     let initial_balance = TokenAmount::from_whole(6);
-    let addrs = create_accounts(&v, 1, &initial_balance);
-    let caller = addrs[0];
-    (v, caller)
+    let addrs = create_accounts(v, 1, &initial_balance);
+    addrs[0]
 }
 
-fn miner_setup(
-    store: &'_ MemoryBlockstore,
-) -> (TestVM<MemoryBlockstore>, Address, Address, Address) {
-    let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
+fn miner_setup(v: &dyn VM) -> (Address, Address, Address) {
     let initial_balance = TokenAmount::from_whole(10_000);
-    let addrs = create_accounts(&v, 2, &initial_balance);
+    let addrs = create_accounts(v, 2, &initial_balance);
     let (worker, owner) = (addrs[0], addrs[1]);
 
     // create miner
     let (m_addr, _) = create_miner(
-        &v,
+        v,
         &owner,
         &worker,
         RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
         &TokenAmount::zero(),
     );
 
-    (v, worker, owner, m_addr)
+    (worker, owner, m_addr)
 }
