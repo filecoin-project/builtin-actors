@@ -55,6 +55,9 @@ use crate::expects::Expect;
 use crate::trace::ExpectInvocation;
 use crate::*;
 
+mod blockstore;
+pub use blockstore::DynBlockstore;
+
 // Generate count addresses by seeding an rng
 pub fn pk_addrs_from(seed: u64, count: u64) -> Vec<Address> {
     let mut seed_arr = [0u8; 32];
@@ -124,7 +127,7 @@ pub fn serialize_ok<S: Serialize>(s: &S) -> IpldBlock {
     IpldBlock::serialize_cbor(s).unwrap().unwrap()
 }
 
-pub fn cron_tick<BS: Blockstore>(v: &dyn VM) {
+pub fn cron_tick(v: &dyn VM) {
     apply_ok(
         v,
         &SYSTEM_ACTOR_ADDR,
@@ -135,7 +138,7 @@ pub fn cron_tick<BS: Blockstore>(v: &dyn VM) {
     );
 }
 
-pub fn create_miner<BS: Blockstore>(
+pub fn create_miner(
     v: &dyn VM,
     owner: &Address,
     worker: &Address,
@@ -169,7 +172,7 @@ pub fn create_miner<BS: Blockstore>(
     (res.id_address, res.robust_address)
 }
 
-pub fn miner_precommit_sector<BS: Blockstore>(
+pub fn miner_precommit_sector(
     v: &dyn VM,
     worker: &Address,
     miner_id: &Address,
@@ -203,10 +206,13 @@ pub fn miner_precommit_sector<BS: Blockstore>(
     );
 
     let state: MinerState = get_state(v, miner_id).unwrap();
-    state.get_precommitted_sector(*v.blockstore(), sector_number).unwrap().unwrap()
+    state
+        .get_precommitted_sector(&DynBlockstore::wrap(v.blockstore()), sector_number)
+        .unwrap()
+        .unwrap()
 }
 
-pub fn miner_prove_sector<BS: Blockstore>(
+pub fn miner_prove_sector(
     v: &dyn VM,
     worker: &Address,
     miner_id: &Address,
@@ -243,7 +249,7 @@ pub struct PrecommitMetadata {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn precommit_sectors_v2<BS: Blockstore>(
+pub fn precommit_sectors_v2(
     v: &dyn VM,
     count: usize,
     batch_size: usize,
@@ -406,7 +412,10 @@ pub fn precommit_sectors_v2<BS: Blockstore>(
     (0..count)
         .map(|i| {
             mstate
-                .get_precommitted_sector(*v.blockstore(), sector_number_base + i as u64)
+                .get_precommitted_sector(
+                    &DynBlockstore::wrap(v.blockstore()),
+                    sector_number_base + i as u64,
+                )
                 .unwrap()
                 .unwrap()
         })
@@ -414,7 +423,7 @@ pub fn precommit_sectors_v2<BS: Blockstore>(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn precommit_sectors<BS: Blockstore>(
+pub fn precommit_sectors(
     v: &dyn VM,
     count: usize,
     batch_size: usize,
@@ -440,7 +449,7 @@ pub fn precommit_sectors<BS: Blockstore>(
     )
 }
 
-pub fn prove_commit_sectors<BS: Blockstore>(
+pub fn prove_commit_sectors(
     v: &dyn VM,
     worker: &Address,
     maddr: &Address,
@@ -491,7 +500,7 @@ pub fn prove_commit_sectors<BS: Blockstore>(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn miner_extend_sector_expiration2<BS: Blockstore>(
+pub fn miner_extend_sector_expiration2(
     v: &dyn VM,
     worker: &Address,
     miner: &Address,
@@ -547,11 +556,7 @@ pub fn miner_extend_sector_expiration2<BS: Blockstore>(
     .matches(v.take_invocations().last().unwrap());
 }
 
-pub fn advance_by_deadline_to_epoch<BS: Blockstore>(
-    v: &dyn VM,
-    maddr: &Address,
-    e: ChainEpoch,
-) -> DeadlineInfo {
+pub fn advance_by_deadline_to_epoch(v: &dyn VM, maddr: &Address, e: ChainEpoch) -> DeadlineInfo {
     // keep advancing until the epoch of interest is within the deadline
     // if e is dline.last() == dline.close -1 cron is not run
     let dline_info = advance_by_deadline(v, maddr, |dline_info| dline_info.close < e);
@@ -559,15 +564,11 @@ pub fn advance_by_deadline_to_epoch<BS: Blockstore>(
     dline_info
 }
 
-pub fn advance_by_deadline_to_index<BS: Blockstore>(
-    v: &dyn VM,
-    maddr: &Address,
-    i: u64,
-) -> DeadlineInfo {
+pub fn advance_by_deadline_to_index(v: &dyn VM, maddr: &Address, i: u64) -> DeadlineInfo {
     advance_by_deadline(v, maddr, |dline_info| dline_info.index != i)
 }
 
-pub fn advance_by_deadline_to_epoch_while_proving<BS: Blockstore>(
+pub fn advance_by_deadline_to_epoch_while_proving(
     v: &dyn VM,
     maddr: &Address,
     worker: &Address,
@@ -591,7 +592,7 @@ pub fn advance_by_deadline_to_epoch_while_proving<BS: Blockstore>(
     }
 }
 
-pub fn advance_to_proving_deadline<BS: Blockstore>(
+pub fn advance_to_proving_deadline(
     v: &dyn VM,
     maddr: &Address,
     s: SectorNumber,
@@ -602,7 +603,7 @@ pub fn advance_to_proving_deadline<BS: Blockstore>(
     (dline_info, p)
 }
 
-fn advance_by_deadline<BS: Blockstore, F>(v: &dyn VM, maddr: &Address, more: F) -> DeadlineInfo
+fn advance_by_deadline<F>(v: &dyn VM, maddr: &Address, more: F) -> DeadlineInfo
 where
     F: Fn(DeadlineInfo) -> bool,
 {
@@ -618,12 +619,12 @@ where
     }
 }
 
-pub fn get_state<T: DeserializeOwned, BS: Blockstore>(v: &dyn VM, a: &Address) -> Option<T> {
+pub fn get_state<T: DeserializeOwned>(v: &dyn VM, a: &Address) -> Option<T> {
     let cid = v.actor_root(a).unwrap();
     v.blockstore().get(&cid).unwrap().map(|slice| fvm_ipld_encoding::from_slice(&slice).unwrap())
 }
 
-pub fn miner_balance<BS: Blockstore>(v: &dyn VM, m: &Address) -> MinerBalances {
+pub fn miner_balance(v: &dyn VM, m: &Address) -> MinerBalances {
     let st: MinerState = get_state(v, m).unwrap();
     MinerBalances {
         available_balance: st.get_available_balance(&v.balance(m)).unwrap(),
@@ -633,28 +634,36 @@ pub fn miner_balance<BS: Blockstore>(v: &dyn VM, m: &Address) -> MinerBalances {
     }
 }
 
-pub fn miner_info<BS: Blockstore>(v: &dyn VM, m: &Address) -> MinerInfo {
+pub fn miner_info(v: &dyn VM, m: &Address) -> MinerInfo {
     let st: MinerState = get_state(v, m).unwrap();
-    v.blockstore().get_cbor(&st.info).unwrap().unwrap()
+    DynBlockstore::wrap(v.blockstore()).get_cbor(&st.info).unwrap().unwrap()
 }
 
-pub fn miner_dline_info<BS: Blockstore>(v: &dyn VM, m: &Address) -> DeadlineInfo {
+pub fn miner_dline_info(v: &dyn VM, m: &Address) -> DeadlineInfo {
     let st: MinerState = get_state(v, m).unwrap();
     new_deadline_info_from_offset_and_epoch(&Policy::default(), st.proving_period_start, v.epoch())
 }
 
-pub fn sector_deadline<BS: Blockstore>(v: &dyn VM, m: &Address, s: SectorNumber) -> (u64, u64) {
+pub fn sector_deadline(v: &dyn VM, m: &Address, s: SectorNumber) -> (u64, u64) {
     let st: MinerState = get_state(v, m).unwrap();
-    st.find_sector(&Policy::default(), *v.blockstore(), s).unwrap()
+    st.find_sector(&Policy::default(), &DynBlockstore::wrap(v.blockstore()), s).unwrap()
 }
 
-pub fn check_sector_active<BS: Blockstore>(v: &dyn VM, m: &Address, s: SectorNumber) -> bool {
+pub fn check_sector_active(v: &dyn VM, m: &Address, s: SectorNumber) -> bool {
     let (d_idx, p_idx) = sector_deadline(v, m, s);
     let st: MinerState = get_state(v, m).unwrap();
-    st.check_sector_active(&Policy::default(), *v.blockstore(), d_idx, p_idx, s, true).unwrap()
+    st.check_sector_active(
+        &Policy::default(),
+        &DynBlockstore::wrap(v.blockstore()),
+        d_idx,
+        p_idx,
+        s,
+        true,
+    )
+    .unwrap()
 }
 
-pub fn check_sector_faulty<BS: Blockstore>(
+pub fn check_sector_faulty(
     v: &dyn VM,
     m: &Address,
     d_idx: u64,
@@ -662,32 +671,32 @@ pub fn check_sector_faulty<BS: Blockstore>(
     s: SectorNumber,
 ) -> bool {
     let st: MinerState = get_state(v, m).unwrap();
-    let bs = *v.blockstore();
+    let bs = &DynBlockstore::wrap(v.blockstore());
     let deadlines = st.load_deadlines(bs).unwrap();
     let deadline = deadlines.load_deadline(&Policy::default(), bs, d_idx).unwrap();
     let partition = deadline.load_partition(bs, p_idx).unwrap();
     partition.faults.get(s)
 }
 
-pub fn deadline_state<BS: Blockstore>(v: &dyn VM, m: &Address, d_idx: u64) -> Deadline {
+pub fn deadline_state(v: &dyn VM, m: &Address, d_idx: u64) -> Deadline {
     let st: MinerState = get_state(v, m).unwrap();
-    let bs = *v.blockstore();
+    let bs = &DynBlockstore::wrap(v.blockstore());
     let deadlines = st.load_deadlines(bs).unwrap();
     deadlines.load_deadline(&Policy::default(), bs, d_idx).unwrap()
 }
 
-pub fn sector_info<BS: Blockstore>(v: &dyn VM, m: &Address, s: SectorNumber) -> SectorOnChainInfo {
+pub fn sector_info(v: &dyn VM, m: &Address, s: SectorNumber) -> SectorOnChainInfo {
     let st: MinerState = get_state(v, m).unwrap();
-    st.get_sector(*v.blockstore(), s).unwrap().unwrap()
+    st.get_sector(&DynBlockstore::wrap(v.blockstore()), s).unwrap().unwrap()
 }
 
-pub fn miner_power<BS: Blockstore>(v: &dyn VM, m: &Address) -> PowerPair {
+pub fn miner_power(v: &dyn VM, m: &Address) -> PowerPair {
     let st: PowerState = get_state(v, &STORAGE_POWER_ACTOR_ADDR).unwrap();
-    let claim = st.get_claim(*v.blockstore(), m).unwrap().unwrap();
+    let claim = st.get_claim(&DynBlockstore::wrap(v.blockstore()), m).unwrap().unwrap();
     PowerPair::new(claim.raw_byte_power, claim.quality_adj_power)
 }
 
-pub fn declare_recovery<BS: Blockstore>(
+pub fn declare_recovery(
     v: &dyn VM,
     worker: &Address,
     maddr: &Address,
@@ -713,7 +722,7 @@ pub fn declare_recovery<BS: Blockstore>(
     );
 }
 
-pub fn submit_windowed_post<BS: Blockstore>(
+pub fn submit_windowed_post(
     v: &dyn VM,
     worker: &Address,
     maddr: &Address,
@@ -758,7 +767,7 @@ pub fn submit_windowed_post<BS: Blockstore>(
     .matches(v.take_invocations().last().unwrap());
 }
 
-pub fn change_beneficiary<BS: Blockstore>(
+pub fn change_beneficiary(
     v: &dyn VM,
     from: &Address,
     maddr: &Address,
@@ -774,25 +783,25 @@ pub fn change_beneficiary<BS: Blockstore>(
     );
 }
 
-pub fn check_invariants<BS: Blockstore>(vm: &dyn VM) -> anyhow::Result<MessageAccumulator> {
+pub fn check_invariants(vm: &dyn VM) -> anyhow::Result<MessageAccumulator> {
     check_state_invariants(
         &vm.actor_manifest(),
         &vm.policy(),
-        Tree::load(*vm.blockstore(), &vm.state_root()).unwrap(),
+        Tree::load(&DynBlockstore::wrap(vm.blockstore()), &vm.state_root()).unwrap(),
         &vm.total_fil(),
         vm.epoch() - 1,
     )
 }
 
-pub fn assert_invariants<BS: Blockstore>(vm: &dyn VM) {
+pub fn assert_invariants(vm: &dyn VM) {
     check_invariants(vm).unwrap().assert_empty()
 }
 
-pub fn expect_invariants<BS: Blockstore>(vm: &dyn VM, expected_patterns: &[Regex]) {
+pub fn expect_invariants(vm: &dyn VM, expected_patterns: &[Regex]) {
     check_invariants(vm).unwrap().assert_expected(expected_patterns)
 }
 
-pub fn get_network_stats<BS: Blockstore>(vm: &dyn VM) -> NetworkStats {
+pub fn get_network_stats(vm: &dyn VM) -> NetworkStats {
     let power_state: PowerState = get_state(vm, &STORAGE_POWER_ACTOR_ADDR).unwrap();
     let reward_state: RewardState = get_state(vm, &REWARD_ACTOR_ADDR).unwrap();
     let market_state: MarketState = get_state(vm, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
@@ -818,11 +827,7 @@ pub fn get_network_stats<BS: Blockstore>(vm: &dyn VM) -> NetworkStats {
     }
 }
 
-pub fn get_beneficiary<BS: Blockstore>(
-    v: &dyn VM,
-    from: &Address,
-    m_addr: &Address,
-) -> GetBeneficiaryReturn {
+pub fn get_beneficiary(v: &dyn VM, from: &Address, m_addr: &Address) -> GetBeneficiaryReturn {
     apply_ok(
         v,
         from,
@@ -835,7 +840,7 @@ pub fn get_beneficiary<BS: Blockstore>(
     .unwrap()
 }
 
-pub fn change_owner_address<BS: Blockstore>(
+pub fn change_owner_address(
     v: &dyn VM,
     from: &Address,
     m_addr: &Address,
@@ -851,7 +856,7 @@ pub fn change_owner_address<BS: Blockstore>(
     );
 }
 
-pub fn withdraw_balance<BS: Blockstore>(
+pub fn withdraw_balance(
     v: &dyn VM,
     from: &Address,
     m_addr: &Address,
@@ -889,7 +894,7 @@ pub fn withdraw_balance<BS: Blockstore>(
     assert_eq!(expect_withdraw_amount, &withdraw_return.amount_withdrawn);
 }
 
-pub fn submit_invalid_post<BS: Blockstore>(
+pub fn submit_invalid_post(
     v: &dyn VM,
     worker: &Address,
     maddr: &Address,
@@ -916,11 +921,7 @@ pub fn submit_invalid_post<BS: Blockstore>(
     );
 }
 
-pub fn verifreg_add_verifier<BS: Blockstore>(
-    v: &dyn VM,
-    verifier: &Address,
-    data_cap: StoragePower,
-) {
+pub fn verifreg_add_verifier(v: &dyn VM, verifier: &Address, data_cap: StoragePower) {
     let add_verifier_params = VerifierParams { address: *verifier, allowance: data_cap };
     // root address is msig, send proposal from root key
     let proposal = ProposeParams {
@@ -959,7 +960,7 @@ pub fn verifreg_add_verifier<BS: Blockstore>(
     .matches(v.take_invocations().last().unwrap());
 }
 
-pub fn verifreg_add_client<BS: Blockstore>(
+pub fn verifreg_add_client(
     v: &dyn VM,
     verifier: &Address,
     client: &Address,
@@ -1008,7 +1009,7 @@ pub fn verifreg_add_client<BS: Blockstore>(
     .matches(v.take_invocations().last().unwrap());
 }
 
-pub fn verifreg_extend_claim_terms<BS: Blockstore>(
+pub fn verifreg_extend_claim_terms(
     v: &dyn VM,
     client: &Address,
     provider: &Address,
@@ -1032,7 +1033,7 @@ pub fn verifreg_extend_claim_terms<BS: Blockstore>(
     );
 }
 
-pub fn verifreg_remove_expired_allocations<BS: Blockstore>(
+pub fn verifreg_remove_expired_allocations(
     v: &dyn VM,
     caller: &Address,
     client: &Address,
@@ -1081,7 +1082,7 @@ pub fn verifreg_remove_expired_allocations<BS: Blockstore>(
     .matches(v.take_invocations().last().unwrap());
 }
 
-pub fn datacap_get_balance<BS: Blockstore>(v: &dyn VM, address: &Address) -> TokenAmount {
+pub fn datacap_get_balance(v: &dyn VM, address: &Address) -> TokenAmount {
     let ret = apply_ok(
         v,
         address,
@@ -1093,7 +1094,7 @@ pub fn datacap_get_balance<BS: Blockstore>(v: &dyn VM, address: &Address) -> Tok
     deserialize(&ret, "balance of return value").unwrap()
 }
 
-pub fn datacap_extend_claim<BS: Blockstore>(
+pub fn datacap_extend_claim(
     v: &dyn VM,
     client: &Address,
     provider: &Address,
@@ -1164,7 +1165,7 @@ pub fn datacap_extend_claim<BS: Blockstore>(
     .matches(v.take_invocations().last().unwrap());
 }
 
-pub fn market_add_balance<BS: Blockstore>(
+pub fn market_add_balance(
     v: &dyn VM,
     sender: &Address,
     beneficiary: &Address,
@@ -1181,7 +1182,7 @@ pub fn market_add_balance<BS: Blockstore>(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn market_publish_deal<BS: Blockstore>(
+pub fn market_publish_deal(
     v: &dyn VM,
     worker: &Address,
     deal_client: &Address,

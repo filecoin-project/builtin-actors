@@ -28,6 +28,7 @@ use test_vm::util::{
     create_miner, cron_tick, expect_invariants, get_state, invariant_failure_patterns,
     market_add_balance, market_publish_deal, miner_precommit_sector, miner_prove_sector,
     sector_deadline, submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
+    DynBlockstore,
 };
 use test_vm::{TestVM, VM};
 
@@ -46,7 +47,7 @@ fn extend2_legacy_sector_with_deals() {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn extend<BS: Blockstore>(
+fn extend(
     v: &dyn VM,
     worker: Address,
     maddr: Address,
@@ -194,7 +195,10 @@ fn extend_legacy_sector_with_deals_inner<BS: Blockstore>(
     // inspect sector info
 
     let miner_state: MinerState = get_state(v, &miner_id).unwrap();
-    let mut sector_info = miner_state.get_sector(*v.blockstore(), sector_number).unwrap().unwrap();
+    let mut sector_info = miner_state
+        .get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number)
+        .unwrap()
+        .unwrap();
     assert_eq!(180 * EPOCHS_IN_DAY, sector_info.expiration - sector_info.activation);
     assert_eq!(StoragePower::zero(), sector_info.deal_weight); // 0 space time
     assert_eq!(
@@ -209,7 +213,8 @@ fn extend_legacy_sector_with_deals_inner<BS: Blockstore>(
 
     // Manually craft state to match legacy sectors
     _v_concrete.mutate_state(&miner_id, |st: &mut MinerState| {
-        let mut sectors = Sectors::load(*v.blockstore(), &st.sectors).unwrap();
+        let store = &DynBlockstore::wrap(v.blockstore());
+        let mut sectors = Sectors::load(store, &st.sectors).unwrap();
         sectors.store(vec![sector_info.clone()]).unwrap();
         st.sectors = sectors.amt.flush().unwrap();
     });
@@ -274,7 +279,10 @@ fn extend_legacy_sector_with_deals_inner<BS: Blockstore>(
     );
 
     let miner_state: MinerState = get_state(v, &miner_id).unwrap();
-    sector_info = miner_state.get_sector(*v.blockstore(), sector_number).unwrap().unwrap();
+    sector_info = miner_state
+        .get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number)
+        .unwrap()
+        .unwrap();
     assert_eq!(180 * 2 * EPOCHS_IN_DAY, sector_info.expiration - sector_info.activation);
     assert_eq!(initial_deal_weight, sector_info.deal_weight); // 0 space time, unchanged
     assert_eq!(&initial_verified_deal_weight / 2, sector_info.verified_deal_weight);
@@ -315,7 +323,10 @@ fn extend_legacy_sector_with_deals_inner<BS: Blockstore>(
     );
 
     let miner_state: MinerState = get_state(v, &miner_id).unwrap();
-    let sector_info = miner_state.get_sector(*v.blockstore(), sector_number).unwrap().unwrap();
+    let sector_info = miner_state
+        .get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number)
+        .unwrap()
+        .unwrap();
     assert_eq!(180 * 3 * EPOCHS_IN_DAY, sector_info.expiration - sector_info.activation);
     // 0 space time, unchanged
     assert_eq!(initial_deal_weight, sector_info.deal_weight);
@@ -638,7 +649,7 @@ fn commit_sector_with_max_duration_deal() {
     commit_sector_with_max_duration_deal_test(&v);
 }
 
-fn commit_sector_with_max_duration_deal_test<BS: Blockstore>(v: &dyn VM) {
+fn commit_sector_with_max_duration_deal_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
@@ -721,6 +732,9 @@ fn commit_sector_with_max_duration_deal_test<BS: Blockstore>(v: &dyn VM) {
     );
     // inspect sector info
     let miner_state: MinerState = get_state(v, &miner_id).unwrap();
-    let sector_info = miner_state.get_sector(*v.blockstore(), sector_number).unwrap().unwrap();
+    let sector_info = miner_state
+        .get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number)
+        .unwrap()
+        .unwrap();
     assert_eq!(deal_lifetime, sector_info.expiration - sector_info.activation);
 }

@@ -1,5 +1,5 @@
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
+use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
@@ -27,6 +27,7 @@ use test_vm::util::{
     advance_by_deadline_to_epoch, advance_to_proving_deadline, apply_code, apply_ok,
     assert_invariants, create_accounts, create_miner, expect_invariants, get_network_stats,
     get_state, invariant_failure_patterns, miner_balance, precommit_sectors, submit_windowed_post,
+    DynBlockstore,
 };
 use test_vm::{TestVM, TEST_VM_RAND_ARRAY, VM};
 
@@ -161,14 +162,11 @@ fn submit_post_succeeds() {
     submit_post_succeeds_test(&v, miner_info, sector_info);
 }
 
-fn submit_post_succeeds_test<BS: Blockstore>(
-    v: &dyn VM,
-    miner_info: MinerInfo,
-    sector_info: SectorInfo,
-) {
+fn submit_post_succeeds_test(v: &dyn VM, miner_info: MinerInfo, sector_info: SectorInfo) {
     // submit post
     let st: MinerState = get_state(v, &miner_info.miner_id).unwrap();
-    let sector = st.get_sector(*v.blockstore(), sector_info.number).unwrap().unwrap();
+    let sector =
+        st.get_sector(&DynBlockstore::wrap(v.blockstore()), sector_info.number).unwrap().unwrap();
     let sector_power = power_for_sector(miner_info.seal_proof.sector_size().unwrap(), &sector);
     submit_windowed_post(
         v,
@@ -193,7 +191,7 @@ fn skip_sector() {
     skip_sector_test(&v, sector_info, miner_info);
 }
 
-fn skip_sector_test<BS: Blockstore>(v: &dyn VM, sector_info: SectorInfo, miner_info: MinerInfo) {
+fn skip_sector_test(v: &dyn VM, sector_info: SectorInfo, miner_info: MinerInfo) {
     // submit post, but skip the only sector in it
     let params = SubmitWindowedPoStParams {
         deadline: sector_info.deadline_info.index,
@@ -239,11 +237,7 @@ fn missed_first_post_deadline() {
     missed_first_post_deadline_test(&v, sector_info, miner_info);
 }
 
-fn missed_first_post_deadline_test<BS: Blockstore>(
-    v: &dyn VM,
-    sector_info: SectorInfo,
-    miner_info: MinerInfo,
-) {
+fn missed_first_post_deadline_test(v: &dyn VM, sector_info: SectorInfo, miner_info: MinerInfo) {
     // move to proving period end
     v.set_epoch(sector_info.deadline_info.last());
 
@@ -306,7 +300,7 @@ fn overdue_precommit() {
     overdue_precommit_test(&v);
 }
 
-fn overdue_precommit_test<BS: Blockstore>(v: &dyn VM) {
+fn overdue_precommit_test(v: &dyn VM) {
     let policy = &Policy::default();
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -413,7 +407,7 @@ fn aggregate_bad_sector_number() {
     aggregate_bad_sector_number_test(&v);
 }
 
-fn aggregate_bad_sector_number_test<BS: Blockstore>(v: &dyn VM) {
+fn aggregate_bad_sector_number_test(v: &dyn VM) {
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
@@ -486,7 +480,7 @@ fn aggregate_size_limits() {
     aggregate_size_limits_test(&v);
 }
 
-fn aggregate_size_limits_test<BS: Blockstore>(v: &dyn VM) {
+fn aggregate_size_limits_test(v: &dyn VM) {
     let oversized_batch = 820;
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -591,7 +585,7 @@ fn aggregate_bad_sender() {
     aggregate_bad_sender_test(&v);
 }
 
-fn aggregate_bad_sender_test<BS: Blockstore>(v: &dyn VM) {
+fn aggregate_bad_sender_test(v: &dyn VM) {
     let addrs = create_accounts(v, 2, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
@@ -660,7 +654,7 @@ fn aggregate_one_precommit_expires() {
     aggregate_one_precommit_expires_test(&v);
 }
 
-fn aggregate_one_precommit_expires_test<BS: Blockstore>(v: &dyn VM) {
+fn aggregate_one_precommit_expires_test(v: &dyn VM) {
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);

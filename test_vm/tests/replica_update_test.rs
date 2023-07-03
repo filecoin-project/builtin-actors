@@ -18,7 +18,7 @@ use fil_actors_runtime::{
     Array, CRON_ACTOR_ADDR, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
+use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::{BigInt, Zero};
@@ -39,6 +39,7 @@ use test_vm::util::{
     get_network_stats, get_state, invariant_failure_patterns, make_bitfield, market_publish_deal,
     miner_balance, miner_power, precommit_sectors, prove_commit_sectors, sector_info,
     submit_invalid_post, submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
+    DynBlockstore,
 };
 use test_vm::TestVM;
 
@@ -71,7 +72,7 @@ fn replica_update_full_path_success(v2: bool) {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn replica_update_full_path_success_test<BS: Blockstore>(
+fn replica_update_full_path_success_test(
     v: &dyn VM,
     sector_info: SectorOnChainInfo,
     miner_id: Address,
@@ -134,7 +135,7 @@ fn upgrade_and_miss_post(v2: bool) {
     let store = &MemoryBlockstore::new();
     let (v, sector_info, worker, miner_id, deadline_index, partition_index, sector_size) =
         create_miner_and_upgrade_sector(store, v2);
-    upgrade_and_miss_post_test::<MemoryBlockstore>(
+    upgrade_and_miss_post_test(
         &v,
         sector_info,
         miner_id,
@@ -147,7 +148,7 @@ fn upgrade_and_miss_post(v2: bool) {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn upgrade_and_miss_post_test<BS: Blockstore>(
+fn upgrade_and_miss_post_test(
     v: &dyn VM,
     sector_info: SectorOnChainInfo,
     miner_id: Address,
@@ -209,7 +210,7 @@ fn prove_replica_update_multi_dline() {
     prove_replica_update_multi_dline_test(&v);
 }
 
-fn prove_replica_update_multi_dline_test<BS: Blockstore>(v: &dyn VM) {
+fn prove_replica_update_multi_dline_test(v: &dyn VM) {
     let policy = Policy::default();
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(1_000_000));
     let (worker, owner) = (addrs[0], addrs[0]);
@@ -355,7 +356,7 @@ fn immutable_deadline_failure() {
     immutable_deadline_failure_test(&v);
 }
 
-fn immutable_deadline_failure_test<BS: Blockstore>(v: &dyn VM) {
+fn immutable_deadline_failure_test(v: &dyn VM) {
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -410,7 +411,7 @@ fn unhealthy_sector_failure() {
     unhealthy_sector_failure_test(&v);
 }
 
-fn unhealthy_sector_failure_test<BS: Blockstore>(v: &dyn VM) {
+fn unhealthy_sector_failure_test(v: &dyn VM) {
     let policy = Policy::default();
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
@@ -469,7 +470,7 @@ fn terminated_sector_failure() {
     terminated_sector_failure_test(&v);
 }
 
-fn terminated_sector_failure_test<BS: Blockstore>(v: &dyn VM) {
+fn terminated_sector_failure_test(v: &dyn VM) {
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -539,7 +540,7 @@ fn bad_batch_size_failure() {
     bad_batch_size_failure_test(&v);
 }
 
-fn bad_batch_size_failure_test<BS: Blockstore>(v: &dyn VM) {
+fn bad_batch_size_failure_test(v: &dyn VM) {
     let policy = Policy::default();
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
@@ -599,7 +600,7 @@ fn no_dispute_after_upgrade() {
     nodispute_after_upgrade_test(&v, deadline_index, worker, miner_id);
 }
 
-fn nodispute_after_upgrade_test<BS: Blockstore>(
+fn nodispute_after_upgrade_test(
     v: &dyn VM,
     deadline_index: u64,
     worker: Address,
@@ -635,7 +636,7 @@ fn upgrade_bad_post_dispute() {
     );
 }
 
-fn upgrade_bad_post_dispute_test<BS: Blockstore>(
+fn upgrade_bad_post_dispute_test(
     v: &dyn VM,
     sector_info: SectorOnChainInfo,
     miner_id: Address,
@@ -671,7 +672,7 @@ fn bad_post_upgrade_dispute() {
     bad_post_upgrade_dispute_test(&v);
 }
 
-fn bad_post_upgrade_dispute_test<BS: Blockstore>(v: &dyn VM) {
+fn bad_post_upgrade_dispute_test(v: &dyn VM) {
     let policy = Policy::default();
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
@@ -762,7 +763,7 @@ fn terminate_after_upgrade() {
     );
 }
 
-fn terminate_after_upgrade_test<BS: Blockstore>(
+fn terminate_after_upgrade_test(
     v: &dyn VM,
     sector_info: SectorOnChainInfo,
     worker: Address,
@@ -822,7 +823,7 @@ fn extend_after_upgrade() {
         st.sectors = sectors.amt.flush().unwrap();
     });
 
-    extend_after_upgrade_test::<MemoryBlockstore>(
+    extend_after_upgrade_test(
         &v,
         miner_id,
         store,
@@ -834,7 +835,7 @@ fn extend_after_upgrade() {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn extend_after_upgrade_test<BS: Blockstore>(
+fn extend_after_upgrade_test(
     v: &dyn VM,
     miner_id: Address,
     store: &MemoryBlockstore,
@@ -881,7 +882,7 @@ fn wrong_deadline_index_failure() {
     wrong_deadline_index_failure_test(&v);
 }
 
-fn wrong_deadline_index_failure_test<BS: Blockstore>(v: &dyn VM) {
+fn wrong_deadline_index_failure_test(v: &dyn VM) {
     let policy = Policy::default();
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
@@ -944,7 +945,7 @@ fn wrong_partition_index_failure() {
     wrong_partition_index_failure_test(&v);
 }
 
-fn wrong_partition_index_failure_test<BS: Blockstore>(v: &dyn VM) {
+fn wrong_partition_index_failure_test(v: &dyn VM) {
     let policy = Policy::default();
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
@@ -1006,7 +1007,7 @@ fn deal_included_in_multiple_sectors_failure() {
     deal_included_in_multiple_sectors_failure_test(&v);
 }
 
-fn deal_included_in_multiple_sectors_failure_test<BS: Blockstore>(v: &dyn VM) {
+fn deal_included_in_multiple_sectors_failure_test(v: &dyn VM) {
     let policy = Policy::default();
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
@@ -1137,7 +1138,7 @@ fn replica_update_verified_deal() {
     replica_update_verified_deal_test(&v);
 }
 
-fn replica_update_verified_deal_test<BS: Blockstore>(v: &dyn VM) {
+fn replica_update_verified_deal_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(100_000));
     let (worker, owner, client, verifier) = (addrs[0], addrs[0], addrs[1], addrs[2]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -1252,7 +1253,7 @@ fn replica_update_verified_deal_max_term_violated() {
     replica_update_verified_deal_max_term_violated_test(&v);
 }
 
-fn replica_update_verified_deal_max_term_violated_test<BS: Blockstore>(v: &dyn VM) {
+fn replica_update_verified_deal_max_term_violated_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(100_000));
     let (worker, owner, client, verifier) = (addrs[0], addrs[0], addrs[1], addrs[2]);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -1396,7 +1397,7 @@ fn create_miner_and_upgrade_sector(
 // - fastforwarding to its Proving period and PoSting it
 // - fastforwarding out of the proving period into a new deadline
 // This method assumes that this is a miners first and only sector
-fn create_sector<BS: Blockstore>(
+fn create_sector(
     v: &dyn VM,
     worker: Address,
     maddr: Address,
@@ -1439,7 +1440,8 @@ fn create_sector<BS: Blockstore>(
     // not active until post
     assert!(!check_sector_active(v, &maddr, sector_number));
     let m_st: MinerState = get_state(v, &maddr).unwrap();
-    let sector = m_st.get_sector(*v.blockstore(), sector_number).unwrap().unwrap();
+    let sector =
+        m_st.get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number).unwrap().unwrap();
     let sector_power = power_for_sector(seal_proof.sector_size().unwrap(), &sector);
     submit_windowed_post(v, &worker, &maddr, dline_info, p_idx, Some(sector_power));
 
@@ -1458,7 +1460,7 @@ fn create_sector<BS: Blockstore>(
 
     (d_idx, p_idx)
 }
-fn create_deals<BS: Blockstore>(
+fn create_deals(
     num_deals: u32,
     v: &dyn VM,
     client: Address,
@@ -1468,7 +1470,7 @@ fn create_deals<BS: Blockstore>(
     create_deals_frac(num_deals, v, client, worker, maddr, 1, false, 180 * EPOCHS_IN_DAY)
 }
 
-fn create_verified_deals<BS: Blockstore>(
+fn create_verified_deals(
     num_deals: u32,
     v: &dyn VM,
     client: Address,
@@ -1480,7 +1482,7 @@ fn create_verified_deals<BS: Blockstore>(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn create_deals_frac<BS: Blockstore>(
+fn create_deals_frac(
     num_deals: u32,
     v: &dyn VM,
     client: Address,

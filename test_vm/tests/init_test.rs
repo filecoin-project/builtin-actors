@@ -5,12 +5,12 @@ use fil_actors_runtime::{
     test_utils::{EAM_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID, PLACEHOLDER_ACTOR_CODE_ID},
     EAM_ACTOR_ADDR, EAM_ACTOR_ID, INIT_ACTOR_ADDR,
 };
-use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
+use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode, METHOD_SEND};
 use num_traits::Zero;
 use test_vm::{actor, util::serialize_ok, TestVM, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
 
-fn assert_placeholder_actor<BS: Blockstore>(exp_bal: TokenAmount, v: &dyn VM, addr: Address) {
+fn assert_placeholder_actor(exp_bal: TokenAmount, v: &dyn VM, addr: Address) {
     let act = v.actor(&addr).unwrap();
     assert_eq!(EMPTY_ARR_CID, act.head);
     assert_eq!(*PLACEHOLDER_ACTOR_CODE_ID, act.code);

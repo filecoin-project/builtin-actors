@@ -190,8 +190,8 @@ impl<'bs, BS> VM for TestVM<'bs, BS>
 where
     BS: Blockstore,
 {
-    fn blockstore(&self) -> Box<&BS> {
-        Box::new(self.store)
+    fn blockstore(&self) -> &dyn Blockstore {
+        self.store
     }
 
     fn epoch(&self) -> ChainEpoch {

@@ -7,7 +7,7 @@ use fil_actor_power::{CreateMinerParams, Method as PowerMethod};
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::make_sealed_cid;
 use fil_actors_runtime::{CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
-use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
+use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::{BytesDe, RawBytes};
 use fvm_shared::address::Address;
 
@@ -32,7 +32,7 @@ fn power_create_miner() {
     power_create_miner_test(&v);
 }
 
-fn power_create_miner_test<BS: Blockstore>(v: &dyn VM) {
+fn power_create_miner_test(v: &dyn VM) {
     let owner = Address::new_bls(&[1; fvm_shared::address::BLS_PUB_LEN]).unwrap();
     v.execute_message(
         &TEST_FAUCET_ADDR,

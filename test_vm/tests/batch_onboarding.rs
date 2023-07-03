@@ -7,7 +7,7 @@ use fil_actors_runtime::runtime::policy_constants::{
     MAX_AGGREGATED_SECTORS, PRE_COMMIT_SECTOR_BATCH_MAX_SIZE,
 };
 use fil_actors_runtime::CRON_ACTOR_ADDR;
-use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
+use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::{BigInt, Zero};
 use fvm_shared::econ::TokenAmount;
@@ -16,7 +16,7 @@ use test_case::test_case;
 use test_vm::util::{
     advance_to_proving_deadline, apply_ok, create_accounts, create_miner, expect_invariants,
     get_network_stats, get_state, invariant_failure_patterns, miner_balance, precommit_sectors_v2,
-    prove_commit_sectors, submit_windowed_post,
+    prove_commit_sectors, submit_windowed_post, DynBlockstore,
 };
 use test_vm::{TestVM, VM};
 
@@ -56,7 +56,7 @@ fn batch_onboarding(v2: bool) {
     batch_onboarding_test(&v, v2);
 }
 
-pub fn batch_onboarding_test<BS: Blockstore>(v: &dyn VM, v2: bool) {
+pub fn batch_onboarding_test(v: &dyn VM, v2: bool) {
     let seal_proof = &RegisteredSealProof::StackedDRG32GiBV1P1;
 
     let mut proven_count = 0;
@@ -132,7 +132,7 @@ pub fn batch_onboarding_test<BS: Blockstore>(v: &dyn VM, v2: bool) {
 
     // submit post
     let st: MinerState = get_state(v, &id_addr).unwrap();
-    let sector = st.get_sector(*v.blockstore(), 0).unwrap().unwrap();
+    let sector = st.get_sector(&DynBlockstore::wrap(v.blockstore()), 0).unwrap().unwrap();
     let mut new_power = power_for_sector(seal_proof.sector_size().unwrap(), &sector);
     new_power.raw *= proven_count;
     new_power.qa *= proven_count;

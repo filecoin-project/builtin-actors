@@ -1,4 +1,4 @@
-use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
+use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PaddedPieceSize;
@@ -27,7 +27,7 @@ fn datacap_transfer() {
     datacap_transfer_test(&v);
 }
 
-fn datacap_transfer_test<BS: Blockstore>(v: &dyn VM) {
+fn datacap_transfer_test(v: &dyn VM) {
     let policy = Policy::default();
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let (client, operator, owner) = (addrs[0], addrs[1], addrs[2]);
@@ -213,7 +213,7 @@ fn call_name_symbol() {
     call_name_symbol_test(&v);
 }
 
-fn call_name_symbol_test<BS: Blockstore>(v: &dyn VM) {
+fn call_name_symbol_test(v: &dyn VM) {
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(10_000));
     let sender = addrs[0];
 
