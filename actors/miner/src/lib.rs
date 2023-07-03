@@ -3048,14 +3048,14 @@ impl Actor {
                 }
 
 
-                let dl_current = deadlines
+                let dl_from = deadlines
                     .load_deadline(policy, rt.store(), params.from_deadline)
                     .map_err(|e| {
                         e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load deadline")
                     })?;
 
                 let proofs_snapshot =
-                    dl_current.optimistic_proofs_snapshot_amt(store).map_err(|e| {
+                    dl_from.optimistic_proofs_snapshot_amt(store).map_err(|e| {
                         e.downcast_default(
                             ExitCode::USR_ILLEGAL_STATE,
                             "failed to load proofs snapshot",
@@ -3063,7 +3063,7 @@ impl Actor {
                     })?;
 
                 let partitions_snapshot =
-                    dl_current.partitions_snapshot_amt(store).map_err(|e| {
+                    dl_from.partitions_snapshot_amt(store).map_err(|e| {
                         e.downcast_default(
                             ExitCode::USR_ILLEGAL_STATE,
                             "failed to load partitions snapshot",
@@ -3072,7 +3072,7 @@ impl Actor {
 
                 // Load sectors for the dispute.
                 let sectors =
-                    Sectors::load(rt.store(), &dl_current.sectors_snapshot).map_err(|e| {
+                    Sectors::load(rt.store(), &dl_from.sectors_snapshot).map_err(|e| {
                         e.downcast_default(
                             ExitCode::USR_ILLEGAL_STATE,
                             "failed to load sectors array",
@@ -3125,9 +3125,18 @@ impl Actor {
                                     "failed to load sectors for post verification",
                                 )
                             })?;
+
+                        // Find the proving period start for the deadline in question.
+                        let mut pp_start = current_deadline.period_start;
+                        if current_deadline.index < params.from_deadline {
+                            pp_start -= policy.wpost_proving_period
+                        }
+                        let target_deadline =
+                            new_deadline_info(policy, pp_start, params.from_deadline, rt.curr_epoch());
+
                         if !verify_windowed_post(
                             rt,
-                            current_deadline.challenge,
+                            target_deadline.challenge,
                             &sector_infos,
                             window_proof.proofs.clone(),
                         )
