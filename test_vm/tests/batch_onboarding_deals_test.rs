@@ -16,7 +16,7 @@ use fil_actor_miner::{
 };
 use fil_actor_miner::{Method as MinerMethod, ProveCommitAggregateParams};
 use fil_actors_runtime::runtime::policy::policy_constants::PRE_COMMIT_CHALLENGE_DELAY;
-use fil_actors_runtime::runtime::{Policy, Primitives};
+use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
 use test_vm::deals::{DealBatcher, DealOptions};
 use test_vm::util::{
