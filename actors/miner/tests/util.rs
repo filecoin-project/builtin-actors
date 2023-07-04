@@ -25,7 +25,7 @@ use fil_actor_miner::{
     ExpirationQueue, ExpirationSet, ExtendSectorExpiration2Params, ExtendSectorExpirationParams,
     FaultDeclaration, GetAvailableBalanceReturn, GetBeneficiaryReturn, GetControlAddressesReturn,
     GetMultiaddrsReturn, GetPeerIDReturn, Method, MinerConstructorParams as ConstructorParams,
-    MinerInfo, Partition, PendingBeneficiaryChange, PoStPartition, PowerPair,
+    MinerInfo, MovePartitionsParams, Partition, PendingBeneficiaryChange, PoStPartition, PowerPair,
     PreCommitSectorBatchParams, PreCommitSectorBatchParams2, PreCommitSectorParams,
     ProveCommitSectorParams, RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo,
     SectorPreCommitInfo, SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams,
@@ -1470,7 +1470,7 @@ impl ActorHarness {
         )
     }
 
-    fn make_window_post_verify_info(
+    pub fn make_window_post_verify_info(
         &self,
         infos: &[SectorOnChainInfo],
         all_ignored: &BitField,
@@ -1630,7 +1630,12 @@ impl ActorHarness {
         rt.verify();
     }
 
-    fn get_submitted_proof(&self, rt: &MockRuntime, deadline: &Deadline, idx: u64) -> WindowedPoSt {
+    pub fn get_submitted_proof(
+        &self,
+        rt: &MockRuntime,
+        deadline: &Deadline,
+        idx: u64,
+    ) -> WindowedPoSt {
         amt_get::<WindowedPoSt>(rt, &deadline.optimistic_post_submissions_snapshot, idx)
     }
 
@@ -2590,6 +2595,28 @@ impl ActorHarness {
         Ok(())
     }
 
+    pub fn move_partitions(
+        &self,
+        rt: &MockRuntime,
+        from_deadline: u64,
+        to_deadline: u64,
+        partitions: BitField,
+        mut f: impl FnMut(),
+    ) -> Result<(), ActorError> {
+        f();
+
+        let params = MovePartitionsParams { from_deadline, to_deadline, partitions };
+
+        rt.expect_validate_caller_addr(vec![self.worker, self.owner]);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+
+        rt.call::<Actor>(
+            Method::MovePartitions as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )?;
+        rt.verify();
+        Ok(())
+    }
     pub fn get_info(&self, rt: &MockRuntime) -> MinerInfo {
         let state: State = rt.get_state();
         state.get_info(rt.store()).unwrap()
