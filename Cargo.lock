@@ -5085,3 +5085,18 @@ name = "zeroize"
 version = "1.5.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c394b5bd0c6f669e7275d9c20aa90ae064cb22e75a1cad54e1b34088034b149f"
+
+[[patch.unused]]
+name = "frc42_dispatch"
+version = "3.3.0"
+source = "git+https://github.com/helix-onchain/filecoin?branch=alex/update-fvm-ipld#f6c14abec048ab4e8e6e4fa9b2fb62b5fa996772"
+
+[[patch.unused]]
+name = "frc46_token"
+version = "7.0.0"
+source = "git+https://github.com/helix-onchain/filecoin?branch=alex/update-fvm-ipld#f6c14abec048ab4e8e6e4fa9b2fb62b5fa996772"
+
+[[patch.unused]]
+name = "fvm_actor_utils"
+version = "7.0.0"
+source = "git+https://github.com/helix-onchain/filecoin?branch=alex/update-fvm-ipld#f6c14abec048ab4e8e6e4fa9b2fb62b5fa996772"
