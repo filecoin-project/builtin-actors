@@ -31,7 +31,7 @@ multihash = { version = "0.16.1", default-features = false }
 hex = { version = "0.4.3", features = ["serde"] }
 hex-literal = "0.3.4"
 substrate-bn = { version = "0.6.0", default-features = false }
-frc42_dispatch = "3.2.0"
+frc42_dispatch = "3.3.0"
 fil_actors_evm_shared = { version = "12.0.0", path = "shared" }
 
 [dev-dependencies]
