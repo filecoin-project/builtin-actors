@@ -20,7 +20,7 @@ fvm_shared = { version = "3.4.0", default-features = false }
 num-traits = "0.2.14"
 num-derive = "0.3.3"
 serde = { version = "1.0.136", features = ["derive"] }
-cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
+cid = { version = "0.10.1", default-features = false, features = ["serde-codec"] }
 anyhow = "1.0.65"
 fvm_ipld_blockstore = "0.2.0"
 fvm_ipld_encoding = "0.4.0"

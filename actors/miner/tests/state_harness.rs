@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use cid::multihash::Code::Blake2b256;
 use fil_actor_miner::MinerInfo;
 use fil_actor_miner::SectorPreCommitOnChainInfo;
 use fil_actor_miner::VestSpec;
@@ -13,7 +14,6 @@ use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{SectorNumber, SectorSize};
 use fvm_shared::{clock::ChainEpoch, clock::QuantSpec, sector::RegisteredPoStProof};
-use multihash::Code::Blake2b256;
 
 use fil_actors_runtime::test_utils::*;
 

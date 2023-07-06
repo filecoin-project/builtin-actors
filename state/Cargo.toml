@@ -36,7 +36,7 @@ anyhow = "1.0.65"
 bimap = { version = "0.6.2" }
 num-derive = "0.3.3"
 serde = { version = "1.0.136", features = ["derive"] }
-cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
+cid = { version = "0.10.1", default-features = false, features = ["serde-codec"] }
 
 [dev-dependencies]
 
