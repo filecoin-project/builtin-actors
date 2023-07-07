@@ -43,12 +43,12 @@ pub(crate) mod hash_algorithm;
 
 pub(crate) mod empty;
 
+use cid::multihash::Code;
 pub use empty::EMPTY_ARR_CID;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::chainid::ChainID;
 use fvm_shared::event::ActorEvent;
 use fvm_shared::sys::SendFlags;
-use multihash::Code;
 
 /// Runtime is the VM's internal runtime object.
 /// this is everything that is accessible to actors, beyond parameters.
