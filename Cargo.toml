@@ -59,6 +59,17 @@ members = [
 ]
 
 [patch.crates-io]
+cid = { version = "0.10.1", git = "https://github.com/multiformats/rust-cid", rev = "v0.10.1" }
+multihash = { version = "0.18.1", git = "https://github.com/multiformats/rust-multihash", rev = "v0.18.1" }
+fil_actor_bundler = { git = "https://github.com/filecoin-project/builtin-actors-bundler", branch = "synthetic-porep" }
+fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", branch = "synthetic-porep" }
+fvm_sdk = { git = "https://github.com/filecoin-project/ref-fvm", branch = "synthetic-porep" }
+fvm_ipld_bitfield = { git = "https://github.com/filecoin-project/ref-fvm", branch = "synthetic-porep" }
+fvm_ipld_blockstore = { git = "https://github.com/filecoin-project/ref-fvm", branch = "synthetic-porep" }
+fvm_ipld_encoding = { git = "https://github.com/filecoin-project/ref-fvm", branch = "synthetic-porep" }
+frc42_dispatch = { git = "https://github.com/cryptonemo/filecoin", branch = "synthetic-porep" }
+frc46_token = { git = "https://github.com/cryptonemo/filecoin", branch = "synthetic-porep" }
+fvm_actor_utils = { git = "https://github.com/cryptonemo/filecoin", branch = "synthetic-porep" }
 #fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
 #fvm_sdk = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
 #fvm_ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }

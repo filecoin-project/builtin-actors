@@ -1,8 +1,8 @@
-use cid::multihash::Multihash;
 use cid::{Cid, Version};
 use fil_actors_runtime::{actor_error, ActorError};
 use fvm_shared::commcid::{FIL_COMMITMENT_UNSEALED, SHA2_256_TRUNC254_PADDED};
 use fvm_shared::sector::RegisteredSealProof;
+use cid::multihash::Multihash;
 use serde::{Deserialize, Serialize};
 
 /// CompactCommD represents a Cid with compact representation of context dependant zero value
@@ -68,11 +68,16 @@ fn zero_commd(seal_proof: RegisteredSealProof) -> Result<Cid, ActorError> {
     let mut seal_proof = seal_proof;
     seal_proof.update_to_v1();
     let i = match seal_proof {
-        RegisteredSealProof::StackedDRG2KiBV1P1 => 0,
-        RegisteredSealProof::StackedDRG512MiBV1P1 => 1,
-        RegisteredSealProof::StackedDRG8MiBV1P1 => 2,
-        RegisteredSealProof::StackedDRG32GiBV1P1 => 3,
-        RegisteredSealProof::StackedDRG64GiBV1P1 => 4,
+        RegisteredSealProof::StackedDRG2KiBV1P1
+        | RegisteredSealProof::StackedDRG2KiBV1P1_Feat_SyntheticPoRep => 0,
+        RegisteredSealProof::StackedDRG512MiBV1P1
+        | RegisteredSealProof::StackedDRG512MiBV1P1_Feat_SyntheticPoRep => 1,
+        RegisteredSealProof::StackedDRG8MiBV1P1
+        | RegisteredSealProof::StackedDRG8MiBV1P1_Feat_SyntheticPoRep => 2,
+        RegisteredSealProof::StackedDRG32GiBV1P1
+        | RegisteredSealProof::StackedDRG32GiBV1P1_Feat_SyntheticPoRep => 3,
+        RegisteredSealProof::StackedDRG64GiBV1P1
+        | RegisteredSealProof::StackedDRG64GiBV1P1_Feat_SyntheticPoRep => 4,
         _ => {
             return Err(actor_error!(illegal_argument, "unknown SealProof"));
         }

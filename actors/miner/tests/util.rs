@@ -78,11 +78,11 @@ use fvm_shared::sector::{
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_SEND};
 
-use cid::multihash::MultihashDigest;
 use cid::Cid;
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use multihash::derive::Multihash;
+use multihash::MultihashDigest;
 
 use fil_actor_miner::testing::{
     check_deadline_state_invariants, check_state_invariants, DeadlineStateSummary,
@@ -177,7 +177,7 @@ impl ActorHarness {
         let receiver = Address::new_id(RECEIVER_ID);
         let rwd = TokenAmount::from_whole(10);
         let pwr = StoragePower::from(1i128 << 50);
-        let proof_type = RegisteredSealProof::StackedDRG32GiBV1P1;
+        let proof_type = RegisteredSealProof::StackedDRG32GiBV1P1_Feat_SyntheticPoRep;
 
         ActorHarness {
             receiver,

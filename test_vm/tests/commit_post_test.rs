@@ -47,7 +47,7 @@ struct MinerInfo {
 fn setup(store: &'_ MemoryBlockstore) -> (TestVM<MemoryBlockstore>, MinerInfo, SectorInfo) {
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
     let addrs = create_accounts(&v, 1, &TokenAmount::from_whole(10_000));
-    let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
+    let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1_Feat_SyntheticPoRep;
     let (owner, worker) = (addrs[0], addrs[0]);
     let (id_addr, robust_addr) = create_miner(
         &v,
