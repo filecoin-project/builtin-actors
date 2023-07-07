@@ -18,13 +18,13 @@ fil_actors_runtime = { version = "12.0.0", path = "../../runtime"}
 
 anyhow = "1.0.65"
 cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
-frc42_dispatch = "3.2.0"
-frc46_token = "6.0.0"
-fvm_ipld_bitfield = "0.5.4"
-fvm_ipld_blockstore = "0.1.1"
-fvm_ipld_encoding = "0.3.3"
-fvm_ipld_hamt = "0.6.1"
-fvm_shared = { version = "3.2.0", default-features = false }
+frc42_dispatch = { workspace = true }
+frc46_token = { workspace = true }
+fvm_ipld_bitfield = { workspace = true }
+fvm_ipld_blockstore = { workspace = true }
+fvm_ipld_encoding = { workspace = true }
+fvm_ipld_hamt = { workspace = true }
+fvm_shared = { workspace = true }
 integer-encoding = { version = "3.0.3", default-features = false }
 libipld-core = { version = "0.13.1", features = ["serde-codec"] }
 log = "0.4.14"
@@ -37,7 +37,7 @@ fil_actors_runtime = { path = "../../runtime", features = ["test_utils", "sector
 fil_actor_power = { path = "../power" }
 fil_actor_reward = { path = "../reward" }
 fil_actor_verifreg = { path = "../verifreg" }
-fvm_ipld_amt = { version = "0.5.1", features = ["go-interop"] }
+fvm_ipld_amt = { workspace = true }
 multihash = { version = "0.16.1", default-features = false }
 regex = "1"
 itertools = "0.10"
