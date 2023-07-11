@@ -32,8 +32,8 @@ use fvm_shared::sector::{
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum, Response};
 
+use cid::multihash::MultihashDigest;
 use multihash::derive::Multihash;
-use multihash::MultihashDigest;
 
 use rand::prelude::*;
 use serde::Serialize;

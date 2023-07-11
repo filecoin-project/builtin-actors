@@ -15,13 +15,13 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 fil_actors_runtime = { version = "12.0.0", path = "../../runtime" }
-frc42_dispatch = "3.2.0"
-fvm_shared = { version = "3.2.0", default-features = false }
+frc42_dispatch = "3.3.0"
+fvm_shared = { version = "3.4.0", default-features = false }
 fvm_ipld_bitfield = "0.5.4"
-fvm_ipld_amt = { version = "0.5.1", features = ["go-interop"] }
-fvm_ipld_hamt = "0.6.1"
+fvm_ipld_amt = { version = "0.6.0", features = ["go-interop"] }
+fvm_ipld_hamt = "0.7.0"
 serde = { version = "1.0.136", features = ["derive"] }
-cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
+cid = { version = "0.10.1", default-features = false, features = ["serde-codec"] }
 num-traits = "0.2.14"
 num-derive = "0.3.3"
 lazy_static = "1.4.0"
@@ -29,8 +29,8 @@ log = "0.4.14"
 byteorder = "1.4.3"
 anyhow = "1.0.65"
 itertools = "0.10.3"
-fvm_ipld_blockstore = "0.1.1"
-fvm_ipld_encoding = "0.3.3"
+fvm_ipld_blockstore = "0.2.0"
+fvm_ipld_encoding = "0.4.0"
 multihash = { version = "0.16.2", default-features = false }
 
 [dev-dependencies]
@@ -40,8 +40,8 @@ fil_actor_reward = { path = "../reward" }
 fil_actor_power = { path = "../power" }
 fil_actor_market = { path = "../market" }
 rand = "0.8.5"
-cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
-multihash = { version = "0.16.1", default-features = false }
+cid = { version = "0.10.1", default-features = false, features = ["serde-codec"] }
+multihash = { version = "0.18.1", default-features = false }
 test-case = "2.2.1"
 
 [features]

@@ -34,6 +34,7 @@ pub struct Policy {
     /// The period over which all a miner's active sectors will be challenged.
     pub wpost_proving_period: ChainEpoch,
     /// The duration of a deadline's challenge window, the period before a deadline when the challenge is available.
+    /// Notice that the challenge window is assumed to have the same duration as a deadline itself both in FIP and implementation.
     pub wpost_challenge_window: ChainEpoch,
     /// The number of non-overlapping PoSt deadlines in each proving period.
     pub wpost_period_deadlines: u64,
