@@ -122,7 +122,7 @@ pub trait VM {
     fn actor_manifest(&self) -> BiBTreeMap<Cid, Type>;
 
     /// Provides access to VM primitives
-    fn primitives(&self) -> &FakePrimitives;
+    fn primitives(&self) -> &dyn Primitives;
 
     /// Get the current runtime policy
     fn policy(&self) -> Policy;
@@ -326,7 +326,7 @@ where
         self.total_fil.clone()
     }
 
-    fn primitives(&self) -> &FakePrimitives {
+    fn primitives(&self) -> &dyn Primitives {
         &self.primitives
     }
 }
