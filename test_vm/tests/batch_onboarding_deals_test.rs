@@ -1,4 +1,4 @@
-use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
+use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
@@ -16,14 +16,14 @@ use fil_actor_miner::{
 };
 use fil_actor_miner::{Method as MinerMethod, ProveCommitAggregateParams};
 use fil_actors_runtime::runtime::policy::policy_constants::PRE_COMMIT_CHALLENGE_DELAY;
-use fil_actors_runtime::runtime::{Policy, Primitives};
+use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
 use test_vm::deals::{DealBatcher, DealOptions};
 use test_vm::util::{
     advance_to_proving_deadline, apply_ok, bf_all, create_accounts, create_miner,
     get_network_stats, get_state, make_bitfield, market_add_balance, miner_balance,
     precommit_sectors_v2, submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
-    PrecommitMetadata,
+    DynBlockstore, PrecommitMetadata,
 };
 use test_vm::{TestVM, VM};
 
@@ -39,7 +39,7 @@ fn batch_onboarding_deals() {
 }
 
 // Tests batch onboarding of sectors with verified deals.
-pub fn batch_onboarding_deals_test<BS: Blockstore>(v: &dyn VM<BS>) {
+pub fn batch_onboarding_deals_test(v: &dyn VM) {
     let deal_duration: ChainEpoch = Policy::default().min_sector_expiration;
     let sector_duration: ChainEpoch =
         deal_duration + Policy::default().market_default_allocation_term_buffer;
@@ -73,8 +73,9 @@ pub fn batch_onboarding_deals_test<BS: Blockstore>(v: &dyn VM<BS>) {
     let mut market_state: fil_actor_market::State =
         get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
     let deal_keys: Vec<BytesKey> = deals.iter().map(|(id, _)| deal_id_key(*id)).collect();
-    let alloc_ids =
-        market_state.get_pending_deal_allocation_ids(*v.blockstore(), &deal_keys).unwrap();
+    let alloc_ids = market_state
+        .get_pending_deal_allocation_ids(&DynBlockstore::wrap(v.blockstore()), &deal_keys)
+        .unwrap();
     assert_eq!(BATCH_SIZE, alloc_ids.len());
 
     // Associate deals with sectors.
@@ -118,7 +119,8 @@ pub fn batch_onboarding_deals_test<BS: Blockstore>(v: &dyn VM<BS>) {
 
     let sector_size = SEAL_PROOF.sector_size().unwrap();
     let st: MinerState = get_state(v, &miner).unwrap();
-    let sector = st.get_sector(*v.blockstore(), first_sector_no).unwrap().unwrap();
+    let sector =
+        st.get_sector(&DynBlockstore::wrap(v.blockstore()), first_sector_no).unwrap().unwrap();
     let mut expect_new_power = power_for_sector(sector_size, &sector);
     // Confirm the verified deal resulted in QA power.
     assert_eq!(&expect_new_power.raw * 10, expect_new_power.qa);
@@ -139,8 +141,8 @@ pub fn batch_onboarding_deals_test<BS: Blockstore>(v: &dyn VM<BS>) {
     assert!(network_stats.total_pledge_collateral.is_positive());
 }
 
-fn publish_deals<BS: Blockstore>(
-    v: &dyn VM<BS>,
+fn publish_deals(
+    v: &dyn VM,
     client: Address,
     provider: Address,
     worker: Address,
@@ -166,8 +168,8 @@ fn publish_deals<BS: Blockstore>(
 // We can do so by unifying with util::prove_commit_sectors, and plumbing through
 // the information necessary to check expectations of deal activation and FIL+ claims.
 // https://github.com/filecoin-project/builtin-actors/issues/1302
-pub fn prove_commit_aggregate<BS: Blockstore>(
-    v: &dyn VM<BS>,
+pub fn prove_commit_aggregate(
+    v: &dyn VM,
     worker: &Address,
     maddr: &Address,
     precommits: Vec<SectorPreCommitOnChainInfo>,

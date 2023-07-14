@@ -83,9 +83,9 @@ pub mod trace;
 pub mod util;
 
 /// An abstract VM that is injected into integration tests
-pub trait VM<BS: Blockstore> {
+pub trait VM {
     /// Returns the underlying blockstore of the VM
-    fn blockstore(&self) -> Box<&BS>;
+    fn blockstore(&self) -> &dyn Blockstore;
 
     /// Get the state root of the specified actor
     fn actor_root(&self, address: &Address) -> Option<Cid>;
@@ -122,7 +122,7 @@ pub trait VM<BS: Blockstore> {
     fn actor_manifest(&self) -> BiBTreeMap<Cid, Type>;
 
     /// Provides access to VM primitives
-    fn primitives(&self) -> &FakePrimitives;
+    fn primitives(&self) -> &dyn Primitives;
 
     /// Get the current runtime policy
     fn policy(&self) -> Policy;
@@ -186,12 +186,12 @@ pub const FAUCET_ROOT_KEY: &[u8] = &[153; fvm_shared::address::BLS_PUB_LEN];
 pub const TEST_FAUCET_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR + 2);
 pub const FIRST_TEST_USER_ADDR: ActorID = FIRST_NON_SINGLETON_ADDR + 3;
 
-impl<'bs, BS> VM<BS> for TestVM<'bs, BS>
+impl<'bs, BS> VM for TestVM<'bs, BS>
 where
     BS: Blockstore,
 {
-    fn blockstore(&self) -> Box<&BS> {
-        Box::new(self.store)
+    fn blockstore(&self) -> &dyn Blockstore {
+        self.store
     }
 
     fn epoch(&self) -> ChainEpoch {
@@ -326,7 +326,7 @@ where
         self.total_fil.clone()
     }
 
-    fn primitives(&self) -> &FakePrimitives {
+    fn primitives(&self) -> &dyn Primitives {
         &self.primitives
     }
 }

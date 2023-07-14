@@ -1,4 +1,4 @@
-use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
+use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PaddedPieceSize;
@@ -34,6 +34,7 @@ use test_vm::util::{
     market_publish_deal, miner_extend_sector_expiration2, miner_precommit_sector,
     miner_prove_sector, sector_deadline, submit_windowed_post, verifreg_add_client,
     verifreg_add_verifier, verifreg_extend_claim_terms, verifreg_remove_expired_allocations,
+    DynBlockstore,
 };
 use test_vm::{TestVM, VM};
 
@@ -47,7 +48,7 @@ fn verified_claim_scenario() {
     verified_claim_scenario_test(&v);
 }
 
-fn verified_claim_scenario_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn verified_claim_scenario_test(v: &dyn VM) {
     let addrs = create_accounts(v, 4, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client, verified_client2) =
@@ -114,7 +115,10 @@ fn verified_claim_scenario_test<BS: Blockstore>(v: &dyn VM<BS>) {
 
     // Verify sector info
     let miner_state: MinerState = get_state(v, &miner_id).unwrap();
-    let sector_info = miner_state.get_sector(*v.blockstore(), sector_number).unwrap().unwrap();
+    let sector_info = miner_state
+        .get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number)
+        .unwrap()
+        .unwrap();
     assert_eq!(sector_term, sector_info.expiration - sector_info.activation);
     assert_eq!(DealWeight::zero(), sector_info.deal_weight);
     // Verified weight is sector term * 32 GiB, using simple QAP
@@ -123,7 +127,8 @@ fn verified_claim_scenario_test<BS: Blockstore>(v: &dyn VM<BS>) {
 
     // Verify deal state.
     let market_state: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
-    let deal_states = DealMetaArray::load(&market_state.states, *v.blockstore()).unwrap();
+    let store = DynBlockstore::wrap(v.blockstore());
+    let deal_states = DealMetaArray::load(&market_state.states, &store).unwrap();
     let deal_state = deal_states.get(deals[0]).unwrap().unwrap();
     let claim_id = deal_state.verified_claim;
     assert_ne!(0, claim_id);
@@ -132,17 +137,26 @@ fn verified_claim_scenario_test<BS: Blockstore>(v: &dyn VM<BS>) {
     let datacap_state: DatacapState = get_state(v, &DATACAP_TOKEN_ACTOR_ADDR).unwrap();
     assert_eq!(
         TokenAmount::from_whole(datacap.clone()) - TokenAmount::from_whole(deal_size), // Spent deal size
-        datacap_state.token.get_balance(*v.blockstore(), verified_client.id().unwrap()).unwrap()
+        datacap_state
+            .token
+            .get_balance(&DynBlockstore::wrap(v.blockstore()), verified_client.id().unwrap())
+            .unwrap()
     );
     assert_eq!(
         TokenAmount::from_whole(datacap.clone()), // Nothing spent
-        datacap_state.token.get_balance(*v.blockstore(), verified_client2.id().unwrap()).unwrap()
+        datacap_state
+            .token
+            .get_balance(&DynBlockstore::wrap(v.blockstore()), verified_client2.id().unwrap())
+            .unwrap()
     );
     assert_eq!(
         TokenAmount::zero(), // Burnt when the allocation was claimed
         datacap_state
             .token
-            .get_balance(*v.blockstore(), VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap())
+            .get_balance(
+                &DynBlockstore::wrap(v.blockstore()),
+                VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap()
+            )
             .unwrap()
     );
     assert_eq!(
@@ -152,7 +166,8 @@ fn verified_claim_scenario_test<BS: Blockstore>(v: &dyn VM<BS>) {
 
     // Verify claim state
     let verifreg_state: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
-    let mut claims = verifreg_state.load_claims(*v.blockstore()).unwrap();
+    let store = DynBlockstore::wrap(v.blockstore());
+    let mut claims = verifreg_state.load_claims(&store).unwrap();
     let claim = claims.get(miner_id.id().unwrap(), claim_id).unwrap().unwrap();
     assert_eq!(sector_number, claim.sector);
     assert_eq!(
@@ -185,7 +200,8 @@ fn verified_claim_scenario_test<BS: Blockstore>(v: &dyn VM<BS>) {
 
     // Verify miner power
     let power_state: PowerState = get_state(v, &STORAGE_POWER_ACTOR_ADDR).unwrap();
-    let power_claim = power_state.get_claim(*v.blockstore(), &miner_id).unwrap().unwrap();
+    let power_claim =
+        power_state.get_claim(&DynBlockstore::wrap(v.blockstore()), &miner_id).unwrap().unwrap();
     assert_eq!(power_claim.raw_byte_power, expected_power.raw);
     assert_eq!(power_claim.quality_adj_power, expected_power.qa);
 
@@ -280,7 +296,10 @@ fn verified_claim_scenario_test<BS: Blockstore>(v: &dyn VM<BS>) {
 
     // Verify sector info
     let miner_state: MinerState = get_state(v, &miner_id).unwrap();
-    let sector_info = miner_state.get_sector(*v.blockstore(), sector_number).unwrap().unwrap();
+    let sector_info = miner_state
+        .get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number)
+        .unwrap()
+        .unwrap();
     assert_eq!(extended_expiration_2, sector_info.expiration);
     assert_eq!(DealWeight::zero(), sector_info.deal_weight);
     assert_eq!(DealWeight::zero(), sector_info.verified_deal_weight);
@@ -290,17 +309,26 @@ fn verified_claim_scenario_test<BS: Blockstore>(v: &dyn VM<BS>) {
     let datacap_state: DatacapState = get_state(v, &DATACAP_TOKEN_ACTOR_ADDR).unwrap();
     assert_eq!(
         TokenAmount::from_whole(datacap.clone()) - TokenAmount::from_whole(deal_size), // Spent deal size
-        datacap_state.token.get_balance(*v.blockstore(), verified_client.id().unwrap()).unwrap()
+        datacap_state
+            .token
+            .get_balance(&DynBlockstore::wrap(v.blockstore()), verified_client.id().unwrap())
+            .unwrap()
     );
     assert_eq!(
         TokenAmount::from_whole(datacap.clone()) - TokenAmount::from_whole(deal_size), // Also spent deal size
-        datacap_state.token.get_balance(*v.blockstore(), verified_client2.id().unwrap()).unwrap()
+        datacap_state
+            .token
+            .get_balance(&DynBlockstore::wrap(v.blockstore()), verified_client2.id().unwrap())
+            .unwrap()
     );
     assert_eq!(
         TokenAmount::zero(), // All burnt
         datacap_state
             .token
-            .get_balance(*v.blockstore(), VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap())
+            .get_balance(
+                &DynBlockstore::wrap(v.blockstore()),
+                VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap()
+            )
             .unwrap()
     );
     assert_eq!(
@@ -344,7 +372,7 @@ fn expired_allocations() {
     expired_allocations_test(&v);
 }
 
-fn expired_allocations_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn expired_allocations_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
@@ -399,12 +427,12 @@ fn expired_allocations_test<BS: Blockstore>(v: &dyn VM<BS>) {
 
     // Deal has expired and cleaned up.
     let market_state: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
-    let proposals: DealArray<BS> =
-        DealArray::load(&market_state.proposals, *v.blockstore()).unwrap();
+    let store = DynBlockstore::wrap(v.blockstore());
+    let proposals = DealArray::load(&market_state.proposals, &store).unwrap();
     assert!(proposals.get(deal1).unwrap().is_none());
-    let pending_deal_allocs: Map<BS, AllocationID> = make_map_with_root_and_bitwidth(
+    let pending_deal_allocs: Map<_, AllocationID> = make_map_with_root_and_bitwidth(
         &market_state.pending_deal_allocation_ids,
-        *v.blockstore(),
+        &store,
         HAMT_BIT_WIDTH,
     )
     .unwrap();
@@ -413,14 +441,16 @@ fn expired_allocations_test<BS: Blockstore>(v: &dyn VM<BS>) {
     // Allocation still exists until explicit cleanup
     let alloc_id = 1;
     let verifreg_state: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
-    let mut allocs = verifreg_state.load_allocs(*v.blockstore()).unwrap();
+    let store = DynBlockstore::wrap(v.blockstore());
+    let mut allocs = verifreg_state.load_allocs(&store).unwrap();
     assert!(allocs.get(verified_client.id().unwrap(), alloc_id).unwrap().is_some());
 
     verifreg_remove_expired_allocations(v, &worker, &verified_client, vec![], deal_size);
 
     // Allocation is gone
     let verifreg_state: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
-    let mut allocs = verifreg_state.load_allocs(*v.blockstore()).unwrap();
+    let store = DynBlockstore::wrap(v.blockstore());
+    let mut allocs = verifreg_state.load_allocs(&store).unwrap();
     assert!(allocs.get(verified_client.id().unwrap(), alloc_id).unwrap().is_none());
 
     // Client has original datacap balance
@@ -436,7 +466,7 @@ fn deal_passes_claim_fails() {
     deal_passes_claim_fails_test(&v);
 }
 
-fn deal_passes_claim_fails_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn deal_passes_claim_fails_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
@@ -540,7 +570,8 @@ fn deal_passes_claim_fails_test<BS: Blockstore>(v: &dyn VM<BS>) {
 
     // Verify deal state.
     let market_state: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
-    let deal_states = DealMetaArray::load(&market_state.states, *v.blockstore()).unwrap();
+    let store = DynBlockstore::wrap(v.blockstore());
+    let deal_states = DealMetaArray::load(&market_state.states, &store).unwrap();
     // bad deal sector can't be confirmed for commit so bad deal must not be included
     let bad_deal_state = deal_states.get(bad_deal).unwrap();
     assert_eq!(None, bad_deal_state);
@@ -551,10 +582,12 @@ fn deal_passes_claim_fails_test<BS: Blockstore>(v: &dyn VM<BS>) {
     // Verify sector info
     let miner_state: MinerState = get_state(v, &miner_id).unwrap();
     // bad deal sector can't be confirmed for commit because alloc can't be claimed
-    let sector_info_b = miner_state.get_sector(*v.blockstore(), sector_number_b).unwrap();
+    let sector_info_b =
+        miner_state.get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number_b).unwrap();
     assert_eq!(None, sector_info_b);
     // deal sector fails because confirm for commit is now all or nothing
-    let sector_info_a = miner_state.get_sector(*v.blockstore(), sector_number_a).unwrap();
+    let sector_info_a =
+        miner_state.get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number_a).unwrap();
     assert_eq!(None, sector_info_a);
 
     // run check before last change and confirm that we hit the expected broken state error

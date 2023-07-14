@@ -1,4 +1,4 @@
-use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
+use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::{to_vec, RawBytes};
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::bigint::{BigInt, Zero};
@@ -29,6 +29,7 @@ use test_vm::expects::Expect;
 use test_vm::trace::ExpectInvocation;
 use test_vm::util::{
     apply_code, apply_ok, assert_invariants, create_accounts, get_state, verifreg_add_verifier,
+    DynBlockstore,
 };
 use test_vm::{TestVM, TEST_VERIFREG_ROOT_ADDR, VM};
 
@@ -39,7 +40,7 @@ fn remove_datacap_simple_successful_path() {
     remove_datacap_simple_successful_path_test(&v);
 }
 
-fn remove_datacap_simple_successful_path_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn remove_datacap_simple_successful_path_test(v: &dyn VM) {
     let addrs = create_accounts(v, 4, &TokenAmount::from_whole(10_000));
     let (verifier1, verifier2, verified_client) = (addrs[0], addrs[1], addrs[2]);
 
@@ -89,12 +90,10 @@ fn remove_datacap_simple_successful_path_test<BS: Blockstore>(v: &dyn VM<BS>) {
 
     // state checks on the 2 verifiers and the client
     let v_st: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
-    let verifiers = make_map_with_root_and_bitwidth::<_, BigIntDe>(
-        &v_st.verifiers,
-        *v.blockstore(),
-        HAMT_BIT_WIDTH,
-    )
-    .unwrap();
+    let store = DynBlockstore::wrap(v.blockstore());
+    let verifiers =
+        make_map_with_root_and_bitwidth::<_, BigIntDe>(&v_st.verifiers, &store, HAMT_BIT_WIDTH)
+            .unwrap();
 
     let BigIntDe(verifier1_data_cap) =
         verifiers.get(&verifier1_id_addr.to_bytes()).unwrap().unwrap();
@@ -105,12 +104,15 @@ fn remove_datacap_simple_successful_path_test<BS: Blockstore>(v: &dyn VM<BS>) {
     assert_eq!(verifier_allowance, *verifier2_data_cap);
 
     let token_st: DataCapState = get_state(v, &DATACAP_TOKEN_ACTOR_ADDR).unwrap();
-    let balance = token_st.balance(*v.blockstore(), verified_client_id_addr.id().unwrap()).unwrap();
+    let balance = token_st
+        .balance(&DynBlockstore::wrap(v.blockstore()), verified_client_id_addr.id().unwrap())
+        .unwrap();
     assert_eq!(balance, TokenAmount::from_whole(verifier_allowance.to_i64().unwrap()));
 
+    let store = DynBlockstore::wrap(v.blockstore());
     let mut proposal_ids = make_map_with_root_and_bitwidth::<_, RemoveDataCapProposalID>(
         &v_st.remove_data_cap_proposal_ids,
-        *v.blockstore(),
+        &store,
         HAMT_BIT_WIDTH,
     )
     .unwrap();
@@ -183,7 +185,9 @@ fn remove_datacap_simple_successful_path_test<BS: Blockstore>(v: &dyn VM<BS>) {
 
     // confirm client's allowance has fallen by half
     let token_st: DataCapState = get_state(v, &DATACAP_TOKEN_ACTOR_ADDR).unwrap();
-    let balance = token_st.balance(*v.blockstore(), verified_client_id_addr.id().unwrap()).unwrap();
+    let balance = token_st
+        .balance(&DynBlockstore::wrap(v.blockstore()), verified_client_id_addr.id().unwrap())
+        .unwrap();
     assert_eq!(
         balance,
         TokenAmount::from_whole(verifier_allowance.sub(&allowance_to_remove).to_i64().unwrap())
@@ -191,12 +195,10 @@ fn remove_datacap_simple_successful_path_test<BS: Blockstore>(v: &dyn VM<BS>) {
 
     let v_st: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
     // confirm proposalIds has changed as expected
-    proposal_ids = make_map_with_root_and_bitwidth(
-        &v_st.remove_data_cap_proposal_ids,
-        *v.blockstore(),
-        HAMT_BIT_WIDTH,
-    )
-    .unwrap();
+    let store = DynBlockstore::wrap(v.blockstore());
+    proposal_ids =
+        make_map_with_root_and_bitwidth(&v_st.remove_data_cap_proposal_ids, &store, HAMT_BIT_WIDTH)
+            .unwrap();
 
     let verifier1_proposal_id: &RemoveDataCapProposalID = proposal_ids
         .get(&AddrPairKey::new(verifier1_id_addr, verified_client_id_addr).to_bytes())
@@ -271,17 +273,17 @@ fn remove_datacap_simple_successful_path_test<BS: Blockstore>(v: &dyn VM<BS>) {
 
     // confirm client has no balance
     let token_st: DataCapState = get_state(v, &DATACAP_TOKEN_ACTOR_ADDR).unwrap();
-    let balance = token_st.balance(*v.blockstore(), verified_client_id_addr.id().unwrap()).unwrap();
+    let balance = token_st
+        .balance(&DynBlockstore::wrap(v.blockstore()), verified_client_id_addr.id().unwrap())
+        .unwrap();
     assert_eq!(balance, TokenAmount::zero());
 
     // confirm proposalIds has changed as expected
     let v_st: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
-    proposal_ids = make_map_with_root_and_bitwidth(
-        &v_st.remove_data_cap_proposal_ids,
-        *v.blockstore(),
-        HAMT_BIT_WIDTH,
-    )
-    .unwrap();
+    let store = DynBlockstore::wrap(v.blockstore());
+    proposal_ids =
+        make_map_with_root_and_bitwidth(&v_st.remove_data_cap_proposal_ids, &store, HAMT_BIT_WIDTH)
+            .unwrap();
 
     let verifier1_proposal_id: &RemoveDataCapProposalID = proposal_ids
         .get(&AddrPairKey::new(verifier1_id_addr, verified_client_id_addr).to_bytes())
@@ -306,7 +308,7 @@ fn remove_datacap_fails_on_verifreg() {
     remove_datacap_fails_on_verifreg_test(&v);
 }
 
-fn remove_datacap_fails_on_verifreg_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn remove_datacap_fails_on_verifreg_test(v: &dyn VM) {
     let addrs = create_accounts(v, 2, &TokenAmount::from_whole(10_000));
     let (verifier1, verifier2) = (addrs[0], addrs[1]);
 

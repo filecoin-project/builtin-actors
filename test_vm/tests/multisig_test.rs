@@ -6,7 +6,7 @@ use fil_actor_multisig::{
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{make_map_with_root, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
-use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
+use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
@@ -18,7 +18,9 @@ use std::collections::HashSet;
 use std::iter::FromIterator;
 use test_vm::expects::Expect;
 use test_vm::trace::ExpectInvocation;
-use test_vm::util::{apply_code, apply_ok, assert_invariants, create_accounts, get_state};
+use test_vm::util::{
+    apply_code, apply_ok, assert_invariants, create_accounts, get_state, DynBlockstore,
+};
 use test_vm::{TestVM, VM};
 
 #[test]
@@ -32,7 +34,7 @@ fn proposal_hash() {
     assert_invariants(&v)
 }
 
-fn proposal_hash_test<BS: Blockstore>(v: &dyn VM<BS>, addrs: &[Address]) -> TokenAmount {
+fn proposal_hash_test(v: &dyn VM, addrs: &[Address]) -> TokenAmount {
     let alice = addrs[0];
     let bob = addrs[1];
     let msig_addr = create_msig(v, addrs, 2);
@@ -61,7 +63,9 @@ fn proposal_hash_test<BS: Blockstore>(v: &dyn VM<BS>, addrs: &[Address]) -> Toke
         approved: vec![alice],
         params: RawBytes::default(),
     };
-    let wrong_hash = compute_proposal_hash(&wrong_tx, &MockRuntime::new(*v.blockstore())).unwrap();
+    let wrong_hash =
+        compute_proposal_hash(&wrong_tx, &MockRuntime::new(&DynBlockstore::wrap(v.blockstore())))
+            .unwrap();
     let wrong_approval_params = TxnIDParams { id: TxnID(0), proposal_hash: wrong_hash.to_vec() };
     apply_code(
         v,
@@ -81,7 +85,8 @@ fn proposal_hash_test<BS: Blockstore>(v: &dyn VM<BS>, addrs: &[Address]) -> Toke
         params: RawBytes::default(),
     };
     let correct_hash =
-        compute_proposal_hash(&correct_tx, &MockRuntime::new(*v.blockstore())).unwrap();
+        compute_proposal_hash(&correct_tx, &MockRuntime::new(&DynBlockstore::wrap(v.blockstore())))
+            .unwrap();
     let correct_approval_params =
         TxnIDParams { id: TxnID(0), proposal_hash: correct_hash.to_vec() };
     apply_ok(
@@ -186,7 +191,7 @@ fn swap_self_1_of_2() {
     swap_self_1_of_2_test(&v);
 }
 
-fn swap_self_1_of_2_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn swap_self_1_of_2_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let (alice, bob, chuck) = (addrs[0], addrs[1], addrs[2]);
     let msig_addr = create_msig(v, &[alice, bob], 1);
@@ -218,7 +223,7 @@ fn swap_self_2_of_3() {
     swap_self_2_of_3_test(&v);
 }
 
-fn swap_self_2_of_3_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn swap_self_2_of_3_test(v: &dyn VM) {
     let addrs = create_accounts(v, 4, &TokenAmount::from_whole(10_000));
     let (alice, bob, chuck, dinesh) = (addrs[0], addrs[1], addrs[2], addrs[3]);
 
@@ -289,7 +294,7 @@ fn swap_self_2_of_3_test<BS: Blockstore>(v: &dyn VM<BS>) {
     assert_invariants(v)
 }
 
-fn create_msig<BS: Blockstore>(v: &dyn VM<BS>, signers: &[Address], threshold: u64) -> Address {
+fn create_msig(v: &dyn VM, signers: &[Address], threshold: u64) -> Address {
     assert!(!signers.is_empty());
     let msig_ctor_params = serialize(
         &fil_actor_multisig::ConstructorParams {
@@ -317,13 +322,10 @@ fn create_msig<BS: Blockstore>(v: &dyn VM<BS>, signers: &[Address], threshold: u
     msig_ctor_ret.id_address
 }
 
-fn check_txs<BS: Blockstore>(
-    v: &dyn VM<BS>,
-    msig_addr: Address,
-    mut expect_txns: Vec<(TxnID, Transaction)>,
-) {
+fn check_txs(v: &dyn VM, msig_addr: Address, mut expect_txns: Vec<(TxnID, Transaction)>) {
     let st: MsigState = get_state(v, &msig_addr).unwrap();
-    let ptx = make_map_with_root::<_, Transaction>(&st.pending_txs, *v.blockstore()).unwrap();
+    let store = DynBlockstore::wrap(v.blockstore());
+    let ptx = make_map_with_root::<_, Transaction>(&st.pending_txs, &store).unwrap();
     let mut actual_txns = Vec::new();
     ptx.for_each(|k, txn: &Transaction| {
         let id = i64::decode_var(k).unwrap().0;
