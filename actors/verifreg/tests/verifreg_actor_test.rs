@@ -15,10 +15,11 @@ lazy_static! {
 }
 
 mod util {
-    use fil_actor_verifreg::ClaimAllocationsReturn;
-    use fil_actors_runtime::test_utils::MockRuntime;
     use fvm_shared::{bigint::BigInt, sector::StoragePower};
     use num_traits::Zero;
+
+    use fil_actor_verifreg::ClaimAllocationsReturn;
+    use fil_actors_runtime::test_utils::MockRuntime;
 
     pub fn verifier_allowance(rt: &MockRuntime) -> StoragePower {
         rt.policy.minimum_verified_allocation_size.clone() + 42
@@ -38,6 +39,7 @@ mod util {
 }
 
 mod construction {
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_shared::address::{Address, BLS_PUB_LEN};
     use fvm_shared::error::ExitCode;
     use fvm_shared::MethodNum;
@@ -45,7 +47,6 @@ mod construction {
     use fil_actor_verifreg::{Actor as VerifregActor, Method};
     use fil_actors_runtime::test_utils::*;
     use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
-    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use harness::*;
 
     use crate::*;
@@ -86,15 +87,16 @@ mod construction {
 }
 
 mod verifiers {
+    use std::ops::Deref;
+
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_shared::address::{Address, BLS_PUB_LEN};
     use fvm_shared::econ::TokenAmount;
     use fvm_shared::error::ExitCode;
     use fvm_shared::{MethodNum, METHOD_SEND};
-    use std::ops::Deref;
 
     use fil_actor_verifreg::{Actor as VerifregActor, AddVerifierParams, DataCap, Method};
     use fil_actors_runtime::test_utils::*;
-    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use harness::*;
     use util::*;
 
@@ -149,6 +151,7 @@ mod verifiers {
             h.add_verifier_with_existing_cap(&rt, &VERIFIER, &allowance, &DataCap::from(1)),
         );
         h.check_state(&rt);
+        rt.reset();
     }
 
     #[test]
@@ -220,6 +223,7 @@ mod verifiers {
         let (h, rt) = new_harness();
         expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.remove_verifier(&rt, &VERIFIER));
         h.check_state(&rt);
+        rt.reset();
     }
 
     #[test]
@@ -246,21 +250,20 @@ mod verifiers {
 }
 
 mod clients {
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_shared::address::{Address, BLS_PUB_LEN};
     use fvm_shared::econ::TokenAmount;
     use fvm_shared::error::ExitCode;
     use fvm_shared::{MethodNum, METHOD_SEND};
+    use num_traits::ToPrimitive;
     use num_traits::Zero;
 
     use fil_actor_verifreg::{
         ext, Actor as VerifregActor, AddVerifiedClientParams, DataCap, Method,
     };
     use fil_actors_runtime::test_utils::*;
-    use fil_actors_runtime::{DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR};
-
-    use fvm_ipld_encoding::ipld_block::IpldBlock;
+    use fil_actors_runtime::{EventBuilder, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR};
     use harness::*;
-    use num_traits::ToPrimitive;
     use util::*;
 
     use crate::*;
@@ -274,11 +277,25 @@ mod clients {
         h.add_verifier(&rt, &VERIFIER, &allowance_verifier).unwrap();
         h.add_verifier(&rt, &VERIFIER2, &allowance_verifier).unwrap();
 
-        h.add_client(&rt, &VERIFIER, &CLIENT, &allowance_client).unwrap();
-        h.add_client(&rt, &VERIFIER, &CLIENT2, &allowance_client).unwrap();
+        h.add_client(&rt, &VERIFIER, &CLIENT, &allowance_client, &allowance_verifier).unwrap();
+        h.add_client(
+            &rt,
+            &VERIFIER,
+            &CLIENT2,
+            &allowance_client,
+            &(&allowance_verifier - &allowance_client),
+        )
+        .unwrap();
 
-        h.add_client(&rt, &VERIFIER2, &CLIENT3, &allowance_client).unwrap();
-        h.add_client(&rt, &VERIFIER2, &CLIENT4, &allowance_client).unwrap();
+        h.add_client(&rt, &VERIFIER2, &CLIENT3, &allowance_client, &allowance_verifier).unwrap();
+        h.add_client(
+            &rt,
+            &VERIFIER2,
+            &CLIENT4,
+            &allowance_client,
+            &(&allowance_verifier - &allowance_client),
+        )
+        .unwrap();
 
         // No more allowance left
         h.assert_verifier_allowance(&rt, &VERIFIER, &DataCap::from(0));
@@ -293,10 +310,10 @@ mod clients {
         // Verifier only has allowance for one client.
         h.add_verifier(&rt, &VERIFIER, &allowance).unwrap();
 
-        h.add_client(&rt, &VERIFIER, &CLIENT, &allowance).unwrap();
+        h.add_client(&rt, &VERIFIER, &CLIENT, &allowance, &allowance).unwrap();
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.add_client(&rt, &VERIFIER, &CLIENT2, &allowance),
+            h.add_client(&rt, &VERIFIER, &CLIENT2, &allowance, &DataCap::zero()),
         );
         rt.reset();
         h.assert_verifier_allowance(&rt, &VERIFIER, &DataCap::zero());
@@ -313,12 +330,13 @@ mod clients {
         rt.id_addresses.borrow_mut().insert(client_pubkey, *CLIENT);
 
         h.add_verifier(&rt, &VERIFIER, &allowance_verifier).unwrap();
-        h.add_client(&rt, &VERIFIER, &client_pubkey, &allowance_client).unwrap();
+        h.add_client(&rt, &VERIFIER, &client_pubkey, &allowance_client, &allowance_verifier)
+            .unwrap();
 
         // Adding another client with the same address increments
         // the data cap which has already been granted.
         h.add_verifier(&rt, &VERIFIER, &allowance_verifier).unwrap();
-        h.add_client(&rt, &VERIFIER, &CLIENT, &allowance_client).unwrap();
+        h.add_client(&rt, &VERIFIER, &CLIENT, &allowance_client, &allowance_verifier).unwrap();
         h.check_state(&rt);
     }
 
@@ -329,7 +347,7 @@ mod clients {
         h.add_verifier(&rt, &VERIFIER, &allowance_verifier).unwrap();
 
         let allowance = rt.policy.minimum_verified_allocation_size.clone();
-        h.add_client(&rt, &VERIFIER, &CLIENT, &allowance).unwrap();
+        h.add_client(&rt, &VERIFIER, &CLIENT, &allowance, &allowance_verifier).unwrap();
         h.check_state(&rt);
     }
 
@@ -354,7 +372,7 @@ mod clients {
 
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.add_client(&rt, &VERIFIER, &client, &allowance_client),
+            h.add_client(&rt, &VERIFIER, &client, &allowance_client, &allowance_verifier),
         );
         rt.reset();
         h.check_state(&rt);
@@ -369,7 +387,7 @@ mod clients {
         let allowance = rt.policy.minimum_verified_allocation_size.clone() - 1;
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.add_client(&rt, &VERIFIER, &CLIENT, &allowance),
+            h.add_client(&rt, &VERIFIER, &CLIENT, &allowance, &allowance_verifier),
         );
         rt.reset();
         h.check_state(&rt);
@@ -418,8 +436,7 @@ mod clients {
                 IpldBlock::serialize_cbor(&params).unwrap(),
             ),
         );
-
-        rt.verify();
+        rt.reset();
 
         // can call the exported method num
 
@@ -436,7 +453,15 @@ mod clients {
             None,
             ExitCode::OK,
         );
-
+        rt.expect_emitted_event(
+            EventBuilder::new()
+                .label("verifier-balance")
+                .value_indexed("verifier", &VERIFIER.id().unwrap())
+                .unwrap()
+                .value("balance", &(allowance_verifier - allowance_client))
+                .unwrap()
+                .build(),
+        );
         rt.expect_validate_caller_any();
         rt.call::<VerifregActor>(
             Method::AddVerifiedClientExported as MethodNum,
@@ -445,7 +470,6 @@ mod clients {
         .unwrap();
 
         rt.verify();
-
         h.check_state(&rt);
     }
 
@@ -455,10 +479,10 @@ mod clients {
         let allowance_verifier = verifier_allowance(&rt);
         h.add_verifier(&rt, &VERIFIER, &allowance_verifier).unwrap();
 
-        let allowance = allowance_verifier + 1;
+        let allowance = &allowance_verifier + 1;
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.add_client(&rt, &VERIFIER, &h.root, &allowance),
+            h.add_client(&rt, &VERIFIER, &h.root, &allowance, &allowance_verifier),
         );
         rt.reset();
         h.check_state(&rt);
@@ -472,7 +496,7 @@ mod clients {
         h.add_verifier(&rt, &VERIFIER, &allowance_verifier).unwrap();
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.add_client(&rt, &VERIFIER, &h.root, &allowance_client),
+            h.add_client(&rt, &VERIFIER, &h.root, &allowance_client, &allowance_verifier),
         );
         rt.reset();
         h.check_state(&rt);
@@ -486,14 +510,14 @@ mod clients {
         h.add_verifier(&rt, &VERIFIER, &allowance_verifier).unwrap();
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.add_client(&rt, &VERIFIER, &VERIFIER, &allowance_client),
+            h.add_client(&rt, &VERIFIER, &VERIFIER, &allowance_client, &allowance_verifier),
         );
         rt.reset();
 
         h.add_verifier(&rt, &VERIFIER2, &allowance_verifier).unwrap();
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.add_client(&rt, &VERIFIER, &VERIFIER2, &allowance_client),
+            h.add_client(&rt, &VERIFIER, &VERIFIER2, &allowance_client, &allowance_verifier),
         );
         rt.reset();
         h.check_state(&rt);
@@ -501,6 +525,8 @@ mod clients {
 }
 
 mod allocs_claims {
+    use std::str::FromStr;
+
     use cid::Cid;
     use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_shared::bigint::BigInt;
@@ -508,13 +534,12 @@ mod allocs_claims {
     use fvm_shared::piece::PaddedPieceSize;
     use fvm_shared::{ActorID, MethodNum};
     use num_traits::Zero;
-    use std::str::FromStr;
 
+    use fil_actor_verifreg::Claim;
     use fil_actor_verifreg::{
-        Actor, AllocationID, ClaimTerm, DataCap, ExtendClaimTermsParams, GetClaimsParams,
-        GetClaimsReturn, Method, State,
+        Actor, AllocationID, ClaimTerm, DataCap, ExtendClaimTermsParams, ExtendClaimTermsReturn,
+        GetClaimsParams, Method, State,
     };
-    use fil_actor_verifreg::{Claim, ExtendClaimTermsReturn};
     use fil_actors_runtime::runtime::policy_constants::{
         MAXIMUM_VERIFIED_ALLOCATION_TERM, MINIMUM_VERIFIED_ALLOCATION_SIZE,
         MINIMUM_VERIFIED_ALLOCATION_TERM,
@@ -548,15 +573,19 @@ mod allocs_claims {
         let id2 = h.create_alloc(&rt, &alloc2).unwrap();
         let state_with_allocs: State = rt.get_state();
 
+        let expect_1 = vec![(id1, alloc1.clone())];
+        let expect_2 = vec![(id2, alloc2.clone())];
+        let expect_both = vec![(id1, alloc1.clone()), (id2, alloc2.clone())];
+
         // Can't remove allocations that aren't expired
-        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![id1, id2], 0).unwrap();
+        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![id1, id2], vec![]).unwrap();
         assert_eq!(vec![1, 2], ret.considered);
         assert_eq!(vec![ExitCode::USR_FORBIDDEN, ExitCode::USR_FORBIDDEN], ret.results.codes());
         assert_eq!(DataCap::zero(), ret.datacap_recovered);
 
         // Can't remove with wrong client ID
         rt.set_epoch(200);
-        let ret = h.remove_expired_allocations(&rt, CLIENT2, vec![id1, id2], 0).unwrap();
+        let ret = h.remove_expired_allocations(&rt, CLIENT2, vec![id1, id2], vec![]).unwrap();
         assert_eq!(vec![1, 2], ret.considered);
         assert_eq!(vec![ExitCode::USR_NOT_FOUND, ExitCode::USR_NOT_FOUND], ret.results.codes());
         assert_eq!(DataCap::zero(), ret.datacap_recovered);
@@ -564,7 +593,7 @@ mod allocs_claims {
         // Remove the first alloc, which expired.
         rt.set_epoch(100);
         let ret =
-            h.remove_expired_allocations(&rt, CLIENT1, vec![id1, id2], alloc1.size.0).unwrap();
+            h.remove_expired_allocations(&rt, CLIENT1, vec![id1, id2], expect_1.clone()).unwrap();
         assert_eq!(vec![1, 2], ret.considered);
         assert_eq!(vec![ExitCode::OK, ExitCode::USR_FORBIDDEN], ret.results.codes());
         assert_eq!(DataCap::from(alloc1.size.0), ret.datacap_recovered);
@@ -572,21 +601,21 @@ mod allocs_claims {
         // Remove the second alloc (the first is no longer found).
         rt.set_epoch(200);
         let ret =
-            h.remove_expired_allocations(&rt, CLIENT1, vec![id1, id2], alloc2.size.0).unwrap();
+            h.remove_expired_allocations(&rt, CLIENT1, vec![id1, id2], expect_2.clone()).unwrap();
         assert_eq!(vec![1, 2], ret.considered);
         assert_eq!(vec![ExitCode::USR_NOT_FOUND, ExitCode::OK], ret.results.codes());
         assert_eq!(DataCap::from(alloc2.size.0), ret.datacap_recovered);
 
         // Reset state and show we can remove two at once.
         rt.replace_state(&state_with_allocs);
-        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![id1, id2], total_size).unwrap();
+        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![id1, id2], expect_both).unwrap();
         assert_eq!(vec![1, 2], ret.considered);
         assert_eq!(vec![ExitCode::OK, ExitCode::OK], ret.results.codes());
         assert_eq!(DataCap::from(total_size), ret.datacap_recovered);
 
         // Reset state and show that only what was asked for is removed.
         rt.replace_state(&state_with_allocs);
-        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![id1], alloc1.size.0).unwrap();
+        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![id1], expect_1.clone()).unwrap();
         assert_eq!(vec![1], ret.considered);
         assert_eq!(vec![ExitCode::OK], ret.results.codes());
         assert_eq!(DataCap::from(alloc1.size.0), ret.datacap_recovered);
@@ -594,7 +623,7 @@ mod allocs_claims {
         // Reset state and show that specifying none removes only expired allocations
         rt.set_epoch(0);
         rt.replace_state(&state_with_allocs);
-        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![], 0).unwrap();
+        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![], vec![]).unwrap();
         assert_eq!(Vec::<AllocationID>::new(), ret.considered);
         assert_eq!(Vec::<ExitCode>::new(), ret.results.codes());
         assert_eq!(DataCap::zero(), ret.datacap_recovered);
@@ -602,7 +631,7 @@ mod allocs_claims {
         assert!(h.load_alloc(&rt, CLIENT1, id2).is_some());
 
         rt.set_epoch(100);
-        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![], alloc1.size.0).unwrap();
+        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![], expect_1).unwrap();
         assert_eq!(vec![1], ret.considered);
         assert_eq!(vec![ExitCode::OK], ret.results.codes());
         assert_eq!(DataCap::from(alloc1.size.0), ret.datacap_recovered);
@@ -610,7 +639,7 @@ mod allocs_claims {
         assert!(h.load_alloc(&rt, CLIENT1, id2).is_some());
 
         rt.set_epoch(200);
-        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![], alloc2.size.0).unwrap();
+        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![], expect_2).unwrap();
         assert_eq!(vec![2], ret.considered);
         assert_eq!(vec![ExitCode::OK], ret.results.codes());
         assert_eq!(DataCap::from(alloc2.size.0), ret.datacap_recovered);
@@ -619,7 +648,9 @@ mod allocs_claims {
 
         // Reset state and show that specifying none removes *all* expired allocations
         rt.replace_state(&state_with_allocs);
-        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![], total_size).unwrap();
+        let ret = h
+            .remove_expired_allocations(&rt, CLIENT1, vec![], vec![(id1, alloc1), (id2, alloc2)])
+            .unwrap();
         assert_eq!(vec![1, 2], ret.considered);
         assert_eq!(vec![ExitCode::OK, ExitCode::OK], ret.results.codes());
         assert_eq!(DataCap::from(total_size), ret.datacap_recovered);
@@ -637,9 +668,9 @@ mod allocs_claims {
         let alloc2 = make_alloc("2", CLIENT2, PROVIDER1, size); // Distinct client
         let alloc3 = make_alloc("3", CLIENT1, PROVIDER2, size); // Distinct provider
 
-        h.create_alloc(&rt, &alloc1).unwrap();
-        h.create_alloc(&rt, &alloc2).unwrap();
-        h.create_alloc(&rt, &alloc3).unwrap();
+        let id1 = h.create_alloc(&rt, &alloc1).unwrap();
+        let id2 = h.create_alloc(&rt, &alloc2).unwrap();
+        let _id3 = h.create_alloc(&rt, &alloc3).unwrap();
         h.check_state(&rt);
 
         let sector = 1000;
@@ -649,31 +680,42 @@ mod allocs_claims {
         {
             // Claim two for PROVIDER1
             let reqs = vec![
-                make_claim_req(1, &alloc1, sector, expiry),
-                make_claim_req(2, &alloc2, sector, expiry),
+                make_claim_req(id1, &alloc1, sector, expiry),
+                make_claim_req(id2, &alloc2, sector, expiry),
             ];
-            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, size * 2, false).unwrap();
-
+            let ret = h
+                .claim_allocations(
+                    &rt,
+                    PROVIDER1,
+                    reqs,
+                    vec![(id1, alloc1.clone()), (id2, alloc2.clone())],
+                    false,
+                )
+                .unwrap();
             assert_eq!(ret.claim_results.codes(), vec![ExitCode::OK, ExitCode::OK]);
             assert_eq!(total_claimed_space(&ret), BigInt::from(2 * size));
             assert_alloc_claimed(&rt, CLIENT1, PROVIDER1, 1, &alloc1, 0, sector);
             assert_alloc_claimed(&rt, CLIENT2, PROVIDER1, 2, &alloc2, 0, sector);
             h.check_state(&rt);
+            rt.verify();
         }
         {
             // Can't find claim for wrong client
             rt.replace_state(&prior_state);
             let mut reqs = vec![
-                make_claim_req(1, &alloc1, sector, expiry),
-                make_claim_req(2, &alloc2, sector, expiry),
+                make_claim_req(id1, &alloc1, sector, expiry),
+                make_claim_req(id2, &alloc2, sector, expiry),
             ];
             reqs[1].client = CLIENT1;
-            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, size, false).unwrap();
+            let ret = h
+                .claim_allocations(&rt, PROVIDER1, reqs, vec![(id1, alloc1.clone())], false)
+                .unwrap();
             assert_eq!(ret.claim_results.codes(), vec![ExitCode::OK, ExitCode::USR_NOT_FOUND]);
             assert_eq!(total_claimed_space(&ret), BigInt::from(size));
             assert_alloc_claimed(&rt, CLIENT1, PROVIDER1, 1, &alloc1, 0, sector);
             assert_allocation(&rt, CLIENT2, 2, &alloc2);
             h.check_state(&rt);
+            rt.verify();
         }
         {
             // Can't claim for other provider
@@ -682,12 +724,15 @@ mod allocs_claims {
                 make_claim_req(2, &alloc2, sector, expiry),
                 make_claim_req(3, &alloc3, sector, expiry), // Different provider
             ];
-            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, size, false).unwrap();
+            let ret = h
+                .claim_allocations(&rt, PROVIDER1, reqs, vec![(id2, alloc2.clone())], false)
+                .unwrap();
             assert_eq!(ret.claim_results.codes(), vec![ExitCode::OK, ExitCode::USR_FORBIDDEN]);
             assert_eq!(total_claimed_space(&ret), BigInt::from(size));
             assert_alloc_claimed(&rt, CLIENT1, PROVIDER1, 2, &alloc2, 0, sector);
             assert_allocation(&rt, CLIENT1, 3, &alloc3);
             h.check_state(&rt);
+            rt.verify();
         }
         {
             // Mismatched data / size
@@ -700,36 +745,41 @@ mod allocs_claims {
                 Cid::from_str("bafyreibjo4xmgaevkgud7mbifn3dzp4v4lyaui4yvqp3f2bqwtxcjrdqg4")
                     .unwrap();
             reqs[1].size = PaddedPieceSize(size + 1);
-            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
+            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, vec![], false).unwrap();
             assert_eq!(
                 ret.claim_results.codes(),
                 vec![ExitCode::USR_FORBIDDEN, ExitCode::USR_FORBIDDEN]
             );
             assert_eq!(total_claimed_space(&ret), BigInt::zero());
             h.check_state(&rt);
+            rt.verify();
         }
         {
             // Expired allocation
             rt.replace_state(&prior_state);
             let reqs = vec![make_claim_req(1, &alloc1, sector, expiry)];
             rt.set_epoch(alloc1.expiration + 1);
-            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
+            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, vec![], false).unwrap();
             assert_eq!(ret.claim_results.codes(), vec![ExitCode::USR_FORBIDDEN]);
             assert_eq!(total_claimed_space(&ret), BigInt::zero());
             h.check_state(&rt);
+            rt.verify();
         }
         {
             // Sector expiration too soon
             rt.replace_state(&prior_state);
             let reqs = vec![make_claim_req(1, &alloc1, sector, alloc1.term_min - 1)];
-            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
+            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, vec![], false).unwrap();
             assert_eq!(ret.claim_results.codes(), vec![ExitCode::USR_FORBIDDEN]);
+            rt.verify();
+
             // Sector expiration too late
             let reqs = vec![make_claim_req(1, &alloc1, sector, alloc1.term_max + 1)];
-            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
+            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, vec![], false).unwrap();
             assert_eq!(ret.claim_results.codes(), vec![ExitCode::USR_FORBIDDEN]);
             assert_eq!(total_claimed_space(&ret), BigInt::zero());
             h.check_state(&rt);
+            rt.verify();
         }
     }
 
@@ -800,14 +850,14 @@ mod allocs_claims {
                 ClaimTerm { provider: PROVIDER2, claim_id: id3, term_max: max_term + 3 },
             ],
         };
+        let expected_claims = vec![
+            (id1, Claim { term_max: max_term + 1, ..claim1 }),
+            (id2, Claim { term_max: max_term + 2, ..claim2 }),
+            (id3, Claim { term_max: max_term + 3, ..claim3 }),
+        ];
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(CLIENT1));
-        let ret = h.extend_claim_terms(&rt, &params).unwrap();
+        let ret = h.extend_claim_terms(&rt, &params, expected_claims).unwrap();
         assert_eq!(ret.codes(), vec![ExitCode::OK, ExitCode::OK, ExitCode::OK]);
-
-        // Verify state directly.
-        assert_claim(&rt, PROVIDER1, id1, &Claim { term_max: max_term + 1, ..claim1 });
-        assert_claim(&rt, PROVIDER1, id2, &Claim { term_max: max_term + 2, ..claim2 });
-        assert_claim(&rt, PROVIDER2, id3, &Claim { term_max: max_term + 3, ..claim3 });
         h.check_state(&rt);
     }
 
@@ -829,7 +879,7 @@ mod allocs_claims {
                 terms: vec![ClaimTerm { provider: PROVIDER1, claim_id, term_max: max_term }],
             };
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(CLIENT1));
-            let ret = h.extend_claim_terms(&rt, &params).unwrap();
+            let ret = h.extend_claim_terms(&rt, &params, vec![(claim_id, claim.clone())]).unwrap();
             assert_eq!(ret.codes(), vec![ExitCode::OK]);
             rt.verify()
         }
@@ -840,7 +890,7 @@ mod allocs_claims {
                 terms: vec![ClaimTerm { provider: PROVIDER1, claim_id, term_max: max_term }],
             };
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(CLIENT2));
-            let ret = h.extend_claim_terms(&rt, &params).unwrap();
+            let ret = h.extend_claim_terms(&rt, &params, vec![]).unwrap();
             assert_eq!(ret.codes(), vec![ExitCode::USR_FORBIDDEN]);
             rt.verify()
         }
@@ -851,7 +901,7 @@ mod allocs_claims {
                 terms: vec![ClaimTerm { provider: PROVIDER2, claim_id, term_max: max_term }],
             };
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(CLIENT1));
-            let ret = h.extend_claim_terms(&rt, &params).unwrap();
+            let ret = h.extend_claim_terms(&rt, &params, vec![]).unwrap();
             assert_eq!(ret.codes(), vec![ExitCode::USR_NOT_FOUND]);
             rt.verify()
         }
@@ -866,7 +916,7 @@ mod allocs_claims {
                 }],
             };
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(CLIENT1));
-            let ret = h.extend_claim_terms(&rt, &params).unwrap();
+            let ret = h.extend_claim_terms(&rt, &params, vec![]).unwrap();
             assert_eq!(ret.codes(), vec![ExitCode::USR_ILLEGAL_ARGUMENT]);
             rt.verify()
         }
@@ -877,7 +927,7 @@ mod allocs_claims {
                 terms: vec![ClaimTerm { provider: PROVIDER1, claim_id, term_max: max_term - 1 }],
             };
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(CLIENT1));
-            let ret = h.extend_claim_terms(&rt, &params).unwrap();
+            let ret = h.extend_claim_terms(&rt, &params, vec![]).unwrap();
             assert_eq!(ret.codes(), vec![ExitCode::USR_ILLEGAL_ARGUMENT]);
             rt.verify()
         }
@@ -893,7 +943,13 @@ mod allocs_claims {
             };
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(CLIENT1));
             rt.set_epoch(max_term + 1);
-            let ret = h.extend_claim_terms(&rt, &params).unwrap();
+            let ret = h
+                .extend_claim_terms(
+                    &rt,
+                    &params,
+                    vec![(claim_id, Claim { term_max: MAXIMUM_VERIFIED_ALLOCATION_TERM, ..claim })],
+                )
+                .unwrap();
             assert_eq!(ret.codes(), vec![ExitCode::OK]);
             rt.verify()
         }
@@ -935,38 +991,41 @@ mod allocs_claims {
         let state_with_allocs: State = rt.get_state();
 
         // Removal of expired claims shares most of its implementation with removing expired allocations.
-        // The full test suite is not duplicated here,   simple ones to ensure that the expiration
+        // The full test suite is not duplicated here, simple ones to ensure that the expiration
         // is correctly computed.
+        let expect_1 = vec![(id1, claim1.clone())];
+        let expect_2 = vec![(id2, claim2.clone())];
+        let expect_both = vec![(id1, claim1), (id2, claim2)];
 
         // None expired yet
         rt.set_epoch(term_start + term_min + 99);
-        let ret = h.remove_expired_claims(&rt, PROVIDER1, vec![id1, id2]).unwrap();
+        let ret = h.remove_expired_claims(&rt, PROVIDER1, vec![id1, id2], vec![]).unwrap();
         assert_eq!(vec![1, 2], ret.considered);
         assert_eq!(vec![ExitCode::USR_FORBIDDEN, ExitCode::USR_FORBIDDEN], ret.results.codes());
 
         // One expired
         rt.set_epoch(term_start + term_min + 100);
-        let ret = h.remove_expired_claims(&rt, PROVIDER1, vec![id1, id2]).unwrap();
+        let ret = h.remove_expired_claims(&rt, PROVIDER1, vec![id1, id2], expect_1).unwrap();
         assert_eq!(vec![1, 2], ret.considered);
         assert_eq!(vec![ExitCode::OK, ExitCode::USR_FORBIDDEN], ret.results.codes());
 
         // Both now expired
         rt.set_epoch(term_start + term_min + 200);
-        let ret = h.remove_expired_claims(&rt, PROVIDER1, vec![id1, id2]).unwrap();
+        let ret = h.remove_expired_claims(&rt, PROVIDER1, vec![id1, id2], expect_2).unwrap();
         assert_eq!(vec![1, 2], ret.considered);
         assert_eq!(vec![ExitCode::USR_NOT_FOUND, ExitCode::OK], ret.results.codes());
 
         // Reset state, and show that specifying none removes only expired allocations
         rt.set_epoch(term_start + term_min);
         rt.replace_state(&state_with_allocs);
-        let ret = h.remove_expired_claims(&rt, PROVIDER1, vec![]).unwrap();
+        let ret = h.remove_expired_claims(&rt, PROVIDER1, vec![], vec![]).unwrap();
         assert_eq!(Vec::<AllocationID>::new(), ret.considered);
         assert_eq!(Vec::<ExitCode>::new(), ret.results.codes());
         assert!(h.load_claim(&rt, PROVIDER1, id1).is_some());
         assert!(h.load_claim(&rt, PROVIDER1, id2).is_some());
 
         rt.set_epoch(term_start + term_min + 200);
-        let ret = h.remove_expired_claims(&rt, PROVIDER1, vec![]).unwrap();
+        let ret = h.remove_expired_claims(&rt, PROVIDER1, vec![], expect_both).unwrap();
         assert_eq!(vec![1, 2], ret.considered);
         assert_eq!(vec![ExitCode::OK, ExitCode::OK], ret.results.codes());
         assert!(h.load_claim(&rt, PROVIDER1, id1).is_none()); // removed
@@ -977,34 +1036,21 @@ mod allocs_claims {
     #[test]
     fn claims_restricted_correctly() {
         let (h, rt) = new_harness();
-        let size = MINIMUM_VERIFIED_ALLOCATION_SIZE as u64;
-        let sector = 0;
-        let start = 0;
-        let min_term = MINIMUM_VERIFIED_ALLOCATION_TERM;
-        let max_term = min_term + 1000;
 
-        let claim1 = make_claim("1", CLIENT1, PROVIDER1, size, min_term, max_term, start, sector);
-
-        let id1 = h.create_claim(&rt, &claim1).unwrap();
-
-        // First, let's extend some claims
-
-        let params = ExtendClaimTermsParams {
-            terms: vec![ClaimTerm { provider: PROVIDER1, claim_id: id1, term_max: max_term + 1 }],
-        };
-
-        // set caller to not-builtin
+        // Extend claims.
+        // Empty request to avoid setting expectations for events etc.
+        let params = ExtendClaimTermsParams { terms: vec![] };
+        // Set caller to not-builtin
         rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(CLIENT1));
-
-        // cannot call the unexported extend method num
+        // Cannot call the unexported method.
         expect_abort_contains_message(
             ExitCode::USR_FORBIDDEN,
             "must be built-in",
-            h.extend_claim_terms(&rt, &params),
+            h.extend_claim_terms(&rt, &params, vec![]),
         );
+        rt.reset();
 
-        // can call the exported method num
-
+        // Can call the exported method.
         rt.expect_validate_caller_any();
         let ret: ExtendClaimTermsReturn = rt
             .call::<Actor>(
@@ -1015,44 +1061,28 @@ mod allocs_claims {
             .unwrap()
             .deserialize()
             .expect("failed to deserialize extend claim terms return");
-
         rt.verify();
+        assert_eq!(ret.codes(), vec![]);
 
-        assert_eq!(ret.codes(), vec![ExitCode::OK]);
-
-        // Now let's Get those Claims, and check them
-
-        let params = GetClaimsParams { claim_ids: vec![id1], provider: PROVIDER1 };
-
-        // cannot call the unexported extend method num
+        // Get claims.
+        let params = GetClaimsParams { claim_ids: vec![], provider: PROVIDER1 };
+        // Cannot call the unexported method.
         expect_abort_contains_message(
             ExitCode::USR_FORBIDDEN,
             "must be built-in",
-            rt.call::<Actor>(
-                Method::GetClaims as MethodNum,
-                IpldBlock::serialize_cbor(&params).unwrap(),
-            ),
+            h.get_claims(&rt, PROVIDER1, vec![]),
         );
+        rt.reset();
 
-        rt.verify();
-
-        // can call the exported method num
+        // Can call the exported method.
         rt.expect_validate_caller_any();
-        let ret: GetClaimsReturn = rt
-            .call::<Actor>(
-                Method::GetClaimsExported as MethodNum,
-                IpldBlock::serialize_cbor(&params).unwrap(),
-            )
-            .unwrap()
-            .unwrap()
-            .deserialize()
-            .expect("failed to deserialize get claims return");
-
+        rt.call::<Actor>(
+            Method::GetClaimsExported as MethodNum,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )
+        .unwrap()
+        .unwrap();
         rt.verify();
-
-        assert_eq!(ret.batch_info.codes(), vec![ExitCode::OK]);
-        assert_eq!(ret.claims, vec![Claim { term_max: max_term + 1, ..claim1 }]);
-
         h.check_state(&rt);
     }
 }
@@ -1060,6 +1090,7 @@ mod allocs_claims {
 mod datacap {
     use frc46_token::receiver::FRC46_TOKEN_TYPE;
     use fvm_actor_utils::receiver::UniversalReceiverParams;
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_shared::address::Address;
     use fvm_shared::econ::TokenAmount;
     use fvm_shared::error::ExitCode;
@@ -1075,7 +1106,6 @@ mod datacap {
     use fil_actors_runtime::{
         BatchReturn, DATACAP_TOKEN_ACTOR_ADDR, EPOCHS_IN_YEAR, STORAGE_MARKET_ACTOR_ADDR,
     };
-    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use harness::*;
 
     use crate::*;
@@ -1281,6 +1311,7 @@ mod datacap {
                 .as_str(),
             h.receive_tokens(&rt, payload, BatchReturn::ok(1), BATCH_EMPTY, vec![1], 0),
         );
+        rt.reset();
         h.check_state(&rt);
     }
 
@@ -1400,11 +1431,13 @@ mod datacap {
                 "term_max 5260486 for claim 1 exceeds maximum 5260485 at current epoch 1100",
                 h.receive_tokens(&rt, payload, BATCH_EMPTY, BATCH_EMPTY, vec![], 0),
             );
+            rt.reset();
             // But just on the limit is allowed
             let reqs = vec![make_extension_req(PROVIDER1, cid1, max_allowed_term)];
             let payload = make_receiver_hook_token_payload(CLIENT1, vec![], reqs, SIZE);
             h.receive_tokens(&rt, payload, BATCH_EMPTY, BatchReturn::ok(1), vec![], SIZE).unwrap();
             h.check_state(&rt);
+            rt.reset();
         }
         {
             // Claim already expired
@@ -1419,6 +1452,7 @@ mod datacap {
                 "claim 1 expired at 518600, current epoch 518601",
                 h.receive_tokens(&rt, payload, BATCH_EMPTY, BATCH_EMPTY, vec![], 0),
             );
+            rt.reset();
             // But just at expiration is allowed
             let epoch = term_start + term_max;
             let new_term = epoch - term_start + MAXIMUM_VERIFIED_ALLOCATION_TERM; // Can get full max term now
@@ -1427,6 +1461,7 @@ mod datacap {
             let payload = make_receiver_hook_token_payload(CLIENT1, vec![], reqs, SIZE);
             h.receive_tokens(&rt, payload, BATCH_EMPTY, BatchReturn::ok(1), vec![], SIZE).unwrap();
             h.check_state(&rt);
+            rt.reset();
         }
         {
             // Extension is zero
@@ -1439,6 +1474,7 @@ mod datacap {
                 "term_max 518500 for claim 1 is not larger than existing term max 518500",
                 h.receive_tokens(&rt, payload, BATCH_EMPTY, BATCH_EMPTY, vec![], 0),
             );
+            rt.reset();
             // Extension is negative
             let reqs = vec![make_extension_req(PROVIDER1, cid1, term_max - 1)];
             let payload = make_receiver_hook_token_payload(CLIENT1, vec![], reqs, SIZE);
@@ -1447,11 +1483,13 @@ mod datacap {
                 "term_max 518499 for claim 1 is not larger than existing term max 518500",
                 h.receive_tokens(&rt, payload, BATCH_EMPTY, BATCH_EMPTY, vec![], 0),
             );
+            rt.reset();
             // But extension by just 1 epoch is allowed
             let reqs = vec![make_extension_req(PROVIDER1, cid1, term_max + 1)];
             let payload = make_receiver_hook_token_payload(CLIENT1, vec![], reqs, SIZE);
             h.receive_tokens(&rt, payload, BATCH_EMPTY, BatchReturn::ok(1), vec![], SIZE).unwrap();
             h.check_state(&rt);
+            rt.reset();
         }
     }
 }

@@ -1,3 +1,22 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
+
+use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
+use frc46_token::token::types::{BurnParams, BurnReturn, TransferParams};
+use frc46_token::token::TOKEN_PRECISION;
+use fvm_actor_utils::receiver::UniversalReceiverParams;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::RawBytes;
+use fvm_shared::address::Address;
+use fvm_shared::bigint::bigint_ser::{BigIntDe, BigIntSer};
+use fvm_shared::clock::ChainEpoch;
+use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
+use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::sector::SectorNumber;
+use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH};
+use num_traits::{ToPrimitive, Zero};
+
 use fil_actor_verifreg::testing::check_state_invariants;
 use fil_actor_verifreg::{
     ext, Actor as VerifregActor, AddVerifiedClientParams, AddVerifierParams, Allocation,
@@ -15,26 +34,9 @@ use fil_actors_runtime::runtime::policy_constants::{
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    make_empty_map, ActorError, AsActorError, BatchReturn, DATACAP_TOKEN_ACTOR_ADDR,
+    make_empty_map, ActorError, AsActorError, BatchReturn, EventBuilder, DATACAP_TOKEN_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
-use frc46_token::token::types::{BurnParams, BurnReturn, TransferParams};
-use frc46_token::token::TOKEN_PRECISION;
-use fvm_actor_utils::receiver::UniversalReceiverParams;
-use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::RawBytes;
-use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser::{BigIntDe, BigIntSer};
-use fvm_shared::clock::ChainEpoch;
-use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
-use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::sector::SectorNumber;
-use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH};
-use num_traits::{ToPrimitive, Zero};
-use std::cell::RefCell;
-use std::collections::HashMap;
 
 pub const ROOT_ADDR: Address = Address::new_id(101);
 
@@ -132,6 +134,13 @@ impl Harness {
             IpldBlock::serialize_cbor(&BigIntSer(&(cap * TOKEN_PRECISION))).unwrap(),
             ExitCode::OK,
         );
+        rt.expect_emitted_event(
+            EventBuilder::new()
+                .label("verifier-balance")
+                .value_indexed("verifier", &verifier_resolved.id().unwrap())?
+                .value("balance", &allowance)?
+                .build(),
+        );
 
         let params = AddVerifierParams { address: *verifier, allowance: allowance.clone() };
         let ret = rt.call::<VerifregActor>(
@@ -147,6 +156,14 @@ impl Harness {
 
     pub fn remove_verifier(&self, rt: &MockRuntime, verifier: &Address) -> Result<(), ActorError> {
         rt.expect_validate_caller_addr(vec![self.root]);
+        rt.expect_emitted_event(
+            EventBuilder::new()
+                .label("verifier-balance")
+                .value_indexed("verifier", &verifier.id().unwrap())?
+                .value("balance", &DataCap::zero())?
+                .build(),
+        );
+
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.root);
         let ret = rt.call::<VerifregActor>(
             Method::RemoveVerifier as MethodNum,
@@ -187,6 +204,7 @@ impl Harness {
         verifier: &Address,
         client: &Address,
         allowance: &DataCap,
+        verifier_balance: &DataCap,
     ) -> Result<(), ActorError> {
         rt.expect_validate_caller_any();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *verifier);
@@ -208,6 +226,13 @@ impl Harness {
         );
 
         let params = AddVerifiedClientParams { address: *client, allowance: allowance.clone() };
+        rt.expect_emitted_event(
+            EventBuilder::new()
+                .label("verifier-balance")
+                .value_indexed("verifier", &verifier.id().unwrap())?
+                .value("balance", &(verifier_balance - allowance))?
+                .build(),
+        );
         let ret = rt.call::<VerifregActor>(
             Method::AddVerifiedClient as MethodNum,
             IpldBlock::serialize_cbor(&params).unwrap(),
@@ -258,18 +283,39 @@ impl Harness {
         rt: &MockRuntime,
         provider: ActorID,
         claim_allocs: Vec<SectorAllocationClaim>,
-        datacap_burnt: u64,
+        expect_claimed: Vec<(AllocationID, Allocation)>,
         all_or_nothing: bool,
     ) -> Result<ClaimAllocationsReturn, ActorError> {
-        rt.expect_validate_caller_type(vec![Type::Miner]);
-        rt.set_caller(*MINER_ACTOR_CODE_ID, Address::new_id(provider));
+        let epoch = *rt.epoch.borrow();
+        let mut expected_datacap = 0u64;
+        let expected: HashMap<AllocationID, Allocation> = expect_claimed.into_iter().collect();
+        for req in claim_allocs.iter() {
+            if let Some(alloc) = expected.get(&req.allocation_id) {
+                expected_datacap += alloc.size.0;
+                let claim = claim_from_alloc(alloc, epoch, req.sector);
+                rt.expect_emitted_event(
+                    EventBuilder::new()
+                        .label("claim")
+                        .value_indexed("id", &req.allocation_id)?
+                        .value_indexed("provider", &alloc.provider)?
+                        .value_indexed("client", &alloc.client)?
+                        .value_indexed("data-cid", &alloc.data)?
+                        .value("data-size", &alloc.size)?
+                        .value("term-min", &alloc.term_min)?
+                        .value("term-max", &alloc.term_max)?
+                        .value("term-start", &epoch)?
+                        .value("sector", &claim.sector)?
+                        .build(),
+                );
+            }
+        }
 
-        if datacap_burnt > 0 {
+        if expected_datacap > 0 {
             rt.expect_send_simple(
                 DATACAP_TOKEN_ACTOR_ADDR,
                 ext::datacap::Method::Burn as MethodNum,
                 IpldBlock::serialize_cbor(&BurnParams {
-                    amount: TokenAmount::from_whole(datacap_burnt.to_i64().unwrap()),
+                    amount: TokenAmount::from_whole(expected_datacap.to_i64().unwrap()),
                 })
                 .unwrap(),
                 TokenAmount::zero(),
@@ -278,6 +324,8 @@ impl Harness {
             );
         }
 
+        rt.expect_validate_caller_type(vec![Type::Miner]);
+        rt.set_caller(*MINER_ACTOR_CODE_ID, Address::new_id(provider));
         let params = ClaimAllocationsParams { allocations: claim_allocs, all_or_nothing };
         let ret = rt
             .call::<VerifregActor>(
@@ -287,7 +335,6 @@ impl Harness {
             .unwrap()
             .deserialize()
             .expect("failed to deserialize claim allocations return");
-        rt.verify();
         Ok(ret)
     }
 
@@ -297,10 +344,26 @@ impl Harness {
         rt: &MockRuntime,
         client: ActorID,
         allocation_ids: Vec<AllocationID>,
-        expected_datacap: u64,
+        expect_removed: Vec<(AllocationID, Allocation)>,
     ) -> Result<RemoveExpiredAllocationsReturn, ActorError> {
         rt.expect_validate_caller_any();
-
+        let mut expected_datacap = 0u64;
+        for (id, alloc) in expect_removed {
+            expected_datacap += alloc.size.0;
+            rt.expect_emitted_event(
+                EventBuilder::new()
+                    .label("allocation-removed")
+                    .value_indexed("id", &id)?
+                    .value_indexed("client", &alloc.client)?
+                    .value_indexed("provider", &alloc.provider)?
+                    .value_indexed("data-cid", &alloc.data)?
+                    .value("data-size", &alloc.size)?
+                    .value("term-min", &alloc.term_min)?
+                    .value("term-max", &alloc.term_max)?
+                    .value("expiration", &alloc.expiration)?
+                    .build(),
+            );
+        }
         rt.expect_send_simple(
             DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Transfer as MethodNum,
@@ -334,8 +397,26 @@ impl Harness {
         rt: &MockRuntime,
         provider: ActorID,
         claim_ids: Vec<ClaimID>,
+        expecte_removed: Vec<(ClaimID, Claim)>,
     ) -> Result<RemoveExpiredClaimsReturn, ActorError> {
         rt.expect_validate_caller_any();
+
+        for (id, claim) in expecte_removed {
+            rt.expect_emitted_event(
+                EventBuilder::new()
+                    .label("claim-removed")
+                    .value_indexed("id", &id)?
+                    .value_indexed("provider", &claim.provider)?
+                    .value_indexed("client", &claim.client)?
+                    .value_indexed("data-cid", &claim.data)?
+                    .value("data-size", &claim.size)?
+                    .value("term-min", &claim.term_min)?
+                    .value("term-max", &claim.term_max)?
+                    .value("term-start", &claim.term_start)?
+                    .value("sector", &claim.sector)?
+                    .build(),
+            );
+        }
 
         let params = RemoveExpiredClaimsParams { provider, claim_ids };
         let ret = rt
@@ -382,6 +463,40 @@ impl Harness {
                 TokenAmount::zero(),
                 IpldBlock::serialize_cbor(&BurnReturn { balance: TokenAmount::zero() }).unwrap(),
                 ExitCode::OK,
+            );
+        }
+
+        let allocs_req: AllocationRequests = payload.operator_data.deserialize().unwrap();
+        for (alloc, id) in allocs_req.allocations.iter().zip(expected_alloc_ids.iter()) {
+            rt.expect_emitted_event(
+                EventBuilder::new()
+                    .label("allocation")
+                    .value_indexed("id", &id)?
+                    .value_indexed("client", &payload.from)?
+                    .value_indexed("provider", &alloc.provider)?
+                    .value_indexed("data-cid", &alloc.data)?
+                    .value("data-size", &alloc.size)?
+                    .value("term-min", &alloc.term_min)?
+                    .value("term-max", &alloc.term_max)?
+                    .value("expiration", &alloc.expiration)?
+                    .build(),
+            );
+        }
+        for ext in allocs_req.extensions {
+            let claim = self.load_claim(rt, ext.provider, ext.claim).unwrap();
+            rt.expect_emitted_event(
+                EventBuilder::new()
+                    .label("claim-updated")
+                    .value_indexed("id", &ext.claim)?
+                    .value_indexed("provider", &claim.provider)?
+                    .value_indexed("client", &claim.client)?
+                    .value_indexed("data-cid", &claim.data)?
+                    .value("data-size", &claim.size)?
+                    .value("term-min", &claim.term_min)?
+                    .value("term-max", &ext.term_max)? // From request
+                    .value("term-start", &claim.term_start)?
+                    .value("sector", &claim.sector)?
+                    .build(),
             );
         }
 
@@ -440,7 +555,24 @@ impl Harness {
         &self,
         rt: &MockRuntime,
         params: &ExtendClaimTermsParams,
+        expected: Vec<(ClaimID, Claim)>,
     ) -> Result<ExtendClaimTermsReturn, ActorError> {
+        for (id, new_claim) in expected.iter() {
+            rt.expect_emitted_event(
+                EventBuilder::new()
+                    .label("claim-updated")
+                    .value_indexed("id", &id)?
+                    .value_indexed("provider", &new_claim.provider)?
+                    .value_indexed("client", &new_claim.client)?
+                    .value_indexed("data-cid", &new_claim.data)?
+                    .value("data-size", &new_claim.size)?
+                    .value("term-min", &new_claim.term_min)?
+                    .value("term-max", &new_claim.term_max)?
+                    .value("term-start", &new_claim.term_start)?
+                    .value("sector", &new_claim.sector)?
+                    .build(),
+            );
+        }
         rt.expect_validate_caller_any();
         let ret = rt
             .call::<VerifregActor>(
@@ -450,7 +582,11 @@ impl Harness {
             .unwrap()
             .deserialize()
             .expect("failed to deserialize extend claim terms return");
-        rt.verify();
+
+        for (id, expected_claim) in expected {
+            let claim = self.load_claim(rt, expected_claim.provider, id).unwrap();
+            assert_eq!(expected_claim, claim);
+        }
         Ok(ret)
     }
 }

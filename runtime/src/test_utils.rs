@@ -1273,10 +1273,8 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
             .borrow_mut()
             .expect_emitted_events
             .pop_front()
-            .expect("unexpected call to emit_evit");
-
+            .expect("unexpected call to emit_event");
         assert_eq!(*event, expected);
-
         Ok(())
     }
 

@@ -6,6 +6,7 @@ use frc46_token::token::types::{BurnParams, TransferParams};
 use frc46_token::token::TOKEN_PRECISION;
 use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
@@ -14,6 +15,7 @@ use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::sys::SendFlags;
 use fvm_shared::{ActorID, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
 use log::info;
 use num_derive::FromPrimitive;
@@ -29,9 +31,8 @@ use fil_actors_runtime::{
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen};
-use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_shared::sys::SendFlags;
 
+use crate::events::Emit;
 use crate::ext::datacap::{DestroyParams, MintParams};
 
 pub use self::state::Allocation;
@@ -42,6 +43,7 @@ pub use self::types::*;
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
 
+pub mod events;
 pub mod expiration;
 pub mod ext;
 pub mod state;
@@ -103,31 +105,32 @@ impl Actor {
         }
 
         let verifier = resolve_to_actor_id(rt, &params.address, true)?;
-        let verifier = Address::new_id(verifier);
+        let verifier_addr = Address::new_id(verifier);
 
         let st: State = rt.state()?;
         rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
 
         // Disallow root as a verifier.
-        if verifier == st.root_key {
+        if verifier_addr == st.root_key {
             return Err(actor_error!(illegal_argument, "Rootkey cannot be added as verifier"));
         }
 
         // Disallow existing clients as verifiers.
-        let token_balance = balance(rt, &verifier)?;
+        let token_balance = balance(rt, &verifier_addr)?;
         if token_balance.is_positive() {
             return Err(actor_error!(
                 illegal_argument,
                 "verified client {} cannot become a verifier",
-                verifier
+                verifier_addr
             ));
         }
 
         // Store the new verifier and allowance (over-writing).
         rt.transaction(|st: &mut State, rt| {
-            st.put_verifier(rt.store(), &verifier, &params.allowance)
+            st.put_verifier(rt.store(), &verifier_addr, &params.allowance)
                 .context("failed to add verifier")
-        })
+        })?;
+        Emit::verifier_balance(rt, verifier, &params.allowance)
     }
 
     pub fn remove_verifier(
@@ -135,12 +138,13 @@ impl Actor {
         params: RemoveVerifierParams,
     ) -> Result<(), ActorError> {
         let verifier = resolve_to_actor_id(rt, &params.verifier, false)?;
-        let verifier = Address::new_id(verifier);
+        let verifier_addr = Address::new_id(verifier);
 
         rt.transaction(|st: &mut State, rt| {
             rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
-            st.remove_verifier(rt.store(), &verifier).context("failed to remove verifier")
-        })
+            st.remove_verifier(rt.store(), &verifier_addr).context("failed to remove verifier")
+        })?;
+        Emit::verifier_balance(rt, verifier, &DataCap::zero())
     }
 
     pub fn add_verified_client(
@@ -168,10 +172,11 @@ impl Actor {
             }
 
             // Validate caller is one of the verifiers, i.e. has an allowance (even if zero).
-            let verifier = rt.message().caller();
-            let verifier_cap = st
-                .get_verifier_cap(rt.store(), &verifier)?
-                .ok_or_else(|| actor_error!(not_found, "caller {} is not a verifier", verifier))?;
+            let verifier_addr = rt.message().caller();
+            let verifier_cap =
+                st.get_verifier_cap(rt.store(), &verifier_addr)?.ok_or_else(|| {
+                    actor_error!(not_found, "caller {} is not a verifier", verifier_addr)
+                })?;
 
             // Disallow existing verifiers as clients.
             if st.get_verifier_cap(rt.store(), &client)?.is_some() {
@@ -194,8 +199,9 @@ impl Actor {
 
             // Reduce verifier's cap.
             let new_verifier_cap = verifier_cap - &params.allowance;
-            st.put_verifier(rt.store(), &verifier, &new_verifier_cap)
-                .context("failed to update verifier allowance")
+            st.put_verifier(rt.store(), &verifier_addr, &new_verifier_cap)
+                .context("failed to update verifier allowance")?;
+            Emit::verifier_balance(rt, verifier_addr.id().unwrap(), &new_verifier_cap)
         })?;
 
         // Credit client token allowance.
@@ -335,12 +341,16 @@ impl Actor {
                 }
 
                 for id in to_remove {
-                    let existing = allocs.remove(params.client, *id).context_code(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to remove allocation {}", id),
-                    )?;
-                    // Unwrapping here as both paths to here should ensure the allocation exists.
-                    recovered_datacap += existing.unwrap().size.0;
+                    let existing = allocs
+                        .remove(params.client, *id)
+                        .context_code(
+                            ExitCode::USR_ILLEGAL_STATE,
+                            format!("failed to remove allocation {}", id),
+                        )?
+                        // Unwrapping here as both paths should ensure the allocation exists.
+                        .unwrap();
+                    Emit::allocation_removed(rt, *id, &existing)?;
+                    recovered_datacap += existing.size.0;
                 }
 
                 st.save_allocs(&mut allocs)?;
@@ -425,7 +435,7 @@ impl Actor {
                 };
 
                 let inserted = claims
-                    .put_if_absent(provider, claim_alloc.allocation_id, new_claim)
+                    .put_if_absent(provider, claim_alloc.allocation_id, new_claim.clone())
                     .context_code(
                         ExitCode::USR_ILLEGAL_STATE,
                         format!("failed to write claim {}", claim_alloc.allocation_id),
@@ -439,6 +449,7 @@ impl Actor {
                     );
                     continue;
                 }
+                Emit::claim(rt, claim_alloc.allocation_id, &new_claim)?;
 
                 allocs.remove(claim_alloc.client, claim_alloc.allocation_id).context_code(
                     ExitCode::USR_ILLEGAL_STATE,
@@ -548,11 +559,12 @@ impl Actor {
                     }
 
                     let new_claim = Claim { term_max: term.term_max, ..*claim };
-                    st_claims.put(term.provider, term.claim_id, new_claim).context_code(
+                    st_claims.put(term.provider, term.claim_id, new_claim.clone()).context_code(
                         ExitCode::USR_ILLEGAL_STATE,
                         "HAMT put failure storing new claims",
                     )?;
                     batch_gen.add_success();
+                    Emit::claim_updated(rt, term.claim_id, &new_claim)?;
                 } else {
                     batch_gen.add_fail(ExitCode::USR_NOT_FOUND);
                     info!("no claim {} for provider {}", term.claim_id, term.provider);
@@ -596,10 +608,15 @@ impl Actor {
             }
 
             for id in to_remove {
-                claims.remove(params.provider, *id).context_code(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to remove claim {}", id),
-                )?;
+                let removed = claims
+                    .remove(params.provider, *id)
+                    .context_code(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        format!("failed to remove claim {}", id),
+                    )?
+                    // Unwrapping here as all paths should ensure the claim exists.
+                    .unwrap();
+                Emit::claim_removed(rt, *id, &removed)?;
             }
 
             st.save_claims(&mut claims)?;
@@ -696,8 +713,14 @@ impl Actor {
 
         // Save new allocations and updated claims.
         let ids = rt.transaction(|st: &mut State, rt| {
-            let ids = st.insert_allocations(rt.store(), client, new_allocs)?;
-            st.put_claims(rt.store(), updated_claims)?;
+            let ids = st.insert_allocations(rt.store(), client, new_allocs.clone())?;
+            for (id, alloc) in ids.iter().zip(new_allocs.iter()) {
+                Emit::allocation(rt, *id, alloc)?;
+            }
+            st.put_claims(rt.store(), updated_claims.clone())?;
+            for (id, claim) in updated_claims {
+                Emit::claim_updated(rt, id, &claim)?;
+            }
             Ok(ids)
         })?;
 
