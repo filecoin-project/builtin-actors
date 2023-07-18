@@ -209,7 +209,10 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
         code_id: Cid,
         actor_id: ActorID,
         predictable_address: Option<Address>,
-    ) -> Result<(), ActorError>;
+        params: Option<IpldBlock>,
+        value: TokenAmount,
+        gas_limit: Option<u64>,
+    ) -> Result<Response, ActorError>;
 
     /// Deletes the executing actor from the state tree, transferring any balance to beneficiary.
     /// Aborts if the beneficiary does not exist.

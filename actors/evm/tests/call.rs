@@ -1179,10 +1179,7 @@ impl ContractTester {
         rt.set_delegated_address(0, Address::new_delegated(EAM_ACTOR_ID, &addr.0).unwrap());
 
         assert!(rt
-            .call::<evm::EvmContractActor>(
-                evm::Method::Constructor as u64,
-                IpldBlock::serialize_cbor(&params).unwrap(),
-            )
+            .construct::<evm::EvmContractActor>(IpldBlock::serialize_cbor(&params).unwrap(),)
             .unwrap()
             .is_none());
 

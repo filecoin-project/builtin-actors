@@ -21,7 +21,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::SealVerifyInfo;
-use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
+use fvm_shared::{MethodNum, HAMT_BIT_WIDTH};
 use log::{debug, error};
 use num_derive::FromPrimitive;
 use num_traits::Zero;
@@ -53,7 +53,6 @@ pub mod detail {
 #[repr(u64)]
 pub enum Method {
     /// Constructor for Storage Power Actor
-    Constructor = METHOD_CONSTRUCTOR,
     CreateMiner = 2,
     UpdateClaimedPower = 3,
     EnrollCronEvent = 4,
@@ -683,7 +682,6 @@ impl ActorCode for Actor {
     }
 
     actor_dispatch! {
-        Constructor => constructor,
         CreateMiner|CreateMinerExported => create_miner,
         UpdateClaimedPower => update_claimed_power            ,
         EnrollCronEvent => enroll_cron_event,

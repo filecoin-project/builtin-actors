@@ -80,10 +80,7 @@ mod constructor_tests {
         rt.set_received(TokenAmount::from_atto(100u8));
         rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
-        let ret = rt.call::<MultisigActor>(
-            Method::Constructor as u64,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-        );
+        let ret = rt.construct::<MultisigActor>(IpldBlock::serialize_cbor(&params).unwrap());
         assert!(ret.unwrap().is_none());
         rt.verify();
 
@@ -116,12 +113,8 @@ mod constructor_tests {
 
         rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
-        let ret = rt
-            .call::<MultisigActor>(
-                Method::Constructor as u64,
-                IpldBlock::serialize_cbor(&params).unwrap(),
-            )
-            .unwrap();
+        let ret =
+            rt.construct::<MultisigActor>(IpldBlock::serialize_cbor(&params).unwrap()).unwrap();
         assert!(ret.is_none());
         check_state(&rt);
     }
@@ -140,10 +133,7 @@ mod constructor_tests {
         rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         assert!(rt
-            .call::<MultisigActor>(
-                Method::Constructor as u64,
-                IpldBlock::serialize_cbor(&params).unwrap(),
-            )
+            .construct::<MultisigActor>(IpldBlock::serialize_cbor(&params).unwrap())
             .unwrap()
             .is_none());
 
@@ -171,10 +161,7 @@ mod constructor_tests {
 
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            rt.call::<MultisigActor>(
-                Method::Constructor as u64,
-                IpldBlock::serialize_cbor(&zero_signer_params).unwrap(),
-            ),
+            rt.construct::<MultisigActor>(IpldBlock::serialize_cbor(&zero_signer_params).unwrap()),
         );
         rt.verify();
     }
@@ -198,8 +185,7 @@ mod constructor_tests {
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            rt.call::<MultisigActor>(
-                Method::Constructor as u64,
+            rt.construct::<MultisigActor>(
                 IpldBlock::serialize_cbor(&over_max_signers_params).unwrap(),
             ),
         );
@@ -219,10 +205,7 @@ mod constructor_tests {
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            rt.call::<MultisigActor>(
-                Method::Constructor as u64,
-                IpldBlock::serialize_cbor(&params).unwrap(),
-            ),
+            rt.construct::<MultisigActor>(IpldBlock::serialize_cbor(&params).unwrap()),
         );
         rt.verify();
     }
@@ -250,10 +233,7 @@ mod constructor_tests {
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            rt.call::<MultisigActor>(
-                Method::Constructor as u64,
-                IpldBlock::serialize_cbor(&params).unwrap(),
-            ),
+            rt.construct::<MultisigActor>(IpldBlock::serialize_cbor(&params).unwrap()),
         );
         rt.verify();
     }
@@ -271,10 +251,7 @@ mod constructor_tests {
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            rt.call::<MultisigActor>(
-                Method::Constructor as u64,
-                IpldBlock::serialize_cbor(&params).unwrap(),
-            ),
+            rt.construct::<MultisigActor>(IpldBlock::serialize_cbor(&params).unwrap()),
         );
         rt.verify();
     }
@@ -294,10 +271,7 @@ mod constructor_tests {
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            rt.call::<MultisigActor>(
-                Method::Constructor as u64,
-                IpldBlock::serialize_cbor(&params).unwrap(),
-            ),
+            rt.construct::<MultisigActor>(IpldBlock::serialize_cbor(&params).unwrap()),
         );
         rt.verify();
     }

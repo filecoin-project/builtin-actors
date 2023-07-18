@@ -14,7 +14,7 @@ use fvm_shared::bigint::BigInt;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::Response;
-use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR};
+use fvm_shared::{ActorID, MethodNum};
 use lazy_static::lazy_static;
 use log::info;
 use num_derive::FromPrimitive;
@@ -50,7 +50,6 @@ lazy_static! {
 #[derive(FromPrimitive)]
 #[repr(u64)]
 pub enum Method {
-    Constructor = METHOD_CONSTRUCTOR,
     // Deprecated in v10
     // Mint = 2,
     // Destroy = 3,
@@ -505,7 +504,6 @@ impl ActorCode for Actor {
     }
 
     actor_dispatch! {
-        Constructor => constructor,
         MintExported => mint,
         DestroyExported => destroy,
         NameExported => name,

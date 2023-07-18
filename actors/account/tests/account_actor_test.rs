@@ -24,11 +24,7 @@ fn construction() {
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
 
         if exit_code.is_success() {
-            rt.call::<AccountActor>(
-                Method::Constructor as MethodNum,
-                IpldBlock::serialize_cbor(&addr).unwrap(),
-            )
-            .unwrap();
+            rt.construct::<AccountActor>(IpldBlock::serialize_cbor(&addr).unwrap()).unwrap();
 
             let state: State = rt.get_state();
             assert_eq!(state.address, addr);
@@ -45,7 +41,7 @@ fn construction() {
         } else {
             expect_abort(
                 exit_code,
-                rt.call::<AccountActor>(1, IpldBlock::serialize_cbor(&addr).unwrap()),
+                rt.construct::<AccountActor>(IpldBlock::serialize_cbor(&addr).unwrap()),
             )
         }
         rt.verify();
@@ -67,11 +63,7 @@ fn token_receiver() {
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
 
     let param = Address::new_secp256k1(&[2; fvm_shared::address::SECP_PUB_LEN]).unwrap();
-    rt.call::<AccountActor>(
-        Method::Constructor as MethodNum,
-        IpldBlock::serialize_cbor(&param).unwrap(),
-    )
-    .unwrap();
+    rt.construct::<AccountActor>(IpldBlock::serialize_cbor(&param).unwrap()).unwrap();
 
     rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(1000));
     rt.expect_validate_caller_any();
@@ -95,11 +87,7 @@ fn authenticate_message() {
 
     let addr = Address::new_secp256k1(&[2; fvm_shared::address::SECP_PUB_LEN]).unwrap();
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
-    rt.call::<AccountActor>(
-        Method::Constructor as MethodNum,
-        IpldBlock::serialize_cbor(&addr).unwrap(),
-    )
-    .unwrap();
+    rt.construct::<AccountActor>(IpldBlock::serialize_cbor(&addr).unwrap()).unwrap();
 
     let state: State = rt.get_state();
     assert_eq!(state.address, addr);
@@ -166,11 +154,7 @@ fn test_fallback() {
 
     let addr = Address::new_secp256k1(&[2; fvm_shared::address::SECP_PUB_LEN]).unwrap();
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
-    rt.call::<AccountActor>(
-        Method::Constructor as MethodNum,
-        IpldBlock::serialize_cbor(&addr).unwrap(),
-    )
-    .unwrap();
+    rt.construct::<AccountActor>(IpldBlock::serialize_cbor(&addr).unwrap()).unwrap();
 
     let state: State = rt.get_state();
     assert_eq!(state.address, addr);

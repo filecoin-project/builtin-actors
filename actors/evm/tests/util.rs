@@ -51,10 +51,7 @@ pub fn init_construct_and_verify<F: FnOnce(&MockRuntime)>(
     };
 
     assert!(rt
-        .call::<evm::EvmContractActor>(
-            evm::Method::Constructor as u64,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-        )
+        .construct::<evm::EvmContractActor>(IpldBlock::serialize_cbor(&params).unwrap(),)
         .unwrap()
         .is_none());
     let evm_st: State = rt.state().unwrap();

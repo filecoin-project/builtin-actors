@@ -20,7 +20,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::{RegisteredSealProof, SectorSize, StoragePower};
-use fvm_shared::{ActorID, METHOD_CONSTRUCTOR, METHOD_SEND};
+use fvm_shared::{ActorID, METHOD_SEND};
 use integer_encoding::VarInt;
 use log::info;
 use num_derive::FromPrimitive;
@@ -69,7 +69,6 @@ pub const EX_DEAL_EXPIRED: ExitCode = ExitCode::new(FIRST_ACTOR_SPECIFIC_EXIT_CO
 #[derive(FromPrimitive)]
 #[repr(u64)]
 pub enum Method {
-    Constructor = METHOD_CONSTRUCTOR,
     AddBalance = 2,
     WithdrawBalance = 3,
     PublishStorageDeals = 4,
@@ -1450,7 +1449,6 @@ impl ActorCode for Actor {
     }
 
     actor_dispatch! {
-        Constructor => constructor,
         AddBalance|AddBalanceExported => add_balance,
         WithdrawBalance|WithdrawBalanceExported => withdraw_balance,
         PublishStorageDeals|PublishStorageDealsExported => publish_storage_deals,

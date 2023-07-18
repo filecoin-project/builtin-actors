@@ -802,24 +802,24 @@ where
         let params = self.msg.params.clone();
         let mut res = match ACTOR_TYPES.get(&to_actor.code).expect("Target actor is not a builtin")
         {
-            Type::Account => AccountActor::invoke_method(self, self.msg.method, params),
-            Type::Cron => CronActor::invoke_method(self, self.msg.method, params),
-            Type::Init => InitActor::invoke_method(self, self.msg.method, params),
-            Type::Market => MarketActor::invoke_method(self, self.msg.method, params),
-            Type::Miner => MinerActor::invoke_method(self, self.msg.method, params),
-            Type::Multisig => MultisigActor::invoke_method(self, self.msg.method, params),
-            Type::System => SystemActor::invoke_method(self, self.msg.method, params),
-            Type::Reward => RewardActor::invoke_method(self, self.msg.method, params),
-            Type::Power => PowerActor::invoke_method(self, self.msg.method, params),
-            Type::PaymentChannel => PaychActor::invoke_method(self, self.msg.method, params),
-            Type::VerifiedRegistry => VerifregActor::invoke_method(self, self.msg.method, params),
-            Type::DataCap => DataCapActor::invoke_method(self, self.msg.method, params),
+            Type::Account => AccountActor::invoke(self, self.msg.method, params),
+            Type::Cron => CronActor::invoke(self, self.msg.method, params),
+            Type::Init => InitActor::invoke(self, self.msg.method, params),
+            Type::Market => MarketActor::invoke(self, self.msg.method, params),
+            Type::Miner => MinerActor::invoke(self, self.msg.method, params),
+            Type::Multisig => MultisigActor::invoke(self, self.msg.method, params),
+            Type::System => SystemActor::invoke(self, self.msg.method, params),
+            Type::Reward => RewardActor::invoke(self, self.msg.method, params),
+            Type::Power => PowerActor::invoke(self, self.msg.method, params),
+            Type::PaymentChannel => PaychActor::invoke(self, self.msg.method, params),
+            Type::VerifiedRegistry => VerifregActor::invoke(self, self.msg.method, params),
+            Type::DataCap => DataCapActor::invoke(self, self.msg.method, params),
             Type::Placeholder => {
                 Err(ActorError::unhandled_message("placeholder actors only handle method 0".into()))
             }
-            Type::EVM => EvmContractActor::invoke_method(self, self.msg.method, params),
-            Type::EAM => EamActor::invoke_method(self, self.msg.method, params),
-            Type::EthAccount => EthAccountActor::invoke_method(self, self.msg.method, params),
+            Type::EVM => EvmContractActor::invoke(self, self.msg.method, params),
+            Type::EAM => EamActor::invoke(self, self.msg.method, params),
+            Type::EthAccount => EthAccountActor::invoke(self, self.msg.method, params),
         };
         if res.is_ok() && !*self.caller_validated.borrow() {
             res = Err(actor_error!(assertion_failed, "failed to validate caller"));

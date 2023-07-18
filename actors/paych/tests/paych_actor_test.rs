@@ -26,7 +26,6 @@ use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sys::SendFlags;
-use fvm_shared::METHOD_CONSTRUCTOR;
 use num_traits::Zero;
 
 const PAYCH_ID: u64 = 100;
@@ -51,8 +50,17 @@ fn call(rt: &MockRuntime, method_num: u64, ser: Option<IpldBlock>) -> Option<Ipl
     rt.call::<PaychActor>(method_num, ser).unwrap()
 }
 
+fn construct(rt: &MockRuntime, ser: Option<IpldBlock>) -> Option<IpldBlock> {
+    rt.construct::<PaychActor>(ser).unwrap()
+}
+
 fn expect_abort(rt: &MockRuntime, method_num: u64, ser: Option<IpldBlock>, exp: ExitCode) {
     let err = rt.call::<PaychActor>(method_num, ser).unwrap_err();
+    assert_eq!(exp, err.exit_code());
+}
+
+fn expect_constructor_abort(rt: &MockRuntime, ser: Option<IpldBlock>, exp: ExitCode) {
+    let err = rt.construct::<PaychActor>(ser).unwrap_err();
     assert_eq!(exp, err.exit_code());
 }
 
@@ -77,7 +85,7 @@ fn check_state(rt: &MockRuntime) {
 
 mod paych_constructor {
     use fil_actors_runtime::runtime::builtins::Type;
-    use fvm_shared::{METHOD_CONSTRUCTOR, METHOD_SEND};
+    use fvm_shared::METHOD_SEND;
 
     use super::*;
 
@@ -119,9 +127,8 @@ mod paych_constructor {
             to: Address::new_id(TEST_PAYCH_ADDR),
             from: Address::new_secp256k1(&[2; fvm_shared::address::SECP_PUB_LEN]).unwrap(),
         };
-        expect_abort(
+        expect_constructor_abort(
             &rt,
-            METHOD_CONSTRUCTOR,
             IpldBlock::serialize_cbor(&params).unwrap(),
             ExitCode::USR_NOT_FOUND,
         );
@@ -146,7 +153,7 @@ mod paych_constructor {
     }
 
     #[test]
-    fn sendr_addr_not_resolvable_to_id_addr() {
+    fn sender_addr_not_resolvable_to_id_addr() {
         const TO_ADDR: u64 = 101;
         let to_addr = Address::new_id(TO_ADDR);
         let paych_addr = Address::new_id(TEST_PAYCH_ADDR);
@@ -176,9 +183,8 @@ mod paych_constructor {
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         rt.expect_validate_caller_type(vec![Type::Init]);
         let params = ConstructorParams { from: non_id_addr, to: to_addr };
-        expect_abort(
+        expect_constructor_abort(
             &rt,
-            METHOD_CONSTRUCTOR,
             IpldBlock::serialize_cbor(&params).unwrap(),
             ExitCode::USR_ILLEGAL_ARGUMENT,
         );
@@ -214,9 +220,8 @@ mod paych_constructor {
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         rt.expect_validate_caller_type(vec![Type::Init]);
         let params = ConstructorParams { from: from_addr, to: non_id_addr };
-        expect_abort(
+        expect_constructor_abort(
             &rt,
-            METHOD_CONSTRUCTOR,
             IpldBlock::serialize_cbor(&params).unwrap(),
             ExitCode::USR_ILLEGAL_ARGUMENT,
         );
@@ -1091,7 +1096,7 @@ fn construct_and_verify(rt: &MockRuntime, sender: Address, receiver: Address) {
     let params = ConstructorParams { from: sender, to: receiver };
     rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
     rt.expect_validate_caller_type(vec![Type::Init]);
-    call(rt, METHOD_CONSTRUCTOR, IpldBlock::serialize_cbor(&params).unwrap());
+    construct(rt, IpldBlock::serialize_cbor(&params).unwrap());
     rt.verify();
     let sender_id = *rt.id_addresses.borrow().get(&sender).unwrap_or(&sender);
     let receiver_id = *rt.id_addresses.borrow().get(&receiver).unwrap_or(&receiver);

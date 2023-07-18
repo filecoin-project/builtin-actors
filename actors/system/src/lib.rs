@@ -1,27 +1,19 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 use cid::{multihash, Cid};
+use fil_actors_runtime::Never;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::CborStore;
 use fvm_shared::error::ExitCode;
-use fvm_shared::METHOD_CONSTRUCTOR;
-use num_derive::FromPrimitive;
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR,
+    actor_dispatch, ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR,
 };
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
-
-/// System actor methods.
-#[derive(FromPrimitive)]
-#[repr(u64)]
-pub enum Method {
-    Constructor = METHOD_CONSTRUCTOR,
-}
 
 /// System actor state.
 #[derive(Default, Deserialize_tuple, Serialize_tuple, Debug, Clone)]
@@ -65,27 +57,23 @@ impl Actor {
 }
 
 impl ActorCode for Actor {
-    type Methods = Method;
+    type Methods = Never;
 
     fn name() -> &'static str {
         "System"
     }
 
-    actor_dispatch! {
-        Constructor => constructor,
-    }
+    actor_dispatch! {}
 }
 
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
 
-    use fvm_shared::MethodNum;
-
     use fil_actors_runtime::test_utils::{MockRuntime, SYSTEM_ACTOR_CODE_ID};
     use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
 
-    use crate::{Actor, Method, State};
+    use crate::{Actor, State};
 
     pub fn new_runtime() -> MockRuntime {
         MockRuntime {
@@ -101,7 +89,7 @@ mod tests {
         let rt = new_runtime();
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
-        rt.call::<Actor>(Method::Constructor as MethodNum, None).unwrap();
+        rt.construct::<Actor>(None).unwrap();
 
         let state: State = rt.get_state();
         let builtin_actors = state.get_builtin_actors(&rt.store).unwrap();
