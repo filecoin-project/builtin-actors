@@ -3018,7 +3018,7 @@ impl Actor {
         rt.transaction(|state: &mut State, rt| {
             let info = get_miner_info(rt.store(), state)?;
 
-            rt.validate_immediate_caller_is(&[info.worker, info.owner])?;
+            rt.validate_immediate_caller_is(info.control_addresses.iter().chain(&[info.worker, info.owner]))?;
 
             let store = rt.store();
             let current_deadline = state.deadline_info(policy, rt.curr_epoch());
@@ -3112,8 +3112,6 @@ impl Actor {
                         }
 
                         // Load sector infos for proof, substituting a known-good sector for known-faulty sectors.
-                        // Note: this is slightly sub-optimal, loading info for the recovering sectors again after they were already
-                        // loaded above.
                         let sector_infos = sectors
                             .load_for_proof(
                                 &BitField::union(&all_sectors),
@@ -3155,7 +3153,7 @@ impl Actor {
                     })?;
             }
 
-            if !deadline_available_for_compaction(
+            if !deadline_is_mutable(
                 policy,
                 current_deadline.period_start,
                 params.to_deadline,

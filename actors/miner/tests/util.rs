@@ -2607,7 +2607,7 @@ impl ActorHarness {
 
         let params = MovePartitionsParams { from_deadline, to_deadline, partitions };
 
-        rt.expect_validate_caller_addr(vec![self.worker, self.owner]);
+        rt.expect_validate_caller_addr(self.caller_addrs());
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
 
         rt.call::<Actor>(

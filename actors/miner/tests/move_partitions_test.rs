@@ -1,6 +1,6 @@
 use fil_actor_miner::{
     deadline_available_for_compaction, deadline_available_for_optimistic_post_dispute,
-    new_deadline_info, DeadlineInfo,
+    deadline_is_mutable, new_deadline_info, DeadlineInfo,
 };
 use fil_actors_runtime::{
     runtime::{DomainSeparationTag, RuntimePolicy},
@@ -76,34 +76,22 @@ fn farthest_possible_to_deadline(
     if current_deadline.index < from_deadline_id {
         // the deadline distance can only be nearer
         for i in (current_deadline.index..(from_deadline_id)).rev() {
-            if deadline_available_for_compaction(
-                &rt.policy,
-                current_deadline.period_start,
-                i,
-                *rt.epoch.borrow(),
-            ) {
+            if deadline_is_mutable(&rt.policy, current_deadline.period_start, i, *rt.epoch.borrow())
+            {
                 return i;
             }
         }
     } else {
         for i in (0..(from_deadline_id)).rev() {
-            if deadline_available_for_compaction(
-                &rt.policy,
-                current_deadline.period_start,
-                i,
-                *rt.epoch.borrow(),
-            ) {
+            if deadline_is_mutable(&rt.policy, current_deadline.period_start, i, *rt.epoch.borrow())
+            {
                 return i;
             }
         }
 
         for i in (current_deadline.index..rt.policy.wpost_period_deadlines).rev() {
-            if deadline_available_for_compaction(
-                &rt.policy,
-                current_deadline.period_start,
-                i,
-                *rt.epoch.borrow(),
-            ) {
+            if deadline_is_mutable(&rt.policy, current_deadline.period_start, i, *rt.epoch.borrow())
+            {
                 return i;
             }
         }
