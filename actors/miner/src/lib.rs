@@ -2996,10 +2996,7 @@ impl Actor {
         Ok(())
     }
 
-    fn move_partitions(
-        rt: &impl Runtime,
-        mut params: MovePartitionsParams,
-    ) -> Result<(), ActorError> {
+    fn move_partitions(rt: &impl Runtime, params: MovePartitionsParams) -> Result<(), ActorError> {
         if params.from_deadline == params.to_deadline {
             return Err(actor_error!(illegal_argument, "from_deadline == to_deadline"));
         }
@@ -3013,6 +3010,9 @@ impl Actor {
                 params.from_deadline,
                 params.to_deadline
             ));
+        }
+        if params.partitions.is_empty() {
+            return Err(actor_error!(illegal_argument, "empty partitions not allowed"));
         }
 
         rt.transaction(|state: &mut State, rt| {
@@ -3148,13 +3148,9 @@ impl Actor {
                         format!("failed to load deadline {}", params.to_deadline),
                     )?;
 
-            let partitions = &mut params.partitions;
-            if partitions.is_empty() {
-                return Err(actor_error!(illegal_argument, "empty partitions not allowed"));
-            }
 
             let (live, dead, removed_power) =
-                from_deadline.remove_partitions(store, partitions, from_quant)
+                from_deadline.remove_partitions(store, &params.partitions, from_quant)
                 .context_code(ExitCode::USR_ILLEGAL_STATE,
                         format!(
                             "failed to remove partitions from deadline {}",
