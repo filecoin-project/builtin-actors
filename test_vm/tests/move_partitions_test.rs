@@ -1,5 +1,5 @@
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
+use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
@@ -24,7 +24,7 @@ use test_vm::trace::ExpectInvocation;
 use test_vm::util::{
     advance_by_deadline_to_epoch, advance_to_proving_deadline, apply_ok, assert_invariants,
     create_accounts, create_miner, cron_tick, get_network_stats, get_state, miner_balance,
-    precommit_sectors, submit_windowed_post,
+    precommit_sectors, submit_windowed_post, DynBlockstore,
 };
 use test_vm::{TestVM, VM};
 
@@ -64,14 +64,11 @@ fn move_partitions_success() {
     assert_invariants(&v);
 }
 
-fn submit_post_succeeds_test<BS: Blockstore>(
-    v: &dyn VM<BS>,
-    miner_info: MinerInfo,
-    sector_info: SectorInfo,
-) {
+fn submit_post_succeeds_test(v: &dyn VM, miner_info: MinerInfo, sector_info: SectorInfo) {
     // submit post
     let st: MinerState = get_state(v, &miner_info.miner_id).unwrap();
-    let sector = st.get_sector(*v.blockstore(), sector_info.number).unwrap().unwrap();
+    let sector =
+        st.get_sector(&DynBlockstore::wrap(v.blockstore()), sector_info.number).unwrap().unwrap();
     let sector_power = power_for_sector(miner_info.seal_proof.sector_size().unwrap(), &sector);
     submit_windowed_post(
         v,
