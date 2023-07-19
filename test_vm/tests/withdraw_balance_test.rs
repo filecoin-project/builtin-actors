@@ -1,5 +1,5 @@
 use fil_actor_miner::{ChangeBeneficiaryParams, Method as MinerMethod, WithdrawBalanceParams};
-use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
+use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -16,7 +16,7 @@ fn withdraw_balance_success() {
     withdraw_balance_success_test(&v);
 }
 
-fn withdraw_balance_success_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn withdraw_balance_success_test(v: &dyn VM) {
     let addrs = create_accounts(v, 2, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, beneficiary) = (addrs[0], addrs[0], addrs[1]);
@@ -59,10 +59,10 @@ fn withdraw_balance_success_test<BS: Blockstore>(v: &dyn VM<BS>) {
 fn withdraw_balance_fail() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
-    withdraw_balance_fail_test::<MemoryBlockstore>(&v);
+    withdraw_balance_fail_test(&v);
 }
 
-fn withdraw_balance_fail_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn withdraw_balance_fail_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, beneficiary, addr) = (addrs[0], addrs[0], addrs[1], addrs[2]);

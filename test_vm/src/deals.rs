@@ -8,7 +8,6 @@ use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::make_piece_cid;
 use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
-use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::signature::{Signature, SignatureType};
@@ -45,21 +44,15 @@ impl Default for DealOptions {
 // A helper for staging and publishing deals.
 // Note that this doesn't check trace expectations,
 // see https://github.com/filecoin-project/builtin-actors/issues/1302.
-pub struct DealBatcher<'vm, BS>
-where
-    BS: Blockstore,
-{
-    v: &'vm dyn VM<BS>,
+pub struct DealBatcher<'vm> {
+    v: &'vm dyn VM,
     deals: Vec<DealProposal>,
     default_options: DealOptions,
     published: bool,
 }
 
-impl<'vm, BS> DealBatcher<'vm, BS>
-where
-    BS: Blockstore,
-{
-    pub fn new(v: &'vm dyn VM<BS>, opts: DealOptions) -> Self {
+impl<'vm> DealBatcher<'vm> {
+    pub fn new(v: &'vm dyn VM, opts: DealOptions) -> Self {
         DealBatcher { v, deals: vec![], default_options: opts, published: false }
     }
 

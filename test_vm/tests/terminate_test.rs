@@ -14,7 +14,7 @@ use fil_actors_runtime::{
     test_utils::*, CRON_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
+use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -28,7 +28,7 @@ use test_vm::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_to_proving_deadline, apply_ok, create_accounts, create_miner, expect_invariants,
     get_state, invariant_failure_patterns, make_bitfield, market_publish_deal, miner_balance,
-    submit_windowed_post, verifreg_add_verifier,
+    submit_windowed_post, verifreg_add_verifier, DynBlockstore,
 };
 use test_vm::{TestVM, VM};
 
@@ -39,7 +39,7 @@ fn terminate_sectors() {
     terminate_sectors_test(&v);
 }
 
-fn terminate_sectors_test<BS: Blockstore>(v: &dyn VM<BS>) {
+fn terminate_sectors_test(v: &dyn VM) {
     let addrs = create_accounts(v, 4, &TokenAmount::from_whole(10_000));
     let (owner, verifier, unverified_client, verified_client) =
         (addrs[0], addrs[1], addrs[2], addrs[3]);
@@ -160,7 +160,8 @@ fn terminate_sectors_test<BS: Blockstore>(v: &dyn VM<BS>) {
         .unwrap();
     assert_eq!(ExitCode::OK, res.code);
     let st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
-    let deal_states = DealMetaArray::load(&st.states, *v.blockstore()).unwrap();
+    let store = DynBlockstore::wrap(v.blockstore());
+    let deal_states = DealMetaArray::load(&st.states, &store).unwrap();
     for id in deal_ids.iter() {
         // deals are pending and don't yet have deal states
         let state = deal_states.get(*id).unwrap();
@@ -209,7 +210,8 @@ fn terminate_sectors_test<BS: Blockstore>(v: &dyn VM<BS>) {
     let (dline_info, p_idx) = advance_to_proving_deadline(v, &miner_id_addr, sector_number);
     let d_idx = dline_info.index;
     let st: MinerState = get_state(v, &miner_id_addr).unwrap();
-    let sector = st.get_sector(*v.blockstore(), sector_number).unwrap().unwrap();
+    let sector =
+        st.get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number).unwrap().unwrap();
     let sector_power = power_for_sector(seal_proof.sector_size().unwrap(), &sector);
     submit_windowed_post(v, &worker, &miner_id_addr, dline_info, p_idx, Some(sector_power.clone()));
     v.set_epoch(dline_info.last());
@@ -238,7 +240,8 @@ fn terminate_sectors_test<BS: Blockstore>(v: &dyn VM<BS>) {
 
     // market cron updates deal states indication deals are no longer pending
     let st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
-    let deal_states = DealMetaArray::load(&st.states, *v.blockstore()).unwrap();
+    let store = DynBlockstore::wrap(v.blockstore());
+    let deal_states = DealMetaArray::load(&st.states, &store).unwrap();
     for id in deal_ids.iter() {
         let state = deal_states.get(*id).unwrap().unwrap();
         assert!(state.last_updated_epoch > 0);
@@ -292,7 +295,8 @@ fn terminate_sectors_test<BS: Blockstore>(v: &dyn VM<BS>) {
     // termination slashes deals in market state
     let termination_epoch = v.epoch();
     let st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
-    let deal_states = DealMetaArray::load(&st.states, *v.blockstore()).unwrap();
+    let store = DynBlockstore::wrap(v.blockstore());
+    let deal_states = DealMetaArray::load(&st.states, &store).unwrap();
     for id in deal_ids.iter() {
         let state = deal_states.get(*id).unwrap().unwrap();
         assert!(state.last_updated_epoch > 0);
