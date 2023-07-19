@@ -236,6 +236,7 @@ where
             read_only: false,
             policy: &Policy::default(),
             subinvocations: RefCell::new(vec![]),
+            events: RefCell::new(vec![]),
         };
         let res = new_ctx.invoke();
 
@@ -630,6 +631,12 @@ where
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct EmittedEvent {
+    pub emitter: ActorID,
+    pub event: ActorEvent,
+}
+
 pub const TEST_VM_RAND_ARRAY: [u8; 32] = [
     1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
     26, 27, 28, 29, 30, 31, 32,
@@ -648,6 +655,7 @@ where
     read_only: bool,
     policy: &'invocation Policy,
     subinvocations: RefCell<Vec<InvocationTrace>>,
+    events: RefCell<Vec<EmittedEvent>>,
 }
 
 impl<'invocation, 'bs, BS> InvocationCtx<'invocation, 'bs, BS>
@@ -712,6 +720,7 @@ where
                 read_only: false,
                 policy: self.policy,
                 subinvocations: RefCell::new(vec![]),
+                events: RefCell::new(vec![]),
             };
             if is_account {
                 new_ctx.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id, None).unwrap();
@@ -1045,6 +1054,7 @@ where
             read_only: send_flags.read_only(),
             policy: self.policy,
             subinvocations: RefCell::new(vec![]),
+            events: RefCell::new(vec![]),
         };
         let res = new_ctx.invoke();
         let invoc = new_ctx.gather_trace(res.clone());
@@ -1169,9 +1179,11 @@ where
         Ok(Cid::new_v1(IPLD_RAW, Multihash::wrap(0, b"faketipset").unwrap()))
     }
 
-    // TODO No support for events yet.
-    fn emit_event(&self, _event: &ActorEvent) -> Result<(), ActorError> {
-        unimplemented!()
+    fn emit_event(&self, event: &ActorEvent) -> Result<(), ActorError> {
+        self.events
+            .borrow_mut()
+            .push(EmittedEvent { emitter: self.msg.to.id().unwrap(), event: event.clone() });
+        Ok(())
     }
 
     fn read_only(&self) -> bool {

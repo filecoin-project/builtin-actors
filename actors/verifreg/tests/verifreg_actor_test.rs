@@ -456,11 +456,9 @@ mod clients {
         rt.expect_emitted_event(
             EventBuilder::new()
                 .label("verifier-balance")
-                .value_indexed("verifier", &VERIFIER.id().unwrap())
-                .unwrap()
-                .value("balance", &(allowance_verifier - allowance_client))
-                .unwrap()
-                .build(),
+                .field_indexed("verifier", &VERIFIER.id().unwrap())
+                .field("balance", &(allowance_verifier - allowance_client))
+                .build().unwrap(),
         );
         rt.expect_validate_caller_any();
         rt.call::<VerifregActor>(

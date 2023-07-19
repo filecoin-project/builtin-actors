@@ -250,7 +250,7 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// The epoch must satisfy: (curr_epoch - FINALITY) < epoch <= curr_epoch
     fn tipset_cid(&self, epoch: i64) -> Result<Cid, ActorError>;
 
-    /// Emits an event denoting that something externally noteworthy has ocurred.
+    /// Emits an event denoting that something externally noteworthy has occurred.
     fn emit_event(&self, event: &ActorEvent) -> Result<(), ActorError>;
 
     /// Returns true if the call is read_only.

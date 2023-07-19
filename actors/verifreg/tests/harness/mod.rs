@@ -137,9 +137,9 @@ impl Harness {
         rt.expect_emitted_event(
             EventBuilder::new()
                 .label("verifier-balance")
-                .value_indexed("verifier", &verifier_resolved.id().unwrap())?
-                .value("balance", &allowance)?
-                .build(),
+                .field_indexed("verifier", &verifier_resolved.id().unwrap())
+                .field("balance", &allowance)
+                .build()?,
         );
 
         let params = AddVerifierParams { address: *verifier, allowance: allowance.clone() };
@@ -159,9 +159,9 @@ impl Harness {
         rt.expect_emitted_event(
             EventBuilder::new()
                 .label("verifier-balance")
-                .value_indexed("verifier", &verifier.id().unwrap())?
-                .value("balance", &DataCap::zero())?
-                .build(),
+                .field_indexed("verifier", &verifier.id().unwrap())
+                .field("balance", &DataCap::zero())
+                .build()?,
         );
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.root);
@@ -229,9 +229,9 @@ impl Harness {
         rt.expect_emitted_event(
             EventBuilder::new()
                 .label("verifier-balance")
-                .value_indexed("verifier", &verifier.id().unwrap())?
-                .value("balance", &(verifier_balance - allowance))?
-                .build(),
+                .field_indexed("verifier", &verifier.id().unwrap())
+                .field("balance", &(verifier_balance - allowance))
+                .build()?,
         );
         let ret = rt.call::<VerifregActor>(
             Method::AddVerifiedClient as MethodNum,
@@ -296,16 +296,16 @@ impl Harness {
                 rt.expect_emitted_event(
                     EventBuilder::new()
                         .label("claim")
-                        .value_indexed("id", &req.allocation_id)?
-                        .value_indexed("provider", &alloc.provider)?
-                        .value_indexed("client", &alloc.client)?
-                        .value_indexed("data-cid", &alloc.data)?
-                        .value("data-size", &alloc.size)?
-                        .value("term-min", &alloc.term_min)?
-                        .value("term-max", &alloc.term_max)?
-                        .value("term-start", &epoch)?
-                        .value("sector", &claim.sector)?
-                        .build(),
+                        .field_indexed("id", &req.allocation_id)
+                        .field_indexed("provider", &alloc.provider)
+                        .field_indexed("client", &alloc.client)
+                        .field_indexed("data-cid", &alloc.data)
+                        .field("data-size", &alloc.size)
+                        .field("term-min", &alloc.term_min)
+                        .field("term-max", &alloc.term_max)
+                        .field("term-start", &epoch)
+                        .field("sector", &claim.sector)
+                        .build()?,
                 );
             }
         }
@@ -353,15 +353,15 @@ impl Harness {
             rt.expect_emitted_event(
                 EventBuilder::new()
                     .label("allocation-removed")
-                    .value_indexed("id", &id)?
-                    .value_indexed("client", &alloc.client)?
-                    .value_indexed("provider", &alloc.provider)?
-                    .value_indexed("data-cid", &alloc.data)?
-                    .value("data-size", &alloc.size)?
-                    .value("term-min", &alloc.term_min)?
-                    .value("term-max", &alloc.term_max)?
-                    .value("expiration", &alloc.expiration)?
-                    .build(),
+                    .field_indexed("id", &id)
+                    .field_indexed("client", &alloc.client)
+                    .field_indexed("provider", &alloc.provider)
+                    .field_indexed("data-cid", &alloc.data)
+                    .field("data-size", &alloc.size)
+                    .field("term-min", &alloc.term_min)
+                    .field("term-max", &alloc.term_max)
+                    .field("expiration", &alloc.expiration)
+                    .build()?,
             );
         }
         rt.expect_send_simple(
@@ -405,16 +405,16 @@ impl Harness {
             rt.expect_emitted_event(
                 EventBuilder::new()
                     .label("claim-removed")
-                    .value_indexed("id", &id)?
-                    .value_indexed("provider", &claim.provider)?
-                    .value_indexed("client", &claim.client)?
-                    .value_indexed("data-cid", &claim.data)?
-                    .value("data-size", &claim.size)?
-                    .value("term-min", &claim.term_min)?
-                    .value("term-max", &claim.term_max)?
-                    .value("term-start", &claim.term_start)?
-                    .value("sector", &claim.sector)?
-                    .build(),
+                    .field_indexed("id", &id)
+                    .field_indexed("provider", &claim.provider)
+                    .field_indexed("client", &claim.client)
+                    .field_indexed("data-cid", &claim.data)
+                    .field("data-size", &claim.size)
+                    .field("term-min", &claim.term_min)
+                    .field("term-max", &claim.term_max)
+                    .field("term-start", &claim.term_start)
+                    .field("sector", &claim.sector)
+                    .build()?,
             );
         }
 
@@ -471,15 +471,15 @@ impl Harness {
             rt.expect_emitted_event(
                 EventBuilder::new()
                     .label("allocation")
-                    .value_indexed("id", &id)?
-                    .value_indexed("client", &payload.from)?
-                    .value_indexed("provider", &alloc.provider)?
-                    .value_indexed("data-cid", &alloc.data)?
-                    .value("data-size", &alloc.size)?
-                    .value("term-min", &alloc.term_min)?
-                    .value("term-max", &alloc.term_max)?
-                    .value("expiration", &alloc.expiration)?
-                    .build(),
+                    .field_indexed("id", &id)
+                    .field_indexed("client", &payload.from)
+                    .field_indexed("provider", &alloc.provider)
+                    .field_indexed("data-cid", &alloc.data)
+                    .field("data-size", &alloc.size)
+                    .field("term-min", &alloc.term_min)
+                    .field("term-max", &alloc.term_max)
+                    .field("expiration", &alloc.expiration)
+                    .build()?,
             );
         }
         for ext in allocs_req.extensions {
@@ -487,16 +487,16 @@ impl Harness {
             rt.expect_emitted_event(
                 EventBuilder::new()
                     .label("claim-updated")
-                    .value_indexed("id", &ext.claim)?
-                    .value_indexed("provider", &claim.provider)?
-                    .value_indexed("client", &claim.client)?
-                    .value_indexed("data-cid", &claim.data)?
-                    .value("data-size", &claim.size)?
-                    .value("term-min", &claim.term_min)?
-                    .value("term-max", &ext.term_max)? // From request
-                    .value("term-start", &claim.term_start)?
-                    .value("sector", &claim.sector)?
-                    .build(),
+                    .field_indexed("id", &ext.claim)
+                    .field_indexed("provider", &claim.provider)
+                    .field_indexed("client", &claim.client)
+                    .field_indexed("data-cid", &claim.data)
+                    .field("data-size", &claim.size)
+                    .field("term-min", &claim.term_min)
+                    .field("term-max", &ext.term_max) // From request
+                    .field("term-start", &claim.term_start)
+                    .field("sector", &claim.sector)
+                    .build()?,
             );
         }
 
@@ -561,16 +561,16 @@ impl Harness {
             rt.expect_emitted_event(
                 EventBuilder::new()
                     .label("claim-updated")
-                    .value_indexed("id", &id)?
-                    .value_indexed("provider", &new_claim.provider)?
-                    .value_indexed("client", &new_claim.client)?
-                    .value_indexed("data-cid", &new_claim.data)?
-                    .value("data-size", &new_claim.size)?
-                    .value("term-min", &new_claim.term_min)?
-                    .value("term-max", &new_claim.term_max)?
-                    .value("term-start", &new_claim.term_start)?
-                    .value("sector", &new_claim.sector)?
-                    .build(),
+                    .field_indexed("id", &id)
+                    .field_indexed("provider", &new_claim.provider)
+                    .field_indexed("client", &new_claim.client)
+                    .field_indexed("data-cid", &new_claim.data)
+                    .field("data-size", &new_claim.size)
+                    .field("term-min", &new_claim.term_min)
+                    .field("term-max", &new_claim.term_max)
+                    .field("term-start", &new_claim.term_start)
+                    .field("sector", &new_claim.sector)
+                    .build()?,
             );
         }
         rt.expect_validate_caller_any();
