@@ -3095,7 +3095,7 @@ impl Actor {
                             all_ignored.push(partition.terminated.clone());
                             // fail early since remove_partitions will fail when there're faults anyway.
                             if !partition.faults.is_empty() {
-                                return actor_error!(forbidden,format!("unable to do synchronous Window POST verification while there're faults in from deadline {}",
+                                return Err(anyhow::anyhow!("unable to do synchronous Window POST verification while there're faults in from deadline {}",
                                     params.from_deadline
                                 ));
                             }

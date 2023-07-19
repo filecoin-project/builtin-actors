@@ -211,7 +211,7 @@ fn fail_to_move_partitions_with_faults_from_unsafe_epoch() {
         },
     );
     expect_abort_contains_message(
-        ExitCode::USR_ILLEGAL_ARGUMENT,
+        ExitCode::USR_ILLEGAL_STATE,
         "cannot remove partition 0: has faults",
         result,
     );
