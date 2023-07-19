@@ -3023,7 +3023,7 @@ impl Actor {
             let store = rt.store();
             let current_deadline = state.deadline_info(policy, rt.curr_epoch());
             let mut deadlines =
-                state.load_deadlines(store).map_err(|e| e.wrap("failed to load deadlines"))?;
+                state.load_deadlines(store).context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deadlines")?;
 
             // only try to do synchronous Window Post verification if from_deadline doesn't satisfy deadline_available_for_compaction
             if !deadline_available_for_compaction(
@@ -3050,34 +3050,26 @@ impl Actor {
 
                 let dl_from = deadlines
                     .load_deadline(policy, rt.store(), params.from_deadline)
-                    .map_err(|e| {
-                        e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load deadline")
-                    })?;
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deadline")?;
 
                 let proofs_snapshot =
-                    dl_from.optimistic_proofs_snapshot_amt(store).map_err(|e| {
-                        e.downcast_default(
+                    dl_from.optimistic_proofs_snapshot_amt(store).context_code(
                             ExitCode::USR_ILLEGAL_STATE,
                             "failed to load proofs snapshot",
-                        )
-                    })?;
+                        )?;
 
                 let partitions_snapshot =
-                    dl_from.partitions_snapshot_amt(store).map_err(|e| {
-                        e.downcast_default(
+                    dl_from.partitions_snapshot_amt(store).context_code(
                             ExitCode::USR_ILLEGAL_STATE,
                             "failed to load partitions snapshot",
-                        )
-                    })?;
+                        )?;
 
                 // Load sectors for the dispute.
                 let sectors =
-                    Sectors::load(rt.store(), &dl_from.sectors_snapshot).map_err(|e| {
-                        e.downcast_default(
+                    Sectors::load(rt.store(), &dl_from.sectors_snapshot).context_code(
                             ExitCode::USR_ILLEGAL_STATE,
                             "failed to load sectors array",
-                        )
-                    })?;
+                        )?;
 
                 proofs_snapshot
                     .for_each(|_, window_proof| {
@@ -3089,12 +3081,10 @@ impl Actor {
                         for partition_idx in window_proof.partitions.iter() {
                             let partition = partitions_snapshot
                                 .get(partition_idx)
-                                .map_err(|e| {
-                                    e.downcast_default(
+                                .context_code(
                                         ExitCode::USR_ILLEGAL_STATE,
-                                        "failed to load partitions snapshot for proof",
-                                    )
-                                })?
+                                        "failed to load partitions snapshot for proof",                                    
+                                )?
                                 .ok_or_else(|| {
                                     actor_error!(
                                         illegal_state,
@@ -3105,7 +3095,7 @@ impl Actor {
                             all_ignored.push(partition.terminated.clone());
                             // fail early since remove_partitions will fail when there're faults anyway.
                             if !partition.faults.is_empty() {
-                                return Err(anyhow::anyhow!("unable to do synchronous Window POST verification while there're faults in from deadline {}",
+                                return actor_error!(forbidden,format!("unable to do synchronous Window POST verification while there're faults in from deadline {}",
                                     params.from_deadline
                                 ));
                             }
@@ -3117,12 +3107,10 @@ impl Actor {
                                 &BitField::union(&all_sectors),
                                 &BitField::union(&all_ignored),
                             )
-                            .map_err(|e| {
-                                e.downcast_default(
+                            .context_code(
                                     ExitCode::USR_ILLEGAL_STATE,
                                     "failed to load sectors for post verification",
-                                )
-                            })?;
+                                )?;
 
                         // Find the proving period start for the deadline in question.
                         let mut pp_start = current_deadline.period_start;
@@ -3138,7 +3126,7 @@ impl Actor {
                             &sector_infos,
                             window_proof.proofs.clone(),
                         )
-                        .map_err(|e| e.wrap("window post failed"))?
+                        .context_code(ExitCode::USR_ILLEGAL_STATE, "window post failed")?
                         {
                             return Err(actor_error!(
                                 illegal_argument,
@@ -3148,9 +3136,7 @@ impl Actor {
                         }
                         Ok(())
                     })
-                    .map_err(|e| {
-                        e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "while removing partitions")
-                    })?;
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "while removing partitions")?;
             }
 
             if !deadline_is_mutable(
@@ -3185,28 +3171,22 @@ impl Actor {
             let to_quant = state.quant_spec_for_deadline(policy, params.to_deadline);
 
             let mut from_deadline =
-                deadlines.load_deadline(policy, store, params.from_deadline).map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
+                deadlines.load_deadline(policy, store, params.from_deadline)
+                .context_code(ExitCode::USR_ILLEGAL_STATE,
                         format!("failed to load deadline {}", params.from_deadline),
-                    )
-                })?;
+                    )?;
             let mut to_deadline =
-                deadlines.load_deadline(policy, store, params.to_deadline).map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
+                deadlines.load_deadline(policy, store, params.to_deadline)
+                .context_code(ExitCode::USR_ILLEGAL_STATE,
                         format!("failed to load deadline {}", params.to_deadline),
-                    )
-                })?;
+                    )?;
 
             let partitions = &mut params.partitions;
             if partitions.is_empty() {
-                let partitions_amt = from_deadline.partitions_amt(rt.store()).map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
+                let partitions_amt = from_deadline.partitions_amt(rt.store())
+                .context_code(ExitCode::USR_ILLEGAL_STATE,
                         format!("failed to load partitions for deadline {}", params.from_deadline),
-                    )
-                })?;
+                    )?;
 
                 for partition_idx in 0..partitions_amt.count() {
                     partitions.set(partition_idx);
@@ -3214,23 +3194,17 @@ impl Actor {
             }
 
             let (live, dead, removed_power) =
-                from_deadline.remove_partitions(store, partitions, from_quant).map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
+                from_deadline.remove_partitions(store, partitions, from_quant)
+                .context_code(ExitCode::USR_ILLEGAL_STATE,
                         format!(
                             "failed to remove partitions from deadline {}",
                             params.from_deadline
                         ),
-                    )
-                })?;
+                    )?;
 
-            state.delete_sectors(store, &dead).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to delete dead sectors")
-            })?;
+            state.delete_sectors(store, &dead).context_code(ExitCode::USR_ILLEGAL_STATE,  "failed to delete dead sectors")?;
 
-            let sectors = state.load_sector_infos(store, &live).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load moved sectors")
-            })?;
+            let sectors = state.load_sector_infos(store, &live).context_code(ExitCode::USR_ILLEGAL_STATE,  "failed to load moved sectors")?;
             let proven = true;
             let added_power = to_deadline
                 .add_sectors(
@@ -3241,12 +3215,9 @@ impl Actor {
                     info.sector_size,
                     to_quant,
                 )
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
+                .context_code(ExitCode::USR_ILLEGAL_STATE,
                         "failed to add back moved sectors",
-                    )
-                })?;
+                    )?;
 
             if removed_power != added_power {
                 return Err(actor_error!(
@@ -3259,30 +3230,20 @@ impl Actor {
 
             deadlines
                 .update_deadline(policy, store, params.from_deadline, &from_deadline)
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
+                .context_code(ExitCode::USR_ILLEGAL_STATE,
                         format!("failed to update deadline {}", params.from_deadline),
-                    )
-                })?;
-            deadlines.update_deadline(policy, store, params.to_deadline, &to_deadline).map_err(
-                |e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
+                    )?;
+            deadlines.update_deadline(policy, store, params.to_deadline, &to_deadline)
+                .context_code(ExitCode::USR_ILLEGAL_STATE,
                         format!("failed to update deadline {}", params.to_deadline),
-                    )
-                },
-            )?;
+                    )?;
 
-            state.save_deadlines(store, deadlines).map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
+            state.save_deadlines(store, deadlines).context_code(ExitCode::USR_ILLEGAL_STATE,
                     format!(
                         "failed to save deadline when move_partitions from {} to {}",
                         params.from_deadline, params.to_deadline
                     ),
-                )
-            })?;
+                )?;
 
             Ok(())
         })?;
