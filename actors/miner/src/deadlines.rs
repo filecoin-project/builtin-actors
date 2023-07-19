@@ -142,10 +142,33 @@ pub fn deadline_available_for_move(
     policy: &Policy,
     from_deadline: u64,
     to_deadline: u64,
-    current_deadline: u64,
-) -> bool {
-    deadline_distance(policy, current_deadline, to_deadline)
-        < deadline_distance(policy, current_deadline, from_deadline)
+    current_deadline: &DeadlineInfo,
+) -> Result<(), String> {
+    if !deadline_is_mutable(
+        policy,
+        current_deadline.period_start,
+        from_deadline,
+        current_deadline.current_epoch,
+    ) {
+        return Err(format!("cannot move from a deadline when it's not mutable"));
+    }
+
+    if !deadline_is_mutable(
+        policy,
+        current_deadline.period_start,
+        to_deadline,
+        current_deadline.current_epoch,
+    ) {
+        return Err(format!("cannot move to a deadline when it's not mutable"));
+    }
+
+    if deadline_distance(policy, current_deadline.index, to_deadline)
+        >= deadline_distance(policy, current_deadline.index, from_deadline)
+    {
+        return Err("can only move to a deadline which is nearer from current deadline".into());
+    }
+
+    Ok(())
 }
 
 // Determine current period start and deadline index directly from current epoch and

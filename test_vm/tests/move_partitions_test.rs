@@ -1,4 +1,3 @@
-use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
@@ -23,8 +22,8 @@ use test_vm::expects::Expect;
 use test_vm::trace::ExpectInvocation;
 use test_vm::util::{
     advance_by_deadline_to_epoch, advance_to_proving_deadline, apply_ok, assert_invariants,
-    create_accounts, create_miner, cron_tick, get_network_stats, get_state, miner_balance,
-    precommit_sectors, submit_windowed_post, DynBlockstore,
+    create_accounts, create_miner, cron_tick, get_network_stats, get_state, make_bitfield,
+    miner_balance, precommit_sectors, submit_windowed_post, DynBlockstore,
 };
 use test_vm::{TestVM, VM};
 
@@ -38,8 +37,11 @@ fn move_partitions_success() {
     let prove_time = v.epoch() + Policy::default().wpost_dispute_window;
     advance_by_deadline_to_epoch(&v, &miner.miner_id, prove_time);
 
-    let move_params =
-        MovePartitionsParams { from_deadline: 0, to_deadline: 47, partitions: BitField::new() };
+    let move_params = MovePartitionsParams {
+        from_deadline: 0,
+        to_deadline: 47,
+        partitions: make_bitfield(&[0u64]),
+    };
     let prove_params_ser = IpldBlock::serialize_cbor(&move_params).unwrap();
     apply_ok(
         &v,
