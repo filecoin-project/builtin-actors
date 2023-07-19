@@ -3183,14 +3183,7 @@ impl Actor {
 
             let partitions = &mut params.partitions;
             if partitions.is_empty() {
-                let partitions_amt = from_deadline.partitions_amt(rt.store())
-                .context_code(ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to load partitions for deadline {}", params.from_deadline),
-                    )?;
-
-                for partition_idx in 0..partitions_amt.count() {
-                    partitions.set(partition_idx);
-                }
+                return Err(actor_error!(illegal_argument,"empty partitions not allowed"));
             }
 
             let (live, dead, removed_power) =
