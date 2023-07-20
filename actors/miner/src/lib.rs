@@ -1536,12 +1536,8 @@ impl Actor {
                 // --- check proof ---
 
                 // Find the proving period start for the deadline in question.
-                let mut pp_start = dl_info.period_start;
-                if dl_info.index < params.deadline {
-                    pp_start -= policy.wpost_proving_period
-                }
                 let target_deadline =
-                    new_deadline_info(policy, pp_start, params.deadline, current_epoch);
+                    nearest_occured_deadline_info(policy, &dl_info, params.deadline);
                 // Load the target deadline
                 let mut deadlines_current = st
                     .load_deadlines(rt.store())
@@ -3018,66 +3014,80 @@ impl Actor {
         rt.transaction(|state: &mut State, rt| {
             let info = get_miner_info(rt.store(), state)?;
 
-            rt.validate_immediate_caller_is(info.control_addresses.iter().chain(&[info.worker, info.owner]))?;
+            rt.validate_immediate_caller_is(
+                info.control_addresses.iter().chain(&[info.worker, info.owner]),
+            )?;
 
             let store = rt.store();
             let current_deadline = state.deadline_info(policy, rt.curr_epoch());
-            let mut deadlines =
-                state.load_deadlines(store).context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deadlines")?;
+            let mut deadlines = state
+                .load_deadlines(store)
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deadlines")?;
 
             deadline_available_for_move(
                 policy,
                 params.from_deadline,
                 params.to_deadline,
                 &current_deadline,
-            ).context_code(
+            )
+            .context_code(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
-                    "conditions not satisfied for deadline_available_for_move"
-                )?;
+                "conditions not satisfied for deadline_available_for_move",
+            )?;
 
-            // only try to do synchronous Window Post verification if deadline_available_for_optimistic_post_dispute
+            let mut from_deadline =
+                deadlines.load_deadline(policy, store, params.from_deadline).context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    format!("failed to load deadline {}", params.from_deadline),
+                )?;
+            // only try to do synchronous Window Post verification if the from deadline is in dispute window
+            // note that as window post is batched, the best we can do is to verify only those that contains at least one partition being moved.
+            // besides, after verification, the corresponding PostProof is deleted, leaving other PostProof intact.
+            // thus it's necessary that for those moved partitions, there's an empty partition left in place to keep the partitions from re-indexing.
             if deadline_available_for_optimistic_post_dispute(
                 policy,
                 current_deadline.period_start,
                 params.from_deadline,
                 rt.curr_epoch(),
             ) {
-                let dl_from = deadlines
-                    .load_deadline(policy, rt.store(), params.from_deadline)
-                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deadline")?;
-
-                let proofs_snapshot =
-                    dl_from.optimistic_proofs_snapshot_amt(store).context_code(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            "failed to load proofs snapshot",
-                        )?;
+                let mut proofs_snapshot = from_deadline
+                    .optimistic_proofs_snapshot_amt(store)
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load proofs snapshot")?;
 
                 let partitions_snapshot =
-                    dl_from.partitions_snapshot_amt(store).context_code(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            "failed to load partitions snapshot",
-                        )?;
+                    from_deadline.partitions_snapshot_amt(store).context_code(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        "failed to load partitions snapshot",
+                    )?;
 
                 // Load sectors for the dispute.
-                let sectors =
-                    Sectors::load(rt.store(), &dl_from.sectors_snapshot).context_code(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            "failed to load sectors array",
-                        )?;
+                let sectors = Sectors::load(rt.store(), &from_deadline.sectors_snapshot)
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")?;
 
+                let mut verified_index = vec![];
+                let mut all_window_proofs =
+                    Vec::<PoStProof>::with_capacity(params.partitions.len() as usize);
+                let mut all_sector_infos =
+                    Vec::<SectorOnChainInfo>::with_capacity(params.partitions.len() as usize);
                 proofs_snapshot
-                    .for_each(|_, window_proof| {
+                    .for_each(|index, window_proof| {
+                        if !params.partitions.contains_any(&window_proof.partitions) {
+                            return Ok(());
+                        }
+                        verified_index.push(index);
+                        all_window_proofs.extend(window_proof.proofs.clone());
+
                         let mut all_sectors =
-                            Vec::<BitField>::with_capacity(window_proof.partitions.len() as usize);
+                            Vec::<BitField>::with_capacity(params.partitions.len() as usize);
                         let mut all_ignored =
-                            Vec::<BitField>::with_capacity(window_proof.partitions.len() as usize);
+                            Vec::<BitField>::with_capacity(params.partitions.len() as usize);
 
                         for partition_idx in window_proof.partitions.iter() {
                             let partition = partitions_snapshot
                                 .get(partition_idx)
                                 .context_code(
-                                        ExitCode::USR_ILLEGAL_STATE,
-                                        "failed to load partitions snapshot for proof",                                    
+                                    ExitCode::USR_ILLEGAL_STATE,
+                                    "failed to load partitions snapshot for proof",
                                 )?
                                 .ok_or_else(|| {
                                     actor_error!(
@@ -3086,13 +3096,9 @@ impl Actor {
                                     )
                                 })?;
                             all_sectors.push(partition.sectors.clone());
+                            all_ignored.push(partition.faults.clone());
                             all_ignored.push(partition.terminated.clone());
-                            // fail early since remove_partitions will fail when there're faults anyway.
-                            if !partition.faults.is_empty() {
-                                return Err(anyhow::anyhow!("unable to do synchronous Window POST verification while there're faults in from deadline {}",
-                                    params.from_deadline
-                                ));
-                            }
+                            all_ignored.push(partition.unproven.clone());
                         }
 
                         // Load sector infos for proof, substituting a known-good sector for known-faulty sectors.
@@ -3102,65 +3108,62 @@ impl Actor {
                                 &BitField::union(&all_ignored),
                             )
                             .context_code(
-                                    ExitCode::USR_ILLEGAL_STATE,
-                                    "failed to load sectors for post verification",
-                                )?;
+                                ExitCode::USR_ILLEGAL_STATE,
+                                "failed to load sectors for post verification",
+                            )?;
+                        all_sector_infos.extend(sector_infos);
 
-                        // Find the proving period start for the deadline in question.
-                        let mut pp_start = current_deadline.period_start;
-                        if current_deadline.index < params.from_deadline {
-                            pp_start -= policy.wpost_proving_period
-                        }
-                        let target_deadline =
-                            new_deadline_info(policy, pp_start, params.from_deadline, rt.curr_epoch());
-
-                        if !verify_windowed_post(
-                            rt,
-                            target_deadline.challenge,
-                            &sector_infos,
-                            window_proof.proofs.clone(),
-                        )
-                        .context_code(ExitCode::USR_ILLEGAL_STATE, "window post failed")?
-                        {
-                            return Err(actor_error!(
-                                illegal_argument,
-                                "invalid post was submitted"
-                            )
-                            .into());
-                        }
                         Ok(())
                     })
                     .context_code(ExitCode::USR_ILLEGAL_STATE, "while removing partitions")?;
-            }
 
+                // Find the proving period start for the deadline in question.
+                let target_deadline =
+                    nearest_occured_deadline_info(policy, &current_deadline, params.from_deadline);
+
+                if !verify_windowed_post(
+                    rt,
+                    target_deadline.challenge,
+                    &all_sector_infos,
+                    all_window_proofs,
+                )
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "window post failed")?
+                {
+                    return Err(actor_error!(illegal_argument, "invalid post was submitted"));
+                }
+
+                proofs_snapshot.batch_delete(verified_index, true).context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    "while batch deletes verified post index",
+                )?;
+                from_deadline.optimistic_post_submissions_snapshot = proofs_snapshot
+                    .flush()
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "while flushing proofs_snapshot")?;
+            }
 
             let from_quant = state.quant_spec_for_deadline(policy, params.from_deadline);
             let to_quant = state.quant_spec_for_deadline(policy, params.to_deadline);
 
-            let mut from_deadline =
-                deadlines.load_deadline(policy, store, params.from_deadline)
-                .context_code(ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to load deadline {}", params.from_deadline),
-                    )?;
             let mut to_deadline =
-                deadlines.load_deadline(policy, store, params.to_deadline)
-                .context_code(ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to load deadline {}", params.to_deadline),
-                    )?;
+                deadlines.load_deadline(policy, store, params.to_deadline).context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    format!("failed to load deadline {}", params.to_deadline),
+                )?;
 
+            let (live, dead, removed_power) = from_deadline
+                .remove_partitions(store, &params.partitions, from_quant)
+                .context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    format!("failed to remove partitions from deadline {}", params.from_deadline),
+                )?;
 
-            let (live, dead, removed_power) =
-                from_deadline.remove_partitions(store, &params.partitions, from_quant)
-                .context_code(ExitCode::USR_ILLEGAL_STATE,
-                        format!(
-                            "failed to remove partitions from deadline {}",
-                            params.from_deadline
-                        ),
-                    )?;
+            state
+                .delete_sectors(store, &dead)
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to delete dead sectors")?;
 
-            state.delete_sectors(store, &dead).context_code(ExitCode::USR_ILLEGAL_STATE,  "failed to delete dead sectors")?;
-
-            let sectors = state.load_sector_infos(store, &live).context_code(ExitCode::USR_ILLEGAL_STATE,  "failed to load moved sectors")?;
+            let sectors = state
+                .load_sector_infos(store, &live)
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load moved sectors")?;
             let proven = true;
             let added_power = to_deadline
                 .add_sectors(
@@ -3171,9 +3174,7 @@ impl Actor {
                     info.sector_size,
                     to_quant,
                 )
-                .context_code(ExitCode::USR_ILLEGAL_STATE,
-                        "failed to add back moved sectors",
-                    )?;
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to add back moved sectors")?;
 
             if removed_power != added_power {
                 return Err(actor_error!(
@@ -3186,20 +3187,24 @@ impl Actor {
 
             deadlines
                 .update_deadline(policy, store, params.from_deadline, &from_deadline)
-                .context_code(ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to update deadline {}", params.from_deadline),
-                    )?;
-            deadlines.update_deadline(policy, store, params.to_deadline, &to_deadline)
-                .context_code(ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to update deadline {}", params.to_deadline),
-                    )?;
-
-            state.save_deadlines(store, deadlines).context_code(ExitCode::USR_ILLEGAL_STATE,
-                    format!(
-                        "failed to save deadline when move_partitions from {} to {}",
-                        params.from_deadline, params.to_deadline
-                    ),
+                .context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    format!("failed to update deadline {}", params.from_deadline),
                 )?;
+            deadlines
+                .update_deadline(policy, store, params.to_deadline, &to_deadline)
+                .context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    format!("failed to update deadline {}", params.to_deadline),
+                )?;
+
+            state.save_deadlines(store, deadlines).context_code(
+                ExitCode::USR_ILLEGAL_STATE,
+                format!(
+                    "failed to save deadline when move_partitions from {} to {}",
+                    params.from_deadline, params.to_deadline
+                ),
+            )?;
 
             Ok(())
         })?;

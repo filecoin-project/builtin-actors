@@ -171,6 +171,21 @@ pub fn deadline_available_for_move(
     Ok(())
 }
 
+// returns the nearest deadline info with index `target_deadline` that has already occured from the point of view of the current deadline(including the current deadline).
+pub fn nearest_occured_deadline_info(
+    policy: &Policy,
+    current_deadline: &DeadlineInfo,
+    target_deadline: u64,
+) -> DeadlineInfo {
+    // Find the proving period start for the deadline in question.
+    let mut pp_start = current_deadline.period_start;
+    if current_deadline.index < target_deadline {
+        pp_start -= policy.wpost_proving_period
+    }
+
+    new_deadline_info(policy, pp_start, target_deadline, current_deadline.current_epoch)
+}
+
 // Determine current period start and deadline index directly from current epoch and
 // the offset implied by the proving period. This works correctly even for the state
 // of a miner actor without an active deadline cron
