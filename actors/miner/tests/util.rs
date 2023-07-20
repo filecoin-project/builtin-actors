@@ -2,19 +2,16 @@
 
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
-    BatchActivateDealsParams, BatchActivateDealsResult, DealActivation, DealSpaces,
-    Method as MarketMethod, OnMinerSectorsTerminateParams, SectorDealData, SectorDeals,
+    BatchActivateDealsParams, BatchActivateDealsResult, DealSpaces, Method as MarketMethod,
+    OnMinerSectorsTerminateParams, SectorDealActivation, SectorDealData, SectorDeals,
     VerifiedDealInfo, VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
 };
 use fil_actor_miner::ext::market::ON_MINER_SECTORS_TERMINATE_METHOD;
 use fil_actor_miner::ext::power::{UPDATE_CLAIMED_POWER_METHOD, UPDATE_PLEDGE_TOTAL_METHOD};
-use fil_actor_miner::ext::verifreg::{
-    ClaimAllocationsParams, ClaimAllocationsReturn, SectorAllocationClaim,
-    SectorAllocationClaimResult, CLAIM_ALLOCATIONS_METHOD,
-};
+use fil_actor_miner::ext::verifreg::CLAIM_ALLOCATIONS_METHOD;
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee, consensus_fault_penalty,
-    initial_pledge_for_power, locked_reward_from_reward, max_prove_commit_duration,
+    ext, initial_pledge_for_power, locked_reward_from_reward, max_prove_commit_duration,
     new_deadline_info_from_offset_and_epoch, pledge_penalty_for_continued_fault, power_for_sectors,
     qa_power_for_sector, qa_power_for_weight, reward_for_consensus_slash_report, ActiveBeneficiary,
     Actor, ApplyRewardParams, BeneficiaryTerm, BitFieldQueue, ChangeBeneficiaryParams,
@@ -1056,11 +1053,11 @@ impl ActorHarness {
         let mut valid_pcs = Vec::new();
 
         // claim FIL+ allocations
-        let mut sectors_claims: Vec<SectorAllocationClaim> = Vec::new();
+        let mut sectors_claims: Vec<ext::verifreg::SectorAllocationClaims> = Vec::new();
 
         // build expectations per sector
         let mut sector_activation_params: Vec<SectorDeals> = Vec::new();
-        let mut sector_activations: Vec<DealActivation> = Vec::new();
+        let mut sector_activations: Vec<SectorDealActivation> = Vec::new();
         let mut sector_activation_results = BatchReturnGen::new(pcs.len());
 
         for pc in pcs {
@@ -1073,7 +1070,7 @@ impl ActorHarness {
                 };
                 sector_activation_params.push(activate_params);
 
-                let ret = DealActivation {
+                let ret = SectorDealActivation {
                     nonverified_deal_space: deal_spaces.deal_space,
                     verified_infos: cfg
                         .verified_deal_infos
@@ -1094,25 +1091,23 @@ impl ActorHarness {
                     }
                 }
 
-                if ret.verified_infos.is_empty() {
-                    if activate_deals_exit == ExitCode::OK {
-                        valid_pcs.push(pc);
-                    }
-                } else {
-                    let mut sector_claims: Vec<SectorAllocationClaim> = ret
+                if activate_deals_exit == ExitCode::OK {
+                    valid_pcs.push(pc);
+                    let sector_claims = ret
                         .verified_infos
                         .iter()
-                        .map(|info| SectorAllocationClaim {
+                        .map(|info| ext::verifreg::AllocationClaim {
                             client: info.client,
                             allocation_id: info.allocation_id,
                             data: info.data,
                             size: info.size,
-                            sector: pc.info.sector_number,
-                            sector_expiry: pc.info.expiration,
                         })
                         .collect();
-                    sectors_claims.append(&mut sector_claims);
-                    valid_pcs.push(pc);
+                    sectors_claims.push(ext::verifreg::SectorAllocationClaims {
+                        sector: pc.info.sector_number,
+                        expiry: pc.info.expiration,
+                        claims: sector_claims,
+                    });
                 }
             } else {
                 // empty deal ids
@@ -1121,11 +1116,16 @@ impl ActorHarness {
                     sector_expiry: pc.info.expiration,
                     sector_type: RegisteredSealProof::StackedDRG8MiBV1,
                 });
-                sector_activations.push(DealActivation {
+                sector_activations.push(SectorDealActivation {
                     nonverified_deal_space: BigInt::zero(),
                     verified_infos: vec![],
                 });
                 sector_activation_results.add_success();
+                sectors_claims.push(ext::verifreg::SectorAllocationClaims {
+                    sector: pc.info.sector_number,
+                    expiry: pc.info.expiration,
+                    claims: vec![],
+                });
                 valid_pcs.push(pc);
             }
         }
@@ -1148,20 +1148,24 @@ impl ActorHarness {
             );
         }
 
-        if !sectors_claims.is_empty() {
-            let claim_allocation_params = ClaimAllocationsParams {
-                allocations: sectors_claims.clone(),
+        if !sectors_claims.iter().all(|c| c.claims.is_empty()) {
+            let claim_allocation_params = ext::verifreg::ClaimAllocationsParams {
+                sectors: sectors_claims.clone(),
                 all_or_nothing: true,
             };
 
             // TODO handle failures of claim allocations
             // use exit code map for claim allocations in config
-            let claim_allocs_ret = ClaimAllocationsReturn {
-                claims: sectors_claims
+            let claim_allocs_ret = ext::verifreg::ClaimAllocationsReturn {
+                sector_results: BatchReturn::ok(sectors_claims.len() as u32),
+                sector_claims: sectors_claims
                     .iter()
-                    .map(|claim| SectorAllocationClaimResult { claimed_space: claim.size.0.into() })
+                    .map(|sector| ext::verifreg::SectorAllocationClaim {
+                        claimed_space: BigInt::from(
+                            sector.claims.iter().map(|c| c.size.0).sum::<u64>(),
+                        ),
+                    })
                     .collect(),
-                claim_results: BatchReturn::ok(sectors_claims.len() as u32),
             };
             rt.expect_send_simple(
                 VERIFIED_REGISTRY_ACTOR_ADDR,

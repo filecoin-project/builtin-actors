@@ -545,7 +545,7 @@ impl Actor {
         let (activations, batch_ret) = rt.transaction(|st: &mut State, rt| {
             let mut deal_states: Vec<(DealID, DealState)> = vec![];
             let mut batch_gen = BatchReturnGen::new(params.sectors.len());
-            let mut activations: Vec<DealActivation> = vec![];
+            let mut activations: Vec<SectorDealActivation> = vec![];
             let mut activated_deals: HashSet<DealID> = HashSet::new();
 
             for p in params.sectors {
@@ -651,7 +651,7 @@ impl Actor {
 
                 match update_result {
                     Ok(_) => {
-                        activations.push(DealActivation {
+                        activations.push(SectorDealActivation {
                             nonverified_deal_space: deal_spaces.deal_space,
                             verified_infos,
                         });

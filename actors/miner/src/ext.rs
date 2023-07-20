@@ -202,31 +202,36 @@ pub mod verifreg {
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-    pub struct SectorAllocationClaim {
+    pub struct SectorAllocationClaims {
+        pub sector: SectorNumber,
+        pub expiry: ChainEpoch,
+        pub claims: Vec<AllocationClaim>,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+    pub struct AllocationClaim {
         pub client: ActorID,
         pub allocation_id: AllocationID,
         pub data: Cid,
         pub size: PaddedPieceSize,
-        pub sector: SectorNumber,
-        pub sector_expiry: ChainEpoch,
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
     pub struct ClaimAllocationsParams {
-        pub allocations: Vec<SectorAllocationClaim>,
+        pub sectors: Vec<SectorAllocationClaims>,
         pub all_or_nothing: bool,
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize_tuple, Deserialize_tuple)]
     #[serde(transparent)]
-    pub struct SectorAllocationClaimResult {
+    pub struct SectorAllocationClaim {
         #[serde(with = "bigint_ser")]
         pub claimed_space: BigInt,
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
     pub struct ClaimAllocationsReturn {
-        pub claim_results: BatchReturn,
-        pub claims: Vec<SectorAllocationClaimResult>,
+        pub sector_results: BatchReturn,
+        pub sector_claims: Vec<SectorAllocationClaim>,
     }
 }

@@ -1,11 +1,11 @@
 use fil_actor_verifreg::testing::check_state_invariants;
 use fil_actor_verifreg::{
     ext, Actor as VerifregActor, AddVerifiedClientParams, AddVerifierParams, Allocation,
-    AllocationID, AllocationRequest, AllocationRequests, AllocationsResponse, Claim,
-    ClaimAllocationsParams, ClaimAllocationsReturn, ClaimExtensionRequest, ClaimID, DataCap,
+    AllocationClaim, AllocationID, AllocationRequest, AllocationRequests, AllocationsResponse,
+    Claim, ClaimAllocationsParams, ClaimAllocationsReturn, ClaimExtensionRequest, ClaimID, DataCap,
     ExtendClaimTermsParams, ExtendClaimTermsReturn, GetClaimsParams, GetClaimsReturn, Method,
     RemoveExpiredAllocationsParams, RemoveExpiredAllocationsReturn, RemoveExpiredClaimsParams,
-    RemoveExpiredClaimsReturn, SectorAllocationClaim, State,
+    RemoveExpiredClaimsReturn, SectorAllocationClaims, State,
 };
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::builtins::Type;
@@ -257,7 +257,7 @@ impl Harness {
         &self,
         rt: &MockRuntime,
         provider: ActorID,
-        claim_allocs: Vec<SectorAllocationClaim>,
+        claim_allocs: Vec<SectorAllocationClaims>,
         datacap_burnt: u64,
         all_or_nothing: bool,
     ) -> Result<ClaimAllocationsReturn, ActorError> {
@@ -278,7 +278,7 @@ impl Harness {
             );
         }
 
-        let params = ClaimAllocationsParams { allocations: claim_allocs, all_or_nothing };
+        let params = ClaimAllocationsParams { sectors: claim_allocs, all_or_nothing };
         let ret = rt
             .call::<VerifregActor>(
                 Method::ClaimAllocations as MethodNum,
@@ -500,19 +500,23 @@ pub fn alloc_from_req(client: ActorID, req: &AllocationRequest) -> Allocation {
     }
 }
 
-pub fn make_claim_req(
-    id: AllocationID,
-    alloc: &Allocation,
-    sector_id: SectorNumber,
-    sector_expiry: ChainEpoch,
-) -> SectorAllocationClaim {
-    SectorAllocationClaim {
-        client: alloc.client,
-        allocation_id: id,
-        data: alloc.data,
-        size: alloc.size,
-        sector: sector_id,
-        sector_expiry,
+pub fn make_claim_reqs(
+    sector: SectorNumber,
+    expiry: ChainEpoch,
+    allocs: &[(AllocationID, &Allocation)],
+) -> SectorAllocationClaims {
+    SectorAllocationClaims {
+        sector,
+        expiry,
+        claims: allocs
+            .iter()
+            .map(|(id, alloc)| AllocationClaim {
+                client: alloc.client,
+                allocation_id: *id,
+                data: alloc.data,
+                size: alloc.size,
+            })
+            .collect(),
     }
 }
 
@@ -610,6 +614,8 @@ pub fn assert_alloc_claimed(
 
     // Claim is present
     let expected_claim = claim_from_alloc(alloc, epoch, sector);
+    assert_eq!(client, expected_claim.client); // Check the caller provided sensible arguments.
+    assert_eq!(provider, expected_claim.provider);
     let mut claims = st.load_claims(store).unwrap();
     assert_eq!(&expected_claim, claims.get(provider, id).unwrap().unwrap());
     expected_claim
