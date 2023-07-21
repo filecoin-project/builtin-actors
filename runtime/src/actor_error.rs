@@ -1,13 +1,13 @@
+use std::fmt::{Display, Formatter};
+
 use fvm_ipld_encoding::de::DeserializeOwned;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use std::fmt::Display;
-
 use fvm_shared::error::ExitCode;
 use thiserror::Error;
 
 /// The error type returned by actor method calls.
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
-#[error("ActorError(exit_code: {exit_code:?}, msg: {msg})")]
+#[error("ActorError(exit_code: {exit_code}, msg: {msg})")]
 pub struct ActorError {
     /// The exit code for this invocation.
     /// Codes less than `FIRST_USER_EXIT_CODE` are prohibited and will be overwritten by the VM.
@@ -100,15 +100,14 @@ impl ActorError {
     }
 }
 
-/// Converts a raw encoding error into an ErrSerialization.
+/// Converts a raw encoding error into a USR_SERIALIZATION.
 impl From<fvm_ipld_encoding::Error> for ActorError {
     fn from(e: fvm_ipld_encoding::Error) -> Self {
         Self { exit_code: ExitCode::USR_SERIALIZATION, msg: e.to_string(), data: None }
     }
 }
 
-/// Converts an actor deletion error into an actor error with the appropriate exit code. This
-/// facilitates propagation.
+/// Converts an actor deletion error into a USR_ILLEGAL_ARGUMENT.
 #[cfg(feature = "fil-actor")]
 impl From<fvm_sdk::error::ActorDeleteError> for ActorError {
     fn from(e: fvm_sdk::error::ActorDeleteError) -> Self {
@@ -116,8 +115,7 @@ impl From<fvm_sdk::error::ActorDeleteError> for ActorError {
     }
 }
 
-/// Converts a state-read error into an an actor error with the appropriate exit code (illegal actor).
-/// This facilitates propagation.
+/// Converts a state-read error into an a USR_ILLEGAL_STATE.
 #[cfg(feature = "fil-actor")]
 impl From<fvm_sdk::error::StateReadError> for ActorError {
     fn from(e: fvm_sdk::error::StateReadError) -> Self {
@@ -126,7 +124,6 @@ impl From<fvm_sdk::error::StateReadError> for ActorError {
 }
 
 /// Converts a state update error into an an actor error with the appropriate exit code.
-/// This facilitates propagation.
 #[cfg(feature = "fil-actor")]
 impl From<fvm_sdk::error::StateUpdateError> for ActorError {
     fn from(e: fvm_sdk::error::StateUpdateError) -> Self {
@@ -161,19 +158,35 @@ macro_rules! actor_error {
     };
 }
 
-// Adds context to an actor error's descriptive message.
-pub trait ActorContext<T> {
+// Convenience operations on a Result that may be an ActorError with exit code.
+// Overriding the exit code is an explicit operation.
+pub trait ActorResult<T> {
+    // Wraps an error result with a context message.
     fn context<C>(self, context: C) -> Result<T, ActorError>
     where
         C: Display + 'static;
 
+    // Wraps an error result with a lazily-evaluated context message.
     fn with_context<C, F>(self, f: F) -> Result<T, ActorError>
+    where
+        C: Display + 'static,
+        F: FnOnce() -> C;
+
+    // Maps an error result to a new exit code, preserving the message and data,
+    // and wrapping with a context message.
+    fn override_code<C>(self, code: ExitCode, context: C) -> Result<T, ActorError>
+    where
+        C: Display + 'static;
+
+    // Maps an error result to a new exit code, preserving the message and data,
+    // and wrapping with a lazily-evaluated context message.
+    fn with_override_code<C, F>(self, code: ExitCode, f: F) -> Result<T, ActorError>
     where
         C: Display + 'static,
         F: FnOnce() -> C;
 }
 
-impl<T, E> ActorContext<T> for Result<T, E>
+impl<T, E> ActorResult<T> for Result<T, E>
 where
     E: Into<ActorError>,
 {
@@ -181,11 +194,7 @@ where
     where
         C: Display + 'static,
     {
-        self.map_err(|err| {
-            let mut err = err.into();
-            err.msg = format!("{}: {}", context, err.msg);
-            err
-        })
+        self.map_err(|err| err.into().wrap(context.to_string()))
     }
 
     fn with_context<C, F>(self, f: F) -> Result<T, ActorError>
@@ -193,43 +202,70 @@ where
         C: Display + 'static,
         F: FnOnce() -> C,
     {
+        self.map_err(|err| err.into().wrap(f().to_string()))
+    }
+
+    fn override_code<C>(self, code: ExitCode, context: C) -> Result<T, ActorError>
+    where
+        C: Display + 'static,
+    {
         self.map_err(|err| {
-            let mut err = err.into();
-            err.msg = format!("{}: {}", f(), err.msg);
-            err
+            let err = err.into();
+            ActorError::checked(
+                code,
+                format!("{}: {} (code {})", context, err.msg, err.exit_code),
+                err.data,
+            )
+        })
+    }
+
+    fn with_override_code<C, F>(self, code: ExitCode, f: F) -> Result<T, ActorError>
+    where
+        C: Display + 'static,
+        F: FnOnce() -> C,
+    {
+        self.map_err(|err| {
+            let err = err.into();
+            ActorError::checked(
+                code,
+                format!("{}: {} (code {})", f(), err.msg, err.exit_code),
+                err.data,
+            )
         })
     }
 }
 
-// Adapts a target into an actor error.
+// FIXME rename to AsActorResult
+// Adapts a result containing some error type into an actor error.
+// Implementations of this trait on types that might wrap an ActorError should
+// extract and propagate the wrapped code in preference to the default code provided as an argument.
+// By design there is *no implementation for ActorError* or any trait that it implements
+// (e.g. Error). Code which has an ActorError should use the methods of ActorResult.
+// Implementations must be on concrete error types to avoid potentially conflicting implementations
+// for an error type that could implement multiple traits.
 pub trait AsActorError<T>: Sized {
-    fn exit_code(self, code: ExitCode) -> Result<T, ActorError>;
-
+    // Converts error result into an ActorError with a context message.
+    // If the receiver wraps an ActorError, the exit code must be propagated,
+    // otherwise the code provided as an argument is used.
     fn context_code<C>(self, code: ExitCode, context: C) -> Result<T, ActorError>
     where
         C: Display + 'static;
 
+    // Converts error result into an ActorError with a lazily-evaluated context message.
+    // If the receiver wraps an ActorError, the exit code must be propagated,
+    // otherwise the code provided as an argument is used.
     fn with_context_code<C, F>(self, code: ExitCode, f: F) -> Result<T, ActorError>
     where
         C: Display + 'static,
         F: FnOnce() -> C;
 }
 
-// Note: E should be std::error::Error, revert to this after anyhow:Error is no longer used.
-impl<T, E: Display> AsActorError<T> for Result<T, E> {
-    fn exit_code(self, code: ExitCode) -> Result<T, ActorError> {
-        self.map_err(|err| ActorError { exit_code: code, msg: err.to_string(), data: None })
-    }
-
+impl<T> AsActorError<T> for Result<T, anyhow::Error> {
     fn context_code<C>(self, code: ExitCode, context: C) -> Result<T, ActorError>
     where
         C: Display + 'static,
     {
-        self.map_err(|err| ActorError {
-            exit_code: code,
-            msg: format!("{}: {}", context, err),
-            data: None,
-        })
+        context_code(self, code, context)
     }
 
     fn with_context_code<C, F>(self, code: ExitCode, f: F) -> Result<T, ActorError>
@@ -237,19 +273,69 @@ impl<T, E: Display> AsActorError<T> for Result<T, E> {
         C: Display + 'static,
         F: FnOnce() -> C,
     {
-        self.map_err(|err| ActorError {
-            exit_code: code,
-            msg: format!("{}: {}", f(), err),
-            data: None,
-        })
+        with_context_code(self, code, f)
     }
 }
 
-impl<T> AsActorError<T> for Option<T> {
-    fn exit_code(self, code: ExitCode) -> Result<T, ActorError> {
-        self.ok_or_else(|| ActorError { exit_code: code, msg: "None".to_string(), data: None })
+impl<T> AsActorError<T> for Result<T, fvm_ipld_amt::Error> {
+    fn context_code<C>(self, code: ExitCode, context: C) -> Result<T, ActorError>
+    where
+        C: Display + 'static,
+    {
+        context_code(self, code, context)
     }
 
+    fn with_context_code<C, F>(self, code: ExitCode, f: F) -> Result<T, ActorError>
+    where
+        C: Display + 'static,
+        F: FnOnce() -> C,
+    {
+        with_context_code(self, code, f)
+    }
+}
+
+impl<T> AsActorError<T> for Result<T, fvm_ipld_hamt::Error> {
+    fn context_code<C>(self, code: ExitCode, context: C) -> Result<T, ActorError>
+    where
+        C: Display + 'static,
+    {
+        context_code(self, code, context)
+    }
+
+    fn with_context_code<C, F>(self, code: ExitCode, f: F) -> Result<T, ActorError>
+    where
+        C: Display + 'static,
+        F: FnOnce() -> C,
+    {
+        with_context_code(self, code, f)
+    }
+}
+
+// FIXME what about EVM KAMT?
+// - defined in another module, not imported here (why is HAMT imported here anyway?)
+// - can wrap an ActorError
+// We can't implement this trait either here or where Kamt::Error is used.
+
+// Basic implementation for opaque errors, that are known not to be hiding an exit code.
+impl<T, E: Into<OpaqueError>> AsActorError<T> for Result<T, E> {
+    fn context_code<C>(self, code: ExitCode, context: C) -> Result<T, ActorError>
+    where
+        C: Display + 'static,
+    {
+        self.map_err(|err| ActorError::checked(code, format!("{}: {}", context, err.into()), None))
+    }
+
+    fn with_context_code<C, F>(self, code: ExitCode, f: F) -> Result<T, ActorError>
+    where
+        C: Display + 'static,
+        F: FnOnce() -> C,
+    {
+        self.map_err(|err| ActorError::checked(code, format!("{}: {}", f(), err.into()), None))
+    }
+}
+
+// Supports conversion of Options to Results with ActorErrors.
+impl<T> AsActorError<T> for Option<T> {
     fn context_code<C>(self, code: ExitCode, context: C) -> Result<T, ActorError>
     where
         C: Display + 'static,
@@ -272,5 +358,219 @@ where
 {
     ret.context_code(ExitCode::USR_ASSERTION_FAILED, "return expected".to_string())?
         .deserialize()
-        .exit_code(ExitCode::USR_SERIALIZATION)
+        .context_code(ExitCode::USR_SERIALIZATION, "deserialization failed")
+}
+
+// Wrapper for an error that is opaque, emerging from low level dependencies before an
+// appropriate exit code has been determined.
+// By design, there is *no conversion from ActorError* or any Error type that might wrap
+// an ActorError. This prevents unintentional overriding of the contained exit code.
+// A struct must be used here (rather than a trait) in order to prevent conflicting implementations
+// of AsActorError for a type that might possibly implement multiple traits.
+pub struct OpaqueError(String);
+
+impl OpaqueError {
+    pub fn new(msg: impl Into<String>) -> Self {
+        Self(msg.into())
+    }
+}
+
+impl Display for OpaqueError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl From<String> for OpaqueError {
+    fn from(val: String) -> Self {
+        OpaqueError::new(val)
+    }
+}
+
+impl From<fvm_ipld_encoding::Error> for OpaqueError {
+    fn from(val: fvm_ipld_encoding::Error) -> Self {
+        OpaqueError::new(val.to_string())
+    }
+}
+
+impl From<unsigned_varint::decode::Error> for OpaqueError {
+    fn from(val: unsigned_varint::decode::Error) -> Self {
+        OpaqueError::new(val.to_string())
+    }
+}
+
+// Extension method to extract any ActorError wrapped in another error type.
+// Implementations should recursively downcast any wrapped error types that may themselves
+// wrap an ActorError.
+trait ActorErrorDowncast {
+    // Returns an ActorError if the receiver is wrapping one,
+    // else formats the receiver as a string.
+    fn to_actor_error(self) -> Result<ActorError, String>;
+}
+
+// Extracts any ActorError wrapped as an Anyhow error.
+impl ActorErrorDowncast for anyhow::Error {
+    fn to_actor_error(self) -> Result<ActorError, String> {
+        let e = self;
+        let e = match e.downcast::<ActorError>() {
+            Ok(inner) => return Ok(inner),
+            Err(e) => e,
+        };
+        // Handle all other specific error types that could wrap ActorError.
+        let e = match e.downcast::<fvm_ipld_amt::Error>() {
+            Ok(inner) => {
+                return match inner.to_actor_error() {
+                    Ok(actor) => Ok(actor),
+                    Err(e) => Err(e),
+                }
+            }
+            Err(e) => e,
+        };
+        let e = match e.downcast::<fvm_ipld_hamt::Error>() {
+            Ok(inner) => {
+                return match inner.to_actor_error() {
+                    Ok(actor) => Ok(actor),
+                    Err(e) => Err(e),
+                }
+            }
+            Err(e) => e,
+        };
+        Err(e.to_string())
+    }
+}
+
+// Extracts any ActorError wrapped in an AMT error.
+impl ActorErrorDowncast for fvm_ipld_amt::Error {
+    fn to_actor_error(self) -> Result<ActorError, String> {
+        match self {
+            fvm_ipld_amt::Error::Dynamic(e) => match e.to_actor_error() {
+                Ok(actor) => Ok(actor),
+                Err(e) => Err(e),
+            },
+            _ => Err(self.to_string()),
+        }
+    }
+}
+
+// Extracts any ActorError wrapped in an HAMT error.
+impl ActorErrorDowncast for fvm_ipld_hamt::Error {
+    fn to_actor_error(self) -> Result<ActorError, String> {
+        match self {
+            fvm_ipld_hamt::Error::Dynamic(e) => match e.to_actor_error() {
+                Ok(actor) => Ok(actor),
+                Err(e) => Err(e),
+            },
+            _ => Err(self.to_string()),
+        }
+    }
+}
+
+// Shared implementation of context_code and with_context_code for types that
+// might wrap an ActorError. These propagate any underlying ActorError's code and data.
+fn context_code<T, E, C>(r: Result<T, E>, code: ExitCode, context: C) -> Result<T, ActorError>
+where
+    E: ActorErrorDowncast + Display,
+    C: Display + 'static,
+{
+    r.map_err(|err| match err.to_actor_error() {
+        Ok(e) => e.wrap(context.to_string()),
+        Err(e) => ActorError::checked(code, format!("{}: {}", context, e), None),
+    })
+}
+
+fn with_context_code<T, E, C, F>(r: Result<T, E>, code: ExitCode, f: F) -> Result<T, ActorError>
+where
+    E: ActorErrorDowncast + Display,
+    C: Display + 'static,
+    F: FnOnce() -> C,
+{
+    r.map_err(|err| match err.to_actor_error() {
+        Ok(e) => e.wrap(f().to_string()),
+        Err(e) => ActorError::checked(code, format!("{}: {}", f(), e), None),
+    })
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{ActorError, ActorResult, AsActorError};
+    use anyhow::anyhow;
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
+    use fvm_shared::error::ExitCode;
+    use std::fmt::Display;
+
+    #[test]
+    fn context_propagates_code() {
+        let block = IpldBlock::serialize_cbor(&1).unwrap();
+        let root_code = ExitCode::USR_UNSPECIFIED;
+        let wrap_code = ExitCode::USR_ILLEGAL_STATE;
+        let actor_error = ActorError::checked(root_code, "123".to_string(), block);
+        // Methods from ActorResult on Result<(), ActorError>
+        verify(root_code, "123", Err(actor_error.clone()));
+        verify(root_code, "456: 123", Err(actor_error.clone()).context("456"));
+        // Code can be explicitly overridden (the original one is preserved in the message).
+        verify(
+            wrap_code,
+            format!("456: 123 (code {})", root_code).as_str(),
+            Err(actor_error.clone()).override_code(wrap_code, "456"),
+        );
+
+        // Methods from AsActorResult that adapt into Result<(), ActorError>.
+        // The inner error has no exit code so the wrapping one is used.
+        verify(wrap_code, "456: 123", Err(anyhow!("123")).context_code(wrap_code, "456"));
+        verify(
+            wrap_code,
+            "456: Vector length does not match bitmap",
+            Err(fvm_ipld_amt::Error::InvalidVecLength).context_code(wrap_code, "456"),
+        );
+
+        // Methods from AsActorResult on values that *are* wrapping an underlying ActorError.
+        // The underlying code should propagate instead of the wrapping one.
+        // ActorError wrapped in anyhow::Error
+        verify(root_code, "123", Err::<(), anyhow::Error>(actor_error.clone().into()));
+        verify(
+            root_code, // The underlying code prevails
+            "456: 123",
+            Err::<(), anyhow::Error>(actor_error.clone().into()).context_code(wrap_code, "456"),
+        );
+        verify(
+            wrap_code, // But can be overridden explicitly
+            format!("789: 456: 123 (code {})", root_code).as_str(),
+            Err::<(), anyhow::Error>(actor_error.clone().into())
+                .context_code(wrap_code, "456")
+                .override_code(wrap_code, "789"),
+        );
+
+        // ActorError wrapped in fvm_ipld_amt::Error::Dynamic(anyhow::Error())
+        verify(root_code, "123", Err(fvm_ipld_amt::Error::Dynamic(actor_error.clone().into())));
+        verify(
+            root_code, // The underlying code prevails
+            "456: 123",
+            Err(fvm_ipld_amt::Error::Dynamic(actor_error.clone().into()))
+                .context_code(wrap_code, "456"),
+        );
+
+        // Deep nesting
+        verify(
+            root_code, // The underlying code prevails
+            "123",
+            Err(fvm_ipld_amt::Error::Dynamic(anyhow!(fvm_ipld_hamt::Error::Dynamic(
+                actor_error.clone().into()
+            )))),
+        );
+        verify(
+            root_code,
+            "456: 123",
+            Err(fvm_ipld_amt::Error::Dynamic(anyhow!(fvm_ipld_hamt::Error::Dynamic(
+                actor_error.into()
+            ))))
+            .context_code(wrap_code, "456"),
+        );
+    }
+
+    fn verify<E: Display>(code: ExitCode, msg: &str, result: Result<(), E>) {
+        assert_eq!(
+            format!("ActorError(exit_code: {}, msg: {})", code, msg),
+            result.unwrap_err().to_string()
+        );
+    }
 }

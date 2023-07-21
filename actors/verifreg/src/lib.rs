@@ -28,7 +28,7 @@ use fil_actors_runtime::{
     Map, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen};
+use fil_actors_runtime::{ActorResult, AsActorError, BatchReturnGen};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::sys::SendFlags;
 

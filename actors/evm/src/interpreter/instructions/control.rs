@@ -88,8 +88,8 @@ pub fn returndatacopy(
 ) -> Result<(), ActorError> {
     let region = get_memory_region(&mut state.memory, mem_index, size)?;
 
-    let src: usize = input_index
-        .try_into()
+    let src: usize = <U256 as TryInto<usize>>::try_into(input_index)
+        .map_err(|e| e.to_string())
         .context_code(EVM_CONTRACT_ILLEGAL_MEMORY_ACCESS, "returndatacopy index exceeds max u32")?;
     if src > state.return_data.len() {
         return Err(ActorError::unchecked(
@@ -127,7 +127,9 @@ pub fn returndatacopy(
 
 #[inline]
 pub fn jump(bytecode: &Bytecode, _pc: usize, dest: U256) -> Result<usize, ActorError> {
-    let dst = dest.try_into().context_code(EVM_CONTRACT_BAD_JUMPDEST, "jumpdest exceeds u32")?;
+    let dst: usize = <U256 as TryInto<usize>>::try_into(dest)
+        .map_err(|e| e.to_string())
+        .context_code(EVM_CONTRACT_BAD_JUMPDEST, "jumpdest exceeds u32")?;
     if !bytecode.valid_jump_destination(dst) {
         return Err(ActorError::unchecked(
             EVM_CONTRACT_BAD_JUMPDEST,
@@ -141,8 +143,9 @@ pub fn jump(bytecode: &Bytecode, _pc: usize, dest: U256) -> Result<usize, ActorE
 #[inline]
 pub fn jumpi(bytecode: &Bytecode, pc: usize, dest: U256, test: U256) -> Result<usize, ActorError> {
     if !test.is_zero() {
-        let dst =
-            dest.try_into().context_code(EVM_CONTRACT_BAD_JUMPDEST, "jumpdest exceeds u32")?;
+        let dst = <U256 as TryInto<usize>>::try_into(dest)
+            .map_err(|e| e.to_string())
+            .context_code(EVM_CONTRACT_BAD_JUMPDEST, "jumpdest exceeds u32")?;
         if !bytecode.valid_jump_destination(dst) {
             return Err(ActorError::unchecked(
                 EVM_CONTRACT_BAD_JUMPDEST,

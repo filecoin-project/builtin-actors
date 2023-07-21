@@ -1,10 +1,10 @@
 use frc46_token::token;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
+use fvm_shared::ActorID;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::ActorID;
 
 use fil_actors_runtime::{ActorError, AsActorError};
 
@@ -17,6 +17,7 @@ pub struct State {
 impl State {
     pub fn new<BS: Blockstore>(store: &BS, governor: Address) -> Result<State, ActorError> {
         let token_state = token::state::TokenState::new(store)
+            .map_err(|e| e.to_string())
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to create token state")?;
         Ok(State { governor, token: token_state })
     }
@@ -29,6 +30,7 @@ impl State {
     ) -> Result<TokenAmount, ActorError> {
         self.token
             .get_balance(bs, owner)
+            .map_err(|e| e.to_string())
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get balance")
     }
 }
