@@ -14,7 +14,7 @@ use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::{ActorID, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
+use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
 use log::info;
 use num_derive::FromPrimitive;
 use num_traits::{Signed, Zero};
@@ -52,7 +52,6 @@ pub mod types;
 #[derive(FromPrimitive)]
 #[repr(u64)]
 pub enum Method {
-    Constructor = METHOD_CONSTRUCTOR,
     AddVerifier = 2,
     RemoveVerifier = 3,
     AddVerifiedClient = 4,
@@ -1084,7 +1083,6 @@ impl ActorCode for Actor {
     }
 
     actor_dispatch! {
-        Constructor => constructor,
         AddVerifier => add_verifier,
         RemoveVerifier => remove_verifier,
         AddVerifiedClient|AddVerifiedClientExported => add_verified_client,

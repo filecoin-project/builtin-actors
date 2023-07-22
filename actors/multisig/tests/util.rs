@@ -41,9 +41,7 @@ impl ActorHarness {
         };
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
-        let result = rt
-            .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
-            .unwrap();
+        let result = rt.construct::<Actor>(IpldBlock::serialize_cbor(&params).unwrap()).unwrap();
         assert!(result.is_none());
         rt.verify();
     }

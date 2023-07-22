@@ -13,6 +13,7 @@ keywords = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
+fvm_sdk = { version = "3.3.0" }
 fil_actors_runtime = { version = "12.0.0", path = "../../runtime" }
 frc42_dispatch = "3.3.0"
 fvm_actor_utils = "7.0.0"

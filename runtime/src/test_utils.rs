@@ -366,6 +366,10 @@ pub struct ExpectCreateActor {
     pub code_id: Cid,
     pub actor_id: ActorID,
     pub predictable_address: Option<Address>,
+    pub params: Option<IpldBlock>,
+    pub value: TokenAmount,
+    pub gas_limit: Option<u64>,
+    pub exit_code: ExitCode,
 }
 
 #[derive(Clone, Debug)]
@@ -543,6 +547,21 @@ impl<BS: Blockstore> MockRuntime<BS> {
         self.id_addresses.borrow_mut().insert(target, Address::new_id(source));
     }
 
+    pub fn construct<A: ActorCode>(
+        &self,
+        params: Option<IpldBlock>,
+    ) -> Result<Option<IpldBlock>, ActorError> {
+        self.in_call.replace(true);
+        let prev_state = *self.state.borrow();
+        let res = A::create(self, params);
+
+        if res.is_err() {
+            self.state.replace(prev_state);
+        }
+        self.in_call.replace(false);
+        res
+    }
+
     pub fn call<A: ActorCode>(
         &self,
         method_num: MethodNum,
@@ -550,7 +569,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
     ) -> Result<Option<IpldBlock>, ActorError> {
         self.in_call.replace(true);
         let prev_state = *self.state.borrow();
-        let res = A::invoke_method(self, method_num, params);
+        let res = A::invoke(self, method_num, params);
 
         if res.is_err() {
             self.state.replace(prev_state);
@@ -692,8 +711,20 @@ impl<BS: Blockstore> MockRuntime<BS> {
         code_id: Cid,
         actor_id: ActorID,
         predictable_address: Option<Address>,
+        params: Option<IpldBlock>,
+        value: TokenAmount,
+        gas_limit: Option<u64>,
+        exit_code: ExitCode,
     ) {
-        let a = ExpectCreateActor { code_id, actor_id, predictable_address };
+        let a = ExpectCreateActor {
+            code_id,
+            actor_id,
+            predictable_address,
+            params,
+            value,
+            gas_limit,
+            exit_code,
+        };
         self.expectations.borrow_mut().expect_create_actor = Some(a);
     }
 
@@ -1178,7 +1209,10 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         code_id: Cid,
         actor_id: ActorID,
         predictable_address: Option<Address>,
-    ) -> Result<(), ActorError> {
+        params: Option<IpldBlock>,
+        value: TokenAmount,
+        gas_limit: Option<u64>,
+    ) -> Result<Response, ActorError> {
         self.require_in_call();
         if *self.in_transaction.borrow() {
             return Err(actor_error!(assertion_failed; "side-effect within transaction"));
@@ -1190,13 +1224,14 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
             .take()
             .expect("unexpected call to create actor");
 
-        assert_eq!(
-            expect_create_actor,
-            ExpectCreateActor { code_id, actor_id, predictable_address },
-            "unexpected actor being created"
-        );
+        assert_eq!(expect_create_actor.code_id, code_id);
+        assert_eq!(expect_create_actor.actor_id, actor_id);
+        assert_eq!(expect_create_actor.predictable_address, predictable_address);
+        assert_eq!(expect_create_actor.params, params);
+        assert_eq!(expect_create_actor.value, value);
+        assert_eq!(expect_create_actor.gas_limit, gas_limit);
         self.set_address_actor_type(Address::new_id(actor_id), code_id);
-        Ok(())
+        Ok(Response { exit_code: expect_create_actor.exit_code, return_data: None })
     }
 
     fn delete_actor(&self, addr: &Address) -> Result<(), ActorError> {

@@ -6,7 +6,6 @@ use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, StoragePower};
 use fvm_shared::smooth::FilterEstimate;
-use fvm_shared::METHOD_CONSTRUCTOR;
 use num_derive::FromPrimitive;
 
 pub mod init {
@@ -75,7 +74,6 @@ pub mod reward {
     #[derive(FromPrimitive)]
     #[repr(u64)]
     pub enum Method {
-        Constructor = METHOD_CONSTRUCTOR,
         AwardBlockReward = 2,
         ThisEpochReward = 3,
         UpdateNetworkKPI = 4,

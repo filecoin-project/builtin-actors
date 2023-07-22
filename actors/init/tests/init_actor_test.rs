@@ -19,7 +19,7 @@ use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::{ActorID, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
+use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
 use num_traits::Zero;
 use serde::Serialize;
 
@@ -69,12 +69,10 @@ fn repeated_robust_address() {
         // Next id
         let expected_id = 100;
         let expected_id_addr = Address::new_id(expected_id);
-        rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id, None);
-
-        // Expect a send to the multisig actor constructor
-        rt.expect_send_simple(
-            expected_id_addr,
-            METHOD_CONSTRUCTOR,
+        rt.expect_create_actor(
+            *MULTISIG_ACTOR_CODE_ID,
+            expected_id,
+            None,
             IpldBlock::serialize_cbor(&fake_params).unwrap(),
             TokenAmount::zero(),
             None,
@@ -83,7 +81,7 @@ fn repeated_robust_address() {
 
         // Return should have been successful. Check the returned addresses
         let exec_ret = exec_and_verify(&rt, *MULTISIG_ACTOR_CODE_ID, &fake_params).unwrap();
-        assert_eq!(unique_address, exec_ret.robust_address, "Robust address does not macth");
+        assert_eq!(unique_address, exec_ret.robust_address, "Robust address does not match");
         assert_eq!(expected_id_addr, exec_ret.id_address, "Id address does not match");
         check_state(&rt);
     }
@@ -129,16 +127,13 @@ fn create_2_payment_channels() {
 
         let expected_id = 100 + n;
         let expected_id_addr = Address::new_id(expected_id);
-        rt.expect_create_actor(*PAYCH_ACTOR_CODE_ID, expected_id, None);
-
         let fake_params = ConstructorParams { network_name: String::from("fake_param") };
-
         // expect anne creating a payment channel to trigger a send to the payment channels constructor
         let balance = TokenAmount::from_atto(100);
-
-        rt.expect_send_simple(
-            expected_id_addr,
-            METHOD_CONSTRUCTOR,
+        rt.expect_create_actor(
+            *PAYCH_ACTOR_CODE_ID,
+            expected_id,
+            None,
             IpldBlock::serialize_cbor(&fake_params).unwrap(),
             balance,
             None,
@@ -173,13 +168,11 @@ fn create_storage_miner() {
 
     let expected_id = 100;
     let expected_id_addr = Address::new_id(expected_id);
-    rt.expect_create_actor(*MINER_ACTOR_CODE_ID, expected_id, None);
-
     let fake_params = ConstructorParams { network_name: String::from("fake_param") };
-
-    rt.expect_send_simple(
-        expected_id_addr,
-        METHOD_CONSTRUCTOR,
+    rt.expect_create_actor(
+        *MINER_ACTOR_CODE_ID,
+        expected_id,
+        None,
         IpldBlock::serialize_cbor(&fake_params).unwrap(),
         TokenAmount::zero(),
         None,
@@ -222,13 +215,11 @@ fn create_multisig_actor() {
     // Next id
     let expected_id = 100;
     let expected_id_addr = Address::new_id(expected_id);
-    rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id, None);
-
     let fake_params = ConstructorParams { network_name: String::from("fake_param") };
-    // Expect a send to the multisig actor constructor
-    rt.expect_send_simple(
-        expected_id_addr,
-        METHOD_CONSTRUCTOR,
+    rt.expect_create_actor(
+        *MULTISIG_ACTOR_CODE_ID,
+        expected_id,
+        None,
         IpldBlock::serialize_cbor(&fake_params).unwrap(),
         TokenAmount::zero(),
         None,
@@ -256,13 +247,11 @@ fn sending_constructor_failure() {
 
     // Create the next id address
     let expected_id = 100;
-    let expected_id_addr = Address::new_id(expected_id);
-    rt.expect_create_actor(*MINER_ACTOR_CODE_ID, expected_id, None);
-
     let fake_params = ConstructorParams { network_name: String::from("fake_param") };
-    rt.expect_send_simple(
-        expected_id_addr,
-        METHOD_CONSTRUCTOR,
+    rt.expect_create_actor(
+        *MINER_ACTOR_CODE_ID,
+        expected_id,
+        None,
         IpldBlock::serialize_cbor(&fake_params).unwrap(),
         TokenAmount::zero(),
         None,
@@ -304,13 +293,11 @@ fn call_exec4() {
     // Next id
     let expected_id = 100;
     let expected_id_addr = Address::new_id(expected_id);
-    rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id, Some(f4_addr));
-
     let fake_params = ConstructorParams { network_name: String::from("fake_param") };
-    // Expect a send to the multisig actor constructor
-    rt.expect_send_simple(
-        expected_id_addr,
-        METHOD_CONSTRUCTOR,
+    rt.expect_create_actor(
+        *MULTISIG_ACTOR_CODE_ID,
+        expected_id,
+        Some(f4_addr),
         IpldBlock::serialize_cbor(&fake_params).unwrap(),
         TokenAmount::zero(),
         None,
@@ -379,15 +366,13 @@ fn call_exec4_placeholder() {
     let expected_id_addr = Address::new_id(expected_id);
     rt.set_address_actor_type(expected_id_addr, *PLACEHOLDER_ACTOR_CODE_ID);
     rt.set_delegated_address(expected_id, f4_addr);
+    let fake_params = ConstructorParams { network_name: String::from("fake_param") };
 
     // Now try to create it.
-    rt.expect_create_actor(*MULTISIG_ACTOR_CODE_ID, expected_id, Some(f4_addr));
-
-    let fake_params = ConstructorParams { network_name: String::from("fake_param") };
-    // Expect a send to the multisig actor constructor
-    rt.expect_send_simple(
-        expected_id_addr,
-        METHOD_CONSTRUCTOR,
+    rt.expect_create_actor(
+        *MULTISIG_ACTOR_CODE_ID,
+        expected_id,
+        Some(f4_addr),
         IpldBlock::serialize_cbor(&fake_params).unwrap(),
         TokenAmount::zero(),
         None,
@@ -415,9 +400,7 @@ fn construct_and_verify(rt: &MockRuntime) {
     rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
     let params = ConstructorParams { network_name: "mock".to_string() };
-    let ret = rt
-        .call::<InitActor>(METHOD_CONSTRUCTOR, IpldBlock::serialize_cbor(&params).unwrap())
-        .unwrap();
+    let ret = rt.construct::<InitActor>(IpldBlock::serialize_cbor(&params).unwrap()).unwrap();
 
     assert!(ret.is_none());
 

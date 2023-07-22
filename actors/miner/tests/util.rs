@@ -270,9 +270,7 @@ impl ActorHarness {
             ExitCode::OK,
         );
 
-        let result = rt
-            .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
-            .unwrap();
+        let result = rt.construct::<Actor>(IpldBlock::serialize_cbor(&params).unwrap()).unwrap();
         expect_empty(result);
         rt.verify();
     }

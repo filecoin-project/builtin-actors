@@ -88,12 +88,8 @@ impl Harness {
     pub fn construct_and_verify(&self, rt: &MockRuntime, root_param: &Address) {
         rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
-        let ret = rt
-            .call::<VerifregActor>(
-                Method::Constructor as MethodNum,
-                IpldBlock::serialize_cbor(root_param).unwrap(),
-            )
-            .unwrap();
+        let ret =
+            rt.construct::<VerifregActor>(IpldBlock::serialize_cbor(root_param).unwrap()).unwrap();
 
         assert!(ret.is_none());
         rt.verify();

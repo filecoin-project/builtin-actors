@@ -141,9 +141,12 @@ impl Display for SendError {
     }
 }
 
-pub fn extract_send_result(
-    res: Result<fvm_shared::Response, SendError>,
-) -> Result<Option<IpldBlock>, ActorError> {
+pub fn extract_send_result<E>(
+    res: Result<fvm_shared::Response, E>,
+) -> Result<Option<IpldBlock>, ActorError>
+where
+    ActorError: From<E>,
+{
     let ret = res?;
     if ret.exit_code.is_success() {
         Ok(ret.return_data)

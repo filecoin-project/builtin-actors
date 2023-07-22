@@ -11,7 +11,7 @@ use fil_actors_runtime::{
 };
 use fvm_shared::address::Address;
 use fvm_shared::error::ExitCode;
-use fvm_shared::{ActorID, METHOD_CONSTRUCTOR};
+use fvm_shared::ActorID;
 use num_derive::FromPrimitive;
 
 pub use self::state::State;
@@ -28,7 +28,6 @@ fil_actors_runtime::wasm_trampoline!(Actor);
 #[derive(FromPrimitive)]
 #[repr(u64)]
 pub enum Method {
-    Constructor = METHOD_CONSTRUCTOR,
     Exec = 2,
     Exec4 = 3,
 }
@@ -92,17 +91,15 @@ impl Actor {
             ));
         }
 
-        // Create an empty actor
-        rt.create_actor(params.code_cid, id_address, None)?;
-
-        // Invoke constructor
-        extract_send_result(rt.send_simple(
-            &Address::new_id(id_address),
-            METHOD_CONSTRUCTOR,
+        // Create the actor.
+        extract_send_result(rt.create_actor(
+            params.code_cid,
+            id_address,
+            None,
             params.constructor_params.into(),
             rt.message().value_received(),
-        ))
-        .context("constructor failed")?;
+            None,
+        ))?;
 
         Ok(ExecReturn { id_address: Address::new_id(id_address), robust_address })
     }
@@ -148,17 +145,15 @@ impl Actor {
             }
         }
 
-        // Create an empty actor
-        rt.create_actor(params.code_cid, id_address, Some(delegated_address))?;
-
-        // Invoke constructor
-        extract_send_result(rt.send_simple(
-            &Address::new_id(id_address),
-            METHOD_CONSTRUCTOR,
+        // Create the actor.
+        extract_send_result(rt.create_actor(
+            params.code_cid,
+            id_address,
+            Some(delegated_address),
             params.constructor_params.into(),
             rt.message().value_received(),
-        ))
-        .context("constructor failed")?;
+            None,
+        ))?;
 
         Ok(Exec4Return { id_address: Address::new_id(id_address), robust_address })
     }
@@ -172,7 +167,6 @@ impl ActorCode for Actor {
     }
 
     actor_dispatch! {
-        Constructor => constructor,
         Exec => exec,
         Exec4 => exec4,
     }

@@ -14,7 +14,7 @@ use fil_actors_runtime::{
 };
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_shared::{error::ExitCode, sys::SendFlags, ActorID, METHOD_CONSTRUCTOR};
+use fvm_shared::{error::ExitCode, sys::SendFlags, ActorID};
 use serde::{Deserialize, Serialize};
 
 pub mod ext;
@@ -33,7 +33,6 @@ fil_actors_runtime::wasm_trampoline!(EamActor);
 #[derive(FromPrimitive)]
 #[repr(u64)]
 pub enum Method {
-    Constructor = METHOD_CONSTRUCTOR,
     Create = 2,
     Create2 = 3,
     CreateExternal = 4,
@@ -296,7 +295,6 @@ impl ActorCode for EamActor {
     }
 
     actor_dispatch_unrestricted! {
-        Constructor => constructor,
         Create => create,
         Create2 => create2,
         CreateExternal => create_external,

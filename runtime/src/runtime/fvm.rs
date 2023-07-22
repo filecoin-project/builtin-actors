@@ -320,19 +320,23 @@ where
         code_id: Cid,
         actor_id: ActorID,
         predictable_address: Option<Address>,
-    ) -> Result<(), ActorError> {
+        params: Option<IpldBlock>,
+        value: TokenAmount,
+        gas_limit: Option<u64>,
+    ) -> Result<Response, ActorError> {
         if *self.in_transaction.borrow() {
             return Err(
                 actor_error!(assertion_failed; "create_actor is not allowed during transaction"),
             );
         }
-        fvm::actor::create_actor(actor_id, &code_id, predictable_address).map_err(|e| match e {
-            ErrorNumber::IllegalArgument => {
-                ActorError::illegal_argument("failed to create actor".into())
-            }
-            ErrorNumber::Forbidden => ActorError::forbidden("actor already exists".into()),
-            _ => actor_error!(assertion_failed; "create failed with unknown error: {}", e),
-        })
+        fvm::actor::create_actor(actor_id, &code_id, predictable_address, params, value, gas_limit)
+            .map_err(|e| match e {
+                ErrorNumber::IllegalArgument => {
+                    ActorError::illegal_argument("failed to create actor".into())
+                }
+                ErrorNumber::Forbidden => ActorError::forbidden("actor already exists".into()),
+                _ => actor_error!(assertion_failed; "create failed with unknown error: {}", e),
+            })
     }
 
     fn delete_actor(&self, beneficiary: &Address) -> Result<(), ActorError> {
@@ -563,20 +567,25 @@ where
 /// 4.  Invokes the target method.
 /// 5a. In case of error, aborts the execution with the emitted exit code, or
 /// 5b. In case of success, stores the return data as a block and returns the latter.
-pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
+pub fn trampoline<C: ActorCode>(params: u32, entrypoint: Entrypoint) -> u32 {
     init_logging(C::name());
 
     std::panic::set_hook(Box::new(|info| {
         fvm::vm::abort(ExitCode::USR_ASSERTION_FAILED.value(), Some(&format!("{}", info)))
     }));
 
-    let method = fvm::message::method_number();
-    let params = fvm::message::params_raw(params).expect("params block invalid");
-
     // Construct a new runtime.
     let rt = FvmRuntime::default();
-    // Invoke the method, aborting if the actor returns an errored exit code.
-    let ret = C::invoke_method(&rt, method, params).unwrap_or_else(|mut err| {
+    let params = fvm_sdk::message::params_raw(params).expect("params block invalid");
+    // Invoke the entrypoint, aborting if the actor returns an errored exit code.
+    let ret = match entrypoint {
+        Entrypoint::Create => C::create(&rt, params),
+        Entrypoint::Invoke => {
+            let method = fvm_sdk::message::method_number();
+            C::invoke(&rt, method, params)
+        }
+    }
+    .unwrap_or_else(|mut err| {
         fvm::vm::exit(err.exit_code().value(), err.take_data(), Some(err.msg()))
     });
 
@@ -593,6 +602,12 @@ pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
         Some(ret_block) => fvm::ipld::put_block(ret_block.codec, ret_block.data.as_slice())
             .expect("failed to write result"),
     }
+}
+
+#[derive(Debug)]
+pub enum Entrypoint {
+    Create,
+    Invoke,
 }
 
 /// If debugging is enabled in the VM, installs a logger that sends messages to the FVM log syscall.

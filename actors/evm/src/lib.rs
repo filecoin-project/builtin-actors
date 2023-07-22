@@ -15,7 +15,6 @@ use crate::interpreter::{execute, Bytecode, ExecutionState, System};
 use crate::reader::ValueReader;
 use cid::Cid;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fvm_shared::METHOD_CONSTRUCTOR;
 use num_derive::FromPrimitive;
 
 pub use types::*;
@@ -59,7 +58,6 @@ fn test_method_selector() {
 #[derive(FromPrimitive)]
 #[repr(u64)]
 pub enum Method {
-    Constructor = METHOD_CONSTRUCTOR,
     Resurrect = 2,
     GetBytecode = 3,
     GetBytecodeHash = 4,
@@ -410,7 +408,6 @@ impl ActorCode for EvmContractActor {
     }
 
     actor_dispatch_unrestricted! {
-        Constructor => constructor,
         InvokeContract => invoke_contract [default_params],
         GetBytecode => bytecode,
         GetBytecodeHash => bytecode_hash,

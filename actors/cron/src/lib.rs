@@ -2,14 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{
-    actor_dispatch, actor_error, extract_send_result, ActorError, SYSTEM_ACTOR_ADDR,
-};
+use fil_actors_runtime::{actor_dispatch, extract_send_result, ActorError, SYSTEM_ACTOR_ADDR};
 
 use fvm_ipld_encoding::tuple::*;
 use fvm_shared::econ::TokenAmount;
 
-use fvm_shared::METHOD_CONSTRUCTOR;
 use num_derive::FromPrimitive;
 use num_traits::Zero;
 
@@ -27,7 +24,6 @@ fil_actors_runtime::wasm_trampoline!(Actor);
 #[derive(FromPrimitive)]
 #[repr(u64)]
 pub enum Method {
-    Constructor = METHOD_CONSTRUCTOR,
     EpochTick = 2,
 }
 
@@ -84,7 +80,6 @@ impl ActorCode for Actor {
     }
 
     actor_dispatch! {
-        Constructor => constructor,
         EpochTick => epoch_tick,
     }
 }

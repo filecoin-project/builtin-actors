@@ -47,12 +47,8 @@ impl Harness {
     pub fn construct_and_verify(&self, rt: &MockRuntime, registry: &Address) {
         rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
-        let ret = rt
-            .call::<DataCapActor>(
-                Method::Constructor as MethodNum,
-                IpldBlock::serialize_cbor(registry).unwrap(),
-            )
-            .unwrap();
+        let ret =
+            rt.construct::<DataCapActor>(IpldBlock::serialize_cbor(registry).unwrap()).unwrap();
 
         assert!(ret.is_none());
         rt.verify();

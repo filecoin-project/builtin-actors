@@ -10,7 +10,7 @@ use fil_actors_runtime::{
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::{METHOD_CONSTRUCTOR, METHOD_SEND};
+use fvm_shared::METHOD_SEND;
 use log::{error, warn};
 use num_derive::FromPrimitive;
 
@@ -40,7 +40,6 @@ pub const PENALTY_MULTIPLIER: u64 = 3;
 #[derive(FromPrimitive)]
 #[repr(u64)]
 pub enum Method {
-    Constructor = METHOD_CONSTRUCTOR,
     AwardBlockReward = 2,
     ThisEpochReward = 3,
     UpdateNetworkKPI = 4,
@@ -223,7 +222,6 @@ impl ActorCode for Actor {
     }
 
     actor_dispatch! {
-        Constructor => constructor,
         AwardBlockReward => award_block_reward,
         ThisEpochReward => this_epoch_reward,
         UpdateNetworkKPI => update_network_kpi,

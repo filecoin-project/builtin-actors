@@ -44,9 +44,7 @@ use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::sys::SendFlags;
-use fvm_shared::{
-    address::Address, econ::TokenAmount, error::ExitCode, ActorID, METHOD_CONSTRUCTOR, METHOD_SEND,
-};
+use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode, ActorID, METHOD_SEND};
 
 // Define common set of actor ids that will be used across all tests.
 const OWNER_ID: u64 = 101;
@@ -133,7 +131,7 @@ pub fn check_state_with_expected(rt: &MockRuntime, expected_patterns: &[Regex]) 
 pub fn construct_and_verify(rt: &MockRuntime) {
     rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
-    assert!(rt.call::<MarketActor>(METHOD_CONSTRUCTOR, None).unwrap().is_none());
+    assert!(rt.construct::<MarketActor>(None).unwrap().is_none());
     rt.verify();
 }
 

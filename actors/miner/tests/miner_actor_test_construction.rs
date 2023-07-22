@@ -3,7 +3,7 @@ use fil_actors_runtime::INIT_ACTOR_ADDR;
 
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_miner::{
-    Actor, Deadline, Deadlines, Method, MinerConstructorParams as ConstructorParams, State,
+    Actor, Deadline, Deadlines, MinerConstructorParams as ConstructorParams, State,
 };
 
 use fvm_ipld_encoding::{BytesDe, CborStore};
@@ -80,10 +80,7 @@ fn simple_construction() {
         ExitCode::OK,
     );
 
-    let result = env
-        .rt
-        .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
-        .unwrap();
+    let result = env.rt.construct::<Actor>(IpldBlock::serialize_cbor(&params).unwrap()).unwrap();
     expect_empty(result);
     env.rt.verify();
 
@@ -155,10 +152,7 @@ fn control_addresses_are_resolved_during_construction() {
         ExitCode::OK,
     );
 
-    let result = env
-        .rt
-        .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
-        .unwrap();
+    let result = env.rt.construct::<Actor>(IpldBlock::serialize_cbor(&params).unwrap()).unwrap();
     expect_empty(result);
     env.rt.verify();
 
@@ -179,10 +173,8 @@ fn test_construct_with_invalid_peer_id() {
     env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
     env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
 
-    let result = env
-        .rt
-        .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
-        .unwrap_err();
+    let result =
+        env.rt.construct::<Actor>(IpldBlock::serialize_cbor(&params).unwrap()).unwrap_err();
     assert_eq!(result.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
     env.rt.verify();
 }
@@ -199,10 +191,8 @@ fn fails_if_control_addresses_exceeds_maximum_length() {
     env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
     env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
 
-    let result = env
-        .rt
-        .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
-        .unwrap_err();
+    let result =
+        env.rt.construct::<Actor>(IpldBlock::serialize_cbor(&params).unwrap()).unwrap_err();
     assert_eq!(result.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
     env.rt.verify();
 }
@@ -219,10 +209,8 @@ fn test_construct_with_large_multiaddr() {
     env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
     env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
 
-    let result = env
-        .rt
-        .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
-        .unwrap_err();
+    let result =
+        env.rt.construct::<Actor>(IpldBlock::serialize_cbor(&params).unwrap()).unwrap_err();
     assert_eq!(result.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
     env.rt.verify();
 }
@@ -238,10 +226,8 @@ fn test_construct_with_empty_multiaddr() {
     env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
     env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
 
-    let result = env
-        .rt
-        .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
-        .unwrap_err();
+    let result =
+        env.rt.construct::<Actor>(IpldBlock::serialize_cbor(&params).unwrap()).unwrap_err();
     assert_eq!(result.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
     env.rt.verify();
 }

@@ -274,7 +274,7 @@ pub fn construct_and_verify() -> MockRuntime {
 
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
 
-    let result = rt.call::<eam::EamActor>(eam::Method::Constructor as u64, None).unwrap();
+    let result = rt.construct::<eam::EamActor>(None).unwrap();
     expect_empty(result);
     rt.verify();
     rt.reset();

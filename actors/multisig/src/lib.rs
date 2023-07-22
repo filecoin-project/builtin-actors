@@ -12,7 +12,7 @@ use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::MethodNum;
-use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
+use fvm_shared::HAMT_BIT_WIDTH;
 use num_derive::FromPrimitive;
 use num_traits::Zero;
 
@@ -37,7 +37,6 @@ mod types;
 #[derive(FromPrimitive)]
 #[repr(u64)]
 pub enum Method {
-    Constructor = METHOD_CONSTRUCTOR,
     Propose = 2,
     Approve = 3,
     Cancel = 4,
@@ -568,7 +567,6 @@ impl ActorCode for Actor {
     }
 
     actor_dispatch! {
-      Constructor => constructor,
       Propose => propose,
       Approve => approve,
       Cancel => cancel,

@@ -20,7 +20,7 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::StoragePower;
-use fvm_shared::{METHOD_CONSTRUCTOR, METHOD_SEND};
+use fvm_shared::METHOD_SEND;
 use lazy_static::lazy_static;
 use num_traits::FromPrimitive;
 
@@ -335,10 +335,7 @@ fn construct_and_verify(curr_power: &StoragePower) -> MockRuntime {
     rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
     rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
     let ret = rt
-        .call::<RewardActor>(
-            METHOD_CONSTRUCTOR,
-            IpldBlock::serialize_cbor(&(BigIntSer(curr_power))).unwrap(),
-        )
+        .construct::<RewardActor>(IpldBlock::serialize_cbor(&(BigIntSer(curr_power))).unwrap())
         .unwrap();
 
     assert!(ret.is_none());

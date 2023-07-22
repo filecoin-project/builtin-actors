@@ -6,7 +6,7 @@ use fvm_shared::address::Protocol;
 use fvm_shared::crypto::signature::SignatureType::{Secp256k1, BLS};
 use fvm_shared::crypto::signature::{Signature, SignatureType};
 use fvm_shared::error::ExitCode;
-use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
+use fvm_shared::MethodNum;
 use num_derive::FromPrimitive;
 
 use fil_actors_runtime::builtin::singletons::SYSTEM_ACTOR_ADDR;
@@ -30,7 +30,6 @@ fil_actors_runtime::wasm_trampoline!(Actor);
 #[derive(FromPrimitive)]
 #[repr(u64)]
 pub enum Method {
-    Constructor = METHOD_CONSTRUCTOR,
     PubkeyAddress = 2,
     // Deprecated in v10
     // AuthenticateMessage = 3,
@@ -115,7 +114,6 @@ impl ActorCode for Actor {
     }
 
     actor_dispatch! {
-        Constructor => constructor,
         PubkeyAddress => pubkey_address,
         AuthenticateMessageExported => authenticate_message,
         _ => fallback [raw],

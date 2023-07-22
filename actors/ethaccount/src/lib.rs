@@ -2,8 +2,7 @@ pub mod types;
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Payload;
-use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
-use num_derive::FromPrimitive;
+use fvm_shared::MethodNum;
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
@@ -13,13 +12,6 @@ use fil_actors_runtime::{
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(EthAccountActor);
-
-/// Ethereum Account actor methods.
-#[derive(FromPrimitive)]
-#[repr(u64)]
-pub enum Method {
-    Constructor = METHOD_CONSTRUCTOR,
-}
 
 /// Ethereum Account actor.
 pub struct EthAccountActor;
@@ -66,14 +58,13 @@ impl EthAccountActor {
 }
 
 impl ActorCode for EthAccountActor {
-    type Methods = Method;
+    type Methods = fvm_shared::MethodNum;
 
     fn name() -> &'static str {
         "EVMAccount"
     }
 
     actor_dispatch! {
-        Constructor => constructor,
         _ => fallback [raw],
     }
 }
