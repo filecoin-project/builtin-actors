@@ -27,16 +27,16 @@ fil_actor_reward = { version = "12.0.0", path = "../actors/reward"}
 fil_actor_system = { version = "12.0.0", path = "../actors/system"}
 fil_actor_init = { version = "12.0.0", path = "../actors/init"}
 fil_actors_runtime = { version = "12.0.0", path = "../runtime"}
-frc46_token = "7.0.0"
-fvm_shared = { version = "3.4.0", default-features = false }
-fvm_ipld_encoding = "0.4.0"
-fvm_ipld_blockstore = "0.2.0"
+frc46_token = { workspace = true }
+fvm_shared = { workspace = true }
+fvm_ipld_encoding = { workspace = true }
+fvm_ipld_blockstore = { workspace = true }
 num-traits = "0.2.14"
-anyhow = "1.0.65"
+anyhow = { workspace = true }
 bimap = { version = "0.6.2" }
 num-derive = "0.3.3"
-serde = { version = "1.0.136", features = ["derive"] }
-cid = { version = "0.10.1", default-features = false, features = ["serde-codec"] }
+serde = { workspace = true }
+cid = { workspace = true }
 
 [dev-dependencies]
 

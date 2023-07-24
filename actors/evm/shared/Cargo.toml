@@ -9,9 +9,9 @@ repository = "https://github.com/filecoin-project/builtin-actors"
 keywords = ["filecoin", "web3", "wasm", "evm"]
 
 [dependencies]
-serde = { version = "1.0.136", features = ["derive"] }
-fvm_shared = { version = "3.4.0", default-features = false }
+serde = { workspace = true }
+fvm_shared = { workspace = true }
 fil_actors_runtime = { version = "12.0.0", path = "../../../runtime" }
-fvm_ipld_encoding = "0.4.0"
+fvm_ipld_encoding = { workspace = true }
 uint = { version = "0.9.3", default-features = false }
 hex = "0.4.3"

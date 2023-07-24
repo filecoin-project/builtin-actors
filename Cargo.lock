@@ -2035,7 +2035,6 @@ dependencies = [
  "itertools 0.10.5",
  "lazy_static",
  "log",
- "multihash 0.16.3",
  "multihash 0.18.1",
  "num-derive",
  "num-traits",
@@ -2525,9 +2524,9 @@ dependencies = [
 
 [[package]]
 name = "fvm_ipld_amt"
-version = "0.6.0"
+version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b36fc2a2fd536e8fdf93644218b683ca153de352e8db7345aaf1c6c91e591762"
+checksum = "7c0b0ee51ca8defa9717a72e1d35c8cbb85bd8320a835911410b63b9a63dffec"
 dependencies = [
  "anyhow",
  "cid 0.10.1",
