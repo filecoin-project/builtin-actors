@@ -36,7 +36,6 @@ use fil_builtin_actors_state::check::Tree;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::CborStore;
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
 use fvm_shared::address::Address;
@@ -68,8 +67,6 @@ use serde::de::DeserializeOwned;
 use serde::{ser, Serialize};
 use std::cell::{RefCell, RefMut};
 use std::collections::HashMap;
-use std::error::Error;
-use std::fmt;
 use std::ops::Add;
 use trace::InvocationTrace;
 
@@ -82,57 +79,8 @@ pub mod fakes;
 pub mod trace;
 pub mod util;
 
-/// An abstract VM that is injected into integration tests
-pub trait VM {
-    /// Returns the underlying blockstore of the VM
-    fn blockstore(&self) -> &dyn Blockstore;
-
-    /// Get the state root of the specified actor
-    fn actor_root(&self, address: &Address) -> Option<Cid>;
-
-    /// Get the current chain epoch
-    fn epoch(&self) -> ChainEpoch;
-
-    /// Get the balance of the specified actor
-    fn balance(&self, address: &Address) -> TokenAmount;
-
-    /// Get the ID for the specified address
-    fn resolve_id_address(&self, address: &Address) -> Option<Address>;
-
-    /// Send a message between the two specified actors
-    fn execute_message(
-        &self,
-        from: &Address,
-        to: &Address,
-        value: &TokenAmount,
-        method: MethodNum,
-        params: Option<IpldBlock>,
-    ) -> Result<MessageResult, TestVMError>;
-
-    /// Sets the epoch to the specified value
-    fn set_epoch(&self, epoch: ChainEpoch);
-
-    /// Take all the invocations that have been made since the last call to this method
-    fn take_invocations(&self) -> Vec<InvocationTrace>;
-
-    /// Get information about an actor
-    fn actor(&self, address: &Address) -> Option<Actor>;
-
-    /// Build a map of all actors in the system and their type
-    fn actor_manifest(&self) -> BiBTreeMap<Cid, Type>;
-
-    /// Provides access to VM primitives
-    fn primitives(&self) -> &dyn Primitives;
-
-    /// Get the current runtime policy
-    fn policy(&self) -> Policy;
-
-    /// Get the root Cid of the state tree
-    fn state_root(&self) -> Cid;
-
-    /// Get the total amount of FIL in circulation
-    fn total_fil(&self) -> TokenAmount;
-}
+mod vm;
+pub use vm::*;
 
 /// An in-memory rust-execution VM for testing that yields sensible stack traces and debug info
 pub struct TestVM<'bs, BS>
@@ -144,7 +92,7 @@ where
     pub state_root: RefCell<Cid>,
     total_fil: TokenAmount,
     actors_dirty: RefCell<bool>,
-    actors_cache: RefCell<HashMap<Address, Actor>>,
+    actors_cache: RefCell<HashMap<Address, ActorState>>,
     network_version: NetworkVersion,
     curr_epoch: RefCell<ChainEpoch>,
     invocations: RefCell<Vec<InvocationTrace>>,
@@ -205,11 +153,11 @@ where
         value: &TokenAmount,
         method: MethodNum,
         params: Option<IpldBlock>,
-    ) -> Result<MessageResult, TestVMError> {
+    ) -> Result<MessageResult, VMError> {
         let from_id = &self.resolve_id_address(from).unwrap();
         let mut a = self.get_actor(from_id).unwrap();
-        let call_seq = a.call_seq_num;
-        a.call_seq_num = call_seq + 1;
+        let call_seq = a.call_seq;
+        a.call_seq = call_seq + 1;
         // EthAccount abstractions turns Placeholders into EthAccounts
         if a.code == *PLACEHOLDER_ACTOR_CODE_ID {
             a.code = *ETHACCOUNT_ACTOR_CODE_ID;
@@ -260,12 +208,16 @@ where
         }
     }
 
-    fn actor_root(&self, address: &Address) -> Option<Cid> {
-        let a_opt = self.get_actor(address);
-        let a = a_opt.as_ref()?;
-        Some(a.head)
+    fn execute_message_implicit(
+        &self,
+        from: &Address,
+        to: &Address,
+        value: &TokenAmount,
+        method: MethodNum,
+        params: Option<IpldBlock>,
+    ) -> Result<MessageResult, VMError> {
+        self.execute_message(from, to, value, method, params)
     }
-
     fn resolve_id_address(&self, address: &Address) -> Option<Address> {
         let st: InitState = get_state(self, &INIT_ACTOR_ADDR).unwrap();
         st.resolve_address::<BS>(self.store, address).unwrap()
@@ -284,46 +236,22 @@ where
         self.invocations.take()
     }
 
-    fn actor(&self, address: &Address) -> Option<Actor> {
+    fn actor(&self, address: &Address) -> Option<ActorState> {
         // check for inclusion in cache of changed actors
         if let Some(act) = self.actors_cache.borrow().get(address) {
             return Some(act.clone());
         }
         // go to persisted map
-        let actors =
-            Hamt::<&'bs BS, Actor, BytesKey, Sha256>::load(&self.state_root.borrow(), self.store)
-                .unwrap();
+        let actors = Hamt::<&'bs BS, ActorState, BytesKey, Sha256>::load(
+            &self.state_root.borrow(),
+            self.store,
+        )
+        .unwrap();
         let actor = actors.get(&address.to_bytes()).unwrap().cloned();
         actor.iter().for_each(|a| {
             self.actors_cache.borrow_mut().insert(*address, a.clone());
         });
         actor
-    }
-
-    fn actor_manifest(&self) -> BiBTreeMap<Cid, Type> {
-        let actors =
-            Hamt::<&'bs BS, Actor, BytesKey, Sha256>::load(&self.state_root.borrow(), self.store)
-                .unwrap();
-        let mut manifest = BiBTreeMap::new();
-        actors
-            .for_each(|_, actor| {
-                manifest.insert(actor.code, ACTOR_TYPES.get(&actor.code).unwrap().to_owned());
-                Ok(())
-            })
-            .unwrap();
-        manifest
-    }
-
-    fn policy(&self) -> Policy {
-        Policy::default()
-    }
-
-    fn state_root(&self) -> Cid {
-        *self.state_root.borrow()
-    }
-
-    fn total_fil(&self) -> TokenAmount {
-        self.total_fil.clone()
     }
 
     fn primitives(&self) -> &dyn Primitives {
@@ -336,7 +264,7 @@ where
     BS: Blockstore,
 {
     pub fn new(store: &'bs MemoryBlockstore) -> TestVM<'bs, MemoryBlockstore> {
-        let mut actors = Hamt::<&'bs MemoryBlockstore, Actor, BytesKey, Sha256>::new(store);
+        let mut actors = Hamt::<&'bs MemoryBlockstore, ActorState, BytesKey, Sha256>::new(store);
         TestVM {
             primitives: FakePrimitives {},
             store,
@@ -520,15 +448,17 @@ where
         self.store.put_cbor(obj, Code::Blake2b256).unwrap()
     }
 
-    pub fn get_actor(&self, addr: &Address) -> Option<Actor> {
+    pub fn get_actor(&self, addr: &Address) -> Option<ActorState> {
         // check for inclusion in cache of changed actors
         if let Some(act) = self.actors_cache.borrow().get(addr) {
             return Some(act.clone());
         }
         // go to persisted map
-        let actors =
-            Hamt::<&'bs BS, Actor, BytesKey, Sha256>::load(&self.state_root.borrow(), self.store)
-                .unwrap();
+        let actors = Hamt::<&'bs BS, ActorState, BytesKey, Sha256>::load(
+            &self.state_root.borrow(),
+            self.store,
+        )
+        .unwrap();
         let actor = actors.get(&addr.to_bytes()).unwrap().cloned();
         actor.iter().for_each(|a| {
             self.actors_cache.borrow_mut().insert(*addr, a.clone());
@@ -537,16 +467,18 @@ where
     }
 
     // blindly overwrite the actor at this address whether it previously existed or not
-    pub fn set_actor(&self, key: &Address, a: Actor) {
+    pub fn set_actor(&self, key: &Address, a: ActorState) {
         self.actors_cache.borrow_mut().insert(*key, a);
         self.actors_dirty.replace(true);
     }
 
     pub fn checkpoint(&self) -> Cid {
         // persist cache on top of latest checkpoint and clear
-        let mut actors =
-            Hamt::<&'bs BS, Actor, BytesKey, Sha256>::load(&self.state_root.borrow(), self.store)
-                .unwrap();
+        let mut actors = Hamt::<&'bs BS, ActorState, BytesKey, Sha256>::load(
+            &self.state_root.borrow(),
+            self.store,
+        )
+        .unwrap();
         for (addr, act) in self.actors_cache.borrow().iter() {
             actors.set(addr.to_bytes().into(), act.clone()).unwrap();
         }
@@ -568,9 +500,9 @@ where
         F: FnOnce(&mut S),
     {
         let mut a = self.get_actor(addr).unwrap();
-        let mut st = self.store.get_cbor::<S>(&a.head).unwrap().unwrap();
+        let mut st = self.store.get_cbor::<S>(&a.state).unwrap().unwrap();
         f(&mut st);
-        a.head = self.store.put_cbor(&st, Code::Blake2b256).unwrap();
+        a.state = self.store.put_cbor(&st, Code::Blake2b256).unwrap();
         self.set_actor(addr, a);
     }
 
@@ -586,6 +518,34 @@ where
             Ok(())
         })?;
         Ok(total)
+    }
+
+    fn actor_manifest(&self) -> BiBTreeMap<Cid, Type> {
+        let actors = Hamt::<&'bs BS, ActorState, BytesKey, Sha256>::load(
+            &self.state_root.borrow(),
+            self.store,
+        )
+        .unwrap();
+        let mut manifest = BiBTreeMap::new();
+        actors
+            .for_each(|_, actor| {
+                manifest.insert(actor.code, ACTOR_TYPES.get(&actor.code).unwrap().to_owned());
+                Ok(())
+            })
+            .unwrap();
+        manifest
+    }
+
+    fn policy(&self) -> Policy {
+        Policy::default()
+    }
+
+    fn state_root(&self) -> Cid {
+        *self.state_root.borrow()
+    }
+
+    fn total_fil(&self) -> TokenAmount {
+        self.total_fil.clone()
     }
 }
 
@@ -654,7 +614,10 @@ impl<'invocation, 'bs, BS> InvocationCtx<'invocation, 'bs, BS>
 where
     BS: Blockstore,
 {
-    fn resolve_target(&'invocation self, target: &Address) -> Result<(Actor, Address), ActorError> {
+    fn resolve_target(
+        &'invocation self,
+        target: &Address,
+    ) -> Result<(ActorState, Address), ActorError> {
         if let Some(a) = self.v.resolve_id_address(target) {
             if let Some(act) = self.v.get_actor(&a) {
                 return Ok((act, a));
@@ -692,7 +655,7 @@ where
         assert!(!existing, "should never have existing actor when no f4 address is specified");
         let target_id_addr = Address::new_id(target_id);
         let mut init_actor = self.v.get_actor(&INIT_ACTOR_ADDR).unwrap();
-        init_actor.head = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
+        init_actor.state = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
         self.v.set_actor(&INIT_ACTOR_ADDR, init_actor);
 
         let new_actor_msg = InternalMessage {
@@ -1078,7 +1041,7 @@ where
     }
 
     fn get_state_root(&self) -> Result<Cid, ActorError> {
-        Ok(self.v.get_actor(&self.to()).unwrap().head)
+        Ok(self.v.get_actor(&self.to()).unwrap().state)
     }
 
     fn set_state_root(&self, root: &Cid) -> Result<(), ActorError> {
@@ -1089,7 +1052,7 @@ where
                 "actor does not exist".to_string(),
             )),
             Some(mut act) if !self.read_only() => {
-                act.head = *root;
+                act.state = *root;
                 self.v.set_actor(&self.to(), act);
                 Ok(())
             }
@@ -1111,7 +1074,7 @@ where
         self.allow_side_effects.replace(true);
         let ret = result?;
         let mut act = self.v.get_actor(&self.to()).unwrap();
-        act.head = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
+        act.state = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
 
         if self.read_only {
             return Err(ActorError::unchecked(
@@ -1278,50 +1241,4 @@ pub struct MessageResult {
     pub code: ExitCode,
     pub message: String,
     pub ret: Option<IpldBlock>,
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Eq, Debug)]
-pub struct Actor {
-    pub code: Cid,
-    pub head: Cid,
-    pub call_seq_num: u64,
-    pub balance: TokenAmount,
-    pub predictable_address: Option<Address>,
-}
-
-pub fn actor(
-    code: Cid,
-    head: Cid,
-    call_seq_num: u64,
-    balance: TokenAmount,
-    predictable_address: Option<Address>,
-) -> Actor {
-    Actor { code, head, call_seq_num, balance, predictable_address }
-}
-
-#[derive(Debug)]
-pub struct TestVMError {
-    msg: String,
-}
-
-impl fmt::Display for TestVMError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.msg)
-    }
-}
-
-impl Error for TestVMError {
-    fn description(&self) -> &str {
-        &self.msg
-    }
-}
-
-impl From<fvm_ipld_hamt::Error> for TestVMError {
-    fn from(h_err: fvm_ipld_hamt::Error) -> Self {
-        vm_err(h_err.to_string().as_str())
-    }
-}
-
-pub fn vm_err(msg: &str) -> TestVMError {
-    TestVMError { msg: msg.to_string() }
 }

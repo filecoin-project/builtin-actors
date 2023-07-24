@@ -61,7 +61,7 @@ fn assert_account_actor<BS: Blockstore>(
 ) {
     let act = v.get_actor(&addr).unwrap();
     let st: AccountState = get_state(v, &addr).unwrap();
-    assert_eq!(exp_call_seq, act.call_seq_num);
+    assert_eq!(exp_call_seq, act.call_seq);
     assert_eq!(*ACCOUNT_ACTOR_CODE_ID, act.code);
     assert_eq!(exp_bal, act.balance);
     assert_eq!(exp_pk_addr, st.address);
