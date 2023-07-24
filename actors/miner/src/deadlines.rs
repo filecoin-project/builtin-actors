@@ -150,7 +150,10 @@ pub fn deadline_available_for_move(
         from_deadline,
         current_deadline.current_epoch,
     ) {
-        return Err("cannot move from a deadline when it's not mutable".to_string());
+        return Err(format!(
+            "cannot move from a deadline {}, immutable at epoch {}",
+            from_deadline, current_deadline.current_epoch
+        ));
     }
 
     if !deadline_is_mutable(
@@ -159,13 +162,19 @@ pub fn deadline_available_for_move(
         to_deadline,
         current_deadline.current_epoch,
     ) {
-        return Err("cannot move to a deadline when it's not mutable".to_string());
+        return Err(format!(
+            "cannot move to a deadline {}, immutable at epoch {}",
+            to_deadline, current_deadline.current_epoch
+        ));
     }
 
     if deadline_distance(policy, current_deadline.index, to_deadline)
         >= deadline_distance(policy, current_deadline.index, from_deadline)
     {
-        return Err("can only move to a deadline which is nearer from current deadline".to_string());
+        return Err(format!(
+            "can only move to a deadline which is nearer from current deadline {}, to_deadline {} is not nearer than from_deadline {}",
+            current_deadline.index, to_deadline, from_deadline
+        ));
     }
 
     Ok(())

@@ -3031,7 +3031,7 @@ impl Actor {
                 &current_deadline,
             )
             .context_code(
-                ExitCode::USR_ILLEGAL_ARGUMENT,
+                ExitCode::USR_FORBIDDEN,
                 "conditions not satisfied for deadline_available_for_move",
             )?;
 
