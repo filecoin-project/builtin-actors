@@ -160,6 +160,8 @@ fn submit_post_succeeds() {
     let store = MemoryBlockstore::new();
     let (v, miner_info, sector_info) = setup(&store);
     submit_post_succeeds_test(&v, miner_info, sector_info);
+
+    assert_invariants(&v);
 }
 
 fn submit_post_succeeds_test(v: &dyn VM, miner_info: MinerInfo, sector_info: SectorInfo) {
@@ -180,8 +182,6 @@ fn submit_post_succeeds_test(v: &dyn VM, miner_info: MinerInfo, sector_info: Sec
     assert!(balances.initial_pledge.is_positive());
     let p_st: PowerState = get_state(v, &STORAGE_POWER_ACTOR_ADDR).unwrap();
     assert_eq!(sector_power.raw, p_st.total_bytes_committed);
-
-    assert_invariants(v);
 }
 
 #[test]
@@ -189,6 +189,8 @@ fn skip_sector() {
     let store = MemoryBlockstore::new();
     let (v, miner_info, sector_info) = setup(&store);
     skip_sector_test(&v, sector_info, miner_info);
+
+    assert_invariants(&v)
 }
 
 fn skip_sector_test(v: &dyn VM, sector_info: SectorInfo, miner_info: MinerInfo) {
@@ -226,7 +228,6 @@ fn skip_sector_test(v: &dyn VM, sector_info: SectorInfo, miner_info: MinerInfo) 
     let network_stats = get_network_stats(v);
     assert!(network_stats.total_bytes_committed.is_zero());
     assert!(network_stats.total_pledge_collateral.is_positive());
-    assert_invariants(v)
 }
 
 #[test]
@@ -235,6 +236,8 @@ fn missed_first_post_deadline() {
     let (v, miner_info, sector_info) = setup(&store);
 
     missed_first_post_deadline_test(&v, sector_info, miner_info);
+
+    expect_invariants(&v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
 
 fn missed_first_post_deadline_test(v: &dyn VM, sector_info: SectorInfo, miner_info: MinerInfo) {
@@ -288,8 +291,6 @@ fn missed_first_post_deadline_test(v: &dyn VM, sector_info: SectorInfo, miner_in
     let network_stats = get_network_stats(v);
     assert!(network_stats.total_bytes_committed.is_zero());
     assert!(network_stats.total_pledge_collateral.is_positive());
-
-    expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
 
 #[test]
@@ -298,6 +299,8 @@ fn overdue_precommit() {
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
 
     overdue_precommit_test(&v);
+
+    expect_invariants(&v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
 
 fn overdue_precommit_test(v: &dyn VM) {
@@ -396,8 +399,6 @@ fn overdue_precommit_test(v: &dyn VM) {
     assert!(network_stats.total_pledge_collateral.is_zero());
     assert!(network_stats.total_raw_byte_power.is_zero());
     assert!(network_stats.total_quality_adj_power.is_zero());
-
-    expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
 
 #[test]
@@ -405,6 +406,8 @@ fn aggregate_bad_sector_number() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     aggregate_bad_sector_number_test(&v);
+
+    expect_invariants(&v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
 
 fn aggregate_bad_sector_number_test(v: &dyn VM) {
@@ -470,7 +473,6 @@ fn aggregate_bad_sector_number_test(v: &dyn VM) {
         Some(params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
-    expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
 
 #[test]
@@ -478,6 +480,8 @@ fn aggregate_size_limits() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     aggregate_size_limits_test(&v);
+
+    expect_invariants(&v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
 
 fn aggregate_size_limits_test(v: &dyn VM) {
@@ -574,8 +578,6 @@ fn aggregate_size_limits_test(v: &dyn VM) {
         Some(params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
-
-    expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
 
 #[test]
@@ -583,6 +585,8 @@ fn aggregate_bad_sender() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     aggregate_bad_sender_test(&v);
+
+    expect_invariants(&v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
 
 fn aggregate_bad_sender_test(v: &dyn VM) {
@@ -644,7 +648,6 @@ fn aggregate_bad_sender_test(v: &dyn VM) {
         Some(params),
         ExitCode::USR_FORBIDDEN,
     );
-    expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
 
 #[test]
@@ -652,6 +655,8 @@ fn aggregate_one_precommit_expires() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     aggregate_one_precommit_expires_test(&v);
+
+    expect_invariants(&v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
 
 fn aggregate_one_precommit_expires_test(v: &dyn VM) {
@@ -762,6 +767,4 @@ fn aggregate_one_precommit_expires_test(v: &dyn VM) {
     let balances = miner_balance(v, &id_addr);
     assert!(balances.initial_pledge.is_positive());
     assert!(balances.pre_commit_deposit.is_positive());
-
-    expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }

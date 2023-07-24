@@ -46,6 +46,8 @@ fn verified_claim_scenario() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     verified_claim_scenario_test(&v);
+
+    expect_invariants(&v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
 
 fn verified_claim_scenario_test(v: &dyn VM) {
@@ -361,8 +363,6 @@ fn verified_claim_scenario_test(v: &dyn VM) {
     let ret: RemoveExpiredClaimsReturn = deserialize(&ret_raw, "balance of return value").unwrap();
     assert_eq!(vec![claim_id], ret.considered);
     assert!(ret.results.all_ok(), "results had failures {}", ret.results);
-
-    expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
 
 #[test]
@@ -370,6 +370,8 @@ fn expired_allocations() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     expired_allocations_test(&v);
+
+    expect_invariants(&v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
 
 fn expired_allocations_test(v: &dyn VM) {
@@ -455,18 +457,20 @@ fn expired_allocations_test(v: &dyn VM) {
 
     // Client has original datacap balance
     assert_eq!(TokenAmount::from_whole(datacap), datacap_get_balance(v, &verified_client));
-
-    expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
 
 #[test]
 fn deal_passes_claim_fails() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
-    deal_passes_claim_fails_test(&v);
+    let maximum_verified_allocation_expiration = v.policy().maximum_verified_allocation_expiration;
+    deal_passes_claim_fails_test(&v, maximum_verified_allocation_expiration);
+
+    // run check before last change and confirm that we hit the expected broken state error
+    assert_invariants(&v);
 }
 
-fn deal_passes_claim_fails_test(v: &dyn VM) {
+fn deal_passes_claim_fails_test(v: &dyn VM, maximum_verified_allocation_expiration: i64) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
@@ -491,7 +495,7 @@ fn deal_passes_claim_fails_test(v: &dyn VM) {
     market_add_balance(v, &worker, &miner_id, &TokenAmount::from_whole(64));
 
     // Publish verified deal
-    let deal_start = v.epoch() + v.policy().maximum_verified_allocation_expiration + 1;
+    let deal_start = v.epoch() + maximum_verified_allocation_expiration + 1;
     let sector_start = deal_start;
     let deal_term_min = 180 * EPOCHS_IN_DAY;
     let deal_size = (32u64 << 30) / 2;
@@ -589,7 +593,4 @@ fn deal_passes_claim_fails_test(v: &dyn VM) {
     let sector_info_a =
         miner_state.get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number_a).unwrap();
     assert_eq!(None, sector_info_a);
-
-    // run check before last change and confirm that we hit the expected broken state error
-    assert_invariants(v);
 }

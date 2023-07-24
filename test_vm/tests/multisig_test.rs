@@ -189,6 +189,8 @@ fn swap_self_1_of_2() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     swap_self_1_of_2_test(&v);
+
+    assert_invariants(&v);
 }
 
 fn swap_self_1_of_2_test(v: &dyn VM) {
@@ -213,7 +215,6 @@ fn swap_self_1_of_2_test(v: &dyn VM) {
     );
     let st: MsigState = get_state(v, &msig_addr).unwrap();
     assert_eq!(vec![bob, chuck], st.signers);
-    assert_invariants(v);
 }
 
 #[test]
@@ -221,6 +222,8 @@ fn swap_self_2_of_3() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     swap_self_2_of_3_test(&v);
+
+    assert_invariants(&v)
 }
 
 fn swap_self_2_of_3_test(v: &dyn VM) {
@@ -290,8 +293,6 @@ fn swap_self_2_of_3_test(v: &dyn VM) {
     );
     let st: MsigState = get_state(v, &msig_addr).unwrap();
     assert_eq!(vec![bob, chuck, alice], st.signers);
-
-    assert_invariants(v)
 }
 
 fn create_msig(v: &dyn VM, signers: &[Address], threshold: u64) -> Address {

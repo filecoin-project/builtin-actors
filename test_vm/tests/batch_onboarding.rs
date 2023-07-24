@@ -54,6 +54,8 @@ fn batch_onboarding(v2: bool) {
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
 
     batch_onboarding_test(&v, v2);
+
+    expect_invariants(&v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
 
 pub fn batch_onboarding_test(v: &dyn VM, v2: bool) {
@@ -166,6 +168,4 @@ pub fn batch_onboarding_test(v: &dyn VM, v2: bool) {
         BigInt::from(sector_size * proven_count as u64)
     );
     assert!(network_stats.total_pledge_collateral.is_positive());
-
-    expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }

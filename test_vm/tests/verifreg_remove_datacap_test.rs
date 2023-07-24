@@ -38,6 +38,8 @@ fn remove_datacap_simple_successful_path() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     remove_datacap_simple_successful_path_test(&v);
+
+    assert_invariants(&v)
 }
 
 fn remove_datacap_simple_successful_path_test(v: &dyn VM) {
@@ -298,7 +300,6 @@ fn remove_datacap_simple_successful_path_test(v: &dyn VM) {
         .unwrap();
 
     assert_eq!(2u64, verifier2_proposal_id.id);
-    assert_invariants(v)
 }
 
 #[test]
@@ -359,8 +360,6 @@ fn remove_datacap_fails_on_verifreg_test(v: &dyn VM) {
         Some(remove_datacap_params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
-
-    assert_invariants(v)
 }
 
 fn expect_remove_datacap(

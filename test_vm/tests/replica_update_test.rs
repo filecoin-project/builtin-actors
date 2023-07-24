@@ -69,6 +69,8 @@ fn replica_update_full_path_success(v2: bool) {
         policy,
         sector_size,
     );
+
+    assert_invariants(&v)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -125,8 +127,6 @@ fn replica_update_full_path_success_test(
     assert!(check_sector_active(v, &miner_id, sector_number));
     assert!(!check_sector_faulty(v, &miner_id, deadline_index, partition_index, sector_number));
     assert_eq!(miner_power(v, &miner_id).raw, BigInt::from(sector_size as i64));
-
-    assert_invariants(v)
 }
 
 #[test_case(false; "v1")]
@@ -145,6 +145,8 @@ fn upgrade_and_miss_post(v2: bool) {
         partition_index,
         sector_size,
     );
+
+    assert_invariants(&v)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -199,8 +201,6 @@ fn upgrade_and_miss_post_test(
     assert!(check_sector_active(v, &miner_id, sector_number));
     assert!(!check_sector_faulty(v, &miner_id, deadline_index, partition_index, sector_number));
     assert_eq!(miner_power(v, &miner_id).raw, BigInt::from(sector_size as i64));
-
-    assert_invariants(v)
 }
 
 #[test]
@@ -208,6 +208,8 @@ fn prove_replica_update_multi_dline() {
     let store = &MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
     prove_replica_update_multi_dline_test(&v);
+
+    assert_invariants(&v);
 }
 
 fn prove_replica_update_multi_dline_test(v: &dyn VM) {
@@ -342,8 +344,6 @@ fn prove_replica_update_multi_dline_test(v: &dyn VM) {
     assert_eq!(1, new_sector_info_p2.deal_ids.len());
     assert_eq!(old_sector_commr_p2, new_sector_info_p2.sector_key_cid.unwrap());
     assert_eq!(new_sealed_cid2, new_sector_info_p2.sealed_cid);
-
-    assert_invariants(v);
 }
 
 // ---- Failure cases ----
@@ -354,6 +354,8 @@ fn immutable_deadline_failure() {
     let store = &MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
     immutable_deadline_failure_test(&v);
+
+    assert_invariants(&v)
 }
 
 fn immutable_deadline_failure_test(v: &dyn VM) {
@@ -400,8 +402,6 @@ fn immutable_deadline_failure_test(v: &dyn VM) {
         Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
-
-    assert_invariants(v)
 }
 
 #[test]
@@ -409,6 +409,8 @@ fn unhealthy_sector_failure() {
     let store = &MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
     unhealthy_sector_failure_test(&v);
+
+    expect_invariants(&v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
 
 fn unhealthy_sector_failure_test(v: &dyn VM) {
@@ -459,8 +461,6 @@ fn unhealthy_sector_failure_test(v: &dyn VM) {
         Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
-
-    expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
 
 #[test]
@@ -468,6 +468,8 @@ fn terminated_sector_failure() {
     let store = &MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
     terminated_sector_failure_test(&v);
+
+    assert_invariants(&v)
 }
 
 fn terminated_sector_failure_test(v: &dyn VM) {
@@ -529,8 +531,6 @@ fn terminated_sector_failure_test(v: &dyn VM) {
         Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
-
-    assert_invariants(v)
 }
 
 #[test]
@@ -538,6 +538,8 @@ fn bad_batch_size_failure() {
     let store = &MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
     bad_batch_size_failure_test(&v);
+
+    assert_invariants(&v)
 }
 
 fn bad_batch_size_failure_test(v: &dyn VM) {
@@ -587,8 +589,6 @@ fn bad_batch_size_failure_test(v: &dyn VM) {
         Some(ProveReplicaUpdatesParams { updates }),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
-
-    assert_invariants(v)
 }
 
 #[test]
@@ -598,6 +598,8 @@ fn no_dispute_after_upgrade() {
         create_miner_and_upgrade_sector(store, false);
 
     nodispute_after_upgrade_test(&v, deadline_index, worker, miner_id);
+
+    assert_invariants(&v)
 }
 
 fn nodispute_after_upgrade_test(
@@ -616,8 +618,6 @@ fn nodispute_after_upgrade_test(
         Some(dispute_params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
-
-    assert_invariants(v)
 }
 
 #[test]
@@ -634,6 +634,8 @@ fn upgrade_bad_post_dispute() {
         partition_index,
         deadline_index,
     );
+
+    assert_invariants(&v)
 }
 
 fn upgrade_bad_post_dispute_test(
@@ -661,8 +663,6 @@ fn upgrade_bad_post_dispute_test(
         MinerMethod::DisputeWindowedPoSt as u64,
         Some(dispute_params),
     );
-
-    assert_invariants(v)
 }
 
 #[test]
@@ -670,6 +670,8 @@ fn bad_post_upgrade_dispute() {
     let store = &MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
     bad_post_upgrade_dispute_test(&v);
+
+    assert_invariants(&v)
 }
 
 fn bad_post_upgrade_dispute_test(v: &dyn VM) {
@@ -743,8 +745,6 @@ fn bad_post_upgrade_dispute_test(v: &dyn VM) {
         MinerMethod::DisputeWindowedPoSt as u64,
         Some(dispute_params),
     );
-
-    assert_invariants(v)
 }
 
 // Tests that an active CC sector can be correctly upgraded, and then the sector can be terminated
@@ -761,6 +761,8 @@ fn terminate_after_upgrade() {
         deadline_index,
         partition_index,
     );
+
+    assert_invariants(&v);
 }
 
 fn terminate_after_upgrade_test(
@@ -802,8 +804,6 @@ fn terminate_after_upgrade_test(
     assert!(network_stats.total_bytes_committed.is_zero());
     assert!(network_stats.total_qa_bytes_committed.is_zero());
     assert!(network_stats.total_pledge_collateral.is_zero());
-
-    assert_invariants(v);
 }
 
 // Tests that an active CC sector can be correctly upgraded, and then the sector can be extended
@@ -832,6 +832,8 @@ fn extend_after_upgrade() {
         partition_index,
         sector_number,
     );
+
+    assert_invariants(&v)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -870,8 +872,6 @@ fn extend_after_upgrade_test(
         policy.max_sector_expiration_extension - 1,
         final_sector_info.expiration - extension_epoch,
     );
-
-    assert_invariants(v)
 }
 
 #[test]
@@ -880,6 +880,8 @@ fn wrong_deadline_index_failure() {
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
 
     wrong_deadline_index_failure_test(&v);
+
+    assert_invariants(&v)
 }
 
 fn wrong_deadline_index_failure_test(v: &dyn VM) {
@@ -933,8 +935,6 @@ fn wrong_deadline_index_failure_test(v: &dyn VM) {
 
     let new_sector_info = sector_info(v, &maddr, sector_number);
     assert_eq!(old_sector_info, new_sector_info);
-
-    assert_invariants(v)
 }
 
 #[test]
@@ -943,6 +943,8 @@ fn wrong_partition_index_failure() {
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
 
     wrong_partition_index_failure_test(&v);
+
+    assert_invariants(&v)
 }
 
 fn wrong_partition_index_failure_test(v: &dyn VM) {
@@ -996,8 +998,6 @@ fn wrong_partition_index_failure_test(v: &dyn VM) {
 
     let new_sector_info = sector_info(v, &maddr, sector_number);
     assert_eq!(old_sector_info, new_sector_info);
-
-    assert_invariants(v)
 }
 
 #[test]
@@ -1126,8 +1126,6 @@ fn deal_included_in_multiple_sectors_failure_test(v: &dyn VM) {
     let new_sector_info_p2 = sector_info(v, &maddr, first_sector_number + 1);
     assert!(new_sector_info_p2.deal_ids.len().is_zero());
     assert_ne!(new_sealed_cid2, new_sector_info_p2.sealed_cid);
-
-    assert_invariants(v)
 }
 
 #[test]
