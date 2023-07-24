@@ -11,23 +11,23 @@ publish = false
 [lib]
 
 [dependencies]
-fil_builtin_actors_state = { version = "12.0.0", path = "../state"}
-fil_actors_runtime = { version = "12.0.0", path = "../runtime", features = [ "test_utils" ] }
-fil_actor_init = { version = "12.0.0", path = "../actors/init" }
-fil_actor_cron = { version = "12.0.0", path = "../actors/cron" }
-fil_actor_system = { version = "12.0.0", path = "../actors/system" }
-fil_actor_account = { version = "12.0.0", path = "../actors/account" }
-fil_actor_multisig = { version = "12.0.0", path = "../actors/multisig" }
-fil_actor_paych = { version = "12.0.0", path = "../actors/paych" }
-fil_actor_reward = { version = "12.0.0", path = "../actors/reward" }
-fil_actor_power = { version = "12.0.0", path = "../actors/power" }
-fil_actor_market = { version = "12.0.0", path = "../actors/market" }
-fil_actor_verifreg = { version = "12.0.0", path = "../actors/verifreg" }
-fil_actor_miner = { version = "12.0.0", path = "../actors/miner" }
-fil_actor_datacap = { version = "12.0.0", path = "../actors/datacap" }
-fil_actor_evm = { version = "12.0.0", path = "../actors/evm" }
-fil_actor_eam = { version = "12.0.0", path = "../actors/eam" }
-fil_actor_ethaccount = { version = "12.0.0", path = "../actors/ethaccount" }
+fil_builtin_actors_state = { workspace = true }
+fil_actors_runtime = { workspace = true, features = [ "test_utils" ] }
+fil_actor_init = { workspace = true }
+fil_actor_cron = { workspace = true }
+fil_actor_system = { workspace = true }
+fil_actor_account = { workspace = true }
+fil_actor_multisig = { workspace = true }
+fil_actor_paych = { workspace = true }
+fil_actor_reward = { workspace = true }
+fil_actor_power = { workspace = true }
+fil_actor_market = { workspace = true }
+fil_actor_verifreg = { workspace = true }
+fil_actor_miner = { workspace = true }
+fil_actor_datacap = { workspace = true }
+fil_actor_evm = { workspace = true }
+fil_actor_eam = { workspace = true }
+fil_actor_ethaccount = { workspace = true }
 
 anyhow = { workspace = true }
 bimap = { version = "0.6.2" }
@@ -53,7 +53,7 @@ regex = "1"
 serde = { workspace = true }
 thiserror = "1.0.30"
 libsecp256k1 = { version = "0.7.1"}
-fil_actors_evm_shared = { version = "12.0.0", path = "../actors/evm/shared" }
+fil_actors_evm_shared = { workspace = true }
 
 [dev-dependencies]
 cid = { workspace = true }

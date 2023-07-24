@@ -13,27 +13,27 @@ exclude = ["examples", ".github"]
 publish = false
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-fil_actor_account = { version = "12.0.0", path = "./actors/account", features = ["fil-actor"] }
-fil_actor_cron = { version = "12.0.0", path = "./actors/cron", features = ["fil-actor"] }
-fil_actor_datacap = { version = "12.0.0", path = "./actors/datacap", features = ["fil-actor"] }
-fil_actor_ethaccount = { version = "12.0.0", path = "actors/ethaccount", features = ["fil-actor"] }
-fil_actor_eam = { version = "12.0.0", path = "./actors/eam", features = ["fil-actor"] }
-fil_actor_evm = { version = "12.0.0", path = "./actors/evm", features = ["fil-actor"] }
-fil_actor_init = { version = "12.0.0", path = "./actors/init", features = ["fil-actor"] }
-fil_actor_market = { version = "12.0.0", path = "./actors/market", features = ["fil-actor"] }
-fil_actor_miner = { version = "12.0.0", path = "./actors/miner", features = ["fil-actor"] }
-fil_actor_multisig = { version = "12.0.0", path = "./actors/multisig", features = ["fil-actor"] }
-fil_actor_paych = { version = "12.0.0", path = "./actors/paych", features = ["fil-actor"] }
-fil_actor_placeholder = { version = "12.0.0", path = "./actors/placeholder", features = ["fil-actor"] }
-fil_actor_power = { version = "12.0.0", path = "./actors/power", features = ["fil-actor"] }
-fil_actor_reward = { version = "12.0.0", path = "./actors/reward", features = ["fil-actor"] }
-fil_actor_system = { version = "12.0.0", path = "./actors/system", features = ["fil-actor"] }
-fil_actor_verifreg = { version = "12.0.0", path = "./actors/verifreg", features = ["fil-actor"] }
+fil_actor_account = { workspace = true, features = ["fil-actor"] }
+fil_actor_cron = { workspace = true, features = ["fil-actor"] }
+fil_actor_datacap = { workspace = true, features = ["fil-actor"] }
+fil_actor_ethaccount = { workspace = true, features = ["fil-actor"] }
+fil_actor_eam = { workspace = true, features = ["fil-actor"] }
+fil_actor_evm = { workspace = true, features = ["fil-actor"] }
+fil_actor_init = { workspace = true, features = ["fil-actor"] }
+fil_actor_market = { workspace = true, features = ["fil-actor"] }
+fil_actor_miner = { workspace = true, features = ["fil-actor"] }
+fil_actor_multisig = { workspace = true, features = ["fil-actor"] }
+fil_actor_paych = { workspace = true, features = ["fil-actor"] }
+fil_actor_placeholder = { workspace = true, features = ["fil-actor"] }
+fil_actor_power = { workspace = true, features = ["fil-actor"] }
+fil_actor_reward = { workspace = true, features = ["fil-actor"] }
+fil_actor_system = { workspace = true, features = ["fil-actor"] }
+fil_actor_verifreg = { workspace = true, features = ["fil-actor"] }
 
 [build-dependencies]
 fil_actor_bundler = "5.0.0"
 cid = { workspace = true }
-fil_actors_runtime = { version = "12.0.0", path = "runtime" }
+fil_actors_runtime = { workspace = true }
 num-traits = "0.2.15"
 
 [dependencies]
@@ -77,6 +77,27 @@ fvm_ipld_hamt = "0.7.0"
 fvm_ipld_kamt = "0.3.0"
 fvm_ipld_amt = { version = "0.6.1", features = ["go-interop"] }
 fvm_ipld_bitfield = "0.5.4"
+
+# 
+fil_actor_account = { version = "12.0.0", path = "actors/account" }
+fil_actor_cron = { version = "12.0.0", path = "actors/cron" }
+fil_actor_datacap = { version = "12.0.0", path = "actors/datacap" }
+fil_actor_eam = { version = "12.0.0", path = "actors/eam" }
+fil_actor_ethaccount = { version = "12.0.0", path = "actors/ethaccount" }
+fil_actor_evm = { version = "12.0.0", path = "actors/evm" }
+fil_actor_init = { version = "12.0.0", path = "actors/init" }
+fil_actor_market = { version = "12.0.0", path = "actors/market" }
+fil_actor_miner = { version = "12.0.0", path = "actors/miner" }
+fil_actor_multisig = { version = "12.0.0", path = "actors/multisig" }
+fil_actor_paych = { version = "12.0.0", path = "actors/paych" }
+fil_actor_placeholder = { version = "12.0.0", path = "actors/placeholder" }
+fil_actor_power = { version = "12.0.0", path = "actors/power" }
+fil_actor_reward = { version = "12.0.0", path = "actors/reward" }
+fil_actor_system = { version = "12.0.0", path = "actors/system" }
+fil_actor_verifreg = { version = "12.0.0", path = "actors/verifreg" }
+fil_actors_evm_shared = { version = "12.0.0", path = "actors/evm/shared" }
+fil_actors_runtime = { version = "12.0.0", path = "runtime" }
+fil_builtin_actors_state = { version = "12.0.0", path = "state"}
 
 [patch.crates-io]
 #fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }

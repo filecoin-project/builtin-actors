@@ -14,7 +14,7 @@ keywords = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-fil_actors_runtime = { version = "12.0.0", path = "../../runtime" }
+fil_actors_runtime = { workspace = true }
 frc42_dispatch = { workspace = true }
 fvm_shared = { workspace = true }
 fvm_ipld_hamt = { workspace = true }
@@ -31,8 +31,8 @@ fvm_ipld_blockstore = { workspace = true }
 fvm_ipld_encoding = { workspace = true }
 
 [dev-dependencies]
-fil_actors_runtime = { path = "../../runtime", features = ["test_utils", "sector-default"] }
-fil_actor_reward = { path = "../reward" }
+fil_actors_runtime = { workspace = true, features = ["test_utils", "sector-default"] }
+fil_actor_reward = { workspace = true }
 
 [features]
 fil-actor = ["fil_actors_runtime/fil-actor"]

@@ -14,7 +14,7 @@ keywords = ["filecoin", "web3", "wasm", "evm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-fil_actors_runtime = { version = "12.0.0", path = "../../runtime" }
+fil_actors_runtime = { workspace = true }
 serde = { workspace = true }
 serde_tuple = "0.5"
 rlp = { version = "0.5.1", default-features = false }
@@ -28,11 +28,11 @@ fvm_shared = { workspace = true }
 num-traits = "0.2.15"
 num-derive = "0.3.3"
 hex-literal = "0.3.4"
-fil_actors_evm_shared = { version = "12.0.0", path = "../evm/shared" }
+fil_actors_evm_shared = { workspace = true }
 
 [dev-dependencies]
-fil_actor_evm = { path = "../evm"}
-fil_actors_runtime = { path = "../../runtime", features = ["test_utils"] }
+fil_actor_evm = { workspace = true}
+fil_actors_runtime = { workspace = true, features = ["test_utils"] }
 
 [features]
 fil-actor = ["fil_actors_runtime/fil-actor"]

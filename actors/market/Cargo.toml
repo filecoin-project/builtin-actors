@@ -14,7 +14,7 @@ keywords = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-fil_actors_runtime = { version = "12.0.0", path = "../../runtime"}
+fil_actors_runtime = { workspace = true}
 
 anyhow = { workspace = true }
 cid = { workspace = true }
@@ -33,10 +33,10 @@ num-traits = "0.2.14"
 serde = { workspace = true }
 
 [dev-dependencies]
-fil_actors_runtime = { path = "../../runtime", features = ["test_utils", "sector-default"] }
-fil_actor_power = { path = "../power" }
-fil_actor_reward = { path = "../reward" }
-fil_actor_verifreg = { path = "../verifreg" }
+fil_actors_runtime = { workspace = true, features = ["test_utils", "sector-default"] }
+fil_actor_power = { workspace = true }
+fil_actor_reward = { workspace = true }
+fil_actor_verifreg = { workspace = true }
 fvm_ipld_amt = { workspace = true }
 multihash = { workspace = true }
 regex = "1"

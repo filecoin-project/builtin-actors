@@ -14,7 +14,7 @@ keywords = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-fil_actors_runtime = { version = "12.0.0", path = "../../runtime"}
+fil_actors_runtime = { workspace = true}
 
 anyhow = { workspace = true }
 cid = { workspace = true }
@@ -32,7 +32,7 @@ num-traits = "0.2.14"
 serde = { workspace = true }
 
 [dev-dependencies]
-fil_actors_runtime = { path = "../../runtime", features = ["test_utils", "sector-default"] }
+fil_actors_runtime = { workspace = true, features = ["test_utils", "sector-default"] }
 
 [features]
 fil-actor = ["fil_actors_runtime/fil-actor"]

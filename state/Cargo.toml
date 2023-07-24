@@ -14,19 +14,19 @@ keywords = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-fil_actor_account = { version = "12.0.0", path = "../actors/account"}
-fil_actor_verifreg = { version = "12.0.0", path = "../actors/verifreg"}
-fil_actor_datacap = { version = "12.0.0", path = "../actors/datacap"}
-fil_actor_cron = { version = "12.0.0", path = "../actors/cron"}
-fil_actor_market = { version = "12.0.0", path = "../actors/market"}
-fil_actor_multisig = { version = "12.0.0", path = "../actors/multisig"}
-fil_actor_paych = { version = "12.0.0", path = "../actors/paych"}
-fil_actor_power = { version = "12.0.0", path = "../actors/power"}
-fil_actor_miner = { version = "12.0.0", path = "../actors/miner"}
-fil_actor_reward = { version = "12.0.0", path = "../actors/reward"}
-fil_actor_system = { version = "12.0.0", path = "../actors/system"}
-fil_actor_init = { version = "12.0.0", path = "../actors/init"}
-fil_actors_runtime = { version = "12.0.0", path = "../runtime"}
+fil_actor_account = { workspace = true}
+fil_actor_verifreg = { workspace = true}
+fil_actor_datacap = { workspace = true}
+fil_actor_cron = { workspace = true}
+fil_actor_market = { workspace = true}
+fil_actor_multisig = { workspace = true}
+fil_actor_paych = { workspace = true}
+fil_actor_power = { workspace = true}
+fil_actor_miner = { workspace = true}
+fil_actor_reward = { workspace = true}
+fil_actor_system = { workspace = true}
+fil_actor_init = { workspace = true}
+fil_actors_runtime = { workspace = true}
 frc46_token = { workspace = true }
 fvm_shared = { workspace = true }
 fvm_ipld_encoding = { workspace = true }

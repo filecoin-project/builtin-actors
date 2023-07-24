@@ -11,7 +11,7 @@ keywords = ["filecoin", "web3", "wasm", "evm"]
 [dependencies]
 serde = { workspace = true }
 fvm_shared = { workspace = true }
-fil_actors_runtime = { version = "12.0.0", path = "../../../runtime" }
+fil_actors_runtime = { workspace = true }
 fvm_ipld_encoding = { workspace = true }
 uint = { version = "0.9.3", default-features = false }
 hex = "0.4.3"
