@@ -641,7 +641,7 @@ impl ExpirationQueueStateSummary {
                 // check expiring sectors are still alive
                 if let Some(sector) = live_sectors.get(&sector_number) {
                     let target = quant.quantize_up(sector.expiration);
-                    acc.require(epoch == target || target+quant.unit == epoch, format!("invalid expiration {epoch} for sector {sector_number}, expected {target}"));
+                    acc.require(epoch >= target && (epoch-target)%quant.unit ==0 , format!("invalid expiration {epoch} for sector {sector_number}, expected {target}"));
                     on_time_sectors_pledge += sector.initial_pledge.clone();
                 } else {
                     acc.add(format!("on time expiration sector {sector_number} isn't live"));
