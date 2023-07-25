@@ -13,5 +13,5 @@ serde = { workspace = true }
 fvm_shared = { workspace = true }
 fil_actors_runtime = { workspace = true }
 fvm_ipld_encoding = { workspace = true }
-uint = { version = "0.9.3", default-features = false }
-hex = "0.4.3"
+uint = { workspace = true }
+hex = { workspace = true }

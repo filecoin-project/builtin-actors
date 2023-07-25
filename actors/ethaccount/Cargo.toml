@@ -20,9 +20,9 @@ fvm_actor_utils = { workspace = true }
 serde = { workspace = true }
 fvm_ipld_encoding = { workspace = true }
 fvm_shared = { workspace = true }
-num-traits = "0.2.15"
-num-derive = "0.3.3"
-hex-literal = "0.3.4"
+num-traits = { workspace = true }
+num-derive = { workspace = true }
+hex-literal = { workspace = true }
 
 [dev-dependencies]
 fil_actors_runtime = { workspace = true, features = ["test_utils"] }

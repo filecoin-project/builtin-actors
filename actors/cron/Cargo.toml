@@ -16,9 +16,9 @@ crate-type = ["cdylib", "lib"]
 [dependencies]
 fil_actors_runtime = { workspace = true }
 fvm_shared = { workspace = true }
-num-traits = "0.2.14"
-num-derive = "0.3.3"
-log = "0.4.14"
+num-traits = { workspace = true }
+num-derive = { workspace = true }
+log = { workspace = true }
 serde = { workspace = true }
 fvm_ipld_blockstore = { workspace = true }
 fvm_ipld_encoding = { workspace = true }

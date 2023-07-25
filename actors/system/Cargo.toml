@@ -18,9 +18,9 @@ fil_actors_runtime = { workspace = true }
 fvm_shared = { workspace = true }
 fvm_ipld_encoding = { workspace = true }
 fvm_ipld_blockstore = { workspace = true }
-num-traits = "0.2.14"
+num-traits = { workspace = true }
 anyhow = { workspace = true }
-num-derive = "0.3.3"
+num-derive = { workspace = true }
 serde = { workspace = true }
 cid = { workspace = true }
 

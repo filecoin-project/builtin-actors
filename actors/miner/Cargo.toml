@@ -26,12 +26,12 @@ serde = { workspace = true }
 cid = { workspace = true }
 anyhow = { workspace = true }
 multihash = { workspace = true }
-num-traits = "0.2.14"
-num-derive = "0.3.3"
-lazy_static = "1.4.0"
-log = "0.4.14"
-byteorder = "1.4.3"
-itertools = "0.10.3"
+num-traits = { workspace = true }
+num-derive = { workspace = true }
+lazy_static = { workspace = true }
+log = { workspace = true }
+byteorder = { workspace = true }
+itertools = { workspace = true }
 
 [dev-dependencies]
 fil_actors_runtime = { workspace = true, features = ["test_utils", "sector-default"] }
@@ -39,8 +39,8 @@ fil_actor_account = { workspace = true }
 fil_actor_reward = { workspace = true }
 fil_actor_power = { workspace = true }
 fil_actor_market = { workspace = true }
-rand = "0.8.5"
-test-case = "2.2.1"
+rand = { workspace = true }
+test-case = { workspace = true }
 
 [features]
 fil-actor = ["fil_actors_runtime/fil-actor"]

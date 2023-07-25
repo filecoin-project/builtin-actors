@@ -14,21 +14,20 @@ keywords = ["filecoin", "web3", "wasm", "evm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-fil_actors_runtime = { workspace = true }
-serde = { workspace = true }
-serde_tuple = "0.5"
-rlp = { version = "0.5.1", default-features = false }
 anyhow = { workspace = true }
-log = "0.4.14"
+cid = { workspace = true }
+fil_actors_evm_shared = { workspace = true }
+fil_actors_runtime = { workspace = true }
 fvm_ipld_blockstore = { workspace = true }
 fvm_ipld_encoding = { workspace = true }
-multihash = { workspace = true }
-cid = { workspace = true }
 fvm_shared = { workspace = true }
-num-traits = "0.2.15"
-num-derive = "0.3.3"
-hex-literal = "0.3.4"
-fil_actors_evm_shared = { workspace = true }
+log = { workspace = true }
+multihash = { workspace = true }
+num-derive = { workspace = true }
+num-traits = { workspace = true }
+serde = { workspace = true }
+hex-literal = { workspace = true }
+rlp = { workspace = true }
 
 [dev-dependencies]
 fil_actor_evm = { workspace = true}

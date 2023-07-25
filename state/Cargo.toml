@@ -31,10 +31,10 @@ frc46_token = { workspace = true }
 fvm_shared = { workspace = true }
 fvm_ipld_encoding = { workspace = true }
 fvm_ipld_blockstore = { workspace = true }
-num-traits = "0.2.14"
+num-traits = { workspace = true }
 anyhow = { workspace = true }
-bimap = { version = "0.6.2" }
-num-derive = "0.3.3"
+bimap = { workspace = true }
+num-derive = { workspace = true }
 serde = { workspace = true }
 cid = { workspace = true }
 

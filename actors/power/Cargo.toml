@@ -18,13 +18,13 @@ fil_actors_runtime = { workspace = true }
 frc42_dispatch = { workspace = true }
 fvm_shared = { workspace = true }
 fvm_ipld_hamt = { workspace = true }
-num-traits = "0.2.14"
-num-derive = "0.3.3"
-log = "0.4.14"
-indexmap = { version = "1.8.0", features = ["serde-1"] }
+num-traits = { workspace = true }
+num-derive = { workspace = true }
+log = { workspace = true }
+indexmap = { workspace = true }
 cid = { workspace = true }
-integer-encoding = { version = "3.0.3", default-features = false }
-lazy_static = "1.4.0"
+integer-encoding = { workspace = true }
+lazy_static = { workspace = true }
 serde = { workspace = true }
 anyhow = { workspace = true }
 fvm_ipld_blockstore = { workspace = true }

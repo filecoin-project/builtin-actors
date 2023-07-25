@@ -30,8 +30,8 @@ fil_actor_eam = { workspace = true }
 fil_actor_ethaccount = { workspace = true }
 
 anyhow = { workspace = true }
-bimap = { version = "0.6.2" }
-blake2b_simd = "1.0"
+bimap = { workspace = true }
+blake2b_simd = { workspace = true }
 cid = { workspace = true }
 frc42_dispatch = { workspace = true }
 frc46_token = { workspace = true }
@@ -41,24 +41,24 @@ fvm_ipld_blockstore = { workspace = true }
 fvm_ipld_encoding = { workspace = true }
 fvm_ipld_hamt = { workspace = true }
 fvm_shared = { workspace = true }
-indexmap = { version = "1.8.0", features = ["serde-1"] }
-integer-encoding = { version = "3.0.3", default-features = false }
-lazy_static = "1.4.0"
-log = "0.4.14"
-num-derive = "0.3.3"
-num-traits = "0.2.14"
-rand = "0.8.5"
-rand_chacha = "0.3.1"
-regex = "1"
+indexmap = { workspace = true }
+integer-encoding = { workspace = true }
+lazy_static = { workspace = true }
+log = { workspace = true }
+num-derive = { workspace = true }
+num-traits = { workspace = true }
+rand = { workspace = true }
+rand_chacha = { workspace = true }
+regex = { workspace = true }
 serde = { workspace = true }
-thiserror = "1.0.30"
-libsecp256k1 = { version = "0.7.1"}
+thiserror = { workspace = true }
+libsecp256k1 = { workspace = true }
 fil_actors_evm_shared = { workspace = true }
 
 [dev-dependencies]
 cid = { workspace = true }
 multihash = { workspace = true }
-test-case = "2.2.1"
-ethers = { version = "0.17.0", features = ["abigen"] }
-hex = "0.4.3"
-hex-literal = "0.3.4"
+test-case = { workspace = true }
+ethers = { workspace = true }
+hex = { workspace = true }
+hex-literal = { workspace = true }

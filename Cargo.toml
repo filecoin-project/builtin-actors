@@ -34,7 +34,7 @@ fil_actor_verifreg = { workspace = true, features = ["fil-actor"] }
 fil_actor_bundler = "5.0.0"
 cid = { workspace = true }
 fil_actors_runtime = { workspace = true }
-num-traits = "0.2.15"
+num-traits = { workspace = true }
 
 [dependencies]
 clap = { version = "3.2.3", features = ["derive"] }
@@ -59,16 +59,58 @@ members = [
 ]
 
 [workspace.dependencies]
+# Common
 serde = { version = "1.0.136", features = ["derive"] }
 anyhow = "1.0.65"
+num = { version = "0.4", features = ["serde"] }
+num-derive = "0.3.3"
+num-traits = "0.2.14"
+lazy_static = "1.4.0"
+log = { version = "0.4.14", features = ["std"] }
+byteorder = "1.4.3"
+itertools = "0.10.3"
+indexmap = { version = "1.8.0", features = ["serde-1"] }
+derive_builder = "0.10.2"
+once_cell = "1.17.0"
+rand = { version = "0.8.5", default-features = false }
+hex = "0.4.3"
+hex-literal = "0.3.4"
+serde_json = "1.0"
+regex = "1"
+test-case = "2.2.1"
+bimap = "0.6.2"
+castaway = "0.2.2"
+paste = "1.0.9"
+thiserror = "1.0.30"
+pretty_env_logger = "0.4.0"
+serde_repr = "0.1.8"
+unsigned-varint = "0.7.1"
+rand_chacha = "0.3.1"
 
+# Crypto
+libsecp256k1 = { version = "0.7.1", default-features = false }
+blake2b_simd = "1.0"
+sha2 = "0.10"
+
+# EVM
+ethers = { version = "1.0.2", features = ["abigen"] }
+uint = { version = "0.9.3", default-features = false }
+etk-asm = "^0.2.1"
+rlp = { version = "0.5.1", default-features = false }
+substrate-bn = { version = "0.6.0", default-features = false }
+
+# IPLD/Encoding
 cid = { version = "0.10.1", default-features = false, features = ["serde-codec"] }
 multihash = { version = "0.18.1", default-features = false }
+libipld-core = { version = "0.13.1", features = ["serde-codec"] }
+integer-encoding = { version = "3.0.3", default-features = false }
 
+# helix-onchain
 fvm_actor_utils = "7.0.0"
 frc42_dispatch = "3.3.0"
 frc46_token = "7.0.0"
 
+# FVM
 fvm_sdk = "~3.3.0"
 fvm_shared = "~3.4.0"
 fvm_ipld_encoding = "0.4.0"
@@ -78,7 +120,7 @@ fvm_ipld_kamt = "0.3.0"
 fvm_ipld_amt = { version = "0.6.1", features = ["go-interop"] }
 fvm_ipld_bitfield = "0.5.4"
 
-# 
+# workspace
 fil_actor_account = { version = "12.0.0", path = "actors/account" }
 fil_actor_cron = { version = "12.0.0", path = "actors/cron" }
 fil_actor_datacap = { version = "12.0.0", path = "actors/datacap" }
