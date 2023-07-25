@@ -11,54 +11,54 @@ publish = false
 [lib]
 
 [dependencies]
-fil_builtin_actors_state = { version = "12.0.0", path = "../state"}
-fil_actors_runtime = { version = "12.0.0", path = "../runtime", features = [ "test_utils" ] }
-fil_actor_init = { version = "12.0.0", path = "../actors/init" }
-fil_actor_cron = { version = "12.0.0", path = "../actors/cron" }
-fil_actor_system = { version = "12.0.0", path = "../actors/system" }
-fil_actor_account = { version = "12.0.0", path = "../actors/account" }
-fil_actor_multisig = { version = "12.0.0", path = "../actors/multisig" }
-fil_actor_paych = { version = "12.0.0", path = "../actors/paych" }
-fil_actor_reward = { version = "12.0.0", path = "../actors/reward" }
-fil_actor_power = { version = "12.0.0", path = "../actors/power" }
-fil_actor_market = { version = "12.0.0", path = "../actors/market" }
-fil_actor_verifreg = { version = "12.0.0", path = "../actors/verifreg" }
-fil_actor_miner = { version = "12.0.0", path = "../actors/miner" }
-fil_actor_datacap = { version = "12.0.0", path = "../actors/datacap" }
-fil_actor_evm = { version = "12.0.0", path = "../actors/evm" }
-fil_actor_eam = { version = "12.0.0", path = "../actors/eam" }
-fil_actor_ethaccount = { version = "12.0.0", path = "../actors/ethaccount" }
+fil_builtin_actors_state = { workspace = true }
+fil_actors_runtime = { workspace = true, features = [ "test_utils" ] }
+fil_actor_init = { workspace = true }
+fil_actor_cron = { workspace = true }
+fil_actor_system = { workspace = true }
+fil_actor_account = { workspace = true }
+fil_actor_multisig = { workspace = true }
+fil_actor_paych = { workspace = true }
+fil_actor_reward = { workspace = true }
+fil_actor_power = { workspace = true }
+fil_actor_market = { workspace = true }
+fil_actor_verifreg = { workspace = true }
+fil_actor_miner = { workspace = true }
+fil_actor_datacap = { workspace = true }
+fil_actor_evm = { workspace = true }
+fil_actor_eam = { workspace = true }
+fil_actor_ethaccount = { workspace = true }
 
-anyhow = "1.0.65"
-bimap = { version = "0.6.2" }
-blake2b_simd = "1.0"
-cid = { version = "0.10.1", default-features = false, features = ["serde-codec"] }
-frc42_dispatch = "3.3.0"
-frc46_token = "7.0.0"
-fvm_actor_utils = "7.0.0"
-fvm_ipld_bitfield = "0.5.4"
-fvm_ipld_blockstore = { version = "0.2.0", default-features = false }
-fvm_ipld_encoding = { version = "0.4.0", default-features = false }
-fvm_ipld_hamt = "0.7.0"
-fvm_shared = { version = "3.4.0", default-features = false }
-indexmap = { version = "1.8.0", features = ["serde-1"] }
-integer-encoding = { version = "3.0.3", default-features = false }
-lazy_static = "1.4.0"
-log = "0.4.14"
-num-derive = "0.3.3"
-num-traits = "0.2.14"
-rand = "0.8.5"
-rand_chacha = "0.3.1"
-regex = "1"
-serde = { version = "1.0.136", features = ["derive"] }
-thiserror = "1.0.30"
-libsecp256k1 = { version = "0.7.1"}
-fil_actors_evm_shared = { version = "12.0.0", path = "../actors/evm/shared" }
+anyhow = { workspace = true }
+bimap = { workspace = true }
+blake2b_simd = { workspace = true }
+cid = { workspace = true }
+frc42_dispatch = { workspace = true }
+frc46_token = { workspace = true }
+fvm_actor_utils = { workspace = true }
+fvm_ipld_bitfield = { workspace = true }
+fvm_ipld_blockstore = { workspace = true }
+fvm_ipld_encoding = { workspace = true }
+fvm_ipld_hamt = { workspace = true }
+fvm_shared = { workspace = true }
+indexmap = { workspace = true }
+integer-encoding = { workspace = true }
+lazy_static = { workspace = true }
+log = { workspace = true }
+num-derive = { workspace = true }
+num-traits = { workspace = true }
+rand = { workspace = true }
+rand_chacha = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+libsecp256k1 = { workspace = true }
+fil_actors_evm_shared = { workspace = true }
 
 [dev-dependencies]
-cid = { version = "0.10.1", default-features = false, features = ["serde-codec"] }
-multihash = { version = "0.18.1", default-features = false }
-test-case = "2.2.1"
-ethers = { version = "0.17.0", features = ["abigen"] }
-hex = "0.4.3"
-hex-literal = "0.3.4"
+cid = { workspace = true }
+multihash = { workspace = true }
+test-case = { workspace = true }
+ethers = { workspace = true }
+hex = { workspace = true }
+hex-literal = { workspace = true }

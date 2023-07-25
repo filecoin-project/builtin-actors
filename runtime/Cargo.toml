@@ -8,51 +8,50 @@ edition = "2021"
 repository = "https://github.com/filecoin-project/builtin-actors"
 
 [dependencies]
-fvm_ipld_hamt = "0.7.0"
-fvm_ipld_amt = { version = "0.6.0", features = ["go-interop"] }
-fvm_shared = { version = "3.4.0", default-features = false }
-num = { version = "0.4", features = ["serde"] }
-num-traits = "0.2.14"
-num-derive = "0.3.3"
-serde = { version = "1.0.136", features = ["derive"] }
-lazy_static = { version = "1.4.0", optional = true }
-unsigned-varint = "0.7.1"
-byteorder = "1.4.3"
-cid = { version = "0.10.1", default-features = false, features = ["serde-codec"] }
-log = { version = "0.4.14", features = ["std"] }
-thiserror = "1.0.30"
-anyhow = "1.0.65"
-fvm_sdk = { version = "3.3.0", optional = true }
-fvm_ipld_blockstore = "0.2.0"
-fvm_ipld_encoding = "0.4.0"
-fvm_ipld_bitfield = "0.5.4"
-multihash = { version = "0.18.1", default-features = false }
-serde_repr = "0.1.8"
-regex = "1"
-itertools = "0.10"
-paste = "1.0.9"
-castaway = "0.2.2"
+fvm_ipld_hamt = { workspace = true }
+fvm_ipld_amt = { workspace = true }
+fvm_shared = { workspace = true }
+num = { workspace = true  }
+num-traits = { workspace = true }
+num-derive = { workspace = true }
+serde = { workspace = true }
+lazy_static = { workspace = true, optional = true }
+unsigned-varint = { workspace = true }
+byteorder = { workspace = true }
+cid = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+fvm_sdk = { workspace = true, optional = true }
+fvm_ipld_blockstore = { workspace = true }
+fvm_ipld_encoding = { workspace = true }
+fvm_ipld_bitfield = { workspace = true }
+multihash = { workspace = true }
+serde_repr = { workspace = true }
+regex = { workspace = true }
+itertools = { workspace = true }
+paste = { workspace = true }
+castaway = { workspace = true }
 
 # A fake-proofs dependency but... we can't select on that feature here because we enable it from
 # build.rs.
-sha2 = "0.10"
+sha2 = { workspace = true }
 
 # test_util
-rand = { version = "0.8.5", default-features = false, optional = true }
-hex = { version = "0.4.3", optional = true }
-blake2b_simd = { version = "1.0", optional = true }
-pretty_env_logger = {version = "0.4.0", optional = true }
+rand = { workspace = true, optional = true }
+hex = { workspace = true, optional = true }
+blake2b_simd = { workspace = true, optional = true }
+pretty_env_logger = { workspace = true, optional = true }
 
 [dependencies.libsecp256k1]
-version = "0.7.1"
-default-features = false
+workspace = true
 features = ["static-context", "std"]
 optional = true
 
 [dev-dependencies]
-derive_builder = "0.10.2"
-hex = "0.4.3"
-rand = { version = "0.8.5" }
+derive_builder = { workspace = true }
+hex = { workspace = true }
+rand = { workspace = true }
 
 [features]
 default = []
