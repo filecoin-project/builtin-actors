@@ -150,12 +150,12 @@ impl Deadlines {
                     to_quant.quantize_up(from_epoch as ChainEpoch) as u64,
                     expire_set.clone(),
                 )?;
-                return Ok(());
+                Ok(())
             })?;
             from_early_terminations.for_each(|from_epoch, bitfield| {
                 to_early_terminations
                     .set(to_quant.quantize_up(from_epoch as ChainEpoch) as u64, bitfield.clone())?;
-                return Ok(());
+                Ok(())
             })?;
             moving_partition.expirations_epochs = to_expirations_epochs.flush()?;
             moving_partition.early_terminated = to_early_terminations.flush()?;
