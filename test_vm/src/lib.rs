@@ -536,7 +536,7 @@ where
         manifest
     }
 
-    pub fn policy(&self) -> Policy {
+    fn policy(&self) -> Policy {
         Policy::default()
     }
 

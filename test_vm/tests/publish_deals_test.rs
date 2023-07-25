@@ -128,8 +128,6 @@ fn psd_mismatched_provider() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
     psd_mismatched_provider_test(&v, a, deal_start);
-
-    assert_invariants(&v)
 }
 
 fn psd_mismatched_provider_test(v: &dyn VM, a: Addrs, deal_start: i64) {
@@ -146,6 +144,8 @@ fn psd_mismatched_provider_test(v: &dyn VM, a: Addrs, deal_start: i64) {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0, 2], good_inputs);
+
+    assert_invariants(v)
 }
 
 #[test]
@@ -154,8 +154,6 @@ fn psd_bad_piece_size() {
     let (v, a, deal_start) = setup(&store);
 
     psd_bad_piece_size_test(&v, a, deal_start);
-
-    assert_invariants(&v)
 }
 
 fn psd_bad_piece_size_test(v: &dyn VM, a: Addrs, deal_start: i64) {
@@ -174,6 +172,8 @@ fn psd_bad_piece_size_test(v: &dyn VM, a: Addrs, deal_start: i64) {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![1], good_inputs);
+
+    assert_invariants(v)
 }
 
 #[test]
@@ -181,8 +181,6 @@ fn psd_start_time_in_past() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
     psd_start_time_in_past_test(&v, a, deal_start);
-
-    assert_invariants(&v)
 }
 
 fn psd_start_time_in_past_test(v: &dyn VM, a: Addrs, deal_start: i64) {
@@ -196,6 +194,8 @@ fn psd_start_time_in_past_test(v: &dyn VM, a: Addrs, deal_start: i64) {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![1], good_inputs);
+
+    assert_invariants(v)
 }
 
 #[test]
@@ -203,8 +203,6 @@ fn psd_client_address_cannot_be_resolved() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
     psd_client_address_cannot_be_resolved_test(&v, a, deal_start);
-
-    assert_invariants(&v)
 }
 
 fn psd_client_address_cannot_be_resolved_test(v: &dyn VM, a: Addrs, deal_start: i64) {
@@ -217,6 +215,8 @@ fn psd_client_address_cannot_be_resolved_test(v: &dyn VM, a: Addrs, deal_start: 
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0], good_inputs);
+
+    assert_invariants(v)
 }
 
 #[test]
@@ -224,8 +224,6 @@ fn psd_no_client_lockup() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
     psd_no_client_lockup_test(&v, a, deal_start);
-
-    assert_invariants(&v)
 }
 
 fn psd_no_client_lockup_test(v: &dyn VM, a: Addrs, deal_start: i64) {
@@ -237,6 +235,8 @@ fn psd_no_client_lockup_test(v: &dyn VM, a: Addrs, deal_start: i64) {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![1], good_inputs);
+
+    assert_invariants(v)
 }
 
 #[test]
@@ -245,8 +245,6 @@ fn psd_not_enough_client_lockup_for_batch() {
     let (v, a, deal_start) = setup(&store);
 
     psd_not_enough_client_lockup_for_batch_test(&v, a, deal_start);
-
-    assert_invariants(&v)
 }
 
 fn psd_not_enough_client_lockup_for_batch_test(v: &dyn VM, a: Addrs, deal_start: i64) {
@@ -273,6 +271,8 @@ fn psd_not_enough_client_lockup_for_batch_test(v: &dyn VM, a: Addrs, deal_start:
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0], good_inputs);
+
+    assert_invariants(v)
 }
 
 #[test]
@@ -281,8 +281,6 @@ fn psd_not_enough_provider_lockup_for_batch() {
     let (v, a, deal_start) = setup(&store);
 
     psd_not_enough_provider_lockup_for_batch_test(&v, deal_start, a);
-
-    assert_invariants(&v)
 }
 
 fn psd_not_enough_provider_lockup_for_batch_test(v: &dyn VM, deal_start: i64, a: Addrs) {
@@ -315,6 +313,8 @@ fn psd_not_enough_provider_lockup_for_batch_test(v: &dyn VM, deal_start: i64, a:
     let deal_ret = batcher.publish_ok(cheap_worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0], good_inputs);
+
+    assert_invariants(v)
 }
 
 #[test]
@@ -322,8 +322,6 @@ fn psd_duplicate_deal_in_batch() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
     psd_duplicate_deal_in_batch_test(&v, a, deal_start);
-
-    assert_invariants(&v)
 }
 
 fn psd_duplicate_deal_in_batch_test(v: &dyn VM, a: Addrs, deal_start: i64) {
@@ -347,6 +345,8 @@ fn psd_duplicate_deal_in_batch_test(v: &dyn VM, a: Addrs, deal_start: i64) {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0, 1, 4], good_inputs);
+
+    assert_invariants(v)
 }
 
 #[test]
@@ -354,8 +354,6 @@ fn psd_duplicate_deal_in_state() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
     psd_duplicate_deal_in_state_test(&v, a, deal_start);
-
-    assert_invariants(&v)
 }
 
 fn psd_duplicate_deal_in_state_test(v: &dyn VM, a: Addrs, deal_start: i64) {
@@ -377,6 +375,8 @@ fn psd_duplicate_deal_in_state_test(v: &dyn VM, a: Addrs, deal_start: i64) {
     let deal_ret2 = batcher.publish_ok(a.worker);
     let good_inputs2 = bf_all(deal_ret2.valid_deals);
     assert_eq!(vec![1], good_inputs2);
+
+    assert_invariants(v)
 }
 
 #[test]
@@ -384,8 +384,6 @@ fn psd_verified_deal_fails_getting_datacap() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
     psd_verified_deal_fails_getting_datacap_test(&v, a, deal_start);
-
-    assert_invariants(&v)
 }
 
 fn psd_verified_deal_fails_getting_datacap_test(v: &dyn VM, a: Addrs, deal_start: i64) {
@@ -409,6 +407,8 @@ fn psd_verified_deal_fails_getting_datacap_test(v: &dyn VM, a: Addrs, deal_start
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0, 1], good_inputs);
+
+    assert_invariants(v)
 }
 
 #[test]
@@ -416,8 +416,6 @@ fn psd_random_assortment_of_failures() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
     psd_random_assortment_of_failures_test(&v, a, deal_start);
-
-    assert_invariants(&v)
 }
 
 fn psd_random_assortment_of_failures_test(v: &dyn VM, a: Addrs, deal_start: i64) {
@@ -472,6 +470,8 @@ fn psd_random_assortment_of_failures_test(v: &dyn VM, a: Addrs, deal_start: i64)
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0, 2, 8], good_inputs);
+
+    assert_invariants(v)
 }
 
 #[test]
@@ -479,8 +479,6 @@ fn psd_all_deals_are_bad() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
     psd_all_deals_are_bad_test(&v, a, deal_start);
-
-    assert_invariants(&v)
 }
 
 fn psd_all_deals_are_bad_test(v: &dyn VM, a: Addrs, deal_start: i64) {
@@ -503,6 +501,7 @@ fn psd_all_deals_are_bad_test(v: &dyn VM, a: Addrs, deal_start: i64) {
     );
 
     batcher.publish_fail(a.worker);
+    assert_invariants(v)
 }
 
 #[test]
@@ -510,8 +509,6 @@ fn psd_bad_sig() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
     psd_bad_sig_test(&v, a, deal_start);
-
-    assert_invariants(&v)
 }
 
 fn psd_bad_sig_test(v: &dyn VM, a: Addrs, deal_start: i64) {
@@ -581,6 +578,8 @@ fn psd_bad_sig_test(v: &dyn VM, a: Addrs, deal_start: i64) {
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
+
+    assert_invariants(v)
 }
 
 #[test]
@@ -588,8 +587,6 @@ fn psd_all_deals_are_good() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
     all_deals_are_good_test(&v, a, deal_start);
-
-    assert_invariants(&v)
 }
 
 fn all_deals_are_good_test(v: &dyn VM, a: Addrs, deal_start: i64) {
@@ -606,6 +603,8 @@ fn all_deals_are_good_test(v: &dyn VM, a: Addrs, deal_start: i64) {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0, 1, 2, 3, 4], good_inputs);
+
+    assert_invariants(v)
 }
 
 #[test]
@@ -613,8 +612,6 @@ fn psd_valid_deals_with_ones_longer_than_540() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
     psd_valid_deals_with_ones_longer_than_540_test(&v, a, deal_start);
-
-    assert_invariants(&v)
 }
 
 fn psd_valid_deals_with_ones_longer_than_540_test(v: &dyn VM, a: Addrs, deal_start: i64) {
@@ -637,6 +634,8 @@ fn psd_valid_deals_with_ones_longer_than_540_test(v: &dyn VM, a: Addrs, deal_sta
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0, 1, 2], good_inputs);
+
+    assert_invariants(v)
 }
 
 #[test]
@@ -644,8 +643,6 @@ fn psd_deal_duration_too_long() {
     let store = MemoryBlockstore::new();
     let (v, a, deal_start) = setup(&store);
     psd_deal_duration_too_long_test(&v, a, deal_start);
-
-    assert_invariants(&v)
 }
 
 fn psd_deal_duration_too_long_test(v: &dyn VM, a: Addrs, deal_start: i64) {
@@ -670,4 +667,6 @@ fn psd_deal_duration_too_long_test(v: &dyn VM, a: Addrs, deal_start: i64) {
     let deal_ret = batcher.publish_ok(a.worker);
     let good_inputs = bf_all(deal_ret.valid_deals);
     assert_eq!(vec![0, 1], good_inputs);
+
+    assert_invariants(v)
 }

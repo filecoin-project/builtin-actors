@@ -37,8 +37,6 @@ fn terminate_sectors() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     terminate_sectors_test(&v);
-
-    expect_invariants(&v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }
 
 fn terminate_sectors_test(v: &dyn VM) {
@@ -353,4 +351,6 @@ fn terminate_sectors_test(v: &dyn VM) {
     // before the slash and should be << 1 FIL. Actual amount withdrawn should be between 58 and 59 FIL.
     assert!(TokenAmount::from_whole(58) < value_withdrawn);
     assert!(TokenAmount::from_whole(59) > value_withdrawn);
+
+    expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
 }

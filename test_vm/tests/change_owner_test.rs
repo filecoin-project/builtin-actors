@@ -15,8 +15,6 @@ fn change_owner_success() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     change_owner_success_test(&v);
-
-    assert_invariants(&v)
 }
 
 fn change_owner_success_test(v: &dyn VM) {
@@ -49,6 +47,8 @@ fn change_owner_success_test(v: &dyn VM) {
     assert!(minfo.pending_owner_address.is_none());
     assert_eq!(new_owner, minfo.owner);
     assert_eq!(new_owner, minfo.beneficiary);
+
+    assert_invariants(v)
 }
 
 #[test]
@@ -56,8 +56,6 @@ fn keep_beneficiary_when_owner_changed() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     keep_beneficiary_when_owner_changed_test(&v);
-
-    assert_invariants(&v)
 }
 
 fn keep_beneficiary_when_owner_changed_test(v: &dyn VM) {
@@ -95,6 +93,8 @@ fn keep_beneficiary_when_owner_changed_test(v: &dyn VM) {
     assert!(minfo.pending_owner_address.is_none());
     assert_eq!(new_owner, minfo.owner);
     assert_eq!(beneficiary, minfo.beneficiary);
+
+    assert_invariants(v)
 }
 
 #[test]
@@ -102,8 +102,6 @@ fn change_owner_fail() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     change_owner_fail_test(&v);
-
-    assert_invariants(&v)
 }
 
 fn change_owner_fail_test(v: &dyn VM) {
@@ -172,4 +170,6 @@ fn change_owner_fail_test(v: &dyn VM) {
     assert!(minfo.pending_owner_address.is_none());
     assert_eq!(addr, minfo.owner);
     assert_eq!(addr, minfo.beneficiary);
+
+    assert_invariants(v)
 }

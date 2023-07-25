@@ -17,8 +17,6 @@ fn change_beneficiary_success() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     change_beneficiary_success_test(&v);
-
-    assert_invariants(&v);
 }
 
 fn change_beneficiary_success_test(v: &dyn VM) {
@@ -73,6 +71,7 @@ fn change_beneficiary_success_test(v: &dyn VM) {
     get_beneficiary_return = get_beneficiary(v, &query_addr, &miner_id);
     assert!(get_beneficiary_return.proposed.is_none());
     assert_active(&change_another_beneificiary_proposal, &get_beneficiary_return.active);
+    assert_invariants(v);
 }
 
 #[test]
@@ -137,8 +136,6 @@ fn change_beneficiary_fail() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     change_beneficiary_fail_test(&v);
-
-    assert_invariants(&v)
 }
 
 fn change_beneficiary_fail_test(v: &dyn VM) {
@@ -237,6 +234,8 @@ fn change_beneficiary_fail_test(v: &dyn VM) {
     let back_owner_proposal = ChangeBeneficiaryParams::new(owner, TokenAmount::zero(), 0);
     change_beneficiary(v, &owner, &miner_id, &back_owner_proposal);
     change_beneficiary(v, &beneficiary, &miner_id, &back_owner_proposal);
+
+    assert_invariants(v)
 }
 
 fn assert_pending(

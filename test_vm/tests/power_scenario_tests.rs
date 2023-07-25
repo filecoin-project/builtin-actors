@@ -30,8 +30,6 @@ fn power_create_miner() {
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
 
     power_create_miner_test(&v);
-
-    assert_invariants(&v);
 }
 
 fn power_create_miner_test(v: &dyn VM) {
@@ -104,6 +102,7 @@ fn power_create_miner_test(v: &dyn VM) {
     };
 
     expect.matches(v.take_invocations().last().unwrap());
+    assert_invariants(v);
 }
 
 #[test]
