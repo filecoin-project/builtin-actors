@@ -23,7 +23,11 @@ use super::{
     BitFieldQueue, ExpirationSet, Partition, PartitionSectorMap, PoStPartition, PowerPair,
     SectorOnChainInfo, Sectors, TerminationResult,
 };
-use crate::SECTORS_AMT_BITWIDTH;
+
+use crate::{
+    PARTITION_EARLY_TERMINATION_ARRAY_AMT_BITWIDTH, PARTITION_EXPIRATION_AMT_BITWIDTH,
+    SECTORS_AMT_BITWIDTH,
+};
 
 // Bitwidth of AMTs determined empirically from mutation patterns and projections of mainnet data.
 // Usually a small array
@@ -97,6 +101,127 @@ impl Deadlines {
         deadline.validate_state()?;
 
         self.due[deadline_idx as usize] = store.put_cbor(deadline, Code::Blake2b256)?;
+        Ok(())
+    }
+
+    pub fn move_partitions<BS: Blockstore>(
+        &mut self,
+        store: &BS,
+        from_deadline: &mut Deadline,
+        to_deadline: &mut Deadline,
+        to_quant: QuantSpec,
+        partitions: &BitField,
+    ) -> anyhow::Result<()> {
+        let mut from_partitions = from_deadline.partitions_amt(store)?;
+        let mut to_partitions = to_deadline.partitions_amt(store)?;
+
+        // even though we're moving partitions intact, we still need to update from/to `Deadline` accordingly.
+
+        let first_to_partition_idx = to_partitions.count();
+        for (i, from_partition_idx) in partitions.iter().enumerate() {
+            let mut moving_partition = from_partitions
+                .get(from_partition_idx)?
+                .ok_or_else(|| actor_error!(not_found, "no partition {}", from_partition_idx))?
+                .clone();
+            if !moving_partition.faults.is_empty() || !moving_partition.unproven.is_empty() {
+                return Err(actor_error!(forbidden, "partition with faults or unproven sectors are not allowed to move, partition_idx {}", from_partition_idx))?;
+            }
+
+            let to_partition_idx = first_to_partition_idx + i as u64;
+
+            let from_expirations_epochs: Array<ExpirationSet, _> =
+                Array::load(&moving_partition.expirations_epochs, store)?;
+
+            let from_early_terminations: Array<BitField, _> =
+                Array::load(&moving_partition.early_terminated, store)?;
+
+            let mut to_expirations_epochs = Array::<ExpirationSet, BS>::new_with_bit_width(
+                store,
+                PARTITION_EXPIRATION_AMT_BITWIDTH,
+            );
+            let mut to_early_terminations = Array::<BitField, BS>::new_with_bit_width(
+                store,
+                PARTITION_EARLY_TERMINATION_ARRAY_AMT_BITWIDTH,
+            );
+
+            // ajust epoch info of expirations_epochs and early_terminated within `Partition`
+            from_expirations_epochs.for_each(|from_epoch, expire_set| {
+                to_expirations_epochs.set(
+                    to_quant.quantize_up(from_epoch as ChainEpoch) as u64,
+                    expire_set.clone(),
+                )?;
+                return Ok(());
+            })?;
+            from_early_terminations.for_each(|from_epoch, bitfield| {
+                to_early_terminations
+                    .set(to_quant.quantize_up(from_epoch as ChainEpoch) as u64, bitfield.clone())?;
+                return Ok(());
+            })?;
+            moving_partition.expirations_epochs = to_expirations_epochs.flush()?;
+            moving_partition.early_terminated = to_early_terminations.flush()?;
+
+            let all_sectors = moving_partition.sectors.len();
+            let live_sectors = moving_partition.live_sectors().len();
+            let early_terminations = from_deadline.early_terminations.get(from_partition_idx);
+            if early_terminations != (from_early_terminations.count() > 0) {
+                return Err(actor_error!(illegal_state, "Deadline.early_terminations doesn't agree with Partition.early_terminated for partition {}", from_partition_idx))?;
+            }
+
+            // start updating from/to `Deadline` here
+
+            from_deadline.total_sectors -= all_sectors;
+            from_deadline.live_sectors -= live_sectors;
+            from_deadline.faulty_power -= &moving_partition.faulty_power;
+
+            to_deadline.total_sectors += all_sectors;
+            to_deadline.live_sectors += live_sectors;
+            to_deadline.faulty_power += &moving_partition.faulty_power;
+
+            // update early_terminations BitField of `Deadline`
+            if early_terminations {
+                from_deadline.early_terminations.unset(from_partition_idx);
+                to_deadline.early_terminations.set(to_partition_idx);
+            }
+
+            from_partitions.set(from_partition_idx, Partition::new(store)?)?;
+            to_partitions.set(to_partition_idx, moving_partition)?;
+        }
+
+        // update expirations_epochs Cid of Deadline.
+        {
+            let mut epochs_to_remove = Vec::<u64>::new();
+            let mut from_expirations_epochs: Array<BitField, _> =
+                Array::load(&from_deadline.expirations_epochs, store)?;
+            let mut to_expirations_epochs: Array<BitField, _> =
+                Array::load(&to_deadline.expirations_epochs, store)?;
+            from_expirations_epochs.for_each_mut(|from_epoch, from_bitfield| {
+                let to_epoch = to_quant.quantize_up(from_epoch as ChainEpoch);
+                let mut to_bitfield =
+                    to_expirations_epochs.get(to_epoch as u64)?.cloned().unwrap_or_default();
+                for (i, partition_id) in partitions.iter().enumerate() {
+                    if from_bitfield.get(partition_id) {
+                        from_bitfield.unset(partition_id);
+                        to_bitfield.set(first_to_partition_idx + i as u64);
+                    }
+                }
+                to_expirations_epochs.set(to_epoch as u64, to_bitfield)?;
+
+                if from_bitfield.is_empty() {
+                    epochs_to_remove.push(from_epoch);
+                }
+
+                Ok(())
+            })?;
+            if !epochs_to_remove.is_empty() {
+                from_expirations_epochs.batch_delete(epochs_to_remove, true)?;
+            }
+            from_deadline.expirations_epochs = from_expirations_epochs.flush()?;
+            to_deadline.expirations_epochs = to_expirations_epochs.flush()?;
+        }
+
+        from_deadline.partitions = from_partitions.flush()?;
+        to_deadline.partitions = to_partitions.flush()?;
+
         Ok(())
     }
 }
