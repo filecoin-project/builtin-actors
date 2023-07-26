@@ -7,10 +7,10 @@
  * TODO(alexytsu): It should eventually be moved to an external location so that it can be shared
  * with the anorth/fvm-workbench implementation
  */
-use std::{error::Error, fmt};
+use std::{collections::BTreeMap, error::Error, fmt};
 
 use cid::Cid;
-use fil_actors_runtime::runtime::Primitives;
+use fil_actors_runtime::runtime::{builtins::Type, Primitives};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{
     ipld_block::IpldBlock,
@@ -27,6 +27,12 @@ pub trait VM {
 
     /// Get the current chain epoch
     fn epoch(&self) -> ChainEpoch;
+
+    /// Sets the epoch to the specified value
+    fn set_epoch(&self, epoch: ChainEpoch);
+
+    /// Get information about an actor
+    fn actor(&self, address: &Address) -> Option<ActorState>;
 
     /// Get the balance of the specified actor
     fn balance(&self, address: &Address) -> TokenAmount;
@@ -54,17 +60,18 @@ pub trait VM {
         params: Option<IpldBlock>,
     ) -> Result<MessageResult, VMError>;
 
-    /// Sets the epoch to the specified value
-    fn set_epoch(&self, epoch: ChainEpoch);
-
     /// Take all the invocations that have been made since the last call to this method
     fn take_invocations(&self) -> Vec<InvocationTrace>;
 
-    /// Get information about an actor
-    fn actor(&self, address: &Address) -> Option<ActorState>;
+    // TODO: set circulating supply
+    fn circulating_supply(&self) -> TokenAmount;
 
     /// Provides access to VM primitives
     fn primitives(&self) -> &dyn Primitives;
+
+    fn actor_manifest(&self) -> BTreeMap<Cid, Type>;
+
+    fn state_root(&self) -> Cid;
 }
 
 #[derive(Debug)]
