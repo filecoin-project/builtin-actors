@@ -1,6 +1,7 @@
 use fil_actor_miner::{
     ActiveBeneficiary, ChangeBeneficiaryParams, Method as MinerMethod, PendingBeneficiaryChange,
 };
+use fil_actors_runtime::runtime::Policy;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
@@ -71,7 +72,7 @@ fn change_beneficiary_success_test(v: &dyn VM) {
     get_beneficiary_return = get_beneficiary(v, &query_addr, &miner_id);
     assert!(get_beneficiary_return.proposed.is_none());
     assert_active(&change_another_beneificiary_proposal, &get_beneficiary_return.active);
-    assert_invariants(v);
+    assert_invariants(v, &Policy::default());
 }
 
 #[test]
@@ -235,7 +236,7 @@ fn change_beneficiary_fail_test(v: &dyn VM) {
     change_beneficiary(v, &owner, &miner_id, &back_owner_proposal);
     change_beneficiary(v, &beneficiary, &miner_id, &back_owner_proposal);
 
-    assert_invariants(v)
+    assert_invariants(v, &Policy::default())
 }
 
 fn assert_pending(

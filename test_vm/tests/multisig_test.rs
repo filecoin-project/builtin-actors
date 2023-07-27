@@ -4,6 +4,7 @@ use fil_actor_multisig::{
     State as MsigState, SwapSignerParams, Transaction, TxnID, TxnIDParams,
 };
 use fil_actors_runtime::cbor::serialize;
+use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{make_map_with_root, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
 use fvm_ipld_blockstore::MemoryBlockstore;
@@ -27,17 +28,15 @@ use test_vm::{TestVM, VM};
 fn proposal_hash() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
-    let addrs = create_accounts(&v, 3, &TokenAmount::from_whole(10_000));
-    let sys_act_start_bal = v.get_actor(&SYSTEM_ACTOR_ADDR).unwrap().balance;
-    let fil_delta = proposal_hash_test(&v, &addrs);
-    assert_eq!(sys_act_start_bal + fil_delta, v.get_actor(&SYSTEM_ACTOR_ADDR).unwrap().balance);
-    assert_invariants(&v)
+    proposal_hash_test(&v);
 }
 
-fn proposal_hash_test(v: &dyn VM, addrs: &[Address]) -> TokenAmount {
+fn proposal_hash_test(v: &dyn VM) {
+    let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
+    let sys_act_start_bal = v.actor(&SYSTEM_ACTOR_ADDR).unwrap().balance;
     let alice = addrs[0];
     let bob = addrs[1];
-    let msig_addr = create_msig(v, addrs, 2);
+    let msig_addr = create_msig(v, &addrs, 2);
 
     // fund msig and propose send funds to system actor
     let fil_delta = TokenAmount::from_nano(3);
@@ -108,7 +107,9 @@ fn proposal_hash_test(v: &dyn VM, addrs: &[Address]) -> TokenAmount {
         ..Default::default()
     };
     expect.matches(v.take_invocations().last().unwrap());
-    fil_delta
+
+    assert_eq!(sys_act_start_bal + fil_delta, v.actor(&SYSTEM_ACTOR_ADDR).unwrap().balance);
+    assert_invariants(v, &Policy::default())
 }
 
 #[test]
@@ -176,7 +177,7 @@ fn test_delete_self() {
         let new_signers: HashSet<Address> = HashSet::from_iter(st.signers);
         let diff: Vec<&Address> = old_signers.symmetric_difference(&new_signers).collect();
         assert_eq!(vec![&(addrs[remove_idx])], diff);
-        assert_invariants(&v)
+        assert_invariants(&v, &Policy::default())
     };
     test(2, 3, 0); // 2 of 3 removed is proposer
     test(2, 3, 1); // 2 of 3 removed is approver
@@ -213,7 +214,7 @@ fn swap_self_1_of_2_test(v: &dyn VM) {
     );
     let st: MsigState = get_state(v, &msig_addr).unwrap();
     assert_eq!(vec![bob, chuck], st.signers);
-    assert_invariants(v);
+    assert_invariants(v, &Policy::default());
 }
 
 #[test]
@@ -291,7 +292,7 @@ fn swap_self_2_of_3_test(v: &dyn VM) {
     let st: MsigState = get_state(v, &msig_addr).unwrap();
     assert_eq!(vec![bob, chuck, alice], st.signers);
 
-    assert_invariants(v)
+    assert_invariants(v, &Policy::default())
 }
 
 fn create_msig(v: &dyn VM, signers: &[Address], threshold: u64) -> Address {

@@ -6,6 +6,7 @@ use fil_actors_runtime::runtime::policy::policy_constants::PRE_COMMIT_CHALLENGE_
 use fil_actors_runtime::runtime::policy_constants::{
     MAX_AGGREGATED_SECTORS, PRE_COMMIT_SECTOR_BATCH_MAX_SIZE,
 };
+use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::CRON_ACTOR_ADDR;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
@@ -167,5 +168,9 @@ pub fn batch_onboarding_test(v: &dyn VM, v2: bool) {
     );
     assert!(network_stats.total_pledge_collateral.is_positive());
 
-    expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
+    expect_invariants(
+        v,
+        &Policy::default(),
+        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+    );
 }

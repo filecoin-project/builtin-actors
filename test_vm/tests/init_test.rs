@@ -12,7 +12,7 @@ use test_vm::{actor, util::serialize_ok, TestVM, FIRST_TEST_USER_ADDR, TEST_FAUC
 
 fn assert_placeholder_actor(exp_bal: TokenAmount, v: &dyn VM, addr: Address) {
     let act = v.actor(&addr).unwrap();
-    assert_eq!(EMPTY_ARR_CID, act.head);
+    assert_eq!(EMPTY_ARR_CID, act.state);
     assert_eq!(*PLACEHOLDER_ACTOR_CODE_ID, act.code);
     assert_eq!(exp_bal, act.balance);
 }

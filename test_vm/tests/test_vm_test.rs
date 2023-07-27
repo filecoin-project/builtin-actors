@@ -1,4 +1,5 @@
 use fil_actor_account::State as AccountState;
+use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::{
     make_identity_cid, ACCOUNT_ACTOR_CODE_ID, PAYCH_ACTOR_CODE_ID,
 };
@@ -47,7 +48,7 @@ fn state_control() {
     assert_eq!(None, v.get_actor(&addr2));
     assert_eq!(v.get_actor(&addr1).unwrap(), a1);
 
-    let invariants_check = check_invariants(&v);
+    let invariants_check = check_invariants(&v, &Policy::default());
     assert!(invariants_check.is_err());
     assert!(invariants_check.unwrap_err().to_string().contains("AccountState is empty"));
 }
@@ -115,7 +116,7 @@ fn test_sent() {
     assert_account_actor(3, TokenAmount::from_atto(42u8), addr1, &v, expect_id_addr1);
     assert_account_actor(2, TokenAmount::zero(), addr2, &v, expect_id_addr2);
 
-    assert_invariants(&v)
+    assert_invariants(&v, &Policy::default())
 }
 
 #[test]

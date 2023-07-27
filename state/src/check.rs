@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 use anyhow::bail;
-use bimap::BiBTreeMap;
 use cid::Cid;
 use fil_actor_account::State as AccountState;
 use fil_actor_cron::State as CronState;
@@ -144,7 +143,7 @@ pub fn check_state_invariants<BS: Blockstore>(
         }
         total_fil += &actor.balance;
 
-        match manifest.get_by_left(&actor.code) {
+        match manifest.get(&actor.code) {
             Some(Type::System) => (),
             Some(Type::Init) => {
                 let state = get_state!(tree, actor, InitState);

@@ -362,7 +362,11 @@ fn verified_claim_scenario_test(v: &dyn VM) {
     assert_eq!(vec![claim_id], ret.considered);
     assert!(ret.results.all_ok(), "results had failures {}", ret.results);
 
-    expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
+    expect_invariants(
+        v,
+        &Policy::default(),
+        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+    );
 }
 
 #[test]
@@ -456,7 +460,11 @@ fn expired_allocations_test(v: &dyn VM) {
     // Client has original datacap balance
     assert_eq!(TokenAmount::from_whole(datacap), datacap_get_balance(v, &verified_client));
 
-    expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
+    expect_invariants(
+        v,
+        &Policy::default(),
+        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+    );
 }
 
 #[test]
@@ -491,7 +499,7 @@ fn deal_passes_claim_fails_test(v: &dyn VM) {
     market_add_balance(v, &worker, &miner_id, &TokenAmount::from_whole(64));
 
     // Publish verified deal
-    let deal_start = v.epoch() + v.policy().maximum_verified_allocation_expiration + 1;
+    let deal_start = v.epoch() + Policy::default().maximum_verified_allocation_expiration + 1;
     let sector_start = deal_start;
     let deal_term_min = 180 * EPOCHS_IN_DAY;
     let deal_size = (32u64 << 30) / 2;
@@ -591,5 +599,5 @@ fn deal_passes_claim_fails_test(v: &dyn VM) {
     assert_eq!(None, sector_info_a);
 
     // run check before last change and confirm that we hit the expected broken state error
-    assert_invariants(v);
+    assert_invariants(v, &Policy::default());
 }

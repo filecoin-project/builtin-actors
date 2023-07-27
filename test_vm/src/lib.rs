@@ -1,6 +1,5 @@
 use crate::fakes::FakePrimitives;
 use anyhow::anyhow;
-use bimap::BiBTreeMap;
 use cid::multihash::Code;
 use cid::Cid;
 use fil_actor_account::{Actor as AccountActor, State as AccountState};
@@ -66,7 +65,7 @@ use regex::Regex;
 use serde::de::DeserializeOwned;
 use serde::{ser, Serialize};
 use std::cell::{RefCell, RefMut};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ops::Add;
 use trace::InvocationTrace;
 
@@ -256,6 +255,30 @@ where
 
     fn primitives(&self) -> &dyn Primitives {
         &self.primitives
+    }
+
+    fn actor_manifest(&self) -> BTreeMap<Cid, Type> {
+        let actors = Hamt::<&'bs BS, ActorState, BytesKey, Sha256>::load(
+            &self.state_root.borrow(),
+            self.store,
+        )
+        .unwrap();
+        let mut manifest = BTreeMap::new();
+        actors
+            .for_each(|_, actor| {
+                manifest.insert(actor.code, ACTOR_TYPES.get(&actor.code).unwrap().to_owned());
+                Ok(())
+            })
+            .unwrap();
+        manifest
+    }
+
+    fn state_root(&self) -> Cid {
+        *self.state_root.borrow()
+    }
+
+    fn circulating_supply(&self) -> TokenAmount {
+        self.total_fil.clone()
     }
 }
 
@@ -518,34 +541,6 @@ where
             Ok(())
         })?;
         Ok(total)
-    }
-
-    fn actor_manifest(&self) -> BiBTreeMap<Cid, Type> {
-        let actors = Hamt::<&'bs BS, ActorState, BytesKey, Sha256>::load(
-            &self.state_root.borrow(),
-            self.store,
-        )
-        .unwrap();
-        let mut manifest = BiBTreeMap::new();
-        actors
-            .for_each(|_, actor| {
-                manifest.insert(actor.code, ACTOR_TYPES.get(&actor.code).unwrap().to_owned());
-                Ok(())
-            })
-            .unwrap();
-        manifest
-    }
-
-    fn policy(&self) -> Policy {
-        Policy::default()
-    }
-
-    fn state_root(&self) -> Cid {
-        *self.state_root.borrow()
-    }
-
-    fn total_fil(&self) -> TokenAmount {
-        self.total_fil.clone()
     }
 }
 

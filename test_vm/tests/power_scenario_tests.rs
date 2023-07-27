@@ -102,7 +102,7 @@ fn power_create_miner_test(v: &dyn VM) {
     };
 
     expect.matches(v.take_invocations().last().unwrap());
-    assert_invariants(v);
+    assert_invariants(v, &Policy::default());
 }
 
 #[test]
@@ -215,5 +215,9 @@ fn test_cron_tick() {
     }
     .matches(v.take_invocations().first().unwrap());
 
-    expect_invariants(&v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
+    expect_invariants(
+        &v,
+        &Policy::default(),
+        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+    );
 }

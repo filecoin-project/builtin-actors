@@ -793,12 +793,12 @@ pub fn check_invariants(vm: &dyn VM, policy: &Policy) -> anyhow::Result<MessageA
     )
 }
 
-pub fn assert_invariants(vm: &dyn VM, policy: &Policy) {
-    check_invariants(vm, policy).unwrap().assert_empty()
+pub fn assert_invariants(v: &dyn VM, policy: &Policy) {
+    check_invariants(v, policy).unwrap().assert_empty()
 }
 
-pub fn expect_invariants(vm: &dyn VM, policy: &Policy, expected_patterns: &[Regex]) {
-    check_invariants(vm, policy).unwrap().assert_expected(expected_patterns)
+pub fn expect_invariants(v: &dyn VM, policy: &Policy, expected_patterns: &[Regex]) {
+    check_invariants(v, policy).unwrap().assert_expected(expected_patterns)
 }
 
 pub fn get_network_stats(vm: &dyn VM) -> NetworkStats {

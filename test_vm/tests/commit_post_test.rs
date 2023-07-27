@@ -181,7 +181,7 @@ fn submit_post_succeeds_test(v: &dyn VM, miner_info: MinerInfo, sector_info: Sec
     let p_st: PowerState = get_state(v, &STORAGE_POWER_ACTOR_ADDR).unwrap();
     assert_eq!(sector_power.raw, p_st.total_bytes_committed);
 
-    assert_invariants(v);
+    assert_invariants(v, &Policy::default());
 }
 
 #[test]
@@ -226,7 +226,7 @@ fn skip_sector_test(v: &dyn VM, sector_info: SectorInfo, miner_info: MinerInfo) 
     let network_stats = get_network_stats(v);
     assert!(network_stats.total_bytes_committed.is_zero());
     assert!(network_stats.total_pledge_collateral.is_positive());
-    assert_invariants(v)
+    assert_invariants(v, &Policy::default())
 }
 
 #[test]
@@ -289,7 +289,11 @@ fn missed_first_post_deadline_test(v: &dyn VM, sector_info: SectorInfo, miner_in
     assert!(network_stats.total_bytes_committed.is_zero());
     assert!(network_stats.total_pledge_collateral.is_positive());
 
-    expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
+    expect_invariants(
+        v,
+        &Policy::default(),
+        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+    );
 }
 
 #[test]
@@ -397,7 +401,11 @@ fn overdue_precommit_test(v: &dyn VM) {
     assert!(network_stats.total_raw_byte_power.is_zero());
     assert!(network_stats.total_quality_adj_power.is_zero());
 
-    expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
+    expect_invariants(
+        v,
+        &Policy::default(),
+        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+    );
 }
 
 #[test]
@@ -470,7 +478,11 @@ fn aggregate_bad_sector_number_test(v: &dyn VM) {
         Some(params),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
-    expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
+    expect_invariants(
+        v,
+        &Policy::default(),
+        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+    );
 }
 
 #[test]
@@ -575,7 +587,11 @@ fn aggregate_size_limits_test(v: &dyn VM) {
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 
-    expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
+    expect_invariants(
+        v,
+        &Policy::default(),
+        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+    );
 }
 
 #[test]
@@ -644,7 +660,11 @@ fn aggregate_bad_sender_test(v: &dyn VM) {
         Some(params),
         ExitCode::USR_FORBIDDEN,
     );
-    expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
+    expect_invariants(
+        v,
+        &Policy::default(),
+        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+    );
 }
 
 #[test]
@@ -763,5 +783,9 @@ fn aggregate_one_precommit_expires_test(v: &dyn VM) {
     assert!(balances.initial_pledge.is_positive());
     assert!(balances.pre_commit_deposit.is_positive());
 
-    expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
+    expect_invariants(
+        v,
+        &Policy::default(),
+        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+    );
 }
