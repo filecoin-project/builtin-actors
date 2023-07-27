@@ -89,7 +89,7 @@ where
     pub primitives: FakePrimitives,
     pub store: &'bs BS,
     pub state_root: RefCell<Cid>,
-    total_fil: TokenAmount,
+    circulating_supply: RefCell<TokenAmount>,
     actors_dirty: RefCell<bool>,
     actors_cache: RefCell<HashMap<Address, ActorState>>,
     network_version: NetworkVersion,
@@ -278,7 +278,11 @@ where
     }
 
     fn circulating_supply(&self) -> TokenAmount {
-        self.total_fil.clone()
+        self.circulating_supply.borrow().clone()
+    }
+
+    fn set_circulating_supply(&self, supply: TokenAmount) {
+        self.circulating_supply.replace(supply);
     }
 }
 
@@ -292,7 +296,7 @@ where
             primitives: FakePrimitives {},
             store,
             state_root: RefCell::new(actors.flush().unwrap()),
-            total_fil: TokenAmount::zero(),
+            circulating_supply: RefCell::new(TokenAmount::zero()),
             actors_dirty: RefCell::new(false),
             actors_cache: RefCell::new(HashMap::new()),
             network_version: NetworkVersion::V16,
@@ -301,16 +305,12 @@ where
         }
     }
 
-    pub fn with_total_fil(self, total_fil: TokenAmount) -> Self {
-        Self { total_fil, ..self }
-    }
-
     pub fn new_with_singletons(store: &'bs MemoryBlockstore) -> TestVM<'bs, MemoryBlockstore> {
         let reward_total = TokenAmount::from_whole(1_100_000_000i64);
         let faucet_total = TokenAmount::from_whole(1_000_000_000i64);
 
-        let v = TestVM::<'_, MemoryBlockstore>::new(store)
-            .with_total_fil(&reward_total + &faucet_total);
+        let v = TestVM::<'_, MemoryBlockstore>::new(store);
+        v.set_circulating_supply(&reward_total + &faucet_total);
 
         // system
         let sys_st = SystemState::new(store).unwrap();
@@ -455,7 +455,7 @@ where
             primitives: FakePrimitives {},
             store: self.store,
             state_root: self.state_root.clone(),
-            total_fil: self.total_fil,
+            circulating_supply: self.circulating_supply,
             actors_dirty: RefCell::new(false),
             actors_cache: RefCell::new(HashMap::new()),
             network_version: self.network_version,
