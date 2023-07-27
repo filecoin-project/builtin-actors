@@ -8,7 +8,7 @@ use fil_actor_miner::{
 };
 use fil_actor_verifreg::Method as VerifregMethod;
 use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
-use test_vm::VM;
+use vm_api::VM;
 
 use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
 use fvm_shared::piece::PaddedPieceSize;
@@ -30,18 +30,18 @@ use fvm_shared::sector::SectorSize;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
 use test_case::test_case;
-use test_vm::expects::Expect;
-use test_vm::trace::ExpectInvocation;
 use test_vm::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline,
-    apply_code, apply_ok, assert_invariants, bf_all, check_sector_active, check_sector_faulty,
-    create_accounts, create_miner, deadline_state, declare_recovery, expect_invariants,
-    get_network_stats, get_state, invariant_failure_patterns, make_bitfield, market_publish_deal,
-    miner_balance, miner_power, precommit_sectors, prove_commit_sectors, sector_info,
-    submit_invalid_post, submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
-    DynBlockstore,
+    assert_invariants, bf_all, check_sector_active, check_sector_faulty, create_accounts,
+    create_miner, deadline_state, declare_recovery, expect_invariants, get_network_stats,
+    invariant_failure_patterns, make_bitfield, market_publish_deal, miner_balance, miner_power,
+    precommit_sectors, prove_commit_sectors, sector_info, submit_invalid_post,
+    submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
 };
 use test_vm::TestVM;
+use vm_api::expects::Expect;
+use vm_api::trace::ExpectInvocation;
+use vm_api::util::{apply_code, apply_ok, get_state, DynBlockstore};
 
 // ---- Success cases ----
 // Tests that an active CC sector can be correctly upgraded, and the expected state changes occur

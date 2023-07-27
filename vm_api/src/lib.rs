@@ -1,13 +1,4 @@
-/*!
- * The VM module is replicated in this code tree temporarily. This is the high-level abstract interface
- * for a virtual-machine that can execute Filecoin WASM actors. It defines the high-level virtual-machine
- * interface, associated error and trace types and an interface to inject/override the behaviour of
- * certain primitives for the purpose of running tests.
- *
- * TODO(alexytsu): It should eventually be moved to an external location so that it can be shared
- * with the anorth/fvm-workbench implementation
- */
-use std::{collections::BTreeMap, error::Error, fmt};
+use std::collections::BTreeMap;
 
 use cid::Cid;
 use fil_actors_runtime::runtime::{builtins::Type, Primitives};
@@ -16,9 +7,17 @@ use fvm_ipld_encoding::{
     ipld_block::IpldBlock,
     tuple::{serde_tuple, Deserialize_tuple, Serialize_tuple},
 };
-use fvm_shared::{address::Address, clock::ChainEpoch, econ::TokenAmount, MethodNum};
+use fvm_shared::{
+    address::Address, clock::ChainEpoch, econ::TokenAmount, error::ExitCode, MethodNum,
+};
 
-use crate::{trace::InvocationTrace, MessageResult};
+pub mod trace;
+use trace::*;
+pub mod expects;
+pub mod util;
+
+mod error;
+pub use error::*;
 
 /// An abstract VM that is injected into integration tests
 pub trait VM {
@@ -63,43 +62,20 @@ pub trait VM {
     /// Take all the invocations that have been made since the last call to this method
     fn take_invocations(&self) -> Vec<InvocationTrace>;
 
+    /// Set the circulating supply constant for the network
     fn set_circulating_supply(&self, supply: TokenAmount);
 
+    /// Get the circulating supply constant for the network
     fn circulating_supply(&self) -> TokenAmount;
 
     /// Provides access to VM primitives
     fn primitives(&self) -> &dyn Primitives;
 
+    /// Return a map of actor code CIDs to their corresponding types
     fn actor_manifest(&self) -> BTreeMap<Cid, Type>;
 
+    /// Return the root of the state tree
     fn state_root(&self) -> Cid;
-}
-
-#[derive(Debug)]
-pub struct VMError {
-    msg: String,
-}
-
-impl fmt::Display for VMError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.msg)
-    }
-}
-
-impl Error for VMError {
-    fn description(&self) -> &str {
-        &self.msg
-    }
-}
-
-impl From<fvm_ipld_hamt::Error> for VMError {
-    fn from(h_err: fvm_ipld_hamt::Error) -> Self {
-        vm_err(h_err.to_string().as_str())
-    }
-}
-
-pub fn vm_err(msg: &str) -> VMError {
-    VMError { msg: msg.to_string() }
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Eq, Debug)]
@@ -119,4 +95,11 @@ pub fn actor(
     predictable_address: Option<Address>,
 ) -> ActorState {
     ActorState { code, state: head, call_seq: call_seq_num, balance, predictable_address }
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct MessageResult {
+    pub code: ExitCode,
+    pub message: String,
+    pub ret: Option<IpldBlock>,
 }

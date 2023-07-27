@@ -20,12 +20,13 @@ use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
 use test_vm::deals::{DealBatcher, DealOptions};
 use test_vm::util::{
-    advance_to_proving_deadline, apply_ok, bf_all, create_accounts, create_miner,
-    get_network_stats, get_state, make_bitfield, market_add_balance, miner_balance,
-    precommit_sectors_v2, submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
-    DynBlockstore, PrecommitMetadata,
+    advance_to_proving_deadline, bf_all, create_accounts, create_miner, get_network_stats,
+    make_bitfield, market_add_balance, miner_balance, precommit_sectors_v2, submit_windowed_post,
+    verifreg_add_client, verifreg_add_verifier, PrecommitMetadata,
 };
-use test_vm::{TestVM, VM};
+use test_vm::TestVM;
+use vm_api::util::{apply_ok, get_state, DynBlockstore};
+use vm_api::VM;
 
 const BATCH_SIZE: usize = 8;
 const PRECOMMIT_V2: bool = true;

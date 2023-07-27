@@ -11,8 +11,10 @@ use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::make_piece_cid;
 use fil_actors_runtime::{DATACAP_TOKEN_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
 use fvm_shared::error::ExitCode;
-use test_vm::util::{apply_code, apply_ok, create_accounts, create_miner};
-use test_vm::{TestVM, VM};
+use test_vm::util::{create_accounts, create_miner};
+use test_vm::TestVM;
+use vm_api::util::{apply_code, apply_ok};
+use vm_api::VM;
 
 use fil_actor_datacap::{Method as DataCapMethod, MintParams};
 use frc46_token::token::types::{GetAllowanceParams, TransferFromParams};
