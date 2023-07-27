@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 
 use cid::Cid;
-use fil_actors_runtime::runtime::{builtins::Type, Primitives};
+// TODO: drop the dependency on fil_actors_runtime and have a suitable replacement abstraction here
+pub use fil_actors_runtime::runtime::{builtins::Type, Primitives};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{
     ipld_block::IpldBlock,
