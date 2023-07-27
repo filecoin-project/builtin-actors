@@ -22,6 +22,7 @@ use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use num_traits::cast::FromPrimitive;
 use std::ops::Neg;
+use test_vm::expects::Expect;
 use test_vm::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_to_proving_deadline, create_accounts, create_miner, expect_invariants,
@@ -29,7 +30,6 @@ use test_vm::util::{
     submit_windowed_post, verifreg_add_verifier,
 };
 use test_vm::TestVM;
-use vm_api::expects::Expect;
 use vm_api::trace::ExpectInvocation;
 use vm_api::util::{apply_ok, get_state, DynBlockstore};
 use vm_api::VM;

@@ -30,6 +30,7 @@ use fvm_shared::sector::SectorSize;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
 use test_case::test_case;
+use test_vm::expects::Expect;
 use test_vm::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline,
     assert_invariants, bf_all, check_sector_active, check_sector_faulty, create_accounts,
@@ -39,7 +40,6 @@ use test_vm::util::{
     submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
 };
 use test_vm::TestVM;
-use vm_api::expects::Expect;
 use vm_api::trace::ExpectInvocation;
 use vm_api::util::{apply_code, apply_ok, get_state, DynBlockstore};
 

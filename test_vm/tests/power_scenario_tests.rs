@@ -16,12 +16,12 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof};
 use fvm_shared::METHOD_SEND;
 use num_traits::Zero;
+use test_vm::expects::Expect;
 use test_vm::util::{
     assert_invariants, create_accounts, create_miner, expect_invariants,
     invariant_failure_patterns, miner_dline_info,
 };
 use test_vm::{TestVM, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR};
-use vm_api::expects::Expect;
 use vm_api::trace::ExpectInvocation;
 use vm_api::util::{apply_ok, serialize_ok};
 use vm_api::VM;

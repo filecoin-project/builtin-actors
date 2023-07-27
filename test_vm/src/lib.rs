@@ -48,6 +48,7 @@ use vm_api::{actor, ActorState, MessageResult, VMError, VM};
 use vm_api::util::{get_state, serialize_ok};
 
 pub mod deals;
+pub mod expects;
 pub mod fakes;
 pub mod util;
 

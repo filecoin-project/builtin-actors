@@ -26,9 +26,9 @@ use fil_actors_runtime::{
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
+use test_vm::expects::Expect;
 use test_vm::util::{assert_invariants, create_accounts, verifreg_add_verifier};
 use test_vm::{TestVM, TEST_VERIFREG_ROOT_ADDR};
-use vm_api::expects::Expect;
 use vm_api::trace::ExpectInvocation;
 use vm_api::util::{apply_code, apply_ok, get_state, DynBlockstore};
 use vm_api::VM;

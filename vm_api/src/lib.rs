@@ -13,7 +13,6 @@ use fvm_shared::{
 
 pub mod trace;
 use trace::*;
-pub mod expects;
 pub mod util;
 
 mod error;

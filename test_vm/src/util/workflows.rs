@@ -64,7 +64,6 @@ use fvm_shared::sector::RegisteredSealProof;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::sector::StoragePower;
 use num_traits::Zero;
-use vm_api::expects::Expect;
 use vm_api::trace::ExpectInvocation;
 use vm_api::util::apply_ok;
 use vm_api::util::get_state;
@@ -73,6 +72,7 @@ use vm_api::VM;
 
 use crate::*;
 
+use super::expects::Expect;
 use super::make_bitfield;
 use super::miner_dline_info;
 use super::sector_deadline;

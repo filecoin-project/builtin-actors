@@ -21,12 +21,12 @@ use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{test_utils::*, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
 use test_vm::deals::{DealBatcher, DealOptions};
+use test_vm::expects::Expect;
 use test_vm::util::assert_invariants;
 use test_vm::util::{
     bf_all, create_accounts, create_accounts_seeded, create_miner, verifreg_add_verifier,
 };
 use test_vm::TestVM;
-use vm_api::expects::Expect;
 use vm_api::trace::ExpectInvocation;
 use vm_api::util::{apply_ok, serialize_ok};
 use vm_api::VM;
