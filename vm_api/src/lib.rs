@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use cid::Cid;
 // TODO: drop the dependency on fil_actors_runtime and have a suitable replacement abstraction here
+// https://github.com/filecoin-project/builtin-actors/issues/1344
 pub use fil_actors_runtime::runtime::{builtins::Type, Primitives};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{
