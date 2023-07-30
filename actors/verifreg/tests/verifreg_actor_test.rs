@@ -783,7 +783,7 @@ mod allocs_claims {
             ];
             reqs[0].claims[1].size = PaddedPieceSize(0);
             expect_abort(
-                ExitCode::USR_FORBIDDEN,
+                ExitCode::USR_ILLEGAL_ARGUMENT,
                 h.claim_allocations(&rt, PROVIDER1, reqs, 0, true),
             );
             rt.reset();
