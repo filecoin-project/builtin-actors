@@ -258,19 +258,7 @@ where
     }
 
     fn actor_manifest(&self) -> BTreeMap<Cid, Type> {
-        let actors = Hamt::<&'bs BS, ActorState, BytesKey, Sha256>::load(
-            &self.state_root.borrow(),
-            self.store,
-        )
-        .unwrap();
-        let mut manifest = BTreeMap::new();
-        actors
-            .for_each(|_, actor| {
-                manifest.insert(actor.code, ACTOR_TYPES.get(&actor.code).unwrap().to_owned());
-                Ok(())
-            })
-            .unwrap();
-        manifest
+        ACTOR_TYPES.clone()
     }
 
     fn state_root(&self) -> Cid {
