@@ -458,7 +458,9 @@ impl Actor {
         let batch_info = batch_gen.gen();
         if params.all_or_nothing && !batch_info.all_ok() {
             return Err(ActorError::checked(
-                batch_info.fail_codes[0].code,
+                // Returning the first actual error code from the batch might be better, but
+                // would change behaviour from the original implementation.
+                ExitCode::USR_ILLEGAL_ARGUMENT,
                 format!("claim failed with all-or-nothing: {}", batch_info),
                 None,
             ));
