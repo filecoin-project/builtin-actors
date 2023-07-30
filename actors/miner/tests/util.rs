@@ -1160,7 +1160,7 @@ impl ActorHarness {
                 sector_results: BatchReturn::ok(sectors_claims.len() as u32),
                 sector_claims: sectors_claims
                     .iter()
-                    .map(|sector| ext::verifreg::SectorAllocationClaim {
+                    .map(|sector| ext::verifreg::SectorClaimSummary {
                         claimed_space: BigInt::from(
                             sector.claims.iter().map(|c| c.size.0).sum::<u64>(),
                         ),

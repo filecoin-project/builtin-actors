@@ -5033,7 +5033,7 @@ fn batch_activate_deals_and_claim_allocations(
         true => ext::verifreg::ClaimAllocationsReturn {
             sector_results: BatchReturn::ok(verified_claims.len() as u32),
             sector_claims: vec![
-                ext::verifreg::SectorAllocationClaim {
+                ext::verifreg::SectorClaimSummary {
                     claimed_space: BigInt::zero()
                 };
                 verified_claims.len()

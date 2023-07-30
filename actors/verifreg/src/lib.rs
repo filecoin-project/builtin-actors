@@ -381,7 +381,7 @@ impl Actor {
         }
 
         let mut batch_gen = BatchReturnGen::new(params.sectors.len());
-        let mut sector_results: Vec<SectorAllocationClaim> = vec![];
+        let mut sector_results: Vec<SectorClaimSummary> = vec![];
         let mut total_claimed_space = DataCap::zero();
 
         rt.transaction(|st: &mut State, rt| {
@@ -400,7 +400,10 @@ impl Actor {
                     if let Some(alloc) = maybe_alloc {
                         if !can_claim_alloc(&claim, provider, alloc, rt.curr_epoch(), sector.expiry)
                         {
-                            info!("failed to claim allocation {}", claim.allocation_id);
+                            info!(
+                                "failed to claim allocation {} in sector {} expiry {}",
+                                claim.allocation_id, sector.sector, sector.expiry
+                            );
                             batch_gen.add_fail(ExitCode::USR_FORBIDDEN);
                             continue 'sectors;
                         }
@@ -443,7 +446,7 @@ impl Actor {
                     sector_claimed_space += DataCap::from(new_claim.size.0);
                 }
                 total_claimed_space += &sector_claimed_space;
-                sector_results.push(SectorAllocationClaim { claimed_space: sector_claimed_space });
+                sector_results.push(SectorClaimSummary { claimed_space: sector_claimed_space });
                 batch_gen.add_success();
             }
             st.save_allocs(&mut allocs)?;

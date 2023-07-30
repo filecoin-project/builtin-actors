@@ -147,7 +147,7 @@ pub struct ClaimAllocationsParams {
 
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize_tuple, Deserialize_tuple)]
 #[serde(transparent)]
-pub struct SectorAllocationClaim {
+pub struct SectorClaimSummary {
     #[serde(with = "bigint_ser")]
     pub claimed_space: BigInt,
 }
@@ -157,7 +157,7 @@ pub struct ClaimAllocationsReturn {
     /// Status of each sector grouping of claims.
     pub sector_results: BatchReturn,
     /// The claimed space for each successful sector group.
-    pub sector_claims: Vec<SectorAllocationClaim>,
+    pub sector_claims: Vec<SectorClaimSummary>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]

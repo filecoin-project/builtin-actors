@@ -224,7 +224,7 @@ pub mod verifreg {
 
     #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize_tuple, Deserialize_tuple)]
     #[serde(transparent)]
-    pub struct SectorAllocationClaim {
+    pub struct SectorClaimSummary {
         #[serde(with = "bigint_ser")]
         pub claimed_space: BigInt,
     }
@@ -232,6 +232,6 @@ pub mod verifreg {
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
     pub struct ClaimAllocationsReturn {
         pub sector_results: BatchReturn,
-        pub sector_claims: Vec<SectorAllocationClaim>,
+        pub sector_claims: Vec<SectorClaimSummary>,
     }
 }
