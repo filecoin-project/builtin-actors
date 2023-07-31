@@ -6,6 +6,8 @@ mod batch_onboarding_deals_test;
 pub use batch_onboarding_deals_test::*;
 mod change_beneficiary_test;
 pub use change_beneficiary_test::*;
+mod change_owner_test;
+pub use change_owner_test::*;
 // mod commit_post_test;
 // mod datacap_tests;
 // mod evm_test;
