@@ -15,10 +15,8 @@ lazy_static! {
 }
 
 mod util {
-    use fil_actor_verifreg::ClaimAllocationsReturn;
     use fil_actors_runtime::test_utils::MockRuntime;
-    use fvm_shared::{bigint::BigInt, sector::StoragePower};
-    use num_traits::Zero;
+    use fvm_shared::sector::StoragePower;
 
     pub fn verifier_allowance(rt: &MockRuntime) -> StoragePower {
         rt.policy.minimum_verified_allocation_size.clone() + 42
@@ -27,17 +25,10 @@ mod util {
     pub fn client_allowance(rt: &MockRuntime) -> StoragePower {
         verifier_allowance(rt) - 1
     }
-
-    // Gets the total claimed_power_across sectors for a claim_allocation
-    pub fn total_claimed_space(claim_allocations_ret: &ClaimAllocationsReturn) -> BigInt {
-        claim_allocations_ret
-            .claims
-            .iter()
-            .fold(BigInt::zero(), |acc, claim_result| acc + claim_result.claimed_space.clone())
-    }
 }
 
 mod construction {
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_shared::address::{Address, BLS_PUB_LEN};
     use fvm_shared::error::ExitCode;
     use fvm_shared::MethodNum;
@@ -45,7 +36,6 @@ mod construction {
     use fil_actor_verifreg::{Actor as VerifregActor, Method};
     use fil_actors_runtime::test_utils::*;
     use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
-    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use harness::*;
 
     use crate::*;
@@ -86,15 +76,16 @@ mod construction {
 }
 
 mod verifiers {
+    use std::ops::Deref;
+
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_shared::address::{Address, BLS_PUB_LEN};
     use fvm_shared::econ::TokenAmount;
     use fvm_shared::error::ExitCode;
     use fvm_shared::{MethodNum, METHOD_SEND};
-    use std::ops::Deref;
 
     use fil_actor_verifreg::{Actor as VerifregActor, AddVerifierParams, DataCap, Method};
     use fil_actors_runtime::test_utils::*;
-    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use harness::*;
     use util::*;
 
@@ -246,10 +237,12 @@ mod verifiers {
 }
 
 mod clients {
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_shared::address::{Address, BLS_PUB_LEN};
     use fvm_shared::econ::TokenAmount;
     use fvm_shared::error::ExitCode;
     use fvm_shared::{MethodNum, METHOD_SEND};
+    use num_traits::ToPrimitive;
     use num_traits::Zero;
 
     use fil_actor_verifreg::{
@@ -257,10 +250,7 @@ mod clients {
     };
     use fil_actors_runtime::test_utils::*;
     use fil_actors_runtime::{DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR};
-
-    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use harness::*;
-    use num_traits::ToPrimitive;
     use util::*;
 
     use crate::*;
@@ -501,6 +491,8 @@ mod clients {
 }
 
 mod allocs_claims {
+    use std::str::FromStr;
+
     use cid::Cid;
     use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_shared::bigint::BigInt;
@@ -508,7 +500,6 @@ mod allocs_claims {
     use fvm_shared::piece::PaddedPieceSize;
     use fvm_shared::{ActorID, MethodNum};
     use num_traits::Zero;
-    use std::str::FromStr;
 
     use fil_actor_verifreg::{
         Actor, AllocationID, ClaimTerm, DataCap, ExtendClaimTermsParams, GetClaimsParams,
@@ -520,12 +511,11 @@ mod allocs_claims {
         MINIMUM_VERIFIED_ALLOCATION_TERM,
     };
     use fil_actors_runtime::test_utils::{
-        expect_abort_contains_message, ACCOUNT_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID,
+        expect_abort, expect_abort_contains_message, ACCOUNT_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID,
     };
     use fil_actors_runtime::FailCode;
     use harness::*;
 
-    use crate::util::total_claimed_space;
     use crate::*;
 
     const CLIENT1: ActorID = 101;
@@ -635,11 +625,13 @@ mod allocs_claims {
         let size = MINIMUM_VERIFIED_ALLOCATION_SIZE as u64;
         let alloc1 = make_alloc("1", CLIENT1, PROVIDER1, size);
         let alloc2 = make_alloc("2", CLIENT2, PROVIDER1, size); // Distinct client
-        let alloc3 = make_alloc("3", CLIENT1, PROVIDER2, size); // Distinct provider
+        let alloc3 = make_alloc("3", CLIENT1, PROVIDER1, size);
+        let alloc4 = make_alloc("4", CLIENT1, PROVIDER2, size); // Distinct provider
 
-        h.create_alloc(&rt, &alloc1).unwrap();
-        h.create_alloc(&rt, &alloc2).unwrap();
-        h.create_alloc(&rt, &alloc3).unwrap();
+        let id1 = h.create_alloc(&rt, &alloc1).unwrap();
+        let id2 = h.create_alloc(&rt, &alloc2).unwrap();
+        let id3 = h.create_alloc(&rt, &alloc3).unwrap();
+        let id4 = h.create_alloc(&rt, &alloc4).unwrap();
         h.check_state(&rt);
 
         let sector = 1000;
@@ -647,31 +639,29 @@ mod allocs_claims {
 
         let prior_state: State = rt.get_state();
         {
-            // Claim two for PROVIDER1
-            let reqs = vec![
-                make_claim_req(1, &alloc1, sector, expiry),
-                make_claim_req(2, &alloc2, sector, expiry),
-            ];
+            // Claim two for PROVIDER1 in one sector
+            let reqs = vec![make_claim_reqs(sector, expiry, &[(id1, &alloc1), (id2, &alloc2)])];
             let ret = h.claim_allocations(&rt, PROVIDER1, reqs, size * 2, false).unwrap();
 
-            assert_eq!(ret.claim_results.codes(), vec![ExitCode::OK, ExitCode::OK]);
-            assert_eq!(total_claimed_space(&ret), BigInt::from(2 * size));
-            assert_alloc_claimed(&rt, CLIENT1, PROVIDER1, 1, &alloc1, 0, sector);
-            assert_alloc_claimed(&rt, CLIENT2, PROVIDER1, 2, &alloc2, 0, sector);
+            assert_eq!(ret.sector_results.codes(), vec![ExitCode::OK]);
+            assert_eq!(ret.sector_claims[0].claimed_space, BigInt::from(2 * size));
+            assert_alloc_claimed(&rt, CLIENT1, PROVIDER1, id1, &alloc1, 0, sector);
+            assert_alloc_claimed(&rt, CLIENT2, PROVIDER1, id2, &alloc2, 0, sector);
             h.check_state(&rt);
         }
         {
-            // Can't find claim for wrong client
+            // Can't find claim for wrong client.
+            // Claim in another sector succeeds regardless.
             rt.replace_state(&prior_state);
             let mut reqs = vec![
-                make_claim_req(1, &alloc1, sector, expiry),
-                make_claim_req(2, &alloc2, sector, expiry),
+                make_claim_reqs(sector, expiry, &[(id1, &alloc1)]),
+                make_claim_reqs(sector, expiry, &[(id2, &alloc2)]),
             ];
-            reqs[1].client = CLIENT1;
+            reqs[1].claims[0].client = CLIENT1;
             let ret = h.claim_allocations(&rt, PROVIDER1, reqs, size, false).unwrap();
-            assert_eq!(ret.claim_results.codes(), vec![ExitCode::OK, ExitCode::USR_NOT_FOUND]);
-            assert_eq!(total_claimed_space(&ret), BigInt::from(size));
-            assert_alloc_claimed(&rt, CLIENT1, PROVIDER1, 1, &alloc1, 0, sector);
+            assert_eq!(ret.sector_results.codes(), vec![ExitCode::OK, ExitCode::USR_NOT_FOUND]);
+            assert_eq!(ret.sector_claims[0].claimed_space, BigInt::from(size));
+            assert_alloc_claimed(&rt, CLIENT1, PROVIDER1, id1, &alloc1, 0, sector);
             assert_allocation(&rt, CLIENT2, 2, &alloc2);
             h.check_state(&rt);
         }
@@ -679,57 +669,124 @@ mod allocs_claims {
             // Can't claim for other provider
             rt.replace_state(&prior_state);
             let reqs = vec![
-                make_claim_req(2, &alloc2, sector, expiry),
-                make_claim_req(3, &alloc3, sector, expiry), // Different provider
+                make_claim_reqs(sector, expiry, &[(id4, &alloc4)]), // Wrong provider
+            ];
+            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
+            assert_eq!(ret.sector_results.codes(), vec![ExitCode::USR_FORBIDDEN]);
+            assert_eq!(ret.sector_claims.len(), 0);
+            assert_allocation(&rt, CLIENT1, id4, &alloc4);
+            h.check_state(&rt);
+        }
+        {
+            // Can't claim same alloc twice in one sector.
+            rt.replace_state(&prior_state);
+            let reqs = vec![make_claim_reqs(sector, expiry, &[(id1, &alloc1), (id1, &alloc1)])];
+            expect_abort(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                h.claim_allocations(&rt, PROVIDER1, reqs, size, false),
+            );
+            rt.reset();
+
+            // Can only claim alloc once across multiple sectors.
+            let reqs = vec![
+                make_claim_reqs(sector, expiry, &[(id1, &alloc1)]),
+                make_claim_reqs(sector, expiry, &[(id1, &alloc1)]),
             ];
             let ret = h.claim_allocations(&rt, PROVIDER1, reqs, size, false).unwrap();
-            assert_eq!(ret.claim_results.codes(), vec![ExitCode::OK, ExitCode::USR_FORBIDDEN]);
-            assert_eq!(total_claimed_space(&ret), BigInt::from(size));
-            assert_alloc_claimed(&rt, CLIENT1, PROVIDER1, 2, &alloc2, 0, sector);
-            assert_allocation(&rt, CLIENT1, 3, &alloc3);
-            h.check_state(&rt);
+            assert_eq!(ret.sector_results.codes(), vec![ExitCode::OK, ExitCode::USR_NOT_FOUND]);
+            assert_eq!(ret.sector_claims[0].claimed_space, BigInt::from(size));
+            assert_alloc_claimed(&rt, CLIENT1, PROVIDER1, id1, &alloc1, 0, sector);
+            rt.reset();
         }
         {
             // Mismatched data / size
             rt.replace_state(&prior_state);
             let mut reqs = vec![
-                make_claim_req(1, &alloc1, sector, expiry),
-                make_claim_req(2, &alloc2, sector, expiry),
+                make_claim_reqs(sector, expiry, &[(id1, &alloc1)]),
+                make_claim_reqs(sector, expiry, &[(id2, &alloc2)]),
             ];
-            reqs[0].data =
+            reqs[0].claims[0].data =
                 Cid::from_str("bafyreibjo4xmgaevkgud7mbifn3dzp4v4lyaui4yvqp3f2bqwtxcjrdqg4")
                     .unwrap();
-            reqs[1].size = PaddedPieceSize(size + 1);
+            reqs[1].claims[0].size = PaddedPieceSize(size + 1);
             let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
             assert_eq!(
-                ret.claim_results.codes(),
+                ret.sector_results.codes(),
                 vec![ExitCode::USR_FORBIDDEN, ExitCode::USR_FORBIDDEN]
             );
-            assert_eq!(total_claimed_space(&ret), BigInt::zero());
+            assert_eq!(ret.sector_claims.len(), 0);
             h.check_state(&rt);
         }
         {
             // Expired allocation
             rt.replace_state(&prior_state);
-            let reqs = vec![make_claim_req(1, &alloc1, sector, expiry)];
+            let reqs = vec![make_claim_reqs(sector, expiry, &[(id1, &alloc1)])];
             rt.set_epoch(alloc1.expiration + 1);
             let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
-            assert_eq!(ret.claim_results.codes(), vec![ExitCode::USR_FORBIDDEN]);
-            assert_eq!(total_claimed_space(&ret), BigInt::zero());
+            assert_eq!(ret.sector_results.codes(), vec![ExitCode::USR_FORBIDDEN]);
+            assert_eq!(ret.sector_claims.len(), 0);
             h.check_state(&rt);
+            rt.set_epoch(0);
         }
         {
             // Sector expiration too soon
             rt.replace_state(&prior_state);
-            let reqs = vec![make_claim_req(1, &alloc1, sector, alloc1.term_min - 1)];
+            let reqs = vec![make_claim_reqs(sector, alloc1.term_min - 1, &[(id1, &alloc1)])];
             let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
-            assert_eq!(ret.claim_results.codes(), vec![ExitCode::USR_FORBIDDEN]);
+            assert_eq!(ret.sector_results.codes(), vec![ExitCode::USR_FORBIDDEN]);
+            assert_eq!(ret.sector_claims.len(), 0);
+
             // Sector expiration too late
-            let reqs = vec![make_claim_req(1, &alloc1, sector, alloc1.term_max + 1)];
+            let reqs = vec![make_claim_reqs(sector, alloc1.term_max + 1, &[(id1, &alloc1)])];
             let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
-            assert_eq!(ret.claim_results.codes(), vec![ExitCode::USR_FORBIDDEN]);
-            assert_eq!(total_claimed_space(&ret), BigInt::zero());
+            assert_eq!(ret.sector_results.codes(), vec![ExitCode::USR_FORBIDDEN]);
+            assert_eq!(ret.sector_claims.len(), 0);
             h.check_state(&rt);
+        }
+        {
+            // Without all-or-nothing, a failure aborts the sector but not other sectors
+            rt.replace_state(&prior_state);
+            let mut reqs = vec![
+                make_claim_reqs(sector, expiry, &[(id1, &alloc1), (id2, &alloc2)]),
+                make_claim_reqs(sector, expiry, &[(id3, &alloc3)]),
+            ];
+            reqs[0].claims[1].size = PaddedPieceSize(0);
+            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, size, false).unwrap();
+            assert_eq!(ret.sector_results.codes(), vec![ExitCode::USR_FORBIDDEN, ExitCode::OK]);
+            assert_eq!(ret.sector_claims[0].claimed_space, BigInt::from(size));
+            assert_allocation(&rt, CLIENT1, id1, &alloc1);
+            assert_allocation(&rt, CLIENT2, id2, &alloc2);
+            assert_alloc_claimed(&rt, CLIENT1, PROVIDER1, id3, &alloc3, 0, sector);
+        }
+        {
+            // Without all-or-nothing, every sector can fail but the method succeeds.
+            rt.replace_state(&prior_state);
+            let mut reqs = vec![
+                make_claim_reqs(sector, expiry, &[(id1, &alloc1), (id2, &alloc2)]),
+                make_claim_reqs(sector, expiry, &[(id3, &alloc3)]),
+            ];
+            reqs[0].claims[1].size = PaddedPieceSize(0);
+            reqs[1].claims[0].size = PaddedPieceSize(0);
+            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
+            assert_eq!(
+                ret.sector_results.codes(),
+                vec![ExitCode::USR_FORBIDDEN, ExitCode::USR_FORBIDDEN]
+            );
+            assert_eq!(ret.sector_claims.len(), 0);
+        }
+        {
+            // With all-or-nothing, a failure aborts everything
+            rt.replace_state(&prior_state);
+            let mut reqs = vec![
+                make_claim_reqs(sector, expiry, &[(id1, &alloc1), (id2, &alloc2)]),
+                make_claim_reqs(sector, expiry, &[(id3, &alloc3)]),
+            ];
+            reqs[0].claims[1].size = PaddedPieceSize(0);
+            expect_abort(
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                h.claim_allocations(&rt, PROVIDER1, reqs, 0, true),
+            );
+            rt.reset();
         }
     }
 
@@ -1060,6 +1117,7 @@ mod allocs_claims {
 mod datacap {
     use frc46_token::receiver::FRC46_TOKEN_TYPE;
     use fvm_actor_utils::receiver::UniversalReceiverParams;
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_shared::address::Address;
     use fvm_shared::econ::TokenAmount;
     use fvm_shared::error::ExitCode;
@@ -1075,7 +1133,6 @@ mod datacap {
     use fil_actors_runtime::{
         BatchReturn, DATACAP_TOKEN_ACTOR_ADDR, EPOCHS_IN_YEAR, STORAGE_MARKET_ACTOR_ADDR,
     };
-    use fvm_ipld_encoding::ipld_block::IpldBlock;
     use harness::*;
 
     use crate::*;
@@ -1117,6 +1174,18 @@ mod datacap {
             assert_allocation(&rt, CLIENT2, 3, &alloc_from_req(CLIENT2, &reqs[0]));
             let st: State = rt.get_state();
             assert_eq!(4, st.next_allocation_id);
+        }
+        {
+            // Allocations can be identical and will receive distinct IDs.
+            let reqs =
+                vec![make_alloc_req(&rt, PROVIDER1, SIZE), make_alloc_req(&rt, PROVIDER1, SIZE)];
+            assert_eq!(reqs[0], reqs[1]);
+            let payload = make_receiver_hook_token_payload(CLIENT1, reqs.clone(), vec![], SIZE * 2);
+            h.receive_tokens(&rt, payload, BatchReturn::ok(2), BATCH_EMPTY, vec![4, 5], 0).unwrap();
+
+            // Verify allocations in state.
+            assert_allocation(&rt, CLIENT1, 4, &alloc_from_req(CLIENT1, &reqs[0]));
+            assert_allocation(&rt, CLIENT1, 5, &alloc_from_req(CLIENT1, &reqs[1]));
         }
         h.check_state(&rt);
     }

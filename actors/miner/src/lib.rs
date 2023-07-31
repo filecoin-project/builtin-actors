@@ -5010,32 +5010,39 @@ fn batch_activate_deals_and_claim_allocations(
     for (activation_info, activate_res) in
         successful_activation_infos.iter().zip(&batch_activation_res.activations)
     {
-        let mut sector_claims = activate_res
+        let sector_claims = activate_res
             .verified_infos
             .iter()
-            .map(|info| ext::verifreg::SectorAllocationClaim {
+            .map(|info| ext::verifreg::AllocationClaim {
                 client: info.client,
                 allocation_id: info.allocation_id,
                 data: info.data,
                 size: info.size,
-                sector: activation_info.sector_number,
-                sector_expiry: activation_info.sector_expiry,
             })
             .collect();
-        verified_claims.append(&mut sector_claims);
+        verified_claims.push(ext::verifreg::SectorAllocationClaims {
+            sector: activation_info.sector_number,
+            expiry: activation_info.sector_expiry,
+            claims: sector_claims,
+        });
     }
 
-    let claim_res = match verified_claims.is_empty() {
+    let claim_res = match verified_claims.iter().all(|sector| sector.claims.is_empty()) {
+        // Short-circuit the call if there are no claims,
+        // but otherwise send a group for each sector (even if empty) to ease association of results.
         true => ext::verifreg::ClaimAllocationsReturn {
-            claim_results: BatchReturn::empty(),
-            claims: Vec::default(),
+            sector_results: BatchReturn::ok(verified_claims.len() as u32),
+            sector_claims: vec![
+                ext::verifreg::SectorClaimSummary { claimed_space: BigInt::zero() };
+                verified_claims.len()
+            ],
         },
         false => {
             let claim_raw = extract_send_result(rt.send_simple(
                 &VERIFIED_REGISTRY_ACTOR_ADDR,
                 ext::verifreg::CLAIM_ALLOCATIONS_METHOD,
                 IpldBlock::serialize_cbor(&ext::verifreg::ClaimAllocationsParams {
-                    allocations: verified_claims,
+                    sectors: verified_claims,
                     all_or_nothing: true,
                 })?,
                 TokenAmount::zero(),
@@ -5048,29 +5055,19 @@ fn batch_activate_deals_and_claim_allocations(
     };
 
     assert!(
-        claim_res.claim_results.all_ok() || claim_res.claim_results.success_count == 0,
+        claim_res.sector_results.all_ok() || claim_res.sector_results.success_count == 0,
         "batch return of claim allocations partially succeeded but request was all_or_nothing {:?}",
         claim_res
     );
 
-    let mut claims = claim_res.claims.into_iter();
     // reassociate the verified claims with corresponding DealActivation information
-    let activation_and_claim_results: Vec<ext::market::DealSpaces> = batch_activation_res
+    let activation_and_claim_results = batch_activation_res
         .activations
         .iter()
-        .map(|deal_activation| {
-            // each activation contributed as many claims as verified_info entries it had
-            let number_of_claims = deal_activation.verified_infos.len();
-            // we consume these claims from the iterator, then combine the claims into one
-            // value per DealActivation
-            let verified_deal_space = claims
-                .by_ref()
-                .take(number_of_claims)
-                .fold(BigInt::zero(), |acc, claim| acc + claim.claimed_space);
-            ext::market::DealSpaces {
-                verified_deal_space,
-                deal_space: deal_activation.nonverified_deal_space.clone(),
-            }
+        .zip(claim_res.sector_claims)
+        .map(|(sector_deals, sector_claim)| ext::market::DealSpaces {
+            verified_deal_space: sector_claim.claimed_space,
+            deal_space: sector_deals.nonverified_deal_space.clone(),
         })
         .collect();
 

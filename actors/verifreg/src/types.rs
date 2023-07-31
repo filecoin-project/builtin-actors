@@ -121,35 +121,43 @@ pub struct RemoveExpiredAllocationsReturn {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct SectorAllocationClaim {
+pub struct SectorAllocationClaims {
+    pub sector: SectorNumber,
+    pub expiry: ChainEpoch,
+    pub claims: Vec<AllocationClaim>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct AllocationClaim {
     pub client: ActorID,
     pub allocation_id: AllocationID,
     pub data: Cid,
     pub size: PaddedPieceSize,
-    pub sector: SectorNumber,
-    pub sector_expiry: ChainEpoch,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ClaimAllocationsParams {
-    pub allocations: Vec<SectorAllocationClaim>,
-    // Whether to abort entirely if any claim fails.
+    /// Allocations to claim, grouped by sector.
+    pub sectors: Vec<SectorAllocationClaims>,
+    /// Whether to abort entirely if any claim fails.
+    /// If false, a failed claim will cause other claims in the same sector group to also fail,
+    /// but allow other sectors to proceed.
     pub all_or_nothing: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize_tuple, Deserialize_tuple)]
 #[serde(transparent)]
-pub struct SectorAllocationClaimResult {
+pub struct SectorClaimSummary {
     #[serde(with = "bigint_ser")]
     pub claimed_space: BigInt,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ClaimAllocationsReturn {
-    // Success/failure indication for each claim.
-    pub claim_results: BatchReturn,
-    // The claimed space for each successful claim, in order.
-    pub claims: Vec<SectorAllocationClaimResult>,
+    /// Status of each sector grouping of claims.
+    pub sector_results: BatchReturn,
+    /// The claimed space for each successful sector group.
+    pub sector_claims: Vec<SectorClaimSummary>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
