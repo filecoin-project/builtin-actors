@@ -21,16 +21,17 @@ use fil_actors_runtime::{
     DealWeight, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use test_vm::expects::Expect;
-use test_vm::trace::ExpectInvocation;
 use test_vm::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
-    advance_by_deadline_to_index, advance_to_proving_deadline, apply_ok, bf_all, create_accounts,
-    create_miner, cron_tick, expect_invariants, get_state, invariant_failure_patterns,
-    market_add_balance, market_publish_deal, miner_precommit_sector, miner_prove_sector,
-    sector_deadline, submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
-    DynBlockstore,
+    advance_by_deadline_to_index, advance_to_proving_deadline, bf_all, create_accounts,
+    create_miner, cron_tick, expect_invariants, invariant_failure_patterns, market_add_balance,
+    market_publish_deal, miner_precommit_sector, miner_prove_sector, sector_deadline,
+    submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
 };
-use test_vm::{TestVM, VM};
+use test_vm::TestVM;
+use vm_api::trace::ExpectInvocation;
+use vm_api::util::{apply_ok, get_state, DynBlockstore};
+use vm_api::VM;
 
 #[test]
 fn extend_legacy_sector_with_deals() {

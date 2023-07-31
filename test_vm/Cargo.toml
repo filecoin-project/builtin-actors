@@ -54,6 +54,7 @@ serde = { workspace = true }
 thiserror = { workspace = true }
 libsecp256k1 = { workspace = true }
 fil_actors_evm_shared = { workspace = true }
+vm_api = { workspace = true }
 
 [dev-dependencies]
 cid = { workspace = true }

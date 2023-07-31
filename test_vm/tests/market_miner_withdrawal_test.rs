@@ -13,10 +13,11 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::RegisteredPoStProof;
 use fvm_shared::METHOD_SEND;
-use test_vm::util::{apply_code, apply_ok, create_accounts, create_miner};
-use test_vm::ActorState;
+use test_vm::util::{create_accounts, create_miner};
 use test_vm::TestVM;
-use test_vm::VM;
+use vm_api::util::apply_ok;
+use vm_api::ActorState;
+use vm_api::VM;
 
 #[cfg(test)]
 mod market_tests {
@@ -92,6 +93,8 @@ mod market_tests {
 
 #[cfg(test)]
 mod miner_tests {
+    use vm_api::util::apply_code;
+
     use super::*;
 
     #[test]

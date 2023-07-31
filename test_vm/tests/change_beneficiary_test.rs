@@ -8,10 +8,12 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::RegisteredSealProof;
 use test_vm::util::{
-    apply_code, assert_invariants, change_beneficiary, create_accounts, create_miner,
-    get_beneficiary, withdraw_balance,
+    assert_invariants, change_beneficiary, create_accounts, create_miner, get_beneficiary,
+    withdraw_balance,
 };
-use test_vm::{TestVM, VM};
+use test_vm::TestVM;
+use vm_api::util::apply_code;
+use vm_api::VM;
 
 #[test]
 fn change_beneficiary_success() {

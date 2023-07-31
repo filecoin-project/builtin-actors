@@ -9,8 +9,10 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
 use num_traits::Zero;
-use test_vm::util::{assert_invariants, check_invariants, get_state, pk_addrs_from};
-use test_vm::{actor, TestVM, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
+use test_vm::util::{assert_invariants, check_invariants};
+use test_vm::{TestVM, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR};
+use vm_api::util::{get_state, pk_addrs_from};
+use vm_api::{actor, VM};
 
 #[test]
 fn state_control() {

@@ -18,11 +18,11 @@ use integer_encoding::VarInt;
 use std::collections::HashSet;
 use std::iter::FromIterator;
 use test_vm::expects::Expect;
-use test_vm::trace::ExpectInvocation;
-use test_vm::util::{
-    apply_code, apply_ok, assert_invariants, create_accounts, get_state, DynBlockstore,
-};
-use test_vm::{TestVM, VM};
+use test_vm::util::{assert_invariants, create_accounts};
+use test_vm::TestVM;
+use vm_api::trace::ExpectInvocation;
+use vm_api::util::{apply_code, apply_ok, get_state, DynBlockstore};
+use vm_api::VM;
 
 #[test]
 fn proposal_hash() {

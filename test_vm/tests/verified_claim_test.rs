@@ -28,15 +28,16 @@ use fil_actors_runtime::{
 
 use test_vm::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
-    advance_by_deadline_to_index, advance_to_proving_deadline, apply_ok, assert_invariants,
-    create_accounts, create_miner, cron_tick, datacap_extend_claim, datacap_get_balance,
-    expect_invariants, get_state, invariant_failure_patterns, market_add_balance,
-    market_publish_deal, miner_extend_sector_expiration2, miner_precommit_sector,
-    miner_prove_sector, sector_deadline, submit_windowed_post, verifreg_add_client,
-    verifreg_add_verifier, verifreg_extend_claim_terms, verifreg_remove_expired_allocations,
-    DynBlockstore,
+    advance_by_deadline_to_index, advance_to_proving_deadline, assert_invariants, create_accounts,
+    create_miner, cron_tick, datacap_extend_claim, datacap_get_balance, expect_invariants,
+    invariant_failure_patterns, market_add_balance, market_publish_deal,
+    miner_extend_sector_expiration2, miner_precommit_sector, miner_prove_sector, sector_deadline,
+    submit_windowed_post, verifreg_add_client, verifreg_add_verifier, verifreg_extend_claim_terms,
+    verifreg_remove_expired_allocations,
 };
-use test_vm::{TestVM, VM};
+use test_vm::TestVM;
+use vm_api::util::{apply_ok, get_state, DynBlockstore};
+use vm_api::VM;
 
 // Tests a scenario involving a verified deal from the built-in market, with associated
 // allocation and claim.

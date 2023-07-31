@@ -6,10 +6,12 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::RegisteredSealProof;
 use test_vm::util::{
-    apply_code, assert_invariants, change_beneficiary, change_owner_address, create_accounts,
-    create_miner, get_beneficiary, miner_info,
+    assert_invariants, change_beneficiary, change_owner_address, create_accounts, create_miner,
+    get_beneficiary, miner_info,
 };
-use test_vm::{TestVM, VM};
+use test_vm::TestVM;
+use vm_api::util::apply_code;
+use vm_api::VM;
 
 #[test]
 fn change_owner_success() {

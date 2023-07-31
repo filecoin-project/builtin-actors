@@ -22,14 +22,15 @@ use fil_actors_runtime::{
     CRON_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use test_vm::expects::Expect;
-use test_vm::trace::ExpectInvocation;
 use test_vm::util::{
-    advance_by_deadline_to_epoch, advance_to_proving_deadline, apply_code, apply_ok,
-    assert_invariants, create_accounts, create_miner, expect_invariants, get_network_stats,
-    get_state, invariant_failure_patterns, miner_balance, precommit_sectors, submit_windowed_post,
-    DynBlockstore,
+    advance_by_deadline_to_epoch, advance_to_proving_deadline, assert_invariants, create_accounts,
+    create_miner, expect_invariants, get_network_stats, invariant_failure_patterns, miner_balance,
+    precommit_sectors, submit_windowed_post,
 };
-use test_vm::{TestVM, TEST_VM_RAND_ARRAY, VM};
+use test_vm::{TestVM, TEST_VM_RAND_ARRAY};
+use vm_api::trace::ExpectInvocation;
+use vm_api::util::{apply_code, apply_ok, get_state, DynBlockstore};
+use vm_api::VM;
 
 struct SectorInfo {
     number: SectorNumber,

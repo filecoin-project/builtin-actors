@@ -15,11 +15,13 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
 use test_case::test_case;
 use test_vm::util::{
-    advance_to_proving_deadline, apply_ok, create_accounts, create_miner, expect_invariants,
-    get_network_stats, get_state, invariant_failure_patterns, miner_balance, precommit_sectors_v2,
-    prove_commit_sectors, submit_windowed_post, DynBlockstore,
+    advance_to_proving_deadline, create_accounts, create_miner, expect_invariants,
+    get_network_stats, invariant_failure_patterns, miner_balance, precommit_sectors_v2,
+    prove_commit_sectors, submit_windowed_post,
 };
-use test_vm::{TestVM, VM};
+use test_vm::TestVM;
+use vm_api::util::{apply_ok, get_state, DynBlockstore};
+use vm_api::VM;
 
 struct Onboarding {
     epoch_delay: i64,                   // epochs to advance since the prior action

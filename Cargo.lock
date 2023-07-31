@@ -4093,6 +4093,7 @@ dependencies = [
  "serde",
  "test-case",
  "thiserror",
+ "vm_api",
 ]
 
 [[package]]
@@ -4350,6 +4351,22 @@ name = "version_check"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
+
+[[package]]
+name = "vm_api"
+version = "1.0.0"
+dependencies = [
+ "anyhow",
+ "cid 0.10.1",
+ "fil_actors_runtime",
+ "fvm_ipld_blockstore 0.2.0",
+ "fvm_ipld_encoding 0.4.0",
+ "fvm_ipld_hamt",
+ "fvm_shared",
+ "rand",
+ "rand_chacha",
+ "serde",
+]
 
 [[package]]
 name = "waker-fn"

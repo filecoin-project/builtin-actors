@@ -6,8 +6,10 @@ use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 
-use test_vm::util::{apply_code, apply_ok, create_accounts, generate_deal_proposal};
-use test_vm::{TestVM, VM};
+use test_vm::util::{create_accounts, generate_deal_proposal};
+use test_vm::TestVM;
+use vm_api::util::{apply_code, apply_ok};
+use vm_api::VM;
 
 #[test]
 fn account_authenticate_message() {

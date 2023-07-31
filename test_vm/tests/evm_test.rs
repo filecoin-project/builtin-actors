@@ -15,12 +15,9 @@ use fvm_shared::{address::Address, econ::TokenAmount};
 use fvm_shared::{ActorID, METHOD_SEND};
 use num_traits::Zero;
 use serde::{Deserialize, Serialize};
-use test_vm::util::serialize_ok;
-use test_vm::VM;
-use test_vm::{
-    util::{apply_ok, create_accounts},
-    TestVM, TEST_FAUCET_ADDR,
-};
+use test_vm::{util::create_accounts, TestVM, TEST_FAUCET_ADDR};
+use vm_api::util::{apply_ok, serialize_ok};
+use vm_api::VM;
 
 // Generate a statically typed interface for the contracts.
 abigen!(Recursive, "../actors/evm/tests/contracts/Recursive.abi");

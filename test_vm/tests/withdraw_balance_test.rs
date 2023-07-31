@@ -4,10 +4,10 @@ use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::RegisteredSealProof;
-use test_vm::util::{
-    apply_code, change_beneficiary, create_accounts, create_miner, withdraw_balance,
-};
-use test_vm::{TestVM, VM};
+use test_vm::util::{change_beneficiary, create_accounts, create_miner, withdraw_balance};
+use test_vm::TestVM;
+use vm_api::util::apply_code;
+use vm_api::VM;
 
 #[test]
 fn withdraw_balance_success() {

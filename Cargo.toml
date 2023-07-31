@@ -56,6 +56,7 @@ members = [
      "state",
      "runtime",
      "test_vm",
+     "vm_api"
 ]
 
 [workspace.dependencies]
@@ -140,6 +141,7 @@ fil_actor_verifreg = { version = "12.0.0", path = "actors/verifreg" }
 fil_actors_evm_shared = { version = "12.0.0", path = "actors/evm/shared" }
 fil_actors_runtime = { version = "12.0.0", path = "runtime" }
 fil_builtin_actors_state = { version = "12.0.0", path = "state"}
+vm_api = { version = "1.0.0", path = "vm_api" }
 
 [patch.crates-io]
 #fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
