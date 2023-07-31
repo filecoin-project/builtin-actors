@@ -620,7 +620,7 @@ where
 }
 
 pub fn get_state<T: DeserializeOwned>(v: &dyn VM, a: &Address) -> Option<T> {
-    let cid = v.actor_root(a).unwrap();
+    let cid = v.actor(a).unwrap().state;
     v.blockstore().get(&cid).unwrap().map(|slice| fvm_ipld_encoding::from_slice(&slice).unwrap())
 }
 
@@ -783,22 +783,22 @@ pub fn change_beneficiary(
     );
 }
 
-pub fn check_invariants(vm: &dyn VM) -> anyhow::Result<MessageAccumulator> {
+pub fn check_invariants(vm: &dyn VM, policy: &Policy) -> anyhow::Result<MessageAccumulator> {
     check_state_invariants(
         &vm.actor_manifest(),
-        &vm.policy(),
+        policy,
         Tree::load(&DynBlockstore::wrap(vm.blockstore()), &vm.state_root()).unwrap(),
-        &vm.total_fil(),
+        &vm.circulating_supply(),
         vm.epoch() - 1,
     )
 }
 
-pub fn assert_invariants(vm: &dyn VM) {
-    check_invariants(vm).unwrap().assert_empty()
+pub fn assert_invariants(v: &dyn VM, policy: &Policy) {
+    check_invariants(v, policy).unwrap().assert_empty()
 }
 
-pub fn expect_invariants(vm: &dyn VM, expected_patterns: &[Regex]) {
-    check_invariants(vm).unwrap().assert_expected(expected_patterns)
+pub fn expect_invariants(v: &dyn VM, policy: &Policy, expected_patterns: &[Regex]) {
+    check_invariants(v, policy).unwrap().assert_expected(expected_patterns)
 }
 
 pub fn get_network_stats(vm: &dyn VM) -> NetworkStats {

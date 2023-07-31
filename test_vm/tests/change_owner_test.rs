@@ -1,4 +1,5 @@
 use fil_actor_miner::{ChangeBeneficiaryParams, Method as MinerMethod};
+use fil_actors_runtime::runtime::Policy;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
@@ -48,7 +49,7 @@ fn change_owner_success_test(v: &dyn VM) {
     assert_eq!(new_owner, minfo.owner);
     assert_eq!(new_owner, minfo.beneficiary);
 
-    assert_invariants(v)
+    assert_invariants(v, &Policy::default())
 }
 
 #[test]
@@ -94,7 +95,7 @@ fn keep_beneficiary_when_owner_changed_test(v: &dyn VM) {
     assert_eq!(new_owner, minfo.owner);
     assert_eq!(beneficiary, minfo.beneficiary);
 
-    assert_invariants(v)
+    assert_invariants(v, &Policy::default())
 }
 
 #[test]
@@ -171,5 +172,5 @@ fn change_owner_fail_test(v: &dyn VM) {
     assert_eq!(addr, minfo.owner);
     assert_eq!(addr, minfo.beneficiary);
 
-    assert_invariants(v)
+    assert_invariants(v, &Policy::default())
 }

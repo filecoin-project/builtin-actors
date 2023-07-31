@@ -352,5 +352,9 @@ fn terminate_sectors_test(v: &dyn VM) {
     assert!(TokenAmount::from_whole(58) < value_withdrawn);
     assert!(TokenAmount::from_whole(59) > value_withdrawn);
 
-    expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
+    expect_invariants(
+        v,
+        &Policy::default(),
+        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+    );
 }

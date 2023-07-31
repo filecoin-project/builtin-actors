@@ -14,7 +14,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::sector::RegisteredPoStProof;
 use fvm_shared::METHOD_SEND;
 use test_vm::util::{apply_code, apply_ok, create_accounts, create_miner};
-use test_vm::Actor;
+use test_vm::ActorState;
 use test_vm::TestVM;
 use test_vm::VM;
 
@@ -254,7 +254,7 @@ fn assert_add_collateral_and_withdraw(
     assert_eq!(caller_initial_balance, c.balance);
 }
 
-fn require_actor(v: &dyn VM, addr: Address) -> Actor {
+fn require_actor(v: &dyn VM, addr: Address) -> ActorState {
     v.actor(&addr).unwrap()
 }
 

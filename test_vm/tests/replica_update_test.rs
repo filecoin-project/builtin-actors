@@ -48,7 +48,10 @@ use test_vm::TestVM;
 #[test_case(false; "v1")]
 #[test_case(true; "v2")]
 fn replica_update_simple_path_success(v2: bool) {
-    assert_invariants(&create_miner_and_upgrade_sector(&MemoryBlockstore::new(), v2).0);
+    assert_invariants(
+        &create_miner_and_upgrade_sector(&MemoryBlockstore::new(), v2).0,
+        &Policy::default(),
+    );
 }
 
 // Tests a successful upgrade, followed by the sector going faulty and recovering
@@ -126,7 +129,7 @@ fn replica_update_full_path_success_test(
     assert!(!check_sector_faulty(v, &miner_id, deadline_index, partition_index, sector_number));
     assert_eq!(miner_power(v, &miner_id).raw, BigInt::from(sector_size as i64));
 
-    assert_invariants(v)
+    assert_invariants(v, &Policy::default())
 }
 
 #[test_case(false; "v1")]
@@ -200,7 +203,7 @@ fn upgrade_and_miss_post_test(
     assert!(!check_sector_faulty(v, &miner_id, deadline_index, partition_index, sector_number));
     assert_eq!(miner_power(v, &miner_id).raw, BigInt::from(sector_size as i64));
 
-    assert_invariants(v)
+    assert_invariants(v, &Policy::default())
 }
 
 #[test]
@@ -343,7 +346,7 @@ fn prove_replica_update_multi_dline_test(v: &dyn VM) {
     assert_eq!(old_sector_commr_p2, new_sector_info_p2.sector_key_cid.unwrap());
     assert_eq!(new_sealed_cid2, new_sector_info_p2.sealed_cid);
 
-    assert_invariants(v);
+    assert_invariants(v, &Policy::default());
 }
 
 // ---- Failure cases ----
@@ -401,7 +404,7 @@ fn immutable_deadline_failure_test(v: &dyn VM) {
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 
-    assert_invariants(v)
+    assert_invariants(v, &Policy::default())
 }
 
 #[test]
@@ -460,7 +463,11 @@ fn unhealthy_sector_failure_test(v: &dyn VM) {
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 
-    expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
+    expect_invariants(
+        v,
+        &Policy::default(),
+        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+    );
 }
 
 #[test]
@@ -530,7 +537,7 @@ fn terminated_sector_failure_test(v: &dyn VM) {
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 
-    assert_invariants(v)
+    assert_invariants(v, &Policy::default())
 }
 
 #[test]
@@ -588,7 +595,7 @@ fn bad_batch_size_failure_test(v: &dyn VM) {
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 
-    assert_invariants(v)
+    assert_invariants(v, &Policy::default())
 }
 
 #[test]
@@ -617,7 +624,7 @@ fn nodispute_after_upgrade_test(
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 
-    assert_invariants(v)
+    assert_invariants(v, &Policy::default())
 }
 
 #[test]
@@ -662,7 +669,7 @@ fn upgrade_bad_post_dispute_test(
         Some(dispute_params),
     );
 
-    assert_invariants(v)
+    assert_invariants(v, &Policy::default())
 }
 
 #[test]
@@ -744,7 +751,7 @@ fn bad_post_upgrade_dispute_test(v: &dyn VM) {
         Some(dispute_params),
     );
 
-    assert_invariants(v)
+    assert_invariants(v, &Policy::default())
 }
 
 // Tests that an active CC sector can be correctly upgraded, and then the sector can be terminated
@@ -803,7 +810,7 @@ fn terminate_after_upgrade_test(
     assert!(network_stats.total_qa_bytes_committed.is_zero());
     assert!(network_stats.total_pledge_collateral.is_zero());
 
-    assert_invariants(v);
+    assert_invariants(v, &Policy::default());
 }
 
 // Tests that an active CC sector can be correctly upgraded, and then the sector can be extended
@@ -871,7 +878,7 @@ fn extend_after_upgrade_test(
         final_sector_info.expiration - extension_epoch,
     );
 
-    assert_invariants(v)
+    assert_invariants(v, &Policy::default())
 }
 
 #[test]
@@ -934,7 +941,7 @@ fn wrong_deadline_index_failure_test(v: &dyn VM) {
     let new_sector_info = sector_info(v, &maddr, sector_number);
     assert_eq!(old_sector_info, new_sector_info);
 
-    assert_invariants(v)
+    assert_invariants(v, &Policy::default())
 }
 
 #[test]
@@ -997,7 +1004,7 @@ fn wrong_partition_index_failure_test(v: &dyn VM) {
     let new_sector_info = sector_info(v, &maddr, sector_number);
     assert_eq!(old_sector_info, new_sector_info);
 
-    assert_invariants(v)
+    assert_invariants(v, &Policy::default())
 }
 
 #[test]
@@ -1127,7 +1134,7 @@ fn deal_included_in_multiple_sectors_failure_test(v: &dyn VM) {
     assert!(new_sector_info_p2.deal_ids.len().is_zero());
     assert_ne!(new_sealed_cid2, new_sector_info_p2.sealed_cid);
 
-    assert_invariants(v)
+    assert_invariants(v, &Policy::default())
 }
 
 #[test]

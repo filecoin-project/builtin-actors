@@ -333,7 +333,11 @@ fn extend_legacy_sector_with_deals_inner<BS: Blockstore>(
     // 1/2 * 2/3 -> 1/3
     assert_eq!(initial_verified_deal_weight / 3, sector_info.verified_deal_weight);
 
-    expect_invariants(v, &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()]);
+    expect_invariants(
+        v,
+        &Policy::default(),
+        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+    );
 }
 
 #[test]
