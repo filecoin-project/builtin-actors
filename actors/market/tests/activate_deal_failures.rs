@@ -33,6 +33,7 @@ fn fail_when_caller_is_not_the_provider_of_the_deal() {
         &rt,
         PROVIDER_ADDR,
         vec![SectorDeals {
+            sector_number: 1,
             sector_expiry,
             sector_type: RegisteredSealProof::StackedDRG8MiBV1,
             deal_ids: vec![deal_id],
@@ -55,6 +56,7 @@ fn fail_when_caller_is_not_a_storage_miner_actor() {
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, PROVIDER_ADDR);
 
     let sector_activation = SectorDeals {
+        sector_number: 1,
         deal_ids: vec![],
         sector_expiry: 0,
         sector_type: RegisteredSealProof::StackedDRG8MiBV1,
@@ -81,6 +83,7 @@ fn fail_when_deal_has_not_been_published_before() {
         &rt,
         PROVIDER_ADDR,
         vec![SectorDeals {
+            sector_number: 1,
             sector_type: RegisteredSealProof::StackedDRG8MiBV1,
             sector_expiry: EPOCHS_IN_DAY,
             deal_ids: vec![DealID::from(42u32)],
@@ -110,12 +113,14 @@ fn fail_when_deal_has_already_been_activated() {
         start_epoch,
         end_epoch,
     );
-    activate_deals(&rt, sector_expiry, PROVIDER_ADDR, 0, &[deal_id]);
+    let sector_number = 7;
+    activate_deals(&rt, sector_expiry, PROVIDER_ADDR, 0, sector_number, &[deal_id]);
 
     let res = batch_activate_deals_raw(
         &rt,
         PROVIDER_ADDR,
         vec![SectorDeals {
+            sector_number: sector_number + 1,
             sector_type: RegisteredSealProof::StackedDRG8MiBV1,
             sector_expiry,
             deal_ids: vec![deal_id],
@@ -161,11 +166,12 @@ fn fail_when_deal_has_already_been_expired() {
 
     cron_tick(&rt);
 
-    assert_deal_deleted(&rt, deal_id, deal_proposal);
+    assert_deal_deleted(&rt, deal_id, deal_proposal, 0);
 
     let mut st: State = rt.get_state::<State>();
     st.next_id = deal_id + 1;
 
-    let res = activate_deals(&rt, sector_expiry, PROVIDER_ADDR, 0, &[deal_id]);
+    let sector_number = 7;
+    let res = activate_deals(&rt, sector_expiry, PROVIDER_ADDR, 0, sector_number, &[deal_id]);
     assert_eq!(res.activation_results.codes(), vec![EX_DEAL_EXPIRED])
 }

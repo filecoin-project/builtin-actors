@@ -275,7 +275,7 @@ fn terminate_sectors_test(v: &dyn VM) {
             Expect::power_current_total(miner_id_addr),
             Expect::burn(miner_id_addr, None),
             Expect::power_update_pledge(miner_id_addr, None),
-            Expect::market_sectors_terminate(miner_id_addr, epoch, deal_ids.clone()),
+            Expect::market_sectors_terminate(miner_id_addr, epoch, vec![sector_number]),
             Expect::power_update_claim(miner_id_addr, sector_power.neg()),
         ]),
         ..Default::default()

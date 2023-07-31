@@ -10,6 +10,7 @@ use fil_actors_runtime::{
     BURNT_FUNDS_ACTOR_ADDR, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     SYSTEM_ACTOR_ADDR,
 };
+use fvm_ipld_bitfield::BitField;
 use fvm_shared::{econ::TokenAmount, error::ExitCode, METHOD_SEND};
 
 mod util;
@@ -126,7 +127,7 @@ fn owner_cannot_terminate_if_market_cron_fails() {
 
     let deal_ids = vec![10];
     let sector_info =
-        h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![deal_ids.clone()], true);
+        h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![deal_ids], true);
 
     assert_eq!(sector_info.len(), 1);
 
@@ -161,12 +162,13 @@ fn owner_cannot_terminate_if_market_cron_fails() {
         ExitCode::OK,
     );
 
+    let sectors_bf = BitField::try_from_bits([sector.sector_number]).unwrap();
     rt.expect_send_simple(
         STORAGE_MARKET_ACTOR_ADDR,
         ON_MINER_SECTORS_TERMINATE_METHOD,
         IpldBlock::serialize_cbor(&OnMinerSectorsTerminateParams {
             epoch: *rt.epoch.borrow(),
-            deal_ids,
+            sectors: sectors_bf,
         })
         .unwrap(),
         TokenAmount::zero(),

@@ -1,13 +1,14 @@
 use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
 use frc46_token::token::types::BurnParams;
 use fvm_actor_utils::receiver::UniversalReceiverParams;
+use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::sector::RegisteredSealProof;
+use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
 use fvm_shared::{ActorID, METHOD_SEND};
 use num_traits::Zero;
 
@@ -41,11 +42,17 @@ impl Expect {
     pub fn market_activate_deals(
         from: Address,
         deals: Vec<DealID>,
+        sector_number: SectorNumber,
         sector_expiry: ChainEpoch,
         sector_type: RegisteredSealProof,
     ) -> ExpectInvocation {
         let params = IpldBlock::serialize_cbor(&BatchActivateDealsParams {
-            sectors: vec![SectorDeals { deal_ids: deals, sector_expiry, sector_type }],
+            sectors: vec![SectorDeals {
+                sector_number,
+                deal_ids: deals,
+                sector_expiry,
+                sector_type,
+            }],
         })
         .unwrap();
         ExpectInvocation {
@@ -61,10 +68,12 @@ impl Expect {
     pub fn market_sectors_terminate(
         from: Address,
         epoch: ChainEpoch,
-        deal_ids: Vec<DealID>,
+        sectors: Vec<SectorNumber>,
     ) -> ExpectInvocation {
+        let bf = BitField::try_from_bits(sectors).unwrap();
         let params =
-            IpldBlock::serialize_cbor(&OnMinerSectorsTerminateParams { epoch, deal_ids }).unwrap();
+            IpldBlock::serialize_cbor(&OnMinerSectorsTerminateParams { epoch, sectors: bf })
+                .unwrap();
         ExpectInvocation {
             from,
             to: STORAGE_MARKET_ACTOR_ADDR,

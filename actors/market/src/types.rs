@@ -17,7 +17,7 @@ use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::ActorID;
 
 use crate::Label;
-use fvm_shared::sector::RegisteredSealProof;
+use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
 
 use super::deal::{ClientDealProposal, DealProposal, DealState};
 
@@ -54,10 +54,10 @@ pub struct GetBalanceReturn {
     pub locked: TokenAmount,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, PartialEq)] // Add Eq when BitField does
 pub struct OnMinerSectorsTerminateParams {
     pub epoch: ChainEpoch,
-    pub deal_ids: Vec<DealID>,
+    pub sectors: BitField,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
@@ -79,6 +79,7 @@ pub struct VerifyDealsForActivationParams {
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 pub struct SectorDeals {
+    pub sector_number: SectorNumber,
     pub sector_type: RegisteredSealProof,
     pub sector_expiry: ChainEpoch,
     pub deal_ids: Vec<DealID>,

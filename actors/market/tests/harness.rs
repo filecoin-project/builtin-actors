@@ -1,8 +1,11 @@
 #![allow(dead_code)]
 
 use cid::Cid;
-use fil_actor_market::{BatchActivateDealsParams, BatchActivateDealsResult};
+use fil_actor_market::{
+    sector_number_key, BatchActivateDealsParams, BatchActivateDealsResult, SectorDealIDs,
+};
 use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
+use fvm_ipld_bitfield::BitField;
 use num_traits::{FromPrimitive, Zero};
 use regex::Regex;
 use std::cmp::min;
@@ -29,7 +32,7 @@ use fil_actors_runtime::{
     network::EPOCHS_IN_DAY,
     runtime::{builtins::Type, Policy, Runtime},
     test_utils::*,
-    ActorError, BatchReturn, SetMultimap, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR,
+    ActorError, BatchReturn, Map, SetMultimap, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR,
     DATACAP_TOKEN_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
     STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
@@ -41,7 +44,7 @@ use fvm_shared::crypto::signature::Signature;
 use fvm_shared::deal::DealID;
 use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
 use fvm_shared::reward::ThisEpochRewardReturn;
-use fvm_shared::sector::{RegisteredSealProof, StoragePower};
+use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::sys::SendFlags;
 use fvm_shared::{
@@ -317,6 +320,7 @@ pub fn activate_deals(
     sector_expiry: ChainEpoch,
     provider: Address,
     current_epoch: ChainEpoch,
+    sector_number: SectorNumber,
     deal_ids: &[DealID],
 ) -> BatchActivateDealsResult {
     rt.set_epoch(current_epoch);
@@ -325,6 +329,7 @@ pub fn activate_deals(
         rt,
         provider,
         vec![SectorDeals {
+            sector_number,
             deal_ids: deal_ids.into(),
             sector_expiry,
             sector_type: RegisteredSealProof::StackedDRG8MiBV1,
@@ -351,11 +356,12 @@ pub fn activate_deals(
 pub fn batch_activate_deals(
     rt: &MockRuntime,
     provider: Address,
-    sectors: &[(ChainEpoch, Vec<DealID>)],
+    sectors: &[(SectorNumber, ChainEpoch, Vec<DealID>)],
 ) -> BatchActivateDealsResult {
     let sectors_deals: Vec<SectorDeals> = sectors
         .iter()
-        .map(|(sector_expiry, deal_ids)| SectorDeals {
+        .map(|(sector_number, sector_expiry, deal_ids)| SectorDeals {
+            sector_number: *sector_number,
             deal_ids: deal_ids.clone(),
             sector_expiry: *sector_expiry,
             sector_type: RegisteredSealProof::StackedDRG8MiBV1,
@@ -412,6 +418,31 @@ pub fn get_deal_state(rt: &MockRuntime, deal_id: DealID) -> DealState {
     let states = DealMetaArray::load(&st.states, &rt.store).unwrap();
     let s = states.get(deal_id).unwrap();
     *s.unwrap()
+}
+
+// Returns the deal IDs associated with a provider address and sector from state
+pub fn get_sector_deal_ids(
+    rt: &MockRuntime,
+    provider: &Address,
+    sector_number: SectorNumber,
+) -> Vec<DealID> {
+    let st: State = rt.get_state();
+    let provider_sectors =
+        Map::load_with_bit_width(&st.provider_sectors, &rt.store, HAMT_BIT_WIDTH).unwrap();
+    let sectors_root: Option<&Cid> = provider_sectors.get(&provider.to_bytes()).unwrap();
+    if let Some(sectors_root) = sectors_root {
+        let sector_deals =
+            Map::load_with_bit_width(sectors_root, &rt.store, HAMT_BIT_WIDTH).unwrap();
+        let deals: Option<&SectorDealIDs> =
+            sector_deals.get(&sector_number_key(sector_number)).unwrap();
+        if let Some(deals) = deals {
+            deals.deals.clone()
+        } else {
+            vec![]
+        }
+    } else {
+        vec![]
+    }
 }
 
 pub fn update_last_updated(rt: &MockRuntime, deal_id: DealID, new_last_updated: ChainEpoch) {
@@ -844,10 +875,14 @@ pub fn assert_deals_not_terminated(rt: &MockRuntime, deal_ids: &[DealID]) {
     }
 }
 
-pub fn assert_deal_deleted(rt: &MockRuntime, deal_id: DealID, p: DealProposal) {
+pub fn assert_deal_deleted(
+    rt: &MockRuntime,
+    deal_id: DealID,
+    p: DealProposal,
+    sector_number: SectorNumber,
+) {
     use cid::multihash::Code;
     use cid::multihash::MultihashDigest;
-    use fil_actors_runtime::Map;
     use fvm_ipld_hamt::BytesKey;
 
     let st: State = rt.get_state();
@@ -872,6 +907,10 @@ pub fn assert_deal_deleted(rt: &MockRuntime, deal_id: DealID, p: DealProposal) {
         >(&st.pending_proposals, &*rt.store, PROPOSALS_AMT_BITWIDTH)
         .unwrap();
     assert!(!pending_deals.contains_key(&BytesKey(p_cid.to_bytes())).unwrap());
+
+    // Check deal is no longer associated with sector
+    let sector_deals = get_sector_deal_ids(rt, &p.provider, sector_number);
+    assert!(!sector_deals.contains(&deal_id));
 }
 
 pub fn assert_deal_failure<F>(add_funds: bool, post_setup: F, exit_code: ExitCode, sig_valid: bool)
@@ -954,6 +993,7 @@ pub fn publish_and_activate_deal(
     rt: &MockRuntime,
     client: Address,
     addrs: &MinerAddresses,
+    sector_number: SectorNumber,
     start_epoch: ChainEpoch,
     end_epoch: ChainEpoch,
     current_epoch: ChainEpoch,
@@ -962,7 +1002,7 @@ pub fn publish_and_activate_deal(
     let deal = generate_deal_and_add_funds(rt, client, addrs, start_epoch, end_epoch);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.worker);
     let deal_ids = publish_deals(rt, addrs, &[deal], TokenAmount::zero(), NO_ALLOCATION_ID); // unverified deal
-    activate_deals(rt, sector_expiry, addrs.provider, current_epoch, &deal_ids);
+    activate_deals(rt, sector_expiry, addrs.provider, current_epoch, sector_number, &deal_ids);
     deal_ids[0]
 }
 
@@ -1117,8 +1157,8 @@ pub fn generate_deal_proposal(
     )
 }
 
-pub fn terminate_deals(rt: &MockRuntime, miner_addr: Address, deal_ids: &[DealID]) {
-    let ret = terminate_deals_raw(rt, miner_addr, deal_ids).unwrap();
+pub fn terminate_deals(rt: &MockRuntime, miner_addr: Address, sectors: &[SectorNumber]) {
+    let ret = terminate_deals_raw(rt, miner_addr, sectors).unwrap();
     assert!(ret.is_none());
     rt.verify();
 }
@@ -1126,13 +1166,13 @@ pub fn terminate_deals(rt: &MockRuntime, miner_addr: Address, deal_ids: &[DealID
 pub fn terminate_deals_raw(
     rt: &MockRuntime,
     miner_addr: Address,
-    deal_ids: &[DealID],
+    sector_numbers: &[SectorNumber],
 ) -> Result<Option<IpldBlock>, ActorError> {
     rt.set_caller(*MINER_ACTOR_CODE_ID, miner_addr);
     rt.expect_validate_caller_type(vec![Type::Miner]);
 
-    let params =
-        OnMinerSectorsTerminateParams { epoch: *rt.epoch.borrow(), deal_ids: deal_ids.to_vec() };
+    let bf = BitField::try_from_bits(sector_numbers.iter().copied()).unwrap();
+    let params = OnMinerSectorsTerminateParams { epoch: *rt.epoch.borrow(), sectors: bf };
 
     rt.call::<MarketActor>(
         Method::OnMinerSectorsTerminate as u64,

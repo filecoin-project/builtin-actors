@@ -1215,6 +1215,7 @@ fn replica_update_verified_deal_test(v: &dyn VM) {
             Expect::market_activate_deals(
                 maddr,
                 deal_ids.clone(),
+                old_sector_info.sector_number,
                 old_sector_info.expiration,
                 old_sector_info.seal_proof,
             ),
@@ -1227,6 +1228,7 @@ fn replica_update_verified_deal_test(v: &dyn VM) {
             Expect::market_verify_deals(
                 maddr,
                 vec![SectorDeals {
+                    sector_number: old_sector_info.sector_number,
                     sector_type: seal_proof,
                     sector_expiry: old_sector_info.expiration,
                     deal_ids: deal_ids.clone(),

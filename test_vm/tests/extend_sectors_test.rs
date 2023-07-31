@@ -467,6 +467,7 @@ fn extend_updated_sector_with_claim() {
             Expect::market_activate_deals(
                 miner_id,
                 deal_ids.clone(),
+                initial_sector_info.sector_number,
                 initial_sector_info.expiration,
                 initial_sector_info.seal_proof,
             ),
@@ -479,6 +480,7 @@ fn extend_updated_sector_with_claim() {
             Expect::market_verify_deals(
                 miner_id,
                 vec![SectorDeals {
+                    sector_number: initial_sector_info.sector_number,
                     sector_type: seal_proof,
                     sector_expiry: initial_sector_info.expiration,
                     deal_ids: deal_ids.clone(),
