@@ -4101,7 +4101,6 @@ name = "test_vm"
 version = "12.0.0"
 dependencies = [
  "anyhow",
- "bimap",
  "blake2b_simd",
  "cid 0.10.1",
  "ethers",

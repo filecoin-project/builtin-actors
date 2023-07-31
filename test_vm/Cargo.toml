@@ -30,7 +30,6 @@ fil_actor_eam = { workspace = true }
 fil_actor_ethaccount = { workspace = true }
 
 anyhow = { workspace = true }
-bimap = { workspace = true }
 blake2b_simd = { workspace = true }
 cid = { workspace = true }
 frc42_dispatch = { workspace = true }
