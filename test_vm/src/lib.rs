@@ -7,7 +7,6 @@ use fil_actor_cron::{Entry as CronEntry, State as CronState};
 use fil_actor_datacap::State as DataCapState;
 use fil_actor_init::{ExecReturn, State as InitState};
 use fil_actor_market::{Method as MarketMethod, State as MarketState};
-use fil_actor_miner::MinerInfo;
 use fil_actor_power::{Method as MethodPower, State as PowerState};
 use fil_actor_reward::State as RewardState;
 use fil_actor_system::State as SystemState;
@@ -16,11 +15,11 @@ use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{Policy, Primitives, EMPTY_ARR_CID};
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::{MessageAccumulator, DATACAP_TOKEN_ACTOR_ADDR};
+use fil_actors_runtime::DATACAP_TOKEN_ACTOR_ADDR;
 use fil_actors_runtime::{
-    BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, EAM_ACTOR_ADDR, FIRST_NON_SINGLETON_ADDR,
-    INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, EAM_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fil_builtin_actors_state::check::Tree;
 use fvm_ipld_blockstore::Blockstore;
@@ -34,10 +33,8 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::StoragePower;
-use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::version::NetworkVersion;
-use fvm_shared::{ActorID, MethodNum, METHOD_SEND};
-use regex::Regex;
+use fvm_shared::{MethodNum, METHOD_SEND};
 use serde::de::DeserializeOwned;
 use serde::{ser, Serialize};
 use std::cell::{RefCell, RefMut};
@@ -47,11 +44,9 @@ use vm_api::{actor, ActorState, MessageResult, VMError, VM};
 
 use vm_api::util::{get_state, serialize_ok};
 
-pub mod deals;
-pub mod expects;
+mod constants;
+pub use constants::*;
 pub mod fakes;
-pub mod util;
-
 mod messaging;
 pub use messaging::*;
 
@@ -327,50 +322,6 @@ where
         })?;
         Ok(total)
     }
-}
-
-// accounts for verifreg root signer and msig
-pub const VERIFREG_ROOT_KEY: &[u8] = &[200; fvm_shared::address::BLS_PUB_LEN];
-pub const TEST_VERIFREG_ROOT_SIGNER_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR);
-pub const TEST_VERIFREG_ROOT_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR + 1);
-
-// account actor seeding funds created by new_with_singletons
-pub const FAUCET_ROOT_KEY: &[u8] = &[153; fvm_shared::address::BLS_PUB_LEN];
-pub const TEST_FAUCET_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR + 2);
-pub const FIRST_TEST_USER_ADDR: ActorID = FIRST_NON_SINGLETON_ADDR + 3;
-
-// static values for predictable testing
-pub const TEST_VM_RAND_ARRAY: [u8; 32] = [
-    1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-    26, 27, 28, 29, 30, 31, 32,
-];
-pub const TEST_VM_INVALID_POST: &str = "i_am_invalid_post";
-
-pub struct MinerBalances {
-    pub available_balance: TokenAmount,
-    pub vesting_balance: TokenAmount,
-    pub initial_pledge: TokenAmount,
-    pub pre_commit_deposit: TokenAmount,
-}
-
-pub struct NetworkStats {
-    pub total_raw_byte_power: StoragePower,
-    pub total_bytes_committed: StoragePower,
-    pub total_quality_adj_power: StoragePower,
-    pub total_qa_bytes_committed: StoragePower,
-    pub total_pledge_collateral: TokenAmount,
-    pub this_epoch_raw_byte_power: StoragePower,
-    pub this_epoch_quality_adj_power: StoragePower,
-    pub this_epoch_pledge_collateral: TokenAmount,
-    pub miner_count: i64,
-    pub miner_above_min_power_count: i64,
-    pub this_epoch_reward: TokenAmount,
-    pub this_epoch_reward_smoothed: FilterEstimate,
-    pub this_epoch_baseline_power: StoragePower,
-    pub total_storage_power_reward: TokenAmount,
-    pub total_client_locked_collateral: TokenAmount,
-    pub total_provider_locked_collateral: TokenAmount,
-    pub total_client_storage_fee: TokenAmount,
 }
 
 impl<'bs, BS> VM for TestVM<'bs, BS>
