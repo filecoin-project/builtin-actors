@@ -45,6 +45,7 @@ macro_rules! wasm_trampoline {
     };
 }
 
+/// XXX move to map
 #[cfg(feature = "fil-actor")]
 type Hasher = FvmHashSha256;
 

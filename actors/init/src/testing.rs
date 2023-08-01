@@ -1,12 +1,16 @@
 use std::collections::HashMap;
 
-use fil_actors_runtime::{Map, MessageAccumulator, FIRST_NON_SINGLETON_ADDR};
+use fil_actors_runtime::{
+    AsActorError, MessageAccumulator, DEFAULT_CONF, FIRST_NON_SINGLETON_ADDR,
+};
 use fvm_ipld_blockstore::Blockstore;
+use fvm_shared::error::ExitCode;
 use fvm_shared::{
     address::{Address, Protocol},
     ActorID,
 };
 
+use crate::state::AddressMap;
 use crate::State;
 
 pub struct StateSummary {
@@ -31,10 +35,12 @@ pub fn check_state_invariants<BS: Blockstore>(
 
     let mut stable_address_by_id = HashMap::<ActorID, Address>::new();
     let mut delegated_address_by_id = HashMap::<ActorID, Address>::new();
-    match Map::<_, ActorID>::load(&state.address_map, store) {
+
+    match AddressMap::load(store, &state.address_map, DEFAULT_CONF, "addresses") {
         Ok(address_map) => {
             let ret = address_map.for_each(|key, actor_id| {
-                let key_address = Address::from_bytes(key)?;
+                let key_address =
+                    Address::from_bytes(key).exit_code(ExitCode::USR_ILLEGAL_STATE)?;
 
                 acc.require(
                     key_address.protocol() != Protocol::ID,
