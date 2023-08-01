@@ -2,6 +2,7 @@ use fil_actors_runtime::FIRST_NON_SINGLETON_ADDR;
 use fvm_shared::{address::Address, ActorID};
 
 // TODO: Deduplicate these constants which currently exist both here and in the integration_tests crate.
+// https://github.com/filecoin-project/builtin-actors/issues/1348
 
 // accounts for verifreg root signer and msig
 pub const VERIFREG_ROOT_KEY: &[u8] = &[200; fvm_shared::address::BLS_PUB_LEN];
