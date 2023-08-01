@@ -1,5 +1,12 @@
+use fil_actor_market::State as MarketState;
+use fil_actor_power::State as PowerState;
+use fil_actor_reward::State as RewardState;
+use fil_actors_runtime::{
+    runtime::Policy, MessageAccumulator, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    STORAGE_POWER_ACTOR_ADDR,
+};
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::{CborStore, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::SectorNumber;
@@ -7,19 +14,25 @@ use fvm_shared::METHOD_SEND;
 
 use fil_actor_miner::{
     new_deadline_info_from_offset_and_epoch, Deadline, DeadlineInfo, GetBeneficiaryReturn,
-    Method as MinerMethod, PowerPair, SectorOnChainInfo, State as MinerState,
+    Method as MinerMethod, MinerInfo, PowerPair, SectorOnChainInfo, State as MinerState,
 };
-use fil_builtin_actors_state::check::check_state_invariants;
-use vm_api::util::{apply_ok, pk_addrs_from, DynBlockstore};
-
-use crate::*;
+use fil_builtin_actors_state::check::{check_state_invariants, Tree};
+use num_traits::Zero;
+use regex::Regex;
+use vm_api::{
+    util::{apply_ok, get_state, pk_addrs_from, DynBlockstore},
+    VM,
+};
 
 mod workflows;
 pub use workflows::*;
 
+use crate::{MinerBalances, NetworkStats, TEST_FAUCET_ADDR};
+
 const ACCOUNT_SEED: u64 = 93837778;
+
 pub fn create_accounts(v: &dyn VM, count: u64, balance: &TokenAmount) -> Vec<Address> {
-    create_accounts_seeded(v, count, balance, ACCOUNT_SEED)
+    create_accounts_seeded(v, count, balance, ACCOUNT_SEED, &TEST_FAUCET_ADDR)
 }
 
 pub fn create_accounts_seeded(
@@ -27,11 +40,12 @@ pub fn create_accounts_seeded(
     count: u64,
     balance: &TokenAmount,
     seed: u64,
+    test_faucet_addr: &Address,
 ) -> Vec<Address> {
     let pk_addrs = pk_addrs_from(seed, count);
     // Send funds from faucet to pk address, creating account actor
     for pk_addr in pk_addrs.clone() {
-        apply_ok(v, &TEST_FAUCET_ADDR, &pk_addr, balance, METHOD_SEND, None::<RawBytes>);
+        apply_ok(v, test_faucet_addr, &pk_addr, balance, METHOD_SEND, None::<RawBytes>);
     }
     // Normalize pk address to return id address of account actor
     pk_addrs.iter().map(|pk_addr| v.resolve_id_address(pk_addr).unwrap()).collect()

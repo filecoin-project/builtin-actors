@@ -5,6 +5,7 @@ use fil_actor_datacap::Method as DataCapMethod;
 use fil_actor_market::ClientDealProposal;
 use fil_actor_market::DealProposal;
 use fil_actor_market::Label;
+use fil_actor_market::Method as MarketMethod;
 use fil_actor_market::PublishStorageDealsParams;
 use fil_actor_market::PublishStorageDealsReturn;
 use fil_actor_market::SectorDeals;
@@ -31,12 +32,16 @@ use fil_actor_verifreg::{
     Method as VerifregMethod, RemoveExpiredAllocationsParams, VerifierParams,
 };
 use fil_actors_runtime::cbor::deserialize;
+use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::policy_constants::{
     MARKET_DEFAULT_ALLOCATION_TERM_BUFFER, MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION,
 };
 use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::test_utils::make_piece_cid;
 use fil_actors_runtime::test_utils::make_sealed_cid;
 use fil_actors_runtime::CRON_ACTOR_ADDR;
+use fil_actors_runtime::DATACAP_TOKEN_ACTOR_ADDR;
+use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
 use fil_actors_runtime::STORAGE_POWER_ACTOR_ADDR;
 use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
@@ -72,10 +77,10 @@ use vm_api::VM;
 
 use crate::*;
 
-use super::expects::Expect;
 use super::make_bitfield;
 use super::miner_dline_info;
 use super::sector_deadline;
+use crate::expects::Expect;
 
 pub fn cron_tick(v: &dyn VM) {
     apply_ok(
