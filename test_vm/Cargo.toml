@@ -28,35 +28,20 @@ fil_actor_datacap = { workspace = true }
 fil_actor_evm = { workspace = true }
 fil_actor_eam = { workspace = true }
 fil_actor_ethaccount = { workspace = true }
+fil_actors_evm_shared = { workspace = true }
 
 anyhow = { workspace = true }
 blake2b_simd = { workspace = true }
 cid = { workspace = true }
-frc42_dispatch = { workspace = true }
-frc46_token = { workspace = true }
-fvm_actor_utils = { workspace = true }
-fvm_ipld_bitfield = { workspace = true }
 fvm_ipld_blockstore = { workspace = true }
 fvm_ipld_encoding = { workspace = true }
 fvm_ipld_hamt = { workspace = true }
 fvm_shared = { workspace = true }
-indexmap = { workspace = true }
-integer-encoding = { workspace = true }
-lazy_static = { workspace = true }
-log = { workspace = true }
-num-derive = { workspace = true }
 num-traits = { workspace = true }
-rand = { workspace = true }
-rand_chacha = { workspace = true }
-regex = { workspace = true }
 serde = { workspace = true }
-thiserror = { workspace = true }
-libsecp256k1 = { workspace = true }
-fil_actors_evm_shared = { workspace = true }
 vm_api = { workspace = true }
 
 [dev-dependencies]
-cid = { workspace = true }
 multihash = { workspace = true }
 test-case = { workspace = true }
 ethers = { workspace = true }
