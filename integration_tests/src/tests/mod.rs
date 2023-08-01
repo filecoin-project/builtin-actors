@@ -30,6 +30,7 @@ mod terminate_test;
 pub use terminate_test::*;
 mod verified_claim_test;
 pub use verified_claim_test::*;
-// mod verifreg_remove_datacap_test;
+mod verifreg_remove_datacap_test;
+pub use verifreg_remove_datacap_test::*;
 mod withdraw_balance_test;
 pub use withdraw_balance_test::*;
