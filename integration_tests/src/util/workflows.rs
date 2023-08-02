@@ -1,131 +1,86 @@
 use std::cmp::min;
 
-use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
-use frc46_token::token::types::{TransferFromParams, TransferParams};
-use fvm_actor_utils::receiver::UniversalReceiverParams;
-use fvm_ipld_bitfield::BitField;
-use fvm_ipld_encoding::{BytesDe, RawBytes};
-use fvm_shared::address::{Address, BLS_PUB_LEN};
-use fvm_shared::crypto::signature::{Signature, SignatureType};
-use fvm_shared::deal::DealID;
-use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
-use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::sector::{PoStProof, RegisteredPoStProof, RegisteredSealProof, SectorNumber};
-use fvm_shared::{MethodNum, METHOD_SEND};
-use rand::prelude::*;
-use rand_chacha::ChaCha8Rng;
-use serde::Serialize;
-
 use fil_actor_cron::Method as CronMethod;
 use fil_actor_datacap::Method as DataCapMethod;
-use fil_actor_market::ext::verifreg::{
-    AllocationRequest, AllocationRequests, ClaimExtensionRequest,
-};
-use fil_actor_market::{
-    ClientDealProposal, DealProposal, Label, Method as MarketMethod, PublishStorageDealsParams,
-    PublishStorageDealsReturn, SectorDeals, MARKET_NOTIFY_DEAL_METHOD,
-};
+use fil_actor_market::ClientDealProposal;
+use fil_actor_market::DealProposal;
+use fil_actor_market::Label;
+use fil_actor_market::Method as MarketMethod;
+use fil_actor_market::PublishStorageDealsParams;
+use fil_actor_market::PublishStorageDealsReturn;
+use fil_actor_market::SectorDeals;
+use fil_actor_market::MARKET_NOTIFY_DEAL_METHOD;
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee,
-    max_prove_commit_duration, new_deadline_info_from_offset_and_epoch, ChangeBeneficiaryParams,
-    CompactCommD, Deadline, DeadlineInfo, DeclareFaultsRecoveredParams, ExpirationExtension2,
-    ExtendSectorExpiration2Params, GetBeneficiaryReturn, Method as MinerMethod, PoStPartition,
-    PowerPair, PreCommitSectorBatchParams, PreCommitSectorBatchParams2, PreCommitSectorParams,
-    ProveCommitAggregateParams, ProveCommitSectorParams, RecoveryDeclaration, SectorClaim,
-    SectorOnChainInfo, SectorPreCommitInfo, SectorPreCommitOnChainInfo, State as MinerState,
-    SubmitWindowedPoStParams, WithdrawBalanceParams, WithdrawBalanceReturn,
+    max_prove_commit_duration, ChangeBeneficiaryParams, CompactCommD, DeadlineInfo,
+    DeclareFaultsRecoveredParams, ExpirationExtension2, ExtendSectorExpiration2Params,
+    Method as MinerMethod, PoStPartition, PowerPair, PreCommitSectorBatchParams,
+    PreCommitSectorBatchParams2, PreCommitSectorParams, ProveCommitAggregateParams,
+    ProveCommitSectorParams, RecoveryDeclaration, SectorClaim, SectorPreCommitInfo,
+    SectorPreCommitOnChainInfo, State as MinerState, SubmitWindowedPoStParams,
+    WithdrawBalanceParams, WithdrawBalanceReturn,
 };
 use fil_actor_multisig::Method as MultisigMethod;
 use fil_actor_multisig::ProposeParams;
 use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMethod};
 use fil_actor_verifreg::ext::datacap::MintParams;
+use fil_actor_verifreg::AllocationRequest;
+use fil_actor_verifreg::AllocationRequests;
+use fil_actor_verifreg::ClaimExtensionRequest;
 use fil_actor_verifreg::{
     AddVerifiedClientParams, AllocationID, ClaimID, ClaimTerm, ExtendClaimTermsParams,
     Method as VerifregMethod, RemoveExpiredAllocationsParams, VerifierParams,
 };
 use fil_actors_runtime::cbor::deserialize;
+use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::policy_constants::{
     MARKET_DEFAULT_ALLOCATION_TERM_BUFFER, MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION,
 };
+use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::test_utils::make_piece_cid;
+use fil_actors_runtime::test_utils::make_sealed_cid;
+use fil_actors_runtime::CRON_ACTOR_ADDR;
+use fil_actors_runtime::DATACAP_TOKEN_ACTOR_ADDR;
+use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
+use fil_actors_runtime::STORAGE_POWER_ACTOR_ADDR;
+use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
+use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
 use fil_actors_runtime::{DATACAP_TOKEN_ACTOR_ID, VERIFIED_REGISTRY_ACTOR_ID};
-use fil_builtin_actors_state::check::check_state_invariants;
+use frc46_token::receiver::FRC46TokenReceived;
+use frc46_token::receiver::FRC46_TOKEN_TYPE;
+use frc46_token::token::types::TransferFromParams;
+use frc46_token::token::types::TransferParams;
+use fvm_actor_utils::receiver::UniversalReceiverParams;
+use fvm_ipld_bitfield::BitField;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::BytesDe;
+use fvm_ipld_encoding::RawBytes;
+use fvm_shared::address::Address;
+use fvm_shared::clock::ChainEpoch;
+use fvm_shared::crypto::signature::Signature;
+use fvm_shared::crypto::signature::SignatureType;
+use fvm_shared::deal::DealID;
+use fvm_shared::econ::TokenAmount;
+use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::randomness::Randomness;
+use fvm_shared::sector::PoStProof;
+use fvm_shared::sector::RegisteredPoStProof;
+use fvm_shared::sector::RegisteredSealProof;
+use fvm_shared::sector::SectorNumber;
+use fvm_shared::sector::StoragePower;
+use num_traits::Zero;
+use vm_api::trace::ExpectInvocation;
+use vm_api::util::apply_ok;
+use vm_api::util::get_state;
+use vm_api::util::DynBlockstore;
+use vm_api::VM;
 
-use crate::expects::Expect;
-use crate::trace::ExpectInvocation;
 use crate::*;
 
-mod blockstore;
-pub use blockstore::DynBlockstore;
-
-// Generate count addresses by seeding an rng
-pub fn pk_addrs_from(seed: u64, count: u64) -> Vec<Address> {
-    let mut seed_arr = [0u8; 32];
-    for (i, b) in seed.to_ne_bytes().iter().enumerate() {
-        seed_arr[i] = *b;
-    }
-    let mut rng = ChaCha8Rng::from_seed(seed_arr);
-    (0..count).map(|_| new_bls_from_rng(&mut rng)).collect()
-}
-
-// Generate nice 32 byte arrays sampled uniformly at random based off of a u64 seed
-fn new_bls_from_rng(rng: &mut ChaCha8Rng) -> Address {
-    let mut bytes = [0u8; BLS_PUB_LEN];
-    rng.fill_bytes(&mut bytes);
-    Address::new_bls(&bytes).unwrap()
-}
-
-const ACCOUNT_SEED: u64 = 93837778;
-
-pub fn create_accounts(v: &dyn VM, count: u64, balance: &TokenAmount) -> Vec<Address> {
-    create_accounts_seeded(v, count, balance, ACCOUNT_SEED)
-}
-
-pub fn create_accounts_seeded(
-    v: &dyn VM,
-    count: u64,
-    balance: &TokenAmount,
-    seed: u64,
-) -> Vec<Address> {
-    let pk_addrs = pk_addrs_from(seed, count);
-    // Send funds from faucet to pk address, creating account actor
-    for pk_addr in pk_addrs.clone() {
-        apply_ok(v, &TEST_FAUCET_ADDR, &pk_addr, balance, METHOD_SEND, None::<RawBytes>);
-    }
-    // Normalize pk address to return id address of account actor
-    pk_addrs.iter().map(|pk_addr| v.resolve_id_address(pk_addr).unwrap()).collect()
-}
-
-pub fn apply_ok<S: Serialize>(
-    v: &dyn VM,
-    from: &Address,
-    to: &Address,
-    value: &TokenAmount,
-    method: MethodNum,
-    params: Option<S>,
-) -> RawBytes {
-    apply_code(v, from, to, value, method, params, ExitCode::OK)
-}
-
-pub fn apply_code<S: Serialize>(
-    v: &dyn VM,
-    from: &Address,
-    to: &Address,
-    value: &TokenAmount,
-    method: MethodNum,
-    params: Option<S>,
-    code: ExitCode,
-) -> RawBytes {
-    let params = params.map(|p| IpldBlock::serialize_cbor(&p).unwrap().unwrap());
-    let res = v.execute_message(from, to, value, method, params).unwrap();
-    assert_eq!(code, res.code, "expected code {}, got {} ({})", code, res.code, res.message);
-    res.ret.map_or(RawBytes::default(), |b| RawBytes::new(b.data))
-}
-
-/// Convenience function to create an IpldBlock from a serializable object
-pub fn serialize_ok<S: Serialize>(s: &S) -> IpldBlock {
-    IpldBlock::serialize_cbor(s).unwrap().unwrap()
-}
+use super::make_bitfield;
+use super::miner_dline_info;
+use super::sector_deadline;
+use crate::expects::Expect;
 
 pub fn cron_tick(v: &dyn VM) {
     apply_ok(
@@ -619,83 +574,6 @@ where
     }
 }
 
-pub fn get_state<T: DeserializeOwned>(v: &dyn VM, a: &Address) -> Option<T> {
-    let cid = v.actor_root(a).unwrap();
-    v.blockstore().get(&cid).unwrap().map(|slice| fvm_ipld_encoding::from_slice(&slice).unwrap())
-}
-
-pub fn miner_balance(v: &dyn VM, m: &Address) -> MinerBalances {
-    let st: MinerState = get_state(v, m).unwrap();
-    MinerBalances {
-        available_balance: st.get_available_balance(&v.balance(m)).unwrap(),
-        vesting_balance: st.locked_funds,
-        initial_pledge: st.initial_pledge,
-        pre_commit_deposit: st.pre_commit_deposits,
-    }
-}
-
-pub fn miner_info(v: &dyn VM, m: &Address) -> MinerInfo {
-    let st: MinerState = get_state(v, m).unwrap();
-    DynBlockstore::wrap(v.blockstore()).get_cbor(&st.info).unwrap().unwrap()
-}
-
-pub fn miner_dline_info(v: &dyn VM, m: &Address) -> DeadlineInfo {
-    let st: MinerState = get_state(v, m).unwrap();
-    new_deadline_info_from_offset_and_epoch(&Policy::default(), st.proving_period_start, v.epoch())
-}
-
-pub fn sector_deadline(v: &dyn VM, m: &Address, s: SectorNumber) -> (u64, u64) {
-    let st: MinerState = get_state(v, m).unwrap();
-    st.find_sector(&Policy::default(), &DynBlockstore::wrap(v.blockstore()), s).unwrap()
-}
-
-pub fn check_sector_active(v: &dyn VM, m: &Address, s: SectorNumber) -> bool {
-    let (d_idx, p_idx) = sector_deadline(v, m, s);
-    let st: MinerState = get_state(v, m).unwrap();
-    st.check_sector_active(
-        &Policy::default(),
-        &DynBlockstore::wrap(v.blockstore()),
-        d_idx,
-        p_idx,
-        s,
-        true,
-    )
-    .unwrap()
-}
-
-pub fn check_sector_faulty(
-    v: &dyn VM,
-    m: &Address,
-    d_idx: u64,
-    p_idx: u64,
-    s: SectorNumber,
-) -> bool {
-    let st: MinerState = get_state(v, m).unwrap();
-    let bs = &DynBlockstore::wrap(v.blockstore());
-    let deadlines = st.load_deadlines(bs).unwrap();
-    let deadline = deadlines.load_deadline(&Policy::default(), bs, d_idx).unwrap();
-    let partition = deadline.load_partition(bs, p_idx).unwrap();
-    partition.faults.get(s)
-}
-
-pub fn deadline_state(v: &dyn VM, m: &Address, d_idx: u64) -> Deadline {
-    let st: MinerState = get_state(v, m).unwrap();
-    let bs = &DynBlockstore::wrap(v.blockstore());
-    let deadlines = st.load_deadlines(bs).unwrap();
-    deadlines.load_deadline(&Policy::default(), bs, d_idx).unwrap()
-}
-
-pub fn sector_info(v: &dyn VM, m: &Address, s: SectorNumber) -> SectorOnChainInfo {
-    let st: MinerState = get_state(v, m).unwrap();
-    st.get_sector(&DynBlockstore::wrap(v.blockstore()), s).unwrap().unwrap()
-}
-
-pub fn miner_power(v: &dyn VM, m: &Address) -> PowerPair {
-    let st: PowerState = get_state(v, &STORAGE_POWER_ACTOR_ADDR).unwrap();
-    let claim = st.get_claim(&DynBlockstore::wrap(v.blockstore()), m).unwrap().unwrap();
-    PowerPair::new(claim.raw_byte_power, claim.quality_adj_power)
-}
-
 pub fn declare_recovery(
     v: &dyn VM,
     worker: &Address,
@@ -781,63 +659,6 @@ pub fn change_beneficiary(
         MinerMethod::ChangeBeneficiary as u64,
         Some(beneficiary_change_proposal.clone()),
     );
-}
-
-pub fn check_invariants(vm: &dyn VM) -> anyhow::Result<MessageAccumulator> {
-    check_state_invariants(
-        &vm.actor_manifest(),
-        &vm.policy(),
-        Tree::load(&DynBlockstore::wrap(vm.blockstore()), &vm.state_root()).unwrap(),
-        &vm.total_fil(),
-        vm.epoch() - 1,
-    )
-}
-
-pub fn assert_invariants(vm: &dyn VM) {
-    check_invariants(vm).unwrap().assert_empty()
-}
-
-pub fn expect_invariants(vm: &dyn VM, expected_patterns: &[Regex]) {
-    check_invariants(vm).unwrap().assert_expected(expected_patterns)
-}
-
-pub fn get_network_stats(vm: &dyn VM) -> NetworkStats {
-    let power_state: PowerState = get_state(vm, &STORAGE_POWER_ACTOR_ADDR).unwrap();
-    let reward_state: RewardState = get_state(vm, &REWARD_ACTOR_ADDR).unwrap();
-    let market_state: MarketState = get_state(vm, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
-
-    NetworkStats {
-        total_raw_byte_power: power_state.total_raw_byte_power,
-        total_bytes_committed: power_state.total_bytes_committed,
-        total_quality_adj_power: power_state.total_quality_adj_power,
-        total_qa_bytes_committed: power_state.total_qa_bytes_committed,
-        total_pledge_collateral: power_state.total_pledge_collateral,
-        this_epoch_raw_byte_power: power_state.this_epoch_raw_byte_power,
-        this_epoch_quality_adj_power: power_state.this_epoch_quality_adj_power,
-        this_epoch_pledge_collateral: power_state.this_epoch_pledge_collateral,
-        miner_count: power_state.miner_count,
-        miner_above_min_power_count: power_state.miner_above_min_power_count,
-        this_epoch_reward: reward_state.this_epoch_reward,
-        this_epoch_reward_smoothed: reward_state.this_epoch_reward_smoothed,
-        this_epoch_baseline_power: reward_state.this_epoch_baseline_power,
-        total_storage_power_reward: reward_state.total_storage_power_reward,
-        total_client_locked_collateral: market_state.total_client_locked_collateral,
-        total_provider_locked_collateral: market_state.total_provider_locked_collateral,
-        total_client_storage_fee: market_state.total_client_storage_fee,
-    }
-}
-
-pub fn get_beneficiary(v: &dyn VM, from: &Address, m_addr: &Address) -> GetBeneficiaryReturn {
-    apply_ok(
-        v,
-        from,
-        m_addr,
-        &TokenAmount::zero(),
-        MinerMethod::GetBeneficiary as u64,
-        None::<RawBytes>,
-    )
-    .deserialize()
-    .unwrap()
 }
 
 pub fn change_owner_address(
@@ -1327,24 +1148,6 @@ pub fn market_publish_deal(
     .matches(v.take_invocations().last().unwrap());
 
     ret
-}
-
-pub fn make_bitfield(bits: &[u64]) -> BitField {
-    BitField::try_from_bits(bits.iter().copied()).unwrap()
-}
-
-pub fn bf_all(bf: BitField) -> Vec<u64> {
-    bf.bounded_iter(Policy::default().addressed_sectors_max).unwrap().collect()
-}
-
-pub mod invariant_failure_patterns {
-    use lazy_static::lazy_static;
-    use regex::Regex;
-
-    lazy_static! {
-        pub static ref REWARD_STATE_EPOCH_MISMATCH: Regex =
-            Regex::new("^reward state epoch \\d+ does not match prior_epoch\\+1 \\d+$").unwrap();
-    }
 }
 
 pub fn generate_deal_proposal(

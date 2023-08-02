@@ -14,24 +14,24 @@ keywords = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-fil_actors_runtime = { version = "12.0.0", path = "../../runtime"}
+fil_actors_runtime = { workspace = true}
 
-cid = { version = "0.10.1", default-features = false, features = ["serde-codec"] }
-frc42_dispatch = "3.3.0"
-frc46_token = "7.0.0"
-fvm_actor_utils = "7.0.0"
-fvm_ipld_blockstore = "0.2.0"
-fvm_ipld_encoding = "0.4.0"
-fvm_ipld_hamt = "0.7.0"
-fvm_shared = { version = "3.4.0", default-features = false }
-lazy_static = "1.4.0"
-num-derive = "0.3.3"
-num-traits = "0.2.14"
-serde = { version = "1.0.136", features = ["derive"] }
-log = "0.4.14"
+cid = { workspace = true }
+frc42_dispatch = { workspace = true }
+frc46_token = { workspace = true }
+fvm_actor_utils = { workspace = true }
+fvm_ipld_blockstore = { workspace = true }
+fvm_ipld_encoding = { workspace = true }
+fvm_ipld_hamt = { workspace = true }
+fvm_shared = { workspace = true }
+lazy_static = { workspace = true }
+num-derive = { workspace = true }
+num-traits = { workspace = true }
+serde = { workspace = true }
+log = { workspace = true }
 
 [dev-dependencies]
-fil_actors_runtime = { path = "../../runtime", features = ["test_utils", "sector-default"] }
+fil_actors_runtime = { workspace = true, features = ["test_utils", "sector-default"] }
 [features]
 fil-actor = ["fil_actors_runtime/fil-actor"]
 

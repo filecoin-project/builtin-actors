@@ -14,25 +14,24 @@ keywords = ["filecoin", "web3", "wasm", "evm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-fil_actors_runtime = { version = "12.0.0", path = "../../runtime" }
-serde = { version = "1.0.136", features = ["derive"] }
-serde_tuple = "0.5"
-rlp = { version = "0.5.1", default-features = false }
-anyhow = "1.0.65"
-log = "0.4.14"
-fvm_ipld_blockstore = "0.2.0"
-fvm_ipld_encoding = "0.4.0"
-multihash = { version = "0.18.1", default-features = false }
-cid = { version = "0.10.1", default-features = false, features = ["serde-codec"] }
-fvm_shared = { version = "3.4.0", default-features = false }
-num-traits = "0.2.15"
-num-derive = "0.3.3"
-hex-literal = "0.3.4"
-fil_actors_evm_shared = { version = "12.0.0", path = "../evm/shared" }
+anyhow = { workspace = true }
+cid = { workspace = true }
+fil_actors_evm_shared = { workspace = true }
+fil_actors_runtime = { workspace = true }
+fvm_ipld_blockstore = { workspace = true }
+fvm_ipld_encoding = { workspace = true }
+fvm_shared = { workspace = true }
+log = { workspace = true }
+multihash = { workspace = true }
+num-derive = { workspace = true }
+num-traits = { workspace = true }
+serde = { workspace = true }
+hex-literal = { workspace = true }
+rlp = { workspace = true }
 
 [dev-dependencies]
-fil_actor_evm = { path = "../evm"}
-fil_actors_runtime = { path = "../../runtime", features = ["test_utils"] }
+fil_actor_evm = { workspace = true}
+fil_actors_runtime = { workspace = true, features = ["test_utils"] }
 
 [features]
 fil-actor = ["fil_actors_runtime/fil-actor"]

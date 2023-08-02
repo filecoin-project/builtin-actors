@@ -99,6 +99,8 @@ pub struct SectorDealData {
 #[serde(transparent)]
 pub struct BatchActivateDealsParams {
     /// Deals to activate, grouped by sector.
+    /// A failed deal activation will cause other deals in the same sector group to also fail,
+    /// but allow other sectors to proceed.
     pub sectors: Vec<SectorDeals>,
 }
 
@@ -113,7 +115,7 @@ pub struct VerifiedDealInfo {
 
 // Information about a sector-grouping of deals that have been activated.
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct DealActivation {
+pub struct SectorDealActivation {
     /// The total size of the non-verified deals activated.
     #[serde(with = "bigint_ser")]
     pub nonverified_deal_space: BigInt,
@@ -126,7 +128,7 @@ pub struct BatchActivateDealsResult {
     /// Status of each sector grouping of deals.
     pub activation_results: BatchReturn,
     /// Activation information for the sector groups that were activated.
-    pub activations: Vec<DealActivation>,
+    pub activations: Vec<SectorDealActivation>,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]

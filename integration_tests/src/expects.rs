@@ -26,7 +26,7 @@ use fil_actors_runtime::{
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 
-use crate::trace::ExpectInvocation;
+use vm_api::trace::ExpectInvocation;
 
 /// Static helper functions for creating invocation expectations.
 pub struct Expect {}

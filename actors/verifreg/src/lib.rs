@@ -366,108 +366,109 @@ impl Actor {
     /// Called by storage provider actor to claim allocations for data provably committed to storage.
     /// For each allocation claim, the registry checks that the provided piece CID
     /// and size match that of the allocation.
-    /// Returns an indicator of success for each claim, and the size of each successful claim.
-    /// When `all_or_nothing` is enabled, any failure to claim results in the entire
-    /// method returning an error.
+    /// Claims are processed in groups by sector. A failed claim will cause the
+    /// others in its group to fail too, unless `all_or_nothing` is enabled, in which case
+    /// the method will abort.
+    /// Returns an indicator of success for each sector group, and the size of claimed space.
     pub fn claim_allocations(
         rt: &impl Runtime,
         params: ClaimAllocationsParams,
     ) -> Result<ClaimAllocationsReturn, ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         let provider = rt.message().caller().id().unwrap();
-        if params.allocations.is_empty() {
+        if params.sectors.is_empty() {
             return Err(actor_error!(illegal_argument, "claim allocations called with no claims"));
         }
 
-        let mut total_datacap_claimed = DataCap::zero();
-        let mut sector_claims = Vec::new();
-        let mut ret_gen = BatchReturnGen::new(params.allocations.len());
+        let mut batch_gen = BatchReturnGen::new(params.sectors.len());
+        let mut sector_results: Vec<SectorClaimSummary> = vec![];
+        let mut total_claimed_space = DataCap::zero();
+
         rt.transaction(|st: &mut State, rt| {
             let mut claims = st.load_claims(rt.store())?;
             let mut allocs = st.load_allocs(rt.store())?;
 
-            for claim_alloc in params.allocations {
-                let maybe_alloc = state::get_allocation(
-                    &mut allocs,
-                    claim_alloc.client,
-                    claim_alloc.allocation_id,
-                )?;
-                let alloc: &Allocation = match maybe_alloc {
-                    None => {
-                        ret_gen.add_fail(ExitCode::USR_NOT_FOUND);
-                        info!(
-                            "no allocation {} for client {}",
-                            claim_alloc.allocation_id, claim_alloc.client,
-                        );
-                        continue;
+            // Note: this doesn't prevent being called with the same sector number twice.
+            'sectors: for sector in params.sectors {
+                // Load and validate all allocations for the sector group before
+                // making any state changes.
+                // Errors cause the sector to be skipped, unless all-or-nothing is requested.
+                let mut sector_new_claims: Vec<(ClaimID, Claim)> = vec![];
+                for claim in sector.claims {
+                    let maybe_alloc =
+                        state::get_allocation(&mut allocs, claim.client, claim.allocation_id)?;
+                    if let Some(alloc) = maybe_alloc {
+                        if !can_claim_alloc(&claim, provider, alloc, rt.curr_epoch(), sector.expiry)
+                        {
+                            info!(
+                                "failed to claim allocation {} in sector {} expiry {}",
+                                claim.allocation_id, sector.sector, sector.expiry
+                            );
+                            batch_gen.add_fail(ExitCode::USR_FORBIDDEN);
+                            continue 'sectors;
+                        }
+                        sector_new_claims.push((
+                            claim.allocation_id,
+                            Claim {
+                                provider,
+                                client: alloc.client,
+                                data: alloc.data,
+                                size: alloc.size,
+                                term_min: alloc.term_min,
+                                term_max: alloc.term_max,
+                                term_start: rt.curr_epoch(),
+                                sector: sector.sector,
+                            },
+                        ));
+                    } else {
+                        info!("no allocation {} for client {}", claim.allocation_id, claim.client);
+                        batch_gen.add_fail(ExitCode::USR_NOT_FOUND);
+                        continue 'sectors;
                     }
-                    Some(a) => a,
-                };
-
-                if !can_claim_alloc(&claim_alloc, provider, alloc, rt.curr_epoch()) {
-                    ret_gen.add_fail(ExitCode::USR_FORBIDDEN);
-                    info!(
-                        "invalid sector {:?} for allocation {}",
-                        claim_alloc.sector, claim_alloc.allocation_id,
-                    );
-                    continue;
                 }
 
-                let new_claim = Claim {
-                    provider,
-                    client: alloc.client,
-                    data: alloc.data,
-                    size: alloc.size,
-                    term_min: alloc.term_min,
-                    term_max: alloc.term_max,
-                    term_start: rt.curr_epoch(),
-                    sector: claim_alloc.sector,
-                };
-
-                let inserted = claims
-                    .put_if_absent(provider, claim_alloc.allocation_id, new_claim)
-                    .context_code(
+                // Update state.
+                // Errors from here on are unexpected, so abort.
+                let mut sector_claimed_space = DataCap::zero();
+                for (id, new_claim) in sector_new_claims {
+                    let inserted =
+                        claims.put_if_absent(provider, id, new_claim.clone()).context_code(
+                            ExitCode::USR_ILLEGAL_STATE,
+                            format!("failed to write claim {}", id),
+                        )?;
+                    if !inserted {
+                        return Err(actor_error!(illegal_argument, "claim {} already exists", id));
+                    }
+                    allocs.remove(new_claim.client, id).context_code(
                         ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to write claim {}", claim_alloc.allocation_id),
+                        format!("failed to remove allocation {}", id),
                     )?;
-                if !inserted {
-                    ret_gen.add_fail(ExitCode::USR_ILLEGAL_STATE);
-                    // should be unreachable since claim and alloc can't exist at once
-                    info!(
-                        "claim for allocation {} could not be inserted as it already exists",
-                        claim_alloc.allocation_id,
-                    );
-                    continue;
+                    sector_claimed_space += DataCap::from(new_claim.size.0);
                 }
-
-                allocs.remove(claim_alloc.client, claim_alloc.allocation_id).context_code(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to remove allocation {}", claim_alloc.allocation_id),
-                )?;
-
-                total_datacap_claimed += DataCap::from(claim_alloc.size.0);
-                sector_claims
-                    .push(SectorAllocationClaimResult { claimed_space: claim_alloc.size.0.into() });
-                ret_gen.add_success();
+                total_claimed_space += &sector_claimed_space;
+                sector_results.push(SectorClaimSummary { claimed_space: sector_claimed_space });
+                batch_gen.add_success();
             }
             st.save_allocs(&mut allocs)?;
             st.save_claims(&mut claims)?;
             Ok(())
         })
         .context("state transaction failed")?;
-        let batch_info = ret_gen.gen();
+
+        let batch_info = batch_gen.gen();
         if params.all_or_nothing && !batch_info.all_ok() {
-            return Err(actor_error!(
-                illegal_argument,
-                "all or nothing call contained failures: {}",
-                batch_info.to_string()
+            return Err(ActorError::checked(
+                // Returning the first actual error code from the batch might be better, but
+                // would change behaviour from the original implementation.
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                format!("claim failed with all-or-nothing: {}", batch_info),
+                None,
             ));
         }
 
         // Burn the datacap tokens from verified registry's own balance.
-        burn(rt, &total_datacap_claimed)?;
-
-        Ok(ClaimAllocationsReturn { claim_results: batch_info, claims: sector_claims })
+        burn(rt, &total_claimed_space)?;
+        Ok(ClaimAllocationsReturn { sector_results: batch_info, sector_claims: sector_results })
     }
 
     // get claims for a provider
@@ -1060,13 +1061,13 @@ fn check_miner_id(rt: &impl Runtime, id: ActorID) -> Result<(), ActorError> {
 }
 
 fn can_claim_alloc(
-    claim_alloc: &SectorAllocationClaim,
+    claim_alloc: &AllocationClaim,
     provider: ActorID,
     alloc: &Allocation,
     curr_epoch: ChainEpoch,
+    sector_expiry: ChainEpoch,
 ) -> bool {
-    let sector_lifetime = claim_alloc.sector_expiry - curr_epoch;
-
+    let sector_lifetime = sector_expiry - curr_epoch;
     provider == alloc.provider
         && claim_alloc.client == alloc.client
         && claim_alloc.data == alloc.data

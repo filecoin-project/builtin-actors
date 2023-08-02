@@ -1,4 +1,6 @@
 use fil_actor_account::State as AccountState;
+use fil_actors_integration_tests::util::{assert_invariants, check_invariants};
+use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::{
     make_identity_cid, ACCOUNT_ACTOR_CODE_ID, PAYCH_ACTOR_CODE_ID,
 };
@@ -8,8 +10,9 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
 use num_traits::Zero;
-use test_vm::util::{assert_invariants, check_invariants, get_state, pk_addrs_from};
-use test_vm::{actor, TestVM, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR, VM};
+use test_vm::{TestVM, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR};
+use vm_api::util::{get_state, pk_addrs_from};
+use vm_api::{actor, VM};
 
 #[test]
 fn state_control() {
@@ -47,7 +50,7 @@ fn state_control() {
     assert_eq!(None, v.get_actor(&addr2));
     assert_eq!(v.get_actor(&addr1).unwrap(), a1);
 
-    let invariants_check = check_invariants(&v);
+    let invariants_check = check_invariants(&v, &Policy::default());
     assert!(invariants_check.is_err());
     assert!(invariants_check.unwrap_err().to_string().contains("AccountState is empty"));
 }
@@ -61,7 +64,7 @@ fn assert_account_actor<BS: Blockstore>(
 ) {
     let act = v.get_actor(&addr).unwrap();
     let st: AccountState = get_state(v, &addr).unwrap();
-    assert_eq!(exp_call_seq, act.call_seq_num);
+    assert_eq!(exp_call_seq, act.call_seq);
     assert_eq!(*ACCOUNT_ACTOR_CODE_ID, act.code);
     assert_eq!(exp_bal, act.balance);
     assert_eq!(exp_pk_addr, st.address);
@@ -115,7 +118,7 @@ fn test_sent() {
     assert_account_actor(3, TokenAmount::from_atto(42u8), addr1, &v, expect_id_addr1);
     assert_account_actor(2, TokenAmount::zero(), addr2, &v, expect_id_addr2);
 
-    assert_invariants(&v)
+    assert_invariants(&v, &Policy::default())
 }
 
 #[test]

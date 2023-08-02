@@ -1,5 +1,3 @@
-use crate::util::{apply_ok, serialize_ok};
-use crate::VM;
 use fil_actor_market::{
     ClientDealProposal, DealProposal, Label, Method as MarketMethod, PublishStorageDealsParams,
     PublishStorageDealsReturn,
@@ -15,6 +13,8 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use num_traits::Zero;
+use vm_api::util::{apply_ok, serialize_ok};
+use vm_api::VM;
 
 #[derive(Clone)]
 pub struct DealOptions {

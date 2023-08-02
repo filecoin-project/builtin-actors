@@ -7,7 +7,6 @@ use cid::Cid;
 use fvm_ipld_encoding::strict_bytes;
 use fvm_ipld_encoding::tuple::*;
 use serde::{Deserialize, Serialize};
-use serde_tuple::{Deserialize_tuple, Serialize_tuple};
 
 /// A tombstone indicating that the contract has been self-destructed.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
