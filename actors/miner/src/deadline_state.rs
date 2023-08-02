@@ -105,7 +105,6 @@ impl Deadlines {
     }
 
     pub fn move_partitions<BS: Blockstore>(
-        &mut self,
         store: &BS,
         from_deadline: &mut Deadline,
         to_deadline: &mut Deadline,

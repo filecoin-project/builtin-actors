@@ -3094,14 +3094,14 @@ impl Actor {
                                 })?;
                             if !partition.faults.is_empty() {
                                 return Err(actor_error!(
-                                    illegal_argument,
+                                    forbidden,
                                     "cannot move partition {}: has faults",
                                     partition_idx
                                 ))?;
                             }
                             if !partition.unproven.is_empty() {
                                 return Err(actor_error!(
-                                    illegal_argument,
+                                    forbidden,
                                     "cannot move partition {}: has unproven",
                                     partition_idx
                                 ))?;
@@ -3148,15 +3148,14 @@ impl Actor {
                     format!("failed to load deadline {}", params.to_deadline),
                 )?;
 
-            deadlines
-                .move_partitions(
-                    store,
-                    &mut from_deadline,
-                    &mut to_deadline,
-                    to_quant,
-                    &params.partitions,
-                )
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to move partitions")?;
+            Deadlines::move_partitions(
+                store,
+                &mut from_deadline,
+                &mut to_deadline,
+                to_quant,
+                &params.partitions,
+            )
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to move partitions")?;
 
             deadlines
                 .update_deadline(policy, store, params.from_deadline, &from_deadline)
