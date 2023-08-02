@@ -24,10 +24,7 @@ use super::{
     SectorOnChainInfo, Sectors, TerminationResult,
 };
 
-use crate::{
-    PARTITION_EARLY_TERMINATION_ARRAY_AMT_BITWIDTH, PARTITION_EXPIRATION_AMT_BITWIDTH,
-    SECTORS_AMT_BITWIDTH,
-};
+use crate::SECTORS_AMT_BITWIDTH;
 
 // Bitwidth of AMTs determined empirically from mutation patterns and projections of mainnet data.
 // Usually a small array
@@ -128,43 +125,11 @@ impl Deadlines {
 
             let to_partition_idx = first_to_partition_idx + i as u64;
 
-            let from_expirations_epochs: Array<ExpirationSet, _> =
-                Array::load(&moving_partition.expirations_epochs, store)?;
-
-            let from_early_terminations: Array<BitField, _> =
-                Array::load(&moving_partition.early_terminated, store)?;
-
-            let mut to_expirations_epochs = Array::<ExpirationSet, BS>::new_with_bit_width(
-                store,
-                PARTITION_EXPIRATION_AMT_BITWIDTH,
-            );
-            let mut to_early_terminations = Array::<BitField, BS>::new_with_bit_width(
-                store,
-                PARTITION_EARLY_TERMINATION_ARRAY_AMT_BITWIDTH,
-            );
-
-            // ajust epoch info of expirations_epochs and early_terminated within `Partition`
-            from_expirations_epochs.for_each(|from_epoch, expire_set| {
-                to_expirations_epochs.set(
-                    to_quant.quantize_up(from_epoch as ChainEpoch) as u64,
-                    expire_set.clone(),
-                )?;
-                Ok(())
-            })?;
-            from_early_terminations.for_each(|from_epoch, bitfield| {
-                to_early_terminations
-                    .set(to_quant.quantize_up(from_epoch as ChainEpoch) as u64, bitfield.clone())?;
-                Ok(())
-            })?;
-            moving_partition.expirations_epochs = to_expirations_epochs.flush()?;
-            moving_partition.early_terminated = to_early_terminations.flush()?;
+            moving_partition.adjust_for_move(store, &to_quant)?;
 
             let all_sectors = moving_partition.sectors.len();
             let live_sectors = moving_partition.live_sectors().len();
             let early_terminations = from_deadline.early_terminations.get(from_partition_idx);
-            if early_terminations != (from_early_terminations.count() > 0) {
-                return Err(actor_error!(illegal_state, "Deadline.early_terminations doesn't agree with Partition.early_terminated for partition {}", from_partition_idx))?;
-            }
 
             // start updating from/to `Deadline` here
 

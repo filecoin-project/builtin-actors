@@ -4,7 +4,7 @@
 use std::convert::TryInto;
 use std::ops::{self, Neg};
 
-use anyhow::{anyhow, Context};
+use anyhow::{anyhow, Context, Ok};
 use cid::Cid;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{actor_error, ActorDowncast, Array};
@@ -24,8 +24,8 @@ use super::{
 };
 
 // Bitwidth of AMTs determined empirically from mutation patterns and projections of mainnet data.
-pub const PARTITION_EXPIRATION_AMT_BITWIDTH: u32 = 4;
-pub const PARTITION_EARLY_TERMINATION_ARRAY_AMT_BITWIDTH: u32 = 3;
+const PARTITION_EXPIRATION_AMT_BITWIDTH: u32 = 4;
+const PARTITION_EARLY_TERMINATION_ARRAY_AMT_BITWIDTH: u32 = 3;
 
 #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
 pub struct Partition {
@@ -820,6 +820,43 @@ impl Partition {
     pub fn validate_state(&self) -> anyhow::Result<()> {
         self.validate_power_state()?;
         self.validate_bf_state()?;
+        Ok(())
+    }
+
+    // ajust epoch info of expirations_epochs and early_terminated within `Partition`
+    pub fn adjust_for_move<BS: Blockstore>(
+        &mut self,
+        store: &BS,
+        to_quant: &QuantSpec,
+    ) -> anyhow::Result<()> {
+        let from_expirations_epochs: Array<ExpirationSet, _> =
+            Array::load(&self.expirations_epochs, store)?;
+
+        let from_early_terminations: Array<BitField, _> =
+            Array::load(&self.early_terminated, store)?;
+
+        let mut to_expirations_epochs = Array::<ExpirationSet, BS>::new_with_bit_width(
+            store,
+            PARTITION_EXPIRATION_AMT_BITWIDTH,
+        );
+        let mut to_early_terminations = Array::<BitField, BS>::new_with_bit_width(
+            store,
+            PARTITION_EARLY_TERMINATION_ARRAY_AMT_BITWIDTH,
+        );
+
+        from_expirations_epochs.for_each(|from_epoch, expire_set| {
+            to_expirations_epochs
+                .set(to_quant.quantize_up(from_epoch as ChainEpoch) as u64, expire_set.clone())?;
+            Ok(())
+        })?;
+        from_early_terminations.for_each(|from_epoch, bitfield| {
+            to_early_terminations
+                .set(to_quant.quantize_up(from_epoch as ChainEpoch) as u64, bitfield.clone())?;
+            Ok(())
+        })?;
+        self.expirations_epochs = to_expirations_epochs.flush()?;
+        self.early_terminated = to_early_terminations.flush()?;
+
         Ok(())
     }
 }
