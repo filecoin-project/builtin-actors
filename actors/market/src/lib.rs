@@ -585,10 +585,7 @@ impl Actor {
                     }
                 };
 
-                sector_deals.push((
-                    p.sector_number,
-                    SectorDealIDs { sector_expiration: p.sector_expiry, deals: p.deal_ids.clone() },
-                ));
+                sector_deals.push((p.sector_number, SectorDealIDs { deals: p.deal_ids.clone() }));
 
                 // Update deal states
                 let mut verified_infos = Vec::new();

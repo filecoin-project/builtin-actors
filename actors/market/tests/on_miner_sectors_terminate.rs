@@ -19,7 +19,48 @@ mod harness;
 
 use harness::*;
 
-// TODO: test deals in different sector with same provider are not terminated.
+#[test]
+fn terminate_multiple_deals_from_single_provider() {
+    let start_epoch = 10;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let sector_expiry = end_epoch + 100;
+    let current_epoch = 5;
+
+    let rt = setup();
+    rt.set_epoch(current_epoch);
+
+    // IDs are both deal and sector IDs.
+    let [id1, id2, id3]: [DealID; 3] = (end_epoch..end_epoch + 3)
+        .map(|epoch| {
+            let id = generate_and_publish_deal(
+                &rt,
+                CLIENT_ADDR,
+                &MinerAddresses::default(),
+                start_epoch,
+                epoch,
+            );
+            let ret = activate_deals(
+                &rt,
+                sector_expiry,
+                PROVIDER_ADDR,
+                current_epoch,
+                id, // use deal ID as unique sector number
+                &[id],
+            );
+            assert!(ret.activation_results.all_ok());
+            id
+        })
+        .collect::<Vec<DealID>>()
+        .try_into()
+        .unwrap();
+
+    terminate_deals(&rt, PROVIDER_ADDR, &[id1]);
+    assert_deals_terminated(&rt, current_epoch, &[id1]);
+    assert_deals_not_terminated(&rt, &[id2, id3]);
+
+    terminate_deals(&rt, PROVIDER_ADDR, &[id2, id3]);
+    assert_deals_terminated(&rt, current_epoch, &[id1, id2, id3]);
+}
 
 #[test]
 fn terminate_multiple_deals_from_multiple_providers() {
@@ -47,7 +88,7 @@ fn terminate_multiple_deals_from_multiple_providers() {
         .try_into()
         .unwrap();
     let sector_number = 7; // Both providers used the same sector number
-    activate_deals(
+    let ret = activate_deals(
         &rt,
         sector_expiry,
         PROVIDER_ADDR,
@@ -55,11 +96,20 @@ fn terminate_multiple_deals_from_multiple_providers() {
         sector_number,
         &[deal1, deal2, deal3],
     );
+    assert!(ret.activation_results.all_ok());
 
     let addrs = MinerAddresses { provider: provider2, ..MinerAddresses::default() };
     let deal4 = generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch);
     let deal5 = generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch + 1);
-    activate_deals(&rt, sector_expiry, provider2, current_epoch, sector_number, &[deal4, deal5]);
+    let ret = activate_deals(
+        &rt,
+        sector_expiry,
+        provider2,
+        current_epoch,
+        sector_number,
+        &[deal4, deal5],
+    );
+    assert!(ret.activation_results.all_ok());
 
     terminate_deals(&rt, PROVIDER_ADDR, &[sector_number]);
     assert_deals_terminated(&rt, current_epoch, &[deal1, deal2, deal3]);
@@ -91,7 +141,9 @@ fn ignore_sector_that_does_not_exist() {
         start_epoch,
         end_epoch,
     );
-    activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, sector_number, &[deal1]);
+    let ret =
+        activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, sector_number, &[deal1]);
+    assert!(ret.activation_results.all_ok());
     terminate_deals(&rt, PROVIDER_ADDR, &[sector_number + 1]);
 
     let s = get_deal_state(&rt, deal1);
@@ -132,7 +184,7 @@ fn terminate_valid_deals_along_with_just_expired_deal() {
         end_epoch - 1,
     );
     let sector_number = 7;
-    activate_deals(
+    let ret = activate_deals(
         &rt,
         sector_expiry,
         PROVIDER_ADDR,
@@ -140,6 +192,7 @@ fn terminate_valid_deals_along_with_just_expired_deal() {
         sector_number,
         &[deal1, deal2, deal3],
     );
+    assert!(ret.activation_results.all_ok());
 
     let new_epoch = end_epoch - 1;
     rt.set_epoch(new_epoch);
@@ -187,7 +240,9 @@ fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
     );
     assert_eq!(2, deal_ids.len());
     let sector_number = 7;
-    activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, sector_number, &deal_ids);
+    let ret =
+        activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, sector_number, &deal_ids);
+    assert!(ret.activation_results.all_ok());
 
     let new_epoch = end_epoch - 1;
     rt.set_epoch(new_epoch);
@@ -217,7 +272,9 @@ fn terminating_a_deal_the_second_time_does_not_change_its_slash_epoch() {
         end_epoch,
     );
     let sector_number = 7;
-    activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, sector_number, &[deal1]);
+    let ret =
+        activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, sector_number, &[deal1]);
+    assert!(ret.activation_results.all_ok());
 
     // terminating the deal so slash epoch is the current epoch
     terminate_deals(&rt, PROVIDER_ADDR, &[sector_number]);
@@ -256,12 +313,28 @@ fn terminating_new_deals_and_an_already_terminated_deal_only_terminates_the_new_
     let [deal1, deal2, deal3]: [DealID; 3] = deals.as_slice().try_into().unwrap();
     // Activate 1 deal
     let sector_number = 7;
-    activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, sector_number, &deals[0..1]);
+    let ret = activate_deals(
+        &rt,
+        sector_expiry,
+        PROVIDER_ADDR,
+        current_epoch,
+        sector_number,
+        &deals[0..1],
+    );
+    assert!(ret.activation_results.all_ok());
     // Terminate them
     terminate_deals(&rt, PROVIDER_ADDR, &[sector_number]);
 
     // Activate other deals in the same sector
-    activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, sector_number, &deals[1..3]);
+    let ret = activate_deals(
+        &rt,
+        sector_expiry,
+        PROVIDER_ADDR,
+        current_epoch,
+        sector_number,
+        &deals[1..3],
+    );
+    assert!(ret.activation_results.all_ok());
     // set a new epoch and terminate again
     let new_epoch = current_epoch + 1;
     rt.set_epoch(new_epoch);
@@ -298,7 +371,9 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
         end_epoch,
     );
     let sector_number = 7;
-    activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, sector_number, &[deal1]);
+    let ret =
+        activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, sector_number, &[deal1]);
+    assert!(ret.activation_results.all_ok());
     rt.set_epoch(end_epoch);
     terminate_deals(&rt, PROVIDER_ADDR, &[sector_number]);
     assert_deals_not_terminated(&rt, &[deal1]);
@@ -313,7 +388,9 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
         end_epoch,
     );
     let sector_number = sector_number + 1;
-    activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, sector_number, &[deal2]);
+    let ret =
+        activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, sector_number, &[deal2]);
+    assert!(ret.activation_results.all_ok());
     rt.set_epoch(end_epoch + 1);
     terminate_deals(&rt, PROVIDER_ADDR, &[sector_number]);
     assert_deals_not_terminated(&rt, &[deal2]);
@@ -329,7 +406,6 @@ fn fail_when_caller_is_not_a_storage_miner_actor() {
     let params =
         OnMinerSectorsTerminateParams { epoch: *rt.epoch.borrow(), sectors: BitField::new() };
 
-    // XXX: Which exit code is correct: SYS_FORBIDDEN(8) or USR_FORBIDDEN(18)?
     assert_eq!(
         ExitCode::USR_FORBIDDEN,
         rt.call::<MarketActor>(

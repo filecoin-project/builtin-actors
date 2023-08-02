@@ -88,7 +88,6 @@ pub struct State {
 /// IDs of deals associated with a single sector.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorDealIDs {
-    pub sector_expiration: ChainEpoch,
     pub deals: Vec<DealID>,
 }
 
@@ -127,7 +126,6 @@ impl State {
                 "failed to create empty pending deal allocation map",
             )?;
 
-        // XXX Tune the width parameter
         let empty_sector_deals_hamt = make_empty_map::<_, Cid>(store, HAMT_BIT_WIDTH)
             .flush()
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to create empty sector deals map")?;
@@ -628,8 +626,7 @@ impl State {
     ////////////////////////////////////////////////////////////////////////////////
 
     // Stores deal IDs associated with sectors for a provider.
-    // Deal IDs are added to any already stored for the provider and sector, while the
-    // sector expiration overwrites any expiration stored for the sector.
+    // Deal IDs are added to any already stored for the provider and sector.
     // Returns the root cid of the sector deals map.
     pub fn put_sector_deal_ids<BS>(
         &mut self,
@@ -651,8 +648,9 @@ impl State {
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to read sector deals")?;
             if let Some(existing_deal_ids) = existing_deal_ids {
                 new_deals.deals.extend(existing_deal_ids.deals.iter());
-                new_deals.deals.sort();
             }
+            new_deals.deals.sort();
+            new_deals.deals.dedup();
             sector_deals
                 .set(key, new_deals)
                 .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
@@ -740,13 +738,7 @@ impl State {
                         .collect();
 
                     sector_deals
-                        .set(
-                            key,
-                            SectorDealIDs {
-                                sector_expiration: existing_deal_ids.sector_expiration,
-                                deals: new_deals,
-                            },
-                        )
+                        .set(key, SectorDealIDs { deals: new_deals })
                         .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
                             format!("failed to set sector deals for {} {}", provider, sector_number)
                         })?;

@@ -22,6 +22,44 @@ const MINER_ADDRESSES: MinerAddresses = MinerAddresses {
 };
 
 #[test]
+fn activate_deals_one_sector() {
+    let rt = setup();
+    let epoch = rt.set_epoch(START_EPOCH);
+    let deals = [
+        create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH, false),
+        create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH + 1, false),
+        create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH + 2, true),
+    ];
+    let next_allocation_id = 1;
+    let datacap_required = TokenAmount::from_whole(deals[2].piece_size.0);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+    let deal_ids =
+        publish_deals(&rt, &MINER_ADDRESSES, &deals, datacap_required, next_allocation_id);
+
+    // Reverse deal IDs to check they are stored sorted in state.
+    let mut deal_ids_reversed = deal_ids.clone();
+    deal_ids_reversed.reverse();
+    let sectors = [(1, END_EPOCH + 10, deal_ids_reversed)];
+    let res = batch_activate_deals(&rt, PROVIDER_ADDR, &sectors);
+    assert!(res.activation_results.all_ok());
+
+    // Deal IDs are stored under the sector, in correct order.
+    assert_eq!(deal_ids, get_sector_deal_ids(&rt, &PROVIDER_ADDR, 1));
+
+    for id in deal_ids.iter() {
+        let state = get_deal_state(&rt, *id);
+        assert_eq!(1, state.sector_number);
+        assert_eq!(epoch, state.sector_start_epoch);
+        if *id == deal_ids[2] {
+            assert_eq!(state.verified_claim, next_allocation_id);
+        } else {
+            assert_eq!(state.verified_claim, NO_ALLOCATION_ID);
+        }
+    }
+    check_state(&rt);
+}
+
+#[test]
 fn activate_deals_across_multiple_sectors() {
     let rt = setup();
     let create_deal = |end_epoch, verified| {
@@ -291,38 +329,35 @@ fn fails_to_activate_sectors_containing_duplicate_deals() {
 }
 
 #[test]
-fn activate_deals_in_same_sector_separately() {
+fn activate_new_deals_in_existing_sector() {
+    // At time of writing, the miner actor won't do this.
+    // But future re-snap could allow it.
     let rt = setup();
-    let deal1 = create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH, false);
-    let deal2 = create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH + 1, false);
-    let deal3 = create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH + 2, false);
+    let deals = vec![
+        create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH, false),
+        create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH + 1, false),
+        create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH + 2, false),
+    ];
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
-    let deal_ids =
-        publish_deals(&rt, &MINER_ADDRESSES, &[deal1, deal2, deal3], TokenAmount::zero(), 0);
+    let deal_ids = publish_deals(&rt, &MINER_ADDRESSES, &deals, TokenAmount::zero(), 0);
     assert_eq!(3, deal_ids.len());
 
-    let deal1_id = deal_ids[0];
-    let deal2_id = deal_ids[1];
-    let deal3_id = deal_ids[2];
-
+    // Activate deals separately, and out of order.
     let sector_number = 1;
     batch_activate_deals(
         &rt,
         PROVIDER_ADDR,
-        &[(sector_number, END_EPOCH + 10, vec![deal1_id, deal2_id])],
+        &[(sector_number, END_EPOCH + 10, vec![deal_ids[0], deal_ids[2]])],
     );
-    // Another deal in the same sector.
-    batch_activate_deals(&rt, PROVIDER_ADDR, &[(sector_number, END_EPOCH + 10, vec![deal3_id])]);
+    batch_activate_deals(&rt, PROVIDER_ADDR, &[(sector_number, END_EPOCH + 10, vec![deal_ids[1]])]);
 
     // all deals are activated
-    assert_eq!(0, get_deal_state(&rt, deal1_id).sector_start_epoch);
-    assert_eq!(0, get_deal_state(&rt, deal3_id).sector_start_epoch);
-    assert_eq!(0, get_deal_state(&rt, deal2_id).sector_start_epoch);
+    assert_eq!(0, get_deal_state(&rt, deal_ids[0]).sector_start_epoch);
+    assert_eq!(0, get_deal_state(&rt, deal_ids[1]).sector_start_epoch);
+    assert_eq!(0, get_deal_state(&rt, deal_ids[2]).sector_start_epoch);
 
-    assert_eq!(
-        vec![deal1_id, deal2_id, deal3_id],
-        get_sector_deal_ids(&rt, &PROVIDER_ADDR, sector_number)
-    );
+    // All deals stored under the sector, in order.
+    assert_eq!(deal_ids, get_sector_deal_ids(&rt, &PROVIDER_ADDR, sector_number));
     check_state(&rt);
 }

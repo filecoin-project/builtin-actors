@@ -73,7 +73,10 @@ pub struct Policy {
     /// Maximum number of unique "declarations" in batch operations.
     pub declarations_max: u64,
 
-    /// The maximum number of sector infos that may be required to be loaded in a single invocation.
+    /// The maximum number of sector numbers addressable in a single invocation
+    /// (which implies also the max infos that may be loaded at once).
+    /// One upper bound on this is the max size of a storage block: 1MiB supports 130k at 8 bytes each,
+    /// though bitfields can compress this.
     pub addressed_sectors_max: u64,
 
     pub max_pre_commit_randomness_lookback: ChainEpoch,
@@ -299,7 +302,10 @@ pub mod policy_constants {
     /// Maximum number of unique "declarations" in batch operations.
     pub const DECLARATIONS_MAX: u64 = ADDRESSED_PARTITIONS_MAX;
 
-    /// The maximum number of sector infos that may be required to be loaded in a single invocation.
+    /// The maximum number of sector numbers addressable in a single invocation
+    /// (which implies also the max infos that may be loaded at once).
+    /// One upper bound on this is the max size of a storage block: 1MiB supports 130k at 8 bytes each,
+    /// though bitfields can compress this.
     pub const ADDRESSED_SECTORS_MAX: u64 = 25_000;
 
     pub const MAX_PRE_COMMIT_RANDOMNESS_LOOKBACK: ChainEpoch = EPOCHS_IN_DAY + CHAIN_FINALITY;

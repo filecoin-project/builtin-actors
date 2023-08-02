@@ -53,7 +53,6 @@ fn test_remove_all_error() {
     SetMultimap::new(&rt.store()).remove_all(42).expect("expected no error");
 }
 
-// TODO add array stuff
 #[test]
 fn simple_construction() {
     let rt = MockRuntime {

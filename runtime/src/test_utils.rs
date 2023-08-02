@@ -1143,7 +1143,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
 
         let expected_msg = self.expectations.borrow_mut().expect_sends.pop_front().unwrap();
 
-        assert_eq!(expected_msg.to, *to, "expected message to {}, was {}", expected_msg.to, to,);
+        assert_eq!(expected_msg.to, *to, "expected message to {}, was {}", expected_msg.to, to);
         assert_eq!(
             expected_msg.method, method,
             "expected method {}, was {}",

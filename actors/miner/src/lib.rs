@@ -3960,10 +3960,6 @@ fn process_early_terminations(
 
             let mut sectors_terminated: Vec<BitField> = Vec::new();
             let mut total_initial_pledge = TokenAmount::zero();
-            // let mut deals_to_terminate =
-            //     Vec::<ext::market::OnMinerSectorsTerminateParams>::with_capacity(
-            //         result.sectors.len(),
-            //     );
             let mut penalty = TokenAmount::zero();
 
             for (epoch, sector_numbers) in result.iter() {
@@ -3986,9 +3982,6 @@ fn process_early_terminations(
                     deal_ids.extend(sector.deal_ids);
                     total_initial_pledge += sector.initial_pledge;
                 }
-
-                // let params = ext::market::OnMinerSectorsTerminateParams { epoch, deal_ids };
-                // deals_to_terminate.push(params);
             }
 
             // Pay penalty
@@ -4282,9 +4275,9 @@ fn request_terminate_deals(
     sectors: &BitField,
 ) -> Result<(), ActorError> {
     if !sectors.is_empty() {
-        // XXX REVIEW: should we chunk this call?
-        // The sector bitfield representation is now much more efficient.
-        // But possibly still large, or large amount of work in the market.
+        // The sectors bitfield could be large, but will fit into a single parameters block.
+        // The FVM max block size of 1MiB supports 130K 8-byte integers, but the policy parameter
+        // ADDRESSED_SECTORS_MAX (currently 25k) will avoid reaching that.
         let res = extract_send_result(rt.send_simple(
             &STORAGE_MARKET_ACTOR_ADDR,
             ext::market::ON_MINER_SECTORS_TERMINATE_METHOD,
