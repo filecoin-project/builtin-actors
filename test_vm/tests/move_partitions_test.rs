@@ -14,18 +14,20 @@ use fil_actor_miner::{
 };
 
 use fil_actor_power::{Method as PowerMethod, State as PowerState};
+use fil_actors_integration_tests::expects::Expect;
+use fil_actors_integration_tests::util::{
+    advance_by_deadline_to_epoch, advance_to_proving_deadline, assert_invariants, create_accounts,
+    create_miner, cron_tick, get_network_stats, make_bitfield, miner_balance, precommit_sectors,
+    submit_windowed_post,
+};
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
     CRON_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
-use test_vm::expects::Expect;
-use test_vm::trace::ExpectInvocation;
-use test_vm::util::{
-    advance_by_deadline_to_epoch, advance_to_proving_deadline, apply_ok, assert_invariants,
-    create_accounts, create_miner, cron_tick, get_network_stats, get_state, make_bitfield,
-    miner_balance, precommit_sectors, submit_windowed_post, DynBlockstore,
-};
-use test_vm::{TestVM, VM};
+use test_vm::TestVM;
+use vm_api::trace::ExpectInvocation;
+use vm_api::util::{apply_ok, get_state, DynBlockstore};
+use vm_api::VM;
 
 #[test]
 fn move_partitions_success() {
@@ -63,7 +65,7 @@ fn move_partitions_success() {
 
     cron_tick(&v);
     v.set_epoch(v.epoch() + 1);
-    assert_invariants(&v);
+    assert_invariants(&v, &Policy::default());
 }
 
 fn submit_post_succeeds_test(v: &dyn VM, miner_info: MinerInfo, sector_info: SectorInfo) {
@@ -85,7 +87,7 @@ fn submit_post_succeeds_test(v: &dyn VM, miner_info: MinerInfo, sector_info: Sec
     let p_st: PowerState = get_state(v, &STORAGE_POWER_ACTOR_ADDR).unwrap();
     assert_eq!(sector_power.raw, p_st.total_bytes_committed);
 
-    assert_invariants(v);
+    assert_invariants(v, &Policy::default());
 }
 
 struct SectorInfo {
