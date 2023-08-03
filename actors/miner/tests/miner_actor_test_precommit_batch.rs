@@ -34,7 +34,6 @@ struct DealSpec {
 }
 
 fn assert_simple_batch(
-    v2: bool,
     batch_size: usize,
     balance_surplus: TokenAmount,
     base_fee: TokenAmount,
@@ -44,10 +43,7 @@ fn assert_simple_batch(
 ) {
     let period_offset = ChainEpoch::from(100);
 
-    let h = ActorHarness::new_with_options(HarnessOptions {
-        use_v2_pre_commit_and_replica_update: v2,
-        proving_period_offset: period_offset,
-    });
+    let h = ActorHarness::new_with_options(HarnessOptions { proving_period_offset: period_offset });
     let rt = h.new_runtime();
 
     let precommit_epoch = period_offset + 1;
@@ -158,47 +154,25 @@ mod miner_actor_precommit_batch {
     };
     use fil_actors_runtime::{STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
     use fvm_ipld_encoding::ipld_block::IpldBlock;
-    use test_case::test_case;
 
-    #[test_case(false; "v1")]
-    #[test_case(true; "v2")]
-    fn one_sector(v2: bool) {
-        assert_simple_batch(v2, 1, TokenAmount::zero(), TokenAmount::zero(), &[], ExitCode::OK, "");
+    #[test]
+    fn one_sector() {
+        assert_simple_batch(1, TokenAmount::zero(), TokenAmount::zero(), &[], ExitCode::OK, "");
     }
 
-    #[test_case(false; "v1")]
-    #[test_case(true; "v2")]
-    fn thirty_two_sectors(v2: bool) {
-        assert_simple_batch(
-            v2,
-            32,
-            TokenAmount::zero(),
-            TokenAmount::zero(),
-            &[],
-            ExitCode::OK,
-            "",
-        );
+    #[test]
+    fn thirty_two_sectors() {
+        assert_simple_batch(32, TokenAmount::zero(), TokenAmount::zero(), &[], ExitCode::OK, "");
     }
 
-    #[test_case(false; "v1")]
-    #[test_case(true; "v2")]
-    fn max_sectors(v2: bool) {
-        assert_simple_batch(
-            v2,
-            256,
-            TokenAmount::zero(),
-            TokenAmount::zero(),
-            &[],
-            ExitCode::OK,
-            "",
-        );
+    #[test]
+    fn max_sectors() {
+        assert_simple_batch(256, TokenAmount::zero(), TokenAmount::zero(), &[], ExitCode::OK, "");
     }
 
-    #[test_case(false; "v1")]
-    #[test_case(true; "v2")]
-    fn one_deal(v2: bool) {
+    #[test]
+    fn one_deal() {
         assert_simple_batch(
-            v2,
             3,
             TokenAmount::zero(),
             TokenAmount::zero(),
@@ -207,12 +181,9 @@ mod miner_actor_precommit_batch {
             "",
         );
     }
-
-    #[test_case(false; "v1")]
-    #[test_case(true; "v2")]
-    fn many_deals(v2: bool) {
+    #[test]
+    fn many_deals() {
         assert_simple_batch(
-            v2,
             3,
             TokenAmount::zero(),
             TokenAmount::zero(),
@@ -226,11 +197,9 @@ mod miner_actor_precommit_batch {
         );
     }
 
-    #[test_case(false; "v1")]
-    #[test_case(true; "v2")]
-    fn empty_batch(v2: bool) {
+    #[test]
+    fn empty_batch() {
         assert_simple_batch(
-            v2,
             0,
             TokenAmount::zero(),
             TokenAmount::zero(),
@@ -240,11 +209,9 @@ mod miner_actor_precommit_batch {
         );
     }
 
-    #[test_case(false; "v1")]
-    #[test_case(true; "v2")]
-    fn too_many_sectors(v2: bool) {
+    #[test]
+    fn too_many_sectors() {
         assert_simple_batch(
-            v2,
             Policy::default().pre_commit_sector_batch_max_size + 1,
             TokenAmount::zero(),
             TokenAmount::zero(),
@@ -253,12 +220,9 @@ mod miner_actor_precommit_batch {
             "batch of 257 too large",
         );
     }
-
-    #[test_case(false; "v1")]
-    #[test_case(true; "v2")]
-    fn insufficient_balance(v2: bool) {
+    #[test]
+    fn insufficient_balance() {
         assert_simple_batch(
-            v2,
             10,
             TokenAmount::from_atto(-1),
             TokenAmount::zero(),
@@ -268,19 +232,16 @@ mod miner_actor_precommit_batch {
         );
     }
 
-    #[test_case(false; "v1")]
-    #[test_case(true; "v2")]
-    fn one_bad_apple_ruins_batch(v2: bool) {
+    #[test]
+    fn one_bad_apple_ruins_batch() {
         // This test does not enumerate all the individual conditions that could cause a single precommit
         // to be rejected. Those are covered in the PreCommitSector tests, and we know that that
         // method is implemented in terms of a batch of one.
 
         let period_offset = ChainEpoch::from(100);
 
-        let h = ActorHarness::new_with_options(HarnessOptions {
-            use_v2_pre_commit_and_replica_update: v2,
-            proving_period_offset: period_offset,
-        });
+        let h =
+            ActorHarness::new_with_options(HarnessOptions { proving_period_offset: period_offset });
 
         let rt = h.new_runtime();
 
@@ -313,15 +274,12 @@ mod miner_actor_precommit_batch {
         rt.reset();
     }
 
-    #[test_case(false; "v1")]
-    #[test_case(true; "v2")]
-    fn duplicate_sector_rejects_batch(v2: bool) {
+    #[test]
+    fn duplicate_sector_rejects_batch() {
         let period_offset = ChainEpoch::from(100);
 
-        let h = ActorHarness::new_with_options(HarnessOptions {
-            use_v2_pre_commit_and_replica_update: v2,
-            proving_period_offset: period_offset,
-        });
+        let h =
+            ActorHarness::new_with_options(HarnessOptions { proving_period_offset: period_offset });
         let rt = h.new_runtime();
 
         rt.set_balance(BIG_BALANCE.clone());
@@ -357,10 +315,8 @@ mod miner_actor_precommit_batch {
     fn mismatch_of_commd() {
         let period_offset = ChainEpoch::from(100);
 
-        let h = ActorHarness::new_with_options(HarnessOptions {
-            use_v2_pre_commit_and_replica_update: true,
-            proving_period_offset: period_offset,
-        });
+        let h =
+            ActorHarness::new_with_options(HarnessOptions { proving_period_offset: period_offset });
         let rt = h.new_runtime();
 
         rt.set_balance(BIG_BALANCE.clone());

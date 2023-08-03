@@ -25,8 +25,9 @@ use crate::expects::Expect;
 use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline,
     bf_all, create_accounts, create_miner, cron_tick, market_add_balance, market_publish_deal,
-    miner_precommit_sector, miner_prove_sector, sector_deadline, submit_windowed_post,
-    verifreg_add_client, verifreg_add_verifier,
+    miner_precommit_one_sector_v2, miner_prove_sector, precommit_meta_data_from_deals,
+    sector_deadline, submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
+    PrecommitMetadata,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -154,13 +155,14 @@ pub fn commit_sector_with_max_duration_deal_test(v: &dyn VM) {
     //
     // Precommit, prove and PoSt empty sector (more fully tested in TestCommitPoStFlow)
     //
-    miner_precommit_sector(
+    miner_precommit_one_sector_v2(
         v,
         &worker,
         &miner_id,
         seal_proof,
         sector_number,
-        deals,
+        precommit_meta_data_from_deals(v, deals, seal_proof),
+        true,
         deal_start + deal_lifetime,
     );
 
@@ -217,13 +219,14 @@ pub fn extend_sector_up_to_max_relative_extension_test(v: &dyn VM) {
     let sector_start =
         v.epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
 
-    miner_precommit_sector(
+    miner_precommit_one_sector_v2(
         v,
         &worker,
         &miner_id,
         seal_proof,
         sector_number,
-        vec![],
+        PrecommitMetadata::default(),
+        true,
         sector_start + 180 * EPOCHS_IN_DAY,
     );
 
@@ -308,7 +311,16 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
 
     let expiration = v.epoch() + 360 * EPOCHS_IN_DAY;
 
-    miner_precommit_sector(v, &worker, &miner_id, seal_proof, sector_number, vec![], expiration);
+    miner_precommit_one_sector_v2(
+        v,
+        &worker,
+        &miner_id,
+        seal_proof,
+        sector_number,
+        PrecommitMetadata::default(),
+        true,
+        expiration,
+    );
 
     // advance time by a day and prove the sector
     let prove_epoch = v.epoch() + EPOCHS_IN_DAY;

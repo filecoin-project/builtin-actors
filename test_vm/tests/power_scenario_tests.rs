@@ -1,14 +1,12 @@
-use fil_actor_miner::{
-    max_prove_commit_duration, Method as MinerMethod, PreCommitSectorParams, MIN_SECTOR_EXPIRATION,
-};
+use fil_actor_miner::{max_prove_commit_duration, Method as MinerMethod, MIN_SECTOR_EXPIRATION};
 use fil_actor_power::Method as PowerMethod;
 use fil_actors_integration_tests::expects::Expect;
 use fil_actors_integration_tests::tests::power_create_miner_test;
 use fil_actors_integration_tests::util::{
     create_accounts, create_miner, expect_invariants, invariant_failure_patterns, miner_dline_info,
+    miner_precommit_one_sector_v2, PrecommitMetadata,
 };
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::test_utils::make_sealed_cid;
 use fil_actors_runtime::{CRON_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::RawBytes;
@@ -44,31 +42,21 @@ fn test_cron_tick() {
         RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
         &TokenAmount::from_whole(10_000),
     );
-
-    // create precommit
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let sector_number = 100;
-    let sealed_cid = make_sealed_cid(b"100");
-    let precommit_params = PreCommitSectorParams {
-        seal_proof,
-        sector_number,
-        sealed_cid,
-        seal_rand_epoch: vm.epoch() - 1,
-        deal_ids: vec![],
-        expiration: vm.epoch()
-            + MIN_SECTOR_EXPIRATION
-            + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap()
-            + 100,
-        ..Default::default()
-    };
-
-    apply_ok(
+    // create precommit
+    miner_precommit_one_sector_v2(
         &vm,
         &addrs[0],
         &robust_addr,
-        &TokenAmount::zero(),
-        MinerMethod::PreCommitSector as u64,
-        Some(precommit_params),
+        seal_proof,
+        sector_number,
+        PrecommitMetadata::default(),
+        true,
+        vm.epoch()
+            + MIN_SECTOR_EXPIRATION
+            + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap()
+            + 100,
     );
 
     // find epoch of miner's next cron task (precommit:1, enrollCron:2)
