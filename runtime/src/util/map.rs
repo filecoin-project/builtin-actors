@@ -87,6 +87,11 @@ where
         })
     }
 
+    /// Returns whether the map is empty.
+    pub fn is_empty(&self) -> bool {
+        self.hamt.is_empty()
+    }
+
     /// Returns a reference to the value associated with a key, if present.
     pub fn get(&self, key: &K) -> Result<Option<&V>, ActorError> {
         let k = key.to_bytes().context_code(ExitCode::USR_ASSERTION_FAILED, "invalid key")?;

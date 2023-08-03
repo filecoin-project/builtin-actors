@@ -659,6 +659,7 @@ impl ActorHarness {
         let mut any_deals = false;
         for sector in sectors.iter() {
             sector_deals.push(SectorDeals {
+                sector_number: sector.sector_number,
                 sector_type: sector.seal_proof,
                 sector_expiry: sector.expiration,
                 deal_ids: sector.deal_ids.clone(),
@@ -748,6 +749,7 @@ impl ActorHarness {
         if !params.deal_ids.is_empty() {
             let vdparams = VerifyDealsForActivationParams {
                 sectors: vec![SectorDeals {
+                    sector_number: params.sector_number,
                     sector_type: params.seal_proof,
                     sector_expiry: params.expiration,
                     deal_ids: params.deal_ids.clone(),
@@ -1062,6 +1064,7 @@ impl ActorHarness {
             if !pc.info.deal_ids.is_empty() {
                 let deal_space = cfg.deal_space(pc.info.sector_number);
                 let activate_params = SectorDeals {
+                    sector_number: pc.info.sector_number,
                     deal_ids: pc.info.deal_ids.clone(),
                     sector_expiry: pc.info.expiration,
                     sector_type: pc.info.seal_proof,
@@ -1111,6 +1114,7 @@ impl ActorHarness {
             } else {
                 // empty deal ids
                 sector_activation_params.push(SectorDeals {
+                    sector_number: pc.info.sector_number,
                     deal_ids: vec![],
                     sector_expiry: pc.info.expiration,
                     sector_type: RegisteredSealProof::StackedDRG8MiBV1,
@@ -2051,15 +2055,8 @@ impl ActorHarness {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
 
-        let mut deal_ids: Vec<DealID> = Vec::new();
-        let mut sector_infos: Vec<SectorOnChainInfo> = Vec::new();
-
-        for sector in sectors.iter() {
-            let sector = self.get_sector(rt, sector);
-            deal_ids.extend(sector.deal_ids.iter());
-            sector_infos.push(sector);
-        }
-
+        let sector_infos: Vec<SectorOnChainInfo> =
+            sectors.iter().map(|sno| self.get_sector(rt, sno)).collect();
         self.expect_query_network_info(rt);
 
         let mut pledge_delta = TokenAmount::zero();
@@ -2091,36 +2088,32 @@ impl ActorHarness {
             );
         }
 
-        if !deal_ids.is_empty() {
-            let max_length = 8192;
-            let size = deal_ids.len().min(max_length);
-            let params = OnMinerSectorsTerminateParams {
-                epoch: *rt.epoch.borrow(),
-                deal_ids: deal_ids[0..size].to_owned(),
-            };
-            rt.expect_send_simple(
-                STORAGE_MARKET_ACTOR_ADDR,
-                ON_MINER_SECTORS_TERMINATE_METHOD,
-                IpldBlock::serialize_cbor(&params).unwrap(),
-                TokenAmount::zero(),
-                None,
-                ExitCode::OK,
-            );
-        }
+        let params =
+            OnMinerSectorsTerminateParams { epoch: *rt.epoch.borrow(), sectors: sectors.clone() };
+        rt.expect_send_simple(
+            STORAGE_MARKET_ACTOR_ADDR,
+            ON_MINER_SECTORS_TERMINATE_METHOD,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+            TokenAmount::zero(),
+            None,
+            ExitCode::OK,
+        );
 
         let sector_power = power_for_sectors(self.sector_size, &sector_infos);
         let params = UpdateClaimedPowerParams {
             raw_byte_delta: -sector_power.raw.clone(),
             quality_adjusted_delta: -sector_power.qa.clone(),
         };
-        rt.expect_send_simple(
-            STORAGE_POWER_ACTOR_ADDR,
-            UPDATE_CLAIMED_POWER_METHOD,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-            TokenAmount::zero(),
-            None,
-            ExitCode::OK,
-        );
+        if !sector_power.is_zero() {
+            rt.expect_send_simple(
+                STORAGE_POWER_ACTOR_ADDR,
+                UPDATE_CLAIMED_POWER_METHOD,
+                IpldBlock::serialize_cbor(&params).unwrap(),
+                TokenAmount::zero(),
+                None,
+                ExitCode::OK,
+            );
+        }
 
         // create declarations
         let state: State = rt.get_state();

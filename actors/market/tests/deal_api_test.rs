@@ -118,7 +118,8 @@ fn activation() {
     // activate the deal
     let activate_epoch = start_epoch - 2;
     rt.set_epoch(activate_epoch);
-    activate_deals(&rt, end_epoch + 1, PROVIDER_ADDR, activate_epoch, &[id]);
+    let sector_number = 7;
+    activate_deals(&rt, end_epoch + 1, PROVIDER_ADDR, activate_epoch, sector_number, &[id]);
     let activation: GetDealActivationReturn =
         query_deal(&rt, Method::GetDealActivationExported, id);
     assert_eq!(activate_epoch, activation.activated);
@@ -127,7 +128,7 @@ fn activation() {
     // terminate early
     let terminate_epoch = activate_epoch + 100;
     rt.set_epoch(terminate_epoch);
-    terminate_deals(&rt, PROVIDER_ADDR, &[id]);
+    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number]);
     let activation: GetDealActivationReturn =
         query_deal(&rt, Method::GetDealActivationExported, id);
     assert_eq!(activate_epoch, activation.activated);
