@@ -15,6 +15,7 @@ use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::sector::SectorNumber;
 use fvm_shared::HAMT_BIT_WIDTH;
 use num_traits::Zero;
 use std::collections::BTreeMap;
@@ -70,12 +71,34 @@ pub struct State {
     pub total_client_storage_fee: TokenAmount,
 
     /// Verified registry allocation IDs for deals that are not yet activated.
-    pub pending_deal_allocation_ids: Cid, // HAMT[DealID]AllocationID
+    // HAMT[DealID]AllocationID
+    pub pending_deal_allocation_ids: Cid,
+
+    /// Maps providers to their sector IDs to deal IDs.
+    /// This supports finding affected deals when a sector is terminated early
+    /// or has data replaced.
+    /// Grouping by provider limits the cost of operations in the expected use case
+    /// of multiple sectors all belonging to the same provider.
+    /// HAMT[Address]HAMT[SectorNumber]SectorDealIDs
+    pub provider_sectors: Cid,
+}
+
+/// IDs of deals associated with a single sector.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct SectorDealIDs {
+    pub deals: Vec<DealID>,
 }
 
 pub type PendingDealAllocationsMap<BS> = Map2<BS, DealID, AllocationID>;
 pub const PENDING_ALLOCATIONS_CONFIG: Config =
     Config { bit_width: HAMT_BIT_WIDTH, ..DEFAULT_HAMT_CONFIG };
+
+pub type ProviderSectorsMap<BS> = Map2<BS, Address, Cid>;
+pub const PROVIDER_SECTORS_CONFIG: Config =
+    Config { bit_width: HAMT_BIT_WIDTH, ..DEFAULT_HAMT_CONFIG };
+
+pub type SectorDealsMap<BS> = Map2<BS, SectorNumber, SectorDealIDs>;
+pub const SECTOR_DEALS_CONFIG: Config = Config { bit_width: HAMT_BIT_WIDTH, ..DEFAULT_HAMT_CONFIG };
 
 impl State {
     pub fn new<BS: Blockstore>(store: &BS) -> Result<Self, ActorError> {
@@ -84,30 +107,33 @@ impl State {
                 .flush()
                 .context_code(
                     ExitCode::USR_ILLEGAL_STATE,
-                    "Failed to create empty proposals array",
+                    "failed to create empty proposals array",
                 )?;
 
         let empty_states_array = Array::<(), BS>::new_with_bit_width(store, STATES_AMT_BITWIDTH)
             .flush()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "Failed to create empty states array")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to create empty states array")?;
 
         let empty_pending_proposals_map = Set::new(store).root().context_code(
             ExitCode::USR_ILLEGAL_STATE,
-            "Failed to create empty pending proposals map state",
+            "failed to create empty pending proposals map state",
         )?;
 
         let empty_balance_table = BalanceTable::new(store, "balance table").root()?;
 
         let empty_deal_ops_hamt = SetMultimap::new(store)
             .root()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "Failed to create empty multiset")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to create empty multiset")?;
 
-        let empty_pending_deal_allocation_map = Map2::<&BS, DealID, AllocationID>::empty(
+        let empty_pending_deal_allocation_map = PendingDealAllocationsMap::empty(
             store,
             PENDING_ALLOCATIONS_CONFIG,
             "pending deal allocations",
         )
         .flush()?;
+
+        let empty_sector_deals_hamt =
+            ProviderSectorsMap::empty(store, PROVIDER_SECTORS_CONFIG, "sector deals").flush()?;
 
         Ok(Self {
             proposals: empty_proposals_array,
@@ -123,6 +149,7 @@ impl State {
             total_provider_locked_collateral: TokenAmount::default(),
             total_client_storage_fee: TokenAmount::default(),
             pending_deal_allocation_ids: empty_pending_deal_allocation_map,
+            provider_sectors: empty_sector_deals_hamt,
         })
     }
 
@@ -568,6 +595,154 @@ impl State {
     }
 
     ////////////////////////////////////////////////////////////////////////////////
+    // Provider sector/deal operations
+    ////////////////////////////////////////////////////////////////////////////////
+
+    // Stores deal IDs associated with sectors for a provider.
+    // Deal IDs are added to any already stored for the provider and sector.
+    // Returns the root cid of the sector deals map.
+    pub fn put_sector_deal_ids<BS>(
+        &mut self,
+        store: &BS,
+        provider: &Address,
+        sector_deal_ids: &[(SectorNumber, SectorDealIDs)],
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+    {
+        let mut provider_sectors = self.load_provider_sectors(store)?;
+        let mut sector_deals = load_provider_sector_deals(store, &provider_sectors, provider)?;
+
+        for (sector_number, deals) in sector_deal_ids {
+            let mut new_deals = deals.clone();
+            let existing_deal_ids = sector_deals
+                .get(sector_number)
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to read sector deals")?;
+            if let Some(existing_deal_ids) = existing_deal_ids {
+                new_deals.deals.extend(existing_deal_ids.deals.iter());
+            }
+            new_deals.deals.sort();
+            new_deals.deals.dedup();
+            sector_deals
+                .set(sector_number, new_deals)
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to set sector deals for {} {}", provider, sector_number)
+                })?;
+        }
+
+        save_provider_sector_deals(&mut provider_sectors, provider, &mut sector_deals)?;
+        self.save_provider_sectors(&mut provider_sectors)?;
+        Ok(())
+    }
+
+    // Reads and removes the sector deals mapping for an array of sector numbers,
+    pub fn pop_sector_deal_ids<BS>(
+        &mut self,
+        store: &BS,
+        provider: &Address,
+        sector_numbers: impl Iterator<Item = SectorNumber>,
+    ) -> Result<Vec<(SectorNumber, SectorDealIDs)>, ActorError>
+    where
+        BS: Blockstore,
+    {
+        let mut provider_sectors = self.load_provider_sectors(store)?;
+        let mut sector_deals = load_provider_sector_deals(store, &provider_sectors, provider)?;
+
+        let mut popped_sector_deals = Vec::new();
+        for sector_number in sector_numbers {
+            let deals: Option<SectorDealIDs> = sector_deals
+                .delete(&sector_number)
+                .with_context(|| format!("provider {}", provider))?;
+            if let Some(deals) = deals {
+                popped_sector_deals.push((sector_number, deals.clone()));
+            }
+        }
+
+        // Flush if any of the requested sectors were found.
+        if !popped_sector_deals.is_empty() {
+            if sector_deals.is_empty() {
+                // Remove from top-level map
+                provider_sectors
+                    .delete(provider)
+                    .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                        format!("failed to delete sector deals for {}", provider)
+                    })?;
+            } else {
+                save_provider_sector_deals(&mut provider_sectors, provider, &mut sector_deals)?;
+            }
+            self.save_provider_sectors(&mut provider_sectors)?;
+        }
+
+        Ok(popped_sector_deals)
+    }
+
+    // Removes specified deals from the sector deals mapping.
+    // Missing deals are ignored.
+    pub fn remove_sector_deal_ids<BS>(
+        &mut self,
+        store: &BS,
+        provider_sector_deal_ids: &BTreeMap<Address, BTreeMap<SectorNumber, Vec<DealID>>>,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+    {
+        let mut provider_sectors = self.load_provider_sectors(store)?;
+        for (provider, sector_deal_ids) in provider_sector_deal_ids {
+            let mut sector_deals = load_provider_sector_deals(store, &provider_sectors, provider)?;
+            for (sector_number, deals_to_remove) in sector_deal_ids {
+                let existing_deal_ids = sector_deals
+                    .get(sector_number)
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to read sector deals")?;
+                if let Some(existing_deal_ids) = existing_deal_ids {
+                    // The filter below is a linear scan of deals_to_remove.
+                    // This is expected to be a small list, often a singleton, so is usually
+                    // pretty fast.
+                    // Loading into a HashSet could be an improvement for large collections of deals
+                    // in a single sector being removed at one time.
+                    let new_deals = existing_deal_ids
+                        .deals
+                        .iter()
+                        .filter(|deal_id| !deals_to_remove.contains(*deal_id))
+                        .cloned()
+                        .collect();
+
+                    sector_deals
+                        .set(sector_number, SectorDealIDs { deals: new_deals })
+                        .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                            format!("failed to set sector deals for {} {}", provider, sector_number)
+                        })?;
+                }
+            }
+            save_provider_sector_deals(&mut provider_sectors, provider, &mut sector_deals)?;
+        }
+        self.save_provider_sectors(&mut provider_sectors)?;
+        Ok(())
+    }
+
+    fn load_provider_sectors<BS>(&self, store: BS) -> Result<ProviderSectorsMap<BS>, ActorError>
+    where
+        BS: Blockstore,
+    {
+        ProviderSectorsMap::load(
+            store,
+            &self.provider_sectors,
+            PROVIDER_SECTORS_CONFIG,
+            "provider sectors",
+        )
+    }
+
+    fn save_provider_sectors<BS>(
+        &mut self,
+        provider_sectors: &mut ProviderSectorsMap<BS>,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+    {
+        self.provider_sectors = provider_sectors.flush()?;
+        Ok(())
+    }
+
+    ////////////////////////////////////////////////////////////////////////////////
     // Deal state operations
     ////////////////////////////////////////////////////////////////////////////////
     pub fn process_deal_update<BS>(
@@ -910,4 +1085,35 @@ fn deal_get_payment_remaining(
     }
 
     Ok(&deal.storage_price_per_epoch * duration_remaining as u64)
+}
+
+fn load_provider_sector_deals<BS>(
+    store: BS,
+    provider_sectors: &ProviderSectorsMap<BS>,
+    provider: &Address,
+) -> Result<SectorDealsMap<BS>, ActorError>
+where
+    BS: Blockstore,
+{
+    let sectors_root: Option<&Cid> = (*provider_sectors).get(provider)?;
+    let sector_deals: SectorDealsMap<BS> = if let Some(sectors_root) = sectors_root {
+        SectorDealsMap::load(store, sectors_root, SECTOR_DEALS_CONFIG, "sector deals")
+            .with_context(|| format!("provider {}", provider))?
+    } else {
+        SectorDealsMap::empty(store, SECTOR_DEALS_CONFIG, "empty")
+    };
+    Ok(sector_deals)
+}
+
+fn save_provider_sector_deals<BS>(
+    provider_sectors: &mut ProviderSectorsMap<BS>,
+    provider: &Address,
+    sector_deals: &mut SectorDealsMap<BS>,
+) -> Result<(), ActorError>
+where
+    BS: Blockstore,
+{
+    let sectors_root = sector_deals.flush()?;
+    provider_sectors.set(provider, sectors_root)?;
+    Ok(())
 }
