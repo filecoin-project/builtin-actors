@@ -658,6 +658,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
             Expect::market_activate_deals(
                 miner_id,
                 deal_ids.clone(),
+                sector_number,
                 initial_sector_info.expiration,
                 initial_sector_info.seal_proof,
                 true,
