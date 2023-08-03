@@ -1143,12 +1143,32 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
 
         let expected_msg = self.expectations.borrow_mut().expect_sends.pop_front().unwrap();
 
-        assert_eq!(expected_msg.to, *to);
-        assert_eq!(expected_msg.method, method);
-        assert_eq!(expected_msg.params, params);
-        assert_eq!(expected_msg.value, value);
-        assert_eq!(expected_msg.gas_limit, gas_limit, "gas limit did not match expectation");
-        assert_eq!(expected_msg.send_flags, send_flags, "send flags did not match expectation");
+        assert_eq!(expected_msg.to, *to, "expected message to {}, was {}", expected_msg.to, to);
+        assert_eq!(
+            expected_msg.method, method,
+            "expected method {}, was {}",
+            expected_msg.method, method
+        );
+        assert_eq!(
+            expected_msg.params, params,
+            "expected params {:?}, was {:?}",
+            expected_msg.params, params,
+        );
+        assert_eq!(
+            expected_msg.value, value,
+            "expected value {:?}, was {:?}",
+            expected_msg.value, value,
+        );
+        assert_eq!(
+            expected_msg.gas_limit, gas_limit,
+            "expected gas limit {:?}, was {:?}",
+            expected_msg.gas_limit, gas_limit
+        );
+        assert_eq!(
+            expected_msg.send_flags, send_flags,
+            "expected send flags {:?}, was {:?}",
+            expected_msg.send_flags, send_flags
+        );
 
         if let Some(e) = expected_msg.send_error {
             return Err(SendError(e));
