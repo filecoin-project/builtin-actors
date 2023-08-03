@@ -1176,6 +1176,7 @@ impl Actor {
         let sectors_deals: Vec<ext::market::SectorDeals> = validated_updates
             .iter()
             .map(|(usi, _)| ext::market::SectorDeals {
+                sector_number: usi.sector_info.sector_number,
                 deal_ids: usi.update.deals.clone(),
                 sector_expiry: usi.sector_info.expiration,
                 sector_type: usi.sector_info.seal_proof,
@@ -1862,6 +1863,7 @@ impl Actor {
             )?;
 
             sectors_deals.push(ext::market::SectorDeals {
+                sector_number: precommit.sector_number,
                 sector_type: precommit.seal_proof,
                 sector_expiry: precommit.expiration,
                 deal_ids: precommit.deal_ids.clone(),
@@ -3924,7 +3926,7 @@ fn process_early_terminations(
     reward_smoothed: &FilterEstimate,
     quality_adj_power_smoothed: &FilterEstimate,
 ) -> Result</* more */ bool, ActorError> {
-    let (result, more, deals_to_terminate, penalty, pledge_delta) =
+    let (result, more, sectors_terminated, penalty, pledge_delta) =
         rt.transaction(|state: &mut State, rt| {
             let store = rt.store();
             let policy = rt.policy();
@@ -3956,14 +3958,12 @@ fn process_early_terminations(
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")
             })?;
 
+            let mut sectors_terminated: Vec<BitField> = Vec::new();
             let mut total_initial_pledge = TokenAmount::zero();
-            let mut deals_to_terminate =
-                Vec::<ext::market::OnMinerSectorsTerminateParams>::with_capacity(
-                    result.sectors.len(),
-                );
             let mut penalty = TokenAmount::zero();
 
             for (epoch, sector_numbers) in result.iter() {
+                sectors_terminated.push(sector_numbers.clone());
                 let sectors = sectors
                     .load_sector(sector_numbers)
                     .map_err(|e| e.wrap("failed to load sector infos"))?;
@@ -3982,9 +3982,6 @@ fn process_early_terminations(
                     deal_ids.extend(sector.deal_ids);
                     total_initial_pledge += sector.initial_pledge;
                 }
-
-                let params = ext::market::OnMinerSectorsTerminateParams { epoch, deal_ids };
-                deals_to_terminate.push(params);
             }
 
             // Pay penalty
@@ -4012,7 +4009,7 @@ fn process_early_terminations(
             penalty = &penalty_from_vesting + penalty_from_balance;
             pledge_delta -= penalty_from_vesting;
 
-            Ok((result, more, deals_to_terminate, penalty, pledge_delta))
+            Ok((result, more, sectors_terminated, penalty, pledge_delta))
         })?;
 
     // We didn't do anything, abort.
@@ -4033,9 +4030,8 @@ fn process_early_terminations(
     notify_pledge_changed(rt, &pledge_delta)?;
 
     // Terminate deals.
-    for params in deals_to_terminate {
-        request_terminate_deals(rt, params.epoch, params.deal_ids)?;
-    }
+    let all_terminated = BitField::union(sectors_terminated.iter());
+    request_terminate_deals(rt, rt.curr_epoch(), &all_terminated)?;
 
     // reschedule cron worker, if necessary.
     Ok(more)
@@ -4276,16 +4272,18 @@ fn request_update_power(rt: &impl Runtime, delta: PowerPair) -> Result<(), Actor
 fn request_terminate_deals(
     rt: &impl Runtime,
     epoch: ChainEpoch,
-    deal_ids: Vec<DealID>,
+    sectors: &BitField,
 ) -> Result<(), ActorError> {
-    const MAX_LENGTH: usize = 8192;
-    for chunk in deal_ids.chunks(MAX_LENGTH) {
+    if !sectors.is_empty() {
+        // The sectors bitfield could be large, but will fit into a single parameters block.
+        // The FVM max block size of 1MiB supports 130K 8-byte integers, but the policy parameter
+        // ADDRESSED_SECTORS_MAX (currently 25k) will avoid reaching that.
         let res = extract_send_result(rt.send_simple(
             &STORAGE_MARKET_ACTOR_ADDR,
             ext::market::ON_MINER_SECTORS_TERMINATE_METHOD,
-            IpldBlock::serialize_cbor(&ext::market::OnMinerSectorsTerminateParamsRef {
+            IpldBlock::serialize_cbor(&ext::market::OnMinerSectorsTerminateParams {
                 epoch,
-                deal_ids: chunk,
+                sectors: sectors.clone(),
             })?,
             TokenAmount::zero(),
         ));
@@ -4299,7 +4297,6 @@ fn request_terminate_deals(
             res?;
         }
     }
-
     Ok(())
 }
 
@@ -4979,6 +4976,7 @@ fn batch_activate_deals_and_claim_allocations(
             let sector_activation_params = activation_infos
                 .iter()
                 .map(|activation_info| ext::market::SectorDeals {
+                    sector_number: activation_info.sector_number,
                     deal_ids: activation_info.deal_ids.clone(),
                     sector_expiry: activation_info.sector_expiry,
                     sector_type: activation_info.sector_type,

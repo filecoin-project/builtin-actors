@@ -250,6 +250,7 @@ pub fn precommit_sectors_v2(
                 });
                 if !sector_meta.deals.is_empty() {
                     sectors_with_deals.push(SectorDeals {
+                        sector_number,
                         sector_type: seal_proof,
                         sector_expiry: expiration,
                         deal_ids: sector_meta.deals.clone(),
@@ -313,6 +314,7 @@ pub fn precommit_sectors_v2(
                 });
                 if !sector_meta.deals.is_empty() {
                     sectors_with_deals.push(SectorDeals {
+                        sector_number,
                         sector_type: seal_proof,
                         sector_expiry: expiration,
                         deal_ids: sector_meta.deals.clone(),

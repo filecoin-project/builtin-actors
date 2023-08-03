@@ -17,8 +17,8 @@ pub mod account {
 }
 
 pub mod market {
-
     use super::*;
+    use fvm_ipld_bitfield::BitField;
 
     pub const VERIFY_DEALS_FOR_ACTIVATION_METHOD: u64 = 5;
     pub const BATCH_ACTIVATE_DEALS_METHOD: u64 = 6;
@@ -27,6 +27,7 @@ pub mod market {
 
     #[derive(Serialize_tuple, Deserialize_tuple)]
     pub struct SectorDeals {
+        pub sector_number: SectorNumber,
         pub sector_type: RegisteredSealProof,
         pub sector_expiry: ChainEpoch,
         pub deal_ids: Vec<DealID>,
@@ -90,13 +91,7 @@ pub mod market {
     #[derive(Serialize_tuple, Deserialize_tuple)]
     pub struct OnMinerSectorsTerminateParams {
         pub epoch: ChainEpoch,
-        pub deal_ids: Vec<DealID>,
-    }
-
-    #[derive(Serialize_tuple)]
-    pub struct OnMinerSectorsTerminateParamsRef<'a> {
-        pub epoch: ChainEpoch,
-        pub deal_ids: &'a [DealID],
+        pub sectors: BitField,
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple)]

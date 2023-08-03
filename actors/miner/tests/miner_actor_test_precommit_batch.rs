@@ -390,6 +390,7 @@ mod miner_actor_precommit_batch {
             let mut sector_deal_data = Vec::new();
             for sector in &sectors {
                 sector_deals.push(SectorDeals {
+                    sector_number: sector.sector_number,
                     sector_type: sector.seal_proof,
                     sector_expiry: sector.expiration,
                     deal_ids: sector.deal_ids.clone(),

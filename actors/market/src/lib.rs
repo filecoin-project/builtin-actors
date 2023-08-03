@@ -6,10 +6,11 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use cid::multihash::{Code, MultihashDigest, MultihashGeneric};
 use cid::Cid;
-use fil_actors_runtime::{extract_send_result, BatchReturnGen, FIRST_ACTOR_SPECIFIC_EXIT_CODE};
 use frc46_token::token::types::{BalanceReturn, TransferFromParams, TransferFromReturn};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::{RawBytes, DAG_CBOR};
 use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
@@ -19,14 +20,14 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::reward::ThisEpochRewardReturn;
-use fvm_shared::sector::{RegisteredSealProof, SectorSize, StoragePower};
+use fvm_shared::sector::{RegisteredSealProof, SectorNumber, SectorSize, StoragePower};
+use fvm_shared::sys::SendFlags;
 use fvm_shared::{ActorID, METHOD_CONSTRUCTOR, METHOD_SEND};
 use integer_encoding::VarInt;
 use log::info;
 use num_derive::FromPrimitive;
 use num_traits::Zero;
 
-use crate::balance_table::BalanceTable;
 use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
@@ -35,10 +36,9 @@ use fil_actors_runtime::{
     AsActorError, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::{RawBytes, DAG_CBOR};
-use fvm_shared::sys::SendFlags;
+use fil_actors_runtime::{extract_send_result, BatchReturnGen, FIRST_ACTOR_SPECIFIC_EXIT_CODE};
 
+use crate::balance_table::BalanceTable;
 use crate::ext::verifreg::{AllocationID, AllocationRequest};
 
 pub use self::deal::*;
@@ -547,6 +547,7 @@ impl Actor {
             let mut batch_gen = BatchReturnGen::new(params.sectors.len());
             let mut activations: Vec<SectorDealActivation> = vec![];
             let mut activated_deals: HashSet<DealID> = HashSet::new();
+            let mut sector_deals: Vec<(SectorNumber, SectorDealIDs)> = vec![];
 
             for p in params.sectors {
                 let proposal_array = st.get_proposal_array(rt.store())?;
@@ -583,6 +584,8 @@ impl Actor {
                         continue;
                     }
                 };
+
+                sector_deals.push((p.sector_number, SectorDealIDs { deals: p.deal_ids.clone() }));
 
                 // Update deal states
                 let mut verified_infos = Vec::new();
@@ -639,6 +642,7 @@ impl Actor {
                         deal_states.push((
                             deal_id,
                             DealState {
+                                sector_number: p.sector_number,
                                 sector_start_epoch: curr_epoch,
                                 last_updated_epoch: EPOCH_UNDEFINED,
                                 slash_epoch: EPOCH_UNDEFINED,
@@ -664,8 +668,8 @@ impl Actor {
                 }
             }
 
+            st.put_sector_deal_ids(rt.store(), &miner_addr, &sector_deals)?;
             st.put_deal_states(rt.store(), &deal_states)?;
-
             Ok((activations, batch_gen.gen()))
         })?;
 
@@ -683,10 +687,18 @@ impl Actor {
         let miner_addr = rt.message().caller();
 
         rt.transaction(|st: &mut State, rt| {
-            let mut deal_states: Vec<(DealID, DealState)> = vec![];
+            // The sector deals mapping is removed all at once.
+            // Other deal clean-up is deferred to cron.
+            let sector_deals =
+                st.pop_sector_deal_ids(rt.store(), &miner_addr, params.sectors.iter())?;
+            let all_deal_ids = sector_deals
+                .iter()
+                .flat_map(|(_, deal_ids)| deal_ids.deals.iter())
+                .collect::<Vec<_>>();
 
-            for id in params.deal_ids {
-                let deal = st.find_proposal(rt.store(), id)?;
+            let mut deal_states: Vec<(DealID, DealState)> = vec![];
+            for id in all_deal_ids {
+                let deal = st.find_proposal(rt.store(), *id)?;
                 // The deal may have expired and been deleted before the sector is terminated.
                 // Nothing to do, but continue execution for the other deals.
                 if deal.is_none() {
@@ -712,7 +724,7 @@ impl Actor {
                 }
 
                 let mut state: DealState = st
-                    .find_deal_state(rt.store(), id)?
+                    .find_deal_state(rt.store(), *id)?
                     // A deal with a proposal but no state is not activated, but then it should not be
                     // part of a sector that is terminating.
                     .ok_or_else(|| actor_error!(illegal_argument, "no state for deal {}", id))?;
@@ -727,7 +739,7 @@ impl Actor {
                 // and slashing of provider collateral happens in cron_tick.
                 state.slash_epoch = params.epoch;
 
-                deal_states.push((id, state));
+                deal_states.push((*id, state));
             }
 
             st.put_deal_states(rt.store(), &deal_states)?;
@@ -762,6 +774,10 @@ impl Actor {
 
         rt.transaction(|st: &mut State, rt| {
             let last_cron = st.last_cron;
+            let mut provider_deals_to_remove: BTreeMap<
+                Address,
+                BTreeMap<SectorNumber, Vec<DealID>>,
+            > = BTreeMap::new();
             let mut new_updates_scheduled: BTreeMap<ChainEpoch, Vec<DealID>> = BTreeMap::new();
             let mut epochs_completed: Vec<ChainEpoch> = vec![];
 
@@ -846,7 +862,14 @@ impl Actor {
 
                         // Delete proposal and state simultaneously.
                         let deleted = st.remove_deal_state(rt.store(), deal_id)?;
-                        if deleted.is_none() {
+                        if let Some(deleted) = deleted {
+                            provider_deals_to_remove
+                                .entry(deal.provider)
+                                .or_default()
+                                .entry(deleted.sector_number)
+                                .or_default()
+                                .push(deal_id);
+                        } else {
                             return Err(actor_error!(
                                 illegal_state,
                                 "failed to delete deal state: does not exist"
@@ -886,7 +909,9 @@ impl Actor {
                 }
                 epochs_completed.push(i);
             }
-
+            // Remove the provider->sector->deal mappings.
+            // The sectors may still have other deals, so we can't remove the sector altogether.
+            st.remove_sector_deal_ids(rt.store(), &provider_deals_to_remove)?;
             st.remove_deals_by_epoch(rt.store(), &epochs_completed)?;
             st.put_batch_deals_by_epoch(rt.store(), &new_updates_scheduled)?;
             st.last_cron = rt.curr_epoch();
@@ -1438,6 +1463,11 @@ fn request_current_network_power(
 }
 
 pub fn deal_id_key(k: DealID) -> BytesKey {
+    let bz = k.encode_var_vec();
+    bz.into()
+}
+
+pub fn sector_number_key(k: SectorNumber) -> BytesKey {
     let bz = k.encode_var_vec();
     bz.into()
 }

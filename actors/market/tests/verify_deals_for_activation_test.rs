@@ -38,18 +38,20 @@ fn verify_deal_and_activate_to_get_deal_space_for_unverified_deal_proposal() {
     let deal_id =
         generate_and_publish_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH);
     let deal_proposal = get_deal_proposal(&rt, deal_id);
-
+    let sector_number = 7;
     let v_response = verify_deals_for_activation(
         &rt,
         PROVIDER_ADDR,
         vec![SectorDeals {
+            sector_number,
             sector_type: RegisteredSealProof::StackedDRG2KiBV1P1,
             sector_expiry: SECTOR_EXPIRY,
             deal_ids: vec![deal_id],
         }],
         |_| None,
     );
-    let a_response = activate_deals(&rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, &[deal_id]);
+    let a_response =
+        activate_deals(&rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, sector_number, &[deal_id]);
     let s_response = a_response.activations.get(0).unwrap();
     assert_eq!(1, v_response.sectors.len());
     assert_eq!(Some(make_piece_cid("1".as_bytes())), v_response.sectors[0].commd);
@@ -72,11 +74,12 @@ fn verify_deal_and_activate_to_get_deal_space_for_verified_deal_proposal() {
         next_allocation_id,
     );
     let deal_proposal = get_deal_proposal(&rt, deal_id);
-
+    let sector_number = 7;
     let response = verify_deals_for_activation(
         &rt,
         PROVIDER_ADDR,
         vec![SectorDeals {
+            sector_number,
             sector_type: RegisteredSealProof::StackedDRG2KiBV1P1,
             sector_expiry: SECTOR_EXPIRY,
             deal_ids: vec![deal_id],
@@ -84,7 +87,8 @@ fn verify_deal_and_activate_to_get_deal_space_for_verified_deal_proposal() {
         |_| None,
     );
 
-    let a_response = activate_deals(&rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, &[deal_id]);
+    let a_response =
+        activate_deals(&rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, sector_number, &[deal_id]);
     let s_response = a_response.activations.get(0).unwrap();
 
     assert_eq!(1, response.sectors.len());
@@ -123,10 +127,12 @@ fn verification_and_weights_for_verified_and_unverified_deals() {
     let deal_ids = publish_deals(&rt, &MINER_ADDRESSES, &deals, datacap_required, 1);
     assert_eq!(4, deal_ids.len());
 
+    let sector_number = 7;
     let response = verify_deals_for_activation(
         &rt,
         PROVIDER_ADDR,
         vec![SectorDeals {
+            sector_number,
             sector_type: RegisteredSealProof::StackedDRG8MiBV1,
             sector_expiry: SECTOR_EXPIRY,
             deal_ids: deal_ids.clone(),
@@ -145,7 +151,8 @@ fn verification_and_weights_for_verified_and_unverified_deals() {
     let unverified_space =
         BigInt::from(unverified_deal_1.piece_size.0 + unverified_deal_2.piece_size.0);
 
-    let a_response = activate_deals(&rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, &deal_ids);
+    let a_response =
+        activate_deals(&rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, sector_number, &deal_ids);
     let s_response = a_response.activations.get(0).unwrap();
 
     assert_eq!(1, response.sectors.len());
@@ -165,9 +172,10 @@ fn fail_when_caller_is_not_a_storage_miner_actor() {
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     rt.expect_validate_caller_type(vec![Type::Miner]);
-
+    let sector_number = 7;
     let params = VerifyDealsForActivationParams {
         sectors: vec![SectorDeals {
+            sector_number,
             sector_type: RegisteredSealProof::StackedDRG2KiBV1P1,
             sector_expiry: SECTOR_EXPIRY,
             deal_ids: vec![deal_id],
@@ -188,9 +196,10 @@ fn fail_when_caller_is_not_a_storage_miner_actor() {
 #[test]
 fn fail_when_deal_proposal_is_not_found() {
     let rt = setup();
-
+    let sector_number = 7;
     let params = VerifyDealsForActivationParams {
         sectors: vec![SectorDeals {
+            sector_number,
             sector_type: RegisteredSealProof::StackedDRG2KiBV1P1,
             sector_expiry: SECTOR_EXPIRY,
             deal_ids: vec![1],
@@ -218,9 +227,10 @@ fn fail_when_caller_is_not_the_provider() {
 
     rt.set_caller(*MINER_ACTOR_CODE_ID, Address::new_id(205));
     rt.expect_validate_caller_type(vec![Type::Miner]);
-
+    let sector_number = 7;
     let params = VerifyDealsForActivationParams {
         sectors: vec![SectorDeals {
+            sector_number,
             sector_type: RegisteredSealProof::StackedDRG2KiBV1P1,
             sector_expiry: SECTOR_EXPIRY,
             deal_ids: vec![deal_id],
@@ -247,9 +257,10 @@ fn fail_when_current_epoch_is_greater_than_proposal_start_epoch() {
 
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
     rt.expect_validate_caller_type(vec![Type::Miner]);
-
+    let sector_number = 7;
     let params = VerifyDealsForActivationParams {
         sectors: vec![SectorDeals {
+            sector_number,
             sector_type: RegisteredSealProof::StackedDRG2KiBV1P1,
             sector_expiry: SECTOR_EXPIRY,
             deal_ids: vec![deal_id],
@@ -275,9 +286,10 @@ fn fail_when_deal_end_epoch_is_greater_than_sector_expiration() {
 
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
     rt.expect_validate_caller_type(vec![Type::Miner]);
-
+    let sector_number = 7;
     let params = VerifyDealsForActivationParams {
         sectors: vec![SectorDeals {
+            sector_number,
             sector_type: RegisteredSealProof::StackedDRG2KiBV1P1,
             sector_expiry: END_EPOCH - 1,
             deal_ids: vec![deal_id],
@@ -303,9 +315,10 @@ fn fail_when_the_same_deal_id_is_passed_multiple_times() {
 
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
     rt.expect_validate_caller_type(vec![Type::Miner]);
-
+    let sector_number = 7;
     let params = VerifyDealsForActivationParams {
         sectors: vec![SectorDeals {
+            sector_number,
             sector_type: RegisteredSealProof::StackedDRG8MiBV1,
             sector_expiry: SECTOR_EXPIRY,
             deal_ids: vec![deal_id, deal_id],
