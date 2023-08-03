@@ -32,7 +32,7 @@ use crate::{MinerBalances, NetworkStats, TEST_FAUCET_ADDR};
 const ACCOUNT_SEED: u64 = 93837778;
 
 pub fn create_accounts(v: &dyn VM, count: u64, balance: &TokenAmount) -> Vec<Address> {
-    create_accounts_seeded(v, count, balance, ACCOUNT_SEED, &TEST_FAUCET_ADDR)
+    create_accounts_seeded(v, count, balance, ACCOUNT_SEED, &Address::new_id(98))
 }
 
 pub fn create_accounts_seeded(
@@ -42,6 +42,9 @@ pub fn create_accounts_seeded(
     seed: u64,
     test_faucet_addr: &Address,
 ) -> Vec<Address> {
+    println!("test_faucet_addr {:?}", test_faucet_addr);
+    let faucet = v.actor(test_faucet_addr).unwrap();
+    println!("faucet: {:?}", faucet);
     let pk_addrs = pk_addrs_from(seed, count);
     // Send funds from faucet to pk address, creating account actor
     for pk_addr in pk_addrs.clone() {
