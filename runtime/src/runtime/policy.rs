@@ -66,7 +66,10 @@ pub struct Policy {
     /// Maximum number of unique "declarations" in batch operations.
     pub declarations_max: u64,
 
-    /// The maximum number of sector infos that may be required to be loaded in a single invocation.
+    /// The maximum number of sector numbers addressable in a single invocation
+    /// (which implies also the max infos that may be loaded at once).
+    /// One upper bound on this is the max size of a storage block: 1MiB supports 130k at 8 bytes each,
+    /// though bitfields can compress this.
     pub addressed_sectors_max: u64,
 
     /// The maximum number of partitions that can be proven in a single PoSt message.

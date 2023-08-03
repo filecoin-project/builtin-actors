@@ -1054,6 +1054,7 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
             Expect::market_activate_deals(
                 miner_id,
                 deal_ids.clone(),
+                sector_number,
                 old_sector_info.expiration,
                 old_sector_info.seal_proof,
                 true,
