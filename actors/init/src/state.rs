@@ -17,7 +17,7 @@ pub struct State {
     pub network_name: String,
 }
 
-pub type AddressMap<'bs, BS> = Map2<'bs, BS, ActorID>;
+pub type AddressMap<BS> = Map2<BS, Address, ActorID>;
 
 impl State {
     pub fn new<BS: Blockstore>(store: &BS, network_name: String) -> Result<Self, ActorError> {
@@ -41,13 +41,12 @@ impl State {
         let (id, existing) = if let Some(delegated_addr) = delegated_addr {
             // If there's a delegated address, either recall the already-mapped actor ID or
             // create and map a new one.
-            let key = delegated_addr.to_bytes();
-            if let Some(existing_id) = map.get(&key)? {
+            if let Some(existing_id) = map.get(delegated_addr)? {
                 (*existing_id, true)
             } else {
                 let new_id = self.next_id;
                 self.next_id += 1;
-                map.set(&key, new_id)?;
+                map.set(delegated_addr, new_id)?;
                 (new_id, false)
             }
         } else {
@@ -58,7 +57,7 @@ impl State {
         };
 
         // Map the robust address to the ID, failing if it's already mapped to anything.
-        let is_new = map.set_if_absent(&robust_addr.to_bytes(), id)?;
+        let is_new = map.set_if_absent(robust_addr, id)?;
         if !is_new {
             return Err(actor_error!(
                 forbidden,
@@ -89,7 +88,7 @@ impl State {
             return Ok(Some(*addr));
         }
         let map = AddressMap::load(store, &self.address_map, DEFAULT_CONF, "addresses")?;
-        let found = map.get(&addr.to_bytes())?;
+        let found = map.get(addr)?;
         Ok(found.copied().map(Address::new_id))
     }
 }

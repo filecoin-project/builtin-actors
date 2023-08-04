@@ -8,40 +8,41 @@ edition = "2021"
 repository = "https://github.com/filecoin-project/builtin-actors"
 
 [dependencies]
-fvm_ipld_hamt = { workspace = true }
-fvm_ipld_amt = { workspace = true }
-fvm_shared = { workspace = true }
-num = { workspace = true  }
-num-traits = { workspace = true }
-num-derive = { workspace = true }
-serde = { workspace = true }
-lazy_static = { workspace = true, optional = true }
-unsigned-varint = { workspace = true }
-byteorder = { workspace = true }
-cid = { workspace = true }
-log = { workspace = true }
-thiserror = { workspace = true }
 anyhow = { workspace = true }
-fvm_sdk = { workspace = true, optional = true }
+byteorder = { workspace = true }
+castaway = { workspace = true }
+cid = { workspace = true }
+fvm_ipld_amt = { workspace = true }
+fvm_ipld_bitfield = { workspace = true }
 fvm_ipld_blockstore = { workspace = true }
 fvm_ipld_encoding = { workspace = true }
-fvm_ipld_bitfield = { workspace = true }
-multihash = { workspace = true }
-serde_repr = { workspace = true }
-regex = { workspace = true }
+fvm_ipld_hamt = { workspace = true }
+fvm_sdk = { workspace = true, optional = true }
+fvm_shared = { workspace = true }
+integer-encoding = { workspace = true }
 itertools = { workspace = true }
+lazy_static = { workspace = true, optional = true }
+log = { workspace = true }
+multihash = { workspace = true }
+num = { workspace = true  }
+num-derive = { workspace = true }
+num-traits = { workspace = true }
 paste = { workspace = true }
-castaway = { workspace = true }
+regex = { workspace = true }
+serde = { workspace = true }
+serde_repr = { workspace = true }
+thiserror = { workspace = true }
+unsigned-varint = { workspace = true }
 
 # A fake-proofs dependency but... we can't select on that feature here because we enable it from
 # build.rs.
 sha2 = { workspace = true }
 
 # test_util
-rand = { workspace = true, optional = true }
-hex = { workspace = true, optional = true }
 blake2b_simd = { workspace = true, optional = true }
+hex = { workspace = true, optional = true }
 pretty_env_logger = { workspace = true, optional = true }
+rand = { workspace = true, optional = true }
 
 [dependencies.libsecp256k1]
 workspace = true
