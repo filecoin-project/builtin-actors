@@ -59,7 +59,7 @@ pub mod market {
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
-    pub struct DealActivation {
+    pub struct SectorDealActivation {
         #[serde(with = "bigint_ser")]
         pub nonverified_deal_space: BigInt,
         pub verified_infos: Vec<VerifiedDealInfo>,
@@ -68,7 +68,7 @@ pub mod market {
     #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
     pub struct BatchActivateDealsResult {
         pub activation_results: BatchReturn,
-        pub activations: Vec<DealActivation>,
+        pub activations: Vec<SectorDealActivation>,
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple, Clone, Default)]

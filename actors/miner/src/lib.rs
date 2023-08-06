@@ -933,6 +933,7 @@ impl Actor {
             &rew.this_epoch_baseline_power,
             &rew.this_epoch_reward_smoothed,
             &pwr.quality_adj_power_smoothed,
+            info,
         )?;
 
         // Compute and burn the aggregate network fee. We need to re-load the state as
@@ -1163,7 +1164,7 @@ impl Actor {
             })
             .collect();
         let (batch_return, deals_spaces) =
-            batch_activate_deals_and_claim_allocations(rt, &activation_infos)?;
+            batch_activate_deals_and_claim_allocations(rt, &activation_infos, info.sector_size)?;
 
         // associate the successfully activated sectors with the ReplicaUpdateInner and SectorOnChainInfo
         let validated_updates: Vec<(&UpdateAndSectorInfo, ext::market::DealSpaces)> =
@@ -2105,12 +2106,14 @@ impl Actor {
                     "failed to load pre-committed sectors",
                 )
             })?;
+        let info = get_miner_info(rt.store(), &st)?;
         confirm_sector_proofs_valid_internal(
             rt,
             precommited_sectors,
             &params.reward_baseline_power,
             &params.reward_smoothed,
             &params.quality_adj_power_smoothed,
+            info,
         )
     }
 
@@ -4748,6 +4751,7 @@ fn confirm_sector_proofs_valid_internal(
     this_epoch_baseline_power: &BigInt,
     this_epoch_reward_smoothed: &FilterEstimate,
     quality_adj_power_smoothed: &FilterEstimate,
+    info: MinerInfo,
 ) -> Result<(), ActorError> {
     // get network stats from other actors
     let circulating_supply = rt.total_fil_circ_supply();
@@ -4767,12 +4771,11 @@ fn confirm_sector_proofs_valid_internal(
         .collect();
 
     let (batch_return, activated_sectors) =
-        batch_activate_deals_and_claim_allocations(rt, &deals_activation_infos)?;
+        batch_activate_deals_and_claim_allocations(rt, &deals_activation_infos, info.sector_size)?;
 
     let (total_pledge, newly_vested) = rt.transaction(|state: &mut State, rt| {
         let policy = rt.policy();
         let store = rt.store();
-        let info = get_miner_info(store, state)?;
 
         let mut new_sector_numbers = Vec::<SectorNumber>::with_capacity(activated_sectors.len());
         let mut deposit_to_unlock = TokenAmount::zero();
@@ -4917,12 +4920,13 @@ fn confirm_sector_proofs_valid_internal(
 fn batch_activate_deals_and_claim_allocations(
     rt: &impl Runtime,
     activation_infos: &[DealsActivationInfo],
+    sector_size: SectorSize,
 ) -> Result<(BatchReturn, Vec<ext::market::DealSpaces>), ActorError> {
     let batch_activation_res = match activation_infos.iter().all(|p| p.deal_ids.is_empty()) {
         true => ext::market::BatchActivateDealsResult {
             // if all sectors are empty of deals, skip calling the market actor
             activations: vec![
-                ext::market::DealActivation {
+                ext::market::SectorDealActivation {
                     nonverified_deal_space: BigInt::default(),
                     verified_infos: Vec::default(),
                 };
@@ -4966,16 +4970,31 @@ fn batch_activate_deals_and_claim_allocations(
     for (activation_info, activate_res) in
         successful_activation_infos.iter().zip(&batch_activation_res.activations)
     {
-        let sector_claims = activate_res
-            .verified_infos
-            .iter()
-            .map(|info| ext::verifreg::AllocationClaim {
-                client: info.client,
-                allocation_id: info.allocation_id,
-                data: info.data,
-                size: info.size,
-            })
-            .collect();
+        let mut total_verified_space = BigInt::zero();
+        let mut sector_claims = Vec::new();
+        for verified in &activate_res.verified_infos {
+            total_verified_space += verified.size.0;
+            sector_claims.push(ext::verifreg::AllocationClaim {
+                client: verified.client,
+                allocation_id: verified.allocation_id,
+                data: verified.data,
+                size: verified.size,
+            });
+        }
+
+        // Verify the deals for each sector fit in the sector size.
+        // This check is redundant if the sector's unsealed CID (CommD) is verified as
+        // compatible with the deal pieces.
+        let total_deal_space = total_verified_space + &activate_res.nonverified_deal_space;
+        if total_deal_space > BigInt::from(sector_size as u64) {
+            return Err(actor_error!(
+                illegal_argument,
+                "deal space {} exceed sector size {}",
+                total_deal_space,
+                sector_size
+            ));
+        }
+
         verified_claims.push(ext::verifreg::SectorAllocationClaims {
             sector: activation_info.sector_number,
             expiry: activation_info.sector_expiry,
