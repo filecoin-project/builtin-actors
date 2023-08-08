@@ -1,5 +1,6 @@
-use fil_actors_integration_tests::tests::{cron_tick_test, power_create_miner_test};
 use fvm_ipld_blockstore::MemoryBlockstore;
+
+use fil_actors_integration_tests::tests::{cron_tick_test, power_create_miner_test};
 use test_vm::TestVM;
 
 #[test]

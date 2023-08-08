@@ -146,18 +146,19 @@ pub struct ActorHarness {
     pub epoch_reward_smooth: FilterEstimate,
     pub epoch_qa_power_smooth: FilterEstimate,
 
+    pub base_fee: TokenAmount,
+
     pub options: HarnessOptions,
 }
 
 pub struct HarnessOptions {
     pub proving_period_offset: ChainEpoch,
-    pub use_v2_pre_commit_and_replica_update: bool,
 }
 
 impl Default for HarnessOptions {
     // could be a derive(Default) but I expect options in future that won't be such
     fn default() -> Self {
-        HarnessOptions { proving_period_offset: 0, use_v2_pre_commit_and_replica_update: false }
+        HarnessOptions { proving_period_offset: 0 }
     }
 }
 
@@ -195,6 +196,8 @@ impl ActorHarness {
 
             epoch_reward_smooth: FilterEstimate::new(rwd.atto().clone(), BigInt::from(0)),
             epoch_qa_power_smooth: FilterEstimate::new(pwr, BigInt::from(0)),
+
+            base_fee: TokenAmount::zero(),
 
             options,
         }
@@ -548,55 +551,6 @@ impl ActorHarness {
         ProveCommitSectorParams { sector_number: sector_no, proof: vec![0u8; 192] }
     }
 
-    pub fn pre_commit_sector_batch_v2(
-        &self,
-        rt: &MockRuntime,
-        params: PreCommitSectorBatchParams2,
-        first_for_miner: bool,
-        base_fee: &TokenAmount,
-    ) -> Result<Option<IpldBlock>, ActorError> {
-        if self.options.use_v2_pre_commit_and_replica_update {
-            self.pre_commit_sector_batch_inner(
-                rt,
-                &params.sectors,
-                Method::PreCommitSectorBatch2 as u64,
-                params.clone(),
-                first_for_miner,
-                base_fee,
-            )
-        } else {
-            let mut commds = Vec::new();
-            let v1 = params
-                .sectors
-                .iter()
-                .map(|s| {
-                    commds.push(s.unsealed_cid.0);
-                    PreCommitSectorParams {
-                        seal_proof: s.seal_proof,
-                        sector_number: s.sector_number,
-                        sealed_cid: s.sealed_cid,
-                        seal_rand_epoch: s.seal_rand_epoch,
-                        deal_ids: s.deal_ids.clone(),
-                        expiration: s.expiration,
-                        // unused
-                        replace_capacity: false,
-                        replace_sector_deadline: 0,
-                        replace_sector_partition: 0,
-                        replace_sector_number: 0,
-                    }
-                })
-                .collect();
-
-            self.pre_commit_sector_batch_inner(
-                rt,
-                &params.sectors,
-                Method::PreCommitSectorBatch as u64,
-                PreCommitSectorBatchParams { sectors: v1 },
-                first_for_miner,
-                base_fee,
-            )
-        }
-    }
     pub fn pre_commit_sector_batch(
         &self,
         rt: &MockRuntime,
@@ -619,28 +573,17 @@ impl ActorHarness {
             })
             .collect();
 
-        if self.options.use_v2_pre_commit_and_replica_update {
-            return self.pre_commit_sector_batch_inner(
-                rt,
-                &v2,
-                Method::PreCommitSectorBatch2 as u64,
-                PreCommitSectorBatchParams2 { sectors: v2.clone() },
-                conf.first_for_miner,
-                base_fee,
-            );
-        } else {
-            self.pre_commit_sector_batch_inner(
-                rt,
-                &v2,
-                Method::PreCommitSectorBatch as u64,
-                params,
-                conf.first_for_miner,
-                base_fee,
-            )
-        }
+        return self.pre_commit_sector_batch_v2(
+            rt,
+            &v2,
+            Method::PreCommitSectorBatch2 as u64,
+            PreCommitSectorBatchParams2 { sectors: v2.clone() },
+            conf.first_for_miner,
+            base_fee,
+        );
     }
 
-    fn pre_commit_sector_batch_inner(
+    fn pre_commit_sector_batch_v2(
         &self,
         rt: &MockRuntime,
         sectors: &[SectorPreCommitInfo],
@@ -683,10 +626,13 @@ impl ActorHarness {
         }
 
         let state = self.get_state(rt);
+
+        let mut expected_network_fee = TokenAmount::zero();
+        if sectors.len() > 1 {
+            expected_network_fee = aggregate_pre_commit_network_fee(sectors.len() as i64, base_fee);
+        }
         // burn networkFee
-        if state.fee_debt.is_positive() || sectors.len() > 1 {
-            let expected_network_fee =
-                aggregate_pre_commit_network_fee(sectors.len() as i64, base_fee);
+        if state.fee_debt.is_positive() || expected_network_fee.is_positive() {
             let expected_burn = expected_network_fee + state.fee_debt;
             rt.expect_send_simple(
                 BURNT_FUNDS_ACTOR_ADDR,
@@ -741,64 +687,11 @@ impl ActorHarness {
         conf: PreCommitConfig,
         first: bool,
     ) -> Result<Option<IpldBlock>, ActorError> {
-        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
-        rt.expect_validate_caller_addr(self.caller_addrs());
-        self.expect_query_network_info(rt);
-
-        if !params.deal_ids.is_empty() {
-            let vdparams = VerifyDealsForActivationParams {
-                sectors: vec![SectorDeals {
-                    sector_number: params.sector_number,
-                    sector_type: params.seal_proof,
-                    sector_expiry: params.expiration,
-                    deal_ids: params.deal_ids.clone(),
-                }],
-            };
-            let vdreturn = VerifyDealsForActivationReturn { unsealed_cids: vec![conf.0] };
-
-            rt.expect_send_simple(
-                STORAGE_MARKET_ACTOR_ADDR,
-                MarketMethod::VerifyDealsForActivation as u64,
-                IpldBlock::serialize_cbor(&vdparams).unwrap(),
-                TokenAmount::zero(),
-                IpldBlock::serialize_cbor(&vdreturn).unwrap(),
-                ExitCode::OK,
-            );
-        }
-        // in the original test the else branch does some redundant checks which we can omit.
-
-        let state = self.get_state(rt);
-        if state.fee_debt.is_positive() {
-            rt.expect_send_simple(
-                BURNT_FUNDS_ACTOR_ADDR,
-                METHOD_SEND,
-                None,
-                state.fee_debt.clone(),
-                None,
-                ExitCode::OK,
-            );
-        }
-
-        if first {
-            let dlinfo = new_deadline_info_from_offset_and_epoch(
-                &rt.policy,
-                state.proving_period_start,
-                *rt.epoch.borrow(),
-            );
-            let cron_params = make_deadline_cron_event_params(dlinfo.last());
-            rt.expect_send_simple(
-                STORAGE_POWER_ACTOR_ADDR,
-                PowerMethod::EnrollCronEvent as u64,
-                IpldBlock::serialize_cbor(&cron_params).unwrap(),
-                TokenAmount::zero(),
-                None,
-                ExitCode::OK,
-            );
-        }
-
-        let result = rt.call::<Actor>(
-            Method::PreCommitSector as u64,
-            IpldBlock::serialize_cbor(&params.clone()).unwrap(),
+        let result = self.pre_commit_sector_batch(
+            rt,
+            PreCommitSectorBatchParams { sectors: vec![params] },
+            &PreCommitBatchConfig { sector_unsealed_cid: vec![conf.0], first_for_miner: first },
+            &self.base_fee,
         );
         result
     }
@@ -810,12 +703,14 @@ impl ActorHarness {
         conf: PreCommitConfig,
         first: bool,
     ) -> SectorPreCommitOnChainInfo {
-        let result = self.pre_commit_sector(rt, params.clone(), conf, first);
-
-        expect_empty(result.unwrap());
+        let result = self.pre_commit_sector_batch_and_get(
+            rt,
+            PreCommitSectorBatchParams { sectors: vec![params] },
+            &PreCommitBatchConfig { sector_unsealed_cid: vec![conf.0], first_for_miner: first },
+            &self.base_fee,
+        );
         rt.verify();
-
-        self.get_precommit(rt, params.sector_number)
+        result[0].clone()
     }
 
     pub fn has_precommit(&self, rt: &MockRuntime, sector_number: SectorNumber) -> bool {
