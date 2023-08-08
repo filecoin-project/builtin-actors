@@ -7,8 +7,9 @@ use fil_actors_integration_tests::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_by_deadline_to_index, advance_to_proving_deadline, create_accounts, create_miner,
     cron_tick, expect_invariants, invariant_failure_patterns, market_add_balance,
-    market_publish_deal, miner_precommit_sector, miner_prove_sector, submit_windowed_post,
-    verifreg_add_client, verifreg_add_verifier,
+    market_publish_deal, miner_precommit_one_sector_v2, miner_prove_sector,
+    precommit_meta_data_from_deals, submit_windowed_post, verifreg_add_client,
+    verifreg_add_verifier,
 };
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{DealWeight, EPOCHS_IN_DAY};
@@ -91,13 +92,14 @@ fn extend_legacy_sector_with_deals_inner<BS: Blockstore>(
     // Precommit, prove and PoSt empty sector (more fully tested in TestCommitPoStFlow)
     //
 
-    miner_precommit_sector(
+    miner_precommit_one_sector_v2(
         v,
         &worker,
         &miner_id,
         seal_proof,
         sector_number,
-        deals,
+        precommit_meta_data_from_deals(v, deals, seal_proof),
+        true,
         deal_start + 180 * EPOCHS_IN_DAY,
     );
 

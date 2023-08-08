@@ -35,7 +35,7 @@ use crate::util::{
     assert_invariants, bf_all, check_sector_active, check_sector_faulty, create_accounts,
     create_miner, deadline_state, declare_recovery, expect_invariants, get_network_stats,
     invariant_failure_patterns, make_bitfield, market_publish_deal, miner_balance, miner_power,
-    precommit_sectors, prove_commit_sectors, sector_info, submit_invalid_post,
+    precommit_sectors_v2, prove_commit_sectors, sector_info, submit_invalid_post,
     submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
 };
 
@@ -166,10 +166,11 @@ pub fn prove_replica_update_multi_dline_test(v: &dyn VM) {
     let first_sector_number_p2 = seal_proof.window_post_partitions_sector().unwrap();
     let expiration = v.epoch() + policy.max_sector_expiration_extension;
 
-    let new_precommits = precommit_sectors(
+    let new_precommits = precommit_sectors_v2(
         v,
         more_than_one_partition,
         batch_size,
+        vec![],
         &worker,
         &maddr,
         seal_proof,
@@ -826,10 +827,11 @@ pub fn deal_included_in_multiple_sectors_failure_test(v: &dyn VM) {
     //
     //
     let first_sector_number = 100;
-    let precommits = precommit_sectors(
+    let precommits = precommit_sectors_v2(
         v,
         policy.min_aggregated_sectors as usize,
         policy.pre_commit_sector_batch_max_size,
+        vec![],
         &worker,
         &maddr,
         seal_proof,
@@ -1115,8 +1117,18 @@ pub fn create_sector(
 ) -> (u64, u64) {
     // precommit
     let exp = v.epoch() + Policy::default().max_sector_expiration_extension;
-    let precommits =
-        precommit_sectors(v, 1, 1, &worker, &maddr, seal_proof, sector_number, true, Some(exp));
+    let precommits = precommit_sectors_v2(
+        v,
+        1,
+        1,
+        vec![],
+        &worker,
+        &maddr,
+        seal_proof,
+        sector_number,
+        true,
+        Some(exp),
+    );
     assert_eq!(1, precommits.len());
     assert_eq!(sector_number, precommits[0].info.sector_number);
     let balances = miner_balance(v, &maddr);
