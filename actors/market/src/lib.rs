@@ -76,7 +76,7 @@ pub enum Method {
     VerifyDealsForActivation = 5,
     BatchActivateDeals = 6,
     OnMinerSectorsTerminate = 7,
-    ComputeDataCommitment = 8,
+    // ComputeDataCommitment = 8, // Deprecated
     CronTick = 9,
     // Method numbers derived from FRC-0042 standards
     AddBalanceExported = frc42_dispatch::method_hash!("AddBalance"),
@@ -734,24 +734,6 @@ impl Actor {
             Ok(())
         })?;
         Ok(())
-    }
-
-    fn compute_data_commitment(
-        rt: &impl Runtime,
-        params: ComputeDataCommitmentParams,
-    ) -> Result<ComputeDataCommitmentReturn, ActorError> {
-        rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
-
-        let st: State = rt.state()?;
-        let proposal_array = st.get_proposal_array(rt.store())?;
-
-        let mut commds = Vec::with_capacity(params.inputs.len());
-        for comm_input in params.inputs.iter() {
-            let proposed_deals = get_proposals(&proposal_array, &comm_input.deal_ids, st.next_id)?;
-            commds.push(compute_data_commitment(rt, &proposed_deals, comm_input.sector_type)?);
-        }
-
-        Ok(ComputeDataCommitmentReturn { commds })
     }
 
     fn cron_tick(rt: &impl Runtime) -> Result<(), ActorError> {
@@ -1457,7 +1439,6 @@ impl ActorCode for Actor {
         VerifyDealsForActivation => verify_deals_for_activation,
         BatchActivateDeals => batch_activate_deals,
         OnMinerSectorsTerminate => on_miner_sectors_terminate,
-        ComputeDataCommitment => compute_data_commitment,
         CronTick => cron_tick,
         GetBalanceExported => get_balance,
         GetDealDataCommitmentExported => get_deal_data_commitment,

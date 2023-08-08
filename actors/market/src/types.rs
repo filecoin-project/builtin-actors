@@ -139,16 +139,6 @@ pub struct DealSpaces {
     pub verified_deal_space: BigInt,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct ComputeDataCommitmentParams {
-    pub inputs: Vec<SectorDataSpec>,
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct ComputeDataCommitmentReturn {
-    pub commds: Vec<Cid>,
-}
-
 /// A specialization of a array to deals.
 pub type DealArray<'bs, BS> = Array<'bs, DealProposal, BS>;
 
