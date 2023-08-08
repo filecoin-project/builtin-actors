@@ -42,7 +42,7 @@ use fil_actors_runtime::cbor::{serialize, serialize_vec};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, deserialize_block, extract_send_result, ActorContext,
+    actor_dispatch, actor_error, deserialize_block, extract_send_result, ActorResult,
     ActorDowncast, ActorError, AsActorError, BatchReturn, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,

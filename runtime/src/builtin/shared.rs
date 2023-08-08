@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use crate::runtime::builtins::Type;
-use crate::{actor_error, ActorContext, ActorError};
+use crate::{actor_error, ActorResult, ActorError};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::METHOD_SEND;

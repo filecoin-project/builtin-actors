@@ -10,7 +10,7 @@ use num_derive::FromPrimitive;
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR,
+    actor_dispatch, actor_error, ActorResult, ActorError, AsActorError, SYSTEM_ACTOR_ADDR,
 };
 
 #[cfg(feature = "fil-actor")]

@@ -5,7 +5,7 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
     actor_dispatch, actor_error, deserialize_block, extract_send_result, resolve_to_actor_id,
-    ActorContext, ActorDowncast, ActorError, Array,
+    ActorResult, ActorDowncast, ActorError, Array,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::CBOR;

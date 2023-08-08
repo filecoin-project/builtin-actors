@@ -1,31 +1,25 @@
 use std::iter;
 
-use fil_actors_evm_shared::address::EthAddress;
+use fvm_ipld_encoding::{RawBytes, strict_bytes, tuple::*};
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::{ActorID, error::ExitCode, METHOD_CONSTRUCTOR, sys::SendFlags};
+use fvm_shared::address::{Address, Payload};
+use fvm_shared::crypto::hash::SupportedHashes;
+use num_derive::FromPrimitive;
 use num_traits::Zero;
+use serde::{Deserialize, Serialize};
 
 use ext::{
     account::PUBKEY_ADDRESS_METHOD,
     evm::RESURRECT_METHOD,
     init::{Exec4Params, Exec4Return},
 };
-use fil_actors_runtime::{
-    actor_dispatch_unrestricted, actor_error, deserialize_block, extract_send_result, ActorError,
-    AsActorError, EAM_ACTOR_ID, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-};
-
-use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_shared::{error::ExitCode, sys::SendFlags, ActorID, METHOD_CONSTRUCTOR};
-use serde::{Deserialize, Serialize};
+use fil_actors_evm_shared::address::EthAddress;
+use fil_actors_runtime::{actor_dispatch_unrestricted, actor_error, ActorError, ActorResult, AsActorError, deserialize_block, EAM_ACTOR_ID, extract_send_result, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime::runtime::{ActorCode, Runtime};
+use fil_actors_runtime::runtime::builtins::Type;
 
 pub mod ext;
-
-use fil_actors_runtime::runtime::builtins::Type;
-use fil_actors_runtime::runtime::{ActorCode, Runtime};
-
-use fvm_ipld_encoding::{strict_bytes, tuple::*, RawBytes};
-use fvm_shared::address::{Address, Payload};
-use fvm_shared::crypto::hash::SupportedHashes;
-use num_derive::FromPrimitive;
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(EamActor);
@@ -175,8 +169,8 @@ fn create_actor(
 fn resolve_eth_address(rt: &impl Runtime, actor_id: ActorID) -> Result<EthAddress, ActorError> {
     match rt.lookup_delegated_address(actor_id).map(|a| *a.payload()) {
         Some(Payload::Delegated(addr)) if addr.namespace() == EAM_ACTOR_ID => Ok(EthAddress(
-            addr.subaddress()
-                .try_into()
+            std::convert::TryInto::<[u8; 20]>::try_into(addr.subaddress())
+                .map_err(|e| e.to_string())
                 .context_code(ExitCode::USR_FORBIDDEN, "caller's eth address isn't valid")?,
         )),
         _ => Err(actor_error!(forbidden; "caller doesn't have an eth address")),
@@ -198,8 +192,8 @@ fn resolve_caller_external(rt: &impl Runtime) -> Result<(EthAddress, EthAddress)
                     None,
                     SendFlags::READ_ONLY,
                 )
-                .context_code(
-                    ExitCode::USR_ASSERTION_FAILED,
+                .map_err(ActorError::from)
+                .context(
                     "account failed to return its key address",
                 )?;
 
@@ -305,8 +299,9 @@ impl ActorCode for EamActor {
 
 #[cfg(test)]
 mod test {
-    use fil_actors_runtime::test_utils::MockRuntime;
     use fvm_shared::error::ExitCode;
+
+    use fil_actors_runtime::test_utils::MockRuntime;
 
     use crate::compute_address_create2;
 

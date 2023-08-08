@@ -21,7 +21,7 @@ use num_derive::FromPrimitive;
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, extract_send_result, ActorContext, ActorError, AsActorError,
+    actor_dispatch, actor_error, extract_send_result, ActorResult, ActorError, AsActorError,
     SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;

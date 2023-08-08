@@ -5,8 +5,8 @@ use crate::balance_table::BalanceTable;
 use crate::ext::verifreg::AllocationID;
 use cid::Cid;
 use fil_actors_runtime::{
-    actor_error, make_empty_map, make_map_with_root_and_bitwidth, ActorError, Array, AsActorError,
-    Set, SetMultimap,
+    actor_error, make_empty_map, make_map_with_root_and_bitwidth, ActorResult, ActorError, Array,
+    AsActorError, Set, SetMultimap,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
@@ -670,10 +670,7 @@ impl State {
 
             // Unlock remaining storage fee
             self.unlock_balance(store, &deal.client, &payment_remaining, Reason::ClientStorageFee)
-                .context_code(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to unlock remaining client storage fee",
-                )?;
+                .context("failed to unlock remaining client storage fee")?;
 
             // Unlock client collateral
             self.unlock_balance(
@@ -682,12 +679,12 @@ impl State {
                 &deal.client_collateral,
                 Reason::ClientCollateral,
             )
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to unlock client collateral")?;
+            .context("failed to unlock client collateral")?;
 
             // slash provider collateral
             let slashed = deal.provider_collateral.clone();
             self.slash_balance(store, &deal.provider, &slashed, Reason::ProviderCollateral)
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "slashing balance")?;
+                .context("slashing balance")?;
 
             return Ok((slashed, true));
         }
@@ -716,20 +713,20 @@ impl State {
             &deal.total_storage_fee(),
             Reason::ClientStorageFee,
         )
-        .context_code(ExitCode::USR_ILLEGAL_STATE, "failure unlocking client storage fee")?;
+        .context("failure unlocking client storage fee")?;
 
         self.unlock_balance(store, &deal.client, &deal.client_collateral, Reason::ClientCollateral)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failure unlocking client collateral")?;
+            .context("failure unlocking client collateral")?;
 
         let amount_slashed =
             collateral_penalty_for_deal_activation_missed(deal.provider_collateral.clone());
         let amount_remaining = deal.provider_balance_requirement() - &amount_slashed;
 
         self.slash_balance(store, &deal.provider, &amount_slashed, Reason::ProviderCollateral)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to slash balance")?;
+            .context("failed to slash balance")?;
 
         self.unlock_balance(store, &deal.provider, &amount_remaining, Reason::ProviderCollateral)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to unlock deal provider balance")?;
+            .context("failed to unlock deal provider balance")?;
 
         Ok(amount_slashed)
     }
@@ -754,10 +751,10 @@ impl State {
             &deal.provider_collateral,
             Reason::ProviderCollateral,
         )
-        .context_code(ExitCode::USR_ILLEGAL_STATE, "failed unlocking deal provider balance")?;
+        .context("failed unlocking deal provider balance")?;
 
         self.unlock_balance(store, &deal.client, &deal.client_collateral, Reason::ClientCollateral)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed unlocking deal client balance")?;
+            .context("failed unlocking deal client balance")?;
 
         Ok(())
     }
@@ -849,10 +846,10 @@ impl State {
         BS: Blockstore,
     {
         self.maybe_lock_balance(store, &proposal.client, &proposal.client_balance_requirement())
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to lock client funds")?;
+            .context("failed to lock client funds")?;
 
         self.maybe_lock_balance(store, &proposal.provider, &proposal.provider_collateral)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to lock provider funds")?;
+            .context("failed to lock provider funds")?;
 
         self.total_client_locked_collateral += &proposal.client_collateral;
 
@@ -927,7 +924,7 @@ impl State {
             .context_code(ExitCode::USR_ILLEGAL_STATE, "subtract from escrow")?;
 
         self.unlock_balance(store, from_addr, amount, Reason::ClientStorageFee)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "subtract from locked")?;
+            .context("subtract from locked")?;
 
         // Add subtracted amount to the recipient
         escrow_table
