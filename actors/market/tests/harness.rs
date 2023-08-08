@@ -1,7 +1,10 @@
 #![allow(dead_code)]
 
 use cid::Cid;
-use fil_actor_market::{BatchActivateDealsParams, BatchActivateDealsResult};
+use fil_actor_market::{
+    BatchActivateDealsParams, BatchActivateDealsResult, PendingDealAllocationsMap,
+    PENDING_ALLOCATIONS_CONF,
+};
 use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
 use num_traits::{FromPrimitive, Zero};
 use regex::Regex;
@@ -12,24 +15,21 @@ use std::{cell::RefCell, collections::HashMap};
 use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
 use fil_actor_market::ext::verifreg::{AllocationID, AllocationRequest, AllocationsResponse};
 use fil_actor_market::{
-    deal_id_key, ext, ext::miner::GetControlAddressesReturnParams, next_update_epoch,
+    ext, ext::miner::GetControlAddressesReturnParams, next_update_epoch,
     testing::check_state_invariants, Actor as MarketActor, ClientDealProposal, DealArray,
     DealMetaArray, DealProposal, DealState, GetBalanceReturn, Label, MarketNotifyDealParams,
     Method, OnMinerSectorsTerminateParams, PublishStorageDealsParams, PublishStorageDealsReturn,
     SectorDeals, State, VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
     WithdrawBalanceParams, WithdrawBalanceReturn, MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID,
-    PROPOSALS_AMT_BITWIDTH,
 };
 use fil_actor_power::{CurrentTotalPowerReturn, Method as PowerMethod};
 use fil_actor_reward::Method as RewardMethod;
-use fil_actors_runtime::builtin::HAMT_BIT_WIDTH;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::{
-    make_map_with_root_and_bitwidth,
     network::EPOCHS_IN_DAY,
     runtime::{builtins::Type, Policy, Runtime},
     test_utils::*,
-    ActorError, BatchReturn, SetMultimap, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR,
+    ActorError, BatchReturn, Set, SetMultimap, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR,
     DATACAP_TOKEN_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
     STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
@@ -400,11 +400,14 @@ pub fn get_deal_proposal(rt: &MockRuntime, deal_id: DealID) -> DealProposal {
 
 pub fn get_pending_deal_allocation(rt: &MockRuntime, deal_id: DealID) -> AllocationID {
     let st: State = rt.get_state();
-    let pending_allocations =
-        make_map_with_root_and_bitwidth(&st.pending_deal_allocation_ids, &rt.store, HAMT_BIT_WIDTH)
-            .unwrap();
-
-    *pending_allocations.get(&deal_id_key(deal_id)).unwrap().unwrap_or(&NO_ALLOCATION_ID)
+    let pending_allocations = PendingDealAllocationsMap::load(
+        &rt.store,
+        &st.pending_deal_allocation_ids,
+        PENDING_ALLOCATIONS_CONF,
+        "pending deal allocations",
+    )
+    .unwrap();
+    *pending_allocations.get(&deal_id).unwrap().unwrap_or(&NO_ALLOCATION_ID)
 }
 
 pub fn get_deal_state(rt: &MockRuntime, deal_id: DealID) -> DealState {
@@ -847,7 +850,6 @@ pub fn assert_deals_not_terminated(rt: &MockRuntime, deal_ids: &[DealID]) {
 pub fn assert_deal_deleted(rt: &MockRuntime, deal_id: DealID, p: DealProposal) {
     use cid::multihash::Code;
     use cid::multihash::MultihashDigest;
-    use fil_actors_runtime::Map;
     use fvm_ipld_hamt::BytesKey;
 
     let st: State = rt.get_state();
@@ -865,13 +867,8 @@ pub fn assert_deal_deleted(rt: &MockRuntime, deal_id: DealID, p: DealProposal) {
     let mh_code = Code::Blake2b256;
     let p_cid = Cid::new_v1(fvm_ipld_encoding::DAG_CBOR, mh_code.digest(&to_vec(&p).unwrap()));
     // Check that the deal_id is not in st.pending_proposals.
-    let pending_deals: Map<fvm_ipld_blockstore::MemoryBlockstore, DealProposal> =
-        fil_actors_runtime::make_map_with_root_and_bitwidth::<
-            fvm_ipld_blockstore::MemoryBlockstore,
-            DealProposal,
-        >(&st.pending_proposals, &*rt.store, PROPOSALS_AMT_BITWIDTH)
-        .unwrap();
-    assert!(!pending_deals.contains_key(&BytesKey(p_cid.to_bytes())).unwrap());
+    let pending_deals = Set::from_root(rt.store(), &st.pending_proposals).unwrap();
+    assert!(!pending_deals.has(&BytesKey(p_cid.to_bytes())).unwrap());
 }
 
 pub fn assert_deal_failure<F>(add_funds: bool, post_setup: F, exit_code: ExitCode, sig_valid: bool)

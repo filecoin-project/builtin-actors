@@ -1,4 +1,4 @@
-use fil_actor_market::{deal_id_key, DealProposal};
+use fil_actor_market::DealProposal;
 use fil_actor_miner::{
     max_prove_commit_duration, power_for_sector, CompactCommD, SectorPreCommitOnChainInfo,
     State as MinerState,
@@ -7,7 +7,6 @@ use fil_actor_miner::{Method as MinerMethod, ProveCommitAggregateParams};
 use fil_actors_runtime::runtime::policy::policy_constants::PRE_COMMIT_CHALLENGE_DELAY;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
-use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
@@ -65,7 +64,7 @@ pub fn batch_onboarding_deals_test(v: &dyn VM) {
     // Verify datacap allocations.
     let mut market_state: fil_actor_market::State =
         get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
-    let deal_keys: Vec<BytesKey> = deals.iter().map(|(id, _)| deal_id_key(*id)).collect();
+    let deal_keys: Vec<DealID> = deals.iter().map(|(id, _)| *id).collect();
     let alloc_ids = market_state
         .get_pending_deal_allocation_ids(&DynBlockstore::wrap(v.blockstore()), &deal_keys)
         .unwrap();

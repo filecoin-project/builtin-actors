@@ -176,16 +176,10 @@ impl Actor {
 
         let store = rt.store();
         let st: State = rt.state()?;
-        let balances = BalanceTable::from_root(store, &st.escrow_table)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load escrow table")?;
-        let locks = BalanceTable::from_root(store, &st.locked_table)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load locked table")?;
-        let balance = balances
-            .get(&account)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get escrow balance")?;
-        let locked = locks
-            .get(&account)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get locked balance")?;
+        let balances = BalanceTable::from_root(store, &st.escrow_table, "escrow table")?;
+        let locks = BalanceTable::from_root(store, &st.locked_table, "locled table")?;
+        let balance = balances.get(&account)?;
+        let locked = locks.get(&account)?;
 
         Ok(GetBalanceReturn { balance, locked })
     }
@@ -427,7 +421,7 @@ impl Actor {
             let mut pending_deals: Vec<Cid> = vec![];
             let mut deal_proposals: Vec<(DealID, DealProposal)> = vec![];
             let mut deals_by_epoch: Vec<(ChainEpoch, DealID)> = vec![];
-            let mut pending_deal_allocation_ids: Vec<(BytesKey, AllocationID)> = vec![];
+            let mut pending_deal_allocation_ids: Vec<(DealID, AllocationID)> = vec![];
 
             // All storage dealProposals will be added in an atomic transaction; this operation will be unrolled if any of them fails.
             // This should only fail on programmer error because all expected invalid conditions should be filtered in the first set of checks.
@@ -444,7 +438,7 @@ impl Actor {
                 // Store verified allocation (if any) in the pending allocation IDs map.
                 // It will be removed when the deal is activated or expires.
                 if let Some(alloc_id) = deal_allocation_ids.get(&valid_deal.cid) {
-                    pending_deal_allocation_ids.push((deal_id_key(deal_id), *alloc_id));
+                    pending_deal_allocation_ids.push((deal_id, *alloc_id));
                 }
 
                 // Randomize the first epoch for when the deal will be processed so an attacker isn't able to
@@ -619,13 +613,12 @@ impl Actor {
 
                         // Extract and remove any verified allocation ID for the pending deal.
                         let allocation = st
-                            .remove_pending_deal_allocation_id(rt.store(), &deal_id_key(deal_id))
+                            .remove_pending_deal_allocation_id(rt.store(), deal_id)
                             .context(format!(
                                 "failed to remove pending deal allocation id {}",
                                 deal_id
                             ))?
-                            .unwrap_or((BytesKey(vec![]), NO_ALLOCATION_ID))
-                            .1;
+                            .unwrap_or(NO_ALLOCATION_ID);
 
                         if allocation != NO_ALLOCATION_ID {
                             verified_infos.push(VerifiedDealInfo {
@@ -795,7 +788,7 @@ impl Actor {
                         })?;
 
                         // Delete pending deal allocation id (if present).
-                        st.remove_pending_deal_allocation_id(rt.store(), &deal_id_key(deal_id))?;
+                        st.remove_pending_deal_allocation_id(rt.store(), deal_id)?;
 
                         continue;
                     }
