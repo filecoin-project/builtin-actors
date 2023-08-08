@@ -35,8 +35,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{MethodNum, METHOD_SEND};
-use serde::de::DeserializeOwned;
-use serde::{ser, Serialize};
+use serde::ser;
 use std::cell::{RefCell, RefMut};
 use std::collections::{BTreeMap, HashMap};
 use vm_api::trace::InvocationTrace;
@@ -229,44 +228,11 @@ where
         v
     }
 
-    pub fn with_epoch(self, epoch: ChainEpoch) -> TestVM<'bs, BS> {
-        self.checkpoint();
-        TestVM {
-            primitives: FakePrimitives {},
-            store: self.store,
-            state_root: self.state_root.clone(),
-            circulating_supply: self.circulating_supply,
-            actors_dirty: RefCell::new(false),
-            actors_cache: RefCell::new(HashMap::new()),
-            network_version: self.network_version,
-            curr_epoch: RefCell::new(epoch),
-            invocations: RefCell::new(vec![]),
-        }
-    }
-
     pub fn put_store<S>(&self, obj: &S) -> Cid
     where
         S: ser::Serialize,
     {
         self.store.put_cbor(obj, Code::Blake2b256).unwrap()
-    }
-
-    pub fn get_actor(&self, addr: &Address) -> Option<ActorState> {
-        // check for inclusion in cache of changed actors
-        if let Some(act) = self.actors_cache.borrow().get(addr) {
-            return Some(act.clone());
-        }
-        // go to persisted map
-        let actors = Hamt::<&'bs BS, ActorState, BytesKey, Sha256>::load(
-            &self.state_root.borrow(),
-            self.store,
-        )
-        .unwrap();
-        let actor = actors.get(&addr.to_bytes()).unwrap().cloned();
-        actor.iter().for_each(|a| {
-            self.actors_cache.borrow_mut().insert(*addr, a.clone());
-        });
-        actor
     }
 
     pub fn checkpoint(&self) -> Cid {
@@ -289,18 +255,6 @@ where
         self.actors_cache.replace(HashMap::new());
         self.state_root.replace(root);
         self.actors_dirty.replace(false);
-    }
-
-    pub fn mutate_state<S, F>(&self, addr: &Address, f: F)
-    where
-        S: Serialize + DeserializeOwned,
-        F: FnOnce(&mut S),
-    {
-        let mut a = self.get_actor(addr).unwrap();
-        let mut st = self.store.get_cbor::<S>(&a.state).unwrap().unwrap();
-        f(&mut st);
-        a.state = self.store.put_cbor(&st, Code::Blake2b256).unwrap();
-        self.set_actor(addr, a);
     }
 
     pub fn get_total_actor_balance(
@@ -339,7 +293,7 @@ where
         params: Option<IpldBlock>,
     ) -> Result<MessageResult, VMError> {
         let from_id = &self.resolve_id_address(from).unwrap();
-        let mut a = self.get_actor(from_id).unwrap();
+        let mut a = self.actor(from_id).unwrap();
         let call_seq = a.call_seq;
         a.call_seq = call_seq + 1;
         // EthAccount abstractions turns Placeholders into EthAccounts
@@ -412,7 +366,7 @@ where
     }
 
     fn balance(&self, address: &Address) -> TokenAmount {
-        let a = self.get_actor(address);
+        let a = self.actor(address);
         a.map_or(TokenAmount::zero(), |a| a.balance)
     }
 

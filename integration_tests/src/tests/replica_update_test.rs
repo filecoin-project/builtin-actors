@@ -3,7 +3,7 @@ use fil_actor_market::{Method as MarketMethod, SectorDeals};
 use fil_actor_miner::{
     power_for_sector, DisputeWindowedPoStParams, ExpirationExtension, ExtendSectorExpirationParams,
     Method as MinerMethod, PowerPair, ProveCommitSectorParams, ProveReplicaUpdatesParams,
-    ProveReplicaUpdatesParams2, ReplicaUpdate, ReplicaUpdate2, SectorOnChainInfo,
+    ProveReplicaUpdatesParams2, ReplicaUpdate, ReplicaUpdate2, SectorOnChainInfo, Sectors,
     State as MinerState, TerminateSectorsParams, TerminationDeclaration, SECTORS_AMT_BITWIDTH,
 };
 use fil_actor_verifreg::Method as VerifregMethod;
@@ -26,7 +26,7 @@ use fvm_shared::sector::SectorSize;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
 use vm_api::trace::ExpectInvocation;
-use vm_api::util::{apply_code, apply_ok, get_state, DynBlockstore};
+use vm_api::util::{apply_code, apply_ok, get_state, mutate_state, DynBlockstore};
 use vm_api::VM;
 
 use crate::expects::Expect;
@@ -657,15 +657,22 @@ pub fn terminate_after_upgrade_test(v: &dyn VM) {
 
 /// Tests that an active CC sector can be correctly upgraded, and then the sector can be extended
 #[allow(clippy::too_many_arguments)]
-pub fn extend_after_upgrade_test(
-    v: &dyn VM,
-    miner_id: Address,
-    worker: Address,
-    deadline_index: u64,
-    partition_index: u64,
-    sector_number: SectorNumber,
-) {
+pub fn extend_after_upgrade_test(v: &dyn VM) {
     let policy = Policy::default();
+    let (sector_info, worker, miner_id, deadline_index, partition_index, _) =
+        create_miner_and_upgrade_sector(v, false);
+
+    let sector_number = sector_info.sector_number;
+    let mut legacy_sector = sector_info;
+    legacy_sector.simple_qa_power = false;
+
+    let blockstore = &DynBlockstore::wrap(v.blockstore());
+    mutate_state(v, &miner_id, |st: &mut MinerState| {
+        let mut sectors = Sectors::load(&blockstore, &st.sectors).unwrap();
+        sectors.store(vec![legacy_sector]).unwrap();
+        st.sectors = sectors.amt.flush().unwrap();
+    });
+
     let extension_epoch = v.epoch();
     let extension_params = ExtendSectorExpirationParams {
         extensions: vec![ExpirationExtension {
