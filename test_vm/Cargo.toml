@@ -44,7 +44,4 @@ vm_api = { workspace = true }
 [dev-dependencies]
 multihash = { workspace = true }
 test-case = { workspace = true }
-ethers = { workspace = true }
-hex = { workspace = true }
-hex-literal = { workspace = true }
 fil_actors_integration_tests = { workspace = true }

@@ -45,6 +45,7 @@ fvm_ipld_encoding = { workspace = true }
 fvm_ipld_hamt = { workspace = true }
 fvm_shared = { workspace = true }
 hex = { workspace = true }
+hex-literal = { workspace = true } 
 indexmap = { workspace = true }
 integer-encoding = { workspace = true }
 lazy_static = { workspace = true }
