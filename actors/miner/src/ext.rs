@@ -23,7 +23,6 @@ pub mod market {
     pub const VERIFY_DEALS_FOR_ACTIVATION_METHOD: u64 = 5;
     pub const BATCH_ACTIVATE_DEALS_METHOD: u64 = 6;
     pub const ON_MINER_SECTORS_TERMINATE_METHOD: u64 = 7;
-    pub const COMPUTE_DATA_COMMITMENT_METHOD: u64 = 8;
 
     #[derive(Serialize_tuple, Deserialize_tuple)]
     pub struct SectorDeals {
@@ -76,15 +75,6 @@ pub mod market {
         pub deal_space: BigInt,
         #[serde(with = "bigint_ser")]
         pub verified_deal_space: BigInt,
-    }
-    #[derive(Serialize_tuple)]
-    pub struct ComputeDataCommitmentParamsRef<'a> {
-        pub inputs: &'a [SectorDataSpec],
-    }
-
-    #[derive(Serialize_tuple, Deserialize_tuple)]
-    pub struct ComputeDataCommitmentReturn {
-        pub commds: Vec<Cid>,
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple)]
