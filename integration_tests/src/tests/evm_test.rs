@@ -1,19 +1,25 @@
-use std::sync::Arc;
-
 use ethers::prelude::abigen;
 use ethers::providers::Provider;
 use ethers::{core::types::Address as EthAddress, prelude::builders::ContractCall};
 use fil_actors_evm_shared::uints::U256;
-use fil_actors_runtime::{test_utils::EVM_ACTOR_CODE_ID, EAM_ACTOR_ADDR, EAM_ACTOR_ID};
+use fil_actors_runtime::{
+    test_utils::ETHACCOUNT_ACTOR_CODE_ID, test_utils::EVM_ACTOR_CODE_ID, EAM_ACTOR_ADDR,
+    EAM_ACTOR_ID,
+};
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::RawBytes;
 use fvm_ipld_encoding::{strict_bytes, BytesDe};
 use fvm_shared::ActorID;
+use fvm_shared::METHOD_SEND;
 use fvm_shared::{address::Address, econ::TokenAmount};
 use num_traits::Zero;
 use serde::{Deserialize, Serialize};
-use vm_api::util::serialize_ok;
+use std::sync::Arc;
+use vm_api::util::{apply_ok, serialize_ok};
 use vm_api::VM;
 
 use crate::util::create_accounts;
+use crate::TEST_FAUCET_ADDR;
 
 // Generate a statically typed interface for the contracts.
 abigen!(Recursive, "../actors/evm/tests/contracts/Recursive.abi");
@@ -29,7 +35,63 @@ pub fn id_to_eth(id: ActorID) -> EthAddress {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
-struct ContractParams(#[serde(with = "strict_bytes")] pub Vec<u8>);
+pub struct ContractParams(#[serde(with = "strict_bytes")] pub Vec<u8>);
+
+pub fn evm_eth_create_external_test(v: &dyn VM) {
+    // create the EthAccount
+    let eth_bits = hex_literal::hex!("FEEDFACECAFEBEEF000000000000000000000000");
+    let eth_addr = Address::new_delegated(EAM_ACTOR_ID, &eth_bits).unwrap();
+    apply_ok(
+        v,
+        &TEST_FAUCET_ADDR,
+        &eth_addr,
+        &TokenAmount::from_whole(10_000),
+        METHOD_SEND,
+        None::<RawBytes>,
+    );
+
+    let account = v.resolve_id_address(&eth_addr).unwrap();
+
+    let mut actor = v.actor(&account).unwrap();
+    actor.code = *ETHACCOUNT_ACTOR_CODE_ID;
+    v.set_actor(&account, actor);
+
+    // now create an empty contract
+    let params = IpldBlock::serialize_cbor(&fil_actor_eam::CreateExternalParams(vec![])).unwrap();
+    let create_result = v
+        .execute_message(
+            &account,
+            &EAM_ACTOR_ADDR,
+            &TokenAmount::zero(),
+            fil_actor_eam::Method::CreateExternal as u64,
+            params,
+        )
+        .unwrap();
+
+    assert!(
+        create_result.code.is_success(),
+        "failed to create the new actor {}",
+        create_result.message
+    );
+
+    // and call it
+    let create_return: fil_actor_eam::CreateExternalReturn =
+        create_result.ret.unwrap().deserialize().expect("failed to decode results");
+
+    let robust_addr = create_return.robust_address.unwrap();
+
+    let params = IpldBlock::serialize_cbor(&ContractParams(vec![])).unwrap();
+    let call_result = v
+        .execute_message(
+            &account,
+            &robust_addr,
+            &TokenAmount::zero(),
+            fil_actor_evm::Method::InvokeContract as u64,
+            params,
+        )
+        .unwrap();
+    assert!(call_result.code.is_success(), "failed to call the new actor {}", call_result.message);
+}
 
 pub fn evm_call_test(v: &dyn VM) {
     let account = create_accounts(v, 1, &TokenAmount::from_whole(10_000))[0];

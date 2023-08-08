@@ -34,6 +34,9 @@ pub trait VM {
     /// Get information about an actor
     fn actor(&self, address: &Address) -> Option<ActorState>;
 
+    /// Upsert an actor into the state tree
+    fn set_actor(&self, key: &Address, a: ActorState);
+
     /// Get the balance of the specified actor
     fn balance(&self, address: &Address) -> TokenAmount;
 

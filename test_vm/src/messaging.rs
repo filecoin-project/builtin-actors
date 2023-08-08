@@ -131,7 +131,7 @@ where
         target: &Address,
     ) -> Result<(ActorState, Address), ActorError> {
         if let Some(a) = self.v.resolve_id_address(target) {
-            if let Some(act) = self.v.get_actor(&a) {
+            if let Some(act) = self.v.actor(&a) {
                 return Ok((act, a));
             }
         };
@@ -142,7 +142,7 @@ where
             Payload::Delegated(da)
             // Validate that there's an actor at the target ID (we don't care what is there,
             // just that something is there).
-            if self.v.get_actor(&Address::new_id(da.namespace())).is_some() =>
+            if self.v.actor(&Address::new_id(da.namespace())).is_some() =>
                 {
                     false
                 }
@@ -166,7 +166,7 @@ where
         let (target_id, existing) = st.map_addresses_to_id(self.v.store, target, None).unwrap();
         assert!(!existing, "should never have existing actor when no f4 address is specified");
         let target_id_addr = Address::new_id(target_id);
-        let mut init_actor = self.v.get_actor(&INIT_ACTOR_ADDR).unwrap();
+        let mut init_actor = self.v.actor(&INIT_ACTOR_ADDR).unwrap();
         init_actor.state = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
         self.v.set_actor(&INIT_ACTOR_ADDR, init_actor);
 
@@ -201,7 +201,7 @@ where
             }
         }
 
-        Ok((self.v.get_actor(&target_id_addr).unwrap(), target_id_addr))
+        Ok((self.v.actor(&target_id_addr).unwrap(), target_id_addr))
     }
 
     pub fn gather_trace(
@@ -237,7 +237,7 @@ where
         let prior_root = self.v.checkpoint();
 
         // Transfer funds
-        let mut from_actor = self.v.get_actor(&self.msg.from).unwrap();
+        let mut from_actor = self.v.actor(&self.msg.from).unwrap();
         if !self.msg.value.is_zero() {
             if self.msg.value.is_negative() {
                 return Err(ActorError::unchecked(
@@ -273,7 +273,7 @@ where
         }
 
         // call target actor
-        let to_actor = self.v.get_actor(to_addr).unwrap();
+        let to_actor = self.v.actor(to_addr).unwrap();
         let params = self.msg.params.clone();
         let mut res = match ACTOR_TYPES.get(&to_actor.code).expect("Target actor is not a builtin")
         {
@@ -329,7 +329,7 @@ where
             }
         }
         let addr = &Address::new_id(actor_id);
-        let actor = match self.v.get_actor(addr) {
+        let actor = match self.v.actor(addr) {
             Some(mut act) if act.code == *PLACEHOLDER_ACTOR_CODE_ID => {
                 act.code = code_id;
                 act
@@ -457,7 +457,7 @@ where
             ));
         }
         self.caller_validated.replace(true);
-        let to_match = ACTOR_TYPES.get(&self.v.get_actor(&self.msg.from).unwrap().code).unwrap();
+        let to_match = ACTOR_TYPES.get(&self.v.actor(&self.msg.from).unwrap().code).unwrap();
         if types.into_iter().any(|t| *t == *to_match) {
             return Ok(());
         }
@@ -468,7 +468,7 @@ where
     }
 
     fn current_balance(&self) -> TokenAmount {
-        self.v.get_actor(&self.to()).unwrap().balance
+        self.v.actor(&self.to()).unwrap().balance
     }
 
     fn resolve_address(&self, addr: &Address) -> Option<ActorID> {
@@ -481,7 +481,7 @@ where
     }
 
     fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {
-        let maybe_act = self.v.get_actor(&Address::new_id(*id));
+        let maybe_act = self.v.actor(&Address::new_id(*id));
         match maybe_act {
             None => None,
             Some(act) => Some(act.code),
@@ -489,7 +489,7 @@ where
     }
 
     fn lookup_delegated_address(&self, id: ActorID) -> Option<Address> {
-        self.v.get_actor(&Address::new_id(id)).and_then(|act| act.predictable_address)
+        self.v.actor(&Address::new_id(id)).and_then(|act| act.predictable_address)
     }
 
     fn send(
@@ -553,11 +553,11 @@ where
     }
 
     fn get_state_root(&self) -> Result<Cid, ActorError> {
-        Ok(self.v.get_actor(&self.to()).unwrap().state)
+        Ok(self.v.actor(&self.to()).unwrap().state)
     }
 
     fn set_state_root(&self, root: &Cid) -> Result<(), ActorError> {
-        let maybe_act = self.v.get_actor(&self.to());
+        let maybe_act = self.v.actor(&self.to());
         match maybe_act {
             None => Err(ActorError::unchecked(
                 ExitCode::SYS_ASSERTION_FAILED,
@@ -585,7 +585,7 @@ where
         let result = f(&mut st, self);
         self.allow_side_effects.replace(true);
         let ret = result?;
-        let mut act = self.v.get_actor(&self.to()).unwrap();
+        let mut act = self.v.actor(&self.to()).unwrap();
         act.state = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
 
         if self.read_only {
@@ -629,7 +629,7 @@ where
     }
 
     fn actor_balance(&self, id: ActorID) -> Option<TokenAmount> {
-        self.v.get_actor(&Address::new_id(id)).map(|act| act.balance)
+        self.v.actor(&Address::new_id(id)).map(|act| act.balance)
     }
 
     fn gas_available(&self) -> u64 {

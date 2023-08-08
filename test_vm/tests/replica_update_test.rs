@@ -1,4 +1,3 @@
-use fil_actor_miner::{Sectors, State as MinerState};
 use fil_actors_integration_tests::tests::create_miner_and_upgrade_sector;
 use fil_actors_runtime::runtime::Policy;
 use fvm_ipld_blockstore::MemoryBlockstore;
@@ -114,21 +113,7 @@ fn terminate_after_upgrade() {
 fn extend_after_upgrade() {
     let store = &MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
-    let (sector_info, worker, miner_id, deadline_index, partition_index, _) =
-        create_miner_and_upgrade_sector(&v, false);
-
-    let sector_number = sector_info.sector_number;
-    let mut legacy_sector = sector_info;
-    legacy_sector.simple_qa_power = false;
-
-    // TODO change to use extend2
-    v.mutate_state(&miner_id, |st: &mut MinerState| {
-        let mut sectors = Sectors::load(&store, &st.sectors).unwrap();
-        sectors.store(vec![legacy_sector]).unwrap();
-        st.sectors = sectors.amt.flush().unwrap();
-    });
-
-    extend_after_upgrade_test(&v, miner_id, worker, deadline_index, partition_index, sector_number);
+    extend_after_upgrade_test(&v);
 }
 
 #[test]
