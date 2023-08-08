@@ -1,12 +1,11 @@
 use export_macro::vm_test;
 use fil_actor_init::Method as InitMethod;
 use fil_actor_miner::{
-    max_prove_commit_duration, Method as MinerMethod, MinerConstructorParams,
-    PreCommitSectorParams, MIN_SECTOR_EXPIRATION,
+    max_prove_commit_duration, Method as MinerMethod, MinerConstructorParams, MIN_SECTOR_EXPIRATION,
 };
 use fil_actor_power::{CreateMinerParams, Method as PowerMethod};
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::test_utils::make_sealed_cid;
+
 use fil_actors_runtime::{
     CRON_ACTOR_ADDR, CRON_ACTOR_ID, INIT_ACTOR_ADDR, INIT_ACTOR_ID, STORAGE_POWER_ACTOR_ADDR,
     STORAGE_POWER_ACTOR_ID,
@@ -26,7 +25,7 @@ use vm_api::VM;
 use crate::expects::Expect;
 use crate::util::{
     assert_invariants, create_accounts, create_miner, expect_invariants,
-    invariant_failure_patterns, miner_dline_info,
+    invariant_failure_patterns, miner_dline_info, miner_precommit_one_sector_v2, PrecommitMetadata,
 };
 use crate::{FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR};
 
@@ -120,27 +119,18 @@ pub fn cron_tick_test(v: &dyn VM) {
     // create precommit
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let sector_number = 100;
-    let sealed_cid = make_sealed_cid(b"100");
-    let precommit_params = PreCommitSectorParams {
-        seal_proof,
-        sector_number,
-        sealed_cid,
-        seal_rand_epoch: v.epoch() - 1,
-        deal_ids: vec![],
-        expiration: v.epoch()
-            + MIN_SECTOR_EXPIRATION
-            + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap()
-            + 100,
-        ..Default::default()
-    };
-
-    apply_ok(
+    miner_precommit_one_sector_v2(
         v,
         &addrs[0],
         &robust_addr,
-        &TokenAmount::zero(),
-        MinerMethod::PreCommitSector as u64,
-        Some(precommit_params),
+        seal_proof,
+        sector_number,
+        PrecommitMetadata::default(),
+        true,
+        v.epoch()
+            + MIN_SECTOR_EXPIRATION
+            + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap()
+            + 100,
     );
 
     // find epoch of miner's next cron task (precommit:1, enrollCron:2)

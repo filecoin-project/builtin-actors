@@ -4,16 +4,16 @@ use fil_actor_market::{
     DealMetaArray, Method as MarketMethod, State as MarketState, WithdrawBalanceParams,
 };
 use fil_actor_miner::{
-    power_for_sector, Method as MinerMethod, PreCommitSectorParams, ProveCommitSectorParams,
-    State as MinerState, TerminateSectorsParams, TerminationDeclaration,
+    power_for_sector, Method as MinerMethod, ProveCommitSectorParams, State as MinerState,
+    TerminateSectorsParams, TerminationDeclaration,
 };
 use fil_actor_power::State as PowerState;
 use fil_actor_verifreg::{Method as VerifregMethod, VerifierParams};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
-    test_utils::*, CRON_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ID,
-    STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    CRON_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ID, STORAGE_POWER_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
@@ -31,7 +31,8 @@ use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_to_proving_deadline, create_accounts, create_miner, expect_invariants,
     invariant_failure_patterns, make_bitfield, market_publish_deal, miner_balance,
-    submit_windowed_post, verifreg_add_verifier,
+    miner_precommit_one_sector_v2, precommit_meta_data_from_deals, submit_windowed_post,
+    verifreg_add_verifier,
 };
 
 #[vm_test]
@@ -45,7 +46,6 @@ pub fn terminate_sectors_test(v: &dyn VM) {
 
     let m_balance = TokenAmount::from_whole(1_000);
     let sector_number = 100;
-    let sealed_cid = make_sealed_cid(b"s100");
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
 
     let (miner_id_addr, miner_robust_addr) = create_miner(
@@ -167,21 +167,16 @@ pub fn terminate_sectors_test(v: &dyn VM) {
         assert_eq!(None, state);
     }
     //    precommit_sectors(&v, 1, 1, worker, robust_addr, seal_proof, sector_number, true, None);
-    apply_ok(
+
+    miner_precommit_one_sector_v2(
         v,
         &worker,
         &miner_robust_addr,
-        &TokenAmount::zero(),
-        MinerMethod::PreCommitSector as u64,
-        Some(PreCommitSectorParams {
-            seal_proof,
-            sector_number,
-            sealed_cid,
-            seal_rand_epoch: v.epoch() - 1,
-            deal_ids: deal_ids.clone(),
-            expiration: v.epoch() + 220 * EPOCHS_IN_DAY,
-            ..Default::default()
-        }),
+        seal_proof,
+        sector_number,
+        precommit_meta_data_from_deals(v, deal_ids.clone(), seal_proof),
+        true,
+        v.epoch() + 220 * EPOCHS_IN_DAY,
     );
     let prove_time = v.epoch() + Policy::default().pre_commit_challenge_delay + 1;
     advance_by_deadline_to_epoch(v, &miner_id_addr, prove_time);

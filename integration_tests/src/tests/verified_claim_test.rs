@@ -35,9 +35,9 @@ use crate::util::{
     advance_by_deadline_to_index, advance_to_proving_deadline, assert_invariants, create_accounts,
     create_miner, cron_tick, datacap_extend_claim, datacap_get_balance, expect_invariants,
     invariant_failure_patterns, market_add_balance, market_publish_deal,
-    miner_extend_sector_expiration2, miner_precommit_sector, miner_prove_sector, sector_deadline,
-    submit_windowed_post, verifreg_add_client, verifreg_add_verifier, verifreg_extend_claim_terms,
-    verifreg_remove_expired_allocations,
+    miner_extend_sector_expiration2, miner_precommit_one_sector_v2, miner_prove_sector,
+    precommit_meta_data_from_deals, sector_deadline, submit_windowed_post, verifreg_add_client,
+    verifreg_add_verifier, verifreg_extend_claim_terms, verifreg_remove_expired_allocations,
 };
 
 /// Tests a scenario involving a verified deal from the built-in market, with associated
@@ -93,13 +93,14 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
 
     // Precommit and prove the sector for the max term allowed by the deal.
     let sector_term = deal_term_min + MARKET_DEFAULT_ALLOCATION_TERM_BUFFER;
-    let _precommit = miner_precommit_sector(
+    let _precommit = miner_precommit_one_sector_v2(
         v,
         &worker,
         &miner_id,
         seal_proof,
         sector_number,
-        deals.clone(),
+        precommit_meta_data_from_deals(v, deals.clone(), seal_proof),
+        true,
         deal_start + sector_term,
     );
 
@@ -534,23 +535,25 @@ pub fn deal_passes_claim_fails_test(v: &dyn VM) {
         sector_start - max_prove_commit_duration(&Policy::default(), seal_proof).unwrap(),
     );
     let sector_number_a = 0;
-    let _precommit = miner_precommit_sector(
+    let _precommit = miner_precommit_one_sector_v2(
         v,
         &worker,
         &miner_id,
         seal_proof,
         sector_number_a,
-        vec![deal],
+        precommit_meta_data_from_deals(v, vec![deal], seal_proof),
+        true,
         sector_start + sector_term,
     );
     let sector_number_b = 1;
-    let _precommit = miner_precommit_sector(
+    let _precommit = miner_precommit_one_sector_v2(
         v,
         &worker,
         &miner_id,
         seal_proof,
         sector_number_b,
-        vec![bad_deal],
+        precommit_meta_data_from_deals(v, vec![bad_deal], seal_proof),
+        false,
         sector_start + sector_term,
     );
 
