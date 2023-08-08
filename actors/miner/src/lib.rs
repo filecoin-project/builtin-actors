@@ -101,7 +101,7 @@ pub enum Method {
     ChangeWorkerAddress = 3,
     ChangePeerID = 4,
     SubmitWindowedPoSt = 5,
-    PreCommitSector = 6,
+    //PreCommitSector = 6, // Deprecated
     ProveCommitSector = 7,
     ExtendSectorExpiration = 8,
     TerminateSectors = 9,
@@ -120,7 +120,7 @@ pub enum Method {
     RepayDebt = 22,
     ChangeOwnerAddress = 23,
     DisputeWindowedPoSt = 24,
-    PreCommitSectorBatch = 25,
+    //PreCommitSectorBatch = 25, // Deprecated
     ProveCommitAggregate = 26,
     ProveReplicaUpdates = 27,
     PreCommitSectorBatch2 = 28,
@@ -1696,54 +1696,6 @@ impl Actor {
         Ok(())
     }
 
-    /// Pledges to seal and commit a single sector.
-    /// See PreCommitSectorBatch for details.
-    fn pre_commit_sector(
-        rt: &impl Runtime,
-        params: PreCommitSectorParams,
-    ) -> Result<(), ActorError> {
-        Self::pre_commit_sector_batch(rt, PreCommitSectorBatchParams { sectors: vec![params] })
-    }
-
-    /// Pledges the miner to seal and commit some new sectors.
-    /// The caller specifies sector numbers, sealed sector data CIDs, seal randomness epoch, expiration, and the IDs
-    /// of any storage deals contained in the sector data. The storage deal proposals must be already submitted
-    /// to the storage market actor.
-    /// A pre-commitment may specify an existing committed-capacity sector that the committed sector will replace
-    /// when proven.
-    /// This method calculates the sector's power, locks a pre-commit deposit for the sector, stores information about the
-    /// sector in state and waits for it to be proven or expire.
-    fn pre_commit_sector_batch(
-        rt: &impl Runtime,
-        params: PreCommitSectorBatchParams,
-    ) -> Result<(), ActorError> {
-        let sectors = params
-            .sectors
-            .into_iter()
-            .map(|spci| {
-                if spci.replace_capacity {
-                    Err(actor_error!(
-                        forbidden,
-                        "cc upgrade through precommit discontinued, use ProveReplicaUpdate"
-                    ))
-                } else {
-                    Ok(SectorPreCommitInfoInner {
-                        seal_proof: spci.seal_proof,
-                        sector_number: spci.sector_number,
-                        sealed_cid: spci.sealed_cid,
-                        seal_rand_epoch: spci.seal_rand_epoch,
-                        deal_ids: spci.deal_ids,
-                        expiration: spci.expiration,
-                        // This entry point computes the unsealed CID from deals via the market.
-                        // A future one will accept it directly as a parameter.
-                        unsealed_cid: None,
-                    })
-                }
-            })
-            .collect::<Result<_, _>>()?;
-        Self::pre_commit_sector_batch_inner(rt, sectors)
-    }
-
     /// Pledges the miner to seal and commit some new sectors.
     /// The caller specifies sector numbers, sealed sector CIDs, unsealed sector CID, seal randomness epoch, expiration, and the IDs
     /// of any storage deals contained in the sector data. The storage deal proposals must be already submitted
@@ -1844,10 +1796,20 @@ impl Actor {
                 ));
             }
 
-            if let Some(ref commd) = precommit.unsealed_cid.as_ref().and_then(|c| c.0) {
-                if !is_unsealed_sector(commd) {
-                    return Err(actor_error!(illegal_argument, "unsealed CID had wrong prefix"));
+            if let Some(compact_commd) = &precommit.unsealed_cid {
+                if let Some(commd) = compact_commd.0 {
+                    if !is_unsealed_sector(&commd) {
+                        return Err(actor_error!(
+                            illegal_argument,
+                            "unsealed CID had wrong prefix"
+                        ));
+                    }
                 }
+            } else {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "unspecified CompactCommD not allowed past nv21, need explicit None value for CC or CommD"
+                ));
             }
 
             // Require sector lifetime meets minimum by assuming activation happens at last epoch permitted for seal proof.
@@ -1953,11 +1915,7 @@ impl Actor {
                 // 1. verify that precommit.unsealed_cid is correct
                 // 2. create a new on_chain_precommit
 
-                let commd = match precommit.unsealed_cid {
-                    // if the CommD is unknown, use CommD computed by the market
-                    None => CompactCommD::new(deal_data.commd),
-                    Some(x) => x,
-                };
+                let commd = precommit.unsealed_cid.unwrap();
                 if commd.0 != deal_data.commd {
                     return Err(actor_error!(illegal_argument, "computed {:?} and passed {:?} CommDs not equal",
                             deal_data.commd, commd));
@@ -5094,7 +5052,6 @@ impl ActorCode for Actor {
         ChangeWorkerAddress|ChangeWorkerAddressExported => change_worker_address,
         ChangePeerID|ChangePeerIDExported => change_peer_id,
         SubmitWindowedPoSt => submit_windowed_post,
-        PreCommitSector => pre_commit_sector,
         ProveCommitSector => prove_commit_sector,
         ExtendSectorExpiration => extend_sector_expiration,
         TerminateSectors => terminate_sectors,
@@ -5113,7 +5070,6 @@ impl ActorCode for Actor {
         RepayDebt|RepayDebtExported => repay_debt,
         ChangeOwnerAddress|ChangeOwnerAddressExported => change_owner_address,
         DisputeWindowedPoSt => dispute_windowed_post,
-        PreCommitSectorBatch => pre_commit_sector_batch,
         ProveCommitAggregate => prove_commit_aggregate,
         ProveReplicaUpdates => prove_replica_updates,
         PreCommitSectorBatch2 => pre_commit_sector_batch2,
