@@ -48,7 +48,8 @@ impl Onboarding {
     }
 }
 
-pub fn batch_onboarding_test(v: &dyn VM, v2: bool) {
+#[vm_test]
+pub fn batch_onboarding_test(v: &dyn VM) {
     let seal_proof = &RegisteredSealProof::StackedDRG32GiBV1P1;
 
     let mut proven_count = 0;
@@ -105,7 +106,6 @@ pub fn batch_onboarding_test(v: &dyn VM, v2: bool) {
                 next_sector_no,
                 next_sector_no == 0,
                 None,
-                v2,
             );
             precommmits.append(&mut new_precommits);
             next_sector_no += item.pre_commit_sector_count as u64;
@@ -165,14 +165,4 @@ pub fn batch_onboarding_test(v: &dyn VM, v2: bool) {
         &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
         None,
     );
-}
-
-#[vm_test]
-pub fn batch_onboarding_deals_test_v2(v: &dyn VM) {
-    batch_onboarding_test(v, true);
-}
-
-#[vm_test]
-pub fn batch_onboarding_deals_test_v1(v: &dyn VM) {
-    batch_onboarding_test(v, false);
 }

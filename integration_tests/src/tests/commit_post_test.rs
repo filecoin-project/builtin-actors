@@ -13,7 +13,7 @@ use crate::expects::Expect;
 use crate::util::{
     advance_by_deadline_to_epoch, advance_to_proving_deadline, assert_invariants, create_accounts,
     create_miner, expect_invariants, get_network_stats, invariant_failure_patterns, miner_balance,
-    precommit_sectors, submit_windowed_post,
+    precommit_sectors_v2, submit_windowed_post,
 };
 use crate::TEST_VM_RAND_ARRAY;
 use fil_actor_cron::Method as CronMethod;
@@ -63,7 +63,7 @@ fn setup(v: &dyn VM) -> (MinerInfo, SectorInfo) {
 
     // precommit and advance to prove commit time
     let sector_number: SectorNumber = 100;
-    precommit_sectors(v, 1, 1, &worker, &id_addr, seal_proof, sector_number, true, None);
+    precommit_sectors_v2(v, 1, 1, vec![], &worker, &id_addr, seal_proof, sector_number, true, None);
 
     let balances = miner_balance(v, &id_addr);
     assert!(balances.pre_commit_deposit.is_positive());
@@ -305,11 +305,21 @@ pub fn overdue_precommit_test(v: &dyn VM) {
 
     // precommit and advance to prove commit time
     let sector_number: SectorNumber = 100;
-    let precommit =
-        precommit_sectors(v, 1, 1, &worker, &id_addr, seal_proof, sector_number, true, None)
-            .get(0)
-            .unwrap()
-            .clone();
+    let precommit = precommit_sectors_v2(
+        v,
+        1,
+        1,
+        vec![],
+        &worker,
+        &id_addr,
+        seal_proof,
+        sector_number,
+        true,
+        None,
+    )
+    .get(0)
+    .unwrap()
+    .clone();
 
     let balances = miner_balance(v, &id_addr);
     assert!(balances.pre_commit_deposit.is_positive());
@@ -415,10 +425,11 @@ pub fn aggregate_bad_sector_number_test(v: &dyn VM) {
     // precommit and advance to prove commit time
     let sector_number: SectorNumber = 100;
     let mut precommited_sector_nos = BitField::try_from_bits(
-        precommit_sectors(
+        precommit_sectors_v2(
             v,
             4,
             policy.pre_commit_sector_batch_max_size,
+            vec![],
             &worker,
             &id_addr,
             seal_proof,
@@ -488,10 +499,11 @@ pub fn aggregate_size_limits_test(v: &dyn VM) {
     // precommit and advance to prove commit time
     let sector_number: SectorNumber = 100;
     let precommited_sector_nos = BitField::try_from_bits(
-        precommit_sectors(
+        precommit_sectors_v2(
             v,
             oversized_batch,
             policy.pre_commit_sector_batch_max_size,
+            vec![],
             &worker,
             &id_addr,
             seal_proof,
@@ -591,10 +603,11 @@ pub fn aggregate_bad_sender_test(v: &dyn VM) {
     // precommit and advance to prove commit time
     let sector_number: SectorNumber = 100;
     let precommited_sector_nos = BitField::try_from_bits(
-        precommit_sectors(
+        precommit_sectors_v2(
             v,
             4,
             policy.pre_commit_sector_batch_max_size,
+            vec![],
             &worker,
             &id_addr,
             seal_proof,
@@ -662,10 +675,11 @@ pub fn aggregate_one_precommit_expires_test(v: &dyn VM) {
 
     // early precommit
     let early_precommit_time = v.epoch();
-    let early_precommits = precommit_sectors(
+    let early_precommits = precommit_sectors_v2(
         v,
         1,
         policy.pre_commit_sector_batch_max_size,
+        vec![],
         &worker,
         &miner_addr,
         seal_proof,
@@ -681,10 +695,11 @@ pub fn aggregate_one_precommit_expires_test(v: &dyn VM) {
 
     // later precommits
 
-    let later_precommits = precommit_sectors(
+    let later_precommits = precommit_sectors_v2(
         v,
         3,
         policy.pre_commit_sector_batch_max_size,
+        vec![],
         &worker,
         &miner_addr,
         seal_proof,
