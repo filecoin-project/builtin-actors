@@ -1,5 +1,6 @@
+use cid::multihash::Code;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::{CborStore, RawBytes};
 use fvm_shared::address::{Address, BLS_PUB_LEN};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -14,7 +15,7 @@ use serde::de::DeserializeOwned;
 
 use crate::VM;
 
-// Generate count addresses by seeding an rng
+/// Generate count addresses by seeding an rng
 pub fn pk_addrs_from(seed: u64, count: u64) -> Vec<Address> {
     let mut seed_arr = [0u8; 32];
     for (i, b) in seed.to_ne_bytes().iter().enumerate() {
@@ -24,7 +25,7 @@ pub fn pk_addrs_from(seed: u64, count: u64) -> Vec<Address> {
     (0..count).map(|_| new_bls_from_rng(&mut rng)).collect()
 }
 
-// Generate nice 32 byte arrays sampled uniformly at random based off of a u64 seed
+/// Generate nice 32 byte arrays sampled uniformly at random based off of a u64 seed
 fn new_bls_from_rng(rng: &mut ChaCha8Rng) -> Address {
     let mut bytes = [0u8; BLS_PUB_LEN];
     rng.fill_bytes(&mut bytes);
@@ -64,4 +65,18 @@ pub fn get_state<T: DeserializeOwned>(v: &dyn VM, a: &Address) -> Option<T> {
 /// Convenience function to create an IpldBlock from a serializable object
 pub fn serialize_ok<S: Serialize>(s: &S) -> IpldBlock {
     IpldBlock::serialize_cbor(s).unwrap().unwrap()
+}
+
+/// Update the state of a given actor in place
+pub fn mutate_state<S, F>(v: &dyn VM, addr: &Address, f: F)
+where
+    S: Serialize + DeserializeOwned,
+    F: FnOnce(&mut S),
+{
+    let mut a = v.actor(addr).unwrap();
+    let store = DynBlockstore::wrap(v.blockstore());
+    let mut st = store.get_cbor::<S>(&a.state).unwrap().unwrap();
+    f(&mut st);
+    a.state = store.put_cbor(&st, Code::Blake2b256).unwrap();
+    v.set_actor(addr, a);
 }

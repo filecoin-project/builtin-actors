@@ -269,12 +269,6 @@ where
         actor
     }
 
-    // blindly overwrite the actor at this address whether it previously existed or not
-    pub fn set_actor(&self, key: &Address, a: ActorState) {
-        self.actors_cache.borrow_mut().insert(*key, a);
-        self.actors_dirty.replace(true);
-    }
-
     pub fn checkpoint(&self) -> Cid {
         // persist cache on top of latest checkpoint and clear
         let mut actors = Hamt::<&'bs BS, ActorState, BytesKey, Sha256>::load(
@@ -442,6 +436,11 @@ where
             self.actors_cache.borrow_mut().insert(*address, a.clone());
         });
         actor
+    }
+
+    fn set_actor(&self, key: &Address, a: ActorState) {
+        self.actors_cache.borrow_mut().insert(*key, a);
+        self.actors_dirty.replace(true);
     }
 
     fn primitives(&self) -> &dyn Primitives {
