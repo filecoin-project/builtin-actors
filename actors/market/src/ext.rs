@@ -56,7 +56,7 @@ pub mod miner {
     // Notification of change committed to one or more sectors.
     // The relevant state must be already committed so the receiver can observe any impacts
     // at the sending miner actor.
-    #[derive(Serialize_tuple, Deserialize_tuple)]
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
     // TODO REVIEW: #[serde(transparent)]?
     pub struct SectorContentChangedParams {
         // Distinct sectors with changed content.
@@ -64,13 +64,13 @@ pub mod miner {
     }
 
     // Description of changes to one sector's content.
-    #[derive(Serialize_tuple, Deserialize_tuple)]
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
     pub struct SectorChanges {
         // Identifier of sector being updated.
         pub sector: SectorNumber,
         // Minimum epoch until which the data is committed to the sector.
         // Note the sector may later be extended without necessarily another notification.
-        pub commitment_epoch: ChainEpoch,
+        pub minimum_commitment_epoch: ChainEpoch,
         // Information about some pieces added to (or retained in) the sector.
         // This may be only a subset of sector content.
         // Inclusion here does not mean the piece was definitely absent previously.
@@ -78,13 +78,11 @@ pub mod miner {
         pub added: Vec<PieceInfo>,
     }
 
-    // Description of a peice of data committed to a sector.
-    #[derive(Serialize_tuple, Deserialize_tuple)]
+    // Description of a piece of data committed to a sector.
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
     pub struct PieceInfo {
         pub data: Cid,
         pub size: PaddedPieceSize,
-        // TODO: should the offset within the sector be included to allow complete addressing?
-        pub offset: u64,
         // A receiver-specific identifier.
         // E.g. an encoded deal ID which the provider claims this piece satisfies.
         pub payload: Vec<u8>,
@@ -93,19 +91,19 @@ pub mod miner {
     // For each piece in each sector, the notifee returns an exit code and
     // (possibly-empty) result data.
     // The miner actor will pass through results to its caller.
-    #[derive(Serialize_tuple, Deserialize_tuple)]
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
     // TODO REVIEW: #[serde(transparent)]?
     pub struct SectorContentChangedReturn {
         // A result for each sector that was notified, in the same order.
         pub sectors: Vec<SectorReturn>,
     }
-    #[derive(Serialize_tuple, Deserialize_tuple)]
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
     // TODO REVIEW: #[serde(transparent)]?
     pub struct SectorReturn {
         // A result for each piece for the sector that was notified, in the same order.
         pub added: Vec<PieceReturn>,
     }
-    #[derive(Serialize_tuple, Deserialize_tuple)]
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
     pub struct PieceReturn {
         // Indicates whether the receiver accepted the notification.
         // The caller is free to ignore this, but may chose to abort and roll back.

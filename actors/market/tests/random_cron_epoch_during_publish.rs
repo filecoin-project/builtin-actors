@@ -104,7 +104,7 @@ fn deals_are_scheduled_for_expiry_later_than_the_end_epoch() {
     rt.set_epoch(curr);
     let (pay, _) = cron_tick_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, curr, deal_id);
     assert_eq!(&deal_proposal.storage_price_per_epoch, &pay);
-    assert_deal_deleted(&rt, deal_id, deal_proposal, SECTOR_NUMBER);
+    assert_deal_deleted(&rt, deal_id, &deal_proposal, SECTOR_NUMBER);
     check_state(&rt);
 }
 
@@ -132,7 +132,7 @@ fn deal_is_processed_after_its_end_epoch_should_expire_correctly() {
     assert!(slashed.is_zero());
     let duration = END_EPOCH - START_EPOCH;
     assert_eq!(duration * &deal_proposal.storage_price_per_epoch, pay);
-    assert_deal_deleted(&rt, deal_id, deal_proposal, SECTOR_NUMBER);
+    assert_deal_deleted(&rt, deal_id, &deal_proposal, SECTOR_NUMBER);
     check_state(&rt);
 }
 
@@ -181,6 +181,6 @@ fn cron_processing_of_deal_after_missed_activation_should_fail_and_slash() {
     );
     cron_tick(&rt);
 
-    assert_deal_deleted(&rt, deal_id, deal_proposal, SECTOR_NUMBER);
+    assert_deal_deleted(&rt, deal_id, &deal_proposal, SECTOR_NUMBER);
     check_state(&rt);
 }

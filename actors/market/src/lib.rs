@@ -33,7 +33,7 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
     actor_dispatch, actor_error, deserialize_block, ActorContext, ActorDowncast, ActorError,
-    AsActorError, Map, Set, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR,
+    AsActorError, Set, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR,
     REWARD_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fil_actors_runtime::{extract_send_result, BatchReturnGen, FIRST_ACTOR_SPECIFIC_EXIT_CODE};
@@ -572,17 +572,13 @@ impl Actor {
                         batch_gen.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
                         continue 'sector;
                     }
-                    // The deal might fail activation later, but ignoring that for duplicate-checking
-                    // is not worth the complexity.
-                    activated_deals.insert(*deal_id);
 
-                    let (proposal, alloc_id) = match preactivate_deal(
+                    let proposal = match preactivate_deal(
                         rt,
                         *deal_id,
                         &proposals,
                         &states,
                         &pending_deals,
-                        &mut pending_deal_allocation_ids,
                         &miner_addr,
                         p.sector_expiry,
                         curr_epoch,
@@ -597,6 +593,15 @@ impl Actor {
                     };
 
                     // No continue below here, to ensure state changes are consistent.
+                    // Any error is an abort.
+                    // Extract and remove any verified allocation ID for the pending deal.
+                    let alloc_id = remove_pending_deal_allocation_id(
+                        // FIXME move outside inner loop
+                        &mut pending_deal_allocation_ids,
+                        *deal_id,
+                    )?
+                    .unwrap_or(NO_ALLOCATION_ID);
+
                     if alloc_id != NO_ALLOCATION_ID {
                         verified_infos.push(VerifiedDealInfo {
                             client: proposal.client.id().unwrap(),
@@ -618,6 +623,9 @@ impl Actor {
                             verified_claim: alloc_id,
                         },
                     ));
+                }
+                for id in &p.deal_ids {
+                    activated_deals.insert(*id);
                 }
 
                 sectors_deals.push((p.sector_number, SectorDealIDs { deals: p.deal_ids.clone() }));
@@ -670,17 +678,15 @@ impl Actor {
                         });
                         continue;
                     }
-                    activated_deals.insert(deal_id);
 
-                    let (_proposal, alloc_id) = match preactivate_deal(
+                    let proposal = match preactivate_deal(
                         rt,
                         deal_id,
                         &proposals,
                         &states,
                         &pending_deals,
-                        &mut pending_deal_allocation_ids,
                         &miner_addr,
-                        sector.commitment_epoch,
+                        sector.minimum_commitment_epoch,
                         curr_epoch,
                         st.next_id,
                     )? {
@@ -691,6 +697,43 @@ impl Actor {
                             continue;
                         }
                     };
+
+                    if piece.data != proposal.piece_cid {
+                        log::warn!(
+                            "failed to activate: piece CID {} doesn't match deal {} with {}",
+                            piece.data,
+                            deal_id,
+                            proposal.piece_cid
+                        );
+                        pieces_ret.push(PieceReturn {
+                            code: ExitCode::USR_ILLEGAL_ARGUMENT,
+                            data: vec![],
+                        });
+                        continue;
+                    }
+                    if piece.size != proposal.piece_size {
+                        log::warn!(
+                            "failed to activate: piece size {} doesn't match deal {} with {}",
+                            piece.size.0,
+                            deal_id,
+                            proposal.piece_size.0
+                        );
+                        pieces_ret.push(PieceReturn {
+                            code: ExitCode::USR_ILLEGAL_ARGUMENT,
+                            data: vec![],
+                        });
+                        continue;
+                    }
+
+                    // No continue below here, to ensure state changes are consistent.
+                    activated_deals.insert(deal_id);
+
+                    // Extract and remove any verified allocation ID for the pending deal.
+                    let alloc_id = remove_pending_deal_allocation_id(
+                        &mut pending_deal_allocation_ids,
+                        deal_id,
+                    )?
+                    .unwrap_or(NO_ALLOCATION_ID);
 
                     deal_states.push((
                         deal_id,
@@ -711,6 +754,7 @@ impl Actor {
                         },
                     ));
                     sector_deal_ids.push(deal_id);
+                    pieces_ret.push(PieceReturn { code: ExitCode::OK, data: vec![] });
                 }
 
                 sectors_deals.push((sector.sector, SectorDealIDs { deals: sector_deal_ids }));
@@ -719,6 +763,7 @@ impl Actor {
             }
             st.put_deal_states(rt.store(), &deal_states)?;
             st.put_sector_deal_ids(rt.store(), &miner_addr, &sectors_deals)?;
+            st.save_pending_deal_allocation_ids(&mut pending_deal_allocation_ids)?;
 
             assert_eq!(sectors_ret.len(), params.sectors.len(), "mismatched sector returns");
             Ok(sectors_ret)
@@ -1191,7 +1236,7 @@ pub fn validate_deals_for_sector(
     Ok(())
 }
 
-// Validates a deal can activate and updates state in preparation for its activation.
+// Validates a deal is ready to activate now.
 // There are two types of error possible here:
 // - An Err in the outer result indicates something broken that should be propagated
 //   and abort the current message.
@@ -1204,13 +1249,20 @@ fn preactivate_deal<BS: Blockstore>(
     proposals: &DealArray<BS>,
     states: &DealMetaArray<BS>,
     pending_proposals: &Set<BS>,
-    pending_deal_allocation_ids: &mut Map<BS, AllocationID>,
     provider: &Address,
     sector_commitment: ChainEpoch,
     curr_epoch: ChainEpoch,
     next_id: DealID,
-) -> Result<Result<(DealProposal, AllocationID), ActorError>, ActorError> {
-    let proposal = get_proposal(proposals, deal_id, next_id)?;
+) -> Result<Result<DealProposal, ActorError>, ActorError> {
+    let proposal = match get_proposal(proposals, deal_id, next_id) {
+        Ok(p) => p,
+        Err(e) => {
+            return match e.exit_code() {
+                ExitCode::USR_NOT_FOUND | EX_DEAL_EXPIRED => Ok(Err(e)), // Fail this deal only.
+                _ => Err(e),                                             // Abort.
+            };
+        }
+    };
 
     let ok = validate_deal_can_activate(&proposal, provider, sector_commitment, curr_epoch);
     if let Err(e) = ok {
@@ -1229,11 +1281,7 @@ fn preactivate_deal<BS: Blockstore>(
         return Ok(Err(actor_error!(illegal_argument, "deal {} is not in pending set", deal_cid)));
     }
 
-    // Extract and remove any verified allocation ID for the pending deal.
-    let alloc_id = remove_pending_deal_allocation_id(pending_deal_allocation_ids, deal_id)?
-        .unwrap_or(NO_ALLOCATION_ID);
-
-    Ok(Ok((proposal, alloc_id)))
+    Ok(Ok(proposal))
 }
 
 fn alloc_request_for_deal(
@@ -1329,30 +1377,28 @@ fn validate_deal_can_activate(
     curr_epoch: ChainEpoch,
 ) -> Result<(), ActorError> {
     if &proposal.provider != miner_addr {
-        return Err(actor_error!(
-            forbidden,
+        return Err(ActorError::forbidden(format!(
             "proposal has provider {}, must be {}",
-            proposal.provider,
-            miner_addr
-        ));
+            proposal.provider, miner_addr
+        )));
     };
 
     if curr_epoch > proposal.start_epoch {
-        return Err(actor_error!(
-            illegal_argument,
-            "proposal start epoch {} has already elapsed at {}",
-            proposal.start_epoch,
-            curr_epoch
+        return Err(ActorError::unchecked(
+            // Use the same code as if the proposal had already been cleaned up from state.
+            EX_DEAL_EXPIRED,
+            format!(
+                "proposal start epoch {} has already elapsed at {}",
+                proposal.start_epoch, curr_epoch
+            ),
         ));
     };
 
     if proposal.end_epoch > sector_expiration {
-        return Err(actor_error!(
-            illegal_argument,
+        return Err(ActorError::illegal_argument(format!(
             "proposal expiration {} exceeds sector expiration {}",
-            proposal.end_epoch,
-            sector_expiration
-        ));
+            proposal.end_epoch, sector_expiration
+        )));
     };
 
     Ok(())
