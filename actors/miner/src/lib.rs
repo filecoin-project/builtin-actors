@@ -4955,7 +4955,7 @@ impl From<SectorPreCommitOnChainInfo> for SectorActivation {
     }
 }
 
- /*
+/*
     BuiltinMarket is today's call in CSPV f05 -> f06, return deal weights as today
     BuiltinMarketWithCommD is what PRU should do to avoid double the market calls, return deal weights as today
     SectorContentAdded is the new thing and can include piece manifests, independent calls f05 (or other) and f06, return deal weights per spec
@@ -4963,10 +4963,9 @@ impl From<SectorPreCommitOnChainInfo> for SectorActivation {
 */
 enum DataActivation {
     BuiltinActivation(Vec<DealID>),
-//    BuiltinActivationCheckCommD(Vec<DealID>), // for use in PRU single shot activation and CommD check
-//    SectorContentAdded(), // TODO add in allocids and piece manifest type to handle new activation flow
-//    CC, // we can simplify activate and claim method by moving CC case directly here
-
+    //    BuiltinActivationCheckCommD(Vec<DealID>), // for use in PRU single shot activation and CommD check
+    //    SectorContentAdded(), // TODO add in allocids and piece manifest type to handle new activation flow
+    //    CC, // we can simplify activate and claim method by moving CC case directly here
 }
 
 fn activate_data(
