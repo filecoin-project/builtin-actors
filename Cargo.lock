@@ -1824,6 +1824,7 @@ dependencies = [
  "sha2 0.10.7",
  "thiserror",
  "unsigned-varint",
+ "vm_api",
 ]
 
 [[package]]
@@ -4396,11 +4397,12 @@ version = "1.0.0"
 dependencies = [
  "anyhow",
  "cid 0.10.1",
- "fil_actors_runtime",
  "fvm_ipld_blockstore 0.2.0",
  "fvm_ipld_encoding 0.4.0",
  "fvm_ipld_hamt",
  "fvm_shared",
+ "num-derive",
+ "num-traits",
  "rand",
  "rand_chacha",
  "serde",
