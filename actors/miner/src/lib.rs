@@ -4765,7 +4765,7 @@ fn check_peer_info(
 //   referenced as included in the sector by sector_activation.data_activation
 fn activate_sectors_inner(
     rt: &impl Runtime,
-    sector_activations: &Vec<SectorActivation>,
+    sector_activations: &[SectorActivation],
     this_epoch_baseline_power: &BigInt,
     this_epoch_reward_smoothed: &FilterEstimate,
     quality_adj_power_smoothed: &FilterEstimate,
@@ -4786,7 +4786,7 @@ fn activate_sectors_inner(
         let mut new_sectors = Vec::<SectorOnChainInfo>::new();
         let mut total_pledge = TokenAmount::zero();
 
-        let successful_activations = batch_return.successes(&sector_activations);
+        let successful_activations = batch_return.successes(sector_activations);
         for (sa, deal_spaces) in successful_activations.iter().zip(data_activations) {
             // compute initial pledge
             // XXX: lots of this will change for the PRU case, I suggest having two different
@@ -4937,7 +4937,7 @@ impl SectorActivation {
     fn deal_ids(&self) -> Vec<DealID> {
         match &self.data_activation {
             BuiltinActivation(deal_ids) => deal_ids.clone(),
-            _ => vec![],
+            //_ => vec![],
         }
     }
 }
@@ -4963,14 +4963,15 @@ impl From<SectorPreCommitOnChainInfo> for SectorActivation {
 */
 enum DataActivation {
     BuiltinActivation(Vec<DealID>),
-    BuiltinActivationCheckCommD(Vec<DealID>), // for use in PRU single shot activation and CommD check
-    SectorContentAdded(), // TODO add in allocids and piece manifest type to handle new activation flow
-    CC,
+//    BuiltinActivationCheckCommD(Vec<DealID>), // for use in PRU single shot activation and CommD check
+//    SectorContentAdded(), // TODO add in allocids and piece manifest type to handle new activation flow
+//    CC, // we can simplify activate and claim method by moving CC case directly here
+
 }
 
 fn activate_data(
     rt: &impl Runtime,
-    activations: &Vec<SectorActivation>,
+    activations: &[SectorActivation],
 ) -> Result<(BatchReturn, Vec<DealSpaces>), ActorError> {
     let (builtin_activation, builtin_activation_with_checks, sector_content_added, cc): (
         Vec<DealsActivationInfo>,
@@ -4990,9 +4991,7 @@ fn activate_data(
             }
             // XXX fill out these arms either with direct data activation calls
             // or pushing to a batch processing array as with the builitin activations
-            BuiltinActivationCheckCommD(x) => acc,
-            SectorContentAdded() => acc,
-            CC => acc, // we can simplify activate and claim method by moving CC case directly here
+            //_ => acc,
         }
     });
     // XXX remove this check once we handle all these things
@@ -5007,175 +5006,6 @@ fn activate_data(
     // we could make it easy on ourselves and enforce only one type of activation.  We can probably
     // figure out BatchReturn merging + tracking of existing index
     batch_activate_deals_and_claim_allocations(rt, &builtin_activation)
-}
-
-fn confirm_sector_proofs_valid_internal(
-    rt: &impl Runtime,
-    pre_commits: Vec<SectorPreCommitOnChainInfo>,
-    this_epoch_baseline_power: &BigInt,
-    this_epoch_reward_smoothed: &FilterEstimate,
-    quality_adj_power_smoothed: &FilterEstimate,
-) -> Result<(), ActorError> {
-    // get network stats from other actors
-    let circulating_supply = rt.total_fil_circ_supply();
-
-    // Ideally, we'd combine some of these operations, but at least we have
-    // a constant number of them.
-    let activation = rt.curr_epoch();
-
-    let deals_activation_infos: Vec<DealsActivationInfo> = pre_commits
-        .iter()
-        .map(|pc| DealsActivationInfo {
-            deal_ids: pc.info.deal_ids.clone(),
-            sector_expiry: pc.info.expiration,
-            sector_number: pc.info.sector_number,
-            sector_type: pc.info.seal_proof,
-        })
-        .collect();
-
-    let (batch_return, activated_sectors) =
-        batch_activate_deals_and_claim_allocations(rt, &deals_activation_infos)?;
-
-    let (total_pledge, newly_vested) = rt.transaction(|state: &mut State, rt| {
-        let policy = rt.policy();
-        let store = rt.store();
-        let info = get_miner_info(store, state)?;
-
-        let mut new_sector_numbers = Vec::<SectorNumber>::with_capacity(activated_sectors.len());
-        let mut deposit_to_unlock = TokenAmount::zero();
-        let mut new_sectors = Vec::<SectorOnChainInfo>::new();
-        let mut total_pledge = TokenAmount::zero();
-
-        let successful_pre_commits = batch_return.successes(&pre_commits);
-        for (pre_commit, deal_spaces) in successful_pre_commits.iter().zip(activated_sectors) {
-            // compute initial pledge
-            let duration = pre_commit.info.expiration - activation;
-
-            // This should have been caught in precommit, but don't let other sectors fail because of it.
-            if duration < policy.min_sector_expiration {
-                warn!(
-                    "precommit {} has lifetime {} less than minimum {}. ignoring",
-                    pre_commit.info.sector_number, duration, policy.min_sector_expiration,
-                );
-                continue;
-            }
-
-            let deal_weight = deal_spaces.deal_space * duration;
-            let verified_deal_weight = deal_spaces.verified_deal_space * duration;
-
-            let power = qa_power_for_weight(
-                info.sector_size,
-                duration,
-                &deal_weight,
-                &verified_deal_weight,
-            );
-
-            let day_reward = expected_reward_for_power(
-                this_epoch_reward_smoothed,
-                quality_adj_power_smoothed,
-                &power,
-                fil_actors_runtime::EPOCHS_IN_DAY,
-            );
-
-            // The storage pledge is recorded for use in computing the penalty if this sector is terminated
-            // before its declared expiration.
-            // It's not capped to 1 FIL, so can exceed the actual initial pledge requirement.
-            let storage_pledge = expected_reward_for_power(
-                this_epoch_reward_smoothed,
-                quality_adj_power_smoothed,
-                &power,
-                INITIAL_PLEDGE_PROJECTION_PERIOD,
-            );
-
-            let initial_pledge = initial_pledge_for_power(
-                &power,
-                this_epoch_baseline_power,
-                this_epoch_reward_smoothed,
-                quality_adj_power_smoothed,
-                &circulating_supply,
-            );
-
-            deposit_to_unlock += &pre_commit.pre_commit_deposit;
-            total_pledge += &initial_pledge;
-
-            let new_sector_info = SectorOnChainInfo {
-                sector_number: pre_commit.info.sector_number,
-                seal_proof: pre_commit.info.seal_proof,
-                sealed_cid: pre_commit.info.sealed_cid,
-                deal_ids: pre_commit.info.deal_ids.clone(),
-                expiration: pre_commit.info.expiration,
-                activation,
-                deal_weight,
-                verified_deal_weight,
-                initial_pledge,
-                expected_day_reward: day_reward,
-                expected_storage_pledge: storage_pledge,
-                power_base_epoch: activation,
-                replaced_day_reward: TokenAmount::zero(),
-                sector_key_cid: None,
-                simple_qa_power: true,
-            };
-
-            new_sector_numbers.push(new_sector_info.sector_number);
-            new_sectors.push(new_sector_info);
-        }
-
-        state.put_sectors(store, new_sectors.clone()).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to put new sectors")
-        })?;
-
-        state.delete_precommitted_sectors(store, &new_sector_numbers).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to delete precommited sectors")
-        })?;
-
-        state
-            .assign_sectors_to_deadlines(
-                policy,
-                store,
-                rt.curr_epoch(),
-                new_sectors,
-                info.window_post_partition_sectors,
-                info.sector_size,
-            )
-            .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to assign new sectors to deadlines",
-                )
-            })?;
-
-        let newly_vested = TokenAmount::zero();
-
-        // Unlock deposit for successful proofs, make it available for lock-up as initial pledge.
-        state
-            .add_pre_commit_deposit(&(-deposit_to_unlock))
-            .map_err(|e| actor_error!(illegal_state, "failed to add precommit deposit: {}", e))?;
-
-        let unlocked_balance = state.get_unlocked_balance(&rt.current_balance()).map_err(|e| {
-            actor_error!(illegal_state, "failed to calculate unlocked balance: {}", e)
-        })?;
-        if unlocked_balance < total_pledge {
-            return Err(actor_error!(
-                insufficient_funds,
-                "insufficient funds for aggregate initial pledge requirement {}, available: {}",
-                total_pledge,
-                unlocked_balance
-            ));
-        }
-
-        state
-            .add_initial_pledge(&total_pledge)
-            .map_err(|e| actor_error!(illegal_state, "failed to add initial pledge: {}", e))?;
-
-        state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
-
-        Ok((total_pledge, newly_vested))
-    })?;
-
-    // Request pledge update for activated sector.
-    notify_pledge_changed(rt, &(total_pledge - newly_vested))?;
-
-    Ok(())
 }
 
 /// Activates the deals then claims allocations for any verified deals
