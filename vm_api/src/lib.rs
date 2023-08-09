@@ -13,12 +13,12 @@ use fvm_shared::{
     address::Address, clock::ChainEpoch, econ::TokenAmount, error::ExitCode, MethodNum,
 };
 
+mod error;
+pub use error::*;
+
 pub mod trace;
 use trace::*;
 pub mod util;
-
-mod error;
-pub use error::*;
 
 /// An abstract VM that is injected into integration tests
 pub trait VM {
@@ -82,28 +82,42 @@ pub trait VM {
     fn state_root(&self) -> Cid;
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Eq, Debug)]
-pub struct ActorState {
-    pub code: Cid,
-    pub state: Cid,
-    pub call_seq: u64,
-    pub balance: TokenAmount,
-    pub predictable_address: Option<Address>,
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct MessageResult {
+    pub code: ExitCode,
+    pub message: String,
+    pub ret: Option<IpldBlock>,
 }
 
-pub fn actor(
+// Duplicates an internal FVM type (fvm::state_tree::ActorState) that cannot be depended on here
+#[derive(Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Eq, Debug)]
+pub struct ActorState {
+    /// Link to code for the actor.
+    pub code: Cid,
+    /// Link to the state of the actor.
+    pub state: Cid,
+    /// Sequence of the actor.
+    pub sequence: u64,
+    /// Tokens available to the actor.
+    pub balance: TokenAmount,
+    /// The actor's "delegated" address, if assigned.
+    ///
+    /// This field is set on actor creation and never modified.
+    pub delegated_address: Option<Address>,
+}
+
+pub fn new_actor(
     code: Cid,
     head: Cid,
     call_seq_num: u64,
     balance: TokenAmount,
     predictable_address: Option<Address>,
 ) -> ActorState {
-    ActorState { code, state: head, call_seq: call_seq_num, balance, predictable_address }
-}
-
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct MessageResult {
-    pub code: ExitCode,
-    pub message: String,
-    pub ret: Option<IpldBlock>,
+    ActorState {
+        code,
+        state: head,
+        sequence: call_seq_num,
+        balance,
+        delegated_address: predictable_address,
+    }
 }
