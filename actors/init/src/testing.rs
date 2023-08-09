@@ -6,7 +6,7 @@ use fvm_shared::{
     ActorID,
 };
 
-use fil_actors_runtime::{MessageAccumulator, DEFAULT_CONF, FIRST_NON_SINGLETON_ADDR};
+use fil_actors_runtime::{MessageAccumulator, DEFAULT_HAMT_CONFIG, FIRST_NON_SINGLETON_ADDR};
 
 use crate::state::AddressMap;
 use crate::State;
@@ -34,7 +34,7 @@ pub fn check_state_invariants<BS: Blockstore>(
     let mut stable_address_by_id = HashMap::<ActorID, Address>::new();
     let mut delegated_address_by_id = HashMap::<ActorID, Address>::new();
 
-    match AddressMap::load(store, &state.address_map, DEFAULT_CONF, "addresses") {
+    match AddressMap::load(store, &state.address_map, DEFAULT_HAMT_CONFIG, "addresses") {
         Ok(address_map) => {
             let ret = address_map.for_each(|key, actor_id| {
                 acc.require(key.protocol() != Protocol::ID, format!("key {key} is an ID address"));

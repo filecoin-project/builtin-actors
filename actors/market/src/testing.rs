@@ -243,15 +243,13 @@ pub fn check_state_invariants<BS: Blockstore>(
 
     // escrow table and locked table
     let mut lock_table_count = 0;
-    let escrow_table = BalanceTable::from_root(store, &state.escrow_table);
-    let lock_table = BalanceTable::from_root(store, &state.locked_table);
+    let escrow_table = BalanceTable::from_root(store, &state.escrow_table, "escrow table");
+    let lock_table = BalanceTable::from_root(store, &state.locked_table, "locked table");
 
     match (escrow_table, lock_table) {
         (Ok(escrow_table), Ok(lock_table)) => {
             let mut locked_total = TokenAmount::zero();
-            let ret = lock_table.0.for_each(|key, locked_amount| {
-                let address = Address::from_bytes(key)?;
-
+            let ret = lock_table.0.for_each(|address, locked_amount| {
                 locked_total += locked_amount;
 
                 // every entry in locked table should have a corresponding entry in escrow table that is at least as high

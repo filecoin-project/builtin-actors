@@ -1,23 +1,22 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_actor_market::balance_table::BALANCE_TABLE_BITWIDTH;
+use fil_actor_market::balance_table::BalanceTable;
 use fil_actor_market::policy::detail::DEAL_MAX_LABEL_SIZE;
 use fil_actor_market::{
-    deal_id_key, ext, next_update_epoch, Actor as MarketActor, BatchActivateDealsResult,
-    ClientDealProposal, DealArray, DealMetaArray, Label, MarketNotifyDealParams, Method,
+    ext, next_update_epoch, Actor as MarketActor, BatchActivateDealsResult, ClientDealProposal,
+    DealArray, DealMetaArray, Label, MarketNotifyDealParams, Method, PendingDealAllocationsMap,
     PublishStorageDealsParams, PublishStorageDealsReturn, SectorDeals, State,
     WithdrawBalanceParams, EX_DEAL_EXPIRED, MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID,
-    PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
+    PENDING_ALLOCATIONS_CONF, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
 };
 use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::{Policy, Runtime, RuntimePolicy};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    make_empty_map, make_map_with_root_and_bitwidth, ActorError, BatchReturn, Map, SetMultimap,
-    BURNT_FUNDS_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR, EPOCHS_IN_YEAR, SYSTEM_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
+    make_empty_map, ActorError, BatchReturn, SetMultimap, BURNT_FUNDS_ACTOR_ADDR,
+    DATACAP_TOKEN_ACTOR_ADDR, EPOCHS_IN_YEAR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
 use fvm_ipld_amt::Amt;
@@ -36,7 +35,7 @@ use std::cell::RefCell;
 use std::ops::Add;
 
 use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
-use fil_actor_market::ext::verifreg::{AllocationID, AllocationRequest, AllocationsResponse};
+use fil_actor_market::ext::verifreg::{AllocationRequest, AllocationsResponse};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::sys::SendFlags;
 use num_traits::{FromPrimitive, Zero};
@@ -72,8 +71,7 @@ fn simple_construction() {
 
     let store = &rt.store;
 
-    let empty_balance_table =
-        make_empty_map::<_, TokenAmount>(store, BALANCE_TABLE_BITWIDTH).flush().unwrap();
+    let empty_balance_table = BalanceTable::new(store, "empty").root().unwrap();
     let empty_map = make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH).flush().unwrap();
     let empty_proposals_array =
         Amt::<(), _>::new_with_bit_width(store, PROPOSALS_AMT_BITWIDTH).flush().unwrap();
@@ -758,10 +756,14 @@ fn deal_expires() {
     assert!(DealArray::load(&st.proposals, &rt.store).unwrap().get(deal_id).unwrap().is_none());
 
     // Pending allocation ID is gone
-    let pending_allocs: Map<_, AllocationID> =
-        make_map_with_root_and_bitwidth(&st.pending_deal_allocation_ids, &rt.store, HAMT_BIT_WIDTH)
-            .unwrap();
-    assert!(pending_allocs.get(&deal_id_key(deal_id)).unwrap().is_none());
+    let pending_allocs = PendingDealAllocationsMap::load(
+        &rt.store,
+        &st.pending_deal_allocation_ids,
+        PENDING_ALLOCATIONS_CONF,
+        "pending allocations",
+    )
+    .unwrap();
+    assert!(pending_allocs.get(&deal_id).unwrap().is_none());
 
     check_state(&rt);
 }

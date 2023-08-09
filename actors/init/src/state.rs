@@ -7,7 +7,9 @@ use fvm_ipld_encoding::tuple::*;
 use fvm_shared::address::{Address, Protocol};
 use fvm_shared::ActorID;
 
-use fil_actors_runtime::{actor_error, ActorError, Map2, DEFAULT_CONF, FIRST_NON_SINGLETON_ADDR};
+use fil_actors_runtime::{
+    actor_error, ActorError, Map2, DEFAULT_HAMT_CONFIG, FIRST_NON_SINGLETON_ADDR,
+};
 
 #[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug)]
 pub struct State {
@@ -21,7 +23,7 @@ pub type AddressMap<BS> = Map2<BS, Address, ActorID>;
 
 impl State {
     pub fn new<BS: Blockstore>(store: &BS, network_name: String) -> Result<Self, ActorError> {
-        let empty = AddressMap::flush_empty(store, DEFAULT_CONF)?;
+        let empty = AddressMap::flush_empty(store, DEFAULT_HAMT_CONFIG)?;
         Ok(Self { address_map: empty, next_id: FIRST_NON_SINGLETON_ADDR, network_name })
     }
 
@@ -37,7 +39,7 @@ impl State {
         robust_addr: &Address,
         delegated_addr: Option<&Address>,
     ) -> Result<(ActorID, bool), ActorError> {
-        let mut map = AddressMap::load(store, &self.address_map, DEFAULT_CONF, "addresses")?;
+        let mut map = AddressMap::load(store, &self.address_map, DEFAULT_HAMT_CONFIG, "addresses")?;
         let (id, existing) = if let Some(delegated_addr) = delegated_addr {
             // If there's a delegated address, either recall the already-mapped actor ID or
             // create and map a new one.
@@ -87,7 +89,7 @@ impl State {
         if addr.protocol() == Protocol::ID {
             return Ok(Some(*addr));
         }
-        let map = AddressMap::load(store, &self.address_map, DEFAULT_CONF, "addresses")?;
+        let map = AddressMap::load(store, &self.address_map, DEFAULT_HAMT_CONFIG, "addresses")?;
         let found = map.get(addr)?;
         Ok(found.copied().map(Address::new_id))
     }

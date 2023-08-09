@@ -31,7 +31,7 @@ pub trait MapKey: Sized {
 
 pub type Config = hamt::Config;
 
-pub const DEFAULT_CONF: Config =
+pub const DEFAULT_HAMT_CONFIG: Config =
     Config { bit_width: HAMT_BIT_WIDTH, min_data_depth: 0, max_array_width: 3 };
 
 impl<BS, K, V> Map2<BS, K, V>
@@ -119,6 +119,16 @@ where
             })
     }
 
+    pub fn delete(&mut self, key: &K) -> Result<Option<V>, ActorError> {
+        let k = key.to_bytes().context_code(ExitCode::USR_ASSERTION_FAILED, "invalid key")?;
+        self.hamt
+            .delete(&k)
+            .map(|delete_result| delete_result.map(|(_k, v)| v))
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("failed to delete from HAMT '{}'", self.name)
+            })
+    }
+
     /// Iterates over all key-value pairs in the map.
     pub fn for_each<F>(&self, mut f: F) -> Result<(), ActorError>
     where
@@ -183,7 +193,7 @@ mod tests {
     #[test]
     fn basic_put_get() {
         let bs = MemoryBlockstore::new();
-        let mut m = Map2::<_, u64, String>::empty(bs, DEFAULT_CONF, "empty");
+        let mut m = Map2::<_, u64, String>::empty(bs, DEFAULT_HAMT_CONFIG, "empty");
         m.set(&1234, "1234".to_string()).unwrap();
         assert!(m.get(&2222).unwrap().is_none());
         assert_eq!(&"1234".to_string(), m.get(&1234).unwrap().unwrap());
@@ -192,7 +202,7 @@ mod tests {
     #[test]
     fn for_each_callback_exitcode_propagates() {
         let bs = MemoryBlockstore::new();
-        let mut m = Map2::<_, u64, String>::empty(bs, DEFAULT_CONF, "empty");
+        let mut m = Map2::<_, u64, String>::empty(bs, DEFAULT_HAMT_CONFIG, "empty");
         m.set(&1234, "1234".to_string()).unwrap();
         let res = m.for_each(|_, _| Err(ActorError::forbidden("test".to_string())));
         assert!(res.is_err());
