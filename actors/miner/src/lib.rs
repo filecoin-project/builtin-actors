@@ -30,6 +30,8 @@ use log::{error, info, warn};
 use num_derive::FromPrimitive;
 use num_traits::{Signed, Zero};
 
+use crate::ext::market::DealSpaces;
+use crate::DataActivation::*;
 pub use beneficiary::*;
 pub use bitfield_queue::*;
 pub use commd::*;
@@ -925,14 +927,21 @@ impl Actor {
             e.downcast_default(ExitCode::USR_ILLEGAL_ARGUMENT, "aggregate seal verify failed")
         })?;
 
+        let sector_activations: Vec<SectorActivation> =
+            precommits_to_confirm.iter().map(|x| x.clone().into()).collect();
         let rew = request_current_epoch_block_reward(rt)?;
         let pwr = request_current_total_power(rt)?;
-        confirm_sector_proofs_valid_internal(
+        let (successful_activations, data_activations) =
+            activate_data_activate_deals(rt, &sector_activations)?;
+
+        activate_new_sector_infos(
             rt,
-            precommits_to_confirm.clone(),
+            &successful_activations,
+            &data_activations,
             &rew.this_epoch_baseline_power,
             &rew.this_epoch_reward_smoothed,
             &pwr.quality_adj_power_smoothed,
+            &info,
         )?;
 
         // Compute and burn the aggregate network fee. We need to re-load the state as
@@ -2032,6 +2041,7 @@ impl Actor {
 
         let sector_number = params.sector_number;
 
+        /* <- precommit */
         let st: State = rt.state()?;
         let precommit = st
             .get_precommitted_sector(rt.store(), sector_number)
@@ -2043,6 +2053,7 @@ impl Actor {
             })?
             .ok_or_else(|| actor_error!(not_found, "no pre-commited sector {}", sector_number))?;
 
+        /* parameter validation checks */
         let max_proof_size = precommit.info.seal_proof.proof_size().map_err(|e| {
             actor_error!(
                 illegal_state,
@@ -2079,6 +2090,7 @@ impl Actor {
             ));
         }
 
+        /* svi <- precommit + syscalls */
         let svi = get_verify_info(
             rt,
             SealVerifyParams {
@@ -2094,6 +2106,7 @@ impl Actor {
             precommit.info.unsealed_cid,
         )?;
 
+        /* stash in power actor */
         extract_send_result(rt.send_simple(
             &STORAGE_POWER_ACTOR_ADDR,
             ext::power::SUBMIT_POREP_FOR_BULK_VERIFY_METHOD,
@@ -2110,6 +2123,7 @@ impl Actor {
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(iter::once(&STORAGE_POWER_ACTOR_ADDR))?;
 
+        /* validate params */
         // This should be enforced by the power actor. We log here just in case
         // something goes wrong.
         if params.sectors.len() > ext::power::MAX_MINER_PROVE_COMMITS_PER_EPOCH {
@@ -2129,12 +2143,23 @@ impl Actor {
                     "failed to load pre-committed sectors",
                 )
             })?;
-        confirm_sector_proofs_valid_internal(
+
+        let sector_activations: Vec<SectorActivation> =
+            precommited_sectors.iter().map(|x| x.clone().into()).collect();
+        let rew = request_current_epoch_block_reward(rt)?;
+        let pwr = request_current_total_power(rt)?;
+        let info = get_miner_info(rt.store(), &st)?;
+
+        let (successful_activations, data_activations) =
+            activate_data_activate_deals(rt, &sector_activations)?;
+        activate_new_sector_infos(
             rt,
-            precommited_sectors,
-            &params.reward_baseline_power,
-            &params.reward_smoothed,
-            &params.quality_adj_power_smoothed,
+            &successful_activations,
+            &data_activations,
+            &rew.this_epoch_baseline_power,
+            &rew.this_epoch_reward_smoothed,
+            &pwr.quality_adj_power_smoothed,
+            &info,
         )
     }
 
@@ -4380,10 +4405,11 @@ fn get_verify_info(
 
     let commd = unsealed_cid.get_cid(params.registered_seal_proof)?;
 
+    // Maybe sealverifyinfo is where new cspv things go? its maybe more for actual proof verification
     Ok(SealVerifyInfo {
         registered_proof: params.registered_seal_proof,
         sector_id: SectorID { miner: miner_actor_id, number: params.sector_num },
-        deal_ids: params.deal_ids,
+        deal_ids: params.deal_ids, // we can remove this if we're getting rid of deal ids
         interactive_randomness: Randomness(interactive_randomness.into()),
         proof: params.proof,
         randomness: Randomness(randomness.into()),
@@ -4771,59 +4797,36 @@ fn check_peer_info(
     Ok(())
 }
 
-fn confirm_sector_proofs_valid_internal(
+// Precondition 1: all sectors referenced have a valid PoRep proof over sealed_cid
+// Precodition 2: all sectors have activated data
+fn activate_new_sector_infos(
     rt: &impl Runtime,
-    pre_commits: Vec<SectorPreCommitOnChainInfo>,
+    sector_activations: &[SectorActivation],
+    data_activations: &[DealSpaces],
     this_epoch_baseline_power: &BigInt,
     this_epoch_reward_smoothed: &FilterEstimate,
     quality_adj_power_smoothed: &FilterEstimate,
+    info: &MinerInfo,
 ) -> Result<(), ActorError> {
     // get network stats from other actors
     let circulating_supply = rt.total_fil_circ_supply();
-
-    // Ideally, we'd combine some of these operations, but at least we have
-    // a constant number of them.
-    let activation = rt.curr_epoch();
-
-    let deals_activation_infos: Vec<DealsActivationInfo> = pre_commits
-        .iter()
-        .map(|pc| DealsActivationInfo {
-            deal_ids: pc.info.deal_ids.clone(),
-            sector_expiry: pc.info.expiration,
-            sector_number: pc.info.sector_number,
-            sector_type: pc.info.seal_proof,
-        })
-        .collect();
-
-    let (batch_return, activated_sectors) =
-        batch_activate_deals_and_claim_allocations(rt, &deals_activation_infos, false)?;
+    let activation_epoch = rt.curr_epoch();
 
     let (total_pledge, newly_vested) = rt.transaction(|state: &mut State, rt| {
         let policy = rt.policy();
         let store = rt.store();
-        let info = get_miner_info(store, state)?;
 
-        let mut new_sector_numbers = Vec::<SectorNumber>::with_capacity(activated_sectors.len());
+        let mut new_sector_numbers = Vec::<SectorNumber>::with_capacity(data_activations.len());
         let mut deposit_to_unlock = TokenAmount::zero();
         let mut new_sectors = Vec::<SectorOnChainInfo>::new();
         let mut total_pledge = TokenAmount::zero();
 
-        let successful_pre_commits = batch_return.successes(&pre_commits);
-        for (pre_commit, deal_spaces) in successful_pre_commits.iter().zip(activated_sectors) {
+        for (sa, deal_spaces) in sector_activations.iter().zip(data_activations) {
             // compute initial pledge
-            let duration = pre_commit.info.expiration - activation;
+            let duration = sa.expiration - activation_epoch;
 
-            // This should have been caught in precommit, but don't let other sectors fail because of it.
-            if duration < policy.min_sector_expiration {
-                warn!(
-                    "precommit {} has lifetime {} less than minimum {}. ignoring",
-                    pre_commit.info.sector_number, duration, policy.min_sector_expiration,
-                );
-                continue;
-            }
-
-            let deal_weight = deal_spaces.unverified_space * duration;
-            let verified_deal_weight = deal_spaces.verified_space * duration;
+            let deal_weight = &deal_spaces.unverified_space * duration;
+            let verified_deal_weight = &deal_spaces.verified_space * duration;
 
             let power = qa_power_for_weight(
                 info.sector_size,
@@ -4857,22 +4860,22 @@ fn confirm_sector_proofs_valid_internal(
                 &circulating_supply,
             );
 
-            deposit_to_unlock += &pre_commit.pre_commit_deposit;
+            deposit_to_unlock += sa.pre_commit_deposit.clone().unwrap_or_default();
             total_pledge += &initial_pledge;
 
             let new_sector_info = SectorOnChainInfo {
-                sector_number: pre_commit.info.sector_number,
-                seal_proof: pre_commit.info.seal_proof,
-                sealed_cid: pre_commit.info.sealed_cid,
-                deal_ids: pre_commit.info.deal_ids.clone(),
-                expiration: pre_commit.info.expiration,
-                activation,
+                sector_number: sa.sector_number,
+                seal_proof: sa.seal_proof,
+                sealed_cid: sa.sealed_cid,
+                deal_ids: sa.deal_ids(),
+                expiration: sa.expiration,
+                activation: activation_epoch,
                 deal_weight,
                 verified_deal_weight,
                 initial_pledge,
                 expected_day_reward: day_reward,
                 expected_storage_pledge: storage_pledge,
-                power_base_epoch: activation,
+                power_base_epoch: activation_epoch,
                 replaced_day_reward: TokenAmount::zero(),
                 sector_key_cid: None,
                 simple_qa_power: true,
@@ -4905,7 +4908,6 @@ fn confirm_sector_proofs_valid_internal(
                     "failed to assign new sectors to deadlines",
                 )
             })?;
-
         let newly_vested = TokenAmount::zero();
 
         // Unlock deposit for successful proofs, make it available for lock-up as initial pledge.
@@ -4933,7 +4935,6 @@ fn confirm_sector_proofs_valid_internal(
 
         Ok((total_pledge, newly_vested))
     })?;
-
     // Request pledge update for activated sector.
     notify_pledge_changed(rt, &(total_pledge - newly_vested))?;
 
@@ -4945,6 +4946,78 @@ struct DealActivationInfo {
     pub verified_space: BigInt,
     // None indicates either no deals or computation was not requested.
     pub unsealed_cid: Option<Cid>,
+}
+#[derive(Clone)]
+pub struct SectorActivation {
+    sector_number: u64,
+    seal_proof: RegisteredSealProof,
+    expiration: ChainEpoch,
+    sealed_cid: Cid,
+    data_activation: DataActivation,
+    pre_commit_deposit: Option<TokenAmount>,
+}
+
+impl SectorActivation {
+    fn deal_ids(&self) -> Vec<DealID> {
+        match &self.data_activation {
+            BuiltinActivation(deal_ids) => deal_ids.clone(),
+            //_ => vec![],
+        }
+    }
+}
+
+impl From<SectorPreCommitOnChainInfo> for SectorActivation {
+    fn from(si: SectorPreCommitOnChainInfo) -> SectorActivation {
+        SectorActivation {
+            sector_number: si.info.sector_number,
+            seal_proof: si.info.seal_proof,
+            expiration: si.info.expiration,
+            sealed_cid: si.info.sealed_cid,
+            data_activation: BuiltinActivation(si.info.deal_ids), // XXX distinguish data activation type from existence of deal_id / commD when generalizing
+            pre_commit_deposit: Some(si.pre_commit_deposit),
+        }
+    }
+}
+
+#[derive(Clone)]
+enum DataActivation {
+    BuiltinActivation(Vec<DealID>),
+    //    BuiltinActivationCheckCommD(Vec<DealID>), // for use in PRU single shot activation and CommD check
+    //    SectorContentAdded(), // TODO add in allocids and piece manifest type to handle new activation flow
+}
+
+// Precondition 1: all sectors referenced have a valid PoRep proof over sealed_cid
+// Precondition 2: all sectors referenced have an unsealed_cid that includes all data
+//  referenced as included in the sector by sector_activation.data_activation
+fn activate_data_activate_deals(
+    rt: &impl Runtime,
+    activations: &[SectorActivation],
+) -> Result<(Vec<SectorActivation>, Vec<DealSpaces>), ActorError> {
+    let mut builtin_activations = vec![];
+    for sa in activations {
+        match &sa.data_activation {
+            BuiltinActivation(deal_ids) => {
+                builtin_activations.push(DealsActivationInfo {
+                    deal_ids: deal_ids.clone(),
+                    sector_expiry: sa.expiration,
+                    sector_number: sa.sector_number,
+                    sector_type: sa.seal_proof,
+                });
+            }
+            _ => {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "wrong data activation, expected activate deals"
+                ))
+            }
+        }
+    }
+
+    let (batch_return, deal_spaces) =
+        batch_activate_deals_and_claim_allocations(rt, &builtin_activations)?;
+    let successful_activations =
+        batch_return.successes(activations).into_iter().map(|x| x.clone()).collect();
+    Ok((successful_activations, deal_spaces))
 }
 
 /// Activates the deals then claims allocations for any verified deals
