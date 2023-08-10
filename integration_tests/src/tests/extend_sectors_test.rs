@@ -628,6 +628,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
                 deal_ids.clone(),
                 initial_sector_info.expiration,
                 initial_sector_info.seal_proof,
+                true,
             ),
             ExpectInvocation {
                 from: miner_id,

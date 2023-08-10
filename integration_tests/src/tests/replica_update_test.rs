@@ -1010,6 +1010,7 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
                 deal_ids.clone(),
                 old_sector_info.expiration,
                 old_sector_info.seal_proof,
+                true,
             ),
             ExpectInvocation {
                 from: maddr,

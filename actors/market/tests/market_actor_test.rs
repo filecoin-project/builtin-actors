@@ -1699,6 +1699,7 @@ fn fail_when_current_epoch_greater_than_start_epoch_of_deal() {
             sector_type: RegisteredSealProof::StackedDRG8MiBV1,
             deal_ids: vec![deal_id],
         }],
+        false,
     )
     .unwrap();
 
@@ -1733,6 +1734,7 @@ fn fail_when_end_epoch_of_deal_greater_than_sector_expiry() {
             sector_type: RegisteredSealProof::StackedDRG8MiBV1,
             deal_ids: vec![deal_id],
         }],
+        false,
     )
     .unwrap();
 
@@ -1760,7 +1762,7 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
         start_epoch,
         end_epoch,
     );
-    batch_activate_deals(&rt, PROVIDER_ADDR, &[(sector_expiry, vec![deal_id1])]);
+    batch_activate_deals(&rt, PROVIDER_ADDR, &[(sector_expiry, vec![deal_id1])], false);
 
     let deal_id2 = generate_and_publish_deal(
         &rt,
@@ -1778,6 +1780,7 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
             sector_type: RegisteredSealProof::StackedDRG8MiBV1,
             deal_ids: vec![deal_id1, deal_id2],
         }],
+        false,
     )
     .unwrap();
     let res: BatchActivateDealsResult =

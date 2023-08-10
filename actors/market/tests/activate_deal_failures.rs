@@ -37,6 +37,7 @@ fn fail_when_caller_is_not_the_provider_of_the_deal() {
             sector_type: RegisteredSealProof::StackedDRG8MiBV1,
             deal_ids: vec![deal_id],
         }],
+        false,
     )
     .unwrap();
     let res: BatchActivateDealsResult =
@@ -59,7 +60,7 @@ fn fail_when_caller_is_not_a_storage_miner_actor() {
         sector_expiry: 0,
         sector_type: RegisteredSealProof::StackedDRG8MiBV1,
     };
-    let params = BatchActivateDealsParams { sectors: vec![sector_activation] };
+    let params = BatchActivateDealsParams { sectors: vec![sector_activation], compute_cid: false };
 
     expect_abort(
         ExitCode::USR_FORBIDDEN,
@@ -85,6 +86,7 @@ fn fail_when_deal_has_not_been_published_before() {
             sector_expiry: EPOCHS_IN_DAY,
             deal_ids: vec![DealID::from(42u32)],
         }],
+        false,
     )
     .unwrap();
     let res: BatchActivateDealsResult =
@@ -120,6 +122,7 @@ fn fail_when_deal_has_already_been_activated() {
             sector_expiry,
             deal_ids: vec![deal_id],
         }],
+        false,
     )
     .unwrap();
     let res: BatchActivateDealsResult =
