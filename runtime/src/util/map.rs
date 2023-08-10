@@ -6,8 +6,10 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_hamt as hamt;
 use fvm_shared::address::Address;
 use fvm_shared::error::ExitCode;
+use integer_encoding::VarInt;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use std::fmt::Debug;
 use std::marker::PhantomData;
 
 /// Wraps a HAMT to provide a convenient map API.
@@ -24,7 +26,7 @@ where
     key_type: PhantomData<K>,
 }
 
-pub trait MapKey: Sized {
+pub trait MapKey: Sized + Debug {
     fn from_bytes(b: &[u8]) -> Result<Self, String>;
     fn to_bytes(&self) -> Result<Vec<u8>, String>;
 }
@@ -89,7 +91,14 @@ where
     pub fn get(&self, key: &K) -> Result<Option<&V>, ActorError> {
         let k = key.to_bytes().context_code(ExitCode::USR_ASSERTION_FAILED, "invalid key")?;
         self.hamt.get(&k).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-            format!("failed to get from HAMT '{}'", self.name)
+            format!("failed to get key {key:?} from HAMT '{}'", self.name)
+        })
+    }
+
+    pub fn contains_key(&self, key: &K) -> Result<bool, ActorError> {
+        let k = key.to_bytes().context_code(ExitCode::USR_ASSERTION_FAILED, "invalid key")?;
+        self.hamt.contains_key(&k).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+            format!("failed to check key {key:?} in HAMT '{}'", self.name)
         })
     }
 
@@ -101,7 +110,7 @@ where
     {
         let k = key.to_bytes().context_code(ExitCode::USR_ASSERTION_FAILED, "invalid key")?;
         self.hamt.set(k.into(), value).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-            format!("failed to set in HAMT '{}'", self.name)
+            format!("failed to set key {key:?} in HAMT '{}'", self.name)
         })
     }
 
@@ -115,17 +124,19 @@ where
         self.hamt
             .set_if_absent(k.into(), value)
             .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                format!("failed to set in HAMT '{}'", self.name)
+                format!("failed to set key {key:?} in HAMT '{}'", self.name)
             })
     }
 
     pub fn delete(&mut self, key: &K) -> Result<Option<V>, ActorError> {
-        let k = key.to_bytes().context_code(ExitCode::USR_ASSERTION_FAILED, "invalid key")?;
+        let k = key
+            .to_bytes()
+            .with_context_code(ExitCode::USR_ASSERTION_FAILED, || format!("invalid key {key:?}"))?;
         self.hamt
             .delete(&k)
             .map(|delete_result| delete_result.map(|(_k, v)| v))
             .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                format!("failed to delete from HAMT '{}'", self.name)
+                format!("failed to delete key {key:?} from HAMT '{}'", self.name)
             })
     }
 
@@ -146,7 +157,7 @@ where
                 hamt::Error::Dynamic(e) => match e.downcast::<ActorError>() {
                     Ok(ae) => Err(ae),
                     Err(e) => Err(ActorError::illegal_state(format!(
-                        "error traversing HAMT {}: {}",
+                        "error in callback traversing HAMT {}: {}",
                         self.name, e
                     ))),
                 },
@@ -159,19 +170,47 @@ where
     }
 }
 
-impl MapKey for u64 {
+impl MapKey for Vec<u8> {
     fn from_bytes(b: &[u8]) -> Result<Self, String> {
-        let (v, rem) = unsigned_varint::decode::u64(b).map_err(|e| e.to_string())?;
-        if !rem.is_empty() {
-            return Err(format!("trailing bytes after varint: {:?}", rem));
-        }
-        Ok(v)
+        Ok(b.to_vec())
     }
 
     fn to_bytes(&self) -> Result<Vec<u8>, String> {
-        let mut bz = unsigned_varint::encode::u64_buffer();
-        let slice = unsigned_varint::encode::u64(*self, &mut bz);
-        Ok(slice.into())
+        Ok(self.clone())
+    }
+}
+
+impl MapKey for u64 {
+    fn from_bytes(b: &[u8]) -> Result<Self, String> {
+        if let Some((result, size)) = VarInt::decode_var(b) {
+            if size != b.len() {
+                return Err(format!("trailing bytes after varint in {:?}", b));
+            }
+            Ok(result)
+        } else {
+            Err(format!("failed to decode varint in {:?}", b))
+        }
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, String> {
+        Ok(self.encode_var_vec())
+    }
+}
+
+impl MapKey for i64 {
+    fn from_bytes(b: &[u8]) -> Result<Self, String> {
+        if let Some((result, size)) = VarInt::decode_var(b) {
+            if size != b.len() {
+                return Err(format!("trailing bytes after varint in {:?}", b));
+            }
+            Ok(result)
+        } else {
+            Err(format!("failed to decode varint in {:?}", b))
+        }
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, String> {
+        Ok(self.encode_var_vec())
     }
 }
 
@@ -182,6 +221,16 @@ impl MapKey for Address {
 
     fn to_bytes(&self) -> Result<Vec<u8>, String> {
         Ok(Address::to_bytes(*self))
+    }
+}
+
+impl MapKey for Cid {
+    fn from_bytes(b: &[u8]) -> Result<Self, String> {
+        Cid::try_from(b).map_err(|e| e.to_string())
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, String> {
+        Ok(self.to_bytes())
     }
 }
 

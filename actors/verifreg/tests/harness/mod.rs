@@ -1,3 +1,22 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
+
+use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
+use frc46_token::token::types::{BurnParams, BurnReturn, TransferParams};
+use frc46_token::token::TOKEN_PRECISION;
+use fvm_actor_utils::receiver::UniversalReceiverParams;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::RawBytes;
+use fvm_shared::address::Address;
+use fvm_shared::bigint::bigint_ser::BigIntSer;
+use fvm_shared::clock::ChainEpoch;
+use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
+use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::sector::SectorNumber;
+use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH};
+use num_traits::{ToPrimitive, Zero};
+
 use fil_actor_verifreg::testing::check_state_invariants;
 use fil_actor_verifreg::{
     ext, Actor as VerifregActor, AddVerifiedClientParams, AddVerifierParams, Allocation,
@@ -18,23 +37,6 @@ use fil_actors_runtime::{
     make_empty_map, ActorError, AsActorError, BatchReturn, DATACAP_TOKEN_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
-use frc46_token::token::types::{BurnParams, BurnReturn, TransferParams};
-use frc46_token::token::TOKEN_PRECISION;
-use fvm_actor_utils::receiver::UniversalReceiverParams;
-use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::RawBytes;
-use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser::{BigIntDe, BigIntSer};
-use fvm_shared::clock::ChainEpoch;
-use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
-use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::sector::SectorNumber;
-use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH};
-use num_traits::{ToPrimitive, Zero};
-use std::cell::RefCell;
-use std::collections::HashMap;
 
 pub const ROOT_ADDR: Address = Address::new_id(101);
 
@@ -171,14 +173,13 @@ impl Harness {
 
     pub fn get_verifier_allowance(&self, rt: &MockRuntime, verifier: &Address) -> DataCap {
         let verifiers = rt.get_state::<State>().load_verifiers(&rt.store).unwrap();
-        let BigIntDe(allowance) = verifiers.get(&verifier.to_bytes()).unwrap().unwrap();
-        allowance.clone()
+        verifiers.get(verifier).unwrap().unwrap().clone()
     }
 
     pub fn assert_verifier_removed(&self, rt: &MockRuntime, verifier: &Address) {
         let verifier_id_addr = rt.get_id_address(verifier).unwrap();
         let verifiers = rt.get_state::<State>().load_verifiers(&rt.store).unwrap();
-        assert!(!verifiers.contains_key(&verifier_id_addr.to_bytes()).unwrap())
+        assert!(!verifiers.contains_key(&verifier_id_addr).unwrap())
     }
 
     pub fn add_client(

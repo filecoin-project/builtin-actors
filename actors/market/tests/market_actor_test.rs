@@ -8,7 +8,7 @@ use fil_actor_market::{
     DealArray, DealMetaArray, Label, MarketNotifyDealParams, Method, PendingDealAllocationsMap,
     PublishStorageDealsParams, PublishStorageDealsReturn, SectorDeals, State,
     WithdrawBalanceParams, EX_DEAL_EXPIRED, MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID,
-    PENDING_ALLOCATIONS_CONF, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
+    PENDING_ALLOCATIONS_CONFIG, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
 };
 use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
@@ -759,7 +759,7 @@ fn deal_expires() {
     let pending_allocs = PendingDealAllocationsMap::load(
         &rt.store,
         &st.pending_deal_allocation_ids,
-        PENDING_ALLOCATIONS_CONF,
+        PENDING_ALLOCATIONS_CONFIG,
         "pending allocations",
     )
     .unwrap();

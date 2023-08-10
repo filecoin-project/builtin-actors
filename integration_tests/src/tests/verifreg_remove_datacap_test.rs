@@ -1,6 +1,7 @@
 use fil_actor_datacap::{
     DestroyParams, Method as DataCapMethod, MintParams, State as DataCapState,
 };
+use fil_actor_verifreg::state::{RemoveDataCapProposalMap, REMOVE_DATACAP_PROPOSALS_CONFIG};
 use fil_actor_verifreg::{
     AddVerifiedClientParams, DataCap, RemoveDataCapParams, RemoveDataCapRequest,
     RemoveDataCapReturn, SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP,
@@ -102,20 +103,21 @@ pub fn remove_datacap_simple_successful_path_test(v: &dyn VM) {
     assert_eq!(balance, TokenAmount::from_whole(verifier_allowance.to_i64().unwrap()));
 
     let store = DynBlockstore::wrap(v.blockstore());
-    let mut proposal_ids = make_map_with_root_and_bitwidth::<_, RemoveDataCapProposalID>(
-        &v_st.remove_data_cap_proposal_ids,
+    let mut proposal_ids = RemoveDataCapProposalMap::load(
         &store,
-        HAMT_BIT_WIDTH,
+        &v_st.remove_data_cap_proposal_ids,
+        REMOVE_DATACAP_PROPOSALS_CONFIG,
+        "remove datacap proposals",
     )
     .unwrap();
 
     assert!(proposal_ids
-        .get(&AddrPairKey::new(verifier1_id_addr, verified_client_id_addr).to_bytes())
+        .get(&AddrPairKey::new(verifier1_id_addr, verified_client_id_addr))
         .unwrap()
         .is_none());
 
     assert!(proposal_ids
-        .get(&AddrPairKey::new(verifier2_id_addr, verified_client_id_addr).to_bytes())
+        .get(&AddrPairKey::new(verifier2_id_addr, verified_client_id_addr))
         .unwrap()
         .is_none());
 
@@ -188,19 +190,23 @@ pub fn remove_datacap_simple_successful_path_test(v: &dyn VM) {
     let v_st: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
     // confirm proposalIds has changed as expected
     let store = DynBlockstore::wrap(v.blockstore());
-    proposal_ids =
-        make_map_with_root_and_bitwidth(&v_st.remove_data_cap_proposal_ids, &store, HAMT_BIT_WIDTH)
-            .unwrap();
+    proposal_ids = RemoveDataCapProposalMap::load(
+        &store,
+        &v_st.remove_data_cap_proposal_ids,
+        REMOVE_DATACAP_PROPOSALS_CONFIG,
+        "remove datacap proposals",
+    )
+    .unwrap();
 
     let verifier1_proposal_id: &RemoveDataCapProposalID = proposal_ids
-        .get(&AddrPairKey::new(verifier1_id_addr, verified_client_id_addr).to_bytes())
+        .get(&AddrPairKey::new(verifier1_id_addr, verified_client_id_addr))
         .unwrap()
         .unwrap();
 
     assert_eq!(1u64, verifier1_proposal_id.id);
 
     let verifier2_proposal_id: &RemoveDataCapProposalID = proposal_ids
-        .get(&AddrPairKey::new(verifier2_id_addr, verified_client_id_addr).to_bytes())
+        .get(&AddrPairKey::new(verifier2_id_addr, verified_client_id_addr))
         .unwrap()
         .unwrap();
 
@@ -273,19 +279,23 @@ pub fn remove_datacap_simple_successful_path_test(v: &dyn VM) {
     // confirm proposalIds has changed as expected
     let v_st: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
     let store = DynBlockstore::wrap(v.blockstore());
-    proposal_ids =
-        make_map_with_root_and_bitwidth(&v_st.remove_data_cap_proposal_ids, &store, HAMT_BIT_WIDTH)
-            .unwrap();
+    proposal_ids = RemoveDataCapProposalMap::load(
+        &store,
+        &v_st.remove_data_cap_proposal_ids,
+        REMOVE_DATACAP_PROPOSALS_CONFIG,
+        "remove datacap proposals",
+    )
+    .unwrap();
 
     let verifier1_proposal_id: &RemoveDataCapProposalID = proposal_ids
-        .get(&AddrPairKey::new(verifier1_id_addr, verified_client_id_addr).to_bytes())
+        .get(&AddrPairKey::new(verifier1_id_addr, verified_client_id_addr))
         .unwrap()
         .unwrap();
 
     assert_eq!(2u64, verifier1_proposal_id.id);
 
     let verifier2_proposal_id: &RemoveDataCapProposalID = proposal_ids
-        .get(&AddrPairKey::new(verifier2_id_addr, verified_client_id_addr).to_bytes())
+        .get(&AddrPairKey::new(verifier2_id_addr, verified_client_id_addr))
         .unwrap()
         .unwrap();
 

@@ -102,8 +102,16 @@ where
         in_map.get(&inside_k.key())
     }
 
+    // Iterates over all outer keys.
+    pub fn for_each<F>(&self, f: F) -> Result<(), Error>
+    where
+        F: FnMut(&BytesKey, &Cid) -> anyhow::Result<()>,
+    {
+        self.outer.for_each(f)
+    }
+
     // Runs a function over all values for one outer key.
-    pub fn for_each<F>(&mut self, outside_k: K1, f: F) -> Result<(), Error>
+    pub fn for_each_in<F>(&mut self, outside_k: K1, f: F) -> Result<(), Error>
     where
         F: FnMut(&BytesKey, &V) -> anyhow::Result<()>,
     {

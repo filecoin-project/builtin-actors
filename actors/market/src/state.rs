@@ -74,7 +74,7 @@ pub struct State {
 }
 
 pub type PendingDealAllocationsMap<BS> = Map2<BS, DealID, AllocationID>;
-pub const PENDING_ALLOCATIONS_CONF: Config =
+pub const PENDING_ALLOCATIONS_CONFIG: Config =
     Config { bit_width: HAMT_BIT_WIDTH, ..DEFAULT_HAMT_CONFIG };
 
 impl State {
@@ -104,7 +104,7 @@ impl State {
 
         let empty_pending_deal_allocation_map = Map2::<&BS, DealID, AllocationID>::empty(
             store,
-            PENDING_ALLOCATIONS_CONF,
+            PENDING_ALLOCATIONS_CONFIG,
             "pending deal allocations",
         )
         .flush()?;
@@ -301,7 +301,7 @@ impl State {
         let mut pending_deal_allocation_ids = PendingDealAllocationsMap::load(
             store,
             &self.pending_deal_allocation_ids,
-            PENDING_ALLOCATIONS_CONF,
+            PENDING_ALLOCATIONS_CONFIG,
             "pending deal allocations",
         )?;
 
@@ -327,7 +327,7 @@ impl State {
         let pending_deal_allocation_ids = PendingDealAllocationsMap::load(
             store,
             &self.pending_deal_allocation_ids,
-            PENDING_ALLOCATIONS_CONF,
+            PENDING_ALLOCATIONS_CONFIG,
             "pending deal allocations",
         )?;
 
@@ -354,7 +354,7 @@ impl State {
         let mut pending_deal_allocation_ids = PendingDealAllocationsMap::load(
             store,
             &self.pending_deal_allocation_ids,
-            PENDING_ALLOCATIONS_CONF,
+            PENDING_ALLOCATIONS_CONFIG,
             "pending deal allocations",
         )?;
 
