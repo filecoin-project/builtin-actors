@@ -177,7 +177,7 @@ fn piece_must_match_deal() {
     pieces.push(PieceInfo {
         data: Cid::new_v1(0, Sha2_256.digest(&[1, 2, 3, 4])),
         size: PaddedPieceSize(1234),
-        payload: serialize(&1234, "deal id").unwrap().to_vec(),
+        payload: serialize(&1234, "deal id").unwrap(),
     });
 
     let changes =
@@ -190,6 +190,32 @@ fn piece_must_match_deal() {
             PieceReturn { code: ExitCode::USR_ILLEGAL_ARGUMENT, data: vec![] },
             PieceReturn { code: ExitCode::USR_NOT_FOUND, data: vec![] },
         ],
+        ret.sectors[0].added
+    );
+
+    check_state(&rt);
+}
+
+#[test]
+fn invalid_deal_id_rejected() {
+    let rt = setup();
+    let deals = create_deals(&rt, 1);
+
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+    let deal_ids =
+        publish_deals(&rt, &MINER_ADDRESSES, &deals, TokenAmount::zero(), NO_ALLOCATION_ID);
+    let mut pieces = pieces_from_deals(&deal_ids, &deals);
+    // Append a byte to the deal ID.
+    let mut buf = pieces[0].payload.to_vec();
+    buf.push(123);
+    pieces[0].payload = buf.into();
+
+    let changes =
+        vec![SectorChanges { sector: 1, minimum_commitment_epoch: END_EPOCH + 10, added: pieces }];
+    let ret = sector_content_changed(&rt, PROVIDER_ADDR, changes).unwrap();
+    assert_eq!(1, ret.sectors.len());
+    assert_eq!(
+        vec![PieceReturn { code: ExitCode::USR_SERIALIZATION, data: vec![] },],
         ret.sectors[0].added
     );
 
@@ -332,7 +358,4 @@ fn pieces_from_deals(deal_ids: &[DealID], deals: &[DealProposal]) -> Vec<PieceIn
 // TODO
 
 // - See activate_deals_failures
-// - test bad deal ID, serialise, notfound
-// - test not pending
-// - test bad epoch, provider
-// - test already activated
+// - test bad deal ID, serialise

@@ -1251,6 +1251,6 @@ pub fn piece_info_from_deal(id: DealID, deal: &DealProposal) -> PieceInfo {
     PieceInfo {
         data: deal.piece_cid,
         size: deal.piece_size,
-        payload: serialize(&id, "deal id").unwrap().to_vec(),
+        payload: serialize(&id, "deal id").unwrap(),
     }
 }

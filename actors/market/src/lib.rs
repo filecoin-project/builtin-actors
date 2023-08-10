@@ -563,8 +563,9 @@ impl Actor {
             let mut sectors_deals: Vec<(SectorNumber, SectorDealIDs)> = vec![];
 
             'sector: for p in params.sectors {
-                let mut verified_infos = Vec::new();
-                let mut nonverified_deal_space: BigInt = BigInt::zero();
+                let mut validated_proposals = vec![];
+                // Iterate once to validate all the requested deals.
+                // If a deal fails, skip the whole sector.
                 for deal_id in &p.deal_ids {
                     // Check each deal is present only once, within and across sectors.
                     if activated_deals.contains(deal_id) {
@@ -591,12 +592,18 @@ impl Actor {
                             continue 'sector;
                         }
                     };
+                    validated_proposals.push(proposal);
+                }
 
-                    // No continue below here, to ensure state changes are consistent.
-                    // Any error is an abort.
+                let mut verified_infos = vec![];
+                let mut nonverified_deal_space: BigInt = BigInt::zero();
+                // Given that all deals validated, prepare the state updates for them all.
+                // There's no continue below here to ensure updates are consistent.
+                // Any error must abort.
+                for (deal_id, proposal) in p.deal_ids.iter().zip(validated_proposals) {
+                    activated_deals.insert(*deal_id);
                     // Extract and remove any verified allocation ID for the pending deal.
                     let alloc_id = remove_pending_deal_allocation_id(
-                        // FIXME move outside inner loop
                         &mut pending_deal_allocation_ids,
                         *deal_id,
                     )?
@@ -613,6 +620,7 @@ impl Actor {
                         nonverified_deal_space += proposal.piece_size.0;
                     }
 
+                    // Prepare initial deal state.
                     deal_states.push((
                         *deal_id,
                         DealState {
@@ -623,9 +631,6 @@ impl Actor {
                             verified_claim: alloc_id,
                         },
                     ));
-                }
-                for id in &p.deal_ids {
-                    activated_deals.insert(*id);
                 }
 
                 sectors_deals.push((p.sector_number, SectorDealIDs { deals: p.deal_ids.clone() }));
@@ -669,7 +674,17 @@ impl Actor {
                 let mut sector_deal_ids: Vec<DealID> = vec![];
                 let mut pieces_ret: Vec<PieceReturn> = vec![];
                 for piece in &sector.added {
-                    let deal_id: DealID = deserialize(&piece.payload.clone().into(), "deal id")?;
+                    let deal_id: DealID = match deserialize(&piece.payload.clone(), "deal id") {
+                        Ok(v) => v,
+                        Err(e) => {
+                            log::warn!("failed to deserialize deal id: {}", e);
+                            pieces_ret.push(PieceReturn {
+                                code: ExitCode::USR_SERIALIZATION,
+                                data: vec![],
+                            });
+                            continue;
+                        }
+                    };
                     if activated_deals.contains(&deal_id) {
                         log::warn!("failed to activate duplicated deal {}", deal_id);
                         pieces_ret.push(PieceReturn {
@@ -1273,12 +1288,14 @@ fn preactivate_deal<BS: Blockstore>(
         return Ok(Err(actor_error!(illegal_argument, "deal {} already activated", deal_id)));
     }
 
-    let deal_cid = deal_cid(rt, &proposal)?;
-
-    // Confirm the deal is in the pending proposals queue.
+    // Confirm the deal is in the pending proposals set.
     // It will be removed from this queue later, during cron.
+    // Failing this check is an internal invariant violation.
+    // The pending deals set exists to prevent duplicate proposals.
+    // It should be impossible to have a proposal, no deal state, and not be in pending deals.
+    let deal_cid = deal_cid(rt, &proposal)?;
     if !has_pending_deal(pending_proposals, &deal_cid)? {
-        return Ok(Err(actor_error!(illegal_argument, "deal {} is not in pending set", deal_cid)));
+        return Ok(Err(actor_error!(illegal_state, "deal {} is not in pending set", deal_cid)));
     }
 
     Ok(Ok(proposal))

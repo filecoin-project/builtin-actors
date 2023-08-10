@@ -25,6 +25,7 @@ pub mod account {
 pub mod miner {
     use super::*;
     use cid::Cid;
+    use fvm_ipld_encoding::RawBytes;
     use fvm_shared::clock::ChainEpoch;
     use fvm_shared::error::ExitCode;
     use fvm_shared::piece::PaddedPieceSize;
@@ -57,7 +58,7 @@ pub mod miner {
     // The relevant state must be already committed so the receiver can observe any impacts
     // at the sending miner actor.
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-    // TODO REVIEW: #[serde(transparent)]?
+    #[serde(transparent)]
     pub struct SectorContentChangedParams {
         // Distinct sectors with changed content.
         pub sectors: Vec<SectorChanges>,
@@ -85,20 +86,20 @@ pub mod miner {
         pub size: PaddedPieceSize,
         // A receiver-specific identifier.
         // E.g. an encoded deal ID which the provider claims this piece satisfies.
-        pub payload: Vec<u8>,
+        pub payload: RawBytes,
     }
 
     // For each piece in each sector, the notifee returns an exit code and
     // (possibly-empty) result data.
     // The miner actor will pass through results to its caller.
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-    // TODO REVIEW: #[serde(transparent)]?
+    #[serde(transparent)]
     pub struct SectorContentChangedReturn {
         // A result for each sector that was notified, in the same order.
         pub sectors: Vec<SectorReturn>,
     }
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-    // TODO REVIEW: #[serde(transparent)]?
+    #[serde(transparent)]
     pub struct SectorReturn {
         // A result for each piece for the sector that was notified, in the same order.
         pub added: Vec<PieceReturn>,

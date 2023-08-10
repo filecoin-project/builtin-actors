@@ -1,6 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use fil_actor_market::EX_DEAL_EXPIRED;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
@@ -153,7 +154,7 @@ fn activation_after_deal_start_epoch_but_before_it_is_processed_fails() {
 
     let res =
         activate_deals(&rt, SECTOR_EXPIRY, PROVIDER_ADDR, curr_epoch, SECTOR_NUMBER, &[deal_id]);
-    assert_eq!(res.activation_results.codes(), vec![ExitCode::USR_ILLEGAL_ARGUMENT]);
+    assert_eq!(res.activation_results.codes(), vec![EX_DEAL_EXPIRED]);
     check_state(&rt);
 }
 
