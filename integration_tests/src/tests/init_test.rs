@@ -7,7 +7,7 @@ use fil_actors_runtime::{
 };
 use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode, METHOD_SEND};
 use num_traits::Zero;
-use vm_api::{actor, util::serialize_ok, VM};
+use vm_api::{new_actor, util::serialize_ok, VM};
 
 use crate::{FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR};
 
@@ -22,7 +22,7 @@ pub fn placeholder_deploy_test(v: &dyn VM) {
     // Create a "fake" eam.
     v.set_actor(
         &EAM_ACTOR_ADDR,
-        actor(*EAM_ACTOR_CODE_ID, EMPTY_ARR_CID, 0, TokenAmount::zero(), None),
+        new_actor(*EAM_ACTOR_CODE_ID, EMPTY_ARR_CID, 0, TokenAmount::zero(), None),
     );
 
     // Create a placeholder.

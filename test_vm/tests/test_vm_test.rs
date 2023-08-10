@@ -12,7 +12,7 @@ use fvm_shared::METHOD_SEND;
 use num_traits::Zero;
 use test_vm::{TestVM, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR};
 use vm_api::util::{get_state, pk_addrs_from};
-use vm_api::{actor, VM};
+use vm_api::{new_actor, VM};
 
 #[test]
 fn state_control() {
@@ -22,7 +22,7 @@ fn state_control() {
     let addr2 = Address::new_id(2222);
 
     // set actor
-    let a1 = actor(
+    let a1 = new_actor(
         *ACCOUNT_ACTOR_CODE_ID,
         make_identity_cid(b"a1-head"),
         42,
@@ -34,7 +34,7 @@ fn state_control() {
     assert_eq!(out, a1);
     let check = v.checkpoint();
 
-    let a2 = actor(
+    let a2 = new_actor(
         *PAYCH_ACTOR_CODE_ID,
         make_identity_cid(b"a2-head"),
         88,
@@ -64,7 +64,7 @@ fn assert_account_actor<BS: Blockstore>(
 ) {
     let act = v.actor(&addr).unwrap();
     let st: AccountState = get_state(v, &addr).unwrap();
-    assert_eq!(exp_call_seq, act.call_seq);
+    assert_eq!(exp_call_seq, act.sequence);
     assert_eq!(*ACCOUNT_ACTOR_CODE_ID, act.code);
     assert_eq!(exp_bal, act.balance);
     assert_eq!(exp_pk_addr, st.address);

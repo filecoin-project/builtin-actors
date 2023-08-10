@@ -61,7 +61,7 @@ use serde::Serialize;
 use std::cell::{RefCell, RefMut};
 use vm_api::trace::InvocationTrace;
 use vm_api::util::get_state;
-use vm_api::{actor, ActorState, VM};
+use vm_api::{new_actor, ActorState, VM};
 
 use std::ops::Add;
 
@@ -334,7 +334,7 @@ where
                 act.code = code_id;
                 act
             }
-            None => actor(code_id, EMPTY_ARR_CID, 0, TokenAmount::zero(), predictable_address),
+            None => new_actor(code_id, EMPTY_ARR_CID, 0, TokenAmount::zero(), predictable_address),
             _ => {
                 return Err(actor_error!(forbidden;
                     "attempt to create new actor at existing address {}", addr));
@@ -489,7 +489,7 @@ where
     }
 
     fn lookup_delegated_address(&self, id: ActorID) -> Option<Address> {
-        self.v.actor(&Address::new_id(id)).and_then(|act| act.predictable_address)
+        self.v.actor(&Address::new_id(id)).and_then(|act| act.delegated_address)
     }
 
     fn send(

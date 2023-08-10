@@ -39,7 +39,7 @@ use serde::ser;
 use std::cell::{RefCell, RefMut};
 use std::collections::{BTreeMap, HashMap};
 use vm_api::trace::InvocationTrace;
-use vm_api::{actor, ActorState, MessageResult, VMError, VM};
+use vm_api::{new_actor, ActorState, MessageResult, VMError, VM};
 
 use vm_api::util::{get_state, serialize_ok};
 
@@ -95,14 +95,17 @@ where
         let sys_st = SystemState::new(store).unwrap();
         let sys_head = v.put_store(&sys_st);
         let sys_value = faucet_total.clone(); // delegate faucet funds to system so we can construct faucet by sending to bls addr
-        v.set_actor(&SYSTEM_ACTOR_ADDR, actor(*SYSTEM_ACTOR_CODE_ID, sys_head, 0, sys_value, None));
+        v.set_actor(
+            &SYSTEM_ACTOR_ADDR,
+            new_actor(*SYSTEM_ACTOR_CODE_ID, sys_head, 0, sys_value, None),
+        );
 
         // init
         let init_st = InitState::new(store, "integration-test".to_string()).unwrap();
         let init_head = v.put_store(&init_st);
         v.set_actor(
             &INIT_ACTOR_ADDR,
-            actor(*INIT_ACTOR_CODE_ID, init_head, 0, TokenAmount::zero(), None),
+            new_actor(*INIT_ACTOR_CODE_ID, init_head, 0, TokenAmount::zero(), None),
         );
 
         // reward
@@ -110,7 +113,7 @@ where
         let reward_head = v.put_store(&RewardState::new(StoragePower::zero()));
         v.set_actor(
             &REWARD_ACTOR_ADDR,
-            actor(*REWARD_ACTOR_CODE_ID, reward_head, 0, reward_total, None),
+            new_actor(*REWARD_ACTOR_CODE_ID, reward_head, 0, reward_total, None),
         );
 
         // cron
@@ -127,21 +130,21 @@ where
         let cron_head = v.put_store(&CronState { entries: builtin_entries });
         v.set_actor(
             &CRON_ACTOR_ADDR,
-            actor(*CRON_ACTOR_CODE_ID, cron_head, 0, TokenAmount::zero(), None),
+            new_actor(*CRON_ACTOR_CODE_ID, cron_head, 0, TokenAmount::zero(), None),
         );
 
         // power
         let power_head = v.put_store(&PowerState::new(&v.store).unwrap());
         v.set_actor(
             &STORAGE_POWER_ACTOR_ADDR,
-            actor(*POWER_ACTOR_CODE_ID, power_head, 0, TokenAmount::zero(), None),
+            new_actor(*POWER_ACTOR_CODE_ID, power_head, 0, TokenAmount::zero(), None),
         );
 
         // market
         let market_head = v.put_store(&MarketState::new(&v.store).unwrap());
         v.set_actor(
             &STORAGE_MARKET_ACTOR_ADDR,
-            actor(*MARKET_ACTOR_CODE_ID, market_head, 0, TokenAmount::zero(), None),
+            new_actor(*MARKET_ACTOR_CODE_ID, market_head, 0, TokenAmount::zero(), None),
         );
 
         // verifreg
@@ -190,13 +193,13 @@ where
         let verifreg_head = v.put_store(&VerifRegState::new(&v.store, root_msig_addr).unwrap());
         v.set_actor(
             &VERIFIED_REGISTRY_ACTOR_ADDR,
-            actor(*VERIFREG_ACTOR_CODE_ID, verifreg_head, 0, TokenAmount::zero(), None),
+            new_actor(*VERIFREG_ACTOR_CODE_ID, verifreg_head, 0, TokenAmount::zero(), None),
         );
 
         // Ethereum Address Manager
         v.set_actor(
             &EAM_ACTOR_ADDR,
-            actor(*EAM_ACTOR_CODE_ID, EMPTY_ARR_CID, 0, TokenAmount::zero(), None),
+            new_actor(*EAM_ACTOR_CODE_ID, EMPTY_ARR_CID, 0, TokenAmount::zero(), None),
         );
 
         // datacap
@@ -204,14 +207,14 @@ where
             v.put_store(&DataCapState::new(&v.store, VERIFIED_REGISTRY_ACTOR_ADDR).unwrap());
         v.set_actor(
             &DATACAP_TOKEN_ACTOR_ADDR,
-            actor(*DATACAP_TOKEN_ACTOR_CODE_ID, datacap_head, 0, TokenAmount::zero(), None),
+            new_actor(*DATACAP_TOKEN_ACTOR_CODE_ID, datacap_head, 0, TokenAmount::zero(), None),
         );
 
         // burnt funds
         let burnt_funds_head = v.put_store(&AccountState { address: BURNT_FUNDS_ACTOR_ADDR });
         v.set_actor(
             &BURNT_FUNDS_ACTOR_ADDR,
-            actor(*ACCOUNT_ACTOR_CODE_ID, burnt_funds_head, 0, TokenAmount::zero(), None),
+            new_actor(*ACCOUNT_ACTOR_CODE_ID, burnt_funds_head, 0, TokenAmount::zero(), None),
         );
 
         // create a faucet with 1 billion FIL for setting up test accounts
@@ -294,8 +297,8 @@ where
     ) -> Result<MessageResult, VMError> {
         let from_id = &self.resolve_id_address(from).unwrap();
         let mut a = self.actor(from_id).unwrap();
-        let call_seq = a.call_seq;
-        a.call_seq = call_seq + 1;
+        let call_seq = a.sequence;
+        a.sequence = call_seq + 1;
         // EthAccount abstractions turns Placeholders into EthAccounts
         if a.code == *PLACEHOLDER_ACTOR_CODE_ID {
             a.code = *ETHACCOUNT_ACTOR_CODE_ID;

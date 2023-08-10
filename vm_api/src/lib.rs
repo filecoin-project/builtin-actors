@@ -1,24 +1,34 @@
 use std::collections::BTreeMap;
 
 use cid::Cid;
-// TODO: drop the dependency on fil_actors_runtime and have a suitable replacement abstraction here
-// https://github.com/filecoin-project/builtin-actors/issues/1344
-pub use fil_actors_runtime::runtime::{builtins::Type, Primitives};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{
     ipld_block::IpldBlock,
     tuple::{serde_tuple, Deserialize_tuple, Serialize_tuple},
 };
 use fvm_shared::{
-    address::Address, clock::ChainEpoch, econ::TokenAmount, error::ExitCode, MethodNum,
+    address::Address,
+    clock::ChainEpoch,
+    crypto::{
+        hash::SupportedHashes,
+        signature::{Signature, SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE},
+    },
+    econ::TokenAmount,
+    error::ExitCode,
+    piece::PieceInfo,
+    sector::RegisteredSealProof,
+    MethodNum,
 };
 
-pub mod trace;
-use trace::*;
-pub mod util;
-
-mod error;
+use builtin::*;
 pub use error::*;
+use trace::*;
+
+pub mod builtin;
+mod error;
+pub mod trace;
+#[cfg(feature = "testing")]
+pub mod util;
 
 /// An abstract VM that is injected into integration tests
 pub trait VM {
@@ -82,28 +92,75 @@ pub trait VM {
     fn state_root(&self) -> Cid;
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Eq, Debug)]
-pub struct ActorState {
-    pub code: Cid,
-    pub state: Cid,
-    pub call_seq: u64,
-    pub balance: TokenAmount,
-    pub predictable_address: Option<Address>,
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct MessageResult {
+    pub code: ExitCode,
+    pub message: String,
+    pub ret: Option<IpldBlock>,
 }
 
-pub fn actor(
+// Duplicates an internal FVM type (fvm::state_tree::ActorState) that cannot be depended on here
+#[derive(Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Eq, Debug)]
+pub struct ActorState {
+    /// Link to code for the actor.
+    pub code: Cid,
+    /// Link to the state of the actor.
+    pub state: Cid,
+    /// Sequence of the actor.
+    pub sequence: u64,
+    /// Tokens available to the actor.
+    pub balance: TokenAmount,
+    /// The actor's "delegated" address, if assigned.
+    ///
+    /// This field is set on actor creation and never modified.
+    pub delegated_address: Option<Address>,
+}
+
+pub fn new_actor(
     code: Cid,
     head: Cid,
     call_seq_num: u64,
     balance: TokenAmount,
     predictable_address: Option<Address>,
 ) -> ActorState {
-    ActorState { code, state: head, call_seq: call_seq_num, balance, predictable_address }
+    ActorState {
+        code,
+        state: head,
+        sequence: call_seq_num,
+        balance,
+        delegated_address: predictable_address,
+    }
 }
 
-#[derive(Clone, PartialEq, Eq, Debug)]
-pub struct MessageResult {
-    pub code: ExitCode,
-    pub message: String,
-    pub ret: Option<IpldBlock>,
+/// Pure functions implemented as primitives by the runtime.
+pub trait Primitives {
+    /// Hashes input data using blake2b with 256 bit output.
+    fn hash_blake2b(&self, data: &[u8]) -> [u8; 32];
+
+    /// Hashes input data using a supported hash function.
+    fn hash(&self, hasher: SupportedHashes, data: &[u8]) -> Vec<u8>;
+
+    /// Hashes input into a 64 byte buffer
+    fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize);
+
+    /// Computes an unsealed sector CID (CommD) from its constituent piece CIDs (CommPs) and sizes.
+    fn compute_unsealed_sector_cid(
+        &self,
+        proof_type: RegisteredSealProof,
+        pieces: &[PieceInfo],
+    ) -> Result<Cid, anyhow::Error>;
+
+    /// Verifies that a signature is valid for an address and plaintext.
+    fn verify_signature(
+        &self,
+        signature: &Signature,
+        signer: &Address,
+        plaintext: &[u8],
+    ) -> Result<(), anyhow::Error>;
+
+    fn recover_secp_public_key(
+        &self,
+        hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
+        signature: &[u8; SECP_SIG_LEN],
+    ) -> Result<[u8; SECP_PUB_LEN], anyhow::Error>;
 }
