@@ -949,7 +949,15 @@ mod actor_collect {
         // Collect.
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, st.to);
         rt.expect_validate_caller_addr(vec![st.from, st.to]);
-        rt.expect_delete_actor(st.from);
+        rt.expect_send_simple(
+            st.from,
+            METHOD_SEND,
+            Default::default(),
+            &*rt.balance.borrow() - &st.to_send,
+            Default::default(),
+            ExitCode::OK,
+        );
+        rt.expect_delete_actor();
         let res = call(&rt, Method::Collect as u64, None);
         assert!(res.is_none());
         check_state(&rt);

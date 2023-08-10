@@ -611,7 +611,7 @@ where
         Ok(Address::new_actor(&b))
     }
 
-    fn delete_actor(&self, _beneficiary: &Address) -> Result<(), ActorError> {
+    fn delete_actor(&self) -> Result<(), ActorError> {
         panic!("TODO implement me")
     }
 

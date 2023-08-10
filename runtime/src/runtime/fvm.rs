@@ -350,13 +350,13 @@ where
         })
     }
 
-    fn delete_actor(&self, beneficiary: &Address) -> Result<(), ActorError> {
+    fn delete_actor(&self) -> Result<(), ActorError> {
         if *self.in_transaction.borrow() {
             return Err(
                 actor_error!(assertion_failed; "delete_actor is not allowed during transaction"),
             );
         }
-        Ok(fvm::sself::self_destruct(beneficiary)?)
+        Ok(fvm::sself::self_destruct(false)?)
     }
 
     fn total_fil_circ_supply(&self) -> TokenAmount {
