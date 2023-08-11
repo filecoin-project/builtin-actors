@@ -140,7 +140,7 @@ fn deal_included_in_multiple_sectors_failure() {
 }
 
 #[test]
-fn replica_update_verified_deal() { // FIXME fail here
+fn replica_update_verified_deal() {
     let store = &MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
 

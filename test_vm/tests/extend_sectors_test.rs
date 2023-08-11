@@ -20,7 +20,7 @@ fn extend2_legacy_sector_with_deals() {
 }
 
 #[test]
-fn extend_updated_sector_with_claim() { // FIXME fail here
+fn extend_updated_sector_with_claim() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     extend_updated_sector_with_claims_test(&v);

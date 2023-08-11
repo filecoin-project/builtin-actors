@@ -1191,10 +1191,13 @@ impl Actor {
                 .get_cid(usi.sector_info.seal_proof)?;
             if let Some(ref declared_commd) = usi.update.new_unsealed_cid {
                 if !declared_commd.eq(&computed_commd) {
-                    info!(
-                        "unsealed CID does not match with deals: expected {}, got {}, sector: {}",
-                        computed_commd, declared_commd, usi.update.sector_number
-                    );
+                    return Err(actor_error!(
+                        illegal_argument,
+                        "unsealed CID does not match deals for sector {}, expected {} was {}",
+                        usi.update.sector_number,
+                        computed_commd,
+                        declared_commd
+                    ));
                 }
             }
             let dl = usi.update.deadline;

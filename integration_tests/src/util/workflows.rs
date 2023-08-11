@@ -1,5 +1,30 @@
 use std::cmp::min;
 
+use frc46_token::receiver::FRC46TokenReceived;
+use frc46_token::receiver::FRC46_TOKEN_TYPE;
+use frc46_token::token::types::TransferFromParams;
+use frc46_token::token::types::TransferParams;
+use fvm_actor_utils::receiver::UniversalReceiverParams;
+use fvm_ipld_bitfield::BitField;
+use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::BytesDe;
+use fvm_ipld_encoding::RawBytes;
+use fvm_shared::address::Address;
+use fvm_shared::clock::ChainEpoch;
+use fvm_shared::crypto::signature::Signature;
+use fvm_shared::crypto::signature::SignatureType;
+use fvm_shared::deal::DealID;
+use fvm_shared::econ::TokenAmount;
+use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::randomness::Randomness;
+use fvm_shared::sector::PoStProof;
+use fvm_shared::sector::RegisteredPoStProof;
+use fvm_shared::sector::RegisteredSealProof;
+use fvm_shared::sector::SectorNumber;
+use fvm_shared::sector::StoragePower;
+use num_traits::Zero;
+
 use fil_actor_cron::Method as CronMethod;
 use fil_actor_datacap::Method as DataCapMethod;
 use fil_actor_market::ClientDealProposal;
@@ -46,41 +71,18 @@ use fil_actors_runtime::STORAGE_POWER_ACTOR_ADDR;
 use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
 use fil_actors_runtime::{DATACAP_TOKEN_ACTOR_ID, VERIFIED_REGISTRY_ACTOR_ID};
-use frc46_token::receiver::FRC46TokenReceived;
-use frc46_token::receiver::FRC46_TOKEN_TYPE;
-use frc46_token::token::types::TransferFromParams;
-use frc46_token::token::types::TransferParams;
-use fvm_actor_utils::receiver::UniversalReceiverParams;
-use fvm_ipld_bitfield::BitField;
-use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::BytesDe;
-use fvm_ipld_encoding::RawBytes;
-use fvm_shared::address::Address;
-use fvm_shared::clock::ChainEpoch;
-use fvm_shared::crypto::signature::Signature;
-use fvm_shared::crypto::signature::SignatureType;
-use fvm_shared::deal::DealID;
-use fvm_shared::econ::TokenAmount;
-use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::randomness::Randomness;
-use fvm_shared::sector::PoStProof;
-use fvm_shared::sector::RegisteredPoStProof;
-use fvm_shared::sector::RegisteredSealProof;
-use fvm_shared::sector::SectorNumber;
-use fvm_shared::sector::StoragePower;
-use num_traits::Zero;
 use vm_api::trace::ExpectInvocation;
 use vm_api::util::apply_ok;
 use vm_api::util::get_state;
 use vm_api::util::DynBlockstore;
 use vm_api::VM;
 
+use crate::expects::Expect;
 use crate::*;
 
 use super::make_bitfield;
 use super::miner_dline_info;
 use super::sector_deadline;
-use crate::expects::Expect;
 
 pub fn cron_tick(v: &dyn VM) {
     apply_ok(
@@ -1174,4 +1176,12 @@ pub fn generate_deal_proposal(
         provider_collateral: provider_collateral.clone(),
         client_collateral: client_collateral.clone(),
     }
+}
+
+pub fn get_deal(v: &dyn VM, deal_id: DealID) -> DealProposal {
+    let actor = v.actor(&STORAGE_MARKET_ACTOR_ADDR).unwrap();
+    let bs = DynBlockstore::wrap(v.blockstore());
+    let state: fil_actor_market::State =
+        RawBytes::new(bs.get(&actor.state).unwrap().unwrap()).deserialize().unwrap();
+    state.get_proposal(&bs, deal_id).unwrap()
 }
