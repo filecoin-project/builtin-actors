@@ -467,7 +467,7 @@ fn terminate_sectors(
     epoch: ChainEpoch,
     sectors: Vec<SectorOnChainInfo>,
     partition_sectors: HashMap<u64, BitField>,
-) -> anyhow::Result<PowerPair> {
+) -> Result<PowerPair, ActorError> {
     let store = rt.store();
     let sectors_array = sectors_arr(&store, sectors);
 
@@ -533,10 +533,7 @@ fn fails_to_terminate_missing_sector() {
     );
 
     assert!(ret.is_err());
-    let err = ret
-        .expect_err("can only terminate live sectors")
-        .downcast::<ActorError>()
-        .expect("Invalid error");
+    let err = ret.expect_err("can only terminate live sectors");
     assert_eq!(err.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
 }
 
@@ -555,10 +552,7 @@ fn fails_to_terminate_missing_partition() {
     );
 
     assert!(ret.is_err());
-    let err = ret
-        .expect_err("can only terminate existing partitions")
-        .downcast::<ActorError>()
-        .expect("Invalid error");
+    let err = ret.expect_err("can only terminate existing partitions");
     assert_eq!(err.exit_code(), ExitCode::USR_NOT_FOUND);
 }
 
@@ -577,10 +571,7 @@ fn fails_to_terminate_already_terminated_sector() {
     );
 
     assert!(ret.is_err());
-    let err = ret
-        .expect_err("cannot terminate already terminated sector")
-        .downcast::<ActorError>()
-        .expect("Invalid error");
+    let err = ret.expect_err("cannot terminate already terminated sector");
     assert_eq!(err.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
 }
 
@@ -961,11 +952,7 @@ fn post_missing_partition() {
         &mut post_partitions,
     );
 
-    let err = post_result
-        .err()
-        .expect("missing partition, should have failed")
-        .downcast::<ActorError>()
-        .expect("Invalid error");
+    let err = post_result.err().expect("missing partition, should have failed");
     assert_eq!(err.exit_code(), ExitCode::USR_NOT_FOUND);
 }
 
@@ -998,11 +985,7 @@ fn post_partition_twice() {
         &mut post_partitions,
     );
 
-    let err = post_result
-        .err()
-        .expect("duplicate partition, should have failed")
-        .downcast::<ActorError>()
-        .expect("Invalid error");
+    let err = post_result.err().expect("duplicate partition, should have failed");
     assert_eq!(err.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
 }
 
@@ -1137,10 +1120,7 @@ fn cannot_declare_faults_in_missing_partitions() {
         &mut partition_sector_map,
     );
 
-    let err = result
-        .expect_err("missing partition, should have failed")
-        .downcast::<ActorError>()
-        .expect("Invalid error");
+    let err = result.expect_err("missing partition, should have failed");
     assert_eq!(err.exit_code(), ExitCode::USR_NOT_FOUND);
 }
 
@@ -1164,10 +1144,7 @@ fn cannot_declare_faults_recovered_in_missing_partitions() {
         &mut partition_sector_map,
     );
 
-    let err = result
-        .expect_err("missing partition, should have failed")
-        .downcast::<ActorError>()
-        .expect("Invalid error");
+    let err = result.expect_err("missing partition, should have failed");
     assert_eq!(err.exit_code(), ExitCode::USR_NOT_FOUND);
 }
 

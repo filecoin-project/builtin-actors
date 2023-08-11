@@ -10,7 +10,6 @@ use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::BytesDe;
 use fvm_ipld_encoding::CborStore;
-use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{SectorNumber, SectorSize};
 use fvm_shared::{clock::ChainEpoch, clock::QuantSpec, sector::RegisteredPoStProof};
@@ -61,7 +60,7 @@ impl StateHarness {
     pub fn put_precommitted_sectors(
         &mut self,
         precommits: Vec<SectorPreCommitOnChainInfo>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), ActorError> {
         self.st.put_precommitted_sectors(&self.store, precommits)
     }
 
@@ -69,7 +68,7 @@ impl StateHarness {
     pub fn delete_precommitted_sectors(
         &mut self,
         sector_nums: &[SectorNumber],
-    ) -> Result<(), HamtError> {
+    ) -> Result<(), ActorError> {
         self.st.delete_precommitted_sectors(&self.store, sector_nums)
     }
 
@@ -99,7 +98,7 @@ impl StateHarness {
         &mut self,
         policy: &Policy,
         cleanup_events: Vec<(ChainEpoch, u64)>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), ActorError> {
         self.st.add_pre_commit_clean_ups(policy, &self.store, cleanup_events)
     }
 
@@ -109,7 +108,7 @@ impl StateHarness {
         current_epoch: ChainEpoch,
         vesting_sum: &TokenAmount,
         spec: &VestSpec,
-    ) -> anyhow::Result<TokenAmount> {
+    ) -> Result<TokenAmount, ActorError> {
         self.st.add_locked_funds(&self.store, current_epoch, vesting_sum, spec)
     }
 
@@ -117,7 +116,7 @@ impl StateHarness {
     pub fn unlock_vested_funds(
         &mut self,
         current_epoch: ChainEpoch,
-    ) -> anyhow::Result<TokenAmount> {
+    ) -> Result<TokenAmount, ActorError> {
         self.st.unlock_vested_funds(&self.store, current_epoch)
     }
 
@@ -126,7 +125,7 @@ impl StateHarness {
         &mut self,
         current_epoch: ChainEpoch,
         target: &TokenAmount,
-    ) -> anyhow::Result<TokenAmount> {
+    ) -> Result<TokenAmount, ActorError> {
         self.st.unlock_unvested_funds(&self.store, current_epoch, target)
     }
 

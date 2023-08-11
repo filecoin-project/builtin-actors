@@ -7,7 +7,7 @@ use std::convert::TryInto;
 use anyhow::{anyhow, Context};
 use cid::Cid;
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{ActorDowncast, Array};
+use fil_actors_runtime::Array;
 use fvm_ipld_amt::{Error as AmtError, ValueMut};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
@@ -188,7 +188,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
                 &PowerPair::zero(),
                 &group.pledge,
             )
-            .map_err(|e| e.downcast_wrap("failed to record new sector expirations"))?;
+            .context("failed to record new sector expirations")?;
 
             total_sectors.push(sector_numbers);
             total_power += &group.power;
@@ -215,7 +215,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
 
         let (sector_numbers, power, pledge) = self
             .remove_active_sectors(sectors, sector_size)
-            .map_err(|e| e.downcast_wrap("failed to remove sector expirations"))?;
+            .context("failed to remove sector expirations")?;
 
         self.add(
             new_expiration,
@@ -225,7 +225,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
             &PowerPair::zero(),
             &pledge,
         )
-        .map_err(|e| e.downcast_wrap("failed to record new sector expirations"))?;
+        .context("failed to record new sector expirations")?;
 
         Ok(())
     }
@@ -444,11 +444,11 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
     ) -> anyhow::Result<(BitField, BitField, PowerPair, TokenAmount)> {
         let (old_sector_numbers, old_power, old_pledge) = self
             .remove_active_sectors(old_sectors, sector_size)
-            .map_err(|e| e.downcast_wrap("failed to remove replaced sectors"))?;
+            .context("failed to remove replaced sectors")?;
 
         let (new_sector_numbers, new_power, new_pledge) = self
             .add_active_sectors(new_sectors, sector_size)
-            .map_err(|e| e.downcast_wrap("failed to add replacement sectors"))?;
+            .context("failed to add replacement sectors")?;
 
         Ok((
             old_sector_numbers,
@@ -511,7 +511,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         // Remove non-faulty sectors.
         let (removed_sector_numbers, removed_power, removed_pledge) = self
             .remove_active_sectors(&non_faulty_sectors, sector_size)
-            .map_err(|e| e.downcast_wrap("failed to remove on-time recoveries"))?;
+            .context("failed to remove on-time recoveries")?;
         removed.on_time_sectors = removed_sector_numbers;
         removed.active_power = removed_power;
         removed.on_time_pledge = removed_pledge;
@@ -654,14 +654,12 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         let mut expiration_set = self
             .amt
             .get(epoch.try_into()?)
-            .map_err(|e| e.downcast_wrap(format!("failed to lookup queue epoch {}", epoch)))?
+            .with_context(|| format!("failed to lookup queue epoch {}", epoch))?
             .ok_or_else(|| anyhow!("missing expected expiration set at epoch {}", epoch))?
             .clone();
         expiration_set
             .remove(on_time_sectors, early_sectors, pledge, active_power, faulty_power)
-            .map_err(|e| {
-            anyhow!("failed to remove expiration values for queue epoch {}: {}", epoch, e)
-        })?;
+            .with_context(|| format!("failed to remove expiration values for queue epoch {}", epoch))?;
 
         self.must_update_or_delete(epoch, expiration_set)?;
         Ok(())
@@ -732,7 +730,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         Ok(self
             .amt
             .get(key.try_into()?)
-            .map_err(|e| e.downcast_wrap(format!("failed to lookup queue epoch {}", key)))?
+            .with_context(|| format!("failed to lookup queue epoch {}", key))?
             .cloned()
             .unwrap_or_default())
     }
@@ -744,7 +742,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
     ) -> anyhow::Result<()> {
         self.amt
             .set(epoch.try_into()?, expiration_set)
-            .map_err(|e| e.downcast_wrap(format!("failed to set queue epoch {}", epoch)))
+            .with_context(|| format!("failed to set queue epoch {}", epoch))
     }
 
     /// Since this might delete the node, it's not safe for use inside an iteration.
@@ -756,11 +754,11 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         if expiration_set.is_empty() {
             self.amt
                 .delete(epoch.try_into()?)
-                .map_err(|e| e.downcast_wrap(format!("failed to delete queue epoch {}", epoch)))?;
+                .with_context(|| format!("failed to delete queue epoch {}", epoch))?;
         } else {
             self.amt
                 .set(epoch.try_into()?, expiration_set)
-                .map_err(|e| e.downcast_wrap(format!("failed to set queue epoch {}", epoch)))?;
+                .with_context(|| format!("failed to set queue epoch {}", epoch))?;
         }
 
         Ok(())

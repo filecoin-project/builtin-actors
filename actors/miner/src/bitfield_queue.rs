@@ -1,10 +1,11 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use anyhow::Context;
 use std::convert::TryInto;
 
 use cid::Cid;
-use fil_actors_runtime::{ActorDowncast, Array};
+use fil_actors_runtime::Array;
 use fvm_ipld_amt::Error as AmtError;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
@@ -35,13 +36,13 @@ impl<'db, BS: Blockstore> BitFieldQueue<'db, BS> {
         let bitfield = self
             .amt
             .get(epoch)
-            .map_err(|e| e.downcast_wrap(format!("failed to lookup queue epoch {}", epoch)))?
+            .with_context(|| format!("failed to lookup queue epoch {}", epoch))?
             .cloned()
             .unwrap_or_default();
 
         self.amt
             .set(epoch, &bitfield | values)
-            .map_err(|e| e.downcast_wrap(format!("failed to set queue epoch {}", epoch)))?;
+            .with_context(|| format!("failed to set queue epoch {}", epoch))?;
 
         Ok(())
     }
@@ -73,11 +74,11 @@ impl<'db, BS: Blockstore> BitFieldQueue<'db, BS> {
 
                 Ok(())
             })
-            .map_err(|e| e.downcast_wrap("failed to cut from bitfield queue"))?;
+            .context("failed to cut from bitfield queue")?;
 
         self.amt
             .batch_delete(epochs_to_remove, true)
-            .map_err(|e| e.downcast_wrap("failed to remove empty epochs from bitfield queue"))?;
+            .context("failed to remove empty epochs from bitfield queue")?;
 
         Ok(())
     }
