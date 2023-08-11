@@ -3,7 +3,7 @@ use crate::{
     SectorOnChainInfo, SectorPreCommitOnChainInfo, Sectors, State,
 };
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{parse_uint_key, Map, MessageAccumulator};
+use fil_actors_runtime::{parse_uint_key, Map, MessageAccumulator, DEFAULT_HAMT_CONFIG};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::CborStore;
@@ -343,8 +343,11 @@ fn check_precommits<BS: Blockstore>(
 
     let mut precommit_total = TokenAmount::zero();
 
-    let precommited_sectors =
-        Map::<_, SectorPreCommitOnChainInfo>::load(&state.pre_committed_sectors, store);
+    let precommited_sectors = Map::<_, SectorPreCommitOnChainInfo>::load_with_config(
+        &state.pre_committed_sectors,
+        store,
+        DEFAULT_HAMT_CONFIG,
+    );
 
     match precommited_sectors {
         Ok(precommited_sectors) => {

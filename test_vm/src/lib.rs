@@ -14,8 +14,8 @@ use fil_actor_verifreg::State as VerifRegState;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{Policy, Primitives, EMPTY_ARR_CID};
-use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::DATACAP_TOKEN_ACTOR_ADDR;
+use fil_actors_runtime::{test_utils::*, DEFAULT_HAMT_CONFIG};
 use fil_actors_runtime::{
     BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, EAM_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
@@ -70,7 +70,11 @@ where
     BS: Blockstore,
 {
     pub fn new(store: &'bs MemoryBlockstore) -> TestVM<'bs, MemoryBlockstore> {
-        let mut actors = Hamt::<&'bs MemoryBlockstore, ActorState, BytesKey, Sha256>::new(store);
+        let mut actors =
+            Hamt::<&'bs MemoryBlockstore, ActorState, BytesKey, Sha256>::new_with_config(
+                store,
+                DEFAULT_HAMT_CONFIG,
+            );
         TestVM {
             primitives: FakePrimitives {},
             store,
@@ -240,9 +244,10 @@ where
 
     pub fn checkpoint(&self) -> Cid {
         // persist cache on top of latest checkpoint and clear
-        let mut actors = Hamt::<&'bs BS, ActorState, BytesKey, Sha256>::load(
+        let mut actors = Hamt::<&'bs BS, ActorState, BytesKey, Sha256>::load_with_config(
             &self.state_root.borrow(),
             self.store,
+            DEFAULT_HAMT_CONFIG,
         )
         .unwrap();
         for (addr, act) in self.actors_cache.borrow().iter() {
@@ -383,9 +388,10 @@ where
             return Some(act.clone());
         }
         // go to persisted map
-        let actors = Hamt::<&'bs BS, ActorState, BytesKey, Sha256>::load(
+        let actors = Hamt::<&'bs BS, ActorState, BytesKey, Sha256>::load_with_config(
             &self.state_root.borrow(),
             self.store,
+            DEFAULT_HAMT_CONFIG,
         )
         .unwrap();
         let actor = actors.get(&address.to_bytes()).unwrap().cloned();
