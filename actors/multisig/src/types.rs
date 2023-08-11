@@ -5,15 +5,14 @@ use std::fmt::Display;
 
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{strict_bytes, RawBytes};
-use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
-
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::MethodNum;
-use integer_encoding::VarInt;
 use serde::{Deserialize, Serialize};
+
+use fil_actors_runtime::MapKey;
 
 /// SignersMax is the maximum number of signers allowed in a multisig. If more
 /// are required, please use a combining tree of multisigs.
@@ -24,9 +23,13 @@ pub const SIGNERS_MAX: usize = 256;
 #[serde(transparent)]
 pub struct TxnID(pub i64);
 
-impl TxnID {
-    pub fn key(self) -> BytesKey {
-        self.0.encode_var_vec().into()
+impl MapKey for TxnID {
+    fn from_bytes(b: &[u8]) -> Result<Self, String> {
+        i64::from_bytes(b).map(TxnID)
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, String> {
+        self.0.to_bytes()
     }
 }
 

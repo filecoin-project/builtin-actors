@@ -1,10 +1,9 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fvm_actor_utils::receiver::UniversalReceiverParams;
 use std::collections::BTreeSet;
 
-use fil_actors_runtime::FIRST_EXPORTED_METHOD_NUMBER;
+use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
@@ -12,15 +11,16 @@ use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::MethodNum;
-use fvm_shared::{HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
+use fvm_shared::METHOD_CONSTRUCTOR;
 use num_derive::FromPrimitive;
 use num_traits::Zero;
 
 use fil_actors_runtime::cbor::serialize_vec;
 use fil_actors_runtime::runtime::{ActorCode, Primitives, Runtime};
+use fil_actors_runtime::FIRST_EXPORTED_METHOD_NUMBER;
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, extract_send_result, make_empty_map, make_map_with_root,
-    resolve_to_actor_id, ActorContext, ActorError, AsActorError, Map, INIT_ACTOR_ADDR,
+    actor_dispatch, actor_error, extract_send_result, resolve_to_actor_id, ActorContext,
+    ActorError, AsActorError, INIT_ACTOR_ADDR,
 };
 
 pub use self::state::*;
@@ -97,9 +97,7 @@ impl Actor {
             return Err(actor_error!(illegal_argument; "negative unlock duration disallowed"));
         }
 
-        let empty_root = make_empty_map::<_, ()>(rt.store(), HAMT_BIT_WIDTH)
-            .flush()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to create empty map")?;
+        let empty_root = PendingTxnMap::empty(rt.store(), PENDING_TXN_CONFIG, "empty").flush()?;
 
         let mut st: State = State {
             signers: resolved_signers,
@@ -141,9 +139,12 @@ impl Actor {
                 return Err(actor_error!(forbidden, "{} is not a signer", proposer));
             }
 
-            let mut ptx = make_map_with_root(&st.pending_txs, rt.store())
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load pending transactions")?;
-
+            let mut ptx = PendingTxnMap::load(
+                rt.store(),
+                &st.pending_txs,
+                PENDING_TXN_CONFIG,
+                "pending txns",
+            )?;
             let t_id = st.next_tx_id;
             st.next_tx_id.0 += 1;
 
@@ -155,21 +156,12 @@ impl Actor {
                 approved: Vec::new(),
             };
 
-            ptx.set(t_id.key(), txn.clone()).context_code(
-                ExitCode::USR_ILLEGAL_STATE,
-                "failed to put transaction for propose",
-            )?;
-
-            st.pending_txs = ptx.flush().context_code(
-                ExitCode::USR_ILLEGAL_STATE,
-                "failed to flush pending transactions",
-            )?;
-
+            ptx.set(&t_id, txn.clone())?;
+            st.pending_txs = ptx.flush()?;
             Ok((t_id, txn))
         })?;
 
         let (applied, ret, code) = Self::approve_transaction(rt, txn_id, txn)?;
-
         Ok(ProposeReturn { txn_id, applied, code, ret })
     }
 
@@ -183,9 +175,12 @@ impl Actor {
             if !st.is_signer(&approver) {
                 return Err(actor_error!(forbidden; "{} is not a signer", approver));
             }
-
-            let ptx = make_map_with_root(&st.pending_txs, rt.store())
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load pending transactions")?;
+            let ptx = PendingTxnMap::load(
+                rt.store(),
+                &st.pending_txs,
+                PENDING_TXN_CONFIG,
+                "pending txns",
+            )?;
 
             let txn = get_transaction(rt, &ptx, params.id, params.proposal_hash)?;
 
@@ -215,17 +210,16 @@ impl Actor {
                 return Err(actor_error!(forbidden; "{} is not a signer", caller_addr));
             }
 
-            let mut ptx = make_map_with_root::<_, Transaction>(&st.pending_txs, rt.store())
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load pending transactions")?;
+            let mut ptx = PendingTxnMap::load(
+                rt.store(),
+                &st.pending_txs,
+                PENDING_TXN_CONFIG,
+                "pending txns",
+            )?;
 
-            let (_, tx) = ptx
-                .delete(&params.id.key())
-                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                    format!("failed to pop transaction {:?} for cancel", params.id)
-                })?
-                .ok_or_else(|| {
-                    actor_error!(not_found, "no such transaction {:?} to cancel", params.id)
-                })?;
+            let tx = ptx.delete(&params.id)?.ok_or_else(|| {
+                actor_error!(not_found, "no such transaction {:?} to cancel", params.id)
+            })?;
 
             // Check to make sure transaction proposer is caller address
             if tx.approved.get(0) != Some(&caller_addr) {
@@ -241,11 +235,7 @@ impl Actor {
                 return Err(actor_error!(illegal_state, "hash does not match proposal params"));
             }
 
-            st.pending_txs = ptx.flush().context_code(
-                ExitCode::USR_ILLEGAL_STATE,
-                "failed to flush pending transactions",
-            )?;
-
+            st.pending_txs = ptx.flush()?;
             Ok(())
         })
     }
@@ -416,21 +406,18 @@ impl Actor {
         }
 
         let st = rt.transaction(|st: &mut State, rt| {
-            let mut ptx = make_map_with_root(&st.pending_txs, rt.store())
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load pending transactions")?;
+            let mut ptx = PendingTxnMap::load(
+                rt.store(),
+                &st.pending_txs,
+                PENDING_TXN_CONFIG,
+                "pending txns",
+            )?;
 
             // update approved on the transaction
             txn.approved.push(rt.message().caller());
 
-            ptx.set(tx_id.key(), txn.clone())
-                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                    format!("failed to put transaction {} for approval", tx_id.0)
-                })?;
-
-            st.pending_txs = ptx.flush().context_code(
-                ExitCode::USR_ILLEGAL_STATE,
-                "failed to flush pending transactions",
-            )?;
+            ptx.set(&tx_id, txn.clone())?;
+            st.pending_txs = ptx.flush()?;
 
             // Go implementation holds reference to state after transaction so this must be cloned
             // to match to handle possible exit code inconsistency
@@ -493,18 +480,14 @@ fn execute_transaction_if_approved(
         applied = true;
 
         rt.transaction(|st: &mut State, rt| {
-            let mut ptx = make_map_with_root::<_, Transaction>(&st.pending_txs, rt.store())
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load pending transactions")?;
-
-            ptx.delete(&txn_id.key()).context_code(
-                ExitCode::USR_ILLEGAL_STATE,
-                "failed to delete transaction for cleanup",
+            let mut ptx = PendingTxnMap::load(
+                rt.store(),
+                &st.pending_txs,
+                PENDING_TXN_CONFIG,
+                "pending txns",
             )?;
-
-            st.pending_txs = ptx.flush().context_code(
-                ExitCode::USR_ILLEGAL_STATE,
-                "failed to flush pending transactions",
-            )?;
+            ptx.delete(&txn_id)?;
+            st.pending_txs = ptx.flush()?;
             Ok(())
         })?;
     }
@@ -514,7 +497,7 @@ fn execute_transaction_if_approved(
 
 fn get_transaction<'m, BS, RT>(
     rt: &RT,
-    ptx: &'m Map<'_, BS, Transaction>,
+    ptx: &'m PendingTxnMap<BS>,
     txn_id: TxnID,
     proposal_hash: Vec<u8>,
 ) -> Result<&'m Transaction, ActorError>
@@ -523,10 +506,7 @@ where
     RT: Runtime,
 {
     let txn = ptx
-        .get(&txn_id.key())
-        .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-            format!("failed to load transaction {:?} for approval", txn_id)
-        })?
+        .get(&txn_id)?
         .ok_or_else(|| actor_error!(not_found, "no such transaction {:?} for approval", txn_id))?;
 
     if !proposal_hash.is_empty() {

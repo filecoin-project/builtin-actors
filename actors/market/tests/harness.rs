@@ -3,7 +3,7 @@
 use cid::Cid;
 use fil_actor_market::{
     BatchActivateDealsParams, BatchActivateDealsResult, PendingDealAllocationsMap,
-    PENDING_ALLOCATIONS_CONF,
+    PENDING_ALLOCATIONS_CONFIG,
 };
 use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
 use num_traits::{FromPrimitive, Zero};
@@ -403,7 +403,7 @@ pub fn get_pending_deal_allocation(rt: &MockRuntime, deal_id: DealID) -> Allocat
     let pending_allocations = PendingDealAllocationsMap::load(
         &rt.store,
         &st.pending_deal_allocation_ids,
-        PENDING_ALLOCATIONS_CONF,
+        PENDING_ALLOCATIONS_CONFIG,
         "pending deal allocations",
     )
     .unwrap();

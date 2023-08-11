@@ -1,12 +1,11 @@
 use std::{collections::HashSet, iter::FromIterator};
 
-use anyhow::anyhow;
-use fil_actors_runtime::{Map, MessageAccumulator};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::address::Address;
-use integer_encoding::VarInt;
 
-use crate::{State, Transaction, TxnID, SIGNERS_MAX};
+use fil_actors_runtime::MessageAccumulator;
+
+use crate::{PendingTxnMap, State, TxnID, PENDING_TXN_CONFIG, SIGNERS_MAX};
 
 pub struct StateSummary {
     pub pending_tx_count: u64,
@@ -54,15 +53,9 @@ pub fn check_state_invariants<BS: Blockstore>(
     let mut max_tx_id = TxnID(-1);
     let mut pending_tx_count = 0u64;
 
-    match Map::<_, Transaction>::load(&state.pending_txs, store) {
+    match PendingTxnMap::load(store, &state.pending_txs, PENDING_TXN_CONFIG, "pending txns") {
         Ok(transactions) => {
             let ret = transactions.for_each(|tx_id, transaction| {
-                let tx_id = TxnID(
-                    i64::decode_var(tx_id)
-                        .ok_or_else(|| anyhow!("failed to decode key: {:?}", tx_id))?
-                        .0,
-                );
-
                 if tx_id > max_tx_id {
                     max_tx_id = tx_id;
                 }

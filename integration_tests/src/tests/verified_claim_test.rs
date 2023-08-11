@@ -1,28 +1,31 @@
+use std::ops::Neg;
+
+use fvm_shared::bigint::Zero;
+use fvm_shared::econ::TokenAmount;
+use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
+
 use fil_actor_datacap::State as DatacapState;
-use fil_actor_market::State as MarketState;
-use fil_actor_market::{deal_id_key, DealArray, DealMetaArray};
+use fil_actor_market::{DealArray, DealMetaArray};
+use fil_actor_market::{
+    PendingDealAllocationsMap, State as MarketState, PENDING_ALLOCATIONS_CONFIG,
+};
 use fil_actor_miner::{max_prove_commit_duration, PowerPair, SectorClaim, State as MinerState};
 use fil_actor_power::State as PowerState;
 use fil_actor_verifreg::{
-    AllocationID, Claim, Method as VerifregMethod, RemoveExpiredClaimsParams,
-    RemoveExpiredClaimsReturn, State as VerifregState,
+    Claim, Method as VerifregMethod, RemoveExpiredClaimsParams, RemoveExpiredClaimsReturn,
+    State as VerifregState,
 };
 use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::runtime::policy_constants::{
     DEAL_UPDATES_INTERVAL, MARKET_DEFAULT_ALLOCATION_TERM_BUFFER,
 };
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::shared::HAMT_BIT_WIDTH;
 use fil_actors_runtime::test_utils::make_piece_cid;
 use fil_actors_runtime::{
-    make_map_with_root_and_bitwidth, DealWeight, Map, DATACAP_TOKEN_ACTOR_ADDR, EPOCHS_IN_DAY,
-    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    DealWeight, DATACAP_TOKEN_ACTOR_ADDR, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR,
+    STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use fvm_shared::bigint::Zero;
-use fvm_shared::econ::TokenAmount;
-use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
-use std::ops::Neg;
 use vm_api::util::{apply_ok, get_state, DynBlockstore};
 use vm_api::VM;
 
@@ -418,13 +421,14 @@ pub fn expired_allocations_test(v: &dyn VM) {
     let store = DynBlockstore::wrap(v.blockstore());
     let proposals = DealArray::load(&market_state.proposals, &store).unwrap();
     assert!(proposals.get(deal1).unwrap().is_none());
-    let pending_deal_allocs: Map<_, AllocationID> = make_map_with_root_and_bitwidth(
-        &market_state.pending_deal_allocation_ids,
+    let pending_deal_allocs = PendingDealAllocationsMap::load(
         &store,
-        HAMT_BIT_WIDTH,
+        &market_state.pending_deal_allocation_ids,
+        PENDING_ALLOCATIONS_CONFIG,
+        "pending allocations",
     )
     .unwrap();
-    assert!(pending_deal_allocs.get(&deal_id_key(deal1)).unwrap().is_none());
+    assert!(pending_deal_allocs.get(&deal1).unwrap().is_none());
 
     // Allocation still exists until explicit cleanup
     let alloc_id = 1;

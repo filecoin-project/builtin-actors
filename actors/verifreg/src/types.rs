@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use cid::Cid;
-use fil_actors_runtime::BatchReturn;
+use fil_actors_runtime::{BatchReturn, MapKey};
 use fvm_ipld_encoding::tuple::*;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::{bigint_ser, BigInt};
@@ -12,6 +12,7 @@ use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::ActorID;
+use std::fmt::{Debug, Formatter};
 
 use crate::Claim;
 
@@ -91,12 +92,24 @@ impl AddrPairKey {
     pub fn new(first: Address, second: Address) -> Self {
         AddrPairKey { first, second }
     }
+}
 
-    pub fn to_bytes(&self) -> Vec<u8> {
+impl Debug for AddrPairKey {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        (self.first, self.second).fmt(f)
+    }
+}
+
+impl MapKey for AddrPairKey {
+    fn from_bytes(_b: &[u8]) -> Result<Self, String> {
+        unimplemented!()
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, String> {
         let mut first = self.first.to_bytes();
         let mut second = self.second.to_bytes();
         first.append(&mut second);
-        first
+        Ok(first)
     }
 }
 

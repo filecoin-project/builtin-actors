@@ -13,12 +13,17 @@ use fvm_shared::sector::SectorNumber;
 use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
 
 use fil_actors_runtime::{
-    actor_error, make_empty_map, make_map_with_root_and_bitwidth, ActorError, AsActorError, Map,
-    MapMap,
+    actor_error, ActorError, AsActorError, Config, Map2, MapMap, DEFAULT_HAMT_CONFIG,
 };
 
-use crate::DataCap;
-use crate::{AllocationID, ClaimID};
+use crate::{AddrPairKey, AllocationID, ClaimID};
+use crate::{DataCap, RemoveDataCapProposalID};
+
+pub type DataCapMap<BS> = Map2<BS, Address, BigIntDe>;
+pub const DATACAP_MAP_CONFIG: Config = DEFAULT_HAMT_CONFIG;
+
+pub type RemoveDataCapProposalMap<BS> = Map2<BS, AddrPairKey, RemoveDataCapProposalID>;
+pub const REMOVE_DATACAP_PROPOSALS_CONFIG: Config = DEFAULT_HAMT_CONFIG;
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone)]
 pub struct State {
@@ -37,11 +42,8 @@ pub struct State {
 
 impl State {
     pub fn new<BS: Blockstore>(store: &BS, root_key: Address) -> Result<State, ActorError> {
-        let empty_map = make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH)
-            .flush()
-            .map_err(|e| actor_error!(illegal_state, "failed to create empty map: {}", e))?;
-
-        let empty_mapmap =
+        let empty_dcap = DataCapMap::empty(store, DATACAP_MAP_CONFIG, "empty").flush()?;
+        let empty_allocs_claims =
             MapMap::<_, (), ActorID, u64>::new(store, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH)
                 .flush()
                 .map_err(|e| {
@@ -50,11 +52,11 @@ impl State {
 
         Ok(State {
             root_key,
-            verifiers: empty_map,
-            remove_data_cap_proposal_ids: empty_map,
-            allocations: empty_mapmap,
+            verifiers: empty_dcap,
+            remove_data_cap_proposal_ids: empty_dcap,
+            allocations: empty_allocs_claims,
             next_allocation_id: 1,
-            claims: empty_mapmap,
+            claims: empty_allocs_claims,
         })
     }
 
@@ -65,15 +67,9 @@ impl State {
         verifier: &Address,
         cap: &DataCap,
     ) -> Result<(), ActorError> {
-        let mut verifiers =
-            make_map_with_root_and_bitwidth::<_, BigIntDe>(&self.verifiers, store, HAMT_BIT_WIDTH)
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load verifiers")?;
-        verifiers
-            .set(verifier.to_bytes().into(), BigIntDe(cap.clone()))
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to set verifier")?;
-        self.verifiers = verifiers
-            .flush()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush verifiers")?;
+        let mut verifiers = self.load_verifiers(store)?;
+        verifiers.set(verifier, BigIntDe(cap.clone()))?;
+        self.verifiers = verifiers.flush()?;
         Ok(())
     }
 
@@ -82,18 +78,11 @@ impl State {
         store: &impl Blockstore,
         verifier: &Address,
     ) -> Result<(), ActorError> {
-        let mut verifiers =
-            make_map_with_root_and_bitwidth::<_, BigIntDe>(&self.verifiers, store, HAMT_BIT_WIDTH)
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load verifiers")?;
-
+        let mut verifiers = self.load_verifiers(store)?;
         verifiers
-            .delete(&verifier.to_bytes())
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to remove verifier")?
+            .delete(verifier)?
             .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "verifier not found")?;
-
-        self.verifiers = verifiers
-            .flush()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush verifiers")?;
+        self.verifiers = verifiers.flush()?;
         Ok(())
     }
 
@@ -102,21 +91,13 @@ impl State {
         store: &impl Blockstore,
         verifier: &Address,
     ) -> Result<Option<DataCap>, ActorError> {
-        let verifiers =
-            make_map_with_root_and_bitwidth::<_, BigIntDe>(&self.verifiers, store, HAMT_BIT_WIDTH)
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load verifiers")?;
-        let allowance = verifiers
-            .get(&verifier.to_bytes())
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get verifier")?;
-        Ok(allowance.map(|a| a.0.clone() as DataCap))
+        let verifiers = self.load_verifiers(store)?;
+        let allowance = verifiers.get(verifier)?;
+        Ok(allowance.map(|a| a.clone().0))
     }
 
-    pub fn load_verifiers<'a, BS: Blockstore>(
-        &self,
-        store: &'a BS,
-    ) -> Result<Map<'a, BS, BigIntDe>, ActorError> {
-        make_map_with_root_and_bitwidth::<_, BigIntDe>(&self.verifiers, store, HAMT_BIT_WIDTH)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load verifiers")
+    pub fn load_verifiers<BS: Blockstore>(&self, store: BS) -> Result<DataCapMap<BS>, ActorError> {
+        DataCapMap::load(store, &self.verifiers, DATACAP_MAP_CONFIG, "verifiers")
     }
 
     pub fn load_allocs<'a, BS: Blockstore>(

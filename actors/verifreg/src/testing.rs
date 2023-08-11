@@ -1,20 +1,17 @@
-use frc46_token::token::state::decode_actor_id;
 use std::collections::HashMap;
+
+use frc46_token::token::state::decode_actor_id;
+use fvm_ipld_blockstore::Blockstore;
+use fvm_shared::address::{Address, Protocol};
+use fvm_shared::clock::ChainEpoch;
+use fvm_shared::ActorID;
+use num_traits::Signed;
 
 use fil_actors_runtime::runtime::policy_constants::{
     MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION, MAXIMUM_VERIFIED_ALLOCATION_TERM,
     MINIMUM_VERIFIED_ALLOCATION_SIZE, MINIMUM_VERIFIED_ALLOCATION_TERM,
 };
-use fil_actors_runtime::shared::HAMT_BIT_WIDTH;
-use fil_actors_runtime::{
-    make_map_with_root_and_bitwidth, parse_uint_key, Map, MessageAccumulator,
-};
-use fvm_ipld_blockstore::Blockstore;
-use fvm_shared::address::{Address, Protocol};
-use fvm_shared::bigint::bigint_ser::BigIntDe;
-use fvm_shared::clock::ChainEpoch;
-use fvm_shared::ActorID;
-use num_traits::Signed;
+use fil_actors_runtime::{Map2, MessageAccumulator, DEFAULT_HAMT_CONFIG};
 
 use crate::{Allocation, AllocationID, Claim, ClaimID, DataCap, State};
 
@@ -27,28 +24,25 @@ pub struct StateSummary {
 /// Checks internal invariants of verified registry state.
 pub fn check_state_invariants<BS: Blockstore>(
     state: &State,
-    store: &BS,
+    store: BS,
     prior_epoch: ChainEpoch,
 ) -> (StateSummary, MessageAccumulator) {
     let acc = MessageAccumulator::default();
 
     // Load and check verifiers
     let mut all_verifiers = HashMap::new();
-    match Map::<_, BigIntDe>::load(&state.verifiers, store) {
+    match state.load_verifiers(&store) {
         Ok(verifiers) => {
-            let ret = verifiers.for_each(|key, cap| {
-                let verifier = Address::from_bytes(key)?;
-                let cap = &cap.0;
-
+            let ret = verifiers.for_each(|verifier, cap| {
                 acc.require(
                     verifier.protocol() == Protocol::ID,
                     format!("verifier {verifier} should have ID protocol"),
                 );
                 acc.require(
-                    !cap.is_negative(),
-                    format!("verifier {verifier} cap {cap} is negative"),
+                    !cap.0.is_negative(),
+                    format!("verifier {verifier} cap {} is negative", cap.0),
                 );
-                all_verifiers.insert(verifier, cap.clone());
+                all_verifiers.insert(verifier, cap.clone().0);
                 Ok(())
             });
 
@@ -59,14 +53,19 @@ pub fn check_state_invariants<BS: Blockstore>(
 
     // Load and check allocations
     let mut all_allocations = HashMap::new();
-    match make_map_with_root_and_bitwidth(&state.allocations, store, HAMT_BIT_WIDTH) {
+    match state.load_allocs(&store) {
         Ok(allocations) => {
             let ret = allocations.for_each(|client_key, inner_root| {
                 let client_id = decode_actor_id(client_key).unwrap();
-                match make_map_with_root_and_bitwidth(inner_root, store, HAMT_BIT_WIDTH) {
+                let inner = Map2::<&BS, AllocationID, Allocation>::load(
+                    &store,
+                    inner_root,
+                    DEFAULT_HAMT_CONFIG,
+                    "allocations inner",
+                );
+                match inner {
                     Ok(allocations) => {
-                        let ret = allocations.for_each(|alloc_id_key, allocation: &Allocation| {
-                            let allocation_id = parse_uint_key(alloc_id_key).unwrap();
+                        let ret = allocations.for_each(|allocation_id, allocation: &Allocation| {
                             check_allocation_state(
                                 allocation_id,
                                 allocation,
@@ -95,14 +94,19 @@ pub fn check_state_invariants<BS: Blockstore>(
     }
 
     let mut all_claims = HashMap::new();
-    match make_map_with_root_and_bitwidth(&state.claims, store, HAMT_BIT_WIDTH) {
+    match state.load_claims(&store) {
         Ok(claims) => {
             let ret = claims.for_each(|provider_key, inner_root| {
                 let provider_id = decode_actor_id(provider_key).unwrap();
-                match make_map_with_root_and_bitwidth(inner_root, store, HAMT_BIT_WIDTH) {
+                let inner = Map2::<&BS, ClaimID, Claim>::load(
+                    &store,
+                    inner_root,
+                    DEFAULT_HAMT_CONFIG,
+                    "allocations inner",
+                );
+                match inner {
                     Ok(claims) => {
-                        let ret = claims.for_each(|claim_id_key, claim: &Claim| {
-                            let claim_id = parse_uint_key(claim_id_key).unwrap();
+                        let ret = claims.for_each(|claim_id, claim: &Claim| {
                             check_claim_state(
                                 claim_id,
                                 claim,
