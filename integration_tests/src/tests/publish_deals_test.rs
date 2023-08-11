@@ -8,7 +8,9 @@ use fil_actor_verifreg::{AddVerifiedClientParams, Method as VerifregMethod};
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{test_utils::*, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
+use fil_actors_runtime::{
+    test_utils::*, STORAGE_MARKET_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ID, VERIFIED_REGISTRY_ACTOR_ADDR,
+};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
@@ -18,7 +20,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
-use vm_api::trace::ExpectInvocation;
+use vm_api::trace::{ExpectInvocation, InvocationResult};
 use vm_api::util::{apply_ok, serialize_ok};
 use vm_api::VM;
 
@@ -430,6 +432,7 @@ pub fn psd_all_deals_are_bad_test(v: &dyn VM) {
 
 pub fn psd_bad_sig_test(v: &dyn VM) {
     let (a, deal_start) = setup(v);
+    let worker_id = a.worker.id().unwrap();
     let DealOptions { price_per_epoch, provider_collateral, client_collateral, .. } =
         DealOptions::default();
     let deal_label = "deal0".to_string();
@@ -470,15 +473,15 @@ pub fn psd_bad_sig_test(v: &dyn VM) {
     assert_eq!(ExitCode::USR_ILLEGAL_ARGUMENT, ret.code);
 
     ExpectInvocation {
-        from: a.worker,
+        from: worker_id,
         to: STORAGE_MARKET_ACTOR_ADDR,
         method: MarketMethod::PublishStorageDeals as u64,
         subinvocs: Some(vec![
-            Expect::miner_is_controlling_address(STORAGE_MARKET_ACTOR_ADDR, a.maddr, a.worker),
-            Expect::reward_this_epoch(STORAGE_MARKET_ACTOR_ADDR),
-            Expect::power_current_total(STORAGE_MARKET_ACTOR_ADDR),
+            Expect::miner_is_controlling_address(STORAGE_MARKET_ACTOR_ID, a.maddr, a.worker),
+            Expect::reward_this_epoch(STORAGE_MARKET_ACTOR_ID),
+            Expect::power_current_total(STORAGE_MARKET_ACTOR_ID),
             ExpectInvocation {
-                from: STORAGE_MARKET_ACTOR_ADDR,
+                from: STORAGE_MARKET_ACTOR_ID,
                 to: a.client1,
                 method: AccountMethod::AuthenticateMessageExported as u64,
                 params: Some(
@@ -488,11 +491,17 @@ pub fn psd_bad_sig_test(v: &dyn VM) {
                     })
                     .unwrap(),
                 ),
-                code: ExitCode::USR_ILLEGAL_ARGUMENT,
+                result: InvocationResult::CallReturn {
+                    return_value: None,
+                    exit_code: ExitCode::USR_ILLEGAL_ARGUMENT,
+                },
                 ..Default::default()
             },
         ]),
-        code: ExitCode::USR_ILLEGAL_ARGUMENT,
+        result: InvocationResult::CallReturn {
+            return_value: None,
+            exit_code: ExitCode::USR_ILLEGAL_ARGUMENT,
+        },
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());

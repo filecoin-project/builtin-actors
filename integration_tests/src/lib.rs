@@ -13,8 +13,10 @@ pub mod util;
 
 // accounts for verifreg root signer and msig
 pub const VERIFREG_ROOT_KEY: &[u8] = &[200; fvm_shared::address::BLS_PUB_LEN];
-pub const TEST_VERIFREG_ROOT_SIGNER_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR);
-pub const TEST_VERIFREG_ROOT_ADDR: Address = Address::new_id(FIRST_NON_SINGLETON_ADDR + 1);
+pub const TEST_VERIFREG_ROOT_SIGNER_ID: ActorID = FIRST_NON_SINGLETON_ADDR;
+pub const TEST_VERIFREG_ROOT_SIGNER_ADDR: Address = Address::new_id(TEST_VERIFREG_ROOT_SIGNER_ID);
+pub const TEST_VERIFREG_ROOT_ID: ActorID = FIRST_NON_SINGLETON_ADDR + 1;
+pub const TEST_VERIFREG_ROOT_ADDR: Address = Address::new_id(TEST_VERIFREG_ROOT_ID);
 
 // account actor seeding funds created by new_with_singletons
 pub const FAUCET_ROOT_KEY: &[u8] = &[153; fvm_shared::address::BLS_PUB_LEN];

@@ -1,19 +1,31 @@
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
-use fvm_shared::MethodNum;
+use fvm_shared::error::{ErrorNumber, ExitCode};
+use fvm_shared::{ActorID, MethodNum};
+
+/// The result of an actor method invocation.
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub enum InvocationResult {
+    CallReturn { return_value: Option<IpldBlock>, exit_code: ExitCode },
+    CallError { reason: String, errno: ErrorNumber },
+}
+
+impl InvocationResult {
+    pub fn ok(return_value: Option<IpldBlock>) -> InvocationResult {
+        Self::CallReturn { return_value, exit_code: ExitCode::OK }
+    }
+}
 
 /// A trace of an actor method invocation.
 #[derive(Clone, Debug)]
 pub struct InvocationTrace {
-    pub from: Address,
+    pub from: ActorID,
     pub to: Address,
     pub value: TokenAmount,
     pub method: MethodNum,
     pub params: Option<IpldBlock>,
-    pub code: ExitCode,
-    pub ret: Option<IpldBlock>,
+    pub result: InvocationResult,
     pub subinvocations: Vec<InvocationTrace>,
 }
 
@@ -29,13 +41,12 @@ pub struct InvocationTrace {
 //   constructing it.
 #[derive(Clone, Debug)]
 pub struct ExpectInvocation {
-    pub from: Address,
+    pub from: ActorID,
     pub to: Address,
     pub method: MethodNum,
     pub value: Option<TokenAmount>,
     pub params: Option<Option<IpldBlock>>,
-    pub code: ExitCode,
-    pub ret: Option<Option<IpldBlock>>,
+    pub result: InvocationResult,
     pub subinvocs: Option<Vec<ExpectInvocation>>,
 }
 
@@ -45,9 +56,9 @@ impl ExpectInvocation {
         let id = format!("[{}→{}:{}]", invoc.from, invoc.to, invoc.method);
         self.quick_match(invoc, String::new());
         assert_eq!(
-            self.code, invoc.code,
-            "{} unexpected code expected: {}, was: {}",
-            id, self.code, invoc.code
+            &self.result, &invoc.result,
+            "{} unexpected result: expected: {:?}, was: {:?}",
+            id, self.result, invoc.result
         );
         if let Some(v) = &self.value {
             assert_eq!(
@@ -61,13 +72,6 @@ impl ExpectInvocation {
                 p, &invoc.params,
                 "{} unexpected params: expected: {:x?}, was: {:x?}",
                 id, p, invoc.params
-            );
-        }
-        if let Some(r) = &self.ret {
-            assert_eq!(
-                r, &invoc.ret,
-                "{} unexpected ret: expected: {:x?}, was: {:x?}",
-                id, r, invoc.ret
             );
         }
         if let Some(expect_subinvocs) = &self.subinvocs {
@@ -130,13 +134,13 @@ impl Default for ExpectInvocation {
     // Defaults include successful exit code.
     fn default() -> Self {
         Self {
-            from: Address::new_id(0),
+            from: 0,
             to: Address::new_id(0),
             method: 0,
             value: None,
             params: None,
-            code: ExitCode::OK,
-            ret: None,
+            // by-default we expect a successful invocation
+            result: InvocationResult::CallReturn { return_value: None, exit_code: ExitCode::OK },
             subinvocs: None,
         }
     }

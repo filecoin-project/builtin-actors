@@ -12,7 +12,7 @@ use fvm_shared::sector::StoragePower;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
 
 use fil_actor_cron::Method as CronMethod;
-use fil_actor_market::Method as MarketMethod;
+use fil_actor_market::{Method as MarketMethod, SectorDeals};
 use fil_actor_miner::{
     power_for_sector, DisputeWindowedPoStParams, ExpirationExtension, ExtendSectorExpirationParams,
     Method as MinerMethod, PowerPair, ProveCommitSectorParams, ProveReplicaUpdatesParams,
@@ -942,6 +942,7 @@ pub fn deal_included_in_multiple_sectors_failure_test(v: &dyn VM) {
 pub fn replica_update_verified_deal_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(100_000));
     let (worker, owner, client, verifier) = (addrs[0], addrs[0], addrs[1], addrs[2]);
+    let worker_id = worker.id().unwrap();
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let policy = Policy::default();
     let (maddr, robust) = create_miner(
@@ -951,6 +952,7 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
         seal_proof.registered_window_post_proof().unwrap(),
         &TokenAmount::from_whole(10_000),
     );
+    let miner_id = maddr.id().unwrap();
 
     // Get client verified
     let datacap = StoragePower::from(32_u128 << 30);
@@ -1010,28 +1012,36 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
     let old_power = power_for_sector(seal_proof.sector_size().unwrap(), &old_sector_info);
     // check for the expected subcalls
     ExpectInvocation {
-        from: worker,
+        from: worker_id,
         to: maddr,
         method: MinerMethod::ProveReplicaUpdates2 as u64,
         subinvocs: Some(vec![
             Expect::market_activate_deals(
-                maddr,
+                miner_id,
                 deal_ids.clone(),
                 old_sector_info.expiration,
                 old_sector_info.seal_proof,
                 true,
             ),
             ExpectInvocation {
-                from: maddr,
+                from: miner_id,
                 to: VERIFIED_REGISTRY_ACTOR_ADDR,
                 method: VerifregMethod::ClaimAllocations as u64,
                 ..Default::default()
             },
-            Expect::reward_this_epoch(maddr),
-            Expect::power_current_total(maddr),
-            Expect::power_update_pledge(maddr, None),
+            Expect::market_verify_deals(
+                miner_id,
+                vec![SectorDeals {
+                    sector_type: seal_proof,
+                    sector_expiry: old_sector_info.expiration,
+                    deal_ids: deal_ids.clone(),
+                }],
+            ),
+            Expect::reward_this_epoch(miner_id),
+            Expect::power_current_total(miner_id),
+            Expect::power_update_pledge(miner_id, None),
             Expect::power_update_claim(
-                maddr,
+                miner_id,
                 // sector now fully qap, 10x - x = 9x
                 PowerPair { raw: StoragePower::zero(), qa: 9 * old_power.qa },
             ),

@@ -11,8 +11,8 @@ use fil_actor_verifreg::{Method as VerifregMethod, VerifierParams};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
-    test_utils::*, CRON_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    test_utils::*, CRON_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ID,
+    STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
@@ -38,6 +38,8 @@ pub fn terminate_sectors_test(v: &dyn VM) {
     let (owner, verifier, unverified_client, verified_client) =
         (addrs[0], addrs[1], addrs[2], addrs[3]);
     let worker = owner;
+    let worker_id = worker.id().unwrap();
+    let verified_client_id = verified_client.id().unwrap();
 
     let m_balance = TokenAmount::from_whole(1_000);
     let sector_number = 100;
@@ -51,6 +53,7 @@ pub fn terminate_sectors_test(v: &dyn VM) {
         seal_proof.registered_window_post_proof().unwrap(),
         &m_balance,
     );
+    let miner_id = miner_id_addr.id().unwrap();
 
     // publish verified and unverified deals
     verifreg_add_verifier(v, &verifier, StoragePower::from_i64(32 << 40_i64).unwrap());
@@ -259,16 +262,16 @@ pub fn terminate_sectors_test(v: &dyn VM) {
         }),
     );
     ExpectInvocation {
-        from: worker,
+        from: worker_id,
         to: miner_id_addr,
         method: MinerMethod::TerminateSectors as u64,
         subinvocs: Some(vec![
-            Expect::reward_this_epoch(miner_id_addr),
-            Expect::power_current_total(miner_id_addr),
-            Expect::burn(miner_id_addr, None),
-            Expect::power_update_pledge(miner_id_addr, None),
-            Expect::market_sectors_terminate(miner_id_addr, epoch, deal_ids.clone()),
-            Expect::power_update_claim(miner_id_addr, sector_power.neg()),
+            Expect::reward_this_epoch(miner_id),
+            Expect::power_current_total(miner_id),
+            Expect::burn(miner_id, None),
+            Expect::power_update_pledge(miner_id, None),
+            Expect::market_sectors_terminate(miner_id, epoch, deal_ids.clone()),
+            Expect::power_update_claim(miner_id, sector_power.neg()),
         ]),
         ..Default::default()
     }
@@ -318,11 +321,11 @@ pub fn terminate_sectors_test(v: &dyn VM) {
         }),
     );
     ExpectInvocation {
-        from: verified_client,
+        from: verified_client_id,
         to: STORAGE_MARKET_ACTOR_ADDR,
         method: MarketMethod::WithdrawBalance as u64,
         subinvocs: Some(vec![Expect::send(
-            STORAGE_MARKET_ACTOR_ADDR,
+            STORAGE_MARKET_ACTOR_ID,
             verified_client,
             Some(withdrawal),
         )]),
