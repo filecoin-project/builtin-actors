@@ -39,10 +39,10 @@ pub fn check_state_invariants<BS: Blockstore>(
                     format!("verifier {verifier} should have ID protocol"),
                 );
                 acc.require(
-                    !cap.is_negative(),
-                    format!("verifier {verifier} cap {cap} is negative"),
+                    !cap.0.is_negative(),
+                    format!("verifier {verifier} cap {} is negative", cap.0),
                 );
-                all_verifiers.insert(verifier, cap.clone());
+                all_verifiers.insert(verifier, cap.clone().0);
                 Ok(())
             });
 

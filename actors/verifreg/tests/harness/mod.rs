@@ -173,7 +173,7 @@ impl Harness {
 
     pub fn get_verifier_allowance(&self, rt: &MockRuntime, verifier: &Address) -> DataCap {
         let verifiers = rt.get_state::<State>().load_verifiers(&rt.store).unwrap();
-        verifiers.get(verifier).unwrap().unwrap().clone()
+        verifiers.get(verifier).unwrap().unwrap().clone().0
     }
 
     pub fn assert_verifier_removed(&self, rt: &MockRuntime, verifier: &Address) {

@@ -5,6 +5,7 @@ use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_shared::address::Address;
+use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
@@ -18,7 +19,7 @@ use fil_actors_runtime::{
 use crate::{AddrPairKey, AllocationID, ClaimID};
 use crate::{DataCap, RemoveDataCapProposalID};
 
-pub type DataCapMap<BS> = Map2<BS, Address, DataCap>;
+pub type DataCapMap<BS> = Map2<BS, Address, BigIntDe>;
 pub const DATACAP_MAP_CONFIG: Config = DEFAULT_HAMT_CONFIG;
 
 pub type RemoveDataCapProposalMap<BS> = Map2<BS, AddrPairKey, RemoveDataCapProposalID>;
@@ -67,7 +68,7 @@ impl State {
         cap: &DataCap,
     ) -> Result<(), ActorError> {
         let mut verifiers = self.load_verifiers(store)?;
-        verifiers.set(verifier, cap.clone())?;
+        verifiers.set(verifier, BigIntDe(cap.clone()))?;
         self.verifiers = verifiers.flush()?;
         Ok(())
     }
@@ -92,7 +93,7 @@ impl State {
     ) -> Result<Option<DataCap>, ActorError> {
         let verifiers = self.load_verifiers(store)?;
         let allowance = verifiers.get(verifier)?;
-        Ok(allowance.map(|a| a.clone() as DataCap))
+        Ok(allowance.map(|a| a.clone().0))
     }
 
     pub fn load_verifiers<BS: Blockstore>(&self, store: BS) -> Result<DataCapMap<BS>, ActorError> {
