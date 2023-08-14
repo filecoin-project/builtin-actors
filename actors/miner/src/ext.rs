@@ -1,5 +1,4 @@
 use cid::Cid;
-use fil_actors_runtime::BatchReturn;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::{bigint_ser, BigInt};
@@ -12,12 +11,13 @@ use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::ActorID;
 
+use fil_actors_runtime::BatchReturn;
+
 pub mod account {
     pub const PUBKEY_ADDRESS_METHOD: u64 = 2;
 }
 
 pub mod market {
-
     use super::*;
 
     pub const VERIFY_DEALS_FOR_ACTIVATION_METHOD: u64 = 5;
@@ -32,9 +32,9 @@ pub mod market {
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple)]
-    #[serde(transparent)]
     pub struct BatchActivateDealsParams {
         pub sectors: Vec<SectorDeals>,
+        pub compute_cid: bool,
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
@@ -57,24 +57,17 @@ pub mod market {
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
-    pub struct DealActivation {
+    pub struct SectorDealActivation {
         #[serde(with = "bigint_ser")]
         pub nonverified_deal_space: BigInt,
         pub verified_infos: Vec<VerifiedDealInfo>,
+        pub unsealed_cid: Option<Cid>,
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
     pub struct BatchActivateDealsResult {
         pub activation_results: BatchReturn,
-        pub activations: Vec<DealActivation>,
-    }
-
-    #[derive(Serialize_tuple, Deserialize_tuple, Clone, Default)]
-    pub struct DealSpaces {
-        #[serde(with = "bigint_ser")]
-        pub deal_space: BigInt,
-        #[serde(with = "bigint_ser")]
-        pub verified_deal_space: BigInt,
+        pub activations: Vec<SectorDealActivation>,
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple)]
@@ -101,14 +94,8 @@ pub mod market {
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple, Default, Clone)]
-    pub struct SectorDealData {
-        /// Option::None signifies commitment to empty sector, meaning no deals.
-        pub commd: Option<Cid>,
-    }
-
-    #[derive(Serialize_tuple, Deserialize_tuple, Default, Clone)]
     pub struct VerifyDealsForActivationReturn {
-        pub sectors: Vec<SectorDealData>,
+        pub unsealed_cids: Vec<Option<Cid>>,
     }
 }
 

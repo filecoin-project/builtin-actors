@@ -43,9 +43,11 @@ impl Expect {
         deals: Vec<DealID>,
         sector_expiry: ChainEpoch,
         sector_type: RegisteredSealProof,
+        compute_cid: bool,
     ) -> ExpectInvocation {
         let params = IpldBlock::serialize_cbor(&BatchActivateDealsParams {
             sectors: vec![SectorDeals { deal_ids: deals, sector_expiry, sector_type }],
+            compute_cid,
         })
         .unwrap();
         ExpectInvocation {

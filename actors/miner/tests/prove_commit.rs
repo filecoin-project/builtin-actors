@@ -1,10 +1,5 @@
-use fil_actor_market::{DealSpaces, SectorDealData};
-use fil_actor_miner::{
-    initial_pledge_for_power, max_prove_commit_duration, pre_commit_deposit_for_power,
-    qa_power_for_weight, qa_power_max, PowerPair, PreCommitSectorBatchParams, VestSpec,
-};
-use fil_actors_runtime::test_utils::make_piece_cid;
-use fil_actors_runtime::{runtime::Runtime, test_utils::expect_abort, DealWeight};
+use std::collections::HashMap;
+
 use fvm_shared::{
     bigint::{BigInt, Zero},
     clock::ChainEpoch,
@@ -13,11 +8,16 @@ use fvm_shared::{
     sector::{StoragePower, MAX_SECTOR_NUMBER},
     smooth::FilterEstimate,
 };
-use std::collections::HashMap;
+
+use fil_actor_miner::{
+    initial_pledge_for_power, max_prove_commit_duration, pre_commit_deposit_for_power,
+    qa_power_for_weight, qa_power_max, PowerPair, PreCommitSectorBatchParams, VestSpec,
+};
+use fil_actors_runtime::test_utils::make_piece_cid;
+use fil_actors_runtime::{runtime::Runtime, test_utils::expect_abort, DealWeight};
+use util::*;
 
 mod util;
-
-use util::*;
 
 // an expiration ~10 days greater than effective min expiration taking into account 30 days max
 // between pre and prove commit
@@ -46,11 +46,9 @@ fn prove_single_sector() {
     let expiration =
         dl_info.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period; // something on deadline boundary but > 180 days
                                                                                            // Fill the sector with verified deals
+    let deal_space = BigInt::zero();
     let verified_deal = test_verified_deal(h.sector_size as u64);
-    let deal_spaces = DealSpaces {
-        deal_space: BigInt::zero(),
-        verified_deal_space: BigInt::from(verified_deal.size.0),
-    };
+    let verified_deal_space = BigInt::from(verified_deal.size.0);
 
     // Pre-commit with a deal in order to exercise non-zero deal weights.
     let precommit_params =
@@ -101,8 +99,8 @@ fn prove_single_sector() {
 
     // The sector is exactly full with verified deals, so expect fully verified power.
     let duration = precommit.info.expiration - prove_commit_epoch;
-    let deal_weight = deal_spaces.deal_space * duration;
-    let verified_deal_weight = deal_spaces.verified_deal_space * duration;
+    let deal_weight = deal_space * duration;
+    let verified_deal_weight = verified_deal_space * duration;
     let expected_power = StoragePower::from(h.sector_size as u64)
         * (VERIFIED_DEAL_WEIGHT_MULTIPLIER / QUALITY_BASE_MULTIPLIER);
     let qa_power =
@@ -187,11 +185,7 @@ fn prove_sectors_from_batch_pre_commit() {
     let verified_deal_weight = deal_space * DealWeight::from(deal_lifespan);
 
     let conf = PreCommitBatchConfig {
-        sector_deal_data: vec![
-            SectorDealData { commd: None },
-            SectorDealData { commd: Some(make_piece_cid(b"1")) },
-            SectorDealData { commd: Some(make_piece_cid(b"2|3")) },
-        ],
+        sector_unsealed_cid: vec![None, Some(make_piece_cid(b"1")), Some(make_piece_cid(b"2|3"))],
         first_for_miner: true,
     };
 

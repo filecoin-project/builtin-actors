@@ -1162,58 +1162,42 @@ impl Actor {
                 sector_type: usi.sector_info.seal_proof,
             })
             .collect();
+        // Request CommD computation while activating deals.
         let (batch_return, deals_spaces) =
-            batch_activate_deals_and_claim_allocations(rt, &activation_infos)?;
+            batch_activate_deals_and_claim_allocations(rt, &activation_infos, true)?;
 
         // associate the successfully activated sectors with the ReplicaUpdateInner and SectorOnChainInfo
-        let validated_updates: Vec<(&UpdateAndSectorInfo, ext::market::DealSpaces)> =
+        let validated_updates: Vec<(&UpdateAndSectorInfo, DealActivationInfo)> =
             batch_return.successes(&update_sector_infos).into_iter().zip(deals_spaces).collect();
 
         if validated_updates.is_empty() {
             return Err(actor_error!(illegal_argument, "no valid updates"));
         }
 
-        let sectors_deals: Vec<ext::market::SectorDeals> = validated_updates
-            .iter()
-            .map(|(usi, _)| ext::market::SectorDeals {
-                deal_ids: usi.update.deals.clone(),
-                sector_expiry: usi.sector_info.expiration,
-                sector_type: usi.sector_info.seal_proof,
-            })
-            .collect();
-
         // Errors past this point cause the prove_replica_updates call to fail (no more skipping sectors)
-        let deal_data = request_deal_data(rt, &sectors_deals)?;
-        if deal_data.sectors.len() != validated_updates.len() {
-            return Err(actor_error!(
-                illegal_state,
-                "deal weight request returned {} records, expected {}",
-                deal_data.sectors.len(),
-                validated_updates.len()
-            ));
-        }
-
         struct UpdateWithDetails<'a> {
             update: &'a ReplicaUpdateInner,
             sector_info: &'a SectorOnChainInfo,
-            deal_spaces: &'a ext::market::DealSpaces,
+            deal_info: &'a DealActivationInfo,
             full_unsealed_cid: Cid,
         }
 
         // Group declarations by deadline
         let mut decls_by_deadline = BTreeMap::<u64, Vec<UpdateWithDetails>>::new();
         let mut deadlines_to_load = Vec::<u64>::new();
-        for ((usi, deal_spaces), deal_data) in
-            validated_updates.iter().zip(deal_data.sectors.iter())
-        {
-            let computed_commd =
-                CompactCommD::new(deal_data.commd).get_cid(usi.sector_info.seal_proof)?;
+        for (usi, deal_activation) in &validated_updates {
+            // Computation of CommD was requested, so None can be interpreted as zero data.
+            let computed_commd = CompactCommD::new(deal_activation.unsealed_cid)
+                .get_cid(usi.sector_info.seal_proof)?;
             if let Some(ref declared_commd) = usi.update.new_unsealed_cid {
                 if !declared_commd.eq(&computed_commd) {
-                    info!(
-                        "unsealed CID does not match with deals: expected {}, got {}, sector: {}",
-                        computed_commd, declared_commd, usi.update.sector_number
-                    );
+                    return Err(actor_error!(
+                        illegal_argument,
+                        "unsealed CID does not match deals for sector {}, expected {} was {}",
+                        usi.update.sector_number,
+                        computed_commd,
+                        declared_commd
+                    ));
                 }
             }
             let dl = usi.update.deadline;
@@ -1224,7 +1208,7 @@ impl Actor {
             decls_by_deadline.entry(dl).or_default().push(UpdateWithDetails {
                 update: usi.update,
                 sector_info: &usi.sector_info,
-                deal_spaces,
+                deal_info: deal_activation,
                 full_unsealed_cid: computed_commd,
             });
         }
@@ -1304,9 +1288,9 @@ impl Actor {
                     let duration = new_sector_info.expiration - new_sector_info.power_base_epoch;
 
                     new_sector_info.deal_weight =
-                        with_details.deal_spaces.deal_space.clone() * duration;
+                        with_details.deal_info.unverified_space.clone() * duration;
                     new_sector_info.verified_deal_weight =
-                        with_details.deal_spaces.verified_deal_space.clone() * duration;
+                        with_details.deal_info.verified_space.clone() * duration;
 
                     // compute initial pledge
                     let qa_pow = qa_power_for_weight(
@@ -1870,12 +1854,12 @@ impl Actor {
         // gather information from other actors
         let reward_stats = request_current_epoch_block_reward(rt)?;
         let power_total = request_current_total_power(rt)?;
-        let deal_data_vec = request_deal_data(rt, &sectors_deals)?;
-        if deal_data_vec.sectors.len() != sectors.len() {
+        let verify_return = verify_deals(rt, &sectors_deals)?;
+        if verify_return.unsealed_cids.len() != sectors.len() {
             return Err(actor_error!(
                 illegal_state,
                 "deal weight request returned {} records, expected {}",
-                deal_data_vec.sectors.len(),
+                verify_return.unsealed_cids.len(),
                 sectors.len()
             ));
         }
@@ -1946,19 +1930,19 @@ impl Actor {
                     return Err(actor_error!(illegal_argument, "too many deals for sector {} > {}", precommit.deal_ids.len(), deal_count_max));
                 }
 
-                let deal_data = &deal_data_vec.sectors[i];
+                let computed_cid = &verify_return.unsealed_cids[i];
 
                 // 1. verify that precommit.unsealed_cid is correct
                 // 2. create a new on_chain_precommit
 
                 let commd = match precommit.unsealed_cid {
                     // if the CommD is unknown, use CommD computed by the market
-                    None => CompactCommD::new(deal_data.commd),
+                    None => CompactCommD::new(*computed_cid),
                     Some(x) => x,
                 };
-                if commd.0 != deal_data.commd {
+                if commd.0 != *computed_cid {
                     return Err(actor_error!(illegal_argument, "computed {:?} and passed {:?} CommDs not equal",
-                            deal_data.commd, commd));
+                            computed_cid, commd));
                 }
 
 
@@ -4408,7 +4392,7 @@ fn get_verify_info(
     })
 }
 
-fn request_deal_data(
+fn verify_deals(
     rt: &impl Runtime,
     sectors: &[ext::market::SectorDeals],
 ) -> Result<ext::market::VerifyDealsForActivationReturn, ActorError> {
@@ -4419,7 +4403,7 @@ fn request_deal_data(
     }
     if deal_count == 0 {
         return Ok(ext::market::VerifyDealsForActivationReturn {
-            sectors: vec![Default::default(); sectors.len()],
+            unsealed_cids: vec![None; sectors.len()],
         });
     }
 
@@ -4812,7 +4796,7 @@ fn confirm_sector_proofs_valid_internal(
         .collect();
 
     let (batch_return, activated_sectors) =
-        batch_activate_deals_and_claim_allocations(rt, &deals_activation_infos)?;
+        batch_activate_deals_and_claim_allocations(rt, &deals_activation_infos, false)?;
 
     let (total_pledge, newly_vested) = rt.transaction(|state: &mut State, rt| {
         let policy = rt.policy();
@@ -4838,8 +4822,8 @@ fn confirm_sector_proofs_valid_internal(
                 continue;
             }
 
-            let deal_weight = deal_spaces.deal_space * duration;
-            let verified_deal_weight = deal_spaces.verified_deal_space * duration;
+            let deal_weight = deal_spaces.unverified_space * duration;
+            let verified_deal_weight = deal_spaces.verified_space * duration;
 
             let power = qa_power_for_weight(
                 info.sector_size,
@@ -4956,20 +4940,29 @@ fn confirm_sector_proofs_valid_internal(
     Ok(())
 }
 
+struct DealActivationInfo {
+    pub unverified_space: BigInt,
+    pub verified_space: BigInt,
+    // None indicates either no deals or computation was not requested.
+    pub unsealed_cid: Option<Cid>,
+}
+
 /// Activates the deals then claims allocations for any verified deals
 /// Successfully activated sectors have their DealSpaces returned
 /// Failure to claim datacap for any verified deal results in the whole batch failing
 fn batch_activate_deals_and_claim_allocations(
     rt: &impl Runtime,
     activation_infos: &[DealsActivationInfo],
-) -> Result<(BatchReturn, Vec<ext::market::DealSpaces>), ActorError> {
+    compute_unsealed_cid: bool,
+) -> Result<(BatchReturn, Vec<DealActivationInfo>), ActorError> {
     let batch_activation_res = match activation_infos.iter().all(|p| p.deal_ids.is_empty()) {
         true => ext::market::BatchActivateDealsResult {
             // if all sectors are empty of deals, skip calling the market actor
             activations: vec![
-                ext::market::DealActivation {
+                ext::market::SectorDealActivation {
                     nonverified_deal_space: BigInt::default(),
                     verified_infos: Vec::default(),
+                    unsealed_cid: None,
                 };
                 activation_infos.len()
             ],
@@ -4989,6 +4982,7 @@ fn batch_activate_deals_and_claim_allocations(
                 ext::market::BATCH_ACTIVATE_DEALS_METHOD,
                 IpldBlock::serialize_cbor(&ext::market::BatchActivateDealsParams {
                     sectors: sector_activation_params,
+                    compute_cid: compute_unsealed_cid,
                 })?,
                 TokenAmount::zero(),
             ))?;
@@ -5065,9 +5059,10 @@ fn batch_activate_deals_and_claim_allocations(
         .activations
         .iter()
         .zip(claim_res.sector_claims)
-        .map(|(sector_deals, sector_claim)| ext::market::DealSpaces {
-            verified_deal_space: sector_claim.claimed_space,
-            deal_space: sector_deals.nonverified_deal_space.clone(),
+        .map(|(sector_deals, sector_claim)| DealActivationInfo {
+            unverified_space: sector_deals.nonverified_deal_space.clone(),
+            verified_space: sector_claim.claimed_space,
+            unsealed_cid: sector_deals.unsealed_cid,
         })
         .collect();
 

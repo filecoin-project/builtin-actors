@@ -320,7 +320,7 @@ pub fn activate_deals(
     deal_ids: &[DealID],
 ) -> BatchActivateDealsResult {
     rt.set_epoch(current_epoch);
-
+    let compute_cid = false;
     let ret = batch_activate_deals_raw(
         rt,
         provider,
@@ -329,6 +329,7 @@ pub fn activate_deals(
             sector_expiry,
             sector_type: RegisteredSealProof::StackedDRG8MiBV1,
         }],
+        compute_cid,
     )
     .unwrap();
 
@@ -352,6 +353,7 @@ pub fn batch_activate_deals(
     rt: &MockRuntime,
     provider: Address,
     sectors: &[(ChainEpoch, Vec<DealID>)],
+    compute_cid: bool,
 ) -> BatchActivateDealsResult {
     let sectors_deals: Vec<SectorDeals> = sectors
         .iter()
@@ -361,7 +363,7 @@ pub fn batch_activate_deals(
             sector_type: RegisteredSealProof::StackedDRG8MiBV1,
         })
         .collect();
-    let ret = batch_activate_deals_raw(rt, provider, sectors_deals).unwrap();
+    let ret = batch_activate_deals_raw(rt, provider, sectors_deals, compute_cid).unwrap();
 
     let ret: BatchActivateDealsResult =
         ret.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
@@ -376,11 +378,12 @@ pub fn batch_activate_deals_raw(
     rt: &MockRuntime,
     provider: Address,
     sectors_deals: Vec<SectorDeals>,
+    compute_cid: bool,
 ) -> Result<Option<IpldBlock>, ActorError> {
     rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
     rt.expect_validate_caller_type(vec![Type::Miner]);
 
-    let params = BatchActivateDealsParams { sectors: sectors_deals };
+    let params = BatchActivateDealsParams { sectors: sectors_deals, compute_cid };
 
     let ret = rt.call::<MarketActor>(
         Method::BatchActivateDeals as u64,

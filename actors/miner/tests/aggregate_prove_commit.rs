@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use fil_actor_market::DealSpaces;
 use fil_actor_miner::{
     initial_pledge_for_power, qa_power_for_weight, PowerPair, QUALITY_BASE_MULTIPLIER,
     VERIFIED_DEAL_WEIGHT_MULTIPLIER,
@@ -34,15 +33,12 @@ fn valid_precommits_then_aggregate_provecommit() {
 
     let prove_commit_epoch = precommit_epoch + rt.policy.pre_commit_challenge_delay + 1;
     // something on deadline boundary but > 180 days
+    let deal_space = 0;
     let verified_deal_space = actor.sector_size as u64;
     let expiration =
         dl_info.period_end() + rt.policy.wpost_proving_period * DEFAULT_SECTOR_EXPIRATION;
     // fill the sector with verified seals
     let duration = expiration - prove_commit_epoch;
-    let deal_spaces = DealSpaces {
-        deal_space: BigInt::zero(),
-        verified_deal_space: BigInt::from(verified_deal_space),
-    };
 
     let mut precommits = vec![];
     let mut sector_nos_bf = BitField::new();
@@ -90,8 +86,8 @@ fn valid_precommits_then_aggregate_provecommit() {
     // The sector is exactly full with verified deals, so expect fully verified power.
     let expected_power = BigInt::from(actor.sector_size as i64)
         * (VERIFIED_DEAL_WEIGHT_MULTIPLIER.clone() / QUALITY_BASE_MULTIPLIER.clone());
-    let deal_weight = deal_spaces.deal_space * duration;
-    let verified_deal_weight = deal_spaces.verified_deal_space * duration;
+    let deal_weight = BigInt::from(deal_space) * duration;
+    let verified_deal_weight = BigInt::from(verified_deal_space) * duration;
     let qa_power = qa_power_for_weight(
         actor.sector_size,
         expiration - *rt.epoch.borrow(),

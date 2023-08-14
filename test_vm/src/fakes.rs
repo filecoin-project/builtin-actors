@@ -7,6 +7,7 @@ use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::crypto::signature::{Signature, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE};
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::sector::RegisteredSealProof;
+use integer_encoding::VarInt;
 
 use fil_actors_runtime::runtime::Primitives;
 use fil_actors_runtime::test_utils::{make_piece_cid, recover_secp_public_key};
@@ -40,10 +41,18 @@ impl Primitives for FakePrimitives {
 
     fn compute_unsealed_sector_cid(
         &self,
-        _proof_type: RegisteredSealProof,
-        _pieces: &[PieceInfo],
+        proof_type: RegisteredSealProof,
+        pieces: &[PieceInfo],
     ) -> Result<Cid, anyhow::Error> {
-        Ok(make_piece_cid(b"unsealed from itest vm"))
+        // Construct a buffer that depends on all the input data.
+        let mut buf: Vec<u8> = Vec::new();
+        let ptv: i64 = proof_type.into();
+        buf.extend(ptv.encode_var_vec());
+        for p in pieces {
+            buf.extend(&p.cid.to_bytes());
+            buf.extend(p.size.0.encode_var_vec())
+        }
+        Ok(make_piece_cid(&buf))
     }
 
     fn verify_signature(

@@ -1,4 +1,12 @@
-use fil_actor_market::{DealMetaArray, SectorDeals, State as MarketState};
+use fvm_ipld_bitfield::BitField;
+use fvm_shared::address::Address;
+use fvm_shared::bigint::Zero;
+use fvm_shared::clock::ChainEpoch;
+use fvm_shared::econ::TokenAmount;
+use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
+use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
+
+use fil_actor_market::{DealMetaArray, State as MarketState};
 use fil_actor_miner::{
     max_prove_commit_duration, power_for_sector, ExpirationExtension, ExpirationExtension2,
     ExtendSectorExpiration2Params, ExtendSectorExpirationParams, Method as MinerMethod, PowerPair,
@@ -6,17 +14,10 @@ use fil_actor_miner::{
 };
 use fil_actor_verifreg::Method as VerifregMethod;
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
+use fil_actors_runtime::test_utils::make_sealed_cid;
 use fil_actors_runtime::{
     DealWeight, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use fvm_ipld_bitfield::BitField;
-use fvm_shared::address::Address;
-use fvm_shared::bigint::Zero;
-use fvm_shared::clock::ChainEpoch;
-use fvm_shared::econ::TokenAmount;
-use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 use vm_api::trace::ExpectInvocation;
 use vm_api::util::{apply_ok, get_state, mutate_state, DynBlockstore};
 use vm_api::VM;
@@ -25,9 +26,9 @@ use crate::expects::Expect;
 use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_by_deadline_to_index, advance_to_proving_deadline, bf_all, create_accounts,
-    create_miner, cron_tick, expect_invariants, invariant_failure_patterns, market_add_balance,
-    market_publish_deal, miner_precommit_sector, miner_prove_sector, sector_deadline,
-    submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
+    create_miner, cron_tick, expect_invariants, get_deal, invariant_failure_patterns,
+    market_add_balance, market_publish_deal, miner_precommit_sector, miner_prove_sector,
+    sector_deadline, submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -592,17 +593,26 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     .ids;
 
     // replica update
-    let new_cid = make_sealed_cid(b"replica1");
+    let new_sealed_cid = make_sealed_cid(b"replica1");
+    let deal = get_deal(v, deal_ids[0]);
+    let new_unsealed_cid = v
+        .primitives()
+        .compute_unsealed_sector_cid(
+            seal_proof,
+            &[PieceInfo { size: deal.piece_size, cid: deal.piece_cid }],
+        )
+        .unwrap();
+
     let (d_idx, p_idx) = sector_deadline(v, &miner_id, sector_number);
     let replica_update = ReplicaUpdate2 {
         sector_number,
         deadline: d_idx,
         partition: p_idx,
-        new_sealed_cid: new_cid,
+        new_sealed_cid,
         deals: deal_ids.clone(),
         update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
         replica_proof: vec![],
-        new_unsealed_cid: make_piece_cid(b"unsealed from itest vm"),
+        new_unsealed_cid,
     };
     let updated_sectors: BitField = apply_ok(
         v,
@@ -628,6 +638,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
                 deal_ids.clone(),
                 initial_sector_info.expiration,
                 initial_sector_info.seal_proof,
+                true,
             ),
             ExpectInvocation {
                 from: miner_id,
@@ -635,14 +646,6 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
                 method: VerifregMethod::ClaimAllocations as u64,
                 ..Default::default()
             },
-            Expect::market_verify_deals(
-                miner_id,
-                vec![SectorDeals {
-                    sector_type: seal_proof,
-                    sector_expiry: initial_sector_info.expiration,
-                    deal_ids: deal_ids.clone(),
-                }],
-            ),
             Expect::reward_this_epoch(miner_id),
             Expect::power_current_total(miner_id),
             Expect::power_update_pledge(miner_id, None),
