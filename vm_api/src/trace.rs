@@ -11,12 +11,6 @@ pub enum InvocationResult {
     CallError { reason: String, errno: ErrorNumber },
 }
 
-impl InvocationResult {
-    pub fn ok(return_value: Option<IpldBlock>) -> InvocationResult {
-        Self::CallReturn { return_value, exit_code: ExitCode::OK }
-    }
-}
-
 /// A trace of an actor method invocation.
 #[derive(Clone, Debug)]
 pub struct InvocationTrace {
@@ -46,8 +40,27 @@ pub struct ExpectInvocation {
     pub method: MethodNum,
     pub value: Option<TokenAmount>,
     pub params: Option<Option<IpldBlock>>,
-    pub result: InvocationResult,
+    pub result: ExpectResult,
     pub subinvocs: Option<Vec<ExpectInvocation>>,
+}
+
+#[derive(Clone, Debug)]
+pub enum ExpectResult {
+    /// Separate from CallReturn so that matching on return_value is optional
+    ExpectReturn {
+        return_value: Option<Option<IpldBlock>>,
+        exit_code: ExitCode,
+    },
+    ExpectError {
+        reason: String,
+        errno: ErrorNumber,
+    },
+}
+
+impl ExpectResult {
+    pub fn ok(return_value: Option<Option<IpldBlock>>) -> ExpectResult {
+        Self::ExpectReturn { return_value, exit_code: ExitCode::OK }
+    }
 }
 
 impl ExpectInvocation {
@@ -55,11 +68,53 @@ impl ExpectInvocation {
     pub fn matches(&self, invoc: &InvocationTrace) {
         let id = format!("[{}→{}:{}]", invoc.from, invoc.to, invoc.method);
         self.quick_match(invoc, String::new());
-        assert_eq!(
-            &self.result, &invoc.result,
-            "{} unexpected result: expected: {:?}, was: {:?}",
-            id, self.result, invoc.result
-        );
+
+        match &self.result {
+            ExpectResult::ExpectReturn {
+                return_value: expected_return,
+                exit_code: expected_code,
+            } => {
+                if let InvocationResult::CallReturn { return_value, exit_code } = &invoc.result {
+                    if let Some(expected_return) = expected_return {
+                        assert_eq!(
+                            return_value, expected_return,
+                            "{} unexpected return value: got: {:?}, expected: {:?}",
+                            id, return_value, expected_return
+                        );
+                    }
+                    assert_eq!(
+                        exit_code, expected_code,
+                        "{} unexpected exit code: got: {:?}, expected: {:?}",
+                        id, exit_code, expected_code
+                    );
+                } else {
+                    panic!(
+                        "{} expected CallReturn but got CallError instead: {:?}",
+                        id, invoc.result
+                    );
+                }
+            }
+            ExpectResult::ExpectError { reason: expected_reason, errno: expected_errno } => {
+                if let InvocationResult::CallError { reason, errno } = &invoc.result {
+                    assert_eq!(
+                        reason, expected_reason,
+                        "{} unexpected error reason: got: {:?}, expected: {:?}",
+                        id, reason, expected_reason
+                    );
+                    assert_eq!(
+                        errno, expected_errno,
+                        "{} unexpected error code: got: {:?}, expected: {:?}",
+                        id, errno, expected_errno
+                    );
+                } else {
+                    panic!(
+                        "{} expected CallError but got CallReturn instead: {:?}",
+                        id, invoc.result
+                    );
+                }
+            }
+        };
+
         if let Some(v) = &self.value {
             assert_eq!(
                 v, &invoc.value,
@@ -140,7 +195,7 @@ impl Default for ExpectInvocation {
             value: None,
             params: None,
             // by-default we expect a successful invocation
-            result: InvocationResult::CallReturn { return_value: None, exit_code: ExitCode::OK },
+            result: ExpectResult::ExpectReturn { return_value: None, exit_code: ExitCode::OK },
             subinvocs: None,
         }
     }
