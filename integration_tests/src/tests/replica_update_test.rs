@@ -12,7 +12,7 @@ use fvm_shared::sector::StoragePower;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
 
 use fil_actor_cron::Method as CronMethod;
-use fil_actor_market::{Method as MarketMethod, SectorDeals};
+use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
     power_for_sector, DisputeWindowedPoStParams, ExpirationExtension, ExtendSectorExpirationParams,
     Method as MinerMethod, PowerPair, ProveCommitSectorParams, ProveReplicaUpdatesParams,
@@ -1029,14 +1029,6 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
                 method: VerifregMethod::ClaimAllocations as u64,
                 ..Default::default()
             },
-            Expect::market_verify_deals(
-                miner_id,
-                vec![SectorDeals {
-                    sector_type: seal_proof,
-                    sector_expiry: old_sector_info.expiration,
-                    deal_ids: deal_ids.clone(),
-                }],
-            ),
             Expect::reward_this_epoch(miner_id),
             Expect::power_current_total(miner_id),
             Expect::power_update_pledge(miner_id, None),
