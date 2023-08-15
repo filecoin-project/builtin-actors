@@ -2015,7 +2015,6 @@ impl Actor {
 
         let sector_number = params.sector_number;
 
-        /* <- precommit */
         let st: State = rt.state()?;
         let precommit = st
             .get_precommitted_sector(rt.store(), sector_number)
@@ -2027,7 +2026,6 @@ impl Actor {
             })?
             .ok_or_else(|| actor_error!(not_found, "no pre-commited sector {}", sector_number))?;
 
-        /* parameter validation checks */
         let max_proof_size = precommit.info.seal_proof.proof_size().map_err(|e| {
             actor_error!(
                 illegal_state,
@@ -2064,7 +2062,6 @@ impl Actor {
             ));
         }
 
-        /* svi <- precommit + syscalls */
         let svi = get_verify_info(
             rt,
             SealVerifyParams {
@@ -2080,7 +2077,6 @@ impl Actor {
             precommit.info.unsealed_cid,
         )?;
 
-        /* stash in power actor */
         extract_send_result(rt.send_simple(
             &STORAGE_POWER_ACTOR_ADDR,
             ext::power::SUBMIT_POREP_FOR_BULK_VERIFY_METHOD,
@@ -2120,8 +2116,6 @@ impl Actor {
 
         let data_activations: Vec<DealsActivationInfo> =
             precommited_sectors.iter().map(|x| x.clone().into()).collect();
-        let rew = request_current_epoch_block_reward(rt)?;
-        let pwr = request_current_total_power(rt)?;
         let info = get_miner_info(rt.store(), &st)?;
 
         let (batch_return, data_activations) = activate_deals(rt, &data_activations)?;
@@ -2130,9 +2124,9 @@ impl Actor {
             rt,
             successful_activations,
             data_activations,
-            &rew.this_epoch_baseline_power,
-            &rew.this_epoch_reward_smoothed,
-            &pwr.quality_adj_power_smoothed,
+            &params.reward_baseline_power,
+            &params.reward_smoothed,
+            &params.quality_adj_power_smoothed,
             &info,
         )
     }
@@ -4379,7 +4373,6 @@ fn get_verify_info(
 
     let commd = unsealed_cid.get_cid(params.registered_seal_proof)?;
 
-    // Maybe sealverifyinfo is where new cspv things go? its maybe more for actual proof verification
     Ok(SealVerifyInfo {
         registered_proof: params.registered_seal_proof,
         sector_id: SectorID { miner: miner_actor_id, number: params.sector_num },
