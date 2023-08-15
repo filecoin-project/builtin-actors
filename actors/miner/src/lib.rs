@@ -1154,10 +1154,11 @@ impl Actor {
             update_sector_infos.push(UpdateAndSectorInfo { update, sector_info });
         }
 
-        let data_activations: Vec<DealsActivationInputCheckCommD> =
+        let data_activation_inputs: Vec<DealsActivationInputCheckCommD> =
             update_sector_infos.iter().map(|x| x.clone().into()).collect();
 
-        let (batch_return, data_activations) = activate_deals_check_commd(rt, &data_activations)?;
+        let (batch_return, data_activations) =
+            activate_deals_check_commd(rt, &data_activation_inputs)?;
 
         // associate the successfully activated sectors with the ReplicaUpdateInner and SectorOnChainInfo
         let validated_updates: Vec<(&UpdateAndSectorInfo, DataActivationOutput)> = batch_return
@@ -1174,8 +1175,9 @@ impl Actor {
         struct UpdateWithDetails<'a> {
             update: &'a ReplicaUpdateInner,
             sector_info: &'a SectorOnChainInfo,
-            deal_info: &'a DataActivationOutput,
             full_unsealed_cid: Cid,
+            unverified_space: BigInt,
+            verified_space: BigInt,
         }
 
         // Group declarations by deadline
@@ -1187,12 +1189,14 @@ impl Actor {
                 deadlines_to_load.push(dl);
             }
 
+            let computed_commd = CompactCommD::new(deal_activation.unsealed_cid)
+                .get_cid(usi.sector_info.seal_proof)?;
             decls_by_deadline.entry(dl).or_default().push(UpdateWithDetails {
                 update: usi.update,
                 sector_info: &usi.sector_info,
-                deal_info: deal_activation,
-                full_unsealed_cid: CompactCommD::new(usi.update.new_unsealed_cid)
-                    .get_cid(usi.sector_info.seal_proof)?,
+                full_unsealed_cid: computed_commd,
+                unverified_space: deal_activation.unverified_space.clone(),
+                verified_space: deal_activation.verified_space.clone(),
             });
         }
 
@@ -1271,9 +1275,9 @@ impl Actor {
                     let duration = new_sector_info.expiration - new_sector_info.power_base_epoch;
 
                     new_sector_info.deal_weight =
-                        with_details.deal_info.unverified_space.clone() * duration;
+                        with_details.unverified_space.clone() * duration;
                     new_sector_info.verified_deal_weight =
-                        with_details.deal_info.verified_space.clone() * duration;
+                        with_details.verified_space.clone() * duration;
 
                     // compute initial pledge
                     let qa_pow = qa_power_for_weight(
@@ -4912,16 +4916,6 @@ fn activate_new_sector_infos(
 struct DataActivationOutput {
     pub unverified_space: BigInt,
     pub verified_space: BigInt,
-}
-
-impl From<&DataActivationOutputInternal> for DataActivationOutput {
-    fn from(activation: &DataActivationOutputInternal) -> DataActivationOutput {
-        activation.info.clone()
-    }
-}
-
-struct DataActivationOutputInternal {
-    pub info: DataActivationOutput,
     // None indicates either no deals or computation was not requested.
     pub unsealed_cid: Option<Cid>,
 }
@@ -4939,7 +4933,7 @@ impl From<SectorPreCommitOnChainInfo> for DealsActivationInput {
 
 struct DealsActivationInputCheckCommD {
     info: DealsActivationInput,
-    expected_commd: CompactCommD,
+    expected_commd: Option<Cid>,
 }
 
 impl From<UpdateAndSectorInfo<'_>> for DealsActivationInputCheckCommD {
@@ -4951,7 +4945,7 @@ impl From<UpdateAndSectorInfo<'_>> for DealsActivationInputCheckCommD {
                 deal_ids: usi.update.deals.clone(),
                 sector_type: usi.sector_info.seal_proof,
             },
-            expected_commd: CompactCommD(usi.update.new_unsealed_cid),
+            expected_commd: usi.update.new_unsealed_cid,
         }
     }
 }
@@ -4962,49 +4956,54 @@ struct UpdateAndSectorInfo<'a> {
     sector_info: SectorOnChainInfo,
 }
 
+// Activates deals with the built-in market actor.
+// Computation of CommD is not requested, so will be None in the result.
 fn activate_deals(
     rt: &impl Runtime,
     activations: &[DealsActivationInput],
 ) -> Result<(BatchReturn, Vec<DataActivationOutput>), ActorError> {
-    let (batch_return, deal_spaces_internal) =
-        batch_activate_deals_and_claim_allocations(rt, activations, false)?;
-    let deal_spaces = deal_spaces_internal.iter().map(|x| x.into()).collect();
-    Ok((batch_return, deal_spaces))
+    let compute_commd = false;
+    let (batch_return, activation_outputs) =
+        batch_activate_deals_and_claim_allocations(rt, activations, compute_commd)?;
+    Ok((batch_return, activation_outputs))
 }
 
+// Activates deals with the built-in market actor.
+// Computation of CommD is requested, so will be Some in the result.
+// If the input specifies a CommD, it will be checked to match the market's computed CommD.
 fn activate_deals_check_commd(
     rt: &impl Runtime,
-    activations: &[DealsActivationInputCheckCommD],
+    activation_inputs: &[DealsActivationInputCheckCommD],
 ) -> Result<(BatchReturn, Vec<DataActivationOutput>), ActorError> {
-    let mut builtin_activations = vec![];
-    let mut commds = vec![];
-    for activation in activations {
-        commds.push(&activation.expected_commd);
-        builtin_activations.push(activation.info.clone());
+    let mut market_activation_inputs = vec![];
+    let mut declared_commds = vec![];
+    for input in activation_inputs {
+        declared_commds.push(&input.expected_commd);
+        market_activation_inputs.push(input.info.clone());
     }
 
-    let (batch_return, deal_activations_internal) =
-        batch_activate_deals_and_claim_allocations(rt, &builtin_activations, true)?;
-    let check_commds = batch_return.successes(&commds);
-    let success_activations = batch_return.successes(activations);
+    let compute_commd = true;
+    let (batch_return, activation_outputs) =
+        batch_activate_deals_and_claim_allocations(rt, &market_activation_inputs, compute_commd)?;
+    let check_commds = batch_return.successes(&declared_commds);
+    let success_inputs = batch_return.successes(activation_inputs);
 
-    let mut deal_activations = vec![];
-    for (commd, result, data_activation) in check_commds
+    for (declared_commd, result, input) in check_commds
         .into_iter()
-        .zip(deal_activations_internal.iter())
-        .zip(success_activations.iter())
+        .zip(activation_outputs.iter())
+        .zip(success_inputs.iter())
         .map(|((a, b), c)| (a, b, c))
     {
         // Computation of CommD was requested, so None can be interpreted as zero data.
-        deal_activations.push(result.info.clone());
         let computed_commd =
-            CompactCommD::new(result.unsealed_cid).get_cid(data_activation.info.sector_type)?;
-        if let CompactCommD(Some(declared_commd)) = commd {
+            CompactCommD::new(result.unsealed_cid).get_cid(input.info.sector_type)?;
+        // If a CommD was declared, check it matches.
+        if let Some(declared_commd) = declared_commd {
             if !declared_commd.eq(&computed_commd) {
                 return Err(actor_error!(
                     illegal_argument,
                     "unsealed CID does not match deals for sector {}, expected {} was {}",
-                    data_activation.info.sector_number,
+                    input.info.sector_number,
                     computed_commd,
                     declared_commd
                 ));
@@ -5012,7 +5011,7 @@ fn activate_deals_check_commd(
         }
     }
 
-    Ok((batch_return, deal_activations))
+    Ok((batch_return, activation_outputs))
 }
 
 /// Activates the deals then claims allocations for any verified deals
@@ -5022,7 +5021,7 @@ fn batch_activate_deals_and_claim_allocations(
     rt: &impl Runtime,
     activation_infos: &[DealsActivationInput],
     compute_unsealed_cid: bool,
-) -> Result<(BatchReturn, Vec<DataActivationOutputInternal>), ActorError> {
+) -> Result<(BatchReturn, Vec<DataActivationOutput>), ActorError> {
     let batch_activation_res = match activation_infos.iter().all(|p| p.deal_ids.is_empty()) {
         true => ext::market::BatchActivateDealsResult {
             // if all sectors are empty of deals, skip calling the market actor
@@ -5127,11 +5126,9 @@ fn batch_activate_deals_and_claim_allocations(
         .activations
         .iter()
         .zip(claim_res.sector_claims)
-        .map(|(sector_deals, sector_claim)| DataActivationOutputInternal {
-            info: DataActivationOutput {
-                unverified_space: sector_deals.nonverified_deal_space.clone(),
-                verified_space: sector_claim.claimed_space,
-            },
+        .map(|(sector_deals, sector_claim)| DataActivationOutput {
+            unverified_space: sector_deals.nonverified_deal_space.clone(),
+            verified_space: sector_claim.claimed_space,
             unsealed_cid: sector_deals.unsealed_cid,
         })
         .collect();
