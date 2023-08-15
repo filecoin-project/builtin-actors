@@ -105,7 +105,7 @@ fn deal_is_slashed() {
         );
         assert_eq!(tc.payment, pay);
         assert_eq!(deal_proposal.provider_collateral, slashed);
-        assert_deal_deleted(&rt, deal_id, deal_proposal, sector_number);
+        assert_deal_deleted(&rt, deal_id, &deal_proposal, sector_number);
 
         check_state(&rt);
     }
@@ -148,7 +148,7 @@ fn deal_is_slashed_at_the_end_epoch_should_not_be_slashed_and_should_be_consider
     assert!(slashed.is_zero());
 
     // deal should be deleted as it should have expired
-    assert_deal_deleted(&rt, deal_id, deal_proposal, SECTOR_NUMBER);
+    assert_deal_deleted(&rt, deal_id, &deal_proposal, SECTOR_NUMBER);
 
     check_state(&rt);
 }
@@ -194,7 +194,7 @@ fn deal_payment_and_slashing_correctly_processed_in_same_crontick() {
     assert_eq!(deal_proposal.provider_collateral, slashed);
 
     // deal should be deleted as it should have expired
-    assert_deal_deleted(&rt, deal_id, deal_proposal, sector_number);
+    assert_deal_deleted(&rt, deal_id, &deal_proposal, sector_number);
     check_state(&rt);
 }
 
@@ -258,9 +258,9 @@ fn slash_multiple_deals_in_the_same_epoch() {
     );
     cron_tick(&rt);
 
-    assert_deal_deleted(&rt, deal_id1, deal_proposal1, SECTOR_NUMBER);
-    assert_deal_deleted(&rt, deal_id2, deal_proposal2, SECTOR_NUMBER);
-    assert_deal_deleted(&rt, deal_id3, deal_proposal3, SECTOR_NUMBER);
+    assert_deal_deleted(&rt, deal_id1, &deal_proposal1, SECTOR_NUMBER);
+    assert_deal_deleted(&rt, deal_id2, &deal_proposal2, SECTOR_NUMBER);
+    assert_deal_deleted(&rt, deal_id3, &deal_proposal3, SECTOR_NUMBER);
     check_state(&rt);
 }
 
@@ -324,7 +324,7 @@ fn regular_payments_till_deal_is_slashed_and_then_slashing_is_processed() {
     assert_eq!(slashed, deal_proposal.provider_collateral);
 
     // deal should be deleted as it should have expired
-    assert_deal_deleted(&rt, deal_id, deal_proposal, SECTOR_NUMBER);
+    assert_deal_deleted(&rt, deal_id, &deal_proposal, SECTOR_NUMBER);
     check_state(&rt);
 }
 
@@ -378,6 +378,6 @@ fn regular_payments_till_deal_expires_and_then_we_attempt_to_slash_it_but_it_wil
     assert!(slashed.is_zero());
 
     // deal should be deleted as it should have expired
-    assert_deal_deleted(&rt, deal_id, deal_proposal, SECTOR_NUMBER);
+    assert_deal_deleted(&rt, deal_id, &deal_proposal, SECTOR_NUMBER);
     check_state(&rt);
 }

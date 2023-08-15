@@ -15,6 +15,9 @@ use std::collections::BTreeMap;
 use std::{cell::RefCell, collections::HashMap};
 
 use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
+use fil_actor_market::ext::miner::{
+    PieceInfo, SectorChanges, SectorContentChangedParams, SectorContentChangedReturn,
+};
 use fil_actor_market::ext::verifreg::{AllocationID, AllocationRequest, AllocationsResponse};
 use fil_actor_market::{
     ext, ext::miner::GetControlAddressesReturnParams, next_update_epoch,
@@ -41,7 +44,7 @@ use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::deal::DealID;
-use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
+use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 use fvm_shared::smooth::FilterEstimate;
@@ -397,6 +400,23 @@ pub fn batch_activate_deals_raw(
     rt.verify();
 
     Ok(ret)
+}
+
+pub fn sector_content_changed(
+    rt: &MockRuntime,
+    provider: Address,
+    sectors: Vec<SectorChanges>,
+) -> Result<SectorContentChangedReturn, ActorError> {
+    rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
+    let params = SectorContentChangedParams { sectors };
+
+    let ret = rt.call::<MarketActor>(
+        Method::SectorContentChangedExported as u64,
+        IpldBlock::serialize_cbor(&params).unwrap(),
+    )?;
+    rt.verify();
+    Ok(ret.unwrap().deserialize().expect("SectorContentChanged failed"))
 }
 
 pub fn get_deal_proposal(rt: &MockRuntime, deal_id: DealID) -> DealProposal {
@@ -891,7 +911,7 @@ pub fn assert_deals_not_terminated(rt: &MockRuntime, deal_ids: &[DealID]) {
 pub fn assert_deal_deleted(
     rt: &MockRuntime,
     deal_id: DealID,
-    p: DealProposal,
+    p: &DealProposal,
     sector_number: SectorNumber,
 ) {
     use cid::multihash::Code;
@@ -911,7 +931,7 @@ pub fn assert_deal_deleted(
     assert!(s.is_none());
 
     let mh_code = Code::Blake2b256;
-    let p_cid = Cid::new_v1(fvm_ipld_encoding::DAG_CBOR, mh_code.digest(&to_vec(&p).unwrap()));
+    let p_cid = Cid::new_v1(fvm_ipld_encoding::DAG_CBOR, mh_code.digest(&to_vec(p).unwrap()));
     // Check that the deal_id is not in st.pending_proposals.
     let pending_deals = Set::from_root(rt.store(), &st.pending_proposals).unwrap();
     assert!(!pending_deals.has(&BytesKey(p_cid.to_bytes())).unwrap());
@@ -1201,14 +1221,17 @@ pub fn verify_deals_for_activation<F>(
     piece_info_override: F,
 ) -> VerifyDealsForActivationReturn
 where
-    F: Fn(usize) -> Option<Vec<PieceInfo>>,
+    F: Fn(usize) -> Option<Vec<fvm_shared::piece::PieceInfo>>,
 {
     rt.expect_validate_caller_type(vec![Type::Miner]);
     rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
 
     for (i, sd) in sector_deals.iter().enumerate() {
         let pi = piece_info_override(i).unwrap_or_else(|| {
-            vec![PieceInfo { cid: make_piece_cid("1".as_bytes()), size: PaddedPieceSize(2048) }]
+            vec![fvm_shared::piece::PieceInfo {
+                cid: make_piece_cid("1".as_bytes()),
+                size: PaddedPieceSize(2048),
+            }]
         });
         rt.expect_compute_unsealed_sector_cid(
             sd.sector_type,
@@ -1230,4 +1253,12 @@ where
         .expect("VerifyDealsForActivation failed!");
     rt.verify();
     ret
+}
+
+pub fn piece_info_from_deal(id: DealID, deal: &DealProposal) -> PieceInfo {
+    PieceInfo {
+        data: deal.piece_cid,
+        size: deal.piece_size,
+        payload: serialize(&id, "deal id").unwrap(),
+    }
 }

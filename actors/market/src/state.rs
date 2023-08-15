@@ -159,6 +159,27 @@ impl State {
             + &self.total_client_storage_fee
     }
 
+    pub fn load_deal_states<'bs, BS>(
+        &self,
+        store: &'bs BS,
+    ) -> Result<DealMetaArray<'bs, BS>, ActorError>
+    where
+        BS: Blockstore,
+    {
+        DealMetaArray::load(&self.states, store)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal state array")
+    }
+
+    fn save_deal_states<BS>(&mut self, states: &mut DealMetaArray<BS>) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+    {
+        self.states = states
+            .flush()
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush deal states")?;
+        Ok(())
+    }
+
     pub fn find_deal_state<BS>(
         &self,
         store: &BS,
@@ -167,14 +188,8 @@ impl State {
     where
         BS: Blockstore,
     {
-        let states = DealMetaArray::load(&self.states, store)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal state array")?;
-
-        let found = states.get(deal_id).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-            format!("no such deal state for {}", deal_id)
-        })?;
-
-        Ok(found.cloned())
+        let states = self.load_deal_states(store)?;
+        find_deal_state(&states, deal_id)
     }
 
     pub fn put_deal_states<BS>(
@@ -185,21 +200,14 @@ impl State {
     where
         BS: Blockstore,
     {
-        let mut states = DealMetaArray::load(&self.states, store)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposal array")?;
-
+        let mut states = self.load_deal_states(store)?;
         new_deal_states.iter().try_for_each(|(id, deal_state)| -> Result<(), ActorError> {
             states
                 .set(*id, *deal_state)
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to set deal state")?;
             Ok(())
         })?;
-
-        self.states = states
-            .flush()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush deal states")?;
-
-        Ok(())
+        self.save_deal_states(&mut states)
     }
 
     pub fn remove_deal_state<BS>(
@@ -210,28 +218,20 @@ impl State {
     where
         BS: Blockstore,
     {
-        let mut states = DealMetaArray::load(&self.states, store)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposal array")?;
-
-        let rval_deal_state = states
+        let mut states = self.load_deal_states(store)?;
+        let removed = states
             .delete(deal_id)
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to delete deal state")?;
-
-        self.states = states
-            .flush()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush deal states")?;
-
-        Ok(rval_deal_state)
+        self.save_deal_states(&mut states)?;
+        Ok(removed)
     }
 
-    pub fn get_proposal_array<'a, BS>(&'a self, store: &'a BS) -> Result<DealArray<BS>, ActorError>
+    pub fn load_proposals<'bs, BS>(&self, store: &'bs BS) -> Result<DealArray<'bs, BS>, ActorError>
     where
         BS: Blockstore,
     {
-        let deal_proposals = DealArray::load(&self.proposals, store)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposal array")?;
-
-        Ok(deal_proposals)
+        DealArray::load(&self.proposals, store)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposal array")
     }
 
     pub fn get_proposal<BS: Blockstore>(
@@ -239,15 +239,7 @@ impl State {
         store: &BS,
         id: DealID,
     ) -> Result<DealProposal, ActorError> {
-        let found = self.find_proposal(store, id)?.ok_or_else(|| {
-            if id < self.next_id {
-                // If the deal ID has been used, it must have been cleaned up.
-                ActorError::unchecked(EX_DEAL_EXPIRED, format!("deal {} expired", id))
-            } else {
-                ActorError::not_found(format!("no such deal {}", id))
-            }
-        })?;
-        Ok(found)
+        get_proposal(&self.load_proposals(store)?, id, self.next_id)
     }
 
     pub fn find_proposal<BS>(
@@ -258,14 +250,7 @@ impl State {
     where
         BS: Blockstore,
     {
-        let deal_proposals = self.get_proposal_array(store)?;
-
-        let proposal =
-            deal_proposals.get(deal_id).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                format!("failed to load deal proposal {}", deal_id)
-            })?;
-
-        Ok(proposal.cloned())
+        find_proposal(&self.load_proposals(store)?, deal_id)
     }
 
     pub fn remove_proposal<BS>(
@@ -317,6 +302,32 @@ impl State {
         Ok(())
     }
 
+    pub fn load_pending_deal_allocation_ids<BS>(
+        &mut self,
+        store: BS,
+    ) -> Result<PendingDealAllocationsMap<BS>, ActorError>
+    where
+        BS: Blockstore,
+    {
+        PendingDealAllocationsMap::load(
+            store,
+            &self.pending_deal_allocation_ids,
+            PENDING_ALLOCATIONS_CONFIG,
+            "pending deal allocations",
+        )
+    }
+
+    pub fn save_pending_deal_allocation_ids<BS>(
+        &mut self,
+        pending_deal_allocation_ids: &mut PendingDealAllocationsMap<BS>,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+    {
+        self.pending_deal_allocation_ids = pending_deal_allocation_ids.flush()?;
+        Ok(())
+    }
+
     pub fn put_pending_deal_allocation_ids<BS>(
         &mut self,
         store: &BS,
@@ -325,21 +336,14 @@ impl State {
     where
         BS: Blockstore,
     {
-        let mut pending_deal_allocation_ids = PendingDealAllocationsMap::load(
-            store,
-            &self.pending_deal_allocation_ids,
-            PENDING_ALLOCATIONS_CONFIG,
-            "pending deal allocations",
-        )?;
-
+        let mut pending_deal_allocation_ids = self.load_pending_deal_allocation_ids(store)?;
         new_pending_deal_allocation_ids.iter().try_for_each(
             |(deal_id, allocation_id)| -> Result<(), ActorError> {
                 pending_deal_allocation_ids.set(deal_id, *allocation_id)?;
                 Ok(())
             },
         )?;
-
-        self.pending_deal_allocation_ids = pending_deal_allocation_ids.flush()?;
+        self.save_pending_deal_allocation_ids(&mut pending_deal_allocation_ids)?;
         Ok(())
     }
 
@@ -351,12 +355,7 @@ impl State {
     where
         BS: Blockstore,
     {
-        let pending_deal_allocation_ids = PendingDealAllocationsMap::load(
-            store,
-            &self.pending_deal_allocation_ids,
-            PENDING_ALLOCATIONS_CONFIG,
-            "pending deal allocations",
-        )?;
+        let pending_deal_allocation_ids = self.load_pending_deal_allocation_ids(store)?;
 
         let mut allocation_ids: Vec<AllocationID> = vec![];
         deal_id_keys.iter().try_for_each(|deal_id| -> Result<(), ActorError> {
@@ -373,26 +372,15 @@ impl State {
     pub fn remove_pending_deal_allocation_id<BS>(
         &mut self,
         store: &BS,
-        deal_id_key: DealID,
+        deal_id: DealID,
     ) -> Result<Option<AllocationID>, ActorError>
     where
         BS: Blockstore,
     {
-        let mut pending_deal_allocation_ids = PendingDealAllocationsMap::load(
-            store,
-            &self.pending_deal_allocation_ids,
-            PENDING_ALLOCATIONS_CONFIG,
-            "pending deal allocations",
-        )?;
-
-        let rval_allocation_id = pending_deal_allocation_ids
-            .delete(&deal_id_key)
-            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                format!("no such deal proposal {:#?}", deal_id_key)
-            })?;
-
-        self.pending_deal_allocation_ids = pending_deal_allocation_ids.flush()?;
-        Ok(rval_allocation_id)
+        let mut pending_deal_allocation_ids = self.load_pending_deal_allocation_ids(store)?;
+        let maybe_alloc_id = pending_deal_allocation_ids.delete(&deal_id)?;
+        self.save_pending_deal_allocation_ids(&mut pending_deal_allocation_ids)?;
+        Ok(maybe_alloc_id)
     }
 
     pub fn put_deals_by_epoch<BS>(
@@ -531,18 +519,30 @@ impl State {
         Ok(ex)
     }
 
-    pub fn has_pending_deal<BS>(&self, store: &BS, key: Cid) -> Result<bool, ActorError>
+    pub fn load_pending_deals<'bs, BS>(&self, store: &'bs BS) -> Result<Set<'bs, BS>, ActorError>
     where
         BS: Blockstore,
     {
-        let pending_deals = Set::from_root(store, &self.pending_proposals)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get pending deals")?;
+        Set::from_root(store, &self.pending_proposals)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get pending deals")
+    }
 
-        let rval = pending_deals
-            .has(&key.to_bytes())
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get pending deals")?;
+    fn save_pending_deals<BS>(&mut self, pending_deals: &mut Set<BS>) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+    {
+        self.pending_proposals = pending_deals
+            .root()
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush pending deals")?;
+        Ok(())
+    }
 
-        Ok(rval)
+    pub fn has_pending_deal<BS>(&self, store: &BS, key: &Cid) -> Result<bool, ActorError>
+    where
+        BS: Blockstore,
+    {
+        let pending_deals = self.load_pending_deals(store)?;
+        has_pending_deal(&pending_deals, key)
     }
 
     pub fn put_pending_deals<BS>(
@@ -553,9 +553,7 @@ impl State {
     where
         BS: Blockstore,
     {
-        let mut pending_deals = Set::from_root(store, &self.pending_proposals)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load pending deals")?;
-
+        let mut pending_deals = self.load_pending_deals(store)?;
         new_pending_deals.iter().try_for_each(|key: &Cid| -> Result<(), ActorError> {
             pending_deals
                 .put(key.to_bytes().into())
@@ -563,11 +561,7 @@ impl State {
             Ok(())
         })?;
 
-        self.pending_proposals = pending_deals
-            .root()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush pending deals")?;
-
-        Ok(())
+        self.save_pending_deals(&mut pending_deals)
     }
 
     pub fn remove_pending_deal<BS>(
@@ -578,20 +572,15 @@ impl State {
     where
         BS: Blockstore,
     {
-        let mut pending_deals = Set::from_root(store, &self.pending_proposals)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load pending deals")?;
-
-        let rval_pending_deal = pending_deals
+        let mut pending_deals = self.load_pending_deals(store)?;
+        let removed = pending_deals
             .delete(&pending_deal_key.to_bytes())
             .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
                 format!("failed to delete pending proposal {}", pending_deal_key)
             })?;
 
-        self.pending_proposals = pending_deals
-            .root()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush pending deals")?;
-
-        Ok(rval_pending_deal)
+        self.save_pending_deals(&mut pending_deals)?;
+        Ok(removed)
     }
 
     ////////////////////////////////////////////////////////////////////////////////
@@ -1085,6 +1074,57 @@ fn deal_get_payment_remaining(
     }
 
     Ok(&deal.storage_price_per_epoch * duration_remaining as u64)
+}
+
+pub fn get_proposal<BS: Blockstore>(
+    proposals: &DealArray<BS>,
+    id: DealID,
+    next_id: DealID,
+) -> Result<DealProposal, ActorError> {
+    let found = find_proposal(proposals, id)?.ok_or_else(|| {
+        if id < next_id {
+            // If the deal ID has been used, it must have been cleaned up.
+            ActorError::unchecked(EX_DEAL_EXPIRED, format!("deal {} expired", id))
+        } else {
+            ActorError::not_found(format!("no such deal {}", id))
+        }
+    })?;
+    Ok(found)
+}
+
+pub fn find_proposal<BS>(
+    proposals: &DealArray<BS>,
+    deal_id: DealID,
+) -> Result<Option<DealProposal>, ActorError>
+where
+    BS: Blockstore,
+{
+    let proposal = proposals.get(deal_id).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+        format!("failed to load deal proposal {}", deal_id)
+    })?;
+    Ok(proposal.cloned())
+}
+
+pub fn find_deal_state<BS>(
+    states: &DealMetaArray<BS>,
+    deal_id: DealID,
+) -> Result<Option<DealState>, ActorError>
+where
+    BS: Blockstore,
+{
+    let state = states.get(deal_id).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+        format!("failed to load deal state {}", deal_id)
+    })?;
+    Ok(state.cloned())
+}
+
+pub fn has_pending_deal<BS>(pending: &Set<BS>, key: &Cid) -> Result<bool, ActorError>
+where
+    BS: Blockstore,
+{
+    pending
+        .has(&key.to_bytes())
+        .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to lookup pending deal")
 }
 
 fn load_provider_sector_deals<BS>(
