@@ -30,7 +30,6 @@ use log::{error, info, warn};
 use num_derive::FromPrimitive;
 use num_traits::{Signed, Zero};
 
-use crate::ext::market::DealSpaces;
 use crate::DataActivation::*;
 pub use beneficiary::*;
 pub use bitfield_queue::*;
@@ -936,8 +935,8 @@ impl Actor {
 
         activate_new_sector_infos(
             rt,
-            &successful_activations,
-            &data_activations,
+            successful_activations,
+            data_activations,
             &rew.this_epoch_baseline_power,
             &rew.this_epoch_reward_smoothed,
             &pwr.quality_adj_power_smoothed,
@@ -2154,8 +2153,8 @@ impl Actor {
             activate_data_activate_deals(rt, &sector_activations)?;
         activate_new_sector_infos(
             rt,
-            &successful_activations,
-            &data_activations,
+            successful_activations,
+            data_activations,
             &rew.this_epoch_baseline_power,
             &rew.this_epoch_reward_smoothed,
             &pwr.quality_adj_power_smoothed,
@@ -4801,8 +4800,8 @@ fn check_peer_info(
 // Precodition 2: all sectors have activated data
 fn activate_new_sector_infos(
     rt: &impl Runtime,
-    sector_activations: &[SectorActivation],
-    data_activations: &[DealSpaces],
+    sector_activations: Vec<SectorActivation>,
+    data_activations: Vec<DealActivationInfo>,
     this_epoch_baseline_power: &BigInt,
     this_epoch_reward_smoothed: &FilterEstimate,
     quality_adj_power_smoothed: &FilterEstimate,
@@ -4992,7 +4991,7 @@ enum DataActivation {
 fn activate_data_activate_deals(
     rt: &impl Runtime,
     activations: &[SectorActivation],
-) -> Result<(Vec<SectorActivation>, Vec<DealSpaces>), ActorError> {
+) -> Result<(Vec<SectorActivation>, Vec<DealActivationInfo>), ActorError> {
     let mut builtin_activations = vec![];
     for sa in activations {
         match &sa.data_activation {
@@ -5014,7 +5013,7 @@ fn activate_data_activate_deals(
     }
 
     let (batch_return, deal_spaces) =
-        batch_activate_deals_and_claim_allocations(rt, &builtin_activations)?;
+        batch_activate_deals_and_claim_allocations(rt, &builtin_activations, false)?;
     let successful_activations =
         batch_return.successes(activations).into_iter().map(|x| x.clone()).collect();
     Ok((successful_activations, deal_spaces))
