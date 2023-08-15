@@ -5038,6 +5038,7 @@ fn batch_activate_deals_and_claim_allocations(
                 size: info.size,
             })
             .collect();
+
         verified_claims.push(ext::verifreg::SectorAllocationClaims {
             sector: activation_info.sector_number,
             expiry: activation_info.sector_expiry,
