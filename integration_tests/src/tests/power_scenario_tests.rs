@@ -6,7 +6,10 @@ use fil_actor_miner::{
 use fil_actor_power::{CreateMinerParams, Method as PowerMethod};
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::make_sealed_cid;
-use fil_actors_runtime::{CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
+use fil_actors_runtime::{
+    CRON_ACTOR_ADDR, CRON_ACTOR_ID, INIT_ACTOR_ADDR, INIT_ACTOR_ID, STORAGE_POWER_ACTOR_ADDR,
+    STORAGE_POWER_ACTOR_ID,
+};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::BytesDe;
 use fvm_ipld_encoding::RawBytes;
@@ -57,23 +60,23 @@ pub fn power_create_miner_test(v: &dyn VM) {
         )
         .unwrap();
 
-    let owner_id = v.resolve_id_address(&owner).unwrap();
+    let owner_id = v.resolve_id_address(&owner).unwrap().id().unwrap();
     let expect = ExpectInvocation {
         // send to power actor
         from: owner_id,
         to: STORAGE_POWER_ACTOR_ADDR,
         method: PowerMethod::CreateMiner as u64,
         params: Some(IpldBlock::serialize_cbor(&params).unwrap()),
-        ret: Some(res.ret),
+        return_value: Some(res.ret),
         subinvocs: Some(vec![
             // request init actor construct miner
             ExpectInvocation {
-                from: STORAGE_POWER_ACTOR_ADDR,
+                from: STORAGE_POWER_ACTOR_ID,
                 to: INIT_ACTOR_ADDR,
                 method: InitMethod::Exec as u64,
                 subinvocs: Some(vec![ExpectInvocation {
                     // init then calls miner constructor
-                    from: INIT_ACTOR_ADDR,
+                    from: INIT_ACTOR_ID,
                     to: Address::new_id(FIRST_TEST_USER_ADDR + 1),
                     method: MinerMethod::Constructor as u64,
                     params: Some(
@@ -157,11 +160,11 @@ pub fn cron_tick_test(v: &dyn VM) {
 
     ExpectInvocation {
         // original send to storage power actor
-        from: CRON_ACTOR_ADDR,
+        from: CRON_ACTOR_ID,
         to: STORAGE_POWER_ACTOR_ADDR,
         method: PowerMethod::OnEpochTickEnd as u64,
         subinvocs: Some(vec![
-            Expect::reward_this_epoch(STORAGE_POWER_ACTOR_ADDR),
+            Expect::reward_this_epoch(STORAGE_POWER_ACTOR_ID),
             // expect miner call to be missing
             Expect::reward_update_kpi(),
         ]),
@@ -185,10 +188,10 @@ pub fn cron_tick_test(v: &dyn VM) {
     );
 
     let sub_invocs = vec![
-        Expect::reward_this_epoch(STORAGE_POWER_ACTOR_ADDR),
+        Expect::reward_this_epoch(STORAGE_POWER_ACTOR_ID),
         // expect call back to miner that was set up in create miner
         ExpectInvocation {
-            from: STORAGE_POWER_ACTOR_ADDR,
+            from: STORAGE_POWER_ACTOR_ID,
             to: id_addr,
             method: MinerMethod::OnDeferredCronEvent as u64,
             value: Some(TokenAmount::zero()),
@@ -201,7 +204,7 @@ pub fn cron_tick_test(v: &dyn VM) {
     // expect call to miner
     ExpectInvocation {
         // original send to storage power actor
-        from: CRON_ACTOR_ADDR,
+        from: CRON_ACTOR_ID,
         to: STORAGE_POWER_ACTOR_ADDR,
         method: PowerMethod::OnEpochTickEnd as u64,
         subinvocs: Some(sub_invocs),

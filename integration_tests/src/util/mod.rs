@@ -31,10 +31,12 @@ use crate::{MinerBalances, NetworkStats, TEST_FAUCET_ADDR};
 
 const ACCOUNT_SEED: u64 = 93837778;
 
+/// Returns addresses of created accounts in ID format
 pub fn create_accounts(v: &dyn VM, count: u64, balance: &TokenAmount) -> Vec<Address> {
     create_accounts_seeded(v, count, balance, ACCOUNT_SEED, &TEST_FAUCET_ADDR)
 }
 
+/// Returns addresses of created accounts in ID format
 pub fn create_accounts_seeded(
     v: &dyn VM,
     count: u64,

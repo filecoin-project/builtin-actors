@@ -22,9 +22,9 @@ use fil_actors_runtime::runtime::{
     ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
     Verifier, EMPTY_ARR_CID,
 };
-use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{actor_error, SendError};
-use fil_actors_runtime::{ActorError, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime::{test_utils::*, SYSTEM_ACTOR_ID};
+use fil_actors_runtime::{ActorError, INIT_ACTOR_ADDR};
 
 use fvm_ipld_blockstore::Blockstore;
 
@@ -77,7 +77,7 @@ pub struct TopCtx {
 
 #[derive(Clone, Debug)]
 pub struct InternalMessage {
-    pub from: Address,
+    pub from: ActorID,
     pub to: Address,
     pub value: TokenAmount,
     pub method: MethodNum,
@@ -92,7 +92,7 @@ where
         self.top.originator_call_seq
     }
     fn caller(&self) -> Address {
-        self.msg.from
+        Address::new_id(self.msg.from)
     }
     fn origin(&self) -> Address {
         Address::new_id(self.resolve_address(&self.top.originator_stable_addr).unwrap())
@@ -171,7 +171,7 @@ where
         self.v.set_actor(&INIT_ACTOR_ADDR, init_actor);
 
         let new_actor_msg = InternalMessage {
-            from: SYSTEM_ACTOR_ADDR,
+            from: SYSTEM_ACTOR_ID,
             to: target_id_addr,
             value: TokenAmount::zero(),
             method: METHOD_CONSTRUCTOR,
@@ -223,8 +223,10 @@ where
             value: msg.value,
             method: msg.method,
             params: msg.params,
-            code,
-            ret,
+            // Actors should wrap syscall errors
+            error_number: None,
+            return_value: ret,
+            exit_code: code,
             subinvocations: self.subinvocations.take(),
         }
     }
@@ -237,7 +239,7 @@ where
         let prior_root = self.v.checkpoint();
 
         // Transfer funds
-        let mut from_actor = self.v.actor(&self.msg.from).unwrap();
+        let mut from_actor = self.v.actor(&Address::new_id(self.msg.from)).unwrap();
         if !self.msg.value.is_zero() {
             if self.msg.value.is_negative() {
                 return Err(ActorError::unchecked(
@@ -261,7 +263,7 @@ where
 
         // Load, deduct, store from actor before loading to actor to handle self-send case
         from_actor.balance -= &self.msg.value;
-        self.v.set_actor(&self.msg.from, from_actor);
+        self.v.set_actor(&Address::new_id(self.msg.from), from_actor);
 
         let (mut to_actor, ref to_addr) = self.resolve_target(&self.msg.to)?;
         to_actor.balance = to_actor.balance.add(&self.msg.value);
@@ -436,7 +438,7 @@ where
         }
         self.caller_validated.replace(true);
         for addr in addresses {
-            if *addr == self.msg.from {
+            if *addr == Address::new_id(self.msg.from) {
                 return Ok(());
             }
         }
@@ -457,7 +459,8 @@ where
             ));
         }
         self.caller_validated.replace(true);
-        let to_match = ACTOR_TYPES.get(&self.v.actor(&self.msg.from).unwrap().code).unwrap();
+        let to_match =
+            ACTOR_TYPES.get(&self.v.actor(&Address::new_id(self.msg.from)).unwrap().code).unwrap();
         if types.into_iter().any(|t| *t == *to_match) {
             return Ok(());
         }
@@ -510,7 +513,9 @@ where
             return Ok(Response { exit_code: ExitCode::SYS_ASSERTION_FAILED, return_data: None });
         }
 
-        let new_actor_msg = InternalMessage { from: self.to(), to: *to, value, method, params };
+        let from_id = self.resolve_address(&self.to()).unwrap();
+
+        let new_actor_msg = InternalMessage { from: from_id, to: *to, value, method, params };
         let mut new_ctx = InvocationCtx {
             v: self.v,
             top: self.top.clone(),

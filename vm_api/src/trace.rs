@@ -1,19 +1,24 @@
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
-use fvm_shared::MethodNum;
+use fvm_shared::error::{ErrorNumber, ExitCode};
+use fvm_shared::{ActorID, MethodNum};
+
+type ReturnValue = Option<IpldBlock>;
 
 /// A trace of an actor method invocation.
 #[derive(Clone, Debug)]
 pub struct InvocationTrace {
-    pub from: Address,
+    pub from: ActorID,
     pub to: Address,
     pub value: TokenAmount,
     pub method: MethodNum,
     pub params: Option<IpldBlock>,
-    pub code: ExitCode,
-    pub ret: Option<IpldBlock>,
+    /// error_number is set when an unexpected syscall error occurs
+    pub error_number: Option<ErrorNumber>,
+    // no need to check return_value or exit_code if error_number is set
+    pub exit_code: ExitCode,
+    pub return_value: ReturnValue,
     pub subinvocations: Vec<InvocationTrace>,
 }
 
@@ -29,13 +34,15 @@ pub struct InvocationTrace {
 //   constructing it.
 #[derive(Clone, Debug)]
 pub struct ExpectInvocation {
-    pub from: Address,
+    pub from: ActorID,
     pub to: Address,
     pub method: MethodNum,
     pub value: Option<TokenAmount>,
     pub params: Option<Option<IpldBlock>>,
-    pub code: ExitCode,
-    pub ret: Option<Option<IpldBlock>>,
+    /// If error_number is set, exit_code and return_value are not checked
+    pub error_number: Option<ErrorNumber>,
+    pub exit_code: ExitCode,
+    pub return_value: Option<ReturnValue>,
     pub subinvocs: Option<Vec<ExpectInvocation>>,
 }
 
@@ -44,11 +51,46 @@ impl ExpectInvocation {
     pub fn matches(&self, invoc: &InvocationTrace) {
         let id = format!("[{}→{}:{}]", invoc.from, invoc.to, invoc.method);
         self.quick_match(invoc, String::new());
-        assert_eq!(
-            self.code, invoc.code,
-            "{} unexpected code expected: {}, was: {}",
-            id, self.code, invoc.code
-        );
+
+        if self.error_number.is_some() && self.return_value.is_some() {
+            panic!(
+                "{} malformed expectation: expected error_number {} but also expected return_value",
+                id,
+                self.error_number.unwrap()
+            );
+        }
+
+        if let Some(error_number) = &self.error_number {
+            assert!(
+                invoc.error_number.is_some(),
+                "{} expected error_number: {}, was: None",
+                id,
+                error_number
+            );
+            assert_eq!(
+                error_number,
+                &invoc.error_number.unwrap(),
+                "{} unexpected error_number: expected: {}, was: {}",
+                id,
+                error_number,
+                invoc.error_number.unwrap()
+            );
+        } else {
+            assert_eq!(
+                self.exit_code, invoc.exit_code,
+                "{} unexpected exit_code: expected: {}, was: {}",
+                id, self.exit_code, invoc.exit_code
+            );
+
+            if let Some(v) = &self.return_value {
+                assert_eq!(
+                    v, &invoc.return_value,
+                    "{} unexpected return_value: expected: {:?}, was: {:?}",
+                    id, v, invoc.return_value
+                );
+            }
+        }
+
         if let Some(v) = &self.value {
             assert_eq!(
                 v, &invoc.value,
@@ -61,13 +103,6 @@ impl ExpectInvocation {
                 p, &invoc.params,
                 "{} unexpected params: expected: {:x?}, was: {:x?}",
                 id, p, invoc.params
-            );
-        }
-        if let Some(r) = &self.ret {
-            assert_eq!(
-                r, &invoc.ret,
-                "{} unexpected ret: expected: {:x?}, was: {:x?}",
-                id, r, invoc.ret
             );
         }
         if let Some(expect_subinvocs) = &self.subinvocs {
@@ -130,13 +165,14 @@ impl Default for ExpectInvocation {
     // Defaults include successful exit code.
     fn default() -> Self {
         Self {
-            from: Address::new_id(0),
+            from: 0,
             to: Address::new_id(0),
             method: 0,
             value: None,
             params: None,
-            code: ExitCode::OK,
-            ret: None,
+            error_number: None,
+            exit_code: ExitCode::OK,
+            return_value: None,
             subinvocs: None,
         }
     }

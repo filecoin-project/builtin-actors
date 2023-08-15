@@ -28,7 +28,9 @@ pub fn proposal_hash_test(v: &dyn VM) {
     let sys_act_start_bal = v.actor(&SYSTEM_ACTOR_ADDR).unwrap().balance;
     let alice = addrs[0];
     let bob = addrs[1];
+    let bob_id = bob.id().unwrap();
     let msig_addr = create_msig(v, &addrs, 2);
+    let msig_id = msig_addr.id().unwrap();
 
     // fund msig and propose send funds to system actor
     let fil_delta = TokenAmount::from_nano(3);
@@ -89,12 +91,12 @@ pub fn proposal_hash_test(v: &dyn VM) {
         Some(correct_approval_params),
     );
     let expect = ExpectInvocation {
-        from: bob,
+        from: bob_id,
         to: msig_addr,
         method: MsigMethod::Approve as u64,
         subinvocs: Some(vec![
             // Tx goes through to fund the system actor
-            Expect::send(msig_addr, SYSTEM_ACTOR_ADDR, Some(fil_delta.clone())),
+            Expect::send(msig_id, SYSTEM_ACTOR_ADDR, Some(fil_delta.clone())),
         ]),
         ..Default::default()
     };

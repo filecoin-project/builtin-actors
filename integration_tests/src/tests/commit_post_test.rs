@@ -25,7 +25,8 @@ use fil_actor_miner::{
 use fil_actor_power::{Method as PowerMethod, State as PowerState};
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
-    CRON_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    CRON_ACTOR_ADDR, CRON_ACTOR_ID, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    STORAGE_POWER_ACTOR_ID, SYSTEM_ACTOR_ADDR,
 };
 use vm_api::trace::ExpectInvocation;
 use vm_api::util::{apply_code, apply_ok, get_state, DynBlockstore};
@@ -49,6 +50,7 @@ fn setup(v: &dyn VM) -> (MinerInfo, SectorInfo) {
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
+    let worker_id = worker.id().unwrap();
     let (id_addr, robust_addr) = create_miner(
         v,
         &owner,
@@ -80,11 +82,11 @@ fn setup(v: &dyn VM) -> (MinerInfo, SectorInfo) {
         Some(prove_params),
     );
     ExpectInvocation {
-        from: worker,
+        from: worker_id,
         to: id_addr,
         method: MinerMethod::ProveCommitSector as u64,
         params: Some(prove_params_ser),
-        subinvocs: Some(vec![Expect::power_submit_porep(id_addr)]),
+        subinvocs: Some(vec![Expect::power_submit_porep(id_addr.id().unwrap())]),
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
@@ -103,16 +105,19 @@ fn setup(v: &dyn VM) -> (MinerInfo, SectorInfo) {
         method: CronMethod::EpochTick as u64,
         subinvocs: Some(vec![
             ExpectInvocation {
-                from: CRON_ACTOR_ADDR,
+                from: CRON_ACTOR_ID,
                 to: STORAGE_POWER_ACTOR_ADDR,
                 method: PowerMethod::OnEpochTickEnd as u64,
                 subinvocs: Some(vec![
-                    Expect::reward_this_epoch(STORAGE_POWER_ACTOR_ADDR),
+                    Expect::reward_this_epoch(STORAGE_POWER_ACTOR_ID),
                     ExpectInvocation {
-                        from: STORAGE_POWER_ACTOR_ADDR,
+                        from: STORAGE_POWER_ACTOR_ID,
                         to: id_addr,
                         method: MinerMethod::ConfirmSectorProofsValid as u64,
-                        subinvocs: Some(vec![Expect::power_update_pledge(id_addr, None)]),
+                        subinvocs: Some(vec![Expect::power_update_pledge(
+                            id_addr.id().unwrap(),
+                            None,
+                        )]),
                         ..Default::default()
                     },
                     Expect::reward_update_kpi(),
@@ -120,7 +125,7 @@ fn setup(v: &dyn VM) -> (MinerInfo, SectorInfo) {
                 ..Default::default()
             },
             ExpectInvocation {
-                from: CRON_ACTOR_ADDR,
+                from: CRON_ACTOR_ID,
                 to: STORAGE_MARKET_ACTOR_ADDR,
                 method: MarketMethod::CronTick as u64,
                 ..Default::default()
@@ -236,16 +241,18 @@ pub fn missed_first_post_deadline_test(v: &dyn VM) {
         params: None,
         subinvocs: Some(vec![
             ExpectInvocation {
-                from: CRON_ACTOR_ADDR,
+                from: CRON_ACTOR_ID,
                 to: STORAGE_POWER_ACTOR_ADDR,
                 method: PowerMethod::OnEpochTickEnd as u64,
                 subinvocs: Some(vec![
-                    Expect::reward_this_epoch(STORAGE_POWER_ACTOR_ADDR),
+                    Expect::reward_this_epoch(STORAGE_POWER_ACTOR_ID),
                     ExpectInvocation {
-                        from: STORAGE_POWER_ACTOR_ADDR,
+                        from: STORAGE_POWER_ACTOR_ID,
                         to: miner_info.miner_id,
                         method: MinerMethod::OnDeferredCronEvent as u64,
-                        subinvocs: Some(vec![Expect::power_enrol_cron(miner_info.miner_id)]),
+                        subinvocs: Some(vec![Expect::power_enrol_cron(
+                            miner_info.miner_id.id().unwrap(),
+                        )]),
                         ..Default::default()
                     },
                     Expect::reward_update_kpi(),
@@ -253,7 +260,7 @@ pub fn missed_first_post_deadline_test(v: &dyn VM) {
                 ..Default::default()
             },
             ExpectInvocation {
-                from: CRON_ACTOR_ADDR,
+                from: CRON_ACTOR_ID,
                 to: STORAGE_MARKET_ACTOR_ADDR,
                 method: MarketMethod::CronTick as u64,
                 ..Default::default()
@@ -331,18 +338,18 @@ pub fn overdue_precommit_test(v: &dyn VM) {
         params: None,
         subinvocs: Some(vec![
             ExpectInvocation {
-                from: CRON_ACTOR_ADDR,
+                from: CRON_ACTOR_ID,
                 to: STORAGE_POWER_ACTOR_ADDR,
                 method: PowerMethod::OnEpochTickEnd as u64,
                 subinvocs: Some(vec![
-                    Expect::reward_this_epoch(STORAGE_POWER_ACTOR_ADDR),
+                    Expect::reward_this_epoch(STORAGE_POWER_ACTOR_ID),
                     ExpectInvocation {
-                        from: STORAGE_POWER_ACTOR_ADDR,
+                        from: STORAGE_POWER_ACTOR_ID,
                         to: id_addr,
                         method: MinerMethod::OnDeferredCronEvent as u64,
                         subinvocs: Some(vec![
                             // The call to burnt funds indicates the overdue precommit has been penalized
-                            Expect::burn(id_addr, Some(precommit.pre_commit_deposit)),
+                            Expect::burn(id_addr.id().unwrap(), Some(precommit.pre_commit_deposit)),
                             // No re-enrollment of cron because burning of PCD discontinues miner cron scheduling
                         ]),
                         ..Default::default()
@@ -352,7 +359,7 @@ pub fn overdue_precommit_test(v: &dyn VM) {
                 ..Default::default()
             },
             ExpectInvocation {
-                from: CRON_ACTOR_ADDR,
+                from: CRON_ACTOR_ID,
                 to: STORAGE_MARKET_ACTOR_ADDR,
                 method: MarketMethod::CronTick as u64,
                 ..Default::default()
@@ -621,13 +628,15 @@ pub fn aggregate_one_precommit_expires_test(v: &dyn VM) {
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
-    let (id_addr, robust_addr) = create_miner(
+    let worker_id = worker.id().unwrap();
+    let (miner_addr, robust_addr) = create_miner(
         v,
         &owner,
         &worker,
         seal_proof.registered_window_post_proof().unwrap(),
         &TokenAmount::from_whole(10_000),
     );
+    let miner_id = miner_addr.id().unwrap();
     v.set_epoch(200);
     let policy = &Policy::default();
 
@@ -644,7 +653,7 @@ pub fn aggregate_one_precommit_expires_test(v: &dyn VM) {
         1,
         policy.pre_commit_sector_batch_max_size,
         &worker,
-        &id_addr,
+        &miner_addr,
         seal_proof,
         sector_number,
         true,
@@ -654,7 +663,7 @@ pub fn aggregate_one_precommit_expires_test(v: &dyn VM) {
     let early_pre_commit_invalid =
         early_precommit_time + max_prove_commit_duration(policy, seal_proof).unwrap() + 1;
 
-    advance_by_deadline_to_epoch(v, &id_addr, early_pre_commit_invalid);
+    advance_by_deadline_to_epoch(v, &miner_addr, early_pre_commit_invalid);
 
     // later precommits
 
@@ -663,7 +672,7 @@ pub fn aggregate_one_precommit_expires_test(v: &dyn VM) {
         3,
         policy.pre_commit_sector_batch_max_size,
         &worker,
-        &id_addr,
+        &miner_addr,
         seal_proof,
         sector_number + 1,
         false,
@@ -678,8 +687,8 @@ pub fn aggregate_one_precommit_expires_test(v: &dyn VM) {
     // Advance minimum epochs past later precommits for later commits to be valid
 
     let prove_time = v.epoch() + policy.pre_commit_challenge_delay + 1;
-    let deadline_info = advance_by_deadline_to_epoch(v, &id_addr, prove_time);
-    advance_by_deadline_to_epoch(v, &id_addr, deadline_info.close);
+    let deadline_info = advance_by_deadline_to_epoch(v, &miner_addr, prove_time);
+    advance_by_deadline_to_epoch(v, &miner_addr, deadline_info.close);
 
     // Assert that precommit should not yet be cleaned up. This makes fixing this test easier if parameters change.
     assert!(
@@ -708,21 +717,21 @@ pub fn aggregate_one_precommit_expires_test(v: &dyn VM) {
         Some(prove_params),
     );
     ExpectInvocation {
-        from: worker,
-        to: id_addr,
+        from: worker_id,
+        to: miner_addr,
         method: MinerMethod::ProveCommitAggregate as u64,
         params: Some(prove_params_ser),
         subinvocs: Some(vec![
-            Expect::reward_this_epoch(id_addr),
-            Expect::power_current_total(id_addr),
-            Expect::power_update_pledge(id_addr, None),
-            Expect::burn(id_addr, None),
+            Expect::reward_this_epoch(miner_id),
+            Expect::power_current_total(miner_id),
+            Expect::power_update_pledge(miner_id, None),
+            Expect::burn(miner_id, None),
         ]),
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
 
-    let balances = miner_balance(v, &id_addr);
+    let balances = miner_balance(v, &miner_addr);
     assert!(balances.initial_pledge.is_positive());
     assert!(balances.pre_commit_deposit.is_positive());
 

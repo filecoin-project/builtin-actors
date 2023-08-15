@@ -11,18 +11,17 @@ use fil_actor_verifreg::{RemoveDataCapProposal, RemoveDataCapProposalID, State a
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
     make_map_with_root_and_bitwidth, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ID,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{to_vec, RawBytes};
-use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::bigint::{BigInt, Zero};
 use fvm_shared::crypto::signature::{Signature, SignatureType};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::StoragePower;
-use fvm_shared::HAMT_BIT_WIDTH;
+use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
 use num_traits::ToPrimitive;
 use std::ops::{Div, Sub};
 use vm_api::trace::ExpectInvocation;
@@ -31,11 +30,12 @@ use vm_api::VM;
 
 use crate::expects::Expect;
 use crate::util::{assert_invariants, create_accounts, verifreg_add_verifier};
-use crate::TEST_VERIFREG_ROOT_ADDR;
+use crate::{TEST_VERIFREG_ROOT_ADDR, TEST_VERIFREG_ROOT_ID};
 
 pub fn remove_datacap_simple_successful_path_test(v: &dyn VM) {
     let addrs = create_accounts(v, 4, &TokenAmount::from_whole(10_000));
     let (verifier1, verifier2, verified_client) = (addrs[0], addrs[1], addrs[2]);
+    let verifier1_id = verifier1.id().unwrap();
 
     let verifier1_id_addr = v.resolve_id_address(&verifier1).unwrap();
     let verifier2_id_addr = v.resolve_id_address(&verifier2).unwrap();
@@ -65,12 +65,12 @@ pub fn remove_datacap_simple_successful_path_test(v: &dyn VM) {
     );
 
     ExpectInvocation {
-        from: verifier1,
+        from: verifier1_id,
         to: VERIFIED_REGISTRY_ACTOR_ADDR,
         method: VerifregMethod::AddVerifiedClient as u64,
         params: Some(IpldBlock::serialize_cbor(&add_verified_client_params).unwrap()),
         subinvocs: Some(vec![ExpectInvocation {
-            from: VERIFIED_REGISTRY_ACTOR_ADDR,
+            from: VERIFIED_REGISTRY_ACTOR_ID,
             to: DATACAP_TOKEN_ACTOR_ADDR,
             method: DataCapMethod::MintExported as u64,
             params: Some(IpldBlock::serialize_cbor(&mint_params).unwrap()),
@@ -167,7 +167,7 @@ pub fn remove_datacap_simple_successful_path_test(v: &dyn VM) {
     .unwrap();
 
     expect_remove_datacap(
-        &TEST_VERIFREG_ROOT_ADDR,
+        TEST_VERIFREG_ROOT_ID,
         &remove_datacap_params,
         RemoveDataCapProposalID { id: 0 },
         RemoveDataCapProposalID { id: 0 },
@@ -259,7 +259,7 @@ pub fn remove_datacap_simple_successful_path_test(v: &dyn VM) {
     .unwrap();
 
     expect_remove_datacap(
-        &TEST_VERIFREG_ROOT_ADDR,
+        TEST_VERIFREG_ROOT_ID,
         &remove_datacap_params,
         RemoveDataCapProposalID { id: 1 },
         RemoveDataCapProposalID { id: 1 },
@@ -359,7 +359,7 @@ pub fn remove_datacap_fails_on_verifreg_test(v: &dyn VM) {
 }
 
 fn expect_remove_datacap(
-    sender: &Address,
+    sender: ActorID,
     params: &RemoveDataCapParams,
     proposal_id1: RemoveDataCapProposalID,
     proposal_id2: RemoveDataCapProposalID,
@@ -387,30 +387,30 @@ fn expect_remove_datacap(
     ]
     .concat();
     ExpectInvocation {
-        from: *sender,
+        from: sender,
         to: VERIFIED_REGISTRY_ACTOR_ADDR,
         method: VerifregMethod::RemoveVerifiedClientDataCap as u64,
         params: Some(IpldBlock::serialize_cbor(&params).unwrap()),
         subinvocs: Some(vec![
             Expect::frc44_authenticate(
-                VERIFIED_REGISTRY_ACTOR_ADDR,
+                VERIFIED_REGISTRY_ACTOR_ID,
                 params.verifier_request_1.verifier,
                 payload1.clone(),
                 payload1,
             ),
             Expect::frc44_authenticate(
-                VERIFIED_REGISTRY_ACTOR_ADDR,
+                VERIFIED_REGISTRY_ACTOR_ID,
                 params.verifier_request_2.verifier,
                 payload2.clone(),
                 payload2,
             ),
             Expect::frc42_balance(
-                VERIFIED_REGISTRY_ACTOR_ADDR,
+                VERIFIED_REGISTRY_ACTOR_ID,
                 DATACAP_TOKEN_ACTOR_ADDR,
                 params.verified_client_to_remove,
             ),
             ExpectInvocation {
-                from: VERIFIED_REGISTRY_ACTOR_ADDR,
+                from: VERIFIED_REGISTRY_ACTOR_ID,
                 to: DATACAP_TOKEN_ACTOR_ADDR,
                 method: DataCapMethod::DestroyExported as u64,
                 params: Some(
