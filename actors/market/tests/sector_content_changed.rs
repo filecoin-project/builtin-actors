@@ -276,9 +276,9 @@ fn failures_isolated() {
 }
 
 #[test]
-fn duplicates_rejected() {
+fn rejects_duplicates_in_same_sector() {
     let rt = setup();
-    let deals = create_deals(&rt, 1);
+    let deals = create_deals(&rt, 2);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
     let deal_ids =
         publish_deals(&rt, &MINER_ADDRESSES, &deals, TokenAmount::zero(), NO_ALLOCATION_ID);
@@ -289,43 +289,79 @@ fn duplicates_rejected() {
         SectorChanges {
             sector: 1,
             minimum_commitment_epoch: END_EPOCH + 10,
-            added: vec![pieces[0].clone(), pieces[0].clone()],
+            added: vec![pieces[0].clone(), pieces[0].clone(), pieces[1].clone()],
         },
-        // Same deal again, referencing same sector.
+    ];
+    let ret = sector_content_changed(&rt, PROVIDER_ADDR, changes).unwrap();
+    assert_eq!(1, ret.sectors.len());
+    // The first piece succeeds just once, the second piece succeeds too.
+    assert_eq!(
+        vec![
+            PieceReturn { code: ExitCode::OK, data: vec![] },
+            PieceReturn { code: ExitCode::USR_ILLEGAL_ARGUMENT, data: vec![] },
+            PieceReturn { code: ExitCode::OK, data: vec![] },
+        ],
+        ret.sectors[0].added
+    );
+
+    // Deal IDs are stored under the right sector, in correct order.
+    assert_eq!(deal_ids[0..2], get_sector_deal_ids(&rt, &PROVIDER_ADDR, 1));
+    assert_eq!(Vec::<DealID>::new(), get_sector_deal_ids(&rt, &PROVIDER_ADDR, 2));
+}
+
+#[test]
+fn rejects_duplicates_across_sectors() {
+    let rt = setup();
+    let deals = create_deals(&rt, 3);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+    let deal_ids =
+        publish_deals(&rt, &MINER_ADDRESSES, &deals, TokenAmount::zero(), NO_ALLOCATION_ID);
+    let pieces = pieces_from_deals(&deal_ids, &deals);
+
+    let changes = vec![
         SectorChanges {
             sector: 1,
             minimum_commitment_epoch: END_EPOCH + 10,
             added: vec![pieces[0].clone()],
         },
-        // Same deal again in a different sector.
+        // Same piece again, referencing same sector, plus a new piece.
+        SectorChanges {
+            sector: 1,
+            minimum_commitment_epoch: END_EPOCH + 10,
+            added: vec![pieces[0].clone(), pieces[1].clone()],
+        },
+        // Same deal piece in a different sector, plus second piece agoin, plus a new piece.
         SectorChanges {
             sector: 2,
             minimum_commitment_epoch: END_EPOCH + 10,
-            added: vec![pieces[0].clone()],
+            added: vec![pieces[0].clone(), pieces[1].clone(), pieces[2].clone()],
         },
     ];
     let ret = sector_content_changed(&rt, PROVIDER_ADDR, changes).unwrap();
     assert_eq!(3, ret.sectors.len());
-    // Succeeds just once.
+    // Succeeds in the first time.
+    assert_eq!(vec![PieceReturn { code: ExitCode::OK, data: vec![] },], ret.sectors[0].added);
+    // Fails second time, but other piece succeeds.
     assert_eq!(
         vec![
-            PieceReturn { code: ExitCode::OK, data: vec![] },
             PieceReturn { code: ExitCode::USR_ILLEGAL_ARGUMENT, data: vec![] },
+            PieceReturn { code: ExitCode::OK, data: vec![] },
         ],
-        ret.sectors[0].added
-    );
-    assert_eq!(
-        vec![PieceReturn { code: ExitCode::USR_ILLEGAL_ARGUMENT, data: vec![] }],
         ret.sectors[1].added
     );
+    // Both duplicates fail, but third piece succeeds.
     assert_eq!(
-        vec![PieceReturn { code: ExitCode::USR_ILLEGAL_ARGUMENT, data: vec![] }],
+        vec![
+            PieceReturn { code: ExitCode::USR_ILLEGAL_ARGUMENT, data: vec![] },
+            PieceReturn { code: ExitCode::USR_ILLEGAL_ARGUMENT, data: vec![] },
+            PieceReturn { code: ExitCode::OK, data: vec![] },
+        ],
         ret.sectors[2].added
     );
 
     // Deal IDs are stored under the right sector, in correct order.
-    assert_eq!(deal_ids[0..1], get_sector_deal_ids(&rt, &PROVIDER_ADDR, 1));
-    assert_eq!(Vec::<DealID>::new(), get_sector_deal_ids(&rt, &PROVIDER_ADDR, 2));
+    assert_eq!(deal_ids[0..2], get_sector_deal_ids(&rt, &PROVIDER_ADDR, 1));
+    assert_eq!(deal_ids[2..3], get_sector_deal_ids(&rt, &PROVIDER_ADDR, 2));
 }
 
 #[test]

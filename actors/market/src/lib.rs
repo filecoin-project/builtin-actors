@@ -562,13 +562,14 @@ impl Actor {
             let mut activated_deals: HashSet<DealID> = HashSet::new();
             let mut sectors_deals: Vec<(SectorNumber, SectorDealIDs)> = vec![];
 
-            'sector: for p in params.sectors {
+            'sector: for sector in params.sectors {
+                let mut sector_deal_ids: HashSet<DealID> = HashSet::new();
                 let mut validated_proposals = vec![];
                 // Iterate once to validate all the requested deals.
                 // If a deal fails, skip the whole sector.
-                for deal_id in &p.deal_ids {
+                for deal_id in &sector.deal_ids {
                     // Check each deal is present only once, within and across sectors.
-                    if activated_deals.contains(deal_id) {
+                    if sector_deal_ids.contains(deal_id) || activated_deals.contains(deal_id) {
                         log::warn!("failed to activate sector, duplicated deal {}", deal_id);
                         batch_gen.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
                         continue 'sector;
@@ -581,7 +582,7 @@ impl Actor {
                         &states,
                         &pending_deals,
                         &miner_addr,
-                        p.sector_expiry,
+                        sector.sector_expiry,
                         curr_epoch,
                         st.next_id,
                     )? {
@@ -592,6 +593,7 @@ impl Actor {
                             continue 'sector;
                         }
                     };
+                    sector_deal_ids.insert(*deal_id);
                     validated_proposals.push(proposal);
                 }
 
@@ -600,7 +602,7 @@ impl Actor {
                 // Given that all deals validated, prepare the state updates for them all.
                 // There's no continue below here to ensure updates are consistent.
                 // Any error must abort.
-                for (deal_id, proposal) in p.deal_ids.iter().zip(validated_proposals) {
+                for (deal_id, proposal) in sector.deal_ids.iter().zip(validated_proposals) {
                     activated_deals.insert(*deal_id);
                     // Extract and remove any verified allocation ID for the pending deal.
                     let alloc_id = remove_pending_deal_allocation_id(
@@ -624,7 +626,7 @@ impl Actor {
                     deal_states.push((
                         *deal_id,
                         DealState {
-                            sector_number: p.sector_number,
+                            sector_number: sector.sector_number,
                             sector_start_epoch: curr_epoch,
                             last_updated_epoch: EPOCH_UNDEFINED,
                             slash_epoch: EPOCH_UNDEFINED,
@@ -633,7 +635,8 @@ impl Actor {
                     ));
                 }
 
-                sectors_deals.push((p.sector_number, SectorDealIDs { deals: p.deal_ids.clone() }));
+                sectors_deals
+                    .push((sector.sector_number, SectorDealIDs { deals: sector.deal_ids.clone() }));
                 activations.push(SectorDealActivation { nonverified_deal_space, verified_infos });
                 batch_gen.add_success();
             }
