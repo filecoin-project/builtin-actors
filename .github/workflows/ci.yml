@@ -9,6 +9,7 @@ on:
 
 env:
   RUSTFLAGS: -Dwarnings
+  CARGO_INCREMENTAL: 0 # Speeds up the build (no cache) and reduces disk space!
 
 jobs:
   rustfmt:
