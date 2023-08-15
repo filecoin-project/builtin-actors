@@ -925,7 +925,7 @@ impl Actor {
             e.downcast_default(ExitCode::USR_ILLEGAL_ARGUMENT, "aggregate seal verify failed")
         })?;
 
-        let data_activations: Vec<DealsActivationInfo> =
+        let data_activations: Vec<DealsActivationInput> =
             precommits_to_confirm.iter().map(|x| x.clone().into()).collect();
         let rew = request_current_epoch_block_reward(rt)?;
         let pwr = request_current_total_power(rt)?;
@@ -1154,13 +1154,13 @@ impl Actor {
             update_sector_infos.push(UpdateAndSectorInfo { update, sector_info });
         }
 
-        let data_activations: Vec<DataActivationBuiltinDealsCheckCommD> =
+        let data_activations: Vec<DealsActivationInputCheckCommD> =
             update_sector_infos.iter().map(|x| x.clone().into()).collect();
 
         let (batch_return, data_activations) = activate_deals_check_commd(rt, &data_activations)?;
 
         // associate the successfully activated sectors with the ReplicaUpdateInner and SectorOnChainInfo
-        let validated_updates: Vec<(&UpdateAndSectorInfo, DealActivationInfo)> = batch_return
+        let validated_updates: Vec<(&UpdateAndSectorInfo, DataActivationOutput)> = batch_return
             .successes(&update_sector_infos)
             .into_iter()
             .zip(data_activations)
@@ -1174,7 +1174,7 @@ impl Actor {
         struct UpdateWithDetails<'a> {
             update: &'a ReplicaUpdateInner,
             sector_info: &'a SectorOnChainInfo,
-            deal_info: &'a DealActivationInfo,
+            deal_info: &'a DataActivationOutput,
             full_unsealed_cid: Cid,
         }
 
@@ -2114,7 +2114,7 @@ impl Actor {
                 )
             })?;
 
-        let data_activations: Vec<DealsActivationInfo> =
+        let data_activations: Vec<DealsActivationInput> =
             precommited_sectors.iter().map(|x| x.clone().into()).collect();
         let info = get_miner_info(rt.store(), &st)?;
 
@@ -3568,7 +3568,7 @@ struct ExtendExpirationsInner {
 }
 
 #[derive(Debug, Clone)]
-pub struct DealsActivationInfo {
+pub struct DealsActivationInput {
     pub deal_ids: Vec<DealID>,
     pub sector_expiry: ChainEpoch,
     pub sector_number: SectorNumber,
@@ -4769,7 +4769,7 @@ fn check_peer_info(
 fn activate_new_sector_infos(
     rt: &impl Runtime,
     precommits: Vec<&SectorPreCommitOnChainInfo>,
-    data_activations: Vec<DealActivationInfo>,
+    data_activations: Vec<DataActivationOutput>,
     this_epoch_baseline_power: &BigInt,
     this_epoch_reward_smoothed: &FilterEstimate,
     quality_adj_power_smoothed: &FilterEstimate,
@@ -4909,26 +4909,26 @@ fn activate_new_sector_infos(
 }
 
 #[derive(Clone)]
-struct DealActivationInfo {
+struct DataActivationOutput {
     pub unverified_space: BigInt,
     pub verified_space: BigInt,
 }
 
-impl From<&DealActivationInfoInternal> for DealActivationInfo {
-    fn from(activation: &DealActivationInfoInternal) -> DealActivationInfo {
+impl From<&DataActivationOutputInternal> for DataActivationOutput {
+    fn from(activation: &DataActivationOutputInternal) -> DataActivationOutput {
         activation.info.clone()
     }
 }
 
-struct DealActivationInfoInternal {
-    pub info: DealActivationInfo,
+struct DataActivationOutputInternal {
+    pub info: DataActivationOutput,
     // None indicates either no deals or computation was not requested.
     pub unsealed_cid: Option<Cid>,
 }
 
-impl From<SectorPreCommitOnChainInfo> for DealsActivationInfo {
-    fn from(pci: SectorPreCommitOnChainInfo) -> DealsActivationInfo {
-        DealsActivationInfo {
+impl From<SectorPreCommitOnChainInfo> for DealsActivationInput {
+    fn from(pci: SectorPreCommitOnChainInfo) -> DealsActivationInput {
+        DealsActivationInput {
             deal_ids: pci.info.deal_ids,
             sector_expiry: pci.info.expiration,
             sector_number: pci.info.sector_number,
@@ -4937,15 +4937,15 @@ impl From<SectorPreCommitOnChainInfo> for DealsActivationInfo {
     }
 }
 
-struct DataActivationBuiltinDealsCheckCommD {
-    info: DealsActivationInfo,
+struct DealsActivationInputCheckCommD {
+    info: DealsActivationInput,
     expected_commd: CompactCommD,
 }
 
-impl From<UpdateAndSectorInfo<'_>> for DataActivationBuiltinDealsCheckCommD {
-    fn from(usi: UpdateAndSectorInfo) -> DataActivationBuiltinDealsCheckCommD {
-        DataActivationBuiltinDealsCheckCommD {
-            info: DealsActivationInfo {
+impl From<UpdateAndSectorInfo<'_>> for DealsActivationInputCheckCommD {
+    fn from(usi: UpdateAndSectorInfo) -> DealsActivationInputCheckCommD {
+        DealsActivationInputCheckCommD {
+            info: DealsActivationInput {
                 sector_number: usi.sector_info.sector_number,
                 sector_expiry: usi.sector_info.expiration,
                 deal_ids: usi.update.deals.clone(),
@@ -4964,8 +4964,8 @@ struct UpdateAndSectorInfo<'a> {
 
 fn activate_deals(
     rt: &impl Runtime,
-    activations: &[DealsActivationInfo],
-) -> Result<(BatchReturn, Vec<DealActivationInfo>), ActorError> {
+    activations: &[DealsActivationInput],
+) -> Result<(BatchReturn, Vec<DataActivationOutput>), ActorError> {
     let (batch_return, deal_spaces_internal) =
         batch_activate_deals_and_claim_allocations(rt, activations, false)?;
     let deal_spaces = deal_spaces_internal.iter().map(|x| x.into()).collect();
@@ -4974,8 +4974,8 @@ fn activate_deals(
 
 fn activate_deals_check_commd(
     rt: &impl Runtime,
-    activations: &[DataActivationBuiltinDealsCheckCommD],
-) -> Result<(BatchReturn, Vec<DealActivationInfo>), ActorError> {
+    activations: &[DealsActivationInputCheckCommD],
+) -> Result<(BatchReturn, Vec<DataActivationOutput>), ActorError> {
     let mut builtin_activations = vec![];
     let mut commds = vec![];
     for activation in activations {
@@ -5020,9 +5020,9 @@ fn activate_deals_check_commd(
 /// Failure to claim datacap for any verified deal results in the whole batch failing
 fn batch_activate_deals_and_claim_allocations(
     rt: &impl Runtime,
-    activation_infos: &[DealsActivationInfo],
+    activation_infos: &[DealsActivationInput],
     compute_unsealed_cid: bool,
-) -> Result<(BatchReturn, Vec<DealActivationInfoInternal>), ActorError> {
+) -> Result<(BatchReturn, Vec<DataActivationOutputInternal>), ActorError> {
     let batch_activation_res = match activation_infos.iter().all(|p| p.deal_ids.is_empty()) {
         true => ext::market::BatchActivateDealsResult {
             // if all sectors are empty of deals, skip calling the market actor
@@ -5127,8 +5127,8 @@ fn batch_activate_deals_and_claim_allocations(
         .activations
         .iter()
         .zip(claim_res.sector_claims)
-        .map(|(sector_deals, sector_claim)| DealActivationInfoInternal {
-            info: DealActivationInfo {
+        .map(|(sector_deals, sector_claim)| DataActivationOutputInternal {
+            info: DataActivationOutput {
                 unverified_space: sector_deals.nonverified_deal_space.clone(),
                 verified_space: sector_claim.claimed_space,
             },
