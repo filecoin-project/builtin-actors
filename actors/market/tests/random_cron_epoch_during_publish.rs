@@ -1,6 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use fil_actor_market::EX_DEAL_EXPIRED;
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
@@ -104,7 +105,7 @@ fn deals_are_scheduled_for_expiry_later_than_the_end_epoch() {
     rt.set_epoch(curr);
     let (pay, _) = cron_tick_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, curr, deal_id);
     assert_eq!(&deal_proposal.storage_price_per_epoch, &pay);
-    assert_deal_deleted(&rt, deal_id, deal_proposal, SECTOR_NUMBER);
+    assert_deal_deleted(&rt, deal_id, &deal_proposal, SECTOR_NUMBER);
     check_state(&rt);
 }
 
@@ -132,7 +133,7 @@ fn deal_is_processed_after_its_end_epoch_should_expire_correctly() {
     assert!(slashed.is_zero());
     let duration = END_EPOCH - START_EPOCH;
     assert_eq!(duration * &deal_proposal.storage_price_per_epoch, pay);
-    assert_deal_deleted(&rt, deal_id, deal_proposal, SECTOR_NUMBER);
+    assert_deal_deleted(&rt, deal_id, &deal_proposal, SECTOR_NUMBER);
     check_state(&rt);
 }
 
@@ -153,7 +154,7 @@ fn activation_after_deal_start_epoch_but_before_it_is_processed_fails() {
 
     let res =
         activate_deals(&rt, SECTOR_EXPIRY, PROVIDER_ADDR, curr_epoch, SECTOR_NUMBER, &[deal_id]);
-    assert_eq!(res.activation_results.codes(), vec![ExitCode::USR_ILLEGAL_ARGUMENT]);
+    assert_eq!(res.activation_results.codes(), vec![EX_DEAL_EXPIRED]);
     check_state(&rt);
 }
 
@@ -181,6 +182,6 @@ fn cron_processing_of_deal_after_missed_activation_should_fail_and_slash() {
     );
     cron_tick(&rt);
 
-    assert_deal_deleted(&rt, deal_id, deal_proposal, SECTOR_NUMBER);
+    assert_deal_deleted(&rt, deal_id, &deal_proposal, SECTOR_NUMBER);
     check_state(&rt);
 }

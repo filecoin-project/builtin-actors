@@ -24,6 +24,12 @@ pub mod account {
 
 pub mod miner {
     use super::*;
+    use cid::Cid;
+    use fvm_ipld_encoding::RawBytes;
+    use fvm_shared::clock::ChainEpoch;
+    use fvm_shared::error::ExitCode;
+    use fvm_shared::piece::PaddedPieceSize;
+    use fvm_shared::sector::SectorNumber;
 
     pub const CONTROL_ADDRESSES_METHOD: u64 = 2;
     pub const IS_CONTROLLING_ADDRESS_EXPORTED: u64 =
@@ -46,6 +52,65 @@ pub mod miner {
     #[serde(transparent)]
     pub struct IsControllingAddressParam {
         pub address: Address,
+    }
+
+    // Notification of change committed to one or more sectors.
+    // The relevant state must be already committed so the receiver can observe any impacts
+    // at the sending miner actor.
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+    #[serde(transparent)]
+    pub struct SectorContentChangedParams {
+        // Distinct sectors with changed content.
+        pub sectors: Vec<SectorChanges>,
+    }
+
+    // Description of changes to one sector's content.
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+    pub struct SectorChanges {
+        // Identifier of sector being updated.
+        pub sector: SectorNumber,
+        // Minimum epoch until which the data is committed to the sector.
+        // Note the sector may later be extended without necessarily another notification.
+        pub minimum_commitment_epoch: ChainEpoch,
+        // Information about some pieces added to (or retained in) the sector.
+        // This may be only a subset of sector content.
+        // Inclusion here does not mean the piece was definitely absent previously.
+        // Exclusion here does not mean a piece has been removed since a prior notification.
+        pub added: Vec<PieceInfo>,
+    }
+
+    // Description of a piece of data committed to a sector.
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+    pub struct PieceInfo {
+        pub data: Cid,
+        pub size: PaddedPieceSize,
+        // A receiver-specific identifier.
+        // E.g. an encoded deal ID which the provider claims this piece satisfies.
+        pub payload: RawBytes,
+    }
+
+    // For each piece in each sector, the notifee returns an exit code and
+    // (possibly-empty) result data.
+    // The miner actor will pass through results to its caller.
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+    #[serde(transparent)]
+    pub struct SectorContentChangedReturn {
+        // A result for each sector that was notified, in the same order.
+        pub sectors: Vec<SectorReturn>,
+    }
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+    #[serde(transparent)]
+    pub struct SectorReturn {
+        // A result for each piece for the sector that was notified, in the same order.
+        pub added: Vec<PieceReturn>,
+    }
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+    pub struct PieceReturn {
+        // Indicates whether the receiver accepted the notification.
+        // The caller is free to ignore this, but may chose to abort and roll back.
+        pub code: ExitCode,
+        // Receiver-specific result data about the piece, to be passed back to top level caller.
+        pub data: Vec<u8>,
     }
 }
 
