@@ -93,6 +93,7 @@ pub enum Method {
     GetDealProviderCollateralExported = frc42_dispatch::method_hash!("GetDealProviderCollateral"),
     GetDealVerifiedExported = frc42_dispatch::method_hash!("GetDealVerified"),
     GetDealActivationExported = frc42_dispatch::method_hash!("GetDealActivation"),
+    ProcessDealUpdatesExported = frc42_dispatch::method_hash!("ProcessDealUpdates"),
 }
 
 /// Market Actor
@@ -978,6 +979,81 @@ impl Actor {
             }
         }
     }
+
+    fn process_deal_updates(
+        rt: &impl Runtime,
+        params: ProcessDealsParams,
+    ) -> Result<ProcessDealsReturn, ActorError> {
+        let curr_epoch = rt.curr_epoch();
+        let mut total_slashed = TokenAmount::zero();
+        let mut terminated_deals: Vec<DealID> = Vec::new();
+
+        rt.transaction(|st: &mut State, rt| {
+            for deal_id in params.deal_ids {
+                let deal_proposal = st.get_proposal(rt.store(), deal_id)?;
+                let dcid = rt_deal_cid(rt, &deal_proposal)?;
+                let (deal_state, slashed) = st.get_active_deal_or_cleanup(
+                    rt.store(),
+                    curr_epoch,
+                    deal_id,
+                    &deal_proposal,
+                    &dcid,
+                )?;
+
+                let mut deal_state = match deal_state {
+                    Some(deal_state) => deal_state,
+                    None => {
+                        // deal was cleaned up
+                        total_slashed += slashed;
+                        terminated_deals.push(deal_id);
+                        continue;
+                    }
+                };
+
+                let (slash_amount, remove_deal) =
+                    st.process_deal_update(rt.store(), &deal_state, &deal_proposal, curr_epoch)?;
+
+                if slash_amount.is_negative() {
+                    return Err(actor_error!(
+                        illegal_state,
+                        format!(
+                            "computed negative slash amount {} for deal {}",
+                            slash_amount, deal_id
+                        )
+                    ));
+                }
+
+                if remove_deal {
+                    total_slashed += slash_amount;
+                    st.remove_completed_deal(rt.store(), deal_id)?;
+                    terminated_deals.push(deal_id);
+                } else {
+                    if !slash_amount.is_zero() {
+                        return Err(actor_error!(
+                            illegal_state,
+                            "continuing deal {} should not be slashed",
+                            deal_id
+                        ));
+                    }
+
+                    deal_state.last_updated_epoch = curr_epoch;
+                    st.put_deal_states(rt.store(), &[(deal_id, deal_state)])?;
+                }
+            }
+            Ok(())
+        })?;
+
+        if !total_slashed.is_zero() {
+            extract_send_result(rt.send_simple(
+                &BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                None,
+                total_slashed.clone(),
+            ))?;
+        }
+
+        Ok(ProcessDealsReturn { terminated_deals, total_slashed })
+    }
 }
 
 fn get_proposals<BS: Blockstore>(
@@ -1404,5 +1480,6 @@ impl ActorCode for Actor {
         GetDealProviderCollateralExported => get_deal_provider_collateral,
         GetDealVerifiedExported => get_deal_verified,
         GetDealActivationExported => get_deal_activation,
+        ProcessDealUpdatesExported => process_deal_updates,
     }
 }

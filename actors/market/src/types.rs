@@ -250,3 +250,15 @@ pub struct MarketNotifyDealParams {
     pub proposal: Vec<u8>,
     pub deal_id: u64,
 }
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+#[serde(transparent)]
+pub struct ProcessDealsParams {
+    pub deal_ids: Vec<DealID>,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+pub struct ProcessDealsReturn {
+    pub terminated_deals: Vec<DealID>,
+    pub total_slashed: TokenAmount,
+}
