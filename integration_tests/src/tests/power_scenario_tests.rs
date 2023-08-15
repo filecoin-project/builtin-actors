@@ -18,7 +18,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof};
 use fvm_shared::METHOD_SEND;
 use num_traits::Zero;
-use vm_api::trace::{ExpectInvocation, ExpectResult};
+use vm_api::trace::ExpectInvocation;
 use vm_api::util::{apply_ok, serialize_ok};
 use vm_api::VM;
 
@@ -67,7 +67,7 @@ pub fn power_create_miner_test(v: &dyn VM) {
         to: STORAGE_POWER_ACTOR_ADDR,
         method: PowerMethod::CreateMiner as u64,
         params: Some(IpldBlock::serialize_cbor(&params).unwrap()),
-        result: ExpectResult::ok(Some(res.ret)),
+        return_value: Some(res.ret),
         subinvocs: Some(vec![
             // request init actor construct miner
             ExpectInvocation {

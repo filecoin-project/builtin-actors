@@ -20,7 +20,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
-use vm_api::trace::{ExpectInvocation, ExpectResult};
+use vm_api::trace::ExpectInvocation;
 use vm_api::util::{apply_ok, serialize_ok};
 use vm_api::VM;
 
@@ -491,17 +491,13 @@ pub fn psd_bad_sig_test(v: &dyn VM) {
                     })
                     .unwrap(),
                 ),
-                result: ExpectResult::ExpectReturn {
-                    return_value: None,
-                    exit_code: ExitCode::USR_ILLEGAL_ARGUMENT,
-                },
+                return_value: None,
+                exit_code: ExitCode::USR_ILLEGAL_ARGUMENT,
                 ..Default::default()
             },
         ]),
-        result: ExpectResult::ExpectReturn {
-            return_value: None,
-            exit_code: ExitCode::USR_ILLEGAL_ARGUMENT,
-        },
+        return_value: None,
+        exit_code: ExitCode::USR_ILLEGAL_ARGUMENT,
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());

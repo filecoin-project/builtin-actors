@@ -4,12 +4,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::{ActorID, MethodNum};
 
-/// The result of an actor method invocation.
-#[derive(PartialEq, Eq, Clone, Debug)]
-pub enum InvocationResult {
-    CallReturn { return_value: Option<IpldBlock>, exit_code: ExitCode },
-    CallError { reason: String, errno: ErrorNumber },
-}
+type ReturnValue = Option<IpldBlock>;
 
 /// A trace of an actor method invocation.
 #[derive(Clone, Debug)]
@@ -19,7 +14,11 @@ pub struct InvocationTrace {
     pub value: TokenAmount,
     pub method: MethodNum,
     pub params: Option<IpldBlock>,
-    pub result: InvocationResult,
+    /// error_number is set when an unexpected syscall error occurs
+    pub error_number: Option<ErrorNumber>,
+    // no need to check return_value or exit_code if error_number is set
+    pub exit_code: ExitCode,
+    pub return_value: ReturnValue,
     pub subinvocations: Vec<InvocationTrace>,
 }
 
@@ -40,27 +39,11 @@ pub struct ExpectInvocation {
     pub method: MethodNum,
     pub value: Option<TokenAmount>,
     pub params: Option<Option<IpldBlock>>,
-    pub result: ExpectResult,
+    /// If error_number is set, exit_code and return_value are not checked
+    pub error_number: Option<ErrorNumber>,
+    pub exit_code: ExitCode,
+    pub return_value: Option<ReturnValue>,
     pub subinvocs: Option<Vec<ExpectInvocation>>,
-}
-
-#[derive(Clone, Debug)]
-pub enum ExpectResult {
-    /// Separate from CallReturn so that matching on return_value is optional
-    ExpectReturn {
-        return_value: Option<Option<IpldBlock>>,
-        exit_code: ExitCode,
-    },
-    ExpectError {
-        reason: String,
-        errno: ErrorNumber,
-    },
-}
-
-impl ExpectResult {
-    pub fn ok(return_value: Option<Option<IpldBlock>>) -> ExpectResult {
-        Self::ExpectReturn { return_value, exit_code: ExitCode::OK }
-    }
 }
 
 impl ExpectInvocation {
@@ -69,51 +52,44 @@ impl ExpectInvocation {
         let id = format!("[{}→{}:{}]", invoc.from, invoc.to, invoc.method);
         self.quick_match(invoc, String::new());
 
-        match &self.result {
-            ExpectResult::ExpectReturn {
-                return_value: expected_return,
-                exit_code: expected_code,
-            } => {
-                if let InvocationResult::CallReturn { return_value, exit_code } = &invoc.result {
-                    if let Some(expected_return) = expected_return {
-                        assert_eq!(
-                            return_value, expected_return,
-                            "{} unexpected return value: got: {:?}, expected: {:?}",
-                            id, return_value, expected_return
-                        );
-                    }
-                    assert_eq!(
-                        exit_code, expected_code,
-                        "{} unexpected exit code: got: {:?}, expected: {:?}",
-                        id, exit_code, expected_code
-                    );
-                } else {
-                    panic!(
-                        "{} expected CallReturn but got CallError instead: {:?}",
-                        id, invoc.result
-                    );
-                }
+        if self.error_number.is_some() && self.return_value.is_some() {
+            panic!(
+                "{} malformed expectation: expected error_number {} but also expected return_value",
+                id,
+                self.error_number.unwrap()
+            );
+        }
+
+        if let Some(error_number) = &self.error_number {
+            assert!(
+                invoc.error_number.is_some(),
+                "{} expected error_number: {}, was: None",
+                id,
+                error_number
+            );
+            assert_eq!(
+                error_number,
+                &invoc.error_number.unwrap(),
+                "{} unexpected error_number: expected: {}, was: {}",
+                id,
+                error_number,
+                invoc.error_number.unwrap()
+            );
+        } else {
+            assert_eq!(
+                self.exit_code, invoc.exit_code,
+                "{} unexpected exit_code: expected: {}, was: {}",
+                id, self.exit_code, invoc.exit_code
+            );
+
+            if let Some(v) = &self.return_value {
+                assert_eq!(
+                    v, &invoc.return_value,
+                    "{} unexpected return_value: expected: {:?}, was: {:?}",
+                    id, v, invoc.return_value
+                );
             }
-            ExpectResult::ExpectError { reason: expected_reason, errno: expected_errno } => {
-                if let InvocationResult::CallError { reason, errno } = &invoc.result {
-                    assert_eq!(
-                        reason, expected_reason,
-                        "{} unexpected error reason: got: {:?}, expected: {:?}",
-                        id, reason, expected_reason
-                    );
-                    assert_eq!(
-                        errno, expected_errno,
-                        "{} unexpected error code: got: {:?}, expected: {:?}",
-                        id, errno, expected_errno
-                    );
-                } else {
-                    panic!(
-                        "{} expected CallError but got CallReturn instead: {:?}",
-                        id, invoc.result
-                    );
-                }
-            }
-        };
+        }
 
         if let Some(v) = &self.value {
             assert_eq!(
@@ -194,8 +170,9 @@ impl Default for ExpectInvocation {
             method: 0,
             value: None,
             params: None,
-            // by-default we expect a successful invocation
-            result: ExpectResult::ExpectReturn { return_value: None, exit_code: ExitCode::OK },
+            error_number: None,
+            exit_code: ExitCode::OK,
+            return_value: None,
             subinvocs: None,
         }
     }

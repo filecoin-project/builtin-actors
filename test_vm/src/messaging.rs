@@ -59,7 +59,7 @@ use fvm_shared::{ActorID, MethodNum, Response, IPLD_RAW, METHOD_CONSTRUCTOR, MET
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::cell::{RefCell, RefMut};
-use vm_api::trace::{InvocationResult, InvocationTrace};
+use vm_api::trace::InvocationTrace;
 use vm_api::util::get_state;
 use vm_api::{new_actor, ActorState, VM};
 
@@ -223,8 +223,10 @@ where
             value: msg.value,
             method: msg.method,
             params: msg.params,
-            // Actors don't return CallErrors
-            result: InvocationResult::CallReturn { return_value: ret, exit_code: code },
+            // Actors should wrap syscall errors
+            error_number: None,
+            return_value: ret,
+            exit_code: code,
             subinvocations: self.subinvocations.take(),
         }
     }
