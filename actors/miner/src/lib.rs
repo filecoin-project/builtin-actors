@@ -931,9 +931,13 @@ impl Actor {
             precommits_to_confirm.iter().map(|x| x.clone().into()).collect();
         let rew = request_current_epoch_block_reward(rt)?;
         let pwr = request_current_total_power(rt)?;
-        activate_sectors_inner(
+        let (successful_activations, data_activations) =
+            activate_data_activate_deals(rt, &sector_activations)?;
+
+        activate_new_sector_infos(
             rt,
-            &sector_activations,
+            &successful_activations,
+            &data_activations,
             &rew.this_epoch_baseline_power,
             &rew.this_epoch_reward_smoothed,
             &pwr.quality_adj_power_smoothed,
@@ -2121,9 +2125,13 @@ impl Actor {
         let rew = request_current_epoch_block_reward(rt)?;
         let pwr = request_current_total_power(rt)?;
         let info = get_miner_info(rt.store(), &st)?;
-        activate_sectors_inner(
+
+        let (successful_activations, data_activations) =
+            activate_data_activate_deals(rt, &sector_activations)?;
+        activate_new_sector_infos(
             rt,
-            &sector_activations,
+            &successful_activations,
+            &data_activations,
             &rew.this_epoch_baseline_power,
             &rew.this_epoch_reward_smoothed,
             &pwr.quality_adj_power_smoothed,
@@ -4761,11 +4769,11 @@ fn check_peer_info(
 }
 
 // Precondition 1: all sectors referenced have a valid PoRep proof over sealed_cid
-// Precodition 2: all sectors referenced have an unsealed_cid that includes all data
-//   referenced as included in the sector by sector_activation.data_activation
-fn activate_sectors_inner(
+// Precodition 2: all sectors have activated data
+fn activate_new_sector_infos(
     rt: &impl Runtime,
     sector_activations: &[SectorActivation],
+    data_activations: &[DealSpaces],
     this_epoch_baseline_power: &BigInt,
     this_epoch_reward_smoothed: &FilterEstimate,
     quality_adj_power_smoothed: &FilterEstimate,
@@ -4774,8 +4782,6 @@ fn activate_sectors_inner(
     // get network stats from other actors
     let circulating_supply = rt.total_fil_circ_supply();
     let activation_epoch = rt.curr_epoch();
-
-    let (batch_return, data_activations) = activate_data(rt, sector_activations)?;
 
     let (total_pledge, newly_vested) = rt.transaction(|state: &mut State, rt| {
         let policy = rt.policy();
@@ -4786,26 +4792,12 @@ fn activate_sectors_inner(
         let mut new_sectors = Vec::<SectorOnChainInfo>::new();
         let mut total_pledge = TokenAmount::zero();
 
-        let successful_activations = batch_return.successes(sector_activations);
-        for (sa, deal_spaces) in successful_activations.iter().zip(data_activations) {
+        for (sa, deal_spaces) in sector_activations.iter().zip(data_activations) {
             // compute initial pledge
-            // XXX: lots of this will change for the PRU case, I suggest having two different
-            // sector state activation functions that we swap between on a flag (i.e. SectorActivation.kind == (Snap|Init), maybe later it makes sense to add ReSnap )
             let duration = sa.expiration - activation_epoch;
 
-            // This should have been caught in preprocessing, but don't let other sectors fail because of it.
-            // XXX I think we should actually be changing behavior to failing here otherwise there are potential live data activations that
-            // won't be rolled back
-            if duration < policy.min_sector_expiration {
-                warn!(
-                    "sector {} has lifetime {} less than minimum {}. ignoring",
-                    sa.sector_number, duration, policy.min_sector_expiration,
-                );
-                continue;
-            }
-
-            let deal_weight = deal_spaces.deal_space * duration;
-            let verified_deal_weight = deal_spaces.verified_deal_space * duration;
+            let deal_weight = &deal_spaces.deal_space * duration;
+            let verified_deal_weight = &deal_spaces.verified_deal_space * duration;
 
             let power = qa_power_for_weight(
                 info.sector_size,
@@ -4868,12 +4860,10 @@ fn activate_sectors_inner(
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to put new sectors")
         })?;
 
-        // XXX will need to filter by new sectors when extending to handle PRU
         state.delete_precommitted_sectors(store, &new_sector_numbers).map_err(|e| {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to delete precommited sectors")
         })?;
 
-        // XXX will need to filter by new sectors when extending to handle PRU
         state
             .assign_sectors_to_deadlines(
                 policy,
@@ -4922,6 +4912,7 @@ fn activate_sectors_inner(
     Ok(())
 }
 
+#[derive(Clone)]
 pub struct SectorActivation {
     sector_number: u64,
     seal_proof: RegisteredSealProof,
@@ -4932,8 +4923,6 @@ pub struct SectorActivation {
 }
 
 impl SectorActivation {
-    // XXX: if we stop putting deal ids on sector infos this
-    // function can go away before merging back to master
     fn deal_ids(&self) -> Vec<DealID> {
         match &self.data_activation {
             BuiltinActivation(deal_ids) => deal_ids.clone(),
@@ -4955,56 +4944,45 @@ impl From<SectorPreCommitOnChainInfo> for SectorActivation {
     }
 }
 
-/*
-    BuiltinMarket is today's call in CSPV f05 -> f06, return deal weights as today
-    BuiltinMarketWithCommD is what PRU should do to avoid double the market calls, return deal weights as today
-    SectorContentAdded is the new thing and can include piece manifests, independent calls f05 (or other) and f06, return deal weights per spec
-    CC means its CC and so we don't need to do any data activation DealSpace is always zero
-*/
+#[derive(Clone)]
 enum DataActivation {
     BuiltinActivation(Vec<DealID>),
     //    BuiltinActivationCheckCommD(Vec<DealID>), // for use in PRU single shot activation and CommD check
     //    SectorContentAdded(), // TODO add in allocids and piece manifest type to handle new activation flow
-    //    CC, // we can simplify activate and claim method by moving CC case directly here
 }
 
-fn activate_data(
+// Precondition 1: all sectors referenced have a valid PoRep proof over sealed_cid
+// Precondition 2: all sectors referenced have an unsealed_cid that includes all data
+//  referenced as included in the sector by sector_activation.data_activation
+fn activate_data_activate_deals(
     rt: &impl Runtime,
     activations: &[SectorActivation],
-) -> Result<(BatchReturn, Vec<DealSpaces>), ActorError> {
-    let (builtin_activation, builtin_activation_with_checks, sector_content_added, cc): (
-        Vec<DealsActivationInfo>,
-        Vec<()>, // XXX this is placeholder return types for batch data activation of different types
-        Vec<()>,
-        Vec<()>,
-    ) = activations.iter().fold((Vec::new(), Vec::new(), Vec::new(), Vec::new()), |mut acc, sa| {
+) -> Result<(Vec<SectorActivation>, Vec<DealSpaces>), ActorError> {
+    let mut builtin_activations = vec![];
+    for sa in activations {
         match &sa.data_activation {
             BuiltinActivation(deal_ids) => {
-                acc.0.push(DealsActivationInfo {
+                builtin_activations.push(DealsActivationInfo {
                     deal_ids: deal_ids.clone(),
                     sector_expiry: sa.expiration,
                     sector_number: sa.sector_number,
                     sector_type: sa.seal_proof,
                 });
-                acc
             }
-            // XXX fill out these arms either with direct data activation calls
-            // or pushing to a batch processing array as with the builitin activations
-            //_ => acc,
+            _ => {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "wrong data activation, expected activate deals"
+                ))
+            }
         }
-    });
-    // XXX remove this check once we handle all these things
-    if !builtin_activation_with_checks.is_empty()
-        || !sector_content_added.is_empty()
-        || !cc.is_empty()
-    {
-        return Err(actor_error!(illegal_state, "new data activation methods not yet implemented"));
     }
 
-    // XXX Correct BatchReturn is going to get a lot more complicated with four different outputs
-    // we could make it easy on ourselves and enforce only one type of activation.  We can probably
-    // figure out BatchReturn merging + tracking of existing index
-    batch_activate_deals_and_claim_allocations(rt, &builtin_activation)
+    let (batch_return, deal_spaces) =
+        batch_activate_deals_and_claim_allocations(rt, &builtin_activations)?;
+    let successful_activations =
+        batch_return.successes(activations).into_iter().map(|x| x.clone()).collect();
+    Ok((successful_activations, deal_spaces))
 }
 
 /// Activates the deals then claims allocations for any verified deals
