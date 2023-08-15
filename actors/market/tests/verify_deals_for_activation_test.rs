@@ -1,15 +1,6 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-mod harness;
-
-use fil_actor_market::{Actor as MarketActor, Method, SectorDeals, VerifyDealsForActivationParams};
-use fil_actors_runtime::runtime::builtins::Type;
-use fil_actors_runtime::test_utils::{
-    expect_abort, expect_abort_contains_message, make_piece_cid, ACCOUNT_ACTOR_CODE_ID,
-    MINER_ACTOR_CODE_ID,
-};
-use fil_actors_runtime::EPOCHS_IN_DAY;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
@@ -18,8 +9,18 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::sector::RegisteredSealProof;
-use harness::*;
 use num_traits::Zero;
+
+use fil_actor_market::{Actor as MarketActor, Method, SectorDeals, VerifyDealsForActivationParams};
+use fil_actors_runtime::runtime::builtins::Type;
+use fil_actors_runtime::test_utils::{
+    expect_abort, expect_abort_contains_message, make_piece_cid, ACCOUNT_ACTOR_CODE_ID,
+    MINER_ACTOR_CODE_ID,
+};
+use fil_actors_runtime::EPOCHS_IN_DAY;
+use harness::*;
+
+mod harness;
 
 const START_EPOCH: ChainEpoch = 10;
 const CURR_EPOCH: ChainEpoch = START_EPOCH;
@@ -267,7 +268,7 @@ fn fail_when_current_epoch_is_greater_than_proposal_start_epoch() {
         }],
     };
     expect_abort(
-        ExitCode::USR_ILLEGAL_ARGUMENT,
+        fil_actor_market::EX_DEAL_EXPIRED,
         rt.call::<MarketActor>(
             Method::VerifyDealsForActivation as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),

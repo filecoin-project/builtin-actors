@@ -250,7 +250,7 @@ fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
 
     terminate_deals(&rt, PROVIDER_ADDR, &[sector_number]);
     assert_deals_terminated(&rt, new_epoch, &deal_ids[0..0]);
-    assert_deal_deleted(&rt, deal_ids[1], deal2, sector_number);
+    assert_deal_deleted(&rt, deal_ids[1], &deal2, sector_number);
     check_state(&rt);
 }
 

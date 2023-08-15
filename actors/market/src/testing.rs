@@ -3,12 +3,10 @@ use std::{
     convert::TryFrom,
 };
 
+use cid::multihash::{Code, MultihashDigest};
 use cid::Cid;
-use fil_actors_runtime::builtin::HAMT_BIT_WIDTH;
-use fil_actors_runtime::{
-    make_map_with_root_and_bitwidth, parse_uint_key, MessageAccumulator, SetMultimap,
-};
 use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::DAG_CBOR;
 use fvm_shared::{
     address::{Address, Protocol},
     clock::{ChainEpoch, EPOCH_UNDEFINED},
@@ -18,8 +16,15 @@ use fvm_shared::{
 use integer_encoding::VarInt;
 use num_traits::Zero;
 
+use fil_actors_runtime::builtin::HAMT_BIT_WIDTH;
+use fil_actors_runtime::cbor::serialize;
+use fil_actors_runtime::{
+    make_map_with_root_and_bitwidth, parse_uint_key, ActorError, MessageAccumulator, SetMultimap,
+};
+
 use crate::{
-    balance_table::BalanceTable, deal_cid, DealArray, DealMetaArray, State, PROPOSALS_AMT_BITWIDTH,
+    balance_table::BalanceTable, DealArray, DealMetaArray, DealProposal, State,
+    PROPOSALS_AMT_BITWIDTH,
 };
 use crate::{ext::verifreg::AllocationID, NO_ALLOCATION_ID};
 
@@ -329,4 +334,13 @@ pub fn check_state_invariants<BS: Blockstore>(
         },
         acc,
     )
+}
+
+/// Compute a deal CID directly (the actor code uses a runtime built-in).
+pub(crate) fn deal_cid(proposal: &DealProposal) -> Result<Cid, ActorError> {
+    const DIGEST_SIZE: u32 = 32;
+    let data = serialize(proposal, "deal proposal")?;
+    let hash = Code::Blake2b256.digest(data.bytes());
+    debug_assert_eq!(u32::from(hash.size()), DIGEST_SIZE, "expected 32byte digest");
+    Ok(Cid::new_v1(DAG_CBOR, hash))
 }
