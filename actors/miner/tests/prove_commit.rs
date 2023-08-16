@@ -568,7 +568,10 @@ fn sector_with_non_positive_lifetime_fails_in_confirmation() {
     // confirm at sector expiration (this probably can't happen)
     rt.set_epoch(precommit.info.expiration);
     // failure occurs
-    expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.confirm_sector_proofs_valid(&rt, ProveCommitConfig::empty(), vec![precommit.clone()]));
+    expect_abort(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        h.confirm_sector_proofs_valid(&rt, ProveCommitConfig::empty(), vec![precommit.clone()]),
+    );
     h.check_state(&rt);
 }
 
