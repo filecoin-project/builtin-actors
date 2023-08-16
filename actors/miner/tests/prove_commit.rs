@@ -570,7 +570,7 @@ fn sector_with_non_positive_lifetime_fails_in_confirmation() {
     // failure occurs
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
-        h.confirm_sector_proofs_valid(&rt, ProveCommitConfig::empty(), vec![precommit.clone()]),
+        h.confirm_sector_proofs_valid(&rt, ProveCommitConfig::empty(), vec![precommit]),
     );
     h.check_state(&rt);
 }
