@@ -114,7 +114,7 @@ pub fn check_state_invariants<BS: Blockstore>(
 
     match state.load_deadlines(store) {
         Ok(deadlines) => {
-            let ret = deadlines.for_each(policy, store, |deadline_index, deadline| {
+            let ret = deadlines.for_each(store, |deadline_index, deadline| {
                 let acc = acc.with_prefix(format!("deadline {deadline_index}: "));
                 let quant = state.quant_spec_for_deadline(policy, deadline_index);
                 let deadline_summary = check_deadline_state_invariants(

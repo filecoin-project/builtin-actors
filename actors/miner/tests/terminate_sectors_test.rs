@@ -5,7 +5,7 @@ use fil_actor_miner::{
     INITIAL_PLEDGE_PROJECTION_PERIOD,
 };
 use fil_actors_runtime::{
-    runtime::{Policy, Runtime},
+    runtime::{Runtime},
     test_utils::{expect_abort_contains_message, MockRuntime, ACCOUNT_ACTOR_CODE_ID},
     BURNT_FUNDS_ACTOR_ADDR, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     SYSTEM_ACTOR_ADDR,
@@ -90,9 +90,8 @@ fn cannot_terminate_a_sector_when_the_challenge_window_is_open() {
     let sector = sector_info.into_iter().next().unwrap();
 
     let state: State = rt.get_state();
-    let policy = Policy::default();
     let (deadline_index, partition_index) =
-        state.find_sector(&policy, rt.store(), sector.sector_number).unwrap();
+        state.find_sector(rt.store(), sector.sector_number).unwrap();
 
     // advance into the deadline but not past it
     h.advance_to_deadline(&rt, deadline_index);
@@ -134,9 +133,8 @@ fn owner_cannot_terminate_if_market_cron_fails() {
     let sector = sector_info.into_iter().next().unwrap();
 
     let state: State = rt.get_state();
-    let policy = Policy::default();
     let (deadline_index, partition_index) =
-        state.find_sector(&policy, rt.store(), sector.sector_number).unwrap();
+        state.find_sector(rt.store(), sector.sector_number).unwrap();
 
     let expected_fee = calc_expected_fee_for_termination(&h, &rt, sector.clone());
 

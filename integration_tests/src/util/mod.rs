@@ -93,14 +93,13 @@ pub fn miner_dline_info(v: &dyn VM, m: &Address) -> DeadlineInfo {
 
 pub fn sector_deadline(v: &dyn VM, m: &Address, s: SectorNumber) -> (u64, u64) {
     let st: MinerState = get_state(v, m).unwrap();
-    st.find_sector(&Policy::default(), &DynBlockstore::wrap(v.blockstore()), s).unwrap()
+    st.find_sector(&DynBlockstore::wrap(v.blockstore()), s).unwrap()
 }
 
 pub fn check_sector_active(v: &dyn VM, m: &Address, s: SectorNumber) -> bool {
     let (d_idx, p_idx) = sector_deadline(v, m, s);
     let st: MinerState = get_state(v, m).unwrap();
     st.check_sector_active(
-        &Policy::default(),
         &DynBlockstore::wrap(v.blockstore()),
         d_idx,
         p_idx,
@@ -120,7 +119,7 @@ pub fn check_sector_faulty(
     let st: MinerState = get_state(v, m).unwrap();
     let bs = &DynBlockstore::wrap(v.blockstore());
     let deadlines = st.load_deadlines(bs).unwrap();
-    let deadline = deadlines.load_deadline(&Policy::default(), bs, d_idx).unwrap();
+    let deadline = deadlines.load_deadline(bs, d_idx).unwrap();
     let partition = deadline.load_partition(bs, p_idx).unwrap();
     partition.faults.get(s)
 }
@@ -129,7 +128,7 @@ pub fn deadline_state(v: &dyn VM, m: &Address, d_idx: u64) -> Deadline {
     let st: MinerState = get_state(v, m).unwrap();
     let bs = &DynBlockstore::wrap(v.blockstore());
     let deadlines = st.load_deadlines(bs).unwrap();
-    deadlines.load_deadline(&Policy::default(), bs, d_idx).unwrap()
+    deadlines.load_deadline(bs, d_idx).unwrap()
 }
 
 pub fn sector_info(v: &dyn VM, m: &Address, s: SectorNumber) -> SectorOnChainInfo {

@@ -436,12 +436,11 @@ impl State {
     /// Returns the deadline and partition index for a sector number.
     pub fn find_sector<BS: Blockstore>(
         &self,
-        policy: &Policy,
         store: &BS,
         sector_number: SectorNumber,
     ) -> anyhow::Result<(u64, u64)> {
         let deadlines = self.load_deadlines(store)?;
-        deadlines.find_sector(policy, store, sector_number)
+        deadlines.find_sector(store, sector_number)
     }
 
     /// Schedules each sector to expire at its next deadline end. If it can't find
@@ -474,7 +473,7 @@ impl State {
             )
             .next_not_elapsed();
             let new_expiration = deadline_info.last();
-            let mut deadline = deadlines.load_deadline(policy, store, deadline_idx)?;
+            let mut deadline = deadlines.load_deadline(store, deadline_idx)?;
 
             let replaced = deadline.reschedule_sector_expirations(
                 store,
@@ -512,7 +511,7 @@ impl State {
         let mut deadline_vec: Vec<Option<Deadline>> =
             (0..policy.wpost_period_deadlines).map(|_| None).collect();
 
-        deadlines.for_each(policy, store, |deadline_idx, deadline| {
+        deadlines.for_each(store, |deadline_idx, deadline| {
             // Skip deadlines that aren't currently mutable.
             if deadline_is_mutable(
                 policy,
@@ -587,7 +586,7 @@ impl State {
             let deadline_idx = i;
 
             // Load deadline + partitions.
-            let mut deadline = deadlines.load_deadline(policy, store, deadline_idx)?;
+            let mut deadline = deadlines.load_deadline(store, deadline_idx)?;
 
             let (deadline_result, more) = deadline
                 .pop_early_terminations(
@@ -634,7 +633,6 @@ impl State {
     /// Returns Ok(true) otherwise
     pub fn check_sector_active<BS: Blockstore>(
         &self,
-        policy: &Policy,
         store: &BS,
         deadline_idx: u64,
         partition_idx: u64,
@@ -642,7 +640,7 @@ impl State {
         require_proven: bool,
     ) -> anyhow::Result<bool> {
         let dls = self.load_deadlines(store)?;
-        let dl = dls.load_deadline(policy, store, deadline_idx)?;
+        let dl = dls.load_deadline(store, deadline_idx)?;
         let partition = dl.load_partition(store, partition_idx)?;
 
         let exists = partition.sectors.get(sector_number);
@@ -676,14 +674,13 @@ impl State {
     /// Returns an error if the target sector cannot be found and/or is faulty/terminated.
     pub fn check_sector_health<BS: Blockstore>(
         &self,
-        policy: &Policy,
         store: &BS,
         deadline_idx: u64,
         partition_idx: u64,
         sector_number: SectorNumber,
     ) -> anyhow::Result<()> {
         let deadlines = self.load_deadlines(store)?;
-        let deadline = deadlines.load_deadline(policy, store, deadline_idx)?;
+        let deadline = deadlines.load_deadline(store, deadline_idx)?;
         let partition = deadline.load_partition(store, partition_idx)?;
 
         if !partition.sectors.get(sector_number) {
@@ -1112,7 +1109,7 @@ impl State {
 
         let mut deadlines = self.load_deadlines(store)?;
 
-        let mut deadline = deadlines.load_deadline(policy, store, dl_info.index)?;
+        let mut deadline = deadlines.load_deadline(store, dl_info.index)?;
 
         let previously_faulty_power = deadline.faulty_power.clone();
 

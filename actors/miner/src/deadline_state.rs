@@ -8,7 +8,7 @@ use anyhow::anyhow;
 use cid::multihash::Code;
 use cid::Cid;
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{actor_error, ActorDowncast, ActorError, Array};
+use fil_actors_runtime::{actor_error, ActorDowncast, ActorError, Array, AsActorError};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
@@ -52,32 +52,35 @@ impl Deadlines {
 
     pub fn load_deadline<BS: Blockstore>(
         &self,
-        policy: &Policy,
         store: &BS,
-        deadline_idx: u64,
-    ) -> anyhow::Result<Deadline> {
-        if deadline_idx >= policy.wpost_period_deadlines {
-            return Err(anyhow!(actor_error!(
+        idx: u64,
+    ) -> Result<Deadline, ActorError> {
+        let idx = idx as usize;
+        if idx >= self.due.len() {
+            return Err(actor_error!(
                 illegal_argument,
-                "invalid deadline {}",
-                deadline_idx
-            )));
+                "invalid deadline index {} of {}",
+                idx,
+                self.due.len()
+            ));
         }
 
-        store.get_cbor(&self.due[deadline_idx as usize])?.ok_or_else(|| {
-            anyhow!(actor_error!(illegal_state, "failed to lookup deadline {}", deadline_idx))
-        })
+        store
+            .get_cbor(&self.due[idx])
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("failed to load deadline {}", idx)
+            })?
+            .ok_or_else(|| actor_error!(illegal_argument, "no deadline {}", idx))
     }
 
     pub fn for_each<BS: Blockstore>(
         &self,
-        policy: &Policy,
         store: &BS,
         mut f: impl FnMut(u64, Deadline) -> anyhow::Result<()>,
     ) -> anyhow::Result<()> {
         for i in 0..(self.due.len() as u64) {
             let index = i;
-            let deadline = self.load_deadline(policy, store, index)?;
+            let deadline = self.load_deadline(store, index)?;
             f(index, deadline)?;
         }
         Ok(())
