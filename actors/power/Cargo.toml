@@ -29,6 +29,7 @@ serde = { workspace = true }
 anyhow = { workspace = true }
 fvm_ipld_blockstore = { workspace = true }
 fvm_ipld_encoding = { workspace = true }
+vm_api = { workspace = true }
 
 [dev-dependencies]
 fil_actors_runtime = { workspace = true, features = ["test_utils", "sector-default"] }

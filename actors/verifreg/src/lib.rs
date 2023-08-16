@@ -28,6 +28,7 @@ use fil_actors_runtime::{
     SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen};
+use vm_api::blockstore::DynBlockstore;
 
 use crate::ext::datacap::{DestroyParams, MintParams};
 use crate::state::{
@@ -85,7 +86,7 @@ impl Actor {
             .resolve_address(&params.root_key)
             .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "root should be an ID address")?;
 
-        let st = State::new(rt.store(), Address::new_id(id_addr))
+        let st = State::new(&DynBlockstore::wrap(rt.store()), Address::new_id(id_addr))
             .context("failed to create verifreg state")?;
 
         rt.create(&st)?;
@@ -125,7 +126,7 @@ impl Actor {
 
         // Store the new verifier and allowance (over-writing).
         rt.transaction(|st: &mut State, rt| {
-            st.put_verifier(rt.store(), &verifier, &params.allowance)
+            st.put_verifier(&DynBlockstore::wrap(rt.store()), &verifier, &params.allowance)
                 .context("failed to add verifier")
         })
     }
@@ -139,7 +140,8 @@ impl Actor {
 
         rt.transaction(|st: &mut State, rt| {
             rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
-            st.remove_verifier(rt.store(), &verifier).context("failed to remove verifier")
+            st.remove_verifier(&DynBlockstore::wrap(rt.store()), &verifier)
+                .context("failed to remove verifier")
         })
     }
 
@@ -170,11 +172,11 @@ impl Actor {
             // Validate caller is one of the verifiers, i.e. has an allowance (even if zero).
             let verifier = rt.message().caller();
             let verifier_cap = st
-                .get_verifier_cap(rt.store(), &verifier)?
+                .get_verifier_cap(&DynBlockstore::wrap(rt.store()), &verifier)?
                 .ok_or_else(|| actor_error!(not_found, "caller {} is not a verifier", verifier))?;
 
             // Disallow existing verifiers as clients.
-            if st.get_verifier_cap(rt.store(), &client)?.is_some() {
+            if st.get_verifier_cap(&DynBlockstore::wrap(rt.store()), &client)?.is_some() {
                 return Err(actor_error!(
                     illegal_argument,
                     "verifier {} cannot be added as a verified client",
@@ -194,7 +196,7 @@ impl Actor {
 
             // Reduce verifier's cap.
             let new_verifier_cap = verifier_cap - &params.allowance;
-            st.put_verifier(rt.store(), &verifier, &new_verifier_cap)
+            st.put_verifier(&DynBlockstore::wrap(rt.store()), &verifier, &new_verifier_cap)
                 .context("failed to update verifier allowance")
         })?;
 
@@ -230,6 +232,7 @@ impl Actor {
 
         let (verifier_1_id, verifier_2_id) = rt.transaction(|st: &mut State, rt| {
             rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
+            let store = DynBlockstore::wrap(rt.store());
 
             if params.verified_client_to_remove == VERIFIED_REGISTRY_ACTOR_ADDR {
                 return Err(actor_error!(
@@ -248,7 +251,7 @@ impl Actor {
 
             // validate signatures
             let mut proposal_ids = RemoveDataCapProposalMap::load(
-                rt.store(),
+                &store,
                 &st.remove_data_cap_proposal_ids,
                 REMOVE_DATACAP_PROPOSALS_CONFIG,
                 "remove datacap proposals",
@@ -308,7 +311,8 @@ impl Actor {
         let mut recovered_datacap = DataCap::zero();
         let recovered_datacap = rt
             .transaction(|st: &mut State, rt| {
-                let mut allocs = st.load_allocs(rt.store())?;
+                let store = DynBlockstore::wrap(rt.store());
+                let mut allocs = st.load_allocs(&store)?;
 
                 let to_remove: Vec<&AllocationID>;
                 if params.allocation_ids.is_empty() {
@@ -378,8 +382,9 @@ impl Actor {
         let mut total_claimed_space = DataCap::zero();
 
         rt.transaction(|st: &mut State, rt| {
-            let mut claims = st.load_claims(rt.store())?;
-            let mut allocs = st.load_allocs(rt.store())?;
+            let store = DynBlockstore::wrap(rt.store());
+            let mut claims = st.load_claims(&store)?;
+            let mut allocs = st.load_allocs(&store)?;
 
             // Note: this doesn't prevent being called with the same sector number twice.
             'sectors: for sector in params.sectors {
@@ -472,7 +477,8 @@ impl Actor {
         rt.validate_immediate_caller_accept_any()?;
         let mut batch_gen = BatchReturnGen::new(params.claim_ids.len());
         let st: State = rt.state()?;
-        let mut st_claims = st.load_claims(rt.store())?;
+        let store = DynBlockstore::wrap(rt.store());
+        let mut st_claims = st.load_claims(&store)?;
         let mut claims = Vec::new();
         for id in params.claim_ids {
             let maybe_claim = state::get_claim(&mut st_claims, params.provider, id)?;
@@ -508,7 +514,8 @@ impl Actor {
         let term_limit = rt.policy().maximum_verified_allocation_term;
         let mut batch_gen = BatchReturnGen::new(params.terms.len());
         rt.transaction(|st: &mut State, rt| {
-            let mut st_claims = st.load_claims(rt.store())?;
+            let store = DynBlockstore::wrap(rt.store());
+            let mut st_claims = st.load_claims(&store)?;
             for term in params.terms {
                 // Confirm the new term limit is allowed.
                 if term.term_max > term_limit {
@@ -571,7 +578,8 @@ impl Actor {
         let mut batch_ret = BatchReturn::empty();
         let mut considered = Vec::<ClaimID>::new();
         rt.transaction(|st: &mut State, rt| {
-            let mut claims = st.load_claims(rt.store())?;
+            let store = DynBlockstore::wrap(rt.store());
+            let mut claims = st.load_claims(&store)?;
             let to_remove: Vec<&ClaimID>;
             if params.claim_ids.is_empty() {
                 // Find all expired claims for the provider.
@@ -649,7 +657,8 @@ impl Actor {
         }
 
         let st: State = rt.state()?;
-        let mut claims = st.load_claims(rt.store())?;
+        let store = DynBlockstore::wrap(rt.store());
+        let mut claims = st.load_claims(&store)?;
         let mut updated_claims = Vec::<(ClaimID, Claim)>::new();
         let mut extension_total = DataCap::zero();
         for req in &reqs.extensions {
@@ -690,8 +699,9 @@ impl Actor {
 
         // Save new allocations and updated claims.
         let ids = rt.transaction(|st: &mut State, rt| {
-            let ids = st.insert_allocations(rt.store(), client, new_allocs)?;
-            st.put_claims(rt.store(), updated_claims)?;
+            let ids =
+                st.insert_allocations(&DynBlockstore::wrap(rt.store()), client, new_allocs)?;
+            st.put_claims(&DynBlockstore::wrap(rt.store()), updated_claims)?;
             Ok(ids)
         })?;
 
@@ -701,7 +711,8 @@ impl Actor {
 
 // Checks whether an address has a verifier entry (which could be zero).
 fn is_verifier(rt: &impl Runtime, st: &State, address: Address) -> Result<bool, ActorError> {
-    let verifiers = DataCapMap::load(rt.store(), &st.verifiers, DATACAP_MAP_CONFIG, "verifiers")?;
+    let store = DynBlockstore::wrap(rt.store());
+    let verifiers = DataCapMap::load(&store, &st.verifiers, DATACAP_MAP_CONFIG, "verifiers")?;
     // check that the `address` is currently a verified client
     let found = verifiers.contains_key(&address)?;
     Ok(found)

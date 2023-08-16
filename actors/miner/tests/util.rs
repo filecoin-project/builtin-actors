@@ -88,6 +88,7 @@ use fil_actors_runtime::{
     INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+use vm_api::blockstore::DynBlockstore;
 
 const RECEIVER_ID: u64 = 1000;
 
@@ -2123,13 +2124,14 @@ impl ActorHarness {
 
         // create declarations
         let state: State = rt.get_state();
-        let deadlines = state.load_deadlines(rt.store()).unwrap();
+        let store = DynBlockstore::wrap(rt.store());
+        let deadlines = state.load_deadlines(&store).unwrap();
 
         let mut terminations: Vec<TerminationDeclaration> = Vec::new();
 
         let policy = Policy::default();
         for sector in sectors.iter() {
-            let (deadline, partition) = deadlines.find_sector(&policy, rt.store(), sector).unwrap();
+            let (deadline, partition) = deadlines.find_sector(&policy, &store, sector).unwrap();
             terminations.push(TerminationDeclaration {
                 sectors: make_bitfield(&[sector]),
                 deadline,
@@ -2318,7 +2320,8 @@ impl ActorHarness {
         rt.verify();
 
         let state: State = rt.get_state();
-        let info = state.get_info(rt.store()).unwrap();
+        let store = DynBlockstore::wrap(rt.store());
+        let info = state.get_info(&store).unwrap();
 
         let control_addresses = new_control_addresses
             .iter()
@@ -2597,7 +2600,7 @@ impl ActorHarness {
 
     pub fn get_info(&self, rt: &MockRuntime) -> MinerInfo {
         let state: State = rt.get_state();
-        state.get_info(rt.store()).unwrap()
+        state.get_info(&DynBlockstore::wrap(rt.store())).unwrap()
     }
 
     pub fn change_owner_address(
@@ -3359,7 +3362,7 @@ pub fn check_state_invariants_from_mock_runtime(rt: &MockRuntime) {
     let (_, acc) = check_state_invariants(
         rt.policy(),
         &rt.get_state::<State>(),
-        rt.store(),
+        &DynBlockstore::wrap(rt.store()),
         &rt.get_balance(),
     );
     assert!(acc.is_empty(), "{}", acc.messages().join("\n"));

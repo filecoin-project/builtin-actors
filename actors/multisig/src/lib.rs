@@ -22,6 +22,7 @@ use fil_actors_runtime::{
     actor_dispatch, actor_error, extract_send_result, resolve_to_actor_id, ActorContext,
     ActorError, AsActorError, INIT_ACTOR_ADDR,
 };
+use vm_api::blockstore::DynBlockstore;
 
 pub use self::state::*;
 pub use self::types::*;
@@ -97,7 +98,9 @@ impl Actor {
             return Err(actor_error!(illegal_argument; "negative unlock duration disallowed"));
         }
 
-        let empty_root = PendingTxnMap::empty(rt.store(), PENDING_TXN_CONFIG, "empty").flush()?;
+        let empty_root =
+            PendingTxnMap::empty(&DynBlockstore::wrap(rt.store()), PENDING_TXN_CONFIG, "empty")
+                .flush()?;
 
         let mut st: State = State {
             signers: resolved_signers,
@@ -139,12 +142,9 @@ impl Actor {
                 return Err(actor_error!(forbidden, "{} is not a signer", proposer));
             }
 
-            let mut ptx = PendingTxnMap::load(
-                rt.store(),
-                &st.pending_txs,
-                PENDING_TXN_CONFIG,
-                "pending txns",
-            )?;
+            let store = &DynBlockstore::wrap(rt.store());
+            let mut ptx =
+                PendingTxnMap::load(&store, &st.pending_txs, PENDING_TXN_CONFIG, "pending txns")?;
             let t_id = st.next_tx_id;
             st.next_tx_id.0 += 1;
 
@@ -175,12 +175,9 @@ impl Actor {
             if !st.is_signer(&approver) {
                 return Err(actor_error!(forbidden; "{} is not a signer", approver));
             }
-            let ptx = PendingTxnMap::load(
-                rt.store(),
-                &st.pending_txs,
-                PENDING_TXN_CONFIG,
-                "pending txns",
-            )?;
+            let store = DynBlockstore::wrap(rt.store());
+            let ptx =
+                PendingTxnMap::load(&store, &st.pending_txs, PENDING_TXN_CONFIG, "pending txns")?;
 
             let txn = get_transaction(rt, &ptx, params.id, params.proposal_hash)?;
 
@@ -210,12 +207,9 @@ impl Actor {
                 return Err(actor_error!(forbidden; "{} is not a signer", caller_addr));
             }
 
-            let mut ptx = PendingTxnMap::load(
-                rt.store(),
-                &st.pending_txs,
-                PENDING_TXN_CONFIG,
-                "pending txns",
-            )?;
+            let store = DynBlockstore::wrap(rt.store());
+            let mut ptx =
+                PendingTxnMap::load(&store, &st.pending_txs, PENDING_TXN_CONFIG, "pending txns")?;
 
             let tx = ptx.delete(&params.id)?.ok_or_else(|| {
                 actor_error!(not_found, "no such transaction {:?} to cancel", params.id)
@@ -305,8 +299,11 @@ impl Actor {
             }
 
             // Remove approvals from removed signer
-            st.purge_approvals(rt.store(), &Address::new_id(resolved_old_signer))
-                .context("failed to purge approvals of removed signer")?;
+            st.purge_approvals(
+                &DynBlockstore::wrap(rt.store()),
+                &Address::new_id(resolved_old_signer),
+            )
+            .context("failed to purge approvals of removed signer")?;
             st.signers.retain(|s| s != &Address::new_id(resolved_old_signer));
 
             Ok(())
@@ -337,7 +334,7 @@ impl Actor {
             // Add new signer
             st.signers.push(Address::new_id(to_resolved));
 
-            st.purge_approvals(rt.store(), &Address::new_id(from_resolved))?;
+            st.purge_approvals(&DynBlockstore::wrap(rt.store()), &Address::new_id(from_resolved))?;
             Ok(())
         })?;
 
@@ -406,12 +403,9 @@ impl Actor {
         }
 
         let st = rt.transaction(|st: &mut State, rt| {
-            let mut ptx = PendingTxnMap::load(
-                rt.store(),
-                &st.pending_txs,
-                PENDING_TXN_CONFIG,
-                "pending txns",
-            )?;
+            let store = DynBlockstore::wrap(rt.store());
+            let mut ptx =
+                PendingTxnMap::load(&store, &st.pending_txs, PENDING_TXN_CONFIG, "pending txns")?;
 
             // update approved on the transaction
             txn.approved.push(rt.message().caller());
@@ -480,12 +474,9 @@ fn execute_transaction_if_approved(
         applied = true;
 
         rt.transaction(|st: &mut State, rt| {
-            let mut ptx = PendingTxnMap::load(
-                rt.store(),
-                &st.pending_txs,
-                PENDING_TXN_CONFIG,
-                "pending txns",
-            )?;
+            let store = DynBlockstore::wrap(rt.store());
+            let mut ptx =
+                PendingTxnMap::load(&store, &st.pending_txs, PENDING_TXN_CONFIG, "pending txns")?;
             ptx.delete(&txn_id)?;
             st.pending_txs = ptx.flush()?;
             Ok(())

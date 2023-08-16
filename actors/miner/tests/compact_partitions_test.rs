@@ -32,18 +32,22 @@ fn assert_sectors_exists(
     expected_deadline: u64,
 ) {
     let state: State = rt.get_state();
-    assert!(state.get_sector(rt.store(), sector_number).unwrap().is_some());
+    assert!(state.get_sector(&DynBlockstore::wrap(rt.store()), sector_number).unwrap().is_some());
 
-    let (deadline, pid) = state.find_sector(rt.policy(), rt.store(), sector_number).unwrap();
+    let (deadline, pid) =
+        state.find_sector(rt.policy(), &DynBlockstore::wrap(rt.store()), sector_number).unwrap();
     assert_eq!(expected_partition, pid);
     assert_eq!(expected_deadline, deadline);
 }
 
 fn assert_sectors_not_found(rt: &MockRuntime, sector_number: SectorNumber) {
     let state: State = rt.get_state();
-    assert!(state.get_sector(rt.store(), sector_number).unwrap().is_none());
+    assert!(state.get_sector(&DynBlockstore::wrap(rt.store()), sector_number).unwrap().is_none());
 
-    let err = state.find_sector(rt.policy(), rt.store(), sector_number).err().unwrap();
+    let err = state
+        .find_sector(rt.policy(), &DynBlockstore::wrap(rt.store()), sector_number)
+        .err()
+        .unwrap();
     assert!(err.to_string().contains("not due at any deadline"));
 }
 

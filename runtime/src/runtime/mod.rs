@@ -16,6 +16,7 @@ use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum, Response};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use vm_api::blockstore::DynBlockstore;
 
 pub use self::actor_code::*;
 pub use self::policy::*;
@@ -49,7 +50,6 @@ pub use vm_api::Primitives;
 /// this is everything that is accessible to actors, beyond parameters.
 pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     type Blockstore: Blockstore;
-
     /// The network protocol version number at the current epoch.
     fn network_version(&self) -> NetworkVersion;
 
@@ -131,7 +131,7 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
                 actor_error!(illegal_state; "failed to create state; expected empty array CID, got: {}", root),
             );
         }
-        let new_root = self.store().put_cbor(obj, Code::Blake2b256)
+        let new_root = DynBlockstore::wrap(self.store()).put_cbor(obj, Code::Blake2b256)
             .map_err(|e| actor_error!(illegal_argument; "failed to write actor state during creation: {}", e.to_string()))?;
         self.set_state_root(&new_root)?;
         Ok(())
@@ -139,8 +139,7 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
 
     /// Loads a readonly copy of the state of the receiver into the argument.
     fn state<T: DeserializeOwned>(&self) -> Result<T, ActorError> {
-        Ok(self
-            .store()
+        Ok(DynBlockstore::wrap(self.store())
             .get_cbor(&self.get_state_root()?)
             .map_err(|_| actor_error!(illegal_argument; "failed to get actor for Readonly state"))?
             .expect("State does not exist for actor state root"))
@@ -165,7 +164,7 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
         F: FnOnce(&mut S, &Self) -> Result<RT, ActorError>;
 
     /// Returns reference to blockstore
-    fn store(&self) -> &Self::Blockstore;
+    fn store(&self) -> &dyn Blockstore;
 
     /// Sends a message to another actor, returning the exit code and return value envelope.
     /// If the invoked method does not return successfully, its state changes

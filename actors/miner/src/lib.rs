@@ -29,6 +29,7 @@ use itertools::Itertools;
 use log::{error, info, warn};
 use num_derive::FromPrimitive;
 use num_traits::{Signed, Zero};
+use vm_api::blockstore::DynBlockstore;
 
 pub use beneficiary::*;
 pub use bitfield_queue::*;
@@ -226,14 +227,21 @@ impl Actor {
             params.multi_addresses,
             params.window_post_proof_type,
         )?;
-        let info_cid = rt.store().put_cbor(&info, Blake2b256).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct illegal state")
-        })?;
-
-        let st =
-            State::new(policy, rt.store(), info_cid, period_start, deadline_idx).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct state")
+        let info_cid =
+            DynBlockstore::wrap(rt.store()).put_cbor(&info, Blake2b256).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct illegal state")
             })?;
+
+        let st = State::new(
+            policy,
+            &DynBlockstore::wrap(rt.store()),
+            info_cid,
+            period_start,
+            deadline_idx,
+        )
+        .map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to construct state")
+        })?;
         rt.create(&st)?;
 
         Ok(())
@@ -243,7 +251,7 @@ impl Actor {
     fn control_addresses(rt: &impl Runtime) -> Result<GetControlAddressesReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let state: State = rt.state()?;
-        let info = get_miner_info(rt.store(), &state)?;
+        let info = get_miner_info(&DynBlockstore::wrap(rt.store()), &state)?;
         Ok(GetControlAddressesReturn {
             owner: info.owner,
             worker: info.worker,
@@ -255,7 +263,7 @@ impl Actor {
     fn get_owner(rt: &impl Runtime) -> Result<GetOwnerReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let state: State = rt.state()?;
-        let info = get_miner_info(rt.store(), &state)?;
+        let info = get_miner_info(&DynBlockstore::wrap(rt.store()), &state)?;
         Ok(GetOwnerReturn { owner: info.owner, proposed: info.pending_owner_address })
     }
 
@@ -271,7 +279,7 @@ impl Actor {
             None => return Ok(IsControllingAddressReturn { is_controlling: false }),
         };
         let state: State = rt.state()?;
-        let info = get_miner_info(rt.store(), &state)?;
+        let info = get_miner_info(&DynBlockstore::wrap(rt.store()), &state)?;
         let is_controlling =
             info.control_addresses.iter().chain(&[info.worker, info.owner]).any(|a| *a == input);
 
@@ -282,7 +290,7 @@ impl Actor {
     fn get_sector_size(rt: &impl Runtime) -> Result<GetSectorSizeReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let state: State = rt.state()?;
-        let sector_size = get_miner_info(rt.store(), &state)?.sector_size;
+        let sector_size = get_miner_info(&DynBlockstore::wrap(rt.store()), &state)?.sector_size;
         Ok(GetSectorSizeReturn { sector_size })
     }
 
@@ -304,7 +312,7 @@ impl Actor {
         rt.validate_immediate_caller_accept_any()?;
         let state: State = rt.state()?;
         let vesting_funds = state
-            .load_vesting_funds(rt.store())
+            .load_vesting_funds(&DynBlockstore::wrap(rt.store()))
             .map_err(|e| actor_error!(illegal_state, "failed to load vesting funds: {}", e))?;
         let ret = vesting_funds.funds.into_iter().map(|v| (v.epoch, v.amount)).collect_vec();
         Ok(GetVestingFundsReturn { vesting_funds: ret })
@@ -332,7 +340,7 @@ impl Actor {
             .collect::<Result<_, _>>()?;
 
         rt.transaction(|state: &mut State, rt| {
-            let mut info = get_miner_info(rt.store(), state)?;
+            let mut info = get_miner_info(&DynBlockstore::wrap(rt.store()), state)?;
 
             // Only the Owner is allowed to change the new_worker and control addresses.
             rt.validate_immediate_caller_is(std::iter::once(&info.owner))?;
@@ -348,7 +356,7 @@ impl Actor {
                 })
             }
 
-            state.save_info(rt.store(), &info).map_err(|e| {
+            state.save_info(&DynBlockstore::wrap(rt.store()), &info).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "could not save miner info")
             })?;
 
@@ -361,7 +369,7 @@ impl Actor {
     /// Triggers a worker address change if a change has been requested and its effective epoch has arrived.
     fn confirm_change_worker_address(rt: &impl Runtime) -> Result<(), ActorError> {
         rt.transaction(|state: &mut State, rt| {
-            let mut info = get_miner_info(rt.store(), state)?;
+            let mut info = get_miner_info(&DynBlockstore::wrap(rt.store()), state)?;
 
             rt.validate_immediate_caller_is(std::iter::once(&info.owner))?;
 
@@ -389,7 +397,7 @@ impl Actor {
         }
 
         rt.transaction(|state: &mut State, rt| {
-            let mut info = get_miner_info(rt.store(), state)?;
+            let mut info = get_miner_info(&DynBlockstore::wrap(rt.store()), state)?;
 
             if rt.message().caller() == info.owner || info.pending_owner_address.is_none() {
                 rt.validate_immediate_caller_is(std::iter::once(&info.owner))?;
@@ -424,7 +432,7 @@ impl Actor {
                 }
             }
 
-            state.save_info(rt.store(), &info).map_err(|e| {
+            state.save_info(&DynBlockstore::wrap(rt.store()), &info).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save miner info")
             })?;
 
@@ -436,7 +444,7 @@ impl Actor {
     fn get_peer_id(rt: &impl Runtime) -> Result<GetPeerIDReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let state: State = rt.state()?;
-        let peer_id = get_miner_info(rt.store(), &state)?.peer_id;
+        let peer_id = get_miner_info(&DynBlockstore::wrap(rt.store()), &state)?.peer_id;
         Ok(GetPeerIDReturn { peer_id })
     }
 
@@ -445,14 +453,14 @@ impl Actor {
         check_peer_info(policy, &params.new_id, &[])?;
 
         rt.transaction(|state: &mut State, rt| {
-            let mut info = get_miner_info(rt.store(), state)?;
+            let mut info = get_miner_info(&DynBlockstore::wrap(rt.store()), state)?;
 
             rt.validate_immediate_caller_is(
                 info.control_addresses.iter().chain(&[info.worker, info.owner]),
             )?;
 
             info.peer_id = params.new_id;
-            state.save_info(rt.store(), &info).map_err(|e| {
+            state.save_info(&DynBlockstore::wrap(rt.store()), &info).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "could not save miner info")
             })?;
 
@@ -465,7 +473,7 @@ impl Actor {
     fn get_multiaddresses(rt: &impl Runtime) -> Result<GetMultiaddrsReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let state: State = rt.state()?;
-        let multi_addrs = get_miner_info(rt.store(), &state)?.multi_address;
+        let multi_addrs = get_miner_info(&DynBlockstore::wrap(rt.store()), &state)?.multi_address;
         Ok(GetMultiaddrsReturn { multi_addrs })
     }
 
@@ -477,14 +485,14 @@ impl Actor {
         check_peer_info(policy, &[], &params.new_multi_addrs)?;
 
         rt.transaction(|state: &mut State, rt| {
-            let mut info = get_miner_info(rt.store(), state)?;
+            let mut info = get_miner_info(&DynBlockstore::wrap(rt.store()), state)?;
 
             rt.validate_immediate_caller_is(
                 info.control_addresses.iter().chain(&[info.worker, info.owner]),
             )?;
 
             info.multi_address = params.new_multi_addrs;
-            state.save_info(rt.store(), &info).map_err(|e| {
+            state.save_info(&DynBlockstore::wrap(rt.store()), &info).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "could not save miner info")
             })?;
 
@@ -538,7 +546,7 @@ impl Actor {
         }
 
         let post_result = rt.transaction(|state: &mut State, rt| {
-            let info = get_miner_info(rt.store(), state)?;
+            let info = get_miner_info(&DynBlockstore::wrap(rt.store()), state)?;
 
             let max_proof_size = info.window_post_proof_type.proof_size().map_err(|e| {
                 actor_error!(illegal_state, "failed to determine max window post proof size: {}", e)
@@ -656,15 +664,16 @@ impl Actor {
                 return Err(actor_error!(illegal_argument, "post commit randomness mismatched"));
             }
 
-            let sectors = Sectors::load(rt.store(), &state.sectors).map_err(|e| {
+            let store = DynBlockstore::wrap(rt.store());
+            let sectors = Sectors::load(&store, &state.sectors).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors")
             })?;
 
             let mut deadlines =
-                state.load_deadlines(rt.store()).map_err(|e| e.wrap("failed to load deadlines"))?;
+                state.load_deadlines(&store).map_err(|e| e.wrap("failed to load deadlines"))?;
 
             let mut deadline =
-                deadlines.load_deadline(rt.policy(), rt.store(), params.deadline).map_err(|e| {
+                deadlines.load_deadline(rt.policy(), &store, params.deadline).map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
                         format!("failed to load deadline {}", params.deadline),
@@ -684,7 +693,7 @@ impl Actor {
             let fault_expiration = current_deadline.last() + policy.fault_max_age;
             let post_result = deadline
                 .record_proven_sectors(
-                    rt.store(),
+                    &DynBlockstore::wrap(rt.store()),
                     &sectors,
                     info.sector_size,
                     current_deadline.quant_spec(),
@@ -716,7 +725,11 @@ impl Actor {
             // If we're not recovering power, record the proof for optimistic verification.
             if post_result.recovered_power.is_zero() {
                 deadline
-                    .record_post_proofs(rt.store(), &post_result.partitions, &params.proofs)
+                    .record_post_proofs(
+                        &DynBlockstore::wrap(rt.store()),
+                        &post_result.partitions,
+                        &params.proofs,
+                    )
                     .map_err(|e| {
                         e.downcast_default(
                             ExitCode::USR_ILLEGAL_STATE,
@@ -748,16 +761,21 @@ impl Actor {
             }
 
             let deadline_idx = params.deadline;
-            deadlines.update_deadline(policy, rt.store(), params.deadline, &deadline).map_err(
-                |e| {
+            deadlines
+                .update_deadline(
+                    policy,
+                    &DynBlockstore::wrap(rt.store()),
+                    params.deadline,
+                    &deadline,
+                )
+                .map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
                         format!("failed to update deadline {}", deadline_idx),
                     )
-                },
-            )?;
+                })?;
 
-            state.save_deadlines(rt.store(), deadlines).map_err(|e| {
+            state.save_deadlines(&DynBlockstore::wrap(rt.store()), deadlines).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines")
             })?;
 
@@ -815,11 +833,11 @@ impl Actor {
             }
         }
         let state: State = rt.state()?;
-        let info = get_miner_info(rt.store(), &state)?;
+        let info = get_miner_info(&DynBlockstore::wrap(rt.store()), &state)?;
         rt.validate_immediate_caller_is(
             info.control_addresses.iter().chain(&[info.worker, info.owner]),
         )?;
-        let store = rt.store();
+        let store = &DynBlockstore::wrap(rt.store());
         let precommits =
             state.get_all_precommitted_sectors(store, sector_numbers).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get precommits")
@@ -963,7 +981,6 @@ impl Actor {
     where
         // + Clone because we messed up and need to keep a copy around between transactions.
         // https://github.com/filecoin-project/builtin-actors/issues/133
-        RT::Blockstore: Clone,
         RT: Runtime,
     {
         // In this entry point, the unsealed CID is computed from deals via the market actor.
@@ -990,9 +1007,6 @@ impl Actor {
         params: ProveReplicaUpdatesParams2,
     ) -> Result<BitField, ActorError>
     where
-        // + Clone because we messed up and need to keep a copy around between transactions.
-        // https://github.com/filecoin-project/builtin-actors/issues/133
-        RT::Blockstore: Blockstore + Clone,
         RT: Runtime,
     {
         let updates = params
@@ -1018,7 +1032,6 @@ impl Actor {
     where
         // + Clone because we messed up and need to keep a copy around between transactions.
         // https://github.com/filecoin-project/builtin-actors/issues/133
-        RT::Blockstore: Blockstore + Clone,
         RT: Runtime,
     {
         // Validate inputs
@@ -1033,13 +1046,13 @@ impl Actor {
         }
 
         let state: State = rt.state()?;
-        let info = get_miner_info(rt.store(), &state)?;
+        let info = get_miner_info(&DynBlockstore::wrap(rt.store()), &state)?;
 
         rt.validate_immediate_caller_is(
             info.control_addresses.iter().chain(&[info.owner, info.worker]),
         )?;
 
-        let sector_store = rt.store().clone();
+        let sector_store = &DynBlockstore::wrap(rt.store());
         let mut sectors = Sectors::load(&sector_store, &state.sectors).map_err(|e| {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")
         })?;
@@ -1125,7 +1138,7 @@ impl Actor {
             if !state
                 .check_sector_active(
                     rt.policy(),
-                    rt.store(),
+                    &DynBlockstore::wrap(rt.store()),
                     update.deadline,
                     update.partition,
                     update.sector_number,
@@ -1219,19 +1232,20 @@ impl Actor {
 
         let succeeded_sectors = rt.transaction(|state: &mut State, rt| {
             let mut succeeded = Vec::new();
-            let mut deadlines = state.load_deadlines(rt.store())?;
+            let store = DynBlockstore::wrap(rt.store());
+            let mut deadlines = state.load_deadlines(&store)?;
 
             let mut new_sectors = Vec::with_capacity(validated_updates.len());
             for &dl_idx in deadlines_to_load.iter() {
                 let mut deadline =
-                    deadlines.load_deadline(rt.policy(), rt.store(), dl_idx).map_err(|e| {
+                    deadlines.load_deadline(rt.policy(), &store, dl_idx).map_err(|e| {
                         e.downcast_default(
                             ExitCode::USR_ILLEGAL_STATE,
                             format!("failed to load deadline {}", dl_idx),
                         )
                     })?;
 
-                let mut partitions = deadline.partitions_amt(rt.store()).map_err(|e| {
+                let mut partitions = deadline.partitions_amt(&store).map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
                         format!("failed to load partitions for deadline {}", dl_idx),
@@ -1355,7 +1369,7 @@ impl Actor {
 
                     let (partition_power_delta, partition_pledge_delta) = partition
                         .replace_sectors(
-                            rt.store(),
+                            &DynBlockstore::wrap(rt.store()),
                             &[with_details.sector_info.clone()],
                             &[new_sector_info.clone()],
                             info.sector_size,
@@ -1395,14 +1409,19 @@ impl Actor {
                     )
                 })?;
 
-                deadlines.update_deadline(rt.policy(), rt.store(), dl_idx, &deadline).map_err(
-                    |e| {
+                deadlines
+                    .update_deadline(
+                        rt.policy(),
+                        &DynBlockstore::wrap(rt.store()),
+                        dl_idx,
+                        &deadline,
+                    )
+                    .map_err(|e| {
                         e.downcast_default(
                             ExitCode::USR_ILLEGAL_STATE,
                             format!("failed to save deadline {}", dl_idx),
                         )
-                    },
-                )?;
+                    })?;
             }
 
             let success_len = succeeded.len();
@@ -1431,7 +1450,7 @@ impl Actor {
             state.sectors = sectors.amt.flush().map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save sectors")
             })?;
-            state.save_deadlines(rt.store(), deadlines).map_err(|e| {
+            state.save_deadlines(&DynBlockstore::wrap(rt.store()), deadlines).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines")
             })?;
 
@@ -1500,6 +1519,7 @@ impl Actor {
             rt.transaction(|st: &mut State, rt| {
                 let policy = rt.policy();
                 let dl_info = st.deadline_info(policy, current_epoch);
+                let store = &DynBlockstore::wrap(rt.store());
 
                 if !deadline_available_for_optimistic_post_dispute(
                     policy,
@@ -1515,7 +1535,7 @@ impl Actor {
                     ));
                 }
 
-                let info = get_miner_info(rt.store(), st)?;
+                let info = get_miner_info(&store, st)?;
                 // --- check proof ---
 
                 // Find the proving period start for the deadline in question.
@@ -1526,12 +1546,11 @@ impl Actor {
                 let target_deadline =
                     new_deadline_info(policy, pp_start, params.deadline, current_epoch);
                 // Load the target deadline
-                let mut deadlines_current = st
-                    .load_deadlines(rt.store())
-                    .map_err(|e| e.wrap("failed to load deadlines"))?;
+                let mut deadlines_current =
+                    st.load_deadlines(&store).map_err(|e| e.wrap("failed to load deadlines"))?;
 
                 let mut dl_current = deadlines_current
-                    .load_deadline(policy, rt.store(), params.deadline)
+                    .load_deadline(policy, &store, params.deadline)
                     .map_err(|e| {
                         e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load deadline")
                     })?;
@@ -1541,7 +1560,7 @@ impl Actor {
                 // it can't be disputed again. If this method fails,
                 // this operation must be rolled back.
                 let (partitions, proofs) =
-                    dl_current.take_post_proofs(rt.store(), params.post_index).map_err(|e| {
+                    dl_current.take_post_proofs(&store, params.post_index).map_err(|e| {
                         e.downcast_default(
                             ExitCode::USR_ILLEGAL_STATE,
                             "failed to load proof for dispute",
@@ -1549,9 +1568,8 @@ impl Actor {
                     })?;
 
                 // Load the partition info we need for the dispute.
-                let mut dispute_info = dl_current
-                    .load_partitions_for_dispute(rt.store(), partitions)
-                    .map_err(|e| {
+                let mut dispute_info =
+                    dl_current.load_partitions_for_dispute(&store, partitions).map_err(|e| {
                         e.downcast_default(
                             ExitCode::USR_ILLEGAL_STATE,
                             "failed to load partition for dispute",
@@ -1563,13 +1581,9 @@ impl Actor {
                 let penalised_power = dispute_info.disputed_power.clone();
 
                 // Load sectors for the dispute.
-                let sectors =
-                    Sectors::load(rt.store(), &dl_current.sectors_snapshot).map_err(|e| {
-                        e.downcast_default(
-                            ExitCode::USR_ILLEGAL_STATE,
-                            "failed to load sectors array",
-                        )
-                    })?;
+                let sectors = Sectors::load(&store, &dl_current.sectors_snapshot).map_err(|e| {
+                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")
+                })?;
                 let sector_infos = sectors
                     .load_for_proof(&dispute_info.all_sector_nos, &dispute_info.ignored_sector_nos)
                     .map_err(|e| {
@@ -1595,7 +1609,7 @@ impl Actor {
                 let fault_expiration_epoch = target_deadline.last() + policy.fault_max_age;
                 let power_delta = dl_current
                     .record_faults(
-                        rt.store(),
+                        &store,
                         &sectors,
                         info.sector_size,
                         quant_spec_for_deadline(policy, &target_deadline),
@@ -1607,7 +1621,7 @@ impl Actor {
                     })?;
 
                 deadlines_current
-                    .update_deadline(policy, rt.store(), params.deadline, &dl_current)
+                    .update_deadline(policy, &store, params.deadline, &dl_current)
                     .map_err(|e| {
                         e.downcast_default(
                             ExitCode::USR_ILLEGAL_STATE,
@@ -1615,7 +1629,7 @@ impl Actor {
                         )
                     })?;
 
-                st.save_deadlines(rt.store(), deadlines_current).map_err(|e| {
+                st.save_deadlines(&store, deadlines_current).map_err(|e| {
                     e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines")
                 })?;
 
@@ -1642,7 +1656,7 @@ impl Actor {
                     .map_err(|e| actor_error!(illegal_state, "failed to apply penalty {}", e))?;
                 let (penalty_from_vesting, penalty_from_balance) = st
                     .repay_partial_debt_in_priority_order(
-                        rt.store(),
+                        &store,
                         current_epoch,
                         &rt.current_balance(),
                     )
@@ -1893,14 +1907,14 @@ impl Actor {
                 })?;
             fee_to_burn = repay_debts_or_abort(rt, state)?;
 
-            let info = get_miner_info(rt.store(), state)?;
+            let info = get_miner_info(&DynBlockstore::wrap(rt.store()), state)?;
 
             rt.validate_immediate_caller_is(
                 info.control_addresses
                     .iter()
                     .chain(&[info.worker, info.owner]),
             )?;
-            let store = rt.store();
+            let store = &DynBlockstore::wrap(rt.store());
             if consensus_fault_active(&info, curr_epoch) {
                 return Err(actor_error!(forbidden, "pre-commit not allowed during active consensus fault"));
             }
@@ -2034,7 +2048,7 @@ impl Actor {
 
         let st: State = rt.state()?;
         let precommit = st
-            .get_precommitted_sector(rt.store(), sector_number)
+            .get_precommitted_sector(&DynBlockstore::wrap(rt.store()), sector_number)
             .map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
@@ -2120,7 +2134,7 @@ impl Actor {
             );
         }
         let st: State = rt.state()?;
-        let store = rt.store();
+        let store = &DynBlockstore::wrap(rt.store());
         // This skips missing pre-commits.
         let precommited_sectors =
             st.find_precommitted_sectors(store, &params.sectors).map_err(|e| {
@@ -2150,7 +2164,7 @@ impl Actor {
 
         let st: State = rt.state()?;
 
-        match st.get_sector(rt.store(), params.sector_number) {
+        match st.get_sector(&DynBlockstore::wrap(rt.store()), params.sector_number) {
             Err(e) => Err(actor_error!(
                 illegal_state,
                 "failed to load proven sector {}: {}",
@@ -2205,13 +2219,14 @@ impl Actor {
 
         /* Loop over sectors and do extension */
         let (power_delta, pledge_delta) = rt.transaction(|state: &mut State, rt| {
-            let info = get_miner_info(rt.store(), state)?;
+            let store = DynBlockstore::wrap(rt.store());
+            let info = get_miner_info(&store, state)?;
             rt.validate_immediate_caller_is(
                 info.control_addresses.iter().chain(&[info.worker, info.owner]),
             )?;
 
             let mut deadlines =
-                state.load_deadlines(rt.store()).map_err(|e| e.wrap("failed to load deadlines"))?;
+                state.load_deadlines(&store).map_err(|e| e.wrap("failed to load deadlines"))?;
 
             // Group declarations by deadline, and remember iteration order.
             //
@@ -2228,7 +2243,7 @@ impl Actor {
                 decls.push(decl);
             }
 
-            let mut sectors = Sectors::load(rt.store(), &state.sectors).map_err(|e| {
+            let mut sectors = Sectors::load(&store, &state.sectors).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")
             })?;
 
@@ -2238,14 +2253,14 @@ impl Actor {
             for deadline_idx in deadlines_to_load {
                 let policy = rt.policy();
                 let mut deadline =
-                    deadlines.load_deadline(policy, rt.store(), deadline_idx).map_err(|e| {
+                    deadlines.load_deadline(policy, &store, deadline_idx).map_err(|e| {
                         e.downcast_default(
                             ExitCode::USR_ILLEGAL_STATE,
                             format!("failed to load deadline {}", deadline_idx),
                         )
                     })?;
 
-                let mut partitions = deadline.partitions_amt(rt.store()).map_err(|e| {
+                let mut partitions = deadline.partitions_amt(&store).map_err(|e| {
                     e.downcast_default(
                         ExitCode::USR_ILLEGAL_STATE,
                         format!("failed to load partitions for deadline {}", deadline_idx),
@@ -2316,7 +2331,7 @@ impl Actor {
                     // Remove old sectors from partition and assign new sectors.
                     let (partition_power_delta, partition_pledge_delta) = partition
                         .replace_sectors(
-                            rt.store(),
+                            &store,
                             &old_sectors,
                             &new_sectors,
                             info.sector_size,
@@ -2362,7 +2377,7 @@ impl Actor {
                 // Record partitions in deadline expiration queue
                 for epoch in epochs_to_reschedule {
                     let p_idxs = partitions_by_new_epoch.get(&epoch).unwrap();
-                    deadline.add_expiration_partitions(rt.store(), epoch, p_idxs, quant).map_err(
+                    deadline.add_expiration_partitions(&store, epoch, p_idxs, quant).map_err(
                         |e| {
                             e.downcast_default(
                                 ExitCode::USR_ILLEGAL_STATE,
@@ -2376,7 +2391,7 @@ impl Actor {
                     )?;
                 }
 
-                deadlines.update_deadline(policy, rt.store(), deadline_idx, &deadline).map_err(
+                deadlines.update_deadline(policy, &store, deadline_idx, &deadline).map_err(
                     |e| {
                         e.downcast_default(
                             ExitCode::USR_ILLEGAL_STATE,
@@ -2389,7 +2404,7 @@ impl Actor {
             state.sectors = sectors.amt.flush().map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save sectors")
             })?;
-            state.save_deadlines(rt.store(), deadlines).map_err(|e| {
+            state.save_deadlines(&store, deadlines).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines")
             })?;
 
@@ -2469,13 +2484,13 @@ impl Actor {
         let (had_early_terminations, power_delta) = rt.transaction(|state: &mut State, rt| {
             let had_early_terminations = have_pending_early_terminations(state);
 
-            let info = get_miner_info(rt.store(), state)?;
+            let info = get_miner_info(&DynBlockstore::wrap(rt.store()), state)?;
 
             rt.validate_immediate_caller_is(
                 info.control_addresses.iter().chain(&[info.worker, info.owner]),
             )?;
 
-            let store = rt.store();
+            let store = &DynBlockstore::wrap(rt.store());
             let curr_epoch = rt.curr_epoch();
             let mut power_delta = PowerPair::zero();
 
@@ -2614,13 +2629,13 @@ impl Actor {
         }
 
         let power_delta = rt.transaction(|state: &mut State, rt| {
-            let info = get_miner_info(rt.store(), state)?;
+            let info = get_miner_info(&DynBlockstore::wrap(rt.store()), state)?;
 
             rt.validate_immediate_caller_is(
                 info.control_addresses.iter().chain(&[info.worker, info.owner]),
             )?;
 
-            let store = rt.store();
+            let store = &DynBlockstore::wrap(rt.store());
 
             let mut deadlines =
                 state.load_deadlines(store).map_err(|e| e.wrap("failed to load deadlines"))?;
@@ -2757,7 +2772,7 @@ impl Actor {
             // and repay fee debt now.
             let fee_to_burn = repay_debts_or_abort(rt, state)?;
 
-            let info = get_miner_info(rt.store(), state)?;
+            let info = get_miner_info(&DynBlockstore::wrap(rt.store()), state)?;
 
             rt.validate_immediate_caller_is(
                 info.control_addresses.iter().chain(&[info.worker, info.owner]),
@@ -2770,7 +2785,7 @@ impl Actor {
                 ));
             }
 
-            let store = rt.store();
+            let store = &DynBlockstore::wrap(rt.store());
 
             let mut deadlines =
                 state.load_deadlines(store).map_err(|e| e.wrap("failed to load deadlines"))?;
@@ -2870,13 +2885,13 @@ impl Actor {
         let params_deadline = params.deadline;
 
         rt.transaction(|state: &mut State, rt| {
-            let info = get_miner_info(rt.store(), state)?;
+            let info = get_miner_info(&DynBlockstore::wrap(rt.store()), state)?;
 
             rt.validate_immediate_caller_is(
                 info.control_addresses.iter().chain(&[info.worker, info.owner]),
             )?;
 
-            let store = rt.store();
+            let store = &DynBlockstore::wrap(rt.store());
             let policy = rt.policy();
 
             if !deadline_available_for_compaction(
@@ -3011,14 +3026,14 @@ impl Actor {
         }
 
         rt.transaction(|state: &mut State, rt| {
-            let info = get_miner_info(rt.store(), state)?;
+            let info = get_miner_info(&DynBlockstore::wrap(rt.store()), state)?;
 
             rt.validate_immediate_caller_is(
                 info.control_addresses.iter().chain(&[info.worker, info.owner]),
             )?;
 
             state.allocate_sector_numbers(
-                rt.store(),
+                &DynBlockstore::wrap(rt.store()),
                 mask_sector_numbers,
                 CollisionPolicy::AllowCollisions,
             )
@@ -3067,7 +3082,7 @@ impl Actor {
 
             let newly_vested = st
                 .add_locked_funds(
-                    rt.store(),
+                    &DynBlockstore::wrap(rt.store()),
                     rt.curr_epoch(),
                     &reward_to_lock,
                     locked_reward_vesting_spec,
@@ -3086,7 +3101,7 @@ impl Actor {
             // penalty than it can pay for with reward and existing funds, it will go into fee debt.
             let (penalty_from_vesting, penalty_from_balance) = st
                 .repay_partial_debt_in_priority_order(
-                    rt.store(),
+                    &DynBlockstore::wrap(rt.store()),
                     rt.curr_epoch(),
                     &rt.current_balance(),
                 )
@@ -3152,7 +3167,7 @@ impl Actor {
         let mut pledge_delta = TokenAmount::zero();
 
         let (burn_amount, reward_amount) = rt.transaction(|st: &mut State, rt| {
-            let mut info = get_miner_info(rt.store(), st)?;
+            let mut info = get_miner_info(&DynBlockstore::wrap(rt.store()), st)?;
 
             // Verify miner hasn't already been faulted
             if fault.epoch < info.consensus_fault_elapsed {
@@ -3171,7 +3186,7 @@ impl Actor {
             // Pay penalty
             let (penalty_from_vesting, penalty_from_balance) = st
                 .repay_partial_debt_in_priority_order(
-                    rt.store(),
+                    &DynBlockstore::wrap(rt.store()),
                     rt.curr_epoch(),
                     &rt.current_balance(),
                 )
@@ -3189,7 +3204,7 @@ impl Actor {
             info.consensus_fault_elapsed =
                 rt.curr_epoch() + rt.policy().consensus_fault_ineligibility_duration;
 
-            st.save_info(rt.store(), &info).map_err(|e| {
+            st.save_info(&DynBlockstore::wrap(rt.store()), &info).map_err(|e| {
                 e.downcast_default(ExitCode::USR_SERIALIZATION, "failed to save miner info")
             })?;
 
@@ -3224,7 +3239,7 @@ impl Actor {
 
         let (info, amount_withdrawn, newly_vested, fee_to_burn, state) =
             rt.transaction(|state: &mut State, rt| {
-                let mut info = get_miner_info(rt.store(), state)?;
+                let mut info = get_miner_info(&DynBlockstore::wrap(rt.store()), state)?;
 
                 // Only the owner or the beneficiary is allowed to withdraw the balance.
                 rt.validate_immediate_caller_is(&[info.owner, info.beneficiary])?;
@@ -3241,7 +3256,7 @@ impl Actor {
 
                 // Unlock vested funds so we can spend them.
                 let newly_vested =
-                    state.unlock_vested_funds(rt.store(), rt.curr_epoch()).map_err(|e| {
+                    state.unlock_vested_funds(&DynBlockstore::wrap(rt.store()), rt.curr_epoch()).map_err(|e| {
                         e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "Failed to vest fund")
                     })?;
 
@@ -3283,7 +3298,7 @@ impl Actor {
                     amount_withdrawn = std::cmp::min(amount_withdrawn, &remaining_quota);
                     if amount_withdrawn.is_positive() {
                         info.beneficiary_term.used_quota += amount_withdrawn;
-                        state.save_info(rt.store(), &info).map_err(|e| {
+                        state.save_info(&DynBlockstore::wrap(rt.store()), &info).map_err(|e| {
                             e.downcast_default(
                                 ExitCode::USR_ILLEGAL_STATE,
                                 "failed to save miner info",
@@ -3332,7 +3347,7 @@ impl Actor {
             })?);
 
         rt.transaction(|state: &mut State, rt| {
-            let mut info = get_miner_info(rt.store(), state)?;
+            let mut info = get_miner_info(&DynBlockstore::wrap(rt.store()), state)?;
             if caller == info.owner {
                 // This is a ChangeBeneficiary proposal when the caller is Owner
                 if new_beneficiary != info.owner {
@@ -3436,7 +3451,7 @@ impl Actor {
                 }
             }
 
-            state.save_info(rt.store(), &info).map_err(|e| {
+            state.save_info(&DynBlockstore::wrap(rt.store()), &info).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save miner info")
             })?;
             Ok(())
@@ -3449,7 +3464,7 @@ impl Actor {
     fn get_beneficiary(rt: &impl Runtime) -> Result<GetBeneficiaryReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let st: State = rt.state()?;
-        let info = get_miner_info(rt.store(), &st)?;
+        let info = get_miner_info(&DynBlockstore::wrap(rt.store()), &st)?;
 
         Ok(GetBeneficiaryReturn {
             active: ActiveBeneficiary {
@@ -3462,7 +3477,7 @@ impl Actor {
 
     fn repay_debt(rt: &impl Runtime) -> Result<(), ActorError> {
         let (from_vesting, from_balance, state) = rt.transaction(|state: &mut State, rt| {
-            let info = get_miner_info(rt.store(), state)?;
+            let info = get_miner_info(&DynBlockstore::wrap(rt.store()), state)?;
             rt.validate_immediate_caller_is(
                 info.control_addresses.iter().chain(&[info.worker, info.owner]),
             )?;
@@ -3470,7 +3485,7 @@ impl Actor {
             // Repay as much fee debt as possible.
             let (from_vesting, from_balance) = state
                 .repay_partial_debt_in_priority_order(
-                    rt.store(),
+                    &DynBlockstore::wrap(rt.store()),
                     rt.curr_epoch(),
                     &rt.current_balance(),
                 )
@@ -3910,7 +3925,7 @@ fn process_early_terminations(
 ) -> Result</* more */ bool, ActorError> {
     let (result, more, deals_to_terminate, penalty, pledge_delta) =
         rt.transaction(|state: &mut State, rt| {
-            let store = rt.store();
+            let store = &DynBlockstore::wrap(rt.store());
             let policy = rt.policy();
 
             let (result, more) = state
@@ -3935,7 +3950,7 @@ fn process_early_terminations(
                 return Ok((result, more, Vec::new(), TokenAmount::zero(), TokenAmount::zero()));
             }
 
-            let info = get_miner_info(rt.store(), state)?;
+            let info = get_miner_info(&DynBlockstore::wrap(rt.store()), state)?;
             let sectors = Sectors::load(store, &state.sectors).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")
             })?;
@@ -3985,7 +4000,7 @@ fn process_early_terminations(
             // Use unlocked pledge to pay down outstanding fee debt
             let (penalty_from_vesting, penalty_from_balance) = state
                 .repay_partial_debt_in_priority_order(
-                    rt.store(),
+                    &DynBlockstore::wrap(rt.store()),
                     rt.curr_epoch(),
                     &rt.current_balance(),
                 )
@@ -4046,17 +4061,17 @@ fn handle_proving_deadline(
         // This happens first so that any subsequent penalties are taken
         // from locked vesting funds before funds free this epoch.
         let newly_vested = state
-            .unlock_vested_funds(rt.store(), rt.curr_epoch())
+            .unlock_vested_funds(&DynBlockstore::wrap(rt.store()), rt.curr_epoch())
             .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to vest funds"))?;
 
         pledge_delta_total -= newly_vested;
 
         // Process pending worker change if any
-        let mut info = get_miner_info(rt.store(), state)?;
+        let mut info = get_miner_info(&DynBlockstore::wrap(rt.store()), state)?;
         process_pending_worker(&mut info, rt, state)?;
 
         let deposit_to_burn = state
-            .cleanup_expired_pre_commits(policy, rt.store(), rt.curr_epoch())
+            .cleanup_expired_pre_commits(policy, &DynBlockstore::wrap(rt.store()), rt.curr_epoch())
             .map_err(|e| {
                 e.downcast_default(
                     ExitCode::USR_ILLEGAL_STATE,
@@ -4077,9 +4092,11 @@ fn handle_proving_deadline(
         // That way, don't re-schedule a cron callback if one is already scheduled.
         had_early_terminations = have_pending_early_terminations(state);
 
-        let result = state.advance_deadline(policy, rt.store(), rt.curr_epoch()).map_err(|e| {
-            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to advance deadline")
-        })?;
+        let result = state
+            .advance_deadline(policy, &DynBlockstore::wrap(rt.store()), rt.curr_epoch())
+            .map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to advance deadline")
+            })?;
 
         // Faults detected by this missed PoSt pay no penalty, but sectors that were already faulty
         // and remain faulty through this deadline pay the fault fee.
@@ -4104,7 +4121,7 @@ fn handle_proving_deadline(
 
         let (penalty_from_vesting, penalty_from_balance) = state
             .repay_partial_debt_in_priority_order(
-                rt.store(),
+                &DynBlockstore::wrap(rt.store()),
                 rt.curr_epoch(),
                 &rt.current_balance(),
             )
@@ -4690,7 +4707,7 @@ fn process_pending_worker(
     info.pending_worker_key = None;
 
     state
-        .save_info(rt.store(), info)
+        .save_info(&DynBlockstore::wrap(rt.store()), info)
         .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save miner info"))
 }
 
@@ -4800,7 +4817,7 @@ fn confirm_sector_proofs_valid_internal(
 
     let (total_pledge, newly_vested) = rt.transaction(|state: &mut State, rt| {
         let policy = rt.policy();
-        let store = rt.store();
+        let store = &DynBlockstore::wrap(rt.store());
         let info = get_miner_info(store, state)?;
 
         let mut new_sector_numbers = Vec::<SectorNumber>::with_capacity(activated_sectors.len());

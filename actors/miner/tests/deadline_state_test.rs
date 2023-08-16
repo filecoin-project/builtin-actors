@@ -58,7 +58,7 @@ fn add_sectors(
     prove: bool,
 ) -> (ExpectedDeadlineState, Vec<SectorOnChainInfo>) {
     let sectors = sectors();
-    let store = rt.store();
+    let store = &DynBlockstore::wrap(rt.store());
 
     let power = power_for_sectors(SECTOR_SIZE, &sectors);
     let activated_power = deadline
@@ -156,7 +156,7 @@ fn add_then_terminate(
             bitfield_from_slice(&[5, 6, 7, 8]),
             bitfield_from_slice(&[9]),
         ])
-        .assert(rt.store(), &sectors, deadline);
+        .assert(&DynBlockstore::wrap(rt.store()), &sectors, deadline);
 
     (deadline_state, sectors)
 }
@@ -168,7 +168,7 @@ fn add_then_terminate_then_pop_early(
     deadline: &mut Deadline,
 ) -> (ExpectedDeadlineState, Vec<SectorOnChainInfo>) {
     let (deadline_state, sectors) = add_then_terminate(rt, deadline, true);
-    let store = rt.store();
+    let store = &DynBlockstore::wrap(rt.store());
 
     let (early_terminations, has_more) = deadline.pop_early_terminations(store, 100, 100).unwrap();
 
@@ -198,7 +198,7 @@ fn add_then_terminate_then_remove_partition(
     deadline: &mut Deadline,
 ) -> (ExpectedDeadlineState, Vec<SectorOnChainInfo>) {
     let (deadline_state, sectors) = add_then_terminate_then_pop_early(rt, deadline);
-    let store = rt.store();
+    let store = &DynBlockstore::wrap(rt.store());
 
     let (live, dead, removed_power) = deadline
         .remove_partitions(store, &bitfield_from_slice(&[0]), QUANT_SPEC)
@@ -228,7 +228,7 @@ fn add_then_mark_faulty(
 ) -> (ExpectedDeadlineState, Vec<SectorOnChainInfo>) {
     let (deadline_state, sectors) = add_sectors(rt, deadline, prove);
 
-    let store = rt.store();
+    let store = &DynBlockstore::wrap(rt.store());
     let sectors_array = sectors_arr(store, sectors.to_owned());
 
     let mut partition_sector_map = PartitionSectorMap::default();
@@ -263,7 +263,7 @@ fn add_then_mark_faulty(
 #[test]
 fn adds_sectors() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
 
     add_sectors(&rt, &mut deadline, false);
 }
@@ -271,7 +271,7 @@ fn adds_sectors() {
 #[test]
 fn adds_sectors_and_proves() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
 
     add_sectors(&rt, &mut deadline, true);
 }
@@ -279,7 +279,7 @@ fn adds_sectors_and_proves() {
 #[test]
 fn terminates_sectors() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
 
     add_then_terminate(&rt, &mut deadline, true);
 }
@@ -287,7 +287,7 @@ fn terminates_sectors() {
 #[test]
 fn terminates_unproven_sectors() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
 
     add_then_terminate(&rt, &mut deadline, false);
 }
@@ -295,7 +295,7 @@ fn terminates_unproven_sectors() {
 #[test]
 fn pops_early_terminations() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
 
     add_then_terminate_then_pop_early(&rt, &mut deadline);
 }
@@ -303,7 +303,7 @@ fn pops_early_terminations() {
 #[test]
 fn removes_partitions() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
 
     add_then_terminate_then_remove_partition(&rt, &mut deadline);
 }
@@ -311,7 +311,7 @@ fn removes_partitions() {
 #[test]
 fn marks_faulty() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
 
     add_then_mark_faulty(&rt, &mut deadline, true);
 }
@@ -319,7 +319,7 @@ fn marks_faulty() {
 #[test]
 fn marks_unproven_sectors_faulty() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
 
     add_then_mark_faulty(&rt, &mut deadline, false);
 }
@@ -327,24 +327,24 @@ fn marks_unproven_sectors_faulty() {
 #[test]
 fn cannot_remove_partitions_with_early_terminations() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
 
     add_then_terminate(&rt, &mut deadline, false);
 
-    let store = rt.store();
+    let store = &DynBlockstore::wrap(rt.store());
     assert!(deadline.remove_partitions(store, &bitfield_from_slice(&[0]), QUANT_SPEC).is_err());
 }
 
 #[test]
 fn can_pop_early_terminations_in_multiple_steps() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
 
     let (deadline_state, sectors) = add_then_terminate(&rt, &mut deadline, true);
 
     let mut result = TerminationResult::new();
 
-    let store = rt.store();
+    let store = &DynBlockstore::wrap(rt.store());
 
     // process 1 sector, 2 partitions (should pop 1 sector)
     let (partial, has_more) = deadline.pop_early_terminations(store, 2, 1).unwrap();
@@ -380,22 +380,22 @@ fn can_pop_early_terminations_in_multiple_steps() {
 #[test]
 fn cannot_remove_missing_partition() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
 
     add_then_terminate_then_remove_partition(&rt, &mut deadline);
     assert!(deadline
-        .remove_partitions(rt.store(), &bitfield_from_slice(&[2]), QUANT_SPEC)
+        .remove_partitions(&DynBlockstore::wrap(rt.store()), &bitfield_from_slice(&[2]), QUANT_SPEC)
         .is_err());
 }
 
 #[test]
 fn removing_no_partitions_does_nothing() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
 
     let (deadline_state, sectors) = add_then_terminate_then_pop_early(&rt, &mut deadline);
     let (live, dead, removed_power) = deadline
-        .remove_partitions(rt.store(), &bitfield_from_slice(&[]), QUANT_SPEC)
+        .remove_partitions(&DynBlockstore::wrap(rt.store()), &bitfield_from_slice(&[]), QUANT_SPEC)
         .expect("should not have failed to remove partitions");
 
     assert!(removed_power.is_zero());
@@ -410,26 +410,26 @@ fn removing_no_partitions_does_nothing() {
             bitfield_from_slice(&[5, 6, 7, 8]),
             bitfield_from_slice(&[9]),
         ])
-        .assert(rt.store(), &sectors, &deadline);
+        .assert(&DynBlockstore::wrap(rt.store()), &sectors, &deadline);
 }
 
 #[test]
 fn fails_to_remove_partitions_with_faulty_sectors() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
 
     add_then_mark_faulty(&rt, &mut deadline, false);
 
     // Try to remove a partition with faulty sectors.
     assert!(deadline
-        .remove_partitions(rt.store(), &bitfield_from_slice(&[1]), QUANT_SPEC)
+        .remove_partitions(&DynBlockstore::wrap(rt.store()), &bitfield_from_slice(&[1]), QUANT_SPEC)
         .is_err());
 }
 
 #[test]
 fn terminate_proven_and_faulty() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
 
     let (deadline_state, sectors) = add_then_mark_faulty(&rt, &mut deadline, true); // 1,5,6 faulty
 
@@ -458,7 +458,7 @@ fn terminate_proven_and_faulty() {
             bitfield_from_slice(&[5, 6, 7, 8]),
             bitfield_from_slice(&[9]),
         ])
-        .assert(rt.store(), &sectors, &deadline);
+        .assert(&DynBlockstore::wrap(rt.store()), &sectors, &deadline);
 }
 
 fn terminate_sectors(
@@ -468,7 +468,7 @@ fn terminate_sectors(
     sectors: Vec<SectorOnChainInfo>,
     partition_sectors: HashMap<u64, BitField>,
 ) -> anyhow::Result<PowerPair> {
-    let store = rt.store();
+    let store = &DynBlockstore::wrap(rt.store());
     let sectors_array = sectors_arr(&store, sectors);
 
     let mut partition_sector_map = PartitionSectorMap::default();
@@ -490,7 +490,7 @@ fn terminate_sectors(
 #[test]
 fn terminate_unproven_and_faulty() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
 
     let (deadline_state, sectors) = add_then_mark_faulty(&rt, &mut deadline, false); // 1,5,6 faulty
 
@@ -515,13 +515,13 @@ fn terminate_unproven_and_faulty() {
             bitfield_from_slice(&[5, 6, 7, 8]),
             bitfield_from_slice(&[9]),
         ])
-        .assert(rt.store(), &sectors, &deadline);
+        .assert(&DynBlockstore::wrap(rt.store()), &sectors, &deadline);
 }
 
 #[test]
 fn fails_to_terminate_missing_sector() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
     let (_, sectors) = add_then_mark_faulty(&rt, &mut deadline, false); // 1,5,6 faulty
 
     let ret = terminate_sectors(
@@ -543,7 +543,7 @@ fn fails_to_terminate_missing_sector() {
 #[test]
 fn fails_to_terminate_missing_partition() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
     let (_, sectors) = add_then_mark_faulty(&rt, &mut deadline, false); // 1,5,6 faulty
 
     let ret = terminate_sectors(
@@ -565,7 +565,7 @@ fn fails_to_terminate_missing_partition() {
 #[test]
 fn fails_to_terminate_already_terminated_sector() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
     let (_, sectors) = add_then_terminate(&rt, &mut deadline, false); // terminates 1,3,6
 
     let ret = terminate_sectors(
@@ -587,14 +587,14 @@ fn fails_to_terminate_already_terminated_sector() {
 #[test]
 fn faulty_sectors_expire() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
 
     // mark sectors 5&6 faulty, expiring at epoch 9
     let (_, sectors) = add_then_mark_faulty(&rt, &mut deadline, true);
 
     // we expect all sectors but 7 to have expired at this point
     let expired = deadline
-        .pop_expired_sectors(rt.store(), 9, QUANT_SPEC)
+        .pop_expired_sectors(&DynBlockstore::wrap(rt.store()), 9, QUANT_SPEC)
         .expect("failed to pop expired sectors");
 
     assert_bitfield_equals(&expired.on_time_sectors, &[1, 2, 3, 4, 5, 8, 9]);
@@ -608,11 +608,11 @@ fn faulty_sectors_expire() {
             bitfield_from_slice(&[5, 6, 7, 8]),
             bitfield_from_slice(&[9]),
         ])
-        .assert(rt.store(), &sectors, &deadline);
+        .assert(&DynBlockstore::wrap(rt.store()), &sectors, &deadline);
 
     // check early terminations
     let (early_terminations, has_more) = deadline
-        .pop_early_terminations(rt.store(), 100, 100)
+        .pop_early_terminations(&DynBlockstore::wrap(rt.store()), 100, 100)
         .expect("failed to pop early_terminations");
     assert!(!has_more);
     assert_eq!(early_terminations.partitions_processed, 1);
@@ -629,19 +629,19 @@ fn faulty_sectors_expire() {
             bitfield_from_slice(&[5, 6, 7, 8]),
             bitfield_from_slice(&[9]),
         ])
-        .assert(rt.store(), &sectors, &deadline);
+        .assert(&DynBlockstore::wrap(rt.store()), &sectors, &deadline);
 }
 
 #[test]
 fn cannot_pop_expired_sectors_before_proving() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
 
     // add sectors, but don't prove
     add_sectors(&rt, &mut deadline, false);
 
     // try to pop some expirations
-    let ret = deadline.pop_expired_sectors(rt.store(), 9, QUANT_SPEC);
+    let ret = deadline.pop_expired_sectors(&DynBlockstore::wrap(rt.store()), 9, QUANT_SPEC);
     assert!(ret.is_err());
     let err = ret.expect_err("cannot pop expired sectors from a partition with unproven sectors");
 
@@ -654,19 +654,27 @@ fn cannot_pop_expired_sectors_before_proving() {
 #[test]
 fn post_all_the_things() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
     let fault_expiration_epoch = 13;
 
     add_sectors(&rt, &mut deadline, true);
 
     // add an inactive sector
     let power = deadline
-        .add_sectors(rt.store(), PARTITION_SIZE, false, &extra_sectors(), SECTOR_SIZE, QUANT_SPEC)
+        .add_sectors(
+            &DynBlockstore::wrap(rt.store()),
+            PARTITION_SIZE,
+            false,
+            &extra_sectors(),
+            SECTOR_SIZE,
+            QUANT_SPEC,
+        )
         .unwrap();
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
     assert_eq!(expected_power, power);
 
-    let mut sectors_array = sectors_arr(rt.store(), all_sectors());
+    let store = DynBlockstore::wrap(rt.store());
+    let mut sectors_array = sectors_arr(&store, all_sectors());
 
     let mut post_partitions = [
         PoStPartition { index: 0, skipped: BitField::default() },
@@ -675,7 +683,7 @@ fn post_all_the_things() {
 
     let post_result1 = deadline
         .record_proven_sectors(
-            rt.store(),
+            &DynBlockstore::wrap(rt.store()),
             &sectors_array,
             SECTOR_SIZE,
             QUANT_SPEC,
@@ -698,12 +706,12 @@ fn post_all_the_things() {
             bitfield_from_slice(&[5, 6, 7, 8]),
             bitfield_from_slice(&[9, 10]),
         ])
-        .assert(rt.store(), &all_sectors(), &deadline);
+        .assert(&DynBlockstore::wrap(rt.store()), &all_sectors(), &deadline);
 
     let mut post_partitions = [PoStPartition { index: 2, skipped: BitField::default() }];
     let post_result2 = deadline
         .record_proven_sectors(
-            rt.store(),
+            &DynBlockstore::wrap(rt.store()),
             &sectors_array,
             SECTOR_SIZE,
             QUANT_SPEC,
@@ -728,11 +736,16 @@ fn post_all_the_things() {
             bitfield_from_slice(&[5, 6, 7, 8]),
             bitfield_from_slice(&[9, 10]),
         ])
-        .assert(rt.store(), &all_sectors(), &deadline);
+        .assert(&DynBlockstore::wrap(rt.store()), &all_sectors(), &deadline);
     let sector_array_root = sectors_array.amt.flush().unwrap();
 
     let (power_delta, penalized_power) = deadline
-        .process_deadline_end(rt.store(), QUANT_SPEC, fault_expiration_epoch, sector_array_root)
+        .process_deadline_end(
+            &DynBlockstore::wrap(rt.store()),
+            QUANT_SPEC,
+            fault_expiration_epoch,
+            sector_array_root,
+        )
         .unwrap();
 
     // No power delta for successful post.
@@ -746,13 +759,13 @@ fn post_all_the_things() {
             bitfield_from_slice(&[5, 6, 7, 8]),
             bitfield_from_slice(&[9, 10]),
         ])
-        .assert(rt.store(), &all_sectors(), &deadline);
+        .assert(&DynBlockstore::wrap(rt.store()), &all_sectors(), &deadline);
 }
 
 #[test]
 fn post_with_unproven_faults_recoveries_untracted_recoveries() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
     let fault_expiration_epoch = 13;
 
     // Adds sectors 1-9 then marks sectors 1 (partition 0), 5 & 6 (partition 1) as faulty
@@ -760,12 +773,20 @@ fn post_with_unproven_faults_recoveries_untracted_recoveries() {
 
     // add an inactive sector
     let power = deadline
-        .add_sectors(rt.store(), PARTITION_SIZE, false, &extra_sectors(), SECTOR_SIZE, QUANT_SPEC)
+        .add_sectors(
+            &DynBlockstore::wrap(rt.store()),
+            PARTITION_SIZE,
+            false,
+            &extra_sectors(),
+            SECTOR_SIZE,
+            QUANT_SPEC,
+        )
         .unwrap();
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
     assert_eq!(power, expected_power);
 
-    let mut sectors_array = sectors_arr(rt.store(), all_sectors());
+    let store = DynBlockstore::wrap(rt.store());
+    let mut sectors_array = sectors_arr(&store, all_sectors());
 
     // declare sectors 1 & 6 recovered
     let mut partition_sector_map = PartitionSectorMap::default();
@@ -773,7 +794,7 @@ fn post_with_unproven_faults_recoveries_untracted_recoveries() {
     partition_sector_map.add(1, bitfield_from_slice(&[6])).unwrap();
     deadline
         .declare_faults_recovered(
-            rt.store(),
+            &DynBlockstore::wrap(rt.store()),
             &sectors_array,
             SECTOR_SIZE,
             &mut partition_sector_map,
@@ -790,7 +811,7 @@ fn post_with_unproven_faults_recoveries_untracted_recoveries() {
             bitfield_from_slice(&[5, 6, 7, 8]),
             bitfield_from_slice(&[9, 10]),
         ])
-        .assert(rt.store(), &all_sectors(), &deadline);
+        .assert(&DynBlockstore::wrap(rt.store()), &all_sectors(), &deadline);
 
     // prove partitions 0 & 1, skipping sectors 1 & 7
     let mut post_partitions = [
@@ -799,7 +820,7 @@ fn post_with_unproven_faults_recoveries_untracted_recoveries() {
     ];
     let post_result = deadline
         .record_proven_sectors(
-            rt.store(),
+            &DynBlockstore::wrap(rt.store()),
             &sectors_array,
             SECTOR_SIZE,
             QUANT_SPEC,
@@ -835,11 +856,16 @@ fn post_with_unproven_faults_recoveries_untracted_recoveries() {
             bitfield_from_slice(&[5, 6, 7, 8]),
             bitfield_from_slice(&[9, 10]),
         ])
-        .assert(rt.store(), &all_sectors(), &deadline);
+        .assert(&DynBlockstore::wrap(rt.store()), &all_sectors(), &deadline);
 
     let sector_array_root = sectors_array.amt.flush().unwrap();
     let (power_delta, penalized_power) = deadline
-        .process_deadline_end(rt.store(), QUANT_SPEC, fault_expiration_epoch, sector_array_root)
+        .process_deadline_end(
+            &DynBlockstore::wrap(rt.store()),
+            QUANT_SPEC,
+            fault_expiration_epoch,
+            sector_array_root,
+        )
         .unwrap();
 
     let expected_fault_power = sector_power(&[9, 10]);
@@ -859,25 +885,33 @@ fn post_with_unproven_faults_recoveries_untracted_recoveries() {
             bitfield_from_slice(&[5, 6, 7, 8]),
             bitfield_from_slice(&[9, 10]),
         ])
-        .assert(rt.store(), &all_sectors(), &deadline);
+        .assert(&DynBlockstore::wrap(rt.store()), &all_sectors(), &deadline);
 }
 
 #[test]
 fn post_with_skipped_unproven() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
     let fault_expiration_epoch = 13;
 
     add_sectors(&rt, &mut deadline, true);
 
     // add an inactive sector
     let power = deadline
-        .add_sectors(rt.store(), PARTITION_SIZE, false, &extra_sectors(), SECTOR_SIZE, QUANT_SPEC)
+        .add_sectors(
+            &DynBlockstore::wrap(rt.store()),
+            PARTITION_SIZE,
+            false,
+            &extra_sectors(),
+            SECTOR_SIZE,
+            QUANT_SPEC,
+        )
         .unwrap();
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
     assert_eq!(power, expected_power);
 
-    let mut sectors_array = sectors_arr(rt.store(), all_sectors());
+    let store = DynBlockstore::wrap(rt.store());
+    let mut sectors_array = sectors_arr(&store, all_sectors());
     let mut post_partitions = [
         PoStPartition { index: 0, skipped: BitField::default() },
         PoStPartition { index: 1, skipped: BitField::default() },
@@ -885,7 +919,7 @@ fn post_with_skipped_unproven() {
     ];
     let post_result = deadline
         .record_proven_sectors(
-            rt.store(),
+            &DynBlockstore::wrap(rt.store()),
             &sectors_array,
             SECTOR_SIZE,
             QUANT_SPEC,
@@ -910,11 +944,16 @@ fn post_with_skipped_unproven() {
             bitfield_from_slice(&[5, 6, 7, 8]),
             bitfield_from_slice(&[9, 10]),
         ])
-        .assert(rt.store(), &all_sectors(), &deadline);
+        .assert(&DynBlockstore::wrap(rt.store()), &all_sectors(), &deadline);
 
     let sector_array_root = sectors_array.amt.flush().unwrap();
     let (power_delta, penalized_power) = deadline
-        .process_deadline_end(rt.store(), QUANT_SPEC, fault_expiration_epoch, sector_array_root)
+        .process_deadline_end(
+            &DynBlockstore::wrap(rt.store()),
+            QUANT_SPEC,
+            fault_expiration_epoch,
+            sector_array_root,
+        )
         .unwrap();
 
     // all posts submitted, no power delta, no extra penalties
@@ -929,31 +968,38 @@ fn post_with_skipped_unproven() {
             bitfield_from_slice(&[5, 6, 7, 8]),
             bitfield_from_slice(&[9, 10]),
         ])
-        .assert(rt.store(), &all_sectors(), &deadline);
+        .assert(&DynBlockstore::wrap(rt.store()), &all_sectors(), &deadline);
 }
 
 #[test]
 fn post_missing_partition() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
     let fault_expiration_epoch = 13;
 
     add_sectors(&rt, &mut deadline, true);
 
     // add an inactive sector
     let power = deadline
-        .add_sectors(rt.store(), PARTITION_SIZE, false, &extra_sectors(), SECTOR_SIZE, QUANT_SPEC)
+        .add_sectors(
+            &DynBlockstore::wrap(rt.store()),
+            PARTITION_SIZE,
+            false,
+            &extra_sectors(),
+            SECTOR_SIZE,
+            QUANT_SPEC,
+        )
         .unwrap();
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
     assert_eq!(power, expected_power);
 
-    let sectors_array = sectors_arr(rt.store(), all_sectors());
+    let sectors_array = sectors_arr(&DynBlockstore::wrap(rt.store()), all_sectors());
     let mut post_partitions = [
         PoStPartition { index: 0, skipped: BitField::default() },
         PoStPartition { index: 3, skipped: BitField::default() },
     ];
     let post_result = deadline.record_proven_sectors(
-        rt.store(),
+        &DynBlockstore::wrap(rt.store()),
         &sectors_array,
         SECTOR_SIZE,
         QUANT_SPEC,
@@ -972,25 +1018,32 @@ fn post_missing_partition() {
 #[test]
 fn post_partition_twice() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
     let fault_expiration_epoch = 13;
 
     add_sectors(&rt, &mut deadline, true);
 
     // add an inactive sector
     let power = deadline
-        .add_sectors(rt.store(), PARTITION_SIZE, false, &extra_sectors(), SECTOR_SIZE, QUANT_SPEC)
+        .add_sectors(
+            &DynBlockstore::wrap(rt.store()),
+            PARTITION_SIZE,
+            false,
+            &extra_sectors(),
+            SECTOR_SIZE,
+            QUANT_SPEC,
+        )
         .unwrap();
     let expected_power = power_for_sectors(SECTOR_SIZE, &extra_sectors());
     assert_eq!(power, expected_power);
 
-    let sectors_array = sectors_arr(rt.store(), all_sectors());
+    let sectors_array = sectors_arr(&DynBlockstore::wrap(rt.store()), all_sectors());
     let mut post_partitions = [
         PoStPartition { index: 0, skipped: BitField::default() },
         PoStPartition { index: 0, skipped: BitField::default() },
     ];
     let post_result = deadline.record_proven_sectors(
-        rt.store(),
+        &DynBlockstore::wrap(rt.store()),
         &sectors_array,
         SECTOR_SIZE,
         QUANT_SPEC,
@@ -1009,13 +1062,13 @@ fn post_partition_twice() {
 #[test]
 fn retract_recoveries() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
     let fault_expiration_epoch = 13;
 
     // Adds sectors 1-9 then marks sectors 1 (partition 0), 5 & 6 (partition 1) as faulty
     let (_, sectors) = add_then_mark_faulty(&rt, &mut deadline, true);
 
-    let mut sectors_array = sectors_arr(rt.store(), sectors.to_owned());
+    let mut sectors_array = sectors_arr(&DynBlockstore::wrap(rt.store()), sectors.to_owned());
 
     // declare sectors 1 & 6 recovered
     let mut partition_sector_map = PartitionSectorMap::default();
@@ -1023,7 +1076,7 @@ fn retract_recoveries() {
     partition_sector_map.add(1, bitfield_from_slice(&[6])).unwrap();
     deadline
         .declare_faults_recovered(
-            rt.store(),
+            &DynBlockstore::wrap(rt.store()),
             &sectors_array,
             SECTOR_SIZE,
             &mut partition_sector_map,
@@ -1035,7 +1088,7 @@ fn retract_recoveries() {
     partition_sector_map.add(0, bitfield_from_slice(&[1])).unwrap();
     let power_delta = deadline
         .record_faults(
-            rt.store(),
+            &DynBlockstore::wrap(rt.store()),
             &sectors_array,
             SECTOR_SIZE,
             QUANT_SPEC,
@@ -1056,12 +1109,12 @@ fn retract_recoveries() {
             bitfield_from_slice(&[5, 6, 7, 8]),
             bitfield_from_slice(&[9]),
         ])
-        .assert(rt.store(), &sectors, &deadline);
+        .assert(&DynBlockstore::wrap(rt.store()), &sectors, &deadline);
 
     // prove all partitions
     let post_result = deadline
         .record_proven_sectors(
-            rt.store(),
+            &DynBlockstore::wrap(rt.store()),
             &sectors_array,
             SECTOR_SIZE,
             QUANT_SPEC,
@@ -1094,11 +1147,16 @@ fn retract_recoveries() {
             bitfield_from_slice(&[5, 6, 7, 8]),
             bitfield_from_slice(&[9]),
         ])
-        .assert(rt.store(), &sectors, &deadline);
+        .assert(&DynBlockstore::wrap(rt.store()), &sectors, &deadline);
 
     let sector_array_root = sectors_array.amt.flush().unwrap();
     let (new_faulty_power, failed_recovery_power) = deadline
-        .process_deadline_end(rt.store(), QUANT_SPEC, fault_expiration_epoch, sector_array_root)
+        .process_deadline_end(
+            &DynBlockstore::wrap(rt.store()),
+            QUANT_SPEC,
+            fault_expiration_epoch,
+            sector_array_root,
+        )
         .unwrap();
 
     // no power changes
@@ -1113,23 +1171,23 @@ fn retract_recoveries() {
             bitfield_from_slice(&[5, 6, 7, 8]),
             bitfield_from_slice(&[9]),
         ])
-        .assert(rt.store(), &all_sectors(), &deadline);
+        .assert(&DynBlockstore::wrap(rt.store()), &all_sectors(), &deadline);
 }
 
 #[test]
 fn cannot_declare_faults_in_missing_partitions() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
 
     let (_, sectors) = add_sectors(&rt, &mut deadline, true);
-    let sectors_array = sectors_arr(rt.store(), sectors);
+    let sectors_array = sectors_arr(&DynBlockstore::wrap(rt.store()), sectors);
 
     // declare sectors 1 & 6 faulty
     let mut partition_sector_map = PartitionSectorMap::default();
     partition_sector_map.add(0, bitfield_from_slice(&[1])).unwrap();
     partition_sector_map.add(4, bitfield_from_slice(&[6])).unwrap();
     let result = deadline.record_faults(
-        rt.store(),
+        &DynBlockstore::wrap(rt.store()),
         &sectors_array,
         SECTOR_SIZE,
         QUANT_SPEC,
@@ -1147,18 +1205,18 @@ fn cannot_declare_faults_in_missing_partitions() {
 #[test]
 fn cannot_declare_faults_recovered_in_missing_partitions() {
     let (_, rt) = setup();
-    let mut deadline = Deadline::new(rt.store()).unwrap();
+    let mut deadline = Deadline::new(&DynBlockstore::wrap(rt.store())).unwrap();
 
     // Marks sectors 1 (partition 0), 5 & 6 (partition 1) as faulty.
     let (_, sectors) = add_then_mark_faulty(&rt, &mut deadline, true);
-    let sectors_array = sectors_arr(rt.store(), sectors);
+    let sectors_array = sectors_arr(&DynBlockstore::wrap(rt.store()), sectors);
 
     // declare sectors 1 & 6 recovered
     let mut partition_sector_map = PartitionSectorMap::default();
     partition_sector_map.add(0, bitfield_from_slice(&[1])).unwrap();
     partition_sector_map.add(4, bitfield_from_slice(&[6])).unwrap();
     let result = deadline.declare_faults_recovered(
-        rt.store(),
+        &DynBlockstore::wrap(rt.store()),
         &sectors_array,
         SECTOR_SIZE,
         &mut partition_sector_map,

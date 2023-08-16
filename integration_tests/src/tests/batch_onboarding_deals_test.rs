@@ -16,7 +16,8 @@ use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use num_traits::Zero;
 
-use vm_api::util::{apply_ok, get_state, DynBlockstore};
+use vm_api::blockstore::DynBlockstore;
+use vm_api::util::{apply_ok, get_state};
 use vm_api::VM;
 
 use crate::deals::{DealBatcher, DealOptions};

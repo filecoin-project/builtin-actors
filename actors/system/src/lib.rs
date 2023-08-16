@@ -12,6 +12,7 @@ use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
     actor_dispatch, actor_error, ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR,
 };
+use vm_api::blockstore::DynBlockstore;
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
@@ -58,7 +59,8 @@ impl Actor {
     pub fn constructor(rt: &impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
-        let state = State::new(rt.store()).context("failed to construct state")?;
+        let state =
+            State::new(&DynBlockstore::wrap(rt.store())).context("failed to construct state")?;
         rt.create(&state)?;
         Ok(())
     }

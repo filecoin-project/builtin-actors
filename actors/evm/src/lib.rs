@@ -87,7 +87,10 @@ pub(crate) fn is_dead(rt: &impl Runtime, state: &State) -> bool {
     state.tombstone.map_or(false, |t| t != current_tombstone(rt))
 }
 
-fn load_bytecode(bs: &impl Blockstore, cid: &Cid) -> Result<Option<Bytecode>, ActorError> {
+fn load_bytecode(
+    bs: &(impl Blockstore + ?Sized),
+    cid: &Cid,
+) -> Result<Option<Bytecode>, ActorError> {
     let bytecode = bs
         .get(cid)
         .context_code(ExitCode::USR_NOT_FOUND, "failed to read bytecode")?
@@ -157,7 +160,6 @@ fn invoke_contract_inner<RT>(
 ) -> Result<Vec<u8>, ActorError>
 where
     RT: Runtime,
-    RT::Blockstore: Clone,
 {
     let bytecode = match load_bytecode(system.rt.store(), bytecode_cid)? {
         Some(bytecode) => bytecode,
@@ -191,7 +193,6 @@ impl EvmContractActor {
     pub fn constructor<RT>(rt: &RT, params: ConstructorParams) -> Result<(), ActorError>
     where
         RT: Runtime,
-        RT::Blockstore: Clone,
     {
         rt.validate_immediate_caller_is(&[INIT_ACTOR_ADDR])?;
         initialize_evm_contract(&mut System::create(rt)?, params.creator, params.initcode.into())
@@ -200,7 +201,6 @@ impl EvmContractActor {
     pub fn resurrect<RT>(rt: &RT, params: ResurrectParams) -> Result<(), ActorError>
     where
         RT: Runtime,
-        RT::Blockstore: Clone,
     {
         rt.validate_immediate_caller_is(&[EAM_ACTOR_ADDR])?;
         initialize_evm_contract(&mut System::resurrect(rt)?, params.creator, params.initcode.into())
@@ -212,7 +212,6 @@ impl EvmContractActor {
     ) -> Result<DelegateCallReturn, ActorError>
     where
         RT: Runtime,
-        RT::Blockstore: Clone,
     {
         rt.validate_immediate_caller_is(&[rt.message().receiver()])?;
 
@@ -235,7 +234,6 @@ impl EvmContractActor {
     ) -> Result<InvokeContractReturn, ActorError>
     where
         RT: Runtime,
-        RT::Blockstore: Clone,
     {
         rt.validate_immediate_caller_accept_any()?;
 
@@ -268,7 +266,6 @@ impl EvmContractActor {
     ) -> Result<Option<IpldBlock>, ActorError>
     where
         RT: Runtime,
-        RT::Blockstore: Clone,
     {
         if method <= EVM_MAX_RESERVED_METHOD {
             return Err(actor_error!(unhandled_message; "Invalid method"));
@@ -312,7 +309,6 @@ impl EvmContractActor {
     ) -> Result<GetStorageAtReturn, ActorError>
     where
         RT: Runtime,
-        RT::Blockstore: Clone,
     {
         // This method cannot be called on-chain; other on-chain logic should not be able to
         // access arbitrary storage keys from a contract.

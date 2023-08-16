@@ -30,7 +30,12 @@ fn invalid_report_rejected() {
     let test_addr = Address::new_id(1234);
     expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.report_consensus_fault(&rt, test_addr, None));
     rt.reset();
-    check_state_invariants(rt.policy(), &h.get_state(&rt), rt.store(), &rt.get_balance());
+    check_state_invariants(
+        rt.policy(),
+        &h.get_state(&rt),
+        &DynBlockstore::wrap(rt.store()),
+        &rt.get_balance(),
+    );
 }
 
 #[test]

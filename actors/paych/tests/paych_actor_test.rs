@@ -28,6 +28,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::sys::SendFlags;
 use fvm_shared::METHOD_CONSTRUCTOR;
 use num_traits::Zero;
+use vm_api::blockstore::DynBlockstore;
 
 const PAYCH_ID: u64 = 100;
 const PAYER_ID: u64 = 102;
@@ -71,7 +72,11 @@ fn get_lane_state(rt: &MockRuntime, cid: &Cid, lane: u64) -> LaneState {
 }
 
 fn check_state(rt: &MockRuntime) {
-    let (_, acc) = check_state_invariants(&rt.get_state(), rt.store(), &rt.get_balance());
+    let (_, acc) = check_state_invariants(
+        &rt.get_state(),
+        &DynBlockstore::wrap(rt.store()),
+        &rt.get_balance(),
+    );
     acc.assert_empty();
 }
 

@@ -84,10 +84,7 @@ pub struct InternalMessage {
     pub params: Option<IpldBlock>,
 }
 
-impl<BS> MessageInfo for InvocationCtx<'_, '_, BS>
-where
-    BS: Blockstore,
-{
+impl MessageInfo for InvocationCtx<'_> {
     fn nonce(&self) -> u64 {
         self.top.originator_call_seq
     }
@@ -108,11 +105,8 @@ where
     }
 }
 
-pub struct InvocationCtx<'invocation, 'bs, BS>
-where
-    BS: Blockstore,
-{
-    pub v: &'invocation TestVM<'bs, BS>,
+pub struct InvocationCtx<'invocation> {
+    pub v: &'invocation TestVM,
     pub top: TopCtx,
     pub msg: InternalMessage,
     pub allow_side_effects: RefCell<bool>,
@@ -122,10 +116,7 @@ where
     pub subinvocations: RefCell<Vec<InvocationTrace>>,
 }
 
-impl<'invocation, 'bs, BS> InvocationCtx<'invocation, 'bs, BS>
-where
-    BS: Blockstore,
-{
+impl<'invocation> InvocationCtx<'invocation> {
     fn resolve_target(
         &'invocation self,
         target: &Address,
@@ -163,11 +154,12 @@ where
         }
 
         let mut st: InitState = get_state(self.v, &INIT_ACTOR_ADDR).unwrap();
-        let (target_id, existing) = st.map_addresses_to_id(self.v.store, target, None).unwrap();
+        let (target_id, existing) =
+            st.map_addresses_to_id(&self.v.cbor_store(), target, None).unwrap();
         assert!(!existing, "should never have existing actor when no f4 address is specified");
         let target_id_addr = Address::new_id(target_id);
         let mut init_actor = self.v.actor(&INIT_ACTOR_ADDR).unwrap();
-        init_actor.state = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
+        init_actor.state = self.v.cbor_store().put_cbor(&st, Code::Blake2b256).unwrap();
         self.v.set_actor(&INIT_ACTOR_ADDR, init_actor);
 
         let new_actor_msg = InternalMessage {
@@ -309,12 +301,7 @@ where
     }
 }
 
-impl<'invocation, 'bs, BS> Runtime for InvocationCtx<'invocation, 'bs, BS>
-where
-    BS: Blockstore,
-{
-    type Blockstore = &'bs BS;
-
+impl<'invocation> Runtime for InvocationCtx<'invocation> {
     fn create_actor(
         &self,
         code_id: Cid,
@@ -355,8 +342,8 @@ where
         Ok(())
     }
 
-    fn store(&self) -> &&'bs BS {
-        &self.v.store
+    fn store(&self) -> &dyn Blockstore {
+        self.v.blockstore()
     }
 
     fn network_version(&self) -> NetworkVersion {
@@ -591,7 +578,7 @@ where
         self.allow_side_effects.replace(true);
         let ret = result?;
         let mut act = self.v.actor(&self.to()).unwrap();
-        act.state = self.v.store.put_cbor(&st, Code::Blake2b256).unwrap();
+        act.state = self.v.cbor_store().put_cbor(&st, Code::Blake2b256).unwrap();
 
         if self.read_only {
             return Err(ActorError::unchecked(
@@ -659,10 +646,7 @@ where
     }
 }
 
-impl<BS> Primitives for InvocationCtx<'_, '_, BS>
-where
-    BS: Blockstore,
-{
+impl Primitives for InvocationCtx<'_> {
     fn verify_signature(
         &self,
         signature: &Signature,
@@ -701,10 +685,7 @@ where
     }
 }
 
-impl<BS> Verifier for InvocationCtx<'_, '_, BS>
-where
-    BS: Blockstore,
-{
+impl Verifier for InvocationCtx<'_> {
     fn verify_seal(&self, _vi: &SealVerifyInfo) -> Result<(), anyhow::Error> {
         Ok(())
     }
@@ -744,10 +725,7 @@ where
     }
 }
 
-impl<BS> RuntimePolicy for InvocationCtx<'_, '_, BS>
-where
-    BS: Blockstore,
-{
+impl RuntimePolicy for InvocationCtx<'_> {
     fn policy(&self) -> &Policy {
         self.policy
     }

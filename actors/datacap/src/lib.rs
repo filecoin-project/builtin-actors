@@ -18,6 +18,7 @@ use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR};
 use lazy_static::lazy_static;
 use log::info;
 use num_derive::FromPrimitive;
+use vm_api::blockstore::DynBlockstore;
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
 use fil_actors_runtime::{
@@ -96,7 +97,8 @@ impl Actor {
         rt.resolve_address(&governor)
             .ok_or_else(|| actor_error!(illegal_argument, "failed to resolve governor address"))?;
 
-        let st = State::new(rt.store(), governor).context("failed to create datacap state")?;
+        let st = State::new(&DynBlockstore::wrap(rt.store()), governor)
+            .context("failed to create datacap state")?;
         rt.create(&st)?;
         Ok(())
     }
@@ -120,7 +122,7 @@ impl Actor {
         rt.validate_immediate_caller_accept_any()?;
         let mut st: State = rt.state()?;
         let syscalls = SyscallProvider { rt };
-        let runtime = ActorRuntime::new(&syscalls, syscalls.rt.store());
+        let runtime = ActorRuntime::new(&syscalls, DynBlockstore::wrap(syscalls.rt.store()));
         let token = as_token(&mut st, &runtime);
         Ok(TotalSupplyReturn { supply: token.total_supply() })
     }
@@ -130,7 +132,7 @@ impl Actor {
         rt.validate_immediate_caller_accept_any()?;
         let mut st: State = rt.state()?;
         let syscalls = SyscallProvider { rt };
-        let runtime = ActorRuntime::new(&syscalls, syscalls.rt.store());
+        let runtime = ActorRuntime::new(&syscalls, DynBlockstore::wrap(syscalls.rt.store()));
         let token = as_token(&mut st, &runtime);
         token.balance_of(&params.address).map(|balance| BalanceReturn { balance }).actor_result()
     }
@@ -142,7 +144,7 @@ impl Actor {
         rt.validate_immediate_caller_accept_any()?;
         let mut st: State = rt.state()?;
         let syscalls = SyscallProvider { rt };
-        let runtime = ActorRuntime::new(&syscalls, syscalls.rt.store());
+        let runtime = ActorRuntime::new(&syscalls, DynBlockstore::wrap(syscalls.rt.store()));
         let token = as_token(&mut st, &runtime);
         token
             .allowance(&params.owner, &params.operator)
@@ -162,7 +164,8 @@ impl Actor {
                 let operator = st.governor;
 
                 let syscalls = SyscallProvider { rt };
-                let runtime = ActorRuntime::new(&syscalls, syscalls.rt.store());
+                let runtime =
+                    ActorRuntime::new(&syscalls, DynBlockstore::wrap(syscalls.rt.store()));
                 let mut token = as_token(st, &runtime);
                 // Mint tokens "from" the operator to the beneficiary.
                 let ret = token
@@ -189,7 +192,7 @@ impl Actor {
         let mut st: State = rt.state()?;
         let syscalls = SyscallProvider { rt };
         let intermediate = hook.call(&as_actor_runtime(&syscalls)).actor_result()?;
-        let runtime = ActorRuntime::new(&syscalls, syscalls.rt.store());
+        let runtime = ActorRuntime::new(&syscalls, DynBlockstore::wrap(syscalls.rt.store()));
         as_token(&mut st, &runtime).mint_return(intermediate).actor_result()
     }
 
@@ -203,7 +206,7 @@ impl Actor {
             rt.validate_immediate_caller_is(std::iter::once(&st.governor))?;
 
             let syscalls = SyscallProvider { rt };
-            let runtime = ActorRuntime::new(&syscalls, syscalls.rt.store());
+            let runtime = ActorRuntime::new(&syscalls, DynBlockstore::wrap(syscalls.rt.store()));
             let mut token = as_token(st, &runtime);
             // Burn tokens as if the holder had invoked burn() themselves.
             // The governor doesn't need an allowance.
@@ -242,7 +245,8 @@ impl Actor {
                 }
 
                 let syscalls = SyscallProvider { rt };
-                let runtime = ActorRuntime::new(&syscalls, syscalls.rt.store());
+                let runtime =
+                    ActorRuntime::new(&syscalls, DynBlockstore::wrap(syscalls.rt.store()));
                 let mut token = as_token(st, &runtime);
                 token
                     .transfer(
@@ -259,7 +263,7 @@ impl Actor {
         let mut st: State = rt.state()?;
         let syscalls = SyscallProvider { rt };
         let intermediate = hook.call(&as_actor_runtime(&syscalls)).actor_result()?;
-        let runtime = ActorRuntime::new(&syscalls, syscalls.rt.store());
+        let runtime = ActorRuntime::new(&syscalls, DynBlockstore::wrap(syscalls.rt.store()));
         as_token(&mut st, &runtime).transfer_return(intermediate).actor_result()
     }
 
@@ -293,7 +297,8 @@ impl Actor {
                 }
 
                 let syscalls = SyscallProvider { rt };
-                let runtime = ActorRuntime::new(&syscalls, syscalls.rt.store());
+                let runtime =
+                    ActorRuntime::new(&syscalls, DynBlockstore::wrap(syscalls.rt.store()));
                 let mut token = as_token(st, &runtime);
                 token
                     .transfer_from(
@@ -311,7 +316,7 @@ impl Actor {
         let mut st: State = rt.state()?;
         let syscalls = SyscallProvider { rt };
         let intermediate = hook.call(&as_actor_runtime(&syscalls)).actor_result()?;
-        let runtime = ActorRuntime::new(&syscalls, syscalls.rt.store());
+        let runtime = ActorRuntime::new(&syscalls, DynBlockstore::wrap(syscalls.rt.store()));
         as_token(&mut st, &runtime).transfer_from_return(intermediate).actor_result()
     }
 
@@ -325,7 +330,7 @@ impl Actor {
 
         rt.transaction(|st: &mut State, rt| {
             let syscalls = SyscallProvider { rt };
-            let runtime = ActorRuntime::new(&syscalls, syscalls.rt.store());
+            let runtime = ActorRuntime::new(&syscalls, DynBlockstore::wrap(syscalls.rt.store()));
             let mut token = as_token(st, &runtime);
             token
                 .increase_allowance(&owner, &operator, &params.increase)
@@ -345,7 +350,7 @@ impl Actor {
 
         rt.transaction(|st: &mut State, rt| {
             let syscalls = SyscallProvider { rt };
-            let runtime = ActorRuntime::new(&syscalls, syscalls.rt.store());
+            let runtime = ActorRuntime::new(&syscalls, DynBlockstore::wrap(syscalls.rt.store()));
             let mut token = as_token(st, &runtime);
             token
                 .decrease_allowance(owner, operator, &params.decrease)
@@ -365,7 +370,7 @@ impl Actor {
 
         rt.transaction(|st: &mut State, rt| {
             let syscalls = SyscallProvider { rt };
-            let runtime = ActorRuntime::new(&syscalls, syscalls.rt.store());
+            let runtime = ActorRuntime::new(&syscalls, DynBlockstore::wrap(syscalls.rt.store()));
             let mut token = as_token(st, &runtime);
             token
                 .revoke_allowance(owner, operator)
@@ -381,7 +386,7 @@ impl Actor {
 
         rt.transaction(|st: &mut State, rt| {
             let syscalls = SyscallProvider { rt };
-            let runtime = ActorRuntime::new(&syscalls, syscalls.rt.store());
+            let runtime = ActorRuntime::new(&syscalls, DynBlockstore::wrap(syscalls.rt.store()));
             let mut token = as_token(st, &runtime);
             token.burn(owner, &params.amount).actor_result()
         })
@@ -398,7 +403,7 @@ impl Actor {
 
         rt.transaction(|st: &mut State, rt| {
             let syscalls = SyscallProvider { rt };
-            let runtime = ActorRuntime::new(&syscalls, syscalls.rt.store());
+            let runtime = ActorRuntime::new(&syscalls, DynBlockstore::wrap(syscalls.rt.store()));
             let mut token = as_token(st, &runtime);
             token.burn_from(operator, owner, &params.amount).actor_result()
         })
@@ -463,8 +468,8 @@ where
 // Returns a token instance wrapping the token state.
 fn as_token<'st, RT>(
     st: &'st mut State,
-    token_runtime: &'st ActorRuntime<&'st SyscallProvider<'st, RT>, &'st RT::Blockstore>,
-) -> Token<'st, &'st SyscallProvider<'st, RT>, &'st RT::Blockstore>
+    token_runtime: &'st ActorRuntime<&'st SyscallProvider<'st, RT>, DynBlockstore<'st>>,
+) -> Token<'st, &'st SyscallProvider<'st, RT>, DynBlockstore<'st>>
 where
     RT: Runtime,
 {
@@ -474,11 +479,11 @@ where
 // Returns an ActorRuntime wrapping the Runtime and Blockstore
 fn as_actor_runtime<'st, RT>(
     sys_provider: &'st SyscallProvider<'st, RT>,
-) -> ActorRuntime<&'st SyscallProvider<'st, RT>, &'st RT::Blockstore>
+) -> ActorRuntime<&'st SyscallProvider<'st, RT>, DynBlockstore>
 where
     RT: Runtime,
 {
-    ActorRuntime::new(sys_provider, sys_provider.rt.store())
+    ActorRuntime::new(sys_provider, DynBlockstore::wrap(sys_provider.rt.store()))
 }
 
 trait AsActorResult<T> {

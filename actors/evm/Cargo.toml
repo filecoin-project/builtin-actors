@@ -32,6 +32,7 @@ fil_actors_evm_shared = { workspace = true }
 hex = { workspace = true }
 hex-literal = { workspace = true }
 substrate-bn = { workspace = true }
+vm_api = { workspace = true }
 
 [dev-dependencies]
 hex = { workspace = true, features = ["serde"] }

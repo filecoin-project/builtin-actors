@@ -1,28 +1,28 @@
 use std::borrow::Cow;
 
 use cid::multihash::Code;
+use cid::Cid;
 use fil_actors_evm_shared::{address::EthAddress, uints::U256};
 use fil_actors_runtime::{
     actor_error, extract_send_result, runtime::EMPTY_ARR_CID, AsActorError, EAM_ACTOR_ID,
 };
+use fil_actors_runtime::{runtime::Runtime, ActorError};
 use fvm_ipld_blockstore::Block;
+use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::CborStore;
 use fvm_ipld_kamt::HashedKey;
+use fvm_ipld_kamt::{AsHashedKey, Config as KamtConfig, Kamt};
 use fvm_shared::address::{Address, Payload};
 use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
 use fvm_shared::sys::SendFlags;
 use fvm_shared::{MethodNum, Response, IPLD_RAW, METHOD_SEND};
+use vm_api::blockstore::DynBlockstore;
 
 use crate::state::{State, Tombstone};
 use crate::BytecodeHash;
-
-use cid::Cid;
-use fil_actors_runtime::{runtime::Runtime, ActorError};
-use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_kamt::{AsHashedKey, Config as KamtConfig, Kamt};
 
 // The Solidity compiler creates contiguous array item keys.
 // To prevent the tree from going very deep we use extensions,
@@ -90,7 +90,7 @@ pub struct System<'r, RT: Runtime> {
     /// (blake2b256(ipld_raw(bytecode)), keccak256(bytecode))
     bytecode: Option<EvmBytecode>,
     /// The contract's EVM storage slots.
-    slots: StateKamt<RT::Blockstore>,
+    slots: StateKamt<DynBlockstore<'r>>,
     /// The contracts "nonce" (incremented when creating new actors).
     pub(crate) nonce: u64,
     /// The last saved state root. None if the current state hasn't been saved yet.
@@ -106,11 +106,8 @@ pub struct System<'r, RT: Runtime> {
 }
 
 impl<'r, RT: Runtime> System<'r, RT> {
-    pub(crate) fn new(rt: &'r RT, readonly: bool) -> Self
-    where
-        RT::Blockstore: Clone,
-    {
-        let store = rt.store().clone();
+    pub(crate) fn new(rt: &'r RT, readonly: bool) -> Self {
+        let store = DynBlockstore::wrap(rt.store());
         Self {
             rt,
             slots: StateKamt::new_with_config(store, KAMT_CONFIG.clone()),
@@ -125,15 +122,11 @@ impl<'r, RT: Runtime> System<'r, RT> {
 
     /// Resurrect the contract. This will return a new empty contract if, and only if, the contract
     /// is "dead".
-    pub fn resurrect(rt: &'r RT) -> Result<Self, ActorError>
-    where
-        RT::Blockstore: Clone,
-    {
+    pub fn resurrect(rt: &'r RT) -> Result<Self, ActorError> {
         let read_only = rt.read_only();
         let state_root = rt.get_state_root()?;
         // Check the tombstone.
-        let state: State = rt
-            .store()
+        let state: State = DynBlockstore::wrap(rt.store())
             .get_cbor(&state_root)
             .context_code(ExitCode::USR_SERIALIZATION, "failed to decode state")?
             .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?;
@@ -146,10 +139,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
 
     /// Create the contract. This will return a new empty contract if, and only if, the contract
     /// doesn't have any state.
-    pub fn create(rt: &'r RT) -> Result<Self, ActorError>
-    where
-        RT::Blockstore: Clone,
-    {
+    pub fn create(rt: &'r RT) -> Result<Self, ActorError> {
         let read_only = rt.read_only();
         let state_root = rt.get_state_root()?;
         if state_root != EMPTY_ARR_CID {
@@ -159,13 +149,10 @@ impl<'r, RT: Runtime> System<'r, RT> {
     }
 
     /// Load the actor from state.
-    pub fn load(rt: &'r RT) -> Result<Self, ActorError>
-    where
-        RT::Blockstore: Clone,
-    {
-        let store = rt.store().clone();
+    pub fn load(rt: &'r RT) -> Result<Self, ActorError> {
+        let store = DynBlockstore::wrap(rt.store());
         let state_root = rt.get_state_root()?;
-        let state: State = store
+        let state: State = DynBlockstore::wrap(rt.store())
             .get_cbor(&state_root)
             .context_code(ExitCode::USR_SERIALIZATION, "failed to decode state")?
             .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?;
@@ -272,9 +259,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
             // set empty bytecode hashes
             None => self.set_bytecode(&[])?,
         };
-        let new_root = self
-            .rt
-            .store()
+        let new_root = DynBlockstore::wrap(self.rt.store())
             .put_cbor(
                 &State {
                     bytecode: cid,
@@ -306,9 +291,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
             return Ok(());
         }
 
-        let state: State = self
-            .rt
-            .store()
+        let state: State = DynBlockstore::wrap(self.rt.store())
             .get_cbor(&root)
             .context_code(ExitCode::USR_SERIALIZATION, "failed to decode state")?
             .context_code(ExitCode::USR_ILLEGAL_STATE, "state not in blockstore")?;
@@ -346,9 +329,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
             .try_into()
             .context_code(ExitCode::USR_ASSERTION_FAILED, "expected a 32byte digest")?;
 
-        let cid = self
-            .rt
-            .store()
+        let cid = DynBlockstore::wrap(self.rt.store())
             .put(Code::Blake2b256, &Block::new(IPLD_RAW, bytecode))
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to write bytecode")?;
         let bytecode = EvmBytecode::new(cid, code_hash);

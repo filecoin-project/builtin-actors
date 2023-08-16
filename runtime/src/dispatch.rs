@@ -25,14 +25,13 @@ use crate::ActorError;
 #[macro_export]
 macro_rules! actor_dispatch {
     ($($(#[$m:meta])* $(_)? $($method:ident)|* => $func:ident $([$tag:ident])?,)*) => {
-        fn invoke_method<RT>(
+        fn invoke_method<RT, BS>(
             rt: &RT,
             method: fvm_shared::MethodNum,
             args: Option<fvm_ipld_encoding::ipld_block::IpldBlock>,
         ) -> Result<Option<fvm_ipld_encoding::ipld_block::IpldBlock>, $crate::ActorError>
         where
             RT: $crate::runtime::Runtime,
-            RT::Blockstore: Clone,
         {
             $crate::builtin::shared::restrict_internal_api(rt, method)?;
             match <Self::Methods as num_traits::FromPrimitive>::from_u64(method) {
@@ -70,7 +69,6 @@ macro_rules! actor_dispatch_unrestricted {
         ) -> Result<Option<fvm_ipld_encoding::ipld_block::IpldBlock>, $crate::ActorError>
         where
             RT: $crate::runtime::Runtime,
-            RT::Blockstore: Clone,
         {
             match <Self::Methods as num_traits::FromPrimitive>::from_u64(method) {
                 $($(#[$m])*

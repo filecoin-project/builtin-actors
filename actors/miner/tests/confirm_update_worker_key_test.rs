@@ -35,7 +35,7 @@ fn successfully_changes_the_worker_address() {
     h.confirm_change_worker_address(&rt).unwrap();
 
     let state: State = rt.get_state();
-    let info = state.get_info(rt.store()).unwrap();
+    let info = state.get_info(&DynBlockstore::wrap(rt.store())).unwrap();
 
     assert_eq!(info.worker, NEW_WORKER);
     assert!(info.pending_worker_key.is_none());
@@ -55,7 +55,7 @@ fn does_nothing_before_the_effective_date() {
     h.confirm_change_worker_address(&rt).unwrap();
 
     let state: State = rt.get_state();
-    let info = state.get_info(rt.store()).unwrap();
+    let info = state.get_info(&DynBlockstore::wrap(rt.store())).unwrap();
 
     assert_eq!(info.worker, h.worker);
 
@@ -73,7 +73,7 @@ fn does_nothing_when_no_update_is_set() {
     h.confirm_change_worker_address(&rt).unwrap();
 
     let state: State = rt.get_state();
-    let info = state.get_info(rt.store()).unwrap();
+    let info = state.get_info(&DynBlockstore::wrap(rt.store())).unwrap();
 
     assert_eq!(info.worker, h.worker);
     assert!(info.pending_worker_key.is_none());

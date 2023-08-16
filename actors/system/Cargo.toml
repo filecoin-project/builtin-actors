@@ -23,6 +23,7 @@ anyhow = { workspace = true }
 num-derive = { workspace = true }
 serde = { workspace = true }
 cid = { workspace = true }
+vm_api = { workspace = true }
 
 [dev-dependencies]
 fil_actors_runtime = { workspace = true, features = ["test_utils", "sector-default"] }

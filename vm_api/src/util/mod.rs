@@ -7,12 +7,10 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::MethodNum;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
+use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-mod blockstore;
-pub use blockstore::*;
-use serde::de::DeserializeOwned;
-
+use crate::blockstore::DynBlockstore;
 use crate::VM;
 
 /// Generate count addresses by seeding an rng

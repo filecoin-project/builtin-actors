@@ -11,6 +11,8 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::CBOR;
 use fvm_shared::address::Address;
 
+pub use self::state::{LaneState, Merge, State};
+pub use self::types::*;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -18,9 +20,7 @@ use fvm_shared::sys::SendFlags;
 use fvm_shared::{METHOD_CONSTRUCTOR, METHOD_SEND};
 use num_derive::FromPrimitive;
 use num_traits::Zero;
-
-pub use self::state::{LaneState, Merge, State};
-pub use self::types::*;
+use vm_api::blockstore::DynBlockstore;
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
@@ -58,12 +58,14 @@ impl Actor {
         let to = resolve_to_actor_id(rt, &params.to, true).map(Address::new_id)?;
         let from = resolve_to_actor_id(rt, &params.from, true).map(Address::new_id)?;
 
-        let empty_arr_cid =
-            Array::<(), _>::new_with_bit_width(rt.store(), LANE_STATES_AMT_BITWIDTH)
-                .flush()
-                .map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to create empty AMT")
-                })?;
+        let empty_arr_cid = Array::<(), _>::new_with_bit_width(
+            &DynBlockstore::wrap(rt.store()),
+            LANE_STATES_AMT_BITWIDTH,
+        )
+        .flush()
+        .map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to create empty AMT")
+        })?;
 
         rt.create(&State::new(from, to, empty_arr_cid))?;
         Ok(())
@@ -166,7 +168,8 @@ impl Actor {
         }
 
         rt.transaction(|st: &mut State, rt| {
-            let mut l_states = Array::load(&st.lane_states, rt.store()).map_err(|e| {
+            let store = DynBlockstore::wrap(rt.store());
+            let mut l_states = Array::load(&st.lane_states, &store).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load lane states")
             })?;
 

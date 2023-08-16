@@ -37,6 +37,7 @@ use multihash::derive::Multihash;
 
 use rand::prelude::*;
 use serde::Serialize;
+use vm_api::blockstore::DynBlockstore;
 
 use crate::runtime::builtins::Type;
 use crate::runtime::{
@@ -554,7 +555,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
     ) -> Result<Option<IpldBlock>, ActorError> {
         self.in_call.replace(true);
         let prev_state = *self.state.borrow();
-        let res = A::invoke_method(self, method_num, params);
+        let res = A::invoke_method::<_, BS>(self, method_num, params);
 
         if res.is_err() {
             self.state.replace(prev_state);
@@ -1118,7 +1119,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         ret
     }
 
-    fn store(&self) -> &Rc<BS> {
+    fn store(&self) -> &dyn Blockstore {
         &self.store
     }
 

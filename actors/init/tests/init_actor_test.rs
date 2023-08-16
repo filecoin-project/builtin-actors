@@ -22,9 +22,10 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::{ActorID, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
 use num_traits::Zero;
 use serde::Serialize;
+use vm_api::blockstore::DynBlockstore;
 
 fn check_state(rt: &MockRuntime) {
-    let (_, acc) = check_state_invariants(&rt.get_state(), rt.store());
+    let (_, acc) = check_state_invariants(&rt.get_state(), &DynBlockstore::wrap(rt.store()));
     acc.assert_empty();
 }
 
@@ -327,7 +328,7 @@ fn call_exec4() {
     // Check that we assigned the right f4 address.
     let init_state: State = rt.get_state();
     let resolved_id = init_state
-        .resolve_address(rt.store(), &f4_addr)
+        .resolve_address(&DynBlockstore::wrap(rt.store()), &f4_addr)
         .ok()
         .flatten()
         .expect("failed to lookup f4 address");
@@ -369,7 +370,8 @@ fn call_exec4_placeholder() {
     // Register a placeholder with the init actor.
     let expected_id = {
         let mut state: State = rt.get_state();
-        let (id, existing) = state.map_addresses_to_id(rt.store(), &f4_addr, None).unwrap();
+        let (id, existing) =
+            state.map_addresses_to_id(&DynBlockstore::wrap(rt.store()), &f4_addr, None).unwrap();
         assert!(!existing);
         rt.replace_state(&state);
         id
@@ -404,7 +406,7 @@ fn call_exec4_placeholder() {
     // Check that we assigned the right f4 address.
     let init_state: State = rt.get_state();
     let resolved_id = init_state
-        .resolve_address(rt.store(), &f4_addr)
+        .resolve_address(&DynBlockstore::wrap(rt.store()), &f4_addr)
         .ok()
         .flatten()
         .expect("failed to lookup f4 address");

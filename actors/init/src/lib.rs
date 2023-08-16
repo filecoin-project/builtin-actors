@@ -13,6 +13,7 @@ use fvm_shared::address::Address;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{ActorID, METHOD_CONSTRUCTOR};
 use num_derive::FromPrimitive;
+use vm_api::blockstore::DynBlockstore;
 
 pub use self::state::State;
 pub use self::types::*;
@@ -41,7 +42,7 @@ impl Actor {
     pub fn constructor(rt: &impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
         let sys_ref: &Address = &SYSTEM_ACTOR_ADDR;
         rt.validate_immediate_caller_is(std::iter::once(sys_ref))?;
-        let state = State::new(rt.store(), params.network_name)?;
+        let state = State::new(&DynBlockstore::wrap(rt.store()), params.network_name)?;
         rt.create(&state)?;
 
         Ok(())
@@ -78,7 +79,7 @@ impl Actor {
         // Allocate an ID for this actor.
         // Store mapping of actor addresses to the actor ID.
         let (id_address, existing): (ActorID, bool) = rt.transaction(|s: &mut State, rt| {
-            s.map_addresses_to_id(rt.store(), &robust_address, None)
+            s.map_addresses_to_id(&DynBlockstore::wrap(rt.store()), &robust_address, None)
                 .context("failed to allocate ID address")
         })?;
 
@@ -130,8 +131,12 @@ impl Actor {
         // Allocate an ID for this actor.
         // Store mapping of actor addresses to the actor ID.
         let (id_address, existing): (ActorID, bool) = rt.transaction(|s: &mut State, rt| {
-            s.map_addresses_to_id(rt.store(), &robust_address, Some(&delegated_address))
-                .context("failed to map addresses to ID")
+            s.map_addresses_to_id(
+                &DynBlockstore::wrap(rt.store()),
+                &robust_address,
+                Some(&delegated_address),
+            )
+            .context("failed to map addresses to ID")
         })?;
 
         // If the f4 address was already assigned, make sure we're deploying over a placeholder and not

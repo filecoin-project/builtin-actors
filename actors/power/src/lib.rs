@@ -25,6 +25,7 @@ use fil_actors_runtime::{
     actor_dispatch, actor_error, deserialize_block, extract_send_result, ActorDowncast, ActorError,
     Multimap, CRON_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
+use vm_api::blockstore::DynBlockstore;
 
 pub use self::policy::*;
 pub use self::state::*;
@@ -80,8 +81,8 @@ impl Actor {
     /// Constructor for StoragePower actor
     fn constructor(rt: &impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
-
-        let st = State::new(rt.store()).map_err(|e| {
+        let store = DynBlockstore::wrap(rt.store());
+        let st = State::new(&store).map_err(|e| {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "Failed to create power actor state")
         })?;
         rt.create(&st)?;
@@ -118,7 +119,8 @@ impl Actor {
 
         let window_post_proof_type = params.window_post_proof_type;
         rt.transaction(|st: &mut State, rt| {
-            let mut claims = st.load_claims(rt.store())?;
+            let store = DynBlockstore::wrap(rt.store());
+            let mut claims = st.load_claims(store)?;
             set_claim(
                 &mut claims,
                 &id_address,
@@ -155,7 +157,8 @@ impl Actor {
         let miner_addr = rt.message().caller();
 
         rt.transaction(|st: &mut State, rt| {
-            let mut claims = st.load_claims(rt.store())?;
+            let store = DynBlockstore::wrap(rt.store());
+            let mut claims = st.load_claims(store)?;
 
             st.add_to_claim(
                 rt.policy(),
@@ -188,8 +191,9 @@ impl Actor {
         }
 
         rt.transaction(|st: &mut State, rt| {
+            let store = DynBlockstore::wrap(rt.store());
             let mut events = Multimap::from_root(
-                rt.store(),
+                &store,
                 &st.cron_event_queue,
                 CRON_QUEUE_HAMT_BITWIDTH,
                 CRON_QUEUE_AMT_BITWIDTH,
@@ -257,7 +261,7 @@ impl Actor {
     ) -> Result<(), ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         rt.transaction(|st: &mut State, rt| {
-            st.validate_miner_has_claim(rt.store(), &rt.message().caller())?;
+            st.validate_miner_has_claim(&DynBlockstore::wrap(rt.store()), &rt.message().caller())?;
             st.add_pledge_total(params.pledge_delta);
             if st.total_pledge_collateral.is_negative() {
                 return Err(actor_error!(
@@ -277,11 +281,12 @@ impl Actor {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
 
         rt.transaction(|st: &mut State, rt| {
-            st.validate_miner_has_claim(rt.store(), &rt.message().caller())?;
+            let store = DynBlockstore::wrap(rt.store());
+            st.validate_miner_has_claim(&store, &rt.message().caller())?;
 
             let mut mmap = if let Some(ref batch) = st.proof_validation_batch {
                 Multimap::from_root(
-                    rt.store(),
+                    &store,
                     batch,
                     HAMT_BIT_WIDTH,
                     PROOF_VALIDATION_BATCH_AMT_BITWIDTH,
@@ -294,7 +299,7 @@ impl Actor {
                 })?
             } else {
                 debug!("ProofValidationBatch created");
-                Multimap::new(rt.store(), HAMT_BIT_WIDTH, PROOF_VALIDATION_BATCH_AMT_BITWIDTH)
+                Multimap::new(&store, HAMT_BIT_WIDTH, PROOF_VALIDATION_BATCH_AMT_BITWIDTH)
             };
             let miner_addr = rt.message().caller();
             let arr = mmap.get::<SealVerifyInfo>(&miner_addr.to_bytes()).map_err(|e| {
@@ -369,8 +374,12 @@ impl Actor {
         rt.validate_immediate_caller_accept_any()?;
         let st: State = rt.state()?;
 
-        let (raw_byte_power, meets_consensus_minimum) =
-            st.miner_nominal_power_meets_consensus_minimum(rt.policy(), rt.store(), params.miner)?;
+        let (raw_byte_power, meets_consensus_minimum) = st
+            .miner_nominal_power_meets_consensus_minimum(
+                rt.policy(),
+                &DynBlockstore::wrap(rt.store()),
+                params.miner,
+            )?;
 
         Ok(MinerRawPowerReturn { raw_byte_power, meets_consensus_minimum })
     }
@@ -402,6 +411,7 @@ impl Actor {
         let mut st_err: Option<String> = None;
         let this_epoch_qa_power_smoothed = rt
             .transaction(|st: &mut State, rt| {
+                let store = DynBlockstore::wrap(rt.store());
                 let result = Ok(st.this_epoch_qa_power_smoothed.clone());
                 let batch = match &st.proof_validation_batch {
                     None => {
@@ -411,7 +421,7 @@ impl Actor {
                     Some(batch) => batch,
                 };
                 let mmap = match Multimap::from_root(
-                    rt.store(),
+                    &store,
                     batch,
                     HAMT_BIT_WIDTH,
                     PROOF_VALIDATION_BATCH_AMT_BITWIDTH,
@@ -423,7 +433,7 @@ impl Actor {
                     }
                 };
 
-                let claims = match st.load_claims(rt.store()) {
+                let claims = match st.load_claims(&store) {
                     Ok(claims) => claims,
                     Err(e) => {
                         st_err = Some(format!("failed to load claims: {}", e));
@@ -534,8 +544,9 @@ impl Actor {
         let mut cron_events = Vec::new();
         let st: State = rt.state()?;
         rt.transaction(|st: &mut State, rt| {
+            let store = DynBlockstore::wrap(rt.store());
             let mut events = Multimap::from_root(
-                rt.store(),
+                &store,
                 &st.cron_event_queue,
                 CRON_QUEUE_HAMT_BITWIDTH,
                 CRON_QUEUE_AMT_BITWIDTH,
@@ -544,7 +555,7 @@ impl Actor {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load cron events")
             })?;
 
-            let claims = st.load_claims(rt.store())?;
+            let claims = st.load_claims(&store)?;
             for epoch in st.first_cron_epoch..=rt_epoch {
                 let epoch_events = load_cron_events(&events, epoch).map_err(|e| {
                     e.downcast_default(
@@ -607,7 +618,8 @@ impl Actor {
 
         if !failed_miner_crons.is_empty() {
             rt.transaction(|st: &mut State, rt| {
-                let mut claims = st.load_claims(rt.store())?;
+                let store = DynBlockstore::wrap(rt.store());
+                let mut claims = st.load_claims(store)?;
 
                 // Remove power and leave miner frozen
                 for miner_addr in failed_miner_crons {

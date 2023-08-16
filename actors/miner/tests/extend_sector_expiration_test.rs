@@ -65,8 +65,9 @@ fn rejects_negative_extensions(v2: bool) {
 
     // find deadline and partition
     let state: State = rt.get_state();
-    let (deadline_index, partition_index) =
-        state.find_sector(rt.policy(), rt.store(), sector.sector_number).unwrap();
+    let (deadline_index, partition_index) = state
+        .find_sector(rt.policy(), &DynBlockstore::wrap(rt.store()), sector.sector_number)
+        .unwrap();
 
     let params = ExtendSectorExpirationParams {
         extensions: vec![ExpirationExtension {
@@ -99,8 +100,9 @@ fn rejects_extension_too_far_in_future(v2: bool) {
 
     // find deadline and partition
     let state: State = rt.get_state();
-    let (deadline_index, partition_index) =
-        state.find_sector(rt.policy(), rt.store(), sector.sector_number).unwrap();
+    let (deadline_index, partition_index) = state
+        .find_sector(rt.policy(), &DynBlockstore::wrap(rt.store()), sector.sector_number)
+        .unwrap();
 
     let params = ExtendSectorExpirationParams {
         extensions: vec![ExpirationExtension {
@@ -134,8 +136,9 @@ fn rejects_extension_past_max_for_seal_proof(v2: bool) {
     let max_lifetime = seal_proof_sector_maximum_lifetime(sector.seal_proof).unwrap();
 
     let state: State = rt.get_state();
-    let (deadline_index, partition_index) =
-        state.find_sector(rt.policy(), rt.store(), sector.sector_number).unwrap();
+    let (deadline_index, partition_index) = state
+        .find_sector(rt.policy(), &DynBlockstore::wrap(rt.store()), sector.sector_number)
+        .unwrap();
 
     // extend sector until just below threshold
     rt.set_epoch(sector.expiration);
@@ -181,8 +184,9 @@ fn updates_expiration_with_valid_params(v2: bool) {
 
     let state: State = rt.get_state();
 
-    let (deadline_index, partition_index) =
-        state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
+    let (deadline_index, partition_index) = state
+        .find_sector(rt.policy(), &DynBlockstore::wrap(rt.store()), old_sector.sector_number)
+        .unwrap();
 
     let extension = 42 * rt.policy().wpost_proving_period;
     let new_expiration = old_sector.expiration + extension;
@@ -206,12 +210,17 @@ fn updates_expiration_with_valid_params(v2: bool) {
 
     // assert that new expiration exists
     let (_, mut partition) = h.get_deadline_and_partition(&rt, deadline_index, partition_index);
-    let expiration_set =
-        partition.pop_expired_sectors(rt.store(), new_expiration - 1, quant).unwrap();
+    let expiration_set = partition
+        .pop_expired_sectors(&DynBlockstore::wrap(rt.store()), new_expiration - 1, quant)
+        .unwrap();
     assert!(expiration_set.is_empty());
 
     let expiration_set = partition
-        .pop_expired_sectors(rt.store(), quant.quantize_up(new_expiration), quant)
+        .pop_expired_sectors(
+            &DynBlockstore::wrap(rt.store()),
+            quant.quantize_up(new_expiration),
+            quant,
+        )
         .unwrap();
     assert_eq!(expiration_set.len(), 1);
     assert!(expiration_set.on_time_sectors.get(old_sector.sector_number));
@@ -241,10 +250,11 @@ fn updates_many_sectors(v2: bool) {
     let mut extensions: Vec<ExpirationExtension> = Vec::new();
 
     let state: State = rt.get_state();
-    let deadlines = state.load_deadlines(rt.store()).unwrap();
+    let store = DynBlockstore::wrap(rt.store());
+    let deadlines = state.load_deadlines(&DynBlockstore::wrap(rt.store())).unwrap();
     deadlines
-        .for_each(rt.policy(), rt.store(), |deadline_index, deadline| {
-            let partitions = deadline.partitions_amt(rt.store()).unwrap();
+        .for_each(rt.policy(), &DynBlockstore::wrap(rt.store()), |deadline_index, deadline| {
+            let partitions = deadline.partitions_amt(&store).unwrap();
             partitions
                 .for_each(|partition_index, partition| {
                     // filter out even-numbered sectors
@@ -275,15 +285,15 @@ fn updates_many_sectors(v2: bool) {
 
     h.extend_sectors_versioned(&rt, params, v2).unwrap();
     let state: State = rt.get_state();
-    let deadlines = state.load_deadlines(rt.store()).unwrap();
+    let deadlines = state.load_deadlines(&DynBlockstore::wrap(rt.store())).unwrap();
 
     // half of the sectors should expire on-time
     let (mut on_time_total, mut extended_total) = (0, 0);
     deadlines
-        .for_each(rt.policy(), rt.store(), |deadline_index, mut deadline| {
+        .for_each(rt.policy(), &DynBlockstore::wrap(rt.store()), |deadline_index, mut deadline| {
             let expiration_set = deadline
                 .pop_expired_sectors(
-                    rt.store(),
+                    &DynBlockstore::wrap(rt.store()),
                     new_expiration - 1,
                     state.quant_spec_for_deadline(rt.policy(), deadline_index),
                 )
@@ -293,7 +303,11 @@ fn updates_many_sectors(v2: bool) {
             // ensure we pop queue up to the deadline-specific expiration
             let quant = state.quant_spec_for_deadline(rt.policy(), deadline_index);
             let expiration_set = deadline
-                .pop_expired_sectors(rt.store(), quant.quantize_up(new_expiration), quant)
+                .pop_expired_sectors(
+                    &DynBlockstore::wrap(rt.store()),
+                    quant.quantize_up(new_expiration),
+                    quant,
+                )
                 .unwrap();
             extended_total += expiration_set.len();
             Ok(())
@@ -313,8 +327,9 @@ fn supports_extensions_off_deadline_boundary(v2: bool) {
     h.advance_and_submit_posts(&rt, &vec![old_sector.clone()]);
 
     let state: State = rt.get_state();
-    let (deadline_index, partition_index) =
-        state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
+    let (deadline_index, partition_index) = state
+        .find_sector(rt.policy(), &DynBlockstore::wrap(rt.store()), old_sector.sector_number)
+        .unwrap();
 
     let extension = 42 * rt.policy().wpost_proving_period + rt.policy().wpost_proving_period / 3;
     let new_expiration = old_sector.expiration + extension;
@@ -386,8 +401,9 @@ fn update_expiration2_multiple_claims() {
 
     let state: State = rt.get_state();
 
-    let (deadline_index, partition_index) =
-        state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
+    let (deadline_index, partition_index) = state
+        .find_sector(rt.policy(), &DynBlockstore::wrap(rt.store()), old_sector.sector_number)
+        .unwrap();
 
     let extension = 42 * rt.policy().wpost_proving_period;
     let new_expiration = old_sector.expiration + extension;
@@ -458,8 +474,9 @@ fn update_expiration2_failure_cases() {
 
     let state: State = rt.get_state();
 
-    let (deadline_index, partition_index) =
-        state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
+    let (deadline_index, partition_index) = state
+        .find_sector(rt.policy(), &DynBlockstore::wrap(rt.store()), old_sector.sector_number)
+        .unwrap();
 
     let extension = 42 * rt.policy().wpost_proving_period;
     let new_expiration = old_sector.expiration + extension;
@@ -621,8 +638,9 @@ fn extend_expiration2_drop_claims() {
 
     let state: State = rt.get_state();
 
-    let (deadline_index, partition_index) =
-        state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
+    let (deadline_index, partition_index) = state
+        .find_sector(rt.policy(), &DynBlockstore::wrap(rt.store()), old_sector.sector_number)
+        .unwrap();
 
     let extension = 42 * rt.policy().wpost_proving_period;
     let new_expiration = old_sector.expiration + extension;
@@ -740,8 +758,9 @@ fn update_expiration_legacy_fails_on_new_sector_with_deals() {
 
     let state: State = rt.get_state();
 
-    let (deadline_index, partition_index) =
-        state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
+    let (deadline_index, partition_index) = state
+        .find_sector(rt.policy(), &DynBlockstore::wrap(rt.store()), old_sector.sector_number)
+        .unwrap();
 
     let extension = 42 * rt.policy().wpost_proving_period;
     let new_expiration = old_sector.expiration + extension;
@@ -786,8 +805,9 @@ fn update_expiration2_drop_claims_failure_cases() {
 
     let state: State = rt.get_state();
 
-    let (deadline_index, partition_index) =
-        state.find_sector(rt.policy(), rt.store(), old_sector.sector_number).unwrap();
+    let (deadline_index, partition_index) = state
+        .find_sector(rt.policy(), &DynBlockstore::wrap(rt.store()), old_sector.sector_number)
+        .unwrap();
 
     let extension = 42 * rt.policy().wpost_proving_period;
     let new_expiration = old_sector.expiration + extension;
@@ -927,11 +947,14 @@ fn check_for_expiration(
 
     // assert that new expiration exists
     let (_, mut partition) = h.get_deadline_and_partition(rt, deadline_index, partition_index);
-    let expiration_set = partition.pop_expired_sectors(rt.store(), expiration - 1, quant).unwrap();
+    let expiration_set = partition
+        .pop_expired_sectors(&DynBlockstore::wrap(rt.store()), expiration - 1, quant)
+        .unwrap();
     assert!(expiration_set.is_empty());
 
-    let expiration_set =
-        partition.pop_expired_sectors(rt.store(), quant.quantize_up(expiration), quant).unwrap();
+    let expiration_set = partition
+        .pop_expired_sectors(&DynBlockstore::wrap(rt.store()), quant.quantize_up(expiration), quant)
+        .unwrap();
     assert_eq!(expiration_set.len(), 1);
     assert!(expiration_set.on_time_sectors.get(sector_number));
 

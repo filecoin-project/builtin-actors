@@ -33,6 +33,7 @@ use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND};
 use regex::Regex;
 use std::cell::RefCell;
 use std::ops::Add;
+use vm_api::blockstore::DynBlockstore;
 
 use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
 use fil_actor_market::ext::verifreg::{AllocationRequest, AllocationsResponse};
@@ -49,7 +50,7 @@ fn test_remove_all_error() {
     let market_actor = Address::new_id(100);
     let rt = MockRuntime { receiver: market_actor, ..Default::default() };
 
-    SetMultimap::new(&rt.store()).remove_all(42).expect("expected no error");
+    SetMultimap::new(&DynBlockstore::wrap(rt.store())).remove_all(42).expect("expected no error");
 }
 
 // TODO add array stuff
@@ -1516,10 +1517,11 @@ fn cron_reschedules_update_to_new_period() {
     // This simulates there having been a prior policy that put it here, but now
     // the policy has changed.
     let mut st: State = rt.get_state();
+    let store = DynBlockstore::wrap(rt.store());
     let expected_epoch = next_update_epoch(deal_id, update_interval, start_epoch);
     let misscheduled_epoch = expected_epoch + 42;
-    st.remove_deals_by_epoch(rt.store(), &[expected_epoch]).unwrap();
-    st.put_deals_by_epoch(rt.store(), &[(misscheduled_epoch, deal_id)]).unwrap();
+    st.remove_deals_by_epoch(&store, &[expected_epoch]).unwrap();
+    st.put_deals_by_epoch(&store, &[(misscheduled_epoch, deal_id)]).unwrap();
     rt.replace_state(&st);
 
     let curr_epoch = rt.set_epoch(misscheduled_epoch);
@@ -1529,7 +1531,7 @@ fn cron_reschedules_update_to_new_period() {
     let expected_epoch = next_update_epoch(deal_id, update_interval, curr_epoch + 1);
     assert_ne!(expected_epoch, curr_epoch);
     assert_ne!(expected_epoch, misscheduled_epoch + update_interval);
-    let found = st.get_deals_for_epoch(rt.store(), expected_epoch).unwrap();
+    let found = st.get_deals_for_epoch(&store, expected_epoch).unwrap();
     assert_eq!([deal_id][..], found[..]);
 }
 
@@ -1553,13 +1555,14 @@ fn cron_reschedules_update_to_new_period_boundary() {
 
     // Hack state to move the scheduled update.
     let mut st: State = rt.get_state();
+    let store = DynBlockstore::wrap(rt.store());
     let expected_epoch = next_update_epoch(deal_id, update_interval, start_epoch);
     // Schedule the update exactly where the current policy would have put it anyway,
     // next time round (as if an old policy had an interval that was a multiple of the current one).
     // We can confirm it's rescheduled to the next period rather than left behind.
     let misscheduled_epoch = expected_epoch + update_interval;
-    st.remove_deals_by_epoch(rt.store(), &[expected_epoch]).unwrap();
-    st.put_deals_by_epoch(rt.store(), &[(misscheduled_epoch, deal_id)]).unwrap();
+    st.remove_deals_by_epoch(&store, &[expected_epoch]).unwrap();
+    st.put_deals_by_epoch(&store, &[(misscheduled_epoch, deal_id)]).unwrap();
     rt.replace_state(&st);
 
     let curr_epoch = rt.set_epoch(misscheduled_epoch);
@@ -1571,7 +1574,7 @@ fn cron_reschedules_update_to_new_period_boundary() {
     // For all other mis-schedulings, these would be asserted non-equal, but
     // for this case we expect a perfect increase of one update interval.
     assert_eq!(expected_epoch, misscheduled_epoch + update_interval);
-    let found = st.get_deals_for_epoch(rt.store(), expected_epoch).unwrap();
+    let found = st.get_deals_for_epoch(&store, expected_epoch).unwrap();
     assert_eq!([deal_id][..], found[..]);
 }
 
@@ -1600,10 +1603,11 @@ fn cron_reschedules_many_updates() {
     }
 
     let st: State = rt.get_state();
+    let store = DynBlockstore::wrap(rt.store());
     // Confirm two deals are scheduled for each epoch from start_epoch.
-    let first_updates = st.get_deals_for_epoch(rt.store(), start_epoch).unwrap();
+    let first_updates = st.get_deals_for_epoch(&store, start_epoch).unwrap();
     for epoch in start_epoch..(start_epoch + update_interval) {
-        assert_eq!(2, st.get_deals_for_epoch(rt.store(), epoch).unwrap().len());
+        assert_eq!(2, st.get_deals_for_epoch(&store, epoch).unwrap().len());
     }
 
     rt.set_epoch(start_epoch);
@@ -1611,17 +1615,17 @@ fn cron_reschedules_many_updates() {
 
     let st: State = rt.get_state();
     // Two deals removed from start_epoch
-    assert_eq!(0, st.get_deals_for_epoch(rt.store(), start_epoch).unwrap().len());
+    assert_eq!(0, st.get_deals_for_epoch(&store, start_epoch).unwrap().len());
 
     // Same two deals scheduled one interval later
-    let rescheduled = st.get_deals_for_epoch(rt.store(), start_epoch + update_interval).unwrap();
+    let rescheduled = st.get_deals_for_epoch(&store, start_epoch + update_interval).unwrap();
     assert_eq!(first_updates, rescheduled);
 
     for epoch in (start_epoch + 1)..(start_epoch + update_interval) {
         rt.set_epoch(epoch);
         cron_tick(&rt);
         let st: State = rt.get_state();
-        assert_eq!(2, st.get_deals_for_epoch(rt.store(), epoch + update_interval).unwrap().len());
+        assert_eq!(2, st.get_deals_for_epoch(&store, epoch + update_interval).unwrap().len());
     }
 }
 

@@ -51,6 +51,7 @@ use fil_actors_runtime::{
 };
 use fil_actors_runtime::{Map2, MapKey, Multimap};
 use fil_actors_runtime::{CRON_ACTOR_ADDR, DEFAULT_HAMT_CONFIG};
+use vm_api::blockstore::DynBlockstore;
 
 use crate::PowerActor;
 
@@ -202,7 +203,7 @@ impl Harness {
 
     pub fn list_miners(&self, rt: &MockRuntime) -> Vec<Address> {
         let st: State = rt.get_state();
-        let claims = st.load_claims(rt.store()).unwrap();
+        let claims = st.load_claims(DynBlockstore::wrap(rt.store())).unwrap();
         collect_keys(claims).unwrap()
     }
 
@@ -224,13 +225,13 @@ impl Harness {
 
     pub fn get_claim(&self, rt: &MockRuntime, miner: &Address) -> Option<Claim> {
         let st: State = rt.get_state();
-        st.get_claim(rt.store(), miner).unwrap()
+        st.get_claim(&DynBlockstore::wrap(rt.store()), miner).unwrap()
     }
 
     pub fn delete_claim(&mut self, rt: &MockRuntime, miner: &Address) {
         let mut state: State = rt.get_state();
 
-        let mut claims = state.load_claims(rt.store()).unwrap();
+        let mut claims = state.load_claims(DynBlockstore::wrap(rt.store())).unwrap();
         claims.delete(miner).expect("Failed to delete claim");
         state.claims = claims.flush().unwrap();
 
@@ -278,7 +279,11 @@ impl Harness {
     }
 
     pub fn check_state(&self, rt: &MockRuntime) {
-        let (_, acc) = check_state_invariants(rt.policy(), &rt.get_state::<State>(), rt.store());
+        let (_, acc) = check_state_invariants(
+            rt.policy(),
+            &rt.get_state::<State>(),
+            &DynBlockstore::wrap(rt.store()),
+        );
         acc.assert_empty();
     }
 

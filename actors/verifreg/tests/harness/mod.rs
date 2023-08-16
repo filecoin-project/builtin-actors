@@ -37,6 +37,7 @@ use fil_actors_runtime::{
     make_empty_map, ActorError, AsActorError, BatchReturn, DATACAP_TOKEN_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+use vm_api::blockstore::DynBlockstore;
 
 pub const ROOT_ADDR: Address = Address::new_id(101);
 
@@ -220,7 +221,11 @@ impl Harness {
     }
 
     pub fn check_state(&self, rt: &MockRuntime) {
-        let (_, acc) = check_state_invariants(&rt.get_state(), rt.store(), *rt.epoch.borrow());
+        let (_, acc) = check_state_invariants(
+            &rt.get_state(),
+            DynBlockstore::wrap(rt.store()),
+            *rt.epoch.borrow(),
+        );
         acc.assert_empty();
     }
 
@@ -231,7 +236,8 @@ impl Harness {
         alloc: &Allocation,
     ) -> Result<AllocationID, ActorError> {
         let mut st: State = rt.get_state();
-        let mut allocs = st.load_allocs(rt.store()).unwrap();
+        let store = DynBlockstore::wrap(rt.store());
+        let mut allocs = st.load_allocs(&store).unwrap();
         let alloc_id = st.next_allocation_id;
         assert!(allocs
             .put_if_absent(alloc.client, alloc_id, alloc.clone())
@@ -249,7 +255,8 @@ impl Harness {
         id: AllocationID,
     ) -> Option<Allocation> {
         let st: State = rt.get_state();
-        let mut allocs = st.load_allocs(rt.store()).unwrap();
+        let store = DynBlockstore::wrap(rt.store());
+        let mut allocs = st.load_allocs(&store).unwrap();
         allocs.get(client, id).unwrap().cloned()
     }
 
@@ -353,7 +360,8 @@ impl Harness {
 
     pub fn load_claim(&self, rt: &MockRuntime, provider: ActorID, id: ClaimID) -> Option<Claim> {
         let st: State = rt.get_state();
-        let mut claims = st.load_claims(rt.store()).unwrap();
+        let store = DynBlockstore::wrap(rt.store());
+        let mut claims = st.load_claims(&store).unwrap();
         claims.get(provider, id).unwrap().cloned()
     }
 
@@ -406,7 +414,8 @@ impl Harness {
     // Creates a claim directly in state.
     pub fn create_claim(&self, rt: &MockRuntime, claim: &Claim) -> Result<ClaimID, ActorError> {
         let mut st: State = rt.get_state();
-        let mut claims = st.load_claims(rt.store()).unwrap();
+        let store = DynBlockstore::wrap(rt.store());
+        let mut claims = st.load_claims(&store).unwrap();
         let id = st.next_allocation_id;
         assert!(claims
             .put_if_absent(claim.provider, id, claim.clone())
@@ -583,7 +592,7 @@ pub fn assert_allocation(
     expected: &Allocation,
 ) {
     let st: State = rt.get_state();
-    let store = &rt.store();
+    let store = &DynBlockstore::wrap(rt.store());
     let mut allocs = st.load_allocs(store).unwrap();
 
     assert_eq!(expected, allocs.get(client, id).unwrap().unwrap());
@@ -591,7 +600,7 @@ pub fn assert_allocation(
 
 pub fn assert_claim(rt: &MockRuntime, provider: ActorID, id: ClaimID, expected: &Claim) {
     let st: State = rt.get_state();
-    let store = &rt.store();
+    let store = &DynBlockstore::wrap(rt.store());
     let mut claims = st.load_claims(store).unwrap();
 
     assert_eq!(expected, claims.get(provider, id).unwrap().unwrap());
@@ -607,7 +616,7 @@ pub fn assert_alloc_claimed(
     sector: SectorNumber,
 ) -> Claim {
     let st: State = rt.get_state();
-    let store = &rt.store();
+    let store = DynBlockstore::wrap(rt.store());
 
     // Alloc is gone
     let mut allocs = st.load_allocs(&store).unwrap();
@@ -617,7 +626,7 @@ pub fn assert_alloc_claimed(
     let expected_claim = claim_from_alloc(alloc, epoch, sector);
     assert_eq!(client, expected_claim.client); // Check the caller provided sensible arguments.
     assert_eq!(provider, expected_claim.provider);
-    let mut claims = st.load_claims(store).unwrap();
+    let mut claims = st.load_claims(&store).unwrap();
     assert_eq!(&expected_claim, claims.get(provider, id).unwrap().unwrap());
     expected_claim
 }

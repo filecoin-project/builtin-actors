@@ -21,6 +21,7 @@ use fil_actors_runtime::{
     ActorError, DATACAP_TOKEN_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+use vm_api::blockstore::DynBlockstore;
 
 pub fn new_runtime() -> MockRuntime {
     MockRuntime {
@@ -250,12 +251,16 @@ impl Harness {
     ) -> TokenAmount {
         rt.get_state::<State>()
             .token
-            .get_allowance_between(rt.store(), owner.id().unwrap(), operator.id().unwrap())
+            .get_allowance_between(
+                &DynBlockstore::wrap(rt.store()),
+                owner.id().unwrap(),
+                operator.id().unwrap(),
+            )
             .unwrap()
     }
 
     pub fn check_state(&self, rt: &MockRuntime) {
-        let (_, acc) = check_state_invariants(&rt.get_state(), rt.store());
+        let (_, acc) = check_state_invariants(&rt.get_state(), &DynBlockstore::wrap(rt.store()));
         acc.assert_empty();
     }
 }

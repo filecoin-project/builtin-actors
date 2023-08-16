@@ -3,6 +3,8 @@ use fvm_ipld_blockstore::Blockstore;
 
 /// A DynBlockstore is used to make the blockstore trait object consumable by functions that
 /// accept a generic BS: Blockstore parameter rather than a dyn Blockstore
+///
+/// DynBlockstore also implements CborStore as a convenience
 pub struct DynBlockstore<'bs>(&'bs dyn Blockstore);
 
 impl<'bs> Blockstore for DynBlockstore<'bs> {

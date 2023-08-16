@@ -24,6 +24,7 @@ use builtin::*;
 pub use error::*;
 use trace::*;
 
+pub mod blockstore;
 pub mod builtin;
 mod error;
 pub mod trace;

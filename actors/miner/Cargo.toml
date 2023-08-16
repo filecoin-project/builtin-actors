@@ -32,6 +32,7 @@ lazy_static = { workspace = true }
 log = { workspace = true }
 byteorder = { workspace = true }
 itertools = { workspace = true }
+vm_api = { workspace = true }
 
 [dev-dependencies]
 fil_actors_runtime = { workspace = true, features = ["test_utils", "sector-default"] }

@@ -21,6 +21,7 @@ mod util;
 use fil_actor_miner::testing::check_state_invariants;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use util::*;
+use vm_api::blockstore::DynBlockstore;
 
 const PERIOD_OFFSET: ChainEpoch = 1808;
 
@@ -80,7 +81,12 @@ fn funds_vest() {
     let (locked_amt, _) = locked_reward_from_reward(amt);
     assert_eq!(locked_amt, st.locked_funds);
     // technically applying rewards without first activating cron is an impossible state but convenient for testing
-    let (_, acc) = check_state_invariants(rt.policy(), &st, rt.store(), &rt.get_balance());
+    let (_, acc) = check_state_invariants(
+        rt.policy(),
+        &st,
+        &DynBlockstore::wrap(rt.store()),
+        &rt.get_balance(),
+    );
     assert_eq!(1, acc.len());
     assert!(acc.messages().first().unwrap().contains("DeadlineCronActive == false"));
 }
@@ -101,8 +107,12 @@ fn penalty_is_burnt() {
     expected_lock_amt -= penalty;
     assert_eq!(expected_lock_amt, h.get_locked_funds(&rt));
     // technically applying rewards without first activating cron is an impossible state but convenient for testing
-    let (_, acc) =
-        check_state_invariants(rt.policy(), &h.get_state(&rt), rt.store(), &rt.get_balance());
+    let (_, acc) = check_state_invariants(
+        rt.policy(),
+        &h.get_state(&rt),
+        &DynBlockstore::wrap(rt.store()),
+        &rt.get_balance(),
+    );
     assert_eq!(1, acc.len());
     assert!(acc.messages().first().unwrap().contains("DeadlineCronActive == false"));
 }
@@ -225,7 +235,12 @@ fn rewards_pay_back_fee_debt() {
     // remaining funds locked in vesting table
     assert_eq!(remaining_locked, st.locked_funds);
     // technically applying rewards without first activating cron is an impossible state but convenient for testing
-    let (_, acc) = check_state_invariants(rt.policy(), &st, rt.store(), &rt.get_balance());
+    let (_, acc) = check_state_invariants(
+        rt.policy(),
+        &st,
+        &DynBlockstore::wrap(rt.store()),
+        &rt.get_balance(),
+    );
     assert_eq!(1, acc.len());
     assert!(acc.messages().first().unwrap().contains("DeadlineCronActive == false"));
 }

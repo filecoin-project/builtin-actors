@@ -12,6 +12,7 @@ mod util;
 use fil_actors_runtime::test_utils::make_piece_cid;
 use num_traits::Zero;
 use util::*;
+use vm_api::blockstore::DynBlockstore;
 
 // an expiration ~10 days greater than effective min expiration taking into account 30 days max
 // between pre and prove commit
@@ -119,7 +120,8 @@ fn valid_precommits_then_aggregate_provecommit() {
         assert_eq!(expected_initial_pledge, sector.initial_pledge);
 
         // expect sector to be assigned a deadline/partition
-        let (dlidx, pidx) = st.find_sector(&rt.policy, rt.store(), sector_no).unwrap();
+        let (dlidx, pidx) =
+            st.find_sector(&rt.policy, &DynBlockstore::wrap(rt.store()), sector_no).unwrap();
         // first ten sectors should be assigned to deadline 0 and partition 0
         assert_eq!(0, dlidx);
         assert_eq!(0, pidx);

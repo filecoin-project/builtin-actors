@@ -11,6 +11,7 @@ use regex::Regex;
 use std::cmp::min;
 use std::collections::BTreeMap;
 use std::{cell::RefCell, collections::HashMap};
+use vm_api::blockstore::DynBlockstore;
 
 use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
 use fil_actor_market::ext::verifreg::{AllocationID, AllocationRequest, AllocationsResponse};
@@ -111,7 +112,7 @@ pub fn setup() -> MockRuntime {
 pub fn check_state(rt: &MockRuntime) {
     let (_, acc) = check_state_invariants(
         &rt.get_state::<State>(),
-        rt.store(),
+        &DynBlockstore::wrap(rt.store()),
         &rt.get_balance(),
         *rt.epoch.borrow(),
     );
@@ -123,7 +124,7 @@ pub fn check_state(rt: &MockRuntime) {
 pub fn check_state_with_expected(rt: &MockRuntime, expected_patterns: &[Regex]) {
     let (_, acc) = check_state_invariants(
         &rt.get_state::<State>(),
-        rt.store(),
+        &DynBlockstore::wrap(rt.store()),
         &rt.get_balance(),
         *rt.epoch.borrow(),
     );
@@ -873,7 +874,8 @@ pub fn assert_deal_deleted(rt: &MockRuntime, deal_id: DealID, p: DealProposal) {
     let mh_code = Code::Blake2b256;
     let p_cid = Cid::new_v1(fvm_ipld_encoding::DAG_CBOR, mh_code.digest(&to_vec(&p).unwrap()));
     // Check that the deal_id is not in st.pending_proposals.
-    let pending_deals = Set::from_root(rt.store(), &st.pending_proposals).unwrap();
+    let store = DynBlockstore::wrap(rt.store());
+    let pending_deals = Set::from_root(&store, &st.pending_proposals).unwrap();
     assert!(!pending_deals.has(&BytesKey(p_cid.to_bytes())).unwrap());
 }
 

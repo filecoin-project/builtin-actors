@@ -25,6 +25,7 @@ use integer_encoding::VarInt;
 use log::info;
 use num_derive::FromPrimitive;
 use num_traits::Zero;
+use vm_api::blockstore::DynBlockstore;
 
 use crate::balance_table::BalanceTable;
 use fil_actors_runtime::cbor::{deserialize, serialize};
@@ -102,7 +103,7 @@ impl Actor {
     pub fn constructor(rt: &impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
-        let st = State::new(rt.store())?;
+        let st = State::new(&DynBlockstore::wrap(&DynBlockstore::wrap(rt.store())))?;
         rt.create(&st)?;
         Ok(())
     }
@@ -124,7 +125,7 @@ impl Actor {
         let (nominal, _, _) = escrow_address(rt, &params.provider_or_client)?;
 
         rt.transaction(|st: &mut State, rt| {
-            st.add_balance_to_escrow_table(rt.store(), &nominal, &msg_value)?;
+            st.add_balance_to_escrow_table(&DynBlockstore::wrap(rt.store()), &nominal, &msg_value)?;
             Ok(())
         })?;
 
@@ -147,7 +148,11 @@ impl Actor {
         rt.validate_immediate_caller_is(&approved)?;
 
         let amount_extracted = rt.transaction(|st: &mut State, rt| {
-            let ex = st.withdraw_balance_from_escrow_table(rt.store(), &nominal, &params.amount)?;
+            let ex = st.withdraw_balance_from_escrow_table(
+                &DynBlockstore::wrap(rt.store()),
+                &nominal,
+                &params.amount,
+            )?;
 
             Ok(ex)
         })?;
@@ -174,10 +179,10 @@ impl Actor {
         })?;
         let account = Address::new_id(nominal);
 
-        let store = rt.store();
+        let store = DynBlockstore::wrap(rt.store());
         let st: State = rt.state()?;
-        let balances = BalanceTable::from_root(store, &st.escrow_table, "escrow table")?;
-        let locks = BalanceTable::from_root(store, &st.locked_table, "locled table")?;
+        let balances = BalanceTable::from_root(&store, &st.escrow_table, "escrow table")?;
+        let locks = BalanceTable::from_root(&store, &st.locked_table, "locled table")?;
         let balance = balances.get(&account)?;
         let locked = locks.get(&account)?;
 
@@ -304,8 +309,11 @@ impl Actor {
                 total_client_lockup.get(&client_id).cloned().unwrap_or_default();
             client_lockup += deal.proposal.client_balance_requirement();
 
-            let client_balance_ok =
-                state.balance_covered(rt.store(), Address::new_id(client_id), &client_lockup)?;
+            let client_balance_ok = state.balance_covered(
+                &DynBlockstore::wrap(rt.store()),
+                Address::new_id(client_id),
+                &client_lockup,
+            )?;
 
             if !client_balance_ok {
                 info!("invalid deal: {}: insufficient client funds to cover proposal cost", di);
@@ -315,7 +323,7 @@ impl Actor {
             let mut provider_lockup = total_provider_lockup.clone();
             provider_lockup += &deal.proposal.provider_collateral;
             let provider_balance_ok = state.balance_covered(
-                rt.store(),
+                &DynBlockstore::wrap(rt.store()),
                 Address::new_id(provider_id),
                 &provider_lockup,
             )?;
@@ -339,7 +347,8 @@ impl Actor {
 
             // check proposalCids for duplication within message batch
             // check state PendingProposals for duplication across messages
-            let duplicate_in_state = state.has_pending_deal(rt.store(), pcid)?;
+            let duplicate_in_state =
+                state.has_pending_deal(&DynBlockstore::wrap(rt.store()), pcid)?;
 
             let duplicate_in_message = proposal_cid_lookup.contains(&pcid);
             if duplicate_in_state || duplicate_in_message {
@@ -426,7 +435,10 @@ impl Actor {
             // All storage dealProposals will be added in an atomic transaction; this operation will be unrolled if any of them fails.
             // This should only fail on programmer error because all expected invalid conditions should be filtered in the first set of checks.
             for valid_deal in valid_deals.iter() {
-                st.lock_client_and_provider_balances(rt.store(), &valid_deal.proposal)?;
+                st.lock_client_and_provider_balances(
+                    &DynBlockstore::wrap(rt.store()),
+                    &valid_deal.proposal,
+                )?;
 
                 // Store the proposal CID in pending deals set.
                 pending_deals.push(valid_deal.cid);
@@ -455,10 +467,13 @@ impl Actor {
                 new_deal_ids.push(deal_id);
             }
 
-            st.put_pending_deals(rt.store(), &pending_deals)?;
-            st.put_deal_proposals(rt.store(), &deal_proposals)?;
-            st.put_pending_deal_allocation_ids(rt.store(), &pending_deal_allocation_ids)?;
-            st.put_deals_by_epoch(rt.store(), &deals_by_epoch)?;
+            st.put_pending_deals(&DynBlockstore::wrap(rt.store()), &pending_deals)?;
+            st.put_deal_proposals(&DynBlockstore::wrap(rt.store()), &deal_proposals)?;
+            st.put_pending_deal_allocation_ids(
+                &DynBlockstore::wrap(rt.store()),
+                &pending_deal_allocation_ids,
+            )?;
+            st.put_deals_by_epoch(&DynBlockstore::wrap(rt.store()), &deals_by_epoch)?;
             Ok(())
         })?;
 
@@ -494,7 +509,8 @@ impl Actor {
         let curr_epoch = rt.curr_epoch();
 
         let st: State = rt.state()?;
-        let proposal_array = st.get_proposal_array(rt.store())?;
+        let store = DynBlockstore::wrap(rt.store());
+        let proposal_array = st.get_proposal_array(&store)?;
 
         let mut unsealed_cids = Vec::with_capacity(params.sectors.len());
         for sector in params.sectors.iter() {
@@ -542,8 +558,9 @@ impl Actor {
             let mut activations: Vec<SectorDealActivation> = vec![];
             let mut activated_deals: HashSet<DealID> = HashSet::new();
 
+            let store = DynBlockstore::wrap(rt.store());
             for p in params.sectors {
-                let proposal_array = st.get_proposal_array(rt.store())?;
+                let proposal_array = st.get_proposal_array(&store)?;
 
                 if p.deal_ids.iter().any(|id| activated_deals.contains(id)) {
                     log::warn!(
@@ -586,7 +603,7 @@ impl Actor {
                 let update_result: Result<(), ActorError> =
                     proposals.iter().try_for_each(|(deal_id, proposal)| {
                         let s = st
-                            .find_deal_state(rt.store(), *deal_id)
+                            .find_deal_state(&DynBlockstore::wrap(rt.store()), *deal_id)
                             .context(format!("error looking up deal state for {}", deal_id))?;
 
                         if s.is_some() {
@@ -601,7 +618,7 @@ impl Actor {
 
                         // Confirm the deal is in the pending proposals queue.
                         // It will be removed from this queue later, during cron.
-                        let has = st.has_pending_deal(rt.store(), propc)?;
+                        let has = st.has_pending_deal(&DynBlockstore::wrap(rt.store()), propc)?;
 
                         if !has {
                             return Err(actor_error!(
@@ -613,7 +630,10 @@ impl Actor {
 
                         // Extract and remove any verified allocation ID for the pending deal.
                         let allocation = st
-                            .remove_pending_deal_allocation_id(rt.store(), *deal_id)
+                            .remove_pending_deal_allocation_id(
+                                &DynBlockstore::wrap(rt.store()),
+                                *deal_id,
+                            )
                             .context(format!(
                                 "failed to remove pending deal allocation id {}",
                                 deal_id
@@ -664,7 +684,7 @@ impl Actor {
                 }
             }
 
-            st.put_deal_states(rt.store(), &deal_states)?;
+            st.put_deal_states(&DynBlockstore::wrap(rt.store()), &deal_states)?;
 
             Ok((activations, batch_gen.gen()))
         })?;
@@ -686,7 +706,7 @@ impl Actor {
             let mut deal_states: Vec<(DealID, DealState)> = vec![];
 
             for id in params.deal_ids {
-                let deal = st.find_proposal(rt.store(), id)?;
+                let deal = st.find_proposal(&DynBlockstore::wrap(rt.store()), id)?;
                 // The deal may have expired and been deleted before the sector is terminated.
                 // Nothing to do, but continue execution for the other deals.
                 if deal.is_none() {
@@ -712,7 +732,7 @@ impl Actor {
                 }
 
                 let mut state: DealState = st
-                    .find_deal_state(rt.store(), id)?
+                    .find_deal_state(&DynBlockstore::wrap(rt.store()), id)?
                     // A deal with a proposal but no state is not activated, but then it should not be
                     // part of a sector that is terminating.
                     .ok_or_else(|| actor_error!(illegal_argument, "no state for deal {}", id))?;
@@ -730,7 +750,7 @@ impl Actor {
                 deal_states.push((id, state));
             }
 
-            st.put_deal_states(rt.store(), &deal_states)?;
+            st.put_deal_states(&DynBlockstore::wrap(rt.store()), &deal_states)?;
             Ok(())
         })?;
         Ok(())
@@ -748,12 +768,12 @@ impl Actor {
             let mut epochs_completed: Vec<ChainEpoch> = vec![];
 
             for i in (last_cron + 1)..=rt.curr_epoch() {
-                let deal_ids = st.get_deals_for_epoch(rt.store(), i)?;
+                let deal_ids = st.get_deals_for_epoch(&DynBlockstore::wrap(rt.store()), i)?;
 
                 for deal_id in deal_ids {
-                    let deal = st.get_proposal(rt.store(), deal_id)?;
+                    let deal = st.get_proposal(&DynBlockstore::wrap(rt.store()), deal_id)?;
                     let dcid = rt_deal_cid(rt, &deal)?;
-                    let state = st.find_deal_state(rt.store(), deal_id)?;
+                    let state = st.find_deal_state(&DynBlockstore::wrap(rt.store()), deal_id)?;
 
                     // deal has been published but not activated yet -> terminate it
                     // as it has timed out
@@ -768,13 +788,15 @@ impl Actor {
                             ));
                         }
 
-                        let slashed = st.process_deal_init_timed_out(rt.store(), &deal)?;
+                        let slashed = st
+                            .process_deal_init_timed_out(&DynBlockstore::wrap(rt.store()), &deal)?;
                         if !slashed.is_zero() {
                             amount_slashed += slashed;
                         }
 
                         // Delete the proposal (but not state, which doesn't exist).
-                        let deleted = st.remove_proposal(rt.store(), deal_id)?;
+                        let deleted =
+                            st.remove_proposal(&DynBlockstore::wrap(rt.store()), deal_id)?;
 
                         if deleted.is_none() {
                             return Err(actor_error!(
@@ -787,31 +809,40 @@ impl Actor {
                         }
 
                         // Delete pending deal CID
-                        st.remove_pending_deal(rt.store(), dcid)?.ok_or_else(|| {
-                            actor_error!(
-                                illegal_state,
-                                "failed to delete pending deals: does not exist"
-                            )
-                        })?;
+                        st.remove_pending_deal(&DynBlockstore::wrap(rt.store()), dcid)?
+                            .ok_or_else(|| {
+                                actor_error!(
+                                    illegal_state,
+                                    "failed to delete pending deals: does not exist"
+                                )
+                            })?;
 
                         // Delete pending deal allocation id (if present).
-                        st.remove_pending_deal_allocation_id(rt.store(), deal_id)?;
+                        st.remove_pending_deal_allocation_id(
+                            &DynBlockstore::wrap(rt.store()),
+                            deal_id,
+                        )?;
 
                         continue;
                     }
                     let mut state = state.unwrap();
 
                     if state.last_updated_epoch == EPOCH_UNDEFINED {
-                        st.remove_pending_deal(rt.store(), dcid)?.ok_or_else(|| {
-                            actor_error!(
-                                illegal_state,
-                                "failed to delete pending proposal: does not exist"
-                            )
-                        })?;
+                        st.remove_pending_deal(&DynBlockstore::wrap(rt.store()), dcid)?
+                            .ok_or_else(|| {
+                                actor_error!(
+                                    illegal_state,
+                                    "failed to delete pending proposal: does not exist"
+                                )
+                            })?;
                     }
 
-                    let (slash_amount, remove_deal) =
-                        st.process_deal_update(rt.store(), &state, &deal, curr_epoch)?;
+                    let (slash_amount, remove_deal) = st.process_deal_update(
+                        &DynBlockstore::wrap(rt.store()),
+                        &state,
+                        &deal,
+                        curr_epoch,
+                    )?;
 
                     if slash_amount.is_negative() {
                         return Err(actor_error!(
@@ -827,7 +858,8 @@ impl Actor {
                         amount_slashed += slash_amount;
 
                         // Delete proposal and state simultaneously.
-                        let deleted = st.remove_deal_state(rt.store(), deal_id)?;
+                        let deleted =
+                            st.remove_deal_state(&DynBlockstore::wrap(rt.store()), deal_id)?;
                         if deleted.is_none() {
                             return Err(actor_error!(
                                 illegal_state,
@@ -835,7 +867,8 @@ impl Actor {
                             ));
                         }
 
-                        let deleted = st.remove_proposal(rt.store(), deal_id)?;
+                        let deleted =
+                            st.remove_proposal(&DynBlockstore::wrap(rt.store()), deal_id)?;
                         if deleted.is_none() {
                             return Err(actor_error!(
                                 illegal_state,
@@ -852,7 +885,7 @@ impl Actor {
                         }
 
                         state.last_updated_epoch = curr_epoch;
-                        st.put_deal_states(rt.store(), &[(deal_id, state)])?;
+                        st.put_deal_states(&DynBlockstore::wrap(rt.store()), &[(deal_id, state)])?;
 
                         // Compute and record the next epoch in which this deal will be updated.
                         // This epoch is independent of the deal's stated start and end epochs
@@ -869,8 +902,8 @@ impl Actor {
                 epochs_completed.push(i);
             }
 
-            st.remove_deals_by_epoch(rt.store(), &epochs_completed)?;
-            st.put_batch_deals_by_epoch(rt.store(), &new_updates_scheduled)?;
+            st.remove_deals_by_epoch(&DynBlockstore::wrap(rt.store()), &epochs_completed)?;
+            st.put_batch_deals_by_epoch(&DynBlockstore::wrap(rt.store()), &new_updates_scheduled)?;
             st.last_cron = rt.curr_epoch();
             Ok(())
         })?;
@@ -894,7 +927,8 @@ impl Actor {
         params: GetDealDataCommitmentParams,
     ) -> Result<GetDealDataCommitmentReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+        let found =
+            rt.state::<State>()?.get_proposal(&DynBlockstore::wrap(rt.store()), params.id)?;
         Ok(GetDealDataCommitmentReturn { data: found.piece_cid, size: found.piece_size })
     }
 
@@ -904,7 +938,8 @@ impl Actor {
         params: GetDealClientParams,
     ) -> Result<GetDealClientReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+        let found =
+            rt.state::<State>()?.get_proposal(&DynBlockstore::wrap(rt.store()), params.id)?;
         Ok(GetDealClientReturn { client: found.client.id().unwrap() })
     }
 
@@ -914,7 +949,8 @@ impl Actor {
         params: GetDealProviderParams,
     ) -> Result<GetDealProviderReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+        let found =
+            rt.state::<State>()?.get_proposal(&DynBlockstore::wrap(rt.store()), params.id)?;
         Ok(GetDealProviderReturn { provider: found.provider.id().unwrap() })
     }
 
@@ -924,7 +960,8 @@ impl Actor {
         params: GetDealLabelParams,
     ) -> Result<GetDealLabelReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+        let found =
+            rt.state::<State>()?.get_proposal(&DynBlockstore::wrap(rt.store()), params.id)?;
         Ok(GetDealLabelReturn { label: found.label })
     }
 
@@ -934,7 +971,8 @@ impl Actor {
         params: GetDealTermParams,
     ) -> Result<GetDealTermReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+        let found =
+            rt.state::<State>()?.get_proposal(&DynBlockstore::wrap(rt.store()), params.id)?;
         Ok(GetDealTermReturn { start: found.start_epoch, duration: found.duration() })
     }
 
@@ -944,7 +982,8 @@ impl Actor {
         params: GetDealTotalPriceParams,
     ) -> Result<GetDealTotalPriceReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+        let found =
+            rt.state::<State>()?.get_proposal(&DynBlockstore::wrap(rt.store()), params.id)?;
         Ok(GetDealTotalPriceReturn { total_price: found.total_storage_fee() })
     }
 
@@ -954,7 +993,8 @@ impl Actor {
         params: GetDealClientCollateralParams,
     ) -> Result<GetDealClientCollateralReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+        let found =
+            rt.state::<State>()?.get_proposal(&DynBlockstore::wrap(rt.store()), params.id)?;
         Ok(GetDealClientCollateralReturn { collateral: found.client_collateral })
     }
 
@@ -964,7 +1004,8 @@ impl Actor {
         params: GetDealProviderCollateralParams,
     ) -> Result<GetDealProviderCollateralReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+        let found =
+            rt.state::<State>()?.get_proposal(&DynBlockstore::wrap(rt.store()), params.id)?;
         Ok(GetDealProviderCollateralReturn { collateral: found.provider_collateral })
     }
 
@@ -976,7 +1017,8 @@ impl Actor {
         params: GetDealVerifiedParams,
     ) -> Result<GetDealVerifiedReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
-        let found = rt.state::<State>()?.get_proposal(rt.store(), params.id)?;
+        let found =
+            rt.state::<State>()?.get_proposal(&DynBlockstore::wrap(rt.store()), params.id)?;
         Ok(GetDealVerifiedReturn { verified: found.verified_deal })
     }
 
@@ -991,7 +1033,7 @@ impl Actor {
     ) -> Result<GetDealActivationReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let st = rt.state::<State>()?;
-        let found = st.find_deal_state(rt.store(), params.id)?;
+        let found = st.find_deal_state(&DynBlockstore::wrap(rt.store()), params.id)?;
         match found {
             Some(state) => Ok(GetDealActivationReturn {
                 // If we have state, the deal has been activated.
@@ -1001,7 +1043,8 @@ impl Actor {
                 terminated: state.slash_epoch,
             }),
             None => {
-                let maybe_proposal = st.find_proposal(rt.store(), params.id)?;
+                let maybe_proposal =
+                    st.find_proposal(&DynBlockstore::wrap(rt.store()), params.id)?;
                 match maybe_proposal {
                     Some(_) => Ok(GetDealActivationReturn {
                         // The proposal has been published, but not activated.

@@ -41,6 +41,7 @@ use std::collections::{BTreeMap, HashMap};
 use vm_api::trace::InvocationTrace;
 use vm_api::{new_actor, ActorState, MessageResult, VMError, VM};
 
+use vm_api::blockstore::DynBlockstore;
 use vm_api::util::{get_state, serialize_ok};
 
 mod constants;
@@ -50,12 +51,9 @@ mod messaging;
 pub use messaging::*;
 
 /// An in-memory rust-execution VM for testing builtin-actors that yields sensible stack traces and debug info
-pub struct TestVM<'bs, BS>
-where
-    BS: Blockstore,
-{
+pub struct TestVM {
     pub primitives: FakePrimitives,
-    pub store: &'bs BS,
+    pub store: Box<dyn Blockstore>,
     pub state_root: RefCell<Cid>,
     circulating_supply: RefCell<TokenAmount>,
     actors_dirty: RefCell<bool>,
@@ -65,38 +63,39 @@ where
     invocations: RefCell<Vec<InvocationTrace>>,
 }
 
-impl<'bs, BS> TestVM<'bs, BS>
-where
-    BS: Blockstore,
-{
-    pub fn new(store: &'bs MemoryBlockstore) -> TestVM<'bs, MemoryBlockstore> {
-        let mut actors =
-            Hamt::<&'bs MemoryBlockstore, ActorState, BytesKey, Sha256>::new_with_config(
-                store,
-                DEFAULT_HAMT_CONFIG,
-            );
-        TestVM {
+impl TestVM {
+    pub fn new(store: Box<dyn Blockstore>) -> TestVM {
+        let vm = TestVM {
             primitives: FakePrimitives {},
             store,
-            state_root: RefCell::new(actors.flush().unwrap()),
+            state_root: RefCell::new(Cid::default()), // can't create actors first as the Hamt will consume the store
             circulating_supply: RefCell::new(TokenAmount::zero()),
             actors_dirty: RefCell::new(false),
             actors_cache: RefCell::new(HashMap::new()),
             network_version: NetworkVersion::V16,
             curr_epoch: RefCell::new(ChainEpoch::zero()),
             invocations: RefCell::new(vec![]),
-        }
+        };
+
+        let mut actors = Hamt::<_, ActorState, BytesKey, Sha256>::new_with_config(
+            DynBlockstore::wrap(vm.blockstore()),
+            DEFAULT_HAMT_CONFIG,
+        );
+
+        vm.state_root.replace(actors.flush().unwrap());
+
+        vm
     }
 
-    pub fn new_with_singletons(store: &'bs MemoryBlockstore) -> TestVM<'bs, MemoryBlockstore> {
+    pub fn new_with_singletons(store: Box<dyn Blockstore>) -> TestVM {
         let reward_total = TokenAmount::from_whole(1_100_000_000i64);
         let faucet_total = TokenAmount::from_whole(1_000_000_000i64);
 
-        let v = TestVM::<'_, MemoryBlockstore>::new(store);
+        let v = TestVM::new(store);
         v.set_circulating_supply(&reward_total + &faucet_total);
 
         // system
-        let sys_st = SystemState::new(store).unwrap();
+        let sys_st = SystemState::new(&DynBlockstore::wrap(v.blockstore())).unwrap();
         let sys_head = v.put_store(&sys_st);
         let sys_value = faucet_total.clone(); // delegate faucet funds to system so we can construct faucet by sending to bls addr
         v.set_actor(
@@ -105,7 +104,9 @@ where
         );
 
         // init
-        let init_st = InitState::new(store, "integration-test".to_string()).unwrap();
+        let init_st =
+            InitState::new(&DynBlockstore::wrap(store.as_ref()), "integration-test".to_string())
+                .unwrap();
         let init_head = v.put_store(&init_st);
         v.set_actor(
             &INIT_ACTOR_ADDR,
@@ -138,14 +139,16 @@ where
         );
 
         // power
-        let power_head = v.put_store(&PowerState::new(&v.store).unwrap());
+        let power_head =
+            v.put_store(&PowerState::new(&DynBlockstore::wrap(v.blockstore())).unwrap());
         v.set_actor(
             &STORAGE_POWER_ACTOR_ADDR,
             new_actor(*POWER_ACTOR_CODE_ID, power_head, 0, TokenAmount::zero(), None),
         );
 
         // market
-        let market_head = v.put_store(&MarketState::new(&v.store).unwrap());
+        let market_head =
+            v.put_store(&MarketState::new(&DynBlockstore::wrap(v.blockstore())).unwrap());
         v.set_actor(
             &STORAGE_MARKET_ACTOR_ADDR,
             new_actor(*MARKET_ACTOR_CODE_ID, market_head, 0, TokenAmount::zero(), None),
@@ -194,7 +197,9 @@ where
         let root_msig_addr = msig_ctor_ret.id_address;
         assert_eq!(TEST_VERIFREG_ROOT_ADDR, root_msig_addr);
         // verifreg
-        let verifreg_head = v.put_store(&VerifRegState::new(&v.store, root_msig_addr).unwrap());
+        let verifreg_head = v.put_store(
+            &VerifRegState::new(&DynBlockstore::wrap(v.blockstore()), root_msig_addr).unwrap(),
+        );
         v.set_actor(
             &VERIFIED_REGISTRY_ACTOR_ADDR,
             new_actor(*VERIFREG_ACTOR_CODE_ID, verifreg_head, 0, TokenAmount::zero(), None),
@@ -207,8 +212,10 @@ where
         );
 
         // datacap
-        let datacap_head =
-            v.put_store(&DataCapState::new(&v.store, VERIFIED_REGISTRY_ACTOR_ADDR).unwrap());
+        let datacap_head = v.put_store(
+            &DataCapState::new(&DynBlockstore::wrap(v.blockstore()), VERIFIED_REGISTRY_ACTOR_ADDR)
+                .unwrap(),
+        );
         v.set_actor(
             &DATACAP_TOKEN_ACTOR_ADDR,
             new_actor(*DATACAP_TOKEN_ACTOR_CODE_ID, datacap_head, 0, TokenAmount::zero(), None),
@@ -239,14 +246,14 @@ where
     where
         S: ser::Serialize,
     {
-        self.store.put_cbor(obj, Code::Blake2b256).unwrap()
+        DynBlockstore::wrap(self.blockstore()).put_cbor(obj, Code::Blake2b256).unwrap()
     }
 
     pub fn checkpoint(&self) -> Cid {
         // persist cache on top of latest checkpoint and clear
-        let mut actors = Hamt::<&'bs BS, ActorState, BytesKey, Sha256>::load_with_config(
+        let mut actors = Hamt::<_, ActorState, BytesKey, Sha256>::load_with_config(
             &self.state_root.borrow(),
-            self.store,
+            DynBlockstore::wrap(self.blockstore()),
             DEFAULT_HAMT_CONFIG,
         )
         .unwrap();
@@ -278,14 +285,15 @@ where
         })?;
         Ok(total)
     }
+
+    fn cbor_store(&self) -> DynBlockstore {
+        DynBlockstore::wrap(self.blockstore())
+    }
 }
 
-impl<'bs, BS> VM for TestVM<'bs, BS>
-where
-    BS: Blockstore,
-{
+impl VM for TestVM {
     fn blockstore(&self) -> &dyn Blockstore {
-        self.store
+        self.store.as_ref()
     }
 
     fn epoch(&self) -> ChainEpoch {
@@ -372,7 +380,7 @@ where
     }
     fn resolve_id_address(&self, address: &Address) -> Option<Address> {
         let st: InitState = get_state(self, &INIT_ACTOR_ADDR).unwrap();
-        st.resolve_address::<BS>(self.store, address).unwrap()
+        st.resolve_address(&self.cbor_store(), address).unwrap()
     }
 
     fn set_epoch(&self, epoch: ChainEpoch) {
@@ -394,9 +402,9 @@ where
             return Some(act.clone());
         }
         // go to persisted map
-        let actors = Hamt::<&'bs BS, ActorState, BytesKey, Sha256>::load_with_config(
+        let actors = Hamt::<_, ActorState, BytesKey, Sha256>::load_with_config(
             &self.state_root.borrow(),
-            self.store,
+            self.cbor_store(),
             DEFAULT_HAMT_CONFIG,
         )
         .unwrap();
