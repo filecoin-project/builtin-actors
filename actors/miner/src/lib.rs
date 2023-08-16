@@ -925,11 +925,19 @@ impl Actor {
             e.downcast_default(ExitCode::USR_ILLEGAL_ARGUMENT, "aggregate seal verify failed")
         })?;
 
-        let data_activations: Vec<DealsActivationInput> =
+        let data_activations: Vec<DataActivationInput> =
             precommits_to_confirm.iter().map(|x| x.clone().into()).collect();
         let rew = request_current_epoch_block_reward(rt)?;
         let pwr = request_current_total_power(rt)?;
-        let (batch_return, data_activations) = activate_deals(rt, &data_activations)?;
+        /*
+           For all sectors
+           - CommD was specified at precommit
+           - If deal IDs were specified at precommit the CommD was checked against them
+           Therefore CommD on precommit has already been provided and checked so no further processing needed
+        */
+        let compute_commd = false;
+        let (batch_return, data_activations) =
+            activate_deals(rt, &data_activations, compute_commd)?;
         let successful_activations = batch_return.successes(&precommits_to_confirm);
 
         activate_new_sector_infos(
@@ -1154,11 +1162,18 @@ impl Actor {
             update_sector_infos.push(UpdateAndSectorInfo { update, sector_info });
         }
 
-        let data_activation_inputs: Vec<DealsActivationInputCheckCommD> =
+        let data_activation_inputs: Vec<DataActivationInput> =
             update_sector_infos.iter().map(|x| x.clone().into()).collect();
 
+        /*
+           For PRU1:
+           - no CommD was specified on input so it must be computed for the first time here
+           For PRU2:
+           - CommD was specified on input but not checked so it must be computed and checked here
+        */
+        let compute_commd = true;
         let (batch_return, data_activations) =
-            activate_deals_check_commd(rt, &data_activation_inputs)?;
+            activate_deals(rt, &data_activation_inputs, compute_commd)?;
 
         // associate the successfully activated sectors with the ReplicaUpdateInner and SectorOnChainInfo
         let validated_updates: Vec<(&UpdateAndSectorInfo, DataActivationOutput)> = batch_return
@@ -1274,8 +1289,7 @@ impl Actor {
 
                     let duration = new_sector_info.expiration - new_sector_info.power_base_epoch;
 
-                    new_sector_info.deal_weight =
-                        with_details.unverified_space.clone() * duration;
+                    new_sector_info.deal_weight = with_details.unverified_space.clone() * duration;
                     new_sector_info.verified_deal_weight =
                         with_details.verified_space.clone() * duration;
 
@@ -2118,11 +2132,19 @@ impl Actor {
                 )
             })?;
 
-        let data_activations: Vec<DealsActivationInput> =
+        let data_activations: Vec<DataActivationInput> =
             precommited_sectors.iter().map(|x| x.clone().into()).collect();
         let info = get_miner_info(rt.store(), &st)?;
 
-        let (batch_return, data_activations) = activate_deals(rt, &data_activations)?;
+        /*
+            For all sectors
+            - CommD was specified at precommit
+            - If deal IDs were specified at precommit the CommD was checked against them
+            Therefore CommD on precommit has already been provided and checked so no further processing needed
+        */
+        let compute_commd = false;
+        let (batch_return, data_activations) =
+            activate_deals(rt, &data_activations, compute_commd)?;
         let successful_activations = batch_return.successes(&precommited_sectors);
         activate_new_sector_infos(
             rt,
@@ -3571,14 +3593,6 @@ struct ExtendExpirationsInner {
     claims: Option<BTreeMap<SectorNumber, (u64, u64)>>,
 }
 
-#[derive(Debug, Clone)]
-pub struct DealsActivationInput {
-    pub deal_ids: Vec<DealID>,
-    pub sector_expiry: ChainEpoch,
-    pub sector_number: SectorNumber,
-    pub sector_type: RegisteredSealProof,
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct ValidatedExpirationExtension {
     pub deadline: u64,
@@ -4380,7 +4394,7 @@ fn get_verify_info(
     Ok(SealVerifyInfo {
         registered_proof: params.registered_seal_proof,
         sector_id: SectorID { miner: miner_actor_id, number: params.sector_num },
-        deal_ids: params.deal_ids, // we can remove this if we're getting rid of deal ids
+        deal_ids: vec![], // this field is unused by the proofs api
         interactive_randomness: Randomness(interactive_randomness.into()),
         proof: params.proof,
         randomness: Randomness(randomness.into()),
@@ -4768,8 +4782,6 @@ fn check_peer_info(
     Ok(())
 }
 
-// Precondition 1: all sectors referenced have a valid PoRep proof over sealed_cid
-// Precodition 2: all sectors have activated data
 fn activate_new_sector_infos(
     rt: &impl Runtime,
     precommits: Vec<&SectorPreCommitOnChainInfo>,
@@ -4912,33 +4924,39 @@ fn activate_new_sector_infos(
     Ok(())
 }
 
-#[derive(Clone)]
-struct DataActivationOutput {
-    pub unverified_space: BigInt,
-    pub verified_space: BigInt,
-    // None indicates either no deals or computation was not requested.
-    pub unsealed_cid: Option<Cid>,
+// Inputs for activating builtin market deals for one sector
+#[derive(Debug, Clone)]
+pub struct DealsActivationInput {
+    pub deal_ids: Vec<DealID>,
+    pub sector_expiry: ChainEpoch,
+    pub sector_number: SectorNumber,
+    pub sector_type: RegisteredSealProof,
 }
 
-impl From<SectorPreCommitOnChainInfo> for DealsActivationInput {
-    fn from(pci: SectorPreCommitOnChainInfo) -> DealsActivationInput {
-        DealsActivationInput {
-            deal_ids: pci.info.deal_ids,
-            sector_expiry: pci.info.expiration,
-            sector_number: pci.info.sector_number,
-            sector_type: pci.info.seal_proof,
-        }
-    }
-}
-
-struct DealsActivationInputCheckCommD {
+// Inputs for activating builtin market deals for one sector
+// and optionally confirming CommD for this sector matches expectation
+struct DataActivationInput {
     info: DealsActivationInput,
     expected_commd: Option<Cid>,
 }
 
-impl From<UpdateAndSectorInfo<'_>> for DealsActivationInputCheckCommD {
-    fn from(usi: UpdateAndSectorInfo) -> DealsActivationInputCheckCommD {
-        DealsActivationInputCheckCommD {
+impl From<SectorPreCommitOnChainInfo> for DataActivationInput {
+    fn from(pci: SectorPreCommitOnChainInfo) -> DataActivationInput {
+        DataActivationInput {
+            info: DealsActivationInput {
+                deal_ids: pci.info.deal_ids,
+                sector_expiry: pci.info.expiration,
+                sector_number: pci.info.sector_number,
+                sector_type: pci.info.seal_proof,
+            },
+            expected_commd: None, // CommD checks are always performed at precommit time
+        }
+    }
+}
+
+impl From<UpdateAndSectorInfo<'_>> for DataActivationInput {
+    fn from(usi: UpdateAndSectorInfo) -> DataActivationInput {
+        DataActivationInput {
             info: DealsActivationInput {
                 sector_number: usi.sector_info.sector_number,
                 sector_expiry: usi.sector_info.expiration,
@@ -4950,30 +4968,26 @@ impl From<UpdateAndSectorInfo<'_>> for DealsActivationInputCheckCommD {
     }
 }
 
+// Data activation results for one sector
+#[derive(Clone)]
+struct DataActivationOutput {
+    pub unverified_space: BigInt,
+    pub verified_space: BigInt,
+    // None indicates either no deals or computation was not requested.
+    pub unsealed_cid: Option<Cid>,
+}
+
+// Track information needed to update a sector info's data during ProveReplicaUpdate
 #[derive(Clone, Debug)]
 struct UpdateAndSectorInfo<'a> {
     update: &'a ReplicaUpdateInner,
     sector_info: SectorOnChainInfo,
 }
 
-// Activates deals with the built-in market actor.
-// Computation of CommD is not requested, so will be None in the result.
 fn activate_deals(
     rt: &impl Runtime,
-    activations: &[DealsActivationInput],
-) -> Result<(BatchReturn, Vec<DataActivationOutput>), ActorError> {
-    let compute_commd = false;
-    let (batch_return, activation_outputs) =
-        batch_activate_deals_and_claim_allocations(rt, activations, compute_commd)?;
-    Ok((batch_return, activation_outputs))
-}
-
-// Activates deals with the built-in market actor.
-// Computation of CommD is requested, so will be Some in the result.
-// If the input specifies a CommD, it will be checked to match the market's computed CommD.
-fn activate_deals_check_commd(
-    rt: &impl Runtime,
-    activation_inputs: &[DealsActivationInputCheckCommD],
+    activation_inputs: &[DataActivationInput],
+    compute_commd: bool,
 ) -> Result<(BatchReturn, Vec<DataActivationOutput>), ActorError> {
     let mut market_activation_inputs = vec![];
     let mut declared_commds = vec![];
@@ -4982,9 +4996,14 @@ fn activate_deals_check_commd(
         market_activation_inputs.push(input.info.clone());
     }
 
-    let compute_commd = true;
     let (batch_return, activation_outputs) =
         batch_activate_deals_and_claim_allocations(rt, &market_activation_inputs, compute_commd)?;
+    if !compute_commd {
+        // no CommD computed so no checking required
+        return Ok((batch_return, activation_outputs));
+    }
+
+    // Computation of CommD was requested, so any Some() declared CommDs must be checked
     let check_commds = batch_return.successes(&declared_commds);
     let success_inputs = batch_return.successes(activation_inputs);
 
