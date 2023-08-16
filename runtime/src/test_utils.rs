@@ -485,6 +485,10 @@ pub fn expect_abort<T: fmt::Debug>(exit_code: ExitCode, res: Result<T, ActorErro
 impl<BS: Blockstore> MockRuntime<BS> {
     ///// Runtime access for tests /////
 
+    pub fn set_policy(&mut self, policy: Policy) {
+        self.policy = policy;
+    }
+
     pub fn get_state<T: DeserializeOwned>(&self) -> T {
         self.store_get(self.state.borrow().as_ref().unwrap())
     }

@@ -553,15 +553,18 @@ fn fails_if_withdraw_from_provider_funds_is_not_initiated_by_the_owner_or_worker
 
 #[test]
 fn deal_starts_on_day_boundary() {
-    let deal_updates_interval = Policy::default().deal_updates_interval;
-    let start_epoch = deal_updates_interval; // 2880
+    let mut policy = Policy::default();
+    let interval = 288; // The mainnet value is too slow for testing.
+    policy.deal_updates_interval = interval;
+    let start_epoch = interval;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let publish_epoch = ChainEpoch::from(1);
 
-    let rt = setup();
+    let mut rt = setup();
+    rt.set_policy(policy);
     rt.set_epoch(publish_epoch);
 
-    for i in 0..(3 * deal_updates_interval) {
+    for i in 0..(3 * interval) {
         let piece_cid = make_piece_cid((format!("{i}")).as_bytes());
         let deal_id = generate_and_publish_deal_for_piece(
             &rt,
@@ -579,31 +582,34 @@ fn deal_starts_on_day_boundary() {
     let st: State = rt.get_state();
     let store = &rt.store;
     let dobe = SetMultimap::from_root(store, &st.deal_ops_by_epoch).unwrap();
-    for e in deal_updates_interval..(2 * deal_updates_interval) {
-        assert_n_good_deals(&dobe, e, 3);
+    for e in interval..(2 * interval) {
+        assert_n_good_deals(&dobe, interval, e, 3);
     }
 
     // DOBE has no deals scheduled in the previous or next day
-    for e in 0..deal_updates_interval {
-        assert_n_good_deals(&dobe, e, 0);
+    for e in 0..interval {
+        assert_n_good_deals(&dobe, interval, e, 0);
     }
-    for e in (2 * deal_updates_interval)..(3 * deal_updates_interval) {
-        assert_n_good_deals(&dobe, e, 0);
+    for e in (2 * interval)..(3 * interval) {
+        assert_n_good_deals(&dobe, interval, e, 0);
     }
 }
 
 #[test]
 fn deal_starts_partway_through_day() {
-    let start_epoch = 1000;
+    let mut policy = Policy::default();
+    let interval = 288; // The mainnet value is too slow for testing.
+    policy.deal_updates_interval = interval;
+    let start_epoch = 100;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let publish_epoch = ChainEpoch::from(1);
-    let interval = Policy::default().deal_updates_interval;
 
-    let rt = setup();
+    let mut rt = setup();
+    rt.set_policy(policy);
     rt.set_epoch(publish_epoch);
 
-    // First 1000 deals (start_epoch % update interval) scheduled starting in the next day
-    for i in 0..1000 {
+    // First 100 deals (start_epoch % update interval) scheduled starting in the next period
+    for i in 0..100 {
         let piece_cid = make_piece_cid((format!("{i}")).as_bytes());
         let deal_id = generate_and_publish_deal_for_piece(
             &rt,
@@ -620,15 +626,15 @@ fn deal_starts_partway_through_day() {
     let store = &rt.store;
     let dobe = SetMultimap::from_root(store, &st.deal_ops_by_epoch).unwrap();
     for e in interval..(interval + start_epoch) {
-        assert_n_good_deals(&dobe, e, 1);
+        assert_n_good_deals(&dobe, interval, e, 1);
     }
     // Nothing scheduled between 0 and interval
     for e in 0..interval {
-        assert_n_good_deals(&dobe, e, 0);
+        assert_n_good_deals(&dobe, interval, e, 0);
     }
 
-    // Now add another 500 deals
-    for i in 1000..1500 {
+    // Now add another 50 deals
+    for i in 100..150 {
         let piece_cid = make_piece_cid((format!("{i}")).as_bytes());
         let deal_id = generate_and_publish_deal_for_piece(
             &rt,
@@ -644,8 +650,8 @@ fn deal_starts_partway_through_day() {
     let st: State = rt.get_state();
     let store = &rt.store;
     let dobe = SetMultimap::from_root(store, &st.deal_ops_by_epoch).unwrap();
-    for e in start_epoch..(start_epoch + 500) {
-        assert_n_good_deals(&dobe, e, 1);
+    for e in start_epoch..(start_epoch + 50) {
+        assert_n_good_deals(&dobe, interval, e, 1);
     }
 }
 
