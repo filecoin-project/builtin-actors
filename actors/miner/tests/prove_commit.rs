@@ -540,7 +540,7 @@ fn prove_commit_just_after_period_start_permits_post() {
 }
 
 #[test]
-fn sector_with_non_positive_lifetime_is_skipped_in_confirmation() {
+fn sector_with_non_positive_lifetime_fails_in_confirmation() {
     let h = ActorHarness::new(PERIOD_OFFSET);
     let rt = h.new_runtime();
     rt.balance.replace(BIG_BALANCE.clone());
@@ -567,20 +567,11 @@ fn sector_with_non_positive_lifetime_is_skipped_in_confirmation() {
 
     // confirm at sector expiration (this probably can't happen)
     rt.set_epoch(precommit.info.expiration);
-    // sector skipped but no failure occurs
-    h.confirm_sector_proofs_valid(&rt, ProveCommitConfig::empty(), vec![precommit.clone()])
-        .unwrap();
-
-    // it still skips if sector lifetime is negative
-    rt.set_epoch(precommit.info.expiration + 1);
-    h.confirm_sector_proofs_valid(&rt, ProveCommitConfig::empty(), vec![precommit.clone()])
-        .unwrap();
-
-    // it fails up to the miniumum expiration
-    rt.set_epoch(precommit.info.expiration - rt.policy.min_sector_expiration + 1);
-    h.confirm_sector_proofs_valid(&rt, ProveCommitConfig::empty(), vec![precommit]).unwrap();
-    let st = h.get_state(&rt);
-    assert!(st.get_sector(&rt.store, sector_no).unwrap().is_none());
+    // failure occurs
+    expect_abort(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        h.confirm_sector_proofs_valid(&rt, ProveCommitConfig::empty(), vec![precommit]),
+    );
     h.check_state(&rt);
 }
 
