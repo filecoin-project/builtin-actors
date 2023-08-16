@@ -4807,6 +4807,11 @@ fn activate_new_sector_infos(
         for (pci, deal_spaces) in precommits.iter().zip(data_activations) {
             // compute initial pledge
             let duration = pci.info.expiration - activation_epoch;
+            // This is probably always caught in precommit but fail cleanly if it occurs
+            if duration < policy.min_sector_expiration {
+                return Err(actor_error!(illegal_argument, "precommit {} has lifetime {} less than minimum {}. ignoring",
+                pci.info.sector_number, duration, policy.min_sector_expiration));
+            }
 
             let deal_weight = &deal_spaces.unverified_space * duration;
             let verified_deal_weight = &deal_spaces.verified_space * duration;
