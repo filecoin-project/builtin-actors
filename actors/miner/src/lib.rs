@@ -4394,7 +4394,7 @@ fn get_verify_info(
     Ok(SealVerifyInfo {
         registered_proof: params.registered_seal_proof,
         sector_id: SectorID { miner: miner_actor_id, number: params.sector_num },
-        deal_ids: vec![], // this field is unused by the proofs api
+        deal_ids: params.deal_ids, // this field is unused by the proofs api
         interactive_randomness: Randomness(interactive_randomness.into()),
         proof: params.proof,
         randomness: Randomness(randomness.into()),
