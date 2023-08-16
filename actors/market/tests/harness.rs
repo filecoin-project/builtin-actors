@@ -821,14 +821,17 @@ pub fn expect_query_network_info(rt: &MockRuntime) {
     );
 }
 
-pub fn assert_n_good_deals<BS>(dobe: &SetMultimap<BS>, epoch: ChainEpoch, n: isize)
-where
+pub fn assert_n_good_deals<BS>(
+    dobe: &SetMultimap<BS>,
+    updates_interval: ChainEpoch,
+    epoch: ChainEpoch,
+    n: isize,
+) where
     BS: fvm_ipld_blockstore::Blockstore,
 {
-    let deal_updates_interval = Policy::default().deal_updates_interval;
     let mut count = 0;
     dobe.for_each(epoch, |id| {
-        assert_eq!(epoch % deal_updates_interval, (id as i64) % deal_updates_interval);
+        assert_eq!(epoch % updates_interval, (id as i64) % updates_interval);
         count += 1;
         Ok(())
     })
