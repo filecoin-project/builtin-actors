@@ -827,8 +827,8 @@ impl Actor {
         }
 
         let no_length_checks: Vec<Option<usize>> = vec![None; precommits.len()];
-        let (batch_return, svis) = get_valid_verify_infos(rt, &precommits, &no_length_checks)?;
-        let svis = svis.into_iter().map(|x| x.into()).collect();
+        let (batch_return, svis) = validate_precommits(rt, &precommits, &no_length_checks)?;
+        let svis = svis.into_iter().map(|x| x.to_aggregate_seal_verify_info()).collect();
 
         let miner_actor_id: u64 = if let Payload::ID(i) = rt.message().receiver().payload() {
             *i
@@ -852,7 +852,9 @@ impl Actor {
             e.downcast_default(ExitCode::USR_ILLEGAL_ARGUMENT, "aggregate seal verify failed")
         })?;
 
-        let precommits_to_confirm: Vec<SectorPreCommitOnChainInfo> = batch_return.successes(&precommits).into_iter().map(|x| x.clone()).collect();
+        let precommits_to_confirm: Vec<SectorPreCommitOnChainInfo> =
+            batch_return.successes(&precommits).into_iter().cloned().collect();
+        //batch_return.successes(&precommits).into_iter().map(|x| x.clone()).collect();
         let data_activations: Vec<DataActivationInput> =
             precommits_to_confirm.iter().map(|x| x.clone().into()).collect();
         let rew = request_current_epoch_block_reward(rt)?;
@@ -1795,11 +1797,11 @@ impl Actor {
 
         let proof_lengths = vec![Some(params.proof.len())];
         let precommits = vec![precommit.clone()];
-        let (batch_return, svis) = get_valid_verify_infos(rt, &precommits, &proof_lengths)?;
+        let (batch_return, svis) = validate_precommits(rt, &precommits, &proof_lengths)?;
         if batch_return.success_count != 1 {
             return Err(actor_error!(
                 illegal_argument,
-                "failed to get an invalid verify info from precommit"
+                "failed to get a valid verify info from precommit"
             ));
         }
         let miner_actor_id: u64 = if let Payload::ID(i) = rt.message().receiver().payload() {
@@ -1811,6 +1813,7 @@ impl Actor {
                 rt.message().receiver()
             ));
         };
+
         let mut svi = svis[0].to_seal_verify_info(miner_actor_id, params.proof);
         svi.deal_ids = precommit.info.deal_ids; // XXX probably we can remove this here, just need to fix tests
 
@@ -4236,7 +4239,7 @@ fn verify_windowed_post(
     Ok(result.is_ok())
 }
 
-struct SealVerifyInfoInput {
+struct SectorSealProofInput {
     pub registered_proof: RegisteredSealProof,
     pub sector_number: SectorNumber,
     pub randomness: SealRandomness,
@@ -4245,7 +4248,7 @@ struct SealVerifyInfoInput {
     pub unsealed_cid: Cid, // Commd
 }
 
-impl SealVerifyInfoInput {
+impl SectorSealProofInput {
     fn to_seal_verify_info(&self, miner_actor_id: u64, proof: Vec<u8>) -> SealVerifyInfo {
         SealVerifyInfo {
             registered_proof: self.registered_proof,
@@ -4258,28 +4261,41 @@ impl SealVerifyInfoInput {
             unsealed_cid: self.unsealed_cid,
         }
     }
-}
 
-impl Into<AggregateSealVerifyInfo> for SealVerifyInfoInput {
-    fn into(self) -> AggregateSealVerifyInfo {
+    fn to_aggregate_seal_verify_info(&self) -> AggregateSealVerifyInfo {
         AggregateSealVerifyInfo {
             sector_number: self.sector_number,
-            randomness: self.randomness,
-            interactive_randomness: self.interactive_randomness,
+            randomness: self.randomness.clone(),
+            interactive_randomness: self.interactive_randomness.clone(),
             sealed_cid: self.sealed_cid,
             unsealed_cid: self.unsealed_cid,
         }
     }
 }
 
-fn get_valid_verify_infos(
+// validate_precommits validates precommit infos for the purpose of proving and committing
+// sectors this epoch
+// `proof_lengths` is a vector of optional proof byte lengths used to check that no
+// individual porep proof is too large.
+fn validate_precommits(
     rt: &impl Runtime,
     precommits: &[SectorPreCommitOnChainInfo],
     proof_lengths: &[Option<usize>],
-) -> Result<(BatchReturn, Vec<SealVerifyInfoInput>), ActorError> {
+) -> Result<(BatchReturn, Vec<SectorSealProofInput>), ActorError> {
+    if precommits.is_empty() {
+        return Ok((BatchReturn::empty(), vec![]));
+    }
     let mut batch = BatchReturnGen::new(precommits.len());
 
     let mut verify_infos = vec![];
+    let max_proof_size = precommits[0].info.seal_proof.proof_size().map_err(|e| {
+        actor_error!(
+            illegal_state,
+            "failed to determine max proof size for sector {}: {}",
+            precommits[0].info.sector_number,
+            e
+        )
+    })?;
     for (i, precommit) in precommits.iter().enumerate() {
         let msd =
             max_prove_commit_duration(rt.policy(), precommit.info.seal_proof).ok_or_else(|| {
@@ -4302,12 +4318,10 @@ fn get_valid_verify_infos(
             batch.add_success();
         }
         // All seal proof types should match
-        // XXX this is an aggregate specific check, ok to include in general case ?
         if i >= 1 {
             let prev_seal_proof = precommits[i - 1].info.seal_proof;
             if prev_seal_proof != precommit.info.seal_proof {
                 return Err(actor_error!(
-                    // XXX is this really illegal state and not illegal argument?
                     illegal_state,
                     "seal proof group for verification contains mismatched seal proofs {} and {}",
                     i64::from(prev_seal_proof),
@@ -4315,16 +4329,7 @@ fn get_valid_verify_infos(
                 ));
             }
         }
-        // XXX this is a non-aggregate specific check, ok to include in general case?
         if let Some(length) = proof_lengths[i] {
-            let max_proof_size = precommit.info.seal_proof.proof_size().map_err(|e| {
-                actor_error!(
-                    illegal_state,
-                    "failed to determine max proof size for sector {}: {}",
-                    precommit.info.sector_number,
-                    e
-                )
-            })?;
             if length > max_proof_size {
                 return Err(actor_error!(
                     illegal_argument,
@@ -4360,7 +4365,7 @@ fn get_valid_verify_infos(
         );
 
         let unsealed_cid = precommit.info.unsealed_cid.get_cid(precommit.info.seal_proof)?;
-        verify_infos.push(SealVerifyInfoInput {
+        verify_infos.push(SectorSealProofInput {
             registered_proof: precommit.info.seal_proof,
             sector_number: precommit.info.sector_number,
             randomness,
