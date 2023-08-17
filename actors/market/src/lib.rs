@@ -794,23 +794,7 @@ impl Actor {
 
                     if remove_deal {
                         amount_slashed += slash_amount;
-
-                        // Delete proposal and state simultaneously.
-                        let deleted = st.remove_deal_state(rt.store(), deal_id)?;
-                        if deleted.is_none() {
-                            return Err(actor_error!(
-                                illegal_state,
-                                "failed to delete deal state: does not exist"
-                            ));
-                        }
-
-                        let deleted = st.remove_proposal(rt.store(), deal_id)?;
-                        if deleted.is_none() {
-                            return Err(actor_error!(
-                                illegal_state,
-                                "failed to delete deal proposal: does not exist"
-                            ));
-                        }
+                        st.remove_completed_deal(rt.store(), deal_id)?;
                     } else {
                         if !slash_amount.is_zero() {
                             return Err(actor_error!(

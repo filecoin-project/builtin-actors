@@ -567,6 +567,31 @@ impl State {
         Ok(rval_pending_deal)
     }
 
+    pub fn remove_completed_deal<BS>(
+        &mut self,
+        store: &BS,
+        deal_id: DealID,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+    {
+        // Delete proposal and state simultaneously.
+        let deleted = self.remove_deal_state(store, deal_id)?;
+        if deleted.is_none() {
+            return Err(actor_error!(illegal_state, "failed to delete deal state: does not exist"));
+        }
+
+        let deleted = self.remove_proposal(store, deal_id)?;
+        if deleted.is_none() {
+            return Err(actor_error!(
+                illegal_state,
+                "failed to delete deal proposal: does not exist"
+            ));
+        }
+
+        Ok(())
+    }
+
     /// Checks that a deal is active
     /// If the deal is not active, cleans it up
     pub fn get_active_deal_or_cleanup<BS>(
