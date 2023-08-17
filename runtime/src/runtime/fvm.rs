@@ -33,6 +33,7 @@ use serde::Serialize;
 #[cfg(feature = "fake-proofs")]
 use sha2::{Digest, Sha256};
 use std::cell::RefCell;
+use std::io::Write;
 
 use crate::runtime::actor_blockstore::ActorBlockstore;
 use crate::runtime::builtins::Type;
@@ -231,14 +232,15 @@ where
         rand_epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        fvm::rand::get_chain_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
+        let digest = fvm::rand::get_chain_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
             match e {
                 ErrorNumber::LimitExceeded => {
                     actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
                 }
                 e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
             }
-        })
+        })?;
+        Ok(draw_randomness(&digest, personalization, rand_epoch, entropy))
     }
 
     fn get_randomness_from_beacon(
@@ -247,14 +249,15 @@ where
         rand_epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        fvm::rand::get_beacon_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
+        let digest = fvm::rand::get_beacon_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
             match e {
                 ErrorNumber::LimitExceeded => {
                     actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
                 }
                 e => actor_error!(assertion_failed; "get beacon randomness failed with an unexpected error: {}", e),
             }
-        })
+        })?;
+        Ok(draw_randomness(&digest, personalization, rand_epoch, entropy))
     }
 
     fn get_state_root(&self) -> Result<Cid, ActorError> {
@@ -639,4 +642,29 @@ fn init_logging(actor_name: &'static str) {
         log::set_boxed_logger(logger).expect("failed to enable logging");
         log::set_max_level(log::LevelFilter::Trace);
     }
+}
+
+fn draw_randomness(
+    rbase: &[u8; RANDOMNESS_LENGTH],
+    pers: DomainSeparationTag,
+    round: ChainEpoch,
+    entropy: &[u8],
+) -> [u8; RANDOMNESS_LENGTH] {
+    let mut data = Vec::with_capacity(RANDOMNESS_LENGTH + 8 + 8 + entropy.len());
+
+    // Append the randomness
+    data.extend_from_slice(rbase);
+
+    // Append the personalization value
+    let i64_bytes = (pers as i64).to_le_bytes();
+    data.extend_from_slice(&i64_bytes);
+
+    // Append the round
+    let i64_bytes = round.to_be_bytes();
+    data.extend_from_slice(&i64_bytes);
+
+    // Append the entropy
+    data.extend_from_slice(entropy);
+
+    fvm::crypto::hash_blake2b(&data)
 }
