@@ -43,9 +43,9 @@ use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
     actor_dispatch, actor_error, deserialize_block, extract_send_result, ActorContext,
-    ActorDowncast, ActorError, AsActorError, BatchReturn, BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR,
-    REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
+    ActorDowncast, ActorError, AsActorError, BatchReturn, BatchReturnGen, BURNT_FUNDS_ACTOR_ADDR,
+    INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::version::NetworkVersion;
@@ -832,42 +832,10 @@ impl Actor {
             ));
         }
 
-        // validate each precommit
-        let mut precommits_to_confirm = Vec::new();
-        for (i, precommit) in precommits.iter().enumerate() {
-            let msd = max_prove_commit_duration(rt.policy(), precommit.info.seal_proof)
-                .ok_or_else(|| {
-                    actor_error!(
-                        illegal_state,
-                        "no max seal duration for proof type: {}",
-                        i64::from(precommit.info.seal_proof)
-                    )
-                })?;
-            let prove_commit_due = precommit.pre_commit_epoch + msd;
-            if rt.curr_epoch() > prove_commit_due {
-                log::warn!(
-                    "skipping commitment for sector {}, too late at {}, due {}",
-                    precommit.info.sector_number,
-                    rt.curr_epoch(),
-                    prove_commit_due,
-                )
-            } else {
-                precommits_to_confirm.push(precommit.clone());
-            }
-            // All seal proof types should match
-            if i >= 1 {
-                let prev_seal_proof = precommits[i - 1].info.seal_proof;
-                if prev_seal_proof != precommit.info.seal_proof {
-                    return Err(actor_error!(
-                        illegal_state,
-                        "aggregate contains mismatched seal proofs {} and {}",
-                        i64::from(prev_seal_proof),
-                        i64::from(precommit.info.seal_proof)
-                    ));
-                }
-            }
-        }
-        let mut svis = Vec::with_capacity(precommits.len());
+        let no_length_checks: Vec<Option<usize>> = vec![None; precommits.len()];
+        let (batch_return, svis) = get_valid_verify_infos(rt, &precommits, &no_length_checks)?;
+        let svis = svis.into_iter().map(|x| x.into()).collect();
+
         let miner_actor_id: u64 = if let Payload::ID(i) = rt.message().receiver().payload() {
             *i
         } else {
@@ -877,41 +845,6 @@ impl Actor {
                 rt.message().receiver()
             ));
         };
-        let receiver_bytes =
-            serialize_vec(&rt.message().receiver(), "address for seal verification challenge")?;
-
-        for precommit in precommits.iter() {
-            let interactive_epoch =
-                precommit.pre_commit_epoch + rt.policy().pre_commit_challenge_delay;
-            if rt.curr_epoch() <= interactive_epoch {
-                return Err(actor_error!(
-                    forbidden,
-                    "too early to prove sector {}",
-                    precommit.info.sector_number
-                ));
-            }
-            let sv_info_randomness = rt.get_randomness_from_tickets(
-                DomainSeparationTag::SealRandomness,
-                precommit.info.seal_rand_epoch,
-                &receiver_bytes,
-            )?;
-            let sv_info_interactive_randomness = rt.get_randomness_from_beacon(
-                DomainSeparationTag::InteractiveSealChallengeSeed,
-                interactive_epoch,
-                &receiver_bytes,
-            )?;
-
-            let unsealed_cid = precommit.info.unsealed_cid.get_cid(precommit.info.seal_proof)?;
-
-            let svi = AggregateSealVerifyInfo {
-                sector_number: precommit.info.sector_number,
-                randomness: Randomness(sv_info_randomness.into()),
-                interactive_randomness: Randomness(sv_info_interactive_randomness.into()),
-                sealed_cid: precommit.info.sealed_cid,
-                unsealed_cid,
-            };
-            svis.push(svi);
-        }
 
         let seal_proof = precommits[0].info.seal_proof;
         rt.verify_aggregate_seals(&AggregateSealVerifyProofAndInfos {
@@ -925,6 +858,8 @@ impl Actor {
             e.downcast_default(ExitCode::USR_ILLEGAL_ARGUMENT, "aggregate seal verify failed")
         })?;
 
+        let precommits_to_confirm: Vec<SectorPreCommitOnChainInfo> =
+            batch_return.successes(&precommits).into_iter().map(|x| x.clone()).collect();
         let rew = request_current_epoch_block_reward(rt)?;
         let pwr = request_current_total_power(rt)?;
         confirm_sector_proofs_valid_internal(
@@ -2002,56 +1937,26 @@ impl Actor {
             })?
             .ok_or_else(|| actor_error!(not_found, "no pre-commited sector {}", sector_number))?;
 
-        let max_proof_size = precommit.info.seal_proof.proof_size().map_err(|e| {
-            actor_error!(
+        let proof_lengths = vec![Some(params.proof.len())];
+        let precommits = vec![precommit];
+        let (batch_return, svis) = get_valid_verify_infos(rt, &precommits, &proof_lengths)?;
+        if batch_return.success_count != 1 {
+            return actor_error!(
+                illegal_argument,
+                "failed to get an invalid verify info from precommit"
+            );
+        }
+        let miner_actor_id: u64 = if let Payload::ID(i) = rt.message().receiver().payload() {
+            *i
+        } else {
+            return Err(actor_error!(
                 illegal_state,
-                "failed to determine max proof size for sector {}: {}",
-                sector_number,
-                e
-            )
-        })?;
-        if params.proof.len() > max_proof_size {
-            return Err(actor_error!(
-                illegal_argument,
-                "sector prove-commit proof of size {} exceeds max size of {}",
-                params.proof.len(),
-                max_proof_size
+                "runtime provided non ID receiver address {}",
+                rt.message().receiver()
             ));
-        }
-
-        let msd =
-            max_prove_commit_duration(rt.policy(), precommit.info.seal_proof).ok_or_else(|| {
-                actor_error!(
-                    illegal_state,
-                    "no max seal duration set for proof type: {:?}",
-                    precommit.info.seal_proof
-                )
-            })?;
-        let prove_commit_due = precommit.pre_commit_epoch + msd;
-        if rt.curr_epoch() > prove_commit_due {
-            return Err(actor_error!(
-                illegal_argument,
-                "commitment proof for {} too late at {}, due {}",
-                sector_number,
-                rt.curr_epoch(),
-                prove_commit_due
-            ));
-        }
-
-        let svi = get_verify_info(
-            rt,
-            SealVerifyParams {
-                sealed_cid: precommit.info.sealed_cid,
-                interactive_epoch: precommit.pre_commit_epoch
-                    + rt.policy().pre_commit_challenge_delay,
-                seal_rand_epoch: precommit.info.seal_rand_epoch,
-                proof: params.proof,
-                deal_ids: precommit.info.deal_ids.clone(),
-                sector_num: precommit.info.sector_number,
-                registered_seal_proof: precommit.info.seal_proof,
-            },
-            precommit.info.unsealed_cid,
-        )?;
+        };
+        let svi = svis[0].to_seal_verify_info(miner_actor_id, params.proof);
+        svi.deal_ids = precommit.info.deal_ids; // XXX probably we can remove this here, just need to fix tests
 
         extract_send_result(rt.send_simple(
             &STORAGE_POWER_ACTOR_ADDR,
@@ -4302,48 +4207,140 @@ fn verify_windowed_post(
     Ok(result.is_ok())
 }
 
-fn get_verify_info(
-    rt: &impl Runtime,
-    params: SealVerifyParams,
-    unsealed_cid: CompactCommD,
-) -> Result<SealVerifyInfo, ActorError> {
-    if rt.curr_epoch() <= params.interactive_epoch {
-        return Err(actor_error!(forbidden, "too early to prove sector"));
+struct SealVerifyInfoInput {
+    pub registered_proof: RegisteredSealProof,
+    pub sector_number: SectorNumber,
+    pub randomness: SealRandomness,
+    pub interactive_randomness: InteractiveSealRandomness,
+    pub sealed_cid: Cid,   // Commr
+    pub unsealed_cid: Cid, // Commd
+}
+
+impl SealVerifyInfoInput {
+    fn to_seal_verify_info(self, miner_actor_id: u64, proof: Vec<u8>) -> SealVerifyInfo {
+        SealVerifyInfo {
+            registered_proof: self.registered_proof,
+            sector_id: SectorID { miner: miner_actor_id, number: self.sector_number },
+            deal_ids: vec![], // unused by the proofs api so this is safe to leave empty
+            randomness: self.randomness,
+            interactive_randomness: self.interactive_randomness,
+            proof: proof,
+            sealed_cid: self.sealed_cid,
+            unsealed_cid: self.unsealed_cid,
+        }
     }
+}
 
-    let miner_actor_id: u64 = if let Payload::ID(i) = rt.message().receiver().payload() {
-        *i
-    } else {
-        return Err(actor_error!(
-            illegal_state,
-            "runtime provided non ID receiver address {}",
-            rt.message().receiver()
-        ));
-    };
-    let entropy = serialize(&rt.message().receiver(), "address for get verify info")?;
-    let randomness = rt.get_randomness_from_tickets(
-        DomainSeparationTag::SealRandomness,
-        params.seal_rand_epoch,
-        &entropy,
-    )?;
-    let interactive_randomness = rt.get_randomness_from_beacon(
-        DomainSeparationTag::InteractiveSealChallengeSeed,
-        params.interactive_epoch,
-        &entropy,
-    )?;
+impl Into<AggregateSealVerifyInfo> for SealVerifyInfoInput {
+    fn into(self) -> AggregateSealVerifyInfo {
+        AggregateSealVerifyInfo {
+            sector_number: self.sector_number,
+            randomness: self.randomness,
+            interactive_randomness: self.interactive_randomness,
+            sealed_cid: self.sealed_cid,
+            unsealed_cid: self.unsealed_cid,
+        }
+    }
+}
 
-    let commd = unsealed_cid.get_cid(params.registered_seal_proof)?;
+fn get_valid_verify_infos(
+    rt: &impl Runtime,
+    precommits: &[SectorPreCommitOnChainInfo],
+    proof_lengths: &[Option<usize>],
+) -> Result<(BatchReturn, Vec<SealVerifyInfoInput>), ActorError> {
+    let mut batch = BatchReturnGen::new(precommits.len());
 
-    Ok(SealVerifyInfo {
-        registered_proof: params.registered_seal_proof,
-        sector_id: SectorID { miner: miner_actor_id, number: params.sector_num },
-        deal_ids: params.deal_ids,
-        interactive_randomness: Randomness(interactive_randomness.into()),
-        proof: params.proof,
-        randomness: Randomness(randomness.into()),
-        sealed_cid: params.sealed_cid,
-        unsealed_cid: commd,
-    })
+    let mut verify_infos = vec![];
+    for (i, precommit) in precommits.iter().enumerate() {
+        let msd =
+            max_prove_commit_duration(rt.policy(), precommit.info.seal_proof).ok_or_else(|| {
+                actor_error!(
+                    illegal_state,
+                    "no max seal duration for proof type: {}",
+                    i64::from(precommit.info.seal_proof)
+                )
+            })?;
+        let prove_commit_due = precommit.pre_commit_epoch + msd;
+        if rt.curr_epoch() > prove_commit_due {
+            log::warn!(
+                "skipping commitment for sector {}, too late at {}, due {}",
+                precommit.info.sector_number,
+                rt.curr_epoch(),
+                prove_commit_due,
+            );
+            batch.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
+        } else {
+            batch.add_success();
+        }
+        // All seal proof types should match
+        // XXX this is an aggregate specific check, ok to include in general case ?
+        if i >= 1 {
+            let prev_seal_proof = precommits[i - 1].info.seal_proof;
+            if prev_seal_proof != precommit.info.seal_proof {
+                return Err(actor_error!(
+                    // XXX is this really illegal state and not illegal argument?
+                    illegal_state,
+                    "seal proof group for verification contains mismatched seal proofs {} and {}",
+                    i64::from(prev_seal_proof),
+                    i64::from(precommit.info.seal_proof)
+                ));
+            }
+        }
+        // XXX this is a non-aggregate specific check, ok to include in general case?
+        if let Some(length) = proof_lengths[i] {
+            let max_proof_size = precommit.info.seal_proof.proof_size().map_err(|e| {
+                actor_error!(
+                    illegal_state,
+                    "failed to determine max proof size for sector {}: {}",
+                    precommit.info.sector_number,
+                    e
+                )
+            })?;
+            if length > max_proof_size {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "sector prove-commit proof of size {} exceeds max size of {}",
+                    length,
+                    max_proof_size
+                ));
+            }
+        }
+        let interactive_epoch = precommit.pre_commit_epoch + rt.policy().pre_commit_challenge_delay;
+        if rt.curr_epoch() <= interactive_epoch {
+            return Err(actor_error!(forbidden, "too early to prove sector"));
+        }
+
+        // Compute svi for all commits even those that will not be activated.
+        // Callers might prove using aggregates and need witnesses for invalid commits
+        let entropy = serialize(&rt.message().receiver(), "address for get verify info")?;
+        let randomness = Randomness(
+            rt.get_randomness_from_tickets(
+                DomainSeparationTag::SealRandomness,
+                precommit.info.seal_rand_epoch,
+                &entropy,
+            )?
+            .into(),
+        );
+        let interactive_randomness = Randomness(
+            rt.get_randomness_from_beacon(
+                DomainSeparationTag::InteractiveSealChallengeSeed,
+                interactive_epoch,
+                &entropy,
+            )?
+            .into(),
+        );
+
+        let unsealed_cid = precommit.info.unsealed_cid.get_cid(precommit.info.seal_proof)?;
+        verify_infos.push(SealVerifyInfoInput {
+            registered_proof: precommit.info.seal_proof,
+            sector_number: precommit.info.sector_number,
+            randomness,
+            interactive_randomness,
+            sealed_cid: precommit.info.sealed_cid,
+            unsealed_cid,
+        });
+    }
+    Ok((batch.gen(), verify_infos))
 }
 
 fn verify_deals(
