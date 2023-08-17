@@ -58,7 +58,7 @@ fn sector_expires() {
     assert!(st.deadline_cron_active);
 
     // setup state to simulate moving forward all the way to expiry
-    let (dl_idx, _) = st.find_sector(&rt.policy, &rt.store, sectors[0].sector_number).unwrap();
+    let (dl_idx, _) = st.find_sector(&rt.store, sectors[0].sector_number).unwrap();
     let exp_quant_spec = st.quant_spec_for_deadline(&rt.policy, dl_idx);
     let expiration = exp_quant_spec.quantize_up(expiration_raw);
     let remaining_epoch = expiration - st.proving_period_start;
@@ -105,7 +105,7 @@ fn sector_expires_and_repays_fee_debt() {
     assert!(st.deadline_cron_active);
 
     // setup state to simulate moving forward all the way to expiry
-    let (dl_idx, _) = st.find_sector(&rt.policy, &rt.store, sectors[0].sector_number).unwrap();
+    let (dl_idx, _) = st.find_sector(&rt.store, sectors[0].sector_number).unwrap();
     let exp_quant_spec = st.quant_spec_for_deadline(&rt.policy, dl_idx);
     let expiration = exp_quant_spec.quantize_up(expiration_raw);
     let remaining_epoch = expiration - st.proving_period_start;
@@ -167,8 +167,7 @@ fn detects_and_penalizes_faults() {
     h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
 
     let st = h.get_state(&rt);
-    let (dl_idx, p_idx) =
-        st.find_sector(&rt.policy, &rt.store, active_sectors[0].sector_number).unwrap();
+    let (dl_idx, p_idx) = st.find_sector(&rt.store, active_sectors[0].sector_number).unwrap();
 
     // advance to next deadline where we expect the first sectors to appear
     let mut dl_info = h.deadline(&rt);
@@ -251,7 +250,7 @@ fn test_cron_run_trigger_faults() {
     h.advance_and_submit_posts(&rt, &all_sectors);
 
     let st = h.get_state(&rt);
-    let (dl_idx, _) = st.find_sector(&rt.policy, &rt.store, all_sectors[0].sector_number).unwrap();
+    let (dl_idx, _) = st.find_sector(&rt.store, all_sectors[0].sector_number).unwrap();
 
     // advance to deadline prior to first
     let mut dl_info = h.deadline(&rt);

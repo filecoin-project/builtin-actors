@@ -125,7 +125,7 @@ fn prove_single_sector() {
     assert_eq!(expected_initial_pledge, st.initial_pledge);
 
     // expect sector to be assigned a deadline/partition
-    let (dl_idx, p_idx) = st.find_sector(&rt.policy, rt.store(), sector_no).unwrap();
+    let (dl_idx, p_idx) = st.find_sector(rt.store(), sector_no).unwrap();
     let (deadline, partition) = h.get_deadline_and_partition(&rt, dl_idx, p_idx);
     assert_eq!(1, deadline.live_sectors);
     assert!(deadline.partitions_posted.is_empty());

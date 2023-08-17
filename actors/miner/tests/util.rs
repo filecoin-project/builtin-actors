@@ -81,7 +81,7 @@ use fil_actor_power::{
 };
 use fil_actor_reward::{Method as RewardMethod, ThisEpochRewardReturn};
 use fil_actors_runtime::cbor::serialize;
-use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime, RuntimePolicy};
+use fil_actors_runtime::runtime::{DomainSeparationTag, Runtime, RuntimePolicy};
 use fil_actors_runtime::{test_utils::*, BatchReturn, BatchReturnGen};
 use fil_actors_runtime::{
     ActorDowncast, ActorError, Array, DealWeight, MessageAccumulator, BURNT_FUNDS_ACTOR_ADDR,
@@ -1645,7 +1645,7 @@ impl ActorHarness {
 
     pub fn get_deadline(&self, rt: &MockRuntime, dlidx: u64) -> Deadline {
         let dls = self.get_deadlines(rt);
-        dls.load_deadline(&rt.policy, &rt.store, dlidx).unwrap()
+        dls.load_deadline(&rt.store, dlidx).unwrap()
     }
 
     fn get_deadlines(&self, rt: &MockRuntime) -> Deadlines {
@@ -1717,8 +1717,7 @@ impl ActorHarness {
         //let sector_arr = Sectors::load(&rt.store, &state.sectors).unwrap();
         let mut deadlines: BTreeMap<u64, Vec<SectorOnChainInfo>> = BTreeMap::new();
         for sector in sectors {
-            let (dlidx, _) =
-                state.find_sector(&rt.policy, &rt.store, sector.sector_number).unwrap();
+            let (dlidx, _) = state.find_sector(&rt.store, sector.sector_number).unwrap();
             match deadlines.get_mut(&dlidx) {
                 Some(dl_sectors) => {
                     dl_sectors.push(sector.clone());
@@ -1740,7 +1739,7 @@ impl ActorHarness {
                     }
 
                     let dl_arr = state.load_deadlines(&rt.store).unwrap();
-                    let dl = dl_arr.load_deadline(&rt.policy, &rt.store, dlinfo.index).unwrap();
+                    let dl = dl_arr.load_deadline(&rt.store, dlinfo.index).unwrap();
                     let parts = Array::<Partition, _>::load(&dl.partitions, &rt.store).unwrap();
 
                     let mut partitions: Vec<PoStPartition> = Vec::new();
@@ -1920,7 +1919,7 @@ impl ActorHarness {
 
     pub fn find_sector(&self, rt: &MockRuntime, sno: SectorNumber) -> (Deadline, Partition) {
         let state = self.get_state(rt);
-        let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, sno).unwrap();
+        let (dlidx, pidx) = state.find_sector(&rt.store, sno).unwrap();
         self.get_deadline_and_partition(rt, dlidx, pidx)
     }
 
@@ -2127,9 +2126,8 @@ impl ActorHarness {
 
         let mut terminations: Vec<TerminationDeclaration> = Vec::new();
 
-        let policy = Policy::default();
         for sector in sectors.iter() {
-            let (deadline, partition) = deadlines.find_sector(&policy, rt.store(), sector).unwrap();
+            let (deadline, partition) = deadlines.find_sector(rt.store(), sector).unwrap();
             terminations.push(TerminationDeclaration {
                 sectors: make_bitfield(&[sector]),
                 deadline,
@@ -2934,7 +2932,7 @@ fn make_fault_params_from_faulting_sectors(
 ) -> DeclareFaultsParams {
     let mut declaration_map: BTreeMap<(u64, u64), FaultDeclaration> = BTreeMap::new();
     for sector in fault_sector_infos {
-        let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, sector.sector_number).unwrap();
+        let (dlidx, pidx) = state.find_sector(&rt.store, sector.sector_number).unwrap();
         match declaration_map.get_mut(&(dlidx, pidx)) {
             Some(declaration) => {
                 declaration.sectors.set(sector.sector_number);

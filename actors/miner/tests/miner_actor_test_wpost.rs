@@ -43,7 +43,7 @@ fn basic_post_and_dispute() {
 
     // Skip to the right deadline
     let state = h.get_state(&rt);
-    let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, sector.sector_number).unwrap();
+    let (dlidx, pidx) = state.find_sector(&rt.store, sector.sector_number).unwrap();
     let dlinfo = h.advance_to_deadline(&rt, dlidx);
 
     // Submit PoSt
@@ -116,7 +116,7 @@ fn invalid_submissions() {
 
     // Skip to the due deadline.
     let state = h.get_state(&rt);
-    let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, sector.sector_number).unwrap();
+    let (dlidx, pidx) = state.find_sector(&rt.store, sector.sector_number).unwrap();
     let dlinfo = h.advance_to_deadline(&rt, dlidx);
 
     // Invalid deadline.
@@ -513,7 +513,7 @@ fn duplicate_proof_rejected() {
 
     // Skip to the due deadline.
     let state = h.get_state(&rt);
-    let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, sector.sector_number).unwrap();
+    let (dlidx, pidx) = state.find_sector(&rt.store, sector.sector_number).unwrap();
     let dlinfo = h.advance_to_deadline(&rt, dlidx);
 
     // Submit PoSt
@@ -606,7 +606,7 @@ fn duplicate_proof_rejected_with_many_partitions() {
 
     // Skip to the due deadline.
     let state = h.get_state(&rt);
-    let (dlidx, _) = state.find_sector(&rt.policy, &rt.store, last_sector.sector_number).unwrap();
+    let (dlidx, _) = state.find_sector(&rt.store, last_sector.sector_number).unwrap();
     let dlinfo = h.advance_to_deadline(&rt, dlidx);
 
     {
@@ -717,7 +717,7 @@ fn successful_recoveries_recover_power() {
 
     // declare recovery
     let state = h.get_state(&rt);
-    let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, infos[0].sector_number).unwrap();
+    let (dlidx, pidx) = state.find_sector(&rt.store, infos[0].sector_number).unwrap();
     let mut bf = BitField::new();
     bf.set(infos[0].sector_number);
     h.declare_recoveries(&rt, dlidx, pidx, bf, TokenAmount::zero()).unwrap();
@@ -777,8 +777,8 @@ fn skipped_faults_adjust_power() {
 
     // Skip to the due deadline.
     let state = h.get_state(&rt);
-    let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, infos[0].sector_number).unwrap();
-    let (dlidx2, pidx2) = state.find_sector(&rt.policy, &rt.store, infos[1].sector_number).unwrap();
+    let (dlidx, pidx) = state.find_sector(&rt.store, infos[0].sector_number).unwrap();
+    let (dlidx2, pidx2) = state.find_sector(&rt.store, infos[1].sector_number).unwrap();
     assert_eq!(dlidx, dlidx2);
 
     let mut dlinfo = h.advance_to_deadline(&rt, dlidx);
@@ -864,8 +864,8 @@ fn skipping_all_sectors_in_a_partition_rejected() {
 
     // Skip to the due deadline.
     let state = h.get_state(&rt);
-    let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, infos[0].sector_number).unwrap();
-    let (dlidx2, pidx2) = state.find_sector(&rt.policy, &rt.store, infos[1].sector_number).unwrap();
+    let (dlidx, pidx) = state.find_sector(&rt.store, infos[0].sector_number).unwrap();
+    let (dlidx2, pidx2) = state.find_sector(&rt.store, infos[1].sector_number).unwrap();
     assert_eq!(dlidx, dlidx2);
     assert_eq!(pidx, pidx2);
 
@@ -924,7 +924,7 @@ fn skipped_recoveries_are_penalized_and_do_not_recover_power() {
 
     // declare recovery
     let state = h.get_state(&rt);
-    let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, infos[0].sector_number).unwrap();
+    let (dlidx, pidx) = state.find_sector(&rt.store, infos[0].sector_number).unwrap();
     let mut bf = BitField::new();
     bf.set(infos[0].sector_number);
     h.declare_recoveries(&rt, dlidx, pidx, bf, TokenAmount::zero()).unwrap();
@@ -966,9 +966,8 @@ fn skipping_a_fault_from_the_wrong_partition_is_an_error() {
 
     // Skip to the due deadline.
     let state = h.get_state(&rt);
-    let (dlidx0, pidx0) = state.find_sector(&rt.policy, &rt.store, infos[0].sector_number).unwrap();
-    let (dlidx1, pidx1) =
-        state.find_sector(&rt.policy, &rt.store, infos[N - 1].sector_number).unwrap();
+    let (dlidx0, pidx0) = state.find_sector(&rt.store, infos[0].sector_number).unwrap();
+    let (dlidx1, pidx1) = state.find_sector(&rt.store, infos[N - 1].sector_number).unwrap();
     let dlinfo = h.advance_to_deadline(&rt, dlidx0);
 
     // if these assertions no longer hold, the test must be changed
@@ -1017,7 +1016,7 @@ fn cannot_dispute_posts_when_the_challenge_window_is_open() {
 
     // Skip to the due deadline.
     let state = h.get_state(&rt);
-    let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, sector.sector_number).unwrap();
+    let (dlidx, pidx) = state.find_sector(&rt.store, sector.sector_number).unwrap();
     let dlinfo = h.advance_to_deadline(&rt, dlidx);
 
     // Submit PoSt
@@ -1067,7 +1066,7 @@ fn can_dispute_up_till_window_end_but_not_after() {
     let sector = infos[0].clone();
 
     let state = h.get_state(&rt);
-    let (dlidx, _) = state.find_sector(&rt.policy, &rt.store, sector.sector_number).unwrap();
+    let (dlidx, _) = state.find_sector(&rt.store, sector.sector_number).unwrap();
 
     let nextdl = miner::DeadlineInfo::new(
         state.proving_period_start,
@@ -1244,8 +1243,8 @@ fn bad_post_fails_when_verified() {
     h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
 
     let state = h.get_state(&rt);
-    let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, infos[0].sector_number).unwrap();
-    let (dlidx2, pidx2) = state.find_sector(&rt.policy, &rt.store, infos[1].sector_number).unwrap();
+    let (dlidx, pidx) = state.find_sector(&rt.store, infos[0].sector_number).unwrap();
+    let (dlidx2, pidx2) = state.find_sector(&rt.store, infos[1].sector_number).unwrap();
     assert_eq!(dlidx, dlidx2);
     assert_eq!(pidx, pidx2);
 
@@ -1372,7 +1371,7 @@ fn can_submit_v1_proof_types_nv19() {
 
         // Skip to the right deadline
         let state = h.get_state(&rt);
-        let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, sector.sector_number).unwrap();
+        let (dlidx, pidx) = state.find_sector(&rt.store, sector.sector_number).unwrap();
         let dlinfo = h.advance_to_deadline(&rt, dlidx);
 
         // Submit PoSt
