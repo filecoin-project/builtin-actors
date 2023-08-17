@@ -1938,13 +1938,13 @@ impl Actor {
             .ok_or_else(|| actor_error!(not_found, "no pre-commited sector {}", sector_number))?;
 
         let proof_lengths = vec![Some(params.proof.len())];
-        let precommits = vec![precommit];
+        let precommits = vec![precommit.clone()];
         let (batch_return, svis) = get_valid_verify_infos(rt, &precommits, &proof_lengths)?;
         if batch_return.success_count != 1 {
-            return actor_error!(
+            return Err(actor_error!(
                 illegal_argument,
                 "failed to get an invalid verify info from precommit"
-            );
+            ));
         }
         let miner_actor_id: u64 = if let Payload::ID(i) = rt.message().receiver().payload() {
             *i
@@ -1955,7 +1955,7 @@ impl Actor {
                 rt.message().receiver()
             ));
         };
-        let svi = svis[0].to_seal_verify_info(miner_actor_id, params.proof);
+        let mut svi = svis[0].to_seal_verify_info(miner_actor_id, params.proof);
         svi.deal_ids = precommit.info.deal_ids; // XXX probably we can remove this here, just need to fix tests
 
         extract_send_result(rt.send_simple(
@@ -4217,14 +4217,14 @@ struct SealVerifyInfoInput {
 }
 
 impl SealVerifyInfoInput {
-    fn to_seal_verify_info(self, miner_actor_id: u64, proof: Vec<u8>) -> SealVerifyInfo {
+    fn to_seal_verify_info(&self, miner_actor_id: u64, proof: Vec<u8>) -> SealVerifyInfo {
         SealVerifyInfo {
             registered_proof: self.registered_proof,
             sector_id: SectorID { miner: miner_actor_id, number: self.sector_number },
             deal_ids: vec![], // unused by the proofs api so this is safe to leave empty
-            randomness: self.randomness,
-            interactive_randomness: self.interactive_randomness,
-            proof: proof,
+            randomness: self.randomness.clone(),
+            interactive_randomness: self.interactive_randomness.clone(),
+            proof,
             sealed_cid: self.sealed_cid,
             unsealed_cid: self.unsealed_cid,
         }
