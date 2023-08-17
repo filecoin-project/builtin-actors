@@ -751,55 +751,24 @@ impl Actor {
                 let deal_ids = st.get_deals_for_epoch(rt.store(), i)?;
 
                 for deal_id in deal_ids {
-                    let deal = st.get_proposal(rt.store(), deal_id)?;
-                    let dcid = rt_deal_cid(rt, &deal)?;
-                    let state = st.find_deal_state(rt.store(), deal_id)?;
+                    let deal_proposal = st.get_proposal(rt.store(), deal_id)?;
+                    let dcid = rt_deal_cid(rt, &deal_proposal)?;
 
-                    // deal has been published but not activated yet -> terminate it
-                    // as it has timed out
-                    if state.is_none() {
-                        // Not yet appeared in proven sector; check for timeout.
-                        if curr_epoch < deal.start_epoch {
-                            return Err(actor_error!(
-                                illegal_state,
-                                "deal {} processed before start epoch {}",
-                                deal_id,
-                                deal.start_epoch
-                            ));
+                    let (state, maybe_slashed) = st.get_active_deal_or_cleanup(
+                        rt.store(),
+                        curr_epoch,
+                        deal_id,
+                        &deal_proposal,
+                        &dcid,
+                    )?;
+
+                    let mut state = match state {
+                        Some(state) => state,
+                        None => {
+                            amount_slashed += maybe_slashed;
+                            continue;
                         }
-
-                        let slashed = st.process_deal_init_timed_out(rt.store(), &deal)?;
-                        if !slashed.is_zero() {
-                            amount_slashed += slashed;
-                        }
-
-                        // Delete the proposal (but not state, which doesn't exist).
-                        let deleted = st.remove_proposal(rt.store(), deal_id)?;
-
-                        if deleted.is_none() {
-                            return Err(actor_error!(
-                                illegal_state,
-                                format!(
-                                    "failed to delete deal {} proposal {}: does not exist",
-                                    deal_id, dcid
-                                )
-                            ));
-                        }
-
-                        // Delete pending deal CID
-                        st.remove_pending_deal(rt.store(), dcid)?.ok_or_else(|| {
-                            actor_error!(
-                                illegal_state,
-                                "failed to delete pending deals: does not exist"
-                            )
-                        })?;
-
-                        // Delete pending deal allocation id (if present).
-                        st.remove_pending_deal_allocation_id(rt.store(), deal_id)?;
-
-                        continue;
-                    }
-                    let mut state = state.unwrap();
+                    };
 
                     if state.last_updated_epoch == EPOCH_UNDEFINED {
                         st.remove_pending_deal(rt.store(), dcid)?.ok_or_else(|| {
@@ -811,7 +780,7 @@ impl Actor {
                     }
 
                     let (slash_amount, remove_deal) =
-                        st.process_deal_update(rt.store(), &state, &deal, curr_epoch)?;
+                        st.process_deal_update(rt.store(), &state, &deal_proposal, curr_epoch)?;
 
                     if slash_amount.is_negative() {
                         return Err(actor_error!(

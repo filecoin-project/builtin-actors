@@ -567,6 +567,69 @@ impl State {
         Ok(rval_pending_deal)
     }
 
+    /// Checks that a deal is active
+    /// If the deal is not active, cleans it up
+    pub fn get_active_deal_or_cleanup<BS>(
+        &mut self,
+        store: &BS,
+        curr_epoch: ChainEpoch,
+        deal_id: DealID,
+        deal_proposal: &DealProposal,
+        dcid: &Cid,
+    ) -> Result<(Option<DealState>, TokenAmount), ActorError>
+    where
+        BS: Blockstore,
+    {
+        let deal_state = self.find_deal_state(store, deal_id)?;
+
+        // deal has been published but not yet activated
+        match deal_state {
+            None => {
+                // too early
+                if curr_epoch < deal_proposal.start_epoch {
+                    return Err(actor_error!(
+                        illegal_argument,
+                        "deal {} processed before start epoch {}",
+                        deal_id,
+                        deal_proposal.start_epoch
+                    ));
+                }
+
+                // if not already activated, it's too late
+                let slashed = self.process_deal_init_timed_out(store, deal_proposal)?;
+
+                // delete the proposal (but not state, which doesn't exist)
+                let deleted = self.remove_proposal(store, deal_id)?;
+                if deleted.is_none() {
+                    return Err(actor_error!(
+                        illegal_state,
+                        format!(
+                            "failed to delete deal {} proposal {}: does not exist",
+                            deal_id, dcid
+                        )
+                    ));
+                }
+
+                // delete pending deal cid
+                self.remove_pending_deal(store, *dcid)?.ok_or_else(|| {
+                    actor_error!(
+                        illegal_state,
+                        format!(
+                            "failed to delete pending deal {}: cid {} does not exist",
+                            deal_id, dcid
+                        )
+                    )
+                })?;
+
+                // delete pending deal allocation id (if present)
+                self.remove_pending_deal_allocation_id(store, deal_id)?;
+
+                Ok((None, slashed))
+            }
+            Some(deal_state) => Ok((Some(deal_state), TokenAmount::zero())),
+        }
+    }
+
     ////////////////////////////////////////////////////////////////////////////////
     // Deal state operations
     ////////////////////////////////////////////////////////////////////////////////
