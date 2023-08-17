@@ -167,8 +167,7 @@ fn detects_and_penalizes_faults() {
     h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
 
     let st = h.get_state(&rt);
-    let (dl_idx, p_idx) =
-        st.find_sector(&rt.store, active_sectors[0].sector_number).unwrap();
+    let (dl_idx, p_idx) = st.find_sector(&rt.store, active_sectors[0].sector_number).unwrap();
 
     // advance to next deadline where we expect the first sectors to appear
     let mut dl_info = h.deadline(&rt);

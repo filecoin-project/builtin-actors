@@ -99,14 +99,7 @@ pub fn sector_deadline(v: &dyn VM, m: &Address, s: SectorNumber) -> (u64, u64) {
 pub fn check_sector_active(v: &dyn VM, m: &Address, s: SectorNumber) -> bool {
     let (d_idx, p_idx) = sector_deadline(v, m, s);
     let st: MinerState = get_state(v, m).unwrap();
-    st.check_sector_active(
-        &DynBlockstore::wrap(v.blockstore()),
-        d_idx,
-        p_idx,
-        s,
-        true,
-    )
-    .unwrap()
+    st.check_sector_active(&DynBlockstore::wrap(v.blockstore()), d_idx, p_idx, s, true).unwrap()
 }
 
 pub fn check_sector_faulty(

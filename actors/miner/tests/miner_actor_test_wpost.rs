@@ -967,8 +967,7 @@ fn skipping_a_fault_from_the_wrong_partition_is_an_error() {
     // Skip to the due deadline.
     let state = h.get_state(&rt);
     let (dlidx0, pidx0) = state.find_sector(&rt.store, infos[0].sector_number).unwrap();
-    let (dlidx1, pidx1) =
-        state.find_sector(&rt.store, infos[N - 1].sector_number).unwrap();
+    let (dlidx1, pidx1) = state.find_sector(&rt.store, infos[N - 1].sector_number).unwrap();
     let dlinfo = h.advance_to_deadline(&rt, dlidx0);
 
     // if these assertions no longer hold, the test must be changed

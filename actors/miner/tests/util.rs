@@ -1717,8 +1717,7 @@ impl ActorHarness {
         //let sector_arr = Sectors::load(&rt.store, &state.sectors).unwrap();
         let mut deadlines: BTreeMap<u64, Vec<SectorOnChainInfo>> = BTreeMap::new();
         for sector in sectors {
-            let (dlidx, _) =
-                state.find_sector(&rt.store, sector.sector_number).unwrap();
+            let (dlidx, _) = state.find_sector(&rt.store, sector.sector_number).unwrap();
             match deadlines.get_mut(&dlidx) {
                 Some(dl_sectors) => {
                     dl_sectors.push(sector.clone());

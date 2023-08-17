@@ -5,7 +5,7 @@ use fil_actor_miner::{
     INITIAL_PLEDGE_PROJECTION_PERIOD,
 };
 use fil_actors_runtime::{
-    runtime::{Runtime},
+    runtime::Runtime,
     test_utils::{expect_abort_contains_message, MockRuntime, ACCOUNT_ACTOR_CODE_ID},
     BURNT_FUNDS_ACTOR_ADDR, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     SYSTEM_ACTOR_ADDR,

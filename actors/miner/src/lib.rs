@@ -1155,7 +1155,7 @@ impl Actor {
                     )?;
 
                     // Compute updated sector info.
-                    let new_sector_info = update_replica_sector_info(
+                    let new_sector_info = update_existing_sector_info(
                         update.sector_info,
                         &update.activated_data,
                         &pledge_inputs,
@@ -3823,7 +3823,7 @@ where
 }
 
 // Builds a new sector info representing newly activated data in an existing sector.
-fn update_replica_sector_info(
+fn update_existing_sector_info(
     sector_info: &SectorOnChainInfo,
     activated_data: &ReplicaUpdateActivatedData,
     pledge_inputs: &NetworkPledgeInputs,
