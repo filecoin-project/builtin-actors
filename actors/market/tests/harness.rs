@@ -397,7 +397,7 @@ pub fn batch_activate_deals_raw(
 
 pub fn get_deal_proposal(rt: &MockRuntime, deal_id: DealID) -> DealProposal {
     let st: State = rt.get_state();
-    let deals = DealArray::load(&st.proposals, &rt.store).unwrap();
+    let deals = DealArray::load(&st.proposals, &DynBlockstore::wrap(rt.store())).unwrap();
     let d = deals.get(deal_id).unwrap();
     d.unwrap().clone()
 }
@@ -405,7 +405,7 @@ pub fn get_deal_proposal(rt: &MockRuntime, deal_id: DealID) -> DealProposal {
 pub fn get_pending_deal_allocation(rt: &MockRuntime, deal_id: DealID) -> AllocationID {
     let st: State = rt.get_state();
     let pending_allocations = PendingDealAllocationsMap::load(
-        &rt.store,
+        &DynBlockstore::wrap(rt.store()),
         &st.pending_deal_allocation_ids,
         PENDING_ALLOCATIONS_CONFIG,
         "pending deal allocations",
@@ -416,14 +416,16 @@ pub fn get_pending_deal_allocation(rt: &MockRuntime, deal_id: DealID) -> Allocat
 
 pub fn get_deal_state(rt: &MockRuntime, deal_id: DealID) -> DealState {
     let st: State = rt.get_state();
-    let states = DealMetaArray::load(&st.states, &rt.store).unwrap();
+    let store = DynBlockstore::wrap(rt.store());
+    let states = DealMetaArray::load(&st.states, &store).unwrap();
     let s = states.get(deal_id).unwrap();
     *s.unwrap()
 }
 
 pub fn update_last_updated(rt: &MockRuntime, deal_id: DealID, new_last_updated: ChainEpoch) {
     let st: State = rt.get_state();
-    let mut states = DealMetaArray::load(&st.states, &rt.store).unwrap();
+    let store = DynBlockstore::wrap(rt.store());
+    let mut states = DealMetaArray::load(&st.states, &store).unwrap();
     let s = *states.get(deal_id).unwrap().unwrap();
 
     states.set(deal_id, DealState { last_updated_epoch: new_last_updated, ..s }).unwrap();
@@ -433,7 +435,7 @@ pub fn update_last_updated(rt: &MockRuntime, deal_id: DealID, new_last_updated: 
 
 pub fn delete_deal_proposal(rt: &MockRuntime, deal_id: DealID) {
     let mut st: State = rt.get_state();
-    let mut deals = DealArray::load(&st.proposals, &rt.store).unwrap();
+    let mut deals = DealArray::load(&st.proposals, &DynBlockstore::wrap(rt.store())).unwrap();
     deals.delete(deal_id).unwrap();
 
     let root = deals.flush().unwrap();
@@ -767,7 +769,7 @@ pub fn publish_deals_expect_abort(
 pub fn assert_deals_not_activated(rt: &MockRuntime, _epoch: ChainEpoch, deal_ids: &[DealID]) {
     let st: State = rt.get_state();
 
-    let states = DealMetaArray::load(&st.states, &rt.store).unwrap();
+    let states = DealMetaArray::load(&st.states, &DynBlockstore::wrap(rt.store())).unwrap();
 
     for d in deal_ids {
         let opt = states.get(*d).unwrap();
@@ -862,12 +864,12 @@ pub fn assert_deal_deleted(rt: &MockRuntime, deal_id: DealID, p: DealProposal) {
     let st: State = rt.get_state();
 
     // Check that the deal_id is not in st.proposals.
-    let deals = DealArray::load(&st.proposals, &rt.store).unwrap();
+    let deals = DealArray::load(&st.proposals, &DynBlockstore::wrap(rt.store())).unwrap();
     let d = deals.get(deal_id).unwrap();
     assert!(d.is_none());
 
     // Check that the deal_id is not in st.states
-    let states = DealMetaArray::load(&st.states, &rt.store).unwrap();
+    let states = DealMetaArray::load(&st.states, &DynBlockstore::wrap(rt.store())).unwrap();
     let s = states.get(deal_id).unwrap();
     assert!(s.is_none());
 

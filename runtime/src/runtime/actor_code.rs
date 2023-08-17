@@ -1,7 +1,6 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::MethodNum;
 
@@ -23,6 +22,5 @@ pub trait ActorCode {
         // TODO: remove the clone requirement on the blockstore when we fix "replica update" to not
         // hold onto state between transactions.
         // https://github.com/filecoin-project/builtin-actors/issues/133
-        RT: Runtime,
-        RT::Blockstore: Blockstore + Clone;
+        RT: Runtime;
 }

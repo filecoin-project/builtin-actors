@@ -135,7 +135,7 @@ pub fn init_logging() -> Result<(), log::SetLoggerError> {
     pretty_env_logger::try_init()
 }
 
-pub struct MockRuntime<BS = MemoryBlockstore> {
+pub struct MockRuntime {
     pub epoch: RefCell<ChainEpoch>,
     pub miner: Address,
     pub base_fee: RefCell<TokenAmount>,
@@ -166,7 +166,7 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
 
     // VM Impl
     pub in_call: RefCell<bool>,
-    pub store: Rc<BS>,
+    pub store: Rc<Box<dyn Blockstore>>,
     pub in_transaction: RefCell<bool>,
 
     // Expectations
@@ -322,12 +322,12 @@ impl Expectations {
 
 impl Default for MockRuntime {
     fn default() -> Self {
-        Self::new(Default::default())
+        Self::new(Box::<MemoryBlockstore>::default())
     }
 }
 
-impl<BS> MockRuntime<BS> {
-    pub fn new(store: BS) -> Self {
+impl MockRuntime {
+    pub fn new(store: Box<dyn Blockstore>) -> Self {
         Self {
             epoch: Default::default(),
             miner: Address::new_id(0),
@@ -483,7 +483,7 @@ pub fn expect_abort<T: fmt::Debug>(exit_code: ExitCode, res: Result<T, ActorErro
     expect_abort_contains_message(exit_code, "", res);
 }
 
-impl<BS: Blockstore> MockRuntime<BS> {
+impl MockRuntime {
     ///// Runtime access for tests /////
 
     pub fn set_policy(&mut self, policy: Policy) {
@@ -555,7 +555,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
     ) -> Result<Option<IpldBlock>, ActorError> {
         self.in_call.replace(true);
         let prev_state = *self.state.borrow();
-        let res = A::invoke_method::<_, BS>(self, method_num, params);
+        let res = A::invoke_method(self, method_num, params);
 
         if res.is_err() {
             self.state.replace(prev_state);
@@ -807,15 +807,15 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 
     fn store_put<T: Serialize>(&self, o: &T) -> Cid {
-        self.store.put_cbor(&o, Code::Blake2b256).unwrap()
+        DynBlockstore::wrap(self.store.as_ref().as_ref()).put_cbor(&o, Code::Blake2b256).unwrap()
     }
 
     fn store_get<T: DeserializeOwned>(&self, cid: &Cid) -> T {
-        self.store.get_cbor(cid).unwrap().unwrap()
+        DynBlockstore::wrap(self.store.as_ref().as_ref()).get_cbor(cid).unwrap().unwrap()
     }
 }
 
-impl<BS> MessageInfo for MockRuntime<BS> {
+impl MessageInfo for MockRuntime {
     fn nonce(&self) -> u64 {
         0
     }
@@ -837,9 +837,7 @@ impl<BS> MessageInfo for MockRuntime<BS> {
     }
 }
 
-impl<BS: Blockstore> Runtime for MockRuntime<BS> {
-    type Blockstore = Rc<BS>;
-
+impl Runtime for MockRuntime {
     fn network_version(&self) -> NetworkVersion {
         self.network_version
     }
@@ -1120,7 +1118,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
     }
 
     fn store(&self) -> &dyn Blockstore {
-        &self.store
+        self.store.as_ref().as_ref()
     }
 
     fn send(
@@ -1294,7 +1292,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
     }
 }
 
-impl<BS> Primitives for MockRuntime<BS> {
+impl Primitives for MockRuntime {
     fn verify_signature(
         &self,
         signature: &Signature,
@@ -1391,7 +1389,7 @@ impl<BS> Primitives for MockRuntime<BS> {
     }
 }
 
-impl<BS> Verifier for MockRuntime<BS> {
+impl Verifier for MockRuntime {
     fn verify_seal(&self, seal: &SealVerifyInfo) -> anyhow::Result<()> {
         let exp = self
             .expectations
@@ -1519,7 +1517,7 @@ impl<BS> Verifier for MockRuntime<BS> {
     }
 }
 
-impl<BS> RuntimePolicy for MockRuntime<BS> {
+impl RuntimePolicy for MockRuntime {
     fn policy(&self) -> &Policy {
         &self.policy
     }

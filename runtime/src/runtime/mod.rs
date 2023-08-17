@@ -49,7 +49,6 @@ pub use vm_api::Primitives;
 /// Runtime is the VM's internal runtime object.
 /// this is everything that is accessible to actors, beyond parameters.
 pub trait Runtime: Primitives + Verifier + RuntimePolicy {
-    type Blockstore: Blockstore;
     /// The network protocol version number at the current epoch.
     fn network_version(&self) -> NetworkVersion;
 

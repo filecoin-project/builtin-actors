@@ -20,7 +20,7 @@ pub type TestContractCall<R> = ContractCall<Provider<MockProvider>, R>;
 
 pub struct TestEnv {
     evm_address: Address,
-    pub runtime: MockRuntime<TrackingBlockstore<MemoryBlockstore>>,
+    pub runtime: MockRuntime,
 }
 
 impl TestEnv {

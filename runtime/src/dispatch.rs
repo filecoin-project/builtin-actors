@@ -25,7 +25,7 @@ use crate::ActorError;
 #[macro_export]
 macro_rules! actor_dispatch {
     ($($(#[$m:meta])* $(_)? $($method:ident)|* => $func:ident $([$tag:ident])?,)*) => {
-        fn invoke_method<RT, BS>(
+        fn invoke_method<RT>(
             rt: &RT,
             method: fvm_shared::MethodNum,
             args: Option<fvm_ipld_encoding::ipld_block::IpldBlock>,

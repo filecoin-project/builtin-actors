@@ -14,6 +14,7 @@ mod util;
 use fvm_shared::bigint::Zero;
 use itertools::Itertools;
 use util::*;
+use vm_api::blockstore::DynBlockstore;
 const PERIOD_OFFSET: ChainEpoch = 100;
 
 fn setup() -> (ActorHarness, MockRuntime) {

@@ -158,7 +158,6 @@ mod tests {
     use fil_actors_evm_shared::uints::U256;
     use fil_actors_runtime::runtime::Primitives;
     use fil_actors_runtime::test_utils::EVM_ACTOR_CODE_ID;
-    use fvm_ipld_blockstore::Blockstore;
     use fvm_ipld_encoding::ipld_block::IpldBlock;
     use fvm_shared::address::Address as FilAddress;
     use fvm_shared::crypto::hash::SupportedHashes;
