@@ -4967,7 +4967,9 @@ fn activate_new_sector_infos(
 pub struct PiecesActivationInput {
     pub piece_manifests: Vec<PieceActivationManifest>,
     pub sector_expiry: ChainEpoch,
-    pub sector_number: SectorNumber
+    pub sector_number: SectorNumber,
+    sector_type: RegisteredSealProof,
+    pub expected_commd: Option<Cid>,
 }
 
 // Inputs for activating builtin market deals for one sector
@@ -5050,29 +5052,39 @@ struct ReplicaUpdateActivatedData {
 fn activate_pieces(
     rt: &impl Runtime,
     activation_inputs: Vec<PiecesActivationInput>,
-    compute_commd: bool, 
     all_or_nothing: bool,
 ) -> Result<(BatchReturn, Vec<DataActivationOutput>), ActorError> {
     // Get a flattened list of verified claims for all activated sectors
     let mut verified_claims = Vec::new();
     let mut computed_commds = Vec::new();
-    let mut deal_weights = Vec::new();
+    let mut unverified_spaces = Vec::new();
     for activation_info in activation_inputs {
         if !activation_info.pieces.is_empty() {
             let mut pieces = vec![];
             for piece_activation in sector_activation.pieces.iter() {
                 pieces.push(PieceInfo { cid: piece.cid, size: piece.size });
             }
-            
-            let computed_commd = rt.compute_unsealed_sector_cid(sector_type, &pieces).map_err(|e| {
+            let computed_commd = rt.compute_unsealed_sector_cid(activation_info.sector_type, &pieces).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_ARGUMENT, "failed to compute unsealed sector CID")?;
             })
+            // If a CommD was declared, check it matches.
+            if let Some(declared_commd) = activation_info.expected_commd {
+                if !declared_commd.eq(&computed_commd) {
+                    return Err(actor_error!(
+                        illegal_argument,
+                        "unsealed CID does not match deals for sector {}, expected {} was {}",
+                        input.info.sector_number,
+                        computed_commd,
+                        declared_commd
+                    ));
+                }
+            }
             computed_commds.push(Some(computed_commd))
         } else {
             computed_commd.push(None);
         }
         let sector_claims = vec![];
-        let mut deal_weight = BigInt::zero();
+        let mut unverified_space = BigInt::zero();
         for piece in activation_info.pieces {
             if let Some(alloc_key) = piece.verified_allocation_key {
                 sector_claims.push(
@@ -5084,31 +5096,17 @@ fn activate_pieces(
                     }
                 );
             } else {
-                deal_weight += piece.size
+                unverified_space += piece.size
             }
         }
-        deal_weights.push(deal_weight)
+        unverified_spaces.push(unverified_space)
         verified_claims.push(ext::verifreg::SectorAllocationClaims {
             sector: activation_info.sector_number,
             expiry: activation_info.sector_expiry,
             claims: sector_claims,
         });
     }
-    let verified_deal_weight = vec![BigInt::zero(); len(activation_inputs)];
-    if !verified_claims.is_empty() {
-        let claim_res: ext::verifreg::ClaimAllocationsReturn = deserialize_block(
-            extract_send_result(rt.send_simple(
-                &VERIFIED_REGISTRY_ACTOR_ADDR,
-                ext::verifreg::CLAIM_ALLOCATIONS_METHOD,
-                IpldBlock::serialize_cbor(&ext::verifreg::ClaimAllocationsParams {
-                    sectors: verified_claims,
-                    all_or_nothing,
-                })?,
-                TokenAmount::zero(),
-            ))
-            .context(format!("error claiming allocations on batch {:?}", activation_infos))?
-        )?
-    }
+    let claim_res = batch_claim_allocations(rt, verified_claims)?;
 
     if all_or_nothing {
         assert!(
@@ -5118,20 +5116,18 @@ fn activate_pieces(
         );
     }
 
-
-    // reassociate the verified claims with corresponding DealActivation information
-    let activation_and_claim_results = computed_commds
+    let activation_outputs = claim_res.sector_claims
         .iter()
-        .zip(claim_res.sector_claims)
+        .zip(claim_res.sector_results.successess(computed_commds))
         .iter()
-        .zip()
-        .map(|(sector_deals, sector_claim)| DataActivationOutput {
-            unverified_space: sector_deals.nonverified_deal_space.clone(),
+        .zip(claim_res.sector_results.successess(unverified_spaces))
+        .map(|((sector_claim, computed_commd), unverified_space)| DataActivationOutput {
+            unverified_space,
             verified_space: sector_claim.claimed_space,
-            unsealed_cid: sector_deals.unsealed_cid,
-        })
-        .collect();
+            unsealed_cid: computed_commd,
+        }).collect();
 
+    Ok((claim_res.sector_results, activation_outputs))
 }
 
 fn activate_deals(
