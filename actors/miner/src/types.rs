@@ -168,13 +168,13 @@ pub struct SectorDataActivationManifest {
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ProveCommit2Params {
-    sector_data_activations: Vec<SectorDataActivationManifest>,
+    pub sector_data_activations: Vec<SectorDataActivationManifest>,
     // XXX to support aggregate proof here too we just need to make proofs
     // optional and add another optional type for the aggregate proof 
     #[serde(with = "strict_bytes")]
-    proofs: Vec<Vec<u8>>
-    require_activation_success: bool,
-    require_notification_success: bool,
+    pub proofs: Vec<Vec<u8>>
+    pub require_activation_success: bool,
+    pub require_notification_success: bool,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]

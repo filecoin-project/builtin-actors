@@ -1728,16 +1728,12 @@ impl Actor {
         Ok(())
     }
 
-
-
-
-
     fn prove_commit2(
         rt: &impl Runtime,
         params: ProveCommit2Params,
     ) -> Result<(), ActorError> {
-        // XXX should requireActivationSuccess apply to precommit validation / proof correctness 
-        //  
+        // XXX should requireActivationSuccess apply to precommit validation / proof correctness ?
+        // Or just data activation?
         let state: State = rt.state()?;
         let info = get_miner_info(rt.store(), &state)?;
         rt.validate_immediate_caller_is(
@@ -1768,36 +1764,35 @@ impl Actor {
                 "no valid precommits specified"
             ));
         }
-        let valid_proof_infos = batch_return.successes(proof_infos);
-        // (data_activation, precommit)
-        let valid_sector_activations = batch_return.successes(params.sector_data_activations).zip(batch_return.successes(precommits).iter());
+        let valid_proof_infos = batch_return.successes(&proof_infos);
+        let valid_sector_activations = batch_return.successes(params.sector_data_activations).zip(batch_return.successes(&precommits).iter()); // (data_activation, precommit)
 
-        // Filter by succeeding proofs
-        // XXX this is skipped by prove commit aggregate which passes or fails All-or-nothing
+        // Prove
+        // XXX this is skipped by prove commit aggregate which passes or fails all-or-nothing
         let res = rt.batch_verify_seals(&valid_proof_infos).map_err(|e| format!("failed to batch verify: {}", e))?;
-        let mut sector_activations_to_check = vec![];
+        let mut proven_sector_activations = vec![];
         for (i, valid) in res.iter().enumerate() {
             if valid {
                 sector_activations_to_check.push(valid_sector_activations[i])
             }
         }
 
-        // For each sector 
-        //   1. Compute CommD to ensure inclusion of all pieces
-        //   2. Activate data 
-        //   Any failure below here fails the whole message 
-        //   3. Activate sector infos in state
-        //   4. Notify and data consumers 
-        let mut activations_and_precommits_to_confirm = vec![]
+        // Compute CommD and Activate data 
+        let data_activations = proven_sector_activations.iter().map(|(activation, precommit)| {
+            PiecesActivationInput {
+                piece_manifests: activation.pieces,
+                sector_expiry: precommit.info.expiration,
+                sector_number: precommit.info.sector_number,
+                sector_type: precommit.info.seal_proof,
+                expected_commd: Some(precommit.info.unsealed_cid.get_cid(precommit.info.seal_proof)?),
+            }
+        }).collect();
+        let (batch_return, data_activations) = activate_pieces(rt, &data_activations, compute_commd)?;
+        let successful_sector_activations = batch_return.successess(&proven_sector_activations);
+        let successful_precommits = successful_sector_activations.iter().map(|(_, second)| *second).collect();
 
-        // 2. Activate data
-
-//        let (batch_return, data_activations) = activate_manifests(rt, &data_activations, compute_commd)?;
-
-
-
-        /* 
-                let pledge_inputs = NetworkPledgeInputs {
+        // Activate sector info state
+        let pledge_inputs = NetworkPledgeInputs {
             network_qap: params.quality_adj_power_smoothed,
             network_baseline: params.reward_baseline_power,
             circulating_supply: rt.total_fil_circ_supply(),
@@ -1805,11 +1800,19 @@ impl Actor {
         };
         activate_new_sector_infos(
             rt,
-            successful_activations,
+            successful_precommits,
             data_activations,
             &pledge_inputs,
             &info,
-        )
+        );
+
+        // Notify data consumers
+        notify_data_consumers(rt, successful_sector_activations);
+
+        /*
+            // for prove_commit_aggregates
+            burn_funds(rt, aggregate_fee)?;
+            state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
          */
 
         Ok(())
@@ -4348,7 +4351,7 @@ fn validate_precommits(
                 log::warn!(
                     "skipping commitment for sector {}, precommit has deal ids which are disallowed by this message",
                     precommit.info.sector_number,
-                )
+                );
                 fail_validation = true;
             }
         }
@@ -5066,7 +5069,7 @@ fn activate_pieces(
             }
             let computed_commd = rt.compute_unsealed_sector_cid(activation_info.sector_type, &pieces).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_ARGUMENT, "failed to compute unsealed sector CID")?;
-            })
+            });
             // If a CommD was declared, check it matches.
             if let Some(declared_commd) = activation_info.expected_commd {
                 if !declared_commd.eq(&computed_commd) {
@@ -5099,7 +5102,7 @@ fn activate_pieces(
                 unverified_space += piece.size
             }
         }
-        unverified_spaces.push(unverified_space)
+        unverified_spaces.push(unverified_space);
         verified_claims.push(ext::verifreg::SectorAllocationClaims {
             sector: activation_info.sector_number,
             expiry: activation_info.sector_expiry,
@@ -5305,7 +5308,7 @@ fn batch_claim_allocations(rt: &impl Runtime, verified_claims: Vec<ext::verifreg
             claim_res
         }
     };
-    claim_res
+    Ok(claim_res)
 }
 
 // Network inputs to calculation of sector pledge and associated parameters.
