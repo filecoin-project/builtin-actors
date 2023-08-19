@@ -133,6 +133,75 @@ pub struct ProveCommitSectorParams {
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct DataActivationNotification {
+    pub address: Address,
+    #[serde(with = "strict_bytes")]
+    pub payload: Vec<u8>,    
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct AllocationKey {
+    pub id AllocationID,
+    pub client Address,
+}
+
+// Data to aci
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct PieceActivationManifest {
+    pub cid: Cid,
+    pub size: PaddedPieceSize,
+    pub verified_allocation_key: Option<AllocationKey>,
+    pub notify: Vec<DataActivationNotifictaion>,
+}
+
+// Data to activate a commitment to one sector and its data.
+// All non-zero pieces of data must be specified, even those
+// not being notified to a data consumer or claiming a FIL+ activation.
+// XXX: we should consider fast tracking the special case where there is only
+//  one piece not claiming or notifying other actors to allow an empty piece vector.
+//  We could interpret this as a single piece, size == sector size, cid == commD, empty allocation empty notify vector
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct SectorDataActivationManifest {
+    pub sector_number: SectorNumber,
+    pub pieces: Vec<PieceActivationManifest>,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct ProveCommit2Params {
+    sector_data_activations: Vec<SectorDataActivationManifest>,
+    // XXX to support aggregate proof here too we just need to make proofs
+    // optional and add another optional type for the aggregate proof 
+    #[serde(with = "strict_bytes")]
+    proofs: Vec<Vec<u8>>
+    require_activation_success: bool,
+    require_notification_success: bool,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct DataActivationNotificationReturn {
+    code: ExitCode,
+    data: Vec<u8>,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct PieceActivationReturn {
+    claimed: bool,
+    notifications: Vec<DataActivationNotificationReturn>
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct SectorActivationReturn {
+    activated: bool,
+    power: StoragePower,
+    pieces: Vec<PieceActivationManifest>,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct ProveCommit2Return {
+    pub sectors: Vec<SectorActivationReturn>,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct CheckSectorProvenParams {
     pub sector_number: SectorNumber,
 }

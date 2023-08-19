@@ -827,7 +827,7 @@ impl Actor {
         }
 
         let no_length_checks: Vec<Option<usize>> = vec![None; precommits.len()];
-        let (batch_return, svis) = validate_precommits(rt, &precommits, &no_length_checks)?;
+        let (batch_return, svis) = validate_precommits(rt, &precommits, &no_length_checks, false)?;
         let svis = svis.into_iter().map(|x| x.to_aggregate_seal_verify_info()).collect();
 
         let miner_actor_id: u64 = if let Payload::ID(i) = rt.message().receiver().payload() {
@@ -1728,6 +1728,93 @@ impl Actor {
         Ok(())
     }
 
+
+
+
+
+    fn prove_commit2(
+        rt: &impl Runtime,
+        params: ProveCommit2Params,
+    ) -> Result<(), ActorError> {
+        // XXX should requireActivationSuccess apply to precommit validation / proof correctness 
+        //  
+        let state: State = rt.state()?;
+        let info = get_miner_info(rt.store(), &state)?;
+        rt.validate_immediate_caller_is(
+            info.control_addresses.iter().chain(&[info.worker, info.owner]),
+        )?;
+        let store = rt.store();
+
+        let sector_numbers = params.sector_activations.iter().map(|sa| sa.sector_number).collect();
+        let precommits =
+            state.get_all_precommitted_sectors(store, sector_numbers).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get precommits")
+            })?;
+
+        if precommits.is_empty() {
+            return Err(actor_error!(
+                illegal_argument,
+                "zero precommits read from state"
+            ));
+        }
+
+        assert_eq!(len(params.sector_activations), len(params.proofs));
+        let proof_lengths = params.proofs.iter().map(|p| len(p)).collect();
+
+        let (batch_return, proof_infos) = validate_precommits(rt, &precommits, &proof_lengths, true)?;
+        if batch_return.success_count == 0 {
+            return Err(actor_error!(
+                illegal_argument,
+                "no valid precommits specified"
+            ));
+        }
+        let valid_proof_infos = batch_return.successes(proof_infos);
+        // (data_activation, precommit)
+        let valid_sector_activations = batch_return.successes(params.sector_data_activations).zip(batch_return.successes(precommits).iter());
+
+        // Filter by succeeding proofs
+        // XXX this is skipped by prove commit aggregate which passes or fails All-or-nothing
+        let res = rt.batch_verify_seals(&valid_proof_infos).map_err(|e| format!("failed to batch verify: {}", e))?;
+        let mut sector_activations_to_check = vec![];
+        for (i, valid) in res.iter().enumerate() {
+            if valid {
+                sector_activations_to_check.push(valid_sector_activations[i])
+            }
+        }
+
+        // For each sector 
+        //   1. Compute CommD to ensure inclusion of all pieces
+        //   2. Activate data 
+        //   Any failure below here fails the whole message 
+        //   3. Activate sector infos in state
+        //   4. Notify and data consumers 
+        let mut activations_and_precommits_to_confirm = vec![]
+
+        // 2. Activate data
+
+//        let (batch_return, data_activations) = activate_manifests(rt, &data_activations, compute_commd)?;
+
+
+
+        /* 
+                let pledge_inputs = NetworkPledgeInputs {
+            network_qap: params.quality_adj_power_smoothed,
+            network_baseline: params.reward_baseline_power,
+            circulating_supply: rt.total_fil_circ_supply(),
+            epoch_reward: params.reward_smoothed,
+        };
+        activate_new_sector_infos(
+            rt,
+            successful_activations,
+            data_activations,
+            &pledge_inputs,
+            &info,
+        )
+         */
+
+        Ok(())
+    }
+
     /// Checks state of the corresponding sector pre-commitment, then schedules the proof to be verified in bulk
     /// by the power actor.
     /// If valid, the power actor will call ConfirmSectorProofsValid at the end of the same epoch as this message.
@@ -1756,7 +1843,7 @@ impl Actor {
 
         let proof_lengths = vec![Some(params.proof.len())];
         let precommits = vec![precommit.clone()];
-        let (batch_return, svis) = validate_precommits(rt, &precommits, &proof_lengths)?;
+        let (batch_return, svis) = validate_precommits(rt, &precommits, &proof_lengths, false)?;
         if batch_return.success_count != 1 {
             return Err(actor_error!(
                 illegal_argument,
@@ -4235,6 +4322,7 @@ fn validate_precommits(
     rt: &impl Runtime,
     precommits: &[SectorPreCommitOnChainInfo],
     proof_lengths: &[Option<usize>],
+    disallow_deal_ids: bool
 ) -> Result<(BatchReturn, Vec<SectorSealProofInput>), ActorError> {
     if precommits.is_empty() {
         return Ok((BatchReturn::empty(), vec![]));
@@ -4251,6 +4339,19 @@ fn validate_precommits(
         )
     })?;
     for (i, precommit) in precommits.iter().enumerate() {
+        // We need to record failures and continue validation rather than continuing the loop in order to:
+        // 1. compute svi
+        // 2. check for whole message failure conditions
+        let mut fail_validation = false;
+        if disallow_deal_ids {
+            if !precommit.deal_ids.is_empty() {
+                log::warn!(
+                    "skipping commitment for sector {}, precommit has deal ids which are disallowed by this message",
+                    precommit.info.sector_number,
+                )
+                fail_validation = true;
+            }
+        }
         let msd =
             max_prove_commit_duration(rt.policy(), precommit.info.seal_proof).ok_or_else(|| {
                 actor_error!(
@@ -4267,10 +4368,9 @@ fn validate_precommits(
                 rt.curr_epoch(),
                 prove_commit_due,
             );
-            batch.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
-        } else {
-            batch.add_success();
+            fail_validation = true
         }
+
         // All seal proof types should match
         if i >= 1 {
             let prev_seal_proof = precommits[i - 1].info.seal_proof;
@@ -4327,6 +4427,12 @@ fn validate_precommits(
             sealed_cid: precommit.info.sealed_cid,
             unsealed_cid,
         });
+
+        if fail_validation {
+            batch.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
+        } else {
+            batch.add_success();
+        }
     }
     Ok((batch.gen(), verify_infos))
 }
@@ -4858,6 +4964,12 @@ fn activate_new_sector_infos(
     Ok(())
 }
 
+pub struct PiecesActivationInput {
+    pub piece_manifests: Vec<PieceActivationManifest>,
+    pub sector_expiry: ChainEpoch,
+    pub sector_number: SectorNumber
+}
+
 // Inputs for activating builtin market deals for one sector
 #[derive(Debug, Clone)]
 pub struct DealsActivationInput {
@@ -4870,7 +4982,7 @@ pub struct DealsActivationInput {
 // Inputs for activating builtin market deals for one sector
 // and optionally confirming CommD for this sector matches expectation
 struct DataActivationInput {
-    info: DealsActivationInput,
+    info: DealsActivationInput, // XXX this could be a variant type over Piece and Deals Activation Input and then activate_deals could become activate_data and take in either 
     expected_commd: Option<Cid>,
 }
 
@@ -4933,6 +5045,93 @@ struct ReplicaUpdateActivatedData {
     deals: Vec<DealID>,
     unverified_space: BigInt,
     verified_space: BigInt,
+}
+
+fn activate_pieces(
+    rt: &impl Runtime,
+    activation_inputs: Vec<PiecesActivationInput>,
+    compute_commd: bool, 
+    all_or_nothing: bool,
+) -> Result<(BatchReturn, Vec<DataActivationOutput>), ActorError> {
+    // Get a flattened list of verified claims for all activated sectors
+    let mut verified_claims = Vec::new();
+    let mut computed_commds = Vec::new();
+    let mut deal_weights = Vec::new();
+    for activation_info in activation_inputs {
+        if !activation_info.pieces.is_empty() {
+            let mut pieces = vec![];
+            for piece_activation in sector_activation.pieces.iter() {
+                pieces.push(PieceInfo { cid: piece.cid, size: piece.size });
+            }
+            
+            let computed_commd = rt.compute_unsealed_sector_cid(sector_type, &pieces).map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_ARGUMENT, "failed to compute unsealed sector CID")?;
+            })
+            computed_commds.push(Some(computed_commd))
+        } else {
+            computed_commd.push(None);
+        }
+        let sector_claims = vec![];
+        let mut deal_weight = BigInt::zero();
+        for piece in activation_info.pieces {
+            if let Some(alloc_key) = piece.verified_allocation_key {
+                sector_claims.push(
+                    ext::verifreg::AllocationClaim {
+                        client: alloc_key.client,
+                        allocation_id: alloc_key.id,
+                        data: piece.cid,
+                        size: piece.size,
+                    }
+                );
+            } else {
+                deal_weight += piece.size
+            }
+        }
+        deal_weights.push(deal_weight)
+        verified_claims.push(ext::verifreg::SectorAllocationClaims {
+            sector: activation_info.sector_number,
+            expiry: activation_info.sector_expiry,
+            claims: sector_claims,
+        });
+    }
+    let verified_deal_weight = vec![BigInt::zero(); len(activation_inputs)];
+    if !verified_claims.is_empty() {
+        let claim_res: ext::verifreg::ClaimAllocationsReturn = deserialize_block(
+            extract_send_result(rt.send_simple(
+                &VERIFIED_REGISTRY_ACTOR_ADDR,
+                ext::verifreg::CLAIM_ALLOCATIONS_METHOD,
+                IpldBlock::serialize_cbor(&ext::verifreg::ClaimAllocationsParams {
+                    sectors: verified_claims,
+                    all_or_nothing,
+                })?,
+                TokenAmount::zero(),
+            ))
+            .context(format!("error claiming allocations on batch {:?}", activation_infos))?
+        )?
+    }
+
+    if all_or_nothing {
+        assert!(
+            claim_res.sector_results.all_ok() || claim_res.sector_results.success_count == 0,
+            "batch return of claim allocations partially succeeded but request was all_or_nothing {:?}",
+            claim_res
+        );
+    }
+
+
+    // reassociate the verified claims with corresponding DealActivation information
+    let activation_and_claim_results = computed_commds
+        .iter()
+        .zip(claim_res.sector_claims)
+        .iter()
+        .zip()
+        .map(|(sector_deals, sector_claim)| DataActivationOutput {
+            unverified_space: sector_deals.nonverified_deal_space.clone(),
+            verified_space: sector_claim.claimed_space,
+            unsealed_cid: sector_deals.unsealed_cid,
+        })
+        .collect();
+
 }
 
 fn activate_deals(
@@ -5060,33 +5259,7 @@ fn batch_activate_deals_and_claim_allocations(
         });
     }
 
-    let claim_res = match verified_claims.iter().all(|sector| sector.claims.is_empty()) {
-        // Short-circuit the call if there are no claims,
-        // but otherwise send a group for each sector (even if empty) to ease association of results.
-        true => ext::verifreg::ClaimAllocationsReturn {
-            sector_results: BatchReturn::ok(verified_claims.len() as u32),
-            sector_claims: vec![
-                ext::verifreg::SectorClaimSummary { claimed_space: BigInt::zero() };
-                verified_claims.len()
-            ],
-        },
-        false => {
-            let claim_raw = extract_send_result(rt.send_simple(
-                &VERIFIED_REGISTRY_ACTOR_ADDR,
-                ext::verifreg::CLAIM_ALLOCATIONS_METHOD,
-                IpldBlock::serialize_cbor(&ext::verifreg::ClaimAllocationsParams {
-                    sectors: verified_claims,
-                    all_or_nothing: true,
-                })?,
-                TokenAmount::zero(),
-            ))
-            .context(format!("error claiming allocations on batch {:?}", activation_infos))?;
-
-            let claim_res: ext::verifreg::ClaimAllocationsReturn = deserialize_block(claim_raw)?;
-            claim_res
-        }
-    };
-
+    let claim_res = batch_claim_allocations(rt, verified_claims)?;
     assert!(
         claim_res.sector_results.all_ok() || claim_res.sector_results.success_count == 0,
         "batch return of claim allocations partially succeeded but request was all_or_nothing {:?}",
@@ -5107,6 +5280,36 @@ fn batch_activate_deals_and_claim_allocations(
 
     // Return the deal spaces for activated sectors only
     Ok((batch_activation_res.activation_results, activation_and_claim_results))
+}
+
+fn batch_claim_allocations(rt: &impl Runtime, verified_claims: Vec<ext::verifreg::SectorAllocationClaims>) -> Result<ext::verifreg::ClaimAllocationsReturn, ActorError> {
+    let claim_res = match verified_claims.iter().all(|sector| sector.claims.is_empty()) {
+        // Short-circuit the call if there are no claims,
+        // but otherwise send a group for each sector (even if empty) to ease association of results.
+        true => ext::verifreg::ClaimAllocationsReturn {
+            sector_results: BatchReturn::ok(verified_claims.len() as u32),
+            sector_claims: vec![
+                ext::verifreg::SectorClaimSummary { claimed_space: BigInt::zero() };
+                verified_claims.len()
+            ],
+        },
+        false => {
+            let claim_raw = extract_send_result(rt.send_simple(
+                &VERIFIED_REGISTRY_ACTOR_ADDR,
+                ext::verifreg::CLAIM_ALLOCATIONS_METHOD,
+                IpldBlock::serialize_cbor(&ext::verifreg::ClaimAllocationsParams {
+                    sectors: verified_claims,
+                    all_or_nothing: true,
+                })?,
+                TokenAmount::zero(),
+            ))
+            .context(format!("error claiming allocations on batch"))?;
+
+            let claim_res: ext::verifreg::ClaimAllocationsReturn = deserialize_block(claim_raw)?;
+            claim_res
+        }
+    };
+    claim_res
 }
 
 // Network inputs to calculation of sector pledge and associated parameters.
