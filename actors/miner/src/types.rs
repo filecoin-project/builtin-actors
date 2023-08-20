@@ -3,20 +3,24 @@
 
 use cid::Cid;
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{strict_bytes, BytesDe};
+use fvm_ipld_encoding::{tuple::*, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
+use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
     PoStProof, RegisteredPoStProof, RegisteredSealProof, RegisteredUpdateProof, SectorNumber,
     SectorSize, StoragePower,
 };
 use fvm_shared::smooth::FilterEstimate;
+use fvm_shared::ActorID;
 
+use crate::ext::verifreg::AllocationID;
 use fil_actors_runtime::DealWeight;
 
 use crate::commd::CompactCommD;
@@ -135,14 +139,13 @@ pub struct ProveCommitSectorParams {
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct DataActivationNotification {
     pub address: Address,
-    #[serde(with = "strict_bytes")]
-    pub payload: Vec<u8>,    
+    pub payload: RawBytes,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct AllocationKey {
-    pub id AllocationID,
-    pub client Address,
+    pub id: AllocationID,
+    pub client: ActorID,
 }
 
 // Data to aci
@@ -151,7 +154,7 @@ pub struct PieceActivationManifest {
     pub cid: Cid,
     pub size: PaddedPieceSize,
     pub verified_allocation_key: Option<AllocationKey>,
-    pub notify: Vec<DataActivationNotifictaion>,
+    pub notify: Vec<DataActivationNotification>,
 }
 
 // Data to activate a commitment to one sector and its data.
@@ -170,9 +173,8 @@ pub struct SectorDataActivationManifest {
 pub struct ProveCommit2Params {
     pub sector_data_activations: Vec<SectorDataActivationManifest>,
     // XXX to support aggregate proof here too we just need to make proofs
-    // optional and add another optional type for the aggregate proof 
-    #[serde(with = "strict_bytes")]
-    pub proofs: Vec<Vec<u8>>
+    // optional and add another optional type for the aggregate proof
+    pub proofs: Vec<RawBytes>,
     pub require_activation_success: bool,
     pub require_notification_success: bool,
 }
@@ -186,7 +188,7 @@ pub struct DataActivationNotificationReturn {
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct PieceActivationReturn {
     claimed: bool,
-    notifications: Vec<DataActivationNotificationReturn>
+    notifications: Vec<DataActivationNotificationReturn>,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
