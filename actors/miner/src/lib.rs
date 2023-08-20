@@ -1782,7 +1782,7 @@ impl Actor {
                 info.to_seal_verify_info(miner_actor_id, proof.to_vec())
             })
             .collect();
-        let valid_sector_activations: Vec<(
+        let eligible_sector_activations: Vec<(
             SectorDataActivationManifest,
             SectorPreCommitOnChainInfo,
         )> = batch_return
@@ -1799,7 +1799,7 @@ impl Actor {
         // XXX this is skipped by prove commit aggregate which passes or fails all-or-nothing
         for (i, valid) in res.iter().enumerate() {
             if *valid {
-                proven_sector_activations.push(valid_sector_activations[i].clone())
+                proven_sector_activations.push(eligible_sector_activations[i].clone())
             }
         }
 
@@ -4384,14 +4384,12 @@ fn validate_precommits(
         // 1. compute svi
         // 2. check for whole message failure conditions
         let mut fail_validation = false;
-        if disallow_deal_ids {
-            if !precommit.info.deal_ids.is_empty() {
-                log::warn!(
-                    "skipping commitment for sector {}, precommit has deal ids which are disallowed by this message",
-                    precommit.info.sector_number,
-                );
-                fail_validation = true;
-            }
+        if disallow_deal_ids && !precommit.info.deal_ids.is_empty() {
+            log::warn!(
+                "skipping commitment for sector {}, precommit has deal ids which are disallowed by this message",
+                precommit.info.sector_number,
+            );
+            fail_validation = true;
         }
         let msd =
             max_prove_commit_duration(rt.policy(), precommit.info.seal_proof).ok_or_else(|| {
@@ -5347,7 +5345,7 @@ fn batch_claim_allocations(
                 })?,
                 TokenAmount::zero(),
             ))
-            .context(format!("error claiming allocations on batch"))?;
+            .context("error claiming allocations on batch")?;
 
             let claim_res: ext::verifreg::ClaimAllocationsReturn = deserialize_block(claim_raw)?;
             claim_res
