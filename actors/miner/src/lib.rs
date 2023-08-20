@@ -1739,12 +1739,12 @@ impl Actor {
         )?;
         let store = rt.store();
 
-        let sector_numbers = BitField::try_from_bits(
-            params.sector_data_activations.iter().map(|sa| sa.sector_number).collect(),
-        )
-        .map_err(|_| actor_error!(illegal_argument, "invalid sector numbers in parameters"))?;
+        let sector_numbers: Vec<u64> =
+            params.sector_data_activations.iter().map(|sa| sa.sector_number).collect();
+        let sector_numbers_bf = BitField::try_from_bits(sector_numbers)
+            .map_err(|_| actor_error!(illegal_argument, "invalid sector numbers in parameters"))?;
         let precommits =
-            state.get_all_precommitted_sectors(store, &sector_numbers).map_err(|e| {
+            state.get_all_precommitted_sectors(store, &sector_numbers_bf).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to get precommits")
             })?;
 
@@ -1788,7 +1788,7 @@ impl Actor {
             .successes(&params.sector_data_activations)
             .iter()
             .zip(batch_return.successes(&precommits))
-            .map(|(x, y)| (**x, *y))
+            .map(|(x, y)| ((*x).clone(), y.clone()))
             .collect(); // (data_activation, precommit)
 
         let res = rt.batch_verify_seals(&valid_proof_infos).map_err(|e| {
@@ -1798,25 +1798,27 @@ impl Actor {
         // XXX this is skipped by prove commit aggregate which passes or fails all-or-nothing
         for (i, valid) in res.iter().enumerate() {
             if *valid {
-                proven_sector_activations.push(valid_sector_activations[i])
+                proven_sector_activations.push(valid_sector_activations[i].clone())
             }
         }
 
         // Compute CommD and Activate data
-        let data_activations: Vec<PiecesActivationInput> = proven_sector_activations
-            .iter()
-            .map(|(activation, precommit)| {
-                Ok(PiecesActivationInput {
-                    piece_manifests: activation.pieces,
-                    sector_expiry: precommit.info.expiration,
-                    sector_number: precommit.info.sector_number,
-                    sector_type: precommit.info.seal_proof,
-                    expected_commd: Some(
-                        precommit.info.unsealed_cid.get_cid(precommit.info.seal_proof)?,
-                    ),
+        let maybe_data_activations: Result<Vec<PiecesActivationInput>, ActorError> =
+            proven_sector_activations
+                .iter()
+                .map(|(activation, precommit)| -> Result<PiecesActivationInput, ActorError> {
+                    Ok(PiecesActivationInput {
+                        piece_manifests: activation.pieces.clone(),
+                        sector_expiry: precommit.info.expiration,
+                        sector_number: precommit.info.sector_number,
+                        sector_type: precommit.info.seal_proof,
+                        expected_commd: Some(
+                            precommit.info.unsealed_cid.get_cid(precommit.info.seal_proof)?,
+                        ),
+                    })
                 })
-            })
-            .collect()?;
+                .collect();
+        let data_activations = maybe_data_activations?;
         let (batch_return, data_activations) =
             activate_pieces(rt, data_activations, params.require_activation_success)?;
         let successful_sector_activations = batch_return.successes(&proven_sector_activations);
@@ -1839,7 +1841,7 @@ impl Actor {
             data_activations,
             &pledge_inputs,
             &info,
-        );
+        )?;
 
         // Notify data consumers: XXX TODO
         // notify_data_consumers(rt, successful_sector_activations);
@@ -5163,8 +5165,8 @@ fn activate_pieces(
         .zip(claim_res.sector_results.successes(&computed_commds))
         .zip(claim_res.sector_results.successes(&unverified_spaces))
         .map(|((sector_claim, computed_commd), unverified_space)| DataActivationOutput {
-            unverified_space: *unverified_space,
-            verified_space: sector_claim.claimed_space,
+            unverified_space: unverified_space.clone(),
+            verified_space: sector_claim.claimed_space.clone(),
             unsealed_cid: *computed_commd,
         })
         .collect();

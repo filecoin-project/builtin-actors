@@ -136,20 +136,20 @@ pub struct ProveCommitSectorParams {
     pub proof: Vec<u8>,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
 pub struct DataActivationNotification {
     pub address: Address,
     pub payload: RawBytes,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
 pub struct AllocationKey {
     pub id: AllocationID,
     pub client: ActorID,
 }
 
 // Data to aci
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
 pub struct PieceActivationManifest {
     pub cid: Cid,
     pub size: PaddedPieceSize,
@@ -163,7 +163,7 @@ pub struct PieceActivationManifest {
 // XXX: we should consider fast tracking the special case where there is only
 //  one piece not claiming or notifying other actors to allow an empty piece vector.
 //  We could interpret this as a single piece, size == sector size, cid == commD, empty allocation empty notify vector
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
 pub struct SectorDataActivationManifest {
     pub sector_number: SectorNumber,
     pub pieces: Vec<PieceActivationManifest>,
