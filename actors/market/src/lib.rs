@@ -752,7 +752,17 @@ impl Actor {
                 let deal_ids = st.get_deals_for_epoch(rt.store(), i)?;
 
                 for deal_id in deal_ids {
-                    let deal_proposal = st.get_proposal(rt.store(), deal_id)?;
+                    let deal_proposal = match st.get_proposal(rt.store(), deal_id) {
+                        Ok(dp) => dp,
+                        Err(err) => {
+                            if err.exit_code() == EX_DEAL_EXPIRED {
+                                // fine: deal may have expired and been deleted during synchronous PDU call
+                                continue;
+                            } else {
+                                return Err(err);
+                            }
+                        }
+                    };
                     let dcid = rt_deal_cid(rt, &deal_proposal)?;
 
                     let (state, maybe_slashed) = st.get_active_deal_or_cleanup(
