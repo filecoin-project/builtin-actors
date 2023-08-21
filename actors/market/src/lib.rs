@@ -984,6 +984,7 @@ impl Actor {
         let mut terminated_deals: Vec<DealID> = Vec::new();
 
         rt.transaction(|st: &mut State, rt| {
+            let mut new_deal_states: Vec<(DealID, DealState)> = Vec::new();
             for deal_id in params.deal_ids {
                 let deal_proposal = st.get_proposal(rt.store(), deal_id)?;
                 let dcid = rt_deal_cid(rt, &deal_proposal)?;
@@ -1018,18 +1019,12 @@ impl Actor {
                     st.remove_completed_deal(rt.store(), deal_id)?;
                     terminated_deals.push(deal_id);
                 } else {
-                    if !slash_amount.is_zero() {
-                        return Err(actor_error!(
-                            illegal_state,
-                            "continuing deal {} should not be slashed",
-                            deal_id
-                        ));
-                    }
-
                     deal_state.last_updated_epoch = curr_epoch;
-                    st.put_deal_states(rt.store(), &[(deal_id, deal_state)])?;
+                    new_deal_states.push((deal_id, deal_state));
                 }
             }
+
+            st.put_deal_states(rt.store(), &new_deal_states)?;
             Ok(())
         })?;
 
