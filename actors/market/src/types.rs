@@ -259,6 +259,7 @@ pub struct ProcessDealsParams {
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 pub struct ProcessDealsReturn {
+    pub expired_deals: Vec<DealID>,
     pub terminated_deals: Vec<DealID>,
     pub total_slashed: TokenAmount,
 }

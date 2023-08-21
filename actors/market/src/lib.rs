@@ -981,6 +981,7 @@ impl Actor {
     ) -> Result<ProcessDealsReturn, ActorError> {
         let curr_epoch = rt.curr_epoch();
         let mut total_slashed = TokenAmount::zero();
+        let mut expired_deals: Vec<DealID> = Vec::new();
         let mut terminated_deals: Vec<DealID> = Vec::new();
 
         rt.transaction(|st: &mut State, rt| {
@@ -988,6 +989,7 @@ impl Actor {
             for deal_id in params.deal_ids {
                 let deal_proposal = st.get_proposal(rt.store(), deal_id)?;
                 let dcid = rt_deal_cid(rt, &deal_proposal)?;
+
                 let (deal_state, slashed) = st.get_active_deal_or_cleanup(
                     rt.store(),
                     curr_epoch,
@@ -1001,7 +1003,7 @@ impl Actor {
                     None => {
                         // deal was cleaned up
                         total_slashed += slashed;
-                        terminated_deals.push(deal_id);
+                        expired_deals.push(deal_id);
                         continue;
                     }
                 };
@@ -1037,7 +1039,7 @@ impl Actor {
             ))?;
         }
 
-        Ok(ProcessDealsReturn { terminated_deals, total_slashed })
+        Ok(ProcessDealsReturn { terminated_deals, expired_deals, total_slashed })
     }
 }
 
