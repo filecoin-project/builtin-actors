@@ -780,18 +780,13 @@ impl Actor {
                         })?;
                     }
 
-                    let (slash_amount, remove_deal) =
-                        st.process_deal_update(rt.store(), &state, &deal_proposal, curr_epoch)?;
-
-                    if slash_amount.is_negative() {
-                        return Err(actor_error!(
-                            illegal_state,
-                            format!(
-                                "computed negative slash amount {} for deal {}",
-                                slash_amount, deal_id
-                            )
-                        ));
-                    }
+                    let (slash_amount, remove_deal) = st.process_deal_update(
+                        rt.store(),
+                        &state,
+                        &deal_proposal,
+                        &dcid,
+                        curr_epoch,
+                    )?;
 
                     if remove_deal {
                         amount_slashed += slash_amount;
@@ -1010,18 +1005,13 @@ impl Actor {
                     }
                 };
 
-                let (slash_amount, remove_deal) =
-                    st.process_deal_update(rt.store(), &deal_state, &deal_proposal, curr_epoch)?;
-
-                if slash_amount.is_negative() {
-                    return Err(actor_error!(
-                        illegal_state,
-                        format!(
-                            "computed negative slash amount {} for deal {}",
-                            slash_amount, deal_id
-                        )
-                    ));
-                }
+                let (slash_amount, remove_deal) = st.process_deal_update(
+                    rt.store(),
+                    &deal_state,
+                    &deal_proposal,
+                    &dcid,
+                    curr_epoch,
+                )?;
 
                 if remove_deal {
                     total_slashed += slash_amount;

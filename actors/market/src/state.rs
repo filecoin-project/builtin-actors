@@ -663,6 +663,7 @@ impl State {
         store: &BS,
         state: &DealState,
         deal: &DealProposal,
+        deal_cid: &Cid,
         epoch: ChainEpoch,
     ) -> Result<(TokenAmount, bool), ActorError>
     where
@@ -670,6 +671,16 @@ impl State {
     {
         let ever_updated = state.last_updated_epoch != EPOCH_UNDEFINED;
         let ever_slashed = state.slash_epoch != EPOCH_UNDEFINED;
+
+        if !ever_updated {
+            self.remove_pending_deal(store, *deal_cid)?.ok_or_else(|| {
+                actor_error!(
+                    illegal_state,
+                    "failed to delete pending proposal: cid {} does not exist",
+                    deal_cid
+                )
+            })?;
+        }
 
         // if the deal was ever updated, make sure it didn't happen in the future
         if ever_updated && state.last_updated_epoch > epoch {
