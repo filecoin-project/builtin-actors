@@ -231,7 +231,7 @@ pub fn prove_commit_aggregate(
     let sector_nos: Vec<u64> = precommits.iter().map(|p| p.info.sector_number).collect();
     let prove_commit_aggregate_params = ProveCommitAggregateParams {
         sector_numbers: make_bitfield(sector_nos.as_slice()),
-        aggregate_proof: vec![],
+        aggregate_proof: vec![].into(),
     };
 
     apply_ok(

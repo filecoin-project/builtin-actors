@@ -88,11 +88,6 @@ pub mod testing;
 mod types;
 mod vesting_state;
 
-// The first 1000 actor-specific codes are left open for user error, i.e. things that might
-// actually happen without programming error in the actor code.
-
-// * Updated to specs-actors commit: 17d3c602059e5c48407fb3c34343da87e6ea6586 (v0.9.12)
-
 /// Storage Miner actor methods available
 #[derive(FromPrimitive)]
 #[repr(u64)]
@@ -129,7 +124,7 @@ pub enum Method {
     ChangeBeneficiary = 30,
     GetBeneficiary = 31,
     ExtendSectorExpiration2 = 32,
-    ProveCommit2 = 33,
+    ProveCommitSectors2 = 33,
     // Method numbers derived from FRC-0042 standards
     ChangeWorkerAddressExported = frc42_dispatch::method_hash!("ChangeWorkerAddress"),
     ChangePeerIDExported = frc42_dispatch::method_hash!("ChangePeerID"),
@@ -795,7 +790,7 @@ impl Actor {
             return Err(actor_error!(illegal_argument, "no sectors"));
         }
 
-        validate_aggregate_proof(&params.aggregate_proof, sector_numbers.len(), policy)?;
+        validate_seal_aggregate_proof(&params.aggregate_proof, sector_numbers.len(), policy)?;
 
         // Validate pre-commits.
         let precommits = state
@@ -803,24 +798,25 @@ impl Actor {
             .context("failed to get precommits")?;
 
         let allow_deals = true; // Legacy onboarding entry points allow pre-committed deals.
-        let (batch_return, svis) = validate_precommits(rt, &precommits, allow_deals)?;
-        let svis = svis.into_iter().map(|x| x.to_aggregate_seal_verify_info()).collect();
+        let all_or_nothing = false;
+        let (batch_return, proof_inputs) =
+            validate_precommits(rt, &precommits, allow_deals, all_or_nothing)?;
 
         let miner_actor_id = rt.message().receiver().id().unwrap();
-        let seal_proof = precommits[0].info.seal_proof;
-        rt.verify_aggregate_seals(&AggregateSealVerifyProofAndInfos {
-            miner: miner_actor_id,
-            seal_proof,
-            aggregate_proof: RegisteredAggregateProof::SnarkPackV2,
-            proof: params.aggregate_proof.into(),
-            infos: svis,
-        })
-        .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "aggregate seal verify failed")?;
+        verify_aggregate_seal(
+            rt,
+            // All the proof inputs, even for invalid pre-commits,
+            // must be provided as witnesses to the aggregate proof.
+            &proof_inputs,
+            miner_actor_id,
+            precommits[0].info.seal_proof,
+            &params.aggregate_proof,
+        )?;
 
-        let precommits_to_confirm: Vec<SectorPreCommitOnChainInfo> =
+        let valid_precommits: Vec<SectorPreCommitOnChainInfo> =
             batch_return.successes(&precommits).into_iter().cloned().collect();
-        let data_activations: Vec<DataActivationInput> =
-            precommits_to_confirm.iter().map(|x| x.clone().into()).collect();
+        let data_activation_inputs: Vec<DataActivationInput> =
+            valid_precommits.iter().map(|x| x.clone().into()).collect();
         let rew = request_current_epoch_block_reward(rt)?;
         let pwr = request_current_total_power(rt)?;
         let circulating_supply = rt.total_fil_circ_supply();
@@ -838,36 +834,14 @@ impl Actor {
            Therefore CommD on precommit has already been provided and checked so no further processing needed
         */
         let compute_commd = false;
-        let (batch_return, data_activations) =
-            activate_deals(rt, &data_activations, compute_commd)?;
-        let successful_activations = batch_return.successes(&precommits_to_confirm);
+        let (batch_return, activated_data) =
+            activate_sectors_deals(rt, &data_activation_inputs, compute_commd)?;
+        let activated_precommits = batch_return.successes(&valid_precommits);
 
-        activate_new_sector_infos(
-            rt,
-            successful_activations,
-            data_activations,
-            &pledge_inputs,
-            &info,
-        )?;
+        activate_new_sector_infos(rt, activated_precommits, activated_data, &pledge_inputs, &info)?;
 
-        // Compute and burn the aggregate network fee. We need to re-load the state as
-        // confirmSectorProofsValid can change it.
-        let state: State = rt.state()?;
-        let aggregate_fee =
-            aggregate_prove_commit_network_fee(precommits_to_confirm.len() as i64, &rt.base_fee());
-        let unlocked_balance = state
-            .get_unlocked_balance(&rt.current_balance())
-            .map_err(|_e| actor_error!(illegal_state, "failed to determine unlocked balance"))?;
-        if unlocked_balance < aggregate_fee {
-            return Err(actor_error!(
-                insufficient_funds,
-                "remaining unlocked funds after prove-commit {} are insufficient to pay aggregation fee of {}",
-                unlocked_balance,
-                aggregate_fee
-            ));
-        }
-        burn_funds(rt, aggregate_fee)?;
-        state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
+        // The aggregate fee is paid on the sectors successfully proven.
+        pay_aggregate_seal_proof_fee(rt, valid_precommits.len())?;
         Ok(())
     }
 
@@ -967,7 +941,7 @@ impl Actor {
         */
         let compute_commd = true;
         let (batch_return, data_activations) =
-            activate_deals(rt, &data_activation_inputs, compute_commd)?;
+            activate_sectors_deals(rt, &data_activation_inputs, compute_commd)?;
 
         // associate the successfully activated sectors with the ReplicaUpdateInner and SectorOnChainInfo
         let validated_updates: Vec<(&UpdateAndSectorInfo, DataActivationOutput)> = batch_return
@@ -1001,7 +975,7 @@ impl Actor {
                 new_sealed_cid: usi.update.new_sealed_cid,
                 old_sealed_cid: usi.sector_info.sealed_cid,
                 new_unsealed_cid: computed_commd,
-                proof: usi.update.replica_proof.into(),
+                proof: usi.update.replica_proof.clone().into(),
             };
             let activated_data = ReplicaUpdateActivatedData {
                 seal_cid: usi.update.new_sealed_cid,
@@ -1547,7 +1521,7 @@ impl Actor {
         rt.transaction(|state: &mut State, rt| {
             // Aggregate fee applies only when batching.
             if sectors.len() > 1 {
-                let aggregate_fee = aggregate_pre_commit_network_fee(sectors.len() as i64, &rt.base_fee());
+                let aggregate_fee = aggregate_pre_commit_network_fee(sectors.len(), &rt.base_fee());
                 // AggregateFee applied to fee debt to consolidate burn with outstanding debts
                 state.apply_penalty(&aggregate_fee)
                     .map_err(|e| {
@@ -1692,27 +1666,27 @@ impl Actor {
         Ok(())
     }
 
-    fn prove_commit2(rt: &impl Runtime, params: ProveCommit2Params) -> Result<(), ActorError> {
-        // XXX should requireActivationSuccess apply to precommit validation / proof correctness ?
-        // Or just data activation?
-
-        // Validate caller and parameters.
+    fn prove_commit_sectors2(
+        rt: &impl Runtime,
+        params: ProveCommitSectors2Params,
+    ) -> Result<(), ActorError> {
         let state: State = rt.state()?;
         let store = rt.store();
         let policy = rt.policy();
+        let miner_id = rt.message().receiver().id().unwrap();
         let info = get_miner_info(rt.store(), &state)?;
+
+        // Validate caller and parameters.
         rt.validate_immediate_caller_is(
             info.control_addresses.iter().chain(&[info.worker, info.owner]),
         )?;
 
-        let sector_numbers: Vec<u64> =
-            params.sector_activations.iter().map(|sa| sa.sector_number).collect();
-        if sector_numbers.is_empty() {
-            return Err(actor_error!(illegal_argument, "no sectors"));
+        let sector_numbers = params.sector_activations.iter().map(|sa| sa.sector_number);
+        let precommits =
+            state.get_precommitted_sectors(store, sector_numbers).context("loading precommits")?;
+        if precommits.is_empty() {
+            return Err(actor_error!(illegal_argument, "no sectors to prove"));
         }
-        let precommits = state
-            .get_precommitted_sectors(store, sector_numbers.iter())
-            .context("loading precommits")?;
 
         if params.sector_proofs.is_empty() == params.aggregate_proof.is_empty() {
             return Err(actor_error!(
@@ -1731,64 +1705,57 @@ impl Actor {
                     params.sector_proofs.len()
                 ));
             }
-            validate_sector_proofs(precommits[0].info.seal_proof, &params.sector_proofs)?;
+            validate_seal_proofs(precommits[0].info.seal_proof, &params.sector_proofs)?;
         } else {
-            validate_aggregate_proof(
+            validate_seal_aggregate_proof(
                 &params.aggregate_proof,
-                sector_numbers.len() as u64,
-                &policy,
+                params.sector_activations.len() as u64,
+                policy,
             )?;
         }
 
         // Validate pre-commits.
-
         let allow_deals = false; // New onboarding entry point does not allow pre-committed deals.
-        let (batch_return, proof_inputs) = validate_precommits(rt, &precommits, allow_deals)?;
+        let (batch_return, proof_inputs) =
+            validate_precommits(rt, &precommits, allow_deals, params.require_activation_success)?;
         if batch_return.success_count == 0 {
             return Err(actor_error!(illegal_argument, "no valid precommits specified"));
         }
-        if params.require_activation_success && !batch_return.all_ok() {
-            return Err(actor_error!(
-                illegal_argument,
-                "invalid pre-commit while requiring activation success: {}",
-                batch_return
-            ));
-        }
+        let valid_precommits = batch_return.successes(&precommits);
+        let valid_activation_inputs = batch_return.successes(&params.sector_activations);
+        let eligible_activation_inputs_iter = valid_activation_inputs.iter().zip(valid_precommits);
 
-        // Verify proof batch or aggregate.
-        let miner_actor_id = rt.message().receiver().id().unwrap();
-
-        let eligible_activation_iter = batch_return
-            .successes(&params.sector_activations)
-            .iter()
-            .zip(batch_return.successes(&precommits));
-        let mut proven_sector_activations: Vec<(
-            SectorActivationManifest,
-            SectorPreCommitOnChainInfo,
+        // Verify seal proof(s), either batch or aggregate.
+        let mut proven_activation_inputs: Vec<(
+            &SectorActivationManifest,
+            &SectorPreCommitOnChainInfo,
         )> = vec![];
-
         if !params.sector_proofs.is_empty() {
             // Verify batched proofs.
-            let valid_proof_inputs: Vec<SealVerifyInfo> = batch_return
-                .successes(&proof_inputs) // Note proof infos are same length as inputs.
+            // Filter proof inputs to those for valid pre-commits.
+            let seal_verify_inputs: Vec<SealVerifyInfo> = batch_return
+                .successes(&proof_inputs)
                 .iter()
                 .zip(batch_return.successes(&params.sector_proofs))
                 .map(|(info, proof)| -> SealVerifyInfo {
-                    info.to_seal_verify_info(miner_actor_id, proof)
+                    info.to_seal_verify_info(miner_id, proof)
                 })
                 .collect();
 
             let res = rt
-                .batch_verify_seals(&valid_proof_inputs)
+                .batch_verify_seals(&seal_verify_inputs)
                 .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "failed to batch verify")?;
 
-            for (valid, (activation, precommit)) in res.iter().zip(eligible_activation_iter) {
-                if *valid {
-                    proven_sector_activations.push(((*activation).clone(), precommit.clone()))
+            // Filter eligible activations to those that were proven.
+            for (verified, (activation, precommit)) in
+                res.iter().zip(eligible_activation_inputs_iter)
+            {
+                if *verified {
+                    proven_activation_inputs.push((*activation, precommit))
                 }
             }
             if params.require_activation_success
-                && proven_sector_activations.len() != sector_numbers.len()
+                && proven_activation_inputs.len() != params.sector_activations.len()
             {
                 return Err(actor_error!(
                     illegal_argument,
@@ -1798,28 +1765,24 @@ impl Actor {
             }
         } else {
             // Verify a single aggregate proof.
-            let valid_proof_inputs: Vec<AggregateSealVerifyInfo> = batch_return
-                .successes(&proof_inputs) // Note proof infos are same length as inputs.
-                .iter()
-                .map(|info| -> AggregateSealVerifyInfo { info.to_aggregate_seal_verify_info() })
-                .collect();
+            verify_aggregate_seal(
+                rt,
+                // All the proof inputs, even for invalid pre-commits,
+                // must be provided as witnesses to the aggregate proof.
+                &proof_inputs,
+                miner_id,
+                precommits[0].info.seal_proof,
+                &params.aggregate_proof,
+            )?;
 
-            rt.verify_aggregate_seals(&AggregateSealVerifyProofAndInfos {
-                miner: miner_actor_id,
-                seal_proof: precommits[0].info.seal_proof,
-                aggregate_proof: RegisteredAggregateProof::SnarkPackV2,
-                proof: params.aggregate_proof.into(),
-                infos: valid_proof_inputs,
-            })
-            .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "aggregate seal verify failed")?;
-
-            proven_sector_activations = eligible_activation_iter
-                .map(|(activation, precommit)| ((*activation).clone(), precommit.clone()))
+            // All eligible activations are proven.
+            proven_activation_inputs = eligible_activation_inputs_iter
+                .map(|(activation, precommit)| (*activation, precommit))
                 .collect();
         }
 
         // Activate data and verify CommD matches the declared one.
-        let data_activations = proven_sector_activations
+        let data_activation_inputs = proven_activation_inputs
             .iter()
             .map(|(activation, precommit)| -> SectorPiecesActivationInput {
                 SectorPiecesActivationInput {
@@ -1831,11 +1794,15 @@ impl Actor {
                 }
             })
             .collect();
+
+        // Activate data for proven sectors.
         let (batch_return, data_activations) =
-            activate_pieces(rt, data_activations, params.require_activation_success)?;
-        let successful_sector_activations = batch_return.successes(&proven_sector_activations);
+            activate_sectors_pieces(rt, data_activation_inputs, params.require_activation_success)?;
+
+        // Successful data activation is required for sector activation.
+        let successful_sector_activations = batch_return.successes(&proven_activation_inputs);
         let successful_precommits =
-            successful_sector_activations.iter().map(|(_, second)| second).collect();
+            successful_sector_activations.iter().map(|(_, second)| *second).collect();
 
         // Activate sector info state
         let rew = request_current_epoch_block_reward(rt)?;
@@ -1855,15 +1822,15 @@ impl Actor {
             &info,
         )?;
 
-        // Notify data consumers: XXX TODO
+        // Notify data consumers (not yet implemented).
         // notify_data_consumers(rt, successful_sector_activations);
 
-        /*
-        XXX for prove_commit_aggregate:
-            burn_funds(rt, aggregate_fee)?;
-            state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
-         */
-
+        if !params.aggregate_proof.is_empty() {
+            // Aggregate fee is paid on the sectors successfully proven,
+            // but without regard to data activation which could subsequently fail
+            // and prevent sector activation.
+            pay_aggregate_seal_proof_fee(rt, proven_activation_inputs.len())?;
+        }
         Ok(())
     }
 
@@ -1877,7 +1844,9 @@ impl Actor {
         // Validate caller and parameters.
         let st: State = rt.state()?;
         let store = rt.store();
-        // XXX this shouldn't accept any caller
+        // Note: this accepts any caller for legacy, but probably shouldn't.
+        // Since the miner can provide arbitrary control addresses, there's not much advantage
+        // in allowing any caller, but some risk if there's an exploitable bug.
         rt.validate_immediate_caller_accept_any()?;
 
         if params.sector_number > MAX_SECTOR_NUMBER {
@@ -1897,21 +1866,15 @@ impl Actor {
                 actor_error!(not_found, "no pre-commited sector {}", params.sector_number)
             })?;
 
-        validate_sector_proofs(precommit.info.seal_proof, &[params.proof])?;
+        validate_seal_proofs(precommit.info.seal_proof, &[params.proof.clone()])?;
 
-        let allow_deals = false; // Legacy onboarding entry points allow pre-committed deals.
-        let (batch_return, svis) = validate_precommits(rt, &vec![precommit.clone()], allow_deals)?;
-        if batch_return.success_count != 1 {
-            return Err(actor_error!(
-                illegal_argument,
-                "failed to get a valid verify info from precommit"
-            ));
-        }
+        let allow_deals = true; // Legacy onboarding entry points allow pre-committed deals.
+        let all_or_nothing = true; // The singleton must succeed.
+        let (_, proof_inputs) =
+            validate_precommits(rt, &vec![precommit], allow_deals, all_or_nothing)?;
         let miner_actor_id = rt.message().receiver().id().unwrap();
 
-        let mut svi = svis[0].to_seal_verify_info(miner_actor_id, &params.proof);
-        svi.deal_ids = precommit.info.deal_ids; // XXX probably we can remove this here, just need to fix tests
-
+        let svi = proof_inputs[0].to_seal_verify_info(miner_actor_id, &params.proof);
         extract_send_result(rt.send_simple(
             &STORAGE_POWER_ACTOR_ADDR,
             ext::power::SUBMIT_POREP_FOR_BULK_VERIFY_METHOD,
@@ -1961,7 +1924,7 @@ impl Actor {
         */
         let compute_commd = false;
         let (batch_return, data_activations) =
-            activate_deals(rt, &data_activations, compute_commd)?;
+            activate_sectors_deals(rt, &data_activations, compute_commd)?;
         let successful_activations = batch_return.successes(&precommited_sectors);
 
         let pledge_inputs = NetworkPledgeInputs {
@@ -4371,6 +4334,7 @@ fn validate_precommits(
     rt: &impl Runtime,
     precommits: &[SectorPreCommitOnChainInfo],
     allow_deal_ids: bool,
+    all_or_nothing: bool,
 ) -> Result<(BatchReturn, Vec<SectorSealProofInput>), ActorError> {
     if precommits.is_empty() {
         return Ok((BatchReturn::empty(), vec![]));
@@ -4380,7 +4344,7 @@ fn validate_precommits(
     let mut verify_infos = vec![];
     for (i, precommit) in precommits.iter().enumerate() {
         // We record failures and continue validation rather than continuing the loop in order to:
-        // 1. compute seal verification inputs
+        // 1. compute aggregate seal verification inputs
         // 2. check for whole message failure conditions
         let mut fail_validation = false;
         if !(allow_deal_ids || precommit.info.deal_ids.is_empty()) {
@@ -4457,6 +4421,14 @@ fn validate_precommits(
         });
 
         if fail_validation {
+            if all_or_nothing {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "invalid pre-commit {} while requiring activation success: {:?}",
+                    i,
+                    precommit
+                ));
+            }
             batch.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
         } else {
             batch.add_success();
@@ -4466,7 +4438,7 @@ fn validate_precommits(
 }
 
 // Validates a batch of sector sealing proofs.
-fn validate_sector_proofs(
+fn validate_seal_proofs(
     seal_proof_type: RegisteredSealProof,
     proofs: &[RawBytes],
 ) -> Result<(), ActorError> {
@@ -4484,10 +4456,10 @@ fn validate_sector_proofs(
             ));
         }
     }
-    return Ok(());
+    Ok(())
 }
 
-fn validate_aggregate_proof(
+fn validate_seal_aggregate_proof(
     proof: &RawBytes,
     sector_count: u64,
     policy: &Policy,
@@ -4515,7 +4487,50 @@ fn validate_aggregate_proof(
             policy.max_aggregated_proof_size
         ));
     }
-    return Ok(());
+    Ok(())
+}
+
+fn verify_aggregate_seal(
+    rt: &impl Runtime,
+    proof_inputs: &[SectorSealProofInput],
+    miner_actor_id: ActorID,
+    seal_proof: RegisteredSealProof,
+    proof_bytes: &RawBytes,
+) -> Result<(), ActorError> {
+    let seal_verify_inputs =
+        proof_inputs.iter().map(|pi| pi.to_aggregate_seal_verify_info()).collect();
+
+    rt.verify_aggregate_seals(&AggregateSealVerifyProofAndInfos {
+        miner: miner_actor_id,
+        seal_proof,
+        aggregate_proof: RegisteredAggregateProof::SnarkPackV2,
+        proof: proof_bytes.clone().into(),
+        infos: seal_verify_inputs,
+    })
+    .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "aggregate seal verify failed")
+}
+
+// Compute and burn the aggregate network fee.
+fn pay_aggregate_seal_proof_fee(
+    rt: &impl Runtime,
+    aggregate_size: usize,
+) -> Result<(), ActorError> {
+    // State is loaded afresh as earlier operations for sector/data activation can change it.
+    let state: State = rt.state()?;
+    let aggregate_fee = aggregate_prove_commit_network_fee(aggregate_size, &rt.base_fee());
+    let unlocked_balance = state
+        .get_unlocked_balance(&rt.current_balance())
+        .map_err(|_e| actor_error!(illegal_state, "failed to determine unlocked balance"))?;
+    if unlocked_balance < aggregate_fee {
+        return Err(actor_error!(
+                insufficient_funds,
+                "remaining unlocked funds after prove-commit {} are insufficient to pay aggregation fee of {}",
+                unlocked_balance,
+                aggregate_fee
+            ));
+    }
+    burn_funds(rt, aggregate_fee)?;
+    state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)
 }
 
 fn verify_deals(
@@ -5039,7 +5054,8 @@ fn activate_new_sector_infos(
 
         Ok((total_pledge, newly_vested))
     })?;
-    // Request pledge update for activated sector.
+    // Request pledge update for activated sectors.
+    // Power is not activated until first Window poST.
     notify_pledge_changed(rt, &(total_pledge - newly_vested))?;
 
     Ok(())
@@ -5066,7 +5082,7 @@ pub struct DealsActivationInput {
 // Inputs for activating builtin market deals for one sector
 // and optionally confirming CommD for this sector matches expectation
 struct DataActivationInput {
-    info: DealsActivationInput, // XXX this could be a variant type over Piece and Deals Activation Input and then activate_deals could become activate_data and take in either
+    info: DealsActivationInput,
     expected_commd: Option<Cid>,
 }
 
@@ -5132,9 +5148,10 @@ struct ReplicaUpdateActivatedData {
 }
 
 // Activates data pieces by claiming allocations with the verified registry.
-// Activation inputs must specify an expected CommD, against which the CommD computed from the
-// pieces is checked.
-fn activate_pieces(
+// Pieces are grouped by sector and succeed or fail in sector groups.
+// Activation inputs specify an expected CommD for the sector,
+// against which the CommD computed from the pieces is checked.
+fn activate_sectors_pieces(
     rt: &impl Runtime,
     activation_inputs: Vec<SectorPiecesActivationInput>,
     all_or_nothing: bool,
@@ -5160,7 +5177,6 @@ fn activate_pieces(
         };
 
         // Check declared CommD matches that computed from the data.
-        // The expected CommD must be specified; it is programmer error if None here.
         let declared_commd = activation_info.expected_commd;
         if !declared_commd.eq(&computed_commd) {
             return Err(actor_error!(
@@ -5211,14 +5227,16 @@ fn activate_pieces(
         .map(|((sector_claim, computed_commd), unverified_space)| DataActivationOutput {
             unverified_space: unverified_space.clone(),
             verified_space: sector_claim.claimed_space.clone(),
-            unsealed_cid: (*computed_commd).0,
+            unsealed_cid: computed_commd.0,
         })
         .collect();
 
     Ok((claim_res.sector_results, activation_outputs))
 }
 
-fn activate_deals(
+// Activates deals with the built-in market actor and claims verified allocations.
+// Deals are grouped by sector.
+fn activate_sectors_deals(
     rt: &impl Runtime,
     activation_inputs: &[DataActivationInput],
     compute_commd: bool,
@@ -5409,7 +5427,7 @@ struct NetworkPledgeInputs {
     pub epoch_reward: FilterEstimate,
 }
 
-// XXX: probably better to push this one level down into state
+// Note: probably better to push this one level down into state
 fn balance_invariants_broken(e: Error) -> ActorError {
     ActorError::unchecked(
         ERR_BALANCE_INVARIANTS_BROKEN,
@@ -5462,7 +5480,7 @@ impl ActorCode for Actor {
         GetVestingFundsExported => get_vesting_funds,
         GetPeerIDExported => get_peer_id,
         GetMultiaddrsExported => get_multiaddresses,
-        ProveCommit2 => prove_commit2,
+        ProveCommitSectors2 => prove_commit_sectors2,
     }
 }
 

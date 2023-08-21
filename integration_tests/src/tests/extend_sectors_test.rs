@@ -629,7 +629,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         new_sealed_cid,
         deals: deal_ids.clone(),
         update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-        replica_proof: vec![],
+        replica_proof: vec![].into(),
         new_unsealed_cid,
     };
     let updated_sectors: BitField = apply_ok(

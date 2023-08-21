@@ -136,7 +136,7 @@ pub struct ProveCommitSectorParams {
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct ProveCommit2Params {
+pub struct ProveCommitSectors2Params {
     // Activation manifest for each sector being proven.
     pub sector_activations: Vec<SectorActivationManifest>,
     // Proofs for each sector, parallel to activation manifests.

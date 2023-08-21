@@ -612,8 +612,7 @@ fn verify_proof_does_not_vest_funds() {
     rt.set_epoch(precommit_epoch + rt.policy.pre_commit_challenge_delay + 1);
     rt.balance.replace(TokenAmount::from_whole(1000));
 
-    let mut prove_commit = h.make_prove_commit_params(sector_no);
-    prove_commit.proof.resize(192, 0);
+    let prove_commit = h.make_prove_commit_params(sector_no);
     // The below call expects exactly the pledge delta for the proven sector, zero for any other vesting.
     h.prove_commit_sector_and_confirm(&rt, &precommit, prove_commit, ProveCommitConfig::empty())
         .unwrap();

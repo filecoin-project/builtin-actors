@@ -180,7 +180,7 @@ pub fn terminate_sectors_test(v: &dyn VM) {
     advance_by_deadline_to_epoch(v, &miner_id_addr, prove_time);
 
     // prove commit, cron, advance to post time
-    let prove_params = ProveCommitSectorParams { sector_number, proof: vec![] };
+    let prove_params = ProveCommitSectorParams { sector_number, proof: vec![].into() };
     apply_ok(
         v,
         &worker,

@@ -81,7 +81,7 @@ fn assert_simple_batch(
             &pwr_estimate,
         );
     }
-    let net_fee = aggregate_pre_commit_network_fee(batch_size as i64, &base_fee);
+    let net_fee = aggregate_pre_commit_network_fee(batch_size, &base_fee);
     let total_deposit: TokenAmount = deposits.iter().sum();
     let total_balance = net_fee + &total_deposit;
     rt.set_balance(total_balance + balance_surplus);
