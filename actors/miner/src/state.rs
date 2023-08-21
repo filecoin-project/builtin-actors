@@ -1,6 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use std::borrow::Borrow;
 use std::cmp;
 use std::ops::Neg;
 
@@ -8,10 +9,7 @@ use anyhow::{anyhow, Error};
 use cid::multihash::Code;
 use cid::Cid;
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{
-    actor_error, make_empty_map, make_map_with_root_and_bitwidth, u64_key, ActorDowncast,
-    ActorError, Array,
-};
+use fil_actors_runtime::{actor_error, make_empty_map, make_map_with_root_and_bitwidth, u64_key, ActorDowncast, ActorError, Array, AsActorError};
 use fvm_ipld_amt::Error as AmtError;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
@@ -1166,22 +1164,24 @@ impl State {
         })
     }
 
-    pub fn get_all_precommitted_sectors<BS: Blockstore>(
+    // Loads sectors precommit information from store, requiring it to exist.
+    pub fn get_precommitted_sectors<BS: Blockstore>(
         &self,
         store: &BS,
-        sector_nos: &BitField,
-    ) -> anyhow::Result<Vec<SectorPreCommitOnChainInfo>> {
+        sector_nos: impl IntoIterator<Item = impl Borrow<SectorNumber>>
+    ) -> Result<Vec<SectorPreCommitOnChainInfo>, ActorError> {
         let mut precommits = Vec::new();
         let precommitted =
             make_map_with_root_and_bitwidth(&self.pre_committed_sectors, store, HAMT_BIT_WIDTH)?;
-        for sector_no in sector_nos.iter() {
+        for sector_no in sector_nos.into_iter() {
+            let sector_no = *sector_no.borrow();
             if sector_no > MAX_SECTOR_NUMBER {
                 return Err(
                     actor_error!(illegal_argument; "sector number greater than maximum").into()
                 );
             }
             let info: &SectorPreCommitOnChainInfo = precommitted
-                .get(&u64_key(sector_no))?
+                .get(&u64_key(sector_no)).exit_code(ExitCode::USR_ILLEGAL_STATE)?
                 .ok_or_else(|| actor_error!(not_found, "sector {} not found", sector_no))?;
             precommits.push(info.clone());
         }
