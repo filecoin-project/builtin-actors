@@ -29,7 +29,7 @@ jobs:
       run: make check
 
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(github.repository == 'filecoin-project/builtin-actors' && '["self-hosted", "linux", "x64", "2xlarge"]' || '"ubuntu-latest"') }}
     steps:
     - name: Checking out
       uses: actions/checkout@v3
@@ -50,6 +50,7 @@ jobs:
         BUILD_FIL_NETWORK: ${{ matrix.network }}
       run: |
         cargo run --locked -- -o output/builtin-actors.car
+
   coverage:
     runs-on: ubuntu-latest
     env:
