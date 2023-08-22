@@ -435,14 +435,6 @@ impl<B> Verifier for FvmRuntime<B>
 where
     B: Blockstore,
 {
-    fn verify_seal(&self, vi: &SealVerifyInfo) -> Result<(), Error> {
-        match fvm::crypto::verify_seal(vi) {
-            Ok(true) => Ok(()),
-            Ok(false) => Err(Error::msg("invalid seal")),
-            Err(e) => Err(anyhow!("failed to verify seal: {}", e)),
-        }
-    }
-
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), Error> {
         match fvm::crypto::verify_post(verify_info) {
             Ok(true) => Ok(()),
@@ -491,10 +483,6 @@ impl<B> Verifier for FvmRuntime<B>
 where
     B: Blockstore,
 {
-    fn verify_seal(&self, _vi: &SealVerifyInfo) -> Result<(), Error> {
-        Ok(())
-    }
-
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), Error> {
         let mut info = verify_info.clone();
         if info.proofs.len() != 1 {

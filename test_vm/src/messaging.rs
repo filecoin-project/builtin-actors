@@ -705,10 +705,6 @@ impl<BS> Verifier for InvocationCtx<'_, '_, BS>
 where
     BS: Blockstore,
 {
-    fn verify_seal(&self, _vi: &SealVerifyInfo) -> Result<(), anyhow::Error> {
-        Ok(())
-    }
-
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), anyhow::Error> {
         for proof in &verify_info.proofs {
             if proof.proof_bytes.eq(&TEST_VM_INVALID_POST.as_bytes().to_vec()) {
