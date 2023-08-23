@@ -785,7 +785,7 @@ impl Actor {
 
                         // newly activated deals are not scheduled for cron
                         // TODO: continue here when tests are updated
-                        // continue;
+                        continue;
                     }
 
                     // handling of legacy deals is still done in cron. handle them and continue rescheduling
