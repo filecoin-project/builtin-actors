@@ -74,7 +74,7 @@ fn deal_is_slashed() {
 
         // publish and activate
         rt.set_epoch(tc.activation_epoch);
-        let deal_id = publish_and_activate_deal(
+        let deal_id = publish_and_activate_deal_legacy(
             &rt,
             CLIENT_ADDR,
             &MinerAddresses::default(),
@@ -115,7 +115,7 @@ const END_EPOCH: ChainEpoch = START_EPOCH + DEAL_DURATION_EPOCHS;
 #[test]
 fn deal_is_slashed_at_the_end_epoch_should_not_be_slashed_and_should_be_considered_expired() {
     let rt = setup();
-    let deal_id = publish_and_activate_deal(
+    let deal_id = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -153,7 +153,7 @@ fn deal_payment_and_slashing_correctly_processed_in_same_crontick() {
     let start_epoch: ChainEpoch = Policy::default().deal_updates_interval;
     let end_epoch = start_epoch + DEAL_DURATION_EPOCHS;
     let rt = setup();
-    let deal_id = publish_and_activate_deal(
+    let deal_id = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -195,7 +195,7 @@ fn slash_multiple_deals_in_the_same_epoch() {
     let rt = setup();
 
     // three deals for slashing
-    let deal_id1 = publish_and_activate_deal(
+    let deal_id1 = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -206,7 +206,7 @@ fn slash_multiple_deals_in_the_same_epoch() {
     );
     let deal_proposal1 = get_deal_proposal(&rt, deal_id1);
 
-    let deal_id2 = publish_and_activate_deal(
+    let deal_id2 = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -217,7 +217,7 @@ fn slash_multiple_deals_in_the_same_epoch() {
     );
     let deal_proposal2 = get_deal_proposal(&rt, deal_id2);
 
-    let deal_id3 = publish_and_activate_deal(
+    let deal_id3 = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -256,7 +256,7 @@ fn slash_multiple_deals_in_the_same_epoch() {
 #[test]
 fn regular_payments_till_deal_is_slashed_and_then_slashing_is_processed() {
     let rt = setup();
-    let deal_id = publish_and_activate_deal(
+    let deal_id = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -319,7 +319,7 @@ fn regular_payments_till_deal_is_slashed_and_then_slashing_is_processed() {
 #[test]
 fn regular_payments_till_deal_expires_and_then_we_attempt_to_slash_it_but_it_will_not_be_slashed() {
     let rt = setup();
-    let deal_id = publish_and_activate_deal(
+    let deal_id = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),

@@ -98,7 +98,7 @@ fn deal_is_processed_after_its_end_epoch_should_expire_correctly() {
 
     let activation_epoch = START_EPOCH - 1;
     rt.set_epoch(activation_epoch);
-    let deal_id = publish_and_activate_deal(
+    let deal_id = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),

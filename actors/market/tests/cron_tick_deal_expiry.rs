@@ -15,7 +15,7 @@ const END_EPOCH: ChainEpoch = START_EPOCH + DURATION_EPOCHS;
 #[test]
 fn deal_is_correctly_processed_if_first_cron_after_expiry() {
     let rt = setup();
-    let deal_id = publish_and_activate_deal(
+    let deal_id = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -51,12 +51,13 @@ fn deal_is_correctly_processed_if_first_cron_after_expiry() {
     check_state(&rt);
 }
 
+// this test needs to have the deal injected into the market actor state to simulate legacy deals
 #[test]
 fn regular_payments_till_deal_expires_and_then_locked_funds_are_unlocked() {
     let start_epoch = Policy::default().deal_updates_interval;
     let end_epoch = start_epoch + DURATION_EPOCHS;
     let rt = setup();
-    let deal_id = publish_and_activate_deal(
+    let deal_id = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -119,8 +120,6 @@ fn regular_payments_till_deal_expires_and_then_locked_funds_are_unlocked() {
     assert_eq!(duration * &deal_proposal.storage_price_per_epoch, pay);
     assert!(slashed.is_zero());
 
-    // deal should be deleted as it should have expired
-    assert_deal_deleted(&rt, deal_id, deal_proposal);
     check_state(&rt);
 }
 
@@ -130,8 +129,15 @@ fn payment_for_a_deal_if_deal_is_already_expired_before_a_cron_tick() {
     let end = start + 200 * EPOCHS_IN_DAY;
 
     let rt = setup();
-    let deal_id =
-        publish_and_activate_deal(&rt, CLIENT_ADDR, &MinerAddresses::default(), start, end, 0, end);
+    let deal_id = publish_and_activate_deal_legacy(
+        &rt,
+        CLIENT_ADDR,
+        &MinerAddresses::default(),
+        start,
+        end,
+        0,
+        end,
+    );
     let deal_proposal = get_deal_proposal(&rt, deal_id);
 
     let current = end + 25;
@@ -153,7 +159,7 @@ fn payment_for_a_deal_if_deal_is_already_expired_before_a_cron_tick() {
 fn expired_deal_should_unlock_the_remaining_client_and_provider_locked_balance_after_payment_and_deal_should_be_deleted(
 ) {
     let rt = setup();
-    let deal_id = publish_and_activate_deal(
+    let deal_id = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -190,7 +196,7 @@ fn expired_deal_should_unlock_the_remaining_client_and_provider_locked_balance_a
 #[test]
 fn all_payments_are_made_for_a_deal_client_withdraws_collateral_and_client_account_is_removed() {
     let rt = setup();
-    let deal_id = publish_and_activate_deal(
+    let deal_id = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),

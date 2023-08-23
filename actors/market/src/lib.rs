@@ -783,13 +783,14 @@ impl Actor {
                             )
                         })?;
 
-                        // newly activated deals are not scheduled for cron
-                        // TODO: continue here when tests are updated
+                        // newly activated deals are not scheduled for cron processing. they are handled explicitly by
+                        // calling ProcessDealUpdates method with specific deal ids.
+                        // the code below this point handles legacy deals that are already scheduled for cron processing
                         continue;
                     }
 
-                    // handling of legacy deals is still done in cron. handle them and continue rescheduling
-                    // this will eventually be removed when all legacy deals are gone
+                    // handling of legacy deals is still done in cron. we handle such deals here and continue to
+                    // reschedule them. eventually, all legacy deals will expire and the below code can be removed.
                     let (slash_amount, remove_deal) = st.process_deal_update(
                         rt.store(),
                         &state,
@@ -1355,7 +1356,7 @@ fn deal_proposal_is_internally_valid(
 }
 
 /// Compute a deal CID using the runtime.
-pub(crate) fn rt_deal_cid(rt: &impl Runtime, proposal: &DealProposal) -> Result<Cid, ActorError> {
+pub fn rt_deal_cid(rt: &impl Runtime, proposal: &DealProposal) -> Result<Cid, ActorError> {
     let data = serialize(proposal, "deal proposal")?;
     rt_serialized_deal_cid(rt, data.bytes())
 }

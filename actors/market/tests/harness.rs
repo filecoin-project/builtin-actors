@@ -2,7 +2,7 @@
 
 use cid::Cid;
 use fil_actor_market::{
-    BatchActivateDealsParams, BatchActivateDealsResult, PendingDealAllocationsMap,
+    rt_deal_cid, BatchActivateDealsParams, BatchActivateDealsResult, PendingDealAllocationsMap,
     ProcessDealsParams, ProcessDealsReturn, PENDING_ALLOCATIONS_CONFIG,
 };
 use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
@@ -969,7 +969,6 @@ pub fn process_epoch(start_epoch: ChainEpoch, deal_id: DealID) -> ChainEpoch {
     next_update_epoch(deal_id, Policy::default().deal_updates_interval, start_epoch)
 }
 
-#[allow(clippy::too_many_arguments)]
 pub fn publish_and_activate_deal(
     rt: &MockRuntime,
     client: Address,
@@ -984,6 +983,29 @@ pub fn publish_and_activate_deal(
     let deal_ids = publish_deals(rt, addrs, &[deal], TokenAmount::zero(), NO_ALLOCATION_ID); // unverified deal
     activate_deals(rt, sector_expiry, addrs.provider, current_epoch, &deal_ids);
     deal_ids[0]
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn publish_and_activate_deal_legacy(
+    rt: &MockRuntime,
+    client: Address,
+    addrs: &MinerAddresses,
+    start_epoch: ChainEpoch,
+    end_epoch: ChainEpoch,
+    current_epoch: ChainEpoch,
+    sector_expiry: ChainEpoch,
+) -> DealID {
+    let deal_id = publish_and_activate_deal(
+        rt,
+        client,
+        addrs,
+        start_epoch,
+        end_epoch,
+        current_epoch,
+        sector_expiry,
+    );
+    hack_trigger_legacy_deal(rt, deal_id, start_epoch);
+    deal_id
 }
 
 pub fn generate_and_publish_deal(
@@ -1202,4 +1224,20 @@ where
         .expect("VerifyDealsForActivation failed!");
     rt.verify();
     ret
+}
+
+fn hack_trigger_legacy_deal(
+    rt: &fil_actors_runtime::test_utils::MockRuntime,
+    deal_id: u64,
+    start_epoch: i64,
+) {
+    // HACK: factor this in a better way later
+    // this currently is needed to simulate legacy deals
+    let mut state = rt.get_state::<State>();
+    let mut deal_state = state.remove_deal_state(rt.store(), deal_id).unwrap().unwrap();
+    deal_state.last_updated_epoch = start_epoch;
+    state.put_deal_states(rt.store(), &[(deal_id, deal_state)]).unwrap();
+    let proposal = state.find_proposal(rt.store(), deal_id).unwrap().unwrap();
+    state.remove_pending_deal(rt.store(), rt_deal_cid(rt, &proposal).unwrap()).unwrap();
+    rt.replace_state(&state);
 }

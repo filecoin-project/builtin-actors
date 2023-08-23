@@ -1345,7 +1345,7 @@ fn fail_when_deal_is_activated_but_proposal_is_not_found() {
 
     let rt = setup();
 
-    let deal_id = publish_and_activate_deal(
+    let deal_id = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -1381,7 +1381,7 @@ fn fail_when_deal_update_epoch_is_in_the_future() {
 
     let rt = setup();
 
-    let deal_id = publish_and_activate_deal(
+    let deal_id = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -1419,7 +1419,7 @@ fn crontick_for_a_deal_at_its_start_epoch_results_in_zero_payment_and_no_slashin
     // set start epoch to coincide with processing (0 + 0 % 2880 = 0)
     let start_epoch = 0;
     let rt = setup();
-    let deal_id = publish_and_activate_deal(
+    let deal_id = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -1451,7 +1451,7 @@ fn slash_a_deal_and_make_payment_for_another_deal_in_the_same_epoch() {
 
     let rt = setup();
 
-    let deal_id1 = publish_and_activate_deal(
+    let deal_id1 = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -1462,7 +1462,7 @@ fn slash_a_deal_and_make_payment_for_another_deal_in_the_same_epoch() {
     );
     let d1 = get_deal_proposal(&rt, deal_id1);
 
-    let deal_id2 = publish_and_activate_deal(
+    let deal_id2 = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -1501,7 +1501,7 @@ fn cron_reschedules_update_to_new_period() {
 
     // Publish a deal
     let rt = setup();
-    let deal_id = publish_and_activate_deal(
+    let deal_id = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -1540,7 +1540,7 @@ fn cron_reschedules_update_to_new_period_boundary() {
 
     // Publish a deal
     let rt = setup();
-    let deal_id = publish_and_activate_deal(
+    let deal_id = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -1588,7 +1588,7 @@ fn cron_reschedules_many_updates() {
     rt.policy.deal_updates_interval = update_interval;
     let deal_count = 2 * update_interval;
     for i in 0..deal_count {
-        publish_and_activate_deal(
+        publish_and_activate_deal_legacy(
             &rt,
             CLIENT_ADDR,
             &MinerAddresses::default(),
