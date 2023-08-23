@@ -592,9 +592,9 @@ impl State {
         Ok(())
     }
 
-    /// Checks that a deal is active
-    /// If the deal is not active, cleans it up
-    pub fn get_active_deal_or_cleanup<BS>(
+    /// Given a DealProposal, checks that the corresponding deal has activated
+    /// If not, checks that the deal is past its activation epoch and performs cleanup
+    pub fn get_active_deal_or_process_timeout<BS>(
         &mut self,
         store: &BS,
         curr_epoch: ChainEpoch,
@@ -607,10 +607,12 @@ impl State {
     {
         let deal_state = self.find_deal_state(store, deal_id)?;
 
-        // deal has been published but not yet activated
         match deal_state {
+            Some(deal_state) => Ok((Some(deal_state), TokenAmount::zero())),
             None => {
-                // too early
+                // deal was not activated in time
+
+                // deal_id called too early
                 if curr_epoch < deal_proposal.start_epoch {
                     return Err(actor_error!(
                         illegal_argument,
@@ -620,7 +622,7 @@ impl State {
                     ));
                 }
 
-                // if not already activated, it's too late
+                // if not activated, the proposal has timed out
                 let slashed = self.process_deal_init_timed_out(store, deal_proposal)?;
 
                 // delete the proposal (but not state, which doesn't exist)
@@ -651,7 +653,6 @@ impl State {
 
                 Ok((None, slashed))
             }
-            Some(deal_state) => Ok((Some(deal_state), TokenAmount::zero())),
         }
     }
 

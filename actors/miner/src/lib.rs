@@ -2299,6 +2299,8 @@ impl Actor {
             // NOTE: This isn't quite correct. If we repeatedly fill, empty,
             // fill, and empty, the queue, we'll keep scheduling new cron
             // jobs. However, in practice, that shouldn't be all that bad.
+
+            // TODO: immediately terminate the deals
             schedule_early_termination_work(rt)?;
         }
         let state: State = rt.state()?;

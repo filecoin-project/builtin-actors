@@ -752,20 +752,14 @@ impl Actor {
                 let deal_ids = st.get_deals_for_epoch(rt.store(), i)?;
 
                 for deal_id in deal_ids {
-                    let deal_proposal = match st.get_proposal(rt.store(), deal_id) {
-                        Ok(dp) => dp,
-                        Err(err) => {
-                            if err.exit_code() == EX_DEAL_EXPIRED {
-                                // fine: deal may have expired and been deleted during synchronous PDU call
-                                continue;
-                            } else {
-                                return Err(err);
-                            }
-                        }
+                    let deal_proposal = match st.find_proposal(rt.store(), deal_id)? {
+                        Some(dp) => dp,
+                        None => continue,
                     };
+
                     let dcid = rt_deal_cid(rt, &deal_proposal)?;
 
-                    let (state, maybe_slashed) = st.get_active_deal_or_cleanup(
+                    let (state, expiration_penalty) = st.get_active_deal_or_process_timeout(
                         rt.store(),
                         curr_epoch,
                         deal_id,
@@ -776,7 +770,7 @@ impl Actor {
                     let mut state = match state {
                         Some(state) => state,
                         None => {
-                            amount_slashed += maybe_slashed;
+                            amount_slashed += expiration_penalty;
                             continue;
                         }
                     };
@@ -788,8 +782,14 @@ impl Actor {
                                 "failed to delete pending proposal: does not exist"
                             )
                         })?;
+
+                        // newly activated deals are not scheduled for cron
+                        // TODO: continue here when tests are updated
+                        // continue;
                     }
 
+                    // handling of legacy deals is still done in cron. handle them and continue rescheduling
+                    // this will eventually be removed when all legacy deals are gone
                     let (slash_amount, remove_deal) = st.process_deal_update(
                         rt.store(),
                         &state,
@@ -1000,7 +1000,7 @@ impl Actor {
                 let deal_proposal = st.get_proposal(rt.store(), deal_id)?;
                 let dcid = rt_deal_cid(rt, &deal_proposal)?;
 
-                let (deal_state, slashed) = st.get_active_deal_or_cleanup(
+                let (deal_state, slashed) = st.get_active_deal_or_process_timeout(
                     rt.store(),
                     curr_epoch,
                     deal_id,
