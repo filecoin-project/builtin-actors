@@ -5,7 +5,7 @@ use std::collections::BTreeSet;
 
 use anyhow::anyhow;
 use cid::Cid;
-use fil_actors_runtime::{actor_error, ActorDowncast, ActorError, Array};
+use fil_actors_runtime::{actor_error, ActorDowncast, ActorError, Array, AsActorError};
 use fvm_ipld_amt::Error as AmtError;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
@@ -45,11 +45,16 @@ impl<'db, BS: Blockstore> Sectors<'db, BS> {
         Ok(sector_infos)
     }
 
-    pub fn get(&self, sector_number: SectorNumber) -> anyhow::Result<Option<SectorOnChainInfo>> {
+    pub fn get(
+        &self,
+        sector_number: SectorNumber,
+    ) -> Result<Option<SectorOnChainInfo>, ActorError> {
         Ok(self
             .amt
             .get(sector_number)
-            .map_err(|e| e.downcast_wrap(format!("failed to get sector {}", sector_number)))?
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("failed to get sector {}", sector_number)
+            })?
             .cloned())
     }
 
@@ -69,8 +74,9 @@ impl<'db, BS: Blockstore> Sectors<'db, BS> {
         Ok(())
     }
 
-    pub fn must_get(&self, sector_number: SectorNumber) -> anyhow::Result<SectorOnChainInfo> {
-        self.get(sector_number)?.ok_or_else(|| anyhow!("sector {} not found", sector_number))
+    pub fn must_get(&self, sector_number: SectorNumber) -> Result<SectorOnChainInfo, ActorError> {
+        self.get(sector_number)?
+            .ok_or_else(|| actor_error!(not_found, "sector {} not found", sector_number))
     }
 
     /// Loads info for a set of sectors to be proven.

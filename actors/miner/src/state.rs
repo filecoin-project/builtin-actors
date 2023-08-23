@@ -396,8 +396,9 @@ impl State {
         &self,
         store: &BS,
         sector_num: SectorNumber,
-    ) -> anyhow::Result<Option<SectorOnChainInfo>> {
-        let sectors = Sectors::load(store, &self.sectors)?;
+    ) -> Result<Option<SectorOnChainInfo>, ActorError> {
+        let sectors = Sectors::load(store, &self.sectors)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "loading sectors")?;
         sectors.get(sector_num)
     }
 
@@ -639,7 +640,7 @@ impl State {
         partition_idx: u64,
         sector_number: SectorNumber,
         require_proven: bool,
-    ) -> anyhow::Result<bool> {
+    ) -> Result<bool, ActorError> {
         let dls = self.load_deadlines(store)?;
         let dl = dls.load_deadline(store, deadline_idx)?;
         let partition = dl.load_partition(store, partition_idx)?;
@@ -650,8 +651,7 @@ impl State {
                 not_found;
                 "sector {} not a member of partition {}, deadline {}",
                 sector_number, partition_idx, deadline_idx
-            )
-            .into());
+            ));
         }
 
         let faulty = partition.faults.get(sector_number);
