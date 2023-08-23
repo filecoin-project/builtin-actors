@@ -1798,6 +1798,7 @@ dependencies = [
  "castaway",
  "cid 0.10.1",
  "derive_builder",
+ "fil_actors_runtime",
  "fvm_ipld_amt",
  "fvm_ipld_bitfield",
  "fvm_ipld_blockstore 0.2.0",
