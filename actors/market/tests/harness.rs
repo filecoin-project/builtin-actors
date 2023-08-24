@@ -2,13 +2,13 @@
 
 use cid::Cid;
 use fil_actor_market::{
-    rt_deal_cid, BatchActivateDealsParams, BatchActivateDealsResult, PendingDealAllocationsMap,
-    ProcessDealsParams, ProcessDealsReturn, PENDING_ALLOCATIONS_CONFIG,
+    deal_get_payment_remaining, rt_deal_cid, BatchActivateDealsParams, BatchActivateDealsResult,
+    PendingDealAllocationsMap, ProcessDealsParams, ProcessDealsReturn, PENDING_ALLOCATIONS_CONFIG,
 };
 use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
 use num_traits::{FromPrimitive, Zero};
 use regex::Regex;
-use std::cmp::min;
+use std::cmp::{max, min};
 use std::collections::BTreeMap;
 use std::{cell::RefCell, collections::HashMap};
 
@@ -348,7 +348,7 @@ pub fn activate_deals(
 }
 
 /// Batch activate deals across multiple sectors
-/// For each sector, provide its expiry and a list of unique, valid deal ids contained within
+/// For each sector, provide its expiry  list of unique, valid deal ids contained within
 pub fn batch_activate_deals(
     rt: &MockRuntime,
     provider: Address,
@@ -447,7 +447,7 @@ pub fn cron_tick_and_assert_balances(
     current_epoch: ChainEpoch,
     deal_id: DealID,
 ) -> (TokenAmount, TokenAmount) {
-    // fetch current client and provider escrow balances
+    // fetch current client  escrow balances
     let c_acct = get_balance(rt, &client_addr);
     let p_acct = get_balance(rt, &provider_addr);
     let mut amount_slashed = TokenAmount::zero();
@@ -490,7 +490,7 @@ pub fn cron_tick_and_assert_balances(
     let updated_provider_escrow = (p_acct.balance + &payment) - &amount_slashed;
     let mut updated_client_locked = c_acct.locked - &payment;
     let mut updated_provider_locked = p_acct.locked;
-    // if the deal has expired or been slashed, locked amount will be zero for provider and client.
+    // if the deal has expired or been slashed, locked amount will be zero for provider .
     let is_deal_expired = payment_end == d.end_epoch;
     if is_deal_expired || s.slash_epoch != EPOCH_UNDEFINED {
         updated_client_locked = TokenAmount::zero();
@@ -512,7 +512,7 @@ pub fn cron_tick_no_change(rt: &MockRuntime, client_addr: Address, provider_addr
     let st: State = rt.get_state();
     let epoch_cid = st.deal_ops_by_epoch;
 
-    // fetch current client and provider escrow balances
+    // fetch current client  escrow balances
     let client_acct = get_balance(rt, &client_addr);
     let provider_acct = get_balance(rt, &provider_addr);
 
@@ -554,7 +554,7 @@ pub fn publish_deals(
     let mut params: PublishStorageDealsParams = PublishStorageDealsParams { deals: vec![] };
 
     // Accumulate proposals by client, so we can set expectations for the per-client calls
-    // and the per-deal calls. This matches flow in the market actor.
+    //  per-deal calls. This matches flow in the market actor.
     // Note the shortcut of not normalising the client/provider addresses in the proposal.
     struct ClientVerifiedDeals {
         deals: Vec<DealProposal>,
@@ -1004,7 +1004,7 @@ pub fn publish_and_activate_deal_legacy(
         current_epoch,
         sector_expiry,
     );
-    hack_trigger_legacy_deal(rt, deal_id, start_epoch);
+    simulate_legacy_deal(rt, deal_id, start_epoch);
     deal_id
 }
 
@@ -1159,7 +1159,90 @@ pub fn generate_deal_proposal(
     )
 }
 
+/// NOTE: assumes all deals are made between the same client
+pub fn terminate_deals_and_assert_balances(
+    rt: &MockRuntime,
+    client_addr: Address,
+    provider_addr: Address,
+    deal_ids: &[DealID],
+) -> (TokenAmount, TokenAmount) {
+    // get deal state  before the are cleaned up in terminate deals
+    let deal_infos: Vec<(DealState, DealProposal)> = deal_ids
+        .iter()
+        .map(|id| {
+            let state = get_deal_state(rt, *id);
+            let proposal = get_deal_proposal(rt, *id);
+            (state, proposal)
+        })
+        .collect();
+
+    let mut total_payment = TokenAmount::zero();
+    let mut total_slashed = TokenAmount::zero();
+    let mut payment_remaining = TokenAmount::zero();
+    let mut client_unlocked = TokenAmount::zero();
+
+    let curr_epoch = *rt.epoch.borrow();
+    for (s, d) in &deal_infos {
+        // terminate is a no-op if deal is already expired/expiring
+        if curr_epoch < d.end_epoch {
+            let mut payment_start = d.start_epoch;
+            if s.last_updated_epoch != EPOCH_UNDEFINED {
+                payment_start = s.last_updated_epoch;
+            }
+            let duration = max(0, curr_epoch - payment_start);
+            let payment = duration * &d.storage_price_per_epoch;
+            payment_remaining += deal_get_payment_remaining(d, curr_epoch).unwrap();
+            client_unlocked += &d.client_collateral;
+            total_payment += payment;
+            total_slashed += &d.provider_collateral;
+        }
+    }
+
+    let client_before = get_balance(rt, &client_addr);
+    let provider_before = get_balance(rt, &provider_addr);
+
+    // expected updated amounts
+    let updated_client_escrow = &client_before.balance - &total_payment;
+    let updated_provider_escrow = &provider_before.balance + &total_payment - &total_slashed;
+    let updated_client_locked =
+        &client_before.locked - &total_payment - &payment_remaining - &client_unlocked;
+    let updated_provider_locked = &provider_before.locked - &total_slashed;
+
+    terminate_deals(rt, provider_addr, deal_ids);
+
+    let client_acct = get_balance(rt, &client_addr);
+    let provider_acct = get_balance(rt, &provider_addr);
+
+    assert_eq!(&updated_client_escrow, &client_acct.balance);
+    assert_eq!(&updated_client_locked, &client_acct.locked);
+    assert_eq!(updated_provider_escrow, provider_acct.balance);
+    assert_eq!(updated_provider_locked, provider_acct.locked);
+
+    (total_payment, total_slashed)
+}
+
 pub fn terminate_deals(rt: &MockRuntime, miner_addr: Address, deal_ids: &[DealID]) {
+    let curr_epoch = *rt.epoch.borrow();
+    // calculate the expected amount to be slashed for the provider  that it is burnt
+    let mut total_slashed = TokenAmount::zero();
+    for deal_id in deal_ids {
+        let d = get_deal_proposal(rt, *deal_id);
+        if curr_epoch < d.end_epoch {
+            total_slashed += d.provider_collateral.clone();
+        }
+    }
+
+    if total_slashed.is_positive() {
+        rt.expect_send_simple(
+            BURNT_FUNDS_ACTOR_ADDR,
+            METHOD_SEND,
+            None,
+            total_slashed,
+            None,
+            ExitCode::OK,
+        );
+    }
+
     let ret = terminate_deals_raw(rt, miner_addr, deal_ids).unwrap();
     assert!(ret.is_none());
     rt.verify();
@@ -1226,18 +1309,25 @@ where
     ret
 }
 
-fn hack_trigger_legacy_deal(
+// market cron tick uses last_updated_epoch == EPOCH_UNDEFINED to determine if a deal is new
+// it will not process such deals
+// however, for testing we need to simulate deals that are already in the system that should be
+// continued to be processed by cron
+fn simulate_legacy_deal(
     rt: &fil_actors_runtime::test_utils::MockRuntime,
     deal_id: u64,
     start_epoch: i64,
 ) {
-    // HACK: factor this in a better way later
-    // this currently is needed to simulate legacy deals
     let mut state = rt.get_state::<State>();
     let mut deal_state = state.remove_deal_state(rt.store(), deal_id).unwrap().unwrap();
+
+    // set last_updated_epoch to the beginning of the deal (if cron had run here, it would have been a no-op)
     deal_state.last_updated_epoch = start_epoch;
     state.put_deal_states(rt.store(), &[(deal_id, deal_state)]).unwrap();
+
+    // the first cron_tick would have removed the proposal from the pending queue
     let proposal = state.find_proposal(rt.store(), deal_id).unwrap().unwrap();
     state.remove_pending_deal(rt.store(), rt_deal_cid(rt, &proposal).unwrap()).unwrap();
+
     rt.replace_state(&state);
 }

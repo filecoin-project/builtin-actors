@@ -3,11 +3,8 @@
 
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
-use fvm_shared::METHOD_SEND;
 
 use num_traits::Zero;
 
@@ -87,21 +84,17 @@ fn deal_is_slashed() {
 
         // terminate
         rt.set_epoch(tc.termination_epoch);
-        terminate_deals(&rt, PROVIDER_ADDR, &[deal_id]);
+        let (pay, slashed) =
+            terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[deal_id]);
 
-        // cron tick
-        let cron_tick_epoch = process_epoch(tc.deal_start, deal_id);
-        rt.set_epoch(cron_tick_epoch);
-
-        let (pay, slashed) = cron_tick_and_assert_balances(
-            &rt,
-            CLIENT_ADDR,
-            PROVIDER_ADDR,
-            cron_tick_epoch,
-            deal_id,
-        );
         assert_eq!(tc.payment, pay);
         assert_eq!(deal_proposal.provider_collateral, slashed);
+
+        // cron tick to remove final deal op state
+        let cron_tick_epoch = process_epoch(tc.deal_start, deal_id);
+        rt.set_epoch(cron_tick_epoch);
+        cron_tick(&rt);
+
         assert_deal_deleted(&rt, deal_id, deal_proposal);
 
         check_state(&rt);
@@ -128,16 +121,14 @@ fn deal_is_slashed_at_the_end_epoch_should_not_be_slashed_and_should_be_consider
 
     // set current epoch to deal end epoch and attempt to slash it -> should not be slashed
     // as deal is considered to be expired.
-
     rt.set_epoch(END_EPOCH);
-    terminate_deals(&rt, PROVIDER_ADDR, &[deal_id]);
+    terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[deal_id]);
+    let duration = END_EPOCH - START_EPOCH;
 
-    // on the next cron tick, it will be processed as expired
     let current = END_EPOCH + 300;
     rt.set_epoch(current);
     let (pay, slashed) =
         cron_tick_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
-    let duration = END_EPOCH - START_EPOCH;
     assert_eq!(duration * &deal_proposal.storage_price_per_epoch, pay);
     assert!(slashed.is_zero());
 
@@ -175,15 +166,15 @@ fn deal_payment_and_slashing_correctly_processed_in_same_crontick() {
     // set slash epoch of deal
     let slash_epoch = current + Policy::default().deal_updates_interval + 1;
     rt.set_epoch(slash_epoch);
-    terminate_deals(&rt, PROVIDER_ADDR, &[deal_id]);
-
-    let duration = slash_epoch - current;
-    let current = current + Policy::default().deal_updates_interval + 2;
-    rt.set_epoch(current);
     let (pay, slashed) =
-        cron_tick_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
+        terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[deal_id]);
+    let duration = slash_epoch - current;
     assert_eq!(duration * &deal_proposal.storage_price_per_epoch, pay);
     assert_eq!(deal_proposal.provider_collateral, slashed);
+
+    let current = current + Policy::default().deal_updates_interval + 2;
+    rt.set_epoch(current);
+    cron_tick(&rt);
 
     // deal should be deleted as it should have expired
     assert_deal_deleted(&rt, deal_id, deal_proposal);
@@ -229,22 +220,17 @@ fn slash_multiple_deals_in_the_same_epoch() {
     let deal_proposal3 = get_deal_proposal(&rt, deal_id3);
 
     // set slash epoch of deal at 100 epochs past last process epoch
+    let epoch = process_epoch(START_EPOCH, deal_id3) + 100;
     rt.set_epoch(process_epoch(START_EPOCH, deal_id3) + 100);
-    terminate_deals(&rt, PROVIDER_ADDR, &[deal_id1, deal_id2, deal_id3]);
-
-    // process slashing of deals 200 epochs later
-    rt.set_epoch(process_epoch(START_EPOCH, deal_id3) + 300);
-    let total_slashed = &deal_proposal1.provider_collateral
-        + &deal_proposal2.provider_collateral
-        + &deal_proposal3.provider_collateral;
-    rt.expect_send_simple(
-        BURNT_FUNDS_ACTOR_ADDR,
-        METHOD_SEND,
-        None,
-        total_slashed,
-        None,
-        ExitCode::OK,
+    terminate_deals_and_assert_balances(
+        &rt,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        &[deal_id1, deal_id2, deal_id3],
     );
+
+    // next epoch run should clean up any remaining state
+    rt.set_epoch(epoch + 1);
     cron_tick(&rt);
 
     assert_deal_deleted(&rt, deal_id1, deal_proposal1);
@@ -298,18 +284,18 @@ fn regular_payments_till_deal_is_slashed_and_then_slashing_is_processed() {
 
     // now terminate the deal 1 epoch later
     rt.set_epoch(process_start + Policy::default().deal_updates_interval + 1);
-    terminate_deals(&rt, PROVIDER_ADDR, &[deal_id]);
+    let (pay, slashed) =
+        terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[deal_id]);
+    assert_eq!(pay, 1 * &deal_proposal.storage_price_per_epoch);
+    assert_eq!(slashed, deal_proposal.provider_collateral);
 
     // Setting the epoch to anything less than next schedule will not make any change even though the deal is slashed
     rt.set_epoch(process_start + 2 * Policy::default().deal_updates_interval - 1);
     cron_tick_no_change(&rt, CLIENT_ADDR, PROVIDER_ADDR);
 
     // next epoch for cron schedule  -> payment will be made and deal will be slashed
-    let current = rt.set_epoch(process_start + 2 * Policy::default().deal_updates_interval);
-    let (pay, slashed) =
-        cron_tick_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
-    assert_eq!(pay, 1 * &deal_proposal.storage_price_per_epoch);
-    assert_eq!(slashed, deal_proposal.provider_collateral);
+    rt.set_epoch(process_start + 2 * Policy::default().deal_updates_interval);
+    cron_tick(&rt);
 
     // deal should be deleted as it should have expired
     assert_deal_deleted(&rt, deal_id, deal_proposal);

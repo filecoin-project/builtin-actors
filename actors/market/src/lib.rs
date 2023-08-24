@@ -178,7 +178,7 @@ impl Actor {
         let store = rt.store();
         let st: State = rt.state()?;
         let balances = BalanceTable::from_root(store, &st.escrow_table, "escrow table")?;
-        let locks = BalanceTable::from_root(store, &st.locked_table, "locled table")?;
+        let locks = BalanceTable::from_root(store, &st.locked_table, "locked table")?;
         let balance = balances.get(&account)?;
         let locked = locks.get(&account)?;
 
@@ -683,9 +683,8 @@ impl Actor {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         let miner_addr = rt.message().caller();
 
-        rt.transaction(|st: &mut State, rt| {
-            let mut deal_states: Vec<(DealID, DealState)> = vec![];
-
+        let burn_amount = rt.transaction(|st: &mut State, rt| {
+            let mut total_slashed = TokenAmount::zero();
             for id in params.deal_ids {
                 let deal = st.find_proposal(rt.store(), id)?;
                 // The deal may have expired and been deleted before the sector is terminated.
@@ -728,12 +727,22 @@ impl Actor {
                 // and slashing of provider collateral happens in cron_tick.
                 state.slash_epoch = params.epoch;
 
-                deal_states.push((id, state));
+                total_slashed += st.process_slashed_deal(rt.store(), &deal, &state)?;
+                st.remove_completed_deal(rt.store(), id)?;
             }
 
-            st.put_deal_states(rt.store(), &deal_states)?;
-            Ok(())
+            Ok(total_slashed)
         })?;
+
+        if burn_amount.is_positive() {
+            extract_send_result(rt.send_simple(
+                &BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                None,
+                burn_amount,
+            ))?;
+        }
+
         Ok(())
     }
 

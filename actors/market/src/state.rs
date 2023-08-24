@@ -17,6 +17,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::HAMT_BIT_WIDTH;
 use num_traits::Zero;
+use std::cmp::{max, min};
 use std::collections::BTreeMap;
 
 use super::policy::*;
@@ -567,6 +568,7 @@ impl State {
         Ok(rval_pending_deal)
     }
 
+    /// Delete proposal and state simultaneously.
     pub fn remove_completed_deal<BS>(
         &mut self,
         store: &BS,
@@ -575,7 +577,6 @@ impl State {
     where
         BS: Blockstore,
     {
-        // Delete proposal and state simultaneously.
         let deleted = self.remove_deal_state(store, deal_id)?;
         if deleted.is_none() {
             return Err(actor_error!(illegal_state, "failed to delete deal state: does not exist"));
@@ -762,6 +763,48 @@ impl State {
             return Ok((TokenAmount::zero(), true));
         }
         Ok((TokenAmount::zero(), false))
+    }
+
+    pub fn process_slashed_deal<BS>(
+        &mut self,
+        store: &BS,
+        proposal: &DealProposal,
+        state: &DealState,
+    ) -> Result<TokenAmount, ActorError>
+    where
+        BS: Blockstore,
+    {
+        // make payments for epochs until termination
+        let payment_start_epoch = max(proposal.start_epoch, state.last_updated_epoch);
+        let payment_end_epoch = min(proposal.end_epoch, state.slash_epoch);
+        let num_epochs_elapsed = payment_end_epoch - payment_start_epoch;
+        let total_payment = &proposal.storage_price_per_epoch * num_epochs_elapsed;
+        if total_payment.is_positive() {
+            self.transfer_balance(store, &proposal.client, &proposal.provider, &total_payment)?;
+        }
+
+        // unlock client collateral and locked storage fee
+        let payment_remaining = deal_get_payment_remaining(proposal, state.slash_epoch)?;
+
+        // Unlock remaining storage fee
+        self.unlock_balance(store, &proposal.client, &payment_remaining, Reason::ClientStorageFee)
+            .context("unlocking client storage fee")?;
+
+        // Unlock client collateral
+        self.unlock_balance(
+            store,
+            &proposal.client,
+            &proposal.client_collateral,
+            Reason::ClientCollateral,
+        )
+        .context("unlocking client collateral")?;
+
+        // slash provider collateral
+        let slashed = proposal.provider_collateral.clone();
+        self.slash_balance(store, &proposal.provider, &slashed, Reason::ProviderCollateral)
+            .context("slashing balance")?;
+
+        Ok(slashed)
     }
 
     /// Deal start deadline elapsed without appearing in a proven sector.
@@ -984,7 +1027,7 @@ impl State {
     }
 }
 
-fn deal_get_payment_remaining(
+pub fn deal_get_payment_remaining(
     deal: &DealProposal,
     mut slash_epoch: ChainEpoch,
 ) -> Result<TokenAmount, ActorError> {
