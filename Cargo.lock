@@ -1793,11 +1793,13 @@ name = "fil_actors_runtime"
 version = "12.0.0"
 dependencies = [
  "anyhow",
+ "base64 0.21.2",
  "blake2b_simd",
  "byteorder",
  "castaway",
  "cid 0.10.1",
  "derive_builder",
+ "fil_actors_runtime",
  "fvm_ipld_amt",
  "fvm_ipld_bitfield",
  "fvm_ipld_blockstore 0.2.0",
@@ -2129,7 +2131,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_amt"
 version = "0.6.1"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=next#fdd90f2211c7dc81b70f570815fa252607de0c51"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=next#0af54c0d62b997b99c07bf566b6d01d778ffbfe4"
 dependencies = [
  "anyhow",
  "cid 0.10.1",
@@ -2144,7 +2146,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_bitfield"
 version = "0.5.4"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=next#fdd90f2211c7dc81b70f570815fa252607de0c51"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=next#0af54c0d62b997b99c07bf566b6d01d778ffbfe4"
 dependencies = [
  "fvm_ipld_encoding 0.4.0",
  "serde",
@@ -2166,7 +2168,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_blockstore"
 version = "0.2.0"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=next#fdd90f2211c7dc81b70f570815fa252607de0c51"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=next#0af54c0d62b997b99c07bf566b6d01d778ffbfe4"
 dependencies = [
  "anyhow",
  "cid 0.10.1",
@@ -2208,7 +2210,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_encoding"
 version = "0.4.0"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=next#fdd90f2211c7dc81b70f570815fa252607de0c51"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=next#0af54c0d62b997b99c07bf566b6d01d778ffbfe4"
 dependencies = [
  "anyhow",
  "cid 0.10.1",
@@ -2224,7 +2226,7 @@ dependencies = [
 [[package]]
 name = "fvm_ipld_hamt"
 version = "0.7.0"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=next#fdd90f2211c7dc81b70f570815fa252607de0c51"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=next#0af54c0d62b997b99c07bf566b6d01d778ffbfe4"
 dependencies = [
  "anyhow",
  "byteorder",
@@ -2261,7 +2263,7 @@ dependencies = [
 [[package]]
 name = "fvm_sdk"
 version = "3.3.0"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=next#fdd90f2211c7dc81b70f570815fa252607de0c51"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=next#0af54c0d62b997b99c07bf566b6d01d778ffbfe4"
 dependencies = [
  "byteorder",
  "cid 0.10.1",
@@ -2276,7 +2278,7 @@ dependencies = [
 [[package]]
 name = "fvm_shared"
 version = "3.4.0"
-source = "git+https://github.com/filecoin-project/ref-fvm?branch=next#fdd90f2211c7dc81b70f570815fa252607de0c51"
+source = "git+https://github.com/filecoin-project/ref-fvm?branch=next#0af54c0d62b997b99c07bf566b6d01d778ffbfe4"
 dependencies = [
  "anyhow",
  "bitflags 2.3.3",
