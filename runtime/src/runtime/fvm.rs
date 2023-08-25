@@ -36,6 +36,7 @@ use std::cell::RefCell;
 
 use crate::runtime::actor_blockstore::ActorBlockstore;
 use crate::runtime::builtins::Type;
+use crate::runtime::randomness::draw_randomness;
 use crate::runtime::{
     ActorCode, ConsensusFault, DomainSeparationTag, MessageInfo, Policy, Primitives, RuntimePolicy,
     Verifier,
@@ -231,14 +232,21 @@ where
         rand_epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        fvm::rand::get_chain_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
+        let digest = fvm::rand::get_chain_randomness(rand_epoch).map_err(|e| {
             match e {
                 ErrorNumber::LimitExceeded => {
                     actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
                 }
                 e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
             }
-        })
+        })?;
+        Ok(draw_randomness(
+            fvm::crypto::hash_blake2b,
+            &digest,
+            personalization,
+            rand_epoch,
+            entropy,
+        ))
     }
 
     fn get_randomness_from_beacon(
@@ -247,14 +255,21 @@ where
         rand_epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        fvm::rand::get_beacon_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
+        let digest = fvm::rand::get_beacon_randomness(rand_epoch).map_err(|e| {
             match e {
                 ErrorNumber::LimitExceeded => {
                     actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
                 }
                 e => actor_error!(assertion_failed; "get beacon randomness failed with an unexpected error: {}", e),
             }
-        })
+        })?;
+        Ok(draw_randomness(
+            fvm::crypto::hash_blake2b,
+            &digest,
+            personalization,
+            rand_epoch,
+            entropy,
+        ))
     }
 
     fn get_state_root(&self) -> Result<Cid, ActorError> {
