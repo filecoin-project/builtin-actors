@@ -412,10 +412,14 @@ pub fn batch_activate_deals_raw(
 }
 
 pub fn get_deal_proposal(rt: &MockRuntime, deal_id: DealID) -> DealProposal {
+    find_deal_proposal(rt, deal_id).unwrap()
+}
+
+pub fn find_deal_proposal(rt: &MockRuntime, deal_id: DealID) -> Option<DealProposal> {
     let st: State = rt.get_state();
     let deals = DealArray::load(&st.proposals, &rt.store).unwrap();
     let d = deals.get(deal_id).unwrap();
-    d.unwrap().clone()
+    d.cloned()
 }
 
 pub fn get_pending_deal_allocation(rt: &MockRuntime, deal_id: DealID) -> AllocationID {
@@ -1186,15 +1190,20 @@ pub fn terminate_deals_and_assert_balances(
     // get deal state  before the are cleaned up in terminate deals
     let deal_infos: Vec<(DealState, DealProposal)> = deal_ids
         .iter()
-        .map(|id| {
-            let state = get_deal_state(rt, *id);
-            let proposal = get_deal_proposal(rt, *id);
-            (state, proposal)
+        .filter_map(|id| {
+            let proposal = find_deal_proposal(rt, *id);
+            proposal.map(|proposal| {
+                let state = get_deal_state(rt, *id);
+                (state, proposal)
+            })
         })
         .collect();
 
+    // outstanding payment to be made
     let mut total_payment = TokenAmount::zero();
+    // provider penalty
     let mut total_slashed = TokenAmount::zero();
+    // payment to be refunded
     let mut payment_remaining = TokenAmount::zero();
     let mut client_unlocked = TokenAmount::zero();
 
@@ -1204,13 +1213,13 @@ pub fn terminate_deals_and_assert_balances(
         if curr_epoch < d.end_epoch {
             let mut payment_start = d.start_epoch;
             if s.last_updated_epoch != EPOCH_UNDEFINED {
-                payment_start = s.last_updated_epoch;
+                payment_start = max(s.last_updated_epoch, d.start_epoch);
             }
             let duration = max(0, curr_epoch - payment_start);
             let payment = duration * &d.storage_price_per_epoch;
+            total_payment += payment;
             payment_remaining += deal_get_payment_remaining(d, curr_epoch).unwrap();
             client_unlocked += &d.client_collateral;
-            total_payment += payment;
             total_slashed += &d.provider_collateral;
         }
     }
@@ -1229,7 +1238,6 @@ pub fn terminate_deals_and_assert_balances(
 
     let client_acct = get_balance(rt, &client_addr);
     let provider_acct = get_balance(rt, &provider_addr);
-
     assert_eq!(&updated_client_escrow, &client_acct.balance);
     assert_eq!(&updated_client_locked, &client_acct.locked);
     assert_eq!(updated_provider_escrow, provider_acct.balance);
@@ -1238,14 +1246,39 @@ pub fn terminate_deals_and_assert_balances(
     (total_payment, total_slashed)
 }
 
+pub fn terminate_deals_no_change(
+    rt: &MockRuntime,
+    client_addr: Address,
+    provider_addr: Address,
+    deal_ids: &[DealID],
+) {
+    let st: State = rt.get_state();
+    let epoch_cid = st.deal_ops_by_epoch;
+
+    // fetch current client  escrow balances
+    let client_acct = get_balance(rt, &client_addr);
+    let provider_acct = get_balance(rt, &provider_addr);
+
+    terminate_deals(rt, provider_addr, deal_ids);
+
+    let st: State = rt.get_state();
+    let new_client_acct = get_balance(rt, &client_addr);
+    let new_provider_acct = get_balance(rt, &provider_addr);
+    assert_eq!(epoch_cid, st.deal_ops_by_epoch);
+    assert_eq!(client_acct, new_client_acct);
+    assert_eq!(provider_acct, new_provider_acct);
+}
+
 pub fn terminate_deals(rt: &MockRuntime, miner_addr: Address, deal_ids: &[DealID]) {
     let curr_epoch = *rt.epoch.borrow();
     // calculate the expected amount to be slashed for the provider  that it is burnt
     let mut total_slashed = TokenAmount::zero();
     for deal_id in deal_ids {
-        let d = get_deal_proposal(rt, *deal_id);
-        if curr_epoch < d.end_epoch {
-            total_slashed += d.provider_collateral.clone();
+        let d = find_deal_proposal(rt, *deal_id);
+        if let Some(d) = d {
+            if curr_epoch < d.end_epoch {
+                total_slashed += d.provider_collateral.clone();
+            }
         }
     }
 

@@ -334,17 +334,17 @@ fn worker_balance_after_withdrawal_must_account_for_slashed_funds() {
     );
 
     // activate the deal
-    activate_deals(&rt, end_epoch + 1, PROVIDER_ADDR, publish_epoch, &[deal_id]);
+    activate_deals_legacy(&rt, end_epoch + 1, PROVIDER_ADDR, publish_epoch, &[deal_id]);
     let st = get_deal_state(&rt, deal_id);
     assert_eq!(publish_epoch, st.sector_start_epoch);
+    let proposal = get_deal_proposal(&rt, deal_id);
 
     // slash the deal
     rt.set_epoch(publish_epoch + 1);
     terminate_deals(&rt, PROVIDER_ADDR, &[deal_id]);
-    let st = get_deal_state(&rt, deal_id);
-    assert_eq!(publish_epoch + 1, st.slash_epoch);
+    assert_deal_deleted(&rt, deal_id, proposal);
 
-    // provider cannot withdraw any funds since all it's balance is locked
+    // provider cannot withdraw any funds since it's been slashed
     let withdraw_amount = TokenAmount::from_atto(1);
     let actual_withdrawn = TokenAmount::zero();
     withdraw_provider_balance(
@@ -369,7 +369,11 @@ fn worker_balance_after_withdrawal_must_account_for_slashed_funds() {
         OWNER_ADDR,
         WORKER_ADDR,
     );
-    check_state(&rt);
+    check_state_with_expected(
+        &rt,
+        &[Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
+            .unwrap()],
+    );
 }
 
 #[test]
@@ -1476,16 +1480,6 @@ fn slash_a_deal_and_make_payment_for_another_deal_in_the_same_epoch() {
     let slash_epoch = process_epoch(start_epoch, deal_id2) + ChainEpoch::from(100);
     rt.set_epoch(slash_epoch);
     terminate_deals(&rt, PROVIDER_ADDR, &[deal_id1]);
-
-    // cron tick will slash deal1 and make payment for deal2
-    rt.expect_send_simple(
-        BURNT_FUNDS_ACTOR_ADDR,
-        METHOD_SEND,
-        None,
-        d1.provider_collateral.clone(),
-        None,
-        ExitCode::OK,
-    );
     cron_tick(&rt);
 
     assert_deal_deleted(&rt, deal_id1, d1);

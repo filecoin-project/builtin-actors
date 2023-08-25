@@ -777,7 +777,7 @@ impl State {
         // make payments for epochs until termination
         let payment_start_epoch = max(proposal.start_epoch, state.last_updated_epoch);
         let payment_end_epoch = min(proposal.end_epoch, state.slash_epoch);
-        let num_epochs_elapsed = payment_end_epoch - payment_start_epoch;
+        let num_epochs_elapsed = max(0, payment_end_epoch - payment_start_epoch);
         let total_payment = &proposal.storage_price_per_epoch * num_epochs_elapsed;
         if total_payment.is_positive() {
             self.transfer_balance(store, &proposal.client, &proposal.provider, &total_payment)?;

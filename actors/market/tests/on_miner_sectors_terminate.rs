@@ -17,6 +17,7 @@ use num_traits::Zero;
 mod harness;
 
 use harness::*;
+use regex::Regex;
 
 #[test]
 fn terminate_multiple_deals_from_multiple_providers() {
@@ -43,28 +44,48 @@ fn terminate_multiple_deals_from_multiple_providers() {
         .collect::<Vec<DealID>>()
         .try_into()
         .unwrap();
-    activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal1, deal2, deal3]);
+    activate_deals_legacy(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal1, deal2, deal3]);
 
     let addrs = MinerAddresses { provider: provider2, ..MinerAddresses::default() };
     let deal4 = generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch);
     let deal5 = generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch + 1);
-    activate_deals(&rt, sector_expiry, provider2, current_epoch, &[deal4, deal5]);
+    activate_deals_legacy(&rt, sector_expiry, provider2, current_epoch, &[deal4, deal5]);
 
-    terminate_deals(&rt, PROVIDER_ADDR, &[deal1]);
-    assert_deals_terminated(&rt, current_epoch, &[deal1]);
+    let prop1 = get_deal_proposal(&rt, deal1);
+    terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[deal1]);
+    assert_deal_deleted(&rt, deal1, prop1);
     assert_deals_not_terminated(&rt, &[deal2, deal3, deal4, deal5]);
 
-    terminate_deals(&rt, provider2, &[deal5]);
-    assert_deals_terminated(&rt, current_epoch, &[deal5]);
+    let prop5 = get_deal_proposal(&rt, deal5);
+    terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, provider2, &[deal5]);
+    assert_deal_deleted(&rt, deal5, prop5);
     assert_deals_not_terminated(&rt, &[deal2, deal3, deal4]);
 
-    terminate_deals(&rt, PROVIDER_ADDR, &[deal2, deal3]);
-    assert_deals_terminated(&rt, current_epoch, &[deal2, deal3]);
+    let prop2 = get_deal_proposal(&rt, deal2);
+    let prop3 = get_deal_proposal(&rt, deal3);
+    terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[deal2, deal3]);
+    assert_deal_deleted(&rt, deal2, prop2);
+    assert_deal_deleted(&rt, deal3, prop3);
     assert_deals_not_terminated(&rt, &[deal4]);
 
-    terminate_deals(&rt, provider2, &[deal4]);
-    assert_deals_terminated(&rt, current_epoch, &[deal4]);
-    check_state(&rt);
+    let prop4 = get_deal_proposal(&rt, deal4);
+    terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, provider2, &[deal4]);
+    assert_deal_deleted(&rt, deal4, prop4);
+    check_state_with_expected(
+        &rt,
+        &[
+            Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
+                .unwrap(),
+            Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
+                .unwrap(),
+            Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
+                .unwrap(),
+            Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
+                .unwrap(),
+            Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
+                .unwrap(),
+        ],
+    );
 }
 
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1312
@@ -85,13 +106,41 @@ fn ignore_deal_proposal_that_does_not_exist() {
         start_epoch,
         end_epoch,
     );
-    activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal1]);
+    let deal2 = generate_and_publish_deal(
+        &rt,
+        CLIENT_ADDR,
+        &MinerAddresses::default(),
+        start_epoch,
+        end_epoch + 1,
+    );
+    let deal3 = generate_and_publish_deal(
+        &rt,
+        CLIENT_ADDR,
+        &MinerAddresses::default(),
+        start_epoch,
+        end_epoch - 1,
+    );
+    activate_deals_legacy(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal1, deal2, deal3]);
 
-    terminate_deals(&rt, PROVIDER_ADDR, &[deal1, 42]);
+    let new_epoch = end_epoch - 1;
+    rt.set_epoch(new_epoch);
 
-    let s = get_deal_state(&rt, deal1);
-    assert_eq!(s.slash_epoch, current_epoch);
-    check_state(&rt);
+    let prop1 = get_deal_proposal(&rt, deal1);
+    let prop2 = get_deal_proposal(&rt, deal2);
+
+    terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[deal1, deal2, deal3]);
+    assert_deal_deleted(&rt, deal1, prop1);
+    assert_deal_deleted(&rt, deal2, prop2);
+    assert_deals_not_terminated(&rt, &[deal3]);
+    check_state_with_expected(
+        &rt,
+        &[
+            Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
+                .unwrap(),
+            Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
+                .unwrap(),
+        ],
+    );
 }
 
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1326
@@ -126,15 +175,27 @@ fn terminate_valid_deals_along_with_just_expired_deal() {
         start_epoch,
         end_epoch - 1,
     );
-    activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal1, deal2, deal3]);
+    activate_deals_legacy(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal1, deal2, deal3]);
 
     let new_epoch = end_epoch - 1;
     rt.set_epoch(new_epoch);
 
-    terminate_deals(&rt, PROVIDER_ADDR, &[deal1, deal2, deal3]);
-    assert_deals_terminated(&rt, new_epoch, &[deal1, deal2]);
+    let prop1 = get_deal_proposal(&rt, deal1);
+    let prop2 = get_deal_proposal(&rt, deal2);
+
+    terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[deal1, deal2, deal3]);
+    assert_deal_deleted(&rt, deal1, prop1);
+    assert_deal_deleted(&rt, deal2, prop2);
     assert_deals_not_terminated(&rt, &[deal3]);
-    check_state(&rt);
+    check_state_with_expected(
+        &rt,
+        &[
+            Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
+                .unwrap(),
+            Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
+                .unwrap(),
+        ],
+    );
 }
 
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1346
@@ -166,57 +227,35 @@ fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
     let deal_ids = publish_deals(
         &rt,
         &MinerAddresses::default(),
-        &[deal1, deal2.clone()],
+        &[deal1.clone(), deal2.clone()],
         TokenAmount::zero(),
         1,
     );
     assert_eq!(2, deal_ids.len());
-    activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, &deal_ids);
+    activate_deals_legacy(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, &deal_ids);
 
     let new_epoch = end_epoch - 1;
     rt.set_epoch(new_epoch);
     cron_tick(&rt);
-
-    terminate_deals(&rt, PROVIDER_ADDR, &deal_ids);
-    assert_deals_terminated(&rt, new_epoch, &deal_ids[0..0]);
+    // expired deal deleted normally
     assert_deal_deleted(&rt, deal_ids[1], deal2);
-    check_state(&rt);
+    assert_deals_not_terminated(&rt, &deal_ids[0..0]);
+
+    terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &deal_ids);
+    // terminated deal deleted
+    assert_deal_deleted(&rt, deal_ids[0], deal1);
+
+    // terminated deal has a dangling deal op, normally expired deal doesn't
+    check_state_with_expected(
+        &rt,
+        &[Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
+            .unwrap()],
+    );
 }
 
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1369
 #[test]
-fn terminating_a_deal_the_second_time_does_not_change_its_slash_epoch() {
-    let start_epoch = 10;
-    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
-    let sector_expiry = end_epoch + 100;
-    let current_epoch = 5;
-
-    let rt = setup();
-    rt.set_epoch(current_epoch);
-
-    let deal1 = generate_and_publish_deal(
-        &rt,
-        CLIENT_ADDR,
-        &MinerAddresses::default(),
-        start_epoch,
-        end_epoch,
-    );
-    activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal1]);
-
-    // terminating the deal so slash epoch is the current epoch
-    terminate_deals(&rt, PROVIDER_ADDR, &[deal1]);
-
-    // set a new epoch and terminate again -> however slash epoch will still be the old epoch.
-    rt.set_epoch(current_epoch + 1);
-    terminate_deals(&rt, PROVIDER_ADDR, &[deal1]);
-    let s = get_deal_state(&rt, deal1);
-    assert_eq!(s.slash_epoch, current_epoch);
-    check_state(&rt);
-}
-
-// Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1387
-#[test]
-fn terminating_new_deals_and_an_already_terminated_deal_only_terminates_the_new_deals() {
+fn terminating_a_deal_the_second_time_does_not_affect_existing_deals_in_the_batch() {
     let start_epoch = 10;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
@@ -238,27 +277,27 @@ fn terminating_new_deals_and_an_already_terminated_deal_only_terminates_the_new_
             )
         })
         .collect();
-    let [deal1, deal2, deal3]: [DealID; 3] = deals.as_slice().try_into().unwrap();
-    activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, &deals);
+    let [deal1, _, _]: [DealID; 3] = deals.as_slice().try_into().unwrap();
+    activate_deals_legacy(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, &deals);
 
-    // terminating the deal so slash epoch is the current epoch
-    terminate_deals(&rt, PROVIDER_ADDR, &[deal1]);
+    // terminating the deal and check balances update as expected
+    terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[deal1]);
 
-    // set a new epoch and terminate again -> however slash epoch will still be the old epoch.
-    let new_epoch = current_epoch + 1;
-    rt.set_epoch(new_epoch);
-    terminate_deals(&rt, PROVIDER_ADDR, &deals);
+    // terminating deals included previously terminated and check balances update as expected
+    rt.set_epoch(current_epoch + 1);
+    terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &deals);
 
-    let s1 = get_deal_state(&rt, deal1);
-    assert_eq!(s1.slash_epoch, current_epoch);
-
-    let s2 = get_deal_state(&rt, deal2);
-    assert_eq!(s2.slash_epoch, new_epoch);
-
-    let s3 = get_deal_state(&rt, deal3);
-    assert_eq!(s3.slash_epoch, new_epoch);
-
-    check_state(&rt);
+    check_state_with_expected(
+        &rt,
+        &[
+            Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
+                .unwrap(),
+            Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
+                .unwrap(),
+            Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
+                .unwrap(),
+        ],
+    );
 }
 
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1415
@@ -280,9 +319,9 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
         start_epoch,
         end_epoch,
     );
-    activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal1]);
+    activate_deals_legacy(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal1]);
     rt.set_epoch(end_epoch);
-    terminate_deals(&rt, PROVIDER_ADDR, &[deal1]);
+    terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[deal1]);
     assert_deals_not_terminated(&rt, &[deal1]);
 
     // deal2 has end epoch less than current epoch when terminate is called
@@ -294,9 +333,9 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
         start_epoch + 1,
         end_epoch,
     );
-    activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal2]);
+    activate_deals_legacy(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal2]);
     rt.set_epoch(end_epoch + 1);
-    terminate_deals(&rt, PROVIDER_ADDR, &[deal2]);
+    terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[deal2]);
     assert_deals_not_terminated(&rt, &[deal2]);
 
     check_state(&rt);
