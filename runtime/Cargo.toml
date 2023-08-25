@@ -44,6 +44,7 @@ blake2b_simd = { workspace = true, optional = true }
 hex = { workspace = true, optional = true }
 pretty_env_logger = { workspace = true, optional = true }
 rand = { workspace = true, optional = true }
+base64 = "0.21.2"
 
 [dependencies.libsecp256k1]
 workspace = true
