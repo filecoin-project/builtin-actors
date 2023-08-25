@@ -48,7 +48,7 @@ fn timedout_deal_is_slashed_and_deleted() {
     check_state_with_expected(
         &rt,
         &[Regex::new(&format!(
-            "deal op found for deal id {deal_id} with missing proposal at epoch \\d+"
+            "^deal op found for deal id {deal_id} with missing proposal at epoch \\d+$"
         ))
         .unwrap()],
     );

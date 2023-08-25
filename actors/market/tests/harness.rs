@@ -312,6 +312,23 @@ pub fn create_deal(
 }
 
 /// Activate a single sector of deals
+pub fn activate_deals_legacy(
+    rt: &MockRuntime,
+    sector_expiry: ChainEpoch,
+    provider: Address,
+    current_epoch: ChainEpoch,
+    deal_ids: &[DealID],
+) -> BatchActivateDealsResult {
+    let ret = activate_deals(rt, sector_expiry, provider, current_epoch, deal_ids);
+
+    for deal_id in deal_ids {
+        simulate_legacy_deal(rt, *deal_id, current_epoch);
+    }
+
+    ret
+}
+
+/// Activate a single sector of deals
 pub fn activate_deals(
     rt: &MockRuntime,
     sector_expiry: ChainEpoch,

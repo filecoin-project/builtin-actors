@@ -7,8 +7,8 @@ use fil_actor_market::{
     ext, next_update_epoch, Actor as MarketActor, BatchActivateDealsResult, ClientDealProposal,
     DealArray, DealMetaArray, Label, MarketNotifyDealParams, Method, PendingDealAllocationsMap,
     PublishStorageDealsParams, PublishStorageDealsReturn, SectorDeals, State,
-    WithdrawBalanceParams, EX_DEAL_EXPIRED, MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID,
-    PENDING_ALLOCATIONS_CONFIG, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
+    WithdrawBalanceParams, MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID, PENDING_ALLOCATIONS_CONFIG,
+    PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
 };
 use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
@@ -1338,38 +1338,38 @@ fn active_deals_multiple_times_with_different_providers() {
 
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1519
 #[test]
-fn fail_when_deal_is_activated_but_proposal_is_not_found() {
+fn terminating_a_deal_removes_proposal_synchronously() {
     let start_epoch = 50;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
 
     let rt = setup();
+    let addrs = &MinerAddresses::default();
 
     let deal_id = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
-        &MinerAddresses::default(),
+        addrs,
         start_epoch,
         end_epoch,
         0,
         sector_expiry,
     );
+    let proposal = get_deal_proposal(&rt, deal_id);
 
-    // delete the deal proposal (this breaks state invariants)
-    delete_deal_proposal(&rt, deal_id);
-
-    rt.set_epoch(process_epoch(start_epoch, deal_id));
-    expect_abort(EX_DEAL_EXPIRED, cron_tick_raw(&rt));
-
+    // terminating the deal deletes proposal, state and pending_proposal but leaves deal op in queue
+    terminate_deals(&rt, addrs.provider, &[deal_id]);
+    assert_deal_deleted(&rt, deal_id, proposal);
     check_state_with_expected(
         &rt,
-        &[
-            Regex::new("no deal proposal for deal state \\d+").unwrap(),
-            Regex::new("pending proposal with cid \\w+ not found within proposals").unwrap(),
-            Regex::new("deal op found for deal id \\d+ with missing proposal at epoch \\d+")
-                .unwrap(),
-        ],
+        &[Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
+            .unwrap()],
     );
+
+    // the next cron_tick will remove the dangling deal op entry
+    rt.set_epoch(process_epoch(start_epoch, deal_id));
+    cron_tick(&rt);
+    check_state(&rt);
 }
 
 // Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1540
@@ -1868,8 +1868,8 @@ fn locked_fund_tracking_states() {
 
     // activation doesn't change anything
     let curr = rt.set_epoch(start_epoch - 1);
-    activate_deals(&rt, sector_expiry, p1, curr, &[deal_id1]);
-    activate_deals(&rt, sector_expiry, p2, curr, &[deal_id2]);
+    activate_deals_legacy(&rt, sector_expiry, p1, curr, &[deal_id1]);
+    activate_deals_legacy(&rt, sector_expiry, p2, curr, &[deal_id2]);
 
     assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
 
@@ -1914,14 +1914,6 @@ fn locked_fund_tracking_states() {
     csf = TokenAmount::zero();
     clc = TokenAmount::zero();
     plc = TokenAmount::zero();
-    rt.expect_send_simple(
-        BURNT_FUNDS_ACTOR_ADDR,
-        METHOD_SEND,
-        None,
-        d1.provider_collateral,
-        None,
-        ExitCode::OK,
-    );
     cron_tick(&rt);
     assert_locked_fund_states(&rt, csf, plc, clc);
     check_state(&rt);
