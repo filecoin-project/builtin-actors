@@ -549,7 +549,7 @@ impl ActorHarness {
     }
 
     pub fn make_prove_commit_params(&self, sector_no: u64) -> ProveCommitSectorParams {
-        ProveCommitSectorParams { sector_number: sector_no, proof: vec![0u8; 192] }
+        ProveCommitSectorParams { sector_number: sector_no, proof: vec![0u8; 192].into() }
     }
 
     pub fn pre_commit_sector_batch(
@@ -630,7 +630,7 @@ impl ActorHarness {
 
         let mut expected_network_fee = TokenAmount::zero();
         if sectors.len() > 1 {
-            expected_network_fee = aggregate_pre_commit_network_fee(sectors.len() as i64, base_fee);
+            expected_network_fee = aggregate_pre_commit_network_fee(sectors.len(), base_fee);
         }
         // burn networkFee
         if state.fee_debt.is_positive() || expected_network_fee.is_positive() {
@@ -802,8 +802,8 @@ impl ActorHarness {
             sector_id: SectorID { miner: actor_id, number: pc.info.sector_number },
             sealed_cid: pc.info.sealed_cid,
             registered_proof: pc.info.seal_proof,
-            proof: params.proof.clone(),
-            deal_ids: pc.info.deal_ids.clone(),
+            proof: params.proof.clone().into(),
+            deal_ids: vec![],
             randomness: Randomness(seal_rand.into()),
             interactive_randomness: Randomness(seal_int_rand.into()),
             unsealed_cid: pc.info.unsealed_cid.get_cid(pc.info.seal_proof).unwrap(),
@@ -880,13 +880,13 @@ impl ActorHarness {
                 unsealed_cid: comm_ds[i],
             })
         }
-        rt.expect_aggregate_verify_seals(svis, params.aggregate_proof.clone(), Ok(()));
+        rt.expect_aggregate_verify_seals(svis, params.aggregate_proof.clone().into(), Ok(()));
 
         // confirm sector proofs valid
         self.confirm_sector_proofs_valid_internal(rt, config, &precommits);
 
         // burn network fee
-        let expected_fee = aggregate_prove_commit_network_fee(precommits.len() as i64, base_fee);
+        let expected_fee = aggregate_prove_commit_network_fee(precommits.len(), base_fee);
         assert!(expected_fee.is_positive());
         rt.expect_send_simple(
             BURNT_FUNDS_ACTOR_ADDR,
@@ -2765,7 +2765,7 @@ pub fn get_bitfield(ubf: &UnvalidatedBitField) -> BitField {
 pub fn make_prove_commit_aggregate(sector_nos: &BitField) -> ProveCommitAggregateParams {
     ProveCommitAggregateParams {
         sector_numbers: sector_nos.clone(),
-        aggregate_proof: vec![0; 1024],
+        aggregate_proof: vec![0; 1024].into(),
     }
 }
 
