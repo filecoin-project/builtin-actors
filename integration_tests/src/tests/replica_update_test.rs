@@ -260,7 +260,7 @@ pub fn prove_replica_update_multi_dline_test(v: &dyn VM) {
         new_sealed_cid: new_sealed_cid1,
         deals: deal_ids[0..1].to_vec(),
         update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-        replica_proof: vec![],
+        replica_proof: vec![].into(),
     };
 
     let new_sealed_cid2 = make_sealed_cid(b"replica2");
@@ -271,7 +271,7 @@ pub fn prove_replica_update_multi_dline_test(v: &dyn VM) {
         new_sealed_cid: new_sealed_cid2,
         deals: deal_ids[1..].to_vec(),
         update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-        replica_proof: vec![],
+        replica_proof: vec![].into(),
     };
 
     let ret_bf: BitField = apply_ok(
@@ -340,7 +340,7 @@ pub fn immutable_deadline_failure_test(v: &dyn VM) {
         new_sealed_cid: new_cid,
         deals: deal_ids,
         update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-        replica_proof: vec![],
+        replica_proof: vec![].into(),
     };
     apply_code(
         v,
@@ -393,7 +393,7 @@ pub fn unhealthy_sector_failure_test(v: &dyn VM) {
         new_sealed_cid: new_cid,
         deals: deal_ids,
         update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-        replica_proof: vec![],
+        replica_proof: vec![].into(),
     };
     apply_code(
         v,
@@ -462,7 +462,7 @@ pub fn terminated_sector_failure_test(v: &dyn VM) {
         new_sealed_cid: new_cid,
         deals: deal_ids,
         update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-        replica_proof: vec![],
+        replica_proof: vec![].into(),
     };
     apply_code(
         v,
@@ -512,7 +512,7 @@ pub fn bad_batch_size_failure_test(v: &dyn VM) {
             new_sealed_cid: new_cid,
             deals: deal_ids.clone(),
             update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-            replica_proof: vec![],
+            replica_proof: vec![].into(),
         });
     }
 
@@ -611,7 +611,7 @@ pub fn bad_post_upgrade_dispute_test(v: &dyn VM) {
         new_sealed_cid: new_cid,
         deals: deal_ids.clone(),
         update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-        replica_proof: vec![],
+        replica_proof: vec![].into(),
     };
 
     let updated_sectors: BitField = apply_ok(
@@ -774,7 +774,7 @@ pub fn wrong_deadline_index_failure_test(v: &dyn VM) {
             new_sealed_cid: new_cid,
             deals: deal_ids.clone(),
             update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-            replica_proof: vec![],
+            replica_proof: vec![].into(),
         });
     }
 
@@ -830,7 +830,7 @@ pub fn wrong_partition_index_failure_test(v: &dyn VM) {
             new_sealed_cid: new_cid,
             deals: deal_ids.clone(),
             update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-            replica_proof: vec![],
+            replica_proof: vec![].into(),
         });
     }
 
@@ -935,7 +935,7 @@ pub fn deal_included_in_multiple_sectors_failure_test(v: &dyn VM) {
         new_sealed_cid: new_sealed_cid1,
         deals: deal_ids.clone(),
         update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-        replica_proof: vec![],
+        replica_proof: vec![].into(),
     };
 
     let new_sealed_cid2 = make_sealed_cid(b"replica2");
@@ -946,7 +946,7 @@ pub fn deal_included_in_multiple_sectors_failure_test(v: &dyn VM) {
         new_sealed_cid: new_sealed_cid2,
         deals: deal_ids.clone(),
         update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-        replica_proof: vec![],
+        replica_proof: vec![].into(),
     };
 
     let ret_bf: BitField = apply_ok(
@@ -1031,7 +1031,7 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
         new_sealed_cid,
         deals: deal_ids.clone(),
         update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-        replica_proof: vec![],
+        replica_proof: vec![].into(),
         new_unsealed_cid,
     };
     let updated_sectors: BitField = apply_ok(
@@ -1142,7 +1142,7 @@ pub fn replica_update_verified_deal_max_term_violated_test(v: &dyn VM) {
         new_sealed_cid,
         deals: deal_ids,
         update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-        replica_proof: vec![],
+        replica_proof: vec![].into(),
         new_unsealed_cid,
     };
     apply_code(
@@ -1191,7 +1191,7 @@ pub fn create_sector(
     // prove commit
     let prove_time = v.epoch() + Policy::default().pre_commit_challenge_delay + 1;
     advance_by_deadline_to_epoch(v, &maddr, prove_time);
-    let prove_commit_params = ProveCommitSectorParams { sector_number, proof: vec![] };
+    let prove_commit_params = ProveCommitSectorParams { sector_number, proof: vec![].into() };
     apply_ok(
         v,
         &worker,
@@ -1342,7 +1342,7 @@ pub fn create_miner_and_upgrade_sector(
             new_sealed_cid,
             deals: deal_ids.clone(),
             update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-            replica_proof: vec![],
+            replica_proof: vec![].into(),
         };
         apply_ok(
             v,
@@ -1368,7 +1368,7 @@ pub fn create_miner_and_upgrade_sector(
             new_sealed_cid,
             deals: deal_ids.clone(),
             update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-            replica_proof: vec![],
+            replica_proof: vec![].into(),
             new_unsealed_cid,
         };
         apply_ok(
