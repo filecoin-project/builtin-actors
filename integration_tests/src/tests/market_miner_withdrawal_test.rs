@@ -2,6 +2,7 @@ use fil_actor_market::Method as MarketMethod;
 use fil_actor_market::WithdrawBalanceParams as MarketWithdrawBalanceParams;
 use fil_actor_miner::Method as MinerMethod;
 use fil_actor_miner::WithdrawBalanceParams as MinerWithdrawBalanceParams;
+use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::{MARKET_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID};
 use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
 use fvm_ipld_encoding::RawBytes;
@@ -223,7 +224,7 @@ fn miner_setup(v: &dyn VM) -> (Address, Address, Address) {
         &owner,
         &worker,
         RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
-        &TokenAmount::zero(),
+        &Policy::default().new_miner_deposit,
     );
 
     (worker, owner, m_addr)

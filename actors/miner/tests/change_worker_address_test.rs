@@ -22,7 +22,9 @@ fn setup() -> (ActorHarness, MockRuntime) {
     let period_offset = 100;
 
     let h = ActorHarness::new(period_offset);
-    let rt = h.new_runtime();
+    let mut rt = h.new_runtime();
+    rt.policy.new_miner_deposit = TokenAmount::default();
+
     h.construct_and_verify(&rt);
     rt.balance.replace(BIG_BALANCE.clone());
 

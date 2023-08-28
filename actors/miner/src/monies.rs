@@ -288,6 +288,11 @@ pub fn locked_reward_from_reward(reward: TokenAmount) -> (TokenAmount, &'static 
     (lock_amount, &REWARD_VESTING_SPEC)
 }
 
+/// Lock amount of deposit of creating new miner
+pub fn locked_new_miner_deposit(deposit: TokenAmount) -> (TokenAmount, &'static VestSpec) {
+    (deposit, &REWARD_VESTING_SPEC)
+}
+
 const BATCH_DISCOUNT_NUM: u32 = 1;
 const BATCH_DISCOUNT_DENOM: u32 = 20;
 

@@ -159,7 +159,8 @@ fn recovery_fails_during_active_consensus_fault() {
 
 fn setup() -> (ActorHarness, MockRuntime) {
     let h = ActorHarness::new(PERIOD_OFFSET);
-    let rt = h.new_runtime();
+    let mut rt = h.new_runtime();
+    rt.policy.new_miner_deposit = TokenAmount::default();
     h.construct_and_verify(&rt);
     rt.set_balance(BIG_BALANCE.clone());
 

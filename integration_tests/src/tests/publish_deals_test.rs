@@ -1,3 +1,5 @@
+use std::ops::Add;
+
 use fil_actor_account::types::AuthenticateMessageParams;
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
@@ -46,13 +48,17 @@ const DEAL_LIFETIME: ChainEpoch = 181 * EPOCHS_IN_DAY;
 
 // create miner and client and add collateral
 fn setup(v: &dyn VM) -> (Addrs, ChainEpoch) {
-    let addrs = create_accounts(v, 7, &TokenAmount::from_whole(10_000));
+    let addrs = create_accounts(
+        v,
+        7,
+        &TokenAmount::from_whole(10_000).add(Policy::default().new_miner_deposit),
+    );
     let (worker, client1, client2, not_miner, cheap_client, verifier, verified_client) =
         (addrs[0], addrs[1], addrs[2], addrs[3], addrs[4], addrs[5], addrs[6]);
     let owner = worker;
 
     // setup provider
-    let miner_balance = TokenAmount::from_whole(100);
+    let miner_balance = TokenAmount::from_whole(100).add(Policy::default().new_miner_deposit);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
 
     let maddr = create_miner(
@@ -246,7 +252,7 @@ pub fn psd_not_enough_provider_lockup_for_batch_test(v: &dyn VM) {
         &cheap_worker,
         &cheap_worker,
         fvm_shared::sector::RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
-        &TokenAmount::from_whole(100),
+        &TokenAmount::from_whole(100).add(Policy::default().new_miner_deposit),
     )
     .0;
     // add one deal of collateral to provider's market account

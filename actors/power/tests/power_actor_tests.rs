@@ -15,6 +15,7 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredPoStProof, StoragePower};
 use fvm_shared::MethodNum;
 use num_traits::Zero;
+use std::ops::Add;
 use std::ops::Neg;
 
 use fil_actor_power::{
@@ -53,7 +54,7 @@ fn create_miner() {
         peer,
         multiaddrs,
         RegisteredPoStProof::StackedDRGWindow32GiBV1,
-        &TokenAmount::from_atto(10),
+        &TokenAmount::from_atto(10).add(Policy::default().new_miner_deposit),
     )
     .unwrap();
 
@@ -72,7 +73,7 @@ fn create_miner() {
     assert_eq!(StoragePower::zero(), st.total_raw_byte_power);
     assert_eq!(StoragePower::zero(), st.total_bytes_committed);
     assert_eq!(StoragePower::zero(), st.total_qa_bytes_committed);
-    assert_eq!(TokenAmount::zero(), st.total_pledge_collateral);
+    assert_eq!(Policy::default().new_miner_deposit, st.total_pledge_collateral);
     assert_eq!(0, st.miner_above_min_power_count);
 
     verify_empty_map(&rt, st.cron_event_queue);
@@ -208,12 +209,12 @@ fn power_and_pledge_accounted_below_threshold() {
     // Add power for miner1
     h.update_claimed_power(&rt, MINER1, small_power_unit, small_power_unit_x2);
     h.expect_total_power_eager(&rt, small_power_unit, small_power_unit_x2);
-
+    let miner_pledge = Policy::default().new_miner_deposit * 2;
     // Add power and pledge for miner2
     h.update_claimed_power(&rt, MINER2, small_power_unit, small_power_unit);
     h.update_pledge_total(&rt, MINER1, &TokenAmount::from_atto(1_000_000));
     h.expect_total_power_eager(&rt, small_power_unit_x2, small_power_unit_x3);
-    h.expect_total_pledge_eager(&rt, &TokenAmount::from_atto(1_000_000));
+    h.expect_total_pledge_eager(&rt, &TokenAmount::from_atto(1_000_000).add(miner_pledge.clone()));
 
     rt.verify();
 
@@ -230,7 +231,7 @@ fn power_and_pledge_accounted_below_threshold() {
     h.update_claimed_power(&rt, MINER2, &small_power_unit.neg(), &small_power_unit.neg());
     h.update_pledge_total(&rt, MINER2, &TokenAmount::from_atto(100_000).neg());
     h.expect_total_power_eager(&rt, small_power_unit, small_power_unit_x2);
-    h.expect_total_pledge_eager(&rt, &TokenAmount::from_atto(900_000));
+    h.expect_total_pledge_eager(&rt, &TokenAmount::from_atto(900_000).add(miner_pledge));
 
     let claim2 = h.get_claim(&rt, &MINER2).unwrap();
     assert!(claim2.raw_byte_power.is_zero());
@@ -638,6 +639,7 @@ fn given_no_miner_claim_update_pledge_total_should_abort() {
 #[cfg(test)]
 mod cron_tests {
     use super::*;
+    use std::ops::Add;
 
     use fil_actor_power::ext::reward::Method as RewardMethod;
     use fil_actor_power::ext::{
@@ -708,7 +710,10 @@ mod cron_tests {
 
         let state: State = rt.get_state();
 
-        assert_eq!(delta, state.this_epoch_pledge_collateral);
+        assert_eq!(
+            delta.add(Policy::default().new_miner_deposit * 4),
+            state.this_epoch_pledge_collateral
+        );
         assert_eq!(expected_power, state.this_epoch_quality_adj_power);
         assert_eq!(expected_power, state.this_epoch_raw_byte_power);
 

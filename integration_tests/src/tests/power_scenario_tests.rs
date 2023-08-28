@@ -18,6 +18,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof};
 use fvm_shared::METHOD_SEND;
 use num_traits::Zero;
+use std::ops::Add;
 use vm_api::trace::ExpectInvocation;
 use vm_api::util::{apply_ok, serialize_ok};
 use vm_api::VM;
@@ -34,7 +35,7 @@ pub fn power_create_miner_test(v: &dyn VM) {
     v.execute_message(
         &TEST_FAUCET_ADDR,
         &owner,
-        &TokenAmount::from_atto(10_000u32),
+        &TokenAmount::from_atto(10_000u32).add(Policy::default().new_miner_deposit),
         METHOD_SEND,
         None,
     )
@@ -54,7 +55,7 @@ pub fn power_create_miner_test(v: &dyn VM) {
         .execute_message(
             &owner,
             &STORAGE_POWER_ACTOR_ADDR,
-            &TokenAmount::from_atto(1000u32),
+            &TokenAmount::from_atto(1000u32).add(Policy::default().new_miner_deposit),
             PowerMethod::CreateMiner as u64,
             Some(serialize_ok(&params)),
         )

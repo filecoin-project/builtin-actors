@@ -116,7 +116,8 @@ lazy_static! {
 
 #[allow(dead_code)]
 pub fn setup() -> (ActorHarness, MockRuntime) {
-    let rt = MockRuntime::default();
+    let mut rt = MockRuntime::default();
+    rt.policy.new_miner_deposit = TokenAmount::default();
     let h = ActorHarness::new(0);
 
     h.construct_and_verify(&rt);

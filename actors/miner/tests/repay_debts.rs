@@ -1,24 +1,31 @@
 use fil_actor_miner::{locked_reward_from_reward, Actor, Method};
-use fil_actors_runtime::test_utils::{expect_abort_contains_message, EVM_ACTOR_CODE_ID};
+use fil_actors_runtime::test_utils::{
+    expect_abort_contains_message, MockRuntime, EVM_ACTOR_CODE_ID,
+};
 use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
+use util::*;
 
 mod util;
 
-use util::*;
-
 const PERIOD_OFFSET: ChainEpoch = 100;
+
+#[allow(dead_code)]
+pub fn setup() -> (ActorHarness, MockRuntime) {
+    let h = ActorHarness::new(PERIOD_OFFSET);
+    let mut rt = MockRuntime::default();
+    rt.policy.new_miner_deposit = TokenAmount::default();
+    h.construct_and_verify(&rt);
+    (h, rt)
+}
 
 #[test]
 fn repay_with_no_available_funds_does_nothing() {
-    let h = ActorHarness::new(PERIOD_OFFSET);
-    let rt = h.new_runtime();
-    h.construct_and_verify(&rt);
-
+    let (h, rt) = setup();
     // introduce fee debt
     let mut st = h.get_state(&rt);
     let fee_debt: TokenAmount = 4 * &*BIG_BALANCE;
@@ -34,9 +41,7 @@ fn repay_with_no_available_funds_does_nothing() {
 
 #[test]
 fn pay_debt_entirely_from_balance() {
-    let h = ActorHarness::new(PERIOD_OFFSET);
-    let rt = h.new_runtime();
-    h.construct_and_verify(&rt);
+    let (h, rt) = setup();
 
     // introduce fee debt
     let mut st = h.get_state(&rt);
@@ -54,9 +59,7 @@ fn pay_debt_entirely_from_balance() {
 
 #[test]
 fn repay_debt_restricted_correctly() {
-    let h = ActorHarness::new(PERIOD_OFFSET);
-    let rt = h.new_runtime();
-    h.construct_and_verify(&rt);
+    let (h, rt) = setup();
 
     // introduce fee debt
     let mut st = h.get_state(&rt);
@@ -93,9 +96,7 @@ fn repay_debt_restricted_correctly() {
 
 #[test]
 fn partially_repay_debt() {
-    let h = ActorHarness::new(PERIOD_OFFSET);
-    let rt = h.new_runtime();
-    h.construct_and_verify(&rt);
+    let (h, rt) = setup();
 
     // introduce fee debt
     let mut st = h.get_state(&rt);
@@ -113,9 +114,7 @@ fn partially_repay_debt() {
 
 #[test]
 fn pay_debt_partially_from_vested_funds() {
-    let h = ActorHarness::new(PERIOD_OFFSET);
-    let rt = h.new_runtime();
-    h.construct_and_verify(&rt);
+    let (h, rt) = setup();
 
     let reward_amount: TokenAmount = 4 * &*BIG_BALANCE;
     let (amount_locked, _) = locked_reward_from_reward(reward_amount.clone());

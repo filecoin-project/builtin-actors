@@ -1,16 +1,3 @@
-use fvm_ipld_bitfield::BitField;
-use fvm_ipld_encoding::RawBytes;
-use fvm_shared::address::Address;
-use fvm_shared::bigint::{BigInt, Zero};
-use fvm_shared::clock::ChainEpoch;
-use fvm_shared::deal::DealID;
-use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
-use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
-use fvm_shared::sector::SectorSize;
-use fvm_shared::sector::StoragePower;
-use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
-
 use fil_actor_cron::Method as CronMethod;
 use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
@@ -26,6 +13,19 @@ use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
 use fil_actors_runtime::{
     Array, CRON_ACTOR_ADDR, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
+use fvm_ipld_bitfield::BitField;
+use fvm_ipld_encoding::RawBytes;
+use fvm_shared::address::Address;
+use fvm_shared::bigint::{BigInt, Zero};
+use fvm_shared::clock::ChainEpoch;
+use fvm_shared::deal::DealID;
+use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
+use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
+use fvm_shared::sector::SectorSize;
+use fvm_shared::sector::StoragePower;
+use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
+use std::ops::Add;
 use vm_api::trace::ExpectInvocation;
 use vm_api::util::{apply_code, apply_ok, get_state, mutate_state, DynBlockstore};
 use vm_api::VM;
@@ -651,7 +651,12 @@ pub fn terminate_after_upgrade_test(v: &dyn VM) {
     assert!(network_stats.total_quality_adj_power.is_zero());
     assert!(network_stats.total_bytes_committed.is_zero());
     assert!(network_stats.total_qa_bytes_committed.is_zero());
-    assert!(network_stats.total_pledge_collateral.is_zero());
+    assert_eq!(
+        TokenAmount::from_atto(BigInt::from_signed_bytes_be(&[
+            27, 1, 107, 105, 211, 194, 120, 24, 163
+        ])),
+        network_stats.total_pledge_collateral
+    );
 
     assert_invariants(v, &Policy::default());
 }
@@ -1270,7 +1275,7 @@ pub fn create_miner_and_upgrade_sector(
         &owner,
         &worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        &TokenAmount::from_whole(10_000),
+        &TokenAmount::from_whole(10_000).add(Policy::default().new_miner_deposit),
     );
 
     // advance to have seal randomness epoch in the past

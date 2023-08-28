@@ -1,4 +1,5 @@
 use fvm_shared::clock::ChainEpoch;
+use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof, StoragePower};
 use num_traits::FromPrimitive;
 use serde::{Deserialize, Serialize};
@@ -106,6 +107,9 @@ pub struct Policy {
     /// The maximum number of new sectors that may be staged by a miner during a single proving period.
     pub new_sectors_per_period_max: usize,
 
+    /// The deposit for creating new miner
+    pub new_miner_deposit: TokenAmount,
+
     /// Epochs after which chain state is final with overwhelming probability
     /// (hence the likelihood of two fork of this size is negligible).
     pub chain_finality: ChainEpoch,
@@ -186,6 +190,7 @@ impl Default for Policy {
             consensus_fault_ineligibility_duration:
                 policy_constants::CONSENSUS_FAULT_INELIGIBILITY_DURATION,
             new_sectors_per_period_max: policy_constants::NEW_SECTORS_PER_PERIOD_MAX,
+            new_miner_deposit: TokenAmount::from_whole(policy_constants::NEW_MINER_DEPOSIT),
             chain_finality: policy_constants::CHAIN_FINALITY,
 
             valid_post_proof_type: ProofSet::default_post_proofs(),
@@ -304,6 +309,8 @@ pub mod policy_constants {
     pub const CONSENSUS_FAULT_INELIGIBILITY_DURATION: ChainEpoch = CHAIN_FINALITY;
 
     pub const NEW_SECTORS_PER_PERIOD_MAX: usize = 128 << 10;
+
+    pub const NEW_MINER_DEPOSIT: u64 = 500;
 
     /// This is a conservative value that is chosen via simulations of all known attacks.
     pub const CHAIN_FINALITY: ChainEpoch = 900;
