@@ -71,7 +71,7 @@ fn setup(v: &dyn VM) -> (MinerInfo, SectorInfo) {
     advance_by_deadline_to_epoch(v, &id_addr, prove_time);
 
     // prove commit, cron, advance to post time
-    let prove_params = ProveCommitSectorParams { sector_number, proof: vec![] };
+    let prove_params = ProveCommitSectorParams { sector_number, proof: vec![].into() };
     let prove_params_ser = IpldBlock::serialize_cbor(&prove_params).unwrap();
     apply_ok(
         v,
@@ -449,7 +449,7 @@ pub fn aggregate_bad_sector_number_test(v: &dyn VM) {
 
     let params = ProveCommitAggregateParams {
         sector_numbers: precommited_sector_nos.clone(),
-        aggregate_proof: vec![],
+        aggregate_proof: vec![].into(),
     };
     apply_code(
         v,
@@ -517,7 +517,7 @@ pub fn aggregate_size_limits_test(v: &dyn VM) {
     // Fail with too many sectors
     let params = ProveCommitAggregateParams {
         sector_numbers: precommited_sector_nos.clone(),
-        aggregate_proof: vec![],
+        aggregate_proof: vec![].into(),
     };
     apply_code(
         v,
@@ -534,7 +534,7 @@ pub fn aggregate_size_limits_test(v: &dyn VM) {
         precommited_sector_nos.slice(0, policy.min_aggregated_sectors - 1).unwrap();
     let params = ProveCommitAggregateParams {
         sector_numbers: too_few_sector_nos_bf,
-        aggregate_proof: vec![],
+        aggregate_proof: vec![].into(),
     };
     apply_code(
         v,
@@ -551,7 +551,7 @@ pub fn aggregate_size_limits_test(v: &dyn VM) {
         precommited_sector_nos.slice(0, policy.max_aggregated_sectors).unwrap();
     let params = ProveCommitAggregateParams {
         sector_numbers: just_right_sectors_no_bf,
-        aggregate_proof: vec![0; policy.max_aggregated_proof_size + 1],
+        aggregate_proof: vec![0; policy.max_aggregated_proof_size + 1].into(),
     };
     apply_code(
         v,
@@ -619,7 +619,7 @@ pub fn aggregate_bad_sender_test(v: &dyn VM) {
 
     let params = ProveCommitAggregateParams {
         sector_numbers: precommited_sector_nos,
-        aggregate_proof: vec![],
+        aggregate_proof: vec![].into(),
     };
     apply_code(
         v,
@@ -720,8 +720,10 @@ pub fn aggregate_one_precommit_expires_test(v: &dyn VM) {
             && agg_setors_count < policy.max_aggregated_sectors
     );
 
-    let prove_params =
-        ProveCommitAggregateParams { sector_numbers: sector_nos_bf, aggregate_proof: vec![] };
+    let prove_params = ProveCommitAggregateParams {
+        sector_numbers: sector_nos_bf,
+        aggregate_proof: vec![].into(),
+    };
     let prove_params_ser = IpldBlock::serialize_cbor(&prove_params).unwrap();
     apply_ok(
         v,

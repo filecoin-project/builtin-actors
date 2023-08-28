@@ -3,20 +3,24 @@
 
 use cid::Cid;
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{strict_bytes, BytesDe};
+use fvm_ipld_encoding::{tuple::*, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
+use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
     PoStProof, RegisteredPoStProof, RegisteredSealProof, RegisteredUpdateProof, SectorNumber,
     SectorSize, StoragePower,
 };
 use fvm_shared::smooth::FilterEstimate;
+use fvm_shared::ActorID;
 
+use crate::ext::verifreg::AllocationID;
 use fil_actors_runtime::DealWeight;
 
 use crate::commd::CompactCommD;
@@ -128,8 +132,96 @@ pub struct SubmitWindowedPoStParams {
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ProveCommitSectorParams {
     pub sector_number: SectorNumber,
-    #[serde(with = "strict_bytes")]
-    pub proof: Vec<u8>,
+    pub proof: RawBytes,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct ProveCommitSectors2Params {
+    // Activation manifest for each sector being proven.
+    pub sector_activations: Vec<SectorActivationManifest>,
+    // Proofs for each sector, parallel to activation manifests.
+    // Exactly one of sector_proofs or aggregate_proof must be non-empty.
+    pub sector_proofs: Vec<RawBytes>,
+    // Aggregate proof for all sectors.
+    // Exactly one of sector_proofs or aggregate_proof must be non-empty.
+    pub aggregate_proof: RawBytes,
+    // Whether to abort if any sector activation fails.
+    pub require_activation_success: bool,
+    // Whether to abort if any notification returns a non-zero exit code.
+    pub require_notification_success: bool,
+}
+
+// Data to activate a commitment to one sector and its data.
+// All pieces of data must be specified, whether or not not claiming a FIL+ activation or being
+// notified to a data consumer.
+// An implicit zero piece fills any remaining sector capacity.
+// XXX: we should consider fast tracking the special case where there is only
+//  one piece not claiming or notifying other actors to allow an empty piece vector.
+//  We could interpret this as a single piece, size == sector size, cid == commD, empty allocation empty notify vector
+#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
+pub struct SectorActivationManifest {
+    // Sector to be activated.
+    pub sector_number: SectorNumber,
+    // Pieces comprising the sector content, in order.
+    pub pieces: Vec<PieceActivationManifest>,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
+pub struct PieceActivationManifest {
+    // Piece data commitment.
+    pub cid: Cid,
+    // Piece size.
+    pub size: PaddedPieceSize,
+    // Identifies a verified allocation to be claimed.
+    pub verified_allocation_key: Option<VerifiedAllocationKey>,
+    // Synchronous notifications to be sent to other actors after activation.
+    pub notify: Vec<DataActivationNotification>,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
+pub struct VerifiedAllocationKey {
+    pub client: ActorID,
+    pub id: AllocationID,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
+pub struct DataActivationNotification {
+    // Actor to be notified.
+    pub address: Address,
+    // Data to send in the notification.
+    pub payload: RawBytes,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct ProveCommit2Return {
+    // Sector activation results, parallel to input sector activation manifests.
+    pub sectors: Vec<SectorActivationReturn>,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct SectorActivationReturn {
+    // Whether the sector was activated.
+    activated: bool,
+    // Power of the activated sector (or zero).
+    power: StoragePower,
+    // Piece activation results, parallel to input piece activation manifests.
+    pieces: Vec<PieceActivationReturn>,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct PieceActivationReturn {
+    // Whether a verified allocation was successfully claimed by the piece.
+    claimed: bool,
+    // Results from notifications of piece activation, parallel to input notification requests.
+    notifications: Vec<DataActivationNotificationReturn>,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct DataActivationNotificationReturn {
+    // Exit code from the notified actor.
+    code: ExitCode,
+    // Return value from the notified actor.
+    data: RawBytes,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
@@ -383,8 +475,7 @@ pub struct DisputeWindowedPoStParams {
 #[derive(Debug, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct ProveCommitAggregateParams {
     pub sector_numbers: BitField,
-    #[serde(with = "strict_bytes")]
-    pub aggregate_proof: Vec<u8>,
+    pub aggregate_proof: RawBytes,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
@@ -395,8 +486,7 @@ pub struct ReplicaUpdate {
     pub new_sealed_cid: Cid,
     pub deals: Vec<DealID>,
     pub update_proof_type: RegisteredUpdateProof,
-    #[serde(with = "strict_bytes")]
-    pub replica_proof: Vec<u8>,
+    pub replica_proof: RawBytes,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
@@ -413,8 +503,7 @@ pub struct ReplicaUpdate2 {
     pub new_unsealed_cid: Cid,
     pub deals: Vec<DealID>,
     pub update_proof_type: RegisteredUpdateProof,
-    #[serde(with = "strict_bytes")]
-    pub replica_proof: Vec<u8>,
+    pub replica_proof: RawBytes,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]

@@ -158,7 +158,7 @@ pub fn miner_prove_sector(
     miner_id: &Address,
     sector_number: SectorNumber,
 ) {
-    let prove_commit_params = ProveCommitSectorParams { sector_number, proof: vec![] };
+    let prove_commit_params = ProveCommitSectorParams { sector_number, proof: vec![].into() };
     apply_ok(
         v,
         worker,
@@ -255,10 +255,7 @@ pub fn precommit_sectors_v2_expect_code(
         if param_sectors.len() > 1 {
             invocs.push(Expect::burn(
                 miner_id,
-                Some(aggregate_pre_commit_network_fee(
-                    param_sectors.len() as i64,
-                    &TokenAmount::zero(),
-                )),
+                Some(aggregate_pre_commit_network_fee(param_sectors.len(), &TokenAmount::zero())),
             ));
         }
         if expect_cron_enroll && msg_sector_idx_base == 0 {
@@ -377,7 +374,7 @@ pub fn prove_commit_sectors(
 
         let prove_commit_aggregate_params = ProveCommitAggregateParams {
             sector_numbers: make_bitfield(b.as_slice()),
-            aggregate_proof: vec![],
+            aggregate_proof: vec![].into(),
         };
 
         let prove_commit_aggregate_params_ser =
@@ -392,8 +389,7 @@ pub fn prove_commit_sectors(
             Some(prove_commit_aggregate_params),
         );
 
-        let expected_fee =
-            aggregate_prove_commit_network_fee(to_prove.len() as i64, &TokenAmount::zero());
+        let expected_fee = aggregate_prove_commit_network_fee(to_prove.len(), &TokenAmount::zero());
         ExpectInvocation {
             from: worker_id,
             to: *maddr,
