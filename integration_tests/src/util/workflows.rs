@@ -1,5 +1,6 @@
 use std::cmp::min;
 
+use fil_actor_market::ProcessDealsParams;
 use frc46_token::receiver::FRC46TokenReceived;
 use frc46_token::receiver::FRC46_TOKEN_TYPE;
 use frc46_token::token::types::TransferFromParams;
@@ -521,6 +522,18 @@ pub fn miner_extend_sector_expiration2(
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
+}
+
+pub fn provider_process_deal_updates(v: &dyn VM, provider: &Address, deals: &[DealID]) {
+    let params = ProcessDealsParams { deal_ids: deals.to_vec() };
+    apply_ok(
+        v,
+        provider,
+        &STORAGE_MARKET_ACTOR_ADDR,
+        &TokenAmount::zero(),
+        MarketMethod::ProcessDealUpdatesExported as u64,
+        Some(params),
+    );
 }
 
 pub fn advance_by_deadline_to_epoch(v: &dyn VM, maddr: &Address, e: ChainEpoch) -> DeadlineInfo {

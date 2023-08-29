@@ -1005,6 +1005,7 @@ impl Actor {
         rt: &impl Runtime,
         params: ProcessDealsParams,
     ) -> Result<ProcessDealsReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
         let curr_epoch = rt.curr_epoch();
         let mut total_slashed = TokenAmount::zero();
         let mut expired_deals: Vec<DealID> = Vec::new();

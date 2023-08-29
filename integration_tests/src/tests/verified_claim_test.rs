@@ -34,9 +34,9 @@ use crate::util::{
     advance_by_deadline_to_index, advance_to_proving_deadline, assert_invariants, create_accounts,
     create_miner, cron_tick, datacap_extend_claim, datacap_get_balance, expect_invariants,
     invariant_failure_patterns, market_add_balance, market_publish_deal,
-    miner_extend_sector_expiration2, miner_precommit_sector, miner_prove_sector, sector_deadline,
-    submit_windowed_post, verifreg_add_client, verifreg_add_verifier, verifreg_extend_claim_terms,
-    verifreg_remove_expired_allocations,
+    miner_extend_sector_expiration2, miner_precommit_sector, miner_prove_sector,
+    provider_process_deal_updates, sector_deadline, submit_windowed_post, verifreg_add_client,
+    verifreg_add_verifier, verifreg_extend_claim_terms, verifreg_remove_expired_allocations,
 };
 
 /// Tests a scenario involving a verified deal from the built-in market, with associated
@@ -355,6 +355,10 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
     let ret: RemoveExpiredClaimsReturn = deserialize(&ret_raw, "balance of return value").unwrap();
     assert_eq!(vec![claim_id], ret.considered);
     assert!(ret.results.all_ok(), "results had failures {}", ret.results);
+
+    // provider must process the deals to receive payment and cleanup state
+    provider_process_deal_updates(v, &miner_id, &deals);
+    // TODO: assert that the right payouts have been made
 
     expect_invariants(
         v,

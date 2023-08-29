@@ -675,13 +675,9 @@ impl State {
         let ever_slashed = state.slash_epoch != EPOCH_UNDEFINED;
 
         if !ever_updated {
-            self.remove_pending_deal(store, *deal_cid)?.ok_or_else(|| {
-                actor_error!(
-                    illegal_state,
-                    "failed to delete pending proposal: cid {} does not exist",
-                    deal_cid
-                )
-            })?;
+            // pending deal might have already been removed in first cron_tick, so we don't care if
+            // it's already missing
+            self.remove_pending_deal(store, *deal_cid)?;
         }
 
         // if the deal was ever updated, make sure it didn't happen in the future
