@@ -3857,91 +3857,87 @@ fn process_early_terminations(
     reward_smoothed: &FilterEstimate,
     quality_adj_power_smoothed: &FilterEstimate,
 ) -> Result</* more */ bool, ActorError> {
-    let (result, more, sectors_terminated, penalty, pledge_delta) =
-        rt.transaction(|state: &mut State, rt| {
-            let store = rt.store();
-            let policy = rt.policy();
+    let mut sectors_with_data = vec![];
+    let (result, more, penalty, pledge_delta) = rt.transaction(|state: &mut State, rt| {
+        let store = rt.store();
+        let policy = rt.policy();
 
-            let (result, more) = state
-                .pop_early_terminations(
-                    policy,
-                    store,
-                    policy.addressed_partitions_max,
-                    policy.addressed_sectors_max,
-                )
-                .map_err(|e| {
-                    e.downcast_default(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        "failed to pop early terminations",
-                    )
-                })?;
+        let (result, more) = state
+            .pop_early_terminations(
+                policy,
+                store,
+                policy.addressed_partitions_max,
+                policy.addressed_sectors_max,
+            )
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to pop early terminations")?;
 
-            // Nothing to do, don't waste any time.
-            // This can happen if we end up processing early terminations
-            // before the cron callback fires.
-            if result.is_empty() {
-                info!("no early terminations (maybe cron callback hasn't happened yet?)");
-                return Ok((result, more, Vec::new(), TokenAmount::zero(), TokenAmount::zero()));
-            }
+        // Nothing to do, don't waste any time.
+        // This can happen if we end up processing early terminations
+        // before the cron callback fires.
+        if result.is_empty() {
+            info!("no early terminations (maybe cron callback hasn't happened yet?)");
+            return Ok((result, more, TokenAmount::zero(), TokenAmount::zero()));
+        }
 
-            let info = get_miner_info(rt.store(), state)?;
-            let sectors = Sectors::load(store, &state.sectors).map_err(|e| {
-                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")
-            })?;
+        let info = get_miner_info(rt.store(), state)?;
+        let sectors = Sectors::load(store, &state.sectors).map_err(|e| {
+            e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")
+        })?;
 
-            let mut sectors_terminated: Vec<BitField> = Vec::new();
-            let mut total_initial_pledge = TokenAmount::zero();
-            let mut penalty = TokenAmount::zero();
+        let mut total_initial_pledge = TokenAmount::zero();
+        let mut total_penalty = TokenAmount::zero();
 
-            for (epoch, sector_numbers) in result.iter() {
-                sectors_terminated.push(sector_numbers.clone());
-                let sectors = sectors
-                    .load_sector(sector_numbers)
-                    .map_err(|e| e.wrap("failed to load sector infos"))?;
+        for (epoch, sector_numbers) in result.iter() {
+            let sectors = sectors
+                .load_sector(sector_numbers)
+                .map_err(|e| e.wrap("failed to load sector infos"))?;
 
-                penalty += termination_penalty(
-                    info.sector_size,
-                    epoch,
-                    reward_smoothed,
+            for sector in &sectors {
+                total_initial_pledge += &sector.initial_pledge;
+                let sector_power = qa_power_for_sector(info.sector_size, sector);
+                total_penalty += pledge_penalty_for_termination(
+                    &sector.expected_day_reward,
+                    epoch - sector.power_base_epoch,
+                    &sector.expected_storage_pledge,
                     quality_adj_power_smoothed,
-                    &sectors,
+                    &sector_power,
+                    reward_smoothed,
+                    &sector.replaced_day_reward,
+                    sector.power_base_epoch - sector.activation,
                 );
-
-                // estimate ~one deal per sector.
-                let mut deal_ids = Vec::<DealID>::with_capacity(sectors.len());
-                for sector in sectors {
-                    deal_ids.extend(sector.deal_ids);
-                    total_initial_pledge += sector.initial_pledge;
+                if sector.deal_weight.is_positive() || sector.verified_deal_weight.is_positive() {
+                    sectors_with_data.push(sector.sector_number);
                 }
             }
+        }
 
-            // Pay penalty
-            state
-                .apply_penalty(&penalty)
-                .map_err(|e| actor_error!(illegal_state, "failed to apply penalty: {}", e))?;
+        // Apply penalty (add to fee debt)
+        state
+            .apply_penalty(&total_penalty)
+            .map_err(|e| actor_error!(illegal_state, "failed to apply penalty: {}", e))?;
 
-            // Remove pledge requirement.
-            let mut pledge_delta = -total_initial_pledge;
-            state.add_initial_pledge(&pledge_delta).map_err(|e| {
-                actor_error!(illegal_state, "failed to add initial pledge {}: {}", pledge_delta, e)
+        // Remove pledge requirement.
+        let mut pledge_delta = -total_initial_pledge;
+        state.add_initial_pledge(&pledge_delta).map_err(|e| {
+            actor_error!(illegal_state, "failed to add initial pledge {}: {}", pledge_delta, e)
+        })?;
+
+        // Use unlocked pledge to pay down outstanding fee debt
+        let (penalty_from_vesting, penalty_from_balance) = state
+            .repay_partial_debt_in_priority_order(
+                rt.store(),
+                rt.curr_epoch(),
+                &rt.current_balance(),
+            )
+            .map_err(|e| {
+                e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to repay penalty")
             })?;
 
-            // Use unlocked pledge to pay down outstanding fee debt
-            let (penalty_from_vesting, penalty_from_balance) = state
-                .repay_partial_debt_in_priority_order(
-                    rt.store(),
-                    rt.curr_epoch(),
-                    &rt.current_balance(),
-                )
-                .map_err(|e| {
-                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to repay penalty")
-                })?;
+        let penalty = &penalty_from_vesting + penalty_from_balance;
+        pledge_delta -= penalty_from_vesting;
 
-            penalty = &penalty_from_vesting + penalty_from_balance;
-            pledge_delta -= penalty_from_vesting;
-
-            Ok((result, more, sectors_terminated, penalty, pledge_delta))
-        })?;
+        Ok((result, more, penalty, pledge_delta))
+    })?;
 
     // We didn't do anything, abort.
     if result.is_empty() {
@@ -3961,8 +3957,9 @@ fn process_early_terminations(
     notify_pledge_changed(rt, &pledge_delta)?;
 
     // Terminate deals.
-    let all_terminated = BitField::union(sectors_terminated.iter());
-    request_terminate_deals(rt, rt.curr_epoch(), &all_terminated)?;
+    let terminated_data = BitField::try_from_bits(sectors_with_data)
+        .context_code(ExitCode::USR_ILLEGAL_STATE, "invalid sector number")?;
+    request_terminate_deals(rt, rt.curr_epoch(), &terminated_data)?;
 
     // reschedule cron worker, if necessary.
     Ok(more)
@@ -4754,33 +4751,6 @@ fn validate_partition_contains_sectors(
     } else {
         Err(anyhow!("not all sectors are assigned to the partition"))
     }
-}
-
-fn termination_penalty(
-    sector_size: SectorSize,
-    current_epoch: ChainEpoch,
-    reward_estimate: &FilterEstimate,
-    network_qa_power_estimate: &FilterEstimate,
-    sectors: &[SectorOnChainInfo],
-) -> TokenAmount {
-    let mut total_fee = TokenAmount::zero();
-
-    for sector in sectors {
-        let sector_power = qa_power_for_sector(sector_size, sector);
-        let fee = pledge_penalty_for_termination(
-            &sector.expected_day_reward,
-            current_epoch - sector.power_base_epoch,
-            &sector.expected_storage_pledge,
-            network_qa_power_estimate,
-            &sector_power,
-            reward_estimate,
-            &sector.replaced_day_reward,
-            sector.power_base_epoch - sector.activation,
-        );
-        total_fee += fee;
-    }
-
-    total_fee
 }
 
 fn consensus_fault_active(info: &MinerInfo, curr_epoch: ChainEpoch) -> bool {
