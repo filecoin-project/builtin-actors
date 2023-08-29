@@ -793,6 +793,7 @@ pub fn process_deal_updates(
     let params = IpldBlock::serialize_cbor(&params).unwrap();
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, caller);
+    rt.expect_validate_caller_any();
     let res =
         rt.call::<MarketActor>(Method::ProcessDealUpdatesExported as u64, params).unwrap().unwrap();
     let res: ProcessDealsReturn = res.deserialize().unwrap();
