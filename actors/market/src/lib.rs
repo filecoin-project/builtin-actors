@@ -22,7 +22,7 @@ use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::{RegisteredSealProof, SectorSize, StoragePower};
 use fvm_shared::{ActorID, METHOD_CONSTRUCTOR, METHOD_SEND};
 use integer_encoding::VarInt;
-use log::info;
+use log::{info, warn};
 use num_derive::FromPrimitive;
 use num_traits::Zero;
 
@@ -717,10 +717,21 @@ impl Actor {
                     // part of a sector that is terminating.
                     .ok_or_else(|| actor_error!(illegal_argument, "no state for deal {}", id))?;
 
-                // If a deal is already slashed, don't need to do anything
+                // If a deal is already slashed, there should be no existing state for it
+                // but we process it here for deletion anyway
                 if state.slash_epoch != EPOCH_UNDEFINED {
-                    info!("deal {}, already slashed", id);
-                    continue;
+                    warn!("deal {}, already slashed, terminating now anyway", id);
+                }
+
+                // If deal has never been processed, it will still have an entry in pending proposals
+                if state.last_updated_epoch == EPOCH_UNDEFINED {
+                    let dcid = rt_deal_cid(rt, &deal)?;
+                    st.remove_pending_deal(rt.store(), dcid)?.ok_or_else(|| {
+                        actor_error!(
+                            illegal_state,
+                            "failed to delete pending proposal: does not exist"
+                        )
+                    })?;
                 }
 
                 // mark the deal for slashing here. Actual releasing of locked funds for the client
