@@ -723,15 +723,10 @@ impl Actor {
                     warn!("deal {}, already slashed, terminating now anyway", id);
                 }
 
-                // If deal has never been processed, it will still have an entry in pending proposals
+                // If deal has never been processed, it may still have an entry in pending proposals
                 if state.last_updated_epoch == EPOCH_UNDEFINED {
                     let dcid = rt_deal_cid(rt, &deal)?;
-                    st.remove_pending_deal(rt.store(), dcid)?.ok_or_else(|| {
-                        actor_error!(
-                            illegal_state,
-                            "failed to delete pending proposal: does not exist"
-                        )
-                    })?;
+                    st.remove_pending_deal(rt.store(), dcid)?;
                 }
 
                 // mark the deal for slashing here. Actual releasing of locked funds for the client
@@ -1391,7 +1386,7 @@ pub(crate) fn rt_serialized_deal_cid(rt: &impl Runtime, data: &[u8]) -> Result<C
 }
 
 /// Compute a deal CID directly.
-pub(crate) fn deal_cid(proposal: &DealProposal) -> Result<Cid, ActorError> {
+pub fn deal_cid(proposal: &DealProposal) -> Result<Cid, ActorError> {
     const DIGEST_SIZE: u32 = 32;
     let data = serialize(proposal, "deal proposal")?;
     let hash = Code::Blake2b256.digest(data.bytes());
