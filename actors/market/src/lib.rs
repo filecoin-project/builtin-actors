@@ -39,9 +39,6 @@ use fil_actors_runtime::{
 use fil_actors_runtime::{extract_send_result, BatchReturnGen, FIRST_ACTOR_SPECIFIC_EXIT_CODE};
 
 use crate::balance_table::BalanceTable;
-use crate::ext::miner::{
-    PieceReturn, SectorContentChangedParams, SectorContentChangedReturn, SectorReturn,
-};
 use crate::ext::verifreg::{AllocationID, AllocationRequest};
 
 pub use self::deal::*;
@@ -96,7 +93,7 @@ pub enum Method {
     GetDealProviderCollateralExported = frc42_dispatch::method_hash!("GetDealProviderCollateral"),
     GetDealVerifiedExported = frc42_dispatch::method_hash!("GetDealVerified"),
     GetDealActivationExported = frc42_dispatch::method_hash!("GetDealActivation"),
-    SectorContentChangedExported = frc42_dispatch::method_hash!("SectorContentChanged"),
+    SectorContentChangedExported = ext::miner::SECTOR_CONTENT_CHANGED,
 }
 
 /// Market Actor
@@ -658,8 +655,8 @@ impl Actor {
     /// This is an alternative to ActivateDeals.
     fn sector_content_changed(
         rt: &impl Runtime,
-        params: SectorContentChangedParams,
-    ) -> Result<SectorContentChangedReturn, ActorError> {
+        params: ext::miner::SectorContentChangedParams,
+    ) -> Result<ext::miner::SectorContentChangedReturn, ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         let miner_addr = rt.message().caller();
         let curr_epoch = rt.curr_epoch();
@@ -674,29 +671,23 @@ impl Actor {
             let mut deal_states: Vec<(DealID, DealState)> = vec![];
             let mut activated_deals: HashSet<DealID> = HashSet::new();
             let mut sectors_deals: Vec<(SectorNumber, SectorDealIDs)> = vec![];
-            let mut sectors_ret: Vec<SectorReturn> = vec![];
+            let mut sectors_ret: Vec<ext::miner::SectorReturn> = vec![];
 
             for sector in &params.sectors {
                 let mut sector_deal_ids: Vec<DealID> = vec![];
-                let mut pieces_ret: Vec<PieceReturn> = vec![];
+                let mut pieces_ret: Vec<ext::miner::PieceReturn> = vec![];
                 for piece in &sector.added {
                     let deal_id: DealID = match deserialize(&piece.payload.clone(), "deal id") {
                         Ok(v) => v,
                         Err(e) => {
-                            log::warn!("failed to deserialize deal id: {}", e);
-                            pieces_ret.push(PieceReturn {
-                                code: ExitCode::USR_SERIALIZATION,
-                                data: vec![],
-                            });
+                            log::warn!("failed to deserialize deal id {:?}: {}", piece.payload, e);
+                            pieces_ret.push(ext::miner::PieceReturn { accepted: false });
                             continue;
                         }
                     };
                     if activated_deals.contains(&deal_id) {
-                        log::warn!("failed to activate duplicated deal {}", deal_id);
-                        pieces_ret.push(PieceReturn {
-                            code: ExitCode::USR_ILLEGAL_ARGUMENT,
-                            data: vec![],
-                        });
+                        log::warn!("duplicated deal {}", deal_id);
+                        pieces_ret.push(ext::miner::PieceReturn { accepted: false });
                         continue;
                     }
 
@@ -713,36 +704,30 @@ impl Actor {
                     )? {
                         Ok(id) => id,
                         Err(e) => {
-                            log::warn!("failed to activate: {}", e);
-                            pieces_ret.push(PieceReturn { code: e.exit_code(), data: vec![] });
+                            log::warn!("failed to activate deal {}: {}", deal_id, e);
+                            pieces_ret.push(ext::miner::PieceReturn { accepted: false });
                             continue;
                         }
                     };
 
                     if piece.data != proposal.piece_cid {
                         log::warn!(
-                            "failed to activate: piece CID {} doesn't match deal {} with {}",
-                            piece.data,
+                            "deal {} piece CID {} doesn't match {}",
                             deal_id,
+                            piece.data,
                             proposal.piece_cid
                         );
-                        pieces_ret.push(PieceReturn {
-                            code: ExitCode::USR_ILLEGAL_ARGUMENT,
-                            data: vec![],
-                        });
+                        pieces_ret.push(ext::miner::PieceReturn { accepted: false });
                         continue;
                     }
                     if piece.size != proposal.piece_size {
                         log::warn!(
-                            "failed to activate: piece size {} doesn't match deal {} with {}",
-                            piece.size.0,
+                            "deal {} piece size {} doesn't match {}",
                             deal_id,
+                            piece.size.0,
                             proposal.piece_size.0
                         );
-                        pieces_ret.push(PieceReturn {
-                            code: ExitCode::USR_ILLEGAL_ARGUMENT,
-                            data: vec![],
-                        });
+                        pieces_ret.push(ext::miner::PieceReturn { accepted: false });
                         continue;
                     }
 
@@ -772,12 +757,12 @@ impl Actor {
                         },
                     ));
                     sector_deal_ids.push(deal_id);
-                    pieces_ret.push(PieceReturn { code: ExitCode::OK, data: vec![] });
+                    pieces_ret.push(ext::miner::PieceReturn { accepted: true });
                 }
 
                 sectors_deals.push((sector.sector, SectorDealIDs { deals: sector_deal_ids }));
                 assert_eq!(pieces_ret.len(), sector.added.len(), "mismatched piece returns");
-                sectors_ret.push(SectorReturn { added: pieces_ret });
+                sectors_ret.push(ext::miner::SectorReturn { added: pieces_ret });
             }
             st.put_deal_states(rt.store(), &deal_states)?;
             st.put_sector_deal_ids(rt.store(), &miner_addr, &sectors_deals)?;
@@ -787,7 +772,7 @@ impl Actor {
             Ok(sectors_ret)
         })?;
 
-        Ok(SectorContentChangedReturn { sectors: sectors_ret })
+        Ok(ext::miner::SectorContentChangedReturn { sectors: sectors_ret })
     }
 
     /// Terminate a set of deals in response to their containing sector being terminated.
