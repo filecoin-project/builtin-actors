@@ -14,8 +14,8 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
-    PoStProof, RegisteredPoStProof, RegisteredSealProof, RegisteredUpdateProof, SectorNumber,
-    SectorSize, StoragePower,
+    PoStProof, RegisteredAggregateProof, RegisteredPoStProof, RegisteredSealProof,
+    RegisteredUpdateProof, SectorNumber, SectorSize, StoragePower,
 };
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::ActorID;
@@ -136,7 +136,7 @@ pub struct ProveCommitSectorParams {
     pub proof: RawBytes,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
 pub struct ProveCommitSectors2Params {
     // Activation manifest for each sector being proven.
     pub sector_activations: Vec<SectorActivationManifest>,
@@ -156,10 +156,10 @@ pub struct ProveCommitSectors2Params {
 // All pieces of data must be specified, whether or not not claiming a FIL+ activation or being
 // notified to a data consumer.
 // An implicit zero piece fills any remaining sector capacity.
-// XXX: we should consider fast tracking the special case where there is only
+// Note: we should consider fast tracking the special case where there is only
 //  one piece not claiming or notifying other actors to allow an empty piece vector.
 //  We could interpret this as a single piece, size == sector size, cid == commD, empty allocation empty notify vector
-#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorActivationManifest {
     // Sector to be activated.
     pub sector_number: SectorNumber,
@@ -167,7 +167,7 @@ pub struct SectorActivationManifest {
     pub pieces: Vec<PieceActivationManifest>,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
 pub struct PieceActivationManifest {
     // Piece data commitment.
     pub cid: Cid,
@@ -179,13 +179,13 @@ pub struct PieceActivationManifest {
     pub notify: Vec<DataActivationNotification>,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
 pub struct VerifiedAllocationKey {
     pub client: ActorID,
     pub id: AllocationID,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple, Clone)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
 pub struct DataActivationNotification {
     // Actor to be notified.
     pub address: Address,
@@ -193,13 +193,13 @@ pub struct DataActivationNotification {
     pub payload: RawBytes,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
 pub struct ProveCommit2Return {
     // Sector activation results, parallel to input sector activation manifests.
     pub sectors: Vec<SectorActivationReturn>,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
 pub struct SectorActivationReturn {
     // Whether the sector was activated.
     activated: bool,
@@ -209,7 +209,7 @@ pub struct SectorActivationReturn {
     pieces: Vec<PieceActivationReturn>,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
 pub struct PieceActivationReturn {
     // Whether a verified allocation was successfully claimed by the piece.
     claimed: bool,
@@ -217,7 +217,7 @@ pub struct PieceActivationReturn {
     notifications: Vec<DataActivationNotificationReturn>,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
 pub struct DataActivationNotificationReturn {
     // Exit code from the notified actor.
     code: ExitCode,
@@ -520,6 +520,40 @@ pub struct ReplicaUpdate2 {
 pub struct ProveReplicaUpdatesParams2 {
     pub updates: Vec<ReplicaUpdate2>,
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct ProveReplicaUpdates3Params {
+    pub sector_updates: Vec<SectorUpdateManifest>,
+    // Proofs for each sector, parallel to activation manifests.
+    // Exactly one of sector_proofs or aggregate_proof must be non-empty.
+    pub sector_proofs: Vec<RawBytes>,
+    // Aggregate proof for all sectors.
+    // Exactly one of sector_proofs or aggregate_proof must be non-empty.
+    pub aggregate_proof: RawBytes,
+    // The proof type for all sector update proofs, individually or before aggregation.
+    pub update_proofs_type: RegisteredUpdateProof,
+    // The proof type for the aggregate proof (ignored if no aggregate proof).
+    pub aggregate_proof_type: RegisteredAggregateProof,
+    // Whether to abort if any sector update activation fails.
+    pub require_activation_success: bool,
+    // Whether to abort if any notification returns a non-zero exit code.
+    pub require_notification_success: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct SectorUpdateManifest {
+    pub sector: SectorNumber,
+    pub deadline: u64,
+    pub partition: u64,
+    pub new_sealed_cid: Cid, // CommR
+    // Declaration of all pieces that make up the new sector data, in order.
+    // Until we support re-snap, pieces must all be new because the sector was previously empty.
+    // Implicit "zero" piece fills any remaining capacity.
+    // These pieces imply the new unsealed sector CID.
+    pub pieces: Vec<PieceActivationManifest>,
+}
+
+pub type ProveReplicaUpdates3Return = ProveCommit2Return;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ChangeBeneficiaryParams {

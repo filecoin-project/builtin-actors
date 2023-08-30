@@ -249,19 +249,16 @@ impl Deadline {
         &self,
         store: &BS,
         partition_idx: u64,
-    ) -> anyhow::Result<Partition> {
-        let partitions = Array::<Partition, _>::load(&self.partitions, store)?;
+    ) -> Result<Partition, ActorError> {
+        let partitions = Array::<Partition, _>::load(&self.partitions, store)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "loading partitions array")?;
 
         let partition = partitions
             .get(partition_idx)
-            .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to lookup partition {}", partition_idx),
-                )
+            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                format!("failed to lookup partition {}", partition_idx)
             })?
             .ok_or_else(|| actor_error!(not_found, "no partition {}", partition_idx))?;
-
         Ok(partition.clone())
     }
 
