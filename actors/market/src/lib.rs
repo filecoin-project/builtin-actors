@@ -723,16 +723,13 @@ impl Actor {
                     warn!("deal {}, already slashed, terminating now anyway", id);
                 }
 
-                // If deal has never been processed, it may still have an entry in pending proposals
+                // Deals that were never processed may still have a pending proposal linked
                 if state.last_updated_epoch == EPOCH_UNDEFINED {
                     let dcid = rt_deal_cid(rt, &deal)?;
                     st.remove_pending_deal(rt.store(), dcid)?;
                 }
 
-                // mark the deal for slashing here. Actual releasing of locked funds for the client
-                // and slashing of provider collateral happens in cron_tick.
                 state.slash_epoch = params.epoch;
-
                 total_slashed += st.process_slashed_deal(rt.store(), &deal, &state)?;
                 st.remove_completed_deal(rt.store(), id)?;
             }
@@ -769,24 +766,32 @@ impl Actor {
                 for deal_id in deal_ids {
                     let deal_proposal = match st.find_proposal(rt.store(), deal_id)? {
                         Some(dp) => dp,
+                        // proposal might have been cleaned up by manual settlement or termination prior to reaching
+                        // this scheduled cron tick. nothing more to do for this deal
                         None => continue,
                     };
 
                     let dcid = rt_deal_cid(rt, &deal_proposal)?;
 
-                    let (state, expiration_penalty) = st.get_active_deal_or_process_timeout(
+                    let mut state = match st.get_active_deal_or_process_timeout(
                         rt.store(),
                         curr_epoch,
                         deal_id,
                         &deal_proposal,
                         &dcid,
-                    )?;
-
-                    let mut state = match state {
-                        Some(state) => state,
-                        None => {
+                    )? {
+                        LoadDealState::Loaded(state) => state,
+                        LoadDealState::ProposalExpired(expiration_penalty) => {
                             amount_slashed += expiration_penalty;
                             continue;
+                        }
+                        LoadDealState::TooEarly => {
+                            return Err(actor_error!(
+                                illegal_argument,
+                                "deal {} processed before start epoch {}",
+                                deal_id,
+                                deal_proposal.start_epoch
+                            ))
                         }
                     };
 
@@ -806,7 +811,7 @@ impl Actor {
 
                     // handling of legacy deals is still done in cron. we handle such deals here and continue to
                     // reschedule them. eventually, all legacy deals will expire and the below code can be removed.
-                    let (slash_amount, remove_deal) = st.process_deal_update(
+                    let (slash_amount, _payment_amount, remove_deal) = st.process_deal_update(
                         rt.store(),
                         &state,
                         &deal_proposal,
@@ -815,6 +820,8 @@ impl Actor {
                     )?;
 
                     if remove_deal {
+                        // TODO: remove handling for terminated-deal slashing when marked-for-termination deals are all processed
+                        // https://github.com/filecoin-project/builtin-actors/issues/1388
                         amount_slashed += slash_amount;
                         st.remove_completed_deal(rt.store(), deal_id)?;
                     } else {
@@ -1007,9 +1014,11 @@ impl Actor {
     ) -> Result<SettleDealPaymentsReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let curr_epoch = rt.curr_epoch();
-        let mut total_slashed = TokenAmount::zero();
+
         let mut batch_gen = BatchReturnGen::new(params.deal_ids.len());
         let mut settlements: Vec<DealSettlementSummary> = Vec::new();
+        // accumulates slashed amounts from timed out deal proposals that weren't activated in time
+        let mut total_slashed = TokenAmount::zero();
 
         rt.transaction(|st: &mut State, rt| {
             let mut new_deal_states: Vec<(DealID, DealState)> = Vec::new();
@@ -1029,7 +1038,7 @@ impl Actor {
                     }
                 };
 
-                let (deal_state, slashed) = match st.get_active_deal_or_process_timeout(
+                let loaded_deal = match st.get_active_deal_or_process_timeout(
                     rt.store(),
                     curr_epoch,
                     deal_id,
@@ -1043,17 +1052,25 @@ impl Actor {
                     }
                 };
 
-                let mut deal_state = match deal_state {
-                    Some(deal_state) => deal_state,
-                    None => {
-                        // deal was cleaned up
-                        total_slashed += slashed;
+                let mut deal_state = match loaded_deal {
+                    LoadDealState::TooEarly => {
+                        // deal is not active, we process it as a zero-payment no-op
+                        settlements.push(DealSettlementSummary {
+                            completed: false,
+                            payment: TokenAmount::zero(),
+                        });
+                        continue;
+                    }
+                    LoadDealState::ProposalExpired(penalty) => {
+                        // deal proposal was not activated in time
+                        total_slashed += penalty;
                         batch_gen.add_fail(ExitCode::USR_NOT_FOUND);
                         continue;
                     }
+                    LoadDealState::Loaded(deal_state) => deal_state,
                 };
 
-                let (slash_amount, remove_deal) = match st.process_deal_update(
+                let (slash_amount, payment_amount, remove_deal) = match st.process_deal_update(
                     rt.store(),
                     &deal_state,
                     &deal_proposal,
@@ -1067,37 +1084,33 @@ impl Actor {
                     }
                 };
 
+                // TODO: remove this case when it becomes impossible for process_deal_update to encounter slashed deals
+                // https://github.com/filecoin-project/builtin-actors/issues/1388
+                if !slash_amount.is_zero() {
+                    return Err(actor_error!(
+                        illegal_argument,
+                        "deal {} is marked for termination and cannot be settled",
+                        deal_id
+                    ));
+                }
+
                 if remove_deal {
-                    total_slashed += slash_amount;
                     st.remove_completed_deal(rt.store(), deal_id)?;
-                    settlements.push(DealSettlementSummary {
-                        completed: true,
-                        payment: TokenAmount::zero(), // TODO payment
-                    });
                 } else {
                     deal_state.last_updated_epoch = curr_epoch;
                     new_deal_states.push((deal_id, deal_state));
-                    settlements.push(DealSettlementSummary {
-                        completed: false,
-                        payment: TokenAmount::zero(), // TODO payment
-                    });
                 }
 
+                settlements.push(DealSettlementSummary {
+                    completed: remove_deal,
+                    payment: payment_amount,
+                });
                 batch_gen.add_success();
             }
 
             st.put_deal_states(rt.store(), &new_deal_states)?;
             Ok(())
         })?;
-
-        if !total_slashed.is_zero() {
-            extract_send_result(rt.send_simple(
-                &BURNT_FUNDS_ACTOR_ADDR,
-                METHOD_SEND,
-                None,
-                total_slashed,
-            ))?;
-        }
 
         Ok(SettleDealPaymentsReturn { settlements, results: batch_gen.gen() })
     }

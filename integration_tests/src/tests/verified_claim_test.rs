@@ -35,7 +35,7 @@ use crate::util::{
     create_miner, cron_tick, datacap_extend_claim, datacap_get_balance, expect_invariants,
     invariant_failure_patterns, market_add_balance, market_publish_deal,
     miner_extend_sector_expiration2, miner_precommit_sector, miner_prove_sector,
-    provider_process_deal_updates, sector_deadline, submit_windowed_post, verifreg_add_client,
+    provider_settle_deal_payments, sector_deadline, submit_windowed_post, verifreg_add_client,
     verifreg_add_verifier, verifreg_extend_claim_terms, verifreg_remove_expired_allocations,
 };
 
@@ -357,7 +357,7 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
     assert!(ret.results.all_ok(), "results had failures {}", ret.results);
 
     // provider must process the deals to receive payment and cleanup state
-    provider_process_deal_updates(v, &miner_id, &deals);
+    provider_settle_deal_payments(v, &miner_id, &deals);
     // TODO: assert that the right payouts have been made
 
     expect_invariants(

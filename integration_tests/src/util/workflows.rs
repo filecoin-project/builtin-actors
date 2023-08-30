@@ -524,7 +524,7 @@ pub fn miner_extend_sector_expiration2(
     .matches(v.take_invocations().last().unwrap());
 }
 
-pub fn provider_process_deal_updates(v: &dyn VM, provider: &Address, deals: &[DealID]) {
+pub fn provider_settle_deal_payments(v: &dyn VM, provider: &Address, deals: &[DealID]) {
     let params = SettleDealPaymentsParams { deal_ids: deals.to_vec() };
     apply_ok(
         v,

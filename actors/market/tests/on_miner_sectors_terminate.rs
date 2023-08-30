@@ -88,7 +88,6 @@ fn terminate_multiple_deals_from_multiple_providers() {
     );
 }
 
-// Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1312
 #[test]
 fn ignore_deal_proposal_that_does_not_exist() {
     let start_epoch = 10;
@@ -143,7 +142,6 @@ fn ignore_deal_proposal_that_does_not_exist() {
     );
 }
 
-// Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1326
 #[test]
 fn terminate_valid_deals_along_with_just_expired_deal() {
     let start_epoch = 10;
@@ -198,7 +196,6 @@ fn terminate_valid_deals_along_with_just_expired_deal() {
     );
 }
 
-// Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1346
 #[test]
 fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
     let start_epoch = 10;
@@ -253,7 +250,6 @@ fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
     );
 }
 
-// Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1369
 #[test]
 fn terminating_a_deal_the_second_time_does_not_affect_existing_deals_in_the_batch() {
     let start_epoch = 10;
@@ -300,7 +296,6 @@ fn terminating_a_deal_the_second_time_does_not_affect_existing_deals_in_the_batc
     );
 }
 
-// Converted from: https://github.com/filecoin-project/specs-actors/blob/d56b240af24517443ce1f8abfbdab7cb22d331f1/actors/builtin/market/market_test.go#L1415
 #[test]
 fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
     let start_epoch = 10;
@@ -341,7 +336,6 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
     check_state(&rt);
 }
 
-// Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1436
 #[test]
 fn fail_when_caller_is_not_a_storage_miner_actor() {
     let rt = setup();
@@ -363,7 +357,6 @@ fn fail_when_caller_is_not_a_storage_miner_actor() {
     check_state(&rt);
 }
 
-// Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1448
 #[test]
 fn fail_when_caller_is_not_the_provider_of_the_deal() {
     let start_epoch = 10;
@@ -396,7 +389,6 @@ fn fail_when_caller_is_not_the_provider_of_the_deal() {
     check_state(&rt);
 }
 
-// Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1468
 #[test]
 fn fail_when_deal_has_been_published_but_not_activated() {
     let start_epoch = 10;
@@ -420,7 +412,6 @@ fn fail_when_deal_has_been_published_but_not_activated() {
     check_state(&rt);
 }
 
-// Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1485
 #[test]
 fn termination_of_all_deals_should_fail_when_one_deal_fails() {
     let start_epoch = 10;

@@ -785,7 +785,7 @@ pub fn publish_deals_expect_abort(
     rt.verify();
 }
 
-pub fn process_deal_updates(
+pub fn settle_deal_payments(
     rt: &MockRuntime,
     caller: Address,
     deal_ids: Vec<DealID>,
