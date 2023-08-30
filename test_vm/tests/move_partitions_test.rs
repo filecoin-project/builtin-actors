@@ -22,7 +22,8 @@ use fil_actors_integration_tests::util::{
 };
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
-    CRON_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    CRON_ACTOR_ADDR, CRON_ACTOR_ID, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    STORAGE_POWER_ACTOR_ID, SYSTEM_ACTOR_ADDR,
 };
 use test_vm::TestVM;
 use vm_api::trace::ExpectInvocation;
@@ -54,7 +55,7 @@ fn move_partitions_success() {
         Some(move_params),
     );
     ExpectInvocation {
-        from: miner.worker,
+        from: miner.worker.id().unwrap(),
         to: miner.miner_id,
         method: MinerMethod::MovePartitions as u64,
         params: Some(prove_params_ser),
@@ -140,11 +141,11 @@ fn setup(store: &'_ MemoryBlockstore) -> (TestVM<MemoryBlockstore>, MinerInfo, S
         Some(prove_params),
     );
     ExpectInvocation {
-        from: worker,
+        from: worker.id().unwrap(),
         to: id_addr,
         method: MinerMethod::ProveCommitSector as u64,
         params: Some(prove_params_ser),
-        subinvocs: Some(vec![Expect::power_submit_porep(id_addr)]),
+        subinvocs: Some(vec![Expect::power_submit_porep(id_addr.id().unwrap())]),
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
@@ -163,16 +164,19 @@ fn setup(store: &'_ MemoryBlockstore) -> (TestVM<MemoryBlockstore>, MinerInfo, S
         method: CronMethod::EpochTick as u64,
         subinvocs: Some(vec![
             ExpectInvocation {
-                from: CRON_ACTOR_ADDR,
+                from: CRON_ACTOR_ID,
                 to: STORAGE_POWER_ACTOR_ADDR,
                 method: PowerMethod::OnEpochTickEnd as u64,
                 subinvocs: Some(vec![
-                    Expect::reward_this_epoch(STORAGE_POWER_ACTOR_ADDR),
+                    Expect::reward_this_epoch(STORAGE_POWER_ACTOR_ID),
                     ExpectInvocation {
-                        from: STORAGE_POWER_ACTOR_ADDR,
+                        from: STORAGE_POWER_ACTOR_ID,
                         to: id_addr,
                         method: MinerMethod::ConfirmSectorProofsValid as u64,
-                        subinvocs: Some(vec![Expect::power_update_pledge(id_addr, None)]),
+                        subinvocs: Some(vec![Expect::power_update_pledge(
+                            id_addr.id().unwrap(),
+                            None,
+                        )]),
                         ..Default::default()
                     },
                     Expect::reward_update_kpi(),
@@ -180,7 +184,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (TestVM<MemoryBlockstore>, MinerInfo, S
                 ..Default::default()
             },
             ExpectInvocation {
-                from: CRON_ACTOR_ADDR,
+                from: CRON_ACTOR_ID,
                 to: STORAGE_MARKET_ACTOR_ADDR,
                 method: MarketMethod::CronTick as u64,
                 ..Default::default()
