@@ -26,7 +26,7 @@ fn timedout_deal_is_slashed_and_deleted() {
 
     let c_escrow = get_balance(&rt, &CLIENT_ADDR).balance;
 
-    // do a cron tick for it -> should time out and get slashed
+    // advance to start_epoch without activating
     rt.set_epoch(process_epoch(START_EPOCH, deal_id));
     rt.expect_send_simple(
         BURNT_FUNDS_ACTOR_ADDR,
@@ -37,7 +37,8 @@ fn timedout_deal_is_slashed_and_deleted() {
         ExitCode::OK,
     );
 
-    process_deal_updates(&rt, CLIENT_ADDR, vec![deal_id]);
+    // settle deal payments -> should time out and get slashed
+    settle_deal_payments(&rt, CLIENT_ADDR, vec![deal_id]);
 
     let client_acct = get_balance(&rt, &CLIENT_ADDR);
     assert_eq!(c_escrow, client_acct.balance);

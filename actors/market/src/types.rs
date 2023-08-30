@@ -260,9 +260,9 @@ pub struct SettleDealPaymentsParams {
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 pub struct SettleDealPaymentsReturn {
     /// Indicators of success or failure for each deal
-    results: BatchReturn,
+    pub results: BatchReturn,
     /// Results for the deals that succesfully settled
-    settlements: Vec<DealSettlementSummary>,
+    pub settlements: Vec<DealSettlementSummary>,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]

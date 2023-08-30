@@ -803,6 +803,25 @@ pub fn process_deal_updates(
     res
 }
 
+pub fn settle_deal_payments_expect_abort(
+    rt: &MockRuntime,
+    caller: Address,
+    deal_ids: Vec<DealID>,
+    expected_exit_code: ExitCode,
+) {
+    let params = SettleDealPaymentsParams { deal_ids };
+    let params = IpldBlock::serialize_cbor(&params).unwrap();
+
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, caller);
+    rt.expect_validate_caller_any();
+    expect_abort(
+        expected_exit_code,
+        rt.call::<MarketActor>(Method::SettleDealPaymentsExported as u64, params),
+    );
+
+    rt.verify();
+}
+
 pub fn assert_deals_not_activated(rt: &MockRuntime, _epoch: ChainEpoch, deal_ids: &[DealID]) {
     let st: State = rt.get_state();
 

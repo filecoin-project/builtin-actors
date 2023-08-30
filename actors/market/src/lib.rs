@@ -1008,49 +1008,82 @@ impl Actor {
         rt.validate_immediate_caller_accept_any()?;
         let curr_epoch = rt.curr_epoch();
         let mut total_slashed = TokenAmount::zero();
-        let mut expired_deals: Vec<DealID> = Vec::new();
-        let mut terminated_deals: Vec<DealID> = Vec::new();
+        let mut batch_gen = BatchReturnGen::new(params.deal_ids.len());
+        let mut settlements: Vec<DealSettlementSummary> = Vec::new();
 
         rt.transaction(|st: &mut State, rt| {
             let mut new_deal_states: Vec<(DealID, DealState)> = Vec::new();
             for deal_id in params.deal_ids {
-                let deal_proposal = st.get_proposal(rt.store(), deal_id)?;
-                let dcid = rt_deal_cid(rt, &deal_proposal)?;
+                let deal_proposal = match st.get_proposal(rt.store(), deal_id) {
+                    Ok(prop) => prop,
+                    Err(_) => {
+                        batch_gen.add_fail(ExitCode::USR_NOT_FOUND); // hide potential EX_DEAL_EXPIRED as deal may have terminated
+                        continue;
+                    }
+                };
+                let dcid = match rt_deal_cid(rt, &deal_proposal) {
+                    Ok(cid) => cid,
+                    Err(e) => {
+                        batch_gen.add_fail(e.exit_code());
+                        continue;
+                    }
+                };
 
-                let (deal_state, slashed) = st.get_active_deal_or_process_timeout(
+                let (deal_state, slashed) = match st.get_active_deal_or_process_timeout(
                     rt.store(),
                     curr_epoch,
                     deal_id,
                     &deal_proposal,
                     &dcid,
-                )?;
+                ) {
+                    Ok(res) => res,
+                    Err(e) => {
+                        batch_gen.add_fail(e.exit_code());
+                        continue;
+                    }
+                };
 
                 let mut deal_state = match deal_state {
                     Some(deal_state) => deal_state,
                     None => {
                         // deal was cleaned up
                         total_slashed += slashed;
-                        expired_deals.push(deal_id);
+                        batch_gen.add_fail(ExitCode::USR_NOT_FOUND);
                         continue;
                     }
                 };
 
-                let (slash_amount, remove_deal) = st.process_deal_update(
+                let (slash_amount, remove_deal) = match st.process_deal_update(
                     rt.store(),
                     &deal_state,
                     &deal_proposal,
                     &dcid,
                     curr_epoch,
-                )?;
+                ) {
+                    Ok(res) => res,
+                    Err(e) => {
+                        batch_gen.add_fail(e.exit_code());
+                        continue;
+                    }
+                };
 
                 if remove_deal {
                     total_slashed += slash_amount;
                     st.remove_completed_deal(rt.store(), deal_id)?;
-                    terminated_deals.push(deal_id);
+                    settlements.push(DealSettlementSummary {
+                        completed: true,
+                        payment: TokenAmount::zero(), // TODO payment
+                    });
                 } else {
                     deal_state.last_updated_epoch = curr_epoch;
                     new_deal_states.push((deal_id, deal_state));
+                    settlements.push(DealSettlementSummary {
+                        completed: false,
+                        payment: TokenAmount::zero(), // TODO payment
+                    });
                 }
+
+                batch_gen.add_success();
             }
 
             st.put_deal_states(rt.store(), &new_deal_states)?;
@@ -1062,11 +1095,11 @@ impl Actor {
                 &BURNT_FUNDS_ACTOR_ADDR,
                 METHOD_SEND,
                 None,
-                total_slashed.clone(),
+                total_slashed,
             ))?;
         }
 
-        Ok(SettleDealPaymentsReturn { terminated_deals, expired_deals, total_slashed })
+        Ok(SettleDealPaymentsReturn { settlements, results: batch_gen.gen() })
     }
 }
 
