@@ -3,7 +3,8 @@
 use cid::Cid;
 use fil_actor_market::{
     deal_get_payment_remaining, rt_deal_cid, BatchActivateDealsParams, BatchActivateDealsResult,
-    PendingDealAllocationsMap, ProcessDealsParams, ProcessDealsReturn, PENDING_ALLOCATIONS_CONFIG,
+    PendingDealAllocationsMap, SettleDealPaymentsParams, SettleDealPaymentsReturn,
+    PENDING_ALLOCATIONS_CONFIG,
 };
 use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
 use num_traits::{FromPrimitive, Zero};
@@ -788,15 +789,15 @@ pub fn process_deal_updates(
     rt: &MockRuntime,
     caller: Address,
     deal_ids: Vec<DealID>,
-) -> ProcessDealsReturn {
-    let params = ProcessDealsParams { deal_ids };
+) -> SettleDealPaymentsReturn {
+    let params = SettleDealPaymentsParams { deal_ids };
     let params = IpldBlock::serialize_cbor(&params).unwrap();
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, caller);
     rt.expect_validate_caller_any();
     let res =
-        rt.call::<MarketActor>(Method::ProcessDealUpdatesExported as u64, params).unwrap().unwrap();
-    let res: ProcessDealsReturn = res.deserialize().unwrap();
+        rt.call::<MarketActor>(Method::SettleDealPaymentsExported as u64, params).unwrap().unwrap();
+    let res: SettleDealPaymentsReturn = res.deserialize().unwrap();
 
     rt.verify();
     res

@@ -93,7 +93,7 @@ pub enum Method {
     GetDealProviderCollateralExported = frc42_dispatch::method_hash!("GetDealProviderCollateral"),
     GetDealVerifiedExported = frc42_dispatch::method_hash!("GetDealVerified"),
     GetDealActivationExported = frc42_dispatch::method_hash!("GetDealActivation"),
-    ProcessDealUpdatesExported = frc42_dispatch::method_hash!("ProcessDealUpdates"),
+    SettleDealPaymentsExported = frc42_dispatch::method_hash!("SettleDealPayments"),
 }
 
 /// Market Actor
@@ -1001,10 +1001,10 @@ impl Actor {
         }
     }
 
-    fn process_deal_updates(
+    fn settle_deal_payments(
         rt: &impl Runtime,
-        params: ProcessDealsParams,
-    ) -> Result<ProcessDealsReturn, ActorError> {
+        params: SettleDealPaymentsParams,
+    ) -> Result<SettleDealPaymentsReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let curr_epoch = rt.curr_epoch();
         let mut total_slashed = TokenAmount::zero();
@@ -1066,7 +1066,7 @@ impl Actor {
             ))?;
         }
 
-        Ok(ProcessDealsReturn { terminated_deals, expired_deals, total_slashed })
+        Ok(SettleDealPaymentsReturn { terminated_deals, expired_deals, total_slashed })
     }
 }
 
@@ -1494,6 +1494,6 @@ impl ActorCode for Actor {
         GetDealProviderCollateralExported => get_deal_provider_collateral,
         GetDealVerifiedExported => get_deal_verified,
         GetDealActivationExported => get_deal_activation,
-        ProcessDealUpdatesExported => process_deal_updates,
+        SettleDealPaymentsExported => settle_deal_payments,
     }
 }

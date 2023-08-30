@@ -253,13 +253,22 @@ pub struct MarketNotifyDealParams {
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 #[serde(transparent)]
-pub struct ProcessDealsParams {
+pub struct SettleDealPaymentsParams {
     pub deal_ids: Vec<DealID>,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct ProcessDealsReturn {
-    pub expired_deals: Vec<DealID>,
-    pub terminated_deals: Vec<DealID>,
-    pub total_slashed: TokenAmount,
+pub struct SettleDealPaymentsReturn {
+    /// Indicators of success or failure for each deal
+    results: BatchReturn,
+    /// Results for the deals that succesfully settled
+    settlements: Vec<DealSettlementSummary>,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+pub struct DealSettlementSummary {
+    /// Incremental amount of funds transferred from client to provider for deal payment
+    pub payment: TokenAmount,
+    /// Whether the deal has settled for the final time
+    pub completed: bool,
 }

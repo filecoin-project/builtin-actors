@@ -1,6 +1,6 @@
 use std::cmp::min;
 
-use fil_actor_market::ProcessDealsParams;
+use fil_actor_market::SettleDealPaymentsParams;
 use frc46_token::receiver::FRC46TokenReceived;
 use frc46_token::receiver::FRC46_TOKEN_TYPE;
 use frc46_token::token::types::TransferFromParams;
@@ -525,13 +525,13 @@ pub fn miner_extend_sector_expiration2(
 }
 
 pub fn provider_process_deal_updates(v: &dyn VM, provider: &Address, deals: &[DealID]) {
-    let params = ProcessDealsParams { deal_ids: deals.to_vec() };
+    let params = SettleDealPaymentsParams { deal_ids: deals.to_vec() };
     apply_ok(
         v,
         provider,
         &STORAGE_MARKET_ACTOR_ADDR,
         &TokenAmount::zero(),
-        MarketMethod::ProcessDealUpdatesExported as u64,
+        MarketMethod::SettleDealPaymentsExported as u64,
         Some(params),
     );
 }
