@@ -15,6 +15,7 @@ const START_EPOCH: ChainEpoch = 50;
 const END_EPOCH: ChainEpoch = START_EPOCH + 200 * EPOCHS_IN_DAY;
 const SECTOR_EXPIRY: ChainEpoch = END_EPOCH + 1;
 
+// TODO: remove tests for legacy behaviour: https://github.com/filecoin-project/builtin-actors/issues/1389
 #[test]
 fn deal_is_processed_after_its_end_epoch_should_expire_correctly() {
     let rt = setup();

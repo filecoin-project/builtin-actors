@@ -809,6 +809,7 @@ impl Actor {
                         continue;
                     }
 
+                    // https://github.com/filecoin-project/builtin-actors/issues/1389
                     // handling of legacy deals is still done in cron. we handle such deals here and continue to
                     // reschedule them. eventually, all legacy deals will expire and the below code can be removed.
                     let (slash_amount, _payment_amount, remove_deal) = st.process_deal_update(

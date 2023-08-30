@@ -1,6 +1,8 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+// TODO: remove tests for legacy behaviour: https://github.com/filecoin-project/builtin-actors/issues/1389
+
 use fil_actor_market::balance_table::BalanceTable;
 use fil_actor_market::policy::detail::DEAL_MAX_LABEL_SIZE;
 use fil_actor_market::{
