@@ -3024,7 +3024,7 @@ impl Actor {
                 .load_deadlines(store)
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deadlines")?;
 
-            deadline_available_for_move(
+            ensure_deadline_available_for_move(
                 policy,
                 params.orig_deadline,
                 params.dest_deadline,

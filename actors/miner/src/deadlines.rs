@@ -138,7 +138,7 @@ fn deadline_distance(policy: &Policy, from_deadline: u64, to_deadline: u64) -> u
 }
 
 // only allow moving to a nearer deadline from current one
-pub fn deadline_available_for_move(
+pub fn ensure_deadline_available_for_move(
     policy: &Policy,
     orig_deadline: u64,
     dest_deadline: u64,
