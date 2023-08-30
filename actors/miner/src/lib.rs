@@ -2737,7 +2737,7 @@ impl Actor {
             )?;
 
             let mut orig_deadline =
-                deadlines.load_deadline(policy, store, params.orig_deadline).context_code(
+                deadlines.load_deadline(store, params.orig_deadline).context_code(
                     ExitCode::USR_ILLEGAL_STATE,
                     format!("failed to load deadline {}", params.orig_deadline),
                 )?;
@@ -2844,7 +2844,7 @@ impl Actor {
             let dest_quant = state.quant_spec_for_deadline(policy, params.dest_deadline);
 
             let mut dest_deadline =
-                deadlines.load_deadline(policy, store, params.dest_deadline).context_code(
+                deadlines.load_deadline(store, params.dest_deadline).context_code(
                     ExitCode::USR_ILLEGAL_STATE,
                     format!("failed to load deadline {}", params.dest_deadline),
                 )?;

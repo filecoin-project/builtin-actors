@@ -827,35 +827,35 @@ impl Partition {
     pub fn adjust_for_move<BS: Blockstore>(
         &mut self,
         store: &BS,
-        to_quant: &QuantSpec,
+        dest_quant: &QuantSpec,
     ) -> anyhow::Result<()> {
-        let from_expirations_epochs: Array<ExpirationSet, _> =
+        let orig_expirations_epochs: Array<ExpirationSet, _> =
             Array::load(&self.expirations_epochs, store)?;
 
-        let from_early_terminations: Array<BitField, _> =
+        let orig_early_terminations: Array<BitField, _> =
             Array::load(&self.early_terminated, store)?;
 
-        let mut to_expirations_epochs = Array::<ExpirationSet, BS>::new_with_bit_width(
+        let mut dest_expirations_epochs = Array::<ExpirationSet, BS>::new_with_bit_width(
             store,
             PARTITION_EXPIRATION_AMT_BITWIDTH,
         );
-        let mut to_early_terminations = Array::<BitField, BS>::new_with_bit_width(
+        let mut dest_early_terminations = Array::<BitField, BS>::new_with_bit_width(
             store,
             PARTITION_EARLY_TERMINATION_ARRAY_AMT_BITWIDTH,
         );
 
-        from_expirations_epochs.for_each(|from_epoch, expire_set| {
-            to_expirations_epochs
-                .set(to_quant.quantize_up(from_epoch as ChainEpoch) as u64, expire_set.clone())?;
+        orig_expirations_epochs.for_each(|from_epoch, expire_set| {
+            dest_expirations_epochs
+                .set(dest_quant.quantize_up(from_epoch as ChainEpoch) as u64, expire_set.clone())?;
             Ok(())
         })?;
-        from_early_terminations.for_each(|from_epoch, bitfield| {
-            to_early_terminations
-                .set(to_quant.quantize_up(from_epoch as ChainEpoch) as u64, bitfield.clone())?;
+        orig_early_terminations.for_each(|from_epoch, bitfield| {
+            dest_early_terminations
+                .set(dest_quant.quantize_up(from_epoch as ChainEpoch) as u64, bitfield.clone())?;
             Ok(())
         })?;
-        self.expirations_epochs = to_expirations_epochs.flush()?;
-        self.early_terminated = to_early_terminations.flush()?;
+        self.expirations_epochs = dest_expirations_epochs.flush()?;
+        self.early_terminated = dest_early_terminations.flush()?;
 
         Ok(())
     }
