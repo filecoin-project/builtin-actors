@@ -103,88 +103,88 @@ impl Deadlines {
 
     pub fn move_partitions<BS: Blockstore>(
         store: &BS,
-        from_deadline: &mut Deadline,
-        to_deadline: &mut Deadline,
-        to_quant: QuantSpec,
+        orig_deadline: &mut Deadline,
+        dest_deadline: &mut Deadline,
+        dest_quant: QuantSpec,
         partitions: &BitField,
     ) -> anyhow::Result<()> {
-        let mut from_partitions = from_deadline.partitions_amt(store)?;
-        let mut to_partitions = to_deadline.partitions_amt(store)?;
+        let mut orig_partitions = orig_deadline.partitions_amt(store)?;
+        let mut dest_partitions = dest_deadline.partitions_amt(store)?;
 
         // even though we're moving partitions intact, we still need to update from/to `Deadline` accordingly.
 
-        let first_to_partition_idx = to_partitions.count();
-        for (i, from_partition_idx) in partitions.iter().enumerate() {
-            let mut moving_partition = from_partitions
-                .get(from_partition_idx)?
-                .ok_or_else(|| actor_error!(not_found, "no partition {}", from_partition_idx))?
+        let first_dest_partition_idx = dest_partitions.count();
+        for (i, orig_partition_idx) in partitions.iter().enumerate() {
+            let mut moving_partition = orig_partitions
+                .get(orig_partition_idx)?
+                .ok_or_else(|| actor_error!(not_found, "no partition {}", orig_partition_idx))?
                 .clone();
             if !moving_partition.faults.is_empty() || !moving_partition.unproven.is_empty() {
-                return Err(actor_error!(forbidden, "partition with faults or unproven sectors are not allowed to move, partition_idx {}", from_partition_idx))?;
+                return Err(actor_error!(forbidden, "partition with faults or unproven sectors are not allowed to move, partition_idx {}", orig_partition_idx))?;
             }
 
-            let to_partition_idx = first_to_partition_idx + i as u64;
+            let dest_partition_idx = first_dest_partition_idx + i as u64;
 
-            moving_partition.adjust_for_move(store, &to_quant)?;
+            moving_partition.adjust_for_move(store, &dest_quant)?;
 
             let all_sectors = moving_partition.sectors.len();
             let live_sectors = moving_partition.live_sectors().len();
-            let early_terminations = from_deadline.early_terminations.get(from_partition_idx);
+            let early_terminations = orig_deadline.early_terminations.get(orig_partition_idx);
 
             // start updating from/to `Deadline` here
 
-            from_deadline.total_sectors -= all_sectors;
-            from_deadline.live_sectors -= live_sectors;
-            from_deadline.faulty_power -= &moving_partition.faulty_power;
+            orig_deadline.total_sectors -= all_sectors;
+            orig_deadline.live_sectors -= live_sectors;
+            orig_deadline.faulty_power -= &moving_partition.faulty_power;
 
-            to_deadline.total_sectors += all_sectors;
-            to_deadline.live_sectors += live_sectors;
-            to_deadline.faulty_power += &moving_partition.faulty_power;
+            dest_deadline.total_sectors += all_sectors;
+            dest_deadline.live_sectors += live_sectors;
+            dest_deadline.faulty_power += &moving_partition.faulty_power;
 
             // update early_terminations BitField of `Deadline`
             if early_terminations {
-                from_deadline.early_terminations.unset(from_partition_idx);
-                to_deadline.early_terminations.set(to_partition_idx);
+                orig_deadline.early_terminations.unset(orig_partition_idx);
+                dest_deadline.early_terminations.set(dest_partition_idx);
             }
 
-            from_partitions.set(from_partition_idx, Partition::new(store)?)?;
-            to_partitions.set(to_partition_idx, moving_partition)?;
+            orig_partitions.set(orig_partition_idx, Partition::new(store)?)?;
+            dest_partitions.set(dest_partition_idx, moving_partition)?;
         }
 
         // update expirations_epochs Cid of Deadline.
         {
             let mut epochs_to_remove = Vec::<u64>::new();
-            let mut from_expirations_epochs: Array<BitField, _> =
-                Array::load(&from_deadline.expirations_epochs, store)?;
-            let mut to_expirations_epochs: Array<BitField, _> =
-                Array::load(&to_deadline.expirations_epochs, store)?;
-            from_expirations_epochs.for_each_mut(|from_epoch, from_bitfield| {
-                let to_epoch = to_quant.quantize_up(from_epoch as ChainEpoch);
+            let mut orig_expirations_epochs: Array<BitField, _> =
+                Array::load(&orig_deadline.expirations_epochs, store)?;
+            let mut dest_expirations_epochs: Array<BitField, _> =
+                Array::load(&dest_deadline.expirations_epochs, store)?;
+            orig_expirations_epochs.for_each_mut(|orig_epoch, orig_bitfield| {
+                let dest_epoch = dest_quant.quantize_up(orig_epoch as ChainEpoch);
                 let mut to_bitfield =
-                    to_expirations_epochs.get(to_epoch as u64)?.cloned().unwrap_or_default();
+                    dest_expirations_epochs.get(dest_epoch as u64)?.cloned().unwrap_or_default();
                 for (i, partition_id) in partitions.iter().enumerate() {
-                    if from_bitfield.get(partition_id) {
-                        from_bitfield.unset(partition_id);
-                        to_bitfield.set(first_to_partition_idx + i as u64);
+                    if orig_bitfield.get(partition_id) {
+                        orig_bitfield.unset(partition_id);
+                        to_bitfield.set(first_dest_partition_idx + i as u64);
                     }
                 }
-                to_expirations_epochs.set(to_epoch as u64, to_bitfield)?;
+                dest_expirations_epochs.set(dest_epoch as u64, to_bitfield)?;
 
-                if from_bitfield.is_empty() {
-                    epochs_to_remove.push(from_epoch);
+                if orig_bitfield.is_empty() {
+                    epochs_to_remove.push(orig_epoch);
                 }
 
                 Ok(())
             })?;
             if !epochs_to_remove.is_empty() {
-                from_expirations_epochs.batch_delete(epochs_to_remove, true)?;
+                orig_expirations_epochs.batch_delete(epochs_to_remove, true)?;
             }
-            from_deadline.expirations_epochs = from_expirations_epochs.flush()?;
-            to_deadline.expirations_epochs = to_expirations_epochs.flush()?;
+            orig_deadline.expirations_epochs = orig_expirations_epochs.flush()?;
+            dest_deadline.expirations_epochs = dest_expirations_epochs.flush()?;
         }
 
-        from_deadline.partitions = from_partitions.flush()?;
-        to_deadline.partitions = to_partitions.flush()?;
+        orig_deadline.partitions = orig_partitions.flush()?;
+        dest_deadline.partitions = dest_partitions.flush()?;
 
         Ok(())
     }
