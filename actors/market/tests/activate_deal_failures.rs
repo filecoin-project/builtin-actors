@@ -144,5 +144,5 @@ fn assert_activation_failure(
         added: vec![piece],
     }];
     let ret = sector_content_changed(rt, PROVIDER_ADDR, changes).unwrap();
-    assert_eq!(vec![PieceReturn { code: exit, data: vec![] }], ret.sectors[0].added);
+    assert_eq!(vec![PieceReturn { accepted: false }], ret.sectors[0].added);
 }

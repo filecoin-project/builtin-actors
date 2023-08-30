@@ -16,7 +16,7 @@ use std::{cell::RefCell, collections::HashMap};
 
 use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
 use fil_actor_market::ext::miner::{
-    PieceInfo, SectorChanges, SectorContentChangedParams, SectorContentChangedReturn,
+    PieceChange, SectorChanges, SectorContentChangedParams, SectorContentChangedReturn,
 };
 use fil_actor_market::ext::verifreg::{AllocationID, AllocationRequest, AllocationsResponse};
 use fil_actor_market::{
@@ -1255,8 +1255,8 @@ where
     ret
 }
 
-pub fn piece_info_from_deal(id: DealID, deal: &DealProposal) -> PieceInfo {
-    PieceInfo {
+pub fn piece_info_from_deal(id: DealID, deal: &DealProposal) -> PieceChange {
+    PieceChange {
         data: deal.piece_cid,
         size: deal.piece_size,
         payload: serialize(&id, "deal id").unwrap(),
