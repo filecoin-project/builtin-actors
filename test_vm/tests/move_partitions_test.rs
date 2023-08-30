@@ -40,8 +40,8 @@ fn move_partitions_success() {
     advance_by_deadline_to_epoch(&v, &miner.miner_id, prove_time);
 
     let move_params = MovePartitionsParams {
-        from_deadline: 0,
-        to_deadline: 47,
+        orig_deadline: 0,
+        dest_deadline: 47,
         partitions: make_bitfield(&[0u64]),
     };
     let prove_params_ser = IpldBlock::serialize_cbor(&move_params).unwrap();

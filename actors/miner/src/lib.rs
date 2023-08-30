@@ -2993,18 +2993,18 @@ impl Actor {
     }
 
     fn move_partitions(rt: &impl Runtime, params: MovePartitionsParams) -> Result<(), ActorError> {
-        if params.from_deadline == params.to_deadline {
-            return Err(actor_error!(illegal_argument, "from_deadline == to_deadline"));
+        if params.orig_deadline == params.dest_deadline {
+            return Err(actor_error!(illegal_argument, "orig_deadline == dest_deadline"));
         }
         let policy = rt.policy();
-        if params.from_deadline >= policy.wpost_period_deadlines
-            || params.to_deadline >= policy.wpost_period_deadlines
+        if params.orig_deadline >= policy.wpost_period_deadlines
+            || params.dest_deadline >= policy.wpost_period_deadlines
         {
             return Err(actor_error!(
                 illegal_argument,
-                "invalid param, from_deadline: {}, to_deadline: {}",
-                params.from_deadline,
-                params.to_deadline
+                "invalid param, orig_deadline: {}, dest_deadline: {}",
+                params.orig_deadline,
+                params.dest_deadline
             ));
         }
         if params.partitions.is_empty() {
@@ -3026,8 +3026,8 @@ impl Actor {
 
             deadline_available_for_move(
                 policy,
-                params.from_deadline,
-                params.to_deadline,
+                params.orig_deadline,
+                params.dest_deadline,
                 &current_deadline,
             )
             .context_code(
@@ -3035,10 +3035,10 @@ impl Actor {
                 "conditions not satisfied for deadline_available_for_move",
             )?;
 
-            let mut from_deadline =
-                deadlines.load_deadline(policy, store, params.from_deadline).context_code(
+            let mut orig_deadline =
+                deadlines.load_deadline(policy, store, params.orig_deadline).context_code(
                     ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to load deadline {}", params.from_deadline),
+                    format!("failed to load deadline {}", params.orig_deadline),
                 )?;
             // only try to do synchronous Window Post verification if the from deadline is in dispute window
             // note that as window post is batched, the best we can do is to verify only those that contains at least one partition being moved.
@@ -3047,25 +3047,25 @@ impl Actor {
             if deadline_available_for_optimistic_post_dispute(
                 policy,
                 current_deadline.period_start,
-                params.from_deadline,
+                params.orig_deadline,
                 rt.curr_epoch(),
             ) {
-                let proofs_snapshot = from_deadline
+                let proofs_snapshot = orig_deadline
                     .optimistic_proofs_snapshot_amt(store)
                     .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load proofs snapshot")?;
 
                 let partitions_snapshot =
-                    from_deadline.partitions_snapshot_amt(store).context_code(
+                    orig_deadline.partitions_snapshot_amt(store).context_code(
                         ExitCode::USR_ILLEGAL_STATE,
                         "failed to load partitions snapshot",
                     )?;
 
                 // Find the proving period start for the deadline in question.
                 let target_deadline =
-                    nearest_occured_deadline_info(policy, &current_deadline, params.from_deadline);
+                    nearest_occured_deadline_info(policy, &current_deadline, params.orig_deadline);
 
                 // Load sectors for the dispute.
-                let sectors = Sectors::load(rt.store(), &from_deadline.sectors_snapshot)
+                let sectors = Sectors::load(rt.store(), &orig_deadline.sectors_snapshot)
                     .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")?;
 
                 proofs_snapshot
@@ -3140,41 +3140,41 @@ impl Actor {
                     .context_code(ExitCode::USR_ILLEGAL_STATE, "while removing partitions")?;
             }
 
-            let to_quant = state.quant_spec_for_deadline(policy, params.to_deadline);
+            let dest_quant = state.quant_spec_for_deadline(policy, params.dest_deadline);
 
-            let mut to_deadline =
-                deadlines.load_deadline(policy, store, params.to_deadline).context_code(
+            let mut dest_deadline =
+                deadlines.load_deadline(policy, store, params.dest_deadline).context_code(
                     ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to load deadline {}", params.to_deadline),
+                    format!("failed to load deadline {}", params.dest_deadline),
                 )?;
 
             Deadlines::move_partitions(
                 store,
-                &mut from_deadline,
-                &mut to_deadline,
-                to_quant,
+                &mut orig_deadline,
+                &mut dest_deadline,
+                dest_quant,
                 &params.partitions,
             )
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to move partitions")?;
 
             deadlines
-                .update_deadline(policy, store, params.from_deadline, &from_deadline)
+                .update_deadline(policy, store, params.orig_deadline, &orig_deadline)
                 .context_code(
                     ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to update deadline {}", params.from_deadline),
+                    format!("failed to update deadline {}", params.orig_deadline),
                 )?;
             deadlines
-                .update_deadline(policy, store, params.to_deadline, &to_deadline)
+                .update_deadline(policy, store, params.dest_deadline, &dest_deadline)
                 .context_code(
                     ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to update deadline {}", params.to_deadline),
+                    format!("failed to update deadline {}", params.dest_deadline),
                 )?;
 
             state.save_deadlines(store, deadlines).context_code(
                 ExitCode::USR_ILLEGAL_STATE,
                 format!(
                     "failed to save deadline when move_partitions from {} to {}",
-                    params.from_deadline, params.to_deadline
+                    params.orig_deadline, params.dest_deadline
                 ),
             )?;
 

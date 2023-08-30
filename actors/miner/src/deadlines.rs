@@ -140,40 +140,40 @@ fn deadline_distance(policy: &Policy, from_deadline: u64, to_deadline: u64) -> u
 // only allow moving to a nearer deadline from current one
 pub fn deadline_available_for_move(
     policy: &Policy,
-    from_deadline: u64,
-    to_deadline: u64,
+    orig_deadline: u64,
+    dest_deadline: u64,
     current_deadline: &DeadlineInfo,
 ) -> Result<(), String> {
     if !deadline_is_mutable(
         policy,
         current_deadline.period_start,
-        from_deadline,
+        orig_deadline,
         current_deadline.current_epoch,
     ) {
         return Err(format!(
             "cannot move from a deadline {}, immutable at epoch {}",
-            from_deadline, current_deadline.current_epoch
+            orig_deadline, current_deadline.current_epoch
         ));
     }
 
     if !deadline_is_mutable(
         policy,
         current_deadline.period_start,
-        to_deadline,
+        dest_deadline,
         current_deadline.current_epoch,
     ) {
         return Err(format!(
             "cannot move to a deadline {}, immutable at epoch {}",
-            to_deadline, current_deadline.current_epoch
+            dest_deadline, current_deadline.current_epoch
         ));
     }
 
-    if deadline_distance(policy, current_deadline.index, to_deadline)
-        >= deadline_distance(policy, current_deadline.index, from_deadline)
+    if deadline_distance(policy, current_deadline.index, dest_deadline)
+        >= deadline_distance(policy, current_deadline.index, orig_deadline)
     {
         return Err(format!(
-            "can only move to a deadline which is nearer from current deadline {}, to_deadline {} is not nearer than from_deadline {}",
-            current_deadline.index, to_deadline, from_deadline
+            "can only move to a deadline which is nearer from current deadline {}, dest_deadline {} is not nearer than orig_deadline {}",
+            current_deadline.index, dest_deadline, orig_deadline
         ));
     }
 

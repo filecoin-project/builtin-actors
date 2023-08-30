@@ -2602,14 +2602,14 @@ impl ActorHarness {
     pub fn move_partitions(
         &self,
         rt: &MockRuntime,
-        from_deadline: u64,
-        to_deadline: u64,
+        orig_deadline: u64,
+        dest_deadline: u64,
         partitions: BitField,
         mut f: impl FnMut(),
     ) -> Result<(), ActorError> {
         f();
 
-        let params = MovePartitionsParams { from_deadline, to_deadline, partitions };
+        let params = MovePartitionsParams { orig_deadline, dest_deadline, partitions };
 
         rt.expect_validate_caller_addr(self.caller_addrs());
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
