@@ -38,6 +38,7 @@ use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_SEND};
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use multihash::derive::Multihash;
+use num_traits::Signed;
 
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
@@ -1966,8 +1967,14 @@ impl ActorHarness {
         }
 
         // notify change to initial pledge
+        let mut sectors_with_data = vec![];
         for sector_info in &sector_infos {
             pledge_delta -= sector_info.initial_pledge.to_owned();
+            if sector_info.deal_weight.is_positive()
+                || sector_info.verified_deal_weight.is_positive()
+            {
+                sectors_with_data.push(sector_info.sector_number);
+            }
         }
 
         if !pledge_delta.is_zero() {
@@ -1981,16 +1988,20 @@ impl ActorHarness {
             );
         }
 
-        let params =
-            OnMinerSectorsTerminateParams { epoch: *rt.epoch.borrow(), sectors: sectors.clone() };
-        rt.expect_send_simple(
-            STORAGE_MARKET_ACTOR_ADDR,
-            ON_MINER_SECTORS_TERMINATE_METHOD,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-            TokenAmount::zero(),
-            None,
-            ExitCode::OK,
-        );
+        if !sectors_with_data.is_empty() {
+            rt.expect_send_simple(
+                STORAGE_MARKET_ACTOR_ADDR,
+                ON_MINER_SECTORS_TERMINATE_METHOD,
+                IpldBlock::serialize_cbor(&OnMinerSectorsTerminateParams {
+                    epoch: *rt.epoch.borrow(),
+                    sectors: bitfield_from_slice(&sectors_with_data),
+                })
+                .unwrap(),
+                TokenAmount::zero(),
+                None,
+                ExitCode::OK,
+            );
+        }
 
         let sector_power = power_for_sectors(self.sector_size, &sector_infos);
         let params = UpdateClaimedPowerParams {
