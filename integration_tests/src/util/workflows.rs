@@ -1,5 +1,30 @@
 use std::cmp::min;
 
+use frc46_token::receiver::FRC46TokenReceived;
+use frc46_token::receiver::FRC46_TOKEN_TYPE;
+use frc46_token::token::types::TransferFromParams;
+use frc46_token::token::types::TransferParams;
+use fvm_actor_utils::receiver::UniversalReceiverParams;
+use fvm_ipld_bitfield::BitField;
+use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::BytesDe;
+use fvm_ipld_encoding::RawBytes;
+use fvm_shared::address::Address;
+use fvm_shared::clock::ChainEpoch;
+use fvm_shared::crypto::signature::Signature;
+use fvm_shared::crypto::signature::SignatureType;
+use fvm_shared::deal::DealID;
+use fvm_shared::econ::TokenAmount;
+use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::randomness::Randomness;
+use fvm_shared::sector::PoStProof;
+use fvm_shared::sector::RegisteredPoStProof;
+use fvm_shared::sector::RegisteredSealProof;
+use fvm_shared::sector::SectorNumber;
+use fvm_shared::sector::StoragePower;
+use num_traits::Zero;
+
 use fil_actor_cron::Method as CronMethod;
 use fil_actor_datacap::Method as DataCapMethod;
 use fil_actor_market::ClientDealProposal;
@@ -42,45 +67,23 @@ use fil_actors_runtime::test_utils::make_sealed_cid;
 use fil_actors_runtime::CRON_ACTOR_ADDR;
 use fil_actors_runtime::DATACAP_TOKEN_ACTOR_ADDR;
 use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
+use fil_actors_runtime::STORAGE_MARKET_ACTOR_ID;
 use fil_actors_runtime::STORAGE_POWER_ACTOR_ADDR;
 use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
 use fil_actors_runtime::{DATACAP_TOKEN_ACTOR_ID, VERIFIED_REGISTRY_ACTOR_ID};
-use frc46_token::receiver::FRC46TokenReceived;
-use frc46_token::receiver::FRC46_TOKEN_TYPE;
-use frc46_token::token::types::TransferFromParams;
-use frc46_token::token::types::TransferParams;
-use fvm_actor_utils::receiver::UniversalReceiverParams;
-use fvm_ipld_bitfield::BitField;
-use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::BytesDe;
-use fvm_ipld_encoding::RawBytes;
-use fvm_shared::address::Address;
-use fvm_shared::clock::ChainEpoch;
-use fvm_shared::crypto::signature::Signature;
-use fvm_shared::crypto::signature::SignatureType;
-use fvm_shared::deal::DealID;
-use fvm_shared::econ::TokenAmount;
-use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::randomness::Randomness;
-use fvm_shared::sector::PoStProof;
-use fvm_shared::sector::RegisteredPoStProof;
-use fvm_shared::sector::RegisteredSealProof;
-use fvm_shared::sector::SectorNumber;
-use fvm_shared::sector::StoragePower;
-use num_traits::Zero;
 use vm_api::trace::ExpectInvocation;
 use vm_api::util::apply_ok;
 use vm_api::util::get_state;
 use vm_api::util::DynBlockstore;
 use vm_api::VM;
 
+use crate::expects::Expect;
 use crate::*;
 
 use super::make_bitfield;
 use super::miner_dline_info;
 use super::sector_deadline;
-use crate::expects::Expect;
 
 pub fn cron_tick(v: &dyn VM) {
     apply_ok(
@@ -183,12 +186,14 @@ pub fn miner_prove_sector(
         Some(prove_commit_params),
     );
 
+    let worker_id = v.resolve_id_address(worker).unwrap().id().unwrap();
+
     ExpectInvocation {
-        from: *worker,
+        from: worker_id,
         to: *miner_id,
         method: MinerMethod::ProveCommitSector as u64,
         subinvocs: Some(vec![ExpectInvocation {
-            from: *miner_id,
+            from: miner_id.id().unwrap(),
             to: STORAGE_POWER_ACTOR_ADDR,
             method: PowerMethod::SubmitPoRepForBulkVerify as u64,
             ..Default::default()
@@ -217,7 +222,9 @@ pub fn precommit_sectors_v2(
     exp: Option<ChainEpoch>,
     v2: bool,
 ) -> Vec<SectorPreCommitOnChainInfo> {
-    let mid = v.resolve_id_address(maddr).unwrap();
+    let miner_id_address = v.resolve_id_address(maddr).unwrap();
+    let miner_id = miner_id_address.id().unwrap();
+    let worker_id = v.resolve_id_address(worker).unwrap().id().unwrap();
     let expiration = match exp {
         None => {
             v.epoch()
@@ -232,7 +239,8 @@ pub fn precommit_sectors_v2(
     let mut sectors_with_deals: Vec<SectorDeals> = vec![];
     while sector_idx < count {
         let msg_sector_idx_base = sector_idx;
-        let mut invocs = vec![Expect::reward_this_epoch(mid), Expect::power_current_total(mid)];
+        let mut invocs =
+            vec![Expect::reward_this_epoch(miner_id), Expect::power_current_total(miner_id)];
         if !v2 {
             let mut param_sectors = Vec::<PreCommitSectorParams>::new();
             let mut j = 0;
@@ -259,11 +267,11 @@ pub fn precommit_sectors_v2(
                 j += 1;
             }
             if !sectors_with_deals.is_empty() {
-                invocs.push(Expect::market_verify_deals(mid, sectors_with_deals.clone()));
+                invocs.push(Expect::market_verify_deals(miner_id, sectors_with_deals.clone()));
             }
             if param_sectors.len() > 1 {
                 invocs.push(Expect::burn(
-                    mid,
+                    miner_id,
                     Some(aggregate_pre_commit_network_fee(
                         param_sectors.len() as i64,
                         &TokenAmount::zero(),
@@ -271,7 +279,7 @@ pub fn precommit_sectors_v2(
                 ));
             }
             if expect_cron_enroll && msg_sector_idx_base == 0 {
-                invocs.push(Expect::power_enrol_cron(mid));
+                invocs.push(Expect::power_enrol_cron(miner_id));
             }
 
             apply_ok(
@@ -283,8 +291,8 @@ pub fn precommit_sectors_v2(
                 Some(PreCommitSectorBatchParams { sectors: param_sectors.clone() }),
             );
             let expect = ExpectInvocation {
-                from: *worker,
-                to: mid,
+                from: worker_id,
+                to: miner_id_address,
                 method: MinerMethod::PreCommitSectorBatch as u64,
                 params: Some(
                     IpldBlock::serialize_cbor(&PreCommitSectorBatchParams {
@@ -322,11 +330,11 @@ pub fn precommit_sectors_v2(
                 j += 1;
             }
             if !sectors_with_deals.is_empty() {
-                invocs.push(Expect::market_verify_deals(mid, sectors_with_deals.clone()));
+                invocs.push(Expect::market_verify_deals(miner_id, sectors_with_deals.clone()));
             }
             if param_sectors.len() > 1 {
                 invocs.push(Expect::burn(
-                    mid,
+                    miner_id,
                     Some(aggregate_pre_commit_network_fee(
                         param_sectors.len() as i64,
                         &TokenAmount::zero(),
@@ -334,7 +342,7 @@ pub fn precommit_sectors_v2(
                 ));
             }
             if expect_cron_enroll && msg_sector_idx_base == 0 {
-                invocs.push(Expect::power_enrol_cron(mid));
+                invocs.push(Expect::power_enrol_cron(miner_id));
             }
 
             apply_ok(
@@ -347,8 +355,8 @@ pub fn precommit_sectors_v2(
             );
 
             let expect = ExpectInvocation {
-                from: *worker,
-                to: mid,
+                from: worker_id,
+                to: miner_id_address,
                 method: MinerMethod::PreCommitSectorBatch2 as u64,
                 params: Some(
                     IpldBlock::serialize_cbor(&PreCommitSectorBatchParams2 {
@@ -363,7 +371,7 @@ pub fn precommit_sectors_v2(
         }
     }
     // extract chain state
-    let mstate: MinerState = get_state(v, &mid).unwrap();
+    let mstate: MinerState = get_state(v, &miner_id_address).unwrap();
     (0..count)
         .map(|i| {
             mstate
@@ -411,6 +419,8 @@ pub fn prove_commit_sectors(
     precommits: Vec<SectorPreCommitOnChainInfo>,
     aggregate_size: usize,
 ) {
+    let worker_id = v.resolve_id_address(worker).unwrap().id().unwrap();
+    let miner_id = v.resolve_id_address(maddr).unwrap().id().unwrap();
     let mut precommit_infos = precommits.as_slice();
     while !precommit_infos.is_empty() {
         let batch_size = min(aggregate_size, precommit_infos.len());
@@ -438,15 +448,15 @@ pub fn prove_commit_sectors(
         let expected_fee =
             aggregate_prove_commit_network_fee(to_prove.len() as i64, &TokenAmount::zero());
         ExpectInvocation {
-            from: *worker,
+            from: worker_id,
             to: *maddr,
             method: MinerMethod::ProveCommitAggregate as u64,
             params: Some(prove_commit_aggregate_params_ser),
             subinvocs: Some(vec![
-                Expect::reward_this_epoch(*maddr),
-                Expect::power_current_total(*maddr),
-                Expect::power_update_pledge(*maddr, None),
-                Expect::burn(*maddr, Some(expected_fee)),
+                Expect::reward_this_epoch(miner_id),
+                Expect::power_current_total(miner_id),
+                Expect::power_update_pledge(miner_id, None),
+                Expect::burn(miner_id, Some(expected_fee)),
             ]),
             ..Default::default()
         }
@@ -466,6 +476,8 @@ pub fn miner_extend_sector_expiration2(
     new_expiration: ChainEpoch,
     power_delta: PowerPair,
 ) {
+    let miner_id = miner.id().unwrap();
+    let worker_id = worker.id().unwrap();
     let extension_params = ExtendSectorExpiration2Params {
         extensions: vec![ExpirationExtension2 {
             deadline,
@@ -493,16 +505,16 @@ pub fn miner_extend_sector_expiration2(
 
     let mut subinvocs = vec![];
     if !claim_ids.is_empty() {
-        subinvocs.push(Expect::verifreg_get_claims(*miner, miner.id().unwrap(), claim_ids))
+        subinvocs.push(Expect::verifreg_get_claims(miner_id, miner_id, claim_ids))
     }
-    subinvocs.push(Expect::reward_this_epoch(*miner));
-    subinvocs.push(Expect::power_current_total(*miner));
+    subinvocs.push(Expect::reward_this_epoch(miner_id));
+    subinvocs.push(Expect::power_current_total(miner_id));
     if !power_delta.is_zero() {
-        subinvocs.push(Expect::power_update_claim(*miner, power_delta));
+        subinvocs.push(Expect::power_update_claim(miner_id, power_delta));
     }
 
     ExpectInvocation {
-        from: *worker,
+        from: worker_id,
         to: *miner,
         method: MinerMethod::ExtendSectorExpiration2 as u64,
         subinvocs: Some(subinvocs),
@@ -608,6 +620,8 @@ pub fn submit_windowed_post(
     partition_idx: u64,
     new_power: Option<PowerPair>,
 ) {
+    let miner_id = maddr.id().unwrap();
+    let worker_id = worker.id().unwrap();
     let params = SubmitWindowedPoStParams {
         deadline: dline_info.index,
         partitions: vec![PoStPartition { index: partition_idx, skipped: BitField::new() }],
@@ -631,12 +645,12 @@ pub fn submit_windowed_post(
         if new_pow == PowerPair::zero() {
             subinvocs = Some(vec![])
         } else {
-            subinvocs = Some(vec![Expect::power_update_claim(*maddr, new_pow)])
+            subinvocs = Some(vec![Expect::power_update_claim(miner_id, new_pow)])
         }
     }
 
     ExpectInvocation {
-        from: *worker,
+        from: worker_id,
         to: *maddr,
         method: MinerMethod::SubmitWindowedPoSt as u64,
         subinvocs,
@@ -684,6 +698,8 @@ pub fn withdraw_balance(
     to_withdraw_amount: &TokenAmount,
     expect_withdraw_amount: &TokenAmount,
 ) {
+    let from_id = v.resolve_id_address(from).unwrap().id().unwrap();
+    let miner_id = v.resolve_id_address(m_addr).unwrap().id().unwrap();
     let params = WithdrawBalanceParams { amount_requested: to_withdraw_amount.clone() };
     let withdraw_return: WithdrawBalanceReturn = apply_ok(
         v,
@@ -699,12 +715,12 @@ pub fn withdraw_balance(
     if expect_withdraw_amount.is_positive() {
         let withdraw_balance_params_se = IpldBlock::serialize_cbor(&params).unwrap();
         ExpectInvocation {
-            from: *from,
+            from: from_id,
             to: *m_addr,
             method: MinerMethod::WithdrawBalance as u64,
             params: Some(withdraw_balance_params_se),
             subinvocs: Some(vec![Expect::send(
-                *m_addr,
+                miner_id,
                 *from,
                 Some(expect_withdraw_amount.clone()),
             )]),
@@ -761,16 +777,16 @@ pub fn verifreg_add_verifier(v: &dyn VM, verifier: &Address, data_cap: StoragePo
         Some(proposal),
     );
     ExpectInvocation {
-        from: TEST_VERIFREG_ROOT_SIGNER_ADDR,
+        from: TEST_VERIFREG_ROOT_SIGNER_ID,
         to: TEST_VERIFREG_ROOT_ADDR,
         method: MultisigMethod::Propose as u64,
         subinvocs: Some(vec![ExpectInvocation {
-            from: TEST_VERIFREG_ROOT_ADDR,
+            from: TEST_VERIFREG_ROOT_ID,
             to: VERIFIED_REGISTRY_ACTOR_ADDR,
             method: VerifregMethod::AddVerifier as u64,
             params: Some(IpldBlock::serialize_cbor(&add_verifier_params).unwrap()),
             subinvocs: Some(vec![Expect::frc42_balance(
-                VERIFIED_REGISTRY_ACTOR_ADDR,
+                VERIFIED_REGISTRY_ACTOR_ID,
                 DATACAP_TOKEN_ACTOR_ADDR,
                 *verifier,
             )]),
@@ -787,6 +803,7 @@ pub fn verifreg_add_client(
     client: &Address,
     allowance: StoragePower,
 ) {
+    let verifier_id = v.resolve_id_address(verifier).unwrap().id().unwrap();
     let add_client_params =
         AddVerifiedClientParams { address: *client, allowance: allowance.clone() };
     apply_ok(
@@ -799,11 +816,11 @@ pub fn verifreg_add_client(
     );
     let allowance_tokens = TokenAmount::from_whole(allowance);
     ExpectInvocation {
-        from: *verifier,
+        from: verifier_id,
         to: VERIFIED_REGISTRY_ACTOR_ADDR,
         method: VerifregMethod::AddVerifiedClient as u64,
         subinvocs: Some(vec![ExpectInvocation {
-            from: VERIFIED_REGISTRY_ACTOR_ADDR,
+            from: VERIFIED_REGISTRY_ACTOR_ID,
             to: DATACAP_TOKEN_ACTOR_ADDR,
             method: DataCapMethod::MintExported as u64,
             params: Some(
@@ -815,7 +832,7 @@ pub fn verifreg_add_client(
                 .unwrap(),
             ),
             subinvocs: Some(vec![Expect::frc46_receiver(
-                DATACAP_TOKEN_ACTOR_ADDR,
+                DATACAP_TOKEN_ACTOR_ID,
                 *client,
                 DATACAP_TOKEN_ACTOR_ID,
                 client.id().unwrap(),
@@ -861,6 +878,7 @@ pub fn verifreg_remove_expired_allocations(
     ids: Vec<AllocationID>,
     datacap_refund: u64,
 ) {
+    let caller_id = v.resolve_id_address(caller).unwrap().id().unwrap();
     let params =
         RemoveExpiredAllocationsParams { client: client.id().unwrap(), allocation_ids: ids };
     apply_ok(
@@ -872,11 +890,11 @@ pub fn verifreg_remove_expired_allocations(
         Some(params),
     );
     ExpectInvocation {
-        from: *caller,
+        from: caller_id,
         to: VERIFIED_REGISTRY_ACTOR_ADDR,
         method: VerifregMethod::RemoveExpiredAllocations as u64,
         subinvocs: Some(vec![ExpectInvocation {
-            from: VERIFIED_REGISTRY_ACTOR_ADDR,
+            from: VERIFIED_REGISTRY_ACTOR_ID,
             to: DATACAP_TOKEN_ACTOR_ADDR,
             method: DataCapMethod::TransferExported as u64,
             params: Some(
@@ -888,7 +906,7 @@ pub fn verifreg_remove_expired_allocations(
                 .unwrap(),
             ),
             subinvocs: Some(vec![Expect::frc46_receiver(
-                DATACAP_TOKEN_ACTOR_ADDR,
+                DATACAP_TOKEN_ACTOR_ID,
                 *client,
                 VERIFIED_REGISTRY_ACTOR_ID,
                 client.id().unwrap(),
@@ -939,6 +957,7 @@ pub fn datacap_extend_claim(
         operator_data: operator_data.clone(),
     };
 
+    let client_id = v.resolve_id_address(client).unwrap().id().unwrap();
     apply_ok(
         v,
         client,
@@ -949,11 +968,11 @@ pub fn datacap_extend_claim(
     );
 
     ExpectInvocation {
-        from: *client,
+        from: client_id,
         to: DATACAP_TOKEN_ACTOR_ADDR,
         method: DataCapMethod::TransferExported as u64,
         subinvocs: Some(vec![ExpectInvocation {
-            from: DATACAP_TOKEN_ACTOR_ADDR,
+            from: DATACAP_TOKEN_ACTOR_ID,
             to: VERIFIED_REGISTRY_ACTOR_ADDR,
             method: VerifregMethod::UniversalReceiverHook as u64,
             params: Some(
@@ -975,7 +994,7 @@ pub fn datacap_extend_claim(
                 .unwrap(),
             ),
             subinvocs: Some(vec![Expect::frc46_burn(
-                VERIFIED_REGISTRY_ACTOR_ADDR,
+                VERIFIED_REGISTRY_ACTOR_ID,
                 DATACAP_TOKEN_ACTOR_ADDR,
                 token_amount,
             )]),
@@ -1014,6 +1033,7 @@ pub fn market_publish_deal(
     deal_start: ChainEpoch,
     deal_lifetime: ChainEpoch,
 ) -> PublishStorageDealsReturn {
+    let worker_id = v.resolve_id_address(worker).unwrap().id().unwrap();
     let label = Label::String(deal_label.to_string());
     let proposal = DealProposal {
         piece_cid: make_piece_cid(deal_label.as_bytes()),
@@ -1054,15 +1074,15 @@ pub fn market_publish_deal(
 
     let mut expect_publish_invocs = vec![
         ExpectInvocation {
-            from: STORAGE_MARKET_ACTOR_ADDR,
+            from: STORAGE_MARKET_ACTOR_ID,
             to: *miner_id,
             method: MinerMethod::IsControllingAddressExported as u64,
             ..Default::default()
         },
-        Expect::reward_this_epoch(STORAGE_MARKET_ACTOR_ADDR),
-        Expect::power_current_total(STORAGE_MARKET_ACTOR_ADDR),
+        Expect::reward_this_epoch(STORAGE_MARKET_ACTOR_ID),
+        Expect::power_current_total(STORAGE_MARKET_ACTOR_ID),
         Expect::frc44_authenticate(
-            STORAGE_MARKET_ACTOR_ADDR,
+            STORAGE_MARKET_ACTOR_ID,
             *deal_client,
             proposal_bytes.to_vec(),
             signature.bytes,
@@ -1075,7 +1095,7 @@ pub fn market_publish_deal(
             min(proposal.start_epoch, v.epoch() + MAXIMUM_VERIFIED_ALLOCATION_EXPIRATION);
 
         expect_publish_invocs.push(ExpectInvocation {
-            from: STORAGE_MARKET_ACTOR_ADDR,
+            from: STORAGE_MARKET_ACTOR_ID,
             to: DATACAP_TOKEN_ACTOR_ADDR,
             method: DataCapMethod::BalanceExported as u64,
             params: Some(IpldBlock::serialize_cbor(&deal_client).unwrap()),
@@ -1093,7 +1113,7 @@ pub fn market_publish_deal(
             extensions: vec![],
         };
         expect_publish_invocs.push(ExpectInvocation {
-            from: STORAGE_MARKET_ACTOR_ADDR,
+            from: STORAGE_MARKET_ACTOR_ID,
             to: DATACAP_TOKEN_ACTOR_ADDR,
             method: DataCapMethod::TransferFromExported as u64,
             params: Some(
@@ -1106,7 +1126,7 @@ pub fn market_publish_deal(
                 .unwrap(),
             ),
             subinvocs: Some(vec![ExpectInvocation {
-                from: DATACAP_TOKEN_ACTOR_ADDR,
+                from: DATACAP_TOKEN_ACTOR_ID,
                 to: VERIFIED_REGISTRY_ACTOR_ADDR,
                 method: VerifregMethod::UniversalReceiverHook as u64,
                 params: Some(
@@ -1133,13 +1153,13 @@ pub fn market_publish_deal(
         })
     }
     expect_publish_invocs.push(ExpectInvocation {
-        from: STORAGE_MARKET_ACTOR_ADDR,
+        from: STORAGE_MARKET_ACTOR_ID,
         to: *deal_client,
         method: MARKET_NOTIFY_DEAL_METHOD,
         ..Default::default()
     });
     ExpectInvocation {
-        from: *worker,
+        from: worker_id,
         to: STORAGE_MARKET_ACTOR_ADDR,
         method: MarketMethod::PublishStorageDeals as u64,
         subinvocs: Some(expect_publish_invocs),
@@ -1174,4 +1194,12 @@ pub fn generate_deal_proposal(
         provider_collateral: provider_collateral.clone(),
         client_collateral: client_collateral.clone(),
     }
+}
+
+pub fn get_deal(v: &dyn VM, deal_id: DealID) -> DealProposal {
+    let actor = v.actor(&STORAGE_MARKET_ACTOR_ADDR).unwrap();
+    let bs = DynBlockstore::wrap(v.blockstore());
+    let state: fil_actor_market::State =
+        RawBytes::new(bs.get(&actor.state).unwrap().unwrap()).deserialize().unwrap();
+    state.get_proposal(&bs, deal_id).unwrap()
 }

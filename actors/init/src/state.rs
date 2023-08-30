@@ -2,30 +2,29 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use cid::Cid;
-use fil_actors_runtime::{
-    actor_error, make_empty_map, make_map_with_root_and_bitwidth, ActorError, AsActorError,
-    FIRST_NON_SINGLETON_ADDR,
-};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_shared::address::{Address, Protocol};
-use fvm_shared::error::ExitCode;
-use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
+use fvm_shared::ActorID;
 
-/// State is reponsible for creating
+use fil_actors_runtime::{
+    actor_error, ActorError, Map2, DEFAULT_HAMT_CONFIG, FIRST_NON_SINGLETON_ADDR,
+};
+
 #[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug)]
 pub struct State {
+    /// HAMT[Address]ActorID
     pub address_map: Cid,
     pub next_id: ActorID,
     pub network_name: String,
 }
 
+pub type AddressMap<BS> = Map2<BS, Address, ActorID>;
+
 impl State {
     pub fn new<BS: Blockstore>(store: &BS, network_name: String) -> Result<Self, ActorError> {
-        let empty_map = make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH)
-            .flush()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to create empty map")?;
-        Ok(Self { address_map: empty_map, next_id: FIRST_NON_SINGLETON_ADDR, network_name })
+        let empty = AddressMap::flush_empty(store, DEFAULT_HAMT_CONFIG)?;
+        Ok(Self { address_map: empty, next_id: FIRST_NON_SINGLETON_ADDR, network_name })
     }
 
     /// Maps argument addresses to to a new or existing actor ID.
@@ -40,22 +39,16 @@ impl State {
         robust_addr: &Address,
         delegated_addr: Option<&Address>,
     ) -> Result<(ActorID, bool), ActorError> {
-        let mut map = make_map_with_root_and_bitwidth(&self.address_map, store, HAMT_BIT_WIDTH)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load address map")?;
+        let mut map = AddressMap::load(store, &self.address_map, DEFAULT_HAMT_CONFIG, "addresses")?;
         let (id, existing) = if let Some(delegated_addr) = delegated_addr {
             // If there's a delegated address, either recall the already-mapped actor ID or
             // create and map a new one.
-            let delegated_key = delegated_addr.to_bytes().into();
-            if let Some(existing_id) = map
-                .get(&delegated_key)
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to lookup delegated address")?
-            {
+            if let Some(existing_id) = map.get(delegated_addr)? {
                 (*existing_id, true)
             } else {
                 let new_id = self.next_id;
                 self.next_id += 1;
-                map.set(delegated_key, new_id)
-                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to map delegated address")?;
+                map.set(delegated_addr, new_id)?;
                 (new_id, false)
             }
         } else {
@@ -66,9 +59,7 @@ impl State {
         };
 
         // Map the robust address to the ID, failing if it's already mapped to anything.
-        let is_new = map
-            .set_if_absent(robust_addr.to_bytes().into(), id)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to map robust address")?;
+        let is_new = map.set_if_absent(robust_addr, id)?;
         if !is_new {
             return Err(actor_error!(
                 forbidden,
@@ -76,8 +67,7 @@ impl State {
                 robust_addr
             ));
         }
-        self.address_map =
-            map.flush().context_code(ExitCode::USR_ILLEGAL_STATE, "failed to store address map")?;
+        self.address_map = map.flush()?;
         Ok((id, existing))
     }
 
@@ -99,13 +89,8 @@ impl State {
         if addr.protocol() == Protocol::ID {
             return Ok(Some(*addr));
         }
-
-        let map = make_map_with_root_and_bitwidth(&self.address_map, store, HAMT_BIT_WIDTH)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load address map")?;
-
-        let found = map
-            .get(&addr.to_bytes())
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get address entry")?;
+        let map = AddressMap::load(store, &self.address_map, DEFAULT_HAMT_CONFIG, "addresses")?;
+        let found = map.get(addr)?;
         Ok(found.copied().map(Address::new_id))
     }
 }

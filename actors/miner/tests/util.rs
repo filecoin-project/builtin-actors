@@ -1,14 +1,59 @@
 #![allow(clippy::all)]
 
+use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::convert::TryInto;
+use std::iter;
+use std::ops::Neg;
+
+use cid::multihash::MultihashDigest;
+use cid::Cid;
+use fvm_ipld_amt::Amt;
+use fvm_ipld_bitfield::iter::Ranges;
+use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
+use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
+use fvm_ipld_encoding::de::Deserialize;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::ser::Serialize;
+use fvm_ipld_encoding::{BytesDe, CborStore, RawBytes};
+use fvm_shared::address::Address;
+use fvm_shared::bigint::BigInt;
+use fvm_shared::bigint::Zero;
+use fvm_shared::clock::QuantSpec;
+use fvm_shared::clock::{ChainEpoch, NO_QUANTIZATION};
+use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
+use fvm_shared::consensus::ConsensusFault;
+use fvm_shared::crypto::hash::SupportedHashes;
+use fvm_shared::deal::DealID;
+use fvm_shared::econ::TokenAmount;
+use fvm_shared::error::ExitCode;
+use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::randomness::Randomness;
+use fvm_shared::randomness::RANDOMNESS_LENGTH;
+use fvm_shared::sector::{
+    AggregateSealVerifyInfo, PoStProof, RegisteredPoStProof, RegisteredSealProof, SealVerifyInfo,
+    SectorID, SectorInfo, SectorNumber, SectorSize, StoragePower, WindowPoStVerifyInfo,
+};
+use fvm_shared::smooth::FilterEstimate;
+use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_SEND};
+use itertools::Itertools;
+use lazy_static::lazy_static;
+use multihash::derive::Multihash;
+
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
-    BatchActivateDealsParams, BatchActivateDealsResult, DealSpaces, Method as MarketMethod,
-    OnMinerSectorsTerminateParams, SectorDealActivation, SectorDealData, SectorDeals,
-    VerifiedDealInfo, VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
+    BatchActivateDealsParams, BatchActivateDealsResult, Method as MarketMethod,
+    OnMinerSectorsTerminateParams, SectorDealActivation, SectorDeals, VerifiedDealInfo,
+    VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
 };
 use fil_actor_miner::ext::market::ON_MINER_SECTORS_TERMINATE_METHOD;
 use fil_actor_miner::ext::power::{UPDATE_CLAIMED_POWER_METHOD, UPDATE_PLEDGE_TOTAL_METHOD};
 use fil_actor_miner::ext::verifreg::CLAIM_ALLOCATIONS_METHOD;
+use fil_actor_miner::ext::verifreg::{
+    Claim as FILPlusClaim, ClaimID, GetClaimsParams, GetClaimsReturn,
+};
+use fil_actor_miner::testing::{
+    check_deadline_state_invariants, check_state_invariants, DeadlineStateSummary,
+};
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee, consensus_fault_penalty,
     ext, initial_pledge_for_power, locked_reward_from_reward, max_prove_commit_duration,
@@ -35,62 +80,14 @@ use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
 };
 use fil_actor_reward::{Method as RewardMethod, ThisEpochRewardReturn};
-
-use fil_actor_miner::ext::verifreg::{
-    Claim as FILPlusClaim, ClaimID, GetClaimsParams, GetClaimsReturn,
-};
-
-use fil_actors_runtime::runtime::{DomainSeparationTag, Policy, Runtime, RuntimePolicy};
+use fil_actors_runtime::cbor::serialize;
+use fil_actors_runtime::runtime::{DomainSeparationTag, Runtime, RuntimePolicy};
 use fil_actors_runtime::{test_utils::*, BatchReturn, BatchReturnGen};
 use fil_actors_runtime::{
     ActorDowncast, ActorError, Array, DealWeight, MessageAccumulator, BURNT_FUNDS_ACTOR_ADDR,
     INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use fvm_ipld_amt::Amt;
-use fvm_shared::bigint::Zero;
-
-use fvm_ipld_bitfield::iter::Ranges;
-use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
-use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
-use fvm_ipld_encoding::de::Deserialize;
-use fvm_ipld_encoding::ser::Serialize;
-use fvm_ipld_encoding::{BytesDe, CborStore, RawBytes};
-use fvm_shared::address::Address;
-use fvm_shared::bigint::BigInt;
-use fvm_shared::clock::QuantSpec;
-use fvm_shared::clock::{ChainEpoch, NO_QUANTIZATION};
-use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
-use fvm_shared::consensus::ConsensusFault;
-use fvm_shared::deal::DealID;
-use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
-use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::randomness::Randomness;
-use fvm_shared::randomness::RANDOMNESS_LENGTH;
-use fvm_shared::sector::{
-    AggregateSealVerifyInfo, PoStProof, RegisteredPoStProof, RegisteredSealProof, SealVerifyInfo,
-    SectorID, SectorInfo, SectorNumber, SectorSize, StoragePower, WindowPoStVerifyInfo,
-};
-use fvm_shared::smooth::FilterEstimate;
-use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_SEND};
-
-use cid::multihash::MultihashDigest;
-use cid::Cid;
-use itertools::Itertools;
-use lazy_static::lazy_static;
-use multihash::derive::Multihash;
-
-use fil_actor_miner::testing::{
-    check_deadline_state_invariants, check_state_invariants, DeadlineStateSummary,
-};
-use fil_actors_runtime::cbor::serialize;
-use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_shared::crypto::hash::SupportedHashes;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::convert::TryInto;
-use std::iter;
-use std::ops::Neg;
 
 const RECEIVER_ID: u64 = 1000;
 
@@ -568,12 +565,12 @@ impl ActorHarness {
                 base_fee,
             )
         } else {
-            let mut deal_data = Vec::new();
+            let mut commds = Vec::new();
             let v1 = params
                 .sectors
                 .iter()
                 .map(|s| {
-                    deal_data.push(SectorDealData { commd: s.unsealed_cid.0 });
+                    commds.push(s.unsealed_cid.0);
                     PreCommitSectorParams {
                         seal_proof: s.seal_proof,
                         sector_number: s.sector_number,
@@ -610,15 +607,15 @@ impl ActorHarness {
         let v2: Vec<_> = params
             .sectors
             .iter()
-            .zip(conf.sector_deal_data.iter().chain(iter::repeat(&SectorDealData { commd: None })))
-            .map(|(s, dd)| SectorPreCommitInfo {
+            .zip(conf.sector_unsealed_cid.iter().chain(iter::repeat(&None)))
+            .map(|(s, cid)| SectorPreCommitInfo {
                 seal_proof: s.seal_proof,
                 sector_number: s.sector_number,
                 sealed_cid: s.sealed_cid,
                 seal_rand_epoch: s.seal_rand_epoch,
                 deal_ids: s.deal_ids.clone(),
                 expiration: s.expiration,
-                unsealed_cid: CompactCommD::new(dd.commd),
+                unsealed_cid: CompactCommD::new(*cid),
             })
             .collect();
 
@@ -666,14 +663,14 @@ impl ActorHarness {
                 deal_ids: sector.deal_ids.clone(),
             });
 
-            sector_deal_data.push(SectorDealData { commd: sector.unsealed_cid.0 });
+            sector_deal_data.push(sector.unsealed_cid.0);
             // Sanity check on expectations
             let sector_has_deals = !sector.deal_ids.is_empty();
             any_deals |= sector_has_deals;
         }
         if any_deals {
             let vdparams = VerifyDealsForActivationParams { sectors: sector_deals };
-            let vdreturn = VerifyDealsForActivationReturn { sectors: sector_deal_data };
+            let vdreturn = VerifyDealsForActivationReturn { unsealed_cids: sector_deal_data };
             rt.expect_send_simple(
                 STORAGE_MARKET_ACTOR_ADDR,
                 MarketMethod::VerifyDealsForActivation as u64,
@@ -755,7 +752,7 @@ impl ActorHarness {
                     deal_ids: params.deal_ids.clone(),
                 }],
             };
-            let vdreturn = VerifyDealsForActivationReturn { sectors: vec![conf.0] };
+            let vdreturn = VerifyDealsForActivationReturn { unsealed_cids: vec![conf.0] };
 
             rt.expect_send_simple(
                 STORAGE_MARKET_ACTOR_ADDR,
@@ -1062,7 +1059,7 @@ impl ActorHarness {
 
         for pc in pcs {
             if !pc.info.deal_ids.is_empty() {
-                let deal_spaces = cfg.deal_spaces(&pc.info.sector_number);
+                let deal_space = cfg.deal_space(pc.info.sector_number);
                 let activate_params = SectorDeals {
                     deal_ids: pc.info.deal_ids.clone(),
                     sector_expiry: pc.info.expiration,
@@ -1071,12 +1068,13 @@ impl ActorHarness {
                 sector_activation_params.push(activate_params);
 
                 let ret = SectorDealActivation {
-                    nonverified_deal_space: deal_spaces.deal_space,
+                    nonverified_deal_space: deal_space,
                     verified_infos: cfg
                         .verified_deal_infos
                         .get(&pc.info.sector_number)
                         .cloned()
                         .unwrap_or_default(),
+                    unsealed_cid: None,
                 };
 
                 let mut activate_deals_exit = ExitCode::OK;
@@ -1119,6 +1117,7 @@ impl ActorHarness {
                 sector_activations.push(SectorDealActivation {
                     nonverified_deal_space: BigInt::zero(),
                     verified_infos: vec![],
+                    unsealed_cid: None,
                 });
                 sector_activation_results.add_success();
                 sectors_claims.push(ext::verifreg::SectorAllocationClaims {
@@ -1136,6 +1135,7 @@ impl ActorHarness {
                 MarketMethod::BatchActivateDeals as u64,
                 IpldBlock::serialize_cbor(&BatchActivateDealsParams {
                     sectors: sector_activation_params,
+                    compute_cid: false,
                 })
                 .unwrap(),
                 TokenAmount::zero(),
@@ -1183,11 +1183,12 @@ impl ActorHarness {
             let mut expected_raw_power = BigInt::from(0);
 
             for pc in valid_pcs {
-                let spaces = cfg.deal_spaces(&pc.info.sector_number);
+                let deal_space = cfg.deal_space(pc.info.sector_number);
+                let verified_deal_space = cfg.verified_deal_space(pc.info.sector_number);
 
                 let duration = pc.info.expiration - *rt.epoch.borrow();
-                let deal_weight = spaces.deal_space * duration;
-                let verified_deal_weight = spaces.verified_deal_space * duration;
+                let deal_weight = deal_space * duration;
+                let verified_deal_weight = verified_deal_space * duration;
                 if duration >= rt.policy.min_sector_expiration {
                     let qa_power_delta = qa_power_for_weight(
                         self.sector_size,
@@ -1649,7 +1650,7 @@ impl ActorHarness {
 
     pub fn get_deadline(&self, rt: &MockRuntime, dlidx: u64) -> Deadline {
         let dls = self.get_deadlines(rt);
-        dls.load_deadline(&rt.policy, &rt.store, dlidx).unwrap()
+        dls.load_deadline(&rt.store, dlidx).unwrap()
     }
 
     fn get_deadlines(&self, rt: &MockRuntime) -> Deadlines {
@@ -1721,8 +1722,7 @@ impl ActorHarness {
         //let sector_arr = Sectors::load(&rt.store, &state.sectors).unwrap();
         let mut deadlines: BTreeMap<u64, Vec<SectorOnChainInfo>> = BTreeMap::new();
         for sector in sectors {
-            let (dlidx, _) =
-                state.find_sector(&rt.policy, &rt.store, sector.sector_number).unwrap();
+            let (dlidx, _) = state.find_sector(&rt.store, sector.sector_number).unwrap();
             match deadlines.get_mut(&dlidx) {
                 Some(dl_sectors) => {
                     dl_sectors.push(sector.clone());
@@ -1744,7 +1744,7 @@ impl ActorHarness {
                     }
 
                     let dl_arr = state.load_deadlines(&rt.store).unwrap();
-                    let dl = dl_arr.load_deadline(&rt.policy, &rt.store, dlinfo.index).unwrap();
+                    let dl = dl_arr.load_deadline(&rt.store, dlinfo.index).unwrap();
                     let parts = Array::<Partition, _>::load(&dl.partitions, &rt.store).unwrap();
 
                     let mut partitions: Vec<PoStPartition> = Vec::new();
@@ -1924,7 +1924,7 @@ impl ActorHarness {
 
     pub fn find_sector(&self, rt: &MockRuntime, sno: SectorNumber) -> (Deadline, Partition) {
         let state = self.get_state(rt);
-        let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, sno).unwrap();
+        let (dlidx, pidx) = state.find_sector(&rt.store, sno).unwrap();
         self.get_deadline_and_partition(rt, dlidx, pidx)
     }
 
@@ -2131,9 +2131,8 @@ impl ActorHarness {
 
         let mut terminations: Vec<TerminationDeclaration> = Vec::new();
 
-        let policy = Policy::default();
         for sector in sectors.iter() {
-            let (deadline, partition) = deadlines.find_sector(&policy, rt.store(), sector).unwrap();
+            let (deadline, partition) = deadlines.find_sector(rt.store(), sector).unwrap();
             terminations.push(TerminationDeclaration {
                 sectors: make_bitfield(&[sector]),
                 deadline,
@@ -2698,7 +2697,7 @@ impl PoStConfig {
 }
 
 #[derive(Default)]
-pub struct PreCommitConfig(pub SectorDealData);
+pub struct PreCommitConfig(pub Option<Cid>);
 
 #[allow(dead_code)]
 impl PreCommitConfig {
@@ -2707,7 +2706,7 @@ impl PreCommitConfig {
     }
 
     pub fn new(commd: Option<Cid>) -> PreCommitConfig {
-        PreCommitConfig { 0: SectorDealData { commd } }
+        PreCommitConfig { 0: commd }
     }
 
     pub fn default() -> PreCommitConfig {
@@ -2749,25 +2748,25 @@ impl ProveCommitConfig {
         self.verified_deal_infos.insert(sector, deals);
     }
 
-    pub fn deal_spaces(&self, sector: &SectorNumber) -> DealSpaces {
-        let verified_deal_space = match self.verified_deal_infos.get(sector) {
+    pub fn deal_space(&self, sector: SectorNumber) -> BigInt {
+        self.deal_space.get(&sector).cloned().unwrap_or_default()
+    }
+
+    pub fn verified_deal_space(&self, sector: SectorNumber) -> BigInt {
+        match self.verified_deal_infos.get(&sector) {
             None => BigInt::zero(),
             Some(infos) => infos
                 .iter()
                 .map(|info| BigInt::from(info.size.0))
                 .reduce(|x, a| x + a)
                 .unwrap_or_default(),
-        };
-        DealSpaces {
-            deal_space: self.deal_space.get(sector).cloned().unwrap_or_default(),
-            verified_deal_space,
         }
     }
 }
 
 #[derive(Default)]
 pub struct PreCommitBatchConfig {
-    pub sector_deal_data: Vec<SectorDealData>,
+    pub sector_unsealed_cid: Vec<Option<Cid>>,
     pub first_for_miner: bool,
 }
 
@@ -2960,7 +2959,7 @@ fn make_fault_params_from_faulting_sectors(
 ) -> DeclareFaultsParams {
     let mut declaration_map: BTreeMap<(u64, u64), FaultDeclaration> = BTreeMap::new();
     for sector in fault_sector_infos {
-        let (dlidx, pidx) = state.find_sector(&rt.policy, &rt.store, sector.sector_number).unwrap();
+        let (dlidx, pidx) = state.find_sector(&rt.store, sector.sector_number).unwrap();
         match declaration_map.get_mut(&(dlidx, pidx)) {
             Some(declaration) => {
                 declaration.sectors.set(sector.sector_number);

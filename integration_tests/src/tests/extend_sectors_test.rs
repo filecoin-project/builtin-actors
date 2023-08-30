@@ -1,32 +1,34 @@
-use fil_actor_market::{DealMetaArray, SectorDeals, State as MarketState};
-use fil_actor_miner::{
-    max_prove_commit_duration, power_for_sector, ExpirationExtension, ExpirationExtension2,
-    ExtendSectorExpiration2Params, ExtendSectorExpirationParams, Method as MinerMethod, PowerPair,
-    ProveReplicaUpdatesParams2, ReplicaUpdate2, SectorClaim, State as MinerState,
-};
-use fil_actor_verifreg::Method as VerifregMethod;
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
-use fil_actors_runtime::{
-    DealWeight, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
-};
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
+
+use fil_actor_market::{DealMetaArray, State as MarketState};
+use fil_actor_miner::{
+    max_prove_commit_duration, power_for_sector, ExpirationExtension, ExpirationExtension2,
+    ExtendSectorExpiration2Params, ExtendSectorExpirationParams, Method as MinerMethod, PowerPair,
+    ProveReplicaUpdatesParams2, ReplicaUpdate2, SectorClaim, Sectors, State as MinerState,
+};
+use fil_actor_verifreg::Method as VerifregMethod;
+use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::test_utils::make_sealed_cid;
+use fil_actors_runtime::{
+    DealWeight, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+};
 use vm_api::trace::ExpectInvocation;
-use vm_api::util::{apply_ok, get_state, DynBlockstore};
+use vm_api::util::{apply_ok, get_state, mutate_state, DynBlockstore};
 use vm_api::VM;
 
 use crate::expects::Expect;
 use crate::util::{
-    advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline,
-    bf_all, create_accounts, create_miner, cron_tick, market_add_balance, market_publish_deal,
-    miner_precommit_sector, miner_prove_sector, sector_deadline, submit_windowed_post,
-    verifreg_add_client, verifreg_add_verifier,
+    advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
+    advance_by_deadline_to_index, advance_to_proving_deadline, bf_all, create_accounts,
+    create_miner, cron_tick, expect_invariants, get_deal, invariant_failure_patterns,
+    market_add_balance, market_publish_deal, miner_precommit_sector, miner_prove_sector,
+    sector_deadline, submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -45,6 +47,9 @@ pub fn extend(
         false => MinerMethod::ExtendSectorExpiration as u64,
         true => MinerMethod::ExtendSectorExpiration2 as u64,
     };
+
+    let miner_id = v.resolve_id_address(&maddr).unwrap().id().unwrap();
+    let worker_id = v.resolve_id_address(&worker).unwrap().id().unwrap();
 
     match v2 {
         false => {
@@ -87,20 +92,234 @@ pub fn extend(
     };
 
     let mut expect_invoke =
-        vec![Expect::reward_this_epoch(maddr), Expect::power_current_total(maddr)];
+        vec![Expect::reward_this_epoch(miner_id), Expect::power_current_total(miner_id)];
 
     if !power_delta.is_zero() {
-        expect_invoke.push(Expect::power_update_claim(maddr, power_delta));
+        expect_invoke.push(Expect::power_update_claim(miner_id, power_delta));
     }
 
     ExpectInvocation {
-        from: worker,
+        from: worker_id,
         to: maddr,
         method: extension_method,
         subinvocs: Some(expect_invoke),
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
+}
+
+pub fn extend_legacy_sector_with_deals_test(v: &dyn VM, do_extend2: bool) {
+    let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
+    let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
+    let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
+    let sector_number: SectorNumber = 100;
+    let policy = Policy::default();
+
+    // create miner
+    let miner_id = create_miner(
+        v,
+        &owner,
+        &worker,
+        seal_proof.registered_window_post_proof().unwrap(),
+        &TokenAmount::from_whole(1_000),
+    )
+    .0;
+    v.set_epoch(200);
+
+    //
+    // publish verified deals
+    //
+
+    // register verifier then verified client
+    let datacap = StoragePower::from(32_u128 << 40);
+    verifreg_add_verifier(v, &verifier, datacap.clone());
+    verifreg_add_client(v, &verifier, &verified_client, datacap);
+
+    // add market collateral for clients and miner
+    market_add_balance(v, &verified_client, &verified_client, &TokenAmount::from_whole(3));
+    market_add_balance(v, &worker, &miner_id, &TokenAmount::from_whole(64));
+
+    // create 1 verified deal for total sector capacity for 6 months
+    let deal_start = v.epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
+    let deals = market_publish_deal(
+        v,
+        &worker,
+        &verified_client,
+        &miner_id,
+        "deal1".to_string(),
+        PaddedPieceSize(32u64 << 30),
+        true,
+        deal_start,
+        180 * EPOCHS_IN_DAY,
+    )
+    .ids;
+
+    //
+    // Precommit, prove and PoSt empty sector (more fully tested in TestCommitPoStFlow)
+    //
+
+    miner_precommit_sector(
+        v,
+        &worker,
+        &miner_id,
+        seal_proof,
+        sector_number,
+        deals,
+        deal_start + 180 * EPOCHS_IN_DAY,
+    );
+
+    // advance time to max seal duration and prove the sector
+    advance_by_deadline_to_epoch(v, &miner_id, deal_start);
+    miner_prove_sector(v, &worker, &miner_id, sector_number);
+    // trigger cron to validate the prove commit
+    cron_tick(v);
+
+    // inspect sector info
+
+    let miner_state: MinerState = get_state(v, &miner_id).unwrap();
+    let mut sector_info = miner_state
+        .get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number)
+        .unwrap()
+        .unwrap();
+    assert_eq!(180 * EPOCHS_IN_DAY, sector_info.expiration - sector_info.activation);
+    assert_eq!(StoragePower::zero(), sector_info.deal_weight); // 0 space time
+    assert_eq!(
+        DealWeight::from(180 * EPOCHS_IN_DAY * (32i64 << 30)),
+        sector_info.verified_deal_weight
+    ); // (180 days *2880 epochs per day) * 32 GiB
+
+    // Note: we don't need to explicitly set verified weight using the legacy method
+    // because legacy and simple qa power deal weight calculations line up for fully packed sectors
+    // We do need to set simple_qa_power to false
+    sector_info.simple_qa_power = false;
+
+    // Manually craft state to match legacy sectors
+    mutate_state(v, &miner_id, |st: &mut MinerState| {
+        let store = &DynBlockstore::wrap(v.blockstore());
+        let mut sectors = Sectors::load(store, &st.sectors).unwrap();
+        sectors.store(vec![sector_info.clone()]).unwrap();
+        st.sectors = sectors.amt.flush().unwrap();
+    });
+
+    let initial_verified_deal_weight = sector_info.verified_deal_weight;
+    let initial_deal_weight = sector_info.deal_weight;
+
+    // advance to proving period and submit post
+    let (deadline_info, partition_index) = advance_to_proving_deadline(v, &miner_id, sector_number);
+    let expected_power_delta = PowerPair {
+        raw: StoragePower::from(32u64 << 30),
+        qa: StoragePower::from(10 * (32u64 << 30)),
+    };
+    submit_windowed_post(
+        v,
+        &worker,
+        &miner_id,
+        deadline_info,
+        partition_index,
+        Some(expected_power_delta),
+    );
+
+    // move forward one deadline so advanceWhileProving doesn't fail double submitting posts
+    advance_by_deadline_to_index(
+        v,
+        &miner_id,
+        deadline_info.index + 1 % policy.wpost_period_deadlines,
+    );
+
+    // Advance halfway through life and extend another 6 months. We need to spread the remaining 90
+    // days of 10x power over 90 + 180 days
+    // subtract half the remaining deal weight:
+    //   - verified deal weight /= 2
+    //
+    // normalize 90 days of 10x power plus 180 days of 1x power over 90+180 days:
+    //   - multiplier = ((10 * 90) + (1 * 180)) / (90 + 180)
+    //   - multiplier = 4
+    //
+    // delta from the previous 10x power multiplier:
+    // - power delta = (10-4)*32GiB = 6*32GiB
+    advance_by_deadline_to_epoch_while_proving(
+        v,
+        &miner_id,
+        &worker,
+        sector_number,
+        deal_start + 90 * EPOCHS_IN_DAY,
+    );
+
+    let new_expiration = deal_start + 2 * 180 * EPOCHS_IN_DAY;
+    let expected_power_delta =
+        PowerPair { raw: StoragePower::zero(), qa: StoragePower::from(-6 * (32i64 << 30)) };
+    extend(
+        v,
+        worker,
+        miner_id,
+        deadline_info.index,
+        partition_index,
+        sector_number,
+        new_expiration,
+        expected_power_delta,
+        do_extend2,
+    );
+
+    let miner_state: MinerState = get_state(v, &miner_id).unwrap();
+    sector_info = miner_state
+        .get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number)
+        .unwrap()
+        .unwrap();
+    assert_eq!(180 * 2 * EPOCHS_IN_DAY, sector_info.expiration - sector_info.activation);
+    assert_eq!(initial_deal_weight, sector_info.deal_weight); // 0 space time, unchanged
+    assert_eq!(&initial_verified_deal_weight / 2, sector_info.verified_deal_weight);
+
+    // advance to 6 months (original expiration) and extend another 6 months
+    //
+    // We're 1/3rd of the way through the last extension, so keep 2/3 of the power.
+    //   - verified deal weight *= 2/3
+    //
+    // normalize 180 days of 4x power plus 180 days of 1x power over 180+180 days:
+    //   - multiplier = ((4 * 180) + (1 * 180)) / (90 + 180)
+    //   - multiplier = 2.5
+    //
+    // delta from the previous 4x power multiplier:
+    // - power delta = (4-2.5)*32GiB = 1.5*32GiB
+
+    advance_by_deadline_to_epoch_while_proving(
+        v,
+        &miner_id,
+        &worker,
+        sector_number,
+        deal_start + 180 * EPOCHS_IN_DAY,
+    );
+
+    let new_expiration = deal_start + 3 * 180 * EPOCHS_IN_DAY;
+    let expected_power_delta =
+        PowerPair { raw: StoragePower::zero(), qa: StoragePower::from(-15 * (32i64 << 30) / 10) };
+    extend(
+        v,
+        worker,
+        miner_id,
+        deadline_info.index,
+        partition_index,
+        sector_number,
+        new_expiration,
+        expected_power_delta,
+        do_extend2,
+    );
+
+    let miner_state: MinerState = get_state(v, &miner_id).unwrap();
+    let sector_info = miner_state
+        .get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number)
+        .unwrap()
+        .unwrap();
+    assert_eq!(180 * 3 * EPOCHS_IN_DAY, sector_info.expiration - sector_info.activation);
+    // 0 space time, unchanged
+    assert_eq!(initial_deal_weight, sector_info.deal_weight);
+    // 1/2 * 2/3 -> 1/3
+    assert_eq!(initial_verified_deal_weight / 3, sector_info.verified_deal_weight);
+
+    expect_invariants(
+        v,
+        &Policy::default(),
+        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+    );
 }
 
 pub fn commit_sector_with_max_duration_deal_test(v: &dyn VM) {
@@ -288,11 +507,12 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
+    let worker_id = worker.id().unwrap();
     let sector_number: SectorNumber = 100;
     let policy = Policy::default();
 
     // create miner
-    let miner_id = create_miner(
+    let miner_addr = create_miner(
         v,
         &owner,
         &worker,
@@ -300,6 +520,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         &TokenAmount::from_whole(1_000),
     )
     .0;
+    let miner_id = miner_addr.id().unwrap();
     v.set_epoch(200);
 
     //
@@ -308,24 +529,25 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
 
     let expiration = v.epoch() + 360 * EPOCHS_IN_DAY;
 
-    miner_precommit_sector(v, &worker, &miner_id, seal_proof, sector_number, vec![], expiration);
+    miner_precommit_sector(v, &worker, &miner_addr, seal_proof, sector_number, vec![], expiration);
 
     // advance time by a day and prove the sector
     let prove_epoch = v.epoch() + EPOCHS_IN_DAY;
-    advance_by_deadline_to_epoch(v, &miner_id, prove_epoch);
-    miner_prove_sector(v, &worker, &miner_id, sector_number);
+    advance_by_deadline_to_epoch(v, &miner_addr, prove_epoch);
+    miner_prove_sector(v, &worker, &miner_addr, sector_number);
     // trigger cron to validate the prove commit
     cron_tick(v);
 
     // advance to proving period and submit post
 
-    let (deadline_info, partition_index) = advance_to_proving_deadline(v, &miner_id, sector_number);
+    let (deadline_info, partition_index) =
+        advance_to_proving_deadline(v, &miner_addr, sector_number);
     let expected_power_delta =
         PowerPair { raw: StoragePower::from(32u64 << 30), qa: StoragePower::from(32u64 << 30) };
     submit_windowed_post(
         v,
         &worker,
-        &miner_id,
+        &miner_addr,
         deadline_info,
         partition_index,
         Some(expected_power_delta),
@@ -334,13 +556,13 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     // move forward one deadline so sector is mutable
     advance_by_deadline_to_index(
         v,
-        &miner_id,
+        &miner_addr,
         deadline_info.index + 1 % policy.wpost_period_deadlines,
     );
 
     // Inspect basic sector info
 
-    let miner_state: MinerState = get_state(v, &miner_id).unwrap();
+    let miner_state: MinerState = get_state(v, &miner_addr).unwrap();
     let initial_sector_info = miner_state
         .get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number)
         .unwrap()
@@ -359,7 +581,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
 
     // add market collateral for clients and miner
     market_add_balance(v, &verified_client, &verified_client, &TokenAmount::from_whole(3));
-    market_add_balance(v, &worker, &miner_id, &TokenAmount::from_whole(64));
+    market_add_balance(v, &worker, &miner_addr, &TokenAmount::from_whole(64));
 
     // create 1 verified deal for total sector capacity
     let deal_start = v.epoch() + EPOCHS_IN_DAY;
@@ -367,7 +589,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         v,
         &worker,
         &verified_client,
-        &miner_id,
+        &miner_addr,
         "deal1".to_string(),
         PaddedPieceSize(32u64 << 30),
         true,
@@ -377,22 +599,31 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     .ids;
 
     // replica update
-    let new_cid = make_sealed_cid(b"replica1");
-    let (d_idx, p_idx) = sector_deadline(v, &miner_id, sector_number);
+    let new_sealed_cid = make_sealed_cid(b"replica1");
+    let deal = get_deal(v, deal_ids[0]);
+    let new_unsealed_cid = v
+        .primitives()
+        .compute_unsealed_sector_cid(
+            seal_proof,
+            &[PieceInfo { size: deal.piece_size, cid: deal.piece_cid }],
+        )
+        .unwrap();
+
+    let (d_idx, p_idx) = sector_deadline(v, &miner_addr, sector_number);
     let replica_update = ReplicaUpdate2 {
         sector_number,
         deadline: d_idx,
         partition: p_idx,
-        new_sealed_cid: new_cid,
+        new_sealed_cid,
         deals: deal_ids.clone(),
         update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
         replica_proof: vec![],
-        new_unsealed_cid: make_piece_cid(b"unsealed from itest vm"),
+        new_unsealed_cid,
     };
     let updated_sectors: BitField = apply_ok(
         v,
         &worker,
-        &miner_id,
+        &miner_addr,
         &TokenAmount::zero(),
         MinerMethod::ProveReplicaUpdates2 as u64,
         Some(ProveReplicaUpdatesParams2 { updates: vec![replica_update] }),
@@ -404,8 +635,8 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     let old_power = power_for_sector(seal_proof.sector_size().unwrap(), &initial_sector_info);
     // check for the expected subcalls
     ExpectInvocation {
-        from: worker,
-        to: miner_id,
+        from: worker_id,
+        to: miner_addr,
         method: MinerMethod::ProveReplicaUpdates2 as u64,
         subinvocs: Some(vec![
             Expect::market_activate_deals(
@@ -413,6 +644,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
                 deal_ids.clone(),
                 initial_sector_info.expiration,
                 initial_sector_info.seal_proof,
+                true,
             ),
             ExpectInvocation {
                 from: miner_id,
@@ -420,14 +652,6 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
                 method: VerifregMethod::ClaimAllocations as u64,
                 ..Default::default()
             },
-            Expect::market_verify_deals(
-                miner_id,
-                vec![SectorDeals {
-                    sector_type: seal_proof,
-                    sector_expiry: initial_sector_info.expiration,
-                    deal_ids: deal_ids.clone(),
-                }],
-            ),
             Expect::reward_this_epoch(miner_id),
             Expect::power_current_total(miner_id),
             Expect::power_update_pledge(miner_id, None),
@@ -442,7 +666,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
 
     // inspect sector info
 
-    let miner_state: MinerState = get_state(v, &miner_id).unwrap();
+    let miner_state: MinerState = get_state(v, &miner_addr).unwrap();
     let sector_info_after_update = miner_state
         .get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number)
         .unwrap()
@@ -484,13 +708,13 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     apply_ok(
         v,
         &worker,
-        &miner_id,
+        &miner_addr,
         &TokenAmount::zero(),
         MinerMethod::ExtendSectorExpiration2 as u64,
         Some(extension_params),
     );
 
-    let miner_state: MinerState = get_state(v, &miner_id).unwrap();
+    let miner_state: MinerState = get_state(v, &miner_addr).unwrap();
     let sector_info_after_extension = miner_state
         .get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number)
         .unwrap()

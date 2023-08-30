@@ -12,7 +12,7 @@ use fvm_shared::METHOD_SEND;
 use num_traits::Zero;
 use test_vm::{TestVM, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR};
 use vm_api::util::{get_state, pk_addrs_from};
-use vm_api::{actor, VM};
+use vm_api::{new_actor, VM};
 
 #[test]
 fn state_control() {
@@ -22,7 +22,7 @@ fn state_control() {
     let addr2 = Address::new_id(2222);
 
     // set actor
-    let a1 = actor(
+    let a1 = new_actor(
         *ACCOUNT_ACTOR_CODE_ID,
         make_identity_cid(b"a1-head"),
         42,
@@ -30,11 +30,11 @@ fn state_control() {
         None,
     );
     v.set_actor(&addr1, a1.clone());
-    let out = v.get_actor(&addr1).unwrap();
+    let out = v.actor(&addr1).unwrap();
     assert_eq!(out, a1);
     let check = v.checkpoint();
 
-    let a2 = actor(
+    let a2 = new_actor(
         *PAYCH_ACTOR_CODE_ID,
         make_identity_cid(b"a2-head"),
         88,
@@ -42,13 +42,13 @@ fn state_control() {
         None,
     );
     v.set_actor(&addr2, a2.clone());
-    assert_eq!(v.get_actor(&addr2).unwrap(), a2);
+    assert_eq!(v.actor(&addr2).unwrap(), a2);
     // rollback removes a2 but not a1
     v.rollback(check);
 
     // a2 is gone
-    assert_eq!(None, v.get_actor(&addr2));
-    assert_eq!(v.get_actor(&addr1).unwrap(), a1);
+    assert_eq!(None, v.actor(&addr2));
+    assert_eq!(v.actor(&addr1).unwrap(), a1);
 
     let invariants_check = check_invariants(&v, &Policy::default());
     assert!(invariants_check.is_err());
@@ -62,9 +62,9 @@ fn assert_account_actor<BS: Blockstore>(
     v: &TestVM<BS>,
     addr: Address,
 ) {
-    let act = v.get_actor(&addr).unwrap();
+    let act = v.actor(&addr).unwrap();
     let st: AccountState = get_state(v, &addr).unwrap();
-    assert_eq!(exp_call_seq, act.call_seq);
+    assert_eq!(exp_call_seq, act.sequence);
     assert_eq!(*ACCOUNT_ACTOR_CODE_ID, act.code);
     assert_eq!(exp_bal, act.balance);
     assert_eq!(exp_pk_addr, st.address);

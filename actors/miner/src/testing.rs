@@ -3,7 +3,7 @@ use crate::{
     SectorOnChainInfo, SectorPreCommitOnChainInfo, Sectors, State,
 };
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{parse_uint_key, Map, MessageAccumulator};
+use fil_actors_runtime::{parse_uint_key, Map, MessageAccumulator, DEFAULT_HAMT_CONFIG};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::CborStore;
@@ -114,7 +114,7 @@ pub fn check_state_invariants<BS: Blockstore>(
 
     match state.load_deadlines(store) {
         Ok(deadlines) => {
-            let ret = deadlines.for_each(policy, store, |deadline_index, deadline| {
+            let ret = deadlines.for_each(store, |deadline_index, deadline| {
                 let acc = acc.with_prefix(format!("deadline {deadline_index}: "));
                 let quant = state.quant_spec_for_deadline(policy, deadline_index);
                 let deadline_summary = check_deadline_state_invariants(
@@ -343,8 +343,11 @@ fn check_precommits<BS: Blockstore>(
 
     let mut precommit_total = TokenAmount::zero();
 
-    let precommited_sectors =
-        Map::<_, SectorPreCommitOnChainInfo>::load(&state.pre_committed_sectors, store);
+    let precommited_sectors = Map::<_, SectorPreCommitOnChainInfo>::load_with_config(
+        &state.pre_committed_sectors,
+        store,
+        DEFAULT_HAMT_CONFIG,
+    );
 
     match precommited_sectors {
         Ok(precommited_sectors) => {

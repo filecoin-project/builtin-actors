@@ -55,7 +55,7 @@ fn activate_deals_across_multiple_sectors() {
         (END_EPOCH + 2, vec![unverified_deal_2_id]), // contains unverified deal only
     ];
 
-    let res = batch_activate_deals(&rt, PROVIDER_ADDR, &sectors);
+    let res = batch_activate_deals(&rt, PROVIDER_ADDR, &sectors, false);
 
     // three sectors activated successfully
     assert!(res.activation_results.all_ok());
@@ -121,7 +121,7 @@ fn sectors_fail_and_succeed_independently_during_batch_activation() {
         SectorDeals { deal_ids: vec![id_4], sector_type, sector_expiry: END_EPOCH + 2 }, // sector succeeds
     ];
 
-    let res = batch_activate_deals_raw(&rt, PROVIDER_ADDR, sectors_deals).unwrap();
+    let res = batch_activate_deals_raw(&rt, PROVIDER_ADDR, sectors_deals, false).unwrap();
     let res: BatchActivateDealsResult =
         res.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
 
@@ -172,7 +172,7 @@ fn handles_sectors_empty_of_deals_gracefully() {
         SectorDeals { deal_ids: vec![], sector_type, sector_expiry: END_EPOCH + 2 }, // empty sector
     ];
 
-    let res = batch_activate_deals_raw(&rt, PROVIDER_ADDR, sectors_deals).unwrap();
+    let res = batch_activate_deals_raw(&rt, PROVIDER_ADDR, sectors_deals, false).unwrap();
     let res: BatchActivateDealsResult =
         res.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
 
@@ -221,7 +221,7 @@ fn fails_to_activate_sectors_containing_duplicate_deals() {
         SectorDeals { deal_ids: vec![id_3], sector_type, sector_expiry: END_EPOCH },
     ];
 
-    let res = batch_activate_deals_raw(&rt, PROVIDER_ADDR, sectors_deals).unwrap();
+    let res = batch_activate_deals_raw(&rt, PROVIDER_ADDR, sectors_deals, false).unwrap();
     let res: BatchActivateDealsResult =
         res.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
 

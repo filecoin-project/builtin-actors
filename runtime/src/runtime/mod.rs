@@ -7,16 +7,10 @@ use fvm_ipld_encoding::CborStore;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
-use fvm_shared::crypto::hash::SupportedHashes;
-use fvm_shared::crypto::signature::{
-    Signature, SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE,
-};
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
-    AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
-    WindowPoStVerifyInfo,
+    AggregateSealVerifyProofAndInfos, ReplicaUpdateInfo, SealVerifyInfo, WindowPoStVerifyInfo,
 };
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum, Response};
@@ -49,6 +43,7 @@ use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::chainid::ChainID;
 use fvm_shared::event::ActorEvent;
 use fvm_shared::sys::SendFlags;
+pub use vm_api::Primitives;
 
 /// Runtime is the VM's internal runtime object.
 /// this is everything that is accessible to actors, beyond parameters.
@@ -280,44 +275,8 @@ pub trait MessageInfo {
     fn gas_premium(&self) -> TokenAmount;
 }
 
-/// Pure functions implemented as primitives by the runtime.
-pub trait Primitives {
-    /// Hashes input data using blake2b with 256 bit output.
-    fn hash_blake2b(&self, data: &[u8]) -> [u8; 32];
-
-    /// Hashes input data using a supported hash function.
-    fn hash(&self, hasher: SupportedHashes, data: &[u8]) -> Vec<u8>;
-
-    /// Hashes input into a 64 byte buffer
-    fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize);
-
-    /// Computes an unsealed sector CID (CommD) from its constituent piece CIDs (CommPs) and sizes.
-    fn compute_unsealed_sector_cid(
-        &self,
-        proof_type: RegisteredSealProof,
-        pieces: &[PieceInfo],
-    ) -> Result<Cid, anyhow::Error>;
-
-    /// Verifies that a signature is valid for an address and plaintext.
-    fn verify_signature(
-        &self,
-        signature: &Signature,
-        signer: &Address,
-        plaintext: &[u8],
-    ) -> Result<(), anyhow::Error>;
-
-    fn recover_secp_public_key(
-        &self,
-        hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
-        signature: &[u8; SECP_SIG_LEN],
-    ) -> Result<[u8; SECP_PUB_LEN], anyhow::Error>;
-}
-
 /// filcrypto verification primitives provided by the runtime
 pub trait Verifier {
-    /// Verifies a sector seal proof.
-    fn verify_seal(&self, vi: &SealVerifyInfo) -> Result<(), anyhow::Error>;
-
     /// Verifies a window proof of spacetime.
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), anyhow::Error>;
 

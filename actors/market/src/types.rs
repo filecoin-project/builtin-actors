@@ -86,22 +86,19 @@ pub struct SectorDeals {
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 pub struct VerifyDealsForActivationReturn {
-    pub sectors: Vec<SectorDealData>,
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq, Default)]
-pub struct SectorDealData {
-    /// Option::None signifies commitment to empty sector, meaning no deals.
-    pub commd: Option<Cid>,
+    // The unsealed CID computed from the deals specified for each sector.
+    // A None indicates no deals were specified.
+    pub unsealed_cids: Vec<Option<Cid>>,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-#[serde(transparent)]
 pub struct BatchActivateDealsParams {
     /// Deals to activate, grouped by sector.
     /// A failed deal activation will cause other deals in the same sector group to also fail,
     /// but allow other sectors to proceed.
     pub sectors: Vec<SectorDeals>,
+    /// Requests computation of an unsealed CID for each sector from the provided deals.
+    pub compute_cid: bool,
 }
 
 // Information about a verified deal that has been activated.
@@ -121,6 +118,9 @@ pub struct SectorDealActivation {
     pub nonverified_deal_space: BigInt,
     /// Information about each verified deal activated.
     pub verified_infos: Vec<VerifiedDealInfo>,
+    /// Unsealed CID computed from the deals specified for the sector.
+    /// A None indicates no deals were specified, or the computation was not requested.
+    pub unsealed_cid: Option<Cid>,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
@@ -137,16 +137,6 @@ pub struct DealSpaces {
     pub deal_space: BigInt,
     #[serde(with = "bigint_ser")]
     pub verified_deal_space: BigInt,
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct ComputeDataCommitmentParams {
-    pub inputs: Vec<SectorDataSpec>,
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-pub struct ComputeDataCommitmentReturn {
-    pub commds: Vec<Cid>,
 }
 
 /// A specialization of a array to deals.

@@ -14,8 +14,8 @@ use fil_actor_verifreg::State as VerifRegState;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{Policy, Primitives, EMPTY_ARR_CID};
-use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::DATACAP_TOKEN_ACTOR_ADDR;
+use fil_actors_runtime::{test_utils::*, DEFAULT_HAMT_CONFIG};
 use fil_actors_runtime::{
     BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, EAM_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
@@ -35,12 +35,11 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{MethodNum, METHOD_SEND};
-use serde::de::DeserializeOwned;
-use serde::{ser, Serialize};
+use serde::ser;
 use std::cell::{RefCell, RefMut};
 use std::collections::{BTreeMap, HashMap};
 use vm_api::trace::InvocationTrace;
-use vm_api::{actor, ActorState, MessageResult, VMError, VM};
+use vm_api::{new_actor, ActorState, MessageResult, VMError, VM};
 
 use vm_api::util::{get_state, serialize_ok};
 
@@ -71,7 +70,11 @@ where
     BS: Blockstore,
 {
     pub fn new(store: &'bs MemoryBlockstore) -> TestVM<'bs, MemoryBlockstore> {
-        let mut actors = Hamt::<&'bs MemoryBlockstore, ActorState, BytesKey, Sha256>::new(store);
+        let mut actors =
+            Hamt::<&'bs MemoryBlockstore, ActorState, BytesKey, Sha256>::new_with_config(
+                store,
+                DEFAULT_HAMT_CONFIG,
+            );
         TestVM {
             primitives: FakePrimitives {},
             store,
@@ -96,14 +99,17 @@ where
         let sys_st = SystemState::new(store).unwrap();
         let sys_head = v.put_store(&sys_st);
         let sys_value = faucet_total.clone(); // delegate faucet funds to system so we can construct faucet by sending to bls addr
-        v.set_actor(&SYSTEM_ACTOR_ADDR, actor(*SYSTEM_ACTOR_CODE_ID, sys_head, 0, sys_value, None));
+        v.set_actor(
+            &SYSTEM_ACTOR_ADDR,
+            new_actor(*SYSTEM_ACTOR_CODE_ID, sys_head, 0, sys_value, None),
+        );
 
         // init
         let init_st = InitState::new(store, "integration-test".to_string()).unwrap();
         let init_head = v.put_store(&init_st);
         v.set_actor(
             &INIT_ACTOR_ADDR,
-            actor(*INIT_ACTOR_CODE_ID, init_head, 0, TokenAmount::zero(), None),
+            new_actor(*INIT_ACTOR_CODE_ID, init_head, 0, TokenAmount::zero(), None),
         );
 
         // reward
@@ -111,7 +117,7 @@ where
         let reward_head = v.put_store(&RewardState::new(StoragePower::zero()));
         v.set_actor(
             &REWARD_ACTOR_ADDR,
-            actor(*REWARD_ACTOR_CODE_ID, reward_head, 0, reward_total, None),
+            new_actor(*REWARD_ACTOR_CODE_ID, reward_head, 0, reward_total, None),
         );
 
         // cron
@@ -128,21 +134,21 @@ where
         let cron_head = v.put_store(&CronState { entries: builtin_entries });
         v.set_actor(
             &CRON_ACTOR_ADDR,
-            actor(*CRON_ACTOR_CODE_ID, cron_head, 0, TokenAmount::zero(), None),
+            new_actor(*CRON_ACTOR_CODE_ID, cron_head, 0, TokenAmount::zero(), None),
         );
 
         // power
         let power_head = v.put_store(&PowerState::new(&v.store).unwrap());
         v.set_actor(
             &STORAGE_POWER_ACTOR_ADDR,
-            actor(*POWER_ACTOR_CODE_ID, power_head, 0, TokenAmount::zero(), None),
+            new_actor(*POWER_ACTOR_CODE_ID, power_head, 0, TokenAmount::zero(), None),
         );
 
         // market
         let market_head = v.put_store(&MarketState::new(&v.store).unwrap());
         v.set_actor(
             &STORAGE_MARKET_ACTOR_ADDR,
-            actor(*MARKET_ACTOR_CODE_ID, market_head, 0, TokenAmount::zero(), None),
+            new_actor(*MARKET_ACTOR_CODE_ID, market_head, 0, TokenAmount::zero(), None),
         );
 
         // verifreg
@@ -191,13 +197,13 @@ where
         let verifreg_head = v.put_store(&VerifRegState::new(&v.store, root_msig_addr).unwrap());
         v.set_actor(
             &VERIFIED_REGISTRY_ACTOR_ADDR,
-            actor(*VERIFREG_ACTOR_CODE_ID, verifreg_head, 0, TokenAmount::zero(), None),
+            new_actor(*VERIFREG_ACTOR_CODE_ID, verifreg_head, 0, TokenAmount::zero(), None),
         );
 
         // Ethereum Address Manager
         v.set_actor(
             &EAM_ACTOR_ADDR,
-            actor(*EAM_ACTOR_CODE_ID, EMPTY_ARR_CID, 0, TokenAmount::zero(), None),
+            new_actor(*EAM_ACTOR_CODE_ID, EMPTY_ARR_CID, 0, TokenAmount::zero(), None),
         );
 
         // datacap
@@ -205,14 +211,14 @@ where
             v.put_store(&DataCapState::new(&v.store, VERIFIED_REGISTRY_ACTOR_ADDR).unwrap());
         v.set_actor(
             &DATACAP_TOKEN_ACTOR_ADDR,
-            actor(*DATACAP_TOKEN_ACTOR_CODE_ID, datacap_head, 0, TokenAmount::zero(), None),
+            new_actor(*DATACAP_TOKEN_ACTOR_CODE_ID, datacap_head, 0, TokenAmount::zero(), None),
         );
 
         // burnt funds
         let burnt_funds_head = v.put_store(&AccountState { address: BURNT_FUNDS_ACTOR_ADDR });
         v.set_actor(
             &BURNT_FUNDS_ACTOR_ADDR,
-            actor(*ACCOUNT_ACTOR_CODE_ID, burnt_funds_head, 0, TokenAmount::zero(), None),
+            new_actor(*ACCOUNT_ACTOR_CODE_ID, burnt_funds_head, 0, TokenAmount::zero(), None),
         );
 
         // create a faucet with 1 billion FIL for setting up test accounts
@@ -229,21 +235,6 @@ where
         v
     }
 
-    pub fn with_epoch(self, epoch: ChainEpoch) -> TestVM<'bs, BS> {
-        self.checkpoint();
-        TestVM {
-            primitives: FakePrimitives {},
-            store: self.store,
-            state_root: self.state_root.clone(),
-            circulating_supply: self.circulating_supply,
-            actors_dirty: RefCell::new(false),
-            actors_cache: RefCell::new(HashMap::new()),
-            network_version: self.network_version,
-            curr_epoch: RefCell::new(epoch),
-            invocations: RefCell::new(vec![]),
-        }
-    }
-
     pub fn put_store<S>(&self, obj: &S) -> Cid
     where
         S: ser::Serialize,
@@ -251,35 +242,12 @@ where
         self.store.put_cbor(obj, Code::Blake2b256).unwrap()
     }
 
-    pub fn get_actor(&self, addr: &Address) -> Option<ActorState> {
-        // check for inclusion in cache of changed actors
-        if let Some(act) = self.actors_cache.borrow().get(addr) {
-            return Some(act.clone());
-        }
-        // go to persisted map
-        let actors = Hamt::<&'bs BS, ActorState, BytesKey, Sha256>::load(
-            &self.state_root.borrow(),
-            self.store,
-        )
-        .unwrap();
-        let actor = actors.get(&addr.to_bytes()).unwrap().cloned();
-        actor.iter().for_each(|a| {
-            self.actors_cache.borrow_mut().insert(*addr, a.clone());
-        });
-        actor
-    }
-
-    // blindly overwrite the actor at this address whether it previously existed or not
-    pub fn set_actor(&self, key: &Address, a: ActorState) {
-        self.actors_cache.borrow_mut().insert(*key, a);
-        self.actors_dirty.replace(true);
-    }
-
     pub fn checkpoint(&self) -> Cid {
         // persist cache on top of latest checkpoint and clear
-        let mut actors = Hamt::<&'bs BS, ActorState, BytesKey, Sha256>::load(
+        let mut actors = Hamt::<&'bs BS, ActorState, BytesKey, Sha256>::load_with_config(
             &self.state_root.borrow(),
             self.store,
+            DEFAULT_HAMT_CONFIG,
         )
         .unwrap();
         for (addr, act) in self.actors_cache.borrow().iter() {
@@ -295,18 +263,6 @@ where
         self.actors_cache.replace(HashMap::new());
         self.state_root.replace(root);
         self.actors_dirty.replace(false);
-    }
-
-    pub fn mutate_state<S, F>(&self, addr: &Address, f: F)
-    where
-        S: Serialize + DeserializeOwned,
-        F: FnOnce(&mut S),
-    {
-        let mut a = self.get_actor(addr).unwrap();
-        let mut st = self.store.get_cbor::<S>(&a.state).unwrap().unwrap();
-        f(&mut st);
-        a.state = self.store.put_cbor(&st, Code::Blake2b256).unwrap();
-        self.set_actor(addr, a);
     }
 
     pub fn get_total_actor_balance(
@@ -345,9 +301,9 @@ where
         params: Option<IpldBlock>,
     ) -> Result<MessageResult, VMError> {
         let from_id = &self.resolve_id_address(from).unwrap();
-        let mut a = self.get_actor(from_id).unwrap();
-        let call_seq = a.call_seq;
-        a.call_seq = call_seq + 1;
+        let mut a = self.actor(from_id).unwrap();
+        let call_seq = a.sequence;
+        a.sequence = call_seq + 1;
         // EthAccount abstractions turns Placeholders into EthAccounts
         if a.code == *PLACEHOLDER_ACTOR_CODE_ID {
             a.code = *ETHACCOUNT_ACTOR_CODE_ID;
@@ -364,7 +320,13 @@ where
             new_actor_addr_count: RefCell::new(0),
             circ_supply: TokenAmount::from_whole(1_000_000_000),
         };
-        let msg = InternalMessage { from: *from_id, to: *to, value: value.clone(), method, params };
+        let msg = InternalMessage {
+            from: from_id.id().unwrap(),
+            to: *to,
+            value: value.clone(),
+            method,
+            params,
+        };
         let mut new_ctx = InvocationCtx {
             v: self,
             top,
@@ -418,7 +380,7 @@ where
     }
 
     fn balance(&self, address: &Address) -> TokenAmount {
-        let a = self.get_actor(address);
+        let a = self.actor(address);
         a.map_or(TokenAmount::zero(), |a| a.balance)
     }
 
@@ -432,9 +394,10 @@ where
             return Some(act.clone());
         }
         // go to persisted map
-        let actors = Hamt::<&'bs BS, ActorState, BytesKey, Sha256>::load(
+        let actors = Hamt::<&'bs BS, ActorState, BytesKey, Sha256>::load_with_config(
             &self.state_root.borrow(),
             self.store,
+            DEFAULT_HAMT_CONFIG,
         )
         .unwrap();
         let actor = actors.get(&address.to_bytes()).unwrap().cloned();
@@ -442,6 +405,11 @@ where
             self.actors_cache.borrow_mut().insert(*address, a.clone());
         });
         actor
+    }
+
+    fn set_actor(&self, key: &Address, a: ActorState) {
+        self.actors_cache.borrow_mut().insert(*key, a);
+        self.actors_dirty.replace(true);
     }
 
     fn primitives(&self) -> &dyn Primitives {

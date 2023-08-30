@@ -1,4 +1,4 @@
-use fil_actor_market::{Method as MarketMethod, SectorDealData};
+use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, max_prove_commit_duration, pre_commit_deposit_for_power,
     qa_power_max, PreCommitSectorBatchParams, PreCommitSectorParams, State,
@@ -61,10 +61,8 @@ fn assert_simple_batch(
         dl_info.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period; // on deadline boundary but > 180 days
 
     let mut sectors = vec![PreCommitSectorParams::default(); batch_size];
-    let mut conf = PreCommitBatchConfig {
-        sector_deal_data: vec![SectorDealData::default(); batch_size],
-        first_for_miner: true,
-    };
+    let mut conf =
+        PreCommitBatchConfig { sector_unsealed_cid: vec![None; batch_size], first_for_miner: true };
     let mut deposits = vec![TokenAmount::zero(); batch_size];
 
     for i in 0..batch_size {
@@ -79,7 +77,7 @@ fn assert_simple_batch(
             deals.ids,
         );
 
-        conf.sector_deal_data[i] = SectorDealData { commd: deals.commd };
+        conf.sector_unsealed_cid[i] = deals.commd;
         let pwr_estimate = qa_power_max(h.sector_size);
         deposits[i] = pre_commit_deposit_for_power(
             &h.epoch_reward_smooth,
@@ -123,7 +121,7 @@ fn assert_simple_batch(
     let st: State = rt.get_state();
     for i in 0..batch_size {
         assert_eq!(precommit_epoch, precommits[i].pre_commit_epoch);
-        assert_eq!(conf.sector_deal_data[i].commd, precommits[i].info.unsealed_cid.0);
+        assert_eq!(conf.sector_unsealed_cid[i], precommits[i].info.unsealed_cid.0);
 
         assert_eq!(sector_nos[i], precommits[i].info.sector_number);
 
@@ -306,7 +304,7 @@ mod miner_actor_precommit_batch {
             h.pre_commit_sector_batch(
                 &rt,
                 PreCommitSectorBatchParams { sectors },
-                &PreCommitBatchConfig { sector_deal_data: vec![], first_for_miner: true },
+                &PreCommitBatchConfig { sector_unsealed_cid: vec![], first_for_miner: true },
                 &TokenAmount::zero(),
             ),
         );
@@ -346,7 +344,7 @@ mod miner_actor_precommit_batch {
             h.pre_commit_sector_batch(
                 &rt,
                 PreCommitSectorBatchParams { sectors },
-                &PreCommitBatchConfig { sector_deal_data: vec![], first_for_miner: true },
+                &PreCommitBatchConfig { sector_unsealed_cid: vec![], first_for_miner: true },
                 &TokenAmount::zero(),
             ),
         );
@@ -396,11 +394,11 @@ mod miner_actor_precommit_batch {
                 });
 
                 //mismatch here
-                sector_deal_data.push(SectorDealData { commd: Some(make_piece_cid(&[2])) });
+                sector_deal_data.push(Some(make_piece_cid(&[2])));
             }
 
             let vdparams = VerifyDealsForActivationParams { sectors: sector_deals };
-            let vdreturn = VerifyDealsForActivationReturn { sectors: sector_deal_data };
+            let vdreturn = VerifyDealsForActivationReturn { unsealed_cids: sector_deal_data };
             rt.expect_send_simple(
                 STORAGE_MARKET_ACTOR_ADDR,
                 MarketMethod::VerifyDealsForActivation as u64,

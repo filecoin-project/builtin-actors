@@ -22,6 +22,7 @@ use fil_actor_reward::State as RewardState;
 use fil_actor_verifreg::{DataCap, State as VerifregState};
 
 use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::DEFAULT_HAMT_CONFIG;
 use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
 
 use fil_actors_runtime::Map;
@@ -82,7 +83,7 @@ where
 impl<'a, BS: Blockstore> Tree<'a, BS> {
     /// Loads a tree from a root CID and store
     pub fn load(store: &'a BS, root: &Cid) -> anyhow::Result<Self> {
-        let map = Map::load(root, store)?;
+        let map = Map::load_with_config(root, store, DEFAULT_HAMT_CONFIG)?;
 
         Ok(Tree { map, store })
     }

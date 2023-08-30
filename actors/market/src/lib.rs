@@ -76,7 +76,7 @@ pub enum Method {
     VerifyDealsForActivation = 5,
     BatchActivateDeals = 6,
     OnMinerSectorsTerminate = 7,
-    ComputeDataCommitment = 8,
+    // ComputeDataCommitment = 8, // Deprecated
     CronTick = 9,
     // Method numbers derived from FRC-0042 standards
     AddBalanceExported = frc42_dispatch::method_hash!("AddBalance"),
@@ -176,16 +176,10 @@ impl Actor {
 
         let store = rt.store();
         let st: State = rt.state()?;
-        let balances = BalanceTable::from_root(store, &st.escrow_table)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load escrow table")?;
-        let locks = BalanceTable::from_root(store, &st.locked_table)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load locked table")?;
-        let balance = balances
-            .get(&account)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get escrow balance")?;
-        let locked = locks
-            .get(&account)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get locked balance")?;
+        let balances = BalanceTable::from_root(store, &st.escrow_table, "escrow table")?;
+        let locks = BalanceTable::from_root(store, &st.locked_table, "locled table")?;
+        let balance = balances.get(&account)?;
+        let locked = locks.get(&account)?;
 
         Ok(GetBalanceReturn { balance, locked })
     }
@@ -427,7 +421,7 @@ impl Actor {
             let mut pending_deals: Vec<Cid> = vec![];
             let mut deal_proposals: Vec<(DealID, DealProposal)> = vec![];
             let mut deals_by_epoch: Vec<(ChainEpoch, DealID)> = vec![];
-            let mut pending_deal_allocation_ids: Vec<(BytesKey, AllocationID)> = vec![];
+            let mut pending_deal_allocation_ids: Vec<(DealID, AllocationID)> = vec![];
 
             // All storage dealProposals will be added in an atomic transaction; this operation will be unrolled if any of them fails.
             // This should only fail on programmer error because all expected invalid conditions should be filtered in the first set of checks.
@@ -444,7 +438,7 @@ impl Actor {
                 // Store verified allocation (if any) in the pending allocation IDs map.
                 // It will be removed when the deal is activated or expires.
                 if let Some(alloc_id) = deal_allocation_ids.get(&valid_deal.cid) {
-                    pending_deal_allocation_ids.push((deal_id_key(deal_id), *alloc_id));
+                    pending_deal_allocation_ids.push((deal_id, *alloc_id));
                 }
 
                 // Randomize the first epoch for when the deal will be processed so an attacker isn't able to
@@ -502,7 +496,7 @@ impl Actor {
         let st: State = rt.state()?;
         let proposal_array = st.get_proposal_array(rt.store())?;
 
-        let mut sectors_data = Vec::with_capacity(params.sectors.len());
+        let mut unsealed_cids = Vec::with_capacity(params.sectors.len());
         for sector in params.sectors.iter() {
             let sector_proposals = get_proposals(&proposal_array, &sector.deal_ids, st.next_id)?;
             let sector_size = sector
@@ -524,10 +518,10 @@ impl Actor {
                 Some(compute_data_commitment(rt, &sector_proposals, sector.sector_type)?)
             };
 
-            sectors_data.push(SectorDealData { commd });
+            unsealed_cids.push(commd);
         }
 
-        Ok(VerifyDealsForActivationReturn { sectors: sectors_data })
+        Ok(VerifyDealsForActivationReturn { unsealed_cids })
     }
 
     /// Activate a set of deals grouped by sector, returning the size and
@@ -590,9 +584,9 @@ impl Actor {
                 // This construction could be replaced with a single "update deal state"
                 // state method, possibly batched over all deal ids at once.
                 let update_result: Result<(), ActorError> =
-                    proposals.into_iter().try_for_each(|(deal_id, proposal)| {
+                    proposals.iter().try_for_each(|(deal_id, proposal)| {
                         let s = st
-                            .find_deal_state(rt.store(), deal_id)
+                            .find_deal_state(rt.store(), *deal_id)
                             .context(format!("error looking up deal state for {}", deal_id))?;
 
                         if s.is_some() {
@@ -603,7 +597,7 @@ impl Actor {
                             ));
                         }
 
-                        let propc = rt_deal_cid(rt, &proposal)?;
+                        let propc = rt_deal_cid(rt, proposal)?;
 
                         // Confirm the deal is in the pending proposals queue.
                         // It will be removed from this queue later, during cron.
@@ -619,13 +613,12 @@ impl Actor {
 
                         // Extract and remove any verified allocation ID for the pending deal.
                         let allocation = st
-                            .remove_pending_deal_allocation_id(rt.store(), &deal_id_key(deal_id))
+                            .remove_pending_deal_allocation_id(rt.store(), *deal_id)
                             .context(format!(
                                 "failed to remove pending deal allocation id {}",
                                 deal_id
                             ))?
-                            .unwrap_or((BytesKey(vec![]), NO_ALLOCATION_ID))
-                            .1;
+                            .unwrap_or(NO_ALLOCATION_ID);
 
                         if allocation != NO_ALLOCATION_ID {
                             verified_infos.push(VerifiedDealInfo {
@@ -637,7 +630,7 @@ impl Actor {
                         }
 
                         deal_states.push((
-                            deal_id,
+                            *deal_id,
                             DealState {
                                 sector_start_epoch: curr_epoch,
                                 last_updated_epoch: EPOCH_UNDEFINED,
@@ -645,15 +638,22 @@ impl Actor {
                                 verified_claim: allocation,
                             },
                         ));
-                        activated_deals.insert(deal_id);
+                        activated_deals.insert(*deal_id);
                         Ok(())
                     });
+
+                let data_commitment = if params.compute_cid && !p.deal_ids.is_empty() {
+                    Some(compute_data_commitment(rt, &proposals, p.sector_type)?)
+                } else {
+                    None
+                };
 
                 match update_result {
                     Ok(_) => {
                         activations.push(SectorDealActivation {
                             nonverified_deal_space: deal_spaces.deal_space,
                             verified_infos,
+                            unsealed_cid: data_commitment,
                         });
                         batch_gen.add_success();
                     }
@@ -736,24 +736,6 @@ impl Actor {
         Ok(())
     }
 
-    fn compute_data_commitment(
-        rt: &impl Runtime,
-        params: ComputeDataCommitmentParams,
-    ) -> Result<ComputeDataCommitmentReturn, ActorError> {
-        rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
-
-        let st: State = rt.state()?;
-        let proposal_array = st.get_proposal_array(rt.store())?;
-
-        let mut commds = Vec::with_capacity(params.inputs.len());
-        for comm_input in params.inputs.iter() {
-            let proposed_deals = get_proposals(&proposal_array, &comm_input.deal_ids, st.next_id)?;
-            commds.push(compute_data_commitment(rt, &proposed_deals, comm_input.sector_type)?);
-        }
-
-        Ok(ComputeDataCommitmentReturn { commds })
-    }
-
     fn cron_tick(rt: &impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&CRON_ACTOR_ADDR))?;
 
@@ -813,7 +795,7 @@ impl Actor {
                         })?;
 
                         // Delete pending deal allocation id (if present).
-                        st.remove_pending_deal_allocation_id(rt.store(), &deal_id_key(deal_id))?;
+                        st.remove_pending_deal_allocation_id(rt.store(), deal_id)?;
 
                         continue;
                     }
@@ -1457,7 +1439,6 @@ impl ActorCode for Actor {
         VerifyDealsForActivation => verify_deals_for_activation,
         BatchActivateDeals => batch_activate_deals,
         OnMinerSectorsTerminate => on_miner_sectors_terminate,
-        ComputeDataCommitment => compute_data_commitment,
         CronTick => cron_tick,
         GetBalanceExported => get_balance,
         GetDealDataCommitmentExported => get_deal_data_commitment,

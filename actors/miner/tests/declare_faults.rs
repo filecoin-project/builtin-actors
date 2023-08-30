@@ -33,7 +33,7 @@ fn declare_fault_pays_fee_at_window_post() {
 
     // find deadline for sector
     let st = h.get_state(&rt);
-    let (dl_idx, _) = st.find_sector(&rt.policy, &rt.store, all_sectors[0].sector_number).unwrap();
+    let (dl_idx, _) = st.find_sector(&rt.store, all_sectors[0].sector_number).unwrap();
 
     // advance to first proving period and submit so we'll have time to declare the fault next cycle
     h.advance_and_submit_posts(&rt, &all_sectors);

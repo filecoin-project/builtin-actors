@@ -9,6 +9,7 @@ on:
 
 env:
   RUSTFLAGS: -Dwarnings
+  CARGO_INCREMENTAL: 0 # Speeds up the build (no cache) and reduces disk space!
 
 jobs:
   rustfmt:
@@ -32,11 +33,6 @@ jobs:
     steps:
     - name: Checking out
       uses: actions/checkout@v3
-    - name: Setting up cache
-      uses: pl-strflt/rust-sccache-action@v1
-      env:
-        SCCACHE_CACHE_SIZE: 2G
-        SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
     - name: Running tests
       run: |
         cargo test --locked --all --no-fail-fast --exclude=fil_builtin_actors_bundle
@@ -49,12 +45,6 @@ jobs:
     steps:
     - name: Checking out
       uses: actions/checkout@v3
-    - name: Setting up cache
-      uses: pl-strflt/rust-sccache-action@v1
-      env:
-        SCCACHE_CACHE_SIZE: 2G
-        SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
-        CACHE_SKIP_SAVE: true
     - name: Writing bundle
       env:
         BUILD_FIL_NETWORK: ${{ matrix.network }}
@@ -67,17 +57,10 @@ jobs:
     steps:
     - name: Checking out
       uses: actions/checkout@v3
-    - name: Setting up cache
-      uses: pl-strflt/rust-sccache-action@v1
-      env:
-        SCCACHE_CACHE_SIZE: 2G
-        SCCACHE_DIR: ${{ github.workspace }}/.cache/sccache
-      with:
-        shared-key: coverage
     - name: Put LLVM tools into the PATH
       run: echo "$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin" >> $GITHUB_PATH
     - name: Install demangler
-      run: cargo install rustfilt
+      run: sudo apt-get install -y rustfilt
     - name: Create coverage report
       env:
         # Make sure that each run of an executable creates a new profile file,

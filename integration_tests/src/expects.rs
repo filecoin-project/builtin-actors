@@ -23,7 +23,7 @@ use fil_actor_power::{UpdateClaimedPowerParams, UpdatePledgeTotalParams};
 use fil_actor_verifreg::GetClaimsParams;
 use fil_actors_runtime::{
     BURNT_FUNDS_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
+    STORAGE_POWER_ACTOR_ID, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 
 use vm_api::trace::ExpectInvocation;
@@ -32,20 +32,22 @@ use vm_api::trace::ExpectInvocation;
 pub struct Expect {}
 
 impl Expect {
-    pub fn send(from: Address, to: Address, v: Option<TokenAmount>) -> ExpectInvocation {
+    pub fn send(from: ActorID, to: Address, v: Option<TokenAmount>) -> ExpectInvocation {
         ExpectInvocation { from, to, method: METHOD_SEND, value: v, ..Default::default() }
     }
-    pub fn burn(from: Address, v: Option<TokenAmount>) -> ExpectInvocation {
+    pub fn burn(from: ActorID, v: Option<TokenAmount>) -> ExpectInvocation {
         Self::send(from, BURNT_FUNDS_ACTOR_ADDR, v)
     }
     pub fn market_activate_deals(
-        from: Address,
+        from: ActorID,
         deals: Vec<DealID>,
         sector_expiry: ChainEpoch,
         sector_type: RegisteredSealProof,
+        compute_cid: bool,
     ) -> ExpectInvocation {
         let params = IpldBlock::serialize_cbor(&BatchActivateDealsParams {
             sectors: vec![SectorDeals { deal_ids: deals, sector_expiry, sector_type }],
+            compute_cid,
         })
         .unwrap();
         ExpectInvocation {
@@ -59,7 +61,7 @@ impl Expect {
         }
     }
     pub fn market_sectors_terminate(
-        from: Address,
+        from: ActorID,
         epoch: ChainEpoch,
         deal_ids: Vec<DealID>,
     ) -> ExpectInvocation {
@@ -75,7 +77,7 @@ impl Expect {
             ..Default::default()
         }
     }
-    pub fn market_verify_deals(from: Address, sectors: Vec<SectorDeals>) -> ExpectInvocation {
+    pub fn market_verify_deals(from: ActorID, sectors: Vec<SectorDeals>) -> ExpectInvocation {
         let params =
             IpldBlock::serialize_cbor(&VerifyDealsForActivationParams { sectors }).unwrap();
         ExpectInvocation {
@@ -90,7 +92,7 @@ impl Expect {
     }
     pub fn miner_cron(to: Address) -> ExpectInvocation {
         ExpectInvocation {
-            from: STORAGE_POWER_ACTOR_ADDR,
+            from: STORAGE_POWER_ACTOR_ID,
             to,
             method: fil_actor_miner::Method::OnDeferredCronEvent as u64,
             value: Some(TokenAmount::zero()),
@@ -99,7 +101,7 @@ impl Expect {
         }
     }
     pub fn miner_is_controlling_address(
-        from: Address,
+        from: ActorID,
         to: Address,
         address: Address,
     ) -> ExpectInvocation {
@@ -114,7 +116,7 @@ impl Expect {
             ..Default::default()
         }
     }
-    pub fn power_current_total(from: Address) -> ExpectInvocation {
+    pub fn power_current_total(from: ActorID) -> ExpectInvocation {
         ExpectInvocation {
             from,
             to: STORAGE_POWER_ACTOR_ADDR,
@@ -124,7 +126,7 @@ impl Expect {
             ..Default::default()
         }
     }
-    pub fn power_enrol_cron(from: Address) -> ExpectInvocation {
+    pub fn power_enrol_cron(from: ActorID) -> ExpectInvocation {
         // Note: params are unchecked.
         ExpectInvocation {
             from,
@@ -135,7 +137,7 @@ impl Expect {
             ..Default::default()
         }
     }
-    pub fn power_submit_porep(from: Address) -> ExpectInvocation {
+    pub fn power_submit_porep(from: ActorID) -> ExpectInvocation {
         // Note: params are unchecked.
         ExpectInvocation {
             from,
@@ -146,7 +148,7 @@ impl Expect {
             ..Default::default()
         }
     }
-    pub fn power_update_claim(from: Address, delta: PowerPair) -> ExpectInvocation {
+    pub fn power_update_claim(from: ActorID, delta: PowerPair) -> ExpectInvocation {
         let params = IpldBlock::serialize_cbor(&UpdateClaimedPowerParams {
             raw_byte_delta: delta.raw,
             quality_adjusted_delta: delta.qa,
@@ -162,7 +164,7 @@ impl Expect {
             ..Default::default()
         }
     }
-    pub fn power_update_pledge(from: Address, amount: Option<TokenAmount>) -> ExpectInvocation {
+    pub fn power_update_pledge(from: ActorID, amount: Option<TokenAmount>) -> ExpectInvocation {
         let params = amount.map(|a| {
             IpldBlock::serialize_cbor(&UpdatePledgeTotalParams { pledge_delta: a }).unwrap()
         });
@@ -179,7 +181,7 @@ impl Expect {
     pub fn reward_update_kpi() -> ExpectInvocation {
         // Note: params are unchecked
         ExpectInvocation {
-            from: STORAGE_POWER_ACTOR_ADDR,
+            from: STORAGE_POWER_ACTOR_ID,
             to: REWARD_ACTOR_ADDR,
             method: fil_actor_reward::Method::UpdateNetworkKPI as u64,
             value: Some(TokenAmount::zero()),
@@ -187,7 +189,7 @@ impl Expect {
             ..Default::default()
         }
     }
-    pub fn reward_this_epoch(from: Address) -> ExpectInvocation {
+    pub fn reward_this_epoch(from: ActorID) -> ExpectInvocation {
         ExpectInvocation {
             from,
             to: REWARD_ACTOR_ADDR,
@@ -198,7 +200,7 @@ impl Expect {
         }
     }
     pub fn verifreg_get_claims(
-        from: Address,
+        from: ActorID,
         miner: ActorID,
         ids: Vec<ClaimID>,
     ) -> ExpectInvocation {
@@ -215,7 +217,7 @@ impl Expect {
             ..Default::default()
         }
     }
-    pub fn frc42_balance(from: Address, to: Address, address: Address) -> ExpectInvocation {
+    pub fn frc42_balance(from: ActorID, to: Address, address: Address) -> ExpectInvocation {
         let params = Some(IpldBlock::serialize_cbor(&BalanceParams { address }).unwrap());
         ExpectInvocation {
             from,
@@ -228,7 +230,7 @@ impl Expect {
         }
     }
     pub fn frc44_authenticate(
-        from: Address,
+        from: ActorID,
         to: Address,
         message: Vec<u8>,
         signature: Vec<u8>,
@@ -245,7 +247,7 @@ impl Expect {
             ..Default::default()
         }
     }
-    pub fn frc46_burn(from: Address, to: Address, amount: TokenAmount) -> ExpectInvocation {
+    pub fn frc46_burn(from: ActorID, to: Address, amount: TokenAmount) -> ExpectInvocation {
         let params = IpldBlock::serialize_cbor(&BurnParams { amount }).unwrap();
         ExpectInvocation {
             from,
@@ -258,7 +260,7 @@ impl Expect {
         }
     }
     pub fn frc46_receiver(
-        from: Address,
+        from: ActorID,
         to: Address,
         payer: ActorID,
         beneficiary: ActorID,

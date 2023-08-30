@@ -6,15 +6,15 @@ use frc46_token::token::types::{BurnParams, TransferParams};
 use frc46_token::token::TOKEN_PRECISION;
 use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
-use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::{ActorID, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
+use fvm_shared::sys::SendFlags;
+use fvm_shared::{ActorID, METHOD_CONSTRUCTOR};
 use log::info;
 use num_derive::FromPrimitive;
 use num_traits::{Signed, Zero};
@@ -23,16 +23,16 @@ use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, deserialize_block, extract_send_result,
-    make_map_with_root_and_bitwidth, resolve_to_actor_id, ActorDowncast, ActorError, BatchReturn,
-    Map, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
+    actor_dispatch, actor_error, deserialize_block, extract_send_result, resolve_to_actor_id,
+    ActorError, BatchReturn, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen};
-use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_shared::sys::SendFlags;
 
 use crate::ext::datacap::{DestroyParams, MintParams};
+use crate::state::{
+    DataCapMap, RemoveDataCapProposalMap, DATACAP_MAP_CONFIG, REMOVE_DATACAP_PROPOSALS_CONFIG,
+};
 
 pub use self::state::Allocation;
 pub use self::state::Claim;
@@ -247,25 +247,18 @@ impl Actor {
             }
 
             // validate signatures
-            let mut proposal_ids = make_map_with_root_and_bitwidth::<_, RemoveDataCapProposalID>(
-                &st.remove_data_cap_proposal_ids,
+            let mut proposal_ids = RemoveDataCapProposalMap::load(
                 rt.store(),
-                HAMT_BIT_WIDTH,
-            )
-            .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to load datacap removal proposal ids",
-                )
-            })?;
+                &st.remove_data_cap_proposal_ids,
+                REMOVE_DATACAP_PROPOSALS_CONFIG,
+                "remove datacap proposals",
+            )?;
 
             let verifier_1_id = use_proposal_id(&mut proposal_ids, verifier_1, client)?;
             let verifier_2_id = use_proposal_id(&mut proposal_ids, verifier_2, client)?;
 
             // Assume proposal ids are valid and increment them
-            st.remove_data_cap_proposal_ids = proposal_ids
-                .flush()
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush proposal ids")?;
+            st.remove_data_cap_proposal_ids = proposal_ids.flush()?;
             Ok((verifier_1_id, verifier_2_id))
         })?;
 
@@ -708,15 +701,9 @@ impl Actor {
 
 // Checks whether an address has a verifier entry (which could be zero).
 fn is_verifier(rt: &impl Runtime, st: &State, address: Address) -> Result<bool, ActorError> {
-    let verifiers =
-        make_map_with_root_and_bitwidth::<_, BigIntDe>(&st.verifiers, rt.store(), HAMT_BIT_WIDTH)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load verifiers")?;
-
+    let verifiers = DataCapMap::load(rt.store(), &st.verifiers, DATACAP_MAP_CONFIG, "verifiers")?;
     // check that the `address` is currently a verified client
-    let found = verifiers
-        .contains_key(&address.to_bytes())
-        .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get verifier")?;
-
+    let found = verifiers.contains_key(&address)?;
     Ok(found)
 }
 
@@ -818,7 +805,7 @@ fn tokens_to_datacap(amount: &TokenAmount) -> BigInt {
 }
 
 fn use_proposal_id<BS>(
-    proposal_ids: &mut Map<BS, RemoveDataCapProposalID>,
+    proposal_ids: &mut RemoveDataCapProposalMap<BS>,
     verifier: Address,
     client: Address,
 ) -> Result<RemoveDataCapProposalID, ActorError>
@@ -826,16 +813,8 @@ where
     BS: Blockstore,
 {
     let key = AddrPairKey::new(verifier, client);
-
-    let maybe_id = proposal_ids.get(&key.to_bytes()).map_err(|e| {
-        actor_error!(
-            illegal_state,
-            "failed to get proposal id for verifier {} and client {}: {}",
-            verifier,
-            client,
-            e
-        )
-    })?;
+    let maybe_id =
+        proposal_ids.get(&key).with_context(|| format!("verifier {verifier} client {client}"))?;
 
     let curr_id = if let Some(RemoveDataCapProposalID { id }) = maybe_id {
         RemoveDataCapProposalID { id: *id }
@@ -844,16 +823,9 @@ where
     };
 
     let next_id = RemoveDataCapProposalID { id: curr_id.id + 1 };
-    proposal_ids.set(BytesKey::from(key.to_bytes()), next_id).map_err(|e| {
-        actor_error!(
-            illegal_state,
-            "failed to update proposal id for verifier {} and client {}: {}",
-            verifier,
-            client,
-            e
-        )
-    })?;
-
+    proposal_ids
+        .set(&key, next_id)
+        .with_context(|| format!("verifier {verifier} client {client}"))?;
     Ok(curr_id)
 }
 

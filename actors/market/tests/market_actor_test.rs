@@ -1,23 +1,22 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_actor_market::balance_table::BALANCE_TABLE_BITWIDTH;
+use fil_actor_market::balance_table::BalanceTable;
 use fil_actor_market::policy::detail::DEAL_MAX_LABEL_SIZE;
 use fil_actor_market::{
-    deal_id_key, ext, next_update_epoch, Actor as MarketActor, BatchActivateDealsResult,
-    ClientDealProposal, DealArray, DealMetaArray, Label, MarketNotifyDealParams, Method,
+    ext, next_update_epoch, Actor as MarketActor, BatchActivateDealsResult, ClientDealProposal,
+    DealArray, DealMetaArray, Label, MarketNotifyDealParams, Method, PendingDealAllocationsMap,
     PublishStorageDealsParams, PublishStorageDealsReturn, SectorDeals, State,
     WithdrawBalanceParams, EX_DEAL_EXPIRED, MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID,
-    PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
+    PENDING_ALLOCATIONS_CONFIG, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
 };
 use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::{Policy, Runtime, RuntimePolicy};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    make_empty_map, make_map_with_root_and_bitwidth, ActorError, BatchReturn, Map, SetMultimap,
-    BURNT_FUNDS_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR, EPOCHS_IN_YEAR, SYSTEM_ACTOR_ADDR,
-    VERIFIED_REGISTRY_ACTOR_ADDR,
+    make_empty_map, ActorError, BatchReturn, SetMultimap, BURNT_FUNDS_ACTOR_ADDR,
+    DATACAP_TOKEN_ACTOR_ADDR, EPOCHS_IN_YEAR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
 use fvm_ipld_amt::Amt;
@@ -36,7 +35,7 @@ use std::cell::RefCell;
 use std::ops::Add;
 
 use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
-use fil_actor_market::ext::verifreg::{AllocationID, AllocationRequest, AllocationsResponse};
+use fil_actor_market::ext::verifreg::{AllocationRequest, AllocationsResponse};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::sys::SendFlags;
 use num_traits::{FromPrimitive, Zero};
@@ -72,8 +71,7 @@ fn simple_construction() {
 
     let store = &rt.store;
 
-    let empty_balance_table =
-        make_empty_map::<_, TokenAmount>(store, BALANCE_TABLE_BITWIDTH).flush().unwrap();
+    let empty_balance_table = BalanceTable::new(store, "empty").root().unwrap();
     let empty_map = make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH).flush().unwrap();
     let empty_proposals_array =
         Amt::<(), _>::new_with_bit_width(store, PROPOSALS_AMT_BITWIDTH).flush().unwrap();
@@ -555,15 +553,18 @@ fn fails_if_withdraw_from_provider_funds_is_not_initiated_by_the_owner_or_worker
 
 #[test]
 fn deal_starts_on_day_boundary() {
-    let deal_updates_interval = Policy::default().deal_updates_interval;
-    let start_epoch = deal_updates_interval; // 2880
+    let mut policy = Policy::default();
+    let interval = 288; // The mainnet value is too slow for testing.
+    policy.deal_updates_interval = interval;
+    let start_epoch = interval;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let publish_epoch = ChainEpoch::from(1);
 
-    let rt = setup();
+    let mut rt = setup();
+    rt.set_policy(policy);
     rt.set_epoch(publish_epoch);
 
-    for i in 0..(3 * deal_updates_interval) {
+    for i in 0..(3 * interval) {
         let piece_cid = make_piece_cid((format!("{i}")).as_bytes());
         let deal_id = generate_and_publish_deal_for_piece(
             &rt,
@@ -581,31 +582,34 @@ fn deal_starts_on_day_boundary() {
     let st: State = rt.get_state();
     let store = &rt.store;
     let dobe = SetMultimap::from_root(store, &st.deal_ops_by_epoch).unwrap();
-    for e in deal_updates_interval..(2 * deal_updates_interval) {
-        assert_n_good_deals(&dobe, e, 3);
+    for e in interval..(2 * interval) {
+        assert_n_good_deals(&dobe, interval, e, 3);
     }
 
     // DOBE has no deals scheduled in the previous or next day
-    for e in 0..deal_updates_interval {
-        assert_n_good_deals(&dobe, e, 0);
+    for e in 0..interval {
+        assert_n_good_deals(&dobe, interval, e, 0);
     }
-    for e in (2 * deal_updates_interval)..(3 * deal_updates_interval) {
-        assert_n_good_deals(&dobe, e, 0);
+    for e in (2 * interval)..(3 * interval) {
+        assert_n_good_deals(&dobe, interval, e, 0);
     }
 }
 
 #[test]
 fn deal_starts_partway_through_day() {
-    let start_epoch = 1000;
+    let mut policy = Policy::default();
+    let interval = 288; // The mainnet value is too slow for testing.
+    policy.deal_updates_interval = interval;
+    let start_epoch = 100;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let publish_epoch = ChainEpoch::from(1);
-    let interval = Policy::default().deal_updates_interval;
 
-    let rt = setup();
+    let mut rt = setup();
+    rt.set_policy(policy);
     rt.set_epoch(publish_epoch);
 
-    // First 1000 deals (start_epoch % update interval) scheduled starting in the next day
-    for i in 0..1000 {
+    // First 100 deals (start_epoch % update interval) scheduled starting in the next period
+    for i in 0..100 {
         let piece_cid = make_piece_cid((format!("{i}")).as_bytes());
         let deal_id = generate_and_publish_deal_for_piece(
             &rt,
@@ -622,15 +626,15 @@ fn deal_starts_partway_through_day() {
     let store = &rt.store;
     let dobe = SetMultimap::from_root(store, &st.deal_ops_by_epoch).unwrap();
     for e in interval..(interval + start_epoch) {
-        assert_n_good_deals(&dobe, e, 1);
+        assert_n_good_deals(&dobe, interval, e, 1);
     }
     // Nothing scheduled between 0 and interval
     for e in 0..interval {
-        assert_n_good_deals(&dobe, e, 0);
+        assert_n_good_deals(&dobe, interval, e, 0);
     }
 
-    // Now add another 500 deals
-    for i in 1000..1500 {
+    // Now add another 50 deals
+    for i in 100..150 {
         let piece_cid = make_piece_cid((format!("{i}")).as_bytes());
         let deal_id = generate_and_publish_deal_for_piece(
             &rt,
@@ -646,8 +650,8 @@ fn deal_starts_partway_through_day() {
     let st: State = rt.get_state();
     let store = &rt.store;
     let dobe = SetMultimap::from_root(store, &st.deal_ops_by_epoch).unwrap();
-    for e in start_epoch..(start_epoch + 500) {
-        assert_n_good_deals(&dobe, e, 1);
+    for e in start_epoch..(start_epoch + 50) {
+        assert_n_good_deals(&dobe, interval, e, 1);
     }
 }
 
@@ -758,10 +762,14 @@ fn deal_expires() {
     assert!(DealArray::load(&st.proposals, &rt.store).unwrap().get(deal_id).unwrap().is_none());
 
     // Pending allocation ID is gone
-    let pending_allocs: Map<_, AllocationID> =
-        make_map_with_root_and_bitwidth(&st.pending_deal_allocation_ids, &rt.store, HAMT_BIT_WIDTH)
-            .unwrap();
-    assert!(pending_allocs.get(&deal_id_key(deal_id)).unwrap().is_none());
+    let pending_allocs = PendingDealAllocationsMap::load(
+        &rt.store,
+        &st.pending_deal_allocation_ids,
+        PENDING_ALLOCATIONS_CONFIG,
+        "pending allocations",
+    )
+    .unwrap();
+    assert!(pending_allocs.get(&deal_id).unwrap().is_none());
 
     check_state(&rt);
 }
@@ -1697,6 +1705,7 @@ fn fail_when_current_epoch_greater_than_start_epoch_of_deal() {
             sector_type: RegisteredSealProof::StackedDRG8MiBV1,
             deal_ids: vec![deal_id],
         }],
+        false,
     )
     .unwrap();
 
@@ -1731,6 +1740,7 @@ fn fail_when_end_epoch_of_deal_greater_than_sector_expiry() {
             sector_type: RegisteredSealProof::StackedDRG8MiBV1,
             deal_ids: vec![deal_id],
         }],
+        false,
     )
     .unwrap();
 
@@ -1758,7 +1768,7 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
         start_epoch,
         end_epoch,
     );
-    batch_activate_deals(&rt, PROVIDER_ADDR, &[(sector_expiry, vec![deal_id1])]);
+    batch_activate_deals(&rt, PROVIDER_ADDR, &[(sector_expiry, vec![deal_id1])], false);
 
     let deal_id2 = generate_and_publish_deal(
         &rt,
@@ -1776,6 +1786,7 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
             sector_type: RegisteredSealProof::StackedDRG8MiBV1,
             deal_ids: vec![deal_id1, deal_id2],
         }],
+        false,
     )
     .unwrap();
     let res: BatchActivateDealsResult =

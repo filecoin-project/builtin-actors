@@ -29,7 +29,7 @@ fil_actor_evm = { workspace = true }
 fil_actor_eam = { workspace = true }
 fil_actor_ethaccount = { workspace = true }
 fil_actors_evm_shared = { workspace = true }
-vm_api = { workspace = true }
+vm_api = { workspace = true, features = ["testing"] }
 
 anyhow = { workspace = true }
 bimap = { workspace = true }
@@ -45,6 +45,7 @@ fvm_ipld_encoding = { workspace = true }
 fvm_ipld_hamt = { workspace = true }
 fvm_shared = { workspace = true }
 hex = { workspace = true }
+hex-literal = { workspace = true } 
 indexmap = { workspace = true }
 integer-encoding = { workspace = true }
 lazy_static = { workspace = true }

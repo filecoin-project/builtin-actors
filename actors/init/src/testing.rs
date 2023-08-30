@@ -1,12 +1,14 @@
 use std::collections::HashMap;
 
-use fil_actors_runtime::{Map, MessageAccumulator, FIRST_NON_SINGLETON_ADDR};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::{
     address::{Address, Protocol},
     ActorID,
 };
 
+use fil_actors_runtime::{MessageAccumulator, DEFAULT_HAMT_CONFIG, FIRST_NON_SINGLETON_ADDR};
+
+use crate::state::AddressMap;
 use crate::State;
 
 pub struct StateSummary {
@@ -31,44 +33,37 @@ pub fn check_state_invariants<BS: Blockstore>(
 
     let mut stable_address_by_id = HashMap::<ActorID, Address>::new();
     let mut delegated_address_by_id = HashMap::<ActorID, Address>::new();
-    match Map::<_, ActorID>::load(&state.address_map, store) {
+
+    match AddressMap::load(store, &state.address_map, DEFAULT_HAMT_CONFIG, "addresses") {
         Ok(address_map) => {
             let ret = address_map.for_each(|key, actor_id| {
-                let key_address = Address::from_bytes(key)?;
-
-                acc.require(
-                    key_address.protocol() != Protocol::ID,
-                    format!("key {key_address} is an ID address"),
-                );
+                acc.require(key.protocol() != Protocol::ID, format!("key {key} is an ID address"));
                 acc.require(
                     actor_id >= &FIRST_NON_SINGLETON_ADDR,
                     format!("unexpected singleton ID value {actor_id}"),
                 );
 
-                match key_address.protocol() {
+                match key.protocol() {
                     Protocol::ID => {
-                        acc.add(format!("key {key_address} is an ID address"));
+                        acc.add(format!("key {key} is an ID address"));
                     }
                     Protocol::Delegated => {
-                        if let Some(duplicate) =
-                            delegated_address_by_id.insert(*actor_id, key_address)
-                        {
+                        if let Some(duplicate) = delegated_address_by_id.insert(*actor_id, key) {
                             acc.add(format!(
-                                "duplicate mapping to ID {actor_id}: {key_address} {duplicate}"
+                                "duplicate mapping to ID {actor_id}: {key} {duplicate}"
                             ));
                         }
                     }
                     _ => {
-                        if let Some(duplicate) = stable_address_by_id.insert(*actor_id, key_address)
-                        {
+                        if let Some(duplicate) = stable_address_by_id.insert(*actor_id, key) {
                             acc.add(format!(
-                                "duplicate mapping to ID {actor_id}: {key_address} {duplicate}"
+                                "duplicate mapping to ID {actor_id}: {key} {duplicate}"
                             ));
                         }
                     }
                 }
 
-                init_summary.ids_by_address.insert(key_address, *actor_id);
+                init_summary.ids_by_address.insert(key, *actor_id);
 
                 Ok(())
             });

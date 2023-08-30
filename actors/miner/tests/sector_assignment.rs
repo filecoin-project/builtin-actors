@@ -78,7 +78,7 @@ mod sector_assignment {
         let deadlines = h.st.load_deadlines(&h.store).unwrap();
 
         deadlines
-            .for_each(&policy, &h.store, |dl_idx: u64, mut dl: Deadline| {
+            .for_each(&h.store, |dl_idx: u64, mut dl: Deadline| {
                 let dl_state = ExpectedDeadlineState {
                     sector_size,
                     partition_size: partition_sectors,
