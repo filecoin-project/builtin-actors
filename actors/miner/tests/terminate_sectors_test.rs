@@ -7,14 +7,16 @@ use fil_actor_miner::{
 use fil_actors_runtime::{
     runtime::Runtime,
     test_utils::{expect_abort_contains_message, MockRuntime, ACCOUNT_ACTOR_CODE_ID},
-    BURNT_FUNDS_ACTOR_ADDR, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR,
+    DealWeight, BURNT_FUNDS_ACTOR_ADDR, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR,
+    STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::{econ::TokenAmount, error::ExitCode, METHOD_SEND};
+use std::collections::HashMap;
 
 mod util;
 
+use fil_actor_market::VerifiedDealInfo;
 use fil_actor_miner::ext::market::{
     OnMinerSectorsTerminateParams, ON_MINER_SECTORS_TERMINATE_METHOD,
 };
@@ -22,7 +24,9 @@ use fil_actor_miner::ext::power::UPDATE_PLEDGE_TOTAL_METHOD;
 use fil_actors_runtime::test_utils::POWER_ACTOR_CODE_ID;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
-use num_traits::Zero;
+use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::sector::SectorNumber;
+use num_traits::{Signed, Zero};
 use util::*;
 
 fn setup() -> (ActorHarness, MockRuntime) {
@@ -56,7 +60,7 @@ fn removes_sector_with_correct_accounting() {
     let state: State = rt.get_state();
     let initial_locked_funds = state.locked_funds;
 
-    let expected_fee = calc_expected_fee_for_termination(&h, &rt, sector.clone());
+    let expected_fee = calc_expected_fee_for_termination(&h, &rt, &sector);
 
     let sectors = bitfield_from_slice(&[sector.sector_number]);
     h.terminate_sectors(&rt, &sectors, expected_fee.clone());
@@ -76,6 +80,50 @@ fn removes_sector_with_correct_accounting() {
     //expect pledge requirement to have been decremented
     assert!(state.initial_pledge.is_zero());
 
+    h.check_state(&rt);
+}
+
+#[test]
+fn removes_sector_with_without_deals() {
+    let (mut h, rt) = setup();
+    // One sector with no data, one with a deal, one with a verified deal
+    let sectors = h.commit_and_prove_sectors_with_cfgs(
+        &rt,
+        3,
+        DEFAULT_SECTOR_EXPIRATION,
+        vec![vec![], vec![1], vec![2]],
+        true,
+        ProveCommitConfig {
+            verify_deals_exit: Default::default(),
+            claim_allocs_exit: Default::default(),
+            deal_space: HashMap::from_iter(vec![(1, DealWeight::from(1024))]),
+            verified_deal_infos: HashMap::from_iter(vec![(
+                2,
+                vec![VerifiedDealInfo {
+                    client: 0,
+                    allocation_id: 0,
+                    data: Default::default(),
+                    size: PaddedPieceSize(1024),
+                }],
+            )]),
+        },
+    );
+    let snos: Vec<SectorNumber> = sectors.iter().map(|s| s.sector_number).collect();
+    assert!(sectors[0].deal_weight.is_zero());
+    assert!(sectors[1].deal_weight.is_positive());
+    assert!(sectors[2].verified_deal_weight.is_positive());
+
+    h.advance_and_submit_posts(&rt, &sectors);
+    // Add locked funds to ensure correct fee calculation is used.
+    h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
+
+    // Expectations about the correct call to market actor are in the harness method.
+    let expected_fee: TokenAmount = sectors
+        .iter()
+        .fold(TokenAmount::zero(), |acc, s| acc + calc_expected_fee_for_termination(&h, &rt, s));
+    h.terminate_sectors(&rt, &bitfield_from_slice(&snos), expected_fee);
+    let state: State = rt.get_state();
+    assert!(state.initial_pledge.is_zero());
     h.check_state(&rt);
 }
 
@@ -121,12 +169,23 @@ fn cannot_terminate_a_sector_when_the_challenge_window_is_open() {
 }
 
 #[test]
-fn owner_cannot_terminate_if_market_cron_fails() {
+fn owner_cannot_terminate_if_market_fails() {
     let (mut h, rt) = setup();
 
     let deal_ids = vec![10];
-    let sector_info =
-        h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![deal_ids], true);
+    let sector_info = h.commit_and_prove_sectors_with_cfgs(
+        &rt,
+        1,
+        DEFAULT_SECTOR_EXPIRATION,
+        vec![deal_ids],
+        true,
+        ProveCommitConfig {
+            verify_deals_exit: Default::default(),
+            claim_allocs_exit: Default::default(),
+            deal_space: HashMap::from_iter(vec![(0, DealWeight::from(1024))]),
+            verified_deal_infos: Default::default(),
+        },
+    );
 
     assert_eq!(sector_info.len(), 1);
 
@@ -137,7 +196,7 @@ fn owner_cannot_terminate_if_market_cron_fails() {
     let (deadline_index, partition_index) =
         state.find_sector(rt.store(), sector.sector_number).unwrap();
 
-    let expected_fee = calc_expected_fee_for_termination(&h, &rt, sector.clone());
+    let expected_fee = calc_expected_fee_for_termination(&h, &rt, &sector);
 
     rt.expect_validate_caller_addr(h.caller_addrs());
 
@@ -236,9 +295,9 @@ fn system_can_terminate_if_market_cron_fails() {
 fn calc_expected_fee_for_termination(
     h: &ActorHarness,
     rt: &MockRuntime,
-    sector: SectorOnChainInfo,
+    sector: &SectorOnChainInfo,
 ) -> TokenAmount {
-    let sector_power = qa_power_for_sector(sector.seal_proof.sector_size().unwrap(), &sector);
+    let sector_power = qa_power_for_sector(sector.seal_proof.sector_size().unwrap(), sector);
     let day_reward = expected_reward_for_power(
         &h.epoch_reward_smooth,
         &h.epoch_qa_power_smooth,
