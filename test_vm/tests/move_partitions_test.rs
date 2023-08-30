@@ -48,7 +48,7 @@ fn move_partitions_success() {
     apply_ok(
         &v,
         &miner.worker,
-        &miner._miner_robust,
+        &miner.miner_robust,
         &TokenAmount::zero(),
         MinerMethod::MovePartitions as u64,
         Some(move_params),
@@ -99,10 +99,9 @@ struct SectorInfo {
 #[derive(Clone)]
 struct MinerInfo {
     seal_proof: RegisteredSealProof,
-    _owner: Address,
     worker: Address,
     miner_id: Address,
-    _miner_robust: Address,
+    miner_robust: Address,
 }
 
 fn setup(store: &'_ MemoryBlockstore) -> (TestVM<MemoryBlockstore>, MinerInfo, SectorInfo) {
@@ -204,13 +203,7 @@ fn setup(store: &'_ MemoryBlockstore) -> (TestVM<MemoryBlockstore>, MinerInfo, S
     let (deadline_info, partition_index) = advance_to_proving_deadline(&v, &id_addr, sector_number);
     (
         v,
-        MinerInfo {
-            seal_proof,
-            worker,
-            _owner: owner,
-            miner_id: id_addr,
-            _miner_robust: robust_addr,
-        },
+        MinerInfo { seal_proof, worker, miner_id: id_addr, miner_robust: robust_addr },
         SectorInfo { number: sector_number, deadline_info, partition_index },
     )
 }
