@@ -358,30 +358,24 @@ impl ProofSet {
     /// Create a `ProofSet` for enabled `RegisteredPoStProof`s
     pub fn default_post_proofs() -> Self {
         let mut proofs = vec![false; REGISTERED_POST_PROOF_VARIANTS];
-        // TODO: v12: cleanup https://github.com/filecoin-project/builtin-actors/issues/1260
         #[cfg(feature = "sector-2k")]
         {
-            proofs[i64::from(RegisteredPoStProof::StackedDRGWindow2KiBV1) as usize] = true;
             proofs[i64::from(RegisteredPoStProof::StackedDRGWindow2KiBV1P1) as usize] = true;
         }
         #[cfg(feature = "sector-8m")]
         {
-            proofs[i64::from(RegisteredPoStProof::StackedDRGWindow8MiBV1) as usize] = true;
             proofs[i64::from(RegisteredPoStProof::StackedDRGWindow8MiBV1P1) as usize] = true;
         }
         #[cfg(feature = "sector-512m")]
         {
-            proofs[i64::from(RegisteredPoStProof::StackedDRGWindow512MiBV1) as usize] = true;
             proofs[i64::from(RegisteredPoStProof::StackedDRGWindow512MiBV1P1) as usize] = true;
         }
         #[cfg(feature = "sector-32g")]
         {
-            proofs[i64::from(RegisteredPoStProof::StackedDRGWindow32GiBV1) as usize] = true;
             proofs[i64::from(RegisteredPoStProof::StackedDRGWindow32GiBV1P1) as usize] = true;
         }
         #[cfg(feature = "sector-64g")]
         {
-            proofs[i64::from(RegisteredPoStProof::StackedDRGWindow64GiBV1) as usize] = true;
             proofs[i64::from(RegisteredPoStProof::StackedDRGWindow64GiBV1P1) as usize] = true;
         }
         ProofSet(proofs)
