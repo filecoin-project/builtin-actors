@@ -10,7 +10,7 @@ use multihash::MultihashDigest;
 use num_traits::Zero;
 
 use fil_actor_market::ext::miner::{
-    PieceInfo, PieceReturn, SectorChanges, SectorContentChangedParams,
+    PieceChange, PieceReturn, SectorChanges, SectorContentChangedParams,
 };
 use fil_actor_market::{DealProposal, Method, NO_ALLOCATION_ID};
 use fil_actors_runtime::cbor::serialize;
@@ -76,7 +76,7 @@ fn simple_one_sector() {
     let ret = sector_content_changed(&rt, PROVIDER_ADDR, changes).unwrap();
     assert_eq!(1, ret.sectors.len());
     assert_eq!(3, ret.sectors[0].added.len());
-    assert!(ret.sectors[0].added.iter().all(|r| r.code == ExitCode::OK));
+    assert!(ret.sectors[0].added.iter().all(|r| r.accepted));
 
     // Deal IDs are stored under the sector, in correct order.
     assert_eq!(deal_ids, get_sector_deal_ids(&rt, &PROVIDER_ADDR, sno));
@@ -124,9 +124,9 @@ fn simple_multiple_sectors() {
     ];
     let ret = sector_content_changed(&rt, PROVIDER_ADDR, changes).unwrap();
     assert_eq!(3, ret.sectors.len());
-    assert_eq!(vec![PieceReturn { code: ExitCode::OK, data: vec![] }], ret.sectors[0].added);
-    assert_eq!(vec![PieceReturn { code: ExitCode::OK, data: vec![] }], ret.sectors[1].added);
-    assert_eq!(vec![PieceReturn { code: ExitCode::OK, data: vec![] }], ret.sectors[2].added);
+    assert_eq!(vec![PieceReturn { accepted: true }], ret.sectors[0].added);
+    assert_eq!(vec![PieceReturn { accepted: true }], ret.sectors[1].added);
+    assert_eq!(vec![PieceReturn { accepted: true }], ret.sectors[2].added);
 
     // Deal IDs are stored under the right sector, in correct order.
     assert_eq!(deal_ids[0..2], get_sector_deal_ids(&rt, &PROVIDER_ADDR, 1));
@@ -174,7 +174,7 @@ fn piece_must_match_deal() {
     // Wrong size
     pieces[1].size = PaddedPieceSize(1234);
     // Deal doesn't exist
-    pieces.push(PieceInfo {
+    pieces.push(PieceChange {
         data: Cid::new_v1(0, Sha2_256.digest(&[1, 2, 3, 4])),
         size: PaddedPieceSize(1234),
         payload: serialize(&1234, "deal id").unwrap(),
@@ -186,9 +186,9 @@ fn piece_must_match_deal() {
     assert_eq!(1, ret.sectors.len());
     assert_eq!(
         vec![
-            PieceReturn { code: ExitCode::USR_ILLEGAL_ARGUMENT, data: vec![] },
-            PieceReturn { code: ExitCode::USR_ILLEGAL_ARGUMENT, data: vec![] },
-            PieceReturn { code: ExitCode::USR_NOT_FOUND, data: vec![] },
+            PieceReturn { accepted: false },
+            PieceReturn { accepted: false },
+            PieceReturn { accepted: false },
         ],
         ret.sectors[0].added
     );
@@ -214,10 +214,7 @@ fn invalid_deal_id_rejected() {
         vec![SectorChanges { sector: 1, minimum_commitment_epoch: END_EPOCH + 10, added: pieces }];
     let ret = sector_content_changed(&rt, PROVIDER_ADDR, changes).unwrap();
     assert_eq!(1, ret.sectors.len());
-    assert_eq!(
-        vec![PieceReturn { code: ExitCode::USR_SERIALIZATION, data: vec![] },],
-        ret.sectors[0].added
-    );
+    assert_eq!(vec![PieceReturn { accepted: false },], ret.sectors[0].added);
 
     check_state(&rt);
 }
@@ -256,19 +253,13 @@ fn failures_isolated() {
     assert_eq!(3, ret.sectors.len());
     // Broken second piece still allows first piece in same sector to activate.
     assert_eq!(
-        vec![
-            PieceReturn { code: ExitCode::OK, data: vec![] },
-            PieceReturn { code: ExitCode::USR_ILLEGAL_ARGUMENT, data: vec![] }
-        ],
+        vec![PieceReturn { accepted: true }, PieceReturn { accepted: false }],
         ret.sectors[0].added
     );
     // Broken third piece
-    assert_eq!(
-        vec![PieceReturn { code: ExitCode::USR_ILLEGAL_ARGUMENT, data: vec![] }],
-        ret.sectors[1].added
-    );
+    assert_eq!(vec![PieceReturn { accepted: false }], ret.sectors[1].added);
     // Ok fourth piece.
-    assert_eq!(vec![PieceReturn { code: ExitCode::OK, data: vec![] }], ret.sectors[2].added);
+    assert_eq!(vec![PieceReturn { accepted: true }], ret.sectors[2].added);
 
     // Successful deal IDs are stored under the right sector, in correct order.
     assert_eq!(deal_ids[0..1], get_sector_deal_ids(&rt, &PROVIDER_ADDR, 1));
@@ -297,9 +288,9 @@ fn rejects_duplicates_in_same_sector() {
     // The first piece succeeds just once, the second piece succeeds too.
     assert_eq!(
         vec![
-            PieceReturn { code: ExitCode::OK, data: vec![] },
-            PieceReturn { code: ExitCode::USR_ILLEGAL_ARGUMENT, data: vec![] },
-            PieceReturn { code: ExitCode::OK, data: vec![] },
+            PieceReturn { accepted: true },
+            PieceReturn { accepted: false },
+            PieceReturn { accepted: true },
         ],
         ret.sectors[0].added
     );
@@ -340,21 +331,18 @@ fn rejects_duplicates_across_sectors() {
     let ret = sector_content_changed(&rt, PROVIDER_ADDR, changes).unwrap();
     assert_eq!(3, ret.sectors.len());
     // Succeeds in the first time.
-    assert_eq!(vec![PieceReturn { code: ExitCode::OK, data: vec![] },], ret.sectors[0].added);
+    assert_eq!(vec![PieceReturn { accepted: true },], ret.sectors[0].added);
     // Fails second time, but other piece succeeds.
     assert_eq!(
-        vec![
-            PieceReturn { code: ExitCode::USR_ILLEGAL_ARGUMENT, data: vec![] },
-            PieceReturn { code: ExitCode::OK, data: vec![] },
-        ],
+        vec![PieceReturn { accepted: false }, PieceReturn { accepted: true },],
         ret.sectors[1].added
     );
     // Both duplicates fail, but third piece succeeds.
     assert_eq!(
         vec![
-            PieceReturn { code: ExitCode::USR_ILLEGAL_ARGUMENT, data: vec![] },
-            PieceReturn { code: ExitCode::USR_ILLEGAL_ARGUMENT, data: vec![] },
-            PieceReturn { code: ExitCode::OK, data: vec![] },
+            PieceReturn { accepted: false },
+            PieceReturn { accepted: false },
+            PieceReturn { accepted: true },
         ],
         ret.sectors[2].added
     );
@@ -387,7 +375,7 @@ fn create_deals(rt: &MockRuntime, count: i64) -> Vec<DealProposal> {
         .collect()
 }
 
-fn pieces_from_deals(deal_ids: &[DealID], deals: &[DealProposal]) -> Vec<PieceInfo> {
+fn pieces_from_deals(deal_ids: &[DealID], deals: &[DealProposal]) -> Vec<PieceChange> {
     deal_ids.iter().zip(deals).map(|(id, deal)| piece_info_from_deal(*id, deal)).collect()
 }
 
