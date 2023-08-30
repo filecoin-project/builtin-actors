@@ -95,9 +95,9 @@ blake2b_simd = "1.0"
 sha2 = "0.10"
 
 # EVM
-ethers = { version = "1.0.2", features = ["abigen"] }
+ethers = { version = "2.0.9", features = ["abigen"], default-features = false }
 uint = { version = "0.9.3", default-features = false }
-etk-asm = "^0.2.1"
+etk-asm = "^0.3.0"
 rlp = { version = "0.5.1", default-features = false }
 substrate-bn = { version = "0.6.0", default-features = false }
 
