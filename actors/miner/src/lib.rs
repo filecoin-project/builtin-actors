@@ -25,12 +25,13 @@ use fvm_shared::randomness::*;
 use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::*;
 use fvm_shared::smooth::FilterEstimate;
-use fvm_shared::{ActorID, METHOD_CONSTRUCTOR, METHOD_SEND};
+use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use itertools::Itertools;
 use log::{error, info, warn};
 use num_derive::FromPrimitive;
 use num_traits::{Signed, Zero};
 
+use crate::notifications::{notify_data_consumers, ActivationNotifications};
 pub use beneficiary::*;
 pub use bitfield_queue::*;
 pub use commd::*;
@@ -49,6 +50,7 @@ use fil_actors_runtime::{
     STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+
 pub use monies::*;
 pub use partition_state::*;
 pub use policy::*;
@@ -77,6 +79,7 @@ mod expiration_queue;
 #[doc(hidden)]
 pub mod ext;
 mod monies;
+mod notifications;
 mod partition_state;
 mod policy;
 mod sector_map;
@@ -145,7 +148,12 @@ pub enum Method {
     GetMultiaddrsExported = frc42_dispatch::method_hash!("GetMultiaddrs"),
 }
 
+pub const SECTOR_CONTENT_CHANGED: MethodNum = frc42_dispatch::method_hash!("SectorContentChanged");
+
 pub const ERR_BALANCE_INVARIANTS_BROKEN: ExitCode = ExitCode::new(1000);
+pub const ERR_NOTIFICATION_SEND_FAILED: ExitCode = ExitCode::new(1001);
+pub const ERR_NOTIFICATION_RESPONSE_INVALID: ExitCode = ExitCode::new(1002);
+pub const ERR_NOTIFICATION_REJECTED: ExitCode = ExitCode::new(1003);
 
 /// Miner Actor
 /// here in order to update the Power Actor to v3.
@@ -1134,19 +1142,20 @@ impl Actor {
         for ((update, sector_info), data_activation) in
             successful_manifests.iter().zip(data_activations)
         {
-            let dl = update.deadline;
             let activated_data = ReplicaUpdateActivatedData {
                 seal_cid: update.new_sealed_cid,
                 deals: vec![],
                 unverified_space: data_activation.unverified_space.clone(),
                 verified_space: data_activation.verified_space.clone(),
             };
-            state_updates_by_dline.entry(dl).or_default().push(ReplicaUpdateStateInputs {
-                deadline: update.deadline,
-                partition: update.partition,
-                sector_info,
-                activated_data,
-            });
+            state_updates_by_dline.entry(update.deadline).or_default().push(
+                ReplicaUpdateStateInputs {
+                    deadline: update.deadline,
+                    partition: update.partition,
+                    sector_info,
+                    activated_data,
+                },
+            );
         }
 
         let (power_delta, pledge_delta) = update_replica_states(
@@ -1160,10 +1169,18 @@ impl Actor {
         notify_pledge_changed(rt, &pledge_delta)?;
         request_update_power(rt, power_delta)?;
 
-        // Notify data consumers (not yet implemented).
-        // notify_data_consumers(rt, successful_sector_activations);
+        // Notify data consumers.
+        let mut notifications: Vec<ActivationNotifications> = vec![];
+        for (update, sector_info) in successful_manifests {
+            notifications.push(ActivationNotifications {
+                sector_number: update.sector,
+                sector_expiration: sector_info.expiration,
+                pieces: &update.pieces,
+            });
+        }
+        notify_data_consumers(rt, &notifications, params.require_notification_success)?;
 
-        Ok(ProveReplicaUpdates3Return { sectors: vec![] })
+        Ok(ProveReplicaUpdates3Return { activation_results: BatchReturn::empty() })
     }
 
     fn dispute_windowed_post(
@@ -1674,7 +1691,7 @@ impl Actor {
     fn prove_commit_sectors2(
         rt: &impl Runtime,
         params: ProveCommitSectors2Params,
-    ) -> Result<(), ActorError> {
+    ) -> Result<ProveCommitSectors2Return, ActorError> {
         let state: State = rt.state()?;
         let store = rt.store();
         let policy = rt.policy();
@@ -1828,16 +1845,25 @@ impl Actor {
             &info,
         )?;
 
-        // Notify data consumers (not yet implemented).
-        // notify_data_consumers(rt, successful_sector_activations);
-
         if !params.aggregate_proof.is_empty() {
             // Aggregate fee is paid on the sectors successfully proven,
             // but without regard to data activation which could subsequently fail
             // and prevent sector activation.
             pay_aggregate_seal_proof_fee(rt, proven_activation_inputs.len())?;
         }
-        Ok(())
+
+        // Notify data consumers.
+        let mut notifications: Vec<ActivationNotifications> = vec![];
+        for (activations, sector) in &successful_sector_activations {
+            notifications.push(ActivationNotifications {
+                sector_number: activations.sector_number,
+                sector_expiration: sector.info.expiration,
+                pieces: &activations.pieces,
+            });
+        }
+        notify_data_consumers(rt, &notifications, params.require_notification_success)?;
+
+        Ok(ProveCommitSectors2Return { activation_results: BatchReturn::empty() })
     }
 
     /// Checks state of the corresponding sector pre-commitment, then schedules the proof to be verified in bulk

@@ -10,7 +10,6 @@ use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
@@ -21,7 +20,7 @@ use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::ActorID;
 
 use crate::ext::verifreg::AllocationID;
-use fil_actors_runtime::DealWeight;
+use fil_actors_runtime::{BatchReturn, DealWeight};
 use serde::{Deserialize, Serialize};
 
 use crate::commd::CompactCommD;
@@ -194,35 +193,8 @@ pub struct DataActivationNotification {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
-pub struct ProveCommit2Return {
-    // Sector activation results, parallel to input sector activation manifests.
-    pub sectors: Vec<SectorActivationReturn>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
-pub struct SectorActivationReturn {
-    // Whether the sector was activated.
-    activated: bool,
-    // Power of the activated sector (or zero).
-    power: StoragePower,
-    // Piece activation results, parallel to input piece activation manifests.
-    pieces: Vec<PieceActivationReturn>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
-pub struct PieceActivationReturn {
-    // Whether a verified allocation was successfully claimed by the piece.
-    claimed: bool,
-    // Results from notifications of piece activation, parallel to input notification requests.
-    notifications: Vec<DataActivationNotificationReturn>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
-pub struct DataActivationNotificationReturn {
-    // Exit code from the notified actor.
-    code: ExitCode,
-    // Return value from the notified actor.
-    data: RawBytes,
+pub struct ProveCommitSectors2Return {
+    pub activation_results: BatchReturn,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
@@ -553,7 +525,10 @@ pub struct SectorUpdateManifest {
     pub pieces: Vec<PieceActivationManifest>,
 }
 
-pub type ProveReplicaUpdates3Return = ProveCommit2Return;
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
+pub struct ProveReplicaUpdates3Return {
+    pub activation_results: BatchReturn,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ChangeBeneficiaryParams {
@@ -628,4 +603,64 @@ pub struct GetPeerIDReturn {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct GetMultiaddrsReturn {
     pub multi_addrs: Vec<BytesDe>,
+}
+
+// Notification of change committed to one or more sectors.
+// The relevant state must be already committed so the receiver can observe any impacts
+// at the sending miner actor.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct SectorContentChangedParams {
+    // Distinct sectors with changed content.
+    pub sectors: Vec<SectorChanges>,
+}
+
+// Description of changes to one sector's content.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct SectorChanges {
+    // Identifier of sector being updated.
+    pub sector: SectorNumber,
+    // Minimum epoch until which the data is committed to the sector.
+    // Note the sector may later be extended without necessarily another notification.
+    pub minimum_commitment_epoch: ChainEpoch,
+    // Information about some pieces added to (or retained in) the sector.
+    // This may be only a subset of sector content.
+    // Inclusion here does not mean the piece was definitely absent previously.
+    // Exclusion here does not mean a piece has been removed since a prior notification.
+    pub added: Vec<PieceChange>,
+}
+
+// Description of a piece of data committed to a sector.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct PieceChange {
+    pub data: Cid,
+    pub size: PaddedPieceSize,
+    // A receiver-specific identifier.
+    // E.g. an encoded deal ID which the provider claims this piece satisfies.
+    pub payload: RawBytes,
+}
+
+// For each piece in each sector, the notifee returns an exit code and
+// (possibly-empty) result data.
+// The miner actor will pass through results to its caller.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct SectorContentChangedReturn {
+    // A result for each sector that was notified, in the same order.
+    pub sectors: Vec<SectorReturn>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct SectorReturn {
+    // A result for each piece for the sector that was notified, in the same order.
+    pub added: Vec<PieceReturn>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct PieceReturn {
+    // Indicates whether the receiver accepted the notification.
+    // The caller is free to ignore this, but may chose to abort and roll back.
+    pub accepted: bool,
 }
