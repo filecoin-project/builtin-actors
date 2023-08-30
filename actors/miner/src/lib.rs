@@ -2992,6 +2992,7 @@ impl Actor {
         Ok(())
     }
 
+    /// FYI: https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0070.md
     fn move_partitions(rt: &impl Runtime, params: MovePartitionsParams) -> Result<(), ActorError> {
         if params.orig_deadline == params.dest_deadline {
             return Err(actor_error!(illegal_argument, "orig_deadline == dest_deadline"));

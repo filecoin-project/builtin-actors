@@ -128,7 +128,7 @@ pub fn deadline_available_for_compaction(
         )
 }
 
-// the distance between from_deadline and to_deadline clockwise in deadline unit.
+/// the distance between from_deadline and to_deadline clockwise in deadline unit.
 fn deadline_distance(policy: &Policy, from_deadline: u64, to_deadline: u64) -> u64 {
     if to_deadline >= from_deadline {
         to_deadline - from_deadline
@@ -137,7 +137,7 @@ fn deadline_distance(policy: &Policy, from_deadline: u64, to_deadline: u64) -> u
     }
 }
 
-// only allow moving to a nearer deadline from current one
+/// only allow moving to a nearer deadline from current one
 pub fn ensure_deadline_available_for_move(
     policy: &Policy,
     orig_deadline: u64,
