@@ -71,7 +71,10 @@ fn farthest_possible_to_deadline(
     from_deadline_id: u64,
     current_deadline: DeadlineInfo,
 ) -> u64 {
-    assert!(from_deadline_id != current_deadline.index, "can't move nearer when the gap is 0");
+    assert_ne!(
+        from_deadline_id, current_deadline.index,
+        "can't move nearer when the deadline_distance is 0"
+    );
 
     if current_deadline.index < from_deadline_id {
         // the deadline distance can only be nearer
