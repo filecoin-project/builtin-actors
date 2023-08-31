@@ -26,17 +26,11 @@ impl BatchReturn {
     }
 
     pub fn of(codes: &[ExitCode]) -> Self {
-        let mut success_count: u32 = 0;
-        let mut fail_codes = vec![];
+        let mut gen = BatchReturnGen::new(codes.len());
         for code in codes {
-            if code.is_success() {
-                success_count += 1;
-            } else {
-                fail_codes
-                    .push(FailCode { idx: success_count + fail_codes.len() as u32, code: *code });
-            }
+            gen.add(*code);
         }
-        Self { success_count, fail_codes }
+        gen.gen()
     }
 
     pub fn size(&self) -> usize {
@@ -128,7 +122,6 @@ pub fn stack(batch_returns: &[BatchReturn]) -> BatchReturn {
             while base_fail.peek().is_some()
                 && base_fail.peek().unwrap().idx <= nxt_fail.idx + offset
             {
-                // let base_fail2 = base_fail.next().unwrap();
                 base_fail.next();
                 offset += 1;
             }
@@ -169,6 +162,14 @@ impl BatchReturnGen {
         self.fail_codes
             .push(FailCode { idx: (self.success_count + self.fail_codes.len()) as u32, code });
         self
+    }
+
+    pub fn add(&mut self, code: ExitCode) -> &mut Self {
+        if code.is_success() {
+            self.add_success()
+        } else {
+            self.add_fail(code)
+        }
     }
 
     pub fn gen(&self) -> BatchReturn {
@@ -257,7 +258,6 @@ mod test {
         let expected = BatchReturn::of(expected);
         let batches: Vec<BatchReturn> = stacked.iter().map(|b| BatchReturn::of(b)).collect();
         let stacked = stack(&batches);
-        assert_eq!(expected.success_count, stacked.success_count);
-        assert_eq!(expected.fail_codes, stacked.fail_codes);
+        assert_eq!(expected, stacked);
     }
 }

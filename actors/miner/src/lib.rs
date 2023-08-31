@@ -1109,6 +1109,9 @@ impl Actor {
                 ));
             }
 
+            // Note: an alternate factoring here could pull this block out to a separate function,
+            // return a BatchReturn, and then extract successes from
+            // valid_unproven_usis and valid_manifests, following the pattern used elsewhere.
             for (usi, manifest) in valid_unproven_usis.iter().zip(valid_manifests) {
                 let proof_inputs = ReplicaUpdateInfo {
                     update_proof_type: usi.update.update_proof_type,
@@ -1144,6 +1147,7 @@ impl Actor {
                 illegal_argument,
                 "aggregate update proofs not yet supported"
             ));
+            // proven_batch_gen.add_successes(valid_manifests.len());
         }
         if proven_manifests.is_empty() {
             return Err(actor_error!(illegal_argument, "no valid updates"));
