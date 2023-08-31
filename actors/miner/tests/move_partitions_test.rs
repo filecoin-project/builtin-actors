@@ -25,19 +25,19 @@ fn setup() -> (ActorHarness, MockRuntime) {
 }
 
 // returns the nearest epoch such that synchronous post verification is required
-fn nearest_unsafe_epoch(rt: &MockRuntime, h: &ActorHarness, from_deadline_id: u64) -> i64 {
+fn nearest_unsafe_epoch(rt: &MockRuntime, h: &ActorHarness, orig_deadline_id: u64) -> i64 {
     let current_ddl = h.current_deadline(rt);
 
     for i in *rt.epoch.borrow().. {
         if !deadline_available_for_compaction(
             &rt.policy,
             current_ddl.period_start,
-            from_deadline_id,
+            orig_deadline_id,
             i,
         ) && deadline_available_for_optimistic_post_dispute(
             &rt.policy,
             current_ddl.period_start,
-            from_deadline_id,
+            orig_deadline_id,
             i,
         ) {
             return i;
@@ -48,14 +48,14 @@ fn nearest_unsafe_epoch(rt: &MockRuntime, h: &ActorHarness, from_deadline_id: u6
 }
 
 // returns the nearest epoch such that no synchronous post verification is necessary
-fn nearest_safe_epoch(rt: &MockRuntime, h: &ActorHarness, from_deadline_id: u64) -> i64 {
+fn nearest_safe_epoch(rt: &MockRuntime, h: &ActorHarness, orig_deadline_id: u64) -> i64 {
     let current_ddl = h.current_deadline(rt);
 
     for i in *rt.epoch.borrow().. {
         if deadline_available_for_compaction(
             &rt.policy,
             current_ddl.period_start,
-            from_deadline_id,
+            orig_deadline_id,
             i,
         ) {
             return i;
@@ -68,24 +68,24 @@ fn nearest_safe_epoch(rt: &MockRuntime, h: &ActorHarness, from_deadline_id: u64)
 // returns the farthest deadline from current that satisfies deadline_available_for_move
 fn farthest_possible_to_deadline(
     rt: &MockRuntime,
-    from_deadline_id: u64,
+    orig_deadline_id: u64,
     current_deadline: DeadlineInfo,
 ) -> u64 {
     assert_ne!(
-        from_deadline_id, current_deadline.index,
+        orig_deadline_id, current_deadline.index,
         "can't move nearer when the deadline_distance is 0"
     );
 
-    if current_deadline.index < from_deadline_id {
+    if current_deadline.index < orig_deadline_id {
         // the deadline distance can only be nearer
-        for i in (current_deadline.index..(from_deadline_id)).rev() {
+        for i in (current_deadline.index..(orig_deadline_id)).rev() {
             if deadline_is_mutable(&rt.policy, current_deadline.period_start, i, *rt.epoch.borrow())
             {
                 return i;
             }
         }
     } else {
-        for i in (0..(from_deadline_id)).rev() {
+        for i in (0..(orig_deadline_id)).rev() {
             if deadline_is_mutable(&rt.policy, current_deadline.period_start, i, *rt.epoch.borrow())
             {
                 return i;
@@ -122,16 +122,16 @@ fn fail_to_move_partitions_with_faults_from_safe_epoch() {
     h.declare_faults(&rt, &sectors_info[0..1]);
 
     let partition_id = 0;
-    let from_deadline_id = 0;
+    let orig_deadline_id = 0;
 
-    h.advance_to_epoch_with_cron(&rt, nearest_safe_epoch(&rt, &h, from_deadline_id));
+    h.advance_to_epoch_with_cron(&rt, nearest_safe_epoch(&rt, &h, orig_deadline_id));
 
     let to_deadline_id =
-        farthest_possible_to_deadline(&rt, from_deadline_id, h.current_deadline(&rt));
+        farthest_possible_to_deadline(&rt, orig_deadline_id, h.current_deadline(&rt));
 
     let result = h.move_partitions(
         &rt,
-        from_deadline_id,
+        orig_deadline_id,
         to_deadline_id,
         bitfield_from_slice(&[partition_id]),
         || {},
@@ -164,33 +164,33 @@ fn fail_to_move_partitions_with_faults_from_unsafe_epoch() {
     h.declare_faults(&rt, &sectors_info[0..1]);
 
     let partition_id = 0;
-    let from_deadline_id = 0;
+    let orig_deadline_id = 0;
 
-    h.advance_to_epoch_with_cron(&rt, nearest_unsafe_epoch(&rt, &h, from_deadline_id));
+    h.advance_to_epoch_with_cron(&rt, nearest_unsafe_epoch(&rt, &h, orig_deadline_id));
 
-    let to_deadline_id =
-        farthest_possible_to_deadline(&rt, from_deadline_id, h.current_deadline(&rt));
+    let dest_deadline_id =
+        farthest_possible_to_deadline(&rt, orig_deadline_id, h.current_deadline(&rt));
 
     let result = h.move_partitions(
         &rt,
-        from_deadline_id,
-        to_deadline_id,
+        orig_deadline_id,
+        dest_deadline_id,
         bitfield_from_slice(&[partition_id]),
         || {
             let current_deadline = h.current_deadline(&rt);
 
             let from_deadline = new_deadline_info(
                 rt.policy(),
-                if current_deadline.index < from_deadline_id {
+                if current_deadline.index < orig_deadline_id {
                     current_deadline.period_start - rt.policy().wpost_proving_period
                 } else {
                     current_deadline.period_start
                 },
-                from_deadline_id,
+                orig_deadline_id,
                 *rt.epoch.borrow(),
             );
 
-            let from_ddl = h.get_deadline(&rt, from_deadline_id);
+            let from_ddl = h.get_deadline(&rt, orig_deadline_id);
 
             let entropy = RawBytes::serialize(h.receiver).unwrap();
             rt.expect_get_randomness_from_beacon(
@@ -237,18 +237,18 @@ fn ok_to_move_partitions_from_safe_epoch() {
     );
     h.advance_and_submit_posts(&rt, &sectors_info);
 
-    let from_deadline_id = 0;
+    let orig_deadline_id = 0;
 
-    h.advance_to_epoch_with_cron(&rt, nearest_safe_epoch(&rt, &h, from_deadline_id));
+    h.advance_to_epoch_with_cron(&rt, nearest_safe_epoch(&rt, &h, orig_deadline_id));
 
     let partition_id = 0;
-    let to_deadline_id =
-        farthest_possible_to_deadline(&rt, from_deadline_id, h.current_deadline(&rt));
+    let dest_deadline_id =
+        farthest_possible_to_deadline(&rt, orig_deadline_id, h.current_deadline(&rt));
 
     let result = h.move_partitions(
         &rt,
-        from_deadline_id,
-        to_deadline_id,
+        orig_deadline_id,
+        dest_deadline_id,
         bitfield_from_slice(&[partition_id]),
         || {},
     );
@@ -272,34 +272,34 @@ fn ok_to_move_partitions_from_unsafe_epoch() {
     );
     h.advance_and_submit_posts(&rt, &sectors_info);
 
-    let from_deadline_id = 0;
+    let orig_deadline_id = 0;
 
-    h.advance_to_epoch_with_cron(&rt, nearest_unsafe_epoch(&rt, &h, from_deadline_id));
+    h.advance_to_epoch_with_cron(&rt, nearest_unsafe_epoch(&rt, &h, orig_deadline_id));
 
     let partition_id = 0;
-    let to_deadline_id =
-        farthest_possible_to_deadline(&rt, from_deadline_id, h.current_deadline(&rt));
+    let dest_deadline_id =
+        farthest_possible_to_deadline(&rt, orig_deadline_id, h.current_deadline(&rt));
 
     let result = h.move_partitions(
         &rt,
-        from_deadline_id,
-        to_deadline_id,
+        orig_deadline_id,
+        dest_deadline_id,
         bitfield_from_slice(&[partition_id]),
         || {
             let current_deadline = h.current_deadline(&rt);
 
             let from_deadline = new_deadline_info(
                 rt.policy(),
-                if current_deadline.index < from_deadline_id {
+                if current_deadline.index < orig_deadline_id {
                     current_deadline.period_start - rt.policy().wpost_proving_period
                 } else {
                     current_deadline.period_start
                 },
-                from_deadline_id,
+                orig_deadline_id,
                 *rt.epoch.borrow(),
             );
 
-            let from_ddl = h.get_deadline(&rt, from_deadline_id);
+            let from_ddl = h.get_deadline(&rt, orig_deadline_id);
 
             let entropy = RawBytes::serialize(h.receiver).unwrap();
             rt.expect_get_randomness_from_beacon(
