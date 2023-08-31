@@ -44,7 +44,7 @@ use fil_actors_runtime::cbor::{serialize, serialize_vec};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_dispatch, actor_error, deserialize_block, extract_send_result, ActorContext,
+    actor_dispatch, actor_error, deserialize_block, extract_send_result, util, ActorContext,
     ActorDowncast, ActorError, AsActorError, BatchReturn, BatchReturnGen, DealWeight,
     BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
     STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
@@ -1056,7 +1056,7 @@ impl Actor {
 
         // Validate inputs.
         let require_deals = false; // No deals can be specified in new replica update.
-        let (batch_return, update_sector_infos) = validate_replica_updates(
+        let (validation_batch, update_sector_infos) = validate_replica_updates(
             &updates,
             &sector_infos,
             &state,
@@ -1067,11 +1067,12 @@ impl Actor {
             require_deals,
             params.require_activation_success,
         )?;
-        let valid_unproven_usis = batch_return.successes(&update_sector_infos);
-        let valid_manifests = batch_return.successes(&params.sector_updates);
+        let valid_unproven_usis = validation_batch.successes(&update_sector_infos);
+        let valid_manifests = validation_batch.successes(&params.sector_updates);
 
         // Verify proofs before activating anything.
         let mut proven_manifests: Vec<(&SectorUpdateManifest, &SectorOnChainInfo)> = vec![];
+        let mut proven_batch_gen = BatchReturnGen::new(validation_batch.size());
         if !params.sector_proofs.is_empty() {
             // Batched proofs, one per sector
             if params.sector_updates.len() != params.sector_proofs.len() {
@@ -1083,6 +1084,9 @@ impl Actor {
                 ));
             }
 
+            // Note: an alternate factoring here could pull this block out to a separate function,
+            // return a BatchReturn, and then extract successes from
+            // valid_unproven_usis and valid_manifests, following the pattern used elsewhere.
             for (usi, manifest) in valid_unproven_usis.iter().zip(valid_manifests) {
                 let proof_inputs = ReplicaUpdateInfo {
                     update_proof_type: usi.update.update_proof_type,
@@ -1092,12 +1096,16 @@ impl Actor {
                     proof: usi.update.replica_proof.clone().into(),
                 };
                 match rt.verify_replica_update(&proof_inputs) {
-                    Ok(_) => proven_manifests.push((manifest, usi.sector_info)),
+                    Ok(_) => {
+                        proven_manifests.push((manifest, usi.sector_info));
+                        proven_batch_gen.add_success();
+                    }
                     Err(e) => {
                         warn!(
                             "failed to verify replica update for sector {}: {e}",
                             usi.sector_info.sector_number
                         );
+                        proven_batch_gen.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
                         if params.require_activation_success {
                             return Err(actor_error!(
                                 illegal_argument,
@@ -1114,10 +1122,12 @@ impl Actor {
                 illegal_argument,
                 "aggregate update proofs not yet supported"
             ));
+            // proven_batch_gen.add_successes(valid_manifests.len());
         }
         if proven_manifests.is_empty() {
             return Err(actor_error!(illegal_argument, "no valid updates"));
         }
+        let proven_batch = proven_batch_gen.gen();
 
         // Activate data and compute CommD.
         let data_activation_inputs: Vec<SectorPiecesActivationInput> = proven_manifests
@@ -1132,11 +1142,11 @@ impl Actor {
             .collect();
 
         // Activate data for proven updates.
-        let (batch_return, data_activations) =
+        let (data_batch, data_activations) =
             activate_sectors_pieces(rt, data_activation_inputs, params.require_activation_success)?;
 
         // Successful data activation is required for sector activation.
-        let successful_manifests = batch_return.successes(&proven_manifests);
+        let successful_manifests = data_batch.successes(&proven_manifests);
 
         let mut state_updates_by_dline = BTreeMap::<u64, Vec<ReplicaUpdateStateInputs>>::new();
         for ((update, sector_info), data_activation) in
@@ -1180,7 +1190,8 @@ impl Actor {
         }
         notify_data_consumers(rt, &notifications, params.require_notification_success)?;
 
-        Ok(ProveReplicaUpdates3Return { activation_results: BatchReturn::empty() })
+        let result = util::stack(&[validation_batch, proven_batch, data_batch]);
+        Ok(ProveReplicaUpdates3Return { activation_results: result })
     }
 
     fn dispute_windowed_post(
@@ -1739,13 +1750,13 @@ impl Actor {
 
         // Validate pre-commits.
         let allow_deals = false; // New onboarding entry point does not allow pre-committed deals.
-        let (batch_return, proof_inputs) =
+        let (validation_batch, proof_inputs) =
             validate_precommits(rt, &precommits, allow_deals, params.require_activation_success)?;
-        if batch_return.success_count == 0 {
+        if validation_batch.success_count == 0 {
             return Err(actor_error!(illegal_argument, "no valid precommits specified"));
         }
-        let valid_precommits = batch_return.successes(&precommits);
-        let valid_activation_inputs = batch_return.successes(&params.sector_activations);
+        let valid_precommits = validation_batch.successes(&precommits);
+        let valid_activation_inputs = validation_batch.successes(&params.sector_activations);
         let eligible_activation_inputs_iter = valid_activation_inputs.iter().zip(valid_precommits);
 
         // Verify seal proof(s), either batch or aggregate.
@@ -1753,13 +1764,14 @@ impl Actor {
             &SectorActivationManifest,
             &SectorPreCommitOnChainInfo,
         )> = vec![];
+        let mut proven_batch_gen = BatchReturnGen::new(validation_batch.size());
         if !params.sector_proofs.is_empty() {
             // Verify batched proofs.
             // Filter proof inputs to those for valid pre-commits.
-            let seal_verify_inputs: Vec<SealVerifyInfo> = batch_return
+            let seal_verify_inputs: Vec<SealVerifyInfo> = validation_batch
                 .successes(&proof_inputs)
                 .iter()
-                .zip(batch_return.successes(&params.sector_proofs))
+                .zip(validation_batch.successes(&params.sector_proofs))
                 .map(|(info, proof)| -> SealVerifyInfo {
                     info.to_seal_verify_info(miner_id, proof)
                 })
@@ -1774,7 +1786,10 @@ impl Actor {
                 res.iter().zip(eligible_activation_inputs_iter)
             {
                 if *verified {
-                    proven_activation_inputs.push((*activation, precommit))
+                    proven_activation_inputs.push((*activation, precommit));
+                    proven_batch_gen.add_success();
+                } else {
+                    proven_batch_gen.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
                 }
             }
             if params.require_activation_success
@@ -1802,7 +1817,9 @@ impl Actor {
             proven_activation_inputs = eligible_activation_inputs_iter
                 .map(|(activation, precommit)| (*activation, precommit))
                 .collect();
+            proven_batch_gen.add_successes(validation_batch.size());
         }
+        let proven_batch = proven_batch_gen.gen();
 
         // Activate data and verify CommD matches the declared one.
         let data_activation_inputs = proven_activation_inputs
@@ -1819,11 +1836,11 @@ impl Actor {
             .collect();
 
         // Activate data for proven sectors.
-        let (batch_return, data_activations) =
+        let (data_batch, data_activations) =
             activate_sectors_pieces(rt, data_activation_inputs, params.require_activation_success)?;
 
         // Successful data activation is required for sector activation.
-        let successful_sector_activations = batch_return.successes(&proven_activation_inputs);
+        let successful_sector_activations = data_batch.successes(&proven_activation_inputs);
         let successful_precommits =
             successful_sector_activations.iter().map(|(_, second)| *second).collect();
 
@@ -1863,7 +1880,8 @@ impl Actor {
         }
         notify_data_consumers(rt, &notifications, params.require_notification_success)?;
 
-        Ok(ProveCommitSectors2Return { activation_results: BatchReturn::empty() })
+        let result = util::stack(&[validation_batch, proven_batch, data_batch]);
+        Ok(ProveCommitSectors2Return { activation_results: result })
     }
 
     /// Checks state of the corresponding sector pre-commitment, then schedules the proof to be verified in bulk
