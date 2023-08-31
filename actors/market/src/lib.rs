@@ -1113,6 +1113,15 @@ impl Actor {
             Ok(())
         })?;
 
+        if !total_slashed.is_zero() {
+            extract_send_result(rt.send_simple(
+                &BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                None,
+                total_slashed,
+            ))?;
+        }
+
         Ok(SettleDealPaymentsReturn { settlements, results: batch_gen.gen() })
     }
 }

@@ -20,10 +20,6 @@ check:
 test:
 	cargo test --workspace
 
-# Run integration tests only
-test-integration:
-	cargo test --workspace -p test_vm
-
 # Release a new version. Specify the version "bump" with BUMP
 bump-version: check-clean deps-release check
 	cargo set-version --workspace --bump $(BUMP)
