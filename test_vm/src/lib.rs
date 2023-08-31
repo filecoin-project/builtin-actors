@@ -38,6 +38,7 @@ use fvm_shared::{MethodNum, METHOD_SEND};
 use serde::ser;
 use std::cell::{RefCell, RefMut};
 use std::collections::{BTreeMap, HashMap};
+use std::rc::Rc;
 use vm_api::trace::InvocationTrace;
 use vm_api::{new_actor, ActorState, MessageResult, VMError, VM};
 
@@ -50,12 +51,12 @@ mod messaging;
 pub use messaging::*;
 
 /// An in-memory rust-execution VM for testing builtin-actors that yields sensible stack traces and debug info
-pub struct TestVM<'bs, BS>
+pub struct TestVM<BS>
 where
     BS: Blockstore,
 {
     pub primitives: FakePrimitives,
-    pub store: &'bs BS,
+    pub store: Rc<BS>,
     pub state_root: RefCell<Cid>,
     circulating_supply: RefCell<TokenAmount>,
     actors_dirty: RefCell<bool>,
@@ -65,20 +66,18 @@ where
     invocations: RefCell<Vec<InvocationTrace>>,
 }
 
-impl<'bs, BS> TestVM<'bs, BS>
+impl<BS> TestVM<BS>
 where
     BS: Blockstore,
 {
-    pub fn new(store: &'bs MemoryBlockstore) -> TestVM<'bs, MemoryBlockstore> {
+    pub fn new(store: BS) -> Self {
         let mut actors =
-            Hamt::<&'bs MemoryBlockstore, ActorState, BytesKey, Sha256>::new_with_config(
-                store,
-                DEFAULT_HAMT_CONFIG,
-            );
+            Hamt::<&BS, ActorState, BytesKey, Sha256>::new_with_config(&store, DEFAULT_HAMT_CONFIG);
+        let state_root = actors.flush().unwrap();
         TestVM {
             primitives: FakePrimitives {},
-            store,
-            state_root: RefCell::new(actors.flush().unwrap()),
+            store: Rc::new(store),
+            state_root: RefCell::new(state_root),
             circulating_supply: RefCell::new(TokenAmount::zero()),
             actors_dirty: RefCell::new(false),
             actors_cache: RefCell::new(HashMap::new()),
@@ -88,15 +87,15 @@ where
         }
     }
 
-    pub fn new_with_singletons(store: &'bs MemoryBlockstore) -> TestVM<'bs, MemoryBlockstore> {
+    pub fn new_with_singletons(store: BS) -> Self {
         let reward_total = TokenAmount::from_whole(1_100_000_000i64);
         let faucet_total = TokenAmount::from_whole(1_000_000_000i64);
 
-        let v = TestVM::<'_, MemoryBlockstore>::new(store);
+        let v = TestVM::new(store);
         v.set_circulating_supply(&reward_total + &faucet_total);
 
         // system
-        let sys_st = SystemState::new(store).unwrap();
+        let sys_st = SystemState::new(&*v.store).unwrap();
         let sys_head = v.put_store(&sys_st);
         let sys_value = faucet_total.clone(); // delegate faucet funds to system so we can construct faucet by sending to bls addr
         v.set_actor(
@@ -105,7 +104,7 @@ where
         );
 
         // init
-        let init_st = InitState::new(store, "integration-test".to_string()).unwrap();
+        let init_st = InitState::new(&*v.store, "integration-test".to_string()).unwrap();
         let init_head = v.put_store(&init_st);
         v.set_actor(
             &INIT_ACTOR_ADDR,
@@ -244,9 +243,9 @@ where
 
     pub fn checkpoint(&self) -> Cid {
         // persist cache on top of latest checkpoint and clear
-        let mut actors = Hamt::<&'bs BS, ActorState, BytesKey, Sha256>::load_with_config(
+        let mut actors = Hamt::<&BS, ActorState, BytesKey, Sha256>::load_with_config(
             &self.state_root.borrow(),
-            self.store,
+            &*self.store,
             DEFAULT_HAMT_CONFIG,
         )
         .unwrap();
@@ -280,12 +279,12 @@ where
     }
 }
 
-impl<'bs, BS> VM for TestVM<'bs, BS>
+impl<BS> VM for TestVM<BS>
 where
     BS: Blockstore,
 {
     fn blockstore(&self) -> &dyn Blockstore {
-        self.store
+        &self.store
     }
 
     fn epoch(&self) -> ChainEpoch {
@@ -372,7 +371,7 @@ where
     }
     fn resolve_id_address(&self, address: &Address) -> Option<Address> {
         let st: InitState = get_state(self, &INIT_ACTOR_ADDR).unwrap();
-        st.resolve_address::<BS>(self.store, address).unwrap()
+        st.resolve_address(&self.store, address).unwrap()
     }
 
     fn set_epoch(&self, epoch: ChainEpoch) {
@@ -394,9 +393,9 @@ where
             return Some(act.clone());
         }
         // go to persisted map
-        let actors = Hamt::<&'bs BS, ActorState, BytesKey, Sha256>::load_with_config(
+        let actors = Hamt::<&BS, ActorState, BytesKey, Sha256>::load_with_config(
             &self.state_root.borrow(),
-            self.store,
+            &self.store,
             DEFAULT_HAMT_CONFIG,
         )
         .unwrap();

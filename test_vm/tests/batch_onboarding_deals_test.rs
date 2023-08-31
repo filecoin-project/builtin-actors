@@ -5,6 +5,6 @@ use test_vm::TestVM;
 #[test]
 fn batch_onboarding_deals() {
     let store = MemoryBlockstore::new();
-    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
     batch_onboarding_deals_test(&v);
 }

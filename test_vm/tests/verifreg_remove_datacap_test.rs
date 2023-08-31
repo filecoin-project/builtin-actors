@@ -7,13 +7,13 @@ use test_vm::TestVM;
 #[test]
 fn remove_datacap_simple_successful_path() {
     let store = MemoryBlockstore::new();
-    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
     remove_datacap_simple_successful_path_test(&v);
 }
 
 #[test]
 fn remove_datacap_fails_on_verifreg() {
     let store = MemoryBlockstore::new();
-    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
     remove_datacap_fails_on_verifreg_test(&v);
 }

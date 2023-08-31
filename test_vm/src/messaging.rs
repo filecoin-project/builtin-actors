@@ -59,6 +59,7 @@ use fvm_shared::{ActorID, MethodNum, Response, IPLD_RAW, METHOD_CONSTRUCTOR, MET
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::cell::{RefCell, RefMut};
+use std::rc::Rc;
 use vm_api::trace::InvocationTrace;
 use vm_api::util::get_state;
 use vm_api::{new_actor, ActorState, VM};
@@ -84,7 +85,7 @@ pub struct InternalMessage {
     pub params: Option<IpldBlock>,
 }
 
-impl<BS> MessageInfo for InvocationCtx<'_, '_, BS>
+impl<BS> MessageInfo for InvocationCtx<'_, BS>
 where
     BS: Blockstore,
 {
@@ -108,11 +109,11 @@ where
     }
 }
 
-pub struct InvocationCtx<'invocation, 'bs, BS>
+pub struct InvocationCtx<'invocation, BS>
 where
     BS: Blockstore,
 {
-    pub v: &'invocation TestVM<'bs, BS>,
+    pub v: &'invocation TestVM<BS>,
     pub top: TopCtx,
     pub msg: InternalMessage,
     pub allow_side_effects: RefCell<bool>,
@@ -122,7 +123,7 @@ where
     pub subinvocations: RefCell<Vec<InvocationTrace>>,
 }
 
-impl<'invocation, 'bs, BS> InvocationCtx<'invocation, 'bs, BS>
+impl<'invocation, 'bs, BS> InvocationCtx<'invocation, BS>
 where
     BS: Blockstore,
 {
@@ -163,7 +164,7 @@ where
         }
 
         let mut st: InitState = get_state(self.v, &INIT_ACTOR_ADDR).unwrap();
-        let (target_id, existing) = st.map_addresses_to_id(self.v.store, target, None).unwrap();
+        let (target_id, existing) = st.map_addresses_to_id(&self.v.store, target, None).unwrap();
         assert!(!existing, "should never have existing actor when no f4 address is specified");
         let target_id_addr = Address::new_id(target_id);
         let mut init_actor = self.v.actor(&INIT_ACTOR_ADDR).unwrap();
@@ -309,11 +310,11 @@ where
     }
 }
 
-impl<'invocation, 'bs, BS> Runtime for InvocationCtx<'invocation, 'bs, BS>
+impl<'invocation, 'bs, BS> Runtime for InvocationCtx<'invocation, BS>
 where
     BS: Blockstore,
 {
-    type Blockstore = &'bs BS;
+    type Blockstore = Rc<BS>;
 
     fn create_actor(
         &self,
@@ -355,7 +356,7 @@ where
         Ok(())
     }
 
-    fn store(&self) -> &&'bs BS {
+    fn store(&self) -> &Rc<BS> {
         &self.v.store
     }
 
@@ -659,7 +660,7 @@ where
     }
 }
 
-impl<BS> Primitives for InvocationCtx<'_, '_, BS>
+impl<BS> Primitives for InvocationCtx<'_, BS>
 where
     BS: Blockstore,
 {
@@ -701,7 +702,7 @@ where
     }
 }
 
-impl<BS> Verifier for InvocationCtx<'_, '_, BS>
+impl<BS> Verifier for InvocationCtx<'_, BS>
 where
     BS: Blockstore,
 {
@@ -740,7 +741,7 @@ where
     }
 }
 
-impl<BS> RuntimePolicy for InvocationCtx<'_, '_, BS>
+impl<BS> RuntimePolicy for InvocationCtx<'_, BS>
 where
     BS: Blockstore,
 {

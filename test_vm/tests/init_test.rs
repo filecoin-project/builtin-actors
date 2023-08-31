@@ -5,7 +5,7 @@ use test_vm::TestVM;
 #[test]
 fn placeholder_deploy() {
     let store = MemoryBlockstore::new();
-    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
 
     placeholder_deploy_test(&v);
 }
