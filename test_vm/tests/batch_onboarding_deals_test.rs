@@ -1,10 +1,8 @@
 use fil_actors_integration_tests::tests::batch_onboarding_deals_test;
-use fvm_ipld_blockstore::MemoryBlockstore;
-use test_vm::TestVM;
+use test_vm::new_test_vm;
 
 #[test]
 fn batch_onboarding_deals() {
-    let store = MemoryBlockstore::new();
-    let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
-    batch_onboarding_deals_test(&v);
+    let v = new_test_vm();
+    batch_onboarding_deals_test(&*v);
 }

@@ -123,7 +123,7 @@ where
     pub subinvocations: RefCell<Vec<InvocationTrace>>,
 }
 
-impl<'invocation, 'bs, BS> InvocationCtx<'invocation, BS>
+impl<'invocation, BS> InvocationCtx<'invocation, BS>
 where
     BS: Blockstore,
 {
@@ -310,7 +310,7 @@ where
     }
 }
 
-impl<'invocation, 'bs, BS> Runtime for InvocationCtx<'invocation, BS>
+impl<'invocation, BS> Runtime for InvocationCtx<'invocation, BS>
 where
     BS: Blockstore,
 {

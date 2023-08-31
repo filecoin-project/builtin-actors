@@ -22,8 +22,7 @@ use fil_actors_runtime::{
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fil_builtin_actors_state::check::Tree;
-use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_blockstore::MemoryBlockstore;
+use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::CborStore;
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
@@ -64,6 +63,12 @@ where
     network_version: NetworkVersion,
     curr_epoch: RefCell<ChainEpoch>,
     invocations: RefCell<Vec<InvocationTrace>>,
+}
+
+#[inline(never)]
+pub fn new_test_vm() -> Box<dyn VM> {
+    let bs = MemoryBlockstore::new();
+    Box::new(TestVM::new_with_singletons(bs))
 }
 
 impl<BS> TestVM<BS>

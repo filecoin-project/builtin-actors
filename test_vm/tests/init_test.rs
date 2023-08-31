@@ -1,11 +1,9 @@
 use fil_actors_integration_tests::tests::placeholder_deploy_test;
-use fvm_ipld_blockstore::MemoryBlockstore;
-use test_vm::TestVM;
+use test_vm::new_test_vm;
 
 #[test]
 fn placeholder_deploy() {
-    let store = MemoryBlockstore::new();
-    let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
+    let v = new_test_vm();
 
-    placeholder_deploy_test(&v);
+    placeholder_deploy_test(&*v);
 }
