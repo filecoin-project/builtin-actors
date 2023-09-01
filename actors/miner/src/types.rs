@@ -365,7 +365,7 @@ pub struct SectorOnChainInfo {
 bitflags::bitflags! {
     #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default, Debug)]
     #[serde(transparent)]
-    pub struct SectorOnChainInfoFlags: u8 {
+    pub struct SectorOnChainInfoFlags: u32 {
         /// QA power mechanism introduced in FIP-0045
         const SIMPLE_QA_POWER = 0x1;
     }
