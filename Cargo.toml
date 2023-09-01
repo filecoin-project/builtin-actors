@@ -31,13 +31,13 @@ fil_actor_system = { workspace = true, features = ["fil-actor"] }
 fil_actor_verifreg = { workspace = true, features = ["fil-actor"] }
 
 [build-dependencies]
-fil_actor_bundler = "5.0.0"
+fil_actor_bundler = "6.1.0"
 cid = { workspace = true }
 fil_actors_runtime = { workspace = true }
 num-traits = { workspace = true }
 
 [dependencies]
-clap = { version = "3.2.3", features = ["derive"] }
+clap = { version = "4.3.0", features = ["derive", "std", "help", "usage", "error-context"], default-features = false }
 
 [features]
 default = [] ## translates to mainnet
@@ -95,9 +95,9 @@ blake2b_simd = "1.0"
 sha2 = "0.10"
 
 # EVM
-ethers = { version = "1.0.2", features = ["abigen"] }
+ethers = { version = "2.0.9", features = ["abigen"], default-features = false }
 uint = { version = "0.9.3", default-features = false }
-etk-asm = "^0.2.1"
+etk-asm = "^0.3.0"
 rlp = { version = "0.5.1", default-features = false }
 substrate-bn = { version = "0.6.0", default-features = false }
 
@@ -119,8 +119,8 @@ fvm_ipld_encoding = "0.4.0"
 fvm_ipld_blockstore = "0.2.0"
 fvm_ipld_hamt = "0.7.0"
 fvm_ipld_kamt = "0.3.0"
-fvm_ipld_amt = { version = "0.6.1", features = ["go-interop"] }
-fvm_ipld_bitfield = "0.5.4"
+fvm_ipld_amt = { version = "0.6.1" }
+fvm_ipld_bitfield = "0.6.0"
 
 # workspace
 fil_actor_account = { version = "12.0.0", path = "actors/account" }
