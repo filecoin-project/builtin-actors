@@ -33,6 +33,8 @@ jobs:
     steps:
     - name: Checking out
       uses: actions/checkout@v3
+    - if: env.RUNNER_ENVIRONMENT != 'github-hosted'
+      uses: dtolnay/rust-toolchain@stable
     - name: Running tests
       run: |
         cargo test --locked --all --no-fail-fast --exclude=fil_builtin_actors_bundle
