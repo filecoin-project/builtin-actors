@@ -14,6 +14,7 @@ keywords = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
+bitflags = { workspace = true }
 fil_actors_runtime = { workspace = true }
 frc42_dispatch = { workspace = true }
 fvm_shared = { workspace = true }

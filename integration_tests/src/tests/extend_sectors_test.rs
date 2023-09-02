@@ -10,7 +10,8 @@ use fil_actor_market::{DealMetaArray, State as MarketState};
 use fil_actor_miner::{
     max_prove_commit_duration, power_for_sector, ExpirationExtension, ExpirationExtension2,
     ExtendSectorExpiration2Params, ExtendSectorExpirationParams, Method as MinerMethod, PowerPair,
-    ProveReplicaUpdatesParams2, ReplicaUpdate2, SectorClaim, Sectors, State as MinerState,
+    ProveReplicaUpdatesParams2, ReplicaUpdate2, SectorClaim, SectorOnChainInfoFlags, Sectors,
+    State as MinerState,
 };
 use fil_actor_verifreg::Method as VerifregMethod;
 use fil_actors_runtime::runtime::Policy;
@@ -191,7 +192,7 @@ pub fn extend_legacy_sector_with_deals_test(v: &dyn VM, do_extend2: bool) {
     // Note: we don't need to explicitly set verified weight using the legacy method
     // because legacy and simple qa power deal weight calculations line up for fully packed sectors
     // We do need to set simple_qa_power to false
-    sector_info.simple_qa_power = false;
+    sector_info.flags.set(SectorOnChainInfoFlags::SIMPLE_QA_POWER, false);
 
     // Manually craft state to match legacy sectors
     mutate_state(v, &miner_id, |st: &mut MinerState| {
