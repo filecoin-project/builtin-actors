@@ -29,7 +29,7 @@ jobs:
       run: make check
 
   test:
-    runs-on: ${{ fromJSON(github.repository == 'filecoin-project/builtin-actors' && '["self-hosted", "linux", "x64", "2xlarge"]' || '"ubuntu-latest"') }}
+    runs-on: ${{ fromJSON(github.repository == 'filecoin-project/builtin-actors' && '["self-hosted", "linux", "x64", "4xlarge"]' || '"ubuntu-latest"') }}
     steps:
     - name: Checking out
       uses: actions/checkout@v3
@@ -54,7 +54,7 @@ jobs:
         cargo run --locked -- -o output/builtin-actors.car
 
   coverage:
-    runs-on: ${{ fromJSON(github.repository == 'filecoin-project/builtin-actors' && '["self-hosted", "linux", "x64", "2xlarge"]' || '"ubuntu-latest"') }}
+    runs-on: ${{ fromJSON(github.repository == 'filecoin-project/builtin-actors' && '["self-hosted", "linux", "x64", "4xlarge"]' || '"ubuntu-latest"') }}
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
