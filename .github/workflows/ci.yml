@@ -54,12 +54,14 @@ jobs:
         cargo run --locked -- -o output/builtin-actors.car
 
   coverage:
-    runs-on: ubuntu-latest
+    runs-on: ${{ fromJSON(github.repository == 'filecoin-project/builtin-actors' && '["self-hosted", "linux", "x64", "2xlarge"]' || '"ubuntu-latest"') }}
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
     - name: Checking out
       uses: actions/checkout@v3
+    - if: env.RUNNER_ENVIRONMENT != 'github-hosted'
+      uses: dtolnay/rust-toolchain@stable
     - name: Put LLVM tools into the PATH
       run: echo "$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin" >> $GITHUB_PATH
     - name: Install demangler
