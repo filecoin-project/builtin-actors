@@ -14,8 +14,7 @@ use fil_actors_runtime::{parse_uint_key, runtime::Policy, MessageAccumulator, Mu
 
 use crate::{
     consensus_miner_min_power, Claim, ClaimsMap, CronEvent, State, CLAIMS_CONFIG,
-    CRON_QUEUE_AMT_BITWIDTH, CRON_QUEUE_HAMT_BITWIDTH, MAX_MINER_PROVE_COMMITS_PER_EPOCH,
-    PROOF_VALIDATION_BATCH_AMT_BITWIDTH,
+    CRON_QUEUE_AMT_BITWIDTH, CRON_QUEUE_HAMT_BITWIDTH, PROOF_VALIDATION_BATCH_AMT_BITWIDTH,
 };
 
 pub struct MinerCronEvent {
@@ -251,7 +250,7 @@ fn check_proofs_invariants<BS: Blockstore>(
                     return ret.map_err(|e| anyhow::anyhow!("error iterating proof validation batch for address {}: {}", address, e));
                 }
 
-                acc.require(proofs_by_address.len() as u64 <= MAX_MINER_PROVE_COMMITS_PER_EPOCH, format!("miner {address} has submitted too many proofs ({}) for batch verification", proofs_by_address.len()));
+                acc.require(proofs_by_address.len() as u64 <= Policy::default().max_miner_prove_commits_per_epoch, format!("miner {address} has submitted too many proofs ({}) for batch verification", proofs_by_address.len()));
                 Ok(())
             });
             acc.require_no_error(ret, "error iterating proof validation queue");

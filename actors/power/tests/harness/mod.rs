@@ -21,7 +21,6 @@ use num_traits::Zero;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
-use fil_actor_power::detail::GAS_ON_SUBMIT_VERIFY_SEAL;
 use fil_actor_power::ext::init::ExecParams;
 use fil_actor_power::ext::miner::ConfirmSectorProofsParams;
 use fil_actor_power::ext::miner::MinerConstructorParams;
@@ -41,6 +40,7 @@ use fil_actor_power::{CronEvent, MinerConsensusCountReturn};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::runtime::RuntimePolicy;
+use fil_actors_runtime::runtime::policy_constants::GAS_ON_SUBMIT_VERIFY_SEAL;
 use fil_actors_runtime::test_utils::CRON_ACTOR_CODE_ID;
 use fil_actors_runtime::test_utils::{
     MockRuntime, ACCOUNT_ACTOR_CODE_ID, MINER_ACTOR_CODE_ID, SYSTEM_ACTOR_CODE_ID,

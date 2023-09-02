@@ -1321,11 +1321,10 @@ mod cron_batch_proof_verifies_tests {
 mod submit_porep_for_bulk_verify_tests {
     use super::*;
 
-    use fil_actor_power::{
-        ERR_TOO_MANY_PROVE_COMMITS, MAX_MINER_PROVE_COMMITS_PER_EPOCH,
-        PROOF_VALIDATION_BATCH_AMT_BITWIDTH,
-    };
+    use fil_actor_power::{ERR_TOO_MANY_PROVE_COMMITS, PROOF_VALIDATION_BATCH_AMT_BITWIDTH};
+    use fil_actors_runtime::runtime::policy_constants::MAX_MINER_PROVE_COMMITS_PER_EPOCH;
     use fil_actors_runtime::shared::HAMT_BIT_WIDTH;
+
     use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
     use fil_actors_runtime::Multimap;
     use fvm_shared::sector::{InteractiveSealRandomness, SealRandomness, SealVerifyInfo, SectorID};

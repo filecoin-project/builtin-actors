@@ -151,6 +151,14 @@ pub struct Policy {
     // --- power ---
     /// Minimum miner consensus power
     pub minimum_consensus_power: StoragePower,
+    /// GasOnSubmitVerifySeal is amount of gas charged for SubmitPoRepForBulkVerify
+    /// This number is empirically determined
+    pub gas_on_submit_verify_seal: i64,
+    /// Maximum number of prove commits a miner can submit in one epoch
+    /// We bound this to 200 to limit the number of prove partitions we may need to update in a
+    /// given epoch to 200.
+    /// To support onboarding 1EiB/year, we need to allow at least 32 prove commits per epoch.
+    pub max_miner_prove_commits_per_epoch: u64,
 }
 
 impl Default for Policy {
@@ -211,6 +219,8 @@ impl Default for Policy {
                 policy_constants::MARKET_DEFAULT_ALLOCATION_TERM_BUFFER,
 
             minimum_consensus_power: StoragePower::from(policy_constants::MINIMUM_CONSENSUS_POWER),
+            gas_on_submit_verify_seal: policy_constants::GAS_ON_SUBMIT_VERIFY_SEAL,
+            max_miner_prove_commits_per_epoch: policy_constants::MAX_MINER_PROVE_COMMITS_PER_EPOCH,
         }
     }
 }
@@ -343,6 +353,8 @@ pub mod policy_constants {
         feature = "min-power-32g"
     )))]
     pub const MINIMUM_CONSENSUS_POWER: i64 = 10 << 40;
+    pub const GAS_ON_SUBMIT_VERIFY_SEAL: i64 = 34721049;
+    pub const MAX_MINER_PROVE_COMMITS_PER_EPOCH: u64 = 200;
 }
 
 /// A set indicating which proofs are considered valid, optimised for lookup of a small number of

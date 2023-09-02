@@ -1764,7 +1764,7 @@ impl Actor {
                     params.sector_proofs.len()
                 ));
             }
-            validate_seal_proofs(precommits[0].info.seal_proof, &params.sector_proofs)?;
+            validate_seal_proofs(rt, precommits[0].info.seal_proof, &params.sector_proofs)?;
         } else {
             validate_seal_aggregate_proof(
                 &params.aggregate_proof,
@@ -1801,7 +1801,11 @@ impl Actor {
                     info.to_seal_verify_info(miner_id, proof)
                 })
                 .collect();
-
+            // Batch seal verification does not charge gas within runtime call, charge explicitly
+            rt.charge_gas(
+                "OnSubmitVerifySeal",
+                rt.policy().gas_on_submit_verify_seal * (seal_verify_inputs.len() as i64),
+            );
             let res = rt
                 .batch_verify_seals(&seal_verify_inputs)
                 .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "failed to batch verify")?;
@@ -1941,7 +1945,7 @@ impl Actor {
                 actor_error!(not_found, "no pre-commited sector {}", params.sector_number)
             })?;
 
-        validate_seal_proofs(precommit.info.seal_proof, &[params.proof.clone()])?;
+        validate_seal_proofs(rt, precommit.info.seal_proof, &[params.proof.clone()])?;
 
         let allow_deals = true; // Legacy onboarding entry points allow pre-committed deals.
         let all_or_nothing = true; // The singleton must succeed.
@@ -4684,6 +4688,7 @@ fn validate_precommits(
 
 // Validates a batch of sector sealing proofs.
 fn validate_seal_proofs(
+    rt: &impl Runtime,
     seal_proof_type: RegisteredSealProof,
     proofs: &[RawBytes],
 ) -> Result<(), ActorError> {
@@ -4691,6 +4696,13 @@ fn validate_seal_proofs(
         seal_proof_type.proof_size().with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
             format!("failed to determine max proof size for type {:?}", seal_proof_type,)
         })?;
+    if proofs.len() as u64 >= rt.policy().max_miner_prove_commits_per_epoch {
+        return Err(actor_error!(
+            illegal_argument,
+            "attempting to prove commit more than maximum allowed {} sectors in epoch",
+            rt.policy().max_miner_prove_commits_per_epoch
+        ));
+    }
     for proof in proofs {
         if proof.len() > max_proof_size {
             return Err(actor_error!(

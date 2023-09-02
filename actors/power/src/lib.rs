@@ -42,12 +42,6 @@ mod types;
 
 // * Updated to specs-actors commit: 999e57a151cc7ada020ca2844b651499ab8c0dec (v3.0.1)
 
-/// GasOnSubmitVerifySeal is amount of gas charged for SubmitPoRepForBulkVerify
-/// This number is empirically determined
-pub mod detail {
-    pub const GAS_ON_SUBMIT_VERIFY_SEAL: i64 = 34721049;
-}
-
 /// Storage power actor methods available
 #[derive(FromPrimitive)]
 #[repr(u64)]
@@ -304,12 +298,13 @@ impl Actor {
                 )
             })?;
             if let Some(arr) = arr {
-                if arr.count() >= MAX_MINER_PROVE_COMMITS_PER_EPOCH {
+                if arr.count() >= rt.policy().max_miner_prove_commits_per_epoch {
                     return Err(ActorError::unchecked(
                         ERR_TOO_MANY_PROVE_COMMITS,
                         format!(
                             "miner {} attempting to prove commit over {} sectors in epoch",
-                            miner_addr, MAX_MINER_PROVE_COMMITS_PER_EPOCH
+                            miner_addr,
+                            rt.policy().max_miner_prove_commits_per_epoch
                         ),
                     ));
                 }
@@ -323,7 +318,7 @@ impl Actor {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to flush proofs batch map")
             })?;
 
-            rt.charge_gas("OnSubmitVerifySeal", detail::GAS_ON_SUBMIT_VERIFY_SEAL);
+            rt.charge_gas("OnSubmitVerifySeal", rt.policy().gas_on_submit_verify_seal);
             st.proof_validation_batch = Some(mmrc);
             Ok(())
         })?;
