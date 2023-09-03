@@ -26,8 +26,8 @@ use crate::expects::Expect;
 use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_by_deadline_to_index, advance_to_proving_deadline, bf_all, create_accounts,
-    create_miner, cron_tick, expect_invariants, invariant_failure_patterns,
-    market_add_balance, market_publish_deal, miner_precommit_one_sector_v2, miner_prove_sector,
+    create_miner, cron_tick, expect_invariants, invariant_failure_patterns, market_add_balance,
+    market_publish_deal, miner_precommit_one_sector_v2, miner_prove_sector,
     precommit_meta_data_from_deals, sector_deadline, submit_windowed_post, verifreg_add_client,
     verifreg_add_verifier, PrecommitMetadata,
 };
