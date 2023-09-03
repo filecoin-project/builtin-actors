@@ -10,7 +10,7 @@ use fil_actor_market::{DealMetaArray, State as MarketState};
 use fil_actor_miner::{
     max_prove_commit_duration, power_for_sector, ExpirationExtension, ExpirationExtension2,
     ExtendSectorExpiration2Params, ExtendSectorExpirationParams, Method as MinerMethod, PowerPair,
-    ProveReplicaUpdatesParams2, ReplicaUpdate2, SectorClaim, Sectors, State as MinerState,
+    ProveReplicaUpdatesParams, ReplicaUpdate, SectorClaim, Sectors, State as MinerState,
 };
 use fil_actor_verifreg::Method as VerifregMethod;
 use fil_actors_runtime::runtime::Policy;
@@ -612,17 +612,17 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
 
     // replica update
     let new_sealed_cid = make_sealed_cid(b"replica1");
-    let deal = get_deal(v, deal_ids[0]);
-    let new_unsealed_cid = v
-        .primitives()
-        .compute_unsealed_sector_cid(
-            seal_proof,
-            &[PieceInfo { size: deal.piece_size, cid: deal.piece_cid }],
-        )
-        .unwrap();
+    //let deal = get_deal(v, deal_ids[0]);
+    // let new_unsealed_cid = v
+    //     .primitives()
+    //     .compute_unsealed_sector_cid(
+    //         seal_proof,
+    //         &[PieceInfo { size: deal.piece_size, cid: deal.piece_cid }],
+    //     )
+    //     .unwrap();
 
     let (d_idx, p_idx) = sector_deadline(v, &miner_addr, sector_number);
-    let replica_update = ReplicaUpdate2 {
+    let replica_update = ReplicaUpdate {
         sector_number,
         deadline: d_idx,
         partition: p_idx,
@@ -630,7 +630,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         deals: deal_ids.clone(),
         update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
         replica_proof: vec![].into(),
-        new_unsealed_cid,
+//        new_unsealed_cid,
     };
     let updated_sectors: BitField = apply_ok(
         v,
@@ -638,7 +638,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         &miner_addr,
         &TokenAmount::zero(),
         MinerMethod::ProveReplicaUpdates2 as u64,
-        Some(ProveReplicaUpdatesParams2 { updates: vec![replica_update] }),
+        Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
     )
     .deserialize()
     .unwrap();
