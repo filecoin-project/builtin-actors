@@ -15,9 +15,9 @@ use fil_actor_cron::Method as CronMethod;
 use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
     power_for_sector, DisputeWindowedPoStParams, ExpirationExtension, ExtendSectorExpirationParams,
-    Method as MinerMethod, PowerPair, ProveCommitSectorParams, 
-    ProveReplicaUpdatesParams, ReplicaUpdate, SectorOnChainInfo, Sectors,
-    State as MinerState, TerminateSectorsParams, TerminationDeclaration, SECTORS_AMT_BITWIDTH,
+    Method as MinerMethod, PowerPair, ProveCommitSectorParams, ProveReplicaUpdatesParams,
+    ReplicaUpdate, SectorOnChainInfo, Sectors, State as MinerState, TerminateSectorsParams,
+    TerminationDeclaration, SECTORS_AMT_BITWIDTH,
 };
 use fil_actor_verifreg::Method as VerifregMethod;
 use fil_actors_runtime::runtime::Policy;

@@ -824,7 +824,7 @@ impl Actor {
 
         let valid_precommits: Vec<SectorPreCommitOnChainInfo> =
             batch_return.successes(&precommits).into_iter().cloned().collect();
-        let data_activation_inputs: Vec<DataActivationInput> =
+        let data_activation_inputs: Vec<DealsActivationInput> =
             valid_precommits.iter().map(|x| x.clone().into()).collect();
         let rew = request_current_epoch_block_reward(rt)?;
         let pwr = request_current_total_power(rt)?;
@@ -934,7 +934,7 @@ impl Actor {
         let update_sector_infos: Vec<UpdateAndSectorInfo> =
             batch_return.successes(&update_sector_infos).iter().map(|x| (*x).clone()).collect();
 
-        let data_activation_inputs: Vec<DataActivationInput> =
+        let data_activation_inputs: Vec<DealsActivationInput> =
             update_sector_infos.iter().map(|x| x.into()).collect();
 
         /*
@@ -1968,7 +1968,7 @@ impl Actor {
                 )
             })?;
 
-        let data_activations: Vec<DataActivationInput> =
+        let data_activations: Vec<DealsActivationInput> =
             precommited_sectors.iter().map(|x| x.clone().into()).collect();
         let info = get_miner_info(rt.store(), &st)?;
 
@@ -5279,35 +5279,29 @@ pub struct DealsActivationInput {
 
 // Inputs for activating builtin market deals for one sector
 // and optionally confirming CommD for this sector matches expectation
-struct DataActivationInput {
-    info: DealsActivationInput,
-    expected_commd: Option<Cid>,
-}
+// struct DataActivationInput {
+//     info: DealsActivationInput,
+//     expected_commd: Option<Cid>,
+// }
 
-impl From<SectorPreCommitOnChainInfo> for DataActivationInput {
-    fn from(pci: SectorPreCommitOnChainInfo) -> DataActivationInput {
-        DataActivationInput {
-            info: DealsActivationInput {
-                deal_ids: pci.info.deal_ids,
-                sector_expiry: pci.info.expiration,
-                sector_number: pci.info.sector_number,
-                sector_type: pci.info.seal_proof,
-            },
-            expected_commd: None, // CommD checks are always performed at precommit time
+impl From<SectorPreCommitOnChainInfo> for DealsActivationInput {
+    fn from(pci: SectorPreCommitOnChainInfo) -> DealsActivationInput {
+        DealsActivationInput {
+            deal_ids: pci.info.deal_ids,
+            sector_expiry: pci.info.expiration,
+            sector_number: pci.info.sector_number,
+            sector_type: pci.info.seal_proof,
         }
     }
 }
 
-impl From<&UpdateAndSectorInfo<'_>> for DataActivationInput {
-    fn from(usi: &UpdateAndSectorInfo) -> DataActivationInput {
-        DataActivationInput {
-            info: DealsActivationInput {
-                sector_number: usi.sector_info.sector_number,
-                sector_expiry: usi.sector_info.expiration,
-                deal_ids: usi.update.deals.clone(),
-                sector_type: usi.sector_info.seal_proof,
-            },
-            expected_commd: usi.update.new_unsealed_cid,
+impl From<&UpdateAndSectorInfo<'_>> for DealsActivationInput {
+    fn from(usi: &UpdateAndSectorInfo) -> DealsActivationInput {
+        DealsActivationInput {
+            sector_number: usi.sector_info.sector_number,
+            sector_expiry: usi.sector_info.expiration,
+            deal_ids: usi.update.deals.clone(),
+            sector_type: usi.sector_info.seal_proof,
         }
     }
 }
@@ -5421,25 +5415,11 @@ fn activate_sectors_pieces(
     Ok((claim_res.sector_results, activation_outputs))
 }
 
-// Activates deals with the built-in market actor and claims verified allocations.
-// Deals are grouped by sector.
-fn activate_sectors_deals(
-    rt: &impl Runtime,
-    activation_inputs: &[DataActivationInput],
-    compute_commd: bool,
-) -> Result<(BatchReturn, Vec<DataActivationOutput>), ActorError> {
-    let mut market_activation_inputs = vec![];
-    for input in activation_inputs {
-        market_activation_inputs.push(input.info.clone());
-    }
-
-    batch_activate_deals_and_claim_allocations(rt, &market_activation_inputs, compute_commd)
-}
-
-/// Activates the deals then claims allocations for any verified deals
+/// Activates deals then claims allocations for any verified deals
+/// Deals and claims are grouped by sectors
 /// Successfully activated sectors have their DealSpaces returned
 /// Failure to claim datacap for any verified deal results in the whole batch failing
-fn batch_activate_deals_and_claim_allocations(
+fn activate_sectors_deals(
     rt: &impl Runtime,
     activation_infos: &[DealsActivationInput],
     compute_unsealed_cid: bool,
