@@ -3415,7 +3415,7 @@ fn extend_sector_committment(
     validate_extended_expiration(policy, curr_epoch, new_expiration, sector)?;
 
     // all simple_qa_power sectors with VerifiedDealWeight > 0 MUST check all claims
-    if sector.simple_qa_power {
+    if sector.flags.contains(SectorOnChainInfoFlags::SIMPLE_QA_POWER) {
         extend_simple_qap_sector(
             policy,
             new_expiration,
@@ -3440,7 +3440,7 @@ fn extend_sector_committment_legacy(
     validate_extended_expiration(policy, curr_epoch, new_expiration, sector)?;
 
     // it is an error to do legacy sector expiration on simple-qa power sectors with deal weight
-    if sector.simple_qa_power
+    if sector.flags.contains(SectorOnChainInfoFlags::SIMPLE_QA_POWER)
         && (sector.verified_deal_weight > BigInt::zero() || sector.deal_weight > BigInt::zero())
     {
         return Err(actor_error!(
@@ -3739,7 +3739,7 @@ fn update_existing_sector_info(
 ) -> SectorOnChainInfo {
     let mut new_sector_info = sector_info.clone();
 
-    new_sector_info.simple_qa_power = true;
+    new_sector_info.flags.set(SectorOnChainInfoFlags::SIMPLE_QA_POWER, true);
     new_sector_info.sealed_cid = activated_data.seal_cid;
     new_sector_info.sector_key_cid = match new_sector_info.sector_key_cid {
         None => Some(sector_info.sealed_cid),
@@ -4841,7 +4841,7 @@ fn activate_new_sector_infos(
                 power_base_epoch: activation_epoch,
                 replaced_day_reward: TokenAmount::zero(),
                 sector_key_cid: None,
-                simple_qa_power: true,
+                flags: SectorOnChainInfoFlags::SIMPLE_QA_POWER,
             };
 
             new_sector_numbers.push(new_sector_info.sector_number);

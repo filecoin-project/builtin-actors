@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0 MIT
-pragma solidity >=0.4.25 <=0.8.17;
+pragma solidity >=0.8.17;
 
 contract Factory {
     function create(int32 value) public returns (address) {
@@ -14,6 +14,9 @@ contract Factory {
 contract FactoryChild {
     int32 value;
     constructor(int32 arg) {
+        if (arg < 0) {
+            revert("create failed");
+        }
         value = arg;
     }
     function die() public {

@@ -54,6 +54,8 @@ optional = true
 derive_builder = { workspace = true }
 hex = { workspace = true }
 rand = { workspace = true }
+# Enable the test_utils feature when testing.
+fil_actors_runtime = { workspace = true, features = ["test_utils"] }
 
 [features]
 default = []

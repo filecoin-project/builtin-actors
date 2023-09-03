@@ -16,8 +16,9 @@ use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
     power_for_sector, DisputeWindowedPoStParams, ExpirationExtension, ExtendSectorExpirationParams,
     Method as MinerMethod, PowerPair, ProveCommitSectorParams, ProveReplicaUpdatesParams,
-    ProveReplicaUpdatesParams2, ReplicaUpdate, ReplicaUpdate2, SectorOnChainInfo, Sectors,
-    State as MinerState, TerminateSectorsParams, TerminationDeclaration, SECTORS_AMT_BITWIDTH,
+    ProveReplicaUpdatesParams2, ReplicaUpdate, ReplicaUpdate2, SectorOnChainInfo,
+    SectorOnChainInfoFlags, Sectors, State as MinerState, TerminateSectorsParams,
+    TerminationDeclaration, SECTORS_AMT_BITWIDTH,
 };
 use fil_actor_verifreg::Method as VerifregMethod;
 use fil_actors_runtime::runtime::Policy;
@@ -665,7 +666,7 @@ pub fn extend_after_upgrade_test(v: &dyn VM) {
 
     let sector_number = sector_info.sector_number;
     let mut legacy_sector = sector_info;
-    legacy_sector.simple_qa_power = false;
+    legacy_sector.flags.set(SectorOnChainInfoFlags::SIMPLE_QA_POWER, false);
 
     let blockstore = &DynBlockstore::wrap(v.blockstore());
     mutate_state(v, &miner_id, |st: &mut MinerState| {
