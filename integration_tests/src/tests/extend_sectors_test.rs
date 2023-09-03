@@ -628,7 +628,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         &worker,
         &miner_addr,
         &TokenAmount::zero(),
-        MinerMethod::ProveReplicaUpdates2 as u64,
+        MinerMethod::ProveReplicaUpdates as u64,
         Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
     )
     .deserialize()
@@ -640,7 +640,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     ExpectInvocation {
         from: worker_id,
         to: miner_addr,
-        method: MinerMethod::ProveReplicaUpdates2 as u64,
+        method: MinerMethod::ProveReplicaUpdates as u64,
         subinvocs: Some(vec![
             Expect::market_activate_deals(
                 miner_id,

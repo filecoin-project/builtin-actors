@@ -41,10 +41,10 @@ use crate::util::{
 };
 
 #[allow(clippy::too_many_arguments)]
-pub fn replica_update_full_path_success_test(v: &dyn VM, v2: bool) {
+pub fn replica_update_full_path_success_test(v: &dyn VM) {
     let policy = Policy::default();
     let (sector_info, worker, miner_id, deadline_index, partition_index, sector_size) =
-        create_miner_and_upgrade_sector(v, v2);
+        create_miner_and_upgrade_sector(v);
 
     let sector_number = sector_info.sector_number;
 
@@ -94,9 +94,9 @@ pub fn replica_update_full_path_success_test(v: &dyn VM, v2: bool) {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn upgrade_and_miss_post_test(v: &dyn VM, v2: bool) {
+pub fn upgrade_and_miss_post_test(v: &dyn VM) {
     let (sector_info, worker, miner_id, deadline_index, partition_index, sector_size) =
-        create_miner_and_upgrade_sector(v, v2);
+        create_miner_and_upgrade_sector(v);
     let sector_number = sector_info.sector_number;
     let policy = Policy::default();
 
@@ -503,7 +503,7 @@ pub fn bad_batch_size_failure_test(v: &dyn VM) {
 }
 
 pub fn nodispute_after_upgrade_test(v: &dyn VM) {
-    let (_, worker, miner_id, deadline_index, _, _) = create_miner_and_upgrade_sector(v, false);
+    let (_, worker, miner_id, deadline_index, _, _) = create_miner_and_upgrade_sector(v);
 
     let dispute_params = DisputeWindowedPoStParams { deadline: deadline_index, post_index: 0 };
     apply_code(
@@ -521,7 +521,7 @@ pub fn nodispute_after_upgrade_test(v: &dyn VM) {
 
 pub fn upgrade_bad_post_dispute_test(v: &dyn VM) {
     let (sector_info, worker, miner_id, deadline_index, partition_index, _) =
-        create_miner_and_upgrade_sector(v, false);
+        create_miner_and_upgrade_sector(v);
     let policy = Policy::default();
     let sector_number = sector_info.sector_number;
 
@@ -621,7 +621,7 @@ pub fn bad_post_upgrade_dispute_test(v: &dyn VM) {
 /// Tests that an active CC sector can be correctly upgraded, and then the sector can be terminated
 pub fn terminate_after_upgrade_test(v: &dyn VM) {
     let (sector_info, worker, miner_id, deadline_index, partition_index, _) =
-        create_miner_and_upgrade_sector(v, false);
+        create_miner_and_upgrade_sector(v);
     let sector_number = sector_info.sector_number;
 
     let terminate_params = TerminateSectorsParams {
@@ -662,7 +662,7 @@ pub fn terminate_after_upgrade_test(v: &dyn VM) {
 pub fn extend_after_upgrade_test(v: &dyn VM) {
     let policy = Policy::default();
     let (sector_info, worker, miner_id, deadline_index, partition_index, _) =
-        create_miner_and_upgrade_sector(v, false);
+        create_miner_and_upgrade_sector(v);
 
     let sector_number = sector_info.sector_number;
     let mut legacy_sector = sector_info;
@@ -996,7 +996,7 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
         &worker,
         &robust,
         &TokenAmount::zero(),
-        MinerMethod::ProveReplicaUpdates2 as u64,
+        MinerMethod::ProveReplicaUpdates as u64,
         Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
     )
     .deserialize()
@@ -1008,7 +1008,7 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
     ExpectInvocation {
         from: worker_id,
         to: maddr,
-        method: MinerMethod::ProveReplicaUpdates2 as u64,
+        method: MinerMethod::ProveReplicaUpdates as u64,
         subinvocs: Some(vec![
             Expect::market_activate_deals(
                 miner_id,
@@ -1097,7 +1097,7 @@ pub fn replica_update_verified_deal_max_term_violated_test(v: &dyn VM) {
         &worker,
         &robust,
         &TokenAmount::zero(),
-        MinerMethod::ProveReplicaUpdates2 as u64,
+        MinerMethod::ProveReplicaUpdates as u64,
         Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
@@ -1256,7 +1256,6 @@ fn create_deals_frac(
 
 pub fn create_miner_and_upgrade_sector(
     v: &dyn VM,
-    v2: bool,
 ) -> (SectorOnChainInfo, Address, Address, u64, u64, SectorSize) {
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
@@ -1281,7 +1280,7 @@ pub fn create_miner_and_upgrade_sector(
 
     // replica update
     let new_sealed_cid = make_sealed_cid(b"replica1");
-    let updated_sectors: BitField = if !v2 {
+    let updated_sectors: BitField = {
         let replica_update = ReplicaUpdate {
             sector_number,
             deadline: d_idx,
@@ -1297,24 +1296,6 @@ pub fn create_miner_and_upgrade_sector(
             &robust,
             &TokenAmount::zero(),
             MinerMethod::ProveReplicaUpdates as u64,
-            Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
-        )
-    } else {
-        let replica_update = ReplicaUpdate {
-            sector_number,
-            deadline: d_idx,
-            partition: p_idx,
-            new_sealed_cid,
-            deals: deal_ids.clone(),
-            update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-            replica_proof: vec![].into(),
-        };
-        apply_ok(
-            v,
-            &worker,
-            &robust,
-            &TokenAmount::zero(),
-            MinerMethod::ProveReplicaUpdates2 as u64,
             Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
         )
     }
