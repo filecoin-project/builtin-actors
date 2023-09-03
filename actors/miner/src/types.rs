@@ -467,7 +467,7 @@ pub struct ProveReplicaUpdatesParams {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct ReplicaUpdate2 {
+pub struct ReplicaUpdateDeprecated {
     pub sector_number: SectorNumber,
     pub deadline: u64,
     pub partition: u64,
@@ -479,12 +479,12 @@ pub struct ReplicaUpdate2 {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct ProveReplicaUpdatesParams2 {
-    pub updates: Vec<ReplicaUpdate2>,
+pub struct ProveReplicaUpdatesParamsDeprecated {
+    pub updates: Vec<ReplicaUpdateDeprecated>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct ProveReplicaUpdates3Params {
+pub struct ProveReplicaUpdates2Params {
     pub sector_updates: Vec<SectorUpdateManifest>,
     // Proofs for each sector, parallel to activation manifests.
     // Exactly one of sector_proofs or aggregate_proof must be non-empty.
@@ -516,7 +516,7 @@ pub struct SectorUpdateManifest {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
-pub struct ProveReplicaUpdates3Return {
+pub struct ProveReplicaUpdates2Return {
     pub activation_results: BatchReturn,
 }
 

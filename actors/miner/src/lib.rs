@@ -122,12 +122,12 @@ pub enum Method {
     ProveCommitAggregate = 26,
     ProveReplicaUpdates = 27,
     PreCommitSectorBatch2 = 28,
-    ProveReplicaUpdates2 = 29,
+    ProveReplicaUpdatesDeprecated = 29,
     ChangeBeneficiary = 30,
     GetBeneficiary = 31,
     ExtendSectorExpiration2 = 32,
     ProveCommitSectors2 = 33,
-    ProveReplicaUpdates3 = 34,
+    ProveReplicaUpdates2 = 34,
     // Method numbers derived from FRC-0042 standards
     ChangeWorkerAddressExported = frc42_dispatch::method_hash!("ChangeWorkerAddress"),
     ChangePeerIDExported = frc42_dispatch::method_hash!("ChangePeerID"),
@@ -883,32 +883,16 @@ impl Actor {
         Self::prove_replica_updates_inner(rt, updates)
     }
 
-    fn prove_replica_updates2<RT>(
-        rt: &RT,
-        params: ProveReplicaUpdatesParams2,
-    ) -> Result<BitField, ActorError>
-    where
-        // + Clone because we messed up and need to keep a copy around between transactions.
-        // https://github.com/filecoin-project/builtin-actors/issues/133
-        RT::Blockstore: Blockstore + Clone,
-        RT: Runtime,
-    {
-        let updates = params
-            .updates
-            .into_iter()
-            .map(|ru| ReplicaUpdateInner {
-                sector_number: ru.sector_number,
-                deadline: ru.deadline,
-                partition: ru.partition,
-                new_sealed_cid: ru.new_sealed_cid,
-                new_unsealed_cid: Some(ru.new_unsealed_cid),
-                deals: ru.deals,
-                update_proof_type: ru.update_proof_type,
-                replica_proof: ru.replica_proof,
-            })
-            .collect();
-        Self::prove_replica_updates_inner(rt, updates)
+    pub fn prove_replica_updates_deprecated(
+        rt: &impl Runtime,
+        _params: ProveReplicaUpdatesParamsDeprecated,
+    ) -> Result<(), ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        Err(
+            actor_error!(unhandled_message; "invalid method {}, use {} or {}", Method::ProveReplicaUpdatesDeprecated as u64, Method::ProveReplicaUpdates as u64, Method::ProveReplicaUpdates2 as u64),
+        )
     }
+
     fn prove_replica_updates_inner<RT>(
         rt: &RT,
         updates: Vec<ReplicaUpdateInner>,
@@ -954,10 +938,7 @@ impl Actor {
             update_sector_infos.iter().map(|x| x.into()).collect();
 
         /*
-           For PRU1:
            - no CommD was specified on input so it must be computed for the first time here
-           For PRU2:
-           - CommD was specified on input but not checked so it must be computed and checked here
         */
         let compute_commd = true;
         let (batch_return, data_activations) =
@@ -1035,10 +1016,10 @@ impl Actor {
         Ok(updated_bitfield)
     }
 
-    fn prove_replica_updates3(
+    fn prove_replica_updates2(
         rt: &impl Runtime,
-        params: ProveReplicaUpdates3Params,
-    ) -> Result<ProveReplicaUpdates3Return, ActorError> {
+        params: ProveReplicaUpdates2Params,
+    ) -> Result<ProveReplicaUpdates2Return, ActorError> {
         let state: State = rt.state()?;
         let store = rt.store();
         let info = get_miner_info(store, &state)?;
@@ -1216,7 +1197,7 @@ impl Actor {
         notify_data_consumers(rt, &notifications, params.require_notification_success)?;
 
         let result = util::stack(&[validation_batch, proven_batch, data_batch]);
-        Ok(ProveReplicaUpdates3Return { activation_results: result })
+        Ok(ProveReplicaUpdates2Return { activation_results: result })
     }
 
     fn dispute_windowed_post(
@@ -5448,47 +5429,11 @@ fn activate_sectors_deals(
     compute_commd: bool,
 ) -> Result<(BatchReturn, Vec<DataActivationOutput>), ActorError> {
     let mut market_activation_inputs = vec![];
-    let mut declared_commds = vec![];
     for input in activation_inputs {
-        declared_commds.push(&input.expected_commd);
         market_activation_inputs.push(input.info.clone());
     }
 
-    let (batch_return, activation_outputs) =
-        batch_activate_deals_and_claim_allocations(rt, &market_activation_inputs, compute_commd)?;
-    if !compute_commd {
-        // no CommD computed so no checking required
-        return Ok((batch_return, activation_outputs));
-    }
-
-    // Computation of CommD was requested, so any Some() declared CommDs must be checked
-    let check_commds = batch_return.successes(&declared_commds);
-    let success_inputs = batch_return.successes(activation_inputs);
-
-    for (declared_commd, result, input) in check_commds
-        .into_iter()
-        .zip(activation_outputs.iter())
-        .zip(success_inputs.iter())
-        .map(|((a, b), c)| (a, b, c))
-    {
-        // Computation of CommD was requested, so None can be interpreted as zero data.
-        let computed_commd =
-            CompactCommD::new(result.unsealed_cid).get_cid(input.info.sector_type)?;
-        // If a CommD was declared, check it matches.
-        if let Some(declared_commd) = declared_commd {
-            if !declared_commd.eq(&computed_commd) {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "unsealed CID does not match deals for sector {}, expected {} was {}",
-                    input.info.sector_number,
-                    computed_commd,
-                    declared_commd
-                ));
-            }
-        }
-    }
-
-    Ok((batch_return, activation_outputs))
+    batch_activate_deals_and_claim_allocations(rt, &market_activation_inputs, compute_commd)
 }
 
 /// Activates the deals then claims allocations for any verified deals
@@ -5694,7 +5639,7 @@ impl ActorCode for Actor {
         ProveCommitAggregate => prove_commit_aggregate,
         ProveReplicaUpdates => prove_replica_updates,
         PreCommitSectorBatch2 => pre_commit_sector_batch2,
-        ProveReplicaUpdates2 => prove_replica_updates2,
+        ProveReplicaUpdatesDeprecated => prove_replica_updates_deprecated,
         ChangeBeneficiary|ChangeBeneficiaryExported => change_beneficiary,
         GetBeneficiary|GetBeneficiaryExported => get_beneficiary,
         ExtendSectorExpiration2 => extend_sector_expiration2,
@@ -5706,7 +5651,7 @@ impl ActorCode for Actor {
         GetPeerIDExported => get_peer_id,
         GetMultiaddrsExported => get_multiaddresses,
         ProveCommitSectors2 => prove_commit_sectors2,
-        ProveReplicaUpdates3 => prove_replica_updates3,
+        ProveReplicaUpdates2 => prove_replica_updates2,
     }
 }
 
