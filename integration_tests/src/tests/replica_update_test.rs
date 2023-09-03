@@ -6,7 +6,7 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
+use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::SectorSize;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
@@ -34,7 +34,7 @@ use crate::expects::Expect;
 use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline,
     assert_invariants, bf_all, check_sector_active, check_sector_faulty, create_accounts,
-    create_miner, deadline_state, declare_recovery, expect_invariants, get_deal, get_network_stats,
+    create_miner, deadline_state, declare_recovery, expect_invariants, get_network_stats,
     invariant_failure_patterns, make_bitfield, market_publish_deal, miner_balance, miner_power,
     precommit_sectors_v2, prove_commit_sectors, sector_info, submit_invalid_post,
     submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
@@ -981,14 +981,7 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
 
     // replica update
     let new_sealed_cid = make_sealed_cid(b"replica1");
-    let deal = get_deal(v, deal_ids[0]);
-    // let new_unsealed_cid = v
-    //     .primitives()
-    //     .compute_unsealed_sector_cid(
-    //         seal_proof,
-    //         &[PieceInfo { size: deal.piece_size, cid: deal.piece_cid }],
-    //     )
-    //     .unwrap();
+
     let replica_update = ReplicaUpdate {
         sector_number,
         deadline: d_idx,
@@ -997,7 +990,6 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
         deals: deal_ids.clone(),
         update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
         replica_proof: vec![].into(),
-        //new_unsealed_cid,
     };
     let updated_sectors: BitField = apply_ok(
         v,
@@ -1091,14 +1083,6 @@ pub fn replica_update_verified_deal_max_term_violated_test(v: &dyn VM) {
 
     // replica update
     let new_sealed_cid = make_sealed_cid(b"replica1");
-    let deal = get_deal(v, deal_ids[0]);
-    // let new_unsealed_cid = v
-    //     .primitives()
-    //     .compute_unsealed_sector_cid(
-    //         seal_proof,
-    //         &[PieceInfo { size: deal.piece_size, cid: deal.piece_cid }],
-    //     )
-    //     .unwrap();
     let replica_update = ReplicaUpdate {
         sector_number,
         deadline: d_idx,
@@ -1107,7 +1091,6 @@ pub fn replica_update_verified_deal_max_term_violated_test(v: &dyn VM) {
         deals: deal_ids,
         update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
         replica_proof: vec![].into(),
-        //new_unsealed_cid,
     };
     apply_code(
         v,
@@ -1317,14 +1300,6 @@ pub fn create_miner_and_upgrade_sector(
             Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
         )
     } else {
-        let deal = get_deal(v, deal_ids[0]);
-        // let new_unsealed_cid = v
-        //     .primitives()
-        //     .compute_unsealed_sector_cid(
-        //         seal_proof,
-        //         &[PieceInfo { size: deal.piece_size, cid: deal.piece_cid }],
-        //     )
-        //     .unwrap();
         let replica_update = ReplicaUpdate {
             sector_number,
             deadline: d_idx,
@@ -1333,7 +1308,6 @@ pub fn create_miner_and_upgrade_sector(
             deals: deal_ids.clone(),
             update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
             replica_proof: vec![].into(),
-            //new_unsealed_cid,
         };
         apply_ok(
             v,
