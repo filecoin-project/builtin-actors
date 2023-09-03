@@ -148,7 +148,8 @@ mod miner_actor_precommit_batch {
         SectorDeals, VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
     };
     use fil_actor_miner::{
-        new_deadline_info_from_offset_and_epoch, Actor, Method, PreCommitSectorBatchParams2,
+        new_deadline_info_from_offset_and_epoch, Actor, CompactCommD, Method,
+        PreCommitSectorBatchParams2,
     };
     use fil_actors_runtime::{STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR};
     use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -332,7 +333,7 @@ mod miner_actor_precommit_batch {
             precommit_epoch - 1,
             sector_expiration,
             vec![1],
-            Some(make_piece_cid(&[1])),
+            CompactCommD::new(Some(make_piece_cid(&[1]))),
         );
         let sectors = vec![sector];
         {

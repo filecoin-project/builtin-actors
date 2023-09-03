@@ -1045,7 +1045,7 @@ impl Actor {
 
         // Validate parameters.
         rt.validate_immediate_caller_is(
-            info.control_addresses.iter().chain(&[info.owner, info.worker]),
+            info.control_addresses.iter().chain(&[info.worker, info.owner]),
         )?;
         if params.sector_proofs.is_empty() == params.aggregate_proof.is_empty() {
             return Err(actor_error!(
@@ -1154,7 +1154,7 @@ impl Actor {
         }
         let proven_batch = proven_batch_gen.gen();
 
-        // Activate data and compute CommD.
+        // Activate data.
         let data_activation_inputs: Vec<SectorPiecesActivationInput> = proven_manifests
             .iter()
             .map(|(update, info)| SectorPiecesActivationInput {
@@ -1855,7 +1855,7 @@ impl Actor {
                     sector_expiry: precommit.info.expiration,
                     sector_number: precommit.info.sector_number,
                     sector_type: precommit.info.seal_proof,
-                    expected_commd: Some(precommit.info.unsealed_cid.clone()),
+                    expected_commd: Some(precommit.info.unsealed_cid.clone()), // Check CommD
                 }
             })
             .collect();
@@ -5365,8 +5365,10 @@ struct ReplicaUpdateActivatedData {
 
 // Activates data pieces by claiming allocations with the verified registry.
 // Pieces are grouped by sector and succeed or fail in sector groups.
-// Activation inputs specify an expected CommD for the sector,
-// against which the CommD computed from the pieces is checked.
+// If an activation input specifies an expected CommD for the sector, a CommD
+// is calculated from the pieces and must match.
+// This method never returns CommDs in the output type; either the caller provided
+// them and they are correct, or the caller did not provide anything that needs checking.
 fn activate_sectors_pieces(
     rt: &impl Runtime,
     activation_inputs: Vec<SectorPiecesActivationInput>,
@@ -5374,16 +5376,15 @@ fn activate_sectors_pieces(
 ) -> Result<(BatchReturn, Vec<DataActivationOutput>), ActorError> {
     // Get a flattened list of verified claims for all activated sectors
     let mut verified_claims = Vec::new();
-    let mut computed_commds = Vec::new();
     let mut unverified_spaces = Vec::new();
     for activation_info in activation_inputs {
-        let computed_commd = unsealed_cid_from_pieces(
-            rt,
-            &activation_info.piece_manifests,
-            activation_info.sector_type,
-        )?;
         // Check a declared CommD matches that computed from the data.
         if let Some(declared_commd) = activation_info.expected_commd {
+            let computed_commd = unsealed_cid_from_pieces(
+                rt,
+                &activation_info.piece_manifests,
+                activation_info.sector_type,
+            )?;
             if !declared_commd.eq(&computed_commd) {
                 return Err(actor_error!(
                     illegal_argument,
@@ -5394,7 +5395,6 @@ fn activate_sectors_pieces(
                 ));
             }
         }
-        computed_commds.push(computed_commd);
 
         let mut sector_claims = vec![];
         let mut unverified_space = BigInt::zero();
@@ -5429,12 +5429,11 @@ fn activate_sectors_pieces(
     let activation_outputs = claim_res
         .sector_claims
         .iter()
-        .zip(claim_res.sector_results.successes(&computed_commds))
         .zip(claim_res.sector_results.successes(&unverified_spaces))
-        .map(|((sector_claim, computed_commd), unverified_space)| DataActivationOutput {
+        .map(|(sector_claim, unverified_space)| DataActivationOutput {
             unverified_space: unverified_space.clone(),
             verified_space: sector_claim.claimed_space.clone(),
-            unsealed_cid: computed_commd.0,
+            unsealed_cid: None,
         })
         .collect();
 
