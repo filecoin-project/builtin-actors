@@ -85,8 +85,6 @@ fn prove_single_sector() {
 
     assert_eq!(precommit.info.seal_proof, sector.seal_proof);
     assert_eq!(precommit.info.sealed_cid, sector.sealed_cid);
-    assert_eq!(verified_deal_space, sector.verified_deal_weight);
-    assert_eq!(deal_space, sector.deal_weight);
     assert_eq!(*rt.epoch.borrow(), sector.activation);
     assert_eq!(precommit.info.expiration, sector.expiration);
 

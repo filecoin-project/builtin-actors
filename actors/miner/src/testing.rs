@@ -3,7 +3,9 @@ use crate::{
     SectorOnChainInfo, SectorPreCommitOnChainInfo, Sectors, State,
 };
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{parse_uint_key, Map, MessageAccumulator, DEFAULT_HAMT_CONFIG};
+use fil_actors_runtime::{
+    parse_uint_key, DealWeight, Map, MessageAccumulator, DEFAULT_HAMT_CONFIG,
+};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::CborStore;
@@ -80,6 +82,8 @@ pub fn check_state_invariants<BS: Blockstore>(
                         DealSummary {
                             sector_start: sector.activation,
                             sector_expiration: sector.expiration,
+                            deal_weight: sector.deal_weight.clone(),
+                            verified_deal_weight: sector.verified_deal_weight.clone(),
                         },
                     );
                 }
@@ -141,6 +145,8 @@ pub fn check_state_invariants<BS: Blockstore>(
 pub struct DealSummary {
     pub sector_start: ChainEpoch,
     pub sector_expiration: ChainEpoch,
+    pub deal_weight: DealWeight,
+    pub verified_deal_weight: DealWeight,
 }
 
 pub struct StateSummary {
