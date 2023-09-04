@@ -6,7 +6,7 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
+use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::SectorSize;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
@@ -16,8 +16,8 @@ use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
     power_for_sector, DisputeWindowedPoStParams, ExpirationExtension, ExtendSectorExpirationParams,
     Method as MinerMethod, PowerPair, ProveCommitSectorParams, ProveReplicaUpdatesParams,
-    ProveReplicaUpdatesParams2, ReplicaUpdate, ReplicaUpdate2, SectorOnChainInfo, Sectors,
-    State as MinerState, TerminateSectorsParams, TerminationDeclaration, SECTORS_AMT_BITWIDTH,
+    ReplicaUpdate, SectorOnChainInfo, Sectors, State as MinerState, TerminateSectorsParams,
+    TerminationDeclaration, SECTORS_AMT_BITWIDTH,
 };
 use fil_actor_verifreg::Method as VerifregMethod;
 use fil_actors_runtime::runtime::Policy;
@@ -34,17 +34,17 @@ use crate::expects::Expect;
 use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline,
     assert_invariants, bf_all, check_sector_active, check_sector_faulty, create_accounts,
-    create_miner, deadline_state, declare_recovery, expect_invariants, get_deal, get_network_stats,
+    create_miner, deadline_state, declare_recovery, expect_invariants, get_network_stats,
     invariant_failure_patterns, make_bitfield, market_publish_deal, miner_balance, miner_power,
     precommit_sectors_v2, prove_commit_sectors, sector_info, submit_invalid_post,
     submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
 };
 
 #[allow(clippy::too_many_arguments)]
-pub fn replica_update_full_path_success_test(v: &dyn VM, v2: bool) {
+pub fn replica_update_full_path_success_test(v: &dyn VM) {
     let policy = Policy::default();
     let (sector_info, worker, miner_id, deadline_index, partition_index, sector_size) =
-        create_miner_and_upgrade_sector(v, v2);
+        create_miner_and_upgrade_sector(v);
 
     let sector_number = sector_info.sector_number;
 
@@ -94,9 +94,9 @@ pub fn replica_update_full_path_success_test(v: &dyn VM, v2: bool) {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn upgrade_and_miss_post_test(v: &dyn VM, v2: bool) {
+pub fn upgrade_and_miss_post_test(v: &dyn VM) {
     let (sector_info, worker, miner_id, deadline_index, partition_index, sector_size) =
-        create_miner_and_upgrade_sector(v, v2);
+        create_miner_and_upgrade_sector(v);
     let sector_number = sector_info.sector_number;
     let policy = Policy::default();
 
@@ -503,7 +503,7 @@ pub fn bad_batch_size_failure_test(v: &dyn VM) {
 }
 
 pub fn nodispute_after_upgrade_test(v: &dyn VM) {
-    let (_, worker, miner_id, deadline_index, _, _) = create_miner_and_upgrade_sector(v, false);
+    let (_, worker, miner_id, deadline_index, _, _) = create_miner_and_upgrade_sector(v);
 
     let dispute_params = DisputeWindowedPoStParams { deadline: deadline_index, post_index: 0 };
     apply_code(
@@ -521,7 +521,7 @@ pub fn nodispute_after_upgrade_test(v: &dyn VM) {
 
 pub fn upgrade_bad_post_dispute_test(v: &dyn VM) {
     let (sector_info, worker, miner_id, deadline_index, partition_index, _) =
-        create_miner_and_upgrade_sector(v, false);
+        create_miner_and_upgrade_sector(v);
     let policy = Policy::default();
     let sector_number = sector_info.sector_number;
 
@@ -621,7 +621,7 @@ pub fn bad_post_upgrade_dispute_test(v: &dyn VM) {
 /// Tests that an active CC sector can be correctly upgraded, and then the sector can be terminated
 pub fn terminate_after_upgrade_test(v: &dyn VM) {
     let (sector_info, worker, miner_id, deadline_index, partition_index, _) =
-        create_miner_and_upgrade_sector(v, false);
+        create_miner_and_upgrade_sector(v);
     let sector_number = sector_info.sector_number;
 
     let terminate_params = TerminateSectorsParams {
@@ -662,7 +662,7 @@ pub fn terminate_after_upgrade_test(v: &dyn VM) {
 pub fn extend_after_upgrade_test(v: &dyn VM) {
     let policy = Policy::default();
     let (sector_info, worker, miner_id, deadline_index, partition_index, _) =
-        create_miner_and_upgrade_sector(v, false);
+        create_miner_and_upgrade_sector(v);
 
     let sector_number = sector_info.sector_number;
     let mut legacy_sector = sector_info;
@@ -981,15 +981,8 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
 
     // replica update
     let new_sealed_cid = make_sealed_cid(b"replica1");
-    let deal = get_deal(v, deal_ids[0]);
-    let new_unsealed_cid = v
-        .primitives()
-        .compute_unsealed_sector_cid(
-            seal_proof,
-            &[PieceInfo { size: deal.piece_size, cid: deal.piece_cid }],
-        )
-        .unwrap();
-    let replica_update = ReplicaUpdate2 {
+
+    let replica_update = ReplicaUpdate {
         sector_number,
         deadline: d_idx,
         partition: p_idx,
@@ -997,15 +990,14 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
         deals: deal_ids.clone(),
         update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
         replica_proof: vec![].into(),
-        new_unsealed_cid,
     };
     let updated_sectors: BitField = apply_ok(
         v,
         &worker,
         &robust,
         &TokenAmount::zero(),
-        MinerMethod::ProveReplicaUpdates2 as u64,
-        Some(ProveReplicaUpdatesParams2 { updates: vec![replica_update] }),
+        MinerMethod::ProveReplicaUpdates as u64,
+        Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
     )
     .deserialize()
     .unwrap();
@@ -1016,7 +1008,7 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
     ExpectInvocation {
         from: worker_id,
         to: maddr,
-        method: MinerMethod::ProveReplicaUpdates2 as u64,
+        method: MinerMethod::ProveReplicaUpdates as u64,
         subinvocs: Some(vec![
             Expect::market_activate_deals(
                 miner_id,
@@ -1091,15 +1083,7 @@ pub fn replica_update_verified_deal_max_term_violated_test(v: &dyn VM) {
 
     // replica update
     let new_sealed_cid = make_sealed_cid(b"replica1");
-    let deal = get_deal(v, deal_ids[0]);
-    let new_unsealed_cid = v
-        .primitives()
-        .compute_unsealed_sector_cid(
-            seal_proof,
-            &[PieceInfo { size: deal.piece_size, cid: deal.piece_cid }],
-        )
-        .unwrap();
-    let replica_update = ReplicaUpdate2 {
+    let replica_update = ReplicaUpdate {
         sector_number,
         deadline: d_idx,
         partition: p_idx,
@@ -1107,15 +1091,14 @@ pub fn replica_update_verified_deal_max_term_violated_test(v: &dyn VM) {
         deals: deal_ids,
         update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
         replica_proof: vec![].into(),
-        new_unsealed_cid,
     };
     apply_code(
         v,
         &worker,
         &robust,
         &TokenAmount::zero(),
-        MinerMethod::ProveReplicaUpdates2 as u64,
-        Some(ProveReplicaUpdatesParams2 { updates: vec![replica_update] }),
+        MinerMethod::ProveReplicaUpdates as u64,
+        Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 }
@@ -1273,7 +1256,6 @@ fn create_deals_frac(
 
 pub fn create_miner_and_upgrade_sector(
     v: &dyn VM,
-    v2: bool,
 ) -> (SectorOnChainInfo, Address, Address, u64, u64, SectorSize) {
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
@@ -1298,7 +1280,7 @@ pub fn create_miner_and_upgrade_sector(
 
     // replica update
     let new_sealed_cid = make_sealed_cid(b"replica1");
-    let updated_sectors: BitField = if !v2 {
+    let updated_sectors: BitField = {
         let replica_update = ReplicaUpdate {
             sector_number,
             deadline: d_idx,
@@ -1315,33 +1297,6 @@ pub fn create_miner_and_upgrade_sector(
             &TokenAmount::zero(),
             MinerMethod::ProveReplicaUpdates as u64,
             Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
-        )
-    } else {
-        let deal = get_deal(v, deal_ids[0]);
-        let new_unsealed_cid = v
-            .primitives()
-            .compute_unsealed_sector_cid(
-                seal_proof,
-                &[PieceInfo { size: deal.piece_size, cid: deal.piece_cid }],
-            )
-            .unwrap();
-        let replica_update = ReplicaUpdate2 {
-            sector_number,
-            deadline: d_idx,
-            partition: p_idx,
-            new_sealed_cid,
-            deals: deal_ids.clone(),
-            update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-            replica_proof: vec![].into(),
-            new_unsealed_cid,
-        };
-        apply_ok(
-            v,
-            &worker,
-            &robust,
-            &TokenAmount::zero(),
-            MinerMethod::ProveReplicaUpdates2 as u64,
-            Some(ProveReplicaUpdatesParams2 { updates: vec![replica_update] }),
         )
     }
     .deserialize()
