@@ -52,6 +52,7 @@ use fil_actor_verifreg::{
     AddVerifiedClientParams, AllocationID, ClaimID, ClaimTerm, ExtendClaimTermsParams,
     Method as VerifregMethod, RemoveExpiredAllocationsParams, VerifierParams,
 };
+use fil_actors_runtime::DealWeight;
 use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::policy_constants::{
@@ -1145,4 +1146,13 @@ pub fn get_deal(v: &dyn VM, deal_id: DealID) -> DealProposal {
     let state: fil_actor_market::State =
         RawBytes::new(bs.get(&actor.state).unwrap().unwrap()).deserialize().unwrap();
     state.get_proposal(&bs, deal_id).unwrap()
+}
+
+// return (deal_weight, verified_deal_weight)
+pub fn get_deal_weights(v: &dyn VM, deal_id: DealID) -> (DealWeight, DealWeight) {
+    let deal = get_deal(v, deal_id);
+    if deal.verified_deal {
+        return (DealWeight::zero(), deal.piece_size)
+    }
+    return (deal.piece_size, DealWeight::zero())
 }

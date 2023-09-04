@@ -37,7 +37,7 @@ use crate::util::{
     create_miner, deadline_state, declare_recovery, expect_invariants, get_network_stats,
     invariant_failure_patterns, make_bitfield, market_publish_deal, miner_balance, miner_power,
     precommit_sectors_v2, prove_commit_sectors, sector_info, submit_invalid_post,
-    submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
+    submit_windowed_post, verifreg_add_client, verifreg_add_verifier, get_deal_weights,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -267,14 +267,16 @@ pub fn prove_replica_update_multi_dline_test(v: &dyn VM) {
     assert!(ret_bf.get(first_sector_number_p1));
     assert!(ret_bf.get(first_sector_number_p2));
 
+    let deal_weights1 = get_deal_weights(v, deal_ids[0]);
+    let deal_weights2 = get_deal_weights(v, deal_ids[1]);
     let new_sector_info_p1 = sector_info(v, &maddr, first_sector_number_p1);
-    assert_eq!(deal_ids[0], new_sector_info_p1.deal_ids[0]);
-    assert_eq!(1, new_sector_info_p1.deal_ids.len());
+    assert_eq!(deal_weights1.0, new_sector_info_p1.deal_weight);
+    assert_eq!(deal_weights1.1, new_sector_info_p1.verified_deal_weight);
     assert_eq!(old_sector_commr_p1, new_sector_info_p1.sector_key_cid.unwrap());
     assert_eq!(new_sealed_cid1, new_sector_info_p1.sealed_cid);
     let new_sector_info_p2 = sector_info(v, &maddr, first_sector_number_p2);
-    assert_eq!(deal_ids[1], new_sector_info_p2.deal_ids[0]);
-    assert_eq!(1, new_sector_info_p2.deal_ids.len());
+    assert_eq!(deal_weights2.0, new_sector_info_p2.deal_weight);
+    assert_eq!(deal_weights2.1, new_sector_info_p2.verified_deal_weight);
     assert_eq!(old_sector_commr_p2, new_sector_info_p2.sector_key_cid.unwrap());
     assert_eq!(new_sealed_cid2, new_sector_info_p2.sealed_cid);
 
@@ -597,9 +599,10 @@ pub fn bad_post_upgrade_dispute_test(v: &dyn VM) {
     assert_eq!(vec![100], bf_all(updated_sectors));
 
     // sanity check the sector after update
+    let weights = get_deal_weights(v, deal_ids[0]);
     let new_sector_info = sector_info(v, &maddr, sector_number);
-    assert_eq!(1, new_sector_info.deal_ids.len());
-    assert_eq!(deal_ids[0], new_sector_info.deal_ids[0]);
+    assert_eq!(weights.0, new_sector_info.deal_weight);
+    assert_eq!(weights.1, new_sector_info.verified_deal_weight);
     assert_eq!(old_sector_info.sealed_cid, new_sector_info.sector_key_cid.unwrap());
     assert_eq!(new_cid, new_sector_info.sealed_cid);
 
@@ -930,12 +933,16 @@ pub fn deal_included_in_multiple_sectors_failure_test(v: &dyn VM) {
     assert!(ret_bf.get(first_sector_number));
     assert!(!ret_bf.get(first_sector_number + 1));
 
+    let weights1 = get_deal_weights(v, deal_ids[0]);
+    let weights2 = get_deal_weights(v, deal_ids[1]);
     let new_sector_info_p1 = sector_info(v, &maddr, first_sector_number);
-    assert_eq!(deal_ids, new_sector_info_p1.deal_ids);
+    assert_eq!(weights1.0 + weights2.0, new_sector_info_p1.deal_weight);
+    assert_eq!(weights1.1 + weights2.1, new_sector_info_p1.verified_deal_weight);
     assert_eq!(new_sealed_cid1, new_sector_info_p1.sealed_cid);
 
     let new_sector_info_p2 = sector_info(v, &maddr, first_sector_number + 1);
-    assert!(new_sector_info_p2.deal_ids.len().is_zero());
+    assert!(new_sector_info_p2.deal_weight.is_zero());
+    assert!(new_sector_info_p2.verified_deal_weight.is_zero());
     assert_ne!(new_sealed_cid2, new_sector_info_p2.sealed_cid);
 
     assert_invariants(v, &Policy::default())
@@ -1038,9 +1045,10 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
     .matches(v.take_invocations().last().unwrap());
 
     // sanity check the sector after update
+    let weights = get_deal_weights(v, deal_ids[0]);
     let new_sector_info = sector_info(v, &maddr, sector_number);
-    assert_eq!(1, new_sector_info.deal_ids.len());
-    assert_eq!(deal_ids[0], new_sector_info.deal_ids[0]);
+    assert_eq!(weights.0, new_sector_info.deal_weight);
+    assert_eq!(weights.1, new_sector_info.verified_deal_weight);
     assert_eq!(old_sector_info.sealed_cid, new_sector_info.sector_key_cid.unwrap());
     assert_eq!(new_sealed_cid, new_sector_info.sealed_cid);
 }
