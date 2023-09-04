@@ -74,15 +74,15 @@ use fil_actor_miner::{
     MinerConstructorParams as ConstructorParams, MinerInfo, Partition, PendingBeneficiaryChange,
     PieceActivationManifest, PieceChange, PieceReturn, PoStPartition, PowerPair,
     PreCommitSectorBatchParams, PreCommitSectorBatchParams2, PreCommitSectorParams,
-    ProveCommitAggregateParams, ProveCommitSectorParams, ProveReplicaUpdates3Params,
-    ProveReplicaUpdates3Return, RecoveryDeclaration, ReportConsensusFaultParams, SectorChanges,
-    SectorContentChangedParams, SectorContentChangedReturn, SectorOnChainInfo, SectorPreCommitInfo,
-    SectorPreCommitOnChainInfo, SectorReturn, SectorUpdateManifest, Sectors, State,
-    SubmitWindowedPoStParams, TerminateSectorsParams, TerminationDeclaration,
-    VerifiedAllocationKey, VestingFunds, WindowedPoSt, WithdrawBalanceParams,
-    WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE, REWARD_VESTING_SPEC, SECTORS_AMT_BITWIDTH,
-    SECTOR_CONTENT_CHANGED,
+    ProveCommitAggregateParams, ProveCommitSectorParams, RecoveryDeclaration,
+    ReportConsensusFaultParams, SectorChanges, SectorContentChangedParams,
+    SectorContentChangedReturn, SectorOnChainInfo, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
+    SectorReturn, SectorUpdateManifest, Sectors, State, SubmitWindowedPoStParams,
+    TerminateSectorsParams, TerminationDeclaration, VerifiedAllocationKey, VestingFunds,
+    WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE,
+    REWARD_VESTING_SPEC, SECTORS_AMT_BITWIDTH, SECTOR_CONTENT_CHANGED,
 };
+use fil_actor_miner::{ProveReplicaUpdates2Params, ProveReplicaUpdates2Return};
 use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
 };
@@ -1107,18 +1107,18 @@ impl ActorHarness {
         }
     }
 
-    pub fn prove_replica_updates3_batch(
+    pub fn prove_replica_updates2_batch(
         &self,
         rt: &MockRuntime,
         sector_updates: &[SectorUpdateManifest],
         require_activation_success: bool,
         require_notification_success: bool,
-    ) -> Result<ProveReplicaUpdates3Return, ActorError> {
+    ) -> Result<ProveReplicaUpdates2Return, ActorError> {
         fn make_proof(i: u8) -> RawBytes {
             RawBytes::new(vec![i, i, i, i])
         }
 
-        let params = ProveReplicaUpdates3Params {
+        let params = ProveReplicaUpdates2Params {
             sector_updates: sector_updates.into(),
             sector_proofs: sector_updates.iter().map(|su| make_proof(su.sector as u8)).collect(),
             aggregate_proof: RawBytes::default(),
@@ -1235,9 +1235,9 @@ impl ActorHarness {
             ExitCode::OK,
         );
 
-        let result: ProveReplicaUpdates3Return = rt
+        let result: ProveReplicaUpdates2Return = rt
             .call::<Actor>(
-                MinerMethod::ProveReplicaUpdates3 as u64,
+                MinerMethod::ProveReplicaUpdates2 as u64,
                 IpldBlock::serialize_cbor(&params).unwrap(),
             )
             .unwrap()

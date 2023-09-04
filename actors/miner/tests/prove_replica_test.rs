@@ -4,7 +4,7 @@ use fvm_shared::sector::{SectorNumber, StoragePower};
 use fvm_shared::{bigint::Zero, clock::ChainEpoch, econ::TokenAmount, ActorID};
 
 use fil_actor_miner::ext::verifreg::AllocationID;
-use fil_actor_miner::ProveReplicaUpdates3Return;
+use fil_actor_miner::ProveReplicaUpdates2Return;
 use fil_actor_miner::{
     CompactCommD, PieceActivationManifest, SectorOnChainInfo, SectorPreCommitInfo,
     SectorPreCommitOnChainInfo, SectorUpdateManifest, State,
@@ -45,9 +45,9 @@ fn prove_basic_updates() {
         make_update_manifest(&st, store, &sectors[3], &[(piece_size, client_id, 1001, 2001)]), // Alloc and deal
     ];
 
-    let result = h.prove_replica_updates3_batch(&rt, &sector_updates, true, true).unwrap();
+    let result = h.prove_replica_updates2_batch(&rt, &sector_updates, true, true).unwrap();
     assert_eq!(
-        ProveReplicaUpdates3Return { activation_results: BatchReturn::ok(sectors.len() as u32) },
+        ProveReplicaUpdates2Return { activation_results: BatchReturn::ok(sectors.len() as u32) },
         result
     );
 
