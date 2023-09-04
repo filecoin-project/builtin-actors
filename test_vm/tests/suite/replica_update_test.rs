@@ -2,7 +2,6 @@ use fil_actors_integration_tests::tests::create_miner_and_upgrade_sector;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use std::rc::Rc;
-use test_case::test_case;
 use test_vm::TestVM;
 
 use fil_actors_integration_tests::tests::{
@@ -19,30 +18,27 @@ use fil_actors_integration_tests::util::assert_invariants;
 
 // ---- Success cases ----
 // Tests that an active CC sector can be correctly upgraded, and the expected state changes occur
-#[test_case(false; "v1")]
-#[test_case(true; "v2")]
-fn replica_update_simple_path_success(v2: bool) {
+#[test]
+fn replica_update_simple_path_success() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
-    create_miner_and_upgrade_sector(&v, v2);
+    create_miner_and_upgrade_sector(&v);
     assert_invariants(&v, &Policy::default(), None);
 }
 
 // Tests a successful upgrade, followed by the sector going faulty and recovering
-#[test_case(false; "v1")]
-#[test_case(true; "v2")]
-fn replica_update_full_path_success(v2: bool) {
+#[test]
+fn replica_update_full_path_success() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
-    replica_update_full_path_success_test(&v, v2);
+    replica_update_full_path_success_test(&v);
 }
 
-#[test_case(false; "v1")]
-#[test_case(true; "v2")]
-fn upgrade_and_miss_post(v2: bool) {
+#[test]
+fn upgrade_and_miss_post() {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
-    upgrade_and_miss_post_test(&v, v2);
+    upgrade_and_miss_post_test(&v);
 }
 
 #[test]
