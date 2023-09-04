@@ -52,7 +52,6 @@ use fil_actor_verifreg::{
     AddVerifiedClientParams, AllocationID, ClaimID, ClaimTerm, ExtendClaimTermsParams,
     Method as VerifregMethod, RemoveExpiredAllocationsParams, VerifierParams,
 };
-use fil_actors_runtime::DealWeight;
 use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::policy_constants::{
@@ -61,6 +60,7 @@ use fil_actors_runtime::runtime::policy_constants::{
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::make_piece_cid;
 use fil_actors_runtime::test_utils::make_sealed_cid;
+use fil_actors_runtime::DealWeight;
 use fil_actors_runtime::CRON_ACTOR_ADDR;
 use fil_actors_runtime::DATACAP_TOKEN_ACTOR_ADDR;
 use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
@@ -1152,7 +1152,7 @@ pub fn get_deal(v: &dyn VM, deal_id: DealID) -> DealProposal {
 pub fn get_deal_weights(v: &dyn VM, deal_id: DealID) -> (DealWeight, DealWeight) {
     let deal = get_deal(v, deal_id);
     if deal.verified_deal {
-        return (DealWeight::zero(), deal.piece_size)
+        return (DealWeight::zero(), DealWeight::from(deal.piece_size.0));
     }
-    return (deal.piece_size, DealWeight::zero())
+    (DealWeight::from(deal.piece_size.0), DealWeight::zero())
 }

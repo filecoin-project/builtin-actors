@@ -34,10 +34,10 @@ use crate::expects::Expect;
 use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline,
     assert_invariants, bf_all, check_sector_active, check_sector_faulty, create_accounts,
-    create_miner, deadline_state, declare_recovery, expect_invariants, get_network_stats,
-    invariant_failure_patterns, make_bitfield, market_publish_deal, miner_balance, miner_power,
-    precommit_sectors_v2, prove_commit_sectors, sector_info, submit_invalid_post,
-    submit_windowed_post, verifreg_add_client, verifreg_add_verifier, get_deal_weights,
+    create_miner, deadline_state, declare_recovery, expect_invariants, get_deal_weights,
+    get_network_stats, invariant_failure_patterns, make_bitfield, market_publish_deal,
+    miner_balance, miner_power, precommit_sectors_v2, prove_commit_sectors, sector_info,
+    submit_invalid_post, submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -1183,7 +1183,8 @@ pub fn create_sector(
 
     // sanity check the sector
     let old_sector_info = sector_info(v, &maddr, sector_number);
-    assert!(old_sector_info.deal_ids.is_empty());
+    assert!(old_sector_info.verified_deal_weight.is_zero());
+    assert!(old_sector_info.deal_weight.is_zero());
     assert_eq!(None, old_sector_info.sector_key_cid);
     let miner_power = miner_power(v, &maddr);
     assert_eq!(StoragePower::from(seal_proof.sector_size().unwrap() as u64), miner_power.raw);
@@ -1312,9 +1313,10 @@ pub fn create_miner_and_upgrade_sector(
     assert_eq!(vec![100], bf_all(updated_sectors));
 
     // sanity check the sector after update
+    let weights = get_deal_weights(v, deal_ids[0]);
     let new_sector_info = sector_info(v, &maddr, sector_number);
-    assert_eq!(1, new_sector_info.deal_ids.len());
-    assert_eq!(deal_ids[0], new_sector_info.deal_ids[0]);
+    assert_eq!(weights.0, new_sector_info.deal_weight);
+    assert_eq!(weights.1, new_sector_info.verified_deal_weight);
     assert_eq!(old_sector_info.sealed_cid, new_sector_info.sector_key_cid.unwrap());
     assert_eq!(new_sealed_cid, new_sector_info.sealed_cid);
     (new_sector_info, worker, maddr, d_idx, p_idx, seal_proof.sector_size().unwrap())
