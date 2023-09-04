@@ -72,21 +72,7 @@ fn terminate_multiple_deals_from_multiple_providers() {
     let prop4 = get_deal_proposal(&rt, deal4);
     terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, provider2, &[deal4]);
     assert_deal_deleted(&rt, deal4, prop4);
-    check_state_with_expected(
-        &rt,
-        &[
-            Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
-                .unwrap(),
-            Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
-                .unwrap(),
-            Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
-                .unwrap(),
-            Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
-                .unwrap(),
-            Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
-                .unwrap(),
-        ],
-    );
+    check_state(&rt);
 }
 
 #[test]
@@ -132,15 +118,7 @@ fn ignore_deal_proposal_that_does_not_exist() {
     assert_deal_deleted(&rt, deal1, prop1);
     assert_deal_deleted(&rt, deal2, prop2);
     assert_deals_not_terminated(&rt, &[deal3]);
-    check_state_with_expected(
-        &rt,
-        &[
-            Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
-                .unwrap(),
-            Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
-                .unwrap(),
-        ],
-    );
+    check_state(&rt);
 }
 
 #[test]
@@ -186,15 +164,7 @@ fn terminate_valid_deals_along_with_just_expired_deal() {
     assert_deal_deleted(&rt, deal1, prop1);
     assert_deal_deleted(&rt, deal2, prop2);
     assert_deals_not_terminated(&rt, &[deal3]);
-    check_state_with_expected(
-        &rt,
-        &[
-            Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
-                .unwrap(),
-            Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
-                .unwrap(),
-        ],
-    );
+    check_state(&rt);
 }
 
 #[test]
@@ -244,11 +214,7 @@ fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
     assert_deal_deleted(&rt, deal_ids[0], deal1);
 
     // terminated deal has a dangling deal op, normally expired deal doesn't
-    check_state_with_expected(
-        &rt,
-        &[Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
-            .unwrap()],
-    );
+    check_state(&rt);
 }
 
 #[test]
@@ -284,17 +250,7 @@ fn terminating_a_deal_the_second_time_does_not_affect_existing_deals_in_the_batc
     rt.set_epoch(current_epoch + 1);
     terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &deals);
 
-    check_state_with_expected(
-        &rt,
-        &[
-            Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
-                .unwrap(),
-            Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
-                .unwrap(),
-            Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
-                .unwrap(),
-        ],
-    );
+    check_state(&rt);
 }
 
 #[test]

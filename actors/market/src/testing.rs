@@ -299,11 +299,11 @@ pub fn check_state_invariants<BS: Blockstore>(
 
                 deal_op_epoch_count += 1;
 
-                deal_ops.for_each(epoch, |deal_id| {
-                    acc.require(proposal_stats.contains_key(&deal_id), format!("deal op found for deal id {deal_id} with missing proposal at epoch {epoch}"));
-                    expected_deal_ops.remove(&deal_id);
-                    deal_op_count += 1;
-                    Ok(())
+                deal_ops
+                    .for_each(epoch, |deal_id| {
+                        expected_deal_ops.remove(&deal_id);
+                        deal_op_count += 1;
+                        Ok(())
                 }).map_err(|e| anyhow::anyhow!("error iterating deal ops for epoch {}: {}", epoch, e))
             });
             acc.require_no_error(ret, "error iterating all deal ops");

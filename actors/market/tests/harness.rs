@@ -6,11 +6,12 @@ use fil_actor_market::{
     PendingDealAllocationsMap, SettleDealPaymentsParams, SettleDealPaymentsReturn,
     PENDING_ALLOCATIONS_CONFIG,
 };
+use fil_actors_runtime::parse_uint_key;
 use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
 use num_traits::{FromPrimitive, Zero};
 use regex::Regex;
 use std::cmp::{max, min};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::{cell::RefCell, collections::HashMap};
 
 use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
@@ -106,6 +107,42 @@ pub fn setup() -> MockRuntime {
     construct_and_verify(&rt);
 
     rt
+}
+
+/// Checks that there are no dangling deal ops in the queue waiting to be cleaned up
+/// Dangling deal ops are a valid transient state, but the deal ids should eventually be removed
+/// from the queue when attepting to process them in cron.
+// NOTE: this is only a concern during the transition period from cron-serviced deals and this
+// check can likely be removed with https://github.com/filecoin-project/builtin-actors/issues/1389
+// TODO: when this check is removed, add back the check in market state invariants as at that point
+// there should be no active deals in the queue
+pub fn assert_deal_ops_clean(rt: &MockRuntime) {
+    let st: State = rt.get_state();
+
+    let mut proposal_set = BTreeSet::<DealID>::new();
+    let proposals = DealArray::load(&st.proposals, rt.store()).unwrap();
+    proposals
+        .for_each(|deal_id, _| {
+            proposal_set.insert(deal_id);
+            Ok(())
+        })
+        .unwrap();
+
+    let deal_ops = SetMultimap::from_root(rt.store(), &st.deal_ops_by_epoch).unwrap();
+    deal_ops
+        .0
+        .for_each(|key, _| {
+            let epoch = parse_uint_key(key).unwrap() as i64;
+
+            deal_ops
+                .for_each(epoch, |ref deal_id| {
+                    assert!(proposal_set.contains(deal_id), "deal op found for deal id {deal_id} with missing proposal at epoch {epoch}");
+                    Ok(())
+                })
+                .unwrap();
+            Ok(())
+        })
+        .unwrap();
 }
 
 /// Checks internal invariants of market state asserting none of them are broken.

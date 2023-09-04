@@ -371,11 +371,8 @@ fn worker_balance_after_withdrawal_must_account_for_slashed_funds() {
         OWNER_ADDR,
         WORKER_ADDR,
     );
-    check_state_with_expected(
-        &rt,
-        &[Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
-            .unwrap()],
-    );
+
+    check_state(&rt);
 }
 
 #[test]
@@ -1342,7 +1339,6 @@ fn active_deals_multiple_times_with_different_providers() {
     check_state(&rt);
 }
 
-// Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1519
 #[test]
 fn terminating_a_deal_removes_proposal_synchronously() {
     let start_epoch = 50;
@@ -1366,11 +1362,7 @@ fn terminating_a_deal_removes_proposal_synchronously() {
     // terminating the deal deletes proposal, state and pending_proposal but leaves deal op in queue
     terminate_deals(&rt, addrs.provider, &[deal_id]);
     assert_deal_deleted(&rt, deal_id, proposal);
-    check_state_with_expected(
-        &rt,
-        &[Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
-            .unwrap()],
-    );
+    check_state(&rt);
 
     // the next cron_tick will remove the dangling deal op entry
     rt.set_epoch(process_epoch(start_epoch, deal_id));
@@ -1378,7 +1370,6 @@ fn terminating_a_deal_removes_proposal_synchronously() {
     check_state(&rt);
 }
 
-// Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1540
 #[test]
 fn fail_when_deal_update_epoch_is_in_the_future() {
     let start_epoch = 50;

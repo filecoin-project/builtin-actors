@@ -7,7 +7,6 @@ use fvm_shared::METHOD_SEND;
 mod harness;
 
 use harness::*;
-use regex::Regex;
 
 const START_EPOCH: ChainEpoch = 0;
 const END_EPOCH: ChainEpoch = START_EPOCH + 200 * EPOCHS_IN_DAY;
@@ -46,18 +45,11 @@ fn timedout_deal_is_slashed_and_deleted() {
     assert_account_zero(&rt, PROVIDER_ADDR);
     assert_deal_deleted(&rt, deal_id, deal_proposal);
 
-    check_state_with_expected(
-        &rt,
-        &[Regex::new(&format!(
-            "^deal op found for deal id {deal_id} with missing proposal at epoch \\d+$"
-        ))
-        .unwrap()],
-    );
+    check_state(&rt);
 
     // cron tick should remove the dangling deal op from the queue
     cron_tick(&rt);
-
-    check_state(&rt);
+    assert_deal_ops_clean(&rt);
 }
 
 // TODO: Revisit and cleanup https://github.com/filecoin-project/builtin-actors/issues/1389
