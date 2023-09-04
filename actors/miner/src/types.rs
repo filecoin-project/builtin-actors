@@ -467,23 +467,6 @@ pub struct ProveReplicaUpdatesParams {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct ReplicaUpdateDeprecated {
-    pub sector_number: SectorNumber,
-    pub deadline: u64,
-    pub partition: u64,
-    pub new_sealed_cid: Cid,
-    pub new_unsealed_cid: Cid,
-    pub deals: Vec<DealID>,
-    pub update_proof_type: RegisteredUpdateProof,
-    pub replica_proof: RawBytes,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct ProveReplicaUpdatesParamsDeprecated {
-    pub updates: Vec<ReplicaUpdateDeprecated>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ProveReplicaUpdates2Params {
     pub sector_updates: Vec<SectorUpdateManifest>,
     // Proofs for each sector, parallel to activation manifests.

@@ -122,7 +122,7 @@ pub enum Method {
     ProveCommitAggregate = 26,
     ProveReplicaUpdates = 27,
     PreCommitSectorBatch2 = 28,
-    ProveReplicaUpdatesDeprecated = 29,
+    //ProveReplicaUpdates2 = 29, // Deprecated
     ChangeBeneficiary = 30,
     GetBeneficiary = 31,
     ExtendSectorExpiration2 = 32,
@@ -881,16 +881,6 @@ impl Actor {
             })
             .collect();
         Self::prove_replica_updates_inner(rt, updates)
-    }
-
-    pub fn prove_replica_updates_deprecated(
-        rt: &impl Runtime,
-        _params: ProveReplicaUpdatesParamsDeprecated,
-    ) -> Result<(), ActorError> {
-        rt.validate_immediate_caller_accept_any()?;
-        Err(
-            actor_error!(unhandled_message; "invalid method {}, use {} or {}", Method::ProveReplicaUpdatesDeprecated as u64, Method::ProveReplicaUpdates as u64, Method::ProveReplicaUpdates2 as u64),
-        )
     }
 
     fn prove_replica_updates_inner<RT>(
@@ -5277,13 +5267,6 @@ pub struct DealsActivationInput {
     pub sector_type: RegisteredSealProof,
 }
 
-// Inputs for activating builtin market deals for one sector
-// and optionally confirming CommD for this sector matches expectation
-// struct DataActivationInput {
-//     info: DealsActivationInput,
-//     expected_commd: Option<Cid>,
-// }
-
 impl From<SectorPreCommitOnChainInfo> for DealsActivationInput {
     fn from(pci: SectorPreCommitOnChainInfo) -> DealsActivationInput {
         DealsActivationInput {
@@ -5619,7 +5602,6 @@ impl ActorCode for Actor {
         ProveCommitAggregate => prove_commit_aggregate,
         ProveReplicaUpdates => prove_replica_updates,
         PreCommitSectorBatch2 => pre_commit_sector_batch2,
-        ProveReplicaUpdatesDeprecated => prove_replica_updates_deprecated,
         ChangeBeneficiary|ChangeBeneficiaryExported => change_beneficiary,
         GetBeneficiary|GetBeneficiaryExported => get_beneficiary,
         ExtendSectorExpiration2 => extend_sector_expiration2,
