@@ -3,7 +3,7 @@ use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
+use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 
 use export_macro::vm_test;
@@ -11,7 +11,7 @@ use fil_actor_market::{DealMetaArray, State as MarketState};
 use fil_actor_miner::{
     max_prove_commit_duration, power_for_sector, ExpirationExtension, ExpirationExtension2,
     ExtendSectorExpiration2Params, ExtendSectorExpirationParams, Method as MinerMethod, PowerPair,
-    ProveReplicaUpdatesParams2, ReplicaUpdate2, SectorClaim, SectorOnChainInfoFlags, Sectors,
+    ProveReplicaUpdatesParams, ReplicaUpdate, SectorClaim, SectorOnChainInfoFlags, Sectors,
     State as MinerState,
 };
 use fil_actor_verifreg::Method as VerifregMethod;
@@ -28,8 +28,8 @@ use crate::expects::Expect;
 use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_by_deadline_to_index, advance_to_proving_deadline, bf_all, create_accounts,
-    create_miner, cron_tick, expect_invariants, get_deal, invariant_failure_patterns,
-    market_add_balance, market_publish_deal, miner_precommit_one_sector_v2, miner_prove_sector,
+    create_miner, cron_tick, expect_invariants, invariant_failure_patterns, market_add_balance,
+    market_publish_deal, miner_precommit_one_sector_v2, miner_prove_sector,
     precommit_meta_data_from_deals, sector_deadline, submit_windowed_post, verifreg_add_client,
     verifreg_add_verifier, PrecommitMetadata,
 };
@@ -628,17 +628,9 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
 
     // replica update
     let new_sealed_cid = make_sealed_cid(b"replica1");
-    let deal = get_deal(v, deal_ids[0]);
-    let new_unsealed_cid = v
-        .primitives()
-        .compute_unsealed_sector_cid(
-            seal_proof,
-            &[PieceInfo { size: deal.piece_size, cid: deal.piece_cid }],
-        )
-        .unwrap();
 
     let (d_idx, p_idx) = sector_deadline(v, &miner_addr, sector_number);
-    let replica_update = ReplicaUpdate2 {
+    let replica_update = ReplicaUpdate {
         sector_number,
         deadline: d_idx,
         partition: p_idx,
@@ -646,15 +638,14 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         deals: deal_ids.clone(),
         update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
         replica_proof: vec![].into(),
-        new_unsealed_cid,
     };
     let updated_sectors: BitField = apply_ok(
         v,
         &worker,
         &miner_addr,
         &TokenAmount::zero(),
-        MinerMethod::ProveReplicaUpdates2 as u64,
-        Some(ProveReplicaUpdatesParams2 { updates: vec![replica_update] }),
+        MinerMethod::ProveReplicaUpdates as u64,
+        Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
     )
     .deserialize()
     .unwrap();
@@ -665,7 +656,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     ExpectInvocation {
         from: worker_id,
         to: miner_addr,
-        method: MinerMethod::ProveReplicaUpdates2 as u64,
+        method: MinerMethod::ProveReplicaUpdates as u64,
         subinvocs: Some(vec![
             Expect::market_activate_deals(
                 miner_id,
