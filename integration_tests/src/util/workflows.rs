@@ -1149,10 +1149,14 @@ pub fn get_deal(v: &dyn VM, deal_id: DealID) -> DealProposal {
 }
 
 // return (deal_weight, verified_deal_weight)
-pub fn get_deal_weights(v: &dyn VM, deal_id: DealID) -> (DealWeight, DealWeight) {
+pub fn get_deal_weights(
+    v: &dyn VM,
+    deal_id: DealID,
+    duration: ChainEpoch,
+) -> (DealWeight, DealWeight) {
     let deal = get_deal(v, deal_id);
     if deal.verified_deal {
-        return (DealWeight::zero(), DealWeight::from(deal.piece_size.0));
+        return (DealWeight::zero(), DealWeight::from(deal.piece_size.0 * duration as u64));
     }
-    (DealWeight::from(deal.piece_size.0), DealWeight::zero())
+    (DealWeight::from(deal.piece_size.0 * duration as u64), DealWeight::zero())
 }

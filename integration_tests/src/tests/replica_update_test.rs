@@ -267,9 +267,10 @@ pub fn prove_replica_update_multi_dline_test(v: &dyn VM) {
     assert!(ret_bf.get(first_sector_number_p1));
     assert!(ret_bf.get(first_sector_number_p2));
 
-    let deal_weights1 = get_deal_weights(v, deal_ids[0]);
-    let deal_weights2 = get_deal_weights(v, deal_ids[1]);
     let new_sector_info_p1 = sector_info(v, &maddr, first_sector_number_p1);
+    let duration = new_sector_info_p1.expiration - new_sector_info_p1.power_base_epoch;
+    let deal_weights1 = get_deal_weights(v, deal_ids[0], duration);
+    let deal_weights2 = get_deal_weights(v, deal_ids[1], duration);
     assert_eq!(deal_weights1.0, new_sector_info_p1.deal_weight);
     assert_eq!(deal_weights1.1, new_sector_info_p1.verified_deal_weight);
     assert_eq!(old_sector_commr_p1, new_sector_info_p1.sector_key_cid.unwrap());
@@ -599,8 +600,9 @@ pub fn bad_post_upgrade_dispute_test(v: &dyn VM) {
     assert_eq!(vec![100], bf_all(updated_sectors));
 
     // sanity check the sector after update
-    let weights = get_deal_weights(v, deal_ids[0]);
     let new_sector_info = sector_info(v, &maddr, sector_number);
+    let duration = new_sector_info.expiration - new_sector_info.power_base_epoch;
+    let weights = get_deal_weights(v, deal_ids[0], duration);
     assert_eq!(weights.0, new_sector_info.deal_weight);
     assert_eq!(weights.1, new_sector_info.verified_deal_weight);
     assert_eq!(old_sector_info.sealed_cid, new_sector_info.sector_key_cid.unwrap());
@@ -933,9 +935,10 @@ pub fn deal_included_in_multiple_sectors_failure_test(v: &dyn VM) {
     assert!(ret_bf.get(first_sector_number));
     assert!(!ret_bf.get(first_sector_number + 1));
 
-    let weights1 = get_deal_weights(v, deal_ids[0]);
-    let weights2 = get_deal_weights(v, deal_ids[1]);
     let new_sector_info_p1 = sector_info(v, &maddr, first_sector_number);
+    let duration = new_sector_info_p1.expiration - new_sector_info_p1.power_base_epoch;
+    let weights1 = get_deal_weights(v, deal_ids[0], duration);
+    let weights2 = get_deal_weights(v, deal_ids[1], duration);
     assert_eq!(weights1.0 + weights2.0, new_sector_info_p1.deal_weight);
     assert_eq!(weights1.1 + weights2.1, new_sector_info_p1.verified_deal_weight);
     assert_eq!(new_sealed_cid1, new_sector_info_p1.sealed_cid);
@@ -1045,8 +1048,9 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
     .matches(v.take_invocations().last().unwrap());
 
     // sanity check the sector after update
-    let weights = get_deal_weights(v, deal_ids[0]);
     let new_sector_info = sector_info(v, &maddr, sector_number);
+    let duration = new_sector_info.expiration - new_sector_info.power_base_epoch;
+    let weights = get_deal_weights(v, deal_ids[0], duration);
     assert_eq!(weights.0, new_sector_info.deal_weight);
     assert_eq!(weights.1, new_sector_info.verified_deal_weight);
     assert_eq!(old_sector_info.sealed_cid, new_sector_info.sector_key_cid.unwrap());
@@ -1313,8 +1317,9 @@ pub fn create_miner_and_upgrade_sector(
     assert_eq!(vec![100], bf_all(updated_sectors));
 
     // sanity check the sector after update
-    let weights = get_deal_weights(v, deal_ids[0]);
     let new_sector_info = sector_info(v, &maddr, sector_number);
+    let duration = new_sector_info.expiration - new_sector_info.power_base_epoch;
+    let weights = get_deal_weights(v, deal_ids[0], duration);
     assert_eq!(weights.0, new_sector_info.deal_weight);
     assert_eq!(weights.1, new_sector_info.verified_deal_weight);
     assert_eq!(old_sector_info.sealed_cid, new_sector_info.sector_key_cid.unwrap());
