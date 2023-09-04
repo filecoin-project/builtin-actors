@@ -203,7 +203,7 @@ pub struct Expectations {
     pub expect_get_randomness_beacon: VecDeque<ExpectRandomness>,
     pub expect_batch_verify_seals: Option<ExpectBatchVerifySeals>,
     pub expect_aggregate_verify_seals: Option<ExpectAggregateVerifySeals>,
-    pub expect_replica_verify: Option<ExpectReplicaVerify>,
+    pub expect_replica_verify: VecDeque<ExpectReplicaVerify>,
     pub expect_gas_charge: VecDeque<i64>,
     pub expect_gas_available: VecDeque<u64>,
     pub expect_emitted_events: VecDeque<ActorEvent>,
@@ -212,14 +212,21 @@ pub struct Expectations {
 
 impl Expectations {
     fn reset(&mut self) {
+        // Set skip_verification_on_drop to true to avoid verification in the drop handler
+        // for the overwritten value.
         self.skip_verification_on_drop = true;
+        // This resets skip_verifications_on_drop to default false for a subsequent drop.
         *self = Default::default();
     }
 
     fn verify(&mut self) {
-        // If we don't reset them, we'll try to re-verify on drop. If something fails, we'll panic
-        // twice and abort making the tests difficult to debug.
+        // Set skip_verification_on_drop to true to avoid verification in the drop handler
+        // for the overwritten value.
         self.skip_verification_on_drop = true;
+        // Copy expectations into a local and reset self to default values.
+        // This will trigger Drop on self, which will call back into verify() unless
+        // marked as skip_verification_on_drop.
+        // The default values left behind in self will be reset to not skip verification.
         let this = std::mem::take(self);
 
         assert!(!this.expect_validate_caller_any, "expected ValidateCallerAny, not received");
@@ -240,7 +247,7 @@ impl Expectations {
         );
         assert!(
             this.expect_sends.is_empty(),
-            "expected all message to be send, unsent messages {:?}",
+            "expected send {:?}, not received",
             this.expect_sends
         );
         assert!(
@@ -290,7 +297,7 @@ impl Expectations {
             this.expect_aggregate_verify_seals
         );
         assert!(
-            this.expect_replica_verify.is_none(),
+            this.expect_replica_verify.is_empty(),
             "expect_replica_verify {:?}, not received",
             this.expect_replica_verify
         );
@@ -766,7 +773,7 @@ impl MockRuntime {
     #[allow(dead_code)]
     pub fn expect_replica_verify(&self, input: ReplicaUpdateInfo, result: anyhow::Result<()>) {
         let a = ExpectReplicaVerify { input, result };
-        self.expectations.borrow_mut().expect_replica_verify = Some(a);
+        self.expectations.borrow_mut().expect_replica_verify.push_back(a);
     }
 
     #[allow(dead_code)]
@@ -1135,28 +1142,28 @@ impl Runtime for MockRuntime {
         assert_eq!(expected_msg.to, *to, "expected message to {}, was {}", expected_msg.to, to);
         assert_eq!(
             expected_msg.method, method,
-            "expected method {}, was {}",
-            expected_msg.method, method
+            "send to {} expected method {}, was {}",
+            to, expected_msg.method, method
         );
         assert_eq!(
             expected_msg.params, params,
-            "expected params {:?}, was {:?}",
-            expected_msg.params, params,
+            "send to {}:{} expected params {:?}, was {:?}",
+            to, method, expected_msg.params, params,
         );
         assert_eq!(
             expected_msg.value, value,
-            "expected value {:?}, was {:?}",
-            expected_msg.value, value,
+            "send to {}:{} expected value {:?}, was {:?}",
+            to, method, expected_msg.value, value,
         );
         assert_eq!(
             expected_msg.gas_limit, gas_limit,
-            "expected gas limit {:?}, was {:?}",
-            expected_msg.gas_limit, gas_limit
+            "send to {}:{} expected gas limit {:?}, was {:?}",
+            to, method, expected_msg.gas_limit, gas_limit
         );
         assert_eq!(
             expected_msg.send_flags, send_flags,
-            "expected send flags {:?}, was {:?}",
-            expected_msg.send_flags, send_flags
+            "send to {}:{} expected send flags {:?}, was {:?}",
+            to, method, expected_msg.send_flags, send_flags
         );
 
         if let Some(e) = expected_msg.send_error {
@@ -1414,7 +1421,7 @@ impl Primitives for MockRuntime {
             .expectations
             .borrow_mut()
             .expect_replica_verify
-            .take()
+            .pop_front()
             .expect("unexpected call to verify replica update");
         assert_eq!(exp.input.update_proof_type, replica.update_proof_type, "mismatched proof type");
         assert_eq!(exp.input.new_sealed_cid, replica.new_sealed_cid, "mismatched new sealed CID");
