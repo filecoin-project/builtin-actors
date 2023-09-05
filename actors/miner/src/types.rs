@@ -399,7 +399,7 @@ pub struct SectorOnChainInfo {
     pub seal_proof: RegisteredSealProof,
     /// CommR
     pub sealed_cid: Cid,
-    pub deal_ids: Vec<DealID>,
+    pub deprecated_deal_ids: Vec<DealID>,
     /// Epoch during which the sector proof was accepted
     pub activation: ChainEpoch,
     /// Epoch during which the sector expires

@@ -224,6 +224,7 @@ pub fn check_state_invariants<BS: Blockstore>(
 
     // pending proposals
     let mut pending_proposal_count = 0;
+    // XXX this is invalid, proposals are AMT not HAMT
     match make_map_with_root_and_bitwidth::<_, ()>(
         &state.pending_proposals,
         store,
