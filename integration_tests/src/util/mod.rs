@@ -8,10 +8,12 @@ use fil_actors_runtime::{
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::{CborStore, RawBytes};
 use fvm_shared::address::Address;
+use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::METHOD_SEND;
 
+use fil_actor_miner::ext::verifreg::AllocationID;
 use fil_actor_miner::{
     new_deadline_info_from_offset_and_epoch, Deadline, DeadlineInfo, GetBeneficiaryReturn,
     Method as MinerMethod, MinerInfo, PowerPair, SectorOnChainInfo, State as MinerState,
@@ -156,6 +158,12 @@ pub fn get_beneficiary(v: &dyn VM, from: &Address, m_addr: &Address) -> GetBenef
     )
     .deserialize()
     .unwrap()
+}
+
+pub fn market_pending_deal_allocations(v: &dyn VM, deals: &[DealID]) -> Vec<AllocationID> {
+    let mut st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
+    let bs = &DynBlockstore::wrap(v.blockstore());
+    st.get_pending_deal_allocation_ids(bs, deals).unwrap()
 }
 
 pub fn make_bitfield(bits: &[u64]) -> BitField {
