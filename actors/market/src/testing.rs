@@ -22,11 +22,11 @@ use fil_actors_runtime::{
     make_map_with_root_and_bitwidth, parse_uint_key, ActorError, MessageAccumulator, SetMultimap,
 };
 
+use crate::ext::verifreg::AllocationID;
 use crate::{
     balance_table::BalanceTable, DealArray, DealMetaArray, DealProposal, State,
     PROPOSALS_AMT_BITWIDTH,
 };
-use crate::{ext::verifreg::AllocationID, NO_ALLOCATION_ID};
 
 #[derive(Clone)]
 pub struct DealSummary {
@@ -55,7 +55,6 @@ impl Default for DealSummary {
 #[derive(Default, Clone)]
 pub struct StateSummary {
     pub deals: BTreeMap<DealID, DealSummary>,
-    pub claim_id_to_deal_id: BTreeMap<u64, DealID>,
     pub alloc_id_to_deal_id: BTreeMap<u64, DealID>,
     pub pending_proposal_count: u64,
     pub deal_state_count: u64,
@@ -174,7 +173,6 @@ pub fn check_state_invariants<BS: Blockstore>(
 
     // deal states
     let mut deal_state_count = 0;
-    let mut claim_id_to_deal_id = BTreeMap::<u64, DealID>::new();
     match DealMetaArray::load(&state.states, store) {
         Ok(deal_states) => {
             let ret = deal_states.for_each(|deal_id, deal_state| {
@@ -210,11 +208,6 @@ pub fn check_state_invariants<BS: Blockstore>(
                 acc.require(!pending_allocations.contains_key(&deal_id), format!("deal {deal_id} has pending allocation"));
 
                 deal_state_count += 1;
-
-                if deal_state.verified_claim != NO_ALLOCATION_ID {
-                    claim_id_to_deal_id.insert(deal_state.verified_claim, deal_id);
-                }
-
                 Ok(())
             });
             acc.require_no_error(ret, "error iterating deal states");
@@ -224,7 +217,6 @@ pub fn check_state_invariants<BS: Blockstore>(
 
     // pending proposals
     let mut pending_proposal_count = 0;
-    // XXX this is invalid, proposals are AMT not HAMT
     match make_map_with_root_and_bitwidth::<_, ()>(
         &state.pending_proposals,
         store,
@@ -330,7 +322,6 @@ pub fn check_state_invariants<BS: Blockstore>(
             lock_table_count,
             deal_op_epoch_count,
             deal_op_count,
-            claim_id_to_deal_id,
             alloc_id_to_deal_id,
         },
         acc,

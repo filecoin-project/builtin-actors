@@ -192,6 +192,7 @@ pub struct DataActivationNotification {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
 pub struct ProveCommitSectors2Return {
     pub activation_results: BatchReturn,
 }

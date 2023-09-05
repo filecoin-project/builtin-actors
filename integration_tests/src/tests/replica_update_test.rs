@@ -270,12 +270,12 @@ pub fn prove_replica_update_multi_dline_test(v: &dyn VM) {
     let new_sector_info_p1 = sector_info(v, &maddr, first_sector_number_p1);
     let duration = new_sector_info_p1.expiration - new_sector_info_p1.power_base_epoch;
     let deal_weights1 = get_deal_weights(v, deal_ids[0], duration);
-    let deal_weights2 = get_deal_weights(v, deal_ids[1], duration);
     assert_eq!(deal_weights1.0, new_sector_info_p1.deal_weight);
     assert_eq!(deal_weights1.1, new_sector_info_p1.verified_deal_weight);
     assert_eq!(old_sector_commr_p1, new_sector_info_p1.sector_key_cid.unwrap());
     assert_eq!(new_sealed_cid1, new_sector_info_p1.sealed_cid);
     let new_sector_info_p2 = sector_info(v, &maddr, first_sector_number_p2);
+    let deal_weights2 = get_deal_weights(v, deal_ids[1], duration);
     assert_eq!(deal_weights2.0, new_sector_info_p2.deal_weight);
     assert_eq!(deal_weights2.1, new_sector_info_p2.verified_deal_weight);
     assert_eq!(old_sector_commr_p2, new_sector_info_p2.sector_key_cid.unwrap());

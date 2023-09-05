@@ -1,7 +1,6 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use crate::ext::verifreg::AllocationID;
 use cid::{Cid, Version};
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::BytesSer;
@@ -145,6 +144,4 @@ pub struct DealState {
     pub last_updated_epoch: ChainEpoch,
     // -1 if deal never slashed
     pub slash_epoch: ChainEpoch,
-    // ID of the verified registry allocation/claim for this deal's data (0 if none).
-    pub verified_claim: AllocationID,
 }
