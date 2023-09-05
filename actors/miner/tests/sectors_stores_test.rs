@@ -107,7 +107,7 @@ fn new_sector_on_chain_info(
         sector_number: sector_no,
         seal_proof: RegisteredSealProof::StackedDRG32GiBV1,
         sealed_cid,
-        deal_ids: vec![],
+        deprecated_deal_ids: vec![],
         activation,
         power_base_epoch: activation,
         expiration: ChainEpoch::from(1),
