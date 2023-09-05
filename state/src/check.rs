@@ -282,7 +282,7 @@ fn check_deal_states_against_sectors(
             continue;
         }
 
-        let miner_summary = if let Some(miner_summary) = miner_summaries.get(&deal.provider) {
+        let _miner_summary = if let Some(miner_summary) = miner_summaries.get(&deal.provider) {
             miner_summary
         } else {
             acc.add(format!(
@@ -291,51 +291,6 @@ fn check_deal_states_against_sectors(
             ));
             continue;
         };
-
-        let sector_deal = if let Some(sector_deal) = miner_summary.deals.get(deal_id) {
-            sector_deal
-        } else {
-            acc.require(
-                deal.slash_epoch >= 0,
-                format!(
-                    "un-slashed deal {deal_id} not referenced in active sectors of miner {}",
-                    deal.provider
-                ),
-            );
-            continue;
-        };
-
-        acc.require(
-            deal.sector_start_epoch >= sector_deal.sector_start,
-            format!(
-                "deal state start {} does not match sector start {} for miner {}",
-                deal.sector_start_epoch, sector_deal.sector_start, deal.provider
-            ),
-        );
-
-        acc.require(
-            deal.sector_start_epoch <= sector_deal.sector_expiration,
-            format!(
-                "deal state start {} activated after sector expiration {} for miner {}",
-                deal.sector_start_epoch, sector_deal.sector_expiration, deal.provider
-            ),
-        );
-
-        acc.require(
-            deal.last_update_epoch <= sector_deal.sector_expiration,
-            format!(
-                "deal state update at {} after sector expiration {} for miner {}",
-                deal.last_update_epoch, sector_deal.sector_expiration, deal.provider
-            ),
-        );
-
-        acc.require(
-            deal.slash_epoch <= sector_deal.sector_expiration,
-            format!(
-                "deal state slashed at {} after sector expiration {} for miner {}",
-                deal.slash_epoch, sector_deal.sector_expiration, deal.provider
-            ),
-        );
     }
 }
 
@@ -477,7 +432,7 @@ fn check_verifreg_against_miners(
     for claim in verifreg_summary.claims.values() {
         // all claims are indexed by valid providers
         let maddr = Address::new_id(claim.provider);
-        let miner_summary = match miner_summaries.get(&maddr) {
+        let _miner_summary = match miner_summaries.get(&maddr) {
             None => {
                 acc.add(format!("claim provider {} is not found in miner summaries", maddr));
                 continue;
@@ -485,13 +440,6 @@ fn check_verifreg_against_miners(
             Some(summary) => summary,
         };
 
-        // all claims are linked to a valid sector number
-        acc.require(
-            miner_summary.sectors_with_deals.get(&claim.sector).is_some(),
-            format!(
-                "claim sector number {} not recorded as a sector with deals for miner {}",
-                claim.sector, maddr
-            ),
-        );
+        // XXX all claims are linked to a valid sector number
     }
 }

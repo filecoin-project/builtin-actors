@@ -3,13 +3,14 @@ use crate::{
     SectorOnChainInfo, SectorPreCommitOnChainInfo, Sectors, State,
 };
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{parse_uint_key, Map, MessageAccumulator, DEFAULT_HAMT_CONFIG};
+use fil_actors_runtime::{
+    parse_uint_key, DealWeight, Map, MessageAccumulator, DEFAULT_HAMT_CONFIG,
+};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::CborStore;
 use fvm_shared::address::Protocol;
 use fvm_shared::clock::{ChainEpoch, QuantSpec, NO_QUANTIZATION};
-use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, SectorSize};
 use num_traits::Zero;
@@ -75,17 +76,16 @@ pub fn check_state_invariants<BS: Blockstore>(
                         "on chain sector's sector number has not been allocated {sector_number}"
                     ),
                 );
-                sector.deal_ids.iter().for_each(|&deal| {
-                    miner_summary.deals.insert(
-                        deal,
+                if !sector.deal_weight.is_zero() || !sector.verified_deal_weight.is_zero() {
+                    miner_summary.live_data_sectors.insert(
+                        sector_number,
                         DealSummary {
                             sector_start: sector.activation,
                             sector_expiration: sector.expiration,
+                            deal_weight: sector.deal_weight.clone(),
+                            verified_deal_weight: sector.verified_deal_weight.clone(),
                         },
                     );
-                });
-                if !sector.deal_ids.is_empty() {
-                    miner_summary.sectors_with_deals.insert(sector_number);
                 }
                 acc.require(
                     sector.activation <= sector.power_base_epoch,
@@ -145,16 +145,18 @@ pub fn check_state_invariants<BS: Blockstore>(
 pub struct DealSummary {
     pub sector_start: ChainEpoch,
     pub sector_expiration: ChainEpoch,
+    pub deal_weight: DealWeight,
+    pub verified_deal_weight: DealWeight,
 }
 
 pub struct StateSummary {
     pub live_power: PowerPair,
     pub active_power: PowerPair,
     pub faulty_power: PowerPair,
-    pub deals: BTreeMap<DealID, DealSummary>,
     pub window_post_proof_type: RegisteredPoStProof,
     pub deadline_cron_active: bool,
-    pub sectors_with_deals: BTreeSet<SectorNumber>,
+    // sectors with non zero (verified) deal weight that may carry deals
+    pub live_data_sectors: BTreeMap<SectorNumber, DealSummary>,
 }
 
 impl Default for StateSummary {
@@ -165,8 +167,7 @@ impl Default for StateSummary {
             faulty_power: PowerPair::zero(),
             window_post_proof_type: RegisteredPoStProof::Invalid(0),
             deadline_cron_active: false,
-            deals: BTreeMap::new(),
-            sectors_with_deals: BTreeSet::new(),
+            live_data_sectors: BTreeMap::new(),
         }
     }
 }

@@ -953,7 +953,6 @@ impl Actor {
 
             let activated_data = ReplicaUpdateActivatedData {
                 seal_cid: usi.update.new_sealed_cid,
-                deals: usi.update.deals.clone(),
                 unverified_space: data_activation.unverified_space.clone(),
                 verified_space: data_activation.verified_space.clone(),
             };
@@ -1125,7 +1124,6 @@ impl Actor {
         {
             let activated_data = ReplicaUpdateActivatedData {
                 seal_cid: update.new_sealed_cid,
-                deals: vec![],
                 unverified_space: data_activation.unverified_space.clone(),
                 verified_space: data_activation.verified_space.clone(),
             };
@@ -3998,7 +3996,6 @@ fn update_existing_sector_info(
         Some(x) => Some(x),
     };
 
-    new_sector_info.deal_ids = activated_data.deals.clone();
     new_sector_info.power_base_epoch = curr_epoch;
 
     let duration = new_sector_info.expiration - new_sector_info.power_base_epoch;
@@ -5163,7 +5160,7 @@ fn activate_new_sector_infos(
                 sector_number: pci.info.sector_number,
                 seal_proof: pci.info.seal_proof,
                 sealed_cid: pci.info.sealed_cid,
-                deal_ids: pci.info.deal_ids.clone(),
+                deprecated_deal_ids: vec![], // deal ids field deprecated
                 expiration: pci.info.expiration,
                 activation: activation_epoch,
                 deal_weight,
@@ -5304,7 +5301,6 @@ struct ReplicaUpdateStateInputs<'a> {
 // Summary of activated data for a replica update.
 struct ReplicaUpdateActivatedData {
     seal_cid: Cid,
-    deals: Vec<DealID>,
     unverified_space: BigInt,
     verified_space: BigInt,
 }
