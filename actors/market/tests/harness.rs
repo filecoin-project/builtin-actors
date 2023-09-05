@@ -506,7 +506,10 @@ pub fn cron_tick_and_assert_balances(
     current_epoch: ChainEpoch,
     deal_id: DealID,
 ) -> (TokenAmount, TokenAmount) {
-    // fetch current client  escrow balances
+    // fetch current client escrow balances
+    // NOTE(alexytsu): this code could be factored out and shared it with settle_deal_payments_and_assert_balances
+    // except that this path will probably be deleted when https://github.com/filecoin-project/builtin-actors/issues/1389
+    // is actioned
     let c_acct = get_balance(rt, &client_addr);
     let p_acct = get_balance(rt, &provider_addr);
     let mut amount_slashed = TokenAmount::zero();
@@ -838,6 +841,74 @@ pub fn settle_deal_payments(
 
     rt.verify();
     res
+}
+
+pub fn settle_deal_payments_and_assert_balances(
+    rt: &MockRuntime,
+    client_addr: Address,
+    provider_addr: Address,
+    current_epoch: ChainEpoch,
+    deal_id: DealID,
+) -> (TokenAmount, TokenAmount) {
+    // fetch current client escrow balances
+    let c_acct = get_balance(rt, &client_addr);
+    let p_acct = get_balance(rt, &provider_addr);
+    let mut amount_slashed = TokenAmount::zero();
+
+    let s = get_deal_state(rt, deal_id);
+    let d = get_deal_proposal(rt, deal_id);
+
+    // end epoch for payment calc
+    let mut payment_end = d.end_epoch;
+    if s.slash_epoch != EPOCH_UNDEFINED {
+        rt.expect_send_simple(
+            BURNT_FUNDS_ACTOR_ADDR,
+            METHOD_SEND,
+            None,
+            d.provider_collateral.clone(),
+            None,
+            ExitCode::OK,
+        );
+        amount_slashed = d.provider_collateral;
+
+        if s.slash_epoch < d.start_epoch {
+            payment_end = d.start_epoch;
+        } else {
+            payment_end = s.slash_epoch;
+        }
+    } else if current_epoch < payment_end {
+        payment_end = current_epoch;
+    }
+
+    // start epoch for payment calc
+    let mut payment_start = d.start_epoch;
+    if s.last_updated_epoch != EPOCH_UNDEFINED {
+        payment_start = s.last_updated_epoch;
+    }
+    let duration = payment_end - payment_start;
+    let payment = duration * d.storage_price_per_epoch;
+
+    // expected updated amounts
+    let updated_client_escrow = c_acct.balance - &payment;
+    let updated_provider_escrow = (p_acct.balance + &payment) - &amount_slashed;
+    let mut updated_client_locked = c_acct.locked - &payment;
+    let mut updated_provider_locked = p_acct.locked;
+    // if the deal has expired or been slashed, locked amount will be zero for provider .
+    let is_deal_expired = payment_end == d.end_epoch;
+    if is_deal_expired || s.slash_epoch != EPOCH_UNDEFINED {
+        updated_client_locked = TokenAmount::zero();
+        updated_provider_locked = TokenAmount::zero();
+    }
+
+    settle_deal_payments(rt, provider_addr, vec![deal_id]);
+
+    let client_acct = get_balance(rt, &client_addr);
+    let provider_acct = get_balance(rt, &provider_addr);
+    assert_eq!(updated_client_escrow, client_acct.balance);
+    assert_eq!(updated_client_locked, client_acct.locked);
+    assert_eq!(updated_provider_escrow, provider_acct.balance);
+    assert_eq!(updated_provider_locked, provider_acct.locked);
+    (payment, amount_slashed)
 }
 
 pub fn settle_deal_payments_expect_abort(

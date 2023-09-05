@@ -336,7 +336,7 @@ fn worker_balance_after_withdrawal_must_account_for_slashed_funds() {
     );
 
     // activate the deal
-    activate_deals_legacy(&rt, end_epoch + 1, PROVIDER_ADDR, publish_epoch, &[deal_id]);
+    activate_deals(&rt, end_epoch + 1, PROVIDER_ADDR, publish_epoch, &[deal_id]);
     let st = get_deal_state(&rt, deal_id);
     assert_eq!(publish_epoch, st.sector_start_epoch);
     let proposal = get_deal_proposal(&rt, deal_id);
@@ -1348,7 +1348,7 @@ fn terminating_a_deal_removes_proposal_synchronously() {
     let rt = setup();
     let addrs = &MinerAddresses::default();
 
-    let (deal_id, proposal) = publish_and_activate_deal_legacy(
+    let (deal_id, proposal) = publish_and_activate_deal(
         &rt,
         CLIENT_ADDR,
         addrs,
@@ -1369,8 +1369,9 @@ fn terminating_a_deal_removes_proposal_synchronously() {
     check_state(&rt);
 }
 
+// TODO: remove tests for legacy behaviour: https://github.com/filecoin-project/builtin-actors/issues/1389
 #[test]
-fn fail_when_deal_update_epoch_is_in_the_future() {
+fn settling_deal_fails_when_deal_update_epoch_is_in_the_future() {
     let start_epoch = 50;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
@@ -1397,8 +1398,9 @@ fn fail_when_deal_update_epoch_is_in_the_future() {
 
     // set current epoch of the deal to the end epoch so it's picked up for "processing" in the next cron tick.
     rt.set_epoch(end_epoch);
-
     expect_abort(ExitCode::USR_ILLEGAL_STATE, cron_tick_raw(&rt));
+    let ret = settle_deal_payments(&rt, MinerAddresses::default().provider, vec![deal_id]);
+    assert_eq!(ret.results.codes(), &[ExitCode::USR_ILLEGAL_STATE]);
 
     check_state_with_expected(
         &rt,
@@ -1407,6 +1409,39 @@ fn fail_when_deal_update_epoch_is_in_the_future() {
 }
 
 #[test]
+fn _settling_deal_fails_when_deal_update_epoch_is_in_the_future() {
+    let start_epoch = 50;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let sector_expiry = end_epoch + 100;
+
+    let rt = setup();
+
+    let (deal_id, _) = publish_and_activate_deal(
+        &rt,
+        CLIENT_ADDR,
+        &MinerAddresses::default(),
+        start_epoch,
+        end_epoch,
+        0,
+        sector_expiry,
+    );
+
+    // update last updated to some time in the future (breaks state invariants)
+    update_last_updated(&rt, deal_id, end_epoch + 1000);
+
+    // set current epoch of the deal to the end epoch so it's picked up for "processing" in the next cron tick.
+    rt.set_epoch(end_epoch);
+    let ret = settle_deal_payments(&rt, MinerAddresses::default().provider, vec![deal_id]);
+    assert_eq!(ret.results.codes(), &[ExitCode::USR_ILLEGAL_STATE]);
+
+    check_state_with_expected(
+        &rt,
+        &[Regex::new("deal \\d+ last updated epoch \\d+ after current \\d+").unwrap()],
+    );
+}
+
+#[test]
+// TODO: remove tests for legacy behaviour: https://github.com/filecoin-project/builtin-actors/issues/1389
 fn crontick_for_a_deal_at_its_start_epoch_results_in_zero_payment_and_no_slashing() {
     let start_epoch = ChainEpoch::from(50);
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
@@ -1430,6 +1465,43 @@ fn crontick_for_a_deal_at_its_start_epoch_results_in_zero_payment_and_no_slashin
     rt.set_epoch(current);
     let (pay, slashed) =
         cron_tick_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
+    assert_eq!(TokenAmount::zero(), pay);
+    assert_eq!(TokenAmount::zero(), slashed);
+
+    // deal proposal and state should NOT be deleted
+    get_deal_proposal(&rt, deal_id);
+    get_deal_state(&rt, deal_id);
+    check_state(&rt);
+}
+
+#[test]
+fn settling_payments_for_a_deal_at_its_start_epoch_results_in_zero_payment_and_no_slashing() {
+    let start_epoch = ChainEpoch::from(50);
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let sector_expiry = end_epoch + 100;
+
+    // set start epoch to coincide with processing (0 + 0 % 2880 = 0)
+    let start_epoch = 0;
+    let rt = setup();
+    let (deal_id, _) = publish_and_activate_deal(
+        &rt,
+        CLIENT_ADDR,
+        &MinerAddresses::default(),
+        start_epoch,
+        end_epoch,
+        0,
+        sector_expiry,
+    );
+
+    // move the current epoch to start
+    rt.set_epoch(start_epoch);
+    let (pay, slashed) = settle_deal_payments_and_assert_balances(
+        &rt,
+        CLIENT_ADDR,
+        MinerAddresses::default().provider,
+        start_epoch,
+        deal_id,
+    );
     assert_eq!(TokenAmount::zero(), pay);
     assert_eq!(TokenAmount::zero(), slashed);
 
