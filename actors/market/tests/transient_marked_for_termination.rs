@@ -20,7 +20,7 @@ fn deal_scheduled_for_termination_cannot_be_settled_manually() {
 
     let rt = setup();
 
-    let deal_id_1 = publish_and_activate_deal_legacy(
+    let (deal_id_1, deal_1_prop) = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -31,7 +31,7 @@ fn deal_scheduled_for_termination_cannot_be_settled_manually() {
     );
 
     // mark this deal for termination
-    let slashed_deal = publish_and_activate_deal_legacy(
+    let (slashed_deal, slashed_prop) = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -74,7 +74,6 @@ fn deal_scheduled_for_termination_cannot_be_settled_manually() {
     );
 
     // advance cron to scheduled time and terminate it via cron
-    let slashed_prop = get_deal_proposal(&rt, slashed_deal);
     rt.set_epoch(scheduled_epoch);
     rt.expect_send_simple(
         BURNT_FUNDS_ACTOR_ADDR,
@@ -90,7 +89,6 @@ fn deal_scheduled_for_termination_cannot_be_settled_manually() {
     assert_deal_deleted(&rt, slashed_deal, slashed_prop);
 
     // attempt to settle payment for both deals again - partially succeeds because not found deals are ignored
-    let deal_1_prop = get_deal_proposal(&rt, deal_id_1);
     rt.set_epoch(scheduled_epoch + 1);
     let ret = settle_deal_payments(&rt, PROVIDER_ADDR, vec![deal_id_1, slashed_deal]);
     let expected_payment =

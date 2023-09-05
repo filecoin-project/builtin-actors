@@ -18,7 +18,6 @@ use num_traits::Zero;
 mod harness;
 
 use harness::*;
-use regex::Regex;
 
 #[test]
 fn terminate_multiple_deals_from_multiple_providers() {

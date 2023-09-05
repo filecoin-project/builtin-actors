@@ -1056,12 +1056,12 @@ pub fn publish_and_activate_deal(
     end_epoch: ChainEpoch,
     current_epoch: ChainEpoch,
     sector_expiry: ChainEpoch,
-) -> DealID {
+) -> (DealID, DealProposal) {
     let deal = generate_deal_and_add_funds(rt, client, addrs, start_epoch, end_epoch);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.worker);
-    let deal_ids = publish_deals(rt, addrs, &[deal], TokenAmount::zero(), NO_ALLOCATION_ID); // unverified deal
+    let deal_ids = publish_deals(rt, addrs, &[deal.clone()], TokenAmount::zero(), NO_ALLOCATION_ID); // unverified deal
     activate_deals(rt, sector_expiry, addrs.provider, current_epoch, &deal_ids);
-    deal_ids[0]
+    (deal_ids[0], deal)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1073,8 +1073,8 @@ pub fn publish_and_activate_deal_legacy(
     end_epoch: ChainEpoch,
     current_epoch: ChainEpoch,
     sector_expiry: ChainEpoch,
-) -> DealID {
-    let deal_id = publish_and_activate_deal(
+) -> (DealID, DealProposal) {
+    let (deal_id, proposal) = publish_and_activate_deal(
         rt,
         client,
         addrs,
@@ -1084,7 +1084,7 @@ pub fn publish_and_activate_deal_legacy(
         sector_expiry,
     );
     simulate_legacy_deal(rt, deal_id, start_epoch);
-    deal_id
+    (deal_id, proposal)
 }
 
 pub fn generate_and_publish_deal(
@@ -1244,7 +1244,7 @@ pub fn terminate_deals_and_assert_balances(
     client_addr: Address,
     provider_addr: Address,
     deal_ids: &[DealID],
-) -> (TokenAmount, TokenAmount) {
+) -> (/*total_paid*/ TokenAmount, /*total_slashed*/ TokenAmount) {
     // get deal state  before the are cleaned up in terminate deals
     let deal_infos: Vec<(DealState, DealProposal)> = deal_ids
         .iter()

@@ -22,7 +22,7 @@ fn deal_is_processed_after_its_end_epoch_should_expire_correctly() {
 
     let activation_epoch = START_EPOCH - 1;
     rt.set_epoch(activation_epoch);
-    let deal_id = publish_and_activate_deal_legacy(
+    let (deal_id, deal_proposal) = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -31,7 +31,6 @@ fn deal_is_processed_after_its_end_epoch_should_expire_correctly() {
         activation_epoch,
         SECTOR_EXPIRY,
     );
-    let deal_proposal = get_deal_proposal(&rt, deal_id);
 
     rt.set_epoch(END_EPOCH + 100);
     let (pay, slashed) =

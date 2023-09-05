@@ -72,7 +72,7 @@ fn deal_is_slashed() {
 
         // publish and activate
         rt.set_epoch(tc.activation_epoch);
-        let deal_id = publish_and_activate_deal_legacy(
+        let (deal_id, deal_proposal) = publish_and_activate_deal_legacy(
             &rt,
             CLIENT_ADDR,
             &MinerAddresses::default(),
@@ -81,7 +81,6 @@ fn deal_is_slashed() {
             tc.activation_epoch,
             tc.deal_end,
         );
-        let deal_proposal = get_deal_proposal(&rt, deal_id);
 
         // terminate
         rt.set_epoch(tc.termination_epoch);
@@ -109,7 +108,7 @@ const END_EPOCH: ChainEpoch = START_EPOCH + DEAL_DURATION_EPOCHS;
 #[test]
 fn deal_is_slashed_at_the_end_epoch_should_not_be_slashed_and_should_be_considered_expired() {
     let rt = setup();
-    let deal_id = publish_and_activate_deal_legacy(
+    let (deal_id, deal_proposal) = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -118,7 +117,6 @@ fn deal_is_slashed_at_the_end_epoch_should_not_be_slashed_and_should_be_consider
         0,
         END_EPOCH,
     );
-    let deal_proposal = get_deal_proposal(&rt, deal_id);
 
     // set current epoch to deal end epoch and attempt to slash it -> should not be slashed
     // as deal is considered to be expired.
@@ -145,7 +143,7 @@ fn deal_payment_and_slashing_correctly_processed_in_same_crontick() {
     let start_epoch: ChainEpoch = Policy::default().deal_updates_interval;
     let end_epoch = start_epoch + DEAL_DURATION_EPOCHS;
     let rt = setup();
-    let deal_id = publish_and_activate_deal_legacy(
+    let (deal_id, deal_proposal) = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -154,7 +152,6 @@ fn deal_payment_and_slashing_correctly_processed_in_same_crontick() {
         0,
         end_epoch,
     );
-    let deal_proposal = get_deal_proposal(&rt, deal_id);
 
     // move the current epoch to startEpoch so next cron epoch will be start + Interval
     let current = process_epoch(start_epoch, deal_id);
@@ -187,7 +184,7 @@ fn slash_multiple_deals_in_the_same_epoch() {
     let rt = setup();
 
     // three deals for slashing
-    let deal_id1 = publish_and_activate_deal_legacy(
+    let (deal_id1, deal_proposal1) = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -196,9 +193,8 @@ fn slash_multiple_deals_in_the_same_epoch() {
         0,
         END_EPOCH,
     );
-    let deal_proposal1 = get_deal_proposal(&rt, deal_id1);
 
-    let deal_id2 = publish_and_activate_deal_legacy(
+    let (deal_id2, deal_proposal2) = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -207,9 +203,8 @@ fn slash_multiple_deals_in_the_same_epoch() {
         0,
         END_EPOCH + 1,
     );
-    let deal_proposal2 = get_deal_proposal(&rt, deal_id2);
 
-    let deal_id3 = publish_and_activate_deal_legacy(
+    let (deal_id3, deal_proposal3) = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -218,7 +213,6 @@ fn slash_multiple_deals_in_the_same_epoch() {
         0,
         END_EPOCH + 2,
     );
-    let deal_proposal3 = get_deal_proposal(&rt, deal_id3);
 
     // set slash epoch of deal at 100 epochs past last process epoch
     let epoch = process_epoch(START_EPOCH, deal_id3) + 100;
@@ -243,7 +237,7 @@ fn slash_multiple_deals_in_the_same_epoch() {
 #[test]
 fn regular_payments_till_deal_is_slashed_and_then_slashing_is_processed() {
     let rt = setup();
-    let deal_id = publish_and_activate_deal_legacy(
+    let (deal_id, deal_proposal) = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -252,7 +246,6 @@ fn regular_payments_till_deal_is_slashed_and_then_slashing_is_processed() {
         0,
         END_EPOCH,
     );
-    let deal_proposal = get_deal_proposal(&rt, deal_id);
 
     // move the current epoch to the process epoch + 5 so payment is made
     let process_start = process_epoch(START_EPOCH, deal_id);
@@ -306,7 +299,7 @@ fn regular_payments_till_deal_is_slashed_and_then_slashing_is_processed() {
 #[test]
 fn regular_payments_till_deal_expires_and_then_we_attempt_to_slash_it_but_it_will_not_be_slashed() {
     let rt = setup();
-    let deal_id = publish_and_activate_deal_legacy(
+    let (deal_id, deal_proposal) = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -315,7 +308,6 @@ fn regular_payments_till_deal_expires_and_then_we_attempt_to_slash_it_but_it_wil
         0,
         END_EPOCH,
     );
-    let deal_proposal = get_deal_proposal(&rt, deal_id);
 
     // move the current epoch to processEpoch + 5 so payment is made and assert payment
     let process_start = process_epoch(START_EPOCH, deal_id);
