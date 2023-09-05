@@ -6,7 +6,6 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 
-use fil_actor_market::{DealMetaArray, State as MarketState};
 use fil_actor_miner::{
     max_prove_commit_duration, power_for_sector, ExpirationExtension, ExpirationExtension2,
     ExtendSectorExpiration2Params, ExtendSectorExpirationParams, Method as MinerMethod, PowerPair,
@@ -15,9 +14,7 @@ use fil_actor_miner::{
 use fil_actor_verifreg::Method as VerifregMethod;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::make_sealed_cid;
-use fil_actors_runtime::{
-    DealWeight, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
-};
+use fil_actors_runtime::{DealWeight, EPOCHS_IN_DAY, VERIFIED_REGISTRY_ACTOR_ADDR};
 use vm_api::trace::ExpectInvocation;
 use vm_api::util::{apply_ok, get_state, mutate_state, DynBlockstore};
 use vm_api::VM;
@@ -27,9 +24,9 @@ use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_by_deadline_to_index, advance_to_proving_deadline, bf_all, create_accounts,
     create_miner, cron_tick, expect_invariants, invariant_failure_patterns, market_add_balance,
-    market_publish_deal, miner_precommit_one_sector_v2, miner_prove_sector,
-    precommit_meta_data_from_deals, sector_deadline, submit_windowed_post, verifreg_add_client,
-    verifreg_add_verifier, PrecommitMetadata,
+    market_pending_deal_allocations, market_publish_deal, miner_precommit_one_sector_v2,
+    miner_prove_sector, precommit_meta_data_from_deals, sector_deadline, submit_windowed_post,
+    verifreg_add_client, verifreg_add_verifier, PrecommitMetadata,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -610,6 +607,8 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     )
     .ids;
 
+    let claim_id = market_pending_deal_allocations(v, &deal_ids)[0];
+
     // replica update
     let new_sealed_cid = make_sealed_cid(b"replica1");
 
@@ -644,7 +643,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         subinvocs: Some(vec![
             Expect::market_activate_deals(
                 miner_id,
-                deal_ids.clone(),
+                deal_ids,
                 sector_number,
                 initial_sector_info.expiration,
                 initial_sector_info.seal_proof,
@@ -689,12 +688,6 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     // For clarity in checking power_base_epoch, we increment epoch by 1
     let curr_epoch = v.epoch();
     v.set_epoch(curr_epoch + 1);
-
-    let market_state: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
-    let blockstore = DynBlockstore::wrap(v.blockstore());
-    let deal_states = DealMetaArray::load(&market_state.states, &blockstore).unwrap();
-    let deal_state = deal_states.get(deal_ids[0]).unwrap().unwrap();
-    let claim_id = deal_state.verified_claim;
 
     let extension_params = ExtendSectorExpiration2Params {
         extensions: vec![ExpirationExtension2 {
