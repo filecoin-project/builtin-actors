@@ -1,6 +1,6 @@
 use crate::{
     power_for_sectors, BitFieldQueue, Deadline, ExpirationQueue, MinerInfo, Partition, PowerPair,
-    SectorOnChainInfo, SectorPreCommitOnChainInfo, Sectors, State,
+    SectorOnChainInfo, SectorOnChainInfoFlags, SectorPreCommitOnChainInfo, Sectors, State,
 };
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
@@ -79,11 +79,14 @@ pub fn check_state_invariants<BS: Blockstore>(
                 if !sector.deal_weight.is_zero() || !sector.verified_deal_weight.is_zero() {
                     miner_summary.live_data_sectors.insert(
                         sector_number,
-                        DealSummary {
+                        DataSummary {
                             sector_start: sector.activation,
                             sector_expiration: sector.expiration,
                             deal_weight: sector.deal_weight.clone(),
                             verified_deal_weight: sector.verified_deal_weight.clone(),
+                            legacy_qap: !sector
+                                .flags
+                                .contains(SectorOnChainInfoFlags::SIMPLE_QA_POWER),
                         },
                     );
                 }
@@ -142,11 +145,12 @@ pub fn check_state_invariants<BS: Blockstore>(
     (miner_summary, acc)
 }
 
-pub struct DealSummary {
+pub struct DataSummary {
     pub sector_start: ChainEpoch,
     pub sector_expiration: ChainEpoch,
     pub deal_weight: DealWeight,
     pub verified_deal_weight: DealWeight,
+    pub legacy_qap: bool,
 }
 
 pub struct StateSummary {
@@ -156,7 +160,7 @@ pub struct StateSummary {
     pub window_post_proof_type: RegisteredPoStProof,
     pub deadline_cron_active: bool,
     // sectors with non zero (verified) deal weight that may carry deals
-    pub live_data_sectors: BTreeMap<SectorNumber, DealSummary>,
+    pub live_data_sectors: BTreeMap<SectorNumber, DataSummary>,
 }
 
 impl Default for StateSummary {

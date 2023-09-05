@@ -7,8 +7,8 @@ use fil_actor_market::{
     ext, next_update_epoch, Actor as MarketActor, BatchActivateDealsResult, ClientDealProposal,
     DealArray, DealMetaArray, Label, MarketNotifyDealParams, Method, PendingDealAllocationsMap,
     PublishStorageDealsParams, PublishStorageDealsReturn, SectorDeals, State,
-    WithdrawBalanceParams, EX_DEAL_EXPIRED, MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID,
-    PENDING_ALLOCATIONS_CONFIG, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
+    WithdrawBalanceParams, EX_DEAL_EXPIRED, MARKET_NOTIFY_DEAL_METHOD, PENDING_ALLOCATIONS_CONFIG,
+    PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
 };
 use fil_actors_runtime::cbor::{deserialize, serialize};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
@@ -704,11 +704,9 @@ fn simple_deal() {
     activate_deals(&rt, end_epoch + 1, PROVIDER_ADDR, publish_epoch, 1, &[deal1_id, deal2_id]);
     let deal1st = get_deal_state(&rt, deal1_id);
     assert_eq!(publish_epoch, deal1st.sector_start_epoch);
-    assert_eq!(NO_ALLOCATION_ID, deal1st.verified_claim);
 
     let deal2st = get_deal_state(&rt, deal2_id);
     assert_eq!(publish_epoch, deal2st.sector_start_epoch);
-    assert_eq!(next_allocation_id, deal2st.verified_claim);
 
     check_state(&rt);
 }
