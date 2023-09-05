@@ -619,7 +619,6 @@ impl Actor {
                             sector_start_epoch: curr_epoch,
                             last_updated_epoch: EPOCH_UNDEFINED,
                             slash_epoch: EPOCH_UNDEFINED,
-                            verified_claim: alloc_id,
                         },
                     ));
                 }
@@ -734,9 +733,10 @@ impl Actor {
                     // No continue below here, to ensure state changes are consistent.
                     activated_deals.insert(deal_id);
 
-                    // Extract and remove any verified allocation ID for the pending deal.
-                    let alloc_id =
-                        pending_deal_allocation_ids.delete(&deal_id)?.unwrap_or(NO_ALLOCATION_ID);
+                    // Remove any verified allocation ID for the pending deal.
+                    // The allocation ID is only used in BatchActivateDeals
+                    // (where it's returned to the caller).
+                    pending_deal_allocation_ids.delete(&deal_id)?.unwrap_or(NO_ALLOCATION_ID);
 
                     deal_states.push((
                         deal_id,
@@ -745,15 +745,6 @@ impl Actor {
                             sector_start_epoch: curr_epoch,
                             last_updated_epoch: EPOCH_UNDEFINED,
                             slash_epoch: EPOCH_UNDEFINED,
-                            // This allocation ID may exist if allocation was created by this
-                            // built-in market actor, but in this method, that doesn't mean the
-                            // SP necessarily claimed the allocation before activating this deal.
-                            // The allocation ID is only in market state to support the
-                            // old ActivateDeals flow where this is the way that the miner actor
-                            // learns the allocation ID.
-                            // In the new flow, the SP provides the allocation ID explicitly
-                            // and claims it _before_ notifying the market of deal activation.
-                            verified_claim: alloc_id,
                         },
                     ));
                     sector_deal_ids.push(deal_id);
