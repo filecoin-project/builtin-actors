@@ -115,7 +115,7 @@ frc46_token = "7.0.0"
 
 # FVM
 fvm_sdk = "~3.3.0"
-fvm_shared = "~3.4.0"
+fvm_shared = "~3.6.0"
 fvm_ipld_encoding = "0.4.0"
 fvm_ipld_blockstore = "0.2.0"
 fvm_ipld_hamt = "0.7.0"
