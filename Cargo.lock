@@ -1880,7 +1880,7 @@ dependencies = [
 [[package]]
 name = "frc42_dispatch"
 version = "3.3.0"
-source = "git+https://github.com/helix-onchain/filecoin?branch=steb/update-fvm#4dfa077d76785b4d83b49bebf66f7752f21631b0"
+source = "git+https://github.com/helix-onchain/filecoin#6e98ccd8eefca703a4ef0129c9074d63ed8bd497"
 dependencies = [
  "frc42_hasher",
  "frc42_macros",
@@ -1893,7 +1893,7 @@ dependencies = [
 [[package]]
 name = "frc42_hasher"
 version = "1.6.0"
-source = "git+https://github.com/helix-onchain/filecoin?branch=steb/update-fvm#4dfa077d76785b4d83b49bebf66f7752f21631b0"
+source = "git+https://github.com/helix-onchain/filecoin#6e98ccd8eefca703a4ef0129c9074d63ed8bd497"
 dependencies = [
  "fvm_sdk",
  "fvm_shared",
@@ -1903,7 +1903,7 @@ dependencies = [
 [[package]]
 name = "frc42_macros"
 version = "1.3.0"
-source = "git+https://github.com/helix-onchain/filecoin?branch=steb/update-fvm#4dfa077d76785b4d83b49bebf66f7752f21631b0"
+source = "git+https://github.com/helix-onchain/filecoin#6e98ccd8eefca703a4ef0129c9074d63ed8bd497"
 dependencies = [
  "blake2b_simd",
  "frc42_hasher",
@@ -1915,7 +1915,7 @@ dependencies = [
 [[package]]
 name = "frc46_token"
 version = "7.0.0"
-source = "git+https://github.com/helix-onchain/filecoin?branch=steb/update-fvm#4dfa077d76785b4d83b49bebf66f7752f21631b0"
+source = "git+https://github.com/helix-onchain/filecoin#6e98ccd8eefca703a4ef0129c9074d63ed8bd497"
 dependencies = [
  "cid 0.10.1",
  "frc42_dispatch",
@@ -2065,7 +2065,7 @@ dependencies = [
 [[package]]
 name = "fvm_actor_utils"
 version = "7.0.0"
-source = "git+https://github.com/helix-onchain/filecoin?branch=steb/update-fvm#4dfa077d76785b4d83b49bebf66f7752f21631b0"
+source = "git+https://github.com/helix-onchain/filecoin#6e98ccd8eefca703a4ef0129c9074d63ed8bd497"
 dependencies = [
  "anyhow",
  "cid 0.10.1",
