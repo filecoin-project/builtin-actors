@@ -95,7 +95,7 @@ fn deal_is_slashed() {
         rt.set_epoch(cron_tick_epoch);
         cron_tick(&rt);
 
-        assert_deal_deleted(&rt, deal_id, deal_proposal);
+        assert_deal_deleted(&rt, deal_id, &deal_proposal);
 
         check_state(&rt);
     }
@@ -132,7 +132,7 @@ fn deal_is_slashed_at_the_end_epoch_should_not_be_slashed_and_should_be_consider
     assert!(slashed.is_zero());
 
     // deal should be deleted as it should have expired
-    assert_deal_deleted(&rt, deal_id, deal_proposal);
+    assert_deal_deleted(&rt, deal_id, &deal_proposal);
 
     check_state(&rt);
 }
@@ -175,7 +175,7 @@ fn deal_payment_and_slashing_correctly_processed_in_same_crontick() {
     cron_tick(&rt);
 
     // deal should be deleted as it should have expired
-    assert_deal_deleted(&rt, deal_id, deal_proposal);
+    assert_deal_deleted(&rt, deal_id, &deal_proposal);
     check_state(&rt);
 }
 
@@ -228,9 +228,9 @@ fn slash_multiple_deals_in_the_same_epoch() {
     rt.set_epoch(epoch + 1);
     cron_tick(&rt);
 
-    assert_deal_deleted(&rt, deal_id1, deal_proposal1);
-    assert_deal_deleted(&rt, deal_id2, deal_proposal2);
-    assert_deal_deleted(&rt, deal_id3, deal_proposal3);
+    assert_deal_deleted(&rt, deal_id1, &deal_proposal1);
+    assert_deal_deleted(&rt, deal_id2, &deal_proposal2);
+    assert_deal_deleted(&rt, deal_id3, &deal_proposal3);
     check_state(&rt);
 }
 
@@ -292,7 +292,7 @@ fn regular_payments_till_deal_is_slashed_and_then_slashing_is_processed() {
     cron_tick(&rt);
 
     // deal should be deleted as it should have expired
-    assert_deal_deleted(&rt, deal_id, deal_proposal);
+    assert_deal_deleted(&rt, deal_id, &deal_proposal);
     check_state(&rt);
 }
 
@@ -344,6 +344,6 @@ fn regular_payments_till_deal_expires_and_then_we_attempt_to_slash_it_but_it_wil
     assert!(slashed.is_zero());
 
     // deal should be deleted as it should have expired
-    assert_deal_deleted(&rt, deal_id, deal_proposal);
+    assert_deal_deleted(&rt, deal_id, &deal_proposal);
     check_state(&rt);
 }

@@ -1020,7 +1020,7 @@ pub fn assert_deals_not_terminated(rt: &MockRuntime, deal_ids: &[DealID]) {
     }
 }
 
-pub fn assert_deal_deleted(rt: &MockRuntime, deal_id: DealID, p: DealProposal) {
+pub fn assert_deal_deleted(rt: &MockRuntime, deal_id: DealID, p: &DealProposal) {
     use cid::multihash::Code;
     use cid::multihash::MultihashDigest;
     use fvm_ipld_hamt::BytesKey;
@@ -1038,7 +1038,7 @@ pub fn assert_deal_deleted(rt: &MockRuntime, deal_id: DealID, p: DealProposal) {
     assert!(s.is_none());
 
     let mh_code = Code::Blake2b256;
-    let p_cid = Cid::new_v1(fvm_ipld_encoding::DAG_CBOR, mh_code.digest(&to_vec(&p).unwrap()));
+    let p_cid = Cid::new_v1(fvm_ipld_encoding::DAG_CBOR, mh_code.digest(&to_vec(p).unwrap()));
     // Check that the deal_id is not in st.pending_proposals.
     let pending_deals = Set::from_root(rt.store(), &st.pending_proposals).unwrap();
     assert!(!pending_deals.has(&BytesKey(p_cid.to_bytes())).unwrap());

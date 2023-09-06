@@ -38,7 +38,7 @@ fn deal_is_processed_after_its_end_epoch_should_expire_correctly() {
     assert!(slashed.is_zero());
     let duration = END_EPOCH - START_EPOCH;
     assert_eq!(duration * &deal_proposal.storage_price_per_epoch, pay);
-    assert_deal_deleted(&rt, deal_id, deal_proposal);
+    assert_deal_deleted(&rt, deal_id, &deal_proposal);
     check_state(&rt);
 }
 
@@ -87,6 +87,6 @@ fn cron_processing_of_deal_after_missed_activation_should_fail_and_slash() {
     );
     cron_tick(&rt);
 
-    assert_deal_deleted(&rt, deal_id, deal_proposal);
+    assert_deal_deleted(&rt, deal_id, &deal_proposal);
     check_state(&rt);
 }

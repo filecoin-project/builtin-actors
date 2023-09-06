@@ -53,24 +53,24 @@ fn terminate_multiple_deals_from_multiple_providers() {
 
     let prop1 = get_deal_proposal(&rt, deal1);
     terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[deal1]);
-    assert_deal_deleted(&rt, deal1, prop1);
+    assert_deal_deleted(&rt, deal1, &prop1);
     assert_deals_not_terminated(&rt, &[deal2, deal3, deal4, deal5]);
 
     let prop5 = get_deal_proposal(&rt, deal5);
     terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, provider2, &[deal5]);
-    assert_deal_deleted(&rt, deal5, prop5);
+    assert_deal_deleted(&rt, deal5, &prop5);
     assert_deals_not_terminated(&rt, &[deal2, deal3, deal4]);
 
     let prop2 = get_deal_proposal(&rt, deal2);
     let prop3 = get_deal_proposal(&rt, deal3);
     terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[deal2, deal3]);
-    assert_deal_deleted(&rt, deal2, prop2);
-    assert_deal_deleted(&rt, deal3, prop3);
+    assert_deal_deleted(&rt, deal2, &prop2);
+    assert_deal_deleted(&rt, deal3, &prop3);
     assert_deals_not_terminated(&rt, &[deal4]);
 
     let prop4 = get_deal_proposal(&rt, deal4);
     terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, provider2, &[deal4]);
-    assert_deal_deleted(&rt, deal4, prop4);
+    assert_deal_deleted(&rt, deal4, &prop4);
     check_state(&rt);
 }
 
@@ -114,8 +114,8 @@ fn ignore_deal_proposal_that_does_not_exist() {
     let prop2 = get_deal_proposal(&rt, deal2);
 
     terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[deal1, deal2, deal3]);
-    assert_deal_deleted(&rt, deal1, prop1);
-    assert_deal_deleted(&rt, deal2, prop2);
+    assert_deal_deleted(&rt, deal1, &prop1);
+    assert_deal_deleted(&rt, deal2, &prop2);
     assert_deals_not_terminated(&rt, &[deal3]);
     check_state(&rt);
 }
@@ -160,8 +160,8 @@ fn terminate_valid_deals_along_with_just_expired_deal() {
     let prop2 = get_deal_proposal(&rt, deal2);
 
     terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[deal1, deal2, deal3]);
-    assert_deal_deleted(&rt, deal1, prop1);
-    assert_deal_deleted(&rt, deal2, prop2);
+    assert_deal_deleted(&rt, deal1, &prop1);
+    assert_deal_deleted(&rt, deal2, &prop2);
     assert_deals_not_terminated(&rt, &[deal3]);
     check_state(&rt);
 }
@@ -205,12 +205,12 @@ fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
     rt.set_epoch(new_epoch);
     cron_tick(&rt);
     // expired deal deleted normally
-    assert_deal_deleted(&rt, deal_ids[1], deal2);
+    assert_deal_deleted(&rt, deal_ids[1], &deal2);
     assert_deals_not_terminated(&rt, &deal_ids[0..0]);
 
     terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &deal_ids);
     // terminated deal deleted
-    assert_deal_deleted(&rt, deal_ids[0], deal1);
+    assert_deal_deleted(&rt, deal_ids[0], &deal1);
 
     // terminated deal has a dangling deal op, normally expired deal doesn't
     check_state(&rt);
