@@ -109,9 +109,9 @@ libipld-core = { version = "0.13.1", features = ["serde-codec"] }
 integer-encoding = { version = "3.0.3", default-features = false }
 
 # helix-onchain
-fvm_actor_utils = "7.0.0"
-frc42_dispatch = "3.3.0"
-frc46_token = "7.0.0"
+fvm_actor_utils = { git = "https://github.com/helix-onchain/filecoin", branch = "steb/update-fvm" }
+frc42_dispatch = { git = "https://github.com/helix-onchain/filecoin", branch = "steb/update-fvm" }
+frc46_token = { git = "https://github.com/helix-onchain/filecoin", branch = "steb/update-fvm" }
 
 # FVM
 fvm_sdk = "~3.3.0"
@@ -155,9 +155,9 @@ test_vm = { version = "12.0.0", path = "test_vm" }
 #fvm_ipld_bitfield = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
 #fvm_ipld_encoding = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
 #fvm_ipld_blockstore = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
-fvm_actor_utils = { git = "https://github.com/helix-onchain/filecoin", branch = "steb/update-fvm" }
-frc42_dispatch = { git = "https://github.com/helix-onchain/filecoin", branch = "steb/update-fvm" }
-frc46_token = { git = "https://github.com/helix-onchain/filecoin", branch = "steb/update-fvm" }
+#fvm_actor_utils = { git = "https://github.com/helix-onchain/filecoin", branch = "alex/update-fvm-ipld" }
+#frc42_dispatch = { git = "https://github.com/helix-onchain/filecoin", branch = "alex/update-fvm-ipld" }
+#frc46_token = { git = "https://github.com/helix-onchain/filecoin", branch = "alex/update-fvm-ipld" }
 
 ## Uncomment when working locally on ref-fvm and this repo simultaneously.
 ## Assumes the ref-fvm checkout is in a sibling directory with the same name.
