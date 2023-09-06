@@ -1123,6 +1123,9 @@ impl Actor {
             return Err(actor_error!(illegal_argument, "no valid updates"));
         }
         let proven_batch = proven_batch_gen.gen();
+        if proven_batch.success_count == 0 {
+            return Err(actor_error!(illegal_argument, "no valid proofs specified"));
+        }
 
         // Activate data.
         let data_activation_inputs: Vec<SectorPiecesActivationInput> = proven_manifests
@@ -1139,6 +1142,9 @@ impl Actor {
         // Activate data for proven updates.
         let (data_batch, data_activations) =
             activate_sectors_pieces(rt, data_activation_inputs, params.require_activation_success)?;
+        if data_batch.success_count == 0 {
+            return Err(actor_error!(illegal_argument, "all data activations failed"));
+        }
 
         // Successful data activation is required for sector activation.
         let successful_manifests = data_batch.successes(&proven_manifests);
