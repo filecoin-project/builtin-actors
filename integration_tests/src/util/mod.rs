@@ -163,9 +163,6 @@ pub mod invariant_failure_patterns {
     lazy_static! {
         pub static ref REWARD_STATE_EPOCH_MISMATCH: Regex =
             Regex::new("^reward state epoch \\d+ does not match prior_epoch\\+1 \\d+$").unwrap();
-        pub static ref DANGLING_DEAL_OP: Regex =
-            Regex::new("^deal op found for deal id \\d+ with missing proposal at epoch \\d+$")
-                .unwrap();
     }
 }
 

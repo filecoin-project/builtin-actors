@@ -304,7 +304,10 @@ pub fn check_state_invariants<BS: Blockstore>(
                         expected_deal_ops.remove(&deal_id);
                         deal_op_count += 1;
                         Ok(())
-                }).map_err(|e| anyhow::anyhow!("error iterating deal ops for epoch {}: {}", epoch, e))
+                    })
+                    .map_err(|e| {
+                        anyhow::anyhow!("error iterating deal ops for epoch {}: {}", epoch, e)
+                    })
             });
             acc.require_no_error(ret, "error iterating all deal ops");
         }

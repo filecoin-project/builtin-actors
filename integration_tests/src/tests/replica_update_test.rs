@@ -654,11 +654,7 @@ pub fn terminate_after_upgrade_test(v: &dyn VM) {
     assert!(network_stats.total_qa_bytes_committed.is_zero());
     assert!(network_stats.total_pledge_collateral.is_zero());
 
-    expect_invariants(
-        v,
-        &Policy::default(),
-        &[invariant_failure_patterns::DANGLING_DEAL_OP.to_owned()],
-    );
+    assert_invariants(v, &Policy::default());
 }
 
 /// Tests that an active CC sector can be correctly upgraded, and then the sector can be extended
