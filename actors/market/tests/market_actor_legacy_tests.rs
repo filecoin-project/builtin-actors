@@ -126,7 +126,7 @@ fn settling_deal_fails_when_deal_update_epoch_is_in_the_future() {
     // set current epoch of the deal to the end epoch so it's picked up for "processing" in the next cron tick.
     rt.set_epoch(end_epoch);
     expect_abort(ExitCode::USR_ILLEGAL_STATE, cron_tick_raw(&rt));
-    let ret = settle_deal_payments(&rt, MinerAddresses::default().provider, vec![deal_id]);
+    let ret = settle_deal_payments(&rt, MinerAddresses::default().provider, &[deal_id]);
     assert_eq!(ret.results.codes(), &[ExitCode::USR_ILLEGAL_STATE]);
 
     check_state_with_expected(

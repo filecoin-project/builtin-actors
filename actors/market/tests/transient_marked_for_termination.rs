@@ -6,7 +6,7 @@ mod harness;
 
 use std::collections::BTreeMap;
 
-use fil_actor_market::{DealSettlementSummary, State};
+use fil_actor_market::{DealSettlementSummary, State, EX_DEAL_EXPIRED};
 use fil_actors_runtime::{runtime::Runtime, BURNT_FUNDS_ACTOR_ADDR, EPOCHS_IN_DAY};
 use fvm_shared::{clock::ChainEpoch, error::ExitCode};
 use harness::*;
@@ -69,7 +69,7 @@ fn deal_scheduled_for_termination_cannot_be_settled_manually() {
     settle_deal_payments_expect_abort(
         &rt,
         PROVIDER_ADDR,
-        vec![deal_id_1, slashed_deal],
+        &[deal_id_1, slashed_deal],
         ExitCode::USR_ILLEGAL_ARGUMENT,
     );
 
@@ -90,10 +90,10 @@ fn deal_scheduled_for_termination_cannot_be_settled_manually() {
 
     // attempt to settle payment for both deals again - partially succeeds because not found deals are ignored
     rt.set_epoch(scheduled_epoch + 1);
-    let ret = settle_deal_payments(&rt, PROVIDER_ADDR, vec![deal_id_1, slashed_deal]);
+    let ret = settle_deal_payments(&rt, PROVIDER_ADDR, &[deal_id_1, slashed_deal]);
     let expected_payment =
         deal_1_prop.storage_price_per_epoch * (scheduled_epoch + 1 - start_epoch);
-    assert_eq!(ret.results.codes(), vec![ExitCode::OK, ExitCode::USR_NOT_FOUND]);
+    assert_eq!(ret.results.codes(), vec![ExitCode::OK, EX_DEAL_EXPIRED]);
     assert_eq!(
         ret.settlements[0],
         DealSettlementSummary { completed: false, payment: expected_payment }

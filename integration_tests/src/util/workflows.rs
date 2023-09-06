@@ -525,7 +525,11 @@ pub fn miner_extend_sector_expiration2(
 }
 
 pub fn provider_settle_deal_payments(v: &dyn VM, provider: &Address, deals: &[DealID]) {
-    let params = SettleDealPaymentsParams { deal_ids: deals.to_vec() };
+    let mut deal_id_bitfield = BitField::new();
+    for deal_id in deals {
+        deal_id_bitfield.set(*deal_id);
+    }
+    let params = SettleDealPaymentsParams { deal_ids: deal_id_bitfield };
     apply_ok(
         v,
         provider,

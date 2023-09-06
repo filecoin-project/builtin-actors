@@ -1,4 +1,4 @@
-use fil_actor_market::DealSettlementSummary;
+use fil_actor_market::{DealSettlementSummary, EX_DEAL_EXPIRED};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
 use fvm_shared::clock::ChainEpoch;
@@ -38,7 +38,7 @@ fn timedout_deal_is_slashed_and_deleted() {
     );
 
     // settle deal payments -> should time out and get slashed
-    settle_deal_payments(&rt, CLIENT_ADDR, vec![deal_id]);
+    settle_deal_payments(&rt, CLIENT_ADDR, &[deal_id]);
 
     let client_acct = get_balance(&rt, &CLIENT_ADDR);
     assert_eq!(c_escrow, client_acct.balance);
@@ -76,7 +76,7 @@ fn can_manually_settle_deals_in_the_cron_queue() {
     rt.set_epoch(START_EPOCH + 100);
 
     // manually call settle_deal_payments
-    let ret = settle_deal_payments(&rt, addrs.provider, vec![deal_id]);
+    let ret = settle_deal_payments(&rt, addrs.provider, &[deal_id]);
     let payment = ret.settlements[0].payment.clone();
     assert_eq!(&payment, &(&deal_proposal.storage_price_per_epoch * 100));
 
@@ -166,17 +166,17 @@ fn batch_settlement_of_deals_allows_partial_success() {
     let ret = settle_deal_payments(
         &rt,
         addrs.provider,
-        vec![continuing_id, finished_id, terminated_id, unactivated_id, 9999],
+        &[continuing_id, finished_id, terminated_id, unactivated_id, 9999],
     );
 
     assert_eq!(
         ret.results.codes(),
         &[
-            ExitCode::OK,            // continuing
-            ExitCode::OK,            // finished
-            ExitCode::USR_NOT_FOUND, // already terminated and cleaned up
-            ExitCode::USR_NOT_FOUND, // unactivated and slashed then cleaned up
-            ExitCode::USR_NOT_FOUND  // non-existent deal id
+            ExitCode::OK,    // continuing
+            ExitCode::OK,    // finished
+            EX_DEAL_EXPIRED, // already terminated and cleaned up
+            EX_DEAL_EXPIRED, // unactivated and slashed then cleaned up
+            EX_DEAL_EXPIRED  // non-existent deal id
         ]
     );
     // expected balance changes contributed by each deal

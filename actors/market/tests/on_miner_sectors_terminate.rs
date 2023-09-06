@@ -1,7 +1,5 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
-
-// TODO: remove tests for legacy behaviour: https://github.com/filecoin-project/builtin-actors/issues/1389
 use std::convert::TryInto;
 
 use fil_actor_market::{Actor as MarketActor, Method, OnMinerSectorsTerminateParams};

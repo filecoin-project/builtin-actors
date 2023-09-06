@@ -251,10 +251,10 @@ pub struct MarketNotifyDealParams {
     pub deal_id: u64,
 }
 
-#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone)]
 #[serde(transparent)]
 pub struct SettleDealPaymentsParams {
-    pub deal_ids: Vec<DealID>,
+    pub deal_ids: BitField,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]

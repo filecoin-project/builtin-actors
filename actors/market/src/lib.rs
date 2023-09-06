@@ -1016,18 +1016,18 @@ impl Actor {
         rt.validate_immediate_caller_accept_any()?;
         let curr_epoch = rt.curr_epoch();
 
-        let mut batch_gen = BatchReturnGen::new(params.deal_ids.len());
+        let mut batch_gen = BatchReturnGen::new(params.deal_ids.len() as usize);
         let mut settlements: Vec<DealSettlementSummary> = Vec::new();
         // accumulates slashed amounts from timed out deal proposals that weren't activated in time
         let mut total_slashed = TokenAmount::zero();
 
         rt.transaction(|st: &mut State, rt| {
             let mut new_deal_states: Vec<(DealID, DealState)> = Vec::new();
-            for deal_id in params.deal_ids {
+            for deal_id in params.deal_ids.iter() {
                 let deal_proposal = match st.get_proposal(rt.store(), deal_id) {
                     Ok(prop) => prop,
                     Err(_) => {
-                        batch_gen.add_fail(ExitCode::USR_NOT_FOUND); // hide potential EX_DEAL_EXPIRED as deal may have terminated
+                        batch_gen.add_fail(EX_DEAL_EXPIRED);
                         continue;
                     }
                 };
@@ -1065,13 +1065,23 @@ impl Actor {
                     LoadDealState::ProposalExpired(penalty) => {
                         // deal proposal was not activated in time
                         total_slashed += penalty;
-                        batch_gen.add_fail(ExitCode::USR_NOT_FOUND);
+                        batch_gen.add_fail(EX_DEAL_EXPIRED);
                         continue;
                     }
                     LoadDealState::Loaded(deal_state) => deal_state,
                 };
 
-                let (slash_amount, payment_amount, remove_deal) = match st.process_deal_update(
+                // TODO: remove this defensive check when it becomes impossible for process_deal_update to encounter slashed deals
+                // https://github.com/filecoin-project/builtin-actors/issues/1388
+                if deal_state.slash_epoch != EPOCH_UNDEFINED {
+                    return Err(actor_error!(
+                        illegal_argument,
+                        "deal {} is marked for termination and cannot be settled",
+                        deal_id
+                    ));
+                }
+
+                let (_, payment_amount, remove_deal) = match st.process_deal_update(
                     rt.store(),
                     &deal_state,
                     &deal_proposal,
@@ -1084,16 +1094,6 @@ impl Actor {
                         continue;
                     }
                 };
-
-                // TODO: remove this case when it becomes impossible for process_deal_update to encounter slashed deals
-                // https://github.com/filecoin-project/builtin-actors/issues/1388
-                if !slash_amount.is_zero() {
-                    return Err(actor_error!(
-                        illegal_argument,
-                        "deal {} is marked for termination and cannot be settled",
-                        deal_id
-                    ));
-                }
 
                 if remove_deal {
                     st.remove_completed_deal(rt.store(), deal_id)?;
@@ -1122,7 +1122,7 @@ impl Actor {
             ))?;
         }
 
-        Ok(SettleDealPaymentsReturn { settlements, results: batch_gen.gen() })
+        Ok(SettleDealPaymentsReturn { results: batch_gen.gen(), settlements })
     }
 }
 

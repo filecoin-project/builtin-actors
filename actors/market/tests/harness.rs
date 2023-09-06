@@ -8,11 +8,12 @@ use fil_actor_market::{
 };
 use fil_actors_runtime::parse_uint_key;
 use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
+use fvm_ipld_bitfield::BitField;
 use num_traits::{FromPrimitive, Zero};
 use regex::Regex;
 use std::cmp::{max, min};
-use std::collections::{BTreeMap, BTreeSet};
-use std::{cell::RefCell, collections::HashMap};
+use std::collections::BTreeMap;
+use std::{cell::RefCell, collections::HashMap, collections::HashSet};
 
 use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
 use fil_actor_market::ext::verifreg::{AllocationID, AllocationRequest, AllocationsResponse};
@@ -119,7 +120,7 @@ pub fn setup() -> MockRuntime {
 pub fn assert_deal_ops_clean(rt: &MockRuntime) {
     let st: State = rt.get_state();
 
-    let mut proposal_set = BTreeSet::<DealID>::new();
+    let mut proposal_set = HashSet::<DealID>::new();
     let proposals = DealArray::load(&st.proposals, rt.store()).unwrap();
     proposals
         .for_each(|deal_id, _| {
@@ -828,9 +829,13 @@ pub fn publish_deals_expect_abort(
 pub fn settle_deal_payments(
     rt: &MockRuntime,
     caller: Address,
-    deal_ids: Vec<DealID>,
+    deal_ids: &[DealID],
 ) -> SettleDealPaymentsReturn {
-    let params = SettleDealPaymentsParams { deal_ids };
+    let mut deal_id_bitfield = BitField::new();
+    for deal_id in deal_ids {
+        deal_id_bitfield.set(*deal_id);
+    }
+    let params = SettleDealPaymentsParams { deal_ids: deal_id_bitfield };
     let params = IpldBlock::serialize_cbor(&params).unwrap();
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, caller);
@@ -900,7 +905,7 @@ pub fn settle_deal_payments_and_assert_balances(
         updated_provider_locked = TokenAmount::zero();
     }
 
-    settle_deal_payments(rt, provider_addr, vec![deal_id]);
+    settle_deal_payments(rt, provider_addr, &[deal_id]);
 
     let client_acct = get_balance(rt, &client_addr);
     let provider_acct = get_balance(rt, &provider_addr);
@@ -914,10 +919,14 @@ pub fn settle_deal_payments_and_assert_balances(
 pub fn settle_deal_payments_expect_abort(
     rt: &MockRuntime,
     caller: Address,
-    deal_ids: Vec<DealID>,
+    deal_ids: &[DealID],
     expected_exit_code: ExitCode,
 ) {
-    let params = SettleDealPaymentsParams { deal_ids };
+    let mut deal_id_bitfield = BitField::new();
+    for deal_id in deal_ids {
+        deal_id_bitfield.set(*deal_id);
+    }
+    let params = SettleDealPaymentsParams { deal_ids: deal_id_bitfield };
     let params = IpldBlock::serialize_cbor(&params).unwrap();
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, caller);

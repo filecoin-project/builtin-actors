@@ -7,7 +7,7 @@ use fil_actor_market::{
     ext, Actor as MarketActor, BatchActivateDealsResult, ClientDealProposal, DealArray,
     DealMetaArray, DealSettlementSummary, Label, MarketNotifyDealParams, Method,
     PendingDealAllocationsMap, PublishStorageDealsParams, PublishStorageDealsReturn, SectorDeals,
-    State, WithdrawBalanceParams, MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID,
+    State, WithdrawBalanceParams, EX_DEAL_EXPIRED, MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID,
     PENDING_ALLOCATIONS_CONFIG, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
 };
 use fil_actors_runtime::cbor::{deserialize, serialize};
@@ -1389,7 +1389,7 @@ fn settling_deal_fails_when_deal_update_epoch_is_in_the_future() {
 
     // set current epoch of the deal to the end epoch so it's picked up for "processing" in the next cron tick.
     rt.set_epoch(end_epoch);
-    let ret = settle_deal_payments(&rt, MinerAddresses::default().provider, vec![deal_id]);
+    let ret = settle_deal_payments(&rt, MinerAddresses::default().provider, &[deal_id]);
     assert_eq!(ret.results.codes(), &[ExitCode::USR_ILLEGAL_STATE]);
 
     check_state_with_expected(
@@ -1457,8 +1457,8 @@ fn terminate_a_deal_then_settle_it_in_the_same_epoch() {
     // terminate then attempt to settle payment
     rt.set_epoch(slash_epoch);
     terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[deal_id]);
-    let ret = settle_deal_payments(&rt, PROVIDER_ADDR, vec![deal_id]);
-    assert_eq!(ret.results.codes(), vec![ExitCode::USR_NOT_FOUND]);
+    let ret = settle_deal_payments(&rt, PROVIDER_ADDR, &[deal_id]);
+    assert_eq!(ret.results.codes(), vec![EX_DEAL_EXPIRED]);
     assert_deal_deleted(&rt, deal_id, &proposal);
 
     check_state(&rt);
@@ -1490,7 +1490,7 @@ fn settle_payments_then_slash_deal_in_the_same_epoch() {
     // settle payments then terminate
     rt.set_epoch(slash_epoch);
     let expected_payment = deal_duration * &proposal.storage_price_per_epoch;
-    let ret = settle_deal_payments(&rt, PROVIDER_ADDR, vec![deal_id]);
+    let ret = settle_deal_payments(&rt, PROVIDER_ADDR, &[deal_id]);
     assert_eq!(
         ret.settlements.get(0).unwrap(),
         &DealSettlementSummary { completed: false, payment: expected_payment.clone() }
@@ -1770,7 +1770,7 @@ fn locked_fund_tracking_states() {
         None,
         ExitCode::OK,
     );
-    settle_deal_payments(&rt, OWNER_ADDR, vec![deal_id1, deal_id2, deal_id3]);
+    settle_deal_payments(&rt, OWNER_ADDR, &[deal_id1, deal_id2, deal_id3]);
     let duration = curr - start_epoch;
     let payment: TokenAmount = 2 * &d1.storage_price_per_epoch * duration;
     let mut csf = (csf - payment) - d3.total_storage_fee();
@@ -1783,7 +1783,7 @@ fn locked_fund_tracking_states() {
     let duration = curr - last_payment_epoch;
     let payment = 2 * d1.storage_price_per_epoch * duration;
     csf -= payment;
-    settle_deal_payments(&rt, OWNER_ADDR, vec![deal_id1, deal_id2, deal_id3]);
+    settle_deal_payments(&rt, OWNER_ADDR, &[deal_id1, deal_id2, deal_id3]);
     assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
 
     // slash deal1
@@ -1795,7 +1795,7 @@ fn locked_fund_tracking_states() {
     csf = TokenAmount::zero();
     clc = TokenAmount::zero();
     plc = TokenAmount::zero();
-    settle_deal_payments(&rt, OWNER_ADDR, vec![deal_id1, deal_id2, deal_id3]);
+    settle_deal_payments(&rt, OWNER_ADDR, &[deal_id1, deal_id2, deal_id3]);
     assert_locked_fund_states(&rt, csf, plc, clc);
     check_state(&rt);
 }
