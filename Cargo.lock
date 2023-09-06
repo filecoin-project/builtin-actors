@@ -2837,11 +2837,9 @@ dependencies = [
  "core2",
  "digest 0.10.7",
  "multihash-derive",
- "ripemd",
  "serde",
  "serde-big-array",
  "sha2 0.10.7",
- "sha3",
  "unsigned-varint",
 ]
 
