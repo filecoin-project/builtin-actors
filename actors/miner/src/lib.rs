@@ -1612,17 +1612,18 @@ impl Actor {
                     return Err(actor_error!(illegal_argument, "too many deals for sector {} > {}", precommit.deal_ids.len(), deal_count_max));
                 }
 
-                let computed_cid = &verify_return.unsealed_cids[i];
-
                 // 1. verify that precommit.unsealed_cid is correct
                 // 2. create a new on_chain_precommit
 
-                let commd = precommit.unsealed_cid.unwrap();
-                if commd.0 != *computed_cid {
-                    return Err(actor_error!(illegal_argument, "computed {:?} and passed {:?} CommDs not equal",
-                            computed_cid, commd));
+                let declared_commd = precommit.unsealed_cid.unwrap();
+                // This is not a CompactCommD, None means that nothing was computed and nothing needs to be checked
+                if let Some(computed_cid) = verify_return.unsealed_cids[i] {
+                    // It is possible the computed commd is the zero commd so expand declared_commd
+                    if declared_commd.get_cid(precommit.seal_proof)? != computed_cid {
+                        return Err(actor_error!(illegal_argument, "computed {:?} and passed {:?} CommDs not equal",
+                                computed_cid, declared_commd));
+                    }
                 }
-
 
                 let on_chain_precommit = SectorPreCommitInfo {
                     seal_proof: precommit.seal_proof,
@@ -1631,7 +1632,7 @@ impl Actor {
                     seal_rand_epoch: precommit.seal_rand_epoch,
                     deal_ids: precommit.deal_ids,
                     expiration: precommit.expiration,
-                    unsealed_cid: commd,
+                    unsealed_cid: declared_commd,
                 };
 
                 // Build on-chain record.

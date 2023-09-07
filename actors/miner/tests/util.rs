@@ -1206,11 +1206,6 @@ impl ActorHarness {
             expected_pledge += self.initial_pledge_for_power(rt, &qa_power_delta);
         }
 
-        // Expect pledge & power updates.
-        self.expect_query_network_info(rt);
-        expect_update_pledge(rt, &expected_pledge);
-        expect_update_power(rt, PowerPair::new(BigInt::zero(), expected_qa_power));
-
         // Expect claiming of verified space for each piece that specified an allocation ID.
         if !sector_allocation_claims.iter().all(|sector| sector.claims.is_empty()) {
             rt.expect_send_simple(
@@ -1230,26 +1225,32 @@ impl ActorHarness {
                 ExitCode::OK,
             );
         }
+
+        // Expect pledge & power updates.
+        self.expect_query_network_info(rt);
+        expect_update_pledge(rt, &expected_pledge);
+
         // Expect SectorContentChanged notification to market.
-        let sector_notification_resps = expected_sector_notifications
+        let sector_notification_resps: Vec<SectorReturn> = expected_sector_notifications
             .iter()
             .map(|sn| SectorReturn { added: vec![PieceReturn { accepted: true }; sn.added.len()] })
             .collect();
-
-        rt.expect_send_simple(
-            STORAGE_MARKET_ACTOR_ADDR,
-            SECTOR_CONTENT_CHANGED,
-            IpldBlock::serialize_cbor(&SectorContentChangedParams {
-                sectors: expected_sector_notifications,
-            })
-            .unwrap(),
-            TokenAmount::zero(),
-            IpldBlock::serialize_cbor(&SectorContentChangedReturn {
-                sectors: sector_notification_resps,
-            })
-            .unwrap(),
-            ExitCode::OK,
-        );
+        if !sector_notification_resps.is_empty() {
+            rt.expect_send_simple(
+                STORAGE_MARKET_ACTOR_ADDR,
+                SECTOR_CONTENT_CHANGED,
+                IpldBlock::serialize_cbor(&SectorContentChangedParams {
+                    sectors: expected_sector_notifications,
+                })
+                .unwrap(),
+                TokenAmount::zero(),
+                IpldBlock::serialize_cbor(&SectorContentChangedReturn {
+                    sectors: sector_notification_resps,
+                })
+                .unwrap(),
+                ExitCode::OK,
+            );
+        }
 
         let result: ProveCommitSectors2Return = rt
             .call::<Actor>(
@@ -3167,12 +3168,14 @@ fn expect_compute_unsealed_cid_from_pieces(
     let expected_unsealed_cid_inputs: Vec<PieceInfo> =
         pieces.iter().map(|p| PieceInfo { size: p.size, cid: p.cid }).collect();
     let unsealed_cid = make_piece_cid(format!("unsealed-{}", sno).as_bytes());
-    rt.expect_compute_unsealed_sector_cid(
-        seal_proof_type,
-        expected_unsealed_cid_inputs,
-        unsealed_cid.clone(),
-        ExitCode::OK,
-    );
+    if !expected_unsealed_cid_inputs.is_empty() {
+        rt.expect_compute_unsealed_sector_cid(
+            seal_proof_type,
+            expected_unsealed_cid_inputs,
+            unsealed_cid.clone(),
+            ExitCode::OK,
+        );
+    }
     unsealed_cid
 }
 

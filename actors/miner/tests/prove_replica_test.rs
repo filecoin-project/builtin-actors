@@ -6,10 +6,11 @@ use fvm_shared::{bigint::Zero, clock::ChainEpoch, econ::TokenAmount, ActorID};
 use fil_actor_miner::ext::verifreg::AllocationID;
 use fil_actor_miner::ProveReplicaUpdates2Return;
 use fil_actor_miner::{
-    CompactCommD, PieceActivationManifest, SectorOnChainInfo, SectorPreCommitInfo,
-    SectorPreCommitOnChainInfo, SectorUpdateManifest, State,
+    CompactCommD, PieceActivationManifest, ProveCommitSectors2Return, SectorActivationManifest,
+    SectorOnChainInfo, SectorPreCommitInfo, SectorPreCommitOnChainInfo, SectorUpdateManifest,
+    State,
 };
-use fil_actors_runtime::test_utils::{make_sealed_cid, MockRuntime};
+use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid, MockRuntime};
 use fil_actors_runtime::{runtime::Runtime, BatchReturn, DealWeight, EPOCHS_IN_DAY};
 use util::*;
 
@@ -85,18 +86,14 @@ fn onboard_empty_sectors(
         precommits.iter().map(|sector| h.get_precommit(rt, sector.sector_number)).collect();
 
     // Prove the sectors.
-    // Note: migrate this to ProveCommitSectors2 (batch) when the harness supports it.
+    // Use the new ProveCommitSectors2
     rt.set_epoch(precommit_epoch + rt.policy.pre_commit_challenge_delay + 1);
     let sectors: Vec<SectorOnChainInfo> = precommits
         .iter()
         .map(|pc| {
-            h.prove_commit_sector_and_confirm(
-                rt,
-                pc,
-                h.make_prove_commit_params(pc.info.sector_number),
-                ProveCommitConfig::default(),
-            )
-            .unwrap()
+            let sector_activation = make_activation_manifest(pc.info.sector_number, &vec![]);
+            h.prove_commit_sectors2(rt, &vec![sector_activation], false, false, false).unwrap();
+            h.get_sector(rt, pc.info.sector_number)
         })
         .collect();
 
@@ -105,7 +102,65 @@ fn onboard_empty_sectors(
     sectors
 }
 
-fn make_empty_precommits(
+#[test]
+fn prove_commit2_basic() {
+    let h = ActorHarness::new_with_options(HarnessOptions::default());
+    let rt = h.new_runtime();
+    rt.set_balance(BIG_BALANCE.clone());
+    let client_id: ActorID = 1000;
+
+    h.construct_and_verify(&rt);
+
+    // Precommit sectors
+    let precommit_epoch = *rt.epoch.borrow();
+    let first_sector_number = 100;
+    let sector_count = 4;
+    let sector_expiry = *rt.epoch.borrow() + DEFAULT_SECTOR_EXPIRATION_DAYS * EPOCHS_IN_DAY;
+    let precommits = make_fake_commd_precommits(
+        &h,
+        first_sector_number,
+        precommit_epoch - 1,
+        sector_expiry,
+        sector_count,
+    );
+    h.pre_commit_sector_batch_v2(&rt, &precommits, true, &TokenAmount::zero()).unwrap();
+    let snos: Vec<SectorNumber> =
+        precommits.iter().map(|pci: &SectorPreCommitInfo| pci.sector_number).collect();
+
+    // Update them in batch, each with a single piece.
+    let piece_size = h.sector_size as u64;
+    let sector_activations = vec![
+        make_activation_manifest(snos[0], &[(piece_size, 0, 0, 0)]), // No alloc or deal
+        make_activation_manifest(snos[1], &[(piece_size, client_id, 1000, 0)]), // Just an alloc
+        make_activation_manifest(snos[2], &[(piece_size, 0, 0, 2000)]), // Just a deal
+        make_activation_manifest(snos[3], &[(piece_size, client_id, 1001, 2001)]), // Alloc and deal
+    ];
+
+    rt.set_epoch(precommit_epoch + rt.policy.pre_commit_challenge_delay + 1);
+    let result = h.prove_commit_sectors2(&rt, &sector_activations, true, true, false).unwrap();
+    assert_eq!(
+        ProveCommitSectors2Return { activation_results: BatchReturn::ok(precommits.len() as u32) },
+        result
+    );
+
+    let duration = sector_expiry - *rt.epoch.borrow();
+    let expected_weight = DealWeight::from(piece_size) * duration;
+    let raw_power = StoragePower::from(h.sector_size as u64);
+    let verified_power = &raw_power * 10;
+    let raw_pledge = h.initial_pledge_for_power(&rt, &raw_power);
+    let verified_pledge = h.initial_pledge_for_power(&rt, &verified_power);
+
+    // Sector 0: Even though there's no "deal", the data weight is set.
+    verify_weights(&rt, &h, snos[0], &expected_weight, &DealWeight::zero(), &raw_pledge);
+    // Sector 1: With an allocation, the verified weight is set instead.
+    verify_weights(&rt, &h, snos[1], &DealWeight::zero(), &expected_weight, &verified_pledge);
+    // Sector 2: Deal weight is set.
+    verify_weights(&rt, &h, snos[2], &expected_weight, &DealWeight::zero(), &raw_pledge);
+    // Sector 3: Deal doesn't make a difference to verified weight only set.
+    verify_weights(&rt, &h, snos[3], &DealWeight::zero(), &expected_weight, &verified_pledge);
+}
+
+pub fn make_empty_precommits(
     h: &ActorHarness,
     first_sector_number: SectorNumber,
     challenge: ChainEpoch,
@@ -124,6 +179,42 @@ fn make_empty_precommits(
             )
         })
         .collect()
+}
+
+// Note this matches the faked commD computation in the testing harness
+pub fn make_fake_commd_precommits(
+    h: &ActorHarness,
+    first_sector_number: SectorNumber,
+    challenge: ChainEpoch,
+    expiration: ChainEpoch,
+    count: usize,
+) -> Vec<SectorPreCommitInfo> {
+    (0..count)
+        .map(|i| {
+            let sector_number = first_sector_number + i as u64;
+            h.make_pre_commit_params_v2(
+                sector_number,
+                challenge,
+                expiration,
+                vec![],
+                CompactCommD(Some(make_piece_cid(
+                    format!("unsealed-{}", sector_number).as_bytes(),
+                ))),
+            )
+        })
+        .collect()
+}
+
+pub fn make_activation_manifest(
+    sector_number: SectorNumber,
+    piece_specs: &[(u64, ActorID, AllocationID, DealID)],
+) -> SectorActivationManifest {
+    let pieces: Vec<PieceActivationManifest> = piece_specs
+        .iter()
+        .enumerate()
+        .map(|(i, (sz, client, alloc, deal))| make_piece_manifest(i, *sz, *client, *alloc, *deal))
+        .collect();
+    SectorActivationManifest { sector_number, pieces }
 }
 
 fn make_update_manifest(
