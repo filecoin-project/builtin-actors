@@ -151,8 +151,9 @@ pub const SECTOR_CONTENT_CHANGED: MethodNum = frc42_dispatch::method_hash!("Sect
 
 pub const ERR_BALANCE_INVARIANTS_BROKEN: ExitCode = ExitCode::new(1000);
 pub const ERR_NOTIFICATION_SEND_FAILED: ExitCode = ExitCode::new(1001);
-pub const ERR_NOTIFICATION_RESPONSE_INVALID: ExitCode = ExitCode::new(1002);
-pub const ERR_NOTIFICATION_REJECTED: ExitCode = ExitCode::new(1003);
+pub const ERR_NOTIFICATION_RECEIVER_ABORTED: ExitCode = ExitCode::new(1002);
+pub const ERR_NOTIFICATION_RESPONSE_INVALID: ExitCode = ExitCode::new(1003);
+pub const ERR_NOTIFICATION_REJECTED: ExitCode = ExitCode::new(1004);
 
 /// Miner Actor
 /// here in order to update the Power Actor to v3.
