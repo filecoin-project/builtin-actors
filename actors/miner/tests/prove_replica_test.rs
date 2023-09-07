@@ -91,8 +91,8 @@ fn onboard_empty_sectors(
     let sectors: Vec<SectorOnChainInfo> = precommits
         .iter()
         .map(|pc| {
-            let sector_activation = make_activation_manifest(pc.info.sector_number, &vec![]);
-            h.prove_commit_sectors2(rt, &vec![sector_activation], false, false, false).unwrap();
+            let sector_activation = make_activation_manifest(pc.info.sector_number, &[]);
+            h.prove_commit_sectors2(rt, &[sector_activation], false, false, false).unwrap();
             h.get_sector(rt, pc.info.sector_number)
         })
         .collect();
