@@ -7,7 +7,6 @@ use fil_actor_miner::{Method as MinerMethod, ProveCommitAggregateParams};
 use fil_actors_runtime::runtime::policy::policy_constants::PRE_COMMIT_CHALLENGE_DELAY;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::make_piece_cid;
-use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
@@ -24,9 +23,9 @@ use vm_api::VM;
 use crate::deals::{DealBatcher, DealOptions};
 use crate::util::{
     advance_to_proving_deadline, bf_all, create_accounts, create_miner, get_network_stats,
-    make_bitfield, market_add_balance, miner_balance, precommit_meta_data_from_deals,
-    precommit_sectors_v2, precommit_sectors_v2_expect_code, submit_windowed_post,
-    verifreg_add_client, verifreg_add_verifier, PrecommitMetadata,
+    make_bitfield, market_add_balance, market_pending_deal_allocations, miner_balance,
+    precommit_meta_data_from_deals, precommit_sectors_v2, precommit_sectors_v2_expect_code,
+    submit_windowed_post, verifreg_add_client, verifreg_add_verifier, PrecommitMetadata,
 };
 
 const BATCH_SIZE: usize = 8;
@@ -135,12 +134,8 @@ pub fn batch_onboarding_deals_test(v: &dyn VM) {
     assert_eq!(BATCH_SIZE, deals.len());
 
     // Verify datacap allocations.
-    let mut market_state: fil_actor_market::State =
-        get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
     let deal_keys: Vec<DealID> = deals.iter().map(|(id, _)| *id).collect();
-    let alloc_ids = market_state
-        .get_pending_deal_allocation_ids(&DynBlockstore::wrap(v.blockstore()), &deal_keys)
-        .unwrap();
+    let alloc_ids = market_pending_deal_allocations(v, &deal_keys);
     assert_eq!(BATCH_SIZE, alloc_ids.len());
 
     // Associate deals with sectors.

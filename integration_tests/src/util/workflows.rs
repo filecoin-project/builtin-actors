@@ -60,6 +60,7 @@ use fil_actors_runtime::runtime::policy_constants::{
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::make_piece_cid;
 use fil_actors_runtime::test_utils::make_sealed_cid;
+use fil_actors_runtime::DealWeight;
 use fil_actors_runtime::CRON_ACTOR_ADDR;
 use fil_actors_runtime::DATACAP_TOKEN_ACTOR_ADDR;
 use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
@@ -1145,4 +1146,17 @@ pub fn get_deal(v: &dyn VM, deal_id: DealID) -> DealProposal {
     let state: fil_actor_market::State =
         RawBytes::new(bs.get(&actor.state).unwrap().unwrap()).deserialize().unwrap();
     state.get_proposal(&bs, deal_id).unwrap()
+}
+
+// return (deal_weight, verified_deal_weight)
+pub fn get_deal_weights(
+    v: &dyn VM,
+    deal_id: DealID,
+    duration: ChainEpoch,
+) -> (DealWeight, DealWeight) {
+    let deal = get_deal(v, deal_id);
+    if deal.verified_deal {
+        return (DealWeight::zero(), DealWeight::from(deal.piece_size.0 * duration as u64));
+    }
+    (DealWeight::from(deal.piece_size.0 * duration as u64), DealWeight::zero())
 }

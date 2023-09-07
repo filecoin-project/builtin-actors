@@ -192,6 +192,7 @@ pub struct DataActivationNotification {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
 pub struct ProveCommitSectors2Return {
     pub activation_results: BatchReturn,
 }
@@ -398,7 +399,7 @@ pub struct SectorOnChainInfo {
     pub seal_proof: RegisteredSealProof,
     /// CommR
     pub sealed_cid: Cid,
-    pub deal_ids: Vec<DealID>,
+    pub deprecated_deal_ids: Vec<DealID>,
     /// Epoch during which the sector proof was accepted
     pub activation: ChainEpoch,
     /// Epoch during which the sector expires

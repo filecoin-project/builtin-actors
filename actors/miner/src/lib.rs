@@ -978,7 +978,6 @@ impl Actor {
 
             let activated_data = ReplicaUpdateActivatedData {
                 seal_cid: usi.update.new_sealed_cid,
-                deals: usi.update.deals.clone(),
                 unverified_space: data_activation.unverified_space.clone(),
                 verified_space: data_activation.verified_space.clone(),
             };
@@ -1124,6 +1123,9 @@ impl Actor {
             return Err(actor_error!(illegal_argument, "no valid updates"));
         }
         let proven_batch = proven_batch_gen.gen();
+        if proven_batch.success_count == 0 {
+            return Err(actor_error!(illegal_argument, "no valid proofs specified"));
+        }
 
         // Activate data.
         let data_activation_inputs: Vec<SectorPiecesActivationInput> = proven_manifests
@@ -1140,6 +1142,9 @@ impl Actor {
         // Activate data for proven updates.
         let (data_batch, data_activations) =
             activate_sectors_pieces(rt, data_activation_inputs, params.require_activation_success)?;
+        if data_batch.success_count == 0 {
+            return Err(actor_error!(illegal_argument, "all data activations failed"));
+        }
 
         // Successful data activation is required for sector activation.
         let successful_manifests = data_batch.successes(&proven_manifests);
@@ -1150,7 +1155,6 @@ impl Actor {
         {
             let activated_data = ReplicaUpdateActivatedData {
                 seal_cid: update.new_sealed_cid,
-                deals: vec![],
                 unverified_space: data_activation.unverified_space.clone(),
                 verified_space: data_activation.verified_space.clone(),
             };
@@ -1817,6 +1821,9 @@ impl Actor {
             proven_batch_gen.add_successes(validation_batch.size());
         }
         let proven_batch = proven_batch_gen.gen();
+        if proven_batch.success_count == 0 {
+            return Err(actor_error!(illegal_argument, "no valid proofs specified"));
+        }
 
         // Activate data and verify CommD matches the declared one.
         let data_activation_inputs = proven_activation_inputs
@@ -1835,6 +1842,9 @@ impl Actor {
         // Activate data for proven sectors.
         let (data_batch, data_activations) =
             activate_sectors_pieces(rt, data_activation_inputs, params.require_activation_success)?;
+        if data_batch.success_count == 0 {
+            return Err(actor_error!(illegal_argument, "all data activations failed"));
+        }
 
         // Successful data activation is required for sector activation.
         let successful_sector_activations = data_batch.successes(&proven_activation_inputs);
@@ -4024,7 +4034,6 @@ fn update_existing_sector_info(
         Some(x) => Some(x),
     };
 
-    new_sector_info.deal_ids = activated_data.deals.clone();
     new_sector_info.power_base_epoch = curr_epoch;
 
     let duration = new_sector_info.expiration - new_sector_info.power_base_epoch;
@@ -5176,7 +5185,7 @@ fn activate_new_sector_infos(
                 sector_number: pci.info.sector_number,
                 seal_proof: pci.info.seal_proof,
                 sealed_cid: pci.info.sealed_cid,
-                deal_ids: pci.info.deal_ids.clone(),
+                deprecated_deal_ids: vec![], // deal ids field deprecated
                 expiration: pci.info.expiration,
                 activation: activation_epoch,
                 deal_weight,
@@ -5317,7 +5326,6 @@ struct ReplicaUpdateStateInputs<'a> {
 // Summary of activated data for a replica update.
 struct ReplicaUpdateActivatedData {
     seal_cid: Cid,
-    deals: Vec<DealID>,
     unverified_space: BigInt,
     verified_space: BigInt,
 }

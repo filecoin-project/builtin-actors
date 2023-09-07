@@ -86,11 +86,6 @@ fn simple_one_sector() {
         let state = get_deal_state(&rt, *id);
         assert_eq!(sno, state.sector_number);
         assert_eq!(epoch, state.sector_start_epoch);
-        if *id == deal_ids[2] {
-            assert_eq!(state.verified_claim, next_allocation_id);
-        } else {
-            assert_eq!(state.verified_claim, NO_ALLOCATION_ID);
-        }
     }
     check_state(&rt);
 }

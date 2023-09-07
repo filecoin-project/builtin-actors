@@ -1,6 +1,5 @@
 use fil_actor_market::{
     BatchActivateDealsParams, BatchActivateDealsResult, DealMetaArray, Method, SectorDeals, State,
-    NO_ALLOCATION_ID,
 };
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::test_utils::{expect_abort, ACCOUNT_ACTOR_CODE_ID};
@@ -53,11 +52,6 @@ fn activate_deals_one_sector() {
         let state = get_deal_state(&rt, *id);
         assert_eq!(1, state.sector_number);
         assert_eq!(epoch, state.sector_start_epoch);
-        if *id == deal_ids[2] {
-            assert_eq!(state.verified_claim, next_allocation_id);
-        } else {
-            assert_eq!(state.verified_claim, NO_ALLOCATION_ID);
-        }
     }
     check_state(&rt);
 }
@@ -107,12 +101,6 @@ fn activate_deals_across_multiple_sectors() {
     let unverified_deal_1 = get_deal_state(&rt, unverified_deal_1_id);
     let verified_deal_2 = get_deal_state(&rt, verified_deal_2_id);
     let unverified_deal_2 = get_deal_state(&rt, unverified_deal_2_id);
-
-    // allocations were claimed successfully
-    assert_eq!(next_allocation_id, verified_deal_1.verified_claim);
-    assert_eq!(next_allocation_id + 1, verified_deal_2.verified_claim);
-    assert_eq!(NO_ALLOCATION_ID, unverified_deal_1.verified_claim);
-    assert_eq!(NO_ALLOCATION_ID, unverified_deal_2.verified_claim);
 
     // all activated during same epoch
     assert_eq!(0, verified_deal_1.sector_start_epoch);

@@ -22,8 +22,8 @@ use fil_actor_reward::State as RewardState;
 use fil_actor_verifreg::{DataCap, State as VerifregState};
 
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::DEFAULT_HAMT_CONFIG;
 use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
+use fil_actors_runtime::{DealWeight, DEFAULT_HAMT_CONFIG};
 
 use fil_actors_runtime::Map;
 use fil_actors_runtime::MessageAccumulator;
@@ -39,6 +39,7 @@ use num_traits::Zero;
 
 use anyhow::anyhow;
 use fvm_ipld_encoding::tuple::*;
+use fvm_shared::sector::SectorNumber;
 
 use fil_actor_account::testing as account;
 use fil_actor_cron::testing as cron;
@@ -341,7 +342,7 @@ fn check_deal_states_against_sectors(
             continue;
         }
 
-        let miner_summary = if let Some(miner_summary) = miner_summaries.get(&deal.provider) {
+        let _miner_summary = if let Some(miner_summary) = miner_summaries.get(&deal.provider) {
             miner_summary
         } else {
             acc.add(format!(
@@ -350,51 +351,6 @@ fn check_deal_states_against_sectors(
             ));
             continue;
         };
-
-        let sector_deal = if let Some(sector_deal) = miner_summary.deals.get(deal_id) {
-            sector_deal
-        } else {
-            acc.require(
-                deal.slash_epoch >= 0,
-                format!(
-                    "un-slashed deal {deal_id} not referenced in active sectors of miner {}",
-                    deal.provider
-                ),
-            );
-            continue;
-        };
-
-        acc.require(
-            deal.sector_start_epoch >= sector_deal.sector_start,
-            format!(
-                "deal state start {} does not match sector start {} for miner {}",
-                deal.sector_start_epoch, sector_deal.sector_start, deal.provider
-            ),
-        );
-
-        acc.require(
-            deal.sector_start_epoch <= sector_deal.sector_expiration,
-            format!(
-                "deal state start {} activated after sector expiration {} for miner {}",
-                deal.sector_start_epoch, sector_deal.sector_expiration, deal.provider
-            ),
-        );
-
-        acc.require(
-            deal.last_update_epoch <= sector_deal.sector_expiration,
-            format!(
-                "deal state update at {} after sector expiration {} for miner {}",
-                deal.last_update_epoch, sector_deal.sector_expiration, deal.provider
-            ),
-        );
-
-        acc.require(
-            deal.slash_epoch <= sector_deal.sector_expiration,
-            format!(
-                "deal state slashed at {} after sector expiration {} for miner {}",
-                deal.slash_epoch, sector_deal.sector_expiration, deal.provider
-            ),
-        );
     }
 }
 
@@ -434,51 +390,6 @@ fn check_market_against_verifreg(
     market_summary: &market::StateSummary,
     verifreg_summary: &verifreg::StateSummary,
 ) {
-    // all activated verified deals with claim ids reference a claim in verifreg state
-    // note that it is possible for claims to exist with no matching deal if the deal expires
-    for (claim_id, deal_id) in &market_summary.claim_id_to_deal_id {
-        // claim is found
-        let claim = match verifreg_summary.claims.get(claim_id) {
-            None => {
-                acc.add(format!("claim {} not found for activated deal {}", claim_id, deal_id));
-                continue;
-            }
-            Some(claim) => claim,
-        };
-
-        let info = match market_summary.deals.get(deal_id) {
-            None => {
-                acc.add(format!(
-                    "internal invariant error invalid market state referrences missing deal {}",
-                    deal_id
-                ));
-                continue;
-            }
-            Some(info) => info,
-        };
-        // claim and proposal match
-        acc.require(
-            info.provider.id().unwrap() == claim.provider,
-            format!(
-                "mismatched providers {} {} on claim {} and deal {}",
-                claim.provider,
-                info.provider.id().unwrap(),
-                claim_id,
-                deal_id
-            ),
-        );
-        acc.require(
-            info.piece_cid.unwrap() == claim.data,
-            format!(
-                "mismatched piece cid {} {} on claim {} and deal {}",
-                info.piece_cid.unwrap(),
-                claim.data,
-                claim_id,
-                deal_id
-            ),
-        );
-    }
-
     // all pending deal allocation ids have an associated allocation
     // note that it is possible for allocations to exist that don't match any deal
     // if they are created from a direct DataCap transfer
@@ -533,8 +444,12 @@ fn check_verifreg_against_miners(
     verifreg_summary: &verifreg::StateSummary,
     miner_summaries: &HashMap<Address, miner::StateSummary>,
 ) {
-    for claim in verifreg_summary.claims.values() {
-        // all claims are indexed by valid providers
+    // Accumulates the weight of claims for each sector.
+    let mut sector_claim_verified_weights: BTreeMap<(Address, SectorNumber), DealWeight> =
+        BTreeMap::new();
+
+    for (id, claim) in &verifreg_summary.claims {
+        // All claims are indexed by valid providers
         let maddr = Address::new_id(claim.provider);
         let miner_summary = match miner_summaries.get(&maddr) {
             None => {
@@ -544,13 +459,55 @@ fn check_verifreg_against_miners(
             Some(summary) => summary,
         };
 
-        // all claims are linked to a valid sector number
+        // Find sectors associated with claims.
+        // A claim might not have a sector if the sector was terminated and cleaned up.
+        if let Some(sector) = miner_summary.live_data_sectors.get(&claim.sector) {
+            acc.require(
+                sector.sector_start <= claim.term_start,
+                format!(
+                    "claim {} sector start {} is after claim term start {} for miner {}",
+                    id, sector.sector_start, claim.term_start, maddr
+                ),
+            );
+            // Legacy QAP sectors can be extended to expire after the associated claim term,
+            // and verified deal weight depends age prior to extension.
+            if !sector.legacy_qap {
+                acc.require(
+                    sector.sector_expiration >= claim.term_start + claim.term_min,
+                    format!(
+                        "claim {} sector expiration {} is before claim min term {} for miner {}",
+                        id,
+                        sector.sector_start,
+                        claim.term_start + claim.term_min,
+                        maddr
+                    ),
+                );
+                acc.require(
+                    sector.sector_expiration <= claim.term_start + claim.term_max,
+                    format!(
+                        "claim {} sector expiration {} is after claim term max {} for miner {}",
+                        id,
+                        sector.sector_expiration,
+                        claim.term_start + claim.term_max,
+                        maddr
+                    ),
+                );
+                let expected_duration = sector.sector_expiration - claim.term_start;
+                let expected_weight = DealWeight::from(claim.size.0) * expected_duration;
+                *sector_claim_verified_weights.entry((maddr, claim.sector)).or_default() +=
+                    expected_weight;
+            }
+        }
+    }
+    for ((maddr, sector), claim_weight) in &sector_claim_verified_weights {
+        let miner_summary = miner_summaries.get(maddr).unwrap();
+        let sector = miner_summary.live_data_sectors.get(sector).unwrap();
         acc.require(
-            miner_summary.sectors_with_deals.get(&claim.sector).is_some(),
+            sector.verified_deal_weight == *claim_weight,
             format!(
-                "claim sector number {} not recorded as a sector with deals for miner {}",
-                claim.sector, maddr
+                "sector verified weight {} does not match claims of {} for miner {}",
+                sector.verified_deal_weight, claim_weight, maddr
             ),
-        );
+        )
     }
 }

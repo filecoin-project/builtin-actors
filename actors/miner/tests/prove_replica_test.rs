@@ -249,7 +249,7 @@ fn verify_weights(
 ) {
     let s = h.get_sector(rt, sno);
     // Deal IDs are deprecated and never set.
-    assert!(s.deal_ids.is_empty());
+    assert!(s.deprecated_deal_ids.is_empty());
     assert_eq!(data_weight, &s.deal_weight);
     assert_eq!(verified_weight, &s.verified_deal_weight);
     assert_eq!(pledge, &s.initial_pledge);
