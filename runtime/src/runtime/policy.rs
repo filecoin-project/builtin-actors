@@ -352,7 +352,7 @@ pub struct ProofSet(Vec<bool>);
 const REGISTERED_POST_PROOF_VARIANTS: usize = 15;
 
 /// The number of total possible types (enum variants) of RegisteredSealProof
-const REGISTERED_SEAL_PROOF_VARIANTS: usize = 10;
+const REGISTERED_SEAL_PROOF_VARIANTS: usize = 15;
 
 impl ProofSet {
     /// Create a `ProofSet` for enabled `RegisteredPoStProof`s
