@@ -109,9 +109,9 @@ libipld-core = { version = "0.13.1", features = ["serde-codec"] }
 integer-encoding = { version = "3.0.3", default-features = false }
 
 # helix-onchain
-fvm_actor_utils = { git = "https://github.com/helix-onchain/filecoin" }
-frc42_dispatch = { git = "https://github.com/helix-onchain/filecoin" }
-frc46_token = { git = "https://github.com/helix-onchain/filecoin" }
+fvm_actor_utils = "8.0.0"
+frc42_dispatch = "4.0.0"
+frc46_token = "8.0.0"
 
 # FVM
 fvm_sdk = "~3.3.0"
