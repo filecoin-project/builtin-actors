@@ -6,7 +6,7 @@ use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 
 use fil_actor_datacap::State as DatacapState;
-use fil_actor_market::{DealArray, DealMetaArray};
+use fil_actor_market::{DealArray, DealMetaArray, DealSettlementSummary};
 use fil_actor_market::{
     PendingDealAllocationsMap, State as MarketState, PENDING_ALLOCATIONS_CONFIG,
 };
@@ -356,9 +356,16 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
     assert_eq!(vec![claim_id], ret.considered);
     assert!(ret.results.all_ok(), "results had failures {}", ret.results);
 
+    let market_state: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
+    let store = DynBlockstore::wrap(v.blockstore());
+    let proposals = DealArray::load(&market_state.proposals, &store).unwrap();
+    let proposal = proposals.get(deals[0]).unwrap().unwrap();
     // provider must process the deals to receive payment and cleanup state
-    provider_settle_deal_payments(v, &miner_id, &deals);
-    // TODO: assert that the right payouts have been made
+    let ret = provider_settle_deal_payments(v, &miner_id, &deals);
+    assert_eq!(
+        ret.settlements.get(0).unwrap(),
+        &DealSettlementSummary { payment: proposal.total_storage_fee(), completed: true }
+    );
 
     expect_invariants(
         v,
