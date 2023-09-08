@@ -128,8 +128,11 @@ fn send_notification(
                     ))
                 }
             } else {
-                // Propagate the non-ok exit code from the receiver.
-                Err(ActorError::checked(r.exit_code, "receiver aborted".to_string(), None))
+                Err(ActorError::checked(
+                    crate::ERR_NOTIFICATION_RECEIVER_ABORTED,
+                    format!("receiver aborted with {}", r.exit_code),
+                    None,
+                ))
             }
         }
         Err(SendError(e)) => Err(ActorError::checked(
@@ -167,7 +170,7 @@ fn validate_notification_response(
                 return Err(ActorError::checked(
                     crate::ERR_NOTIFICATION_REJECTED,
                     format!(
-                        "sector change response rejected by {} for sector {} piece {} payload {:?}",
+                        "sector change rejected by {} for sector {} piece {} payload {:?}",
                         notifee, sreq.sector, nreq.data, nreq.payload
                     ),
                     None,
