@@ -171,7 +171,7 @@ impl ActorHarness {
         let receiver = Address::new_id(RECEIVER_ID);
         let rwd = TokenAmount::from_whole(10);
         let pwr = StoragePower::from(1i128 << 50);
-        let proof_type = RegisteredSealProof::StackedDRG32GiBV1P1_Feat_SyntheticPoRep;
+        let proof_type = RegisteredSealProof::StackedDRG32GiBV1P1;
 
         ActorHarness {
             receiver,
