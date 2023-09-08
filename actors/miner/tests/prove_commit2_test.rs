@@ -1,9 +1,8 @@
 use fvm_shared::sector::{SectorNumber, StoragePower};
-use fvm_shared::{bigint::Zero, clock::ChainEpoch, ActorID};
+use fvm_shared::{bigint::Zero, clock::ChainEpoch, econ::TokenAmount, ActorID};
 
-use fil_actor_miner::ProveReplicaUpdates2Return;
-use fil_actor_miner::State;
-use fil_actors_runtime::{runtime::Runtime, BatchReturn, DealWeight, EPOCHS_IN_DAY};
+use fil_actor_miner::{ProveCommitSectors2Return, SectorPreCommitInfo};
+use fil_actors_runtime::{BatchReturn, DealWeight, EPOCHS_IN_DAY};
 use util::*;
 
 mod util;
@@ -13,34 +12,40 @@ const DEFAULT_SECTOR_EXPIRATION_DAYS: ChainEpoch = 220;
 const FIRST_SECTOR_NUMBER: SectorNumber = 100;
 
 #[test]
-fn prove_basic_updates() {
+fn prove_commit2_basic() {
     let h = ActorHarness::new_with_options(HarnessOptions::default());
     let rt = h.new_runtime();
     rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&rt);
 
-    // Onboard a batch of empty sectors.
-    rt.set_epoch(1);
-    let sector_expiry = *rt.epoch.borrow() + DEFAULT_SECTOR_EXPIRATION_DAYS * EPOCHS_IN_DAY;
+    // Precommit sectors
+    let precommit_epoch = *rt.epoch.borrow();
     let sector_count = 4;
-    let sectors = onboard_empty_sectors(&rt, &h, sector_expiry, FIRST_SECTOR_NUMBER, sector_count);
-    let snos = sectors.iter().map(|s| s.sector_number).collect::<Vec<_>>();
+    let sector_expiry = *rt.epoch.borrow() + DEFAULT_SECTOR_EXPIRATION_DAYS * EPOCHS_IN_DAY;
+    let precommits = make_fake_commd_precommits(
+        &h,
+        FIRST_SECTOR_NUMBER,
+        precommit_epoch - 1,
+        sector_expiry,
+        sector_count,
+    );
+    h.pre_commit_sector_batch_v2(&rt, &precommits, true, &TokenAmount::zero()).unwrap();
+    let snos: Vec<SectorNumber> =
+        precommits.iter().map(|pci: &SectorPreCommitInfo| pci.sector_number).collect();
 
     // Update them in batch, each with a single piece.
-    let st: State = h.get_state(&rt);
-    let store = rt.store();
     let piece_size = h.sector_size as u64;
-    let sector_updates = vec![
-        make_update_manifest(&st, store, &sectors[0], &[(piece_size, 0, 0, 0)]), // No alloc or deal
-        make_update_manifest(&st, store, &sectors[1], &[(piece_size, CLIENT_ID, 1000, 0)]), // Just an alloc
-        make_update_manifest(&st, store, &sectors[2], &[(piece_size, 0, 0, 2000)]), // Just a deal
-        make_update_manifest(&st, store, &sectors[3], &[(piece_size, CLIENT_ID, 1001, 2001)]), // Alloc and deal
+    let sector_activations = vec![
+        make_activation_manifest(snos[0], &[(piece_size, 0, 0, 0)]), // No alloc or deal
+        make_activation_manifest(snos[1], &[(piece_size, CLIENT_ID, 1000, 0)]), // Just an alloc
+        make_activation_manifest(snos[2], &[(piece_size, 0, 0, 2000)]), // Just a deal
+        make_activation_manifest(snos[3], &[(piece_size, CLIENT_ID, 1001, 2001)]), // Alloc and deal
     ];
 
-    let cfg = ProveReplicaUpdatesConfig::default();
-    let result = h.prove_replica_updates2_batch(&rt, &sector_updates, true, true, cfg).unwrap();
+    rt.set_epoch(precommit_epoch + rt.policy.pre_commit_challenge_delay + 1);
+    let result = h.prove_commit_sectors2(&rt, &sector_activations, true, true, false).unwrap();
     assert_eq!(
-        ProveReplicaUpdates2Return { activation_results: BatchReturn::ok(sectors.len() as u32) },
+        ProveCommitSectors2Return { activation_results: BatchReturn::ok(precommits.len() as u32) },
         result
     );
 
