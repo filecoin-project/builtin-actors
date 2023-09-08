@@ -22,7 +22,7 @@ use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::{RegisteredSealProof, SectorSize, StoragePower};
 use fvm_shared::{ActorID, METHOD_CONSTRUCTOR, METHOD_SEND};
 use integer_encoding::VarInt;
-use log::info;
+use log::{info, warn};
 use num_derive::FromPrimitive;
 use num_traits::Zero;
 
@@ -93,6 +93,7 @@ pub enum Method {
     GetDealProviderCollateralExported = frc42_dispatch::method_hash!("GetDealProviderCollateral"),
     GetDealVerifiedExported = frc42_dispatch::method_hash!("GetDealVerified"),
     GetDealActivationExported = frc42_dispatch::method_hash!("GetDealActivation"),
+    SettleDealPaymentsExported = frc42_dispatch::method_hash!("SettleDealPayments"),
 }
 
 /// Market Actor
@@ -177,7 +178,7 @@ impl Actor {
         let store = rt.store();
         let st: State = rt.state()?;
         let balances = BalanceTable::from_root(store, &st.escrow_table, "escrow table")?;
-        let locks = BalanceTable::from_root(store, &st.locked_table, "locled table")?;
+        let locks = BalanceTable::from_root(store, &st.locked_table, "locked table")?;
         let balance = balances.get(&account)?;
         let locked = locks.get(&account)?;
 
@@ -682,9 +683,8 @@ impl Actor {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
         let miner_addr = rt.message().caller();
 
-        rt.transaction(|st: &mut State, rt| {
-            let mut deal_states: Vec<(DealID, DealState)> = vec![];
-
+        let burn_amount = rt.transaction(|st: &mut State, rt| {
+            let mut total_slashed = TokenAmount::zero();
             for id in params.deal_ids {
                 let deal = st.find_proposal(rt.store(), id)?;
                 // The deal may have expired and been deleted before the sector is terminated.
@@ -717,22 +717,35 @@ impl Actor {
                     // part of a sector that is terminating.
                     .ok_or_else(|| actor_error!(illegal_argument, "no state for deal {}", id))?;
 
-                // If a deal is already slashed, don't need to do anything
+                // If a deal is already slashed, there should be no existing state for it
+                // but we process it here for deletion anyway
                 if state.slash_epoch != EPOCH_UNDEFINED {
-                    info!("deal {}, already slashed", id);
-                    continue;
+                    warn!("deal {}, already slashed, terminating now anyway", id);
                 }
 
-                // mark the deal for slashing here. Actual releasing of locked funds for the client
-                // and slashing of provider collateral happens in cron_tick.
-                state.slash_epoch = params.epoch;
+                // Deals that were never processed may still have a pending proposal linked
+                if state.last_updated_epoch == EPOCH_UNDEFINED {
+                    let dcid = rt_deal_cid(rt, &deal)?;
+                    st.remove_pending_deal(rt.store(), dcid)?;
+                }
 
-                deal_states.push((id, state));
+                state.slash_epoch = params.epoch;
+                total_slashed += st.process_slashed_deal(rt.store(), &deal, &state)?;
+                st.remove_completed_deal(rt.store(), id)?;
             }
 
-            st.put_deal_states(rt.store(), &deal_states)?;
-            Ok(())
+            Ok(total_slashed)
         })?;
+
+        if burn_amount.is_positive() {
+            extract_send_result(rt.send_simple(
+                &BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                None,
+                burn_amount,
+            ))?;
+        }
+
         Ok(())
     }
 
@@ -751,55 +764,36 @@ impl Actor {
                 let deal_ids = st.get_deals_for_epoch(rt.store(), i)?;
 
                 for deal_id in deal_ids {
-                    let deal = st.get_proposal(rt.store(), deal_id)?;
-                    let dcid = rt_deal_cid(rt, &deal)?;
-                    let state = st.find_deal_state(rt.store(), deal_id)?;
+                    let deal_proposal = match st.find_proposal(rt.store(), deal_id)? {
+                        Some(dp) => dp,
+                        // proposal might have been cleaned up by manual settlement or termination prior to reaching
+                        // this scheduled cron tick. nothing more to do for this deal
+                        None => continue,
+                    };
 
-                    // deal has been published but not activated yet -> terminate it
-                    // as it has timed out
-                    if state.is_none() {
-                        // Not yet appeared in proven sector; check for timeout.
-                        if curr_epoch < deal.start_epoch {
+                    let dcid = rt_deal_cid(rt, &deal_proposal)?;
+
+                    let mut state = match st.get_active_deal_or_process_timeout(
+                        rt.store(),
+                        curr_epoch,
+                        deal_id,
+                        &deal_proposal,
+                        &dcid,
+                    )? {
+                        LoadDealState::Loaded(state) => state,
+                        LoadDealState::ProposalExpired(expiration_penalty) => {
+                            amount_slashed += expiration_penalty;
+                            continue;
+                        }
+                        LoadDealState::TooEarly => {
                             return Err(actor_error!(
-                                illegal_state,
+                                illegal_argument,
                                 "deal {} processed before start epoch {}",
                                 deal_id,
-                                deal.start_epoch
-                            ));
+                                deal_proposal.start_epoch
+                            ))
                         }
-
-                        let slashed = st.process_deal_init_timed_out(rt.store(), &deal)?;
-                        if !slashed.is_zero() {
-                            amount_slashed += slashed;
-                        }
-
-                        // Delete the proposal (but not state, which doesn't exist).
-                        let deleted = st.remove_proposal(rt.store(), deal_id)?;
-
-                        if deleted.is_none() {
-                            return Err(actor_error!(
-                                illegal_state,
-                                format!(
-                                    "failed to delete deal {} proposal {}: does not exist",
-                                    deal_id, dcid
-                                )
-                            ));
-                        }
-
-                        // Delete pending deal CID
-                        st.remove_pending_deal(rt.store(), dcid)?.ok_or_else(|| {
-                            actor_error!(
-                                illegal_state,
-                                "failed to delete pending deals: does not exist"
-                            )
-                        })?;
-
-                        // Delete pending deal allocation id (if present).
-                        st.remove_pending_deal_allocation_id(rt.store(), deal_id)?;
-
-                        continue;
-                    }
-                    let mut state = state.unwrap();
+                    };
 
                     if state.last_updated_epoch == EPOCH_UNDEFINED {
                         st.remove_pending_deal(rt.store(), dcid)?.ok_or_else(|| {
@@ -808,40 +802,29 @@ impl Actor {
                                 "failed to delete pending proposal: does not exist"
                             )
                         })?;
+
+                        // newly activated deals are not scheduled for cron processing. they are handled explicitly by
+                        // calling ProcessDealUpdates method with specific deal ids.
+                        // the code below this point handles legacy deals that are already scheduled for cron processing
+                        continue;
                     }
 
-                    let (slash_amount, remove_deal) =
-                        st.process_deal_update(rt.store(), &state, &deal, curr_epoch)?;
-
-                    if slash_amount.is_negative() {
-                        return Err(actor_error!(
-                            illegal_state,
-                            format!(
-                                "computed negative slash amount {} for deal {}",
-                                slash_amount, deal_id
-                            )
-                        ));
-                    }
+                    // https://github.com/filecoin-project/builtin-actors/issues/1389
+                    // handling of legacy deals is still done in cron. we handle such deals here and continue to
+                    // reschedule them. eventually, all legacy deals will expire and the below code can be removed.
+                    let (slash_amount, _payment_amount, remove_deal) = st.process_deal_update(
+                        rt.store(),
+                        &state,
+                        &deal_proposal,
+                        &dcid,
+                        curr_epoch,
+                    )?;
 
                     if remove_deal {
+                        // TODO: remove handling for terminated-deal slashing when marked-for-termination deals are all processed
+                        // https://github.com/filecoin-project/builtin-actors/issues/1388
                         amount_slashed += slash_amount;
-
-                        // Delete proposal and state simultaneously.
-                        let deleted = st.remove_deal_state(rt.store(), deal_id)?;
-                        if deleted.is_none() {
-                            return Err(actor_error!(
-                                illegal_state,
-                                "failed to delete deal state: does not exist"
-                            ));
-                        }
-
-                        let deleted = st.remove_proposal(rt.store(), deal_id)?;
-                        if deleted.is_none() {
-                            return Err(actor_error!(
-                                illegal_state,
-                                "failed to delete deal proposal: does not exist"
-                            ));
-                        }
+                        st.remove_completed_deal(rt.store(), deal_id)?;
                     } else {
                         if !slash_amount.is_zero() {
                             return Err(actor_error!(
@@ -1024,6 +1007,122 @@ impl Actor {
                 }
             }
         }
+    }
+
+    fn settle_deal_payments(
+        rt: &impl Runtime,
+        params: SettleDealPaymentsParams,
+    ) -> Result<SettleDealPaymentsReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let curr_epoch = rt.curr_epoch();
+
+        let mut batch_gen = BatchReturnGen::new(params.deal_ids.len() as usize);
+        let mut settlements: Vec<DealSettlementSummary> = Vec::new();
+        // accumulates slashed amounts from timed out deal proposals that weren't activated in time
+        let mut total_slashed = TokenAmount::zero();
+
+        rt.transaction(|st: &mut State, rt| {
+            let mut new_deal_states: Vec<(DealID, DealState)> = Vec::new();
+            for deal_id in params.deal_ids.iter() {
+                let deal_proposal = match st.get_proposal(rt.store(), deal_id) {
+                    Ok(prop) => prop,
+                    Err(_) => {
+                        batch_gen.add_fail(EX_DEAL_EXPIRED);
+                        continue;
+                    }
+                };
+                let dcid = match rt_deal_cid(rt, &deal_proposal) {
+                    Ok(cid) => cid,
+                    Err(e) => {
+                        batch_gen.add_fail(e.exit_code());
+                        continue;
+                    }
+                };
+
+                let loaded_deal = match st.get_active_deal_or_process_timeout(
+                    rt.store(),
+                    curr_epoch,
+                    deal_id,
+                    &deal_proposal,
+                    &dcid,
+                ) {
+                    Ok(res) => res,
+                    Err(e) => {
+                        batch_gen.add_fail(e.exit_code());
+                        continue;
+                    }
+                };
+
+                let mut deal_state = match loaded_deal {
+                    LoadDealState::TooEarly => {
+                        // deal is not active, we process it as a zero-payment no-op
+                        settlements.push(DealSettlementSummary {
+                            completed: false,
+                            payment: TokenAmount::zero(),
+                        });
+                        continue;
+                    }
+                    LoadDealState::ProposalExpired(penalty) => {
+                        // deal proposal was not activated in time
+                        total_slashed += penalty;
+                        batch_gen.add_fail(EX_DEAL_EXPIRED);
+                        continue;
+                    }
+                    LoadDealState::Loaded(deal_state) => deal_state,
+                };
+
+                // TODO: remove this defensive check when it becomes impossible for process_deal_update to encounter slashed deals
+                // https://github.com/filecoin-project/builtin-actors/issues/1388
+                if deal_state.slash_epoch != EPOCH_UNDEFINED {
+                    return Err(actor_error!(
+                        illegal_argument,
+                        "deal {} is marked for termination and cannot be settled",
+                        deal_id
+                    ));
+                }
+
+                let (_, payment_amount, remove_deal) = match st.process_deal_update(
+                    rt.store(),
+                    &deal_state,
+                    &deal_proposal,
+                    &dcid,
+                    curr_epoch,
+                ) {
+                    Ok(res) => res,
+                    Err(e) => {
+                        batch_gen.add_fail(e.exit_code());
+                        continue;
+                    }
+                };
+
+                if remove_deal {
+                    st.remove_completed_deal(rt.store(), deal_id)?;
+                } else {
+                    deal_state.last_updated_epoch = curr_epoch;
+                    new_deal_states.push((deal_id, deal_state));
+                }
+
+                settlements.push(DealSettlementSummary {
+                    completed: remove_deal,
+                    payment: payment_amount,
+                });
+                batch_gen.add_success();
+            }
+
+            st.put_deal_states(rt.store(), &new_deal_states)?;
+            Ok(())
+        })?;
+
+        if !total_slashed.is_zero() {
+            extract_send_result(rt.send_simple(
+                &BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                None,
+                total_slashed,
+            ))?;
+        }
+
+        Ok(SettleDealPaymentsReturn { results: batch_gen.gen(), settlements })
     }
 }
 
@@ -1329,7 +1428,7 @@ fn deal_proposal_is_internally_valid(
 }
 
 /// Compute a deal CID using the runtime.
-pub(crate) fn rt_deal_cid(rt: &impl Runtime, proposal: &DealProposal) -> Result<Cid, ActorError> {
+pub fn rt_deal_cid(rt: &impl Runtime, proposal: &DealProposal) -> Result<Cid, ActorError> {
     let data = serialize(proposal, "deal proposal")?;
     rt_serialized_deal_cid(rt, data.bytes())
 }
@@ -1344,7 +1443,7 @@ pub(crate) fn rt_serialized_deal_cid(rt: &impl Runtime, data: &[u8]) -> Result<C
 }
 
 /// Compute a deal CID directly.
-pub(crate) fn deal_cid(proposal: &DealProposal) -> Result<Cid, ActorError> {
+pub fn deal_cid(proposal: &DealProposal) -> Result<Cid, ActorError> {
     const DIGEST_SIZE: u32 = 32;
     let data = serialize(proposal, "deal proposal")?;
     let hash = Code::Blake2b256.digest(data.bytes());
@@ -1451,5 +1550,6 @@ impl ActorCode for Actor {
         GetDealProviderCollateralExported => get_deal_provider_collateral,
         GetDealVerifiedExported => get_deal_verified,
         GetDealActivationExported => get_deal_activation,
+        SettleDealPaymentsExported => settle_deal_payments,
     }
 }

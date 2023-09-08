@@ -22,8 +22,8 @@ use fil_actor_miner::{IsControllingAddressParam, PowerPair};
 use fil_actor_power::{UpdateClaimedPowerParams, UpdatePledgeTotalParams};
 use fil_actor_verifreg::GetClaimsParams;
 use fil_actors_runtime::{
-    BURNT_FUNDS_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
-    STORAGE_POWER_ACTOR_ID, VERIFIED_REGISTRY_ACTOR_ADDR,
+    BURNT_FUNDS_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ID,
+    STORAGE_POWER_ACTOR_ADDR, STORAGE_POWER_ACTOR_ID, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 
 use vm_api::trace::ExpectInvocation;
@@ -73,7 +73,7 @@ impl Expect {
             method: fil_actor_market::Method::OnMinerSectorsTerminate as u64,
             params: Some(params),
             value: Some(TokenAmount::zero()),
-            subinvocs: Some(vec![]),
+            subinvocs: Some(vec![Expect::burn(STORAGE_MARKET_ACTOR_ID, None)]),
             ..Default::default()
         }
     }

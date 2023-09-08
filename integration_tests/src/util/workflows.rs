@@ -1,5 +1,7 @@
 use std::cmp::min;
 
+use fil_actor_market::SettleDealPaymentsParams;
+use fil_actor_market::SettleDealPaymentsReturn;
 use frc46_token::receiver::FRC46TokenReceived;
 use frc46_token::receiver::FRC46_TOKEN_TYPE;
 use frc46_token::token::types::TransferFromParams;
@@ -521,6 +523,27 @@ pub fn miner_extend_sector_expiration2(
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
+}
+
+pub fn provider_settle_deal_payments(
+    v: &dyn VM,
+    provider: &Address,
+    deals: &[DealID],
+) -> SettleDealPaymentsReturn {
+    let mut deal_id_bitfield = BitField::new();
+    for deal_id in deals {
+        deal_id_bitfield.set(*deal_id);
+    }
+    let params = SettleDealPaymentsParams { deal_ids: deal_id_bitfield };
+    let ret = apply_ok(
+        v,
+        provider,
+        &STORAGE_MARKET_ACTOR_ADDR,
+        &TokenAmount::zero(),
+        MarketMethod::SettleDealPaymentsExported as u64,
+        Some(params),
+    );
+    ret.deserialize::<SettleDealPaymentsReturn>().unwrap()
 }
 
 pub fn advance_by_deadline_to_epoch(v: &dyn VM, maddr: &Address, e: ChainEpoch) -> DeadlineInfo {

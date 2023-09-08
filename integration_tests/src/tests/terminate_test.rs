@@ -1,6 +1,6 @@
 use fil_actor_cron::Method as CronMethod;
 use fil_actor_market::{
-    DealMetaArray, Method as MarketMethod, State as MarketState, WithdrawBalanceParams,
+    deal_cid, DealMetaArray, Method as MarketMethod, State as MarketState, WithdrawBalanceParams,
 };
 use fil_actor_miner::{
     power_for_sector, Method as MinerMethod, PreCommitSectorParams, ProveCommitSectorParams,
@@ -28,9 +28,8 @@ use vm_api::VM;
 use crate::expects::Expect;
 use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
-    advance_to_proving_deadline, create_accounts, create_miner, expect_invariants,
-    invariant_failure_patterns, make_bitfield, market_publish_deal, miner_balance,
-    submit_windowed_post, verifreg_add_verifier,
+    advance_to_proving_deadline, assert_invariants, create_accounts, create_miner, make_bitfield,
+    market_publish_deal, miner_balance, submit_windowed_post, verifreg_add_verifier,
 };
 
 pub fn terminate_sectors_test(v: &dyn VM) {
@@ -164,7 +163,7 @@ pub fn terminate_sectors_test(v: &dyn VM) {
         let state = deal_states.get(*id).unwrap();
         assert_eq!(None, state);
     }
-    //    precommit_sectors(&v, 1, 1, worker, robust_addr, seal_proof, sector_number, true, None);
+
     apply_ok(
         v,
         &worker,
@@ -235,14 +234,13 @@ pub fn terminate_sectors_test(v: &dyn VM) {
         start + Policy::default().deal_updates_interval,
     );
 
-    // market cron updates deal states indication deals are no longer pending
+    // deals are no longer pending, though they've never been processed
     let st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
     let store = DynBlockstore::wrap(v.blockstore());
-    let deal_states = DealMetaArray::load(&st.states, &store).unwrap();
     for id in deal_ids.iter() {
-        let state = deal_states.get(*id).unwrap().unwrap();
-        assert!(state.last_updated_epoch > 0);
-        assert_eq!(-1, state.slash_epoch);
+        let proposal = st.get_proposal(&store, *id).unwrap();
+        let dcid = deal_cid(&proposal).unwrap();
+        assert!(!st.has_pending_deal(&store, dcid).unwrap());
     }
     let epoch = v.epoch();
 
@@ -289,23 +287,16 @@ pub fn terminate_sectors_test(v: &dyn VM) {
     assert!(pow_st.total_qa_bytes_committed.is_zero());
     assert!(pow_st.total_pledge_collateral.is_zero());
 
-    // termination slashes deals in market state
-    let termination_epoch = v.epoch();
+    // termination synchronously deletes deal state
     let st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
     let store = DynBlockstore::wrap(v.blockstore());
     let deal_states = DealMetaArray::load(&st.states, &store).unwrap();
-    for id in deal_ids.iter() {
-        let state = deal_states.get(*id).unwrap().unwrap();
-        assert!(state.last_updated_epoch > 0);
-        assert_eq!(termination_epoch, state.slash_epoch);
+    for &id in deal_ids.iter() {
+        let state = deal_states.get(id).unwrap();
+        assert!(state.is_none());
+        assert!(st.find_proposal(&store, id).unwrap().is_none());
     }
 
-    // advance a market cron processing period to process terminations fully
-    advance_by_deadline_to_epoch(
-        v,
-        &miner_id_addr,
-        termination_epoch + Policy::default().deal_updates_interval,
-    );
     // because of rounding error it's annoying to compute exact withdrawable balance which is 2.9999.. FIL
     // withdrawing 2 FIL proves out that the claim to 1 FIL per deal (2 deals for this client) is removed at termination
     let withdrawal = TokenAmount::from_whole(2);
@@ -349,9 +340,5 @@ pub fn terminate_sectors_test(v: &dyn VM) {
     assert!(TokenAmount::from_whole(58) < value_withdrawn);
     assert!(TokenAmount::from_whole(59) > value_withdrawn);
 
-    expect_invariants(
-        v,
-        &Policy::default(),
-        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
-    );
+    assert_invariants(v, &Policy::default());
 }

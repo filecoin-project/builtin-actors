@@ -164,7 +164,7 @@ fn fail_when_deal_has_already_been_expired() {
 
     cron_tick(&rt);
 
-    assert_deal_deleted(&rt, deal_id, deal_proposal);
+    assert_deal_deleted(&rt, deal_id, &deal_proposal);
 
     let mut st: State = rt.get_state::<State>();
     st.next_id = deal_id + 1;

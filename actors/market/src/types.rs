@@ -250,3 +250,25 @@ pub struct MarketNotifyDealParams {
     pub proposal: Vec<u8>,
     pub deal_id: u64,
 }
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone)]
+#[serde(transparent)]
+pub struct SettleDealPaymentsParams {
+    pub deal_ids: BitField,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+pub struct SettleDealPaymentsReturn {
+    /// Indicators of success or failure for each deal
+    pub results: BatchReturn,
+    /// Results for the deals that succesfully settled
+    pub settlements: Vec<DealSettlementSummary>,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+pub struct DealSettlementSummary {
+    /// Incremental amount of funds transferred from client to provider for deal payment
+    pub payment: TokenAmount,
+    /// Whether the deal has settled for the final time
+    pub completed: bool,
+}

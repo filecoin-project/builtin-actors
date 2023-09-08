@@ -4,9 +4,6 @@ use fil_actors_integration_tests::tests::{
 use fvm_ipld_blockstore::MemoryBlockstore;
 use test_vm::TestVM;
 
-// Tests a scenario involving a verified deal from the built-in market, with associated
-// allocation and claim.
-// This test shares some set-up copied from extend_sectors_test.
 #[test]
 fn verified_claim_scenario() {
     let store = MemoryBlockstore::new();
