@@ -1,5 +1,6 @@
 #![allow(clippy::all)]
 
+use anyhow::anyhow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::TryInto;
 use std::iter;
@@ -526,7 +527,7 @@ impl ActorHarness {
         PreCommitSectorParams {
             seal_proof: self.seal_proof_type,
             sector_number: sector_no,
-            sealed_cid: make_sealed_cid(b"commr"),
+            sealed_cid: make_sector_commr(sector_no),
             seal_rand_epoch: challenge,
             deal_ids: sector_deal_ids,
             expiration,
@@ -549,7 +550,7 @@ impl ActorHarness {
         SectorPreCommitInfo {
             seal_proof: self.seal_proof_type,
             sector_number: sector_no,
-            sealed_cid: make_sealed_cid(b"commr"),
+            sealed_cid: make_sector_commr(sector_no),
             seal_rand_epoch: challenge,
             deal_ids: sector_deal_ids,
             expiration,
@@ -1272,12 +1273,15 @@ impl ActorHarness {
         sector_updates: &[SectorUpdateManifest],
         require_activation_success: bool,
         require_notification_success: bool,
+        cfg: ProveReplicaUpdatesConfig,
     ) -> Result<ProveReplicaUpdates2Return, ActorError> {
         fn make_proof(i: u8) -> RawBytes {
             RawBytes::new(vec![i, i, i, i])
         }
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, cfg.caller.unwrap_or(self.worker));
+        rt.expect_validate_caller_addr(self.caller_addrs());
 
-        let params = ProveReplicaUpdates2Params {
+        let mut params = ProveReplicaUpdates2Params {
             sector_updates: sector_updates.into(),
             sector_proofs: sector_updates.iter().map(|su| make_proof(su.sector as u8)).collect(),
             aggregate_proof: RawBytes::default(),
@@ -1286,15 +1290,16 @@ impl ActorHarness {
             require_activation_success,
             require_notification_success,
         };
-        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
-        rt.expect_validate_caller_addr(self.caller_addrs());
+        if let Some(param_twiddle) = cfg.param_twiddle {
+            param_twiddle(&mut params);
+        }
 
         let mut sector_allocation_claims = Vec::new();
         let mut sector_claimed_space = Vec::new();
         let mut expected_pledge = TokenAmount::zero();
         let mut expected_qa_power = StoragePower::zero();
         let mut expected_sector_notifications = Vec::new(); // Assuming all to f05
-        for sup in sector_updates {
+        for (i, sup) in sector_updates.iter().enumerate() {
             let sector = self.get_sector(rt, sup.sector);
             let unsealed_cid = expect_compute_unsealed_cid_from_pieces(
                 rt,
@@ -1310,7 +1315,11 @@ impl ActorHarness {
                     new_unsealed_cid: unsealed_cid,
                     proof: make_proof(sup.sector as u8).into(),
                 },
-                Ok(()),
+                if *cfg.proofs_valid.get(i).unwrap_or(&true) {
+                    Ok(())
+                } else {
+                    Err(anyhow!("invalid replica proof"))
+                },
             );
             let claims = SectorAllocationClaims {
                 sector: sup.sector,
@@ -1365,7 +1374,7 @@ impl ActorHarness {
                     sector_claims: sector_claimed_space,
                 })
                 .unwrap(),
-                ExitCode::OK,
+                cfg.verfied_claim_result.unwrap_or(ExitCode::OK),
             );
         }
 
@@ -1375,9 +1384,12 @@ impl ActorHarness {
         expect_update_power(rt, PowerPair::new(BigInt::zero(), expected_qa_power));
 
         // Expect SectorContentChanged notification to market.
+        // This expectation is simplified based on assumption that f05 is the only notification target.
         let sector_notification_resps = expected_sector_notifications
             .iter()
-            .map(|sn| SectorReturn { added: vec![PieceReturn { accepted: true }; sn.added.len()] })
+            .map(|sn| SectorReturn {
+                added: vec![PieceReturn { accepted: !cfg.notification_rejected }; sn.added.len()],
+            })
             .collect();
         rt.expect_send_simple(
             STORAGE_MARKET_ACTOR_ADDR,
@@ -1391,21 +1403,23 @@ impl ActorHarness {
                 sectors: sector_notification_resps,
             })
             .unwrap(),
-            ExitCode::OK,
+            cfg.notification_result.unwrap_or(ExitCode::OK),
         );
 
-        let result: ProveReplicaUpdates2Return = rt
-            .call::<Actor>(
-                MinerMethod::ProveReplicaUpdates2 as u64,
-                IpldBlock::serialize_cbor(&params).unwrap(),
-            )
-            .unwrap()
-            .unwrap()
-            .deserialize()
-            .unwrap();
-        assert_eq!(sector_updates.len(), result.activation_results.size());
-        // rt.verify();
-        Ok(result)
+        let result = rt.call::<Actor>(
+            MinerMethod::ProveReplicaUpdates2 as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        );
+        result
+            .map(|r| {
+                let ret: ProveReplicaUpdates2Return = r.unwrap().deserialize().unwrap();
+                assert_eq!(sector_updates.len(), ret.activation_results.size());
+                ret
+            })
+            .or_else(|e| {
+                rt.reset();
+                Err(e)
+            })
     }
 
     pub fn get_sector(&self, rt: &MockRuntime, sector_number: SectorNumber) -> SectorOnChainInfo {
@@ -2806,6 +2820,16 @@ pub struct PreCommitBatchConfig {
 }
 
 #[derive(Default)]
+pub struct ProveReplicaUpdatesConfig {
+    pub caller: Option<Address>,
+    pub param_twiddle: Option<Box<dyn FnOnce(&mut ProveReplicaUpdates2Params)>>,
+    pub proofs_valid: Vec<bool>, // Result for proof verification (default success).
+    pub verfied_claim_result: Option<ExitCode>, // Result of verified claims (default OK).
+    pub notification_result: Option<ExitCode>, // Result of notification send (default OK).
+    pub notification_rejected: bool, // Whether to reject the notification
+}
+
+#[derive(Default)]
 pub struct CronConfig {
     pub no_enrollment: bool,
     // true if expect not to continue enrollment false otherwise
@@ -2970,6 +2994,123 @@ fn make_piece_cid(input: &[u8]) -> Cid {
     Cid::new_v1(FIL_COMMITMENT_UNSEALED, h)
 }
 
+// Pre-commits and then proves a batch of empty sectors, and submits their first Window PoSt.
+// The epoch is advanced to when the first window post is submitted.
+#[allow(dead_code)]
+pub fn onboard_empty_sectors(
+    rt: &MockRuntime,
+    h: &ActorHarness,
+    expiration: ChainEpoch,
+    first_sector_number: SectorNumber,
+    count: usize,
+) -> Vec<SectorOnChainInfo> {
+    let precommit_epoch = *rt.epoch.borrow();
+
+    // Precommit the sectors.
+    let precommits =
+        make_empty_precommits(h, first_sector_number, precommit_epoch - 1, expiration, count);
+    h.pre_commit_sector_batch_v2(rt, &precommits, true, &TokenAmount::zero()).unwrap();
+    let precommits: Vec<SectorPreCommitOnChainInfo> =
+        precommits.iter().map(|sector| h.get_precommit(rt, sector.sector_number)).collect();
+
+    // Prove the sectors.
+    // Use the new ProveCommitSectors2
+    rt.set_epoch(precommit_epoch + rt.policy.pre_commit_challenge_delay + 1);
+    let sectors: Vec<SectorOnChainInfo> = precommits
+        .iter()
+        .map(|pc| {
+            let sector_activation = make_activation_manifest(pc.info.sector_number, &[]);
+            h.prove_commit_sectors2(rt, &[sector_activation], false, false, false).unwrap();
+            h.get_sector(rt, pc.info.sector_number)
+        })
+        .collect();
+
+    // Window PoST to activate the sectors, a pre-requisite for upgrading.
+    h.advance_and_submit_posts(rt, &sectors);
+    sectors
+}
+
+#[allow(dead_code)]
+pub fn make_empty_precommits(
+    h: &ActorHarness,
+    first_sector_number: SectorNumber,
+    challenge: ChainEpoch,
+    expiration: ChainEpoch,
+    count: usize,
+) -> Vec<SectorPreCommitInfo> {
+    (0..count)
+        .map(|i| {
+            let sector_number = first_sector_number + i as u64;
+            h.make_pre_commit_params_v2(
+                sector_number,
+                challenge,
+                expiration,
+                vec![],
+                CompactCommD::empty(),
+            )
+        })
+        .collect()
+}
+
+// Note this matches the faked commD computation in the testing harness
+#[allow(dead_code)]
+pub fn make_fake_commd_precommits(
+    h: &ActorHarness,
+    first_sector_number: SectorNumber,
+    challenge: ChainEpoch,
+    expiration: ChainEpoch,
+    count: usize,
+) -> Vec<SectorPreCommitInfo> {
+    (0..count)
+        .map(|i| {
+            let sector_number = first_sector_number + i as u64;
+            h.make_pre_commit_params_v2(
+                sector_number,
+                challenge,
+                expiration,
+                vec![],
+                CompactCommD(Some(make_sector_commd(sector_number))),
+            )
+        })
+        .collect()
+}
+
+#[allow(dead_code)]
+pub fn make_activation_manifest(
+    sector_number: SectorNumber,
+    piece_specs: &[(u64, ActorID, AllocationID, DealID)], // (size, client, allocation, deal)
+) -> SectorActivationManifest {
+    let pieces: Vec<PieceActivationManifest> = piece_specs
+        .iter()
+        .enumerate()
+        .map(|(i, (sz, client, alloc, deal))| make_piece_manifest(i, *sz, *client, *alloc, *deal))
+        .collect();
+    SectorActivationManifest { sector_number, pieces }
+}
+
+#[allow(dead_code)]
+pub fn make_update_manifest(
+    st: &State,
+    store: &impl Blockstore,
+    sector: &SectorOnChainInfo,
+    piece_specs: &[(u64, ActorID, AllocationID, DealID)], // (size, client, allocation, deal)
+) -> SectorUpdateManifest {
+    let (deadline, partition) = st.find_sector(store, sector.sector_number).unwrap();
+    let new_sealed_cid = make_sector_commr(sector.sector_number);
+    let pieces: Vec<PieceActivationManifest> = piece_specs
+        .iter()
+        .enumerate()
+        .map(|(i, (sz, client, alloc, deal))| make_piece_manifest(i, *sz, *client, *alloc, *deal))
+        .collect();
+    SectorUpdateManifest {
+        sector: sector.sector_number,
+        deadline,
+        partition,
+        new_sealed_cid,
+        pieces,
+    }
+}
+
 #[allow(dead_code)]
 pub fn make_piece_manifest(
     seq: usize,
@@ -3023,6 +3164,14 @@ pub fn notifications_from_pieces(pieces: &[PieceActivationManifest]) -> Vec<Piec
         })
         .flatten()
         .collect()
+}
+
+fn make_sector_commd(sno: SectorNumber) -> Cid {
+    make_piece_cid(format!("unsealed-{}", sno).as_bytes())
+}
+
+fn make_sector_commr(sector: SectorNumber) -> Cid {
+    make_sealed_cid(format!("sealed-{}", sector).as_bytes())
 }
 
 pub fn make_deadline_cron_event_params(epoch: ChainEpoch) -> EnrollCronEventParams {
@@ -3126,7 +3275,7 @@ pub fn test_sector(
         deal_weight: DealWeight::from(deal_weight),
         verified_deal_weight: DealWeight::from(verified_deal_weight),
         initial_pledge: TokenAmount::from_atto(pledge),
-        sealed_cid: make_sealed_cid(format!("commR-{sector_number}").as_bytes()),
+        sealed_cid: make_sector_commr(sector_number),
         ..Default::default()
     }
 }
@@ -3167,7 +3316,7 @@ fn expect_compute_unsealed_cid_from_pieces(
 ) -> Cid {
     let expected_unsealed_cid_inputs: Vec<PieceInfo> =
         pieces.iter().map(|p| PieceInfo { size: p.size, cid: p.cid }).collect();
-    let unsealed_cid = make_piece_cid(format!("unsealed-{}", sno).as_bytes());
+    let unsealed_cid = make_sector_commd(sno);
     if !expected_unsealed_cid_inputs.is_empty() {
         rt.expect_compute_unsealed_sector_cid(
             seal_proof_type,
