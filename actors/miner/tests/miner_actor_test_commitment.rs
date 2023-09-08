@@ -505,8 +505,7 @@ mod miner_actor_test_commitment {
                 ),
             );
             rt.reset();
-            precommit_params.seal_proof =
-                RegisteredSealProof::StackedDRG32GiBV1P1;
+            precommit_params.seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
             h.pre_commit_sector_and_get(
                 &rt,
                 precommit_params,
