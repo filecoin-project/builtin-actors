@@ -33,7 +33,7 @@ fn setup() -> (ActorHarness, MockRuntime) {
 fn successfully_change_only_the_worker_address() {
     let (h, rt) = setup();
 
-    let original_control_addresses = h.control_addrs.clone();
+    let original_control_addresses = &h.control_addrs;
     let new_worker = Address::new_id(999);
 
     // set epoch to something close to next deadline so first cron will be before effective date
@@ -71,7 +71,7 @@ fn successfully_change_only_the_worker_address() {
 
     // assert control addresses are unchanged
     assert!(!info.control_addresses.is_empty());
-    assert_eq!(original_control_addresses, info.control_addresses);
+    assert_eq!(original_control_addresses, &info.control_addresses);
 
     h.check_state(&rt);
 }

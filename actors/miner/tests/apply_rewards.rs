@@ -188,14 +188,14 @@ fn rewards_pay_back_fee_debt() {
     let (locked_reward, _) = locked_reward_from_reward(reward.clone());
     let remaining_locked = locked_reward - &st.fee_debt; // note that this would be clamped at 0 if difference above is < 0
     assert!(remaining_locked.is_positive());
-    let pledge_delta = remaining_locked.clone();
+    let pledge_delta = &remaining_locked;
     rt.set_caller(*REWARD_ACTOR_CODE_ID, REWARD_ACTOR_ADDR);
     rt.expect_validate_caller_addr(vec![REWARD_ACTOR_ADDR]);
     // expect pledge update
     rt.expect_send_simple(
         STORAGE_POWER_ACTOR_ADDR,
         PowerMethod::UpdatePledgeTotal as u64,
-        IpldBlock::serialize_cbor(&pledge_delta).unwrap(),
+        IpldBlock::serialize_cbor(pledge_delta).unwrap(),
         TokenAmount::zero(),
         None,
         ExitCode::OK,
