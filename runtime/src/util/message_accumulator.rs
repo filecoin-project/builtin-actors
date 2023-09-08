@@ -73,7 +73,7 @@ impl MessageAccumulator {
         let messages = self.messages();
         assert!(
             messages.len() == expected_patterns.len(),
-            "Incorrect number of accumulator messages. Actual: {}.\nExpected: {}",
+            "Incorrect number of accumulator messages.\nActual: {}.\nExpected: {}",
             messages.join("\n"),
             expected_patterns.iter().map(|regex| regex.as_str()).join("\n")
         );

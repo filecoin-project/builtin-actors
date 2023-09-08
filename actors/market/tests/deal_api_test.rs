@@ -2,7 +2,6 @@ use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::METHOD_SEND;
 use num_traits::Zero;
 use serde::de::DeserializeOwned;
 
@@ -13,10 +12,10 @@ use fil_actor_market::{
     GetDealTotalPriceReturn, GetDealVerifiedReturn, Method, EX_DEAL_EXPIRED, EX_DEAL_NOT_ACTIVATED,
 };
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::runtime::policy_constants::DEAL_UPDATES_INTERVAL;
-use fil_actors_runtime::test_utils::{expect_abort, MockRuntime, ACCOUNT_ACTOR_CODE_ID};
+use fil_actors_runtime::test_utils::{
+    expect_abort, expect_abort_contains_message, MockRuntime, ACCOUNT_ACTOR_CODE_ID,
+};
 use fil_actors_runtime::ActorError;
-use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
 use harness::*;
 
 mod harness;
@@ -103,7 +102,7 @@ fn activation() {
     let id = publish_deals(
         &rt,
         &MinerAddresses::default(),
-        &[proposal.clone()],
+        &[proposal],
         TokenAmount::zero(),
         next_allocation_id,
     )[0];
@@ -132,26 +131,13 @@ fn activation() {
     let terminate_epoch = activate_epoch + 100;
     rt.set_epoch(terminate_epoch);
     terminate_deals(&rt, PROVIDER_ADDR, &[sector_number]);
-    let activation: GetDealActivationReturn =
-        query_deal(&rt, Method::GetDealActivationExported, id);
-    assert_eq!(activate_epoch, activation.activated);
-    assert_eq!(terminate_epoch, activation.terminated);
-    query_deal_fails(&rt, Method::GetDealSectorExported, id, EX_DEAL_EXPIRED);
 
-    // Clean up state
-    let clean_epoch = terminate_epoch + DEAL_UPDATES_INTERVAL;
-    rt.set_epoch(clean_epoch);
-    rt.expect_send_simple(
-        BURNT_FUNDS_ACTOR_ADDR,
-        METHOD_SEND,
-        None,
-        proposal.provider_collateral,
-        None,
-        ExitCode::OK,
+    // terminated deal had it's state cleaned up
+    expect_abort_contains_message(
+        EX_DEAL_EXPIRED,
+        &format!("deal {id} expired"),
+        query_deal_raw(&rt, Method::GetDealActivationExported, id),
     );
-    cron_tick(&rt);
-    query_deal_fails(&rt, Method::GetDealActivationExported, id, EX_DEAL_EXPIRED);
-    query_deal_fails(&rt, Method::GetDealSectorExported, id, EX_DEAL_EXPIRED);
 
     // Non-existent deal is USR_NOT_FOUND
     query_deal_fails(&rt, Method::GetDealActivationExported, id + 1, ExitCode::USR_NOT_FOUND);

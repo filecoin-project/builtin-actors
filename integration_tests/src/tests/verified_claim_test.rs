@@ -7,7 +7,7 @@ use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 
 use fil_actor_datacap::State as DatacapState;
-use fil_actor_market::{DealArray, DealMetaArray};
+use fil_actor_market::{DealArray, DealMetaArray, DealSettlementSummary};
 use fil_actor_market::{
     PendingDealAllocationsMap, State as MarketState, PENDING_ALLOCATIONS_CONFIG,
 };
@@ -36,9 +36,9 @@ use crate::util::{
     create_miner, cron_tick, datacap_extend_claim, datacap_get_balance, expect_invariants,
     invariant_failure_patterns, market_add_balance, market_pending_deal_allocations,
     market_publish_deal, miner_extend_sector_expiration2, miner_precommit_one_sector_v2,
-    miner_prove_sector, precommit_meta_data_from_deals, sector_deadline, submit_windowed_post,
-    verifreg_add_client, verifreg_add_verifier, verifreg_extend_claim_terms,
-    verifreg_remove_expired_allocations,
+    miner_prove_sector, precommit_meta_data_from_deals, provider_settle_deal_payments,
+    sector_deadline, submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
+    verifreg_extend_claim_terms, verifreg_remove_expired_allocations,
 };
 
 /// Tests a scenario involving a verified deal from the built-in market, with associated
@@ -102,7 +102,7 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
         &miner_id,
         seal_proof,
         sector_number,
-        precommit_meta_data_from_deals(v, deals, seal_proof),
+        precommit_meta_data_from_deals(v, &deals, seal_proof),
         true,
         deal_start + sector_term,
     );
@@ -354,6 +354,17 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
     assert_eq!(vec![claim_id], ret.considered);
     assert!(ret.results.all_ok(), "results had failures {}", ret.results);
 
+    let market_state: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
+    let store = DynBlockstore::wrap(v.blockstore());
+    let proposals = DealArray::load(&market_state.proposals, &store).unwrap();
+    let proposal = proposals.get(deals[0]).unwrap().unwrap();
+    // provider must process the deals to receive payment and cleanup state
+    let ret = provider_settle_deal_payments(v, &miner_id, &deals);
+    assert_eq!(
+        ret.settlements.get(0).unwrap(),
+        &DealSettlementSummary { payment: proposal.total_storage_fee(), completed: true }
+    );
+
     expect_invariants(
         v,
         &Policy::default(),
@@ -536,7 +547,7 @@ pub fn deal_passes_claim_fails_test(v: &dyn VM) {
         &miner_id,
         seal_proof,
         sector_number_a,
-        precommit_meta_data_from_deals(v, vec![deal], seal_proof),
+        precommit_meta_data_from_deals(v, &[deal], seal_proof),
         true,
         sector_start + sector_term,
     );
@@ -547,7 +558,7 @@ pub fn deal_passes_claim_fails_test(v: &dyn VM) {
         &miner_id,
         seal_proof,
         sector_number_b,
-        precommit_meta_data_from_deals(v, vec![bad_deal], seal_proof),
+        precommit_meta_data_from_deals(v, &[bad_deal], seal_proof),
         false,
         sector_start + sector_term,
     );

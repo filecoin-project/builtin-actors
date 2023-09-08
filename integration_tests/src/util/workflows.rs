@@ -1,5 +1,7 @@
 use std::cmp::min;
 
+use fil_actor_market::SettleDealPaymentsParams;
+use fil_actor_market::SettleDealPaymentsReturn;
 use frc46_token::receiver::FRC46TokenReceived;
 use frc46_token::receiver::FRC46_TOKEN_TYPE;
 use frc46_token::token::types::TransferParams;
@@ -337,21 +339,20 @@ pub fn precommit_sectors_v2(
 
 pub fn precommit_meta_data_from_deals(
     v: &dyn VM,
-    deal_ids: Vec<u64>,
+    deal_ids: &[u64],
     seal_proof: RegisteredSealProof,
 ) -> PrecommitMetadata {
     let state: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
     let pieces: Vec<PieceInfo> = deal_ids
-        .clone()
-        .into_iter()
-        .map(|id: u64| {
-            let deal = state.get_proposal(&DynBlockstore::wrap(v.blockstore()), id).unwrap();
+        .iter()
+        .map(|id: &u64| {
+            let deal = state.get_proposal(&DynBlockstore::wrap(v.blockstore()), *id).unwrap();
             PieceInfo { size: deal.piece_size, cid: deal.piece_cid }
         })
         .collect();
 
     PrecommitMetadata {
-        deals: deal_ids,
+        deals: deal_ids.to_vec(),
         commd: CompactCommD::of(
             v.primitives().compute_unsealed_sector_cid(seal_proof, &pieces).unwrap(),
         ),
@@ -466,6 +467,27 @@ pub fn miner_extend_sector_expiration2(
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
+}
+
+pub fn provider_settle_deal_payments(
+    v: &dyn VM,
+    provider: &Address,
+    deals: &[DealID],
+) -> SettleDealPaymentsReturn {
+    let mut deal_id_bitfield = BitField::new();
+    for deal_id in deals {
+        deal_id_bitfield.set(*deal_id);
+    }
+    let params = SettleDealPaymentsParams { deal_ids: deal_id_bitfield };
+    let ret = apply_ok(
+        v,
+        provider,
+        &STORAGE_MARKET_ACTOR_ADDR,
+        &TokenAmount::zero(),
+        MarketMethod::SettleDealPaymentsExported as u64,
+        Some(params),
+    );
+    ret.deserialize::<SettleDealPaymentsReturn>().unwrap()
 }
 
 pub fn advance_by_deadline_to_epoch(v: &dyn VM, maddr: &Address, e: ChainEpoch) -> DeadlineInfo {

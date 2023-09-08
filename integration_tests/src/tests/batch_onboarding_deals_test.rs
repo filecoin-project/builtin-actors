@@ -144,7 +144,7 @@ pub fn batch_onboarding_deals_test(v: &dyn VM) {
     // Associate deals with sectors.
     let sector_precommit_data = deals
         .into_iter()
-        .map(|(id, _)| precommit_meta_data_from_deals(v, vec![id], SEAL_PROOF))
+        .map(|(id, _)| precommit_meta_data_from_deals(v, &[id], SEAL_PROOF))
         .collect();
 
     // Pre-commit as single batch.
