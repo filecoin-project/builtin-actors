@@ -46,7 +46,7 @@ fn activate_deals_one_sector() {
     assert!(res.activation_results.all_ok());
 
     // Deal IDs are stored under the sector, in correct order.
-    assert_eq!(deal_ids, get_sector_deal_ids(&rt, PROVIDER_ID, 1));
+    assert_eq!(deal_ids, get_sector_deal_ids(&rt, PROVIDER_ID, &[1]));
 
     for id in deal_ids.iter() {
         let state = get_deal_state(&rt, *id);
@@ -391,7 +391,7 @@ fn activate_new_deals_in_existing_sector() {
     assert_eq!(0, get_deal_state(&rt, deal_ids[2]).sector_start_epoch);
 
     // All deals stored under the sector, in order.
-    assert_eq!(deal_ids, get_sector_deal_ids(&rt, PROVIDER_ID, sector_number));
+    assert_eq!(deal_ids, get_sector_deal_ids(&rt, PROVIDER_ID, &[sector_number]));
     check_state(&rt);
 }
 

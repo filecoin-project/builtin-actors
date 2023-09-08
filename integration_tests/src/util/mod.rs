@@ -1,37 +1,41 @@
-use fil_actor_market::{load_provider_sector_deals, DealProposal, DealState, State as MarketState};
-use fil_actor_power::State as PowerState;
-use fil_actor_reward::State as RewardState;
-use fil_actors_runtime::{
-    parse_uint_key, runtime::Policy, MessageAccumulator, REWARD_ACTOR_ADDR,
-    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
-};
+use std::collections::HashMap;
+
+use cid::multihash::{Code, MultihashDigest};
+use cid::Cid;
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_encoding::{CborStore, RawBytes};
+use fvm_ipld_encoding::{CborStore, RawBytes, DAG_CBOR};
 use fvm_shared::address::Address;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::{ActorID, METHOD_SEND};
-use std::collections::HashMap;
+use num_traits::Zero;
+use regex::Regex;
 
+use fil_actor_market::{load_provider_sector_deals, DealProposal, DealState, State as MarketState};
 use fil_actor_miner::ext::verifreg::AllocationID;
 use fil_actor_miner::{
     new_deadline_info_from_offset_and_epoch, Deadline, DeadlineInfo, GetBeneficiaryReturn,
     Method as MinerMethod, MinerInfo, PowerPair, SectorOnChainInfo, State as MinerState,
 };
+use fil_actor_power::State as PowerState;
+use fil_actor_reward::State as RewardState;
 use fil_actor_verifreg::{Claim, ClaimID, State as VerifregState};
+use fil_actors_runtime::cbor::serialize;
+use fil_actors_runtime::{
+    parse_uint_key, runtime::Policy, MessageAccumulator, REWARD_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+};
 use fil_builtin_actors_state::check::check_state_invariants;
-use num_traits::Zero;
-use regex::Regex;
 use vm_api::{
     util::{apply_ok, get_state, pk_addrs_from, DynBlockstore},
     VM,
 };
-
-mod workflows;
 pub use workflows::*;
 
 use crate::{MinerBalances, NetworkStats, TEST_FAUCET_ADDR};
+
+mod workflows;
 
 const ACCOUNT_SEED: u64 = 93837778;
 
@@ -258,4 +262,13 @@ pub fn get_network_stats(vm: &dyn VM) -> NetworkStats {
         total_provider_locked_collateral: market_state.total_provider_locked_collateral,
         total_client_storage_fee: market_state.total_client_storage_fee,
     }
+}
+
+/// Compute a deal CID directly.
+pub fn deal_cid_for_testing(proposal: &DealProposal) -> Cid {
+    const DIGEST_SIZE: u32 = 32;
+    let data = serialize(proposal, "deal proposal").unwrap();
+    let hash = Code::Blake2b256.digest(data.bytes());
+    debug_assert_eq!(u32::from(hash.size()), DIGEST_SIZE, "expected 32byte digest");
+    Cid::new_v1(DAG_CBOR, hash)
 }

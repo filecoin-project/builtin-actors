@@ -163,7 +163,7 @@ pub fn extend_legacy_sector_with_deals_test(v: &dyn VM, do_extend2: bool) {
         &miner_id,
         seal_proof,
         sector_number,
-        precommit_meta_data_from_deals(v, deals, seal_proof),
+        precommit_meta_data_from_deals(v, &deals, seal_proof),
         true,
         deal_start + 180 * EPOCHS_IN_DAY,
     );
@@ -391,7 +391,7 @@ pub fn commit_sector_with_max_duration_deal_test(v: &dyn VM) {
         &miner_id,
         seal_proof,
         sector_number,
-        precommit_meta_data_from_deals(v, deals, seal_proof),
+        precommit_meta_data_from_deals(v, &deals, seal_proof),
         true,
         deal_start + deal_lifetime,
     );
