@@ -3391,6 +3391,23 @@ fn expect_update_power(rt: &MockRuntime, delta: PowerPair) {
     }
 }
 
+#[allow(dead_code)]
+pub fn verify_weights(
+    rt: &MockRuntime,
+    h: &ActorHarness,
+    sno: SectorNumber,
+    data_weight: &DealWeight,
+    verified_weight: &DealWeight,
+    pledge: &TokenAmount,
+) {
+    let s = h.get_sector(rt, sno);
+    // Deal IDs are deprecated and never set.
+    assert!(s.deprecated_deal_ids.is_empty());
+    assert_eq!(data_weight, &s.deal_weight);
+    assert_eq!(verified_weight, &s.verified_deal_weight);
+    assert_eq!(pledge, &s.initial_pledge);
+}
+
 // Helper type for validating deadline state.
 //
 // All methods take the state by value so one can (and should) construct a
