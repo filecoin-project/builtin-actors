@@ -108,7 +108,7 @@ fn reject_aggregate_proof() {
 #[test]
 fn reject_all_proofs_fail() {
     let (h, rt, sector_updates) = setup(2, 0, 0, 0);
-    let cfg = ProveReplicaUpdatesConfig { proofs_valid: vec![false, false], ..Default::default() };
+    let cfg = ProveReplicaUpdatesConfig { proof_failure: vec![0, 1], ..Default::default() };
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "no valid updates",
@@ -131,7 +131,7 @@ fn reject_invalid_update() {
 #[test]
 fn reject_required_proof_failure() {
     let (h, rt, sector_updates) = setup(2, 0, 0, 0);
-    let cfg = ProveReplicaUpdatesConfig { proofs_valid: vec![true, false], ..Default::default() };
+    let cfg = ProveReplicaUpdatesConfig { proof_failure: vec![0], ..Default::default() };
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "requiring activation success",
@@ -202,7 +202,9 @@ fn setup(
     let piece_size = h.sector_size as u64;
     let sector_updates = sectors
         .iter()
-        .map(|s| make_update_manifest(&st, store, s, &[(piece_size, client, alloc, deal)]))
+        .map(|s| {
+            make_update_manifest(&st, store, s.sector_number, &[(piece_size, client, alloc, deal)])
+        })
         .collect();
     (h, rt, sector_updates)
 }

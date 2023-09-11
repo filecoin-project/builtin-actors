@@ -1068,7 +1068,7 @@ impl Actor {
 
         // Verify proofs before activating anything.
         let mut proven_manifests: Vec<(&SectorUpdateManifest, &SectorOnChainInfo)> = vec![];
-        let mut proven_batch_gen = BatchReturnGen::new(validation_batch.size());
+        let mut proven_batch_gen = BatchReturnGen::new(validation_batch.success_count as usize);
         if !params.sector_proofs.is_empty() {
             // Batched proofs, one per sector
             if params.sector_updates.len() != params.sector_proofs.len() {
@@ -1172,7 +1172,7 @@ impl Actor {
         let (power_delta, pledge_delta) = update_replica_states(
             rt,
             &state_updates_by_dline,
-            proven_manifests.len(),
+            successful_manifests.len(),
             &mut sectors,
             info.sector_size,
         )?;
@@ -1766,7 +1766,7 @@ impl Actor {
             &SectorActivationManifest,
             &SectorPreCommitOnChainInfo,
         )> = vec![];
-        let mut proven_batch_gen = BatchReturnGen::new(validation_batch.size());
+        let mut proven_batch_gen = BatchReturnGen::new(validation_batch.success_count as usize);
         if !params.sector_proofs.is_empty() {
             // Verify batched proofs.
             // Filter proof inputs to those for valid pre-commits.
@@ -1819,7 +1819,7 @@ impl Actor {
             proven_activation_inputs = eligible_activation_inputs_iter
                 .map(|(activation, precommit)| (*activation, precommit))
                 .collect();
-            proven_batch_gen.add_successes(validation_batch.size());
+            proven_batch_gen.add_successes(proven_activation_inputs.len());
         }
         let proven_batch = proven_batch_gen.gen();
         if proven_batch.success_count == 0 {
@@ -3763,7 +3763,7 @@ where
             fail_validation = true;
         }
 
-        if update.replica_proof.len() > 4096 {
+        if !fail_validation && update.replica_proof.len() > 4096 {
             info!(
                 "update proof is too large ({}), skipping sector {}",
                 update.replica_proof.len(),
@@ -3772,17 +3772,17 @@ where
             fail_validation = true;
         }
 
-        if require_deals && update.deals.is_empty() {
+        if !fail_validation && require_deals && update.deals.is_empty() {
             info!("must have deals to update, skipping sector {}", update.sector_number,);
             fail_validation = true;
         }
 
-        if update.deals.len() as u64 > sector_deals_max(policy, sector_size) {
+        if !fail_validation && update.deals.len() as u64 > sector_deals_max(policy, sector_size) {
             info!("more deals than policy allows, skipping sector {}", update.sector_number,);
             fail_validation = true;
         }
 
-        if update.deadline >= policy.wpost_period_deadlines {
+        if !fail_validation && update.deadline >= policy.wpost_period_deadlines {
             info!(
                 "deadline {} not in range 0..{}, skipping sector {}",
                 update.deadline, policy.wpost_period_deadlines, update.sector_number
@@ -3790,7 +3790,7 @@ where
             fail_validation = true;
         }
 
-        if !is_sealed_sector(&update.new_sealed_cid) {
+        if !fail_validation && !is_sealed_sector(&update.new_sealed_cid) {
             info!(
                 "new sealed CID had wrong prefix {}, skipping sector {}",
                 update.new_sealed_cid, update.sector_number
@@ -3799,12 +3799,14 @@ where
         }
 
         // Disallow upgrading sectors in immutable deadlines.
-        if !deadline_is_mutable(
-            policy,
-            state.current_proving_period_start(policy, curr_epoch),
-            update.deadline,
-            curr_epoch,
-        ) {
+        if !fail_validation
+            && !deadline_is_mutable(
+                policy,
+                state.current_proving_period_start(policy, curr_epoch),
+                update.deadline,
+                curr_epoch,
+            )
+        {
             info!(
                 "cannot upgrade sectors in immutable deadline {}, skipping sector {}",
                 update.deadline, update.sector_number
@@ -3813,18 +3815,22 @@ where
         }
 
         // This inefficiently loads deadline/partition info for each update.
-        if !state.check_sector_active(
-            &store,
-            update.deadline,
-            update.partition,
-            update.sector_number,
-            true,
-        )? {
+        if !fail_validation
+            && !state.check_sector_active(
+                &store,
+                update.deadline,
+                update.partition,
+                update.sector_number,
+                true,
+            )?
+        {
             info!("sector isn't active, skipping sector {}", update.sector_number);
             fail_validation = true;
         }
 
-        if (&sector_info.deal_weight + &sector_info.verified_deal_weight) != DealWeight::zero() {
+        if !fail_validation
+            && (&sector_info.deal_weight + &sector_info.verified_deal_weight) != DealWeight::zero()
+        {
             info!(
                 "cannot update sector with non-zero data, skipping sector {}",
                 update.sector_number
@@ -3836,7 +3842,7 @@ where
             .seal_proof
             .registered_update_proof()
             .context_code(ExitCode::USR_ILLEGAL_STATE, "couldn't load update proof type")?;
-        if update.update_proof_type != expected_proof_type {
+        if !fail_validation && update.update_proof_type != expected_proof_type {
             info!(
                 "expected proof type {}, was {}",
                 i64::from(expected_proof_type),
