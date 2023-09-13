@@ -307,7 +307,7 @@ fn cant_update_nonempty_sector() {
     let cfg = ProveReplicaUpdatesConfig::default();
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
-        "invalid update",
+        "cannot update sector with non-zero data",
         h.prove_replica_updates2_batch(&rt, &sector_updates, true, true, cfg),
     );
 }

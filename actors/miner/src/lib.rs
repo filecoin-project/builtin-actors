@@ -3740,10 +3740,6 @@ fn validate_replica_updates<'a, BS>(
 where
     BS: Blockstore,
 {
-    let mut batch = BatchReturnGen::new(updates.len());
-    let mut sector_numbers = BTreeSet::<SectorNumber>::new();
-    let mut update_sector_infos: Vec<UpdateAndSectorInfo> = Vec::with_capacity(updates.len());
-
     if updates.len() > policy.prove_replica_updates_max_size {
         return Err(actor_error!(
             illegal_argument,
@@ -3753,116 +3749,133 @@ where
         ));
     }
 
-    for (i, (update, sector_info)) in updates.iter().zip(sector_infos).enumerate() {
-        // Build update and sector info for all updates, even if they fail validation.
-        let mut fail_validation = false;
-        update_sector_infos.push(UpdateAndSectorInfo { update, sector_info });
-
+    let mut sector_numbers = BTreeSet::<SectorNumber>::new();
+    let mut validate_one = |update: &ReplicaUpdateInner,
+                            sector_info: &SectorOnChainInfo|
+     -> Result<(), ActorError> {
         if !sector_numbers.insert(update.sector_number) {
-            info!("skipping duplicate sector {}", update.sector_number,);
-            fail_validation = true;
+            return Err(actor_error!(
+                illegal_argument,
+                "skipping duplicate sector {}",
+                update.sector_number
+            ));
         }
 
-        if !fail_validation && update.replica_proof.len() > 4096 {
-            info!(
+        if update.replica_proof.len() > 4096 {
+            return Err(actor_error!(
+                illegal_argument,
                 "update proof is too large ({}), skipping sector {}",
                 update.replica_proof.len(),
-                update.sector_number,
-            );
-            fail_validation = true;
+                update.sector_number
+            ));
         }
 
-        if !fail_validation && require_deals && update.deals.is_empty() {
-            info!("must have deals to update, skipping sector {}", update.sector_number,);
-            fail_validation = true;
+        if require_deals && update.deals.is_empty() {
+            return Err(actor_error!(
+                illegal_argument,
+                "must have deals to update, skipping sector {}",
+                update.sector_number
+            ));
         }
 
-        if !fail_validation && update.deals.len() as u64 > sector_deals_max(policy, sector_size) {
-            info!("more deals than policy allows, skipping sector {}", update.sector_number,);
-            fail_validation = true;
+        if update.deals.len() as u64 > sector_deals_max(policy, sector_size) {
+            return Err(actor_error!(
+                illegal_argument,
+                "more deals than policy allows, skipping sector {}",
+                update.sector_number
+            ));
         }
 
-        if !fail_validation && update.deadline >= policy.wpost_period_deadlines {
-            info!(
+        if update.deadline >= policy.wpost_period_deadlines {
+            return Err(actor_error!(
+                illegal_argument,
                 "deadline {} not in range 0..{}, skipping sector {}",
-                update.deadline, policy.wpost_period_deadlines, update.sector_number
-            );
-            fail_validation = true;
+                update.deadline,
+                policy.wpost_period_deadlines,
+                update.sector_number
+            ));
         }
 
-        if !fail_validation && !is_sealed_sector(&update.new_sealed_cid) {
-            info!(
+        if !is_sealed_sector(&update.new_sealed_cid) {
+            return Err(actor_error!(
+                illegal_argument,
                 "new sealed CID had wrong prefix {}, skipping sector {}",
-                update.new_sealed_cid, update.sector_number
-            );
-            fail_validation = true;
+                update.new_sealed_cid,
+                update.sector_number
+            ));
         }
 
         // Disallow upgrading sectors in immutable deadlines.
-        if !fail_validation
-            && !deadline_is_mutable(
-                policy,
-                state.current_proving_period_start(policy, curr_epoch),
-                update.deadline,
-                curr_epoch,
-            )
-        {
-            info!(
+        if !deadline_is_mutable(
+            policy,
+            state.current_proving_period_start(policy, curr_epoch),
+            update.deadline,
+            curr_epoch,
+        ) {
+            return Err(actor_error!(
+                illegal_argument,
                 "cannot upgrade sectors in immutable deadline {}, skipping sector {}",
-                update.deadline, update.sector_number
-            );
-            fail_validation = true;
+                update.deadline,
+                update.sector_number
+            ));
         }
 
         // This inefficiently loads deadline/partition info for each update.
-        if !fail_validation
-            && !state.check_sector_active(
-                &store,
-                update.deadline,
-                update.partition,
-                update.sector_number,
-                true,
-            )?
-        {
-            info!("sector isn't active, skipping sector {}", update.sector_number);
-            fail_validation = true;
+        if !state.check_sector_active(
+            &store,
+            update.deadline,
+            update.partition,
+            update.sector_number,
+            true,
+        )? {
+            return Err(actor_error!(
+                illegal_argument,
+                "sector isn't active, skipping sector {}",
+                update.sector_number
+            ));
         }
 
-        if !fail_validation
-            && (&sector_info.deal_weight + &sector_info.verified_deal_weight) != DealWeight::zero()
-        {
-            info!(
+        if (&sector_info.deal_weight + &sector_info.verified_deal_weight) != DealWeight::zero() {
+            return Err(actor_error!(
+                illegal_argument,
                 "cannot update sector with non-zero data, skipping sector {}",
                 update.sector_number
-            );
-            fail_validation = true;
+            ));
         }
 
         let expected_proof_type = sector_info
             .seal_proof
             .registered_update_proof()
             .context_code(ExitCode::USR_ILLEGAL_STATE, "couldn't load update proof type")?;
-        if !fail_validation && update.update_proof_type != expected_proof_type {
-            info!(
+        if update.update_proof_type != expected_proof_type {
+            return Err(actor_error!(
+                illegal_argument,
                 "expected proof type {}, was {}",
                 i64::from(expected_proof_type),
                 i64::from(update.update_proof_type)
-            );
-            fail_validation = true;
+            ));
         }
+        Ok(())
+    };
 
-        if fail_validation {
-            if all_or_nothing {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "invalid update {} while requiring activation success: {:?}",
-                    i,
-                    update
-                ));
+    let mut batch = BatchReturnGen::new(updates.len());
+    let mut update_sector_infos: Vec<UpdateAndSectorInfo> = Vec::with_capacity(updates.len());
+    for (i, (update, sector_info)) in updates.iter().zip(sector_infos).enumerate() {
+        // Build update and sector info for all updates, even if they fail validation.
+        update_sector_infos.push(UpdateAndSectorInfo { update, sector_info });
+
+        match validate_one(update, sector_info) {
+            Ok(_) => {
+                batch.add_success();
             }
-            batch.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
-        } else {
-            batch.add_success();
+            Err(e) => {
+                let e = e.wrap(format!("invalid update {} while requiring activation success", i));
+                info!("{}", e.msg());
+                if all_or_nothing {
+                    return Err(e);
+                }
+                batch.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
+            }
         }
     }
     Ok((batch.gen(), update_sector_infos))
