@@ -352,7 +352,7 @@ pub struct ProofSet(Vec<bool>);
 const REGISTERED_POST_PROOF_VARIANTS: usize = 15;
 
 /// The number of total possible types (enum variants) of RegisteredSealProof
-const REGISTERED_SEAL_PROOF_VARIANTS: usize = 10;
+const REGISTERED_SEAL_PROOF_VARIANTS: usize = 15;
 
 impl ProofSet {
     /// Create a `ProofSet` for enabled `RegisteredPoStProof`s
@@ -393,22 +393,34 @@ impl ProofSet {
         #[cfg(feature = "sector-2k")]
         {
             proofs[i64::from(RegisteredSealProof::StackedDRG2KiBV1P1) as usize] = true;
+            proofs
+                [i64::from(RegisteredSealProof::StackedDRG2KiBV1P1_Feat_SyntheticPoRep) as usize] =
+                true;
         }
         #[cfg(feature = "sector-8m")]
         {
             proofs[i64::from(RegisteredSealProof::StackedDRG8MiBV1P1) as usize] = true;
+            proofs
+                [i64::from(RegisteredSealProof::StackedDRG8MiBV1P1_Feat_SyntheticPoRep) as usize] =
+                true;
         }
         #[cfg(feature = "sector-512m")]
         {
             proofs[i64::from(RegisteredSealProof::StackedDRG512MiBV1P1) as usize] = true;
+            proofs[i64::from(RegisteredSealProof::StackedDRG512MiBV1P1_Feat_SyntheticPoRep)
+                as usize] = true;
         }
         #[cfg(feature = "sector-32g")]
         {
             proofs[i64::from(RegisteredSealProof::StackedDRG32GiBV1P1) as usize] = true;
+            proofs[i64::from(RegisteredSealProof::StackedDRG32GiBV1P1_Feat_SyntheticPoRep)
+                as usize] = true;
         }
         #[cfg(feature = "sector-64g")]
         {
             proofs[i64::from(RegisteredSealProof::StackedDRG64GiBV1P1) as usize] = true;
+            proofs[i64::from(RegisteredSealProof::StackedDRG64GiBV1P1_Feat_SyntheticPoRep)
+                as usize] = true;
         }
         ProofSet(proofs)
     }
