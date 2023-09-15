@@ -1,8 +1,8 @@
-use fvm_shared::sector::{SectorNumber, StoragePower};
+use fvm_shared::sector::SectorNumber;
 use fvm_shared::{bigint::Zero, clock::ChainEpoch, econ::TokenAmount, ActorID};
 
 use fil_actor_miner::{ProveCommitSectors2Return, SectorPreCommitInfo};
-use fil_actors_runtime::{BatchReturn, DealWeight, EPOCHS_IN_DAY};
+use fil_actors_runtime::{BatchReturn, EPOCHS_IN_DAY};
 use util::*;
 
 mod util;
@@ -33,7 +33,7 @@ fn prove_commit2_basic() {
     let snos: Vec<SectorNumber> =
         precommits.iter().map(|pci: &SectorPreCommitInfo| pci.sector_number).collect();
 
-    // Update them in batch, each with a single piece.
+    // Prove them in batch, each with a single piece.
     let piece_size = h.sector_size as u64;
     let sector_activations = vec![
         make_activation_manifest(snos[0], &[(piece_size, 0, 0, 0)]), // No alloc or deal
@@ -49,19 +49,12 @@ fn prove_commit2_basic() {
         result
     );
 
-    let duration = sector_expiry - *rt.epoch.borrow();
-    let expected_weight = DealWeight::from(piece_size) * duration;
-    let raw_power = StoragePower::from(h.sector_size as u64);
-    let verified_power = &raw_power * 10;
-    let raw_pledge = h.initial_pledge_for_power(&rt, &raw_power);
-    let verified_pledge = h.initial_pledge_for_power(&rt, &verified_power);
-
     // Sector 0: Even though there's no "deal", the data weight is set.
-    verify_weights(&rt, &h, snos[0], &expected_weight, &DealWeight::zero(), &raw_pledge);
+    verify_weights(&rt, &h, snos[0], piece_size, 0);
     // Sector 1: With an allocation, the verified weight is set instead.
-    verify_weights(&rt, &h, snos[1], &DealWeight::zero(), &expected_weight, &verified_pledge);
+    verify_weights(&rt, &h, snos[1], 0, piece_size);
     // Sector 2: Deal weight is set.
-    verify_weights(&rt, &h, snos[2], &expected_weight, &DealWeight::zero(), &raw_pledge);
+    verify_weights(&rt, &h, snos[2], piece_size, 0);
     // Sector 3: Deal doesn't make a difference to verified weight only set.
-    verify_weights(&rt, &h, snos[3], &DealWeight::zero(), &expected_weight, &verified_pledge);
+    verify_weights(&rt, &h, snos[3], 0, piece_size);
 }

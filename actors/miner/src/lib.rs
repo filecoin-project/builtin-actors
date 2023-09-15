@@ -1068,7 +1068,7 @@ impl Actor {
 
         // Verify proofs before activating anything.
         let mut proven_manifests: Vec<(&SectorUpdateManifest, &SectorOnChainInfo)> = vec![];
-        let mut proven_batch_gen = BatchReturnGen::new(validation_batch.size());
+        let mut proven_batch_gen = BatchReturnGen::new(validation_batch.success_count as usize);
         if !params.sector_proofs.is_empty() {
             // Batched proofs, one per sector
             if params.sector_updates.len() != params.sector_proofs.len() {
@@ -1172,7 +1172,7 @@ impl Actor {
         let (power_delta, pledge_delta) = update_replica_states(
             rt,
             &state_updates_by_dline,
-            proven_manifests.len(),
+            successful_manifests.len(),
             &mut sectors,
             info.sector_size,
         )?;
@@ -1766,7 +1766,7 @@ impl Actor {
             &SectorActivationManifest,
             &SectorPreCommitOnChainInfo,
         )> = vec![];
-        let mut proven_batch_gen = BatchReturnGen::new(validation_batch.size());
+        let mut proven_batch_gen = BatchReturnGen::new(validation_batch.success_count as usize);
         if !params.sector_proofs.is_empty() {
             // Verify batched proofs.
             // Filter proof inputs to those for valid pre-commits.
@@ -1819,7 +1819,7 @@ impl Actor {
             proven_activation_inputs = eligible_activation_inputs_iter
                 .map(|(activation, precommit)| (*activation, precommit))
                 .collect();
-            proven_batch_gen.add_successes(validation_batch.size());
+            proven_batch_gen.add_successes(proven_activation_inputs.len());
         }
         let proven_batch = proven_batch_gen.gen();
         if proven_batch.success_count == 0 {
@@ -3740,10 +3740,6 @@ fn validate_replica_updates<'a, BS>(
 where
     BS: Blockstore,
 {
-    let mut batch = BatchReturnGen::new(updates.len());
-    let mut sector_numbers = BTreeSet::<SectorNumber>::new();
-    let mut update_sector_infos: Vec<UpdateAndSectorInfo> = Vec::with_capacity(updates.len());
-
     if updates.len() > policy.prove_replica_updates_max_size {
         return Err(actor_error!(
             illegal_argument,
@@ -3753,49 +3749,60 @@ where
         ));
     }
 
-    for (i, (update, sector_info)) in updates.iter().zip(sector_infos).enumerate() {
-        // Build update and sector info for all updates, even if they fail validation.
-        let mut fail_validation = false;
-        update_sector_infos.push(UpdateAndSectorInfo { update, sector_info });
-
+    let mut sector_numbers = BTreeSet::<SectorNumber>::new();
+    let mut validate_one = |update: &ReplicaUpdateInner,
+                            sector_info: &SectorOnChainInfo|
+     -> Result<(), ActorError> {
         if !sector_numbers.insert(update.sector_number) {
-            info!("skipping duplicate sector {}", update.sector_number,);
-            fail_validation = true;
+            return Err(actor_error!(
+                illegal_argument,
+                "skipping duplicate sector {}",
+                update.sector_number
+            ));
         }
 
         if update.replica_proof.len() > 4096 {
-            info!(
+            return Err(actor_error!(
+                illegal_argument,
                 "update proof is too large ({}), skipping sector {}",
                 update.replica_proof.len(),
-                update.sector_number,
-            );
-            fail_validation = true;
+                update.sector_number
+            ));
         }
 
         if require_deals && update.deals.is_empty() {
-            info!("must have deals to update, skipping sector {}", update.sector_number,);
-            fail_validation = true;
+            return Err(actor_error!(
+                illegal_argument,
+                "must have deals to update, skipping sector {}",
+                update.sector_number
+            ));
         }
 
         if update.deals.len() as u64 > sector_deals_max(policy, sector_size) {
-            info!("more deals than policy allows, skipping sector {}", update.sector_number,);
-            fail_validation = true;
+            return Err(actor_error!(
+                illegal_argument,
+                "more deals than policy allows, skipping sector {}",
+                update.sector_number
+            ));
         }
 
         if update.deadline >= policy.wpost_period_deadlines {
-            info!(
+            return Err(actor_error!(
+                illegal_argument,
                 "deadline {} not in range 0..{}, skipping sector {}",
-                update.deadline, policy.wpost_period_deadlines, update.sector_number
-            );
-            fail_validation = true;
+                update.deadline,
+                policy.wpost_period_deadlines,
+                update.sector_number
+            ));
         }
 
         if !is_sealed_sector(&update.new_sealed_cid) {
-            info!(
+            return Err(actor_error!(
+                illegal_argument,
                 "new sealed CID had wrong prefix {}, skipping sector {}",
-                update.new_sealed_cid, update.sector_number
-            );
-            fail_validation = true;
+                update.new_sealed_cid,
+                update.sector_number
+            ));
         }
 
         // Disallow upgrading sectors in immutable deadlines.
@@ -3805,11 +3812,12 @@ where
             update.deadline,
             curr_epoch,
         ) {
-            info!(
+            return Err(actor_error!(
+                illegal_argument,
                 "cannot upgrade sectors in immutable deadline {}, skipping sector {}",
-                update.deadline, update.sector_number
-            );
-            fail_validation = true;
+                update.deadline,
+                update.sector_number
+            ));
         }
 
         // This inefficiently loads deadline/partition info for each update.
@@ -3820,16 +3828,19 @@ where
             update.sector_number,
             true,
         )? {
-            info!("sector isn't active, skipping sector {}", update.sector_number);
-            fail_validation = true;
+            return Err(actor_error!(
+                illegal_argument,
+                "sector isn't active, skipping sector {}",
+                update.sector_number
+            ));
         }
 
         if (&sector_info.deal_weight + &sector_info.verified_deal_weight) != DealWeight::zero() {
-            info!(
+            return Err(actor_error!(
+                illegal_argument,
                 "cannot update sector with non-zero data, skipping sector {}",
                 update.sector_number
-            );
-            fail_validation = true;
+            ));
         }
 
         let expected_proof_type = sector_info
@@ -3837,26 +3848,34 @@ where
             .registered_update_proof()
             .context_code(ExitCode::USR_ILLEGAL_STATE, "couldn't load update proof type")?;
         if update.update_proof_type != expected_proof_type {
-            info!(
+            return Err(actor_error!(
+                illegal_argument,
                 "expected proof type {}, was {}",
                 i64::from(expected_proof_type),
                 i64::from(update.update_proof_type)
-            );
-            fail_validation = true;
+            ));
         }
+        Ok(())
+    };
 
-        if fail_validation {
-            if all_or_nothing {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "invalid update {} while requiring activation success: {:?}",
-                    i,
-                    update
-                ));
+    let mut batch = BatchReturnGen::new(updates.len());
+    let mut update_sector_infos: Vec<UpdateAndSectorInfo> = Vec::with_capacity(updates.len());
+    for (i, (update, sector_info)) in updates.iter().zip(sector_infos).enumerate() {
+        // Build update and sector info for all updates, even if they fail validation.
+        update_sector_infos.push(UpdateAndSectorInfo { update, sector_info });
+
+        match validate_one(update, sector_info) {
+            Ok(_) => {
+                batch.add_success();
             }
-            batch.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
-        } else {
-            batch.add_success();
+            Err(e) => {
+                let e = e.wrap(format!("invalid update {} while requiring activation success", i));
+                info!("{}", e.msg());
+                if all_or_nothing {
+                    return Err(e);
+                }
+                batch.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
+            }
         }
     }
     Ok((batch.gen(), update_sector_infos))
