@@ -420,6 +420,6 @@ impl ActorCode for EvmContractActor {
         GetStorageAt => storage_at,
         InvokeContractDelegate => invoke_contract_delegate,
         Resurrect => resurrect,
-        _ => handle_filecoin_method [raw],
+        _ => handle_filecoin_method,
     }
 }
