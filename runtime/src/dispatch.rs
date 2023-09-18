@@ -319,6 +319,7 @@ where
 fn test_dispatch() {
     use crate::ActorError;
     use fvm_ipld_encoding::ipld_block::IpldBlock;
+    use fvm_ipld_encoding::DAG_CBOR;
     use serde::{Deserialize, Serialize};
 
     #[derive(Clone, Serialize, Deserialize)]
@@ -343,16 +344,58 @@ fn test_dispatch() {
         Ok(())
     }
 
+    fn raw(
+        _: &impl Runtime,
+        _: u64,
+        args: Option<IpldBlock>,
+    ) -> Result<Option<IpldBlock>, ActorError> {
+        Ok(args)
+    }
+
+    fn codec_in(
+        _: &impl Runtime,
+        args: WithCodec<SomeArgs, DAG_CBOR>,
+    ) -> Result<SomeArgs, ActorError> {
+        Ok(args.0)
+    }
+
+    fn codec_out(
+        _: &impl Runtime,
+        args: SomeArgs,
+    ) -> Result<WithCodec<SomeArgs, DAG_CBOR>, ActorError> {
+        Ok(args.into())
+    }
+
+    fn codec_inout(
+        _: &impl Runtime,
+        args: WithCodec<SomeArgs, DAG_CBOR>,
+    ) -> Result<WithCodec<SomeArgs, DAG_CBOR>, ActorError> {
+        Ok(args)
+    }
+
     let rt = MockRuntime;
     let arg = IpldBlock::serialize_cbor(&SomeArgs { foo: "foo".into() })
+        .expect("failed to serialize arguments");
+    let arg_dag = IpldBlock::serialize_dag_cbor(&SomeArgs { foo: "foo".into() })
         .expect("failed to serialize arguments");
 
     // Correct dispatch
     assert!(dispatch(&rt, 1, with_arg, arg.clone()).expect("failed to dispatch").is_none());
     assert!(dispatch(&rt, 1, without_arg, None).expect("failed to dispatch").is_none());
     assert_eq!(dispatch(&rt, 1, with_arg_ret, arg.clone()).expect("failed to dispatch"), arg);
+    assert_eq!(dispatch(&rt, 1, raw, arg.clone()).expect("failed to dispatch"), arg);
+    assert_eq!(dispatch(&rt, 1, codec_in, arg_dag.clone()).expect("failed to dispatch"), arg);
+    assert_eq!(dispatch(&rt, 1, codec_out, arg.clone()).expect("failed to dispatch"), arg_dag);
+    assert_eq!(
+        dispatch(&rt, 1, codec_inout, arg_dag.clone()).expect("failed to dispatch"),
+        arg_dag
+    );
 
     // Incorrect dispatch
+    let _ = dispatch(&rt, 1, codec_in, arg.clone())
+        .expect_err("should fail because we specified the wrong codec");
+    let _ = dispatch(&rt, 1, codec_inout, arg.clone())
+        .expect_err("should fail because we specified the wrong codec");
     let _ = dispatch(&rt, 1, with_arg, None).expect_err("should have required an argument");
     let _ = dispatch(&rt, 1, without_arg, arg).expect_err("should have required an argument");
 }
