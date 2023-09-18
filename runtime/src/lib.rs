@@ -14,7 +14,7 @@ use serde::Serialize;
 use unsigned_varint::decode::Error as UVarintError;
 
 use builtin::HAMT_BIT_WIDTH;
-pub use dispatch::{dispatch, dispatch_default};
+pub use dispatch::{dispatch, dispatch_default, WithCodec};
 pub use {fvm_ipld_amt, fvm_ipld_hamt};
 
 #[cfg(feature = "fil-actor")]

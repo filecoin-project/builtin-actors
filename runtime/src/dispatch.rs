@@ -1,10 +1,34 @@
 use castaway::cast;
+use fvm_ipld_encoding::CBOR;
 use std::marker::PhantomData;
+use std::ops::{Deref, DerefMut};
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use serde::{Deserialize, Serialize};
 
 use crate::ActorError;
+
+pub struct WithCodec<T, const CODEC: u64>(pub T);
+
+impl<T, const CODEC: u64> Deref for WithCodec<T, CODEC> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T, const CODEC: u64> DerefMut for WithCodec<T, CODEC> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<T, const CODEC: u64> From<T> for WithCodec<T, CODEC> {
+    fn from(value: T) -> Self {
+        WithCodec(value)
+    }
+}
 
 /// Implement actor method dispatch:
 ///
@@ -143,32 +167,45 @@ where
     R: Serialize,
 {
     let arg = arg.as_ref().map(|b| b.deserialize()).transpose()?.unwrap_or_default();
-    maybe_into_block((func)(rt, arg)?)
+    maybe_into_block((func)(rt, arg)?, CBOR) // TOOD
 }
 
 /// Convert the passed value into an IPLD Block, or None if it's `()`.
-fn maybe_into_block<T: Serialize>(v: T) -> Result<Option<IpldBlock>, ActorError> {
+fn maybe_into_block<T: Serialize>(v: T, codec: u64) -> Result<Option<IpldBlock>, ActorError> {
     if cast!(&v, &()).is_ok() {
         Ok(None)
     } else {
-        Ok(IpldBlock::serialize_cbor(&v)?)
+        Ok(Some(IpldBlock::serialize(codec, &v)?))
     }
 }
 
-impl<'de, F, R, RT> Dispatch<'de, RT> for Dispatcher<F, ()>
+impl<'de, F, R, RT> Dispatch<'de, RT> for Dispatcher<F, (R,)>
 where
     F: FnOnce(&RT) -> Result<R, ActorError>,
     R: Serialize,
 {
     fn call(self, rt: &RT, args: &'de Option<IpldBlock>) -> Result<Option<IpldBlock>, ActorError> {
         match args {
-            None => maybe_into_block((self.func)(rt)?),
+            None => maybe_into_block((self.func)(rt)?, CBOR),
             Some(_) => Err(ActorError::illegal_argument("method expects no arguments".into())),
         }
     }
 }
 
-impl<'de, F, A, R, RT> Dispatch<'de, RT> for Dispatcher<F, (A,)>
+impl<'de, F, R, RT, const CODEC: u64> Dispatch<'de, RT> for Dispatcher<F, (WithCodec<R, CODEC>,)>
+where
+    F: FnOnce(&RT) -> Result<WithCodec<R, CODEC>, ActorError>,
+    R: Serialize,
+{
+    fn call(self, rt: &RT, args: &'de Option<IpldBlock>) -> Result<Option<IpldBlock>, ActorError> {
+        match args {
+            None => maybe_into_block((self.func)(rt)?.0, CODEC),
+            Some(_) => Err(ActorError::illegal_argument("method expects arguments".into())),
+        }
+    }
+}
+
+impl<'de, F, A, R, RT> Dispatch<'de, RT> for Dispatcher<F, (A, R)>
 where
     F: FnOnce(&RT, A) -> Result<R, ActorError>,
     A: Deserialize<'de>,
@@ -177,7 +214,58 @@ where
     fn call(self, rt: &RT, args: &'de Option<IpldBlock>) -> Result<Option<IpldBlock>, ActorError> {
         match args {
             None => Err(ActorError::illegal_argument("method expects arguments".into())),
-            Some(arg) => maybe_into_block((self.func)(rt, arg.deserialize()?)?),
+            Some(arg) => maybe_into_block((self.func)(rt, arg.deserialize()?)?, CBOR),
+        }
+    }
+}
+
+impl<'de, F, A, R, RT, const CODEC: u64> Dispatch<'de, RT>
+    for Dispatcher<F, (WithCodec<A, CODEC>, R)>
+where
+    F: FnOnce(&RT, WithCodec<A, CODEC>) -> Result<R, ActorError>,
+    A: Deserialize<'de>,
+    R: Serialize,
+{
+    fn call(self, rt: &RT, args: &'de Option<IpldBlock>) -> Result<Option<IpldBlock>, ActorError> {
+        match args {
+            None => Err(ActorError::illegal_argument("method expects arguments".into())),
+            Some(arg) if arg.codec != CODEC => {
+                Err(ActorError::illegal_argument("method expects arguments".into()))
+            }
+            Some(arg) => maybe_into_block((self.func)(rt, WithCodec(arg.deserialize()?))?, CBOR),
+        }
+    }
+}
+
+impl<'de, F, A, R, RT, const CODEC: u64> Dispatch<'de, RT>
+    for Dispatcher<F, (A, WithCodec<R, CODEC>)>
+where
+    F: FnOnce(&RT, A) -> Result<WithCodec<R, CODEC>, ActorError>,
+    A: Deserialize<'de>,
+    R: Serialize,
+{
+    fn call(self, rt: &RT, args: &'de Option<IpldBlock>) -> Result<Option<IpldBlock>, ActorError> {
+        match args {
+            None => Err(ActorError::illegal_argument("method expects arguments".into())),
+            Some(arg) => maybe_into_block((self.func)(rt, arg.deserialize()?)?.0, CODEC),
+        }
+    }
+}
+
+impl<'de, F, A, R, RT, const CODEC: u64> Dispatch<'de, RT>
+    for Dispatcher<F, (WithCodec<A, CODEC>, WithCodec<R, CODEC>)>
+where
+    F: FnOnce(&RT, WithCodec<A, CODEC>) -> Result<WithCodec<R, CODEC>, ActorError>,
+    A: Deserialize<'de>,
+    R: Serialize,
+{
+    fn call(self, rt: &RT, args: &'de Option<IpldBlock>) -> Result<Option<IpldBlock>, ActorError> {
+        match args {
+            None => Err(ActorError::illegal_argument("method expects arguments".into())),
+            Some(arg) if arg.codec != CODEC => {
+                Err(ActorError::illegal_argument("method expects arguments".into()))
+            }
+            Some(arg) => maybe_into_block((self.func)(rt, WithCodec(arg.deserialize()?))?.0, CODEC),
         }
     }
 }
