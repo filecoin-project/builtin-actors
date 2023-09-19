@@ -4,6 +4,7 @@ use fil_actors_runtime::ActorError;
 use fil_actors_runtime::EAM_ACTOR_ADDR;
 use fil_actors_runtime::{deserialize_block, extract_send_result};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::BytesDe;
 use fvm_shared::sys::SendFlags;
 use fvm_shared::MethodNum;
 use fvm_shared::METHOD_SEND;
@@ -23,32 +24,32 @@ use {
 pub fn create(
     state: &mut ExecutionState,
     system: &mut System<impl Runtime>,
-    value: U256,
+    endowment: U256,
     offset: U256,
     size: U256,
 ) -> Result<U256, ActorError> {
     if system.readonly {
         return Err(ActorError::read_only("create called while read-only".into()));
     }
+    state.return_data = Vec::new();
 
-    let ExecutionState { stack: _, memory, .. } = state;
-
-    let value = TokenAmount::from(&value);
-    if value > system.rt.current_balance() {
-        return Ok(U256::zero());
-    }
-    let input_region = get_memory_region(memory, offset, size)?;
+    let input_region = get_memory_region(&mut state.memory, offset, size)?;
 
     let input_data = if let Some(MemoryRegion { offset, size }) = input_region {
-        &memory[offset..][..size.get()]
+        &state.memory[offset..][..size.get()]
     } else {
         &[]
     };
 
     // We increment the nonce earlier than in the EVM. See the comment in `create2` for details.
-    let nonce = system.increment_nonce();
-    let params = eam::CreateParams { code: input_data.to_vec(), nonce };
-    create_init(system, IpldBlock::serialize_cbor(&params)?, eam::CREATE_METHOD_NUM, value)
+    let params = eam::CreateParams { code: input_data.to_vec(), nonce: system.nonce };
+    create_common(
+        state,
+        system,
+        IpldBlock::serialize_cbor(&params)?,
+        eam::CREATE_METHOD_NUM,
+        endowment,
+    )
 }
 
 pub fn create2(
@@ -63,24 +64,46 @@ pub fn create2(
         return Err(ActorError::read_only("create2 called while read-only".into()));
     }
 
-    let ExecutionState { stack: _, memory, .. } = state;
-
-    let endowment = TokenAmount::from(&endowment);
-    if endowment > system.rt.current_balance() {
-        return Ok(U256::zero());
-    }
-
-    let input_region = get_memory_region(memory, offset, size)?;
+    let input_region = get_memory_region(&mut state.memory, offset, size)?;
 
     // BE encoded array
     let salt: [u8; 32] = salt.into();
 
     let input_data = if let Some(MemoryRegion { offset, size }) = input_region {
-        &memory[offset..][..size.get()]
+        &state.memory[offset..][..size.get()]
     } else {
         &[]
     };
     let params = eam::Create2Params { code: input_data.to_vec(), salt };
+
+    create_common(
+        state,
+        system,
+        IpldBlock::serialize_cbor(&params)?,
+        eam::CREATE2_METHOD_NUM,
+        endowment,
+    )
+}
+
+/// call into Ethereum Address Manager to make the new account
+#[inline]
+fn create_common(
+    state: &mut ExecutionState,
+    system: &mut System<impl Runtime>,
+    params: Option<IpldBlock>,
+    method: MethodNum,
+    endowment: U256,
+) -> Result<U256, ActorError> {
+    // First, we clear the return data. We want to do this even if we, e.g., fail due to the
+    // endowment.
+    state.return_data = Vec::new();
+
+    // Then we explicitly check the endowment. We could just try and deal with the error, but then
+    // we'd need to add some logic for decrementing the nonce. It's easier to check up-front.
+    let endowment = TokenAmount::from(&endowment);
+    if endowment > system.rt.current_balance() {
+        return Ok(U256::zero());
+    }
 
     // We increment the nonce earlier than in the EVM, but this is unlikely to cause issues:
     //
@@ -93,30 +116,33 @@ pub fn create2(
     //    stack depth. However, given that there are other ways to increment the nonce without
     //    deploying a contract (e.g., 2), this shouldn't be an issue.
     system.increment_nonce();
-    create_init(system, IpldBlock::serialize_cbor(&params)?, eam::CREATE2_METHOD_NUM, endowment)
-}
 
-/// call into Ethereum Address Manager to make the new account
-#[inline]
-fn create_init(
-    system: &mut System<impl Runtime>,
-    params: Option<IpldBlock>,
-    method: MethodNum,
-    value: TokenAmount,
-) -> Result<U256, ActorError> {
     // Apply EIP-150
     let gas_limit = (63 * system.rt.gas_available()) / 64;
 
     // send bytecode & params to EAM to generate the address and contract
-    let ret =
-        system.send(&EAM_ACTOR_ADDR, method, params, value, Some(gas_limit), SendFlags::default());
+    let ret = system.send(
+        &EAM_ACTOR_ADDR,
+        method,
+        params,
+        endowment,
+        Some(gas_limit),
+        SendFlags::default(),
+    );
 
     Ok(match ret {
         Ok(eam_ret) => {
             let ret: eam::CreateReturn = deserialize_block(eam_ret)?;
             ret.eth_address.as_evm_word()
         }
-        Err(_) => U256::zero(),
+        Err(mut err) => {
+            // Any non-empty return data here always comes from the constructor.
+            if let Some(r) = err.take_data() {
+                // As with CALL, ignore decode failures and fallback on returning the encoded value.
+                state.return_data = r.deserialize().map(|BytesDe(d)| d).unwrap_or_else(|_| r.data);
+            }
+            U256::zero()
+        }
     })
 }
 
@@ -164,12 +190,13 @@ pub fn selfdestruct(
 
 #[cfg(test)]
 mod tests {
-    use crate::evm_unit_test;
     use crate::ext::eam;
+    use crate::{evm_unit_test, EVM_CONTRACT_REVERTED};
 
     use fil_actors_evm_shared::uints::U256;
     use fil_actors_runtime::EAM_ACTOR_ADDR;
     use fvm_ipld_encoding::ipld_block::IpldBlock;
+    use fvm_ipld_encoding::BytesSer;
     use fvm_shared::address::Address as FilAddress;
     use fvm_shared::error::{ErrorNumber, ExitCode};
     use fvm_shared::sys::SendFlags;
@@ -267,16 +294,18 @@ mod tests {
                 // the deed
                 CREATE2;
             }
+            m.state.return_data = b"deadbeef".to_vec();             // stale return data
             m.state.stack.push(U256::from(0xDEADBEEFu64)).unwrap(); // salt
-            m.state.stack.push(U256::from(4)).unwrap();          // input size
-            m.state.stack.push(U256::from(28)).unwrap();         // input offset
-            m.state.stack.push(U256::from(1234)).unwrap();       // initial value
+            m.state.stack.push(U256::from(4)).unwrap();             // input size
+            m.state.stack.push(U256::from(28)).unwrap();            // input offset
+            m.state.stack.push(U256::from(1234)).unwrap();          // initial value
             for _ in 0..4 {
                 m.step().expect("execution step failed");
             }
             assert_eq!(m.state.stack.len(), 1);
             assert_eq!(m.state.stack.pop().unwrap(), ret_addr.as_evm_word());
             assert_eq!(m.system.nonce, 2);
+            assert!(m.state.return_data.is_empty());
         };
     }
 
@@ -466,6 +495,7 @@ mod tests {
                 // the deed
                 CREATE;
             }
+            m.state.return_data = b"deadbeef".to_vec();    // stale return data
             m.state.stack.push(U256::from(4)).unwrap();    // input size
             m.state.stack.push(U256::from(28)).unwrap();   // input offset
             m.state.stack.push(U256::from(1234)).unwrap(); // initial value
@@ -475,6 +505,54 @@ mod tests {
             assert_eq!(m.state.stack.len(), 1);
             assert_eq!(m.state.stack.pop().unwrap(), U256::from(0));
             assert_eq!(m.system.nonce, 2);
+            assert!(m.state.return_data.is_empty());
+        };
+    }
+
+    #[test]
+    fn test_create_revert() {
+        let revert_data = &b"foobar"[..];
+        evm_unit_test! {
+            (rt) {
+                rt.set_balance(TokenAmount::from_atto(1_000_000));
+
+                let code = vec![0x01, 0x02, 0x03, 0x04];
+                let nonce = 1;
+                let create_params = eam::CreateParams { code, nonce };
+                let create_return = BytesSer(revert_data);
+
+                rt.expect_gas_available(10_000_000_000);
+                rt.expect_send(
+                    EAM_ACTOR_ADDR,
+                    eam::CREATE_METHOD_NUM,
+                    IpldBlock::serialize_cbor(&create_params).unwrap(),
+                    TokenAmount::from_atto(1234),
+                    Some(63 * 10_000_000_000 / 64),
+                    SendFlags::empty(),
+                    IpldBlock::serialize_cbor(&create_return).unwrap(),
+                    EVM_CONTRACT_REVERTED,
+                    None,
+                );
+            }
+            (m) {
+                // input data
+                PUSH4; 0x01; 0x02; 0x03; 0x04;
+                PUSH0;
+                MSTORE;
+                // the deed
+                CREATE;
+            }
+            m.state.return_data = b"deadbeef".to_vec();    // stale return data
+            m.state.stack.push(U256::from(4)).unwrap();    // input size
+            m.state.stack.push(U256::from(28)).unwrap();   // input offset
+            m.state.stack.push(U256::from(1234)).unwrap(); // initial value
+            for _ in 0..4 {
+                m.step().expect("execution step failed");
+            }
+            assert_eq!(m.state.stack.len(), 1);
+            assert_eq!(m.state.stack.pop().unwrap(), U256::from(0));
+            assert_eq!(m.system.nonce, 2);
+            assert_eq!(m.state.return_data, revert_data)
         };
     }
 

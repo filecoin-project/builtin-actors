@@ -700,8 +700,8 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
     }
 
     /// Traverses the entire queue with a callback function that may mutate entries.
-    /// Iff the function returns that it changed an entry, the new entry will be re-written in the queue. Any changed
-    /// entries that become empty are removed after iteration completes.
+    /// Iff the function returns that it changed an entry, the new entry will be re-written in the
+    /// queue. Any changed entries that become empty are removed after iteration completes.
     fn iter_while_mut(
         &mut self,
         mut f: impl FnMut(
@@ -715,8 +715,6 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
             let keep_going = f(e.try_into()?, expiration_set)?;
 
             if expiration_set.is_empty() {
-                // Mark expiration set as unchanged, it will be removed after the iteration.
-                expiration_set.mark_unchanged();
                 epochs_emptied.push(e);
             }
 
@@ -779,8 +777,6 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         let mut declared_expirations = BTreeMap::<ChainEpoch, bool>::new();
         let mut sectors_by_number = BTreeMap::<u64, &SectorOnChainInfo>::new();
         let mut all_remaining = BTreeSet::<u64>::new();
-        let mut expiration_groups =
-            Vec::<SectorExpirationSet>::with_capacity(declared_expirations.len());
 
         for sector in sectors {
             let q_expiration = self.quant.quantize_up(sector.expiration);
@@ -788,6 +784,9 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
             all_remaining.insert(sector.sector_number);
             sectors_by_number.insert(sector.sector_number, sector);
         }
+
+        let mut expiration_groups =
+            Vec::<SectorExpirationSet>::with_capacity(declared_expirations.len());
 
         for (&expiration, _) in declared_expirations.iter() {
             let es = self.may_get(expiration)?;

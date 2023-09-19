@@ -318,8 +318,8 @@ mod clients {
         let allowance_verifier = verifier_allowance(&rt);
         h.add_verifier(&rt, &VERIFIER, &allowance_verifier).unwrap();
 
-        let allowance = rt.policy.minimum_verified_allocation_size.clone();
-        h.add_client(&rt, &VERIFIER, &CLIENT, &allowance).unwrap();
+        let allowance = &rt.policy.minimum_verified_allocation_size;
+        h.add_client(&rt, &VERIFIER, &CLIENT, allowance).unwrap();
         h.check_state(&rt);
     }
 
