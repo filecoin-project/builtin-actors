@@ -43,7 +43,8 @@ fn prove_commit2_basic() {
     ];
 
     rt.set_epoch(precommit_epoch + rt.policy.pre_commit_challenge_delay + 1);
-    let result = h.prove_commit_sectors2(&rt, &sector_activations, true, true, false).unwrap();
+    let cfg = ProveCommitSectors2Config::default();
+    let result = h.prove_commit_sectors2(&rt, &sector_activations, true, true, false, cfg).unwrap();
     assert_eq!(
         ProveCommitSectors2Return { activation_results: BatchReturn::ok(precommits.len() as u32) },
         result

@@ -1792,16 +1792,15 @@ impl Actor {
                     proven_batch_gen.add_success();
                 } else {
                     proven_batch_gen.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
+                    if params.require_activation_success {
+                        return Err(actor_error!(
+                            illegal_argument,
+                            "invalid proof for sector {} while requiring activation success: {:?}",
+                            precommit.info.sector_number,
+                            res
+                        ));
+                    }
                 }
-            }
-            if params.require_activation_success
-                && proven_activation_inputs.len() != params.sector_activations.len()
-            {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "invalid proof while requiring activation success: {:?}",
-                    res
-                ));
             }
         } else {
             // Verify a single aggregate proof.
