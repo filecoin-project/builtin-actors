@@ -2841,8 +2841,6 @@ impl Actor {
                     .context_code(ExitCode::USR_ILLEGAL_STATE, "while removing partitions")?;
             }
 
-            let dest_quant = state.quant_spec_for_deadline(policy, params.dest_deadline);
-
             let mut dest_deadline =
                 deadlines.load_deadline(store, params.dest_deadline).context_code(
                     ExitCode::USR_ILLEGAL_STATE,
@@ -2853,7 +2851,6 @@ impl Actor {
                 store,
                 &mut orig_deadline,
                 &mut dest_deadline,
-                dest_quant,
                 &params.partitions,
             )
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to move partitions")?;

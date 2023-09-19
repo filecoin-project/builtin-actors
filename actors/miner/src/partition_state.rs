@@ -824,11 +824,7 @@ impl Partition {
     }
 
     // ajust epoch info of expirations_epochs and early_terminated within `Partition`
-    pub fn adjust_for_move<BS: Blockstore>(
-        &mut self,
-        store: &BS,
-        dest_quant: &QuantSpec,
-    ) -> anyhow::Result<()> {
+    pub fn adjust_for_move<BS: Blockstore>(&mut self, store: &BS) -> anyhow::Result<()> {
         let orig_expirations_epochs: Array<ExpirationSet, _> =
             Array::load(&self.expirations_epochs, store)?;
 
@@ -845,13 +841,11 @@ impl Partition {
         );
 
         orig_expirations_epochs.for_each(|from_epoch, expire_set| {
-            dest_expirations_epochs
-                .set(dest_quant.quantize_up(from_epoch as ChainEpoch) as u64, expire_set.clone())?;
+            dest_expirations_epochs.set(from_epoch, expire_set.clone())?;
             Ok(())
         })?;
         orig_early_terminations.for_each(|from_epoch, bitfield| {
-            dest_early_terminations
-                .set(dest_quant.quantize_up(from_epoch as ChainEpoch) as u64, bitfield.clone())?;
+            dest_early_terminations.set(from_epoch, bitfield.clone())?;
             Ok(())
         })?;
         self.expirations_epochs = dest_expirations_epochs.flush()?;

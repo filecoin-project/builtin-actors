@@ -108,13 +108,12 @@ impl Deadlines {
         store: &BS,
         orig_deadline: &mut Deadline,
         dest_deadline: &mut Deadline,
-        dest_quant: QuantSpec,
         partitions: &BitField,
     ) -> anyhow::Result<()> {
         let mut orig_partitions = orig_deadline.partitions_amt(store)?;
         let mut dest_partitions = dest_deadline.partitions_amt(store)?;
 
-        // even though we're moving partitions intact, we still need to update from/to `Deadline` accordingly.
+        // even though we're moving partitions intact, we still need to update orig/dest `Deadline` accordingly.
 
         let first_dest_partition_idx = dest_partitions.count();
         for (i, orig_partition_idx) in partitions.iter().enumerate() {
@@ -128,13 +127,13 @@ impl Deadlines {
 
             let dest_partition_idx = first_dest_partition_idx + i as u64;
 
-            moving_partition.adjust_for_move(store, &dest_quant)?;
+            moving_partition.adjust_for_move(store)?;
 
             let all_sectors = moving_partition.sectors.len();
             let live_sectors = moving_partition.live_sectors().len();
             let early_terminations = orig_deadline.early_terminations.get(orig_partition_idx);
 
-            // start updating from/to `Deadline` here
+            // start updating orig/dest `Deadline` here
 
             orig_deadline.total_sectors -= all_sectors;
             orig_deadline.live_sectors -= live_sectors;
@@ -162,16 +161,16 @@ impl Deadlines {
             let mut dest_expirations_epochs: Array<BitField, _> =
                 Array::load(&dest_deadline.expirations_epochs, store)?;
             orig_expirations_epochs.for_each_mut(|orig_epoch, orig_bitfield| {
-                let dest_epoch = dest_quant.quantize_up(orig_epoch as ChainEpoch);
+                let dest_epoch = orig_epoch;
                 let mut to_bitfield =
-                    dest_expirations_epochs.get(dest_epoch as u64)?.cloned().unwrap_or_default();
+                    dest_expirations_epochs.get(dest_epoch)?.cloned().unwrap_or_default();
                 for (i, partition_id) in partitions.iter().enumerate() {
                     if orig_bitfield.get(partition_id) {
                         orig_bitfield.unset(partition_id);
                         to_bitfield.set(first_dest_partition_idx + i as u64);
                     }
                 }
-                dest_expirations_epochs.set(dest_epoch as u64, to_bitfield)?;
+                dest_expirations_epochs.set(dest_epoch, to_bitfield)?;
 
                 if orig_bitfield.is_empty() {
                     epochs_to_remove.push(orig_epoch);
