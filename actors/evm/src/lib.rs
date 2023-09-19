@@ -206,9 +206,13 @@ impl EvmContractActor {
         initialize_evm_contract(&mut System::resurrect(rt)?, params.creator, params.initcode.into())
     }
 
+    /// Invoke the contract with some _alternative_ bytecode. This can only be called by the
+    /// contract itself and is used to implement the EVM's DELEGATECALL opcode.
+    ///
+    /// This method expects DAG_CBOR encoded parameters (the linked `params.code` needs to be
+    /// reachable).
     pub fn invoke_contract_delegate<RT>(
         rt: &RT,
-        // Params need to be DAG_CBOR as we need the passed code CID to be "reachable".
         params: WithCodec<DelegateCallParams, DAG_CBOR>,
     ) -> Result<DelegateCallReturn, ActorError>
     where
@@ -283,12 +287,13 @@ impl EvmContractActor {
 
     /// Returns the contract's EVM bytecode, or `None` if the contract has been deleted (has called
     /// SELFDESTRUCT).
+    ///
+    /// Return value is "dag cbor" as we need the linked bytecode (if present) to be reachable.
     pub fn bytecode(rt: &impl Runtime) -> Result<WithCodec<BytecodeReturn, DAG_CBOR>, ActorError> {
         // Any caller can fetch the bytecode of a contract; this is now EXT* opcodes work.
         rt.validate_immediate_caller_accept_any()?;
 
         let state: State = rt.state()?;
-        // Return value is "dag cbor" as we need the linked bytecode (if present) to be reachable.
         if is_dead(rt, &state) {
             Ok(BytecodeReturn { code: None }.into())
         } else {

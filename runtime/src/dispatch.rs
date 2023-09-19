@@ -111,10 +111,10 @@ macro_rules! actor_dispatch_unrestricted {
         Self::$func($rt, $method, $args)
     };
     (@target $rt:ident $args:ident $method:ident $func:ident default_params) => {{
-        $crate::dispatch_default($rt, Self::$func, &$args)
+        $crate::dispatch_default($rt, $method, Self::$func, &$args)
     }};
     (@target $rt:ident $args:ident $method:ident $func:ident) => {
-        $crate::dispatch($rt, Self::$func, &$args)
+        $crate::dispatch($rt, $method, Self::$func, &$args)
     };
 }
 
@@ -170,7 +170,8 @@ where
     R: Serialize,
 {
     let arg = arg.as_ref().map(|b| b.deserialize()).transpose()?.unwrap_or_default();
-    maybe_into_block((func)(rt, arg)?, CBOR) // TOOD
+    // TODO: make this codec configurable
+    maybe_into_block((func)(rt, arg)?, CBOR)
 }
 
 /// Convert the passed value into an IPLD Block, or None if it's `()`.
@@ -265,9 +266,10 @@ where
     ) -> Result<Option<IpldBlock>, ActorError> {
         match args {
             None => Err(ActorError::illegal_argument("method expects arguments".into())),
-            Some(arg) if arg.codec != CODEC => {
-                Err(ActorError::illegal_argument("method expects arguments".into()))
-            }
+            Some(arg) if arg.codec != CODEC => Err(ActorError::illegal_argument(format!(
+                "method expects parameters with codec {}, got codec {}",
+                CODEC, arg.codec,
+            ))),
             Some(arg) => maybe_into_block((self.func)(rt, WithCodec(arg.deserialize()?))?, CBOR),
         }
     }
@@ -292,10 +294,10 @@ where
     }
 }
 
-impl<F, A, R, RT, const CODEC: u64> Dispatch<RT>
-    for Dispatcher<F, (WithCodec<A, CODEC>, WithCodec<R, CODEC>)>
+impl<F, A, R, RT, const A_CODEC: u64, const R_CODEC: u64> Dispatch<RT>
+    for Dispatcher<F, (WithCodec<A, A_CODEC>, WithCodec<R, R_CODEC>)>
 where
-    F: FnOnce(&RT, WithCodec<A, CODEC>) -> Result<WithCodec<R, CODEC>, ActorError>,
+    F: FnOnce(&RT, WithCodec<A, A_CODEC>) -> Result<WithCodec<R, R_CODEC>, ActorError>,
     A: DeserializeOwned,
     R: Serialize,
 {
@@ -307,10 +309,13 @@ where
     ) -> Result<Option<IpldBlock>, ActorError> {
         match args {
             None => Err(ActorError::illegal_argument("method expects arguments".into())),
-            Some(arg) if arg.codec != CODEC => {
-                Err(ActorError::illegal_argument("method expects arguments".into()))
+            Some(arg) if arg.codec != A_CODEC => Err(ActorError::illegal_argument(format!(
+                "method expects parameters with codec {}, got codec {}",
+                A_CODEC, arg.codec,
+            ))),
+            Some(arg) => {
+                maybe_into_block((self.func)(rt, WithCodec(arg.deserialize()?))?.0, R_CODEC)
             }
-            Some(arg) => maybe_into_block((self.func)(rt, WithCodec(arg.deserialize()?))?.0, CODEC),
         }
     }
 }
