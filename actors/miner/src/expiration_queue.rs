@@ -777,8 +777,6 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         let mut declared_expirations = BTreeMap::<ChainEpoch, bool>::new();
         let mut sectors_by_number = BTreeMap::<u64, &SectorOnChainInfo>::new();
         let mut all_remaining = BTreeSet::<u64>::new();
-        let mut expiration_groups =
-            Vec::<SectorExpirationSet>::with_capacity(declared_expirations.len());
 
         for sector in sectors {
             let q_expiration = self.quant.quantize_up(sector.expiration);
@@ -786,6 +784,9 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
             all_remaining.insert(sector.sector_number);
             sectors_by_number.insert(sector.sector_number, sector);
         }
+
+        let mut expiration_groups =
+            Vec::<SectorExpirationSet>::with_capacity(declared_expirations.len());
 
         for (&expiration, _) in declared_expirations.iter() {
             let es = self.may_get(expiration)?;
