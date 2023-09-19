@@ -1,11 +1,11 @@
 use fil_actors_evm_shared::address::EthAddress;
 use fil_actors_runtime::{
-    actor_dispatch_unrestricted, actor_error, ActorError, AsActorError, EAM_ACTOR_ADDR,
+    actor_dispatch_unrestricted, actor_error, ActorError, AsActorError, WithCodec, EAM_ACTOR_ADDR,
     INIT_ACTOR_ADDR,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::BytesSer;
+use fvm_ipld_encoding::{BytesSer, DAG_CBOR};
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -206,14 +206,20 @@ impl EvmContractActor {
         initialize_evm_contract(&mut System::resurrect(rt)?, params.creator, params.initcode.into())
     }
 
+    /// Invoke the contract with some _alternative_ bytecode. This can only be called by the
+    /// contract itself and is used to implement the EVM's DELEGATECALL opcode.
+    ///
+    /// This method expects DAG_CBOR encoded parameters (the linked `params.code` needs to be
+    /// reachable).
     pub fn invoke_contract_delegate<RT>(
         rt: &RT,
-        params: DelegateCallParams,
+        params: WithCodec<DelegateCallParams, DAG_CBOR>,
     ) -> Result<DelegateCallReturn, ActorError>
     where
         RT: Runtime,
         RT::Blockstore: Clone,
     {
+        let params = params.0;
         rt.validate_immediate_caller_is(&[rt.message().receiver()])?;
 
         let mut system = System::load(rt).map_err(|e| {
@@ -281,15 +287,17 @@ impl EvmContractActor {
 
     /// Returns the contract's EVM bytecode, or `None` if the contract has been deleted (has called
     /// SELFDESTRUCT).
-    pub fn bytecode(rt: &impl Runtime) -> Result<BytecodeReturn, ActorError> {
+    ///
+    /// Return value is "dag cbor" as we need the linked bytecode (if present) to be reachable.
+    pub fn bytecode(rt: &impl Runtime) -> Result<WithCodec<BytecodeReturn, DAG_CBOR>, ActorError> {
         // Any caller can fetch the bytecode of a contract; this is now EXT* opcodes work.
         rt.validate_immediate_caller_accept_any()?;
 
         let state: State = rt.state()?;
         if is_dead(rt, &state) {
-            Ok(BytecodeReturn { code: None })
+            Ok(BytecodeReturn { code: None }.into())
         } else {
-            Ok(BytecodeReturn { code: Some(state.bytecode) })
+            Ok(BytecodeReturn { code: Some(state.bytecode) }.into())
         }
     }
 
@@ -417,6 +425,6 @@ impl ActorCode for EvmContractActor {
         GetStorageAt => storage_at,
         InvokeContractDelegate => invoke_contract_delegate,
         Resurrect => resurrect,
-        _ => handle_filecoin_method [raw],
+        _ => handle_filecoin_method,
     }
 }

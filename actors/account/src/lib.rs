@@ -118,6 +118,6 @@ impl ActorCode for Actor {
         Constructor => constructor,
         PubkeyAddress => pubkey_address,
         AuthenticateMessageExported => authenticate_message,
-        _ => fallback [raw],
+        _ => fallback,
     }
 }
