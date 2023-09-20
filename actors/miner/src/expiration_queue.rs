@@ -247,8 +247,9 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         let groups = self.find_sectors_by_expiration(sector_size, sectors)?;
 
         // Group sectors by their target expiration, then remove from existing queue entries according to those groups.
+        let new_quantized_expiration = self.quant.quantize_up(new_expiration);
         for mut group in groups {
-            if group.sector_epoch_set.epoch <= self.quant.quantize_up(new_expiration) {
+            if group.sector_epoch_set.epoch <= new_quantized_expiration {
                 // Don't reschedule sectors that are already due to expire on-time before the fault-driven expiration,
                 // but do represent their power as now faulty.
                 // Their pledge remains as "on-time".
@@ -297,10 +298,11 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
 
         let mut mutated_expiration_sets = Vec::<(ChainEpoch, ExpirationSet)>::new();
 
+        let quantized_fault_expiration = self.quant.quantize_up(fault_expiration);
         self.amt.for_each(|e, expiration_set| {
             let epoch: ChainEpoch = e.try_into()?;
 
-            if epoch <= self.quant.quantize_up(fault_expiration) {
+            if epoch <= quantized_fault_expiration {
                 let mut expiration_set = expiration_set.clone();
 
                 // Regardless of whether the sectors were expiring on-time or early, all the power is now faulty.

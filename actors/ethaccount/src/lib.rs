@@ -74,6 +74,6 @@ impl ActorCode for EthAccountActor {
 
     actor_dispatch! {
         Constructor => constructor,
-        _ => fallback [raw],
+        _ => fallback,
     }
 }

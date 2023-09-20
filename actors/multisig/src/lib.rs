@@ -558,6 +558,6 @@ impl ActorCode for Actor {
       ChangeNumApprovalsThreshold => change_num_approvals_threshold,
       LockBalance => lock_balance,
       UniversalReceiverHook => universal_receiver_hook,
-      _ => fallback [raw],
+      _ => fallback,
     }
 }
