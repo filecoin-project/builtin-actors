@@ -114,8 +114,8 @@ frc42_dispatch = "4.0.0"
 frc46_token = "8.0.0"
 
 # FVM
-fvm_sdk = "4.0.0-alpha.1"
-fvm_shared = "4.0.0-alpha.1"
+fvm_sdk = "4.0.0-alpha.2"
+fvm_shared = "4.0.0-alpha.2"
 fvm_ipld_encoding = "0.4.0"
 fvm_ipld_blockstore = "0.2.0"
 fvm_ipld_hamt = "0.8.0"
@@ -148,16 +148,16 @@ vm_api = { version = "1.0.0", path = "vm_api" }
 test_vm = { version = "12.0.0", path = "test_vm" }
 
 [patch.crates-io]
-fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", branch = "next" }
-fvm_sdk = { git = "https://github.com/filecoin-project/ref-fvm", branch = "next" }
-fvm_ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "next" }
-fvm_ipld_amt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "next" }
-fvm_ipld_bitfield = { git = "https://github.com/filecoin-project/ref-fvm", branch = "next" }
-fvm_ipld_encoding = { git = "https://github.com/filecoin-project/ref-fvm", branch = "next" }
-fvm_ipld_blockstore = { git = "https://github.com/filecoin-project/ref-fvm", branch = "next" }
-#fvm_actor_utils = { git = "https://github.com/helix-onchain/filecoin", branch = "alex/update-fvm-ipld" }
-#frc42_dispatch = { git = "https://github.com/helix-onchain/filecoin", branch = "alex/update-fvm-ipld" }
-#frc46_token = { git = "https://github.com/helix-onchain/filecoin", branch = "alex/update-fvm-ipld" }
+#fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+#fvm_sdk = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+#fvm_ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+#fvm_ipld_amt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+#fvm_ipld_bitfield = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+#fvm_ipld_encoding = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+#fvm_ipld_blockstore = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+fvm_actor_utils = { git = "https://github.com/helix-onchain/filecoin", branch = "fvm/v4" }
+frc42_dispatch = { git = "https://github.com/helix-onchain/filecoin", branch = "fvm/v4" }
+frc46_token = { git = "https://github.com/helix-onchain/filecoin", branch = "fvm/v4" }
 
 ## Uncomment when working locally on ref-fvm and this repo simultaneously.
 ## Assumes the ref-fvm checkout is in a sibling directory with the same name.
