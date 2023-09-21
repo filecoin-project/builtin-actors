@@ -191,7 +191,7 @@ pub struct Expectations {
     pub expect_validate_caller_type: Option<Vec<Type>>,
     pub expect_sends: VecDeque<ExpectedMessage>,
     pub expect_create_actor: Option<ExpectCreateActor>,
-    pub expect_delete_actor: Option<Address>,
+    pub expect_delete_actor: bool,
     pub expect_verify_sigs: VecDeque<ExpectedVerifySig>,
     pub expect_verify_post: Option<ExpectVerifyPoSt>,
     pub expect_compute_unsealed_sector_cid: VecDeque<ExpectComputeUnsealedSectorCid>,
@@ -245,11 +245,7 @@ impl Expectations {
             "expected actor to be created, uncreated actor: {:?}",
             this.expect_create_actor
         );
-        assert!(
-            this.expect_delete_actor.is_none(),
-            "expected actor to be deleted: {:?}",
-            this.expect_delete_actor
-        );
+        assert!(!this.expect_delete_actor, "expected actor to be deleted",);
         assert!(
             this.expect_verify_sigs.is_empty(),
             "expect_verify_sigs: {:?}, not received",
@@ -624,8 +620,8 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 
     #[allow(dead_code)]
-    pub fn expect_delete_actor(&self, beneficiary: Address) {
-        self.expectations.borrow_mut().expect_delete_actor = Some(beneficiary);
+    pub fn expect_delete_actor(&self) {
+        self.expectations.borrow_mut().expect_delete_actor = true;
     }
 
     #[allow(dead_code)]
@@ -1185,18 +1181,14 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         Ok(())
     }
 
-    fn delete_actor(&self, addr: &Address) -> Result<(), ActorError> {
+    fn delete_actor(&self) -> Result<(), ActorError> {
         self.require_in_call();
         if *self.in_transaction.borrow() {
             return Err(actor_error!(assertion_failed; "side-effect within transaction"));
         }
-        let exp_act = self.expectations.borrow_mut().expect_delete_actor.take();
-        if exp_act.is_none() {
-            panic!("unexpected call to delete actor: {}", addr);
-        }
-        if exp_act.as_ref().unwrap() != addr {
-            panic!("attempt to delete wrong actor. Expected: {}, got: {}", exp_act.unwrap(), addr);
-        }
+        let mut exp = self.expectations.borrow_mut();
+        assert!(exp.expect_delete_actor, "unexpected call to delete actor");
+        exp.expect_delete_actor = false;
         Ok(())
     }
 
