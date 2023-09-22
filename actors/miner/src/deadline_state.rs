@@ -117,7 +117,7 @@ impl Deadlines {
 
         let first_dest_partition_idx = dest_partitions.count();
         for (i, orig_partition_idx) in partitions.iter().enumerate() {
-            let mut moving_partition = orig_partitions
+            let moving_partition = orig_partitions
                 .get(orig_partition_idx)?
                 .ok_or_else(|| actor_error!(not_found, "no partition {}", orig_partition_idx))?
                 .clone();
@@ -127,11 +127,11 @@ impl Deadlines {
 
             let dest_partition_idx = first_dest_partition_idx + i as u64;
 
-            moving_partition.adjust_for_move(store)?;
-
             let all_sectors = moving_partition.sectors.len();
             let live_sectors = moving_partition.live_sectors().len();
-            let early_terminations = orig_deadline.early_terminations.get(orig_partition_idx);
+            if orig_deadline.early_terminations.get(orig_partition_idx) {
+                return Err(actor_error!(forbidden, "partition with early terminated sectors are not allowed to move, partition_idx {}", orig_partition_idx))?;
+            }
 
             // start updating orig/dest `Deadline` here
 
@@ -142,12 +142,6 @@ impl Deadlines {
             dest_deadline.total_sectors += all_sectors;
             dest_deadline.live_sectors += live_sectors;
             dest_deadline.faulty_power += &moving_partition.faulty_power;
-
-            // update early_terminations BitField of `Deadline`
-            if early_terminations {
-                orig_deadline.early_terminations.unset(orig_partition_idx);
-                dest_deadline.early_terminations.set(dest_partition_idx);
-            }
 
             orig_partitions.set(orig_partition_idx, Partition::new(store)?)?;
             dest_partitions.set(dest_partition_idx, moving_partition)?;

@@ -822,37 +822,6 @@ impl Partition {
         self.validate_bf_state()?;
         Ok(())
     }
-
-    // ajust epoch info of expirations_epochs and early_terminated within `Partition`
-    pub fn adjust_for_move<BS: Blockstore>(&mut self, store: &BS) -> anyhow::Result<()> {
-        let orig_expirations_epochs: Array<ExpirationSet, _> =
-            Array::load(&self.expirations_epochs, store)?;
-
-        let orig_early_terminations: Array<BitField, _> =
-            Array::load(&self.early_terminated, store)?;
-
-        let mut dest_expirations_epochs = Array::<ExpirationSet, BS>::new_with_bit_width(
-            store,
-            PARTITION_EXPIRATION_AMT_BITWIDTH,
-        );
-        let mut dest_early_terminations = Array::<BitField, BS>::new_with_bit_width(
-            store,
-            PARTITION_EARLY_TERMINATION_ARRAY_AMT_BITWIDTH,
-        );
-
-        orig_expirations_epochs.for_each(|from_epoch, expire_set| {
-            dest_expirations_epochs.set(from_epoch, expire_set.clone())?;
-            Ok(())
-        })?;
-        orig_early_terminations.for_each(|from_epoch, bitfield| {
-            dest_early_terminations.set(from_epoch, bitfield.clone())?;
-            Ok(())
-        })?;
-        self.expirations_epochs = dest_expirations_epochs.flush()?;
-        self.early_terminated = dest_early_terminations.flush()?;
-
-        Ok(())
-    }
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple, Eq, PartialEq, Clone, Debug, Default)]
