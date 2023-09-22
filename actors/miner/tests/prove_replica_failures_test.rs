@@ -36,6 +36,7 @@ fn reject_unauthorized_caller() {
         "caller",
         h.prove_replica_updates2_batch(&rt, &sector_updates, false, false, cfg),
     );
+    h.check_state(&rt);
 }
 
 #[test]
@@ -53,6 +54,7 @@ fn reject_no_proof_types() {
         "exactly one of sector proofs or aggregate proof must be non-empty",
         h.prove_replica_updates2_batch(&rt, &sector_updates, false, false, cfg),
     );
+    h.check_state(&rt);
 }
 
 #[test]
@@ -70,6 +72,7 @@ fn reject_both_proof_types() {
         "exactly one of sector proofs or aggregate proof must be non-empty",
         h.prove_replica_updates2_batch(&rt, &sector_updates, false, false, cfg),
     );
+    h.check_state(&rt);
 }
 
 #[test]
@@ -86,6 +89,7 @@ fn reject_mismatched_proof_len() {
         "mismatched lengths",
         h.prove_replica_updates2_batch(&rt, &sector_updates, false, false, cfg),
     );
+    h.check_state(&rt);
 }
 
 #[test]
@@ -103,6 +107,7 @@ fn reject_aggregate_proof() {
         "aggregate update proofs not yet supported",
         h.prove_replica_updates2_batch(&rt, &sector_updates, false, false, cfg),
     );
+    h.check_state(&rt);
 }
 
 #[test]
@@ -114,6 +119,7 @@ fn reject_all_proofs_fail() {
         "no valid updates",
         h.prove_replica_updates2_batch(&rt, &sector_updates, false, false, cfg),
     );
+    h.check_state(&rt);
 }
 
 #[test]
@@ -126,6 +132,7 @@ fn reject_invalid_update() {
         "invalid update 1 while requiring activation success",
         h.prove_replica_updates2_batch(&rt, &sector_updates, true, false, cfg),
     );
+    h.check_state(&rt);
 }
 
 #[test]
@@ -137,6 +144,7 @@ fn reject_required_proof_failure() {
         "requiring activation success",
         h.prove_replica_updates2_batch(&rt, &sector_updates, true, false, cfg),
     );
+    h.check_state(&rt);
 }
 
 #[test]
@@ -151,6 +159,7 @@ fn reject_required_claim_failure() {
         "error claiming allocations",
         h.prove_replica_updates2_batch(&rt, &sector_updates, true, false, cfg),
     );
+    h.check_state(&rt);
 }
 
 #[test]
@@ -167,6 +176,7 @@ fn reject_required_notification_abort() {
         "receiver aborted",
         h.prove_replica_updates2_batch(&rt, &sector_updates, false, true, cfg),
     );
+    h.check_state(&rt);
 }
 
 #[test]
@@ -180,6 +190,7 @@ fn reject_required_notification_rejected() {
         "sector change rejected",
         h.prove_replica_updates2_batch(&rt, &sector_updates, false, true, cfg),
     );
+    h.check_state(&rt);
 }
 
 fn setup(

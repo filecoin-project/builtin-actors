@@ -107,6 +107,7 @@ fn update_batch() {
     verify_weights(&rt, &h, snos[2], piece_size, 0);
     // Sector 3: Deal doesn't make a difference to verified weight only set.
     verify_weights(&rt, &h, snos[3], 0, piece_size);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -205,6 +206,7 @@ fn multiple_pieces_in_sector() {
 
     verify_weights(&rt, &h, snos[0], 0, piece_size * 2);
     verify_weights(&rt, &h, snos[1], piece_size, piece_size);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -287,6 +289,7 @@ fn multiple_notifs_for_piece() {
 
     verify_weights(&rt, &h, snos[0], piece_size * 2, 0);
     verify_weights(&rt, &h, snos[1], piece_size, 0);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -310,6 +313,7 @@ fn cant_update_nonempty_sector() {
         "cannot update sector with non-zero data",
         h.prove_replica_updates2_batch(&rt, &sector_updates, true, true, cfg),
     );
+    h.check_state(&rt);
 }
 
 // See prove_replica_failures_test.rs for tests where requiring success is set to true,
@@ -336,6 +340,7 @@ fn invalid_update_dropped() {
     verify_weights(&rt, &h, snos[0], 0, 0);
     // Sector 1: verified weight.
     verify_weights(&rt, &h, snos[1], 0, piece_size);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -357,6 +362,7 @@ fn invalid_proof_dropped() {
 
     verify_weights(&rt, &h, snos[0], 0, 0);
     verify_weights(&rt, &h, snos[1], 0, piece_size);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -378,6 +384,7 @@ fn invalid_claim_dropped() {
 
     verify_weights(&rt, &h, snos[0], 0, 0);
     verify_weights(&rt, &h, snos[1], 0, piece_size);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -406,6 +413,7 @@ fn aborted_notification_dropped() {
     verify_weights(&rt, &h, snos[0], piece_size, 0);
     verify_weights(&rt, &h, snos[1], piece_size, 0);
     verify_weights(&rt, &h, snos[2], 0, piece_size);
+    h.check_state(&rt);
 }
 
 #[test]
@@ -431,6 +439,7 @@ fn rejected_notification_dropped() {
     verify_weights(&rt, &h, snos[0], piece_size, 0);
     verify_weights(&rt, &h, snos[1], piece_size, 0);
     verify_weights(&rt, &h, snos[2], 0, piece_size);
+    h.check_state(&rt);
 }
 
 fn setup_basic() -> (ActorHarness, MockRuntime) {

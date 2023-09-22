@@ -57,4 +57,5 @@ fn prove_commit2_basic() {
     verify_weights(&rt, &h, snos[2], piece_size, 0);
     // Sector 3: Deal doesn't make a difference to verified weight only set.
     verify_weights(&rt, &h, snos[3], 0, piece_size);
+    h.check_state(&rt);
 }
