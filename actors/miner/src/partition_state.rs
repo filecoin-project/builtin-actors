@@ -4,7 +4,7 @@
 use std::convert::TryInto;
 use std::ops::{self, Neg};
 
-use anyhow::{anyhow, Context, Ok};
+use anyhow::{anyhow, Context};
 use cid::Cid;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{actor_error, ActorDowncast, Array};
