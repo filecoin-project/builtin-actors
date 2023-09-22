@@ -473,6 +473,10 @@ impl<BS: Blockstore> MockRuntime<BS> {
         self.policy = policy;
     }
 
+    pub fn is_deleted(&self) -> bool {
+        self.state.borrow().is_none()
+    }
+
     pub fn get_state<T: DeserializeOwned>(&self) -> T {
         self.store_get(self.state.borrow().as_ref().unwrap())
     }
@@ -1186,6 +1190,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         if *self.in_transaction.borrow() {
             return Err(actor_error!(assertion_failed; "side-effect within transaction"));
         }
+        *self.state.borrow_mut() = None;
         let mut exp = self.expectations.borrow_mut();
         assert!(exp.expect_delete_actor, "unexpected call to delete actor");
         exp.expect_delete_actor = false;
