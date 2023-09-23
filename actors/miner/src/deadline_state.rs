@@ -124,6 +124,13 @@ impl Deadlines {
             if !moving_partition.faults.is_empty() || !moving_partition.unproven.is_empty() {
                 return Err(actor_error!(forbidden, "partition with faults or unproven sectors are not allowed to move, partition_idx {}", orig_partition_idx))?;
             }
+            if !moving_partition.faulty_power.is_zero() {
+                return Err(actor_error!(
+                    illegal_state,
+                    "partition faulty_power should be zero when faults is empty, partition_idx {}",
+                    orig_partition_idx
+                ))?;
+            }
 
             let dest_partition_idx = first_dest_partition_idx + i as u64;
 
@@ -137,11 +144,9 @@ impl Deadlines {
 
             orig_deadline.total_sectors -= all_sectors;
             orig_deadline.live_sectors -= live_sectors;
-            orig_deadline.faulty_power -= &moving_partition.faulty_power;
 
             dest_deadline.total_sectors += all_sectors;
             dest_deadline.live_sectors += live_sectors;
-            dest_deadline.faulty_power += &moving_partition.faulty_power;
 
             orig_partitions.set(orig_partition_idx, Partition::new(store)?)?;
             dest_partitions.set(dest_partition_idx, moving_partition)?;
