@@ -91,4 +91,4 @@ no-provider-deal-collateral = []
 fake-proofs = []
 
 
-test_utils = ["hex", "multihash/sha2", "libsecp256k1", "blake2b_simd", "rand", "rand/std_rng", "lazy_static", "pretty_env_logger"]
+test_utils = ["hex", "multihash/sha2", "multihash/sha3", "multihash/ripemd", "libsecp256k1", "blake2b_simd", "rand", "rand/std_rng", "lazy_static", "pretty_env_logger"]

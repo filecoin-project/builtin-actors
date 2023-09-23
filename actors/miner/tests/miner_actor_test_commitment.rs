@@ -429,8 +429,11 @@ mod miner_actor_test_commitment {
         let sector_number: SectorNumber = 100;
         let deal_limits = [
             (RegisteredSealProof::StackedDRG2KiBV1P1, 256),
+            (RegisteredSealProof::StackedDRG2KiBV1P1_Feat_SyntheticPoRep, 256),
             (RegisteredSealProof::StackedDRG32GiBV1P1, 256),
+            (RegisteredSealProof::StackedDRG32GiBV1P1_Feat_SyntheticPoRep, 256),
             (RegisteredSealProof::StackedDRG64GiBV1P1, 512),
+            (RegisteredSealProof::StackedDRG64GiBV1P1_Feat_SyntheticPoRep, 512),
         ];
 
         for (proof, limit) in deal_limits {

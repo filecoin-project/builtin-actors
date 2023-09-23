@@ -1,6 +1,9 @@
 use ethers::prelude::abigen;
 use ethers::providers::Provider;
-use ethers::{core::types::Address as EthAddress, prelude::builders::ContractCall};
+use ethers::{
+    core::types::Address as EthAddress, prelude::builders::ContractCall, prelude::EthError,
+};
+
 use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::{
     test_utils::ETHACCOUNT_ACTOR_CODE_ID, test_utils::EVM_ACTOR_CODE_ID, EAM_ACTOR_ADDR,
@@ -278,6 +281,33 @@ pub fn evm_create_test(v: &dyn VM) {
     let eth_addr1 = test_func(factory.create(42));
     let eth_addr2 = test_func(factory.create(42));
     assert_ne!(eth_addr1, eth_addr2);
+
+    // Then test a failure
+
+    {
+        let create_func = factory.create(-1);
+        let call_params = create_func.calldata().expect("should serialize");
+        let call_result = v
+            .execute_message(
+                &account,
+                &create_return.robust_address.unwrap(),
+                &TokenAmount::zero(),
+                fil_actor_evm::Method::InvokeContract as u64,
+                Some(serialize_ok(&ContractParams(call_params.to_vec()))),
+            )
+            .unwrap();
+        assert_eq!(
+            call_result.code.value(),
+            33,
+            "expected contract revert {}",
+            call_result.message
+        );
+        let BytesDe(return_value) =
+            call_result.ret.unwrap().deserialize().expect("failed to deserialize results");
+        let revert_msg: String =
+            EthError::decode_with_selector(&return_value).expect("expected a revert");
+        assert_eq!(revert_msg, "create failed");
+    }
 }
 
 pub fn evm_empty_initcode_test(v: &dyn VM) {

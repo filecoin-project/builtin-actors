@@ -31,13 +31,13 @@ fil_actor_system = { workspace = true, features = ["fil-actor"] }
 fil_actor_verifreg = { workspace = true, features = ["fil-actor"] }
 
 [build-dependencies]
-fil_actor_bundler = "5.0.0"
+fil_actor_bundler = "6.1.0"
 cid = { workspace = true }
 fil_actors_runtime = { workspace = true }
 num-traits = { workspace = true }
 
 [dependencies]
-clap = { version = "3.2.3", features = ["derive"] }
+clap = { version = "4.3.0", features = ["derive", "std", "help", "usage", "error-context"], default-features = false }
 
 [features]
 default = [] ## translates to mainnet
@@ -64,6 +64,7 @@ members = [
 # Common
 serde = { version = "1.0.136", features = ["derive"] }
 anyhow = "1.0.65"
+bitflags = "2.4.0"
 num = { version = "0.4", features = ["serde"] }
 num-derive = "0.3.3"
 num-traits = "0.2.14"
@@ -95,9 +96,9 @@ blake2b_simd = "1.0"
 sha2 = "0.10"
 
 # EVM
-ethers = { version = "1.0.2", features = ["abigen"] }
+ethers = { version = "2.0.9", features = ["abigen"], default-features = false }
 uint = { version = "0.9.3", default-features = false }
-etk-asm = "^0.2.1"
+etk-asm = "^0.3.0"
 rlp = { version = "0.5.1", default-features = false }
 substrate-bn = { version = "0.6.0", default-features = false }
 
@@ -108,19 +109,19 @@ libipld-core = { version = "0.13.1", features = ["serde-codec"] }
 integer-encoding = { version = "3.0.3", default-features = false }
 
 # helix-onchain
-fvm_actor_utils = "7.0.0"
-frc42_dispatch = "3.3.0"
-frc46_token = "7.0.0"
+fvm_actor_utils = "8.0.0"
+frc42_dispatch = "4.0.0"
+frc46_token = "8.0.0"
 
 # FVM
 fvm_sdk = "~3.3.0"
-fvm_shared = "~3.4.0"
+fvm_shared = "~3.6.0"
 fvm_ipld_encoding = "0.4.0"
 fvm_ipld_blockstore = "0.2.0"
 fvm_ipld_hamt = "0.7.0"
 fvm_ipld_kamt = "0.3.0"
-fvm_ipld_amt = { version = "0.6.1", features = ["go-interop"] }
-fvm_ipld_bitfield = "0.5.4"
+fvm_ipld_amt = { version = "0.6.1" }
+fvm_ipld_bitfield = "0.6.0"
 
 # workspace
 fil_actor_account = { version = "12.0.0", path = "actors/account" }
@@ -146,7 +147,7 @@ fil_actors_integration_tests = { version = "1.0.0", path = "integration_tests" }
 vm_api = { version = "1.0.0", path = "vm_api" }
 test_vm = { version = "12.0.0", path = "test_vm" }
 
-[patch.crates-io]
+#[patch.crates-io]
 #fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
 #fvm_sdk = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
 #fvm_ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
