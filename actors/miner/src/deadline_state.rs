@@ -153,6 +153,8 @@ impl Deadlines {
         }
 
         // update expirations_epochs Cid of Deadline.
+        // Note that when moving a partition from `orig_expirations_epochs` to `dest_expirations_epochs`,
+        // we explicitly keep the `dest_epoch` the same as `orig_epoch`, this is by design of not re-quantizing.
         {
             let mut epochs_to_remove = Vec::<u64>::new();
             let mut orig_expirations_epochs: Array<BitField, _> =
