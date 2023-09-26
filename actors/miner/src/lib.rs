@@ -2741,7 +2741,7 @@ impl Actor {
                     ExitCode::USR_ILLEGAL_STATE,
                     format!("failed to load deadline {}", params.orig_deadline),
                 )?;
-            // only try to do synchronous Window Post verification if the from deadline is in dispute window
+            // only try to do immediate (non-optimistic) Window Post verification if the from deadline is in dispute window
             // note that as window post is batched, the best we can do is to verify only those that contains at least one partition being moved.
             // besides, after verification, the corresponding PostProof is deleted, leaving other PostProof intact.
             // thus it's necessary that for those moved partitions, there's an empty partition left in place to keep the partitions from re-indexing.
@@ -2762,7 +2762,7 @@ impl Actor {
                     )?;
 
                 // Find the proving period start for the deadline in question.
-                let target_deadline =
+                let prev_orig_deadline =
                     nearest_occured_deadline_info(policy, &current_deadline, params.orig_deadline);
 
                 // Load sectors for the dispute.
@@ -2796,14 +2796,14 @@ impl Actor {
                             if !partition.faults.is_empty() {
                                 return Err(actor_error!(
                                     forbidden,
-                                    "cannot move partition {}: has faults",
+                                    "cannot move partition {}: had faults at last Window PoST",
                                     partition_idx
                                 ))?;
                             }
                             if !partition.unproven.is_empty() {
                                 return Err(actor_error!(
                                     forbidden,
-                                    "cannot move partition {}: has unproven",
+                                    "cannot move partition {}: had unproven at last Window PoST",
                                     partition_idx
                                 ))?;
                             }
@@ -2824,7 +2824,7 @@ impl Actor {
 
                         if !verify_windowed_post(
                             rt,
-                            target_deadline.challenge,
+                            prev_orig_deadline.challenge,
                             &sector_infos,
                             window_proof.proofs.clone(),
                         )

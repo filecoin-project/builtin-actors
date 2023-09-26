@@ -644,16 +644,16 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         Ok(())
     }
 
+    /// Note that the `epoch` parameter doesn't quantize, and assumes the entry for the epoch is non-empty.
     fn remove(
         &mut self,
-        raw_epoch: ChainEpoch,
+        epoch: ChainEpoch,
         on_time_sectors: &BitField,
         early_sectors: &BitField,
         active_power: &PowerPair,
         faulty_power: &PowerPair,
         pledge: &TokenAmount,
     ) -> anyhow::Result<()> {
-        let epoch = raw_epoch;
         let mut expiration_set = self
             .amt
             .get(epoch.try_into()?)
@@ -792,6 +792,10 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         let mut expiration_groups = Vec::<SectorExpirationSet>::with_capacity(sectors.len());
 
         for sector in sectors {
+            // precheck to save unnecessary call to `for_each_while_ranged` below
+            if !all_remaining.contains(&sector.sector_number) {
+                continue;
+            }
             // scan [sector.expiration, sector.expiration+EPOCHS_IN_DAY] for active sectors.
             // since a sector may have been moved from another deadline, the possible range for an active sector is [sector.expiration, sector.expiration+EPOCHS_IN_DAY]
             let end_epoch = (sector.expiration + EPOCHS_IN_DAY) as u64;
@@ -817,7 +821,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
                     // by here it's guaranteed this is true:
                     //      all_remaining.contains(&sector.sector_number) && es.on_time_sectors.get(sector.sector_number)
                     // so group.sector_epoch_set.sectors should not be empty
-                    return Err(anyhow!("should never happen"));
+                    return Err(anyhow!("there's a bug in `group_expiration_set` function"));
                 }
                 expiration_groups.push(group);
 

@@ -124,6 +124,9 @@ impl Deadlines {
             if !moving_partition.faults.is_empty() || !moving_partition.unproven.is_empty() {
                 return Err(actor_error!(forbidden, "partition with faults or unproven sectors are not allowed to move, partition_idx {}", orig_partition_idx))?;
             }
+            if orig_deadline.early_terminations.get(orig_partition_idx) {
+                return Err(actor_error!(forbidden, "partition with early terminated sectors are not allowed to move, partition_idx {}", orig_partition_idx))?;
+            }
             if !moving_partition.faulty_power.is_zero() {
                 return Err(actor_error!(
                     illegal_state,
@@ -134,19 +137,16 @@ impl Deadlines {
 
             let dest_partition_idx = first_dest_partition_idx + i as u64;
 
-            let all_sectors = moving_partition.sectors.len();
-            let live_sectors = moving_partition.live_sectors().len();
-            if orig_deadline.early_terminations.get(orig_partition_idx) {
-                return Err(actor_error!(forbidden, "partition with early terminated sectors are not allowed to move, partition_idx {}", orig_partition_idx))?;
-            }
+            // sector_count is both total sector count and total live sector count, since no sector is faulty here.
+            let sector_count = moving_partition.sectors.len();
 
             // start updating orig/dest `Deadline` here
 
-            orig_deadline.total_sectors -= all_sectors;
-            orig_deadline.live_sectors -= live_sectors;
+            orig_deadline.total_sectors -= sector_count;
+            orig_deadline.live_sectors -= sector_count;
 
-            dest_deadline.total_sectors += all_sectors;
-            dest_deadline.live_sectors += live_sectors;
+            dest_deadline.total_sectors += sector_count;
+            dest_deadline.live_sectors += sector_count;
 
             orig_partitions.set(orig_partition_idx, Partition::new(store)?)?;
             dest_partitions.set(dest_partition_idx, moving_partition)?;
