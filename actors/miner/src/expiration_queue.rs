@@ -653,7 +653,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         faulty_power: &PowerPair,
         pledge: &TokenAmount,
     ) -> anyhow::Result<()> {
-        let epoch = self.quant.quantize_up(raw_epoch);
+        let epoch = raw_epoch;
         let mut expiration_set = self
             .amt
             .get(epoch.try_into()?)

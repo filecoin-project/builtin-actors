@@ -2057,8 +2057,18 @@ impl ActorHarness {
         let mut deal_ids: Vec<DealID> = Vec::new();
         let mut sector_infos: Vec<SectorOnChainInfo> = Vec::new();
 
+        let mut has_active_sector = false;
         for sector in sectors.iter() {
+            let (_, partition) = self.find_sector(&rt, sector);
+            let non_active = partition.terminated.get(sector)
+                || partition.faults.get(sector)
+                || partition.unproven.get(sector);
+            if !non_active {
+                has_active_sector = true;
+            }
+
             let sector = self.get_sector(rt, sector);
+
             deal_ids.extend(sector.deal_ids.iter());
             sector_infos.push(sector);
         }
@@ -2116,14 +2126,17 @@ impl ActorHarness {
             raw_byte_delta: -sector_power.raw.clone(),
             quality_adjusted_delta: -sector_power.qa.clone(),
         };
-        rt.expect_send_simple(
-            STORAGE_POWER_ACTOR_ADDR,
-            UPDATE_CLAIMED_POWER_METHOD,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-            TokenAmount::zero(),
-            None,
-            ExitCode::OK,
-        );
+
+        if has_active_sector {
+            rt.expect_send_simple(
+                STORAGE_POWER_ACTOR_ADDR,
+                UPDATE_CLAIMED_POWER_METHOD,
+                IpldBlock::serialize_cbor(&params).unwrap(),
+                TokenAmount::zero(),
+                None,
+                ExitCode::OK,
+            );
+        }
 
         // create declarations
         let state: State = rt.get_state();
