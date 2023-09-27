@@ -36,7 +36,7 @@ impl StateHarness {
         let owner = 1;
         let worker = 2;
 
-        let test_window_post_proof_type = RegisteredPoStProof::StackedDRGWindow2KiBV1;
+        let test_window_post_proof_type = RegisteredPoStProof::StackedDRGWindow2KiBV1P1;
 
         let info = MinerInfo::new(
             owner,

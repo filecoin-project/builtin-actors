@@ -52,7 +52,7 @@ fn create_miner() {
         &ACTOR,
         peer,
         multiaddrs,
-        RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
         &TokenAmount::from_atto(10),
     )
     .unwrap();
@@ -60,7 +60,7 @@ fn create_miner() {
     let st: State = rt.get_state();
     // Verify the miner's claim.
     let claim = h.get_claim(&rt, &MINER).unwrap();
-    assert_eq!(RegisteredPoStProof::StackedDRGWindow32GiBV1, claim.window_post_proof_type);
+    assert_eq!(RegisteredPoStProof::StackedDRGWindow32GiBV1P1, claim.window_post_proof_type);
     assert_eq!(StoragePower::zero(), claim.raw_byte_power);
     assert_eq!(StoragePower::zero(), claim.quality_adj_power);
 
@@ -89,7 +89,7 @@ fn create_miner_given_send_to_init_actor_fails_should_fail() {
     let create_miner_params = CreateMinerParams {
         owner: *OWNER,
         worker: *OWNER,
-        window_post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        window_post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
         peer: peer.clone(),
         multiaddrs: multiaddrs.clone(),
     };
@@ -105,7 +105,7 @@ fn create_miner_given_send_to_init_actor_fails_should_fail() {
         constructor_params: RawBytes::serialize(MinerConstructorParams {
             owner: *OWNER,
             worker: *OWNER,
-            window_post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1,
+            window_post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
             peer_id: peer,
             multi_addresses: multiaddrs,
             control_addresses: Default::default(),
@@ -319,8 +319,8 @@ fn new_miner_updates_miner_above_min_power_count() {
     }
 
     let test_cases = [
-        TestCase { proof: RegisteredPoStProof::StackedDRGWindow2KiBV1, expected_miners: 0 },
-        TestCase { proof: RegisteredPoStProof::StackedDRGWindow32GiBV1, expected_miners: 0 },
+        TestCase { proof: RegisteredPoStProof::StackedDRGWindow2KiBV1P1, expected_miners: 0 },
+        TestCase { proof: RegisteredPoStProof::StackedDRGWindow32GiBV1P1, expected_miners: 0 },
     ];
 
     for test in test_cases {
@@ -340,7 +340,7 @@ fn power_accounting_crossing_threshold() {
 
     let power_unit = &consensus_miner_min_power(
         &Policy::default(),
-        RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
     )
     .unwrap();
     let power_unit_x10 = &(power_unit * 10);
@@ -386,7 +386,7 @@ fn all_of_one_miners_power_disappears_when_that_miner_dips_below_min_power_thres
     let small_power_unit = &StoragePower::from(1_000_000);
     let power_unit = &consensus_miner_min_power(
         &Policy::default(),
-        RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
     )
     .unwrap();
 
@@ -444,7 +444,7 @@ fn enroll_cron_epoch_given_negative_epoch_should_fail() {
 fn power_gets_added_when_miner_crosses_min_power_but_not_before() {
     let power_unit = &consensus_miner_min_power(
         &Policy::default(),
-        RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
     )
     .unwrap();
 
@@ -492,7 +492,7 @@ fn power_gets_added_when_miner_crosses_min_power_but_not_before() {
 fn threshold_only_depends_on_raw_power_not_qa_power() {
     let power_unit = &consensus_miner_min_power(
         &Policy::default(),
-        RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
     )
     .unwrap();
     let half_power_unit = &(power_unit / 2);
@@ -520,7 +520,7 @@ fn threshold_only_depends_on_raw_power_not_qa_power() {
 fn qa_power_is_above_threshold_before_and_after_update() {
     let power_unit = &consensus_miner_min_power(
         &Policy::default(),
-        RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
     )
     .unwrap();
     let power_unit_x3 = &(power_unit * 3);
@@ -547,7 +547,7 @@ fn qa_power_is_above_threshold_before_and_after_update() {
 fn claimed_power_is_externally_available() {
     let power_unit = &consensus_miner_min_power(
         &Policy::default(),
-        RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
     )
     .unwrap();
 
@@ -567,7 +567,7 @@ fn claimed_power_is_externally_available() {
 fn get_network_and_miner_power() {
     let power_unit = &consensus_miner_min_power(
         &Policy::default(),
-        RegisteredPoStProof::StackedDRGWindow32GiBV1,
+        RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
     )
     .unwrap();
 
@@ -681,7 +681,7 @@ mod cron_tests {
         let (mut h, rt) = setup();
         let power_unit = consensus_miner_min_power(
             &Policy::default(),
-            RegisteredPoStProof::StackedDRGWindow2KiBV1,
+            RegisteredPoStProof::StackedDRGWindow2KiBV1P1,
         )
         .unwrap();
 
@@ -945,7 +945,7 @@ mod cron_tests {
 
         let raw_power = consensus_miner_min_power(
             &Policy::default(),
-            RegisteredPoStProof::StackedDRGWindow32GiBV1,
+            RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
         )
         .unwrap();
 
