@@ -1093,15 +1093,31 @@ impl ActorHarness {
         require_activation_success: bool,
         require_notification_success: bool,
         aggregate: bool,
+        cfg: ProveCommitSectors2Config,
     ) -> Result<ProveCommitSectors2Return, ActorError> {
         fn make_proof(i: u8) -> RawBytes {
             RawBytes::new(vec![i, i, i, i])
         }
-        let mut aggregate_proof = RawBytes::default();
-        let mut sector_proofs = vec![];
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, cfg.caller.unwrap_or(self.worker));
+        rt.expect_validate_caller_addr(self.caller_addrs());
+
+        let mut params = ProveCommitSectors2Params {
+            sector_activations: sector_activations.into(),
+            aggregate_proof: if aggregate { make_proof(0) } else { RawBytes::default() },
+            sector_proofs: if !aggregate {
+                sector_activations.iter().map(|sa| make_proof(sa.sector_number as u8)).collect()
+            } else {
+                vec![]
+            },
+            require_activation_success,
+            require_notification_success,
+        };
+        if let Some(param_twiddle) = cfg.param_twiddle {
+            param_twiddle(&mut params);
+        }
+
         let precommits: Vec<SectorPreCommitOnChainInfo> =
             sector_activations.iter().map(|sa| self.get_precommit(rt, sa.sector_number)).collect();
-
         let (seal_rands, seal_int_rands) = expect_validate_precommits(rt, &precommits)?;
         let comm_ds: Vec<_> = precommits
             .iter()
@@ -1109,7 +1125,6 @@ impl ActorHarness {
             .collect();
 
         if aggregate {
-            aggregate_proof = make_proof(0);
             let svis = precommits
                 .iter()
                 .enumerate()
@@ -1123,13 +1138,16 @@ impl ActorHarness {
                     unsealed_cid: comm_ds[i],
                 })
                 .collect();
-            rt.expect_aggregate_verify_seals(svis, aggregate_proof.clone().into(), Ok(()));
+            let proof_ok = cfg.proof_failure.is_empty();
+            rt.expect_aggregate_verify_seals(
+                svis,
+                make_proof(0).into(),
+                if proof_ok { Ok(()) } else { Err(anyhow!("invalid aggregate proof")) },
+            );
         } else {
             let mut svis = vec![];
             let mut result = vec![];
             sector_activations.iter().zip(precommits).enumerate().for_each(|(i, (sa, pci))| {
-                let proof = make_proof(sa.sector_number as u8);
-                sector_proofs.push(proof.clone());
                 svis.push(SealVerifyInfo {
                     registered_proof: self.seal_proof_type,
                     sector_id: SectorID {
@@ -1141,31 +1159,25 @@ impl ActorHarness {
                     interactive_randomness: Randomness(
                         seal_int_rands.get(i).cloned().unwrap().into(),
                     ),
-                    proof: proof.into(),
+                    proof: make_proof(sa.sector_number as u8).into(),
                     sealed_cid: pci.info.sealed_cid,
                     unsealed_cid: comm_ds[i],
                 });
-                result.push(true);
+                let proof_ok = !cfg.proof_failure.contains(&i);
+                result.push(proof_ok);
             });
             rt.expect_batch_verify_seals(svis, Ok(result))
         }
-
-        let params = ProveCommitSectors2Params {
-            sector_activations: sector_activations.into(),
-            aggregate_proof,
-            sector_proofs,
-            require_activation_success,
-            require_notification_success,
-        };
-        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
-        rt.expect_validate_caller_addr(self.caller_addrs());
 
         let mut sector_allocation_claims = Vec::new();
         let mut sector_claimed_space = Vec::new();
         let mut expected_pledge = TokenAmount::zero();
         let mut expected_qa_power = StoragePower::zero();
         let mut expected_sector_notifications = Vec::new(); // Assuming all to f05
-        for sa in sector_activations {
+        for (i, sa) in sector_activations.iter().enumerate() {
+            if cfg.validation_failure.contains(&i) {
+                continue;
+            }
             expect_compute_unsealed_cid_from_pieces(
                 rt,
                 sa.sector_number,
@@ -1173,15 +1185,22 @@ impl ActorHarness {
                 &sa.pieces,
             );
             let precommit = self.get_precommit(rt, sa.sector_number);
-            let claims = SectorAllocationClaims {
+            sector_allocation_claims.push(SectorAllocationClaims {
                 sector: sa.sector_number,
                 expiry: precommit.info.expiration,
                 claims: claims_from_pieces(&sa.pieces),
-            };
-            sector_claimed_space.push(SectorClaimSummary {
-                claimed_space: claims.claims.iter().map(|c| c.size.0).sum::<u64>().into(),
             });
-            sector_allocation_claims.push(claims);
+            if cfg.claim_failure.contains(&i) {
+                continue;
+            }
+            let claimed_space = sector_allocation_claims
+                .last()
+                .unwrap()
+                .claims
+                .iter()
+                .map(|c| c.size.0)
+                .sum::<u64>();
+            sector_claimed_space.push(SectorClaimSummary { claimed_space: claimed_space.into() });
 
             let notifications = notifications_from_pieces(&sa.pieces);
             if !notifications.is_empty() {
@@ -1209,6 +1228,19 @@ impl ActorHarness {
 
         // Expect claiming of verified space for each piece that specified an allocation ID.
         if !sector_allocation_claims.iter().all(|sector| sector.claims.is_empty()) {
+            let claim_count = sector_allocation_claims.len();
+            let mut claim_result = BatchReturnGen::new(claim_count);
+            let mut claim_code = ExitCode::OK;
+            for i in 0..claim_count {
+                if cfg.claim_failure.contains(&i) {
+                    claim_result.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
+                    if require_activation_success {
+                        claim_code = ExitCode::USR_ILLEGAL_ARGUMENT;
+                    }
+                } else {
+                    claim_result.add_success();
+                }
+            }
             rt.expect_send_simple(
                 VERIFIED_REGISTRY_ACTOR_ADDR,
                 CLAIM_ALLOCATIONS_METHOD,
@@ -1219,11 +1251,11 @@ impl ActorHarness {
                 .unwrap(),
                 TokenAmount::zero(),
                 IpldBlock::serialize_cbor(&ClaimAllocationsReturn {
-                    sector_results: BatchReturn::ok(sector_activations.len() as u32),
+                    sector_results: claim_result.gen(),
                     sector_claims: sector_claimed_space,
                 })
                 .unwrap(),
-                ExitCode::OK,
+                claim_code,
             );
         }
 
@@ -1234,7 +1266,9 @@ impl ActorHarness {
         // Expect SectorContentChanged notification to market.
         let sector_notification_resps: Vec<SectorReturn> = expected_sector_notifications
             .iter()
-            .map(|sn| SectorReturn { added: vec![PieceReturn { accepted: true }; sn.added.len()] })
+            .map(|sn| SectorReturn {
+                added: vec![PieceReturn { accepted: !cfg.notification_rejected }; sn.added.len()],
+            })
             .collect();
         if !sector_notification_resps.is_empty() {
             rt.expect_send_simple(
@@ -1249,20 +1283,24 @@ impl ActorHarness {
                     sectors: sector_notification_resps,
                 })
                 .unwrap(),
-                ExitCode::OK,
+                cfg.notification_result.unwrap_or(ExitCode::OK),
             );
         }
 
-        let result: ProveCommitSectors2Return = rt
-            .call::<Actor>(
-                MinerMethod::ProveCommitSectors2 as u64,
-                IpldBlock::serialize_cbor(&params).unwrap(),
-            )
-            .unwrap()
-            .unwrap()
-            .deserialize()
-            .unwrap();
-        assert_eq!(sector_activations.len(), result.activation_results.size());
+        let result = rt.call::<Actor>(
+            MinerMethod::ProveCommitSectors2 as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        );
+        let result = result
+            .map(|r| {
+                let ret: ProveCommitSectors2Return = r.unwrap().deserialize().unwrap();
+                assert_eq!(sector_activations.len(), ret.activation_results.size());
+                ret
+            })
+            .or_else(|e| {
+                rt.reset();
+                Err(e)
+            })?;
         rt.verify();
         Ok(result)
     }
@@ -1331,18 +1369,18 @@ impl ActorHarness {
             if !proof_ok {
                 continue;
             }
-            let claims = SectorAllocationClaims {
+
+            expected_sector_claims.push(SectorAllocationClaims {
                 sector: sup.sector,
                 expiry: sector.expiration,
                 claims: claims_from_pieces(&sup.pieces),
-            };
-            sector_claimed_space.push(SectorClaimSummary {
-                claimed_space: claims.claims.iter().map(|c| c.size.0).sum::<u64>().into(),
             });
-            expected_sector_claims.push(claims);
             if cfg.claim_failure.contains(&i) {
                 continue;
             }
+            let claimed_space =
+                expected_sector_claims.last().unwrap().claims.iter().map(|c| c.size.0).sum::<u64>();
+            sector_claimed_space.push(SectorClaimSummary { claimed_space: claimed_space.into() });
 
             let notifications = notifications_from_pieces(&sup.pieces);
             if !notifications.is_empty() {
@@ -1375,9 +1413,13 @@ impl ActorHarness {
         if !expected_sector_claims.iter().all(|sector| sector.claims.is_empty()) {
             let claim_count = expected_sector_claims.len();
             let mut claim_result = BatchReturnGen::new(claim_count);
+            let mut claim_code = ExitCode::OK;
             for i in 0..claim_count {
                 if cfg.claim_failure.contains(&i) {
                     claim_result.add_fail(ExitCode::USR_ILLEGAL_ARGUMENT);
+                    if require_activation_success {
+                        claim_code = ExitCode::USR_ILLEGAL_ARGUMENT;
+                    }
                 } else {
                     claim_result.add_success();
                 }
@@ -1396,7 +1438,7 @@ impl ActorHarness {
                     sector_claims: sector_claimed_space,
                 })
                 .unwrap(),
-                cfg.verfied_claim_result.unwrap_or(ExitCode::OK),
+                claim_code,
             );
         }
 
@@ -2850,7 +2892,17 @@ pub struct ProveReplicaUpdatesConfig {
     pub validation_failure: Vec<usize>, // Expect validation failure for these sector indices.
     pub proof_failure: Vec<usize>,      // Simulate proof failure for these sector indices.
     pub claim_failure: Vec<usize>,      // Simulate verified claim failure for these sector indices.
-    pub verfied_claim_result: Option<ExitCode>, // Result of verified claims (default OK).
+    pub notification_result: Option<ExitCode>, // Result of notification send (default OK).
+    pub notification_rejected: bool,    // Whether to reject the notification
+}
+
+#[derive(Default)]
+pub struct ProveCommitSectors2Config {
+    pub caller: Option<Address>,
+    pub param_twiddle: Option<Box<dyn FnOnce(&mut ProveCommitSectors2Params)>>,
+    pub validation_failure: Vec<usize>, // Expect validation failure for these sector indices.
+    pub proof_failure: Vec<usize>,      // Simulate proof failure for these sector indices.
+    pub claim_failure: Vec<usize>,      // Simulate verified claim failure for these sector indices.
     pub notification_result: Option<ExitCode>, // Result of notification send (default OK).
     pub notification_rejected: bool,    // Whether to reject the notification
 }
@@ -3067,6 +3119,7 @@ fn onboard_sectors(
     // Prove the sectors in batch with ProveCommitSectors2.
     let prove_epoch = *rt.epoch.borrow() + rt.policy.pre_commit_challenge_delay + 1;
     rt.set_epoch(prove_epoch);
+    let cfg = ProveCommitSectors2Config::default();
     let sector_activations: Vec<SectorActivationManifest> = precommits
         .iter()
         .map(|pc| {
@@ -3077,7 +3130,7 @@ fn onboard_sectors(
             make_activation_manifest(pc.info.sector_number, &piece_specs)
         })
         .collect();
-    h.prove_commit_sectors2(rt, &sector_activations, true, false, false).unwrap();
+    h.prove_commit_sectors2(rt, &sector_activations, true, false, false, cfg).unwrap();
     let sectors: Vec<SectorOnChainInfo> =
         precommits.iter().map(|pc| h.get_sector(rt, pc.info.sector_number)).collect();
 
