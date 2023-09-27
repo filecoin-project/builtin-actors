@@ -150,10 +150,7 @@ fn reject_required_proof_failure() {
 #[test]
 fn reject_required_claim_failure() {
     let (h, rt, sector_updates) = setup(2, CLIENT_ID, 1, 0);
-    let cfg = ProveReplicaUpdatesConfig {
-        verfied_claim_result: Some(ExitCode::USR_ILLEGAL_ARGUMENT),
-        ..Default::default()
-    };
+    let cfg = ProveReplicaUpdatesConfig { claim_failure: vec![0], ..Default::default() };
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "error claiming allocations",
