@@ -806,8 +806,8 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
                 }
 
                 if !es.on_time_sectors.get(sector.sector_number) {
-                    // continue scan for this sector
-                    return Ok(true);
+                    // continue scan for this sector if not already at end_epoch
+                    return Ok(epoch < end_epoch);
                 }
 
                 let group = group_expiration_set(
