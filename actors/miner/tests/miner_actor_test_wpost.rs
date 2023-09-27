@@ -308,7 +308,7 @@ fn invalid_submissions() {
         );
         expect_abort_contains_message(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            "expected proof of type",
+            "proof type StackedDRGWindow64GiBV1 not allowed",
             result,
         );
         rt.reset();
@@ -1296,7 +1296,7 @@ fn bad_post_fails_when_verified() {
 }
 
 #[test]
-fn can_submit_v1_proof_types_nv19() {
+fn cannot_submit_v1_proof_types_nv19() {
     struct TestCase {
         desc: &'static str,
         nv: NetworkVersion,
@@ -1308,12 +1308,14 @@ fn can_submit_v1_proof_types_nv19() {
 
     let tests = [
         TestCase {
-            desc: "can submit v1 proof in nv19",
+            desc: "cannot submit v1 proof in nv19",
             nv: NetworkVersion::V19,
             seal_proof_type: RegisteredSealProof::StackedDRG32GiBV1P1,
             post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1,
-            exit_code: ExitCode::OK,
-            error_msg: "".to_string(),
+            exit_code: ExitCode::USR_ILLEGAL_ARGUMENT,
+            error_msg:
+                "expected proof of type StackedDRGWindow32GiBV1P1, got StackedDRGWindow32GiBV1"
+                    .to_string(),
         },
         TestCase {
             desc: "can submit v1p1 proof in nv19",
