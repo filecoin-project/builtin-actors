@@ -114,8 +114,8 @@ frc42_dispatch = "4.0.0"
 frc46_token = "8.0.0"
 
 # FVM
-fvm_sdk = "4.0.0-alpha.2"
-fvm_shared = "4.0.0-alpha.2"
+fvm_sdk = "4.0.0-alpha.3"
+fvm_shared = "4.0.0-alpha.3"
 fvm_ipld_encoding = "0.4.0"
 fvm_ipld_blockstore = "0.2.0"
 fvm_ipld_hamt = "0.8.0"
