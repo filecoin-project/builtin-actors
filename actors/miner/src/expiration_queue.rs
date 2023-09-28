@@ -806,7 +806,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
                 // +1 since the range is inclusive
                 old_end + 1
             };
-            let new_end = (expiration + EPOCHS_IN_DAY) as u64;
+            let new_end = (expiration + EPOCHS_IN_DAY - 1) as u64;
 
             // scan range [start_at, new_end] for active sectors of interest
             self.amt.for_each_while_ranged(Some(start_at as u64), None, |epoch, es| {
@@ -827,7 +827,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
                     expiration_groups.push(group);
                 }
 
-                Ok(!all_remaining.is_empty())
+                Ok(epoch < new_end && !all_remaining.is_empty())
             })?;
 
             old_end = new_end as i64;

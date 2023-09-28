@@ -2848,6 +2848,7 @@ impl Actor {
                 )?;
 
             Deadlines::move_partitions(
+                policy,
                 store,
                 &mut orig_deadline,
                 &mut dest_deadline,

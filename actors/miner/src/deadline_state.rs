@@ -105,6 +105,7 @@ impl Deadlines {
     }
 
     pub fn move_partitions<BS: Blockstore>(
+        policy: &Policy,
         store: &BS,
         orig_deadline: &mut Deadline,
         dest_deadline: &mut Deadline,
@@ -114,6 +115,13 @@ impl Deadlines {
         let mut dest_partitions = dest_deadline.partitions_amt(store)?;
 
         // even though we're moving partitions intact, we still need to update orig/dest `Deadline` accordingly.
+
+        if dest_partitions.count() + partitions.len() > policy.max_partitions_per_deadline {
+            return Err(actor_error!(
+                forbidden,
+                "partitions in dest_deadline will exceed max_partitions_per_deadline"
+            ))?;
+        }
 
         let first_dest_partition_idx = dest_partitions.count();
         for (i, orig_partition_idx) in partitions.iter().enumerate() {
