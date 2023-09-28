@@ -795,8 +795,8 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
 
         let mut old_end = 0i64;
         for expiration in declared_expirations.iter() {
-            // Basically we're scanning [sector.expiration, sector.expiration+EPOCHS_IN_DAY] for active sectors.
-            // Since a sector may have been moved from another deadline, the possible range for an active sector is [sector.expiration, sector.expiration+EPOCHS_IN_DAY].
+            // Basically we're scanning [sector.expiration, sector.expiration+EPOCHS_IN_DAY) for active sectors.
+            // Since a sector may have been moved from another deadline, the possible range for an active sector is [sector.expiration, sector.expiration+EPOCHS_IN_DAY).
             //
             // And we're also trying to avoid scanning the same range twice by choosing a proper `start_at`.
 
