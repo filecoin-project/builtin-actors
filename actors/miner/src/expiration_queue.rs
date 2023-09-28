@@ -783,31 +783,36 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
 
         let mut sectors_by_number = BTreeMap::<u64, &SectorOnChainInfo>::new();
         let mut all_remaining = BTreeSet::<u64>::new();
+        let mut declared_expirations = BTreeSet::<i64>::new();
 
         for sector in sectors {
+            declared_expirations.insert(sector.expiration);
             all_remaining.insert(sector.sector_number);
             sectors_by_number.insert(sector.sector_number, sector);
         }
 
         let mut expiration_groups = Vec::<SectorExpirationSet>::with_capacity(sectors.len());
 
-        for sector in sectors {
-            // precheck to save unnecessary call to `for_each_while_ranged` below
-            if !all_remaining.contains(&sector.sector_number) {
-                continue;
-            }
-            // scan [sector.expiration, sector.expiration+EPOCHS_IN_DAY] for active sectors.
-            // since a sector may have been moved from another deadline, the possible range for an active sector is [sector.expiration, sector.expiration+EPOCHS_IN_DAY]
-            let end_epoch = (sector.expiration + EPOCHS_IN_DAY) as u64;
-            self.amt.for_each_while_ranged(Some(sector.expiration as u64), None, |epoch, es| {
-                if epoch > end_epoch || !all_remaining.contains(&sector.sector_number) {
-                    // no need to scan for this sector any more
-                    return Ok(false);
-                }
+        let mut old_end = 0i64;
+        for expiration in declared_expirations.iter() {
+            // Basically we're scanning [sector.expiration, sector.expiration+EPOCHS_IN_DAY] for active sectors.
+            // Since a sector may have been moved from another deadline, the possible range for an active sector is [sector.expiration, sector.expiration+EPOCHS_IN_DAY].
+            //
+            // And we're also trying to avoid scanning the same range twice by choosing a proper `start_at`.
 
-                if !es.on_time_sectors.get(sector.sector_number) {
-                    // continue scan for this sector if not already at end_epoch
-                    return Ok(epoch < end_epoch);
+            let start_at = if *expiration > old_end {
+                *expiration
+            } else {
+                // +1 since the range is inclusive
+                old_end + 1
+            };
+            let new_end = (expiration + EPOCHS_IN_DAY) as u64;
+
+            // scan range [start_at, new_end] for active sectors of interest
+            self.amt.for_each_while_ranged(Some(start_at as u64), None, |epoch, es| {
+                if epoch > new_end {
+                    // no need to scan any more
+                    return Ok(false);
                 }
 
                 let group = group_expiration_set(
@@ -817,17 +822,15 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
                     es,
                     epoch as ChainEpoch,
                 );
-                if group.sector_epoch_set.sectors.is_empty() {
-                    // by here it's guaranteed this is true:
-                    //      all_remaining.contains(&sector.sector_number) && es.on_time_sectors.get(sector.sector_number)
-                    // so group.sector_epoch_set.sectors should not be empty
-                    return Err(anyhow!("there's a bug in `group_expiration_set` function"));
-                }
-                expiration_groups.push(group);
 
-                // no need to scan for this sector any more
-                Ok(false)
+                if !group.sector_epoch_set.sectors.is_empty() {
+                    expiration_groups.push(group);
+                }
+
+                Ok(!all_remaining.is_empty())
             })?;
+
+            old_end = new_end as i64;
         }
 
         // If sectors remain, traverse next in epoch order. Remaining sectors should be
