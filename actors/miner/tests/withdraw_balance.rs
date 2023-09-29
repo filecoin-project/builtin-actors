@@ -112,7 +112,8 @@ fn fails_if_miner_cant_repay_fee_debt() {
 #[test]
 fn withdraw_only_what_we_can_after_fee_debt() {
     let h = ActorHarness::new(PERIOD_OFFSET);
-    let rt = h.new_runtime();
+    let mut rt = h.new_runtime();
+    rt.policy.new_miner_deposit = TokenAmount::default();
     rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&rt);
 

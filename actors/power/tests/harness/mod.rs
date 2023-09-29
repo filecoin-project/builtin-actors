@@ -196,7 +196,7 @@ impl Harness {
             peer,
             vec![],
             self.window_post_proof,
-            &TokenAmount::zero(),
+            &rt.policy.new_miner_deposit,
         )
     }
 

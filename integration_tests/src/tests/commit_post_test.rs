@@ -2,11 +2,12 @@ use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::Zero;
+use fvm_shared::bigint::{BigInt, Zero};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{PoStProof, RegisteredSealProof, SectorNumber, MAX_SECTOR_NUMBER};
+use std::ops::Add;
 
 use crate::expects::Expect;
 use crate::util::{
@@ -23,7 +24,7 @@ use fil_actor_miner::{
     SubmitWindowedPoStParams,
 };
 use fil_actor_power::{Method as PowerMethod, State as PowerState};
-use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::runtime::{policy, Policy};
 use fil_actors_runtime::{
     CRON_ACTOR_ADDR, CRON_ACTOR_ID, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     STORAGE_POWER_ACTOR_ID, SYSTEM_ACTOR_ADDR,
@@ -284,7 +285,10 @@ pub fn missed_first_post_deadline_test(v: &dyn VM) {
 
 pub fn overdue_precommit_test(v: &dyn VM) {
     let policy = &Policy::default();
-    let addrs = create_accounts(v, 1, &TokenAmount::from_whole(10_000));
+    let miner_balance_with_deposit =
+        TokenAmount::from_whole(10_000).add(policy::Policy::default().new_miner_deposit);
+
+    let addrs = create_accounts(v, 1, &miner_balance_with_deposit);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
     let id_addr = create_miner(
@@ -292,11 +296,10 @@ pub fn overdue_precommit_test(v: &dyn VM) {
         &owner,
         &worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        &TokenAmount::from_whole(10_000),
+        &miner_balance_with_deposit,
     )
     .0;
     v.set_epoch(200);
-
     // precommit and advance to prove commit time
     let sector_number: SectorNumber = 100;
     let precommit =
@@ -351,6 +354,12 @@ pub fn overdue_precommit_test(v: &dyn VM) {
                             // The call to burnt funds indicates the overdue precommit has been penalized
                             Expect::burn(id_addr.id().unwrap(), Some(precommit.pre_commit_deposit)),
                             // No re-enrollment of cron because burning of PCD discontinues miner cron scheduling
+                            Expect::power_update_pledge(
+                                id_addr.id().unwrap(),
+                                Some(TokenAmount::from_atto(BigInt::from_signed_bytes_be(&[
+                                    255, 17, 91, 207, 234, 13, 8, 99, 78,
+                                ]))),
+                            ),
                         ]),
                         ..Default::default()
                     },
@@ -375,7 +384,12 @@ pub fn overdue_precommit_test(v: &dyn VM) {
 
     let network_stats = get_network_stats(v);
     assert!(network_stats.total_bytes_committed.is_zero());
-    assert!(network_stats.total_pledge_collateral.is_zero());
+    assert_eq!(
+        TokenAmount::from_atto(BigInt::from_signed_bytes_be(&[
+            21, 152, 195, 241, 152, 96, 80, 144, 37
+        ])),
+        network_stats.total_pledge_collateral
+    );
     assert!(network_stats.total_raw_byte_power.is_zero());
     assert!(network_stats.total_quality_adj_power.is_zero());
 
@@ -625,7 +639,9 @@ pub fn aggregate_bad_sender_test(v: &dyn VM) {
 }
 
 pub fn aggregate_one_precommit_expires_test(v: &dyn VM) {
-    let addrs = create_accounts(v, 1, &TokenAmount::from_whole(10_000));
+    let from_balance =
+        &TokenAmount::from_whole(10_000).add(policy::Policy::default().new_miner_deposit);
+    let addrs = create_accounts(v, 1, from_balance);
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
     let worker_id = worker.id().unwrap();
@@ -634,7 +650,7 @@ pub fn aggregate_one_precommit_expires_test(v: &dyn VM) {
         &owner,
         &worker,
         seal_proof.registered_window_post_proof().unwrap(),
-        &TokenAmount::from_whole(10_000),
+        from_balance,
     );
     let miner_id = miner_addr.id().unwrap();
     v.set_epoch(200);

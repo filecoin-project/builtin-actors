@@ -14,7 +14,7 @@ use fil_actors_runtime::{
     test_utils::*, CRON_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ID,
     STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use fvm_shared::bigint::Zero;
+use fvm_shared::bigint::{BigInt, Zero};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
@@ -287,7 +287,12 @@ pub fn terminate_sectors_test(v: &dyn VM) {
     assert!(pow_st.total_quality_adj_power.is_zero());
     assert!(pow_st.total_bytes_committed.is_zero());
     assert!(pow_st.total_qa_bytes_committed.is_zero());
-    assert!(pow_st.total_pledge_collateral.is_zero());
+    assert_eq!(
+        TokenAmount::from_atto(BigInt::from_signed_bytes_be(&[
+            20, 187, 149, 188, 72, 96, 150, 128, 158
+        ])),
+        pow_st.total_pledge_collateral
+    );
 
     // termination slashes deals in market state
     let termination_epoch = v.epoch();

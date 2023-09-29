@@ -766,9 +766,7 @@ impl State {
 
     // Return true when the miner actor needs to continue scheduling deadline crons
     pub fn continue_deadline_cron(&self) -> bool {
-        !self.pre_commit_deposits.is_zero()
-            || !self.initial_pledge.is_zero()
-            || !self.locked_funds.is_zero()
+        !self.pre_commit_deposits.is_zero() || !self.initial_pledge.is_zero()
     }
 
     //

@@ -3,6 +3,7 @@ use fil_actors_runtime::test_utils::{
     expect_abort_contains_message, MockRuntime, EVM_ACTOR_CODE_ID,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 
 mod util;
@@ -14,7 +15,8 @@ fn setup() -> (ActorHarness, MockRuntime) {
     let precommit_epoch = 1;
 
     let h = ActorHarness::new(period_offset);
-    let rt = h.new_runtime();
+    let mut rt = h.new_runtime();
+    rt.policy.new_miner_deposit = TokenAmount::default();
     h.construct_and_verify(&rt);
     rt.balance.replace(BIG_BALANCE.clone());
     rt.set_epoch(precommit_epoch);

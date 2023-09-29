@@ -70,6 +70,8 @@ fn simple_construction() {
     let params = constructor_params(&env);
 
     env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
+    env.rt.set_balance(env.rt.policy.new_miner_deposit.clone());
+
     env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
     env.rt.expect_send_simple(
         env.worker,
@@ -100,7 +102,7 @@ fn simple_construction() {
     assert_eq!(2349, info.window_post_partition_sectors);
 
     assert_eq!(TokenAmount::zero(), state.pre_commit_deposits);
-    assert_eq!(TokenAmount::zero(), state.locked_funds);
+    assert_eq!(env.rt.policy.new_miner_deposit, state.locked_funds);
     assert_ne!(Cid::default(), state.pre_committed_sectors);
     assert_ne!(Cid::default(), state.sectors);
 
@@ -144,8 +146,10 @@ fn control_addresses_are_resolved_during_construction() {
     env.rt.id_addresses.borrow_mut().insert(control2, control2id);
 
     let params = constructor_params(&env);
+
     env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
     env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
+    env.rt.set_balance(env.rt.policy.new_miner_deposit.clone());
     env.rt.expect_send_simple(
         env.worker,
         AccountMethod::PubkeyAddress as u64,
@@ -177,6 +181,7 @@ fn test_construct_with_invalid_peer_id() {
 
     let params = constructor_params(&env);
     env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
+    env.rt.set_balance(env.rt.policy.new_miner_deposit.clone());
     env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
 
     let result = env
@@ -197,6 +202,7 @@ fn fails_if_control_addresses_exceeds_maximum_length() {
 
     let params = constructor_params(&env);
     env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
+    env.rt.set_balance(env.rt.policy.new_miner_deposit.clone());
     env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
 
     let result = env
@@ -217,6 +223,7 @@ fn test_construct_with_large_multiaddr() {
 
     let params = constructor_params(&env);
     env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
+    env.rt.set_balance(env.rt.policy.new_miner_deposit.clone());
     env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
 
     let result = env
@@ -236,7 +243,33 @@ fn test_construct_with_empty_multiaddr() {
 
     let params = constructor_params(&env);
     env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
+    env.rt.set_balance(env.rt.policy.new_miner_deposit.clone());
     env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
+
+    let result = env
+        .rt
+        .call::<Actor>(Method::Constructor as u64, IpldBlock::serialize_cbor(&params).unwrap())
+        .unwrap_err();
+    assert_eq!(result.exit_code(), ExitCode::USR_ILLEGAL_ARGUMENT);
+    env.rt.verify();
+}
+
+#[test]
+fn test_construct_with_invalid_new_miner_deposit() {
+    let env = prepare_env();
+    let params = constructor_params(&env);
+
+    env.rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
+
+    env.rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
+    env.rt.expect_send_simple(
+        env.worker,
+        AccountMethod::PubkeyAddress as u64,
+        None,
+        TokenAmount::zero(),
+        IpldBlock::serialize_cbor(&env.worker_key).unwrap(),
+        ExitCode::OK,
+    );
 
     let result = env
         .rt

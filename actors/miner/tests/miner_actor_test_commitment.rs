@@ -111,7 +111,8 @@ mod miner_actor_test_commitment {
 
         let mut h = ActorHarness::new(period_offset);
         h.set_proof_type(RegisteredSealProof::StackedDRG64GiBV1);
-        let rt = h.new_runtime();
+        let mut rt = h.new_runtime();
+        rt.policy.new_miner_deposit = TokenAmount::default();
 
         rt.set_balance(insufficient_balance);
         rt.set_received(TokenAmount::zero());
@@ -169,7 +170,8 @@ mod miner_actor_test_commitment {
         let period_offset = ChainEpoch::from(100);
 
         let mut h = ActorHarness::new(period_offset);
-        let rt = h.new_runtime();
+        let mut rt = h.new_runtime();
+        rt.policy.new_miner_deposit = TokenAmount::default();
 
         rt.set_balance(BIG_BALANCE.clone());
         rt.set_received(TokenAmount::zero());

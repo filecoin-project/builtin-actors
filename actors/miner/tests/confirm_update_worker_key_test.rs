@@ -4,6 +4,7 @@ use fil_actors_runtime::{
     test_utils::MockRuntime,
 };
 use fvm_shared::address::Address;
+use fvm_shared::econ::TokenAmount;
 
 mod util;
 use util::*;
@@ -15,7 +16,9 @@ fn setup() -> (ActorHarness, MockRuntime) {
     let current_epoch = 5;
 
     let h = ActorHarness::new(period_offset);
-    let rt = h.new_runtime();
+    let mut rt = h.new_runtime();
+    rt.policy.new_miner_deposit = TokenAmount::default();
+
     h.construct_and_verify(&rt);
     rt.balance.replace(BIG_BALANCE.clone());
     rt.set_epoch(current_epoch);

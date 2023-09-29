@@ -96,7 +96,9 @@ fn info_getters() {
 #[test]
 fn collateral_getters() {
     let h = ActorHarness::new(PERIOD_OFFSET);
-    let rt = h.new_runtime();
+    let mut rt = h.new_runtime();
+    rt.policy.new_miner_deposit = TokenAmount::default();
+
     rt.balance.replace(BIG_BALANCE.clone());
 
     let precommit_epoch = PERIOD_OFFSET + 1;

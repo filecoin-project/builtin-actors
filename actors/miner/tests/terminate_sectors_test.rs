@@ -30,7 +30,8 @@ fn setup() -> (ActorHarness, MockRuntime) {
     let precommit_epoch = 1;
 
     let h = ActorHarness::new(period_offset);
-    let rt = h.new_runtime();
+    let mut rt = h.new_runtime();
+    rt.policy.new_miner_deposit = TokenAmount::default();
     h.construct_and_verify(&rt);
     rt.balance.replace(TokenAmount::from_atto(big_balance));
     rt.set_epoch(precommit_epoch);

@@ -129,7 +129,7 @@ impl Actor {
                 },
             )?;
             st.miner_count += 1;
-
+            st.add_pledge_total(rt.policy().new_miner_deposit.clone());
             st.update_stats_for_new_miner(rt.policy(), window_post_proof_type).map_err(|e| {
                 actor_error!(
                     illegal_state,

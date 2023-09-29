@@ -1,4 +1,5 @@
 use fvm_shared::clock::ChainEpoch;
+use fvm_shared::econ::TokenAmount;
 
 mod util;
 use util::*;
@@ -34,7 +35,8 @@ fn cron_enrolls_on_precommit_prove_commits_and_continues_enrolling() {
 #[test]
 fn cron_enrolls_on_precommit_expires_on_pcd_expiration_re_enrolls_on_new_precommit_immediately() {
     let h = ActorHarness::new(PERIOD_OFFSET);
-    let rt = h.new_runtime();
+    let mut rt = h.new_runtime();
+    rt.policy.new_miner_deposit = TokenAmount::default();
     rt.set_balance(BIG_BALANCE.clone());
     let epoch = PERIOD_OFFSET + 1;
     rt.set_epoch(epoch);
@@ -49,7 +51,8 @@ fn cron_enrolls_on_precommit_expires_on_pcd_expiration_re_enrolls_on_new_precomm
 fn cron_enrolls_on_precommit_expires_on_pcd_expiration_re_enrolls_on_new_precommit_after_falling_out_of_date(
 ) {
     let h = ActorHarness::new(PERIOD_OFFSET);
-    let rt = h.new_runtime();
+    let mut rt = h.new_runtime();
+    rt.policy.new_miner_deposit = TokenAmount::default();
     rt.set_balance(BIG_BALANCE.clone());
     let mut epoch = PERIOD_OFFSET + 1;
     rt.set_epoch(epoch);
@@ -68,7 +71,8 @@ fn cron_enrolls_on_precommit_expires_on_pcd_expiration_re_enrolls_on_new_precomm
 #[test]
 fn enroll_pcd_expire_re_enroll_x_3() {
     let h = ActorHarness::new(PERIOD_OFFSET);
-    let rt = h.new_runtime();
+    let mut rt = h.new_runtime();
+    rt.policy.new_miner_deposit = TokenAmount::default();
     rt.set_balance(BIG_BALANCE.clone());
     let mut epoch = PERIOD_OFFSET + 1;
     rt.set_epoch(epoch);

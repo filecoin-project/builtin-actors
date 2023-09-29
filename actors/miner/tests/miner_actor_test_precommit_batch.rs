@@ -48,7 +48,8 @@ fn assert_simple_batch(
         use_v2_pre_commit_and_replica_update: v2,
         proving_period_offset: period_offset,
     });
-    let rt = h.new_runtime();
+    let mut rt = h.new_runtime();
+    rt.policy.new_miner_deposit = TokenAmount::default();
 
     let precommit_epoch = period_offset + 1;
     rt.set_epoch(precommit_epoch);

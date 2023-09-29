@@ -4,6 +4,7 @@ use fil_actors_runtime::test_utils::{expect_abort, expect_abort_contains_message
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::{ConsensusFault, ConsensusFaultType};
+use fvm_shared::econ::TokenAmount;
 
 use fvm_shared::error::ExitCode;
 
@@ -15,7 +16,8 @@ const PERIOD_OFFSET: ChainEpoch = 100;
 
 fn setup() -> (ActorHarness, MockRuntime) {
     let h = ActorHarness::new(PERIOD_OFFSET);
-    let rt = h.new_runtime();
+    let mut rt = h.new_runtime();
+    rt.policy.new_miner_deposit = TokenAmount::default();
     rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&rt);
     (h, rt)

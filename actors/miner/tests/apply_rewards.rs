@@ -3,12 +3,12 @@ use fil_actor_miner::ApplyRewardParams;
 use fil_actor_miner::REWARD_VESTING_SPEC;
 use fil_actor_miner::{Actor, Method};
 use fil_actor_power::Method as PowerMethod;
-use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::runtime::RuntimePolicy;
 use fil_actors_runtime::test_utils::REWARD_ACTOR_CODE_ID;
 use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
 use fil_actors_runtime::REWARD_ACTOR_ADDR;
 use fil_actors_runtime::STORAGE_POWER_ACTOR_ADDR;
+use std::ops::Add;
 
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
@@ -18,7 +18,6 @@ use fvm_shared::METHOD_SEND;
 
 mod util;
 
-use fil_actor_miner::testing::check_state_invariants;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use util::*;
 
@@ -34,14 +33,15 @@ fn funds_are_locked() {
     let rwd = TokenAmount::from_atto(1_000_000);
     h.apply_rewards(&rt, rwd, TokenAmount::zero());
 
-    let expected = TokenAmount::from_atto(750_000);
+    let expected = TokenAmount::from_atto(750_000).add(rt.policy().new_miner_deposit.clone());
     assert_eq!(expected, h.get_locked_funds(&rt));
 }
 
 #[test]
 fn funds_vest() {
     let h = ActorHarness::new(PERIOD_OFFSET);
-    let rt = h.new_runtime();
+    let mut rt = h.new_runtime();
+    rt.policy.new_miner_deposit = TokenAmount::zero();
     rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&rt);
     let st = h.get_state(&rt);
@@ -79,10 +79,6 @@ fn funds_vest() {
     let st = h.get_state(&rt);
     let (locked_amt, _) = locked_reward_from_reward(amt);
     assert_eq!(locked_amt, st.locked_funds);
-    // technically applying rewards without first activating cron is an impossible state but convenient for testing
-    let (_, acc) = check_state_invariants(rt.policy(), &st, rt.store(), &rt.get_balance());
-    assert_eq!(1, acc.len());
-    assert!(acc.messages().first().unwrap().contains("DeadlineCronActive == false"));
 }
 
 #[test]
@@ -99,18 +95,14 @@ fn penalty_is_burnt() {
 
     let (mut expected_lock_amt, _) = locked_reward_from_reward(rwd);
     expected_lock_amt -= penalty;
-    assert_eq!(expected_lock_amt, h.get_locked_funds(&rt));
-    // technically applying rewards without first activating cron is an impossible state but convenient for testing
-    let (_, acc) =
-        check_state_invariants(rt.policy(), &h.get_state(&rt), rt.store(), &rt.get_balance());
-    assert_eq!(1, acc.len());
-    assert!(acc.messages().first().unwrap().contains("DeadlineCronActive == false"));
+    assert_eq!(expected_lock_amt.add(rt.policy.new_miner_deposit.clone()), h.get_locked_funds(&rt));
 }
 
 #[test]
 fn penalty_is_partially_burnt_and_stored_as_fee_debt() {
     let h = ActorHarness::new(PERIOD_OFFSET);
-    let rt = h.new_runtime();
+    let mut rt = h.new_runtime();
+    rt.policy.new_miner_deposit = TokenAmount::zero();
     rt.set_balance(BIG_BALANCE.clone());
     h.construct_and_verify(&rt);
     let st = h.get_state(&rt);
@@ -164,7 +156,7 @@ fn rewards_pay_back_fee_debt() {
     h.construct_and_verify(&rt);
     let mut st = h.get_state(&rt);
 
-    assert!(st.locked_funds.is_zero());
+    assert_eq!(rt.policy().new_miner_deposit, st.locked_funds);
 
     let amt = rt.get_balance();
     let available_before = h.get_available_balance(&rt).unwrap();
@@ -223,9 +215,5 @@ fn rewards_pay_back_fee_debt() {
     assert_eq!(available_before + reward - init_fee_debt - &remaining_locked, available_balance);
     assert!(!st.fee_debt.is_positive());
     // remaining funds locked in vesting table
-    assert_eq!(remaining_locked, st.locked_funds);
-    // technically applying rewards without first activating cron is an impossible state but convenient for testing
-    let (_, acc) = check_state_invariants(rt.policy(), &st, rt.store(), &rt.get_balance());
-    assert_eq!(1, acc.len());
-    assert!(acc.messages().first().unwrap().contains("DeadlineCronActive == false"));
+    assert_eq!(remaining_locked.add(rt.policy.new_miner_deposit), st.locked_funds);
 }

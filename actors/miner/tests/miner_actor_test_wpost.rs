@@ -31,7 +31,8 @@ fn basic_post_and_dispute() {
     let mut h = ActorHarness::new(period_offset);
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
-    let rt = h.new_runtime();
+    let mut rt = h.new_runtime();
+    rt.policy.new_miner_deposit = TokenAmount::default();
     rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
@@ -103,7 +104,8 @@ fn invalid_submissions() {
     let precommit_epoch = ChainEpoch::from(1);
 
     let mut h = ActorHarness::new(period_offset);
-    let rt = h.new_runtime();
+    let mut rt = h.new_runtime();
+    rt.policy.new_miner_deposit = TokenAmount::default();
 
     rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
@@ -586,7 +588,8 @@ fn duplicate_proof_rejected_with_many_partitions() {
     let mut h = ActorHarness::new(period_offset);
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
-    let rt = h.new_runtime();
+    let mut rt = h.new_runtime();
+    rt.policy.new_miner_deposit = TokenAmount::default();
 
     rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
@@ -692,7 +695,8 @@ fn successful_recoveries_recover_power() {
     let mut h = ActorHarness::new(period_offset);
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
-    let rt = h.new_runtime();
+    let mut rt = h.new_runtime();
+    rt.policy.new_miner_deposit = TokenAmount::default();
     rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 
@@ -1144,7 +1148,8 @@ fn can_dispute_test_after_proving_period_changes() {
     let mut h = ActorHarness::new(period_offset);
     h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
 
-    let rt = h.new_runtime();
+    let mut rt = h.new_runtime();
+    rt.policy.new_miner_deposit = TokenAmount::default();
     rt.epoch.replace(precommit_epoch);
     rt.balance.replace(BIG_BALANCE.clone());
 

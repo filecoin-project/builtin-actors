@@ -1,5 +1,6 @@
 use fil_actors_runtime::test_utils::*;
 
+use crate::util::setup;
 use fil_actor_miner::{Actor, ChangeMultiaddrsParams, GetMultiaddrsReturn, Method};
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::BytesDe;
@@ -9,21 +10,14 @@ mod util;
 
 #[test]
 fn test_can_set_peer_id() {
-    let rt = MockRuntime::default();
-    let h = util::ActorHarness::new(0);
-
-    h.construct_and_verify(&rt);
+    let (h, rt) = setup();
     h.set_peer_id(&rt, vec![1, 2, 3]);
-
     h.check_state(&rt);
 }
 
 #[test]
 fn test_can_clear_peer_id() {
-    let rt = MockRuntime::default();
-    let h = util::ActorHarness::new(0);
-
-    h.construct_and_verify(&rt);
+    let (h, rt) = setup();
     h.set_peer_id(&rt, vec![]);
 
     h.check_state(&rt);
@@ -31,11 +25,8 @@ fn test_can_clear_peer_id() {
 
 #[test]
 fn test_cant_set_large_peer_id() {
-    let rt = MockRuntime::default();
-    let h = util::ActorHarness::new(0);
+    let (h, rt) = setup();
     let peer_id = vec![0; rt.policy.max_peer_id_length + 1];
-
-    h.construct_and_verify(&rt);
     h.set_peer_id_fail(&rt, peer_id);
 
     h.check_state(&rt);
@@ -43,10 +34,7 @@ fn test_cant_set_large_peer_id() {
 
 #[test]
 fn can_set_multiaddrs() {
-    let rt = MockRuntime::default();
-    let h = util::ActorHarness::new(0);
-
-    h.construct_and_verify(&rt);
+    let (h, rt) = setup();
     h.set_multiaddr(&rt, vec![BytesDe(vec![1, 3, 3, 7])]);
 
     h.check_state(&rt);
@@ -54,10 +42,7 @@ fn can_set_multiaddrs() {
 
 #[test]
 fn can_set_multiple_multiaddrs() {
-    let rt = MockRuntime::default();
-    let h = util::ActorHarness::new(0);
-
-    h.construct_and_verify(&rt);
+    let (h, rt) = setup();
     h.set_multiaddr(&rt, vec![BytesDe(vec![1, 3, 3, 7]), BytesDe(vec![2, 4, 4, 8])]);
 
     h.check_state(&rt);
@@ -65,10 +50,7 @@ fn can_set_multiple_multiaddrs() {
 
 #[test]
 fn can_set_clear_multiaddrs() {
-    let rt = MockRuntime::default();
-    let h = util::ActorHarness::new(0);
-
-    h.construct_and_verify(&rt);
+    let (h, rt) = setup();
     h.set_multiaddr(&rt, vec![]);
 
     h.check_state(&rt);
@@ -76,10 +58,7 @@ fn can_set_clear_multiaddrs() {
 
 #[test]
 fn cant_set_empty_multiaddrs() {
-    let rt = MockRuntime::default();
-    let h = util::ActorHarness::new(0);
-
-    h.construct_and_verify(&rt);
+    let (h, rt) = setup();
     h.set_multiaddr_fail(&rt, vec![BytesDe(vec![])]);
 
     h.check_state(&rt);
@@ -87,8 +66,7 @@ fn cant_set_empty_multiaddrs() {
 
 #[test]
 fn cant_set_large_multiaddrs() {
-    let rt = MockRuntime::default();
-    let h = util::ActorHarness::new(0);
+    let (h, rt) = setup();
 
     let mut maddrs = Vec::new();
     for i in 0..100 {
@@ -107,7 +85,6 @@ fn cant_set_large_multiaddrs() {
         ]));
     }
 
-    h.construct_and_verify(&rt);
     h.set_multiaddr_fail(&rt, maddrs);
 
     h.check_state(&rt);
@@ -115,10 +92,7 @@ fn cant_set_large_multiaddrs() {
 
 #[test]
 fn get_and_change_multiaddrs_restricted_correctly() {
-    let rt = MockRuntime::default();
-    let h = util::ActorHarness::new(0);
-
-    h.construct_and_verify(&rt);
+    let (h, rt) = setup();
 
     let new_multiaddrs = vec![BytesDe(vec![1, 3, 3, 7])];
 

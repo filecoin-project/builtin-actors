@@ -175,7 +175,8 @@ fn insufficient_funds_for_batch_precommit_in_combination_of_fee_debt_and_network
 #[test]
 fn enough_funds_for_fee_debt_and_network_fee_but_not_for_pcd() {
     let actor = ActorHarness::new(*PERIOD_OFFSET);
-    let rt = actor.new_runtime();
+    let mut rt = actor.new_runtime();
+    rt.policy.new_miner_deposit = TokenAmount::default();
     rt.set_balance(BIG_BALANCE.clone());
     let precommit_epoch = *PERIOD_OFFSET + 1;
     rt.set_epoch(precommit_epoch);
@@ -230,7 +231,8 @@ fn enough_funds_for_fee_debt_and_network_fee_but_not_for_pcd() {
 #[test]
 fn enough_funds_for_everything() {
     let actor = ActorHarness::new(*PERIOD_OFFSET);
-    let rt = actor.new_runtime();
+    let mut rt = actor.new_runtime();
+    rt.policy.new_miner_deposit = TokenAmount::default();
     rt.set_balance(BIG_BALANCE.clone());
     let precommit_epoch = *PERIOD_OFFSET + 1;
     rt.set_epoch(precommit_epoch);
