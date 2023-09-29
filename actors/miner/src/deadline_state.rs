@@ -23,6 +23,7 @@ use super::{
     BitFieldQueue, ExpirationSet, Partition, PartitionSectorMap, PoStPartition, PowerPair,
     SectorOnChainInfo, Sectors, TerminationResult,
 };
+
 use crate::SECTORS_AMT_BITWIDTH;
 
 // Bitwidth of AMTs determined empirically from mutation patterns and projections of mainnet data.
@@ -100,6 +101,102 @@ impl Deadlines {
         deadline.validate_state()?;
 
         self.due[deadline_idx as usize] = store.put_cbor(deadline, Code::Blake2b256)?;
+        Ok(())
+    }
+
+    pub fn move_partitions<BS: Blockstore>(
+        policy: &Policy,
+        store: &BS,
+        orig_deadline: &mut Deadline,
+        dest_deadline: &mut Deadline,
+        partitions: &BitField,
+    ) -> anyhow::Result<()> {
+        let mut orig_partitions = orig_deadline.partitions_amt(store)?;
+        let mut dest_partitions = dest_deadline.partitions_amt(store)?;
+
+        // even though we're moving partitions intact, we still need to update orig/dest `Deadline` accordingly.
+
+        if dest_partitions.count() + partitions.len() > policy.max_partitions_per_deadline {
+            return Err(actor_error!(
+                forbidden,
+                "partitions in dest_deadline will exceed max_partitions_per_deadline"
+            ))?;
+        }
+
+        let first_dest_partition_idx = dest_partitions.count();
+        for (i, orig_partition_idx) in partitions.iter().enumerate() {
+            let moving_partition = orig_partitions
+                .get(orig_partition_idx)?
+                .ok_or_else(|| actor_error!(not_found, "no partition {}", orig_partition_idx))?
+                .clone();
+            if !moving_partition.faults.is_empty() || !moving_partition.unproven.is_empty() {
+                return Err(actor_error!(forbidden, "partition with faults or unproven sectors are not allowed to move, partition_idx {}", orig_partition_idx))?;
+            }
+            if orig_deadline.early_terminations.get(orig_partition_idx) {
+                return Err(actor_error!(forbidden, "partition with early terminated sectors are not allowed to move, partition_idx {}", orig_partition_idx))?;
+            }
+            if !moving_partition.faulty_power.is_zero() {
+                return Err(actor_error!(
+                    illegal_state,
+                    "partition faulty_power should be zero when faults is empty, partition_idx {}",
+                    orig_partition_idx
+                ))?;
+            }
+
+            let dest_partition_idx = first_dest_partition_idx + i as u64;
+
+            // sector_count is both total sector count and total live sector count, since no sector is faulty here.
+            let sector_count = moving_partition.sectors.len();
+
+            // start updating orig/dest `Deadline` here
+
+            orig_deadline.total_sectors -= sector_count;
+            orig_deadline.live_sectors -= sector_count;
+
+            dest_deadline.total_sectors += sector_count;
+            dest_deadline.live_sectors += sector_count;
+
+            orig_partitions.set(orig_partition_idx, Partition::new(store)?)?;
+            dest_partitions.set(dest_partition_idx, moving_partition)?;
+        }
+
+        // update expirations_epochs Cid of Deadline.
+        // Note that when moving a partition from `orig_expirations_epochs` to `dest_expirations_epochs`,
+        // we explicitly keep the `dest_epoch` the same as `orig_epoch`, this is by design of not re-quantizing.
+        {
+            let mut epochs_to_remove = Vec::<u64>::new();
+            let mut orig_expirations_epochs: Array<BitField, _> =
+                Array::load(&orig_deadline.expirations_epochs, store)?;
+            let mut dest_expirations_epochs: Array<BitField, _> =
+                Array::load(&dest_deadline.expirations_epochs, store)?;
+            orig_expirations_epochs.for_each_mut(|orig_epoch, orig_bitfield| {
+                let dest_epoch = orig_epoch;
+                let mut to_bitfield =
+                    dest_expirations_epochs.get(dest_epoch)?.cloned().unwrap_or_default();
+                for (i, partition_id) in partitions.iter().enumerate() {
+                    if orig_bitfield.get(partition_id) {
+                        orig_bitfield.unset(partition_id);
+                        to_bitfield.set(first_dest_partition_idx + i as u64);
+                    }
+                }
+                dest_expirations_epochs.set(dest_epoch, to_bitfield)?;
+
+                if orig_bitfield.is_empty() {
+                    epochs_to_remove.push(orig_epoch);
+                }
+
+                Ok(())
+            })?;
+            if !epochs_to_remove.is_empty() {
+                orig_expirations_epochs.batch_delete(epochs_to_remove, true)?;
+            }
+            orig_deadline.expirations_epochs = orig_expirations_epochs.flush()?;
+            dest_deadline.expirations_epochs = dest_expirations_epochs.flush()?;
+        }
+
+        orig_deadline.partitions = orig_partitions.flush()?;
+        dest_deadline.partitions = dest_partitions.flush()?;
+
         Ok(())
     }
 }

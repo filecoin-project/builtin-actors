@@ -67,7 +67,7 @@ use fil_actor_miner::{
     ExpirationQueue, ExpirationSet, ExtendSectorExpiration2Params, ExtendSectorExpirationParams,
     FaultDeclaration, GetAvailableBalanceReturn, GetBeneficiaryReturn, GetControlAddressesReturn,
     GetMultiaddrsReturn, GetPeerIDReturn, Method, MinerConstructorParams as ConstructorParams,
-    MinerInfo, Partition, PendingBeneficiaryChange, PoStPartition, PowerPair,
+    MinerInfo, MovePartitionsParams, Partition, PendingBeneficiaryChange, PoStPartition, PowerPair,
     PreCommitSectorBatchParams, PreCommitSectorBatchParams2, PreCommitSectorParams,
     ProveCommitSectorParams, RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo,
     SectorPreCommitInfo, SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams,
@@ -1475,7 +1475,7 @@ impl ActorHarness {
         )
     }
 
-    fn make_window_post_verify_info(
+    pub fn make_window_post_verify_info(
         &self,
         infos: &[SectorOnChainInfo],
         all_ignored: &BitField,
@@ -1635,7 +1635,12 @@ impl ActorHarness {
         rt.verify();
     }
 
-    fn get_submitted_proof(&self, rt: &MockRuntime, deadline: &Deadline, idx: u64) -> WindowedPoSt {
+    pub fn get_submitted_proof(
+        &self,
+        rt: &MockRuntime,
+        deadline: &Deadline,
+        idx: u64,
+    ) -> WindowedPoSt {
         amt_get::<WindowedPoSt>(rt, &deadline.optimistic_post_submissions_snapshot, idx)
     }
 
@@ -2052,8 +2057,18 @@ impl ActorHarness {
         let mut deal_ids: Vec<DealID> = Vec::new();
         let mut sector_infos: Vec<SectorOnChainInfo> = Vec::new();
 
+        let mut has_active_sector = false;
         for sector in sectors.iter() {
+            let (_, partition) = self.find_sector(&rt, sector);
+            let non_active = partition.terminated.get(sector)
+                || partition.faults.get(sector)
+                || partition.unproven.get(sector);
+            if !non_active {
+                has_active_sector = true;
+            }
+
             let sector = self.get_sector(rt, sector);
+
             deal_ids.extend(sector.deal_ids.iter());
             sector_infos.push(sector);
         }
@@ -2111,14 +2126,17 @@ impl ActorHarness {
             raw_byte_delta: -sector_power.raw.clone(),
             quality_adjusted_delta: -sector_power.qa.clone(),
         };
-        rt.expect_send_simple(
-            STORAGE_POWER_ACTOR_ADDR,
-            UPDATE_CLAIMED_POWER_METHOD,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-            TokenAmount::zero(),
-            None,
-            ExitCode::OK,
-        );
+
+        if has_active_sector {
+            rt.expect_send_simple(
+                STORAGE_POWER_ACTOR_ADDR,
+                UPDATE_CLAIMED_POWER_METHOD,
+                IpldBlock::serialize_cbor(&params).unwrap(),
+                TokenAmount::zero(),
+                None,
+                ExitCode::OK,
+            );
+        }
 
         // create declarations
         let state: State = rt.get_state();
@@ -2593,6 +2611,28 @@ impl ActorHarness {
         Ok(())
     }
 
+    pub fn move_partitions(
+        &self,
+        rt: &MockRuntime,
+        orig_deadline: u64,
+        dest_deadline: u64,
+        partitions: BitField,
+        mut f: impl FnMut(),
+    ) -> Result<(), ActorError> {
+        f();
+
+        let params = MovePartitionsParams { orig_deadline, dest_deadline, partitions };
+
+        rt.expect_validate_caller_addr(self.caller_addrs());
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+
+        rt.call::<Actor>(
+            Method::MovePartitions as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )?;
+        rt.verify();
+        Ok(())
+    }
     pub fn get_info(&self, rt: &MockRuntime) -> MinerInfo {
         let state: State = rt.get_state();
         state.get_info(rt.store()).unwrap()

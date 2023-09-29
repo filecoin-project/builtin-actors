@@ -127,6 +127,73 @@ pub fn deadline_available_for_compaction(
         )
 }
 
+/// the distance between from_deadline and to_deadline clockwise in deadline unit.
+fn deadline_distance(policy: &Policy, from_deadline: u64, to_deadline: u64) -> u64 {
+    if to_deadline >= from_deadline {
+        to_deadline - from_deadline
+    } else {
+        policy.wpost_period_deadlines - from_deadline + to_deadline
+    }
+}
+
+/// only allow moving to a nearer deadline from current one
+pub fn ensure_deadline_available_for_move(
+    policy: &Policy,
+    orig_deadline: u64,
+    dest_deadline: u64,
+    current_deadline: &DeadlineInfo,
+) -> Result<(), String> {
+    if !deadline_is_mutable(
+        policy,
+        current_deadline.period_start,
+        orig_deadline,
+        current_deadline.current_epoch,
+    ) {
+        return Err(format!(
+            "cannot move from a deadline {}, immutable at epoch {}",
+            orig_deadline, current_deadline.current_epoch
+        ));
+    }
+
+    if !deadline_is_mutable(
+        policy,
+        current_deadline.period_start,
+        dest_deadline,
+        current_deadline.current_epoch,
+    ) {
+        return Err(format!(
+            "cannot move to a deadline {}, immutable at epoch {}",
+            dest_deadline, current_deadline.current_epoch
+        ));
+    }
+
+    if deadline_distance(policy, current_deadline.index, dest_deadline)
+        >= deadline_distance(policy, current_deadline.index, orig_deadline)
+    {
+        return Err(format!(
+            "can only move to a deadline which is nearer from current deadline {}, dest_deadline {} is not nearer than orig_deadline {}",
+            current_deadline.index, dest_deadline, orig_deadline
+        ));
+    }
+
+    Ok(())
+}
+
+// returns the nearest deadline info with index `target_deadline` that has already occured from the point of view of the current deadline(including the current deadline).
+pub fn nearest_occured_deadline_info(
+    policy: &Policy,
+    current_deadline: &DeadlineInfo,
+    target_deadline: u64,
+) -> DeadlineInfo {
+    // Find the proving period start for the deadline in question.
+    let mut pp_start = current_deadline.period_start;
+    if current_deadline.index < target_deadline {
+        pp_start -= policy.wpost_proving_period
+    }
+
+    new_deadline_info(policy, pp_start, target_deadline, current_deadline.current_epoch)
+}
+
 // Determine current period start and deadline index directly from current epoch and
 // the offset implied by the proving period. This works correctly even for the state
 // of a miner actor without an active deadline cron
