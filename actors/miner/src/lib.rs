@@ -2736,11 +2736,11 @@ impl Actor {
                 "conditions not satisfied for deadline_available_for_move",
             )?;
 
-            let mut orig_deadline =
-                deadlines.load_deadline(store, params.orig_deadline).context_code(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to load deadline {}", params.orig_deadline),
-                )?;
+            let mut orig_deadline = deadlines
+                .load_deadline(store, params.orig_deadline)
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to load deadline {}", params.orig_deadline)
+                })?;
             // only try to do immediate (non-optimistic) Window Post verification if the from deadline is in dispute window
             // note that as window post is batched, the best we can do is to verify only those that contains at least one partition being moved.
             // besides, after verification, the corresponding PostProof is deleted, leaving other PostProof intact.
