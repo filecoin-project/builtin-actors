@@ -30,6 +30,7 @@ fn new_sector_on_chain_info(
         sealed_cid,
         activation,
         expiration: 1,
+        power_base_epoch: activation,
         deal_weight: weight.clone(),
         verified_deal_weight: weight,
         ..SectorOnChainInfo::default()
@@ -77,7 +78,7 @@ mod sector_assignment {
         let deadlines = h.st.load_deadlines(&h.store).unwrap();
 
         deadlines
-            .for_each(&policy, &h.store, |dl_idx: u64, mut dl: Deadline| {
+            .for_each(&h.store, |dl_idx: u64, mut dl: Deadline| {
                 let dl_state = ExpectedDeadlineState {
                     sector_size,
                     partition_size: partition_sectors,

@@ -12,6 +12,39 @@ fn quantization_spec_rounds_to_the_next_deadline() {
     assert_eq!(d.next_not_elapsed().last(), quant.quantize_up(curr));
 }
 
+#[test]
+fn next_not_elapsed() {
+    let policy = Policy::default();
+    let deadline_duration = policy.wpost_proving_period / policy.wpost_period_deadlines as i64;
+    let period_start = 12345; // Arbitrary
+
+    // Check every deadline.
+    for deadline_idx in 0..policy.wpost_period_deadlines {
+        let open = period_start + deadline_idx as i64 * deadline_duration;
+        // Check every epoch from before the deadline opens until multiple proving periods later.
+        for curr in (open - 1)..(open + deadline_duration + 2 * policy.wpost_proving_period) {
+            let d = new_deadline_info(&policy, period_start, deadline_idx, curr);
+            // Find next non-elapsed instance the naive way: by checking them in order.
+            let expected = std::iter::successors(Some(d), |prev| {
+                Some(new_deadline_info(
+                    &policy,
+                    prev.next_period_start(),
+                    prev.index,
+                    prev.current_epoch,
+                ))
+            })
+            .find(|info| !info.has_elapsed())
+            .unwrap();
+
+            assert_eq!(expected, d.next_not_elapsed());
+            if curr < open + deadline_duration {
+                assert!(!d.has_elapsed());
+                assert_eq!(d, d.next_not_elapsed());
+            }
+        }
+    }
+}
+
 // All proving periods equivalent mod WPoStProving period should give equivalent
 // dlines for a given epoch. Only the offset property should matter
 #[test]

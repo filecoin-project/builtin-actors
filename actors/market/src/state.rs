@@ -4,15 +4,12 @@
 use crate::balance_table::BalanceTable;
 use crate::ext::verifreg::AllocationID;
 use cid::Cid;
-use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
-    actor_error, make_empty_map, make_map_with_root_and_bitwidth, ActorError, Array, AsActorError,
-    Set, SetMultimap,
+    actor_error, ActorContext, ActorError, Array, AsActorError, Config, Map2, Set, SetMultimap,
+    DEFAULT_HAMT_CONFIG,
 };
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::Cbor;
-use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::deal::DealID;
@@ -24,7 +21,7 @@ use std::collections::BTreeMap;
 
 use super::policy::*;
 use super::types::*;
-use super::{DealProposal, DealState};
+use super::{DealProposal, DealState, EX_DEAL_EXPIRED};
 
 pub enum Reason {
     ClientCollateral,
@@ -76,7 +73,9 @@ pub struct State {
     pub pending_deal_allocation_ids: Cid, // HAMT[DealID]AllocationID
 }
 
-impl Cbor for State {}
+pub type PendingDealAllocationsMap<BS> = Map2<BS, DealID, AllocationID>;
+pub const PENDING_ALLOCATIONS_CONFIG: Config =
+    Config { bit_width: HAMT_BIT_WIDTH, ..DEFAULT_HAMT_CONFIG };
 
 impl State {
     pub fn new<BS: Blockstore>(store: &BS) -> Result<Self, ActorError> {
@@ -92,26 +91,23 @@ impl State {
             .flush()
             .context_code(ExitCode::USR_ILLEGAL_STATE, "Failed to create empty states array")?;
 
-        let empty_pending_proposals_map =
-            make_empty_map::<_, ()>(store, HAMT_BIT_WIDTH).flush().context_code(
-                ExitCode::USR_ILLEGAL_STATE,
-                "Failed to create empty pending proposals map state",
-            )?;
-
-        let empty_balance_table = BalanceTable::new(store).root().context_code(
+        let empty_pending_proposals_map = Set::new(store).root().context_code(
             ExitCode::USR_ILLEGAL_STATE,
-            "Failed to create empty balance table map",
+            "Failed to create empty pending proposals map state",
         )?;
+
+        let empty_balance_table = BalanceTable::new(store, "balance table").root()?;
 
         let empty_deal_ops_hamt = SetMultimap::new(store)
             .root()
             .context_code(ExitCode::USR_ILLEGAL_STATE, "Failed to create empty multiset")?;
 
-        let empty_pending_deal_allocation_map =
-            make_empty_map::<_, AllocationID>(store, HAMT_BIT_WIDTH).flush().context_code(
-                ExitCode::USR_ILLEGAL_STATE,
-                "Failed to create empty pending deal allocation map",
-            )?;
+        let empty_pending_deal_allocation_map = Map2::<&BS, DealID, AllocationID>::empty(
+            store,
+            PENDING_ALLOCATIONS_CONFIG,
+            "pending deal allocations",
+        )
+        .flush()?;
 
         Ok(Self {
             proposals: empty_proposals_array,
@@ -216,9 +212,14 @@ impl State {
         store: &BS,
         id: DealID,
     ) -> Result<DealProposal, ActorError> {
-        let found = self
-            .find_proposal(store, id)?
-            .with_context_code(ExitCode::USR_NOT_FOUND, || format!("no such deal {}", id))?;
+        let found = self.find_proposal(store, id)?.ok_or_else(|| {
+            if id < self.next_id {
+                // If the deal ID has been used, it must have been cleaned up.
+                ActorError::unchecked(EX_DEAL_EXPIRED, format!("deal {} expired", id))
+            } else {
+                ActorError::not_found(format!("no such deal {}", id))
+            }
+        })?;
         Ok(found)
     }
 
@@ -292,61 +293,78 @@ impl State {
     pub fn put_pending_deal_allocation_ids<BS>(
         &mut self,
         store: &BS,
-        new_pending_deal_allocation_ids: &[(BytesKey, AllocationID)],
+        new_pending_deal_allocation_ids: &[(DealID, AllocationID)],
     ) -> Result<(), ActorError>
     where
         BS: Blockstore,
     {
-        let mut pending_deal_allocation_ids = make_map_with_root_and_bitwidth(
-            &self.pending_deal_allocation_ids,
+        let mut pending_deal_allocation_ids = PendingDealAllocationsMap::load(
             store,
-            HAMT_BIT_WIDTH,
-        )
-        .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load pending deal allocation id's")?;
+            &self.pending_deal_allocation_ids,
+            PENDING_ALLOCATIONS_CONFIG,
+            "pending deal allocations",
+        )?;
 
         new_pending_deal_allocation_ids.iter().try_for_each(
             |(deal_id, allocation_id)| -> Result<(), ActorError> {
-                pending_deal_allocation_ids.set(deal_id.clone(), *allocation_id).context_code(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to set pending deal allocation id",
-                )?;
+                pending_deal_allocation_ids.set(deal_id, *allocation_id)?;
                 Ok(())
             },
         )?;
 
-        self.pending_deal_allocation_ids = pending_deal_allocation_ids.flush().context_code(
-            ExitCode::USR_ILLEGAL_STATE,
-            "failed to flush pending deal allocation id",
+        self.pending_deal_allocation_ids = pending_deal_allocation_ids.flush()?;
+        Ok(())
+    }
+
+    pub fn get_pending_deal_allocation_ids<BS>(
+        &mut self,
+        store: &BS,
+        deal_id_keys: &[DealID],
+    ) -> Result<Vec<AllocationID>, ActorError>
+    where
+        BS: Blockstore,
+    {
+        let pending_deal_allocation_ids = PendingDealAllocationsMap::load(
+            store,
+            &self.pending_deal_allocation_ids,
+            PENDING_ALLOCATIONS_CONFIG,
+            "pending deal allocations",
         )?;
 
-        Ok(())
+        let mut allocation_ids: Vec<AllocationID> = vec![];
+        deal_id_keys.iter().try_for_each(|deal_id| -> Result<(), ActorError> {
+            let allocation_id = pending_deal_allocation_ids.get(&deal_id.clone())?;
+            allocation_ids.push(
+                *allocation_id.ok_or(ActorError::not_found("no such deal proposal".to_string()))?,
+            );
+            Ok(())
+        })?;
+
+        Ok(allocation_ids)
     }
 
     pub fn remove_pending_deal_allocation_id<BS>(
         &mut self,
         store: &BS,
-        deal_id_key: &BytesKey,
-    ) -> Result<Option<(BytesKey, AllocationID)>, ActorError>
+        deal_id_key: DealID,
+    ) -> Result<Option<AllocationID>, ActorError>
     where
         BS: Blockstore,
     {
-        let mut pending_deal_allocation_ids = make_map_with_root_and_bitwidth(
-            &self.pending_deal_allocation_ids,
+        let mut pending_deal_allocation_ids = PendingDealAllocationsMap::load(
             store,
-            HAMT_BIT_WIDTH,
-        )
-        .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load pending deal allocation id's")?;
+            &self.pending_deal_allocation_ids,
+            PENDING_ALLOCATIONS_CONFIG,
+            "pending deal allocations",
+        )?;
 
         let rval_allocation_id = pending_deal_allocation_ids
-            .delete(deal_id_key)
+            .delete(&deal_id_key)
             .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
                 format!("no such deal proposal {:#?}", deal_id_key)
             })?;
 
-        self.pending_deal_allocation_ids = pending_deal_allocation_ids
-            .flush()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush deal proposals")?;
-
+        self.pending_deal_allocation_ids = pending_deal_allocation_ids.flush()?;
         Ok(rval_allocation_id)
     }
 
@@ -461,17 +479,9 @@ impl State {
     where
         BS: Blockstore,
     {
-        let mut escrow_table = BalanceTable::from_root(store, &self.escrow_table)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load escrow table")?;
-
-        escrow_table
-            .add(addr, amount)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to add escrow table")?;
-
-        self.escrow_table = escrow_table
-            .root()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush escrow table")?;
-
+        let mut escrow_table = BalanceTable::from_root(store, &self.escrow_table, "escrow table")?;
+        escrow_table.add(addr, amount)?;
+        self.escrow_table = escrow_table.root()?;
         Ok(())
     }
 
@@ -484,24 +494,13 @@ impl State {
     where
         BS: Blockstore,
     {
-        let mut escrow_table = BalanceTable::from_root(store, &self.escrow_table)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load escrow table")?;
+        let mut escrow_table = BalanceTable::from_root(store, &self.escrow_table, "escrow table")?;
+        let locked_table = BalanceTable::from_root(store, &self.locked_table, "locked table")?;
 
-        let locked_table = BalanceTable::from_root(store, &self.locked_table)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load locked table")?;
+        let min_balance = locked_table.get(addr)?;
+        let ex = escrow_table.subtract_with_minimum(addr, amount, &min_balance)?;
 
-        let min_balance = locked_table
-            .get(addr)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get locked balance")?;
-
-        let ex = escrow_table
-            .subtract_with_minimum(addr, amount, &min_balance)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to subtract from escrow table")?;
-
-        self.escrow_table = escrow_table
-            .root()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush escrow table")?;
-
+        self.escrow_table = escrow_table.root()?;
         Ok(ex)
     }
 
@@ -571,15 +570,13 @@ impl State {
     ////////////////////////////////////////////////////////////////////////////////
     // Deal state operations
     ////////////////////////////////////////////////////////////////////////////////
-    #[allow(clippy::too_many_arguments)]
-    pub fn put_pending_deal_state<BS>(
+    pub fn process_deal_update<BS>(
         &mut self,
         store: &BS,
-        policy: &Policy,
         state: &DealState,
         deal: &DealProposal,
         epoch: ChainEpoch,
-    ) -> Result<(TokenAmount, ChainEpoch, bool), ActorError>
+    ) -> Result<(TokenAmount, bool), ActorError>
     where
         BS: Blockstore,
     {
@@ -598,7 +595,7 @@ impl State {
         // This would be the case that the first callback somehow triggers before it is scheduled to
         // This is expected not to be able to happen
         if deal.start_epoch > epoch {
-            return Ok((TokenAmount::zero(), EPOCH_UNDEFINED, false));
+            return Ok((TokenAmount::zero(), false));
         }
 
         let payment_end_epoch = if ever_slashed {
@@ -641,10 +638,7 @@ impl State {
 
             // Unlock remaining storage fee
             self.unlock_balance(store, &deal.client, &payment_remaining, Reason::ClientStorageFee)
-                .context_code(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to unlock remaining client storage fee",
-                )?;
+                .context("unlocking client storage fee")?;
 
             // Unlock client collateral
             self.unlock_balance(
@@ -653,27 +647,21 @@ impl State {
                 &deal.client_collateral,
                 Reason::ClientCollateral,
             )
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to unlock client collateral")?;
+            .context("unlocking client collateral")?;
 
             // slash provider collateral
             let slashed = deal.provider_collateral.clone();
             self.slash_balance(store, &deal.provider, &slashed, Reason::ProviderCollateral)
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "slashing balance")?;
+                .context("slashing balance")?;
 
-            return Ok((slashed, EPOCH_UNDEFINED, true));
+            return Ok((slashed, true));
         }
 
         if epoch >= deal.end_epoch {
             self.process_deal_expired(store, deal, state)?;
-            return Ok((TokenAmount::zero(), EPOCH_UNDEFINED, true));
+            return Ok((TokenAmount::zero(), true));
         }
-
-        // We're explicitly not inspecting the end epoch and may process a deal's expiration late,
-        // in order to prevent an outsider from loading a cron tick by activating too many deals
-        // with the same end epoch.
-        let next = epoch + policy.deal_updates_interval;
-
-        Ok((TokenAmount::zero(), next, false))
+        Ok((TokenAmount::zero(), false))
     }
 
     /// Deal start deadline elapsed without appearing in a proven sector.
@@ -693,20 +681,20 @@ impl State {
             &deal.total_storage_fee(),
             Reason::ClientStorageFee,
         )
-        .context_code(ExitCode::USR_ILLEGAL_STATE, "failure unlocking client storage fee")?;
+        .context("unlocking client storage fee")?;
 
         self.unlock_balance(store, &deal.client, &deal.client_collateral, Reason::ClientCollateral)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failure unlocking client collateral")?;
+            .context("unlocking client collateral")?;
 
         let amount_slashed =
             collateral_penalty_for_deal_activation_missed(deal.provider_collateral.clone());
         let amount_remaining = deal.provider_balance_requirement() - &amount_slashed;
 
         self.slash_balance(store, &deal.provider, &amount_slashed, Reason::ProviderCollateral)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to slash balance")?;
+            .context("slashing balance")?;
 
         self.unlock_balance(store, &deal.provider, &amount_remaining, Reason::ProviderCollateral)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to unlock deal provider balance")?;
+            .context("unlocking deal provider balance")?;
 
         Ok(amount_slashed)
     }
@@ -731,10 +719,10 @@ impl State {
             &deal.provider_collateral,
             Reason::ProviderCollateral,
         )
-        .context_code(ExitCode::USR_ILLEGAL_STATE, "failed unlocking deal provider balance")?;
+        .context("unlocking deal provider balance")?;
 
         self.unlock_balance(store, &deal.client, &deal.client_collateral, Reason::ClientCollateral)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed unlocking deal client balance")?;
+            .context("unlocking deal client balance")?;
 
         Ok(())
     }
@@ -755,20 +743,11 @@ impl State {
     where
         BS: Blockstore,
     {
-        let escrow_table = BalanceTable::from_root(store, &self.escrow_table)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load escrow table")?;
+        let escrow_table = BalanceTable::from_root(store, &self.escrow_table, "escrow table")?;
+        let locked_table = BalanceTable::from_root(store, &self.locked_table, "locked table")?;
 
-        let locked_table = BalanceTable::from_root(store, &self.locked_table)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load locked table")?;
-
-        let escrow_balance = escrow_table
-            .get(&addr)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get escrow balance")?;
-
-        let prev_locked = locked_table
-            .get(&addr)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get locked balance")?;
-
+        let escrow_balance = escrow_table.get(&addr)?;
+        let prev_locked = locked_table.get(&addr)?;
         Ok((prev_locked + amount_to_lock) <= escrow_balance)
     }
 
@@ -785,20 +764,11 @@ impl State {
             return Err(actor_error!(illegal_state, "cannot lock negative amount {}", amount));
         }
 
-        let escrow_table = BalanceTable::from_root(store, &self.escrow_table)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load escrow table")?;
+        let escrow_table = BalanceTable::from_root(store, &self.escrow_table, "escrow table")?;
+        let mut locked_table = BalanceTable::from_root(store, &self.locked_table, "locked table")?;
 
-        let mut locked_table = BalanceTable::from_root(store, &self.locked_table)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load locked table")?;
-
-        let prev_locked = locked_table
-            .get(addr)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get locked balance")?;
-
-        let escrow_balance = escrow_table
-            .get(addr)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get escrow balance")?;
-
+        let prev_locked = locked_table.get(addr)?;
+        let escrow_balance = escrow_table.get(addr)?;
         if &prev_locked + amount > escrow_balance {
             return Err(actor_error!(insufficient_funds;
                     "not enough balance to lock for addr{}: \
@@ -806,14 +776,8 @@ impl State {
                     addr, escrow_balance, prev_locked, amount));
         }
 
-        locked_table
-            .add(addr, amount)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to add locked balance")?;
-
-        self.locked_table = locked_table
-            .root()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush locked table")?;
-
+        locked_table.add(addr, amount)?;
+        self.locked_table = locked_table.root()?;
         Ok(())
     }
 
@@ -826,17 +790,13 @@ impl State {
         BS: Blockstore,
     {
         self.maybe_lock_balance(store, &proposal.client, &proposal.client_balance_requirement())
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to lock client funds")?;
-
+            .context("locking client funds")?;
         self.maybe_lock_balance(store, &proposal.provider, &proposal.provider_collateral)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to lock provider funds")?;
+            .context("locking provider funds")?;
 
         self.total_client_locked_collateral += &proposal.client_collateral;
-
         self.total_client_storage_fee += proposal.total_storage_fee();
-
         self.total_provider_locked_collateral += &proposal.provider_collateral;
-
         Ok(())
     }
 
@@ -854,12 +814,8 @@ impl State {
             return Err(actor_error!(illegal_state, "unlock negative amount: {}", amount));
         }
 
-        let mut locked_table = BalanceTable::from_root(store, &self.locked_table)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load locked table")?;
-
-        locked_table
-            .must_subtract(addr, amount)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "subtract from locked table failed")?;
+        let mut locked_table = BalanceTable::from_root(store, &self.locked_table, "locked table")?;
+        locked_table.must_subtract(addr, amount).context("unlocking balance")?;
 
         match lock_reason {
             Reason::ClientCollateral => {
@@ -873,10 +829,7 @@ impl State {
             }
         };
 
-        self.locked_table = locked_table
-            .root()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush locked table")?;
-
+        self.locked_table = locked_table.root()?;
         Ok(())
     }
 
@@ -895,26 +848,16 @@ impl State {
             return Err(actor_error!(illegal_state, "transfer negative amount: {}", amount));
         }
 
-        let mut escrow_table = BalanceTable::from_root(store, &self.escrow_table)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load escrow table")?;
+        let mut escrow_table = BalanceTable::from_root(store, &self.escrow_table, "escrow table")?;
 
         // Subtract from locked and escrow tables
-        escrow_table
-            .must_subtract(from_addr, amount)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "subtract from escrow")?;
-
+        escrow_table.must_subtract(from_addr, amount)?;
         self.unlock_balance(store, from_addr, amount, Reason::ClientStorageFee)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "subtract from locked")?;
+            .context("unlocking client balance")?;
 
         // Add subtracted amount to the recipient
-        escrow_table
-            .add(to_addr, amount)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "add to escrow")?;
-
-        self.escrow_table = escrow_table
-            .root()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush escrow table")?;
-
+        escrow_table.add(to_addr, amount)?;
+        self.escrow_table = escrow_table.root()?;
         Ok(())
     }
 
@@ -932,18 +875,11 @@ impl State {
             return Err(actor_error!(illegal_state, "negative amount to slash: {}", amount));
         }
 
-        let mut escrow_table = BalanceTable::from_root(store, &self.escrow_table)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load escrow table")?;
+        let mut escrow_table = BalanceTable::from_root(store, &self.escrow_table, "escrow table")?;
 
         // Subtract from locked and escrow tables
-        escrow_table
-            .must_subtract(addr, amount)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "subtract from escrow failed")?;
-
-        self.escrow_table = escrow_table
-            .root()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush escrow table")?;
-
+        escrow_table.must_subtract(addr, amount)?;
+        self.escrow_table = escrow_table.root()?;
         self.unlock_balance(store, addr, amount, lock_reason)
     }
 }

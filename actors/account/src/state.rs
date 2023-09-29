@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
 
 /// State includes the address for the actor
@@ -10,5 +9,3 @@ use fvm_shared::address::Address;
 pub struct State {
     pub address: Address,
 }
-
-impl Cbor for State {}

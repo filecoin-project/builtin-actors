@@ -1,7 +1,7 @@
 [package]
 name = "test_vm"
 description = "Reference vm for integration testing builtin actors"
-version = "10.0.0-alpha.1"
+version = "12.0.0"
 license = "MIT OR Apache-2.0"
 authors = ["Protocol Labs", "Filecoin Core Devs"]
 edition = "2021"
@@ -11,44 +11,38 @@ publish = false
 [lib]
 
 [dependencies]
-fil_builtin_actors_state = { version = "10.0.0-alpha.1", path = "../state"}
-fil_actors_runtime = { version = "10.0.0-alpha.1", path = "../runtime", features = [ "test_utils" ] }
-fil_actor_init = { version = "10.0.0-alpha.1", path = "../actors/init" }
-fil_actor_cron = { version = "10.0.0-alpha.1", path = "../actors/cron" }
-fil_actor_system = { version = "10.0.0-alpha.1", path = "../actors/system" }
-fil_actor_account = { version = "10.0.0-alpha.1", path = "../actors/account" }
-fil_actor_multisig = { version = "10.0.0-alpha.1", path = "../actors/multisig" }
-fil_actor_paych = { version = "10.0.0-alpha.1", path = "../actors/paych" }
-fil_actor_reward = { version = "10.0.0-alpha.1", path = "../actors/reward" }
-fil_actor_power = { version = "10.0.0-alpha.1", path = "../actors/power" }
-fil_actor_market = { version = "10.0.0-alpha.1", path = "../actors/market" }
-fil_actor_verifreg = { version = "10.0.0-alpha.1", path = "../actors/verifreg" }
-fil_actor_miner = { version = "10.0.0-alpha.1", path = "../actors/miner" }
-fil_actor_datacap = { version = "10.0.0-alpha.1", path = "../actors/datacap" }
+fil_builtin_actors_state = { workspace = true }
+fil_actors_runtime = { workspace = true, features = [ "test_utils" ] }
+fil_actor_init = { workspace = true }
+fil_actor_cron = { workspace = true }
+fil_actor_system = { workspace = true }
+fil_actor_account = { workspace = true }
+fil_actor_multisig = { workspace = true }
+fil_actor_paych = { workspace = true }
+fil_actor_reward = { workspace = true }
+fil_actor_power = { workspace = true }
+fil_actor_market = { workspace = true }
+fil_actor_verifreg = { workspace = true }
+fil_actor_miner = { workspace = true }
+fil_actor_datacap = { workspace = true }
+fil_actor_evm = { workspace = true }
+fil_actor_eam = { workspace = true }
+fil_actor_ethaccount = { workspace = true }
+fil_actors_evm_shared = { workspace = true }
 
-anyhow = "1.0.65"
-bimap = { version = "0.6.2" }
-blake2b_simd = "1.0"
-cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
-frc46_token = "1.1.0"
-fvm_ipld_bitfield = "0.5.2"
-fvm_ipld_blockstore = { version = "0.1.1", default-features = false }
-fvm_ipld_encoding = { version = "0.2.2", default-features = false }
-fvm_ipld_hamt = "0.5.1"
-fvm_shared = { version = "2.0.0-alpha.2", default-features = false }
-indexmap = { version = "1.8.0", features = ["serde-1"] }
-integer-encoding = { version = "3.0.3", default-features = false }
-lazy_static = "1.4.0"
-log = "0.4.14"
-num-derive = "0.3.3"
-num-traits = "0.2.14"
-rand = "0.8.5"
-rand_chacha = "0.3.1"
-regex = "1"
-serde = { version = "1.0.136", features = ["derive"] }
-thiserror = "1.0.30"
+anyhow = { workspace = true }
+blake2b_simd = { workspace = true }
+cid = { workspace = true }
+fvm_ipld_blockstore = { workspace = true }
+fvm_ipld_encoding = { workspace = true }
+fvm_ipld_hamt = { workspace = true }
+fvm_shared = { workspace = true }
+integer-encoding = { workspace = true }
+num-traits = { workspace = true }
+serde = { workspace = true }
+vm_api = { workspace = true }
 
 [dev-dependencies]
-cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
-multihash = { version = "0.16.1", default-features = false }
-test-case = "2.2.1"
+multihash = { workspace = true }
+test-case = { workspace = true }
+fil_actors_integration_tests = { workspace = true }

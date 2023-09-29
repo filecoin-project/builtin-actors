@@ -40,7 +40,7 @@ where
 {
     let mut found_ids = Vec::<u64>::new();
     collection
-        .for_each(owner, |key, record| {
+        .for_each_in(owner, |key, record| {
             if curr_epoch >= record.expiration() {
                 let id = parse_uint_key(key)
                     .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to parse uint key")?;

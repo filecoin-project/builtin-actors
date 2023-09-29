@@ -40,7 +40,7 @@ fn put_get_and_delete() {
     let out = h.get_sector(sector_no);
     assert_eq!(sector_info_2, out);
 
-    h.delete_sectors(vec![sector_no as u64]);
+    h.delete_sectors(vec![sector_no]);
     assert!(!h.has_sector_number(sector_no));
 }
 
@@ -50,7 +50,7 @@ fn delete_nonexistent_value_returns_an_error() {
 
     let sector_no = 1u64;
     let mut bf = BitField::new();
-    bf.set(sector_no as u64);
+    bf.set(sector_no);
 
     assert!(h.st.delete_sectors(&h.store, &bf).is_err());
 }
@@ -60,7 +60,7 @@ fn get_nonexistent_value_returns_false() {
     let h = StateHarness::new(ChainEpoch::from(0));
 
     let sector_number = 1u64;
-    assert!(!h.has_sector_number(sector_number as u64));
+    assert!(!h.has_sector_number(sector_number));
 }
 
 #[test]
@@ -73,7 +73,7 @@ fn iterate_and_delete_multiple_sectors() {
     // put all the sectors in the store
     for (i, s) in sector_nos.iter().enumerate() {
         h.put_sector(&new_sector_on_chain_info(
-            *s as u64,
+            *s,
             make_sealed_cid(format!("{}", i).as_bytes()),
             BigInt::from(i),
             i as i64,
@@ -109,6 +109,7 @@ fn new_sector_on_chain_info(
         sealed_cid,
         deal_ids: vec![],
         activation,
+        power_base_epoch: activation,
         expiration: ChainEpoch::from(1),
         deal_weight: weight.clone(),
         verified_deal_weight: weight,

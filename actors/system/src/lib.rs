@@ -4,14 +4,14 @@ use cid::{multihash, Cid};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::CborStore;
-use fvm_ipld_encoding::{Cbor, RawBytes};
 use fvm_shared::error::ExitCode;
-use fvm_shared::{MethodNum, METHOD_CONSTRUCTOR};
+use fvm_shared::METHOD_CONSTRUCTOR;
 use num_derive::FromPrimitive;
-use num_traits::FromPrimitive;
 
 use fil_actors_runtime::runtime::{ActorCode, Runtime};
-use fil_actors_runtime::{actor_error, ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime::{
+    actor_dispatch, actor_error, ActorContext, ActorError, AsActorError, SYSTEM_ACTOR_ADDR,
+};
 
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
@@ -29,7 +29,6 @@ pub struct State {
     // builtin actor registry: Vec<(String, Cid)>
     pub builtin_actors: Cid,
 }
-impl Cbor for State {}
 
 impl State {
     pub fn new<BS: Blockstore>(store: &BS) -> Result<Self, ActorError> {
@@ -53,9 +52,10 @@ impl State {
 
 /// System actor.
 pub struct Actor;
+
 impl Actor {
     /// System actor constructor.
-    pub fn constructor(rt: &mut impl Runtime) -> Result<(), ActorError> {
+    pub fn constructor(rt: &impl Runtime) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         let state = State::new(rt.store()).context("failed to construct state")?;
@@ -65,27 +65,21 @@ impl Actor {
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        _params: &RawBytes,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-    {
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(rt)?;
-                Ok(RawBytes::default())
-            }
-            None => Err(actor_error!(unhandled_message; "Invalid method")),
-        }
+    type Methods = Method;
+
+    fn name() -> &'static str {
+        "System"
+    }
+
+    actor_dispatch! {
+        Constructor => constructor,
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use fvm_ipld_encoding::RawBytes;
+    use std::cell::RefCell;
+
     use fvm_shared::MethodNum;
 
     use fil_actors_runtime::test_utils::{MockRuntime, SYSTEM_ACTOR_CODE_ID};
@@ -96,18 +90,18 @@ mod tests {
     pub fn new_runtime() -> MockRuntime {
         MockRuntime {
             receiver: SYSTEM_ACTOR_ADDR,
-            caller: SYSTEM_ACTOR_ADDR,
-            caller_type: *SYSTEM_ACTOR_CODE_ID,
+            caller: RefCell::new(SYSTEM_ACTOR_ADDR),
+            caller_type: RefCell::new(*SYSTEM_ACTOR_CODE_ID),
             ..Default::default()
         }
     }
 
     #[test]
     fn construct_with_root_id() {
-        let mut rt = new_runtime();
+        let rt = new_runtime();
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
-        rt.call::<Actor>(Method::Constructor as MethodNum, &RawBytes::default()).unwrap();
+        rt.call::<Actor>(Method::Constructor as MethodNum, None).unwrap();
 
         let state: State = rt.get_state();
         let builtin_actors = state.get_builtin_actors(&rt.store).unwrap();

@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use fil_actors_runtime::{parse_uint_key, runtime::Policy, Map, MessageAccumulator, Multimap};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::{
@@ -11,9 +10,11 @@ use fvm_shared::{
 };
 use num_traits::{Signed, Zero};
 
+use fil_actors_runtime::{parse_uint_key, runtime::Policy, MessageAccumulator, Multimap};
+
 use crate::{
-    consensus_miner_min_power, Claim, CronEvent, State, CRON_QUEUE_AMT_BITWIDTH,
-    CRON_QUEUE_HAMT_BITWIDTH, MAX_MINER_PROVE_COMMITS_PER_EPOCH,
+    consensus_miner_min_power, Claim, ClaimsMap, CronEvent, State, CLAIMS_CONFIG,
+    CRON_QUEUE_AMT_BITWIDTH, CRON_QUEUE_HAMT_BITWIDTH, MAX_MINER_PROVE_COMMITS_PER_EPOCH,
     PROOF_VALIDATION_BATCH_AMT_BITWIDTH,
 };
 
@@ -126,7 +127,7 @@ fn check_cron_invariants<BS: Blockstore>(
                 );
                 events
                     .for_each(|_, event| {
-                        cron_events_by_address.entry(event.miner_addr).or_insert(Vec::new()).push(
+                        cron_events_by_address.entry(event.miner_addr).or_default().push(
                             MinerCronEvent { epoch, payload: event.callback_payload.clone() },
                         );
                         Ok(())
@@ -156,12 +157,10 @@ fn check_claims_invariants<BS: Blockstore>(
     let mut qa_power = StoragePower::zero();
     let mut claims_with_sufficient_power_count = 0;
 
-    match Map::<_, Claim>::load(&state.claims, store) {
+    match ClaimsMap::load(store, &state.claims, CLAIMS_CONFIG, "claims") {
         Ok(claims) => {
-            let ret = claims.for_each(|key, claim| {
-                let address = Address::from_bytes(key)?;
+            let ret = claims.for_each(|address, claim| {
                 claims_by_address.insert(address, claim.clone());
-
                 committed_raw_power += &claim.raw_byte_power;
                 committed_qa_power += &claim.quality_adj_power;
 

@@ -2,25 +2,37 @@ use anyhow::{anyhow, Error};
 use cid::multihash::Code;
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::{Cbor, CborStore, RawBytes, DAG_CBOR};
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_ipld_encoding::CborStore;
+#[cfg(feature = "fake-proofs")]
+use fvm_ipld_encoding::RawBytes;
 use fvm_sdk as fvm;
 use fvm_sdk::NO_DATA_BLOCK_ID;
-use fvm_shared::address::Address;
+use fvm_shared::address::{Address, Payload};
+use fvm_shared::chainid::ChainID;
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::crypto::signature::Signature;
+use fvm_shared::crypto::hash::SupportedHashes;
+use fvm_shared::crypto::signature::{
+    Signature, SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE,
+};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
+use fvm_shared::event::ActorEvent;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
     AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
     WindowPoStVerifyInfo,
 };
+use fvm_shared::sys::SendFlags;
 use fvm_shared::version::NetworkVersion;
-use fvm_shared::{ActorID, MethodNum};
+use fvm_shared::{ActorID, MethodNum, Response};
 use num_traits::FromPrimitive;
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 #[cfg(feature = "fake-proofs")]
 use sha2::{Digest, Sha256};
+use std::cell::RefCell;
 
 use crate::runtime::actor_blockstore::ActorBlockstore;
 use crate::runtime::builtins::Type;
@@ -28,18 +40,16 @@ use crate::runtime::{
     ActorCode, ConsensusFault, DomainSeparationTag, MessageInfo, Policy, Primitives, RuntimePolicy,
     Verifier,
 };
-use crate::{actor_error, ActorError, Runtime};
-
-use super::EMPTY_ARR_CID;
+use crate::{actor_error, ActorError, AsActorError, Runtime, SendError};
 
 /// A runtime that bridges to the FVM environment through the FVM SDK.
 pub struct FvmRuntime<B = ActorBlockstore> {
     blockstore: B,
     /// Indicates whether we are in a state transaction. During such, sending
     /// messages is prohibited.
-    in_transaction: bool,
+    in_transaction: RefCell<bool>,
     /// Indicates that the caller has been validated.
-    caller_validated: bool,
+    caller_validated: RefCell<bool>,
     /// The runtime policy
     policy: Policy,
 }
@@ -48,16 +58,16 @@ impl Default for FvmRuntime {
     fn default() -> Self {
         FvmRuntime {
             blockstore: ActorBlockstore,
-            in_transaction: false,
-            caller_validated: false,
+            in_transaction: RefCell::new(false),
+            caller_validated: RefCell::new(false),
             policy: Policy::default(),
         }
     }
 }
 
 impl<B> FvmRuntime<B> {
-    fn assert_not_validated(&mut self) -> Result<(), ActorError> {
-        if self.caller_validated {
+    fn assert_not_validated(&self) -> Result<(), ActorError> {
+        if *self.caller_validated.borrow() {
             return Err(actor_error!(
                 assertion_failed,
                 "Method must validate caller identity exactly once"
@@ -80,12 +90,24 @@ impl MessageInfo for FvmMessage {
         Address::new_id(fvm::message::caller())
     }
 
+    fn origin(&self) -> Address {
+        Address::new_id(fvm::message::origin())
+    }
+
     fn receiver(&self) -> Address {
         Address::new_id(fvm::message::receiver())
     }
 
     fn value_received(&self) -> TokenAmount {
         fvm::message::value_received()
+    }
+
+    fn gas_premium(&self) -> TokenAmount {
+        fvm::message::gas_premium()
+    }
+
+    fn nonce(&self) -> u64 {
+        fvm::message::nonce()
     }
 }
 
@@ -107,20 +129,24 @@ where
         fvm::network::curr_epoch()
     }
 
-    fn validate_immediate_caller_accept_any(&mut self) -> Result<(), ActorError> {
+    fn chain_id(&self) -> ChainID {
+        fvm::network::chain_id()
+    }
+
+    fn validate_immediate_caller_accept_any(&self) -> Result<(), ActorError> {
         self.assert_not_validated()?;
-        self.caller_validated = true;
+        self.caller_validated.replace(true);
         Ok(())
     }
 
-    fn validate_immediate_caller_is<'a, I>(&mut self, addresses: I) -> Result<(), ActorError>
+    fn validate_immediate_caller_is<'a, I>(&self, addresses: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Address>,
     {
         self.assert_not_validated()?;
         let caller_addr = self.message().caller();
         if addresses.into_iter().any(|a| *a == caller_addr) {
-            self.caller_validated = true;
+            self.caller_validated.replace(true);
             Ok(())
         } else {
             Err(actor_error!(forbidden;
@@ -129,7 +155,28 @@ where
         }
     }
 
-    fn validate_immediate_caller_type<'a, I>(&mut self, types: I) -> Result<(), ActorError>
+    fn validate_immediate_caller_namespace<I>(&self, addresses: I) -> Result<(), ActorError>
+    where
+        I: IntoIterator<Item = u64>,
+    {
+        self.assert_not_validated()?;
+        let caller_addr = self.message().caller();
+        let caller_f4 =
+            self.lookup_delegated_address(caller_addr.id().unwrap()).map(|a| *a.payload());
+        if addresses
+            .into_iter()
+            .any(|a| matches!(caller_f4, Some(Payload::Delegated(d)) if d.namespace() == a))
+        {
+            self.caller_validated.replace(true);
+            Ok(())
+        } else {
+            Err(actor_error!(forbidden;
+                "caller's namespace {} is not one of supported", caller_addr
+            ))
+        }
+    }
+
+    fn validate_immediate_caller_type<'a, I>(&self, types: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Type>,
     {
@@ -142,7 +189,7 @@ where
 
         match self.resolve_builtin_actor_type(&caller_cid) {
             Some(typ) if types.into_iter().any(|t| *t == typ) => {
-                self.caller_validated = true;
+                self.caller_validated.replace(true);
                 Ok(())
             }
             _ => Err(actor_error!(forbidden;
@@ -154,8 +201,16 @@ where
         fvm::sself::current_balance()
     }
 
+    fn actor_balance(&self, id: ActorID) -> Option<TokenAmount> {
+        fvm::actor::balance_of(id)
+    }
+
     fn resolve_address(&self, address: &Address) -> Option<ActorID> {
         fvm::actor::resolve_address(address)
+    }
+
+    fn lookup_delegated_address(&self, id: ActorID) -> Option<Address> {
+        fvm::actor::lookup_delegated_address(id)
     }
 
     fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid> {
@@ -176,28 +231,12 @@ where
         rand_epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        // Note: For Go actors, Lotus treated all failures to get randomness as "fatal" errors,
-        // which it then translated into exit code SysErrReserved1 (= 4, and now known as
-        // SYS_ILLEGAL_INSTRUCTION), rather than just aborting with an appropriate exit code.
-        //
-        // We can replicate that here prior to network v16, but from nv16 onwards the FVM will
-        // override the attempt to use a system exit code, and produce
-        // SYS_ILLEGAL_EXIT_CODE (9) instead.
-        //
-        // Since that behaviour changes, we may as well abort with a more appropriate exit code
-        // explicitly.
-        fvm::rand::get_chain_randomness(personalization as i64, rand_epoch, entropy)
-            .map_err(|e| {
-            if self.network_version() < NetworkVersion::V16 {
-                ActorError::unchecked(ExitCode::SYS_ILLEGAL_INSTRUCTION,
-                    "failed to get chain randomness".into())
-            } else {
-                match e {
-                    ErrorNumber::LimitExceeded => {
-                        actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
-                    }
-                    e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
+        fvm::rand::get_chain_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
+            match e {
+                ErrorNumber::LimitExceeded => {
+                    actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
                 }
+                e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
             }
         })
     }
@@ -208,62 +247,40 @@ where
         rand_epoch: ChainEpoch,
         entropy: &[u8],
     ) -> Result<[u8; RANDOMNESS_LENGTH], ActorError> {
-        // See note on exit codes in get_randomness_from_tickets.
-        fvm::rand::get_beacon_randomness(personalization as i64, rand_epoch, entropy)
-            .map_err(|e| {
-            if self.network_version() < NetworkVersion::V16 {
-                ActorError::unchecked(ExitCode::SYS_ILLEGAL_INSTRUCTION,
-                    "failed to get chain randomness".into())
-            } else {
-                match e {
-                    ErrorNumber::LimitExceeded => {
-                        actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
-                    }
-                    e => actor_error!(assertion_failed; "get chain randomness failed with an unexpected error: {}", e),
+        fvm::rand::get_beacon_randomness(personalization as i64, rand_epoch, entropy).map_err(|e| {
+            match e {
+                ErrorNumber::LimitExceeded => {
+                    actor_error!(illegal_argument; "randomness lookback exceeded: {}", e)
                 }
+                e => actor_error!(assertion_failed; "get beacon randomness failed with an unexpected error: {}", e),
             }
         })
     }
 
-    fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError> {
-        let root = fvm::sself::root()?;
-        if root != EMPTY_ARR_CID {
-            return Err(
-                actor_error!(illegal_state; "failed to create state; expected empty array CID, got: {}", root),
-            );
-        }
-        let new_root = ActorBlockstore.put_cbor(obj, Code::Blake2b256)
-            .map_err(|e| actor_error!(illegal_argument; "failed to write actor state during creation: {}", e.to_string()))?;
-        fvm::sself::set_root(&new_root)?;
-        Ok(())
+    fn get_state_root(&self) -> Result<Cid, ActorError> {
+        Ok(fvm::sself::root()?)
     }
 
-    fn state<C: Cbor>(&self) -> Result<C, ActorError> {
-        let root = fvm::sself::root()?;
-        Ok(ActorBlockstore
-            .get_cbor(&root)
-            .map_err(|_| actor_error!(illegal_argument; "failed to get actor for Readonly state"))?
-            .expect("State does not exist for actor state root"))
+    fn set_state_root(&self, root: &Cid) -> Result<(), ActorError> {
+        Ok(fvm::sself::set_root(root)?)
     }
 
-    fn transaction<C, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
+    fn transaction<S, RT, F>(&self, f: F) -> Result<RT, ActorError>
     where
-        C: Cbor,
-        F: FnOnce(&mut C, &mut Self) -> Result<RT, ActorError>,
+        S: Serialize + DeserializeOwned,
+        F: FnOnce(&mut S, &Self) -> Result<RT, ActorError>,
     {
         let state_cid = fvm::sself::root()
             .map_err(|_| actor_error!(illegal_argument; "failed to get actor root state CID"))?;
 
-        log::debug!("getting cid: {}", state_cid);
-
         let mut state = ActorBlockstore
-            .get_cbor::<C>(&state_cid)
+            .get_cbor::<S>(&state_cid)
             .map_err(|_| actor_error!(illegal_argument; "failed to get actor state"))?
             .expect("State does not exist for actor state root");
 
-        self.in_transaction = true;
+        self.in_transaction.replace(true);
         let result = f(&mut state, self);
-        self.in_transaction = false;
+        self.in_transaction.replace(false);
 
         let ret = result?;
         let new_root = ActorBlockstore.put_cbor(&state, Code::Blake2b256)
@@ -280,87 +297,46 @@ where
         &self,
         to: &Address,
         method: MethodNum,
-        params: RawBytes,
+        params: Option<IpldBlock>,
         value: TokenAmount,
-    ) -> Result<RawBytes, ActorError> {
-        if self.in_transaction {
-            return Err(actor_error!(assertion_failed; "send is not allowed during transaction"));
+        gas_limit: Option<u64>,
+        flags: SendFlags,
+    ) -> Result<Response, SendError> {
+        if *self.in_transaction.borrow() {
+            // Note: It's slightly improper to call this ErrorNumber::IllegalOperation,
+            // since the error arises before getting to the VM.
+            return Err(SendError(ErrorNumber::IllegalOperation));
         }
-        match fvm::send::send(to, method, params, value) {
-            Ok(ret) => {
-                if ret.exit_code.is_success() {
-                    Ok(ret.return_data)
-                } else {
-                    // The returned code can't be simply propagated as it may be a system exit code.
-                    // TODO: improve propagation once we return a RuntimeError.
-                    // Ref https://github.com/filecoin-project/builtin-actors/issues/144
-                    let exit_code = match ret.exit_code {
-                        // This means the called actor did something wrong. We can't "make up" a
-                        // reasonable exit code.
-                        ExitCode::SYS_MISSING_RETURN
-                        | ExitCode::SYS_ILLEGAL_INSTRUCTION
-                        | ExitCode::SYS_ILLEGAL_EXIT_CODE => ExitCode::USR_UNSPECIFIED,
-                        // We don't expect any other system errors.
-                        code if code.is_system_error() => ExitCode::USR_ASSERTION_FAILED,
-                        // Otherwise, pass it through.
-                        code => code,
-                    };
-                    Err(ActorError::unchecked(
-                        exit_code,
-                        format!(
-                            "send to {} method {} aborted with code {}",
-                            to, method, ret.exit_code
-                        ),
-                    ))
-                }
-            }
-            Err(err) => Err(match err {
-                // Some of these errors are from operations in the Runtime or SDK layer
-                // before or after the underlying VM send syscall.
-                ErrorNumber::NotFound => {
-                    // This means that the receiving actor doesn't exist.
-                    // TODO: we can't reasonably determine the correct "exit code" here.
-                    actor_error!(unspecified; "receiver not found")
-                }
-                ErrorNumber::InsufficientFunds => {
-                    // This means that the send failed because we have insufficient funds. We will
-                    // get a _syscall error_, not an exit code, because the target actor will not
-                    // run (and therefore will not exit).
-                    actor_error!(insufficient_funds; "not enough funds")
-                }
-                ErrorNumber::LimitExceeded => {
-                    // This means we've exceeded the recursion limit.
-                    // TODO: Define a better exit code.
-                    actor_error!(assertion_failed; "recursion limit exceeded")
-                }
-                err => {
-                    // We don't expect any other syscall exit codes.
-                    actor_error!(assertion_failed; "unexpected error: {}", err)
-                }
-            }),
-        }
+
+        fvm::send::send(to, method, params, value, gas_limit, flags).map_err(SendError)
     }
 
-    fn new_actor_address(&mut self) -> Result<Address, ActorError> {
-        Ok(fvm::actor::new_actor_address())
+    fn new_actor_address(&self) -> Result<Address, ActorError> {
+        Ok(fvm::actor::next_actor_address())
     }
 
-    fn create_actor(&mut self, code_id: Cid, actor_id: ActorID) -> Result<(), ActorError> {
-        if self.in_transaction {
+    fn create_actor(
+        &self,
+        code_id: Cid,
+        actor_id: ActorID,
+        predictable_address: Option<Address>,
+    ) -> Result<(), ActorError> {
+        if *self.in_transaction.borrow() {
             return Err(
                 actor_error!(assertion_failed; "create_actor is not allowed during transaction"),
             );
         }
-        fvm::actor::create_actor(actor_id, &code_id).map_err(|e| match e {
+        fvm::actor::create_actor(actor_id, &code_id, predictable_address).map_err(|e| match e {
             ErrorNumber::IllegalArgument => {
                 ActorError::illegal_argument("failed to create actor".into())
             }
+            ErrorNumber::Forbidden => ActorError::forbidden("actor already exists".into()),
             _ => actor_error!(assertion_failed; "create failed with unknown error: {}", e),
         })
     }
 
-    fn delete_actor(&mut self, beneficiary: &Address) -> Result<(), ActorError> {
-        if self.in_transaction {
+    fn delete_actor(&self, beneficiary: &Address) -> Result<(), ActorError> {
+        if *self.in_transaction.borrow() {
             return Err(
                 actor_error!(assertion_failed; "delete_actor is not allowed during transaction"),
             );
@@ -372,12 +348,34 @@ where
         fvm::network::total_fil_circ_supply()
     }
 
-    fn charge_gas(&mut self, name: &'static str, compute: i64) {
+    fn charge_gas(&self, name: &'static str, compute: i64) {
         fvm::gas::charge(name, compute as u64)
     }
 
     fn base_fee(&self) -> TokenAmount {
         fvm::network::base_fee()
+    }
+
+    fn gas_available(&self) -> u64 {
+        fvm::gas::available()
+    }
+
+    fn tipset_timestamp(&self) -> u64 {
+        fvm::network::tipset_timestamp()
+    }
+
+    fn tipset_cid(&self, epoch: i64) -> Result<Cid, ActorError> {
+        fvm::network::tipset_cid(epoch)
+            .map_err(|_| actor_error!(illegal_argument; "invalid epoch to query tipset_cid"))
+    }
+
+    fn emit_event(&self, event: &ActorEvent) -> Result<(), ActorError> {
+        fvm::event::emit_event(event)
+            .context_code(ExitCode::USR_ASSERTION_FAILED, "failed to emit event")
+    }
+
+    fn read_only(&self) -> bool {
+        fvm::vm::read_only()
     }
 }
 
@@ -411,6 +409,25 @@ where
         fvm::crypto::compute_unsealed_sector_cid(proof_type, pieces)
             .map_err(|e| anyhow!("failed to compute unsealed sector CID; exit code: {}", e))
     }
+
+    fn hash(&self, hasher: SupportedHashes, data: &[u8]) -> Vec<u8> {
+        fvm::crypto::hash_owned(hasher, data)
+    }
+
+    fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
+        let mut buf = [0u8; 64];
+        let len = fvm::crypto::hash_into(hasher, data, &mut buf);
+        (buf, len)
+    }
+
+    fn recover_secp_public_key(
+        &self,
+        hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
+        signature: &[u8; SECP_SIG_LEN],
+    ) -> Result<[u8; SECP_PUB_LEN], anyhow::Error> {
+        fvm::crypto::recover_secp_public_key(hash, signature)
+            .map_err(|e| anyhow!("failed to recover pubkey; exit code: {}", e))
+    }
 }
 
 #[cfg(not(feature = "fake-proofs"))]
@@ -418,14 +435,6 @@ impl<B> Verifier for FvmRuntime<B>
 where
     B: Blockstore,
 {
-    fn verify_seal(&self, vi: &SealVerifyInfo) -> Result<(), Error> {
-        match fvm::crypto::verify_seal(vi) {
-            Ok(true) => Ok(()),
-            Ok(false) => Err(Error::msg("invalid seal")),
-            Err(e) => Err(anyhow!("failed to verify seal: {}", e)),
-        }
-    }
-
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), Error> {
         match fvm::crypto::verify_post(verify_info) {
             Ok(true) => Ok(()),
@@ -474,10 +483,6 @@ impl<B> Verifier for FvmRuntime<B>
 where
     B: Blockstore,
 {
-    fn verify_seal(&self, _vi: &SealVerifyInfo) -> Result<(), Error> {
-        Ok(())
-    }
-
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), Error> {
         let mut info = verify_info.clone();
         if info.proofs.len() != 1 {
@@ -547,35 +552,79 @@ where
 /// 5a. In case of error, aborts the execution with the emitted exit code, or
 /// 5b. In case of success, stores the return data as a block and returns the latter.
 pub fn trampoline<C: ActorCode>(params: u32) -> u32 {
-    fvm::debug::init_logging();
+    init_logging(C::name());
 
     std::panic::set_hook(Box::new(|info| {
         fvm::vm::abort(ExitCode::USR_ASSERTION_FAILED.value(), Some(&format!("{}", info)))
     }));
 
     let method = fvm::message::method_number();
-    log::debug!("fetching parameters block: {}", params);
-    let params = fvm::message::params_raw(params).expect("params block invalid").1;
-    let params = RawBytes::new(params);
-    log::debug!("input params: {:x?}", params.bytes());
+    let params = fvm::message::params_raw(params).expect("params block invalid");
 
     // Construct a new runtime.
-    let mut rt = FvmRuntime::default();
+    let rt = FvmRuntime::default();
     // Invoke the method, aborting if the actor returns an errored exit code.
-    let ret = C::invoke_method(&mut rt, method, &params)
-        .unwrap_or_else(|err| fvm::vm::abort(err.exit_code().value(), Some(err.msg())));
+    let ret = C::invoke_method(&rt, method, params).unwrap_or_else(|mut err| {
+        fvm::vm::exit(err.exit_code().value(), err.take_data(), Some(err.msg()))
+    });
 
     // Abort with "assertion failed" if the actor failed to validate the caller somewhere.
     // We do this after handling the error, because the actor may have encountered an error before
     // it even could validate the caller.
-    if !rt.caller_validated {
+    if !*rt.caller_validated.borrow() {
         fvm::vm::abort(ExitCode::USR_ASSERTION_FAILED.value(), Some("failed to validate caller"))
     }
 
     // Then handle the return value.
-    if ret.is_empty() {
-        NO_DATA_BLOCK_ID
-    } else {
-        fvm::ipld::put_block(DAG_CBOR, ret.bytes()).expect("failed to write result")
+    match ret {
+        None => NO_DATA_BLOCK_ID,
+        Some(ret_block) => fvm::ipld::put_block(ret_block.codec, ret_block.data.as_slice())
+            .expect("failed to write result"),
+    }
+}
+
+/// If debugging is enabled in the VM, installs a logger that sends messages to the FVM log syscall.
+/// Messages are prefixed with "[LEVEL] ".
+/// If debugging is not enabled, no logger will be installed which means that log!() and
+/// similar calls will be dropped without either formatting args or making a syscall.
+/// Note that, when debugging, the log syscalls will charge gas that wouldn't be charged
+/// when debugging is not enabled.
+///
+/// Note: this is similar to fvm::debug::init_logging() from the FVM SDK, but
+/// that doesn't work (at FVM SDK v2.2).
+fn init_logging(actor_name: &'static str) {
+    struct Logger {
+        actor_name: &'static str,
+        actor_id: ActorID,
+    }
+
+    impl log::Log for Logger {
+        fn enabled(&self, _: &log::Metadata) -> bool {
+            true
+        }
+
+        fn log(&self, record: &log::Record) {
+            // Note the log system won't automatically call enabled() before this,
+            // so it's canonical to check it here.
+            // But logging must have been enabled at initialisation time in order for
+            // the logger to be installed.
+            // There's currently no use for dynamically disabling logging, so just skip checking.
+            let msg = format!(
+                "[{}]<{}::{}> {}",
+                record.level(),
+                self.actor_name,
+                self.actor_id,
+                record.args()
+            );
+            fvm::debug::log(msg);
+        }
+
+        fn flush(&self) {}
+    }
+
+    if fvm::debug::enabled() {
+        let logger = Box::new(Logger { actor_name, actor_id: fvm::message::receiver() });
+        log::set_boxed_logger(logger).expect("failed to enable logging");
+        log::set_max_level(log::LevelFilter::Trace);
     }
 }

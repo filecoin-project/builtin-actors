@@ -1,6 +1,7 @@
 use cid::Cid;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{serde_bytes, BytesDe, RawBytes};
+use fvm_ipld_encoding::{strict_bytes, BytesDe};
+
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, StoragePower};
@@ -10,6 +11,7 @@ use num_derive::FromPrimitive;
 
 pub mod init {
     use super::*;
+    use fvm_ipld_encoding::RawBytes;
 
     pub const EXEC_METHOD: u64 = 2;
 
@@ -51,14 +53,14 @@ pub mod miner {
         pub worker: Address,
         pub control_addresses: Vec<Address>,
         pub window_post_proof_type: RegisteredPoStProof,
-        #[serde(with = "serde_bytes")]
+        #[serde(with = "strict_bytes")]
         pub peer_id: Vec<u8>,
         pub multi_addresses: Vec<BytesDe>,
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple)]
     pub struct DeferredCronEventParams {
-        #[serde(with = "serde_bytes")]
+        #[serde(with = "strict_bytes")]
         pub event_payload: Vec<u8>,
         pub reward_smoothed: FilterEstimate,
         pub quality_adj_power_smoothed: FilterEstimate,

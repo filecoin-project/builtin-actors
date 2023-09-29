@@ -5,16 +5,18 @@ on:
     branches:
       - master
   pull_request:
+  merge_group:
 
 env:
   RUSTFLAGS: -Dwarnings
+  CARGO_INCREMENTAL: 0 # Speeds up the build (no cache) and reduces disk space!
 
 jobs:
   rustfmt:
     runs-on: ubuntu-latest
     steps:
     - name: Checking out
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
     - name: Running rustfmt
       run: make rustfmt
 
@@ -22,7 +24,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checking out
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
     - name: Running clippy
       run: make check
 
@@ -30,14 +32,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checking out
-      uses: actions/checkout@v2
+      uses: actions/checkout@v3
     - name: Running tests
-      uses: ./.github/actions/rust-cargo-run
-      with:
-        command: test
-        args: --locked --all --no-fail-fast --exclude=fil_builtin_actors_bundle
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        save_cache: true
+      run: |
+        cargo test --locked --all --no-fail-fast --exclude=fil_builtin_actors_bundle
 
   build:
     runs-on: ubuntu-latest
@@ -46,12 +44,7 @@ jobs:
         network: [ 'mainnet', 'caterpillarnet', 'butterflynet', 'calibrationnet', 'devnet', 'testing', 'testing-fake-proofs' ]
     steps:
     - name: Checking out
-      uses: actions/checkout@v2
-    - name: Install Rust toolchain
-      uses: ./.github/actions/rust-cargo-run
-      with:
-        command: version
-        github_token: ${{ secrets.GITHUB_TOKEN }}
+      uses: actions/checkout@v3
     - name: Writing bundle
       env:
         BUILD_FIL_NETWORK: ${{ matrix.network }}
@@ -63,19 +56,11 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
     - name: Checking out
-      uses: actions/checkout@v2
-    - name: Install Rust toolchain
-      uses: ./.github/actions/rust-cargo-run
-      with:
-        command: version
-        components: llvm-tools-preview
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        cache_name: v3-cov
-        save_cache: true
+      uses: actions/checkout@v3
     - name: Put LLVM tools into the PATH
-      run: echo "${HOME}/.rustup/toolchains/$(cat rust-toolchain)-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-gnu/bin" >> $GITHUB_PATH
+      run: echo "$(rustc --print sysroot)/lib/rustlib/x86_64-unknown-linux-gnu/bin" >> $GITHUB_PATH
     - name: Install demangler
-      run: cargo install rustfilt
+      run: sudo apt-get install -y rustfilt
     - name: Create coverage report
       env:
         # Make sure that each run of an executable creates a new profile file,
@@ -104,7 +89,7 @@ jobs:
         name: code-coverage-report
         path: llvm-show/*
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@81cd2dc8148241f03f5839d295e000b8f761e378 # v3.1.0
+      uses: codecov/codecov-action@d9f34f8cd5cb3b3eb79b3e4b5dae3a16df499a70 # v3.1.1
       with:
         files: lcov.info
   # Lint shell scripts

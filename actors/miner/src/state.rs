@@ -16,7 +16,7 @@ use fvm_ipld_amt::Error as AmtError;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{serde_bytes, BytesDe, Cbor, CborStore};
+use fvm_ipld_encoding::{strict_bytes, BytesDe, CborStore};
 use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::address::Address;
 
@@ -24,7 +24,8 @@ use fvm_shared::clock::{ChainEpoch, QuantSpec, EPOCH_UNDEFINED};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, SectorSize, MAX_SECTOR_NUMBER};
-use fvm_shared::HAMT_BIT_WIDTH;
+use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
+use itertools::Itertools;
 use num_traits::Zero;
 
 use super::beneficiary::*;
@@ -114,8 +115,6 @@ pub enum CollisionPolicy {
     AllowCollisions,
     DenyCollisions,
 }
-
-impl Cbor for State {}
 
 impl State {
     #[allow(clippy::too_many_arguments)]
@@ -437,12 +436,11 @@ impl State {
     /// Returns the deadline and partition index for a sector number.
     pub fn find_sector<BS: Blockstore>(
         &self,
-        policy: &Policy,
         store: &BS,
         sector_number: SectorNumber,
     ) -> anyhow::Result<(u64, u64)> {
         let deadlines = self.load_deadlines(store)?;
-        deadlines.find_sector(policy, store, sector_number)
+        deadlines.find_sector(store, sector_number)
     }
 
     /// Schedules each sector to expire at its next deadline end. If it can't find
@@ -475,7 +473,7 @@ impl State {
             )
             .next_not_elapsed();
             let new_expiration = deadline_info.last();
-            let mut deadline = deadlines.load_deadline(policy, store, deadline_idx)?;
+            let mut deadline = deadlines.load_deadline(store, deadline_idx)?;
 
             let replaced = deadline.reschedule_sector_expirations(
                 store,
@@ -513,7 +511,7 @@ impl State {
         let mut deadline_vec: Vec<Option<Deadline>> =
             (0..policy.wpost_period_deadlines).map(|_| None).collect();
 
-        deadlines.for_each(policy, store, |deadline_idx, deadline| {
+        deadlines.for_each(store, |deadline_idx, deadline| {
             // Skip deadlines that aren't currently mutable.
             if deadline_is_mutable(
                 policy,
@@ -588,7 +586,7 @@ impl State {
             let deadline_idx = i;
 
             // Load deadline + partitions.
-            let mut deadline = deadlines.load_deadline(policy, store, deadline_idx)?;
+            let mut deadline = deadlines.load_deadline(store, deadline_idx)?;
 
             let (deadline_result, more) = deadline
                 .pop_early_terminations(
@@ -635,7 +633,6 @@ impl State {
     /// Returns Ok(true) otherwise
     pub fn check_sector_active<BS: Blockstore>(
         &self,
-        policy: &Policy,
         store: &BS,
         deadline_idx: u64,
         partition_idx: u64,
@@ -643,7 +640,7 @@ impl State {
         require_proven: bool,
     ) -> anyhow::Result<bool> {
         let dls = self.load_deadlines(store)?;
-        let dl = dls.load_deadline(policy, store, deadline_idx)?;
+        let dl = dls.load_deadline(store, deadline_idx)?;
         let partition = dl.load_partition(store, partition_idx)?;
 
         let exists = partition.sectors.get(sector_number);
@@ -677,14 +674,13 @@ impl State {
     /// Returns an error if the target sector cannot be found and/or is faulty/terminated.
     pub fn check_sector_health<BS: Blockstore>(
         &self,
-        policy: &Policy,
         store: &BS,
         deadline_idx: u64,
         partition_idx: u64,
         sector_number: SectorNumber,
     ) -> anyhow::Result<()> {
         let deadlines = self.load_deadlines(store)?;
-        let deadline = deadlines.load_deadline(policy, store, deadline_idx)?;
+        let deadline = deadlines.load_deadline(store, deadline_idx)?;
         let partition = deadline.load_partition(store, partition_idx)?;
 
         if !partition.sectors.get(sector_number) {
@@ -983,7 +979,7 @@ impl State {
         &self,
         actor_balance: &TokenAmount,
     ) -> anyhow::Result<TokenAmount> {
-        // (actor_balance - &self.locked_funds) - &self.pre_commit_deposit
+        // (actor_balance - &self.locked_funds) - &self.pre_commit_deposit - &self.initial_pledge
         Ok(self.get_unlocked_balance(actor_balance)? - &self.fee_debt)
     }
 
@@ -1113,7 +1109,7 @@ impl State {
 
         let mut deadlines = self.load_deadlines(store)?;
 
-        let mut deadline = deadlines.load_deadline(policy, store, dl_info.index)?;
+        let mut deadline = deadlines.load_deadline(store, dl_info.index)?;
 
         let previously_faulty_power = deadline.faulty_power.clone();
 
@@ -1179,15 +1175,14 @@ impl State {
         let precommitted =
             make_map_with_root_and_bitwidth(&self.pre_committed_sectors, store, HAMT_BIT_WIDTH)?;
         for sector_no in sector_nos.iter() {
-            if sector_no as u64 > MAX_SECTOR_NUMBER {
+            if sector_no > MAX_SECTOR_NUMBER {
                 return Err(
                     actor_error!(illegal_argument; "sector number greater than maximum").into()
                 );
             }
-            let info: &SectorPreCommitOnChainInfo =
-                precommitted
-                    .get(&u64_key(sector_no as u64))?
-                    .ok_or_else(|| actor_error!(not_found, "sector {} not found", sector_no))?;
+            let info: &SectorPreCommitOnChainInfo = precommitted
+                .get(&u64_key(sector_no))?
+                .ok_or_else(|| actor_error!(not_found, "sector {} not found", sector_no))?;
             precommits.push(info.clone());
         }
         Ok(precommits)
@@ -1208,7 +1203,7 @@ pub struct AdvanceDeadlineResult {
 }
 
 /// Static information about miner
-#[derive(Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct MinerInfo {
     /// Account that owns this miner
     /// - Income and returned collateral are paid to this address
@@ -1228,7 +1223,7 @@ pub struct MinerInfo {
     pub pending_worker_key: Option<WorkerKeyChange>,
 
     /// Libp2p identity that should be used when connecting to this miner
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub peer_id: Vec<u8>,
 
     /// Vector of byte arrays representing Libp2p multi-addresses used for establishing a connection with this miner.
@@ -1266,9 +1261,9 @@ pub struct MinerInfo {
 
 impl MinerInfo {
     pub fn new(
-        owner: Address,
-        worker: Address,
-        control_addresses: Vec<Address>,
+        owner: ActorID,
+        worker: ActorID,
+        control_addresses: Vec<ActorID>,
         peer_id: Vec<u8>,
         multi_address: Vec<BytesDe>,
         window_post_proof_type: RegisteredPoStProof,
@@ -1282,11 +1277,12 @@ impl MinerInfo {
             .map_err(|e| actor_error!(illegal_argument, "invalid partition sectors: {}", e))?;
 
         Ok(Self {
-            owner,
-            worker,
-            control_addresses,
+            owner: Address::new_id(owner),
+            worker: Address::new_id(worker),
+            control_addresses: control_addresses.into_iter().map(Address::new_id).collect_vec(),
+
             pending_worker_key: None,
-            beneficiary: owner,
+            beneficiary: Address::new_id(owner),
             beneficiary_term: BeneficiaryTerm::default(),
             pending_beneficiary_term: None,
             peer_id,

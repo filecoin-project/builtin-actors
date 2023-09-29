@@ -6,6 +6,7 @@ use std::convert::TryInto;
 
 use anyhow::{anyhow, Context};
 use cid::Cid;
+use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{ActorDowncast, Array};
 use fvm_ipld_amt::{Error as AmtError, ValueMut};
@@ -247,8 +248,9 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         let groups = self.find_sectors_by_expiration(sector_size, sectors)?;
 
         // Group sectors by their target expiration, then remove from existing queue entries according to those groups.
+        let new_quantized_expiration = self.quant.quantize_up(new_expiration);
         for mut group in groups {
-            if group.sector_epoch_set.epoch <= self.quant.quantize_up(new_expiration) {
+            if group.sector_epoch_set.epoch <= new_quantized_expiration {
                 // Don't reschedule sectors that are already due to expire on-time before the fault-driven expiration,
                 // but do represent their power as now faulty.
                 // Their pledge remains as "on-time".
@@ -297,10 +299,11 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
 
         let mut mutated_expiration_sets = Vec::<(ChainEpoch, ExpirationSet)>::new();
 
+        let quantized_fault_expiration = self.quant.quantize_up(fault_expiration);
         self.amt.for_each(|e, expiration_set| {
             let epoch: ChainEpoch = e.try_into()?;
 
-            if epoch <= self.quant.quantize_up(fault_expiration) {
+            if epoch <= quantized_fault_expiration {
                 let mut expiration_set = expiration_set.clone();
 
                 // Regardless of whether the sectors were expiring on-time or early, all the power is now faulty.
@@ -641,16 +644,16 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         Ok(())
     }
 
+    /// Note that the `epoch` parameter doesn't quantize, and assumes the entry for the epoch is non-empty.
     fn remove(
         &mut self,
-        raw_epoch: ChainEpoch,
+        epoch: ChainEpoch,
         on_time_sectors: &BitField,
         early_sectors: &BitField,
         active_power: &PowerPair,
         faulty_power: &PowerPair,
         pledge: &TokenAmount,
     ) -> anyhow::Result<()> {
-        let epoch = self.quant.quantize_up(raw_epoch);
         let mut expiration_set = self
             .amt
             .get(epoch.try_into()?)
@@ -700,8 +703,8 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
     }
 
     /// Traverses the entire queue with a callback function that may mutate entries.
-    /// Iff the function returns that it changed an entry, the new entry will be re-written in the queue. Any changed
-    /// entries that become empty are removed after iteration completes.
+    /// Iff the function returns that it changed an entry, the new entry will be re-written in the
+    /// queue. Any changed entries that become empty are removed after iteration completes.
     fn iter_while_mut(
         &mut self,
         mut f: impl FnMut(
@@ -715,8 +718,6 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
             let keep_going = f(e.try_into()?, expiration_set)?;
 
             if expiration_set.is_empty() {
-                // Mark expiration set as unchanged, it will be removed after the iteration.
-                expiration_set.mark_unchanged();
                 epochs_emptied.push(e);
             }
 
@@ -776,32 +777,60 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         sector_size: SectorSize,
         sectors: &[SectorOnChainInfo],
     ) -> anyhow::Result<Vec<SectorExpirationSet>> {
-        let mut declared_expirations = BTreeMap::<ChainEpoch, bool>::new();
+        if sectors.is_empty() {
+            return Ok(Vec::new());
+        }
+
         let mut sectors_by_number = BTreeMap::<u64, &SectorOnChainInfo>::new();
         let mut all_remaining = BTreeSet::<u64>::new();
-        let mut expiration_groups =
-            Vec::<SectorExpirationSet>::with_capacity(declared_expirations.len());
+        let mut declared_expirations = BTreeSet::<i64>::new();
 
         for sector in sectors {
-            let q_expiration = self.quant.quantize_up(sector.expiration);
-            declared_expirations.insert(q_expiration, true);
+            declared_expirations.insert(sector.expiration);
             all_remaining.insert(sector.sector_number);
             sectors_by_number.insert(sector.sector_number, sector);
         }
 
-        for (&expiration, _) in declared_expirations.iter() {
-            let es = self.may_get(expiration)?;
+        let mut expiration_groups = Vec::<SectorExpirationSet>::with_capacity(sectors.len());
 
-            let group = group_expiration_set(
-                sector_size,
-                &sectors_by_number,
-                &mut all_remaining,
-                es,
-                expiration,
-            );
-            if !group.sector_epoch_set.sectors.is_empty() {
-                expiration_groups.push(group);
-            }
+        let mut old_end = 0i64;
+        for expiration in declared_expirations.iter() {
+            // Basically we're scanning [sector.expiration, sector.expiration+EPOCHS_IN_DAY) for active sectors.
+            // Since a sector may have been moved from another deadline, the possible range for an active sector is [sector.expiration, sector.expiration+EPOCHS_IN_DAY).
+            //
+            // And we're also trying to avoid scanning the same range twice by choosing a proper `start_at`.
+
+            let start_at = if *expiration > old_end {
+                *expiration
+            } else {
+                // +1 since the range is inclusive
+                old_end + 1
+            };
+            let new_end = (expiration + EPOCHS_IN_DAY - 1) as u64;
+
+            // scan range [start_at, new_end] for active sectors of interest
+            self.amt.for_each_while_ranged(Some(start_at as u64), None, |epoch, es| {
+                if epoch > new_end {
+                    // no need to scan any more
+                    return Ok(false);
+                }
+
+                let group = group_expiration_set(
+                    sector_size,
+                    &sectors_by_number,
+                    &mut all_remaining,
+                    es,
+                    epoch as ChainEpoch,
+                );
+
+                if !group.sector_epoch_set.sectors.is_empty() {
+                    expiration_groups.push(group);
+                }
+
+                Ok(epoch < new_end && !all_remaining.is_empty())
+            })?;
+
+            old_end = new_end as i64;
         }
 
         // If sectors remain, traverse next in epoch order. Remaining sectors should be
@@ -809,12 +838,6 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
         if !all_remaining.is_empty() {
             self.amt.for_each_while(|epoch, es| {
                 let epoch = epoch as ChainEpoch;
-                // If this set's epoch is one of our declared epochs, we've already processed it
-                // in the loop above, so skip processing here. Sectors rescheduled to this epoch
-                // would have been included in the earlier processing.
-                if declared_expirations.contains_key(&epoch) {
-                    return Ok(true);
-                }
 
                 // Sector should not be found in EarlyExpirations which holds faults. An implicit assumption
                 // of grouping is that it only returns sectors with active power. ExpirationQueue should not
@@ -825,7 +848,7 @@ impl<'db, BS: Blockstore> ExpirationQueue<'db, BS> {
                     sector_size,
                     &sectors_by_number,
                     &mut all_remaining,
-                    es.clone(),
+                    es,
                     epoch,
                 );
 
@@ -910,7 +933,7 @@ fn group_expiration_set(
     sector_size: SectorSize,
     sectors: &BTreeMap<u64, &SectorOnChainInfo>,
     include_set: &mut BTreeSet<u64>,
-    es: ExpirationSet,
+    es: &ExpirationSet,
     expiration: ChainEpoch,
 ) -> SectorExpirationSet {
     let mut sector_numbers = Vec::new();
@@ -918,7 +941,6 @@ fn group_expiration_set(
     let mut total_pledge = TokenAmount::default();
 
     for u in es.on_time_sectors.iter() {
-        let u = u as u64;
         if include_set.remove(&u) {
             let sector = sectors.get(&u).expect("index should exist in sector set");
             sector_numbers.push(u);
@@ -927,21 +949,33 @@ fn group_expiration_set(
         }
     }
 
-    SectorExpirationSet {
-        sector_epoch_set: SectorEpochSet {
-            epoch: expiration,
-            sectors: sector_numbers,
-            power: total_power,
-            pledge: total_pledge,
-        },
-        expiration_set: es,
+    if sector_numbers.is_empty() {
+        SectorExpirationSet {
+            sector_epoch_set: SectorEpochSet {
+                epoch: expiration,
+                sectors: sector_numbers,
+                power: total_power,
+                pledge: total_pledge,
+            },
+            expiration_set: ExpirationSet::default(),
+        }
+    } else {
+        SectorExpirationSet {
+            sector_epoch_set: SectorEpochSet {
+                epoch: expiration,
+                sectors: sector_numbers,
+                power: total_power,
+                pledge: total_pledge,
+            },
+            expiration_set: es.clone(), // lazy clone
+        }
     }
 }
 
 /// Checks for invalid overlap between bitfield and a set's early sectors.
 fn check_no_early_sectors(set: &BTreeSet<u64>, es: &ExpirationSet) -> anyhow::Result<()> {
     for u in es.early_sectors.iter() {
-        if set.contains(&(u as u64)) {
+        if set.contains(&u) {
             return Err(anyhow!("Invalid attempt to group sector {} with an early expiration", u));
         }
     }

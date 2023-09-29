@@ -1,7 +1,10 @@
-use frc46_token::receiver::types::{FRC46TokenReceived, UniversalReceiverParams, FRC46_TOKEN_TYPE};
+use std::cell::RefCell;
+
+use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
 use frc46_token::token::types::{
     BurnReturn, MintReturn, TransferFromParams, TransferFromReturn, TransferParams, TransferReturn,
 };
+use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
@@ -17,21 +20,22 @@ use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
     ActorError, DATACAP_TOKEN_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 
 pub fn new_runtime() -> MockRuntime {
     MockRuntime {
         receiver: DATACAP_TOKEN_ACTOR_ADDR,
-        caller: SYSTEM_ACTOR_ADDR,
-        caller_type: *SYSTEM_ACTOR_CODE_ID,
+        caller: RefCell::new(SYSTEM_ACTOR_ADDR),
+        caller_type: RefCell::new(*SYSTEM_ACTOR_CODE_ID),
         ..Default::default()
     }
 }
 
 #[allow(dead_code)]
 pub fn new_harness() -> (Harness, MockRuntime) {
-    let mut rt = new_runtime();
+    let rt = new_runtime();
     let h = Harness { governor: VERIFIED_REGISTRY_ACTOR_ADDR };
-    h.construct_and_verify(&mut rt, &h.governor);
+    h.construct_and_verify(&rt, &h.governor);
     (h, rt)
 }
 
@@ -40,16 +44,17 @@ pub struct Harness {
 }
 
 impl Harness {
-    pub fn construct_and_verify(&self, rt: &mut MockRuntime, registry: &Address) {
+    pub fn construct_and_verify(&self, rt: &MockRuntime, registry: &Address) {
+        rt.set_caller(*SYSTEM_ACTOR_CODE_ID, SYSTEM_ACTOR_ADDR);
         rt.expect_validate_caller_addr(vec![SYSTEM_ACTOR_ADDR]);
         let ret = rt
             .call::<DataCapActor>(
                 Method::Constructor as MethodNum,
-                &RawBytes::serialize(registry).unwrap(),
+                IpldBlock::serialize_cbor(registry).unwrap(),
             )
             .unwrap();
 
-        assert_eq!(RawBytes::default(), ret);
+        assert!(ret.is_none());
         rt.verify();
 
         let state: State = rt.get_state();
@@ -58,7 +63,7 @@ impl Harness {
 
     pub fn mint(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         to: &Address,
         amount: &TokenAmount,
         operators: Vec<Address>,
@@ -81,27 +86,29 @@ impl Harness {
             )?,
         };
         // UniversalReceiverParams
-        rt.expect_send(
+        rt.expect_send_simple(
             *to,
             frc42_dispatch::method_hash!("Receive"),
-            serialize(&hook_params, "hook params")?,
+            IpldBlock::serialize_cbor(&hook_params).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
         let params = MintParams { to: *to, amount: amount.clone(), operators };
         rt.set_caller(*VERIFREG_ACTOR_CODE_ID, VERIFIED_REGISTRY_ACTOR_ADDR);
-        let ret =
-            rt.call::<DataCapActor>(Method::Mint as MethodNum, &serialize(&params, "params")?)?;
+        let ret = rt.call::<DataCapActor>(
+            Method::MintExported as MethodNum,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )?;
 
         rt.verify();
-        Ok(ret.deserialize().unwrap())
+        Ok(ret.unwrap().deserialize().unwrap())
     }
 
     pub fn destroy(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         owner: &Address,
         amount: &TokenAmount,
     ) -> Result<BurnReturn, ActorError> {
@@ -110,16 +117,18 @@ impl Harness {
         let params = DestroyParams { owner: *owner, amount: amount.clone() };
 
         rt.set_caller(*VERIFREG_ACTOR_CODE_ID, VERIFIED_REGISTRY_ACTOR_ADDR);
-        let ret =
-            rt.call::<DataCapActor>(Method::Destroy as MethodNum, &serialize(&params, "params")?)?;
+        let ret = rt.call::<DataCapActor>(
+            Method::DestroyExported as MethodNum,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )?;
 
         rt.verify();
-        Ok(ret.deserialize().unwrap())
+        Ok(ret.unwrap().deserialize().unwrap())
     }
 
     pub fn transfer(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         from: &Address,
         to: &Address,
         amount: &TokenAmount,
@@ -144,26 +153,28 @@ impl Harness {
             )?,
         };
         // UniversalReceiverParams
-        rt.expect_send(
+        rt.expect_send_simple(
             *to,
             frc42_dispatch::method_hash!("Receive"),
-            serialize(&hook_params, "hook params")?,
+            IpldBlock::serialize_cbor(&hook_params).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
         let params = TransferParams { to: *to, amount: amount.clone(), operator_data };
-        let ret =
-            rt.call::<DataCapActor>(Method::Transfer as MethodNum, &serialize(&params, "params")?)?;
+        let ret = rt.call::<DataCapActor>(
+            Method::TransferExported as MethodNum,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )?;
 
         rt.verify();
-        Ok(ret.deserialize().unwrap())
+        Ok(ret.unwrap().deserialize().unwrap())
     }
 
     pub fn transfer_from(
         &self,
-        rt: &mut MockRuntime,
+        rt: &MockRuntime,
         operator: &Address,
         from: &Address,
         to: &Address,
@@ -189,24 +200,24 @@ impl Harness {
             )?,
         };
         // UniversalReceiverParams
-        rt.expect_send(
+        rt.expect_send_simple(
             *to,
             frc42_dispatch::method_hash!("Receive"),
-            serialize(&hook_params, "hook params")?,
+            IpldBlock::serialize_cbor(&hook_params).unwrap(),
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
         let params =
             TransferFromParams { to: *to, from: *from, amount: amount.clone(), operator_data };
         let ret = rt.call::<DataCapActor>(
-            Method::TransferFrom as MethodNum,
-            &serialize(&params, "params")?,
+            Method::TransferFromExported as MethodNum,
+            IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
 
         rt.verify();
-        Ok(ret.deserialize().unwrap())
+        Ok(ret.unwrap().deserialize().unwrap())
     }
 
     // Reads the total supply from state directly.
@@ -216,7 +227,18 @@ impl Harness {
 
     // Reads a balance from state directly.
     pub fn get_balance(&self, rt: &MockRuntime, address: &Address) -> TokenAmount {
-        rt.get_state::<State>().token.get_balance(rt.store(), address.id().unwrap()).unwrap()
+        rt.expect_validate_caller_any();
+        let ret = rt
+            .call::<DataCapActor>(
+                Method::BalanceExported as MethodNum,
+                IpldBlock::serialize_cbor(&address).unwrap(),
+            )
+            .unwrap()
+            .unwrap()
+            .deserialize()
+            .unwrap();
+        rt.verify();
+        ret
     }
 
     // Reads allowance from state directly

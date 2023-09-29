@@ -9,7 +9,6 @@ use fil_actors_runtime::test_utils::REWARD_ACTOR_CODE_ID;
 use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
 use fil_actors_runtime::REWARD_ACTOR_ADDR;
 use fil_actors_runtime::STORAGE_POWER_ACTOR_ADDR;
-use fvm_ipld_encoding::RawBytes;
 
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
@@ -18,7 +17,9 @@ use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
 
 mod util;
+
 use fil_actor_miner::testing::check_state_invariants;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use util::*;
 
 const PERIOD_OFFSET: ChainEpoch = 1808;
@@ -26,12 +27,12 @@ const PERIOD_OFFSET: ChainEpoch = 1808;
 #[test]
 fn funds_are_locked() {
     let h = ActorHarness::new(PERIOD_OFFSET);
-    let mut rt = h.new_runtime();
+    let rt = h.new_runtime();
     rt.set_balance(BIG_BALANCE.clone());
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
 
     let rwd = TokenAmount::from_atto(1_000_000);
-    h.apply_rewards(&mut rt, rwd, TokenAmount::zero());
+    h.apply_rewards(&rt, rwd, TokenAmount::zero());
 
     let expected = TokenAmount::from_atto(750_000);
     assert_eq!(expected, h.get_locked_funds(&rt));
@@ -40,9 +41,9 @@ fn funds_are_locked() {
 #[test]
 fn funds_vest() {
     let h = ActorHarness::new(PERIOD_OFFSET);
-    let mut rt = h.new_runtime();
+    let rt = h.new_runtime();
     rt.set_balance(BIG_BALANCE.clone());
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
     let st = h.get_state(&rt);
 
     let vesting_funds = st.load_vesting_funds(&rt.store).unwrap();
@@ -53,7 +54,7 @@ fn funds_vest() {
 
     // Lock some funds with AddLockedFund
     let amt = TokenAmount::from_atto(600_000);
-    h.apply_rewards(&mut rt, amt.clone(), TokenAmount::zero());
+    h.apply_rewards(&rt, amt.clone(), TokenAmount::zero());
     let st = h.get_state(&rt);
     let vesting_funds = st.load_vesting_funds(&rt.store).unwrap();
 
@@ -62,7 +63,7 @@ fn funds_vest() {
     // Vested FIL pays out on epochs with expected offset
     let quant_spec = QuantSpec { unit: REWARD_VESTING_SPEC.quantization, offset: PERIOD_OFFSET };
 
-    let curr_epoch = rt.epoch;
+    let curr_epoch = *rt.epoch.borrow();
     for (i, vf) in vesting_funds.funds.iter().enumerate() {
         let step =
             REWARD_VESTING_SPEC.initial_delay + (i as i64 + 1) * REWARD_VESTING_SPEC.step_duration;
@@ -87,14 +88,14 @@ fn funds_vest() {
 #[test]
 fn penalty_is_burnt() {
     let h = ActorHarness::new(PERIOD_OFFSET);
-    let mut rt = h.new_runtime();
+    let rt = h.new_runtime();
     rt.set_balance(BIG_BALANCE.clone());
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
 
     let rwd = TokenAmount::from_atto(600_000);
     let penalty = TokenAmount::from_atto(300_000);
     rt.add_balance(rwd.clone());
-    h.apply_rewards(&mut rt, rwd.clone(), penalty.clone());
+    h.apply_rewards(&rt, rwd.clone(), penalty.clone());
 
     let (mut expected_lock_amt, _) = locked_reward_from_reward(rwd);
     expected_lock_amt -= penalty;
@@ -109,9 +110,9 @@ fn penalty_is_burnt() {
 #[test]
 fn penalty_is_partially_burnt_and_stored_as_fee_debt() {
     let h = ActorHarness::new(PERIOD_OFFSET);
-    let mut rt = h.new_runtime();
+    let rt = h.new_runtime();
     rt.set_balance(BIG_BALANCE.clone());
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
     let st = h.get_state(&rt);
     assert!(st.fee_debt.is_zero());
 
@@ -132,17 +133,18 @@ fn penalty_is_partially_burnt_and_stored_as_fee_debt() {
 
     // burn initial balance + reward = 2*amt
     let expect_burnt = 2 * &amt;
-    rt.expect_send(
+    rt.expect_send_simple(
         BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
-        RawBytes::default(),
+        None,
         expect_burnt,
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
 
     let params = ApplyRewardParams { reward, penalty };
-    rt.call::<Actor>(Method::ApplyRewards as u64, &RawBytes::serialize(params).unwrap()).unwrap();
+    rt.call::<Actor>(Method::ApplyRewards as u64, IpldBlock::serialize_cbor(&params).unwrap())
+        .unwrap();
     rt.verify();
 
     let st = h.get_state(&rt);
@@ -157,19 +159,20 @@ fn penalty_is_partially_burnt_and_stored_as_fee_debt() {
 #[test]
 fn rewards_pay_back_fee_debt() {
     let h = ActorHarness::new(PERIOD_OFFSET);
-    let mut rt = h.new_runtime();
+    let rt = h.new_runtime();
     rt.set_balance(BIG_BALANCE.clone());
-    h.construct_and_verify(&mut rt);
+    h.construct_and_verify(&rt);
     let mut st = h.get_state(&rt);
 
     assert!(st.locked_funds.is_zero());
 
     let amt = rt.get_balance();
-    let available_before = st.get_available_balance(&amt).unwrap();
+    let available_before = h.get_available_balance(&rt).unwrap();
     assert!(available_before.is_positive());
     let init_fee_debt: TokenAmount = 2 * &amt; // FeeDebt twice total balance
     st.fee_debt = init_fee_debt.clone();
-    let available_after = st.get_available_balance(&amt).unwrap();
+    rt.replace_state(&st);
+    let available_after = h.get_available_balance(&rt).unwrap();
     assert!(available_after.is_negative());
 
     rt.replace_state(&st);
@@ -178,47 +181,45 @@ fn rewards_pay_back_fee_debt() {
     let penalty = TokenAmount::zero();
     // manually update actor balance to include the added funds from outside
     let new_balance = &amt + &reward;
-    rt.set_balance(new_balance.clone());
+    rt.set_balance(new_balance);
 
     // pledge change is new reward - reward taken for fee debt
     // 3*LockedRewardFactor*amt - 2*amt = remainingLocked
     let (locked_reward, _) = locked_reward_from_reward(reward.clone());
     let remaining_locked = locked_reward - &st.fee_debt; // note that this would be clamped at 0 if difference above is < 0
     assert!(remaining_locked.is_positive());
-    let pledge_delta = remaining_locked.clone();
+    let pledge_delta = &remaining_locked;
     rt.set_caller(*REWARD_ACTOR_CODE_ID, REWARD_ACTOR_ADDR);
     rt.expect_validate_caller_addr(vec![REWARD_ACTOR_ADDR]);
     // expect pledge update
-    rt.expect_send(
+    rt.expect_send_simple(
         STORAGE_POWER_ACTOR_ADDR,
         PowerMethod::UpdatePledgeTotal as u64,
-        RawBytes::serialize(&pledge_delta).unwrap(),
+        IpldBlock::serialize_cbor(pledge_delta).unwrap(),
         TokenAmount::zero(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
 
     let expect_burnt = st.fee_debt;
-    rt.expect_send(
+    rt.expect_send_simple(
         BURNT_FUNDS_ACTOR_ADDR,
         METHOD_SEND,
-        RawBytes::default(),
-        expect_burnt.clone(),
-        RawBytes::default(),
+        None,
+        expect_burnt,
+        None,
         ExitCode::OK,
     );
 
     let params = ApplyRewardParams { reward: reward.clone(), penalty };
-    rt.call::<Actor>(Method::ApplyRewards as u64, &RawBytes::serialize(params).unwrap()).unwrap();
+    rt.call::<Actor>(Method::ApplyRewards as u64, IpldBlock::serialize_cbor(&params).unwrap())
+        .unwrap();
     rt.verify();
-
-    // Set balance to deduct fee
-    let final_balance = &new_balance - &expect_burnt;
 
     let st = h.get_state(&rt);
     // balance funds used to pay off fee debt
     // available balance should be 2
-    let available_balance = st.get_available_balance(&final_balance).unwrap();
+    let available_balance = h.get_available_balance(&rt).unwrap();
     assert_eq!(available_before + reward - init_fee_debt - &remaining_locked, available_balance);
     assert!(!st.fee_debt.is_positive());
     // remaining funds locked in vesting table

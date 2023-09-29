@@ -1,35 +1,36 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use builtin::HAMT_BIT_WIDTH;
 use cid::Cid;
 use fvm_ipld_amt::Amt;
 use fvm_ipld_blockstore::Blockstore;
+#[cfg(not(feature = "fil-actor"))]
+use fvm_ipld_hamt::Sha256;
 use fvm_ipld_hamt::{BytesKey, Error as HamtError, Hamt};
-use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 pub use fvm_shared::BLOCKS_PER_EPOCH as EXPECTED_LEADERS_PER_EPOCH;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use unsigned_varint::decode::Error as UVarintError;
+
+use builtin::HAMT_BIT_WIDTH;
+pub use dispatch::{dispatch, dispatch_default, WithCodec};
 pub use {fvm_ipld_amt, fvm_ipld_hamt};
+
+#[cfg(feature = "fil-actor")]
+use crate::runtime::hash_algorithm::FvmHashSha256;
+use crate::runtime::Runtime;
 
 pub use self::actor_error::*;
 pub use self::builtin::*;
 pub use self::util::*;
-use crate::runtime::Runtime;
-
-#[cfg(feature = "fil-actor")]
-use crate::runtime::hash_algorithm::FvmHashSha256;
-
-#[cfg(not(feature = "fil-actor"))]
-use fvm_ipld_hamt::Sha256;
 
 pub mod actor_error;
 pub mod builtin;
 pub mod runtime;
 pub mod util;
 
+mod dispatch;
 #[cfg(feature = "test_utils")]
 pub mod test_utils;
 
@@ -108,12 +109,6 @@ pub fn parse_uint_key(s: &[u8]) -> Result<u64, UVarintError> {
 
 pub trait Keyer {
     fn key(&self) -> BytesKey;
-}
-
-impl Keyer for Address {
-    fn key(&self) -> BytesKey {
-        self.to_bytes().into()
-    }
 }
 
 impl Keyer for u64 {

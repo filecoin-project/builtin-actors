@@ -1,10 +1,10 @@
 [package]
 name = "fil_actor_account"
 description = "Builtin account actor for Filecoin"
-version = "10.0.0-alpha.1"
+version = "12.0.0"
 license = "MIT OR Apache-2.0"
 authors = ["ChainSafe Systems <info@chainsafe.io>", "Protocol Labs", "Filecoin Core Devs"]
-edition = "2018"
+edition = "2021"
 keywords = ["filecoin", "web3", "wasm"]
 
 [lib]
@@ -13,18 +13,19 @@ keywords = ["filecoin", "web3", "wasm"]
 crate-type = ["cdylib", "lib"]
 
 [dependencies]
-fil_actors_runtime = { version = "10.0.0-alpha.1", path = "../../runtime" }
-frc42_dispatch = "1.0.0"
-fvm_shared = { version = "2.0.0-alpha.2", default-features = false }
-serde = { version = "1.0.136", features = ["derive"] }
-num-traits = "0.2.14"
-num-derive = "0.3.3"
-fvm_ipld_blockstore = "0.1.1"
-fvm_ipld_encoding = "0.2.2"
-anyhow = "1.0.65"
+fil_actors_runtime = { workspace = true }
+frc42_dispatch = { workspace = true }
+fvm_actor_utils = { workspace = true }
+fvm_shared = { workspace = true }
+serde = { workspace = true }
+num-traits = { workspace = true }
+num-derive = { workspace = true }
+fvm_ipld_blockstore = { workspace = true }
+fvm_ipld_encoding = { workspace = true }
+anyhow = { workspace = true }
 
 [dev-dependencies]
-fil_actors_runtime = { version = "10.0.0-alpha.1", path = "../../runtime", features = ["test_utils", "sector-default"] }
+fil_actors_runtime = { workspace = true, features = ["test_utils", "sector-default"] }
 
 [features]
 fil-actor = ["fil_actors_runtime/fil-actor"]

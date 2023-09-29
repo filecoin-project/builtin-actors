@@ -3,7 +3,7 @@ use crate::{
     SectorOnChainInfo, SectorPreCommitOnChainInfo, Sectors, State,
 };
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{parse_uint_key, Map, MessageAccumulator};
+use fil_actors_runtime::{parse_uint_key, Map, MessageAccumulator, DEFAULT_HAMT_CONFIG};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::CborStore;
@@ -87,6 +87,14 @@ pub fn check_state_invariants<BS: Blockstore>(
                 if !sector.deal_ids.is_empty() {
                     miner_summary.sectors_with_deals.insert(sector_number);
                 }
+                acc.require(
+                    sector.activation <= sector.power_base_epoch,
+                    format!("invalid power base for {sector_number}"),
+                );
+                acc.require(
+                    sector.power_base_epoch < sector.expiration,
+                    format!("power base epoch is not before the sector expiration {sector_number}"),
+                );
                 Ok(())
             });
 
@@ -106,7 +114,7 @@ pub fn check_state_invariants<BS: Blockstore>(
 
     match state.load_deadlines(store) {
         Ok(deadlines) => {
-            let ret = deadlines.for_each(policy, store, |deadline_index, deadline| {
+            let ret = deadlines.for_each(store, |deadline_index, deadline| {
                 let acc = acc.with_prefix(format!("deadline {deadline_index}: "));
                 let quant = state.quant_spec_for_deadline(policy, deadline_index);
                 let deadline_summary = check_deadline_state_invariants(
@@ -335,8 +343,11 @@ fn check_precommits<BS: Blockstore>(
 
     let mut precommit_total = TokenAmount::zero();
 
-    let precommited_sectors =
-        Map::<_, SectorPreCommitOnChainInfo>::load(&state.pre_committed_sectors, store);
+    let precommited_sectors = Map::<_, SectorPreCommitOnChainInfo>::load_with_config(
+        &state.pre_committed_sectors,
+        store,
+        DEFAULT_HAMT_CONFIG,
+    );
 
     match precommited_sectors {
         Ok(precommited_sectors) => {
@@ -368,7 +379,7 @@ fn check_precommits<BS: Blockstore>(
         }
     };
 
-    acc.require(state.pre_commit_deposits == precommit_total,format!("sum of pre-commit deposits {precommit_total} does not equal recorded pre-commit deposit {}", state.pre_commit_deposits));
+    acc.require(state.pre_commit_deposits == precommit_total, format!("sum of pre-commit deposits {precommit_total} does not equal recorded pre-commit deposit {}", state.pre_commit_deposits));
 }
 
 #[derive(Default)]
@@ -618,9 +629,6 @@ impl ExpirationQueueStateSummary {
         let ret = expiration_queue.amt.for_each(|epoch, expiration_set| {
             let epoch = epoch as i64;
             let acc = acc.with_prefix(format!("expiration epoch {epoch}: "));
-            let quant_up = quant.quantize_up(epoch);
-            acc.require(quant_up == epoch, format!("expiration queue key {epoch} is not quantized, expected {quant_up}"));
-
             expiration_epochs.push(epoch);
 
             let mut on_time_sectors_pledge = TokenAmount::zero();
@@ -632,8 +640,7 @@ impl ExpirationQueueStateSummary {
 
                 // check expiring sectors are still alive
                 if let Some(sector) = live_sectors.get(&sector_number) {
-                    let target = quant.quantize_up(sector.expiration);
-                    acc.require(epoch == target, format!("invalid expiration {epoch} for sector {sector_number}, expected {target}"));
+                    acc.require(epoch >= sector.expiration , format!("invalid expiration {epoch} for sector {sector_number}"));
                     on_time_sectors_pledge += sector.initial_pledge.clone();
                 } else {
                     acc.add(format!("on time expiration sector {sector_number} isn't live"));
@@ -836,7 +843,7 @@ pub fn check_deadline_state_invariants<BS: Blockstore>(
             );
 
             summary.expiration_epochs.iter().for_each(|&epoch| {
-                partitions_with_expirations.entry(epoch).or_insert(Vec::new()).push(index);
+                partitions_with_expirations.entry(epoch).or_default().push(index);
             });
 
             if summary.early_termination_count > 0 {

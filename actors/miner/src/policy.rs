@@ -50,7 +50,7 @@ pub fn is_sealed_sector(c: &Cid) -> bool {
 
 /// List of proof types which can be used when creating new miner actors
 pub fn can_pre_commit_seal_proof(policy: &Policy, proof: RegisteredSealProof) -> bool {
-    policy.valid_pre_commit_proof_type.contains(&proof)
+    policy.valid_pre_commit_proof_type.contains(proof)
 }
 
 /// Checks whether a seal proof type is supported for new miners and sectors.
@@ -68,8 +68,18 @@ pub fn max_prove_commit_duration(
     match proof {
         StackedDRG32GiBV1 | StackedDRG2KiBV1 | StackedDRG8MiBV1 | StackedDRG512MiBV1
         | StackedDRG64GiBV1 => Some(EPOCHS_IN_DAY + policy.pre_commit_challenge_delay),
-        StackedDRG32GiBV1P1 | StackedDRG64GiBV1P1 | StackedDRG512MiBV1P1 | StackedDRG8MiBV1P1
-        | StackedDRG2KiBV1P1 => Some(30 * EPOCHS_IN_DAY + policy.pre_commit_challenge_delay),
+        StackedDRG32GiBV1P1
+        | StackedDRG64GiBV1P1
+        | StackedDRG512MiBV1P1
+        | StackedDRG8MiBV1P1
+        | StackedDRG2KiBV1P1
+        | StackedDRG32GiBV1P1_Feat_SyntheticPoRep
+        | StackedDRG64GiBV1P1_Feat_SyntheticPoRep
+        | StackedDRG512MiBV1P1_Feat_SyntheticPoRep
+        | StackedDRG8MiBV1P1_Feat_SyntheticPoRep
+        | StackedDRG2KiBV1P1_Feat_SyntheticPoRep => {
+            Some(30 * EPOCHS_IN_DAY + policy.pre_commit_challenge_delay)
+        }
         _ => None,
     }
 }
@@ -81,8 +91,16 @@ pub fn seal_proof_sector_maximum_lifetime(proof: RegisteredSealProof) -> Option<
     match proof {
         StackedDRG32GiBV1 | StackedDRG2KiBV1 | StackedDRG8MiBV1 | StackedDRG512MiBV1
         | StackedDRG64GiBV1 => Some(EPOCHS_IN_DAY * 540),
-        StackedDRG32GiBV1P1 | StackedDRG2KiBV1P1 | StackedDRG8MiBV1P1 | StackedDRG512MiBV1P1
-        | StackedDRG64GiBV1P1 => Some(EPOCHS_IN_YEAR * 5),
+        StackedDRG32GiBV1P1
+        | StackedDRG2KiBV1P1
+        | StackedDRG8MiBV1P1
+        | StackedDRG512MiBV1P1
+        | StackedDRG64GiBV1P1
+        | StackedDRG32GiBV1P1_Feat_SyntheticPoRep
+        | StackedDRG2KiBV1P1_Feat_SyntheticPoRep
+        | StackedDRG8MiBV1P1_Feat_SyntheticPoRep
+        | StackedDRG512MiBV1P1_Feat_SyntheticPoRep
+        | StackedDRG64GiBV1P1_Feat_SyntheticPoRep => Some(EPOCHS_IN_YEAR * 5),
         _ => None,
     }
 }
@@ -138,7 +156,7 @@ pub fn qa_power_for_weight(
 
 /// Returns the quality-adjusted power for a sector.
 pub fn qa_power_for_sector(size: SectorSize, sector: &SectorOnChainInfo) -> StoragePower {
-    let duration = sector.expiration - sector.activation;
+    let duration = sector.expiration - sector.power_base_epoch;
     qa_power_for_weight(size, duration, &sector.deal_weight, &sector.verified_deal_weight)
 }
 

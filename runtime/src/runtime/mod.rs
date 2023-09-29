@@ -3,26 +3,25 @@
 
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_encoding::{Cbor, RawBytes};
+use fvm_ipld_encoding::CborStore;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::consensus::ConsensusFault;
-use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::RANDOMNESS_LENGTH;
 use fvm_shared::sector::{
-    AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
-    WindowPoStVerifyInfo,
+    AggregateSealVerifyProofAndInfos, ReplicaUpdateInfo, SealVerifyInfo, WindowPoStVerifyInfo,
 };
 use fvm_shared::version::NetworkVersion;
-use fvm_shared::{ActorID, MethodNum};
+use fvm_shared::{ActorID, MethodNum, Response};
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 
 pub use self::actor_code::*;
 pub use self::policy::*;
 pub use self::randomness::DomainSeparationTag;
 use crate::runtime::builtins::Type;
-use crate::ActorError;
+use crate::{actor_error, ActorError, SendError};
 
 mod actor_code;
 pub mod builtins;
@@ -37,7 +36,14 @@ pub mod fvm;
 pub(crate) mod hash_algorithm;
 
 pub(crate) mod empty;
+
+use cid::multihash::Code;
 pub use empty::EMPTY_ARR_CID;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
+use fvm_shared::chainid::ChainID;
+use fvm_shared::event::ActorEvent;
+use fvm_shared::sys::SendFlags;
+pub use vm_api::Primitives;
 
 /// Runtime is the VM's internal runtime object.
 /// this is everything that is accessible to actors, beyond parameters.
@@ -50,26 +56,47 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// Information related to the current message being executed.
     fn message(&self) -> &dyn MessageInfo;
 
-    /// The current chain epoch number. The genesis block has epoch zero.
+    /// The current chain epoch number, corresponding to the epoch in which the message is executed.
+    /// The genesis block has epoch zero.
     fn curr_epoch(&self) -> ChainEpoch;
+
+    /// The ID for this chain.
+    /// Filecoin chain IDs are usually in the Ethereum namespace, see: https://github.com/ethereum-lists/chains.
+    fn chain_id(&self) -> ChainID;
 
     /// Validates the caller against some predicate.
     /// Exported actor methods must invoke at least one caller validation before returning.
-    fn validate_immediate_caller_accept_any(&mut self) -> Result<(), ActorError>;
-    fn validate_immediate_caller_is<'a, I>(&mut self, addresses: I) -> Result<(), ActorError>
+    fn validate_immediate_caller_accept_any(&self) -> Result<(), ActorError>;
+    fn validate_immediate_caller_is<'a, I>(&self, addresses: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Address>;
-    fn validate_immediate_caller_type<'a, I>(&mut self, types: I) -> Result<(), ActorError>
+    /// Validates that the caller has a delegated address that is a member of
+    /// one of the provided namespaces.
+    /// Addresses must be of Protocol ID.
+    fn validate_immediate_caller_namespace<I>(
+        &self,
+        namespace_manager_addresses: I,
+    ) -> Result<(), ActorError>
+    where
+        I: IntoIterator<Item = u64>;
+    fn validate_immediate_caller_type<'a, I>(&self, types: I) -> Result<(), ActorError>
     where
         I: IntoIterator<Item = &'a Type>;
 
     /// The balance of the receiver.
     fn current_balance(&self) -> TokenAmount;
 
+    /// The balance of an actor.
+    fn actor_balance(&self, id: ActorID) -> Option<TokenAmount>;
+
     /// Resolves an address of any protocol to an ID address (via the Init actor's table).
     /// This allows resolution of externally-provided SECP, BLS, or actor addresses to the canonical form.
     /// If the argument is an ID address it is returned directly.
     fn resolve_address(&self, address: &Address) -> Option<ActorID>;
+
+    /// Looks up the "delegated" address of an actor by ID, if any. Returns None if either the
+    /// target actor doesn't exist, or doesn't have an f4 address.
+    fn lookup_delegated_address(&self, id: ActorID) -> Option<Address>;
 
     /// Look up the code ID at an actor address.
     fn get_actor_code_cid(&self, id: &ActorID) -> Option<Cid>;
@@ -97,10 +124,33 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// Initializes the state object.
     /// This is only valid when the state has not yet been initialized.
     /// NOTE: we should also limit this to being invoked during the constructor method
-    fn create<C: Cbor>(&mut self, obj: &C) -> Result<(), ActorError>;
+    fn create<T: Serialize>(&self, obj: &T) -> Result<(), ActorError> {
+        let root = self.get_state_root()?;
+        if root != EMPTY_ARR_CID {
+            return Err(
+                actor_error!(illegal_state; "failed to create state; expected empty array CID, got: {}", root),
+            );
+        }
+        let new_root = self.store().put_cbor(obj, Code::Blake2b256)
+            .map_err(|e| actor_error!(illegal_argument; "failed to write actor state during creation: {}", e.to_string()))?;
+        self.set_state_root(&new_root)?;
+        Ok(())
+    }
 
     /// Loads a readonly copy of the state of the receiver into the argument.
-    fn state<C: Cbor>(&self) -> Result<C, ActorError>;
+    fn state<T: DeserializeOwned>(&self) -> Result<T, ActorError> {
+        Ok(self
+            .store()
+            .get_cbor(&self.get_state_root()?)
+            .map_err(|_| actor_error!(illegal_argument; "failed to get actor for Readonly state"))?
+            .expect("State does not exist for actor state root"))
+    }
+
+    /// Gets the state-root.
+    fn get_state_root(&self) -> Result<Cid, ActorError>;
+
+    /// Sets the state-root.
+    fn set_state_root(&self, root: &Cid) -> Result<(), ActorError>;
 
     /// Loads a mutable copy of the state of the receiver, passes it to `f`,
     /// and after `f` completes puts the state object back to the store and sets it as
@@ -109,10 +159,10 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// During the call to `f`, execution is protected from side-effects, (including message send).
     ///
     /// Returns the result of `f`.
-    fn transaction<C, RT, F>(&mut self, f: F) -> Result<RT, ActorError>
+    fn transaction<S, RT, F>(&self, f: F) -> Result<RT, ActorError>
     where
-        C: Cbor,
-        F: FnOnce(&mut C, &mut Self) -> Result<RT, ActorError>;
+        S: Serialize + DeserializeOwned,
+        F: FnOnce(&mut S, &Self) -> Result<RT, ActorError>;
 
     /// Returns reference to blockstore
     fn store(&self) -> &Self::Blockstore;
@@ -120,31 +170,46 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
     /// Sends a message to another actor, returning the exit code and return value envelope.
     /// If the invoked method does not return successfully, its state changes
     /// (and that of any messages it sent in turn) will be rolled back.
-    /// Note that the current return type cannot distinguish between a successful invocation
-    /// that returns an error code, and an error originating from the syscall prior to
-    /// invoking the target actor/method.
     fn send(
         &self,
         to: &Address,
         method: MethodNum,
-        params: RawBytes,
+        params: Option<IpldBlock>,
         value: TokenAmount,
-    ) -> Result<RawBytes, ActorError>;
+        gas_limit: Option<u64>,
+        flags: SendFlags,
+    ) -> Result<Response, SendError>;
+
+    /// Simplified version of [`Runtime::send`] that does not specify a gas limit, nor any send flags.
+    fn send_simple(
+        &self,
+        to: &Address,
+        method: MethodNum,
+        params: Option<IpldBlock>,
+        value: TokenAmount,
+    ) -> Result<Response, SendError> {
+        self.send(to, method, params, value, None, SendFlags::empty())
+    }
 
     /// Computes an address for a new actor. The returned address is intended to uniquely refer to
     /// the actor even in the event of a chain re-org (whereas an ID-address might refer to a
     /// different actor after messages are re-ordered).
     /// Always an ActorExec address.
-    fn new_actor_address(&mut self) -> Result<Address, ActorError>;
+    fn new_actor_address(&self) -> Result<Address, ActorError>;
 
-    /// Creates an actor with code `codeID` and address `address`, with empty state.
+    /// Creates an actor with code `codeID`, an empty state, id `actor_id`, and an optional predictable address.
     /// May only be called by Init actor.
-    fn create_actor(&mut self, code_id: Cid, address: ActorID) -> Result<(), ActorError>;
+    fn create_actor(
+        &self,
+        code_id: Cid,
+        actor_id: ActorID,
+        predictable_address: Option<Address>,
+    ) -> Result<(), ActorError>;
 
     /// Deletes the executing actor from the state tree, transferring any balance to beneficiary.
     /// Aborts if the beneficiary does not exist.
     /// May only be called by the actor itself.
-    fn delete_actor(&mut self, beneficiary: &Address) -> Result<(), ActorError>;
+    fn delete_actor(&self, beneficiary: &Address) -> Result<(), ActorError>;
 
     /// Returns whether the specified CodeCID belongs to a built-in actor.
     fn resolve_builtin_actor_type(&self, code_id: &Cid) -> Option<Type>;
@@ -165,15 +230,39 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
 
     /// ChargeGas charges specified amount of `gas` for execution.
     /// `name` provides information about gas charging point
-    fn charge_gas(&mut self, name: &'static str, compute: i64);
+    fn charge_gas(&self, name: &'static str, compute: i64);
 
+    /// Returns the gas base fee (cost per unit) for the current epoch.
     fn base_fee(&self) -> TokenAmount;
+
+    /// The gas still available for computation
+    fn gas_available(&self) -> u64;
+
+    /// The timestamp of the tipset at the current epoch (see curr_epoch), as UNIX seconds.
+    fn tipset_timestamp(&self) -> u64;
+
+    /// The CID of the tipset at the specified epoch.
+    /// The epoch must satisfy: (curr_epoch - FINALITY) < epoch <= curr_epoch
+    fn tipset_cid(&self, epoch: i64) -> Result<Cid, ActorError>;
+
+    /// Emits an event denoting that something externally noteworthy has ocurred.
+    fn emit_event(&self, event: &ActorEvent) -> Result<(), ActorError>;
+
+    /// Returns true if the call is read_only.
+    /// All state updates, including actor creation and balance transfers, are rejected in read_only calls.
+    fn read_only(&self) -> bool;
 }
 
 /// Message information available to the actor about executing message.
 pub trait MessageInfo {
+    /// The nonce of the currently executing message.
+    fn nonce(&self) -> u64;
+
     /// The address of the immediate calling actor. Always an ID-address.
     fn caller(&self) -> Address;
+
+    /// The address of the origin of the current invocation. Always an ID-address
+    fn origin(&self) -> Address;
 
     /// The address of the actor receiving the message. Always an ID-address.
     fn receiver(&self) -> Address;
@@ -181,34 +270,13 @@ pub trait MessageInfo {
     /// The value attached to the message being processed, implicitly
     /// added to current_balance() before method invocation.
     fn value_received(&self) -> TokenAmount;
-}
 
-/// Pure functions implemented as primitives by the runtime.
-pub trait Primitives {
-    /// Hashes input data using blake2b with 256 bit output.
-    fn hash_blake2b(&self, data: &[u8]) -> [u8; 32];
-
-    /// Computes an unsealed sector CID (CommD) from its constituent piece CIDs (CommPs) and sizes.
-    fn compute_unsealed_sector_cid(
-        &self,
-        proof_type: RegisteredSealProof,
-        pieces: &[PieceInfo],
-    ) -> Result<Cid, anyhow::Error>;
-
-    /// Verifies that a signature is valid for an address and plaintext.
-    fn verify_signature(
-        &self,
-        signature: &Signature,
-        signer: &Address,
-        plaintext: &[u8],
-    ) -> Result<(), anyhow::Error>;
+    /// The message gas premium
+    fn gas_premium(&self) -> TokenAmount;
 }
 
 /// filcrypto verification primitives provided by the runtime
 pub trait Verifier {
-    /// Verifies a sector seal proof.
-    fn verify_seal(&self, vi: &SealVerifyInfo) -> Result<(), anyhow::Error>;
-
     /// Verifies a window proof of spacetime.
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), anyhow::Error>;
 

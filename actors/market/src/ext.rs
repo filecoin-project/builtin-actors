@@ -1,4 +1,4 @@
-use fvm_ipld_encoding::serde_bytes;
+use fvm_ipld_encoding::strict_bytes;
 use fvm_ipld_encoding::tuple::*;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
@@ -10,13 +10,14 @@ use fvm_shared::smooth::FilterEstimate;
 pub mod account {
     use super::*;
 
-    pub const AUTHENTICATE_MESSAGE_METHOD: u64 = 3;
+    pub const AUTHENTICATE_MESSAGE_METHOD: u64 =
+        frc42_dispatch::method_hash!("AuthenticateMessage");
 
     #[derive(Serialize_tuple, Deserialize_tuple)]
     pub struct AuthenticateMessageParams {
-        #[serde(with = "serde_bytes")]
+        #[serde(with = "strict_bytes")]
         pub signature: Vec<u8>,
-        #[serde(with = "serde_bytes")]
+        #[serde(with = "strict_bytes")]
         pub message: Vec<u8>,
     }
 }
@@ -25,12 +26,26 @@ pub mod miner {
     use super::*;
 
     pub const CONTROL_ADDRESSES_METHOD: u64 = 2;
+    pub const IS_CONTROLLING_ADDRESS_EXPORTED: u64 =
+        frc42_dispatch::method_hash!("IsControllingAddress");
 
     #[derive(Serialize_tuple, Deserialize_tuple)]
     pub struct GetControlAddressesReturnParams {
         pub owner: Address,
         pub worker: Address,
         pub control_addresses: Vec<Address>,
+    }
+
+    #[derive(Serialize_tuple, Deserialize_tuple)]
+    #[serde(transparent)]
+    pub struct IsControllingAddressReturn {
+        pub is_controlling: bool,
+    }
+
+    #[derive(Serialize_tuple, Deserialize_tuple)]
+    #[serde(transparent)]
+    pub struct IsControllingAddressParam {
+        pub address: Address,
     }
 }
 
@@ -40,13 +55,14 @@ pub mod verifreg {
     use fil_actors_runtime::BatchReturn;
     use fvm_shared::clock::ChainEpoch;
     use fvm_shared::piece::PaddedPieceSize;
+    use fvm_shared::ActorID;
 
     pub type AllocationID = u64;
     pub type ClaimID = u64;
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
     pub struct AllocationRequest {
-        pub provider: Address,
+        pub provider: ActorID,
         pub data: Cid,
         pub size: PaddedPieceSize,
         pub term_min: ChainEpoch,
@@ -56,7 +72,7 @@ pub mod verifreg {
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
     pub struct ClaimExtensionRequest {
-        pub provider: Address,
+        pub provider: ActorID,
         pub claim: ClaimID,
         pub term_max: ChainEpoch,
     }
@@ -79,7 +95,8 @@ pub mod verifreg {
 }
 
 pub mod datacap {
-    pub const TRANSFER_FROM_METHOD: u64 = 15;
+    pub const BALANCE_OF_METHOD: u64 = frc42_dispatch::method_hash!("Balance");
+    pub const TRANSFER_FROM_METHOD: u64 = frc42_dispatch::method_hash!("TransferFrom");
 }
 
 pub mod reward {

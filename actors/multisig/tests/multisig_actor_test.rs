@@ -6,24 +6,46 @@ use fil_actor_multisig::{
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::{CALLER_TYPES_SIGNABLE, INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
+use fil_actors_runtime::FIRST_EXPORTED_METHOD_NUMBER;
+use fil_actors_runtime::{INIT_ACTOR_ADDR, SYSTEM_ACTOR_ADDR};
+use fvm_actor_utils::receiver::UniversalReceiverParams;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::RawBytes;
+use fvm_ipld_encoding::{RawBytes, CBOR};
 use fvm_shared::address::{Address, BLS_PUB_LEN};
-
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::{MethodNum, METHOD_SEND};
+use std::cell::RefCell;
+use std::collections::HashMap;
 
 mod util;
 
+const TEST_MSIG_ADDR: u64 = 100;
+const TEST_ANNE_ADDR: u64 = 101;
+const TEST_BOB_ADDR: u64 = 102;
+const TEST_CHUCK_ADDR: u64 = 103;
+const TEST_DARLENE_ADDR: u64 = 104;
+
 fn construct_runtime(receiver: Address) -> MockRuntime {
+    let test_msig_addr = Address::new_id(TEST_MSIG_ADDR);
+    let test_anne_addr = Address::new_id(TEST_ANNE_ADDR);
+    let test_bob_addr = Address::new_id(TEST_BOB_ADDR);
+    let test_chuck_addr = Address::new_id(TEST_CHUCK_ADDR);
+    let test_darlene_addr = Address::new_id(TEST_DARLENE_ADDR);
+    let mut actor_code_cids = HashMap::default();
+    actor_code_cids.insert(test_msig_addr, *ACCOUNT_ACTOR_CODE_ID);
+    actor_code_cids.insert(test_anne_addr, *ACCOUNT_ACTOR_CODE_ID);
+    actor_code_cids.insert(test_bob_addr, *ACCOUNT_ACTOR_CODE_ID);
+    actor_code_cids.insert(test_chuck_addr, *ACCOUNT_ACTOR_CODE_ID);
+    actor_code_cids.insert(test_darlene_addr, *ACCOUNT_ACTOR_CODE_ID);
     MockRuntime {
         receiver,
-        caller: SYSTEM_ACTOR_ADDR,
-        caller_type: *SYSTEM_ACTOR_CODE_ID,
+        caller: RefCell::new(SYSTEM_ACTOR_ADDR),
+        caller_type: RefCell::new(*SYSTEM_ACTOR_CODE_ID),
+        actor_code_cids: RefCell::new(actor_code_cids),
         ..Default::default()
     }
 }
@@ -37,6 +59,7 @@ fn check_state(rt: &MockRuntime) {
 #[cfg(test)]
 mod constructor_tests {
     use super::*;
+    use fvm_ipld_encoding::ipld_block::IpldBlock;
 
     const MSIG: Address = Address::new_id(1000);
     const ANNE: Address = Address::new_id(101);
@@ -45,7 +68,7 @@ mod constructor_tests {
 
     #[test]
     fn test_simple_construction() {
-        let mut rt = construct_runtime(MSIG);
+        let rt = construct_runtime(MSIG);
         let h = util::ActorHarness::new();
         let params = ConstructorParams {
             signers: vec![ANNE, BOB, CHARLIE],
@@ -59,9 +82,9 @@ mod constructor_tests {
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
         let ret = rt.call::<MultisigActor>(
             Method::Constructor as u64,
-            &RawBytes::serialize(&params).unwrap(),
+            IpldBlock::serialize_cbor(&params).unwrap(),
         );
-        assert_eq!(RawBytes::default(), ret.unwrap());
+        assert!(ret.unwrap().is_none());
         rt.verify();
 
         let st: State = rt.get_state();
@@ -80,10 +103,10 @@ mod constructor_tests {
         let bob_non_id = Address::new_bls(&[2u8; BLS_PUB_LEN]).unwrap();
         let charlie_non_id = Address::new_bls(&[3u8; BLS_PUB_LEN]).unwrap();
 
-        let mut rt = construct_runtime(MSIG);
-        rt.id_addresses.insert(anne_non_id, ANNE);
-        rt.id_addresses.insert(bob_non_id, BOB);
-        rt.id_addresses.insert(charlie_non_id, CHARLIE);
+        let rt = construct_runtime(MSIG);
+        rt.id_addresses.borrow_mut().insert(anne_non_id, ANNE);
+        rt.id_addresses.borrow_mut().insert(bob_non_id, BOB);
+        rt.id_addresses.borrow_mut().insert(charlie_non_id, CHARLIE);
         let params = ConstructorParams {
             signers: vec![anne_non_id, bob_non_id, charlie_non_id],
             num_approvals_threshold: 2,
@@ -96,16 +119,16 @@ mod constructor_tests {
         let ret = rt
             .call::<MultisigActor>(
                 Method::Constructor as u64,
-                &RawBytes::serialize(&params).unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             )
             .unwrap();
-        assert_eq!(ret, RawBytes::default());
+        assert!(ret.is_none());
         check_state(&rt);
     }
 
     #[test]
     fn test_construction_with_vesting() {
-        let mut rt = construct_runtime(MSIG);
+        let rt = construct_runtime(MSIG);
         let h = util::ActorHarness::new();
         rt.set_epoch(1234);
         let params = ConstructorParams {
@@ -116,14 +139,13 @@ mod constructor_tests {
         };
         rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
-        assert_eq!(
-            RawBytes::default(),
-            rt.call::<MultisigActor>(
+        assert!(rt
+            .call::<MultisigActor>(
                 Method::Constructor as u64,
-                &RawBytes::serialize(&params).unwrap()
+                IpldBlock::serialize_cbor(&params).unwrap(),
             )
             .unwrap()
-        );
+            .is_none());
 
         let st: State = rt.get_state();
         assert_eq!(params.signers, st.signers);
@@ -137,7 +159,7 @@ mod constructor_tests {
 
     #[test]
     fn test_construction_fail_to_construct_multisig_actor_with_0_signers() {
-        let mut rt = construct_runtime(MSIG);
+        let rt = construct_runtime(MSIG);
         let zero_signer_params = ConstructorParams {
             signers: Vec::new(),
             num_approvals_threshold: 1,
@@ -151,7 +173,7 @@ mod constructor_tests {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<MultisigActor>(
                 Method::Constructor as u64,
-                &RawBytes::serialize(&zero_signer_params).unwrap(),
+                IpldBlock::serialize_cbor(&zero_signer_params).unwrap(),
             ),
         );
         rt.verify();
@@ -159,7 +181,7 @@ mod constructor_tests {
 
     #[test]
     fn test_construction_fail_to_construct_multisig_with_more_than_max_signers() {
-        let mut rt = construct_runtime(MSIG);
+        let rt = construct_runtime(MSIG);
         let mut signers = Vec::new();
         let mut i: u64 = 0;
         while i <= SIGNERS_MAX as u64 {
@@ -178,7 +200,7 @@ mod constructor_tests {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<MultisigActor>(
                 Method::Constructor as u64,
-                &RawBytes::serialize(&over_max_signers_params).unwrap(),
+                IpldBlock::serialize_cbor(&over_max_signers_params).unwrap(),
             ),
         );
         rt.verify();
@@ -186,7 +208,7 @@ mod constructor_tests {
 
     #[test]
     fn fail_to_construct_multisig_with_more_approvals_than_signers() {
-        let mut rt = construct_runtime(MSIG);
+        let rt = construct_runtime(MSIG);
         let params = ConstructorParams {
             signers: vec![ANNE],
             num_approvals_threshold: 2,
@@ -199,7 +221,7 @@ mod constructor_tests {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<MultisigActor>(
                 Method::Constructor as u64,
-                &RawBytes::serialize(&params).unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             ),
         );
         rt.verify();
@@ -207,7 +229,7 @@ mod constructor_tests {
 
     #[test]
     fn fail_to_contruct_multisig_if_a_signer_is_not_resolvable_to_id_address() {
-        let mut rt = construct_runtime(MSIG);
+        let rt = construct_runtime(MSIG);
         let anne_non_id = Address::new_bls(&[1u8; BLS_PUB_LEN]).unwrap();
         // no mapping to ANNE added to runtime
         let params = ConstructorParams {
@@ -217,12 +239,12 @@ mod constructor_tests {
             start_epoch: 0,
         };
         rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
-        rt.expect_send(
+        rt.expect_send_simple(
             anne_non_id,
             METHOD_SEND,
-            RawBytes::default(),
+            None,
             TokenAmount::zero(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
         rt.set_caller(*INIT_ACTOR_CODE_ID, INIT_ACTOR_ADDR);
@@ -230,7 +252,7 @@ mod constructor_tests {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<MultisigActor>(
                 Method::Constructor as u64,
-                &RawBytes::serialize(&params).unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             ),
         );
         rt.verify();
@@ -238,7 +260,7 @@ mod constructor_tests {
 
     #[test]
     fn fail_to_construct_msig_with_duplicate_signers_all_id() {
-        let mut rt = construct_runtime(MSIG);
+        let rt = construct_runtime(MSIG);
         let params = ConstructorParams {
             signers: vec![ANNE, BOB, BOB],
             num_approvals_threshold: 2,
@@ -251,7 +273,7 @@ mod constructor_tests {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<MultisigActor>(
                 Method::Constructor as u64,
-                &RawBytes::serialize(&params).unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             ),
         );
         rt.verify();
@@ -260,8 +282,8 @@ mod constructor_tests {
     #[test]
     fn fail_to_construct_msig_with_duplicate_signers_id_and_non_id() {
         let bob_non_id = Address::new_bls(&[2u8; BLS_PUB_LEN]).unwrap();
-        let mut rt = construct_runtime(MSIG);
-        rt.id_addresses.insert(bob_non_id, BOB);
+        let rt = construct_runtime(MSIG);
+        rt.id_addresses.borrow_mut().insert(bob_non_id, BOB);
         let params = ConstructorParams {
             signers: vec![ANNE, bob_non_id, BOB],
             num_approvals_threshold: 2,
@@ -274,7 +296,7 @@ mod constructor_tests {
             ExitCode::USR_ILLEGAL_ARGUMENT,
             rt.call::<MultisigActor>(
                 Method::Constructor as u64,
-                &RawBytes::serialize(&params).unwrap(),
+                IpldBlock::serialize_cbor(&params).unwrap(),
             ),
         );
         rt.verify();
@@ -301,18 +323,18 @@ mod vesting_tests {
 
     #[test]
     fn happy_path_full_vesting() {
-        let mut rt = construct_runtime(MSIG);
+        let rt = construct_runtime(MSIG);
         let h = util::ActorHarness::new();
 
         rt.set_balance(MSIG_INITIAL_BALANCE.clone());
         rt.set_received(MSIG_INITIAL_BALANCE.clone());
-        h.construct_and_verify(&mut rt, 2, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
+        h.construct_and_verify(&rt, 2, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
         rt.set_received(TokenAmount::zero());
 
         // anne proposes that darlene receive inital balance
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ANNE);
         let proposal_hash = h.propose_ok(
-            &mut rt,
+            &rt,
             DARLENE,
             MSIG_INITIAL_BALANCE.clone(),
             METHOD_SEND,
@@ -321,20 +343,20 @@ mod vesting_tests {
 
         // bob approves anne's tx too soon
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, BOB);
-        expect_abort(ExitCode::USR_INSUFFICIENT_FUNDS, h.approve(&mut rt, TxnID(0), proposal_hash));
+        expect_abort(ExitCode::USR_INSUFFICIENT_FUNDS, h.approve(&rt, TxnID(0), proposal_hash));
         rt.reset();
 
         // advance the epoch s.t. all funds are unlocked
         rt.set_epoch(START_EPOCH + UNLOCK_DURATION);
-        rt.expect_send(
+        rt.expect_send_simple(
             DARLENE,
             METHOD_SEND,
-            RawBytes::default(),
+            None,
             MSIG_INITIAL_BALANCE.clone(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
-        assert_eq!(RawBytes::default(), h.approve_ok(&mut rt, TxnID(0), proposal_hash));
+        assert_eq!(RawBytes::default(), h.approve_ok(&rt, TxnID(0), proposal_hash));
 
         check_state(&rt);
     }
@@ -342,17 +364,17 @@ mod vesting_tests {
     #[test]
     fn partial_vesting_propose_to_send_half_the_actor_balance_when_the_epoch_is_half_the_unlock_duration(
     ) {
-        let mut rt = construct_runtime(MSIG);
+        let rt = construct_runtime(MSIG);
         let h = util::ActorHarness::new();
 
         rt.set_balance(MSIG_INITIAL_BALANCE.clone());
         rt.set_received(MSIG_INITIAL_BALANCE.clone());
-        h.construct_and_verify(&mut rt, 2, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
+        h.construct_and_verify(&rt, 2, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
         rt.set_received(TokenAmount::zero());
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ANNE);
         let proposal_hash = h.propose_ok(
-            &mut rt,
+            &rt,
             DARLENE,
             MSIG_INITIAL_BALANCE.div_floor(2),
             METHOD_SEND,
@@ -360,69 +382,56 @@ mod vesting_tests {
         );
         rt.set_epoch(START_EPOCH + UNLOCK_DURATION / 2);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, BOB);
-        rt.expect_send(
+        rt.expect_send_simple(
             DARLENE,
             METHOD_SEND,
-            RawBytes::default(),
+            None,
             MSIG_INITIAL_BALANCE.div_floor(2),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
-        h.approve_ok(&mut rt, TxnID(0), proposal_hash);
+        h.approve_ok(&rt, TxnID(0), proposal_hash);
 
         check_state(&rt);
     }
 
     #[test]
     fn propose_and_autoapprove_tx_above_locked_amount_fails() {
-        let mut rt = construct_runtime(MSIG);
+        let rt = construct_runtime(MSIG);
         let h = util::ActorHarness::new();
 
         rt.set_balance(MSIG_INITIAL_BALANCE.clone());
         rt.set_received(MSIG_INITIAL_BALANCE.clone());
-        h.construct_and_verify(&mut rt, 1, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
+        h.construct_and_verify(&rt, 1, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
         rt.set_received(TokenAmount::zero());
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ANNE);
         expect_abort(
             ExitCode::USR_INSUFFICIENT_FUNDS,
-            h.propose(
-                &mut rt,
-                DARLENE,
-                MSIG_INITIAL_BALANCE.clone(),
-                METHOD_SEND,
-                RawBytes::default(),
-            ),
+            h.propose(&rt, DARLENE, MSIG_INITIAL_BALANCE.clone(), METHOD_SEND, RawBytes::default()),
         );
         rt.reset();
         rt.set_epoch(START_EPOCH + UNLOCK_DURATION / 10);
         let amount_out = MSIG_INITIAL_BALANCE.div_floor(10);
-        rt.expect_send(
-            DARLENE,
-            METHOD_SEND,
-            RawBytes::default(),
-            amount_out.clone(),
-            RawBytes::default(),
-            ExitCode::OK,
-        );
-        h.propose_ok(&mut rt, DARLENE, amount_out, METHOD_SEND, RawBytes::default());
+        rt.expect_send_simple(DARLENE, METHOD_SEND, None, amount_out.clone(), None, ExitCode::OK);
+        h.propose_ok(&rt, DARLENE, amount_out, METHOD_SEND, RawBytes::default());
 
         check_state(&rt);
     }
 
     #[test]
     fn fail_to_vest_more_than_locked_amount() {
-        let mut rt = construct_runtime(MSIG);
+        let rt = construct_runtime(MSIG);
         let h = util::ActorHarness::new();
 
         rt.set_balance(MSIG_INITIAL_BALANCE.clone());
         rt.set_received(MSIG_INITIAL_BALANCE.clone());
-        h.construct_and_verify(&mut rt, 2, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
+        h.construct_and_verify(&rt, 2, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
         rt.set_received(TokenAmount::zero());
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ANNE);
         let proposal_hash = h.propose_ok(
-            &mut rt,
+            &rt,
             DARLENE,
             MSIG_INITIAL_BALANCE.div_floor(2),
             METHOD_SEND,
@@ -430,27 +439,27 @@ mod vesting_tests {
         );
         rt.set_epoch(START_EPOCH + UNLOCK_DURATION / 10);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, BOB);
-        expect_abort(ExitCode::USR_INSUFFICIENT_FUNDS, h.approve(&mut rt, TxnID(0), proposal_hash));
+        expect_abort(ExitCode::USR_INSUFFICIENT_FUNDS, h.approve(&rt, TxnID(0), proposal_hash));
         check_state(&rt);
     }
 
     #[test]
     fn avoid_truncating_division() {
-        let mut rt = construct_runtime(MSIG);
+        let rt = construct_runtime(MSIG);
         let h = util::ActorHarness::new();
 
         let locked_balance = TokenAmount::from_atto(UNLOCK_DURATION - 1); // balance < duration
         let one = TokenAmount::from_atto(1u8);
         rt.set_balance(locked_balance.clone());
         rt.set_received(locked_balance.clone());
-        h.construct_and_verify(&mut rt, 1, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
+        h.construct_and_verify(&rt, 1, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
         rt.set_received(TokenAmount::zero());
 
         // expect nothing vested yet
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ANNE);
         expect_abort(
             ExitCode::USR_INSUFFICIENT_FUNDS,
-            h.propose(&mut rt, ANNE, one.clone(), METHOD_SEND, RawBytes::default()),
+            h.propose(&rt, ANNE, one.clone(), METHOD_SEND, RawBytes::default()),
         );
         rt.reset();
 
@@ -458,112 +467,83 @@ mod vesting_tests {
         rt.set_epoch(START_EPOCH + 1);
         expect_abort(
             ExitCode::USR_INSUFFICIENT_FUNDS,
-            h.propose(&mut rt, ANNE, one.clone(), METHOD_SEND, RawBytes::default()),
+            h.propose(&rt, ANNE, one.clone(), METHOD_SEND, RawBytes::default()),
         );
         rt.reset();
 
         // expect 1 unit available after 2 epochs
         rt.set_epoch(START_EPOCH + 2);
-        rt.expect_send(
-            ANNE,
-            METHOD_SEND,
-            RawBytes::default(),
-            one.clone(),
-            RawBytes::default(),
-            ExitCode::OK,
-        );
-        h.propose_ok(&mut rt, ANNE, one.clone(), METHOD_SEND, RawBytes::default());
+        rt.expect_send_simple(ANNE, METHOD_SEND, None, one.clone(), None, ExitCode::OK);
+        h.propose_ok(&rt, ANNE, one.clone(), METHOD_SEND, RawBytes::default());
         rt.set_balance(locked_balance.clone());
 
         // do not expect full vesting before full duration elapsed
         rt.set_epoch(START_EPOCH + UNLOCK_DURATION - 1);
         expect_abort(
             ExitCode::USR_INSUFFICIENT_FUNDS,
-            h.propose(&mut rt, ANNE, locked_balance.clone(), METHOD_SEND, RawBytes::default()),
+            h.propose(&rt, ANNE, locked_balance.clone(), METHOD_SEND, RawBytes::default()),
         );
         rt.reset();
 
         // expect all but one unit available after all but one epochs
-        rt.expect_send(
+        rt.expect_send_simple(
             ANNE,
             METHOD_SEND,
-            RawBytes::default(),
+            None,
             locked_balance.clone() - one.clone(),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
-        h.propose_ok(&mut rt, ANNE, locked_balance.clone() - one, METHOD_SEND, RawBytes::default());
+        h.propose_ok(&rt, ANNE, locked_balance.clone() - one, METHOD_SEND, RawBytes::default());
         rt.set_balance(locked_balance.clone());
 
         // expect everything after exactly lock duration
         rt.set_epoch(START_EPOCH + UNLOCK_DURATION);
-        rt.expect_send(
-            ANNE,
-            METHOD_SEND,
-            RawBytes::default(),
-            locked_balance.clone(),
-            RawBytes::default(),
-            ExitCode::OK,
-        );
-        h.propose_ok(&mut rt, ANNE, locked_balance, METHOD_SEND, RawBytes::default());
+        rt.expect_send_simple(ANNE, METHOD_SEND, None, locked_balance.clone(), None, ExitCode::OK);
+        h.propose_ok(&rt, ANNE, locked_balance, METHOD_SEND, RawBytes::default());
         check_state(&rt);
     }
 
     #[test]
     fn sending_zero_ok_when_nothing_vests() {
-        let mut rt = construct_runtime(MSIG);
+        let rt = construct_runtime(MSIG);
         let h = util::ActorHarness::new();
 
         rt.set_balance(MSIG_INITIAL_BALANCE.clone());
         rt.set_received(MSIG_INITIAL_BALANCE.clone());
-        h.construct_and_verify(&mut rt, 1, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
+        h.construct_and_verify(&rt, 1, UNLOCK_DURATION, START_EPOCH, vec![ANNE, BOB, CHARLIE]);
         rt.set_received(TokenAmount::zero());
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ANNE);
-        rt.expect_send(
-            BOB,
-            METHOD_SEND,
-            RawBytes::default(),
-            TokenAmount::zero(),
-            RawBytes::default(),
-            ExitCode::OK,
-        );
-        h.propose_ok(&mut rt, BOB, TokenAmount::zero(), METHOD_SEND, RawBytes::default());
+        rt.expect_send_simple(BOB, METHOD_SEND, None, TokenAmount::zero(), None, ExitCode::OK);
+        h.propose_ok(&rt, BOB, TokenAmount::zero(), METHOD_SEND, RawBytes::default());
         check_state(&rt);
     }
 
     #[test]
     fn sending_zero_when_lockup_exceeds_balance() {
-        let mut rt = construct_runtime(MSIG);
+        let rt = construct_runtime(MSIG);
         let h = util::ActorHarness::new();
 
-        h.construct_and_verify(&mut rt, 1, 0, START_EPOCH, vec![ANNE]);
+        h.construct_and_verify(&rt, 1, 0, START_EPOCH, vec![ANNE]);
         rt.set_caller(*MULTISIG_ACTOR_CODE_ID, MSIG);
         rt.set_balance(TokenAmount::from_atto(10u8));
         rt.set_received(TokenAmount::from_atto(10u8));
 
         // lock up funds the actor doesn't have yet
-        h.lock_balance(&mut rt, START_EPOCH, UNLOCK_DURATION, TokenAmount::from_atto(10u8))
-            .unwrap();
+        h.lock_balance(&rt, START_EPOCH, UNLOCK_DURATION, TokenAmount::from_atto(10u8)).unwrap();
 
         // make a tx that transfers no value
         let send_amount = TokenAmount::zero();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, ANNE);
-        rt.expect_send(
-            BOB,
-            METHOD_SEND,
-            RawBytes::default(),
-            send_amount.clone(),
-            RawBytes::default(),
-            ExitCode::OK,
-        );
-        h.propose_ok(&mut rt, BOB, send_amount, METHOD_SEND, RawBytes::default());
+        rt.expect_send_simple(BOB, METHOD_SEND, None, send_amount.clone(), None, ExitCode::OK);
+        h.propose_ok(&rt, BOB, send_amount, METHOD_SEND, RawBytes::default());
 
         // verify that sending any value is prevented
         let send_amount = TokenAmount::from_atto(1u8);
         expect_abort(
             ExitCode::USR_INSUFFICIENT_FUNDS,
-            h.propose(&mut rt, BOB, send_amount, METHOD_SEND, RawBytes::default()),
+            h.propose(&rt, BOB, send_amount, METHOD_SEND, RawBytes::default()),
         );
         check_state(&rt);
     }
@@ -574,7 +554,7 @@ mod vesting_tests {
 #[test]
 fn test_simple_propose() {
     let msig = Address::new_id(1000);
-    let mut rt = construct_runtime(msig);
+    let rt = construct_runtime(msig);
     let h = util::ActorHarness::new();
 
     let anne = Address::new_id(101);
@@ -585,9 +565,9 @@ fn test_simple_propose() {
     let signers = vec![anne, bob];
 
     let send_value = TokenAmount::from_atto(10u8);
-    h.construct_and_verify(&mut rt, 2, no_unlock_duration, start_epoch, signers);
+    h.construct_and_verify(&rt, 2, no_unlock_duration, start_epoch, signers);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
-    h.propose_ok(&mut rt, chuck, send_value.clone(), METHOD_SEND, RawBytes::default());
+    h.propose_ok(&rt, chuck, send_value.clone(), METHOD_SEND, RawBytes::default());
     let txn0 = Transaction {
         to: chuck,
         value: send_value,
@@ -603,7 +583,7 @@ fn test_simple_propose() {
 #[test]
 fn test_propose_with_threshold_met() {
     let msig = Address::new_id(1000);
-    let mut rt = construct_runtime(msig);
+    let rt = construct_runtime(msig);
     let h = util::ActorHarness::new();
 
     let num_approvals = 1;
@@ -618,18 +598,18 @@ fn test_propose_with_threshold_met() {
     let signers = vec![anne, bob];
     rt.set_balance(TokenAmount::from_atto(10u8));
     rt.set_received(TokenAmount::zero());
-    h.construct_and_verify(&mut rt, num_approvals, no_unlock_duration, start_epoch, signers);
+    h.construct_and_verify(&rt, num_approvals, no_unlock_duration, start_epoch, signers);
 
-    rt.expect_send(
+    rt.expect_send_simple(
         chuck,
         METHOD_SEND,
-        fake_params.clone(),
+        to_ipld_block(fake_params.clone()),
         send_value.clone(),
-        RawBytes::default(),
+        None,
         ExitCode::OK,
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
-    h.propose_ok(&mut rt, chuck, send_value, METHOD_SEND, fake_params);
+    h.propose_ok(&rt, chuck, send_value, METHOD_SEND, fake_params);
     h.assert_transactions(&rt, vec![]);
     check_state(&rt);
 }
@@ -637,7 +617,7 @@ fn test_propose_with_threshold_met() {
 #[test]
 fn test_propose_with_threshold_and_non_empty_return_value() {
     let msig = Address::new_id(1000);
-    let mut rt = construct_runtime(msig);
+    let rt = construct_runtime(msig);
     let h = util::ActorHarness::new();
 
     let num_approvals = 1;
@@ -652,7 +632,7 @@ fn test_propose_with_threshold_and_non_empty_return_value() {
 
     rt.set_balance(TokenAmount::from_atto(20u8));
     rt.set_received(TokenAmount::zero());
-    h.construct_and_verify(&mut rt, num_approvals, no_unlock_duration, start_epoch, signers);
+    h.construct_and_verify(&rt, num_approvals, no_unlock_duration, start_epoch, signers);
 
     #[derive(Serialize_tuple, Deserialize_tuple)]
     struct FakeReturn {
@@ -668,17 +648,18 @@ fn test_propose_with_threshold_and_non_empty_return_value() {
     };
     let inner_ret_bytes = serialize(&propose_ret, "fake proposal return value").unwrap();
     let fake_method = 42u64;
-    rt.expect_send(
+    rt.expect_send_simple(
         chuck,
         fake_method,
-        fake_params.clone(),
+        to_ipld_block(fake_params.clone()),
         send_value.clone(),
-        inner_ret_bytes.clone(),
+        to_ipld_block(inner_ret_bytes.clone()),
         ExitCode::OK,
     );
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
     let ret = h
-        .propose(&mut rt, chuck, send_value, fake_method, fake_params)
+        .propose(&rt, chuck, send_value, fake_method, fake_params)
+        .unwrap()
         .unwrap()
         .deserialize::<ProposeReturn>()
         .unwrap();
@@ -692,7 +673,7 @@ fn test_propose_with_threshold_and_non_empty_return_value() {
 #[test]
 fn test_fail_propose_with_threshold_met_and_insufficient_balance() {
     let msig = Address::new_id(1000);
-    let mut rt = construct_runtime(msig);
+    let rt = construct_runtime(msig);
     let h = util::ActorHarness::new();
 
     let num_approvals = 1;
@@ -707,12 +688,12 @@ fn test_fail_propose_with_threshold_met_and_insufficient_balance() {
 
     rt.set_balance(TokenAmount::zero());
     rt.set_received(TokenAmount::zero());
-    h.construct_and_verify(&mut rt, num_approvals, no_unlock_duration, start_epoch, signers);
+    h.construct_and_verify(&rt, num_approvals, no_unlock_duration, start_epoch, signers);
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
     expect_abort(
         ExitCode::USR_INSUFFICIENT_FUNDS,
-        h.propose(&mut rt, chuck, send_value, METHOD_SEND, fake_params),
+        h.propose(&rt, chuck, send_value, METHOD_SEND, fake_params),
     );
     rt.reset();
     h.assert_transactions(&rt, vec![]);
@@ -722,7 +703,7 @@ fn test_fail_propose_with_threshold_met_and_insufficient_balance() {
 #[test]
 fn test_fail_propose_from_non_signer() {
     let msig = Address::new_id(1000);
-    let mut rt = construct_runtime(msig);
+    let rt = construct_runtime(msig);
     let h = util::ActorHarness::new();
 
     let num_approvals = 1;
@@ -737,14 +718,14 @@ fn test_fail_propose_from_non_signer() {
 
     rt.set_balance(TokenAmount::zero());
     rt.set_received(TokenAmount::zero());
-    h.construct_and_verify(&mut rt, num_approvals, no_unlock_duration, start_epoch, signers);
+    h.construct_and_verify(&rt, num_approvals, no_unlock_duration, start_epoch, signers);
 
     // non signer
     let richard = Address::new_id(105);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, richard);
     expect_abort(
         ExitCode::USR_FORBIDDEN,
-        h.propose(&mut rt, chuck, send_value, METHOD_SEND, fake_params),
+        h.propose(&rt, chuck, send_value, METHOD_SEND, fake_params),
     );
 
     rt.reset();
@@ -765,7 +746,8 @@ fn test_add_signer() {
         #[allow(dead_code)]
         desc: &'a str,
 
-        id_addr_mapping: Vec<(Address, Address)>, // non-id to id
+        id_addr_mapping: Vec<(Address, Address)>,
+        // non-id to id
         initial_signers: Vec<Address>,
         initial_approvals: u64,
 
@@ -778,7 +760,7 @@ fn test_add_signer() {
     }
 
     let test_cases = vec![
-        TestCase{
+        TestCase {
             desc: "happy path add signer",
             id_addr_mapping: Vec::new(),
             initial_signers: vec![anne, bob],
@@ -789,7 +771,7 @@ fn test_add_signer() {
             expect_approvals: 2,
             code: ExitCode::OK,
         },
-        TestCase{
+        TestCase {
             desc: "add signer and increase threshold",
             id_addr_mapping: Vec::new(),
             initial_signers: vec![anne, bob],
@@ -800,7 +782,7 @@ fn test_add_signer() {
             expect_approvals: 3,
             code: ExitCode::OK,
         },
-        TestCase{
+        TestCase {
             desc: "fail to add signer that already exists",
             id_addr_mapping: Vec::new(),
             initial_signers: vec![anne, bob, chuck],
@@ -811,49 +793,49 @@ fn test_add_signer() {
             expect_approvals: 3,
             code: ExitCode::USR_FORBIDDEN,
         },
-        TestCase{
+        TestCase {
             desc: "fail to add signer with ID address that already exists even thugh we only have non ID address as approver",
             id_addr_mapping: vec![(chuck_pubkey, chuck)],
             initial_signers: vec![anne, bob, chuck_pubkey],
             initial_approvals: 3,
             add_signer: chuck,
-            increase:false,
+            increase: false,
             expect_signers: vec![anne, bob, chuck],
             expect_approvals: 3,
             code: ExitCode::USR_FORBIDDEN,
         },
-        TestCase{
+        TestCase {
             desc: "fail to add signer with ID address that already exists even thugh we only have non ID address as approver",
             id_addr_mapping: vec![(chuck_pubkey, chuck)],
             initial_signers: vec![anne, bob, chuck],
             initial_approvals: 3,
             add_signer: chuck_pubkey,
-            increase:false,
+            increase: false,
             expect_signers: vec![anne, bob, chuck],
             expect_approvals: 3,
             code: ExitCode::USR_FORBIDDEN,
-        }
+        },
     ];
 
     for tc in test_cases {
-        let mut rt = construct_runtime(msig);
+        let rt = construct_runtime(msig);
         let h = util::ActorHarness::new();
         for (src, target) in tc.id_addr_mapping {
-            rt.id_addresses.insert(src, target);
+            rt.id_addresses.borrow_mut().insert(src, target);
         }
 
-        h.construct_and_verify(&mut rt, tc.initial_approvals, 0, 0, tc.initial_signers);
+        h.construct_and_verify(&rt, tc.initial_approvals, 0, 0, tc.initial_signers);
 
         rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
         match tc.code {
             ExitCode::OK => {
-                let ret = h.add_signer(&mut rt, tc.add_signer, tc.increase).unwrap();
-                assert_eq!(RawBytes::default(), ret);
+                let ret = h.add_signer(&rt, tc.add_signer, tc.increase).unwrap();
+                assert!(ret.is_none());
                 let st: State = rt.get_state();
                 assert_eq!(tc.expect_signers, st.signers);
                 assert_eq!(tc.expect_approvals, st.num_approvals_threshold);
             }
-            _ => expect_abort(tc.code, h.add_signer(&mut rt, tc.add_signer, tc.increase)),
+            _ => expect_abort(tc.code, h.add_signer(&rt, tc.add_signer, tc.increase)),
         }
         check_state(&rt);
     }
@@ -979,17 +961,17 @@ fn test_remove_signer() {
     ];
 
     for tc in test_cases {
-        let mut rt = construct_runtime(msig);
-        rt.id_addresses.insert(anne_non_id, anne);
+        let rt = construct_runtime(msig);
+        rt.id_addresses.borrow_mut().insert(anne_non_id, anne);
         let h = util::ActorHarness::new();
-        h.construct_and_verify(&mut rt, tc.initial_approvals, 0, 0, tc.initial_signers);
+        h.construct_and_verify(&rt, tc.initial_approvals, 0, 0, tc.initial_signers);
 
         rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
-        let ret = h.remove_signer(&mut rt, tc.remove_signer, tc.decrease);
+        let ret = h.remove_signer(&rt, tc.remove_signer, tc.decrease);
 
         match tc.code {
             ExitCode::OK => {
-                assert_eq!(RawBytes::default(), ret.unwrap());
+                assert!(ret.unwrap().is_none());
                 let st: State = rt.get_state();
                 assert_eq!(tc.expect_signers, st.signers);
                 assert_eq!(tc.expect_approvals, st.num_approvals_threshold);
@@ -1090,20 +1072,20 @@ fn test_signer_swap() {
             swap_from: anne,
             expect_signers: vec![],
             code: ExitCode::USR_ILLEGAL_ARGUMENT,
-        }
+        },
     ];
 
     for tc in test_cases {
-        let mut rt = construct_runtime(msig);
-        rt.id_addresses.insert(bob_non_id, bob);
+        let rt = construct_runtime(msig);
+        rt.id_addresses.borrow_mut().insert(bob_non_id, bob);
         let h = util::ActorHarness::new();
-        h.construct_and_verify(&mut rt, num_approvals, 0, 0, tc.initial_signers);
+        h.construct_and_verify(&rt, num_approvals, 0, 0, tc.initial_signers);
 
         rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
-        let ret = h.swap_signers(&mut rt, tc.swap_from, tc.swap_to);
+        let ret = h.swap_signers(&rt, tc.swap_from, tc.swap_to);
         match tc.code {
             ExitCode::OK => {
-                assert_eq!(RawBytes::default(), ret.unwrap());
+                assert!(ret.unwrap().is_none());
                 let st: State = rt.get_state();
                 assert_eq!(tc.expect_signers, st.signers);
             }
@@ -1125,30 +1107,30 @@ fn test_swap_signer_removes_approvals() {
     let darlene = Address::new_id(104);
     let num_approvals: u64 = 3;
 
-    let mut rt = construct_runtime(msig);
+    let rt = construct_runtime(msig);
     let h = util::ActorHarness::new();
-    h.construct_and_verify(&mut rt, num_approvals, 0, 0, vec![anne, bob, chuck]);
+    h.construct_and_verify(&rt, num_approvals, 0, 0, vec![anne, bob, chuck]);
 
     // anne proposes a tx
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
     let proposal_hash1 =
-        h.propose_ok(&mut rt, chuck, TokenAmount::zero(), METHOD_SEND, RawBytes::default());
+        h.propose_ok(&rt, chuck, TokenAmount::zero(), METHOD_SEND, RawBytes::default());
 
     // bob approves
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
-    h.approve_ok(&mut rt, TxnID(0), proposal_hash1);
+    h.approve_ok(&rt, TxnID(0), proposal_hash1);
 
     // bob proposes a tx
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
     let proposal_hash2 =
-        h.propose_ok(&mut rt, chuck, TokenAmount::zero(), METHOD_SEND, RawBytes::default());
+        h.propose_ok(&rt, chuck, TokenAmount::zero(), METHOD_SEND, RawBytes::default());
     // anne approves
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
-    h.approve_ok(&mut rt, TxnID(1), proposal_hash2);
+    h.approve_ok(&rt, TxnID(1), proposal_hash2);
 
     // anne is removed, threshold dropped to 2 of 2
     rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
-    h.swap_signers(&mut rt, anne, darlene).unwrap();
+    h.swap_signers(&rt, anne, darlene).unwrap();
 
     // Anne's approval is removed from each tx
     h.assert_transactions(
@@ -1188,17 +1170,17 @@ fn test_swap_signer_deletes_solo_proposals() {
     let darlene = Address::new_id(104);
     let num_approvals: u64 = 3;
 
-    let mut rt = construct_runtime(msig);
+    let rt = construct_runtime(msig);
     let h = util::ActorHarness::new();
-    h.construct_and_verify(&mut rt, num_approvals, 0, 0, vec![anne, bob, chuck]);
+    h.construct_and_verify(&rt, num_approvals, 0, 0, vec![anne, bob, chuck]);
 
     // anne proposes a tx
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
-    h.propose_ok(&mut rt, chuck, TokenAmount::zero(), METHOD_SEND, RawBytes::default());
+    h.propose_ok(&rt, chuck, TokenAmount::zero(), METHOD_SEND, RawBytes::default());
 
     // anne is swapped
     rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
-    h.swap_signers(&mut rt, anne, darlene).unwrap();
+    h.swap_signers(&rt, anne, darlene).unwrap();
     h.assert_transactions(&rt, vec![]);
     check_state(&rt);
 }
@@ -1211,30 +1193,30 @@ fn test_remove_signer_removes_approvals() {
     let chuck = Address::new_id(103);
     let num_approvals: u64 = 3;
 
-    let mut rt = construct_runtime(msig);
+    let rt = construct_runtime(msig);
     let h = util::ActorHarness::new();
-    h.construct_and_verify(&mut rt, num_approvals, 0, 0, vec![anne, bob, chuck]);
+    h.construct_and_verify(&rt, num_approvals, 0, 0, vec![anne, bob, chuck]);
 
     // anne proposes a tx
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
     let proposal_hash1 =
-        h.propose_ok(&mut rt, chuck, TokenAmount::zero(), METHOD_SEND, RawBytes::default());
+        h.propose_ok(&rt, chuck, TokenAmount::zero(), METHOD_SEND, RawBytes::default());
 
     // bob approves!
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
-    h.approve_ok(&mut rt, TxnID(0), proposal_hash1);
+    h.approve_ok(&rt, TxnID(0), proposal_hash1);
 
     // bob proposes a tx
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
     let proposal_hash2 =
-        h.propose_ok(&mut rt, chuck, TokenAmount::zero(), METHOD_SEND, RawBytes::default());
+        h.propose_ok(&rt, chuck, TokenAmount::zero(), METHOD_SEND, RawBytes::default());
     // anne approves
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
-    h.approve_ok(&mut rt, TxnID(1), proposal_hash2);
+    h.approve_ok(&rt, TxnID(1), proposal_hash2);
 
     // anne is removed, threshold dropped to 2 of 2
     rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
-    h.remove_signer(&mut rt, anne, true).unwrap();
+    h.remove_signer(&rt, anne, true).unwrap();
 
     // Anne's approval is removed from each tx
     h.assert_transactions(
@@ -1273,17 +1255,17 @@ fn remove_signer_deletes_solo_proposals() {
     let chuck = Address::new_id(103);
     let num_approvals: u64 = 2;
 
-    let mut rt = construct_runtime(msig);
+    let rt = construct_runtime(msig);
     let h = util::ActorHarness::new();
-    h.construct_and_verify(&mut rt, num_approvals, 0, 0, vec![anne, bob, chuck]);
+    h.construct_and_verify(&rt, num_approvals, 0, 0, vec![anne, bob, chuck]);
 
     // anne proposes a tx
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
-    h.propose_ok(&mut rt, chuck, TokenAmount::zero(), METHOD_SEND, RawBytes::default());
+    h.propose_ok(&rt, chuck, TokenAmount::zero(), METHOD_SEND, RawBytes::default());
 
     // anne is removed
     rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
-    h.remove_signer(&mut rt, anne, false).unwrap();
+    h.remove_signer(&rt, anne, false).unwrap();
 
     // Tx is gone
     h.assert_transactions(&rt, vec![]);
@@ -1302,10 +1284,10 @@ mod approval_tests {
         let bob = Address::new_id(102);
         let chuck = Address::new_id(103);
         let signers = vec![anne, bob];
-        let mut rt = construct_runtime(msig);
+        let rt = construct_runtime(msig);
         let h = util::ActorHarness::new();
         // construct msig
-        h.construct_and_verify(&mut rt, 2, 0, 0, signers);
+        h.construct_and_verify(&rt, 2, 0, 0, signers);
 
         let fake_params = RawBytes::from(vec![1, 2, 3, 4]);
         let fake_method = 42;
@@ -1313,7 +1295,7 @@ mod approval_tests {
         let send_value = TokenAmount::from_atto(10u8);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         let proposal_hash =
-            h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, fake_params.clone());
+            h.propose_ok(&rt, chuck, send_value.clone(), fake_method, fake_params.clone());
 
         // assert txn
         let expect_txn = Transaction {
@@ -1328,8 +1310,15 @@ mod approval_tests {
         // approval
         rt.set_balance(send_value.clone());
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
-        rt.expect_send(chuck, fake_method, fake_params, send_value, fake_ret, ExitCode::OK);
-        h.approve_ok(&mut rt, TxnID(0), proposal_hash);
+        rt.expect_send_simple(
+            chuck,
+            fake_method,
+            to_ipld_block(fake_params),
+            send_value,
+            to_ipld_block(fake_ret),
+            ExitCode::OK,
+        );
+        h.approve_ok(&rt, TxnID(0), proposal_hash);
         h.assert_transactions(&rt, vec![]);
         check_state(&rt);
     }
@@ -1341,23 +1330,30 @@ mod approval_tests {
         let bob = Address::new_id(102);
         let chuck = Address::new_id(103);
         let signers = vec![anne, bob];
-        let mut rt = construct_runtime(msig);
+        let rt = construct_runtime(msig);
         let send_value = TokenAmount::from_atto(10u8);
         let h = util::ActorHarness::new();
         rt.set_balance(send_value.clone());
         rt.set_received(TokenAmount::zero());
-        h.construct_and_verify(&mut rt, 2, 0, 0, signers);
+        h.construct_and_verify(&rt, 2, 0, 0, signers);
 
         let fake_params = RawBytes::from(vec![1, 2, 3, 4]);
         let fake_method = 42;
         let fake_ret = RawBytes::from(vec![4, 3, 2, 1]);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         let proposal_hash =
-            h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, fake_params.clone());
+            h.propose_ok(&rt, chuck, send_value.clone(), fake_method, fake_params.clone());
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
-        rt.expect_send(chuck, fake_method, fake_params, send_value, fake_ret.clone(), ExitCode::OK);
-        let ret = h.approve_ok(&mut rt, TxnID(0), proposal_hash);
+        rt.expect_send_simple(
+            chuck,
+            fake_method,
+            to_ipld_block(fake_params),
+            send_value,
+            to_ipld_block(fake_ret.clone()),
+            ExitCode::OK,
+        );
+        let ret = h.approve_ok(&rt, TxnID(0), proposal_hash);
         assert_eq!(fake_ret, ret);
         h.assert_transactions(&rt, vec![]);
         check_state(&rt);
@@ -1370,20 +1366,20 @@ mod approval_tests {
         let bob = Address::new_id(102);
         let chuck = Address::new_id(103);
         let signers = vec![anne, bob];
-        let mut rt = construct_runtime(msig);
+        let rt = construct_runtime(msig);
         let send_value = TokenAmount::from_atto(20u8);
         let unlock_duration = 20;
         let start_epoch = 10;
         let h = util::ActorHarness::new();
         rt.set_balance(send_value.clone());
         rt.set_received(send_value.clone());
-        h.construct_and_verify(&mut rt, 2, unlock_duration, start_epoch, signers);
+        h.construct_and_verify(&rt, 2, unlock_duration, start_epoch, signers);
 
         let fake_params = RawBytes::from(vec![1, 2, 3, 4]);
         let fake_method = 42;
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         let proposal_hash =
-            h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, fake_params.clone());
+            h.propose_ok(&rt, chuck, send_value.clone(), fake_method, fake_params.clone());
         h.assert_transactions(
             &rt,
             vec![(
@@ -1399,16 +1395,16 @@ mod approval_tests {
         );
         rt.set_epoch(start_epoch + unlock_duration);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
-        rt.expect_send(
+        rt.expect_send_simple(
             chuck,
             fake_method,
-            fake_params,
+            to_ipld_block(fake_params),
             send_value,
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
 
-        h.approve_ok(&mut rt, TxnID(0), proposal_hash);
+        h.approve_ok(&rt, TxnID(0), proposal_hash);
         check_state(&rt);
     }
 
@@ -1419,21 +1415,21 @@ mod approval_tests {
         let bob = Address::new_id(102);
         let chuck = Address::new_id(103);
         let signers = vec![anne, bob];
-        let mut rt = construct_runtime(msig);
+        let rt = construct_runtime(msig);
         let send_value = TokenAmount::from_atto(10u8);
         let h = util::ActorHarness::new();
         rt.set_balance(send_value.clone() - TokenAmount::from_atto(1));
         rt.set_received(TokenAmount::zero());
-        h.construct_and_verify(&mut rt, 2, 0, 0, signers);
+        h.construct_and_verify(&rt, 2, 0, 0, signers);
 
         let fake_params = RawBytes::from(vec![1, 2, 3, 4]);
         let fake_method = 42;
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         let proposal_hash =
-            h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, fake_params.clone());
+            h.propose_ok(&rt, chuck, send_value.clone(), fake_method, fake_params.clone());
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
-        expect_abort(ExitCode::USR_INSUFFICIENT_FUNDS, h.approve(&mut rt, TxnID(0), proposal_hash));
+        expect_abort(ExitCode::USR_INSUFFICIENT_FUNDS, h.approve(&rt, TxnID(0), proposal_hash));
         h.assert_transactions(
             &rt,
             vec![(
@@ -1449,6 +1445,7 @@ mod approval_tests {
         );
         check_state(&rt);
     }
+
     #[test]
     fn fail_approval_if_not_enough_unlocked_balance_available() {
         let msig = Address::new_id(100);
@@ -1456,20 +1453,20 @@ mod approval_tests {
         let bob = Address::new_id(102);
         let chuck = Address::new_id(103);
         let signers = vec![anne, bob];
-        let mut rt = construct_runtime(msig);
+        let rt = construct_runtime(msig);
         let send_value = TokenAmount::from_atto(20u8);
         let unlock_duration = 20;
         let start_epoch = 10;
         let h = util::ActorHarness::new();
         rt.set_balance(send_value.clone());
         rt.set_received(send_value.clone());
-        h.construct_and_verify(&mut rt, 2, unlock_duration, start_epoch, signers);
+        h.construct_and_verify(&rt, 2, unlock_duration, start_epoch, signers);
 
         let fake_params = RawBytes::from(vec![1, 2, 3, 4]);
         let fake_method = 42;
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         let proposal_hash =
-            h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, fake_params.clone());
+            h.propose_ok(&rt, chuck, send_value.clone(), fake_method, fake_params.clone());
         h.assert_transactions(
             &rt,
             vec![(
@@ -1485,7 +1482,7 @@ mod approval_tests {
         );
         rt.set_epoch(start_epoch + unlock_duration / 2);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
-        expect_abort(ExitCode::USR_INSUFFICIENT_FUNDS, h.approve(&mut rt, TxnID(0), proposal_hash));
+        expect_abort(ExitCode::USR_INSUFFICIENT_FUNDS, h.approve(&rt, TxnID(0), proposal_hash));
         check_state(&rt);
     }
 
@@ -1496,17 +1493,17 @@ mod approval_tests {
         let bob = Address::new_id(102);
         let chuck = Address::new_id(103);
         let signers = vec![anne, bob];
-        let mut rt = construct_runtime(msig);
+        let rt = construct_runtime(msig);
         let send_value = TokenAmount::from_atto(10u8);
         let h = util::ActorHarness::new();
         rt.set_balance(send_value.clone());
         rt.set_received(TokenAmount::zero());
-        h.construct_and_verify(&mut rt, 2, 0, 0, signers);
+        h.construct_and_verify(&rt, 2, 0, 0, signers);
 
         let fake_params = RawBytes::from(vec![1, 2, 3, 4]);
         let fake_method = 42;
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
-        h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, fake_params.clone());
+        h.propose_ok(&rt, chuck, send_value.clone(), fake_method, fake_params.clone());
         let bad_hash = compute_proposal_hash(
             &Transaction {
                 to: chuck,
@@ -1519,7 +1516,7 @@ mod approval_tests {
         )
         .unwrap();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
-        expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.approve(&mut rt, TxnID(0), bad_hash));
+        expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.approve(&rt, TxnID(0), bad_hash));
         check_state(&rt);
     }
 
@@ -1530,31 +1527,34 @@ mod approval_tests {
         let bob = Address::new_id(102);
         let chuck = Address::new_id(103);
         let signers = vec![anne, bob];
-        let mut rt = construct_runtime(msig);
+        let rt = construct_runtime(msig);
         let send_value = TokenAmount::from_atto(10u8);
         let h = util::ActorHarness::new();
         rt.set_balance(send_value.clone());
         rt.set_received(TokenAmount::zero());
-        h.construct_and_verify(&mut rt, 2, 0, 0, signers);
+        h.construct_and_verify(&rt, 2, 0, 0, signers);
 
         let fake_params = RawBytes::from(vec![1, 2, 3, 4]);
         let fake_method = 42;
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
-        h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, fake_params.clone());
+        h.propose_ok(&rt, chuck, send_value.clone(), fake_method, fake_params.clone());
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
-        rt.expect_send(
+        rt.expect_send_simple(
             chuck,
             fake_method,
-            fake_params,
+            to_ipld_block(fake_params),
             send_value,
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
-        rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+        rt.expect_validate_caller_any();
         let params = TxnIDParams { id: TxnID(0), proposal_hash: Vec::<u8>::new() };
-        rt.call::<MultisigActor>(Method::Approve as u64, &RawBytes::serialize(params).unwrap())
-            .unwrap();
+        rt.call::<MultisigActor>(
+            Method::Approve as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )
+        .unwrap();
         rt.verify();
         check_state(&rt);
     }
@@ -1566,21 +1566,21 @@ mod approval_tests {
         let bob = Address::new_id(102);
         let chuck = Address::new_id(103);
         let signers = vec![anne, bob];
-        let mut rt = construct_runtime(msig);
+        let rt = construct_runtime(msig);
         let send_value = TokenAmount::from_atto(10u8);
         let h = util::ActorHarness::new();
         rt.set_balance(send_value.clone());
         rt.set_received(TokenAmount::zero());
-        h.construct_and_verify(&mut rt, 2, 0, 0, signers);
+        h.construct_and_verify(&rt, 2, 0, 0, signers);
 
         let fake_params = RawBytes::from(vec![1, 2, 3, 4]);
         let fake_method = 42;
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         let proposal_hash =
-            h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, fake_params.clone());
+            h.propose_ok(&rt, chuck, send_value.clone(), fake_method, fake_params.clone());
 
         // anne tries to approve a tx she proposed and fails
-        expect_abort(ExitCode::USR_FORBIDDEN, h.approve(&mut rt, TxnID(0), proposal_hash));
+        expect_abort(ExitCode::USR_FORBIDDEN, h.approve(&rt, TxnID(0), proposal_hash));
         rt.reset();
         h.assert_transactions(
             &rt,
@@ -1605,18 +1605,21 @@ mod approval_tests {
         let anne = Address::new_id(101);
         let bob = Address::new_id(102);
         let signers = vec![anne, bob];
-        let mut rt = construct_runtime(msig);
+        let rt = construct_runtime(msig);
         let send_value = TokenAmount::from_atto(10u8);
         let h = util::ActorHarness::new();
         rt.set_balance(send_value);
         rt.set_received(TokenAmount::zero());
-        h.construct_and_verify(&mut rt, 1, 0, 0, signers);
+        h.construct_and_verify(&rt, 1, 0, 0, signers);
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
-        rt.expect_validate_caller_type((*CALLER_TYPES_SIGNABLE).to_vec());
+        rt.expect_validate_caller_any();
         let params = TxnIDParams { id: dne_tx_id, proposal_hash: Vec::<u8>::new() };
-        rt.call::<MultisigActor>(Method::Approve as u64, &RawBytes::serialize(params).unwrap())
-            .expect_err("should fail on approve of non existent tx id");
+        rt.call::<MultisigActor>(
+            Method::Approve as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )
+        .expect_err("should fail on approve of non existent tx id");
         rt.verify();
         check_state(&rt);
     }
@@ -1628,22 +1631,22 @@ mod approval_tests {
         let bob = Address::new_id(102);
         let chuck = Address::new_id(103);
         let signers = vec![anne, bob];
-        let mut rt = construct_runtime(msig);
+        let rt = construct_runtime(msig);
         let send_value = TokenAmount::from_atto(10u8);
         let h = util::ActorHarness::new();
         rt.set_balance(send_value.clone());
         rt.set_received(TokenAmount::zero());
-        h.construct_and_verify(&mut rt, 2, 0, 0, signers);
+        h.construct_and_verify(&rt, 2, 0, 0, signers);
 
         let fake_params = RawBytes::from(vec![1, 2, 3, 4]);
         let fake_method = 42;
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         let proposal_hash =
-            h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, fake_params.clone());
+            h.propose_ok(&rt, chuck, send_value.clone(), fake_method, fake_params.clone());
 
         let richard = Address::new_id(105);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, richard);
-        expect_abort(ExitCode::USR_FORBIDDEN, h.approve(&mut rt, TxnID(0), proposal_hash));
+        expect_abort(ExitCode::USR_FORBIDDEN, h.approve(&rt, TxnID(0), proposal_hash));
         rt.reset();
         h.assert_transactions(
             &rt,
@@ -1668,35 +1671,35 @@ mod approval_tests {
         let bob = Address::new_id(102);
         let chuck = Address::new_id(103);
         let signers = vec![anne, bob];
-        let mut rt = construct_runtime(msig);
+        let rt = construct_runtime(msig);
         let send_value = TokenAmount::from_atto(10u8);
         let h = util::ActorHarness::new();
         rt.set_balance(send_value.clone());
         rt.set_received(TokenAmount::zero());
-        h.construct_and_verify(&mut rt, 2, 0, 0, signers);
+        h.construct_and_verify(&rt, 2, 0, 0, signers);
 
         let fake_params = RawBytes::from(vec![1, 2, 3, 4]);
         let fake_method = 42;
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         let proposal_hash =
-            h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, fake_params.clone());
+            h.propose_ok(&rt, chuck, send_value.clone(), fake_method, fake_params.clone());
 
         // reduce threshold so tx is already approved
         rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
         let new_threshold = 1;
-        h.change_num_approvals_threshold(&mut rt, new_threshold).unwrap();
+        h.change_num_approvals_threshold(&rt, new_threshold).unwrap();
 
         // self approval executes tx because the msig is across the threshold
-        rt.expect_send(
+        rt.expect_send_simple(
             chuck,
             fake_method,
-            fake_params,
+            to_ipld_block(fake_params),
             send_value,
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
-        h.approve_ok(&mut rt, TxnID(0), proposal_hash);
+        h.approve_ok(&rt, TxnID(0), proposal_hash);
         h.assert_transactions(&rt, vec![]);
         check_state(&rt);
     }
@@ -1708,39 +1711,39 @@ mod approval_tests {
         let bob = Address::new_id(102);
         let chuck = Address::new_id(103);
         let signers = vec![anne, bob, chuck];
-        let mut rt = construct_runtime(msig);
+        let rt = construct_runtime(msig);
         let send_value = TokenAmount::from_atto(10u8);
         let h = util::ActorHarness::new();
         rt.set_balance(send_value.clone());
         rt.set_received(TokenAmount::zero());
-        h.construct_and_verify(&mut rt, 3, 0, 0, signers);
+        h.construct_and_verify(&rt, 3, 0, 0, signers);
 
         let fake_params = RawBytes::from(vec![1, 2, 3, 4]);
         let fake_method = 42;
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         let proposal_hash =
-            h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, fake_params.clone());
+            h.propose_ok(&rt, chuck, send_value.clone(), fake_method, fake_params.clone());
 
         // bob approves tx
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
-        h.approve_ok(&mut rt, TxnID(0), proposal_hash);
+        h.approve_ok(&rt, TxnID(0), proposal_hash);
 
         // reduce threshold so tx is already approved
         rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
         let new_threshold = 2;
-        h.change_num_approvals_threshold(&mut rt, new_threshold).unwrap();
+        h.change_num_approvals_threshold(&rt, new_threshold).unwrap();
 
         // duplicate approval executes tx because the msig is across the threshold
-        rt.expect_send(
+        rt.expect_send_simple(
             chuck,
             fake_method,
-            fake_params,
+            to_ipld_block(fake_params),
             send_value,
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
-        h.approve_ok(&mut rt, TxnID(0), proposal_hash);
+        h.approve_ok(&rt, TxnID(0), proposal_hash);
         h.assert_transactions(&rt, vec![]);
         check_state(&rt);
     }
@@ -1753,41 +1756,41 @@ mod approval_tests {
         let bob = Address::new_id(102);
         let chuck = Address::new_id(103);
         let signers = vec![anne, bob];
-        let mut rt = construct_runtime(msig);
+        let rt = construct_runtime(msig);
         let send_value = TokenAmount::from_atto(10u8);
         let h = util::ActorHarness::new();
         rt.set_balance(send_value.clone());
         rt.set_received(TokenAmount::zero());
-        h.construct_and_verify(&mut rt, 2, 0, 0, signers);
+        h.construct_and_verify(&rt, 2, 0, 0, signers);
 
         let fake_params = RawBytes::from(vec![1, 2, 3, 4]);
         let fake_method = 42;
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         let proposal_hash =
-            h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, fake_params.clone());
+            h.propose_ok(&rt, chuck, send_value.clone(), fake_method, fake_params.clone());
 
         // reduce threshold so tx is already approved
         rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
         let new_threshold = 1;
-        h.change_num_approvals_threshold(&mut rt, new_threshold).unwrap();
+        h.change_num_approvals_threshold(&rt, new_threshold).unwrap();
 
         // non-signer alice cannot approve the tx
         let alice = Address::new_id(104);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, alice);
-        expect_abort(ExitCode::USR_FORBIDDEN, h.approve(&mut rt, TxnID(0), proposal_hash));
+        expect_abort(ExitCode::USR_FORBIDDEN, h.approve(&rt, TxnID(0), proposal_hash));
         rt.reset();
 
         // anne can self approve with lower threshold
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
-        rt.expect_send(
+        rt.expect_send_simple(
             chuck,
             fake_method,
-            fake_params,
+            to_ipld_block(fake_params),
             send_value,
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
-        h.approve_ok(&mut rt, TxnID(0), proposal_hash);
+        h.approve_ok(&rt, TxnID(0), proposal_hash);
 
         h.assert_transactions(&rt, vec![]);
         check_state(&rt);
@@ -1805,22 +1808,22 @@ mod cancel_tests {
         let bob = Address::new_id(102);
         let chuck = Address::new_id(103);
 
-        let mut rt = construct_runtime(msig);
+        let rt = construct_runtime(msig);
         let h = util::ActorHarness::new();
         let signers = vec![anne, bob];
 
-        h.construct_and_verify(&mut rt, 2, 0, 0, signers);
+        h.construct_and_verify(&rt, 2, 0, 0, signers);
 
         let fake_params = RawBytes::from(vec![1, 2, 3, 4]);
         let fake_method = 42;
         let send_value = TokenAmount::from_atto(10u8);
         // anne proposes tx
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
-        let proposal_hash = h.propose_ok(&mut rt, chuck, send_value, fake_method, fake_params);
+        let proposal_hash = h.propose_ok(&rt, chuck, send_value, fake_method, fake_params);
 
         // anne cancels the tx
-        let ret = h.cancel(&mut rt, TxnID(0), proposal_hash).unwrap();
-        assert_eq!(RawBytes::default(), ret);
+        let ret = h.cancel(&rt, TxnID(0), proposal_hash).unwrap();
+        assert!(ret.is_none());
 
         // tx should be removed from actor state
         h.assert_transactions(&rt, vec![]);
@@ -1835,20 +1838,19 @@ mod cancel_tests {
         let chuck = Address::new_id(103);
         let send_value = TokenAmount::from_atto(10u8);
 
-        let mut rt = construct_runtime(msig);
+        let rt = construct_runtime(msig);
         let h = util::ActorHarness::new();
         let signers = vec![anne, bob];
 
-        h.construct_and_verify(&mut rt, 2, 0, 0, signers);
+        h.construct_and_verify(&rt, 2, 0, 0, signers);
 
         // anne proposes a tx
         let fake_method = 42;
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
-        let proposal_hash =
-            h.propose_ok(&mut rt, chuck, send_value, fake_method, RawBytes::default());
+        let proposal_hash = h.propose_ok(&rt, chuck, send_value, fake_method, RawBytes::default());
 
         // anne cancels their tx
-        h.cancel(&mut rt, TxnID(0), proposal_hash).unwrap();
+        h.cancel(&rt, TxnID(0), proposal_hash).unwrap();
 
         // tx should be removed from actor state after cancel
         h.assert_transactions(&rt, vec![]);
@@ -1863,21 +1865,21 @@ mod cancel_tests {
         let chuck = Address::new_id(103);
         let send_value = TokenAmount::from_atto(10u8);
 
-        let mut rt = construct_runtime(msig);
+        let rt = construct_runtime(msig);
         let h = util::ActorHarness::new();
         let signers = vec![anne, bob];
 
-        h.construct_and_verify(&mut rt, 2, 0, 0, signers);
+        h.construct_and_verify(&rt, 2, 0, 0, signers);
 
         // anne proposes a tx
         let fake_method = 42;
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         let proposal_hash =
-            h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, RawBytes::default());
+            h.propose_ok(&rt, chuck, send_value.clone(), fake_method, RawBytes::default());
 
         // bob (a signer) fails to cancel anne's tx because bob didn't create it, nice try bob
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
-        expect_abort(ExitCode::USR_FORBIDDEN, h.cancel(&mut rt, TxnID(0), proposal_hash));
+        expect_abort(ExitCode::USR_FORBIDDEN, h.cancel(&rt, TxnID(0), proposal_hash));
         rt.reset();
 
         // tx should remain after invalid cancel
@@ -1905,21 +1907,21 @@ mod cancel_tests {
         let chuck = Address::new_id(103);
         let send_value = TokenAmount::from_atto(10u8);
 
-        let mut rt = construct_runtime(msig);
+        let rt = construct_runtime(msig);
         let h = util::ActorHarness::new();
         let signers = vec![anne, bob];
 
-        h.construct_and_verify(&mut rt, 2, 0, 0, signers);
+        h.construct_and_verify(&rt, 2, 0, 0, signers);
 
         // anne proposes a tx
         let fake_method = 42;
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         let proposal_hash =
-            h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, RawBytes::default());
+            h.propose_ok(&rt, chuck, send_value.clone(), fake_method, RawBytes::default());
 
         let richard = Address::new_id(111); // not a signer
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, richard);
-        expect_abort(ExitCode::USR_FORBIDDEN, h.cancel(&mut rt, TxnID(0), proposal_hash));
+        expect_abort(ExitCode::USR_FORBIDDEN, h.cancel(&rt, TxnID(0), proposal_hash));
         rt.reset();
 
         h.assert_transactions(
@@ -1946,21 +1948,21 @@ mod cancel_tests {
         let chuck = Address::new_id(103);
         let send_value = TokenAmount::from_atto(10u8);
 
-        let mut rt = construct_runtime(msig);
+        let rt = construct_runtime(msig);
         let h = util::ActorHarness::new();
         let signers = vec![anne, bob];
 
-        h.construct_and_verify(&mut rt, 2, 0, 0, signers);
+        h.construct_and_verify(&rt, 2, 0, 0, signers);
 
         // anne proposes a tx with id TxnID(0)
         let fake_method = 42;
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         let proposal_hash =
-            h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, RawBytes::default());
+            h.propose_ok(&rt, chuck, send_value.clone(), fake_method, RawBytes::default());
 
         // anne fails to cancel a tx that does not exist
         let dne_txn_id = TxnID(99);
-        expect_abort(ExitCode::USR_NOT_FOUND, h.cancel(&mut rt, dne_txn_id, proposal_hash));
+        expect_abort(ExitCode::USR_NOT_FOUND, h.cancel(&rt, dne_txn_id, proposal_hash));
         rt.reset();
 
         // txn remains after invalid cancel
@@ -1989,35 +1991,35 @@ mod cancel_tests {
         let send_value = TokenAmount::from_atto(10u8);
         let num_approvers = 3;
 
-        let mut rt = construct_runtime(msig);
+        let rt = construct_runtime(msig);
         let h = util::ActorHarness::new();
         let signers = vec![anne, bob, chuck];
 
-        h.construct_and_verify(&mut rt, num_approvers, 0, 0, signers);
+        h.construct_and_verify(&rt, num_approvers, 0, 0, signers);
 
         // anne propses a tx id 0
         let fake_method = 42;
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         let proposal_hash =
-            h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, RawBytes::default());
+            h.propose_ok(&rt, chuck, send_value.clone(), fake_method, RawBytes::default());
 
         // bob approves the tx, he is the second approver
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
-        h.approve_ok(&mut rt, TxnID(0), proposal_hash);
+        h.approve_ok(&rt, TxnID(0), proposal_hash);
 
         // remove anne as a signer, now bob is the proposer
         rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
-        h.remove_signer(&mut rt, anne, true).unwrap();
+        h.remove_signer(&rt, anne, true).unwrap();
 
         // anne fails to cancel a tx -- she is not a signer
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
-        expect_abort(ExitCode::USR_FORBIDDEN, h.cancel(&mut rt, TxnID(0), proposal_hash));
+        expect_abort(ExitCode::USR_FORBIDDEN, h.cancel(&rt, TxnID(0), proposal_hash));
 
         // even after anne is restored as a signer, she's not the proposer
         rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
-        h.add_signer(&mut rt, anne, true).unwrap();
+        h.add_signer(&rt, anne, true).unwrap();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
-        expect_abort(ExitCode::USR_FORBIDDEN, h.cancel(&mut rt, TxnID(0), proposal_hash));
+        expect_abort(ExitCode::USR_FORBIDDEN, h.cancel(&rt, TxnID(0), proposal_hash));
 
         // tx should remain after invalid cancel
         let new_tx = Transaction {
@@ -2032,7 +2034,7 @@ mod cancel_tests {
 
         //bob can cancel the tx
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
-        h.cancel(&mut rt, TxnID(0), new_proposal_hash).unwrap();
+        h.cancel(&rt, TxnID(0), new_proposal_hash).unwrap();
         check_state(&rt);
     }
 }
@@ -2084,15 +2086,15 @@ mod change_threshold_tests {
         ];
 
         for tc in test_cases {
-            let mut rt = construct_runtime(msig);
+            let rt = construct_runtime(msig);
             let h = util::ActorHarness::new();
             let signers = vec![anne, bob, chuck];
-            h.construct_and_verify(&mut rt, tc.initial_threshold, 0, 0, signers);
+            h.construct_and_verify(&rt, tc.initial_threshold, 0, 0, signers);
             rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
-            let ret = h.change_num_approvals_threshold(&mut rt, tc.set_threshold);
+            let ret = h.change_num_approvals_threshold(&rt, tc.set_threshold);
             match tc.code {
                 ExitCode::OK => {
-                    assert_eq!(RawBytes::default(), ret.unwrap());
+                    assert!(ret.unwrap().is_none());
                     let st: State = rt.get_state();
                     assert_eq!(tc.set_threshold, st.num_approvals_threshold);
                 }
@@ -2116,36 +2118,29 @@ mod change_threshold_tests {
         let bob = Address::new_id(102);
         let chuck = Address::new_id(103);
 
-        let mut rt = construct_runtime(msig);
+        let rt = construct_runtime(msig);
         let h = util::ActorHarness::new();
         let signers = vec![anne, bob, chuck];
         let num_approvals = 2;
 
-        h.construct_and_verify(&mut rt, num_approvals, 0, 0, signers);
+        h.construct_and_verify(&rt, num_approvals, 0, 0, signers);
 
         // anne proposes tx id 0
         let fake_method = 42;
         let send_value = TokenAmount::from_atto(10u8);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         let proposal_hash =
-            h.propose_ok(&mut rt, chuck, send_value.clone(), fake_method, RawBytes::default());
+            h.propose_ok(&rt, chuck, send_value.clone(), fake_method, RawBytes::default());
 
         // lower approval threshold, tx is technically approved, but will not be executed yet
         rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
-        h.change_num_approvals_threshold(&mut rt, 1).unwrap();
+        h.change_num_approvals_threshold(&rt, 1).unwrap();
 
         // anne may re-approve causing tx to be exected
-        rt.expect_send(
-            chuck,
-            fake_method,
-            RawBytes::default(),
-            send_value.clone(),
-            RawBytes::default(),
-            ExitCode::OK,
-        );
+        rt.expect_send_simple(chuck, fake_method, None, send_value.clone(), None, ExitCode::OK);
         rt.set_balance(send_value);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
-        h.approve_ok(&mut rt, TxnID(0), proposal_hash);
+        h.approve_ok(&rt, TxnID(0), proposal_hash);
         h.assert_transactions(&rt, vec![]);
         check_state(&rt);
     }
@@ -2161,12 +2156,12 @@ mod lock_balance_tests {
         let anne = Address::new_id(101);
         let bob = Address::new_id(102);
 
-        let mut rt = construct_runtime(msig);
+        let rt = construct_runtime(msig);
         let h = util::ActorHarness::new();
 
         // create empty multisig
         rt.set_epoch(100);
-        h.construct_and_verify(&mut rt, 1, 0, 0, vec![anne]);
+        h.construct_and_verify(&rt, 1, 0, 0, vec![anne]);
 
         // some time later, initialize vesting
         rt.set_epoch(200);
@@ -2174,7 +2169,7 @@ mod lock_balance_tests {
         let lock_amount = TokenAmount::from_atto(100_000u32);
         let vest_duration = 1000;
         rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
-        h.lock_balance(&mut rt, vest_start, vest_duration, lock_amount.clone()).unwrap();
+        h.lock_balance(&rt, vest_start, vest_duration, lock_amount.clone()).unwrap();
 
         rt.set_epoch(300);
         let vested = TokenAmount::from_atto(30_000);
@@ -2183,7 +2178,7 @@ mod lock_balance_tests {
         // Fail to spend balance the multisig doesn't have
         expect_abort(
             ExitCode::USR_INSUFFICIENT_FUNDS,
-            h.propose(&mut rt, bob, vested.clone(), METHOD_SEND, RawBytes::default()),
+            h.propose(&rt, bob, vested.clone(), METHOD_SEND, RawBytes::default()),
         );
         rt.reset();
 
@@ -2192,7 +2187,7 @@ mod lock_balance_tests {
         expect_abort(
             ExitCode::USR_INSUFFICIENT_FUNDS,
             h.propose(
-                &mut rt,
+                &rt,
                 bob,
                 vested.clone() + TokenAmount::from_atto(1),
                 METHOD_SEND,
@@ -2203,36 +2198,22 @@ mod lock_balance_tests {
 
         // can fully spend the vested amount
         rt.set_balance(lock_amount.clone());
-        rt.expect_send(
-            bob,
-            METHOD_SEND,
-            RawBytes::default(),
-            vested.clone(),
-            RawBytes::default(),
-            ExitCode::OK,
-        );
-        h.propose_ok(&mut rt, bob, vested.clone(), METHOD_SEND, RawBytes::default());
+        rt.expect_send_simple(bob, METHOD_SEND, None, vested.clone(), None, ExitCode::OK);
+        h.propose_ok(&rt, bob, vested.clone(), METHOD_SEND, RawBytes::default());
 
         // can't spend more
         rt.set_balance(lock_amount - vested);
         expect_abort(
             ExitCode::USR_INSUFFICIENT_FUNDS,
-            h.propose(&mut rt, bob, TokenAmount::from_atto(1), METHOD_SEND, RawBytes::default()),
+            h.propose(&rt, bob, TokenAmount::from_atto(1), METHOD_SEND, RawBytes::default()),
         );
         rt.reset();
 
         // later can spend the rest
         rt.set_epoch(vest_start + vest_duration);
         let rested = TokenAmount::from_atto(70_000u32);
-        rt.expect_send(
-            bob,
-            METHOD_SEND,
-            RawBytes::default(),
-            rested.clone(),
-            RawBytes::default(),
-            ExitCode::OK,
-        );
-        h.propose_ok(&mut rt, bob, rested, METHOD_SEND, RawBytes::default());
+        rt.expect_send_simple(bob, METHOD_SEND, None, rested.clone(), None, ExitCode::OK);
+        h.propose_ok(&rt, bob, rested, METHOD_SEND, RawBytes::default());
         check_state(&rt);
     }
 
@@ -2242,11 +2223,11 @@ mod lock_balance_tests {
         let anne = Address::new_id(101);
         let bob = Address::new_id(102);
 
-        let mut rt = construct_runtime(msig);
+        let rt = construct_runtime(msig);
         let h = util::ActorHarness::new();
         // create empty multisig
         rt.set_epoch(100);
-        h.construct_and_verify(&mut rt, 1, 0, 0, vec![anne]);
+        h.construct_and_verify(&rt, 1, 0, 0, vec![anne]);
 
         // some time later initialize vesting
         rt.set_epoch(200);
@@ -2254,62 +2235,48 @@ mod lock_balance_tests {
         let lock_amount = TokenAmount::from_atto(100_000);
         let vest_duration = 1000;
         rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
-        h.lock_balance(&mut rt, vest_start, vest_duration, lock_amount.clone()).unwrap();
+        h.lock_balance(&rt, vest_start, vest_duration, lock_amount.clone()).unwrap();
 
         // oversupply the wallet allow spending the oversupply
         rt.set_epoch(300);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         rt.set_balance(lock_amount.clone() + TokenAmount::from_atto(1));
-        rt.expect_send(
+        rt.expect_send_simple(
             bob,
             METHOD_SEND,
-            RawBytes::default(),
+            None,
             TokenAmount::from_atto(1),
-            RawBytes::default(),
+            None,
             ExitCode::OK,
         );
-        h.propose_ok(&mut rt, bob, TokenAmount::from_atto(1), METHOD_SEND, RawBytes::default());
+        h.propose_ok(&rt, bob, TokenAmount::from_atto(1), METHOD_SEND, RawBytes::default());
 
         // fail to spend locked funds before vesting starts
         rt.set_balance(lock_amount.clone());
         expect_abort(
             ExitCode::USR_INSUFFICIENT_FUNDS,
-            h.propose(&mut rt, bob, TokenAmount::from_atto(1), METHOD_SEND, RawBytes::default()),
+            h.propose(&rt, bob, TokenAmount::from_atto(1), METHOD_SEND, RawBytes::default()),
         );
         rt.reset();
 
         // can spend partially vested amount
         rt.set_epoch(vest_start + 200);
         let expect_vested = TokenAmount::from_atto(20_000);
-        rt.expect_send(
-            bob,
-            METHOD_SEND,
-            RawBytes::default(),
-            expect_vested.clone(),
-            RawBytes::default(),
-            ExitCode::OK,
-        );
-        h.propose_ok(&mut rt, bob, expect_vested.clone(), METHOD_SEND, RawBytes::default());
+        rt.expect_send_simple(bob, METHOD_SEND, None, expect_vested.clone(), None, ExitCode::OK);
+        h.propose_ok(&rt, bob, expect_vested.clone(), METHOD_SEND, RawBytes::default());
 
         // can't spend more
         rt.set_balance(lock_amount - expect_vested);
         expect_abort(
             ExitCode::USR_INSUFFICIENT_FUNDS,
-            h.propose(&mut rt, bob, TokenAmount::from_atto(1), METHOD_SEND, RawBytes::default()),
+            h.propose(&rt, bob, TokenAmount::from_atto(1), METHOD_SEND, RawBytes::default()),
         );
 
         // later, can spend the rest
         rt.set_epoch(vest_start + vest_duration);
         let rested = TokenAmount::from_atto(80_000);
-        rt.expect_send(
-            bob,
-            METHOD_SEND,
-            RawBytes::default(),
-            rested.clone(),
-            RawBytes::default(),
-            ExitCode::OK,
-        );
-        h.propose_ok(&mut rt, bob, rested, METHOD_SEND, RawBytes::default());
+        rt.expect_send_simple(bob, METHOD_SEND, None, rested.clone(), None, ExitCode::OK);
+        h.propose_ok(&rt, bob, rested, METHOD_SEND, RawBytes::default());
         check_state(&rt);
     }
 
@@ -2318,41 +2285,36 @@ mod lock_balance_tests {
         let msig = Address::new_id(100);
         let anne = Address::new_id(101);
 
-        let mut rt = construct_runtime(msig);
+        let rt = construct_runtime(msig);
         let h = util::ActorHarness::new();
 
         // create empty multisig
         rt.set_epoch(100);
-        h.construct_and_verify(&mut rt, 1, 0, 0, vec![anne]);
+        h.construct_and_verify(&rt, 1, 0, 0, vec![anne]);
 
         // initialize vesting from zero
         let vest_start = 0;
         let lock_amount = TokenAmount::from_atto(100_000);
         let vest_duration = 1000;
         rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
-        h.lock_balance(&mut rt, vest_start, vest_duration, lock_amount.clone()).unwrap();
+        h.lock_balance(&rt, vest_start, vest_duration, lock_amount.clone()).unwrap();
 
         // can't change vest start
         expect_abort(
             ExitCode::USR_FORBIDDEN,
-            h.lock_balance(&mut rt, vest_start - 1, vest_duration, lock_amount.clone()),
+            h.lock_balance(&rt, vest_start - 1, vest_duration, lock_amount.clone()),
         );
 
         // can't change lock duration
         expect_abort(
             ExitCode::USR_FORBIDDEN,
-            h.lock_balance(&mut rt, vest_start, vest_duration - 1, lock_amount.clone()),
+            h.lock_balance(&rt, vest_start, vest_duration - 1, lock_amount.clone()),
         );
 
         // can't change locked amount
         expect_abort(
             ExitCode::USR_FORBIDDEN,
-            h.lock_balance(
-                &mut rt,
-                vest_start,
-                vest_duration,
-                lock_amount - TokenAmount::from_atto(1),
-            ),
+            h.lock_balance(&rt, vest_start, vest_duration, lock_amount - TokenAmount::from_atto(1)),
         );
         rt.reset();
         check_state(&rt);
@@ -2363,18 +2325,18 @@ mod lock_balance_tests {
         let msig = Address::new_id(100);
         let anne = Address::new_id(101);
 
-        let mut rt = construct_runtime(msig);
+        let rt = construct_runtime(msig);
         let h = util::ActorHarness::new();
 
         let start_epoch = 100;
         let unlock_duration = 1000;
-        h.construct_and_verify(&mut rt, 1, unlock_duration, start_epoch, vec![anne]);
+        h.construct_and_verify(&rt, 1, unlock_duration, start_epoch, vec![anne]);
 
         // can't change vest start
         rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
         expect_abort(
             ExitCode::USR_FORBIDDEN,
-            h.lock_balance(&mut rt, start_epoch - 1, unlock_duration, TokenAmount::zero()),
+            h.lock_balance(&rt, start_epoch - 1, unlock_duration, TokenAmount::zero()),
         );
         rt.reset();
         check_state(&rt);
@@ -2385,10 +2347,10 @@ mod lock_balance_tests {
         let msig = Address::new_id(100);
         let anne = Address::new_id(101);
 
-        let mut rt = construct_runtime(msig);
+        let rt = construct_runtime(msig);
         let h = util::ActorHarness::new();
 
-        h.construct_and_verify(&mut rt, 1, 0, 0, vec![anne]);
+        h.construct_and_verify(&rt, 1, 0, 0, vec![anne]);
 
         let vest_start = 0_i64;
         let lock_amount = TokenAmount::from_atto(100_000u32);
@@ -2398,13 +2360,13 @@ mod lock_balance_tests {
         rt.set_caller(*MULTISIG_ACTOR_CODE_ID, msig);
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.lock_balance(&mut rt, vest_start, -1_i64, lock_amount),
+            h.lock_balance(&rt, vest_start, -1_i64, lock_amount),
         );
 
         // Disallow negative amount
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.lock_balance(&mut rt, vest_start, vest_duration, TokenAmount::from_atto(-1i32)),
+            h.lock_balance(&rt, vest_start, vest_duration, TokenAmount::from_atto(-1i32)),
         );
         check_state(&rt);
     }
@@ -2416,15 +2378,55 @@ fn token_receiver() {
     let anne = Address::new_id(101);
     let bob = Address::new_id(102);
 
-    let mut rt = construct_runtime(msig);
+    let rt = construct_runtime(msig);
     let h = util::ActorHarness::new();
-    h.construct_and_verify(&mut rt, 2, 0, 0, vec![anne, bob]);
+    h.construct_and_verify(&rt, 2, 0, 0, vec![anne, bob]);
 
     rt.expect_validate_caller_any();
-    let ret = rt.call::<MultisigActor>(
-        Method::UniversalReceiverHook as MethodNum,
-        &RawBytes::new(vec![1, 2, 3]),
-    );
-    assert!(ret.is_ok());
-    assert_eq!(RawBytes::default(), ret.unwrap());
+    let ret = rt
+        .call::<MultisigActor>(
+            Method::UniversalReceiverHook as MethodNum,
+            IpldBlock::serialize_cbor(&UniversalReceiverParams {
+                type_: 0,
+                payload: RawBytes::new(vec![1, 2, 3]),
+            })
+            .unwrap(),
+        )
+        .unwrap();
+    assert!(ret.is_none());
+}
+
+fn to_ipld_block(p: RawBytes) -> Option<IpldBlock> {
+    Some(IpldBlock { codec: CBOR, data: p.to_vec() })
+}
+
+#[test]
+fn test_fallback() {
+    let msig = Address::new_id(1000);
+    let anne = Address::new_id(101);
+    let bob = Address::new_id(102);
+
+    let rt = construct_runtime(msig);
+    let h = util::ActorHarness::new();
+    h.construct_and_verify(&rt, 2, 0, 0, vec![anne, bob]);
+
+    // this is arbitrary
+    let params = IpldBlock::serialize_cbor(&vec![1u8, 2u8, 3u8]).unwrap();
+
+    // accept >= 2<<24
+    rt.expect_validate_caller_any();
+    let result = rt.call::<MultisigActor>(FIRST_EXPORTED_METHOD_NUMBER, params.clone()).unwrap();
+    assert!(result.is_none());
+
+    rt.expect_validate_caller_any();
+    let result =
+        rt.call::<MultisigActor>(FIRST_EXPORTED_METHOD_NUMBER + 1, params.clone()).unwrap();
+    assert!(result.is_none());
+
+    // reject < 2<<24
+    rt.expect_validate_caller_any();
+    let result = rt.call::<MultisigActor>(FIRST_EXPORTED_METHOD_NUMBER - 1, params);
+    assert!(result.is_err());
+
+    rt.verify();
 }

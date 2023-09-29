@@ -1,7 +1,7 @@
 [package]
 name = "fil_builtin_actors_bundle"
 description = "Bundle of FVM-compatible Wasm bytecode for Filecoin builtin actors"
-version = "10.0.0-alpha.1"
+version = "12.0.0"
 license = "MIT OR Apache-2.0"
 authors = ["Protocol Labs", "Filecoin Core Devs"]
 edition = "2021"
@@ -13,27 +13,31 @@ exclude = ["examples", ".github"]
 publish = false
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-fil_actor_account = { version = "10.0.0-alpha.1", path = "./actors/account", features = ["fil-actor"] }
-fil_actor_cron = { version = "10.0.0-alpha.1", path = "./actors/cron", features = ["fil-actor"] }
-fil_actor_datacap = { version = "10.0.0-alpha.1", path = "./actors/datacap", features = ["fil-actor"] }
-fil_actor_init = { version = "10.0.0-alpha.1", path = "./actors/init", features = ["fil-actor"] }
-fil_actor_market = { version = "10.0.0-alpha.1", path = "./actors/market", features = ["fil-actor"] }
-fil_actor_miner = { version = "10.0.0-alpha.1", path = "./actors/miner", features = ["fil-actor"] }
-fil_actor_multisig = { version = "10.0.0-alpha.1", path = "./actors/multisig", features = ["fil-actor"] }
-fil_actor_paych = { version = "10.0.0-alpha.1", path = "./actors/paych", features = ["fil-actor"] }
-fil_actor_power = { version = "10.0.0-alpha.1", path = "./actors/power", features = ["fil-actor"] }
-fil_actor_reward = { version = "10.0.0-alpha.1", path = "./actors/reward", features = ["fil-actor"] }
-fil_actor_system = { version = "10.0.0-alpha.1", path = "./actors/system", features = ["fil-actor"] }
-fil_actor_verifreg = { version = "10.0.0-alpha.1", path = "./actors/verifreg", features = ["fil-actor"] }
+fil_actor_account = { workspace = true, features = ["fil-actor"] }
+fil_actor_cron = { workspace = true, features = ["fil-actor"] }
+fil_actor_datacap = { workspace = true, features = ["fil-actor"] }
+fil_actor_ethaccount = { workspace = true, features = ["fil-actor"] }
+fil_actor_eam = { workspace = true, features = ["fil-actor"] }
+fil_actor_evm = { workspace = true, features = ["fil-actor"] }
+fil_actor_init = { workspace = true, features = ["fil-actor"] }
+fil_actor_market = { workspace = true, features = ["fil-actor"] }
+fil_actor_miner = { workspace = true, features = ["fil-actor"] }
+fil_actor_multisig = { workspace = true, features = ["fil-actor"] }
+fil_actor_paych = { workspace = true, features = ["fil-actor"] }
+fil_actor_placeholder = { workspace = true, features = ["fil-actor"] }
+fil_actor_power = { workspace = true, features = ["fil-actor"] }
+fil_actor_reward = { workspace = true, features = ["fil-actor"] }
+fil_actor_system = { workspace = true, features = ["fil-actor"] }
+fil_actor_verifreg = { workspace = true, features = ["fil-actor"] }
 
 [build-dependencies]
-fil_actor_bundler = "4.0.0"
-cid = { version = "0.8.3", default-features = false, features = ["serde-codec"] }
-fil_actors_runtime = { version = "10.0.0-alpha.1", path = "runtime" }
-num-traits = "0.2.15"
+fil_actor_bundler = "6.1.0"
+cid = { workspace = true }
+fil_actors_runtime = { workspace = true }
+num-traits = { workspace = true }
 
 [dependencies]
-clap = { version = "3.2.3", features = ["derive"] }
+clap = { version = "4.3.0", features = ["derive", "std", "help", "usage", "error-context"], default-features = false }
 
 [features]
 default = [] ## translates to mainnet
@@ -46,21 +50,114 @@ testing = []
 testing-fake-proofs = []
 
 [workspace]
+resolver = "2"
 members = [
      "actors/*",
      "state",
      "runtime",
      "test_vm",
+     "vm_api",
+     "integration_tests"
 ]
 
+[workspace.dependencies]
+# Common
+serde = { version = "1.0.136", features = ["derive"] }
+anyhow = "1.0.65"
+bitflags = "2.4.0"
+num = { version = "0.4", features = ["serde"] }
+num-derive = "0.3.3"
+num-traits = "0.2.14"
+lazy_static = "1.4.0"
+log = { version = "0.4.14", features = ["std"] }
+byteorder = "1.4.3"
+itertools = "0.10.3"
+indexmap = { version = "1.8.0", features = ["serde-1"] }
+derive_builder = "0.10.2"
+once_cell = "1.17.0"
+rand = { version = "0.8.5", default-features = false }
+hex = "0.4.3"
+hex-literal = "0.3.4"
+serde_json = "1.0"
+regex = "1"
+test-case = "2.2.1"
+bimap = "0.6.2"
+castaway = "0.2.2"
+paste = "1.0.9"
+thiserror = "1.0.30"
+pretty_env_logger = "0.4.0"
+serde_repr = "0.1.8"
+unsigned-varint = "0.7.1"
+rand_chacha = "0.3.1"
+
+# Crypto
+libsecp256k1 = { version = "0.7.1", default-features = false }
+blake2b_simd = "1.0"
+sha2 = "0.10"
+
+# EVM
+ethers = { version = "2.0.9", features = ["abigen"], default-features = false }
+uint = { version = "0.9.3", default-features = false }
+etk-asm = "^0.3.0"
+rlp = { version = "0.5.1", default-features = false }
+substrate-bn = { version = "0.6.0", default-features = false }
+
+# IPLD/Encoding
+cid = { version = "0.10.1", default-features = false, features = ["serde-codec"] }
+multihash = { version = "0.18.1", default-features = false }
+libipld-core = { version = "0.13.1", features = ["serde-codec"] }
+integer-encoding = { version = "3.0.3", default-features = false }
+
+# helix-onchain
+fvm_actor_utils = "8.0.0"
+frc42_dispatch = "4.0.0"
+frc46_token = "8.0.0"
+
+# FVM
+fvm_sdk = "~3.3.0"
+fvm_shared = "~3.6.0"
+fvm_ipld_encoding = "0.4.0"
+fvm_ipld_blockstore = "0.2.0"
+fvm_ipld_hamt = "0.7.0"
+fvm_ipld_kamt = "0.3.0"
+fvm_ipld_amt = { version = "0.6.2" }
+fvm_ipld_bitfield = "0.6.0"
+
+# workspace
+fil_actor_account = { version = "12.0.0", path = "actors/account" }
+fil_actor_cron = { version = "12.0.0", path = "actors/cron" }
+fil_actor_datacap = { version = "12.0.0", path = "actors/datacap" }
+fil_actor_eam = { version = "12.0.0", path = "actors/eam" }
+fil_actor_ethaccount = { version = "12.0.0", path = "actors/ethaccount" }
+fil_actor_evm = { version = "12.0.0", path = "actors/evm" }
+fil_actor_init = { version = "12.0.0", path = "actors/init" }
+fil_actor_market = { version = "12.0.0", path = "actors/market" }
+fil_actor_miner = { version = "12.0.0", path = "actors/miner" }
+fil_actor_multisig = { version = "12.0.0", path = "actors/multisig" }
+fil_actor_paych = { version = "12.0.0", path = "actors/paych" }
+fil_actor_placeholder = { version = "12.0.0", path = "actors/placeholder" }
+fil_actor_power = { version = "12.0.0", path = "actors/power" }
+fil_actor_reward = { version = "12.0.0", path = "actors/reward" }
+fil_actor_system = { version = "12.0.0", path = "actors/system" }
+fil_actor_verifreg = { version = "12.0.0", path = "actors/verifreg" }
+fil_actors_evm_shared = { version = "12.0.0", path = "actors/evm/shared" }
+fil_actors_runtime = { version = "12.0.0", path = "runtime" }
+fil_builtin_actors_state = { version = "12.0.0", path = "state"}
+fil_actors_integration_tests = { version = "1.0.0", path = "integration_tests" }
+vm_api = { version = "1.0.0", path = "vm_api" }
+test_vm = { version = "12.0.0", path = "test_vm" }
+
 #[patch.crates-io]
-#fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm" }
-#fvm_sdk = { git = "https://github.com/filecoin-project/ref-fvm" }
-#fvm_ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm" }
-#fvm_ipld_amt = { git = "https://github.com/filecoin-project/ref-fvm" }
-#fvm_ipld_bitfield = { git = "https://github.com/filecoin-project/ref-fvm" }
-#fvm_ipld_encoding = { git = "https://github.com/filecoin-project/ref-fvm" }
-#fvm_ipld_blockstore = { git = "https://github.com/filecoin-project/ref-fvm" }
+#fvm_shared = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+#fvm_sdk = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+#fvm_ipld_hamt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+#fvm_ipld_amt = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+#fvm_ipld_bitfield = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+#fvm_ipld_encoding = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+#fvm_ipld_blockstore = { git = "https://github.com/filecoin-project/ref-fvm", branch = "master" }
+#fvm_actor_utils = { git = "https://github.com/helix-onchain/filecoin", branch = "alex/update-fvm-ipld" }
+#frc42_dispatch = { git = "https://github.com/helix-onchain/filecoin", branch = "alex/update-fvm-ipld" }
+#frc46_token = { git = "https://github.com/helix-onchain/filecoin", branch = "alex/update-fvm-ipld" }
 
 ## Uncomment when working locally on ref-fvm and this repo simultaneously.
 ## Assumes the ref-fvm checkout is in a sibling directory with the same name.
@@ -85,6 +182,9 @@ members = [
 # fvm_ipld_bitfield = { path = "../ref-fvm/ipld/bitfield"}
 # fvm_ipld_encoding = { path = "../ref-fvm/ipld/encoding"}
 # fvm_ipld_blockstore = { path = "../ref-fvm/ipld/blockstore"}
+#fvm_actor_utils = { path = "../../filecoin/fvm_actor_utils"}
+#frc42_dispatch = { path = "../../filecoin/frc42_dispatch"}
+#frc46_token = { path = "../../filecoin/frc46_token"}
 
 [profile.wasm]
 inherits = "release"

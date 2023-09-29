@@ -25,7 +25,7 @@ fn batch_generation() {
     );
 
     let ret_vals = vec!["first", "second", "third", "fourth", "fifth"];
-    assert_eq!(vec!["first", "fourth"], br.successes(&ret_vals));
+    assert_eq!(vec![&"first", &"fourth"], br.successes(&ret_vals));
 }
 
 #[test]
@@ -35,14 +35,14 @@ fn batch_generation_constants() {
     assert!(br.all_ok());
     assert_eq!(vec![ExitCode::OK, ExitCode::OK, ExitCode::OK], br.codes());
     let ret_vals = vec!["first", "second", "third"];
-    assert_eq!(ret_vals, br.successes(&ret_vals));
+    assert_eq!(ret_vals.iter().collect::<Vec<&&str>>(), br.successes(&ret_vals));
 
     let br = BatchReturn::empty();
     assert_eq!(0, br.size());
     assert!(br.all_ok());
     assert_eq!(Vec::<ExitCode>::new(), br.codes());
     let empty_successes = Vec::<u64>::new();
-    assert_eq!(empty_successes, br.successes(&empty_successes));
+    assert_eq!(empty_successes.iter().collect::<Vec<&u64>>(), br.successes(&empty_successes));
 }
 
 #[test]

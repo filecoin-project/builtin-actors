@@ -4,7 +4,7 @@
 use cid::Cid;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::{serde_bytes, BytesDe};
+use fvm_ipld_encoding::{strict_bytes, BytesDe};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
@@ -13,11 +13,12 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
     PoStProof, RegisteredPoStProof, RegisteredSealProof, RegisteredUpdateProof, SectorNumber,
-    StoragePower,
+    SectorSize, StoragePower,
 };
 use fvm_shared::smooth::FilterEstimate;
 
 use fil_actors_runtime::DealWeight;
+use serde::{Deserialize, Serialize};
 
 use crate::commd::CompactCommD;
 use crate::ext::verifreg::ClaimID;
@@ -38,7 +39,7 @@ pub struct MinerConstructorParams {
     pub worker: Address,
     pub control_addresses: Vec<Address>,
     pub window_post_proof_type: RegisteredPoStProof,
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub peer_id: Vec<u8>,
     pub multi_addresses: Vec<BytesDe>,
 }
@@ -68,8 +69,14 @@ pub struct ChangeWorkerAddressParams {
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct ChangeOwnerAddressParams {
+    pub new_owner: Address,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ChangePeerIDParams {
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub new_id: Vec<u8>,
 }
 
@@ -89,7 +96,7 @@ pub struct ConfirmSectorProofsParams {
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct DeferredCronEventParams {
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub event_payload: Vec<u8>,
     pub reward_smoothed: FilterEstimate,
     pub quality_adj_power_smoothed: FilterEstimate,
@@ -122,7 +129,7 @@ pub struct SubmitWindowedPoStParams {
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ProveCommitSectorParams {
     pub sector_number: SectorNumber,
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub proof: Vec<u8>,
 }
 
@@ -160,7 +167,8 @@ pub struct SectorClaim {
 pub struct ExpirationExtension2 {
     pub deadline: u64,
     pub partition: u64,
-    pub sectors: BitField, // IDs of sectors without FIL+ claims
+    // IDs of sectors without FIL+ claims
+    pub sectors: BitField,
     pub sectors_with_claims: Vec<SectorClaim>,
     pub new_expiration: ChainEpoch,
 }
@@ -237,17 +245,24 @@ pub struct CompactPartitionsParams {
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct MovePartitionsParams {
+    pub orig_deadline: u64,
+    pub dest_deadline: u64,
+    pub partitions: BitField,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct CompactSectorNumbersParams {
     pub mask_sector_numbers: BitField,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ReportConsensusFaultParams {
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub header1: Vec<u8>,
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub header2: Vec<u8>,
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub header_extra: Vec<u8>,
 }
 
@@ -340,18 +355,27 @@ pub struct SectorOnChainInfo {
     pub verified_deal_weight: DealWeight,
     /// Pledge collected to commit this sector
     pub initial_pledge: TokenAmount,
-    /// Expected one day projection of reward for sector computed at activation time
+    /// Expected one day projection of reward for sector computed at activation / update / extension time
     pub expected_day_reward: TokenAmount,
-    /// Expected twenty day projection of reward for sector computed at activation time
+    /// Expected twenty day projection of reward for sector computed at activation / update / extension time
     pub expected_storage_pledge: TokenAmount,
-    /// Age of sector this sector replaced or zero
-    pub replaced_sector_age: ChainEpoch,
-    /// Day reward of sector this sector replace or zero
+    /// Epoch at which this sector's power was most recently updated
+    pub power_base_epoch: ChainEpoch,
+    /// Maximum day reward this sector has had in previous iterations (zero for brand new sectors)
     pub replaced_day_reward: TokenAmount,
     /// The original SealedSectorCID, only gets set on the first ReplicaUpdate
     pub sector_key_cid: Option<Cid>,
-    // Flag for QA power mechanism introduced in fip 0045
-    pub simple_qa_power: bool,
+    /// Additional flags, see [`SectorOnChainInfoFlags`]
+    pub flags: SectorOnChainInfoFlags,
+}
+
+bitflags::bitflags! {
+    #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default, Debug)]
+    #[serde(transparent)]
+    pub struct SectorOnChainInfoFlags: u32 {
+        /// QA power mechanism introduced in FIP-0045
+        const SIMPLE_QA_POWER = 0x1;
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Copy, Clone, Serialize_tuple, Deserialize_tuple)]
@@ -367,20 +391,20 @@ pub struct ApplyRewardParams {
     pub penalty: TokenAmount,
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Copy, Serialize_tuple, Deserialize_tuple)]
 pub struct DisputeWindowedPoStParams {
     pub deadline: u64,
     pub post_index: u64, // only one is allowed at a time to avoid loading too many sector infos.
 }
 
-#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct ProveCommitAggregateParams {
     pub sector_numbers: BitField,
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub aggregate_proof: Vec<u8>,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ReplicaUpdate {
     pub sector_number: SectorNumber,
     pub deadline: u64,
@@ -388,16 +412,16 @@ pub struct ReplicaUpdate {
     pub new_sealed_cid: Cid,
     pub deals: Vec<DealID>,
     pub update_proof_type: RegisteredUpdateProof,
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub replica_proof: Vec<u8>,
 }
 
-#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ProveReplicaUpdatesParams {
     pub updates: Vec<ReplicaUpdate>,
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ReplicaUpdate2 {
     pub sector_number: SectorNumber,
     pub deadline: u64,
@@ -406,16 +430,16 @@ pub struct ReplicaUpdate2 {
     pub new_unsealed_cid: Cid,
     pub deals: Vec<DealID>,
     pub update_proof_type: RegisteredUpdateProof,
-    #[serde(with = "serde_bytes")]
+    #[serde(with = "strict_bytes")]
     pub replica_proof: Vec<u8>,
 }
 
-#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ProveReplicaUpdatesParams2 {
     pub updates: Vec<ReplicaUpdate2>,
 }
 
-#[derive(Debug, Clone, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ChangeBeneficiaryParams {
     pub new_beneficiary: Address,
     pub new_quota: TokenAmount,
@@ -432,14 +456,60 @@ impl ChangeBeneficiaryParams {
     }
 }
 
-#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ActiveBeneficiary {
     pub beneficiary: Address,
     pub term: BeneficiaryTerm,
 }
 
-#[derive(Debug, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct GetBeneficiaryReturn {
     pub active: ActiveBeneficiary,
     pub proposed: Option<PendingBeneficiaryChange>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct GetOwnerReturn {
+    pub owner: Address,
+    pub proposed: Option<Address>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct IsControllingAddressParam {
+    pub address: Address,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct IsControllingAddressReturn {
+    pub is_controlling: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct GetSectorSizeReturn {
+    pub sector_size: SectorSize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct GetAvailableBalanceReturn {
+    pub available_balance: TokenAmount,
+}
+
+#[derive(Serialize_tuple, Deserialize_tuple)]
+pub struct GetVestingFundsReturn {
+    pub vesting_funds: Vec<(ChainEpoch, TokenAmount)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct GetPeerIDReturn {
+    #[serde(with = "strict_bytes")]
+    pub peer_id: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct GetMultiaddrsReturn {
+    pub multi_addrs: Vec<BytesDe>,
 }

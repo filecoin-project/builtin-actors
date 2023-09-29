@@ -1,7 +1,6 @@
 use frc46_token::token;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -33,5 +32,3 @@ impl State {
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get balance")
     }
 }
-
-impl Cbor for State {}

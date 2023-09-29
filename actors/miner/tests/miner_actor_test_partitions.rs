@@ -976,7 +976,7 @@ mod miner_actor_test_partitions {
         let mut ids = vec![0u64; partition_sectors as usize];
         for (i, info) in many_sectors.iter_mut().enumerate() {
             let id = (i as u64 + 1) << 50;
-            ids[i as usize] = id;
+            ids[i] = id;
             *info = test_sector(i as i64 + 1, id, 50, 60, 1000);
         }
         let sector_numbers = bitfield_from_slice(&ids);

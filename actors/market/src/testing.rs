@@ -1,7 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     convert::TryFrom,
-    fmt::Debug,
 };
 
 use cid::Cid;
@@ -61,7 +60,7 @@ pub struct StateSummary {
 }
 
 /// Checks internal invariants of market state
-pub fn check_state_invariants<BS: Blockstore + Debug>(
+pub fn check_state_invariants<BS: Blockstore>(
     state: &State,
     store: &BS,
     balance: &TokenAmount,
@@ -229,7 +228,10 @@ pub fn check_state_invariants<BS: Blockstore + Debug>(
             let ret = pending_proposals.for_each(|key, _| {
                 let proposal_cid = Cid::try_from(key.0.to_owned())?;
 
-                acc.require(proposal_cids.contains(&proposal_cid), format!("pending proposal with cid {proposal_cid} not found within proposals {pending_proposals:?}"));
+                acc.require(
+                    proposal_cids.contains(&proposal_cid),
+                    format!("pending proposal with cid {proposal_cid} not found within proposals"),
+                );
 
                 pending_proposal_count += 1;
                 Ok(())
@@ -241,15 +243,13 @@ pub fn check_state_invariants<BS: Blockstore + Debug>(
 
     // escrow table and locked table
     let mut lock_table_count = 0;
-    let escrow_table = BalanceTable::from_root(store, &state.escrow_table);
-    let lock_table = BalanceTable::from_root(store, &state.locked_table);
+    let escrow_table = BalanceTable::from_root(store, &state.escrow_table, "escrow table");
+    let lock_table = BalanceTable::from_root(store, &state.locked_table, "locked table");
 
     match (escrow_table, lock_table) {
         (Ok(escrow_table), Ok(lock_table)) => {
             let mut locked_total = TokenAmount::zero();
-            let ret = lock_table.0.for_each(|key, locked_amount| {
-                let address = Address::from_bytes(key)?;
-
+            let ret = lock_table.0.for_each(|address, locked_amount| {
                 locked_total += locked_amount;
 
                 // every entry in locked table should have a corresponding entry in escrow table that is at least as high

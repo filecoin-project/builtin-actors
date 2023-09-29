@@ -1,34 +1,38 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use frc46_token::receiver::types::{FRC46TokenReceived, UniversalReceiverParams, FRC46_TOKEN_TYPE};
+use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
 use frc46_token::token::types::{BurnParams, TransferParams};
 use frc46_token::token::TOKEN_PRECISION;
+use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
-use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
+use fvm_shared::sys::SendFlags;
+use fvm_shared::{ActorID, METHOD_CONSTRUCTOR};
 use log::info;
 use num_derive::FromPrimitive;
-use num_traits::{FromPrimitive, Signed, Zero};
+use num_traits::{Signed, Zero};
 
-use fil_actors_runtime::cbor::{deserialize, serialize};
+use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{ActorCode, Policy, Runtime};
 use fil_actors_runtime::{
-    actor_error, cbor, make_map_with_root_and_bitwidth, resolve_to_actor_id, ActorDowncast,
-    ActorError, BatchReturn, Map, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    actor_dispatch, actor_error, deserialize_block, extract_send_result, resolve_to_actor_id,
+    ActorError, BatchReturn, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
     SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen};
 
 use crate::ext::datacap::{DestroyParams, MintParams};
+use crate::state::{
+    DataCapMap, RemoveDataCapProposalMap, DATACAP_MAP_CONFIG, REMOVE_DATACAP_PROPOSALS_CONFIG,
+};
 
 pub use self::state::Allocation;
 pub use self::state::Claim;
@@ -60,6 +64,12 @@ pub enum Method {
     GetClaims = 10,
     ExtendClaimTerms = 11,
     RemoveExpiredClaims = 12,
+    // Method numbers derived from FRC-0042 standards
+    AddVerifiedClientExported = frc42_dispatch::method_hash!("AddVerifiedClient"),
+    RemoveExpiredAllocationsExported = frc42_dispatch::method_hash!("RemoveExpiredAllocations"),
+    GetClaimsExported = frc42_dispatch::method_hash!("GetClaims"),
+    ExtendClaimTermsExported = frc42_dispatch::method_hash!("ExtendClaimTerms"),
+    RemoveExpiredClaimsExported = frc42_dispatch::method_hash!("RemoveExpiredClaims"),
     UniversalReceiverHook = frc42_dispatch::method_hash!("Receive"),
 }
 
@@ -67,12 +77,12 @@ pub struct Actor;
 
 impl Actor {
     /// Constructor for Registry Actor
-    pub fn constructor(rt: &mut impl Runtime, root_key: Address) -> Result<(), ActorError> {
+    pub fn constructor(rt: &impl Runtime, params: ConstructorParams) -> Result<(), ActorError> {
         rt.validate_immediate_caller_is(std::iter::once(&SYSTEM_ACTOR_ADDR))?;
 
         // root should be an ID address
         let id_addr = rt
-            .resolve_address(&root_key)
+            .resolve_address(&params.root_key)
             .context_code(ExitCode::USR_ILLEGAL_ARGUMENT, "root should be an ID address")?;
 
         let st = State::new(rt.store(), Address::new_id(id_addr))
@@ -82,10 +92,7 @@ impl Actor {
         Ok(())
     }
 
-    pub fn add_verifier(
-        rt: &mut impl Runtime,
-        params: AddVerifierParams,
-    ) -> Result<(), ActorError> {
+    pub fn add_verifier(rt: &impl Runtime, params: AddVerifierParams) -> Result<(), ActorError> {
         if params.allowance < rt.policy().minimum_verified_allocation_size {
             return Err(actor_error!(
                 illegal_argument,
@@ -95,8 +102,7 @@ impl Actor {
             ));
         }
 
-        let verifier = resolve_to_actor_id(rt, &params.address)?;
-
+        let verifier = resolve_to_actor_id(rt, &params.address, true)?;
         let verifier = Address::new_id(verifier);
 
         let st: State = rt.state()?;
@@ -108,7 +114,7 @@ impl Actor {
         }
 
         // Disallow existing clients as verifiers.
-        let token_balance = balance_of(rt, &verifier)?;
+        let token_balance = balance(rt, &verifier)?;
         if token_balance.is_positive() {
             return Err(actor_error!(
                 illegal_argument,
@@ -125,23 +131,21 @@ impl Actor {
     }
 
     pub fn remove_verifier(
-        rt: &mut impl Runtime,
-        verifier_addr: Address,
+        rt: &impl Runtime,
+        params: RemoveVerifierParams,
     ) -> Result<(), ActorError> {
-        let verifier = resolve_to_actor_id(rt, &verifier_addr)?;
+        let verifier = resolve_to_actor_id(rt, &params.verifier, false)?;
         let verifier = Address::new_id(verifier);
 
-        let state: State = rt.state()?;
-        rt.validate_immediate_caller_is(std::iter::once(&state.root_key))?;
-
         rt.transaction(|st: &mut State, rt| {
+            rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
             st.remove_verifier(rt.store(), &verifier).context("failed to remove verifier")
         })
     }
 
     pub fn add_verified_client(
-        rt: &mut impl Runtime,
-        params: AddVerifierClientParams,
+        rt: &impl Runtime,
+        params: AddVerifiedClientParams,
     ) -> Result<(), ActorError> {
         // The caller will be verified by checking table below
         rt.validate_immediate_caller_accept_any()?;
@@ -155,42 +159,41 @@ impl Actor {
             ));
         }
 
-        let client = resolve_to_actor_id(rt, &params.address)?;
+        let client = resolve_to_actor_id(rt, &params.address, true)?;
         let client = Address::new_id(client);
 
-        let st: State = rt.state()?;
-        if client == st.root_key {
-            return Err(actor_error!(illegal_argument, "root cannot be added as client"));
-        }
-
-        // Validate caller is one of the verifiers, i.e. has an allowance (even if zero).
-        let verifier = rt.message().caller();
-        let verifier_cap = st
-            .get_verifier_cap(rt.store(), &verifier)?
-            .ok_or_else(|| actor_error!(not_found, "caller {} is not a verifier", verifier))?;
-
-        // Disallow existing verifiers as clients.
-        if st.get_verifier_cap(rt.store(), &client)?.is_some() {
-            return Err(actor_error!(
-                illegal_argument,
-                "verifier {} cannot be added as a verified client",
-                client
-            ));
-        }
-
-        // Compute new verifier allowance.
-        if verifier_cap < params.allowance {
-            return Err(actor_error!(
-                illegal_argument,
-                "add more DataCap {} for client than allocated {}",
-                params.allowance,
-                verifier_cap
-            ));
-        }
-
-        // Reduce verifier's cap.
-        let new_verifier_cap = verifier_cap - &params.allowance;
         rt.transaction(|st: &mut State, rt| {
+            if client == st.root_key {
+                return Err(actor_error!(illegal_argument, "root cannot be added as client"));
+            }
+
+            // Validate caller is one of the verifiers, i.e. has an allowance (even if zero).
+            let verifier = rt.message().caller();
+            let verifier_cap = st
+                .get_verifier_cap(rt.store(), &verifier)?
+                .ok_or_else(|| actor_error!(not_found, "caller {} is not a verifier", verifier))?;
+
+            // Disallow existing verifiers as clients.
+            if st.get_verifier_cap(rt.store(), &client)?.is_some() {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "verifier {} cannot be added as a verified client",
+                    client
+                ));
+            }
+
+            // Compute new verifier allowance.
+            if verifier_cap < params.allowance {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "add more DataCap {} for client than allocated {}",
+                    params.allowance,
+                    verifier_cap
+                ));
+            }
+
+            // Reduce verifier's cap.
+            let new_verifier_cap = verifier_cap - &params.allowance;
             st.put_verifier(rt.store(), &verifier, &new_verifier_cap)
                 .context("failed to update verifier allowance")
         })?;
@@ -206,16 +209,16 @@ impl Actor {
 
     /// Removes DataCap allocated to a verified client.
     pub fn remove_verified_client_data_cap(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: RemoveDataCapParams,
     ) -> Result<RemoveDataCapReturn, ActorError> {
-        let client = resolve_to_actor_id(rt, &params.verified_client_to_remove)?;
+        let client = resolve_to_actor_id(rt, &params.verified_client_to_remove, false)?;
         let client = Address::new_id(client);
 
-        let verifier_1 = resolve_to_actor_id(rt, &params.verifier_request_1.verifier)?;
+        let verifier_1 = resolve_to_actor_id(rt, &params.verifier_request_1.verifier, true)?;
         let verifier_1 = Address::new_id(verifier_1);
 
-        let verifier_2 = resolve_to_actor_id(rt, &params.verifier_request_2.verifier)?;
+        let verifier_2 = resolve_to_actor_id(rt, &params.verifier_request_2.verifier, true)?;
         let verifier_2 = Address::new_id(verifier_2);
 
         if verifier_1 == verifier_2 {
@@ -225,8 +228,7 @@ impl Actor {
             ));
         }
 
-        // Validate and then remove the proposal.
-        rt.transaction(|st: &mut State, rt| {
+        let (verifier_1_id, verifier_2_id) = rt.transaction(|st: &mut State, rt| {
             rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
 
             if params.verified_client_to_remove == VERIFIED_REGISTRY_ACTOR_ADDR {
@@ -245,44 +247,42 @@ impl Actor {
             }
 
             // validate signatures
-            let mut proposal_ids = make_map_with_root_and_bitwidth::<_, RemoveDataCapProposalID>(
-                &st.remove_data_cap_proposal_ids,
+            let mut proposal_ids = RemoveDataCapProposalMap::load(
                 rt.store(),
-                HAMT_BIT_WIDTH,
-            )
-            .map_err(|e| {
-                e.downcast_default(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    "failed to load datacap removal proposal ids",
-                )
-            })?;
+                &st.remove_data_cap_proposal_ids,
+                REMOVE_DATACAP_PROPOSALS_CONFIG,
+                "remove datacap proposals",
+            )?;
 
             let verifier_1_id = use_proposal_id(&mut proposal_ids, verifier_1, client)?;
             let verifier_2_id = use_proposal_id(&mut proposal_ids, verifier_2, client)?;
 
-            remove_data_cap_request_is_valid(
-                rt,
-                &params.verifier_request_1,
-                verifier_1_id,
-                &params.data_cap_amount_to_remove,
-                client,
-            )?;
-            remove_data_cap_request_is_valid(
-                rt,
-                &params.verifier_request_2,
-                verifier_2_id,
-                &params.data_cap_amount_to_remove,
-                client,
-            )?;
-
-            st.remove_data_cap_proposal_ids = proposal_ids
-                .flush()
-                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush proposal ids")?;
-            Ok(())
+            // Assume proposal ids are valid and increment them
+            st.remove_data_cap_proposal_ids = proposal_ids.flush()?;
+            Ok((verifier_1_id, verifier_2_id))
         })?;
 
+        // Now make sure the proposals were actually valid. We had to increment them first in case
+        // re-entrant calls do anything funny.
+        //
+        // If this fails, we'll revert and the proposals will be restored.
+        remove_data_cap_request_is_valid(
+            rt,
+            &params.verifier_request_1,
+            verifier_1_id,
+            &params.data_cap_amount_to_remove,
+            client,
+        )?;
+        remove_data_cap_request_is_valid(
+            rt,
+            &params.verifier_request_2,
+            verifier_2_id,
+            &params.data_cap_amount_to_remove,
+            client,
+        )?;
+
         // Burn the client's data cap tokens.
-        let balance = balance_of(rt, &client).context("failed to fetch balance")?;
+        let balance = balance(rt, &client).context("failed to fetch balance")?;
         let burnt = std::cmp::min(balance, params.data_cap_amount_to_remove);
         destroy(rt, &client, &burnt)
             .context(format!("failed to destroy {} from allowance for {}", &burnt, &client))?;
@@ -297,7 +297,7 @@ impl Actor {
     // When removed, the DataCap tokens are transferred back to the client.
     // If no allocations are specified, all eligible allocations are removed.
     pub fn remove_expired_allocations(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: RemoveExpiredAllocationsParams,
     ) -> Result<RemoveExpiredAllocationsReturn, ActorError> {
         // Since the allocations are expired, this is safe to be called by anyone.
@@ -310,12 +310,12 @@ impl Actor {
             .transaction(|st: &mut State, rt| {
                 let mut allocs = st.load_allocs(rt.store())?;
 
-                let to_remove: Vec<AllocationID>;
+                let to_remove: Vec<&AllocationID>;
                 if params.allocation_ids.is_empty() {
                     // Find all expired allocations for the client.
                     considered = expiration::find_expired(&mut allocs, params.client, curr_epoch)?;
                     batch_ret = BatchReturn::ok(considered.len() as u32);
-                    to_remove = considered.clone();
+                    to_remove = considered.iter().collect();
                 } else {
                     considered = params.allocation_ids.clone();
                     batch_ret = expiration::check_expired(
@@ -328,7 +328,7 @@ impl Actor {
                 }
 
                 for id in to_remove {
-                    let existing = allocs.remove(params.client, id).context_code(
+                    let existing = allocs.remove(params.client, *id).context_code(
                         ExitCode::USR_ILLEGAL_STATE,
                         format!("failed to remove allocation {}", id),
                     )?;
@@ -356,11 +356,15 @@ impl Actor {
         })
     }
 
-    // Called by storage provider actor to claim allocations for data provably committed to storage.
-    // For each allocation claim, the registry checks that the provided piece CID
-    // and size match that of the allocation.
+    /// Called by storage provider actor to claim allocations for data provably committed to storage.
+    /// For each allocation claim, the registry checks that the provided piece CID
+    /// and size match that of the allocation.
+    /// Claims are processed in groups by sector. A failed claim will cause the
+    /// others in its group to fail too, unless `all_or_nothing` is enabled, in which case
+    /// the method will abort.
+    /// Returns an indicator of success for each sector group, and the size of claimed space.
     pub fn claim_allocations(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: ClaimAllocationsParams,
     ) -> Result<ClaimAllocationsReturn, ActorError> {
         rt.validate_immediate_caller_type(std::iter::once(&Type::Miner))?;
@@ -368,121 +372,122 @@ impl Actor {
         if params.sectors.is_empty() {
             return Err(actor_error!(illegal_argument, "claim allocations called with no claims"));
         }
-        let mut datacap_claimed = DataCap::zero();
-        let mut ret_gen = BatchReturnGen::new(params.sectors.len());
-        let all_or_nothing = params.all_or_nothing;
+
+        let mut batch_gen = BatchReturnGen::new(params.sectors.len());
+        let mut sector_results: Vec<SectorClaimSummary> = vec![];
+        let mut total_claimed_space = DataCap::zero();
+
         rt.transaction(|st: &mut State, rt| {
             let mut claims = st.load_claims(rt.store())?;
             let mut allocs = st.load_allocs(rt.store())?;
 
-            for claim_alloc in params.sectors {
-                let maybe_alloc = state::get_allocation(
-                    &mut allocs,
-                    claim_alloc.client,
-                    claim_alloc.allocation_id,
-                )?;
-                let alloc: &Allocation = match maybe_alloc {
-                    None => {
-                        ret_gen.add_fail(ExitCode::USR_NOT_FOUND);
-                        info!(
-                            "no allocation {} for client {}",
-                            claim_alloc.allocation_id, claim_alloc.client,
-                        );
-                        continue;
+            // Note: this doesn't prevent being called with the same sector number twice.
+            'sectors: for sector in params.sectors {
+                // Load and validate all allocations for the sector group before
+                // making any state changes.
+                // Errors cause the sector to be skipped, unless all-or-nothing is requested.
+                let mut sector_new_claims: Vec<(ClaimID, Claim)> = vec![];
+                for claim in sector.claims {
+                    let maybe_alloc =
+                        state::get_allocation(&mut allocs, claim.client, claim.allocation_id)?;
+                    if let Some(alloc) = maybe_alloc {
+                        if !can_claim_alloc(&claim, provider, alloc, rt.curr_epoch(), sector.expiry)
+                        {
+                            info!(
+                                "failed to claim allocation {} in sector {} expiry {}",
+                                claim.allocation_id, sector.sector, sector.expiry
+                            );
+                            batch_gen.add_fail(ExitCode::USR_FORBIDDEN);
+                            continue 'sectors;
+                        }
+                        sector_new_claims.push((
+                            claim.allocation_id,
+                            Claim {
+                                provider,
+                                client: alloc.client,
+                                data: alloc.data,
+                                size: alloc.size,
+                                term_min: alloc.term_min,
+                                term_max: alloc.term_max,
+                                term_start: rt.curr_epoch(),
+                                sector: sector.sector,
+                            },
+                        ));
+                    } else {
+                        info!("no allocation {} for client {}", claim.allocation_id, claim.client);
+                        batch_gen.add_fail(ExitCode::USR_NOT_FOUND);
+                        continue 'sectors;
                     }
-                    Some(a) => a,
-                };
-
-                if !can_claim_alloc(&claim_alloc, provider, alloc, rt.curr_epoch()) {
-                    ret_gen.add_fail(ExitCode::USR_FORBIDDEN);
-                    info!(
-                        "invalid sector {:?} for allocation {}",
-                        claim_alloc.sector, claim_alloc.allocation_id,
-                    );
-                    continue;
                 }
 
-                let new_claim = Claim {
-                    provider,
-                    client: alloc.client,
-                    data: alloc.data,
-                    size: alloc.size,
-                    term_min: alloc.term_min,
-                    term_max: alloc.term_max,
-                    term_start: rt.curr_epoch(),
-                    sector: claim_alloc.sector,
-                };
-
-                let inserted = claims
-                    .put_if_absent(provider, claim_alloc.allocation_id, new_claim)
-                    .context_code(
+                // Update state.
+                // Errors from here on are unexpected, so abort.
+                let mut sector_claimed_space = DataCap::zero();
+                for (id, new_claim) in sector_new_claims {
+                    let inserted =
+                        claims.put_if_absent(provider, id, new_claim.clone()).context_code(
+                            ExitCode::USR_ILLEGAL_STATE,
+                            format!("failed to write claim {}", id),
+                        )?;
+                    if !inserted {
+                        return Err(actor_error!(illegal_argument, "claim {} already exists", id));
+                    }
+                    allocs.remove(new_claim.client, id).context_code(
                         ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to write claim {}", claim_alloc.allocation_id),
+                        format!("failed to remove allocation {}", id),
                     )?;
-                if !inserted {
-                    ret_gen.add_fail(ExitCode::USR_ILLEGAL_STATE); // should be unreachable since claim and alloc can't exist at once
-                    info!(
-                        "claim for allocation {} could not be inserted as it already exists",
-                        claim_alloc.allocation_id,
-                    );
-                    continue;
+                    sector_claimed_space += DataCap::from(new_claim.size.0);
                 }
-
-                allocs.remove(claim_alloc.client, claim_alloc.allocation_id).context_code(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to remove allocation {}", claim_alloc.allocation_id),
-                )?;
-
-                datacap_claimed += DataCap::from(claim_alloc.size.0);
-                ret_gen.add_success();
+                total_claimed_space += &sector_claimed_space;
+                sector_results.push(SectorClaimSummary { claimed_space: sector_claimed_space });
+                batch_gen.add_success();
             }
             st.save_allocs(&mut allocs)?;
             st.save_claims(&mut claims)?;
             Ok(())
         })
         .context("state transaction failed")?;
-        let batch_info = ret_gen.gen();
-        if all_or_nothing && !batch_info.all_ok() {
-            return Err(actor_error!(
-                illegal_argument,
-                "all or nothing call contained failures: {}",
-                batch_info.to_string()
+
+        let batch_info = batch_gen.gen();
+        if params.all_or_nothing && !batch_info.all_ok() {
+            return Err(ActorError::checked(
+                // Returning the first actual error code from the batch might be better, but
+                // would change behaviour from the original implementation.
+                ExitCode::USR_ILLEGAL_ARGUMENT,
+                format!("claim failed with all-or-nothing: {}", batch_info),
+                None,
             ));
         }
 
         // Burn the datacap tokens from verified registry's own balance.
-        burn(rt, &datacap_claimed)?;
-
-        Ok(ClaimAllocationsReturn { batch_info, claimed_space: datacap_claimed })
+        burn(rt, &total_claimed_space)?;
+        Ok(ClaimAllocationsReturn { sector_results: batch_info, sector_claims: sector_results })
     }
 
     // get claims for a provider
     pub fn get_claims(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: GetClaimsParams,
     ) -> Result<GetClaimsReturn, ActorError> {
         rt.validate_immediate_caller_accept_any()?;
         let mut batch_gen = BatchReturnGen::new(params.claim_ids.len());
-        let claims = rt
-            .transaction(|st: &mut State, rt| {
-                let mut st_claims = st.load_claims(rt.store())?;
-                let mut ret_claims = Vec::new();
-                for id in params.claim_ids {
-                    let maybe_claim = state::get_claim(&mut st_claims, params.provider, id)?;
-                    match maybe_claim {
-                        None => {
-                            batch_gen.add_fail(ExitCode::USR_NOT_FOUND);
-                            info!("no claim {} for provider {}", id, params.provider,);
-                        }
-                        Some(claim) => {
-                            batch_gen.add_success();
-                            ret_claims.push(claim.clone());
-                        }
-                    };
+        let st: State = rt.state()?;
+        let mut st_claims = st.load_claims(rt.store())?;
+        let mut claims = Vec::new();
+        for id in params.claim_ids {
+            let maybe_claim = state::get_claim(&mut st_claims, params.provider, id)?;
+            match maybe_claim {
+                None => {
+                    batch_gen.add_fail(ExitCode::USR_NOT_FOUND);
+                    info!("no claim {} for provider {}", id, params.provider,);
                 }
-                Ok(ret_claims)
-            })
-            .context("state transaction failed")?;
+                Some(claim) => {
+                    batch_gen.add_success();
+                    claims.push(claim.clone());
+                }
+            };
+        }
+
         Ok(GetClaimsReturn { batch_info: batch_gen.gen(), claims })
     }
 
@@ -494,7 +499,7 @@ impl Actor {
     /// Note that this method can't extend the term past the original limit,
     /// even if the term has previously been extended past that by spending new datacap.
     pub fn extend_claim_terms(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: ExtendClaimTermsParams,
     ) -> Result<ExtendClaimTermsReturn, ActorError> {
         // Permissions are checked per-claim.
@@ -557,7 +562,7 @@ impl Actor {
     // A claim may be removed after its maximum term has elapsed (by anyone).
     // If no claims are specified, all eligible claims are removed.
     pub fn remove_expired_claims(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: RemoveExpiredClaimsParams,
     ) -> Result<RemoveExpiredClaimsReturn, ActorError> {
         // Since the claims are expired, this is safe to be called by anyone.
@@ -567,12 +572,12 @@ impl Actor {
         let mut considered = Vec::<ClaimID>::new();
         rt.transaction(|st: &mut State, rt| {
             let mut claims = st.load_claims(rt.store())?;
-            let to_remove: Vec<ClaimID>;
+            let to_remove: Vec<&ClaimID>;
             if params.claim_ids.is_empty() {
                 // Find all expired claims for the provider.
                 considered = expiration::find_expired(&mut claims, params.provider, curr_epoch)?;
                 batch_ret = BatchReturn::ok(considered.len() as u32);
-                to_remove = considered.clone();
+                to_remove = considered.iter().collect();
             } else {
                 considered = params.claim_ids.clone();
                 batch_ret = expiration::check_expired(
@@ -585,7 +590,7 @@ impl Actor {
             }
 
             for id in to_remove {
-                claims.remove(params.provider, id).context_code(
+                claims.remove(params.provider, *id).context_code(
                     ExitCode::USR_ILLEGAL_STATE,
                     format!("failed to remove claim {}", id),
                 )?;
@@ -606,7 +611,7 @@ impl Actor {
     // or the transfer will be rejected.
     // Returns the ids of the created allocations.
     pub fn universal_receiver_hook(
-        rt: &mut impl Runtime,
+        rt: &impl Runtime,
         params: UniversalReceiverParams,
     ) -> Result<AllocationsResponse, ActorError> {
         // Accept only the data cap token.
@@ -630,10 +635,10 @@ impl Actor {
             validate_new_allocation(req, rt.policy(), curr_epoch)?;
             // Require the provider for new allocations to be a miner actor.
             // This doesn't matter much, but is more ergonomic to fail rather than lock up datacap.
-            let provider_id = resolve_miner_id(rt, &req.provider)?;
+            check_miner_id(rt, req.provider)?;
             new_allocs.push(Allocation {
                 client,
-                provider: provider_id,
+                provider: req.provider,
                 data: req.data,
                 size: req.size,
                 term_min: req.term_min,
@@ -650,14 +655,9 @@ impl Actor {
         for req in &reqs.extensions {
             // Note: we don't check the client address here, by design.
             // Any client can spend datacap to extend an existing claim.
-            let provider_id = rt
-                .resolve_address(&req.provider)
-                .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
-                    format!("failed to resolve provider address {}", req.provider)
-                })?;
-            let claim = state::get_claim(&mut claims, provider_id, req.claim)?
+            let claim = state::get_claim(&mut claims, req.provider, req.claim)?
                 .with_context_code(ExitCode::USR_NOT_FOUND, || {
-                    format!("no claim {} for provider {}", req.claim, provider_id)
+                    format!("no claim {} for provider {}", req.claim, req.provider)
                 })?;
             let policy = rt.policy();
 
@@ -690,8 +690,8 @@ impl Actor {
 
         // Save new allocations and updated claims.
         let ids = rt.transaction(|st: &mut State, rt| {
-            let ids = st.insert_allocations(rt.store(), client, new_allocs.into_iter())?;
-            st.put_claims(rt.store(), updated_claims.into_iter())?;
+            let ids = st.insert_allocations(rt.store(), client, new_allocs)?;
+            st.put_claims(rt.store(), updated_claims)?;
             Ok(ids)
         })?;
 
@@ -701,66 +701,60 @@ impl Actor {
 
 // Checks whether an address has a verifier entry (which could be zero).
 fn is_verifier(rt: &impl Runtime, st: &State, address: Address) -> Result<bool, ActorError> {
-    let verifiers =
-        make_map_with_root_and_bitwidth::<_, BigIntDe>(&st.verifiers, rt.store(), HAMT_BIT_WIDTH)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load verifiers")?;
-
+    let verifiers = DataCapMap::load(rt.store(), &st.verifiers, DATACAP_MAP_CONFIG, "verifiers")?;
     // check that the `address` is currently a verified client
-    let found = verifiers
-        .contains_key(&address.to_bytes())
-        .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get verifier")?;
-
+    let found = verifiers.contains_key(&address)?;
     Ok(found)
 }
 
-// Invokes BalanceOf on the data cap token actor, and converts the result to whole units of data cap.
-fn balance_of(rt: &mut impl Runtime, owner: &Address) -> Result<DataCap, ActorError> {
-    let params = serialize(owner, "owner address")?;
-    let ret = rt
-        .send(
+// Invokes Balance on the data cap token actor, and converts the result to whole units of data cap.
+fn balance(rt: &impl Runtime, owner: &Address) -> Result<DataCap, ActorError> {
+    let params = IpldBlock::serialize_cbor(owner)?;
+    let x: TokenAmount = deserialize_block(
+        extract_send_result(rt.send_simple(
             &DATACAP_TOKEN_ACTOR_ADDR,
-            ext::datacap::Method::BalanceOf as u64,
+            ext::datacap::Method::Balance as u64,
             params,
             TokenAmount::zero(),
-        )
-        .context(format!("failed to query datacap balance of {}", owner))?;
-    let x: TokenAmount = deserialize(&ret, "balance result")?;
+        ))
+        .context(format!("failed to query datacap balance of {}", owner))?,
+    )?;
     Ok(tokens_to_datacap(&x))
 }
 
 // Invokes Mint on a data cap token actor for whole units of data cap.
 fn mint(
-    rt: &mut impl Runtime,
+    rt: &impl Runtime,
     to: &Address,
     amount: &DataCap,
     operators: Vec<Address>,
 ) -> Result<(), ActorError> {
     let token_amt = datacap_to_tokens(amount);
     let params = MintParams { to: *to, amount: token_amt, operators };
-    rt.send(
+    extract_send_result(rt.send_simple(
         &DATACAP_TOKEN_ACTOR_ADDR,
         ext::datacap::Method::Mint as u64,
-        serialize(&params, "mint params")?,
+        IpldBlock::serialize_cbor(&params)?,
         TokenAmount::zero(),
-    )
+    ))
     .context(format!("failed to send mint {:?} to datacap", params))?;
     Ok(())
 }
 
 // Invokes Burn on a data cap token actor for whole units of data cap.
-fn burn(rt: &mut impl Runtime, amount: &DataCap) -> Result<(), ActorError> {
+fn burn(rt: &impl Runtime, amount: &DataCap) -> Result<(), ActorError> {
     if amount.is_zero() {
         return Ok(());
     }
 
     let token_amt = datacap_to_tokens(amount);
     let params = BurnParams { amount: token_amt };
-    rt.send(
+    extract_send_result(rt.send_simple(
         &DATACAP_TOKEN_ACTOR_ADDR,
         ext::datacap::Method::Burn as u64,
-        serialize(&params, "burn params")?,
+        IpldBlock::serialize_cbor(&params)?,
         TokenAmount::zero(),
-    )
+    ))
     .context(format!("failed to send burn {:?} to datacap", params))?;
     // The burn return value gives the new balance, but it's dropped here.
     // This also allows the check for zero burns inside this method.
@@ -768,36 +762,36 @@ fn burn(rt: &mut impl Runtime, amount: &DataCap) -> Result<(), ActorError> {
 }
 
 // Invokes Destroy on a data cap token actor for whole units of data cap.
-fn destroy(rt: &mut impl Runtime, owner: &Address, amount: &DataCap) -> Result<(), ActorError> {
+fn destroy(rt: &impl Runtime, owner: &Address, amount: &DataCap) -> Result<(), ActorError> {
     if amount.is_zero() {
         return Ok(());
     }
     let token_amt = datacap_to_tokens(amount);
     let params = DestroyParams { owner: *owner, amount: token_amt };
-    rt.send(
+    extract_send_result(rt.send_simple(
         &DATACAP_TOKEN_ACTOR_ADDR,
         ext::datacap::Method::Destroy as u64,
-        serialize(&params, "destroy params")?,
+        IpldBlock::serialize_cbor(&params)?,
         TokenAmount::zero(),
-    )
+    ))
     .context(format!("failed to send destroy {:?} to datacap", params))?;
     Ok(())
 }
 
 // Invokes transfer on a data cap token actor for whole units of data cap.
-fn transfer(rt: &mut impl Runtime, to: ActorID, amount: &DataCap) -> Result<(), ActorError> {
+fn transfer(rt: &impl Runtime, to: ActorID, amount: &DataCap) -> Result<(), ActorError> {
     let token_amt = datacap_to_tokens(amount);
     let params = TransferParams {
         to: Address::new_id(to),
         amount: token_amt,
         operator_data: Default::default(),
     };
-    rt.send(
+    extract_send_result(rt.send_simple(
         &DATACAP_TOKEN_ACTOR_ADDR,
         ext::datacap::Method::Transfer as u64,
-        serialize(&params, "transfer params")?,
+        IpldBlock::serialize_cbor(&params)?,
         TokenAmount::zero(),
-    )
+    ))
     .context(format!("failed to send transfer to datacap {:?}", params))?;
     Ok(())
 }
@@ -811,7 +805,7 @@ fn tokens_to_datacap(amount: &TokenAmount) -> BigInt {
 }
 
 fn use_proposal_id<BS>(
-    proposal_ids: &mut Map<BS, RemoveDataCapProposalID>,
+    proposal_ids: &mut RemoveDataCapProposalMap<BS>,
     verifier: Address,
     client: Address,
 ) -> Result<RemoveDataCapProposalID, ActorError>
@@ -819,16 +813,8 @@ where
     BS: Blockstore,
 {
     let key = AddrPairKey::new(verifier, client);
-
-    let maybe_id = proposal_ids.get(&key.to_bytes()).map_err(|e| {
-        actor_error!(
-            illegal_state,
-            "failed to get proposal id for verifier {} and client {}: {}",
-            verifier,
-            client,
-            e
-        )
-    })?;
+    let maybe_id =
+        proposal_ids.get(&key).with_context(|| format!("verifier {verifier} client {client}"))?;
 
     let curr_id = if let Some(RemoveDataCapProposalID { id }) = maybe_id {
         RemoveDataCapProposalID { id: *id }
@@ -837,16 +823,9 @@ where
     };
 
     let next_id = RemoveDataCapProposalID { id: curr_id.id + 1 };
-    proposal_ids.set(BytesKey::from(key.to_bytes()), next_id).map_err(|e| {
-        actor_error!(
-            illegal_state,
-            "failed to update proposal id for verifier {} and client {}: {}",
-            verifier,
-            client,
-            e
-        )
-    })?;
-
+    proposal_ids
+        .set(&key, next_id)
+        .with_context(|| format!("verifier {verifier} client {client}"))?;
     Ok(curr_id)
 }
 
@@ -870,10 +849,24 @@ fn remove_data_cap_request_is_valid(
 
     let payload = [SIGNATURE_DOMAIN_SEPARATION_REMOVE_DATA_CAP, b.bytes()].concat();
 
-    // verify signature of proposal
-    rt.verify_signature(&request.signature, &request.verifier, &payload).map_err(
-        |e| actor_error!(illegal_argument; "invalid signature for datacap removal request: {}", e),
-    )
+    if !extract_send_result(rt.send(
+        &request.verifier,
+        ext::account::AUTHENTICATE_MESSAGE_METHOD,
+        IpldBlock::serialize_cbor(&ext::account::AuthenticateMessageParams {
+            signature: request.signature.bytes.clone(),
+            message: payload,
+        })?,
+        TokenAmount::zero(),
+        None,
+        SendFlags::READ_ONLY,
+    ))
+    .and_then(deserialize_block)
+    .context("proposal authentication failed")?
+    {
+        Err(actor_error!(illegal_argument, "proposal authentication failed"))
+    } else {
+        Ok(())
+    }
 }
 
 // Deserializes and validates a receiver hook payload, expecting only an FRC-46 transfer.
@@ -1017,14 +1010,12 @@ fn validate_claim_extension(
 }
 
 // Checks that an address corresponsds to a miner actor.
-fn resolve_miner_id(rt: &mut impl Runtime, addr: &Address) -> Result<ActorID, ActorError> {
-    let id = rt.resolve_address(addr).with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
-        format!("failed to resolve provider address {}", addr)
-    })?;
+fn check_miner_id(rt: &impl Runtime, id: ActorID) -> Result<(), ActorError> {
     let code_cid =
         rt.get_actor_code_cid(&id).with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
-            format!("no code CID for provider {}", addr)
+            format!("no code CID for provider {}", id)
         })?;
+
     let provider_type = rt
         .resolve_builtin_actor_type(&code_cid)
         .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
@@ -1034,21 +1025,21 @@ fn resolve_miner_id(rt: &mut impl Runtime, addr: &Address) -> Result<ActorID, Ac
         return Err(actor_error!(
             illegal_argument,
             "allocation provider {} must be a miner actor, was {:?}",
-            addr,
+            id,
             provider_type
         ));
     }
-    Ok(id)
+    Ok(())
 }
 
 fn can_claim_alloc(
-    claim_alloc: &SectorAllocationClaim,
+    claim_alloc: &AllocationClaim,
     provider: ActorID,
     alloc: &Allocation,
     curr_epoch: ChainEpoch,
+    sector_expiry: ChainEpoch,
 ) -> bool {
-    let sector_lifetime = claim_alloc.sector_expiry - curr_epoch;
-
+    let sector_lifetime = sector_expiry - curr_epoch;
     provider == alloc.provider
         && claim_alloc.client == alloc.client
         && claim_alloc.data == alloc.data
@@ -1059,61 +1050,23 @@ fn can_claim_alloc(
 }
 
 impl ActorCode for Actor {
-    fn invoke_method<RT>(
-        rt: &mut RT,
-        method: MethodNum,
-        params: &RawBytes,
-    ) -> Result<RawBytes, ActorError>
-    where
-        RT: Runtime,
-    {
-        match FromPrimitive::from_u64(method) {
-            Some(Method::Constructor) => {
-                Self::constructor(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::AddVerifier) => {
-                Self::add_verifier(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::RemoveVerifier) => {
-                Self::remove_verifier(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::AddVerifiedClient) => {
-                Self::add_verified_client(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::default())
-            }
-            Some(Method::RemoveVerifiedClientDataCap) => {
-                let res =
-                    Self::remove_verified_client_data_cap(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::RemoveExpiredAllocations) => {
-                let res = Self::remove_expired_allocations(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::ClaimAllocations) => {
-                let res = Self::claim_allocations(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::ExtendClaimTerms) => {
-                let res = Self::extend_claim_terms(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::GetClaims) => {
-                let res = Self::get_claims(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::RemoveExpiredClaims) => {
-                let res = Self::remove_expired_claims(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            Some(Method::UniversalReceiverHook) => {
-                let res = Self::universal_receiver_hook(rt, cbor::deserialize_params(params)?)?;
-                Ok(RawBytes::serialize(res)?)
-            }
-            None => Err(actor_error!(unhandled_message; "Invalid method")),
-        }
+    type Methods = Method;
+
+    fn name() -> &'static str {
+        "VerifiedRegistry"
+    }
+
+    actor_dispatch! {
+        Constructor => constructor,
+        AddVerifier => add_verifier,
+        RemoveVerifier => remove_verifier,
+        AddVerifiedClient|AddVerifiedClientExported => add_verified_client,
+        RemoveVerifiedClientDataCap => remove_verified_client_data_cap,
+        RemoveExpiredAllocations|RemoveExpiredAllocationsExported => remove_expired_allocations,
+        ClaimAllocations => claim_allocations,
+        GetClaims|GetClaimsExported => get_claims,
+        ExtendClaimTerms|ExtendClaimTermsExported => extend_claim_terms,
+        RemoveExpiredClaims|RemoveExpiredClaimsExported => remove_expired_claims,
+        UniversalReceiverHook => universal_receiver_hook,
     }
 }

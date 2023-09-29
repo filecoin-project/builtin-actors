@@ -1,0 +1,1 @@
+[{"inputs":[{"internalType":"int32","name":"arg","type":"int32"}],"stateMutability":"nonpayable","type":"constructor"},{"inputs":[],"name":"die","outputs":[],"stateMutability":"nonpayable","type":"function"},{"inputs":[],"name":"get_value","outputs":[{"internalType":"int32","name":"","type":"int32"}],"stateMutability":"view","type":"function"}]

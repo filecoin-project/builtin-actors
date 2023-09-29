@@ -3,7 +3,6 @@
 
 use cid::Cid;
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
 
 use fvm_shared::clock::ChainEpoch;
@@ -55,7 +54,3 @@ pub struct Merge {
     pub lane: u64,
     pub nonce: u64,
 }
-
-impl Cbor for State {}
-impl Cbor for LaneState {}
-impl Cbor for Merge {}

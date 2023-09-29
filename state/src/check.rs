@@ -1,8 +1,8 @@
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::fmt::Debug;
 
 use anyhow::bail;
-use bimap::BiBTreeMap;
 use cid::Cid;
 use fil_actor_account::State as AccountState;
 use fil_actor_cron::State as CronState;
@@ -22,6 +22,7 @@ use fil_actor_reward::State as RewardState;
 use fil_actor_verifreg::{DataCap, State as VerifregState};
 
 use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::DEFAULT_HAMT_CONFIG;
 use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
 
 use fil_actors_runtime::Map;
@@ -64,6 +65,10 @@ pub struct Actor {
     pub call_seq_num: u64,
     /// Token balance of the actor
     pub balance: TokenAmount,
+    /// The actor's "predictable" address, if assigned.
+    ///
+    /// This field is set on actor creation and never modified.
+    pub address: Option<Address>,
 }
 
 /// A specialization of a map of ID-addresses to actor heads.
@@ -78,7 +83,7 @@ where
 impl<'a, BS: Blockstore> Tree<'a, BS> {
     /// Loads a tree from a root CID and store
     pub fn load(store: &'a BS, root: &Cid) -> anyhow::Result<Self> {
-        let map = Map::load(root, store)?;
+        let map = Map::load_with_config(root, store, DEFAULT_HAMT_CONFIG)?;
 
         Ok(Tree { map, store })
     }
@@ -109,10 +114,10 @@ macro_rules! get_state {
 // to match the Manifest implementation in the FVM.
 // It could be replaced with a custom mapping trait (while Rust doesn't support
 // abstract collection traits).
-pub fn check_state_invariants<'a, BS: Blockstore + Debug>(
-    manifest: &BiBTreeMap<Cid, Type>,
+pub fn check_state_invariants<BS: Blockstore>(
+    manifest: &BTreeMap<Cid, Type>,
     policy: &Policy,
-    tree: Tree<'a, BS>,
+    tree: Tree<'_, BS>,
     expected_balance_total: &TokenAmount,
     prior_epoch: ChainEpoch,
 ) -> anyhow::Result<MessageAccumulator> {
@@ -129,7 +134,7 @@ pub fn check_state_invariants<'a, BS: Blockstore + Debug>(
     let mut multisig_summaries = Vec::<multisig::StateSummary>::new();
     let mut reward_summary: Option<reward::StateSummary> = None;
     let mut verifreg_summary: Option<verifreg::StateSummary> = None;
-    let mut datacap_summary: Option<datacap::StateSummary> = None;
+    let mut datacap_summary: Option<frc46_token::token::state::StateSummary> = None;
 
     tree.for_each(|key, actor| {
         let acc = acc.with_prefix(format!("{key} "));
@@ -139,7 +144,7 @@ pub fn check_state_invariants<'a, BS: Blockstore + Debug>(
         }
         total_fil += &actor.balance;
 
-        match manifest.get_by_left(&actor.code) {
+        match manifest.get(&actor.code) {
             Some(Type::System) => (),
             Some(Type::Init) => {
                 let state = get_state!(tree, actor, InitState);
@@ -216,6 +221,10 @@ pub fn check_state_invariants<'a, BS: Blockstore + Debug>(
                 acc.with_prefix("datacap: ").add_all(&msgs);
                 datacap_summary = Some(summary);
             }
+            Some(Type::Placeholder) => {}
+            Some(Type::EVM) => {}
+            Some(Type::EAM) => {}
+            Some(Type::EthAccount) => {}
             None => {
                 bail!("unexpected actor code CID {} for address {}", actor.code, key);
             }
@@ -356,7 +365,7 @@ fn check_deal_states_against_sectors(
         };
 
         acc.require(
-            deal.sector_start_epoch == sector_deal.sector_start,
+            deal.sector_start_epoch >= sector_deal.sector_start,
             format!(
                 "deal state start {} does not match sector start {} for miner {}",
                 deal.sector_start_epoch, sector_deal.sector_start, deal.provider
@@ -392,20 +401,22 @@ fn check_deal_states_against_sectors(
 fn check_verifreg_against_datacap(
     acc: &MessageAccumulator,
     verifreg_summary: &verifreg::StateSummary,
-    datacap_summary: &datacap::StateSummary,
+    datacap_summary: &frc46_token::token::state::StateSummary,
 ) {
     // Verifier and datacap token holders are distinct.
     for verifier in verifreg_summary.verifiers.keys() {
         acc.require(
-            !datacap_summary.balances.contains_key(&verifier.id().unwrap()),
+            !datacap_summary.balance_map.as_ref().unwrap().contains_key(&verifier.id().unwrap()),
             format!("verifier {} is also a datacap token holder", verifier),
         );
     }
     // Verifreg token balance matches unclaimed allocations.
     let pending_alloc_total: DataCap =
-        verifreg_summary.allocations.iter().map(|(_, alloc)| alloc.size.0).sum();
+        verifreg_summary.allocations.values().map(|alloc| alloc.size.0).sum();
     let verifreg_balance = datacap_summary
-        .balances
+        .balance_map
+        .as_ref()
+        .unwrap()
         .get(&VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap())
         .cloned()
         .unwrap_or_else(TokenAmount::zero);

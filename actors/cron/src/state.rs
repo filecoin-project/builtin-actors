@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
 use fvm_shared::MethodNum;
 
@@ -20,5 +19,3 @@ pub struct Entry {
     /// The method number to call (must accept empty parameters)
     pub method_num: MethodNum,
 }
-
-impl Cbor for State {}

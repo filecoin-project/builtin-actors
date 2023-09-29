@@ -1,5 +1,4 @@
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::Cbor;
 use fvm_shared::address::Address;
 
 use fvm_shared::clock::ChainEpoch;
@@ -17,17 +16,17 @@ pub struct BeneficiaryTerm {
     pub expiration: ChainEpoch,
 }
 
-impl Cbor for BeneficiaryTerm {}
-
-impl BeneficiaryTerm {
-    pub fn default() -> BeneficiaryTerm {
+impl Default for BeneficiaryTerm {
+    fn default() -> BeneficiaryTerm {
         BeneficiaryTerm {
             quota: TokenAmount::zero(),
             expiration: 0,
             used_quota: TokenAmount::zero(),
         }
     }
+}
 
+impl BeneficiaryTerm {
     pub fn new(
         quota: TokenAmount,
         used_quota: TokenAmount,
@@ -49,7 +48,7 @@ impl BeneficiaryTerm {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct PendingBeneficiaryChange {
     pub new_beneficiary: Address,
     pub new_quota: TokenAmount,
@@ -57,8 +56,6 @@ pub struct PendingBeneficiaryChange {
     pub approved_by_beneficiary: bool,
     pub approved_by_nominee: bool,
 }
-
-impl Cbor for PendingBeneficiaryChange {}
 
 impl PendingBeneficiaryChange {
     pub fn new(

@@ -1,5 +1,4 @@
 use fvm_ipld_encoding::tuple::*;
-use fvm_ipld_encoding::Cbor;
 use fvm_shared::error::ExitCode;
 use std::fmt;
 
@@ -34,7 +33,7 @@ impl BatchReturn {
         self.fail_codes.is_empty()
     }
 
-    // Returns a vector of exit codes for each item (including successes).
+    /// Returns a vector of exit codes for each item (including successes).
     pub fn codes(&self) -> Vec<ExitCode> {
         let mut ret = Vec::new();
 
@@ -50,9 +49,9 @@ impl BatchReturn {
         ret
     }
 
-    // Returns a subset of items corresponding to the successful indices.
-    // Panics if `items` is not the same length as this batch return.
-    pub fn successes<T: Copy>(&self, items: &[T]) -> Vec<T> {
+    /// Returns a subset of items corresponding to the successful indices.
+    /// Panics if `items` is not the same length as this batch return.
+    pub fn successes<'i, T>(&self, items: &'i [T]) -> Vec<&'i T> {
         if items.len() != self.size() {
             panic!("items length {} does not match batch size {}", items.len(), self.size());
         }
@@ -62,7 +61,7 @@ impl BatchReturn {
             if fail_idx < self.fail_codes.len() && idx == self.fail_codes[fail_idx].idx as usize {
                 fail_idx += 1;
             } else {
-                ret.push(*item)
+                ret.push(item)
             }
         }
         ret
@@ -86,8 +85,6 @@ impl fmt::Display for BatchReturn {
         f.write_str(&ret)
     }
 }
-
-impl Cbor for BatchReturn {}
 
 pub struct BatchReturnGen {
     success_count: usize,

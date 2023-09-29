@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+use cid::multihash::Code::Blake2b256;
 use fil_actor_miner::MinerInfo;
 use fil_actor_miner::SectorPreCommitOnChainInfo;
 use fil_actor_miner::VestSpec;
@@ -10,11 +11,9 @@ use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::BytesDe;
 use fvm_ipld_encoding::CborStore;
 use fvm_ipld_hamt::Error as HamtError;
-use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{SectorNumber, SectorSize};
 use fvm_shared::{clock::ChainEpoch, clock::QuantSpec, sector::RegisteredPoStProof};
-use multihash::Code::Blake2b256;
 
 use fil_actors_runtime::test_utils::*;
 
@@ -34,8 +33,8 @@ impl StateHarness {
         // store init
         let store = MemoryBlockstore::default();
         // state field init
-        let owner = Address::new_id(1);
-        let worker = Address::new_id(2);
+        let owner = 1;
+        let worker = 2;
 
         let test_window_post_proof_type = RegisteredPoStProof::StackedDRGWindow2KiBV1;
 

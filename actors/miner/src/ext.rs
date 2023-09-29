@@ -1,5 +1,4 @@
 use cid::Cid;
-use fil_actors_runtime::BatchReturn;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::{bigint_ser, BigInt};
@@ -12,18 +11,18 @@ use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::ActorID;
 
+use fil_actors_runtime::BatchReturn;
+
 pub mod account {
     pub const PUBKEY_ADDRESS_METHOD: u64 = 2;
 }
 
 pub mod market {
-
     use super::*;
 
     pub const VERIFY_DEALS_FOR_ACTIVATION_METHOD: u64 = 5;
-    pub const ACTIVATE_DEALS_METHOD: u64 = 6;
+    pub const BATCH_ACTIVATE_DEALS_METHOD: u64 = 6;
     pub const ON_MINER_SECTORS_TERMINATE_METHOD: u64 = 7;
-    pub const COMPUTE_DATA_COMMITMENT_METHOD: u64 = 8;
 
     #[derive(Serialize_tuple, Deserialize_tuple)]
     pub struct SectorDeals {
@@ -33,9 +32,9 @@ pub mod market {
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple)]
-    pub struct ActivateDealsParams {
-        pub deal_ids: Vec<DealID>,
-        pub sector_expiry: ChainEpoch,
+    pub struct BatchActivateDealsParams {
+        pub sectors: Vec<SectorDeals>,
+        pub compute_cid: bool,
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
@@ -57,28 +56,18 @@ pub mod market {
         }
     }
 
-    #[derive(Serialize_tuple, Deserialize_tuple)]
-    pub struct ActivateDealsResult {
+    #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
+    pub struct SectorDealActivation {
         #[serde(with = "bigint_ser")]
         pub nonverified_deal_space: BigInt,
         pub verified_infos: Vec<VerifiedDealInfo>,
+        pub unsealed_cid: Option<Cid>,
     }
 
-    #[derive(Serialize_tuple, Deserialize_tuple, Clone, Default)]
-    pub struct DealSpaces {
-        #[serde(with = "bigint_ser")]
-        pub deal_space: BigInt,
-        #[serde(with = "bigint_ser")]
-        pub verified_deal_space: BigInt,
-    }
-    #[derive(Serialize_tuple)]
-    pub struct ComputeDataCommitmentParamsRef<'a> {
-        pub inputs: &'a [SectorDataSpec],
-    }
-
-    #[derive(Serialize_tuple, Deserialize_tuple)]
-    pub struct ComputeDataCommitmentReturn {
-        pub commds: Vec<Cid>,
+    #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
+    pub struct BatchActivateDealsResult {
+        pub activation_results: BatchReturn,
+        pub activations: Vec<SectorDealActivation>,
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple)]
@@ -105,14 +94,8 @@ pub mod market {
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple, Default, Clone)]
-    pub struct SectorDealData {
-        /// Option::None signifies commitment to empty sector, meaning no deals.
-        pub commd: Option<Cid>,
-    }
-
-    #[derive(Serialize_tuple, Deserialize_tuple, Default, Clone)]
     pub struct VerifyDealsForActivationReturn {
-        pub sectors: Vec<SectorDealData>,
+        pub unsealed_cids: Vec<Option<Cid>>,
     }
 }
 
@@ -196,24 +179,36 @@ pub mod verifreg {
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-    pub struct SectorAllocationClaim {
+    pub struct SectorAllocationClaims {
+        pub sector: SectorNumber,
+        pub expiry: ChainEpoch,
+        pub claims: Vec<AllocationClaim>,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+    pub struct AllocationClaim {
         pub client: ActorID,
         pub allocation_id: AllocationID,
         pub data: Cid,
         pub size: PaddedPieceSize,
-        pub sector: SectorNumber,
-        pub sector_expiry: ChainEpoch,
     }
 
     #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
     pub struct ClaimAllocationsParams {
-        pub sectors: Vec<SectorAllocationClaim>,
+        pub sectors: Vec<SectorAllocationClaims>,
         pub all_or_nothing: bool,
     }
-    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-    pub struct ClaimAllocationsReturn {
-        pub batch_info: BatchReturn,
+
+    #[derive(Clone, Debug, PartialEq, Eq, Default, Serialize_tuple, Deserialize_tuple)]
+    #[serde(transparent)]
+    pub struct SectorClaimSummary {
         #[serde(with = "bigint_ser")]
         pub claimed_space: BigInt,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+    pub struct ClaimAllocationsReturn {
+        pub sector_results: BatchReturn,
+        pub sector_claims: Vec<SectorClaimSummary>,
     }
 }

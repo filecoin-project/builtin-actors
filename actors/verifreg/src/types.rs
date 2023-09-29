@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0, MIT
 
 use cid::Cid;
-use fil_actors_runtime::BatchReturn;
+use fil_actors_runtime::{BatchReturn, MapKey};
 use fvm_ipld_encoding::tuple::*;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::{bigint_ser, BigInt};
@@ -12,11 +12,18 @@ use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::ActorID;
+use std::fmt::{Debug, Formatter};
 
 use crate::Claim;
 
 pub type AllocationID = u64;
 pub type ClaimID = u64;
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct ConstructorParams {
+    pub root_key: Address,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct VerifierParams {
@@ -27,7 +34,13 @@ pub struct VerifierParams {
 
 pub type AddVerifierParams = VerifierParams;
 
-pub type AddVerifierClientParams = VerifierParams;
+pub type AddVerifiedClientParams = VerifierParams;
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct RemoveVerifierParams {
+    pub verifier: Address,
+}
 
 /// DataCap is an integer number of bytes.
 /// We can introduce policy changes and replace this in the future.
@@ -79,12 +92,24 @@ impl AddrPairKey {
     pub fn new(first: Address, second: Address) -> Self {
         AddrPairKey { first, second }
     }
+}
 
-    pub fn to_bytes(&self) -> Vec<u8> {
+impl Debug for AddrPairKey {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        (self.first, self.second).fmt(f)
+    }
+}
+
+impl MapKey for AddrPairKey {
+    fn from_bytes(_b: &[u8]) -> Result<Self, String> {
+        unimplemented!()
+    }
+
+    fn to_bytes(&self) -> Result<Vec<u8>, String> {
         let mut first = self.first.to_bytes();
         let mut second = self.second.to_bytes();
         first.append(&mut second);
-        first
+        Ok(first)
     }
 }
 
@@ -109,26 +134,43 @@ pub struct RemoveExpiredAllocationsReturn {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct SectorAllocationClaim {
+pub struct SectorAllocationClaims {
+    pub sector: SectorNumber,
+    pub expiry: ChainEpoch,
+    pub claims: Vec<AllocationClaim>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct AllocationClaim {
     pub client: ActorID,
     pub allocation_id: AllocationID,
     pub data: Cid,
     pub size: PaddedPieceSize,
-    pub sector: SectorNumber,
-    pub sector_expiry: ChainEpoch,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ClaimAllocationsParams {
-    pub sectors: Vec<SectorAllocationClaim>,
+    /// Allocations to claim, grouped by sector.
+    pub sectors: Vec<SectorAllocationClaims>,
+    /// Whether to abort entirely if any claim fails.
+    /// If false, a failed claim will cause other claims in the same sector group to also fail,
+    /// but allow other sectors to proceed.
     pub all_or_nothing: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct SectorClaimSummary {
+    #[serde(with = "bigint_ser")]
+    pub claimed_space: BigInt,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ClaimAllocationsReturn {
-    pub batch_info: BatchReturn,
-    #[serde(with = "bigint_ser")]
-    pub claimed_space: BigInt,
+    /// Status of each sector grouping of claims.
+    pub sector_results: BatchReturn,
+    /// The claimed space for each successful sector group.
+    pub sector_claims: Vec<SectorClaimSummary>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
@@ -153,7 +195,7 @@ pub type ExtendClaimTermsReturn = BatchReturn;
 // See Allocation state for description of field semantics.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct AllocationRequest {
-    pub provider: Address,
+    pub provider: ActorID,
     pub data: Cid,
     pub size: PaddedPieceSize,
     pub term_min: ChainEpoch,
@@ -164,7 +206,7 @@ pub struct AllocationRequest {
 // A request to extend the term of an existing claim with datacap tokens.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct ClaimExtensionRequest {
-    pub provider: Address,
+    pub provider: ActorID,
     pub claim: ClaimID,
     pub term_max: ChainEpoch,
 }

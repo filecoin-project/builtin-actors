@@ -1,4 +1,4 @@
-# Built-in Filecoin actors (v8)
+# Built-in Filecoin actors
 
 This repo contains the code for the on-chain built-in actors that power the
 Filecoin network starting from network version 16.
@@ -219,3 +219,6 @@ of the implementation or project they identify with.
 
 Dual-licensed: [MIT](./LICENSE-MIT), [Apache Software License v2](./LICENSE-APACHE), by way of the
 [Permissive License Stack](https://protocol.ai/blog/announcing-the-permissive-license-stack/).
+
+Except the EVM precompile [test data](actors/evm/precompile-testdata), which is licensed under the
+LGPL v3 and not included in crates or build artifacts.
