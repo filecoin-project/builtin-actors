@@ -14,6 +14,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::SectorNumber;
+use fvm_shared::sys::SendFlags;
 use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH};
 use num_traits::{ToPrimitive, Zero};
 
@@ -126,13 +127,16 @@ impl Harness {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.root);
         let verifier_resolved = rt.get_id_address(verifier).unwrap_or(*verifier);
         // Expect checking the verifier's token balance.
-        rt.expect_send_simple(
+        rt.expect_send(
             DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Balance as MethodNum,
             IpldBlock::serialize_cbor(&verifier_resolved).unwrap(),
             TokenAmount::zero(),
+            None,
+            SendFlags::READ_ONLY,
             IpldBlock::serialize_cbor(&BigIntSer(&(cap * TOKEN_PRECISION))).unwrap(),
             ExitCode::OK,
+            None,
         );
 
         let params = AddVerifierParams { address: *verifier, allowance: allowance.clone() };
