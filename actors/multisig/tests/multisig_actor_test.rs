@@ -1521,6 +1521,57 @@ mod approval_tests {
     }
 
     #[test]
+    fn approval_failure_returns_error_data() {
+        // setup rt
+        let msig = Address::new_id(100);
+        let anne = Address::new_id(101);
+        let bob = Address::new_id(102);
+        let chuck = Address::new_id(103);
+        let signers = vec![anne, bob];
+        let rt = construct_runtime(msig);
+        let h = util::ActorHarness::new();
+        // construct msig
+        h.construct_and_verify(&rt, 2, 0, 0, signers);
+
+        let fake_params = RawBytes::from(vec![1, 2, 3, 4]);
+        let fake_method = 42;
+        let fakt_ret_data = vec![4, 3, 2, 1];
+        let fake_ret = RawBytes::from(fakt_ret_data.clone());
+        let send_value = TokenAmount::from_atto(10u8);
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
+        let proposal_hash =
+            h.propose_ok(&rt, chuck, send_value.clone(), fake_method, fake_params.clone());
+
+        // assert txn
+        let expect_txn = Transaction {
+            to: chuck,
+            value: send_value.clone(),
+            method: fake_method,
+            params: fake_params.clone(),
+            approved: vec![anne],
+        };
+        h.assert_transactions(&rt, vec![(TxnID(0), expect_txn)]);
+
+        // approval
+        rt.set_balance(send_value.clone());
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, bob);
+        rt.expect_send_simple(
+            chuck,
+            fake_method,
+            to_ipld_block(fake_params),
+            send_value,
+            to_ipld_block(fake_ret),
+            ExitCode::new(1),
+        );
+        let ret = h.approve(&rt, TxnID(0), proposal_hash);
+        assert_eq!(ExitCode::new(1), ret.clone().unwrap_err().exit_code());
+        assert_eq!(fakt_ret_data, ret.unwrap().unwrap().data);
+
+        h.assert_transactions(&rt, vec![]);
+        check_state(&rt);
+    }
+
+    #[test]
     fn accept_approval_with_no_proposal_hash() {
         let msig = Address::new_id(100);
         let anne = Address::new_id(101);

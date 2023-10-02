@@ -473,8 +473,8 @@ fn execute_transaction_if_approved(
                 out = RawBytes::new(r.data);
             }
             Err(mut e) => {
-                if let Some(r) =  e.take_data() {
-                   out = RawBytes::new(r.data);
+                if let Some(r) = e.take_data() {
+                    out = RawBytes::new(r.data);
                 }
 
                 code = e.exit_code();
