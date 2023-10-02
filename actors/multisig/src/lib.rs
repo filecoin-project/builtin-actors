@@ -472,7 +472,11 @@ fn execute_transaction_if_approved(
             Ok(Some(r)) => {
                 out = RawBytes::new(r.data);
             }
-            Err(e) => {
+            Err(mut e) => {
+                if let Some(r) =  e.take_data() {
+                   out = RawBytes::new(r.data);
+                }
+
                 code = e.exit_code();
             }
             _ => {}
