@@ -1275,6 +1275,7 @@ fn remove_signer_deletes_solo_proposals() {
 // Approve
 mod approval_tests {
     use super::*;
+    use fil_actor_multisig::ApproveReturn;
 
     #[test]
     fn test_approve_simple_propose_and_approval() {
@@ -1536,7 +1537,7 @@ mod approval_tests {
         let fake_params = RawBytes::from(vec![1, 2, 3, 4]);
         let fake_method = 42;
         let fakt_ret_data = vec![4, 3, 2, 1];
-        let fake_ret = RawBytes::from(fakt_ret_data.clone());
+        let fake_ret = RawBytes::from(fakt_ret_data);
         let send_value = TokenAmount::from_atto(10u8);
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, anne);
         let proposal_hash =
@@ -1560,12 +1561,15 @@ mod approval_tests {
             fake_method,
             to_ipld_block(fake_params),
             send_value,
-            to_ipld_block(fake_ret),
+            to_ipld_block(fake_ret.clone()),
             ExitCode::new(1),
         );
-        let ret = h.approve(&rt, TxnID(0), proposal_hash);
-        assert_eq!(ExitCode::new(1), ret.clone().unwrap_err().exit_code());
-        assert_eq!(fakt_ret_data, ret.unwrap().unwrap().data);
+        let ret = h.approve(&rt, TxnID(0), proposal_hash).unwrap();
+
+        let approve_ret = ret.unwrap().deserialize::<ApproveReturn>().unwrap();
+
+        assert_eq!(ExitCode::USR_ASSERTION_FAILED, approve_ret.code);
+        assert_eq!(fake_ret, approve_ret.ret);
 
         h.assert_transactions(&rt, vec![]);
         check_state(&rt);
