@@ -106,6 +106,50 @@ fn can_manually_settle_deals_in_the_cron_queue() {
 }
 
 #[test]
+fn settling_payments_before_activation_epoch_results_in_no_payment_or_slashing() {
+    let rt = setup();
+    let addrs = MinerAddresses::default();
+
+    let publish_epoch = START_EPOCH - 3;
+    let settlement_epoch = START_EPOCH - 2;
+    let activation_epoch = START_EPOCH - 1;
+
+    // publish
+    rt.set_epoch(publish_epoch);
+    let (deal, _) = generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, START_EPOCH, END_EPOCH);
+
+    // attempt settle before activation
+    rt.set_epoch(settlement_epoch);
+    settle_deal_payments_no_change(&rt, addrs.owner, CLIENT_ADDR, addrs.provider, &[deal]);
+
+    // activate
+    rt.set_epoch(activation_epoch);
+    activate_deals(&rt, END_EPOCH, addrs.provider, activation_epoch, &[deal]);
+}
+
+#[test]
+fn settling_payments_before_start_epoch_results_in_no_payment_or_slashing() {
+    let rt = setup();
+    let addrs = MinerAddresses::default();
+
+    let publish_epoch = START_EPOCH - 3;
+    let activation_epoch = START_EPOCH - 2;
+    let settlement_epoch = START_EPOCH - 1;
+
+    // publish
+    rt.set_epoch(publish_epoch);
+    let (deal, _) = generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, START_EPOCH, END_EPOCH);
+
+    // activate
+    rt.set_epoch(activation_epoch);
+    activate_deals(&rt, END_EPOCH, addrs.provider, activation_epoch, &[deal]);
+
+    // attempt settle before start
+    rt.set_epoch(settlement_epoch);
+    settle_deal_payments_no_change(&rt, addrs.owner, CLIENT_ADDR, addrs.provider, &[deal]);
+}
+
+#[test]
 fn batch_settlement_of_deals_allows_partial_success() {
     let rt = setup();
     let addrs = MinerAddresses::default();
