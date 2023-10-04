@@ -21,14 +21,13 @@ const SECTOR_EXPIRY: ChainEpoch = END_EPOCH + 1;
 fn cron_processing_happens_at_processing_epoch_not_start_epoch() {
     let rt = setup();
 
-    let deal_id = generate_and_publish_deal(
+    let (deal_id, deal_proposal) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         START_EPOCH,
         END_EPOCH,
     );
-    let deal_proposal = get_deal_proposal(&rt, deal_id);
     let dcid = rt_deal_cid(&rt, &deal_proposal).unwrap();
 
     // activate the deal
@@ -97,7 +96,7 @@ fn deal_is_processed_after_its_end_epoch_should_expire_correctly() {
 #[test]
 fn activation_after_deal_start_epoch_but_before_it_is_processed_fails() {
     let rt = setup();
-    let deal_id = generate_and_publish_deal(
+    let (deal_id, _) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -117,7 +116,7 @@ fn activation_after_deal_start_epoch_but_before_it_is_processed_fails() {
 #[test]
 fn cron_processing_of_deal_after_missed_activation_should_fail_and_slash() {
     let rt = setup();
-    let deal_id = generate_and_publish_deal(
+    let (deal_id, _) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),

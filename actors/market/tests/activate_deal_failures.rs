@@ -27,7 +27,7 @@ fn fail_when_caller_is_not_the_provider_of_the_deal() {
     let rt = setup();
     let provider2_addr = Address::new_id(201);
     let addrs = MinerAddresses { provider: provider2_addr, ..MinerAddresses::default() };
-    let deal_id = generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch);
+    let (deal_id, _) = generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch);
 
     let res = batch_activate_deals_raw(
         &rt,
@@ -105,7 +105,7 @@ fn fail_when_deal_has_already_been_activated() {
     let sector_expiry = end_epoch + 100;
 
     let rt = setup();
-    let deal_id = generate_and_publish_deal(
+    let (deal_id, _) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -141,15 +141,13 @@ fn fail_when_deal_has_already_been_expired() {
     let sector_expiry = end_epoch + 100;
 
     let rt = setup();
-    let deal_id = generate_and_publish_deal(
+    let (deal_id, deal_proposal) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
-
-    let deal_proposal = get_deal_proposal(&rt, deal_id);
 
     let current = end_epoch + 25;
     rt.set_epoch(current);

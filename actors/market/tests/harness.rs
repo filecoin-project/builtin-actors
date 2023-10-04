@@ -1197,11 +1197,11 @@ pub fn generate_and_publish_deal(
     addrs: &MinerAddresses,
     start_epoch: ChainEpoch,
     end_epoch: ChainEpoch,
-) -> DealID {
+) -> (DealID, DealProposal) {
     let deal = generate_deal_and_add_funds(rt, client, addrs, start_epoch, end_epoch);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.worker);
-    let deal_ids = publish_deals(rt, addrs, &[deal], TokenAmount::zero(), NO_ALLOCATION_ID); // unverified deal
-    deal_ids[0]
+    let deal_ids = publish_deals(rt, addrs, &[deal.clone()], TokenAmount::zero(), NO_ALLOCATION_ID); // unverified deal
+    (deal_ids[0], deal)
 }
 
 pub fn generate_and_publish_verified_deal(

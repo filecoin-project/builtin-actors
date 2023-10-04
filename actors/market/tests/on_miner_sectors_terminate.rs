@@ -38,6 +38,7 @@ fn terminate_multiple_deals_from_multiple_providers() {
                 start_epoch,
                 epoch,
             )
+            .0
         })
         .collect::<Vec<DealID>>()
         .try_into()
@@ -45,8 +46,9 @@ fn terminate_multiple_deals_from_multiple_providers() {
     activate_deals_legacy(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal1, deal2, deal3]);
 
     let addrs = MinerAddresses { provider: provider2, ..MinerAddresses::default() };
-    let deal4 = generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch);
-    let deal5 = generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch + 1);
+    let (deal4, _) = generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch);
+    let (deal5, _) =
+        generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch + 1);
     activate_deals_legacy(&rt, sector_expiry, provider2, current_epoch, &[deal4, deal5]);
 
     let prop1 = get_deal_proposal(&rt, deal1);
@@ -82,21 +84,21 @@ fn ignore_deal_proposal_that_does_not_exist() {
     let rt = setup();
     rt.set_epoch(current_epoch);
 
-    let deal1 = generate_and_publish_deal(
+    let (deal1, prop1) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
-    let deal2 = generate_and_publish_deal(
+    let (deal2, prop2) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         start_epoch,
         end_epoch + 1,
     );
-    let deal3 = generate_and_publish_deal(
+    let (deal3, _) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -107,9 +109,6 @@ fn ignore_deal_proposal_that_does_not_exist() {
 
     let new_epoch = end_epoch - 1;
     rt.set_epoch(new_epoch);
-
-    let prop1 = get_deal_proposal(&rt, deal1);
-    let prop2 = get_deal_proposal(&rt, deal2);
 
     terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[deal1, deal2, deal3]);
     assert_deal_deleted(&rt, deal1, &prop1);
@@ -128,21 +127,21 @@ fn terminate_valid_deals_along_with_just_expired_deal() {
     let rt = setup();
     rt.set_epoch(current_epoch);
 
-    let deal1 = generate_and_publish_deal(
+    let (deal1, prop1) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
-    let deal2 = generate_and_publish_deal(
+    let (deal2, prop2) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         start_epoch,
         end_epoch + 1,
     );
-    let deal3 = generate_and_publish_deal(
+    let (deal3, _) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -153,9 +152,6 @@ fn terminate_valid_deals_along_with_just_expired_deal() {
 
     let new_epoch = end_epoch - 1;
     rt.set_epoch(new_epoch);
-
-    let prop1 = get_deal_proposal(&rt, deal1);
-    let prop2 = get_deal_proposal(&rt, deal2);
 
     terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[deal1, deal2, deal3]);
     assert_deal_deleted(&rt, deal1, &prop1);
@@ -235,6 +231,7 @@ fn terminating_a_deal_the_second_time_does_not_affect_existing_deals_in_the_batc
                 start_epoch,
                 epoch,
             )
+            .0
         })
         .collect();
     let [deal1, _, _]: [DealID; 3] = deals.as_slice().try_into().unwrap();
@@ -261,7 +258,7 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
     rt.set_epoch(current_epoch);
 
     // deal1 has endepoch equal to current epoch when terminate is called
-    let deal1 = generate_and_publish_deal(
+    let (deal1, _) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -275,7 +272,7 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
 
     // deal2 has end epoch less than current epoch when terminate is called
     rt.set_epoch(current_epoch);
-    let deal2 = generate_and_publish_deal(
+    let (deal2, _) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -323,7 +320,7 @@ fn fail_when_caller_is_not_the_provider_of_the_deal() {
     let rt = setup();
     rt.set_epoch(current_epoch);
 
-    let deal = generate_and_publish_deal(
+    let (deal, _) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -352,7 +349,7 @@ fn fail_when_deal_has_been_published_but_not_activated() {
     let rt = setup();
     rt.set_epoch(current_epoch);
 
-    let deal = generate_and_publish_deal(
+    let (deal, _) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -377,7 +374,7 @@ fn termination_of_all_deals_should_fail_when_one_deal_fails() {
     rt.set_epoch(current_epoch);
 
     // deal1 would terminate but deal2 will fail because deal2 has not been activated
-    let deal1 = generate_and_publish_deal(
+    let (deal1, _) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -385,7 +382,7 @@ fn termination_of_all_deals_should_fail_when_one_deal_fails() {
         end_epoch,
     );
     activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal1]);
-    let deal2 = generate_and_publish_deal(
+    let (deal2, _) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),

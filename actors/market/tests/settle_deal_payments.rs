@@ -15,14 +15,13 @@ const END_EPOCH: ChainEpoch = START_EPOCH + 200 * EPOCHS_IN_DAY;
 #[test]
 fn timedout_deal_is_slashed_and_deleted() {
     let rt = setup();
-    let deal_id = generate_and_publish_deal(
+    let (deal_id, deal_proposal) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         START_EPOCH,
         END_EPOCH,
     );
-    let deal_proposal = get_deal_proposal(&rt, deal_id);
 
     let c_escrow = get_balance(&rt, &CLIENT_ADDR).balance;
 
@@ -138,9 +137,8 @@ fn batch_settlement_of_deals_allows_partial_success() {
         END_EPOCH,
     );
     // create a deal that missed activation and will be cleaned up
-    let unactivated_id =
+    let (unactivated_id, unactivated_proposal) =
         generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, START_EPOCH + 2, END_EPOCH);
-    let unactivated_proposal = get_deal_proposal(&rt, unactivated_id);
 
     // snapshot the inital balances
     let client_begin = get_balance(&rt, &CLIENT_ADDR);
