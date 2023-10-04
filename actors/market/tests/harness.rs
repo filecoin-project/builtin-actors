@@ -848,6 +848,30 @@ pub fn settle_deal_payments(
     res
 }
 
+pub fn settle_deal_payments_no_change(
+    rt: &MockRuntime,
+    caller: Address,
+    client_addr: Address,
+    provider_addr: Address,
+    deal_ids: &[DealID],
+) {
+    let st: State = rt.get_state();
+    let epoch_cid = st.deal_ops_by_epoch;
+
+    // fetch current client  escrow balances
+    let client_acct = get_balance(rt, &client_addr);
+    let provider_acct = get_balance(rt, &provider_addr);
+
+    settle_deal_payments(rt, caller, deal_ids);
+
+    let st: State = rt.get_state();
+    let new_client_acct = get_balance(rt, &client_addr);
+    let new_provider_acct = get_balance(rt, &provider_addr);
+    assert_eq!(epoch_cid, st.deal_ops_by_epoch);
+    assert_eq!(client_acct, new_client_acct);
+    assert_eq!(provider_acct, new_provider_acct);
+}
+
 pub fn settle_deal_payments_and_assert_balances(
     rt: &MockRuntime,
     client_addr: Address,

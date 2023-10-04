@@ -339,12 +339,12 @@ fn worker_balance_after_withdrawal_must_account_for_slashed_funds() {
     assert_eq!(publish_epoch, st.sector_start_epoch);
     let proposal = get_deal_proposal(&rt, deal_id);
 
-    // slash the deal
+    // terminate the deal
     rt.set_epoch(publish_epoch + 1);
     terminate_deals(&rt, PROVIDER_ADDR, &[deal_id]);
     assert_deal_deleted(&rt, deal_id, &proposal);
 
-    // provider cannot withdraw any funds since it's been slashed
+    // provider cannot withdraw any funds since it's been terminated
     let withdraw_amount = TokenAmount::from_atto(1);
     let actual_withdrawn = TokenAmount::zero();
     withdraw_provider_balance(
@@ -1439,7 +1439,7 @@ fn settling_payments_for_a_deal_at_its_start_epoch_results_in_zero_payment_and_n
 fn terminate_a_deal_then_settle_it_in_the_same_epoch() {
     let start_epoch = ChainEpoch::from(50);
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
-    let slash_epoch = start_epoch + 100;
+    let termination_epoch = start_epoch + 100;
     let sector_expiry = end_epoch + 100;
 
     let rt = setup();
@@ -1455,7 +1455,7 @@ fn terminate_a_deal_then_settle_it_in_the_same_epoch() {
     );
 
     // terminate then attempt to settle payment
-    rt.set_epoch(slash_epoch);
+    rt.set_epoch(termination_epoch);
     terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[deal_id]);
     let ret = settle_deal_payments(&rt, PROVIDER_ADDR, &[deal_id]);
     assert_eq!(ret.results.codes(), vec![EX_DEAL_EXPIRED]);
@@ -1465,12 +1465,12 @@ fn terminate_a_deal_then_settle_it_in_the_same_epoch() {
 }
 
 #[test]
-fn settle_payments_then_slash_deal_in_the_same_epoch() {
+fn settle_payments_then_terminate_deal_in_the_same_epoch() {
     let start_epoch = ChainEpoch::from(50);
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
-    let slash_epoch = start_epoch + 100;
+    let termination_epoch = start_epoch + 100;
     let sector_expiry = end_epoch + 100;
-    let deal_duration = slash_epoch - start_epoch;
+    let deal_duration = termination_epoch - start_epoch;
 
     let rt = setup();
 
@@ -1488,7 +1488,7 @@ fn settle_payments_then_slash_deal_in_the_same_epoch() {
     let provider_before = get_balance(&rt, &PROVIDER_ADDR);
 
     // settle payments then terminate
-    rt.set_epoch(slash_epoch);
+    rt.set_epoch(termination_epoch);
     let expected_payment = deal_duration * &proposal.storage_price_per_epoch;
     let ret = settle_deal_payments(&rt, PROVIDER_ADDR, &[deal_id]);
     assert_eq!(
@@ -1786,11 +1786,11 @@ fn locked_fund_tracking_states() {
     settle_deal_payments(&rt, OWNER_ADDR, &[deal_id1, deal_id2, deal_id3]);
     assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
 
-    // slash deal1
+    // terminate deal1
     rt.set_epoch(curr + 1);
     terminate_deals(&rt, m1.provider, &[deal_id1]);
 
-    // cron tick to slash deal1 and expire deal2
+    // attempt to settle payments which terminates deal1 and expires deal2
     rt.set_epoch(end_epoch);
     csf = TokenAmount::zero();
     clc = TokenAmount::zero();
