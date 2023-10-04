@@ -1,3 +1,4 @@
+use fil_actor_market::{DealSettlementSummary, EX_DEAL_EXPIRED};
 use fil_actors_runtime::EPOCHS_IN_DAY;
 use fvm_shared::{clock::ChainEpoch, econ::TokenAmount};
 
@@ -115,4 +116,82 @@ fn deal_is_terminated() {
         assert_deal_deleted(&rt, deal_id, &deal_proposal);
         check_state(&rt);
     }
+}
+
+#[test]
+fn settle_payments_then_terminate_deal_in_the_same_epoch() {
+    let start_epoch = ChainEpoch::from(50);
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let termination_epoch = start_epoch + 100;
+    let sector_expiry = end_epoch + 100;
+    let deal_duration = termination_epoch - start_epoch;
+
+    let rt = setup();
+
+    let (deal_id, proposal) = publish_and_activate_deal(
+        &rt,
+        CLIENT_ADDR,
+        &MinerAddresses::default(),
+        start_epoch,
+        end_epoch,
+        0,
+        sector_expiry,
+    );
+
+    let client_before = get_balance(&rt, &CLIENT_ADDR);
+    let provider_before = get_balance(&rt, &PROVIDER_ADDR);
+
+    // settle payments then terminate
+    rt.set_epoch(termination_epoch);
+    let expected_payment = deal_duration * &proposal.storage_price_per_epoch;
+    let ret = settle_deal_payments(&rt, PROVIDER_ADDR, &[deal_id]);
+    assert_eq!(
+        ret.settlements.get(0).unwrap(),
+        &DealSettlementSummary { completed: false, payment: expected_payment.clone() }
+    );
+    terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[deal_id]);
+    assert_deal_deleted(&rt, deal_id, &proposal);
+
+    // end state should be equivalent to only calling termination
+    let client_after = get_balance(&rt, &CLIENT_ADDR);
+    let provider_after = get_balance(&rt, &PROVIDER_ADDR);
+    let expected_slash = proposal.provider_collateral;
+    assert_eq!(&client_after.balance, &(client_before.balance - &expected_payment));
+    assert!(&client_after.locked.is_zero());
+    assert_eq!(
+        &provider_after.balance,
+        &(provider_before.balance + &expected_payment - expected_slash)
+    );
+    assert!(&provider_after.locked.is_zero());
+
+    check_state(&rt);
+}
+
+#[test]
+fn terminate_a_deal_then_settle_it_in_the_same_epoch() {
+    let start_epoch = ChainEpoch::from(50);
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let termination_epoch = start_epoch + 100;
+    let sector_expiry = end_epoch + 100;
+
+    let rt = setup();
+
+    let (deal_id, proposal) = publish_and_activate_deal(
+        &rt,
+        CLIENT_ADDR,
+        &MinerAddresses::default(),
+        start_epoch,
+        end_epoch,
+        0,
+        sector_expiry,
+    );
+
+    // terminate then attempt to settle payment
+    rt.set_epoch(termination_epoch);
+    terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[deal_id]);
+    let ret = settle_deal_payments(&rt, PROVIDER_ADDR, &[deal_id]);
+    assert_eq!(ret.results.codes(), vec![EX_DEAL_EXPIRED]);
+    assert_deal_deleted(&rt, deal_id, &proposal);
+
+    check_state(&rt);
 }
