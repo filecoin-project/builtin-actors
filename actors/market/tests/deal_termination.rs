@@ -1,6 +1,6 @@
 use fil_actor_market::{DealSettlementSummary, EX_DEAL_EXPIRED};
 use fil_actors_runtime::EPOCHS_IN_DAY;
-use fvm_shared::{clock::ChainEpoch, econ::TokenAmount};
+use fvm_shared::{clock::ChainEpoch, econ::TokenAmount, error::ExitCode};
 
 mod harness;
 use harness::*;
@@ -194,4 +194,28 @@ fn terminate_a_deal_then_settle_it_in_the_same_epoch() {
     assert_deal_deleted(&rt, deal_id, &proposal);
 
     check_state(&rt);
+}
+
+#[test]
+fn terminating_a_deal_before_activation_fails() {
+    let rt = setup();
+    let addrs = MinerAddresses::default();
+
+    let start_epoch = ChainEpoch::from(50);
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let publish_epoch = start_epoch - 3;
+    let termination_epoch = start_epoch - 2;
+    let activation_epoch = start_epoch - 1;
+
+    // publish
+    rt.set_epoch(publish_epoch);
+    let (deal, _) = generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch);
+
+    // terminate before activation
+    rt.set_epoch(termination_epoch);
+    terminate_deals_expect_abort(&rt, addrs.provider, &[deal], ExitCode::USR_ILLEGAL_ARGUMENT);
+
+    // can still successfully activate
+    rt.set_epoch(activation_epoch);
+    activate_deals(&rt, end_epoch, addrs.provider, activation_epoch, &[deal]);
 }

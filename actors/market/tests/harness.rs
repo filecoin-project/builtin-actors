@@ -1460,6 +1460,29 @@ pub fn terminate_deals(rt: &MockRuntime, miner_addr: Address, deal_ids: &[DealID
     rt.verify();
 }
 
+pub fn terminate_deals_expect_abort(
+    rt: &MockRuntime,
+    miner_addr: Address,
+    deal_ids: &[DealID],
+    expected_exit_code: ExitCode,
+) {
+    rt.set_caller(*MINER_ACTOR_CODE_ID, miner_addr);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
+
+    let params =
+        OnMinerSectorsTerminateParams { epoch: *rt.epoch.borrow(), deal_ids: deal_ids.to_vec() };
+
+    expect_abort(
+        expected_exit_code,
+        rt.call::<MarketActor>(
+            Method::OnMinerSectorsTerminate as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        ),
+    );
+
+    rt.verify();
+}
+
 pub fn terminate_deals_raw(
     rt: &MockRuntime,
     miner_addr: Address,
