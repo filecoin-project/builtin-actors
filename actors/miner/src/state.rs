@@ -10,7 +10,7 @@ use cid::Cid;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
     actor_error, make_empty_map, make_map_with_root_and_bitwidth, u64_key, ActorDowncast,
-    ActorError, Array, Map,
+    ActorError, Array,
 };
 use fvm_ipld_amt::Error as AmtError;
 use fvm_ipld_bitfield::BitField;
