@@ -82,7 +82,7 @@ use fil_actor_power::{
 use fil_actor_reward::{Method as RewardMethod, ThisEpochRewardReturn};
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::{DomainSeparationTag, Runtime, RuntimePolicy};
-use fil_actors_runtime::{test_utils::*, BatchReturn, BatchReturnGen};
+use fil_actors_runtime::{test_utils::*, BatchReturn, BatchReturnGen, EPOCHS_IN_HOUR};
 use fil_actors_runtime::{
     ActorDowncast, ActorError, Array, DealWeight, MessageAccumulator, BURNT_FUNDS_ACTOR_ADDR,
     INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
@@ -2920,10 +2920,19 @@ enum MhCode {
 }
 
 fn immediately_vesting_funds(rt: &MockRuntime, state: &State) -> TokenAmount {
+    let curr_epoch = *rt.epoch.borrow();
+
+    let q = QuantSpec {
+        unit: 12 * EPOCHS_IN_HOUR,
+        offset: state.current_proving_period_start(rt.policy(), curr_epoch),
+    };
+    if q.quantize_up(curr_epoch) != curr_epoch {
+        return TokenAmount::zero();
+    }
     let vesting = rt.store.get_cbor::<VestingFunds>(&state.vesting_funds).unwrap().unwrap();
     let mut sum = TokenAmount::zero();
     for vf in vesting.funds {
-        if vf.epoch < *rt.epoch.borrow() {
+        if vf.epoch < curr_epoch {
             sum += vf.amount;
         } else {
             break;
