@@ -72,7 +72,7 @@ use fil_actor_miner::{
     ProveCommitSectorParams, RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo,
     SectorPreCommitInfo, SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams,
     TerminateSectorsParams, TerminationDeclaration, VestingFunds, WindowedPoSt,
-    WithdrawBalanceParams, WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE,
+    WithdrawBalanceParams, WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE, REWARD_VESTING_SPEC,
     SECTORS_AMT_BITWIDTH,
 };
 use fil_actor_miner::{Method as MinerMethod, ProveCommitAggregateParams};
@@ -2923,7 +2923,7 @@ fn immediately_vesting_funds(rt: &MockRuntime, state: &State) -> TokenAmount {
     let curr_epoch = *rt.epoch.borrow();
 
     let q = QuantSpec {
-        unit: 12 * EPOCHS_IN_HOUR,
+        unit: REWARD_VESTING_SPEC.quantization,
         offset: state.current_proving_period_start(rt.policy(), curr_epoch),
     };
     if q.quantize_up(curr_epoch) != curr_epoch {

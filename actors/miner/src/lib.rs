@@ -4095,7 +4095,7 @@ fn handle_proving_deadline(
         // based on the proving period offset for the Miner.
         // So, only do the vesting here if the current epoch is a "vesting epoch"
         let q = QuantSpec {
-            unit: 12 * EPOCHS_IN_HOUR,
+            unit: REWARD_VESTING_SPEC.quantization,
             offset: state.current_proving_period_start(rt.policy(), curr_epoch),
         };
 
