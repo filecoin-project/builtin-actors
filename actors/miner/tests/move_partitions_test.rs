@@ -1,8 +1,9 @@
 use fil_actor_miner::{
     deadline_available_for_compaction, deadline_available_for_optimistic_post_dispute,
-    deadline_is_mutable, expected_reward_for_power, new_deadline_info,
-    pledge_penalty_for_termination, qa_power_for_sector, DeadlineInfo, SectorOnChainInfo, State,
-    INITIAL_PLEDGE_PROJECTION_PERIOD,
+    deadline_is_mutable, expected_reward_for_power, nearest_occured_deadline_info,
+    new_deadline_info, pledge_penalty_for_invalid_windowpost, pledge_penalty_for_termination,
+    power_for_sector, qa_power_for_sector, DeadlineInfo, SectorOnChainInfo, State,
+    BASE_REWARD_FOR_DISPUTED_WINDOW_POST, INITIAL_PLEDGE_PROJECTION_PERIOD,
 };
 
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
@@ -626,4 +627,66 @@ fn fault_and_expire_after_move() {
     assert!(expiration_set.early_sectors.get(sectors_info[0].sector_number));
 
     h.check_state(&rt);
+}
+
+#[test]
+fn dispute_after_move() {
+    let (mut h, rt) = setup();
+
+    let sectors_info = h.commit_and_prove_sectors(
+        &rt,
+        1,
+        DEFAULT_SECTOR_EXPIRATION,
+        vec![vec![10], vec![20]],
+        true,
+    );
+    h.advance_and_submit_posts(&rt, &sectors_info);
+
+    let st = h.get_state(&rt);
+    let (orig_deadline_id, partition_id) =
+        st.find_sector(&rt.store, sectors_info[0].sector_number).unwrap();
+
+    h.advance_to_epoch_with_cron(&rt, nearest_safe_epoch(&rt, &h, orig_deadline_id));
+    let dest_deadline_id =
+        farthest_possible_to_deadline(&rt, orig_deadline_id, h.current_deadline(&rt));
+
+    let result = h.move_partitions(
+        &rt,
+        orig_deadline_id,
+        dest_deadline_id,
+        bitfield_from_slice(&[partition_id]),
+        || {},
+    );
+    assert!(result.is_ok());
+
+    let st = h.get_state(&rt);
+    let (dl_idx, _) = st.find_sector(&rt.store, sectors_info[0].sector_number).unwrap();
+    assert!(dl_idx == dest_deadline_id);
+
+    h.check_state(&rt);
+
+    // dispute starts here
+
+    h.advance_and_submit_posts(&rt, &sectors_info);
+
+    let dest_deadline =
+        nearest_occured_deadline_info(rt.policy(), &h.current_deadline(&rt), dest_deadline_id);
+
+    // Try a failed dispute.
+    h.dispute_window_post(&rt, &dest_deadline, 0, &sectors_info, None);
+
+    // Now a successful dispute.
+    let pwr = power_for_sector(h.sector_size, &sectors_info[0]);
+    let expected_fee = pledge_penalty_for_invalid_windowpost(
+        &h.epoch_reward_smooth,
+        &h.epoch_qa_power_smooth,
+        &pwr.qa,
+    );
+    let expected_result = PoStDisputeResult {
+        expected_power_delta: Some(-pwr),
+        expected_penalty: Some(expected_fee),
+        expected_reward: Some(BASE_REWARD_FOR_DISPUTED_WINDOW_POST.clone()),
+        expected_pledge_delta: None,
+    };
+    h.dispute_window_post(&rt, &dest_deadline, 0, &sectors_info, Some(expected_result));
 }
