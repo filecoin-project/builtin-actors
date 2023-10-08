@@ -51,21 +51,6 @@ lazy_static! {
 #[repr(u64)]
 pub enum Method {
     Constructor = METHOD_CONSTRUCTOR,
-    // Deprecated in v10
-    // Mint = 2,
-    // Destroy = 3,
-    // Name = 10,
-    // Symbol = 11,
-    // TotalSupply = 12,
-    // BalanceOf = 13,
-    // Transfer = 14,
-    // TransferFrom = 15,
-    // IncreaseAllowance = 16,
-    // DecreaseAllowance = 17,
-    // RevokeAllowance = 18,
-    // Burn = 19,
-    // BurnFrom = 20,
-    // Allowance = 21,
     // Method numbers derived from FRC-0042 standards
     MintExported = frc42_dispatch::method_hash!("Mint"),
     DestroyExported = frc42_dispatch::method_hash!("Destroy"),

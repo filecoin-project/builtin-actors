@@ -76,11 +76,6 @@ impl<B> FvmRuntime<B> {
         }
         Ok(())
     }
-
-    #[allow(dead_code)]
-    fn policy_mut(&mut self) -> &mut Policy {
-        &mut self.policy
-    }
 }
 
 /// A stub MessageInfo implementation performing FVM syscalls to obtain its fields.

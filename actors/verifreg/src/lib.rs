@@ -56,14 +56,12 @@ pub enum Method {
     AddVerifier = 2,
     RemoveVerifier = 3,
     AddVerifiedClient = 4,
-    // UseBytes = 5,     // Deprecated
-    // RestoreBytes = 6, // Deprecated
-    RemoveVerifiedClientDataCap = 7,
-    RemoveExpiredAllocations = 8,
-    ClaimAllocations = 9,
-    GetClaims = 10,
-    ExtendClaimTerms = 11,
-    RemoveExpiredClaims = 12,
+    RemoveVerifiedClientDataCap = 5,
+    RemoveExpiredAllocations = 6,
+    ClaimAllocations = 7,
+    GetClaims = 8,
+    ExtendClaimTerms = 9,
+    RemoveExpiredClaims = 10,
     // Method numbers derived from FRC-0042 standards
     AddVerifiedClientExported = frc42_dispatch::method_hash!("AddVerifiedClient"),
     RemoveExpiredAllocationsExported = frc42_dispatch::method_hash!("RemoveExpiredAllocations"),

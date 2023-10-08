@@ -76,8 +76,7 @@ pub enum Method {
     VerifyDealsForActivation = 5,
     BatchActivateDeals = 6,
     OnMinerSectorsTerminate = 7,
-    // ComputeDataCommitment = 8, // Deprecated
-    CronTick = 9,
+    CronTick = 8,
     // Method numbers derived from FRC-0042 standards
     AddBalanceExported = frc42_dispatch::method_hash!("AddBalance"),
     WithdrawBalanceExported = frc42_dispatch::method_hash!("WithdrawBalance"),

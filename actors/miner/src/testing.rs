@@ -599,12 +599,6 @@ impl PartitionStateSummary {
 struct ExpirationQueueStateSummary {
     pub on_time_sectors: BitField,
     pub early_sectors: BitField,
-    #[allow(dead_code)]
-    pub active_power: PowerPair,
-    #[allow(dead_code)]
-    pub faulty_power: PowerPair,
-    #[allow(dead_code)]
-    pub on_time_pledge: TokenAmount,
     pub expiration_epochs: Vec<ChainEpoch>,
 }
 
@@ -697,14 +691,7 @@ impl ExpirationQueueStateSummary {
         let union_on_time = BitField::union(&all_on_time);
         let union_early = BitField::union(&all_early);
 
-        Self {
-            on_time_sectors: union_on_time,
-            early_sectors: union_early,
-            active_power: all_active_power,
-            faulty_power: all_faulty_power,
-            on_time_pledge: all_on_time_pledge,
-            expiration_epochs,
-        }
+        Self { on_time_sectors: union_on_time, early_sectors: union_early, expiration_epochs }
     }
 }
 

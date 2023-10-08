@@ -1,3 +1,5 @@
+#![warn(dead_code)]
+
 use clap::Parser;
 use std::io::Write;
 

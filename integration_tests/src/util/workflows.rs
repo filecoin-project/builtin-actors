@@ -148,8 +148,6 @@ pub fn miner_precommit_sector(
         seal_rand_epoch: v.epoch() - 1,
         deal_ids,
         expiration,
-        replace_capacity: false,
-        replace_sector_deadline: 0,
         replace_sector_partition: 0,
         replace_sector_number: 0,
     };

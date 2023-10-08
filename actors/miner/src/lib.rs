@@ -1423,26 +1423,19 @@ impl Actor {
             .sectors
             .into_iter()
             .map(|spci| {
-                if spci.replace_capacity {
-                    Err(actor_error!(
-                        forbidden,
-                        "cc upgrade through precommit discontinued, use ProveReplicaUpdate"
-                    ))
-                } else {
-                    Ok(SectorPreCommitInfoInner {
-                        seal_proof: spci.seal_proof,
-                        sector_number: spci.sector_number,
-                        sealed_cid: spci.sealed_cid,
-                        seal_rand_epoch: spci.seal_rand_epoch,
-                        deal_ids: spci.deal_ids,
-                        expiration: spci.expiration,
-                        // This entry point computes the unsealed CID from deals via the market.
-                        // A future one will accept it directly as a parameter.
-                        unsealed_cid: None,
-                    })
+                SectorPreCommitInfoInner {
+                    seal_proof: spci.seal_proof,
+                    sector_number: spci.sector_number,
+                    sealed_cid: spci.sealed_cid,
+                    seal_rand_epoch: spci.seal_rand_epoch,
+                    deal_ids: spci.deal_ids,
+                    expiration: spci.expiration,
+                    // This entry point computes the unsealed CID from deals via the market.
+                    // A future one will accept it directly as a parameter.
+                    unsealed_cid: None,
                 }
             })
-            .collect::<Result<_, _>>()?;
+            .collect::<Vec<SectorPreCommitInfoInner>>();
         Self::pre_commit_sector_batch_inner(rt, sectors)
     }
 

@@ -59,10 +59,8 @@ pub enum Method {
     EnrollCronEvent = 4,
     OnEpochTickEnd = 5,
     UpdatePledgeTotal = 6,
-    // * Deprecated in v2
-    // OnConsensusFault = 7,
-    SubmitPoRepForBulkVerify = 8,
-    CurrentTotalPower = 9,
+    SubmitPoRepForBulkVerify = 7,
+    CurrentTotalPower = 8,
     // Method numbers derived from FRC-0042 standards
     CreateMinerExported = frc42_dispatch::method_hash!("CreateMiner"),
     NetworkRawPowerExported = frc42_dispatch::method_hash!("NetworkRawPower"),

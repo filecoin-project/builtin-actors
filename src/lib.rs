@@ -1,3 +1,4 @@
+#![warn(dead_code)]
 /// The bundled CAR embedded as a byte slice for easy consumption by Rust programs.
 ///
 /// The root CID of the CAR points to an actor index data structure. It is a

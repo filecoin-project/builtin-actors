@@ -517,9 +517,6 @@ impl ActorHarness {
             seal_rand_epoch: challenge,
             deal_ids: sector_deal_ids,
             expiration,
-            // unused
-            replace_capacity: false,
-            replace_sector_deadline: 0,
             replace_sector_partition: 0,
             replace_sector_number: 0,
         }
@@ -578,9 +575,6 @@ impl ActorHarness {
                         seal_rand_epoch: s.seal_rand_epoch,
                         deal_ids: s.deal_ids.clone(),
                         expiration: s.expiration,
-                        // unused
-                        replace_capacity: false,
-                        replace_sector_deadline: 0,
                         replace_sector_partition: 0,
                         replace_sector_number: 0,
                     }
