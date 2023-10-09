@@ -1450,11 +1450,21 @@ impl<BS> Verifier for MockRuntime<BS> {
             .take()
             .expect("unexpected call to verify aggregate seals");
         assert_eq!(exp.in_svis.len(), aggregate.infos.len(), "length mismatch");
+
         for (i, exp_svi) in exp.in_svis.iter().enumerate() {
             assert_eq!(exp_svi.sealed_cid, aggregate.infos[i].sealed_cid, "mismatched sealed CID");
             assert_eq!(
                 exp_svi.unsealed_cid, aggregate.infos[i].unsealed_cid,
                 "mismatched unsealed CID"
+            );
+            assert_eq!(
+                exp_svi.sector_number, aggregate.infos[i].sector_number,
+                "mismatched sector number"
+            );
+            assert_eq!(exp_svi.randomness, aggregate.infos[i].randomness, "mismatched randomness");
+            assert_eq!(
+                exp_svi.interactive_randomness, aggregate.infos[i].interactive_randomness,
+                "mismatched interactive randomness"
             );
         }
         assert_eq!(exp.in_proof, aggregate.proof, "proof mismatch");
