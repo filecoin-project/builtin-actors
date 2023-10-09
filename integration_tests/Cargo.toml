@@ -58,6 +58,7 @@ regex = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 libsecp256k1 = { workspace = true }
+test_macro = { path = "./test_macro" }
 
 [dev-dependencies]
 multihash = { workspace = true }
