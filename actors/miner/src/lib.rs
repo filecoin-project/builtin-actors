@@ -4091,12 +4091,11 @@ fn handle_proving_deadline(
     let state: State = rt.transaction(|state: &mut State, rt| {
         let policy = rt.policy();
 
-        // Vesting rewards for a miner are quantised to every 12 hours and we can determine what those "vesting epochs" are
-        // based on the proving period offset for the Miner.
+        // Vesting rewards for a miner are quantized to every 12 hours and we can determine what those "vesting epochs" are.
         // So, only do the vesting here if the current epoch is a "vesting epoch"
         let q = QuantSpec {
             unit: REWARD_VESTING_SPEC.quantization,
-            offset: state.current_proving_period_start(rt.policy(), curr_epoch),
+            offset: state.proving_period_start,
         };
 
         if q.quantize_up(curr_epoch) == curr_epoch {
@@ -4109,7 +4108,6 @@ fn handle_proving_deadline(
                 })?;
 
             pledge_delta_total -= newly_vested;
-            if pledge_delta_total.is_negative() {}
         }
 
         // Process pending worker change if any
