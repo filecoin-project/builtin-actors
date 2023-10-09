@@ -848,6 +848,30 @@ pub fn settle_deal_payments(
     res
 }
 
+pub fn settle_deal_payments_no_change(
+    rt: &MockRuntime,
+    caller: Address,
+    client_addr: Address,
+    provider_addr: Address,
+    deal_ids: &[DealID],
+) {
+    let st: State = rt.get_state();
+    let epoch_cid = st.deal_ops_by_epoch;
+
+    // fetch current client  escrow balances
+    let client_acct = get_balance(rt, &client_addr);
+    let provider_acct = get_balance(rt, &provider_addr);
+
+    settle_deal_payments(rt, caller, deal_ids);
+
+    let st: State = rt.get_state();
+    let new_client_acct = get_balance(rt, &client_addr);
+    let new_provider_acct = get_balance(rt, &provider_addr);
+    assert_eq!(epoch_cid, st.deal_ops_by_epoch);
+    assert_eq!(client_acct, new_client_acct);
+    assert_eq!(provider_acct, new_provider_acct);
+}
+
 pub fn settle_deal_payments_and_assert_balances(
     rt: &MockRuntime,
     client_addr: Address,
@@ -1173,11 +1197,11 @@ pub fn generate_and_publish_deal(
     addrs: &MinerAddresses,
     start_epoch: ChainEpoch,
     end_epoch: ChainEpoch,
-) -> DealID {
+) -> (DealID, DealProposal) {
     let deal = generate_deal_and_add_funds(rt, client, addrs, start_epoch, end_epoch);
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, addrs.worker);
-    let deal_ids = publish_deals(rt, addrs, &[deal], TokenAmount::zero(), NO_ALLOCATION_ID); // unverified deal
-    deal_ids[0]
+    let deal_ids = publish_deals(rt, addrs, &[deal.clone()], TokenAmount::zero(), NO_ALLOCATION_ID); // unverified deal
+    (deal_ids[0], deal)
 }
 
 pub fn generate_and_publish_verified_deal(
@@ -1433,6 +1457,29 @@ pub fn terminate_deals(rt: &MockRuntime, miner_addr: Address, deal_ids: &[DealID
 
     let ret = terminate_deals_raw(rt, miner_addr, deal_ids).unwrap();
     assert!(ret.is_none());
+    rt.verify();
+}
+
+pub fn terminate_deals_expect_abort(
+    rt: &MockRuntime,
+    miner_addr: Address,
+    deal_ids: &[DealID],
+    expected_exit_code: ExitCode,
+) {
+    rt.set_caller(*MINER_ACTOR_CODE_ID, miner_addr);
+    rt.expect_validate_caller_type(vec![Type::Miner]);
+
+    let params =
+        OnMinerSectorsTerminateParams { epoch: *rt.epoch.borrow(), deal_ids: deal_ids.to_vec() };
+
+    expect_abort(
+        expected_exit_code,
+        rt.call::<MarketActor>(
+            Method::OnMinerSectorsTerminate as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        ),
+    );
+
     rt.verify();
 }
 

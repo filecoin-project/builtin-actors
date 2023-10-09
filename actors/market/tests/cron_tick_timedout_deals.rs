@@ -29,14 +29,13 @@ const END_EPOCH: ChainEpoch = START_EPOCH + 200 * EPOCHS_IN_DAY;
 #[test]
 fn timed_out_deal_is_slashed_and_deleted() {
     let rt = setup();
-    let deal_id = generate_and_publish_deal(
+    let (deal_id, deal_proposal) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         START_EPOCH,
         END_EPOCH,
     );
-    let deal_proposal = get_deal_proposal(&rt, deal_id);
 
     let c_escrow = get_balance(&rt, &CLIENT_ADDR).balance;
 
@@ -64,14 +63,13 @@ fn timed_out_deal_is_slashed_and_deleted() {
 fn publishing_timed_out_deal_again_should_work_after_cron_tick_as_it_should_no_longer_be_pending() {
     const START_EPOCH: ChainEpoch = 0;
     let rt = setup();
-    let deal_id = generate_and_publish_deal(
+    let (deal_id, deal_proposal) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         START_EPOCH,
         END_EPOCH,
     );
-    let deal_proposal = get_deal_proposal(&rt, deal_id);
 
     // publishing will fail as it will be in pending
     let deal_proposal2 = generate_deal_and_add_funds(
