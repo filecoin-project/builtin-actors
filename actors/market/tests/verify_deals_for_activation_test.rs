@@ -36,10 +36,10 @@ const MINER_ADDRESSES: MinerAddresses = MinerAddresses {
 #[test]
 fn verify_deal_and_activate_to_get_deal_space_for_unverified_deal_proposal() {
     let rt = setup();
-    let deal_id =
+    let (deal_id, deal_proposal) =
         generate_and_publish_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH);
-    let deal_proposal = get_deal_proposal(&rt, deal_id);
     let sector_number = 7;
+
     let v_response = verify_deals_for_activation(
         &rt,
         PROVIDER_ADDR,
@@ -168,7 +168,7 @@ fn verification_and_weights_for_verified_and_unverified_deals() {
 #[test]
 fn fail_when_caller_is_not_a_storage_miner_actor() {
     let rt = setup();
-    let deal_id =
+    let (deal_id, _) =
         generate_and_publish_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH);
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
@@ -223,7 +223,7 @@ fn fail_when_deal_proposal_is_not_found() {
 #[test]
 fn fail_when_caller_is_not_the_provider() {
     let rt = setup();
-    let deal_id =
+    let (deal_id, _) =
         generate_and_publish_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH);
 
     rt.set_caller(*MINER_ACTOR_CODE_ID, Address::new_id(205));
@@ -252,7 +252,7 @@ fn fail_when_caller_is_not_the_provider() {
 #[test]
 fn fail_when_current_epoch_is_greater_than_proposal_start_epoch() {
     let rt = setup();
-    let deal_id =
+    let (deal_id, _) =
         generate_and_publish_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH);
     rt.set_epoch(START_EPOCH + 1);
 
@@ -282,7 +282,7 @@ fn fail_when_current_epoch_is_greater_than_proposal_start_epoch() {
 #[test]
 fn fail_when_deal_end_epoch_is_greater_than_sector_expiration() {
     let rt = setup();
-    let deal_id =
+    let (deal_id, _) =
         generate_and_publish_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH);
 
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);
@@ -311,7 +311,7 @@ fn fail_when_deal_end_epoch_is_greater_than_sector_expiration() {
 #[test]
 fn fail_when_the_same_deal_id_is_passed_multiple_times() {
     let rt = setup();
-    let deal_id =
+    let (deal_id, _) =
         generate_and_publish_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH);
 
     rt.set_caller(*MINER_ACTOR_CODE_ID, PROVIDER_ADDR);

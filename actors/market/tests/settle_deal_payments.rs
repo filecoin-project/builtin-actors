@@ -1,13 +1,13 @@
-use fil_actor_market::{DealSettlementSummary, EX_DEAL_EXPIRED};
-use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
 
-mod harness;
-
+use fil_actor_market::{DealSettlementSummary, EX_DEAL_EXPIRED};
+use fil_actors_runtime::network::EPOCHS_IN_DAY;
+use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
 use harness::*;
+
+mod harness;
 
 const START_EPOCH: ChainEpoch = 0;
 const END_EPOCH: ChainEpoch = START_EPOCH + 200 * EPOCHS_IN_DAY;
@@ -15,14 +15,13 @@ const END_EPOCH: ChainEpoch = START_EPOCH + 200 * EPOCHS_IN_DAY;
 #[test]
 fn timedout_deal_is_slashed_and_deleted() {
     let rt = setup();
-    let deal_id = generate_and_publish_deal(
+    let (deal_id, deal_proposal) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         START_EPOCH,
         END_EPOCH,
     );
-    let deal_proposal = get_deal_proposal(&rt, deal_id);
 
     let c_escrow = get_balance(&rt, &CLIENT_ADDR).balance;
 
@@ -109,6 +108,51 @@ fn can_manually_settle_deals_in_the_cron_queue() {
 }
 
 #[test]
+fn settling_payments_before_activation_epoch_results_in_no_payment_or_slashing() {
+    let rt = setup();
+    let addrs = MinerAddresses::default();
+    let sector_number = 7;
+    let publish_epoch = START_EPOCH - 3;
+    let settlement_epoch = START_EPOCH - 2;
+    let activation_epoch = START_EPOCH - 1;
+
+    // publish
+    rt.set_epoch(publish_epoch);
+    let (deal, _) = generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, START_EPOCH, END_EPOCH);
+
+    // attempt settle before activation
+    rt.set_epoch(settlement_epoch);
+    settle_deal_payments_no_change(&rt, addrs.owner, CLIENT_ADDR, addrs.provider, &[deal]);
+
+    // activate
+    rt.set_epoch(activation_epoch);
+    activate_deals(&rt, END_EPOCH, addrs.provider, activation_epoch, sector_number, &[deal]);
+}
+
+#[test]
+fn settling_payments_before_start_epoch_results_in_no_payment_or_slashing() {
+    let rt = setup();
+    let addrs = MinerAddresses::default();
+    let sector_number = 7;
+
+    let publish_epoch = START_EPOCH - 3;
+    let activation_epoch = START_EPOCH - 2;
+    let settlement_epoch = START_EPOCH - 1;
+
+    // publish
+    rt.set_epoch(publish_epoch);
+    let (deal, _) = generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, START_EPOCH, END_EPOCH);
+
+    // activate
+    rt.set_epoch(activation_epoch);
+    activate_deals(&rt, END_EPOCH, addrs.provider, activation_epoch, sector_number, &[deal]);
+
+    // attempt settle before start
+    rt.set_epoch(settlement_epoch);
+    settle_deal_payments_no_change(&rt, addrs.owner, CLIENT_ADDR, addrs.provider, &[deal]);
+}
+
+#[test]
 fn batch_settlement_of_deals_allows_partial_success() {
     let rt = setup();
     let addrs = MinerAddresses::default();
@@ -151,9 +195,8 @@ fn batch_settlement_of_deals_allows_partial_success() {
         END_EPOCH,
     );
     // create a deal that missed activation and will be cleaned up
-    let unactivated_id =
+    let (unactivated_id, unactivated_proposal) =
         generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, START_EPOCH + 2, END_EPOCH);
-    let unactivated_proposal = get_deal_proposal(&rt, unactivated_id);
 
     // snapshot the inital balances
     let client_begin = get_balance(&rt, &CLIENT_ADDR);

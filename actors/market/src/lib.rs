@@ -1216,6 +1216,7 @@ impl Actor {
                             completed: false,
                             payment: TokenAmount::zero(),
                         });
+                        batch_gen.add_success();
                         continue;
                     }
                     LoadDealState::ProposalExpired(penalty) => {
