@@ -19,3 +19,17 @@ mod test_vm_test;
 mod verified_claim_test;
 mod verifreg_remove_datacap_test;
 mod withdraw_balance_test;
+
+use fil_actors_integration_tests::tests::TEST_REGISTRY;
+use fvm_ipld_blockstore::MemoryBlockstore;
+use test_vm::TestVM;
+
+#[test]
+pub fn run_all_tests() {
+    for test in TEST_REGISTRY.lock().unwrap().iter() {
+        println!("Running test: {}", test.0);
+        let store = MemoryBlockstore::new();
+        let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+        test.1(&v);
+    }
+}

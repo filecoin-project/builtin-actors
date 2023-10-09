@@ -35,6 +35,7 @@ pub use verified_claim_test::*;
 mod verifreg_remove_datacap_test;
 pub use verifreg_remove_datacap_test::*;
 mod withdraw_balance_test;
+use vm_api::VM;
 pub use withdraw_balance_test::*;
 mod move_partitions_test;
 pub use move_partitions_test::*;
@@ -44,5 +45,6 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 lazy_static! {
-    pub static ref TEST_REGISTRY: Mutex<HashMap<String, fn() -> ()>> = Mutex::new(HashMap::new());
+    pub static ref TEST_REGISTRY: Mutex<HashMap<String, fn(&dyn VM) -> ()>> =
+        Mutex::new(HashMap::new());
 }

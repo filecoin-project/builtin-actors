@@ -59,6 +59,7 @@ serde = { workspace = true }
 thiserror = { workspace = true }
 libsecp256k1 = { workspace = true }
 test_macro = { path = "./test_macro" }
+ctor = "0.2.5"
 
 [dev-dependencies]
 multihash = { workspace = true }
