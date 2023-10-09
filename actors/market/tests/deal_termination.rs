@@ -14,8 +14,7 @@ fn deal_is_terminated() {
         deal_end: ChainEpoch,
         activation_epoch: ChainEpoch,
         termination_epoch: ChainEpoch,
-        settlement_epoch: ChainEpoch,
-        payment: TokenAmount,
+        termination_payment: TokenAmount,
     }
 
     let cases = [
@@ -25,8 +24,7 @@ fn deal_is_terminated() {
             deal_end: 10 + 200 * EPOCHS_IN_DAY,
             activation_epoch: 5,
             termination_epoch: 15,
-            settlement_epoch: 20,
-            payment: TokenAmount::from_atto(50), // (15 - 10) * 10 as deal storage fee is 10 per epoch
+            termination_payment: TokenAmount::from_atto(50), // (15 - 10) * 10 as deal storage fee is 10 per epoch
         },
         Case {
             name: "deal is terminated after the startepoch and then settle payments after the endepoch",
@@ -34,8 +32,7 @@ fn deal_is_terminated() {
             deal_end: 10 + 200 * EPOCHS_IN_DAY,
             activation_epoch: 5,
             termination_epoch: 15,
-            settlement_epoch: 10 + 200 * EPOCHS_IN_DAY + 10,
-            payment: TokenAmount::from_atto(50), // (15 - 10) * 10 as deal storage fee is 10 per epoch
+            termination_payment: TokenAmount::from_atto(50), // (15 - 10) * 10 as deal storage fee is 10 per epoch
         },
         Case {
             name: "deal is terminated at the startepoch and then settle payments before the endepoch",
@@ -43,8 +40,7 @@ fn deal_is_terminated() {
             deal_end: 10 + 200 * EPOCHS_IN_DAY,
             activation_epoch: 5,
             termination_epoch: 10,
-            settlement_epoch: 20,
-            payment: TokenAmount::zero(), // (10 - 10) * 10
+            termination_payment: TokenAmount::zero(), // (10 - 10) * 10
         },
         Case {
             name: "deal is terminated at the startepoch and then settle payments after the endepoch",
@@ -52,8 +48,7 @@ fn deal_is_terminated() {
             deal_end: 10 + 200 * EPOCHS_IN_DAY,
             activation_epoch: 5,
             termination_epoch: 10,
-            settlement_epoch: 10 + 200 * EPOCHS_IN_DAY + 10,
-            payment: TokenAmount::zero(), // (10 - 10) * 10
+            termination_payment: TokenAmount::zero(), // (10 - 10) * 10
         },
         Case {
             name: "deal is terminated at the activationepoch and then settle payments before the startepoch",
@@ -61,8 +56,7 @@ fn deal_is_terminated() {
             deal_end: 10 + 200 * EPOCHS_IN_DAY,
             activation_epoch: 5,
             termination_epoch: 5,
-            settlement_epoch: 9,
-            payment: TokenAmount::zero(), // (10 - 10) * 10
+            termination_payment: TokenAmount::zero(), // (10 - 10) * 10
         },
         Case {
             name: "deal is terminated at the activationepoch and then settle payments after the startepoch",
@@ -70,8 +64,7 @@ fn deal_is_terminated() {
             deal_end: 10 + 200 * EPOCHS_IN_DAY,
             activation_epoch: 5,
             termination_epoch: 5,
-            settlement_epoch: 20,
-            payment: TokenAmount::zero(), // (10 - 10) * 10
+            termination_payment: TokenAmount::zero(), // (10 - 10) * 10
         },
         Case {
             name: "deal is terminated at the activationepoch and then settle payments after the endepoch",
@@ -79,8 +72,7 @@ fn deal_is_terminated() {
             deal_end: 10 + 200 * EPOCHS_IN_DAY,
             activation_epoch: 5,
             termination_epoch: 5,
-            settlement_epoch: 10 + 200 * EPOCHS_IN_DAY + 10,
-            payment: TokenAmount::zero(), // (10 - 10) * 10
+            termination_payment: TokenAmount::zero(), // (10 - 10) * 10
         },
     ];
 
@@ -105,15 +97,56 @@ fn deal_is_terminated() {
         let (pay, slashed) =
             terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[deal_id]);
 
-        assert_eq!(tc.payment, pay);
+        assert_eq!(tc.termination_payment, pay);
         assert_eq!(deal_proposal.provider_collateral, slashed);
 
-        // go to settlement epoch
-        rt.set_epoch(tc.settlement_epoch);
-        // assert that trying to settle is always a no-op after termination
-        settle_deal_payments_no_change(&rt, PROVIDER_ADDR, CLIENT_ADDR, PROVIDER_ADDR, &[deal_id]);
-
         assert_deal_deleted(&rt, deal_id, &deal_proposal);
+
+        // assert that trying to settle is always a no-op after termination
+
+        // immediately after termination
+        settle_deal_payments_no_change(&rt, PROVIDER_ADDR, CLIENT_ADDR, PROVIDER_ADDR, &[deal_id]);
+        let mut epoch = tc.termination_epoch + 1;
+        rt.set_epoch(epoch);
+
+        // at deal start (if deal was terminated before start)
+        if epoch < tc.deal_start {
+            epoch = tc.deal_start;
+            rt.set_epoch(epoch);
+            settle_deal_payments_no_change(
+                &rt,
+                PROVIDER_ADDR,
+                CLIENT_ADDR,
+                PROVIDER_ADDR,
+                &[deal_id],
+            );
+        }
+
+        // during deal (if deal was terminated before end)
+        if epoch < tc.deal_end {
+            epoch = tc.deal_end;
+            rt.set_epoch(epoch);
+            settle_deal_payments_no_change(
+                &rt,
+                PROVIDER_ADDR,
+                CLIENT_ADDR,
+                PROVIDER_ADDR,
+                &[deal_id],
+            );
+        }
+
+        if epoch < tc.deal_end + 1 {
+            epoch = tc.deal_end + 1;
+            rt.set_epoch(epoch);
+            settle_deal_payments_no_change(
+                &rt,
+                PROVIDER_ADDR,
+                CLIENT_ADDR,
+                PROVIDER_ADDR,
+                &[deal_id],
+            );
+        }
+
         check_state(&rt);
     }
 }
