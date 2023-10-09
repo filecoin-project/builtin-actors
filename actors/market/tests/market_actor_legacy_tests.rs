@@ -326,14 +326,11 @@ fn locked_fund_tracking_states() {
     assert!(st.total_client_storage_fee.is_zero());
 
     // Publish deal1, deal2, and deal3 with different client and provider
-    let deal_id1 = generate_and_publish_deal(&rt, c1, &m1, start_epoch, end_epoch);
-    let d1 = get_deal_proposal(&rt, deal_id1);
+    let (deal_id1, d1) = generate_and_publish_deal(&rt, c1, &m1, start_epoch, end_epoch);
 
-    let deal_id2 = generate_and_publish_deal(&rt, c2, &m2, start_epoch, end_epoch);
-    let d2 = get_deal_proposal(&rt, deal_id2);
+    let (deal_id2, d2) = generate_and_publish_deal(&rt, c2, &m2, start_epoch, end_epoch);
 
-    let deal_id3 = generate_and_publish_deal(&rt, c3, &m3, start_epoch, end_epoch);
-    let d3 = get_deal_proposal(&rt, deal_id3);
+    let (deal_id3, d3) = generate_and_publish_deal(&rt, c3, &m3, start_epoch, end_epoch);
 
     let csf = d1.total_storage_fee() + d2.total_storage_fee() + d3.total_storage_fee();
     let plc = &d1.provider_collateral + d2.provider_collateral + &d3.provider_collateral;
