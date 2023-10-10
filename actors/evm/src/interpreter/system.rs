@@ -317,6 +317,7 @@ impl<'r, RT: Runtime> System<'r, RT> {
         self.nonce = state.nonce;
         self.saved_state_root = Some(root);
         self.bytecode = Some(EvmBytecode::new(state.bytecode, state.bytecode_hash));
+        self.tombstone = state.tombstone;
         Ok(())
     }
 
