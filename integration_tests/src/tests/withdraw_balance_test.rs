@@ -1,3 +1,4 @@
+use export_macro::exported_test;
 use fil_actor_miner::{ChangeBeneficiaryParams, Method as MinerMethod, WithdrawBalanceParams};
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
@@ -6,8 +7,10 @@ use fvm_shared::sector::RegisteredSealProof;
 use vm_api::util::apply_code;
 use vm_api::VM;
 
+use crate::tests::TEST_REGISTRY;
 use crate::util::{change_beneficiary, create_accounts, create_miner, withdraw_balance};
 
+#[exported_test]
 pub fn withdraw_balance_success_test(v: &dyn VM) {
     let addrs = create_accounts(v, 2, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -47,6 +50,7 @@ pub fn withdraw_balance_success_test(v: &dyn VM) {
     );
 }
 
+#[exported_test]
 pub fn withdraw_balance_fail_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;

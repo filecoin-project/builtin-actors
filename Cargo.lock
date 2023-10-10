@@ -1323,6 +1323,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0206175f82b8d6bf6652ff7d71a1e27fd2e4efde587fd368662814d6ec1d9ce0"
 
 [[package]]
+name = "export_macro"
+version = "1.0.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.38",
+]
+
+[[package]]
 name = "eyre"
 version = "0.6.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1710,6 +1719,7 @@ dependencies = [
  "cid 0.10.1",
  "ctor",
  "ethers",
+ "export_macro",
  "fil_actor_account",
  "fil_actor_cron",
  "fil_actor_datacap",
@@ -1751,7 +1761,6 @@ dependencies = [
  "regex",
  "serde",
  "test-case",
- "test_macro",
  "thiserror",
  "vm_api",
 ]
@@ -4042,15 +4051,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
-]
-
-[[package]]
-name = "test_macro"
-version = "1.0.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.38",
 ]
 
 [[package]]

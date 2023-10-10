@@ -1,5 +1,6 @@
 use std::ops::Neg;
 
+use export_macro::exported_test;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PaddedPieceSize;
@@ -29,6 +30,7 @@ use fil_actors_runtime::{
 use vm_api::util::{apply_ok, get_state, DynBlockstore};
 use vm_api::VM;
 
+use crate::tests::TEST_REGISTRY;
 use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_by_deadline_to_index, advance_to_proving_deadline, assert_invariants, create_accounts,
@@ -42,6 +44,7 @@ use crate::util::{
 /// Tests a scenario involving a verified deal from the built-in market, with associated
 /// allocation and claim.
 /// This test shares some set-up copied from extend_sectors_test.
+#[exported_test]
 pub fn verified_claim_scenario_test(v: &dyn VM) {
     let addrs = create_accounts(v, 4, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -363,6 +366,7 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
     );
 }
 
+#[exported_test]
 pub fn expired_allocations_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -455,6 +459,7 @@ pub fn expired_allocations_test(v: &dyn VM) {
     );
 }
 
+#[exported_test]
 pub fn deal_passes_claim_fails_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;

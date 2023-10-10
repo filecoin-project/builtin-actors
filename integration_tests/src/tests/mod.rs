@@ -44,7 +44,8 @@ use lazy_static::lazy_static;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+type TestFn = fn(&dyn VM) -> ();
+
 lazy_static! {
-    pub static ref TEST_REGISTRY: Mutex<HashMap<String, fn(&dyn VM) -> ()>> =
-        Mutex::new(HashMap::new());
+    pub static ref TEST_REGISTRY: Mutex<HashMap<String, TestFn>> = Mutex::new(HashMap::new());
 }
