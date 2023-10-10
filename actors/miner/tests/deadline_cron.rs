@@ -100,7 +100,7 @@ fn test_vesting_on_cron() {
     assert_locked_fn(new_epoch, false);
 
     // funds get vested again if epoch is quantised
-    let new_epoch = q.quantize_up(new_epoch + (EPOCHS_IN_DAY / 2) + 100);
+    let new_epoch = q.quantize_up(new_epoch);
     assert_locked_fn(new_epoch, true);
 
     h.check_state(&rt);
