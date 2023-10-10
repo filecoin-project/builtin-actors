@@ -1,9 +1,11 @@
 use fil_actor_miner::testing::{check_deadline_state_invariants, DeadlineStateSummary};
 use fil_actor_miner::{
-    pledge_penalty_for_continued_fault, power_for_sectors, Deadline, PowerPair, SectorOnChainInfo,
+    new_deadline_info, pledge_penalty_for_continued_fault, power_for_sectors, Deadline, PowerPair,
+    SectorOnChainInfo, REWARD_VESTING_SPEC,
 };
+use fil_actors_runtime::runtime::{Runtime, RuntimePolicy};
 use fil_actors_runtime::test_utils::MockRuntime;
-use fil_actors_runtime::MessageAccumulator;
+use fil_actors_runtime::{MessageAccumulator, EPOCHS_IN_DAY};
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::{ChainEpoch, QuantSpec};
@@ -35,6 +37,71 @@ fn cron_on_inactive_state() {
     let deadline = h.deadline(&rt);
     rt.set_epoch(deadline.last());
     h.on_deadline_cron(&rt, CronConfig { no_enrollment: true, ..CronConfig::default() });
+
+    h.check_state(&rt);
+}
+
+#[test]
+fn test_vesting_on_cron() {
+    let mut h = ActorHarness::new(PERIOD_OFFSET);
+    let rt = h.new_runtime();
+    rt.set_balance(BIG_BALANCE.clone());
+    h.construct_and_verify(&rt);
+
+    // onboard some sectors and get power
+    let active_sectors =
+        h.commit_and_prove_sectors(&rt, 2, DEFAULT_SECTOR_EXPIRATION as u64, vec![], true);
+    // advance cron to activate power.
+    h.advance_and_submit_posts(&rt, &active_sectors);
+
+    // --- ADD REWARDS FOR VESTING
+    let apply_reward_fn = |target_epoch: ChainEpoch| {
+        rt.set_epoch(target_epoch);
+        h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
+    };
+
+    let current_epoch = *rt.epoch.borrow();
+    apply_reward_fn(current_epoch);
+
+    // MOVE EPOCH BY HALF A DAY AND ADD ONE MORE REWARD SCHEDULE
+    let current_epoch = current_epoch + (EPOCHS_IN_DAY / 2) + 100;
+    apply_reward_fn(current_epoch);
+
+    // --- ASSERT FUNDS TO BE VESTED
+    let st = h.get_state(&rt);
+    let vesting_funds = st.load_vesting_funds(&rt.store).unwrap();
+    assert_eq!(360, vesting_funds.funds.len());
+
+    let q = QuantSpec { unit: REWARD_VESTING_SPEC.quantization, offset: st.proving_period_start };
+
+    let assert_locked_fn = |new_epoch: ChainEpoch, should_vest: bool| {
+        let st = h.get_state(&rt);
+        rt.set_epoch(new_epoch);
+        let new_deadline_info = st.deadline_info(rt.policy(), new_epoch + 1);
+        let old_funds = st.locked_funds.clone();
+        h.on_deadline_cron(
+            &rt,
+            CronConfig { expected_enrollment: new_deadline_info.last(), ..CronConfig::default() },
+        );
+        let new_funds = h.get_state(&rt).locked_funds;
+        if should_vest {
+            assert_ne!(old_funds, new_funds);
+        } else {
+            assert_eq!(old_funds, new_funds);
+        }
+    };
+
+    // move current epoch by a day so funds get vested
+    let new_epoch = q.quantize_up(current_epoch + EPOCHS_IN_DAY + 10);
+    assert_locked_fn(new_epoch, true);
+
+    // no funds get vested if epoch moves by <12 hours
+    let new_epoch = new_epoch + (EPOCHS_IN_DAY / 2) - 100;
+    assert_locked_fn(new_epoch, false);
+
+    // funds get vested again if epoch is quantised
+    let new_epoch = q.quantize_up(new_epoch + (EPOCHS_IN_DAY / 2) + 100);
+    assert_locked_fn(new_epoch, true);
 
     h.check_state(&rt);
 }

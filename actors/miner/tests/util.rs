@@ -2922,10 +2922,8 @@ enum MhCode {
 fn immediately_vesting_funds(rt: &MockRuntime, state: &State) -> TokenAmount {
     let curr_epoch = *rt.epoch.borrow();
 
-    let q = QuantSpec {
-        unit: REWARD_VESTING_SPEC.quantization,
-        offset: state.current_proving_period_start(rt.policy(), curr_epoch),
-    };
+    let q =
+        QuantSpec { unit: REWARD_VESTING_SPEC.quantization, offset: state.proving_period_start };
     if q.quantize_up(curr_epoch) != curr_epoch {
         return TokenAmount::zero();
     }
