@@ -4,8 +4,8 @@
 use std::cmp::max;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
-use std::iter;
 use std::ops::Neg;
+use std::{cmp, iter};
 
 use anyhow::{anyhow, Error};
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
@@ -561,8 +561,11 @@ impl Actor {
             }
 
             // Validate that the miner didn't try to prove too many partitions at once.
-            let submission_partition_limit =
-                load_partitions_sectors_max(rt.policy(), info.window_post_partition_sectors);
+            let submission_partition_limit = cmp::min(
+                load_partitions_sectors_max(rt.policy(), info.window_post_partition_sectors),
+                rt.policy().posted_partitions_max,
+            );
+
             if params.partitions.len() as u64 > submission_partition_limit {
                 return Err(actor_error!(
                     illegal_argument,
@@ -4401,8 +4404,10 @@ struct SectorSealProofInput {
     pub sector_number: SectorNumber,
     pub randomness: SealRandomness,
     pub interactive_randomness: InteractiveSealRandomness,
-    pub sealed_cid: Cid,   // Commr
-    pub unsealed_cid: Cid, // Commd
+    // Commr
+    pub sealed_cid: Cid,
+    // Commd
+    pub unsealed_cid: Cid,
 }
 
 impl SectorSealProofInput {
