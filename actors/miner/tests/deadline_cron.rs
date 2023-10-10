@@ -1,9 +1,9 @@
 use fil_actor_miner::testing::{check_deadline_state_invariants, DeadlineStateSummary};
 use fil_actor_miner::{
-    new_deadline_info, pledge_penalty_for_continued_fault, power_for_sectors, Deadline, PowerPair,
-    SectorOnChainInfo, REWARD_VESTING_SPEC,
+    pledge_penalty_for_continued_fault, power_for_sectors, Deadline, PowerPair, SectorOnChainInfo,
+    REWARD_VESTING_SPEC,
 };
-use fil_actors_runtime::runtime::{Runtime, RuntimePolicy};
+use fil_actors_runtime::runtime::RuntimePolicy;
 use fil_actors_runtime::test_utils::MockRuntime;
 use fil_actors_runtime::{MessageAccumulator, EPOCHS_IN_DAY};
 use fvm_ipld_bitfield::BitField;
@@ -78,7 +78,7 @@ fn test_vesting_on_cron() {
         let st = h.get_state(&rt);
         rt.set_epoch(new_epoch);
         let new_deadline_info = st.deadline_info(rt.policy(), new_epoch + 1);
-        let old_funds = st.locked_funds.clone();
+        let old_funds = st.locked_funds;
         h.on_deadline_cron(
             &rt,
             CronConfig { expected_enrollment: new_deadline_info.last(), ..CronConfig::default() },
