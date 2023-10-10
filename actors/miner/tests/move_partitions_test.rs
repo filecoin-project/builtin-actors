@@ -646,7 +646,7 @@ fn dispute_after_move() {
     let (orig_deadline_id, partition_id) =
         st.find_sector(&rt.store, sectors_info[0].sector_number).unwrap();
 
-    h.advance_to_epoch_with_cron(&rt, nearest_safe_epoch(&rt, &h, orig_deadline_id));
+    h.advance_to_epoch_with_cron(&rt, nearest_unsafe_epoch(&rt, &h, orig_deadline_id)/* in order to dispute the orig_deadline, I have to choose an unsafe epoch */);
     let dest_deadline_id =
         farthest_possible_to_deadline(&rt, orig_deadline_id, h.current_deadline(&rt));
 
@@ -655,7 +655,42 @@ fn dispute_after_move() {
         orig_deadline_id,
         dest_deadline_id,
         bitfield_from_slice(&[partition_id]),
-        || {},
+        || {
+            let current_deadline = h.current_deadline(&rt);
+
+            let from_deadline = new_deadline_info(
+                rt.policy(),
+                if current_deadline.index < orig_deadline_id {
+                    current_deadline.period_start - rt.policy().wpost_proving_period
+                } else {
+                    current_deadline.period_start
+                },
+                orig_deadline_id,
+                *rt.epoch.borrow(),
+            );
+
+            let from_ddl = h.get_deadline(&rt, orig_deadline_id);
+
+            let entropy = RawBytes::serialize(h.receiver).unwrap();
+            rt.expect_get_randomness_from_beacon(
+                DomainSeparationTag::WindowedPoStChallengeSeed,
+                from_deadline.challenge,
+                entropy.to_vec(),
+                TEST_RANDOMNESS_ARRAY_FROM_ONE,
+            );
+
+            let post = h.get_submitted_proof(&rt, &from_ddl, 0);
+
+            let all_ignored = BitField::new();
+            let vi = h.make_window_post_verify_info(
+                &sectors_info,
+                &all_ignored,
+                sectors_info[0].clone(),
+                Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
+                post.proofs,
+            );
+            rt.expect_verify_post(vi, ExitCode::OK);
+        },
     );
     assert!(result.is_ok());
 
@@ -667,26 +702,38 @@ fn dispute_after_move() {
 
     // dispute starts here
 
-    h.advance_and_submit_posts(&rt, &sectors_info);
+    // Dispute the original deadline
+    {
+        let orig_deadline =
+            nearest_occured_deadline_info(rt.policy(), &h.current_deadline(&rt), orig_deadline_id);
 
-    let dest_deadline =
-        nearest_occured_deadline_info(rt.policy(), &h.current_deadline(&rt), dest_deadline_id);
+        // Try a failed dispute.
+        h.dispute_window_post(&rt, &orig_deadline, 0, &sectors_info, None);
+    }
 
-    // Try a failed dispute.
-    h.dispute_window_post(&rt, &dest_deadline, 0, &sectors_info, None);
+    // Dispute the destination deadline
+    {
+        h.advance_and_submit_posts(&rt, &sectors_info);
 
-    // Now a successful dispute.
-    let pwr = power_for_sector(h.sector_size, &sectors_info[0]);
-    let expected_fee = pledge_penalty_for_invalid_windowpost(
-        &h.epoch_reward_smooth,
-        &h.epoch_qa_power_smooth,
-        &pwr.qa,
-    );
-    let expected_result = PoStDisputeResult {
-        expected_power_delta: Some(-pwr),
-        expected_penalty: Some(expected_fee),
-        expected_reward: Some(BASE_REWARD_FOR_DISPUTED_WINDOW_POST.clone()),
-        expected_pledge_delta: None,
-    };
-    h.dispute_window_post(&rt, &dest_deadline, 0, &sectors_info, Some(expected_result));
+        let dest_deadline =
+            nearest_occured_deadline_info(rt.policy(), &h.current_deadline(&rt), dest_deadline_id);
+
+        // Try a failed dispute.
+        h.dispute_window_post(&rt, &dest_deadline, 0, &sectors_info, None);
+
+        // Now a successful dispute.
+        let pwr = power_for_sector(h.sector_size, &sectors_info[0]);
+        let expected_fee = pledge_penalty_for_invalid_windowpost(
+            &h.epoch_reward_smooth,
+            &h.epoch_qa_power_smooth,
+            &pwr.qa,
+        );
+        let expected_result = PoStDisputeResult {
+            expected_power_delta: Some(-pwr),
+            expected_penalty: Some(expected_fee),
+            expected_reward: Some(BASE_REWARD_FOR_DISPUTED_WINDOW_POST.clone()),
+            expected_pledge_delta: None,
+        };
+        h.dispute_window_post(&rt, &dest_deadline, 0, &sectors_info, Some(expected_result));
+    }
 }
