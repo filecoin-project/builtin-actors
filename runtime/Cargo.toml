@@ -15,6 +15,7 @@ cid = { workspace = true }
 fvm_ipld_amt = { workspace = true }
 fvm_ipld_bitfield = { workspace = true }
 fvm_ipld_blockstore = { workspace = true }
+fil_actor_blockstore = { workspace = true }
 fvm_ipld_encoding = { workspace = true }
 fvm_ipld_hamt = { workspace = true }
 fvm_sdk = { workspace = true, optional = true }

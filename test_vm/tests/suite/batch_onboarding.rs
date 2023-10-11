@@ -1,5 +1,5 @@
+use fil_actor_blockstore::MemoryBlockstore;
 use fil_actors_integration_tests::tests::batch_onboarding_test;
-use fvm_ipld_blockstore::MemoryBlockstore;
 use test_case::test_case;
 use test_vm::TestVM;
 

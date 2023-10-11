@@ -1,7 +1,7 @@
+use fil_actor_blockstore::MemoryBlockstore;
 use fil_actors_integration_tests::tests::{
     proposal_hash_test, swap_self_1_of_2_test, swap_self_2_of_3_test, test_delete_self_inner_test,
 };
-use fvm_ipld_blockstore::MemoryBlockstore;
 use test_vm::TestVM;
 
 #[test]

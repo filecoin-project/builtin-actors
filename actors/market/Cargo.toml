@@ -42,6 +42,7 @@ multihash = { workspace = true }
 regex = { workspace = true }
 itertools = { workspace = true }
 lazy_static = { workspace = true }
+fil_actor_blockstore = { workspace = true }
 
 [features]
 fil-actor = ["fil_actors_runtime/fil-actor"]

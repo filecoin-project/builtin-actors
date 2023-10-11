@@ -1,4 +1,4 @@
-use fvm_ipld_blockstore::MemoryBlockstore;
+use fil_actor_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;

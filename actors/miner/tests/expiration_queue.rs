@@ -1,3 +1,4 @@
+use fil_actor_blockstore::MemoryBlockstore;
 use fil_actor_miner::{
     power_for_sectors, ExpirationQueue, ExpirationSet, PowerPair, SectorOnChainInfo,
 };
@@ -7,7 +8,6 @@ use fil_actors_runtime::{
 };
 use fvm_ipld_amt::Amt;
 use fvm_ipld_bitfield::{BitField, MaybeBitField};
-use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::{ChainEpoch, QuantSpec, NO_QUANTIZATION};
 use fvm_shared::econ::TokenAmount;

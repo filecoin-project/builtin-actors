@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod market_tests {
+    use fil_actor_blockstore::MemoryBlockstore;
     use fil_actors_integration_tests::tests::market_tests::*;
-    use fvm_ipld_blockstore::MemoryBlockstore;
     use test_vm::TestVM;
 
     #[test]
@@ -29,8 +29,8 @@ mod market_tests {
 
 #[cfg(test)]
 mod miner_tests {
+    use fil_actor_blockstore::MemoryBlockstore;
     use fil_actors_integration_tests::tests::miner_tests::*;
-    use fvm_ipld_blockstore::MemoryBlockstore;
     use test_vm::TestVM;
 
     #[test]

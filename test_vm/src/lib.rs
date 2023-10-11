@@ -3,6 +3,7 @@ use crate::fakes::FakePrimitives;
 use cid::multihash::Code;
 use cid::Cid;
 use fil_actor_account::State as AccountState;
+use fil_actor_blockstore::MemoryBlockstore;
 use fil_actor_cron::{Entry as CronEntry, State as CronState};
 use fil_actor_datacap::State as DataCapState;
 use fil_actor_init::{ExecReturn, State as InitState};
@@ -23,7 +24,6 @@ use fil_actors_runtime::{
 };
 use fil_builtin_actors_state::check::Tree;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::CborStore;
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};

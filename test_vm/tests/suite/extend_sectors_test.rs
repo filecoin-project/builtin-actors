@@ -1,8 +1,8 @@
+use fil_actor_blockstore::MemoryBlockstore;
 use fil_actors_integration_tests::tests::{
     commit_sector_with_max_duration_deal_test, extend_legacy_sector_with_deals_test,
     extend_sector_up_to_max_relative_extension_test, extend_updated_sector_with_claims_test,
 };
-use fvm_ipld_blockstore::MemoryBlockstore;
 use test_vm::TestVM;
 
 #[test]
