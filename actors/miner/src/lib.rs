@@ -16,7 +16,7 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{from_slice, BytesDe, CborStore};
 use fvm_shared::address::{Address, Payload, Protocol};
 use fvm_shared::bigint::{BigInt, Integer};
-use fvm_shared::clock::ChainEpoch;
+use fvm_shared::clock::{ChainEpoch, QuantSpec};
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::*;
@@ -4093,14 +4093,25 @@ fn handle_proving_deadline(
 
     let state: State = rt.transaction(|state: &mut State, rt| {
         let policy = rt.policy();
-        // Vest locked funds.
-        // This happens first so that any subsequent penalties are taken
-        // from locked vesting funds before funds free this epoch.
-        let newly_vested = state
-            .unlock_vested_funds(rt.store(), rt.curr_epoch())
-            .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to vest funds"))?;
 
-        pledge_delta_total -= newly_vested;
+        // Vesting rewards for a miner are quantized to every 12 hours and we can determine what those "vesting epochs" are.
+        // So, only do the vesting here if the current epoch is a "vesting epoch"
+        let q = QuantSpec {
+            unit: REWARD_VESTING_SPEC.quantization,
+            offset: state.proving_period_start,
+        };
+
+        if q.quantize_up(curr_epoch) == curr_epoch {
+            // Vest locked funds.
+            // This happens first so that any subsequent penalties are taken
+            // from locked vesting funds before funds free this epoch.
+            let newly_vested =
+                state.unlock_vested_funds(rt.store(), rt.curr_epoch()).map_err(|e| {
+                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to vest funds")
+                })?;
+
+            pledge_delta_total -= newly_vested;
+        }
 
         // Process pending worker change if any
         let mut info = get_miner_info(rt.store(), state)?;
