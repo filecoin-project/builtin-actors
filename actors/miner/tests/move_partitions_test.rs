@@ -9,13 +9,11 @@ use fil_actor_miner::{
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::{
     runtime::Runtime,
-    runtime::{DomainSeparationTag, RuntimePolicy},
+    runtime::RuntimePolicy,
     test_utils::{expect_abort_contains_message, MockRuntime},
 };
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::randomness::Randomness;
 use fvm_shared::{clock::ChainEpoch, error::ExitCode};
 use num_traits::Zero;
 
@@ -143,7 +141,7 @@ fn fail_to_move_partitions_with_faults_from_safe_epoch() {
         orig_deadline_id,
         to_deadline_id,
         bitfield_from_slice(&[partition_id]),
-        || {},
+        &[],
     );
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_STATE,
@@ -185,42 +183,7 @@ fn fail_to_move_partitions_with_faults_from_unsafe_epoch() {
         orig_deadline_id,
         dest_deadline_id,
         bitfield_from_slice(&[partition_id]),
-        || {
-            let current_deadline = h.current_deadline(&rt);
-
-            let from_deadline = new_deadline_info(
-                rt.policy(),
-                if current_deadline.index < orig_deadline_id {
-                    current_deadline.period_start - rt.policy().wpost_proving_period
-                } else {
-                    current_deadline.period_start
-                },
-                orig_deadline_id,
-                *rt.epoch.borrow(),
-            );
-
-            let from_ddl = h.get_deadline(&rt, orig_deadline_id);
-
-            let entropy = RawBytes::serialize(h.receiver).unwrap();
-            rt.expect_get_randomness_from_beacon(
-                DomainSeparationTag::WindowedPoStChallengeSeed,
-                from_deadline.challenge,
-                entropy.to_vec(),
-                TEST_RANDOMNESS_ARRAY_FROM_ONE,
-            );
-
-            let post = h.get_submitted_proof(&rt, &from_ddl, 0);
-
-            let all_ignored = BitField::new();
-            let vi = h.make_window_post_verify_info(
-                &sectors_info,
-                &all_ignored,
-                sectors_info[1].clone(),
-                Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
-                post.proofs,
-            );
-            rt.expect_verify_post(vi, ExitCode::OK);
-        },
+        &sectors_info,
     );
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_STATE,
@@ -259,7 +222,7 @@ fn ok_to_move_partitions_from_safe_epoch() {
         orig_deadline_id,
         dest_deadline_id,
         bitfield_from_slice(&[partition_id]),
-        || {},
+        &[],
     );
     assert!(result.is_ok());
 
@@ -294,42 +257,7 @@ fn ok_to_move_partitions_from_unsafe_epoch() {
         orig_deadline_id,
         dest_deadline_id,
         bitfield_from_slice(&[partition_id]),
-        || {
-            let current_deadline = h.current_deadline(&rt);
-
-            let from_deadline = new_deadline_info(
-                rt.policy(),
-                if current_deadline.index < orig_deadline_id {
-                    current_deadline.period_start - rt.policy().wpost_proving_period
-                } else {
-                    current_deadline.period_start
-                },
-                orig_deadline_id,
-                *rt.epoch.borrow(),
-            );
-
-            let from_ddl = h.get_deadline(&rt, orig_deadline_id);
-
-            let entropy = RawBytes::serialize(h.receiver).unwrap();
-            rt.expect_get_randomness_from_beacon(
-                DomainSeparationTag::WindowedPoStChallengeSeed,
-                from_deadline.challenge,
-                entropy.to_vec(),
-                TEST_RANDOMNESS_ARRAY_FROM_ONE,
-            );
-
-            let post = h.get_submitted_proof(&rt, &from_ddl, 0);
-
-            let all_ignored = BitField::new();
-            let vi = h.make_window_post_verify_info(
-                &sectors_info,
-                &all_ignored,
-                sectors_info[1].clone(),
-                Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
-                post.proofs,
-            );
-            rt.expect_verify_post(vi, ExitCode::OK);
-        },
+        &sectors_info,
     );
     assert!(result.is_ok());
 
@@ -362,7 +290,7 @@ fn fault_and_recover_after_move() {
         orig_deadline_id,
         dest_deadline_id,
         bitfield_from_slice(&[partition_id]),
-        || {},
+        &[],
     );
     assert!(result.is_ok());
 
@@ -417,7 +345,7 @@ fn fault_and_terminate_after_move() {
         orig_deadline_id,
         dest_deadline_id,
         bitfield_from_slice(&[partition_id]),
-        || {},
+        &[],
     );
     assert!(result.is_ok());
 
@@ -516,7 +444,7 @@ fn directly_terminate_after_move() {
         orig_deadline_id,
         dest_deadline_id,
         bitfield_from_slice(&[partition_id]),
-        || {},
+        &[],
     );
     assert!(result.is_ok());
 
@@ -582,7 +510,7 @@ fn fault_and_expire_after_move() {
         orig_deadline_id,
         dest_deadline_id,
         bitfield_from_slice(&[partition_id]),
-        || {},
+        &[],
     );
     assert!(result.is_ok());
 
@@ -655,42 +583,7 @@ fn dispute_after_move() {
         orig_deadline_id,
         dest_deadline_id,
         bitfield_from_slice(&[partition_id]),
-        || {
-            let current_deadline = h.current_deadline(&rt);
-
-            let from_deadline = new_deadline_info(
-                rt.policy(),
-                if current_deadline.index < orig_deadline_id {
-                    current_deadline.period_start - rt.policy().wpost_proving_period
-                } else {
-                    current_deadline.period_start
-                },
-                orig_deadline_id,
-                *rt.epoch.borrow(),
-            );
-
-            let from_ddl = h.get_deadline(&rt, orig_deadline_id);
-
-            let entropy = RawBytes::serialize(h.receiver).unwrap();
-            rt.expect_get_randomness_from_beacon(
-                DomainSeparationTag::WindowedPoStChallengeSeed,
-                from_deadline.challenge,
-                entropy.to_vec(),
-                TEST_RANDOMNESS_ARRAY_FROM_ONE,
-            );
-
-            let post = h.get_submitted_proof(&rt, &from_ddl, 0);
-
-            let all_ignored = BitField::new();
-            let vi = h.make_window_post_verify_info(
-                &sectors_info,
-                &all_ignored,
-                sectors_info[0].clone(),
-                Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
-                post.proofs,
-            );
-            rt.expect_verify_post(vi, ExitCode::OK);
-        },
+        &sectors_info,
     );
     assert!(result.is_ok());
 
