@@ -78,16 +78,16 @@ fn test_vesting_on_cron() {
         let st = h.get_state(&rt);
         rt.set_epoch(new_epoch);
         let new_deadline_info = st.deadline_info(rt.policy(), new_epoch + 1);
-        let old_funds = st.locked_funds;
+        let old_locked = st.locked_funds;
         h.on_deadline_cron(
             &rt,
             CronConfig { expected_enrollment: new_deadline_info.last(), ..CronConfig::default() },
         );
-        let new_funds = h.get_state(&rt).locked_funds;
+        let new_locked = h.get_state(&rt).locked_funds;
         if should_vest {
-            assert_ne!(old_funds, new_funds);
+            assert_ne!(old_locked, new_locked);
         } else {
-            assert_eq!(old_funds, new_funds);
+            assert_eq!(old_locked, new_locked);
         }
     };
 
