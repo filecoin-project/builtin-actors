@@ -133,6 +133,7 @@ fn recovery_fails_during_active_consensus_fault() {
             epoch: epoch - 1,
             fault_type: ConsensusFaultType::DoubleForkMining,
         }),
+        ExitCode::OK,
     )
     .unwrap();
 

@@ -28,7 +28,34 @@ fn invalid_report_rejected() {
     rt.set_epoch(1);
 
     let test_addr = Address::new_id(1234);
-    expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.report_consensus_fault(&rt, test_addr, None));
+    expect_abort(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        h.report_consensus_fault(&rt, test_addr, None, ExitCode::OK),
+    );
+    rt.reset();
+    check_state_invariants(rt.policy(), &h.get_state(&rt), rt.store(), &rt.get_balance());
+}
+
+#[test]
+fn consensus_fault_verification_fails_rejected() {
+    let (h, rt) = setup();
+
+    rt.set_epoch(2);
+    let epoch = *rt.epoch.borrow();
+    let test_addr = Address::new_id(1234);
+    expect_abort(
+        ExitCode::USR_FORBIDDEN,
+        h.report_consensus_fault(
+            &rt,
+            test_addr,
+            Some(ConsensusFault {
+                target: rt.receiver,
+                epoch: epoch - 1,
+                fault_type: ConsensusFaultType::DoubleForkMining,
+            }),
+            ExitCode::USR_FORBIDDEN,
+        ),
+    );
     rt.reset();
     check_state_invariants(rt.policy(), &h.get_state(&rt), rt.store(), &rt.get_balance());
 }
@@ -50,6 +77,7 @@ fn mistargeted_report_rejected() {
                 epoch: epoch - 1,
                 fault_type: ConsensusFaultType::DoubleForkMining,
             }),
+            ExitCode::OK,
         ),
     );
     rt.reset();
@@ -72,6 +100,7 @@ fn report_consensus_fault_pays_reward_and_charges_fee() {
             epoch: epoch - 1,
             fault_type: ConsensusFaultType::DoubleForkMining,
         }),
+        ExitCode::OK,
     )
     .unwrap();
     check_state_invariants(rt.policy(), &h.get_state(&rt), rt.store(), &rt.get_balance());
@@ -99,6 +128,7 @@ fn report_consensus_fault_updates_consensus_fault_reported_field() {
             epoch: report_epoch - 1,
             fault_type: ConsensusFaultType::DoubleForkMining,
         }),
+        ExitCode::OK,
     )
     .unwrap();
     let end_info = h.get_info(&rt);
@@ -132,6 +162,7 @@ fn double_report_of_consensus_fault_fails() {
             epoch: fault1,
             fault_type: ConsensusFaultType::DoubleForkMining,
         }),
+        ExitCode::OK,
     )
     .unwrap();
     let end_info = h.get_info(&rt);
@@ -152,6 +183,7 @@ fn double_report_of_consensus_fault_fails() {
                 epoch: fault1,
                 fault_type: ConsensusFaultType::DoubleForkMining,
             }),
+            ExitCode::OK,
         ),
     );
     rt.reset();
@@ -170,6 +202,7 @@ fn double_report_of_consensus_fault_fails() {
                 epoch: fault2,
                 fault_type: ConsensusFaultType::DoubleForkMining,
             }),
+            ExitCode::OK,
         ),
     );
     rt.reset();
@@ -185,6 +218,7 @@ fn double_report_of_consensus_fault_fails() {
             epoch: fault3,
             fault_type: ConsensusFaultType::DoubleForkMining,
         }),
+        ExitCode::OK,
     )
     .unwrap();
     let end_info = h.get_info(&rt);
@@ -206,6 +240,7 @@ fn double_report_of_consensus_fault_fails() {
                 epoch: fault4,
                 fault_type: ConsensusFaultType::DoubleForkMining,
             }),
+            ExitCode::OK,
         ),
     );
     rt.reset();
