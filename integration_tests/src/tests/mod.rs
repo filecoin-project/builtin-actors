@@ -41,11 +41,11 @@ mod move_partitions_test;
 pub use move_partitions_test::*;
 
 use lazy_static::lazy_static;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::sync::Mutex;
 
 type TestFn = fn(&dyn VM) -> ();
 
 lazy_static! {
-    pub static ref TEST_REGISTRY: Mutex<HashMap<String, TestFn>> = Mutex::new(HashMap::new());
+    pub static ref TEST_REGISTRY: Mutex<BTreeMap<String, TestFn>> = Mutex::new(BTreeMap::new());
 }
