@@ -1957,6 +1957,7 @@ impl ActorHarness {
         rt: &MockRuntime,
         from: Address,
         fault: Option<ConsensusFault>,
+        verify_exit_code: ExitCode,
     ) -> Result<(), ActorError> {
         rt.expect_validate_caller_any();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, from);
@@ -1968,7 +1969,7 @@ impl ActorHarness {
             params.header2.clone(),
             params.header_extra.clone(),
             fault,
-            ExitCode::OK,
+            verify_exit_code,
         );
 
         let current_reward = ThisEpochRewardReturn {
