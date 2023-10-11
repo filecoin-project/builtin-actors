@@ -22,6 +22,7 @@ frc42_dispatch = { workspace = true }
 frc46_token = { workspace = true }
 fvm_ipld_bitfield = { workspace = true }
 fvm_ipld_blockstore = { workspace = true }
+fil_actor_blockstore = { workspace = true }
 fvm_ipld_encoding = { workspace = true }
 fvm_ipld_hamt = { workspace = true }
 fvm_shared = { workspace = true }
@@ -42,7 +43,6 @@ multihash = { workspace = true }
 regex = { workspace = true }
 itertools = { workspace = true }
 lazy_static = { workspace = true }
-fil_actor_blockstore = { workspace = true }
 
 [features]
 fil-actor = ["fil_actors_runtime/fil-actor"]
