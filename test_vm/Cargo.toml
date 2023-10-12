@@ -29,7 +29,6 @@ fil_actor_evm = { workspace = true }
 fil_actor_eam = { workspace = true }
 fil_actor_ethaccount = { workspace = true }
 fil_actors_evm_shared = { workspace = true }
-fil_actor_blockstore = {workspace = true}
 
 anyhow = { workspace = true }
 blake2b_simd = { workspace = true }

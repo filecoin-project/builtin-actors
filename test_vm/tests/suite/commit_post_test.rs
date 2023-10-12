@@ -1,10 +1,10 @@
-use fil_actor_blockstore::MemoryBlockstore;
 use fil_actors_integration_tests::tests::{
     aggregate_bad_sector_number_test, aggregate_bad_sender_test,
     aggregate_one_precommit_expires_test, aggregate_size_limits_test,
     missed_first_post_deadline_test, overdue_precommit_test, skip_sector_test,
     submit_post_succeeds_test,
 };
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use test_vm::TestVM;
 
 #[test]

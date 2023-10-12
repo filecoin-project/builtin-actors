@@ -4,10 +4,9 @@ use ethers::{
     providers::{MockProvider, Provider},
 };
 
-use fil_actor_blockstore::tracking::{BSStats, TrackingBlockstore};
-use fil_actor_blockstore::MemoryBlockstore;
 use fil_actor_evm as evm;
 use fil_actors_evm_shared::address::EthAddress;
+use fil_actors_runtime::test_blockstores::{BSStats, MemoryBlockstore, TrackingBlockstore};
 use fil_actors_runtime::{
     test_utils::{MockRuntime, EVM_ACTOR_CODE_ID, INIT_ACTOR_CODE_ID},
     INIT_ACTOR_ADDR,

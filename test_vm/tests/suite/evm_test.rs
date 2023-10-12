@@ -1,9 +1,9 @@
-use fil_actor_blockstore::MemoryBlockstore;
 use fil_actors_integration_tests::tests::{
     evm_call_test, evm_create_test, evm_delegatecall_test, evm_empty_initcode_test,
     evm_eth_create_external_test, evm_init_revert_data_test, evm_staticcall_delegatecall_test,
     evm_staticcall_test,
 };
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use test_vm::TestVM;
 
 #[test]

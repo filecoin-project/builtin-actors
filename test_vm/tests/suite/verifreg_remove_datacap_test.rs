@@ -1,7 +1,7 @@
-use fil_actor_blockstore::MemoryBlockstore;
 use fil_actors_integration_tests::tests::{
     remove_datacap_fails_on_verifreg_test, remove_datacap_simple_successful_path_test,
 };
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use test_vm::TestVM;
 
 #[test]

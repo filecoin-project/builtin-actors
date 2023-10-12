@@ -1,7 +1,7 @@
 use fil_actor_account::State as AccountState;
-use fil_actor_blockstore::MemoryBlockstore;
 use fil_actors_integration_tests::util::{assert_invariants, check_invariants};
 use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::test_utils::{
     make_identity_cid, ACCOUNT_ACTOR_CODE_ID, PAYCH_ACTOR_CODE_ID,
 };

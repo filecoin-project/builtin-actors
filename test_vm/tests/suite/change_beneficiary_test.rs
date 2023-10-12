@@ -1,8 +1,8 @@
-use fil_actor_blockstore::MemoryBlockstore;
 use fil_actors_integration_tests::tests::{
     change_beneficiary_back_owner_success_test, change_beneficiary_fail_test,
     change_beneficiary_success_test,
 };
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use test_vm::TestVM;
 
 #[test]

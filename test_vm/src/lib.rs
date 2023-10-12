@@ -3,7 +3,6 @@ use crate::fakes::FakePrimitives;
 use cid::multihash::Code;
 use cid::Cid;
 use fil_actor_account::State as AccountState;
-use fil_actor_blockstore::MemoryBlockstore;
 use fil_actor_cron::{Entry as CronEntry, State as CronState};
 use fil_actor_datacap::State as DataCapState;
 use fil_actor_init::{ExecReturn, State as InitState};
@@ -15,6 +14,7 @@ use fil_actor_verifreg::State as VerifRegState;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{Policy, Primitives, EMPTY_ARR_CID};
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::DATACAP_TOKEN_ACTOR_ADDR;
 use fil_actors_runtime::{test_utils::*, DEFAULT_HAMT_CONFIG};
 use fil_actors_runtime::{

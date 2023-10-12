@@ -1,5 +1,5 @@
-use fil_actor_blockstore::MemoryBlockstore;
 use fil_actors_integration_tests::tests::{cron_tick_test, power_create_miner_test};
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use test_vm::TestVM;
 
 #[test]

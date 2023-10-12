@@ -1,11 +1,11 @@
 #![allow(dead_code)]
 use cid::multihash::Code::Blake2b256;
-use fil_actor_blockstore::MemoryBlockstore;
 use fil_actor_miner::MinerInfo;
 use fil_actor_miner::SectorPreCommitOnChainInfo;
 use fil_actor_miner::VestSpec;
 use fil_actor_miner::VestingFunds;
 use fil_actor_miner::{BitFieldQueue, CollisionPolicy, SectorOnChainInfo, State};
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::{runtime::Policy, ActorError};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::BytesDe;

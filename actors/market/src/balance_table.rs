@@ -117,7 +117,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use fil_actor_blockstore::MemoryBlockstore;
+    use fil_actors_runtime::test_blockstores::MemoryBlockstore;
     use fvm_shared::address::Address;
     use fvm_shared::econ::TokenAmount;
 

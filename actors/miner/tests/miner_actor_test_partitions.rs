@@ -1,9 +1,9 @@
-use fil_actor_blockstore::MemoryBlockstore;
 use fil_actor_miner::{
     power_for_sectors, testing::PartitionStateSummary, BitFieldQueue, ExpirationQueue, Partition,
     PowerPair, SectorOnChainInfo,
 };
 use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::MessageAccumulator;
 use fvm_ipld_bitfield::BitField;

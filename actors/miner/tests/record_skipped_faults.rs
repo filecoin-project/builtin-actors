@@ -8,7 +8,7 @@ use fil_actors_runtime::ActorError;
 use fil_actors_runtime::MessageAccumulator;
 use fvm_ipld_bitfield::BitField;
 
-use fil_actor_blockstore::MemoryBlockstore;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::clock::QuantSpec;
 use fvm_shared::error::ExitCode;
