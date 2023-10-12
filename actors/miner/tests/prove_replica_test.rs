@@ -298,7 +298,15 @@ fn cant_update_nonempty_sector() {
 
     // Onboard a non-empty sector
     let sector_expiry = *rt.epoch.borrow() + DEFAULT_SECTOR_EXPIRATION_DAYS * EPOCHS_IN_DAY;
-    let sectors = onboard_nonempty_sectors(&rt, &h, sector_expiry, FIRST_SECTOR_NUMBER, 1);
+    let challenge = *rt.epoch.borrow();
+    let precommits = make_fake_precommits(
+        &h,
+        FIRST_SECTOR_NUMBER,
+        challenge - 1,
+        sector_expiry,
+        &[&[h.sector_size as u64]],
+    );
+    let sectors = onboard_sectors(&rt, &h, &precommits);
     let snos = sectors.iter().map(|s| s.sector_number).collect::<Vec<_>>();
 
     // Attempt to update

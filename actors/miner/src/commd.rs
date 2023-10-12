@@ -25,10 +25,24 @@ impl CompactCommD {
         CompactCommD(Some(c))
     }
 
+    // Whether this represents the zero CID.
+    pub fn is_zero(&self) -> bool {
+        self.0.is_none()
+    }
+
+    // Gets the full, non-compact CID.
     pub fn get_cid(&self, seal_proof: RegisteredSealProof) -> Result<Cid, ActorError> {
         match self.0 {
             Some(ref x) => Ok(*x),
             None => zero_commd(seal_proof),
+        }
+    }
+
+    // Gets the full, non-compact CID, panicking if the CID is zero.
+    pub fn get_nonzero_cid(&self) -> Cid {
+        match self.0 {
+            Some(ref x) => *x,
+            None => panic!("zero commd"),
         }
     }
 }
