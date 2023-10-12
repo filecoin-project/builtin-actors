@@ -9,14 +9,12 @@ use serde::de::DeserializeOwned;
 use fil_actor_market::{
     Actor as MarketActor, DealQueryParams, GetDealActivationReturn, GetDealClientCollateralReturn,
     GetDealClientReturn, GetDealDataCommitmentReturn, GetDealLabelReturn,
-    GetDealProviderCollateralReturn, GetDealProviderReturn, GetDealTermReturn,
-    GetDealTotalPriceReturn, GetDealVerifiedReturn, Method, EX_DEAL_EXPIRED,
+    GetDealProviderCollateralReturn, GetDealProviderReturn, GetDealSectorReturn, GetDealTermReturn,
+    GetDealTotalPriceReturn, GetDealVerifiedReturn, Method, EX_DEAL_EXPIRED, EX_DEAL_NOT_ACTIVATED,
 };
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::policy_constants::DEAL_UPDATES_INTERVAL;
-use fil_actors_runtime::test_utils::{
-    expect_abort_contains_message, MockRuntime, ACCOUNT_ACTOR_CODE_ID,
-};
+use fil_actors_runtime::test_utils::{expect_abort, MockRuntime, ACCOUNT_ACTOR_CODE_ID};
 use fil_actors_runtime::ActorError;
 use fil_actors_runtime::BURNT_FUNDS_ACTOR_ADDR;
 use harness::*;
@@ -114,6 +112,7 @@ fn activation() {
         query_deal(&rt, Method::GetDealActivationExported, id);
     assert_eq!(EPOCH_UNDEFINED, activation.activated);
     assert_eq!(EPOCH_UNDEFINED, activation.terminated);
+    query_deal_fails(&rt, Method::GetDealSectorExported, id, EX_DEAL_NOT_ACTIVATED);
 
     // activate the deal
     let activate_epoch = start_epoch - 2;
@@ -124,6 +123,10 @@ fn activation() {
         query_deal(&rt, Method::GetDealActivationExported, id);
     assert_eq!(activate_epoch, activation.activated);
     assert_eq!(EPOCH_UNDEFINED, activation.terminated);
+    assert_eq!(
+        GetDealSectorReturn { sector: sector_number },
+        query_deal(&rt, Method::GetDealSectorExported, id)
+    );
 
     // terminate early
     let terminate_epoch = activate_epoch + 100;
@@ -133,6 +136,7 @@ fn activation() {
         query_deal(&rt, Method::GetDealActivationExported, id);
     assert_eq!(activate_epoch, activation.activated);
     assert_eq!(terminate_epoch, activation.terminated);
+    query_deal_fails(&rt, Method::GetDealSectorExported, id, EX_DEAL_EXPIRED);
 
     // Clean up state
     let clean_epoch = terminate_epoch + DEAL_UPDATES_INTERVAL;
@@ -146,22 +150,20 @@ fn activation() {
         ExitCode::OK,
     );
     cron_tick(&rt);
-    expect_abort_contains_message(
-        EX_DEAL_EXPIRED,
-        "expired",
-        query_deal_raw(&rt, Method::GetDealActivationExported, id),
-    );
+    query_deal_fails(&rt, Method::GetDealActivationExported, id, EX_DEAL_EXPIRED);
+    query_deal_fails(&rt, Method::GetDealSectorExported, id, EX_DEAL_EXPIRED);
 
-    // Non-existent deal is NOT FOUND
-    expect_abort_contains_message(
-        ExitCode::USR_NOT_FOUND,
-        "no such deal",
-        query_deal_raw(&rt, Method::GetDealActivationExported, id + 1),
-    );
+    // Non-existent deal is USR_NOT_FOUND
+    query_deal_fails(&rt, Method::GetDealActivationExported, id + 1, ExitCode::USR_NOT_FOUND);
+    query_deal_fails(&rt, Method::GetDealSectorExported, id + 1, ExitCode::USR_NOT_FOUND);
 }
 
 fn query_deal<T: DeserializeOwned>(rt: &MockRuntime, method: Method, id: u64) -> T {
     query_deal_raw(rt, method, id).unwrap().unwrap().deserialize().unwrap()
+}
+
+fn query_deal_fails(rt: &MockRuntime, method: Method, id: u64, expected: ExitCode) {
+    expect_abort(expected, query_deal_raw(rt, method, id));
 }
 
 fn query_deal_raw(
