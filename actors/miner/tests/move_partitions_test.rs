@@ -14,6 +14,7 @@ use fil_actors_runtime::{
 };
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::sector::RegisteredSealProof;
 use fvm_shared::{clock::ChainEpoch, error::ExitCode};
 use num_traits::Zero;
 
@@ -23,11 +24,13 @@ use util::*;
 const PERIOD_OFFSET: ChainEpoch = 100;
 
 fn setup() -> (ActorHarness, MockRuntime) {
-    let h = ActorHarness::new(PERIOD_OFFSET);
+    let mut h = ActorHarness::new(PERIOD_OFFSET);
+    // For a small partition size, necessary for `dispute_remaining_partition_after_move`
+    h.set_proof_type(RegisteredSealProof::StackedDRG2KiBV1P1);
     let rt = h.new_runtime();
-    h.construct_and_verify(&rt);
-    rt.balance.replace(BIG_BALANCE.clone());
 
+    rt.balance.replace(BIG_BALANCE.clone());
+    h.construct_and_verify(&rt);
     (h, rt)
 }
 
@@ -629,5 +632,67 @@ fn dispute_after_move() {
             expected_pledge_delta: None,
         };
         h.dispute_window_post(&rt, &dest_deadline, 0, &sectors_info, Some(expected_result));
+    }
+}
+
+#[test]
+fn dispute_remaining_partition_after_move() {
+    let (mut h, rt) = setup();
+
+    // Commit more sectors than fit in one partition in every eligible deadline, overflowing to a second partition.
+    let sectors_to_commit = (rt.policy.wpost_period_deadlines - 2) * h.partition_size + 1;
+    let sectors_info = h.commit_and_prove_sectors(
+        &rt,
+        sectors_to_commit as usize,
+        DEFAULT_SECTOR_EXPIRATION,
+        vec![],
+        true,
+    );
+    h.advance_and_submit_posts(&rt, &sectors_info);
+
+    let last_sector = sectors_info.last().unwrap();
+    let st = h.get_state(&rt);
+
+    let (orig_deadline_id, partition_id) =
+        st.find_sector(&rt.store, last_sector.sector_number).unwrap();
+    assert_eq!(partition_id, 1);
+
+    // move a partition from a deadline that still needs WindowPoST verification.
+
+    // at this moment, the current and next deadlines are empty, orig_deadline_id has 2 partitions, and all other deadlines have 1 partition.
+    let target_sectors = &[
+        &sectors_info[0..h.partition_size as usize], /* these belong to partition 0 */
+        vec![last_sector.clone()].as_slice(),        /* these belong to partition 1 */
+    ]
+    .concat();
+    // after this call, current epoch will automatically be advanced to `nearest_unsafe_epoch(&rt, &h, orig_deadline_id)`
+    h.advance_and_submit_posts(&rt, target_sectors);
+
+    let dest_deadline_id =
+        farthest_possible_to_deadline(&rt, orig_deadline_id, h.current_deadline(&rt));
+
+    // move the second partition
+    let result = h.move_partitions(
+        &rt,
+        orig_deadline_id,
+        dest_deadline_id,
+        bitfield_from_slice(&[partition_id]),
+        target_sectors,
+    );
+    assert!(result.is_ok());
+
+    let st = h.get_state(&rt);
+    let (dl_idx, _) = st.find_sector(&rt.store, last_sector.sector_number).unwrap();
+    assert!(dl_idx == dest_deadline_id);
+
+    h.check_state(&rt);
+
+    // Dispute the first partition in the original deadline
+    {
+        let orig_deadline =
+            nearest_occured_deadline_info(rt.policy(), &h.current_deadline(&rt), orig_deadline_id);
+
+        // Check that a failed dispute is ok. A successful dispute is impossible because the Window PoST was synchronously validated when the partition was moved.
+        h.dispute_window_post(&rt, &orig_deadline, 0, target_sectors, None);
     }
 }
