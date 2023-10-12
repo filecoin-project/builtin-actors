@@ -2617,9 +2617,9 @@ impl ActorHarness {
         orig_deadline: u64,
         dest_deadline: u64,
         partitions: BitField,
-        sectors_info: &[SectorOnChainInfo], // if not empty, the first item should be "good"
+        expect_window_post_sectors: &[SectorOnChainInfo], // if not empty, the first item should be "good"
     ) -> Result<(), ActorError> {
-        if !sectors_info.is_empty() {
+        if !expect_window_post_sectors.is_empty() {
             let current_deadline = self.current_deadline(&rt);
 
             let from_deadline = new_deadline_info(
@@ -2647,9 +2647,9 @@ impl ActorHarness {
 
             let all_ignored = BitField::new();
             let vi = self.make_window_post_verify_info(
-                &sectors_info,
+                &expect_window_post_sectors,
                 &all_ignored,
-                sectors_info[0].clone(),
+                expect_window_post_sectors[0].clone(),
                 Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
                 post.proofs,
             );

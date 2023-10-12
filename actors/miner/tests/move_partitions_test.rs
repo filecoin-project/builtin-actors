@@ -574,6 +574,7 @@ fn dispute_after_move() {
     let (orig_deadline_id, partition_id) =
         st.find_sector(&rt.store, sectors_info[0].sector_number).unwrap();
 
+    // move a partition from a deadline that still needs WindowPoST verification.
     h.advance_to_epoch_with_cron(&rt, nearest_unsafe_epoch(&rt, &h, orig_deadline_id)/* in order to dispute the orig_deadline, I have to choose an unsafe epoch */);
     let dest_deadline_id =
         farthest_possible_to_deadline(&rt, orig_deadline_id, h.current_deadline(&rt));
@@ -600,7 +601,7 @@ fn dispute_after_move() {
         let orig_deadline =
             nearest_occured_deadline_info(rt.policy(), &h.current_deadline(&rt), orig_deadline_id);
 
-        // Try a failed dispute.
+        // Check that a failed dispute is ok. A successful dispute is impossible because the Window PoST was synchronously validated when the partition was moved.
         h.dispute_window_post(&rt, &orig_deadline, 0, &sectors_info, None);
     }
 
