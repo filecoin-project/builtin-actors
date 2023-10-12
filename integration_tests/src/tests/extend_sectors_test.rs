@@ -672,14 +672,26 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         .get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number)
         .unwrap()
         .unwrap();
-    assert_eq!(StoragePower::zero(), sector_info_after_update.deal_weight);
     // 0 space time
+    assert_eq!(StoragePower::zero(), sector_info_after_update.deal_weight);
 
+    // 32 GiB * the remaining life of the sector
     assert_eq!(
         DealWeight::from((sector_info_after_update.expiration - v.epoch()) * (32i64 << 30)),
         sector_info_after_update.verified_deal_weight
     );
-    // 32 GiB * the remaining life of the sector
+
+    // power base epoch is updated correctly
+    assert_eq!(v.epoch(), sector_info_after_update.power_base_epoch);
+
+    // activation not changed
+    assert_eq!(initial_sector_info.activation, sector_info_after_update.activation);
+
+    // replaced day reward updated
+    assert_eq!(
+        initial_sector_info.expected_day_reward,
+        sector_info_after_update.replaced_day_reward
+    );
 
     // extend the updated sector
 
@@ -720,14 +732,14 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         .get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number)
         .unwrap()
         .unwrap();
-    assert_eq!(StoragePower::zero(), sector_info_after_extension.deal_weight);
     // 0 space time
+    assert_eq!(StoragePower::zero(), sector_info_after_extension.deal_weight);
 
+    // 32 GiB * the remaining life of the sector
     assert_eq!(
         DealWeight::from((sector_info_after_extension.expiration - v.epoch()) * (32i64 << 30)),
         sector_info_after_extension.verified_deal_weight
     );
-    // 32 GiB * the remaining life of the sector
 
     assert_eq!(sector_info_after_extension.power_base_epoch, v.epoch());
     assert_eq!(sector_info_after_update.activation, sector_info_after_extension.activation);

@@ -175,7 +175,7 @@ pub fn evm_create_test(v: &dyn VM) {
     let create_return: fil_actor_eam::CreateExternalReturn =
         create_result.ret.unwrap().deserialize().expect("failed to decode results");
 
-    let test_func = |create_func: ContractCall<_, EthAddress>| {
+    let test_func = |create_func: ContractCall<_, EthAddress>, recursive: bool| {
         let child_addr_eth: EthAddress = {
             let call_params = create_func.calldata().expect("should serialize");
             let call_result = v
@@ -229,7 +229,7 @@ pub fn evm_create_test(v: &dyn VM) {
 
         // Kill it.
         {
-            let func = factory_child.die();
+            let func = if recursive { factory_child.die_recursive() } else { factory_child.die() };
             let call_params = func.calldata().expect("should serialize");
             let call_result = v
                 .execute_message(
@@ -273,13 +273,18 @@ pub fn evm_create_test(v: &dyn VM) {
     };
 
     // Test CREATE2 twice because we should be able to deploy over an existing contract.
-    let eth_addr1 = test_func(factory.create_2([0; 32], 42));
-    let eth_addr2 = test_func(factory.create_2([0; 32], 42));
+    let eth_addr1 = test_func(factory.create_2([0; 32], 42), false);
+    let eth_addr2 = test_func(factory.create_2([0; 32], 42), false);
+    assert_eq!(eth_addr1, eth_addr2);
+
+    // Recursive self-destruct should work.
+    let eth_addr1 = test_func(factory.create_2([1; 32], 42), true);
+    let eth_addr2 = test_func(factory.create_2([1; 32], 42), false);
     assert_eq!(eth_addr1, eth_addr2);
 
     // Then test create and expect two different addrs.
-    let eth_addr1 = test_func(factory.create(42));
-    let eth_addr2 = test_func(factory.create(42));
+    let eth_addr1 = test_func(factory.create(42), false);
+    let eth_addr2 = test_func(factory.create(42), false);
     assert_ne!(eth_addr1, eth_addr2);
 
     // Then test a failure

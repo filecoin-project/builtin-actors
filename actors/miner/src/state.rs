@@ -1049,15 +1049,18 @@ impl State {
         }
 
         let mut precommits_to_delete = Vec::new();
+        let precommitted =
+            make_map_with_root_and_bitwidth(&self.pre_committed_sectors, store, HAMT_BIT_WIDTH)?;
 
         for i in sectors.iter() {
             let sector_number = i as SectorNumber;
 
-            let sector = match self.get_precommitted_sector(store, sector_number)? {
-                Some(sector) => sector,
-                // already committed/deleted
-                None => continue,
-            };
+            let sector: SectorPreCommitOnChainInfo =
+                match precommitted.get(&u64_key(sector_number))?.cloned() {
+                    Some(sector) => sector,
+                    // already committed/deleted
+                    None => continue,
+                };
 
             // mark it for deletion
             precommits_to_delete.push(sector_number);

@@ -4,8 +4,8 @@
 use std::cmp::max;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
-use std::iter;
 use std::ops::Neg;
+use std::{cmp, iter};
 
 use anyhow::{anyhow, Error};
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
@@ -16,7 +16,7 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{from_slice, BytesDe, CborStore};
 use fvm_shared::address::{Address, Payload, Protocol};
 use fvm_shared::bigint::{BigInt, Integer};
-use fvm_shared::clock::ChainEpoch;
+use fvm_shared::clock::{ChainEpoch, QuantSpec};
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::*;
@@ -561,8 +561,11 @@ impl Actor {
             }
 
             // Validate that the miner didn't try to prove too many partitions at once.
-            let submission_partition_limit =
-                load_partitions_sectors_max(rt.policy(), info.window_post_partition_sectors);
+            let submission_partition_limit = cmp::min(
+                load_partitions_sectors_max(rt.policy(), info.window_post_partition_sectors),
+                rt.policy().posted_partitions_max,
+            );
+
             if params.partitions.len() as u64 > submission_partition_limit {
                 return Err(actor_error!(
                     illegal_argument,
@@ -4090,14 +4093,25 @@ fn handle_proving_deadline(
 
     let state: State = rt.transaction(|state: &mut State, rt| {
         let policy = rt.policy();
-        // Vest locked funds.
-        // This happens first so that any subsequent penalties are taken
-        // from locked vesting funds before funds free this epoch.
-        let newly_vested = state
-            .unlock_vested_funds(rt.store(), rt.curr_epoch())
-            .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to vest funds"))?;
 
-        pledge_delta_total -= newly_vested;
+        // Vesting rewards for a miner are quantized to every 12 hours and we can determine what those "vesting epochs" are.
+        // So, only do the vesting here if the current epoch is a "vesting epoch"
+        let q = QuantSpec {
+            unit: REWARD_VESTING_SPEC.quantization,
+            offset: state.proving_period_start,
+        };
+
+        if q.quantize_up(curr_epoch) == curr_epoch {
+            // Vest locked funds.
+            // This happens first so that any subsequent penalties are taken
+            // from locked vesting funds before funds free this epoch.
+            let newly_vested =
+                state.unlock_vested_funds(rt.store(), rt.curr_epoch()).map_err(|e| {
+                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to vest funds")
+                })?;
+
+            pledge_delta_total -= newly_vested;
+        }
 
         // Process pending worker change if any
         let mut info = get_miner_info(rt.store(), state)?;
@@ -4401,8 +4415,10 @@ struct SectorSealProofInput {
     pub sector_number: SectorNumber,
     pub randomness: SealRandomness,
     pub interactive_randomness: InteractiveSealRandomness,
-    pub sealed_cid: Cid,   // Commr
-    pub unsealed_cid: Cid, // Commd
+    // Commr
+    pub sealed_cid: Cid,
+    // Commd
+    pub unsealed_cid: Cid,
 }
 
 impl SectorSealProofInput {

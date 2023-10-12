@@ -394,7 +394,7 @@ mod miner_actor_test_commitment {
                 fault_type: ConsensusFaultType::DoubleForkMining,
             };
             let test_addr = Address::new_id(1234);
-            h.report_consensus_fault(&rt, test_addr, Some(fault)).unwrap();
+            h.report_consensus_fault(&rt, test_addr, Some(fault), ExitCode::OK).unwrap();
             let precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, expiration, vec![]);
             let ret =

@@ -69,6 +69,9 @@ pub struct Policy {
     /// The maximum number of sector infos that may be required to be loaded in a single invocation.
     pub addressed_sectors_max: u64,
 
+    /// The maximum number of partitions that can be proven in a single PoSt message.
+    pub posted_partitions_max: u64,
+
     pub max_pre_commit_randomness_lookback: ChainEpoch,
 
     /// Number of epochs between publishing the precommit and when the challenge for interactive PoRep is drawn
@@ -173,6 +176,7 @@ impl Default for Policy {
             addressed_partitions_max: policy_constants::ADDRESSED_PARTITIONS_MAX,
             declarations_max: policy_constants::DECLARATIONS_MAX,
             addressed_sectors_max: policy_constants::ADDRESSED_SECTORS_MAX,
+            posted_partitions_max: policy_constants::POSTED_PARTITIONS_MAX,
             max_pre_commit_randomness_lookback:
                 policy_constants::MAX_PRE_COMMIT_RANDOMNESS_LOOKBACK,
             pre_commit_challenge_delay: policy_constants::PRE_COMMIT_CHALLENGE_DELAY,
@@ -270,6 +274,8 @@ pub mod policy_constants {
     pub const DECLARATIONS_MAX: u64 = ADDRESSED_PARTITIONS_MAX;
 
     pub const ADDRESSED_SECTORS_MAX: u64 = 25_000;
+
+    pub const POSTED_PARTITIONS_MAX: u64 = 3;
 
     pub const MAX_PRE_COMMIT_RANDOMNESS_LOOKBACK: ChainEpoch = EPOCHS_IN_DAY + CHAIN_FINALITY;
 

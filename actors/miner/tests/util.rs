@@ -73,7 +73,7 @@ use fil_actor_miner::{
     RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo, SectorPreCommitInfo,
     SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams, TerminateSectorsParams,
     TerminationDeclaration, VestingFunds, WindowedPoSt, WithdrawBalanceParams,
-    WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE, SECTORS_AMT_BITWIDTH,
+    WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE, REWARD_VESTING_SPEC, SECTORS_AMT_BITWIDTH,
 };
 use fil_actor_miner::{Method as MinerMethod, ProveCommitAggregateParams};
 use fil_actor_power::{
@@ -1957,6 +1957,7 @@ impl ActorHarness {
         rt: &MockRuntime,
         from: Address,
         fault: Option<ConsensusFault>,
+        verify_exit_code: ExitCode,
     ) -> Result<(), ActorError> {
         rt.expect_validate_caller_any();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, from);
@@ -1968,7 +1969,7 @@ impl ActorHarness {
             params.header2.clone(),
             params.header_extra.clone(),
             fault,
-            ExitCode::OK,
+            verify_exit_code,
         );
 
         let current_reward = ThisEpochRewardReturn {
@@ -2956,10 +2957,17 @@ enum MhCode {
 }
 
 fn immediately_vesting_funds(rt: &MockRuntime, state: &State) -> TokenAmount {
+    let curr_epoch = *rt.epoch.borrow();
+
+    let q =
+        QuantSpec { unit: REWARD_VESTING_SPEC.quantization, offset: state.proving_period_start };
+    if q.quantize_up(curr_epoch) != curr_epoch {
+        return TokenAmount::zero();
+    }
     let vesting = rt.store.get_cbor::<VestingFunds>(&state.vesting_funds).unwrap().unwrap();
     let mut sum = TokenAmount::zero();
     for vf in vesting.funds {
-        if vf.epoch < *rt.epoch.borrow() {
+        if vf.epoch < curr_epoch {
             sum += vf.amount;
         } else {
             break;
