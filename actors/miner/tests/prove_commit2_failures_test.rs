@@ -1,17 +1,17 @@
 use fvm_ipld_encoding::RawBytes;
-use fvm_shared::{ActorID, bigint::Zero, clock::ChainEpoch, econ::TokenAmount};
 use fvm_shared::address::Address;
 use fvm_shared::deal::DealID;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorNumber;
+use fvm_shared::{bigint::Zero, clock::ChainEpoch, econ::TokenAmount, ActorID};
 
-use fil_actor_miner::{
-    ERR_NOTIFICATION_RECEIVER_ABORTED, ERR_NOTIFICATION_REJECTED, ProveCommitSectors2Params,
-    SectorActivationManifest,
-};
 use fil_actor_miner::ext::verifreg::AllocationID;
-use fil_actors_runtime::EPOCHS_IN_DAY;
+use fil_actor_miner::{
+    ProveCommitSectors2Params, SectorActivationManifest, ERR_NOTIFICATION_RECEIVER_ABORTED,
+    ERR_NOTIFICATION_REJECTED,
+};
 use fil_actors_runtime::test_utils::{expect_abort_contains_message, MockRuntime};
+use fil_actors_runtime::EPOCHS_IN_DAY;
 use util::*;
 
 mod util;
@@ -181,7 +181,7 @@ fn reject_required_proof_failure() {
 fn reject_mismatched_commd() {
     let (h, rt, mut activations) = setup_precommits(&[(0, 0, 0); 2]);
     // Set wrong CID for first sector.
-    activations[0].pieces[0].cid = activations[1].pieces[0].cid.clone();
+    activations[0].pieces[0].cid = activations[1].pieces[0].cid;
 
     let cfg = ProveCommitSectors2Config::default();
     expect_abort_contains_message(

@@ -304,7 +304,7 @@ fn cant_update_nonempty_sector() {
         FIRST_SECTOR_NUMBER,
         challenge - 1,
         sector_expiry,
-        &[&[h.sector_size as u64]],
+        &[&[h.sector_size as u64]], // A piece fills the sector.
     );
     let sectors = onboard_sectors(&rt, &h, &precommits);
     let snos = sectors.iter().map(|s| s.sector_number).collect::<Vec<_>>();
@@ -451,6 +451,43 @@ fn rejected_notification_dropped() {
     verify_weights(&rt, &h, snos[0], piece_size, 0);
     verify_weights(&rt, &h, snos[1], piece_size, 0);
     verify_weights(&rt, &h, snos[2], 0, piece_size);
+    h.check_state(&rt);
+}
+
+#[test]
+fn update_to_empty() {
+    let (h, rt, sectors) = setup_empty_sectors(1);
+    let snos = sectors.iter().map(|s| s.sector_number).collect::<Vec<_>>();
+    let st: State = h.get_state(&rt);
+    let store = rt.store();
+
+    let sector_updates = vec![
+        make_update_manifest(&st, store, snos[0], &[]), // No pieces
+    ];
+
+    let cfg = ProveReplicaUpdatesConfig::default();
+    let (result, _, _) =
+        h.prove_replica_updates2_batch(&rt, &sector_updates, true, true, cfg).unwrap();
+    assert_update_result(&vec![ExitCode::OK; sectors.len()], &result);
+    verify_weights(&rt, &h, snos[0], 0, 0);
+
+    // Because data is still empty, it's eligible for update again, this time with data.
+    let piece_size = h.sector_size as u64;
+    let sector_updates = vec![make_update_manifest(&st, store, snos[0], &[(piece_size, 0, 0, 0)])];
+
+    let cfg = ProveReplicaUpdatesConfig::default();
+    let (result, _, _) =
+        h.prove_replica_updates2_batch(&rt, &sector_updates, true, true, cfg).unwrap();
+    assert_update_result(&vec![ExitCode::OK; sectors.len()], &result);
+
+    // But not again now it's non-empty.
+    let cfg = ProveReplicaUpdatesConfig::default();
+    expect_abort_contains_message(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        "cannot update sector with non-zero data",
+        h.prove_replica_updates2_batch(&rt, &sector_updates, true, true, cfg),
+    );
+
     h.check_state(&rt);
 }
 

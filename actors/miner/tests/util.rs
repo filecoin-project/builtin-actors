@@ -1463,26 +1463,31 @@ impl ActorHarness {
 
         // Expect SectorContentChanged notification to market.
         // This expectation is simplified based on assumption that f05 is the only notification target.
-        let sector_notification_resps = expected_sector_notifications
-            .iter()
-            .map(|sn| SectorReturn {
-                added: vec![PieceReturn { accepted: !cfg.notification_rejected }; sn.added.len()],
-            })
-            .collect();
-        rt.expect_send_simple(
-            STORAGE_MARKET_ACTOR_ADDR,
-            SECTOR_CONTENT_CHANGED,
-            IpldBlock::serialize_cbor(&SectorContentChangedParams {
-                sectors: expected_sector_notifications.clone(),
-            })
-            .unwrap(),
-            TokenAmount::zero(),
-            IpldBlock::serialize_cbor(&SectorContentChangedReturn {
-                sectors: sector_notification_resps,
-            })
-            .unwrap(),
-            cfg.notification_result.unwrap_or(ExitCode::OK),
-        );
+        if !expected_sector_notifications.is_empty() {
+            let sector_notification_resps = expected_sector_notifications
+                .iter()
+                .map(|sn| SectorReturn {
+                    added: vec![
+                        PieceReturn { accepted: !cfg.notification_rejected };
+                        sn.added.len()
+                    ],
+                })
+                .collect();
+            rt.expect_send_simple(
+                STORAGE_MARKET_ACTOR_ADDR,
+                SECTOR_CONTENT_CHANGED,
+                IpldBlock::serialize_cbor(&SectorContentChangedParams {
+                    sectors: expected_sector_notifications.clone(),
+                })
+                .unwrap(),
+                TokenAmount::zero(),
+                IpldBlock::serialize_cbor(&SectorContentChangedReturn {
+                    sectors: sector_notification_resps,
+                })
+                .unwrap(),
+                cfg.notification_result.unwrap_or(ExitCode::OK),
+            );
+        }
 
         let result = rt.call::<Actor>(
             MinerMethod::ProveReplicaUpdates2 as u64,
@@ -3441,8 +3446,9 @@ fn expect_compute_unsealed_cid_from_pieces(
     if !pieces.is_empty() {
         let expected_inputs: Vec<PieceInfo> =
             pieces.iter().map(|p| PieceInfo { size: p.size, cid: p.cid }).collect();
-        let unsealed_cid = sector_commd_from_pieces(&pieces.iter().map(|p| p.cid).collect::<Vec<_>>())
-            .get_nonzero_cid();
+        let unsealed_cid =
+            sector_commd_from_pieces(&pieces.iter().map(|p| p.cid).collect::<Vec<_>>())
+                .get_nonzero_cid();
         rt.expect_compute_unsealed_sector_cid(
             seal_proof_type,
             expected_inputs,
