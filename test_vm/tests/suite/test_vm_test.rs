@@ -1,7 +1,7 @@
 use fil_actor_account::State as AccountState;
 use fil_actors_integration_tests::util::{assert_invariants, check_invariants};
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::test_blockstores::MemoryBlockstore;
+use fil_actors_runtime::test_blockstores::TrackingMemBlockstore;
 use fil_actors_runtime::test_utils::{
     make_identity_cid, ACCOUNT_ACTOR_CODE_ID, PAYCH_ACTOR_CODE_ID,
 };
@@ -17,8 +17,8 @@ use vm_api::{new_actor, VM};
 
 #[test]
 fn state_control() {
-    let store = MemoryBlockstore::new();
-    let v = TestVM::<MemoryBlockstore>::new(&store);
+    let store = TrackingMemBlockstore::new();
+    let v = TestVM::<TrackingMemBlockstore>::new(&store);
     let addr1 = Address::new_id(1000);
     let addr2 = Address::new_id(2222);
 
@@ -73,8 +73,8 @@ fn assert_account_actor<BS: Blockstore>(
 
 #[test]
 fn test_sent() {
-    let store = MemoryBlockstore::new();
-    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let store = TrackingMemBlockstore::new();
+    let v = TestVM::<TrackingMemBlockstore>::new_with_singletons(&store);
 
     // send to uninitialized account actor
     let addr1 = Address::new_bls(&[1; fvm_shared::address::BLS_PUB_LEN]).unwrap();

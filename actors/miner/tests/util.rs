@@ -7,7 +7,7 @@ use std::ops::Neg;
 
 use cid::multihash::MultihashDigest;
 use cid::Cid;
-use fil_actors_runtime::test_blockstores::MemoryBlockstore;
+use fil_actors_runtime::test_blockstores::TrackingMemBlockstore;
 use fvm_ipld_amt::Amt;
 use fvm_ipld_bitfield::iter::Ranges;
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
@@ -3065,9 +3065,9 @@ pub fn test_sector(
 
 #[allow(dead_code)]
 pub fn sectors_arr_mbs(
-    store: &'_ MemoryBlockstore,
+    store: &'_ TrackingMemBlockstore,
     sectors_info: Vec<SectorOnChainInfo>,
-) -> Sectors<MemoryBlockstore> {
+) -> Sectors<TrackingMemBlockstore> {
     let empty_array =
         Amt::<(), _>::new_with_bit_width(store, SECTORS_AMT_BITWIDTH).flush().unwrap();
     let mut sectors = Sectors::load(store, &empty_array).unwrap();
@@ -3394,7 +3394,7 @@ pub fn select_sectors(sectors: &[SectorOnChainInfo], field: &BitField) -> Vec<Se
 #[allow(dead_code)]
 pub fn require_no_expiration_groups_before(
     epoch: ChainEpoch,
-    queue: &mut ExpirationQueue<MemoryBlockstore>,
+    queue: &mut ExpirationQueue<TrackingMemBlockstore>,
 ) {
     queue.amt.flush().unwrap();
 

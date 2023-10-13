@@ -6,7 +6,6 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::rc::Rc;
 
-use crate::test_blockstores::MemoryBlockstore;
 use anyhow::anyhow;
 use cid::multihash::{Code, Multihash as OtherMultihash};
 use cid::Cid;
@@ -47,6 +46,7 @@ use crate::runtime::{
 use crate::{actor_error, ActorError, SendError};
 use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
 
+use crate::test_blockstores::TrackingMemBlockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::chainid::ChainID;
 use fvm_shared::event::ActorEvent;
@@ -135,7 +135,7 @@ pub fn init_logging() -> Result<(), log::SetLoggerError> {
     pretty_env_logger::try_init()
 }
 
-pub struct MockRuntime<BS = MemoryBlockstore> {
+pub struct MockRuntime<BS = TrackingMemBlockstore> {
     pub epoch: RefCell<ChainEpoch>,
     pub miner: Address,
     pub base_fee: RefCell<TokenAmount>,

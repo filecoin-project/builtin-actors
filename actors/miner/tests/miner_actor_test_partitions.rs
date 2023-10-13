@@ -3,7 +3,7 @@ use fil_actor_miner::{
     PowerPair, SectorOnChainInfo,
 };
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::test_blockstores::MemoryBlockstore;
+use fil_actors_runtime::test_blockstores::TrackingMemBlockstore;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::MessageAccumulator;
 use fvm_ipld_bitfield::BitField;
@@ -31,7 +31,7 @@ fn sectors() -> Vec<SectorOnChainInfo> {
 
 #[allow(clippy::too_many_arguments)]
 fn assert_partition_state(
-    store: &MemoryBlockstore,
+    store: &TrackingMemBlockstore,
     partition: &Partition,
     sectors: &[SectorOnChainInfo],
     all_sector_ids: BitField,
@@ -89,7 +89,7 @@ struct ExpectExpirationGroup {
 }
 
 fn assert_partition_expiration_queue(
-    store: &MemoryBlockstore,
+    store: &TrackingMemBlockstore,
     partition: &Partition,
     quant: QuantSpec,
     groups: &[ExpectExpirationGroup],

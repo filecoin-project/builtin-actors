@@ -6,41 +6,9 @@ use std::collections::HashMap;
 use anyhow::Result;
 use cid::Cid;
 
-use fvm_ipld_blockstore::{Block, Blockstore};
-use multihash::Code;
+use fvm_ipld_blockstore::Blockstore;
 
-#[derive(Debug, Default, Clone)]
-pub struct MemoryBlockstore {
-    blocks: RefCell<HashMap<Cid, Vec<u8>>>,
-}
-
-impl MemoryBlockstore {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// Copy all blocks from this blockstore into the target blockstore.
-    pub fn copy_to(&self, other: &impl Blockstore) -> Result<()> {
-        other.put_many_keyed(self.blocks.borrow().iter().map(|(&k, v)| (k, v)))
-    }
-}
-
-impl Blockstore for MemoryBlockstore {
-    fn has(&self, k: &Cid) -> Result<bool> {
-        Ok(self.blocks.borrow().contains_key(k))
-    }
-
-    fn get(&self, k: &Cid) -> Result<Option<Vec<u8>>> {
-        Ok(self.blocks.borrow().get(k).cloned())
-    }
-
-    fn put_keyed(&self, k: &Cid, block: &[u8]) -> Result<()> {
-        self.blocks.borrow_mut().insert(*k, block.into());
-        Ok(())
-    }
-}
-
-/// Stats for a [TrackingBlockstore] this indicates the amount of read and written data
+/// Stats for a [TrackingMemBlockstore] this indicates the amount of read and written data
 /// to the wrapped store.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct BSStats {
@@ -56,29 +24,25 @@ pub struct BSStats {
 
 /// Wrapper around `Blockstore` to tracking reads and writes for verification.
 /// This struct should only be used for testing.
-#[derive(Debug)]
-pub struct TrackingBlockstore<BS> {
-    base: BS,
+#[derive(Debug, Default)]
+pub struct TrackingMemBlockstore {
+    blocks: RefCell<HashMap<Cid, Vec<u8>>>,
     pub stats: RefCell<BSStats>,
 }
 
-impl<BS> TrackingBlockstore<BS>
-where
-    BS: Blockstore,
-{
-    pub fn new(base: BS) -> Self {
-        Self { base, stats: Default::default() }
+impl TrackingMemBlockstore {
+    pub fn new() -> Self {
+        Self { blocks: Default::default(), stats: Default::default() }
     }
 }
 
-impl<BS> Blockstore for TrackingBlockstore<BS>
-where
-    BS: Blockstore,
-{
+impl Blockstore for TrackingMemBlockstore {
     fn get(&self, cid: &Cid) -> Result<Option<Vec<u8>>> {
         let mut stats = self.stats.borrow_mut();
         stats.r += 1;
-        let bytes = self.base.get(cid)?;
+
+        let bytes = self.blocks.borrow().get(cid).cloned();
+
         if let Some(bytes) = &bytes {
             stats.br += bytes.len();
         }
@@ -86,51 +50,16 @@ where
     }
     fn has(&self, cid: &Cid) -> Result<bool> {
         self.stats.borrow_mut().r += 1;
-        self.base.has(cid)
-    }
 
-    fn put<D>(&self, code: Code, block: &Block<D>) -> Result<Cid>
-    where
-        D: AsRef<[u8]>,
-    {
-        let mut stats = self.stats.borrow_mut();
-        stats.w += 1;
-        stats.bw += block.as_ref().len();
-        self.base.put(code, block)
+        Ok(self.blocks.borrow().contains_key(cid))
     }
 
     fn put_keyed(&self, k: &Cid, block: &[u8]) -> Result<()> {
         let mut stats = self.stats.borrow_mut();
         stats.w += 1;
         stats.bw += block.len();
-        self.base.put_keyed(k, block)
-    }
 
-    fn put_many<D, I>(&self, blocks: I) -> Result<()>
-    where
-        Self: Sized,
-        D: AsRef<[u8]>,
-        I: IntoIterator<Item = (multihash::Code, Block<D>)>,
-    {
-        let mut stats = self.stats.borrow_mut();
-        self.base.put_many(blocks.into_iter().inspect(|(_, b)| {
-            stats.w += 1;
-            stats.bw += b.as_ref().len();
-        }))?;
-        Ok(())
-    }
-
-    fn put_many_keyed<D, I>(&self, blocks: I) -> Result<()>
-    where
-        Self: Sized,
-        D: AsRef<[u8]>,
-        I: IntoIterator<Item = (Cid, D)>,
-    {
-        let mut stats = self.stats.borrow_mut();
-        self.base.put_many_keyed(blocks.into_iter().inspect(|(_, b)| {
-            stats.w += 1;
-            stats.bw += b.as_ref().len();
-        }))?;
+        self.blocks.borrow_mut().insert(*k, block.into());
         Ok(())
     }
 }
@@ -138,13 +67,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_blockstores;
     use fvm_ipld_blockstore::Block;
+    use multihash::Code;
 
     #[test]
     fn basic_tracking_store() {
-        let mem = test_blockstores::MemoryBlockstore::default();
-        let tr_store = TrackingBlockstore::new(&mem);
+        let tr_store = TrackingMemBlockstore::new();
         assert_eq!(*tr_store.stats.borrow(), BSStats::default());
 
         let block = Block::new(0x55, &b"foobar"[..]);
@@ -157,5 +85,26 @@ mod tests {
             *tr_store.stats.borrow(),
             BSStats { r: 2, br: block.len(), w: 1, bw: block.len() }
         );
+
+        let block2 = Block::new(0x55, &b"b2"[..]);
+        let block3 = Block::new(0x55, &b"b3"[..]);
+        tr_store.put_many(vec![block2, block3].into_iter().map(|b| (Code::Sha2_256, b))).unwrap();
+
+        let total_len = block.len() + block2.len() + block3.len();
+
+        // Read and assert blocks and tracking stats
+        assert_eq!(
+            tr_store.get(&block2.cid(Code::Sha2_256)).unwrap().as_deref(),
+            Some(block2.data)
+        );
+        assert_eq!(
+            *tr_store.stats.borrow(),
+            BSStats { r: 3, br: total_len - block3.len(), w: 3, bw: total_len }
+        );
+        assert_eq!(
+            tr_store.get(&block3.cid(Code::Sha2_256)).unwrap().as_deref(),
+            Some(block3.data)
+        );
+        assert_eq!(*tr_store.stats.borrow(), BSStats { r: 4, br: total_len, w: 3, bw: total_len });
     }
 }

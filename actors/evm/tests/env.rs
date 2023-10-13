@@ -6,7 +6,7 @@ use ethers::{
 
 use fil_actor_evm as evm;
 use fil_actors_evm_shared::address::EthAddress;
-use fil_actors_runtime::test_blockstores::{BSStats, MemoryBlockstore, TrackingBlockstore};
+use fil_actors_runtime::test_blockstores::{BSStats, TrackingMemBlockstore};
 use fil_actors_runtime::{
     test_utils::{MockRuntime, EVM_ACTOR_CODE_ID, INIT_ACTOR_CODE_ID},
     INIT_ACTOR_ADDR,
@@ -20,7 +20,7 @@ pub type TestContractCall<R> = ContractCall<Provider<MockProvider>, R>;
 
 pub struct TestEnv {
     evm_address: Address,
-    pub runtime: MockRuntime<TrackingBlockstore<MemoryBlockstore>>,
+    pub runtime: MockRuntime<TrackingMemBlockstore>,
 }
 
 impl TestEnv {
@@ -35,7 +35,7 @@ impl TestEnv {
     /// Create a new test environment where the EVM actor code is already
     /// loaded under an actor address.
     pub fn new(evm_address: Address) -> Self {
-        let runtime = MockRuntime::new(TrackingBlockstore::new(MemoryBlockstore::new()));
+        let runtime = MockRuntime::new(TrackingMemBlockstore::new());
 
         runtime.actor_code_cids.borrow_mut().insert(evm_address, *EVM_ACTOR_CODE_ID);
 

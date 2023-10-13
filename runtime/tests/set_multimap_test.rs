@@ -1,13 +1,13 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_actors_runtime::test_blockstores::MemoryBlockstore;
+use fil_actors_runtime::test_blockstores::TrackingMemBlockstore;
 use fil_actors_runtime::{u64_key, SetMultimap};
 use fvm_shared::clock::ChainEpoch;
 
 #[test]
 fn put_remove() {
-    let store = MemoryBlockstore::default();
+    let store = TrackingMemBlockstore::new();
     let mut smm = SetMultimap::new(&store);
 
     let epoch: ChainEpoch = 100;
@@ -27,7 +27,7 @@ fn put_remove() {
 
 #[test]
 fn for_each() {
-    let store = MemoryBlockstore::default();
+    let store = TrackingMemBlockstore::new();
     let mut smm = SetMultimap::new(&store);
 
     let epoch: ChainEpoch = 100;
