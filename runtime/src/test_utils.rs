@@ -9,7 +9,6 @@ use std::rc::Rc;
 use anyhow::anyhow;
 use cid::multihash::{Code, Multihash as OtherMultihash};
 use cid::Cid;
-use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::de::DeserializeOwned;
 use fvm_ipld_encoding::CborStore;
 use fvm_shared::address::Payload;
@@ -135,7 +134,7 @@ pub fn init_logging() -> Result<(), log::SetLoggerError> {
     pretty_env_logger::try_init()
 }
 
-pub struct MockRuntime<BS = TrackingMemBlockstore> {
+pub struct MockRuntime {
     pub epoch: RefCell<ChainEpoch>,
     pub miner: Address,
     pub base_fee: RefCell<TokenAmount>,
@@ -166,7 +165,7 @@ pub struct MockRuntime<BS = TrackingMemBlockstore> {
 
     // VM Impl
     pub in_call: RefCell<bool>,
-    pub store: Rc<BS>,
+    pub store: Rc<TrackingMemBlockstore>,
     pub in_transaction: RefCell<bool>,
 
     // Expectations
@@ -312,12 +311,12 @@ impl Expectations {
 
 impl Default for MockRuntime {
     fn default() -> Self {
-        Self::new(Default::default())
+        Self::new()
     }
 }
 
-impl<BS> MockRuntime<BS> {
-    pub fn new(store: BS) -> Self {
+impl MockRuntime {
+    pub fn new() -> Self {
         Self {
             epoch: Default::default(),
             miner: Address::new_id(0),
@@ -338,7 +337,7 @@ impl<BS> MockRuntime<BS> {
             state: Default::default(),
             balance: Default::default(),
             in_call: Default::default(),
-            store: Rc::new(store),
+            store: Rc::new(Default::default()),
             in_transaction: Default::default(),
             expectations: Default::default(),
             policy: Default::default(),
@@ -467,7 +466,7 @@ pub fn expect_abort<T: fmt::Debug>(exit_code: ExitCode, res: Result<T, ActorErro
     expect_abort_contains_message(exit_code, "", res);
 }
 
-impl<BS: Blockstore> MockRuntime<BS> {
+impl MockRuntime {
     ///// Runtime access for tests /////
 
     pub fn set_policy(&mut self, policy: Policy) {
@@ -797,7 +796,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 }
 
-impl<BS> MessageInfo for MockRuntime<BS> {
+impl MessageInfo for MockRuntime {
     fn nonce(&self) -> u64 {
         0
     }
@@ -819,8 +818,8 @@ impl<BS> MessageInfo for MockRuntime<BS> {
     }
 }
 
-impl<BS: Blockstore> Runtime for MockRuntime<BS> {
-    type Blockstore = Rc<BS>;
+impl Runtime for MockRuntime {
+    type Blockstore = Rc<TrackingMemBlockstore>;
 
     fn network_version(&self) -> NetworkVersion {
         self.network_version
@@ -1101,7 +1100,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         ret
     }
 
-    fn store(&self) -> &Rc<BS> {
+    fn store(&self) -> &Rc<TrackingMemBlockstore> {
         &self.store
     }
 
@@ -1273,7 +1272,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
     }
 }
 
-impl<BS> Primitives for MockRuntime<BS> {
+impl Primitives for MockRuntime {
     fn verify_signature(
         &self,
         signature: &Signature,
@@ -1370,7 +1369,7 @@ impl<BS> Primitives for MockRuntime<BS> {
     }
 }
 
-impl<BS> Verifier for MockRuntime<BS> {
+impl Verifier for MockRuntime {
     fn verify_post(&self, post: &WindowPoStVerifyInfo) -> anyhow::Result<()> {
         let exp = self
             .expectations
@@ -1490,7 +1489,7 @@ impl<BS> Verifier for MockRuntime<BS> {
     }
 }
 
-impl<BS> RuntimePolicy for MockRuntime<BS> {
+impl RuntimePolicy for MockRuntime {
     fn policy(&self) -> &Policy {
         &self.policy
     }
