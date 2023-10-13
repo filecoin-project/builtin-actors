@@ -976,13 +976,22 @@ impl Actor {
         let st = rt.state::<State>()?;
         let found = st.find_deal_state(rt.store(), params.id)?;
         match found {
-            Some(state) => Ok(GetDealActivationReturn {
-                // If we have state, the deal has been activated.
-                // It may also have completed normally, or been terminated,
-                // but not yet been cleaned up.
-                activated: state.sector_start_epoch,
-                terminated: state.slash_epoch,
-            }),
+            Some(state) => {
+                if state.slash_epoch != EPOCH_UNDEFINED {
+                    // Deal was terminated asynchronously
+                    // TODO: https://github.com/filecoin-project/builtin-actors/issues/1388
+                    Err(ActorError::unchecked(
+                        EX_DEAL_EXPIRED,
+                        format!("deal {} expired", params.id),
+                    ))
+                } else {
+                    // If we have state, the deal has been activated
+                    Ok(GetDealActivationReturn {
+                        activated: state.sector_start_epoch,
+                        terminated: state.slash_epoch,
+                    })
+                }
+            }
             None => {
                 let maybe_proposal = st.find_proposal(rt.store(), params.id)?;
                 match maybe_proposal {
