@@ -7,14 +7,14 @@ mod market_tests {
     #[test]
     fn withdraw_all_funds() {
         let store = TrackingMemBlockstore::new();
-        let v = TestVM::<TrackingMemBlockstore>::new_with_singletons(&store);
+        let v = TestVM::new_with_singletons(&store);
         withdraw_all_funds_test(&v);
     }
 
     #[test]
     fn withdraw_as_much_as_possible() {
         let store = TrackingMemBlockstore::new();
-        let v = TestVM::<TrackingMemBlockstore>::new_with_singletons(&store);
+        let v = TestVM::new_with_singletons(&store);
 
         withdraw_as_much_as_possible_test(&v);
     }
@@ -22,7 +22,7 @@ mod market_tests {
     #[test]
     fn withdraw_0() {
         let store = TrackingMemBlockstore::new();
-        let v = TestVM::<TrackingMemBlockstore>::new_with_singletons(&store);
+        let v = TestVM::new_with_singletons(&store);
         withdraw_0_test(&v);
     }
 }
@@ -36,7 +36,7 @@ mod miner_tests {
     #[test]
     fn withdraw_all_funds() {
         let store = TrackingMemBlockstore::new();
-        let v = TestVM::<TrackingMemBlockstore>::new_with_singletons(&store);
+        let v = TestVM::new_with_singletons(&store);
 
         withdraw_all_funds_test(&v);
     }
@@ -44,21 +44,21 @@ mod miner_tests {
     #[test]
     fn withdraw_as_much_as_possible() {
         let store = TrackingMemBlockstore::new();
-        let v = TestVM::<TrackingMemBlockstore>::new_with_singletons(&store);
+        let v = TestVM::new_with_singletons(&store);
         withdraw_as_much_as_possible_test(&v);
     }
 
     #[test]
     fn withdraw_0() {
         let store = TrackingMemBlockstore::new();
-        let v = TestVM::<TrackingMemBlockstore>::new_with_singletons(&store);
+        let v = TestVM::new_with_singletons(&store);
         withdraw_0_test(&v);
     }
 
     #[test]
     fn withdraw_from_non_owner_address_fails() {
         let store = TrackingMemBlockstore::new();
-        let v = TestVM::<TrackingMemBlockstore>::new_with_singletons(&store);
+        let v = TestVM::new_with_singletons(&store);
         withdraw_from_non_owner_address_fails_test(&v)
     }
 }

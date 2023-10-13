@@ -8,20 +8,20 @@ use test_vm::TestVM;
 #[test]
 fn change_beneficiary_success() {
     let store = TrackingMemBlockstore::new();
-    let v = TestVM::<TrackingMemBlockstore>::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(&store);
     change_beneficiary_success_test(&v);
 }
 
 #[test]
 fn change_beneficiary_back_owner_success() {
     let store = TrackingMemBlockstore::new();
-    let v = TestVM::<TrackingMemBlockstore>::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(&store);
     change_beneficiary_back_owner_success_test(&v);
 }
 
 #[test]
 fn change_beneficiary_fail() {
     let store = TrackingMemBlockstore::new();
-    let v = TestVM::<TrackingMemBlockstore>::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(&store);
     change_beneficiary_fail_test(&v);
 }

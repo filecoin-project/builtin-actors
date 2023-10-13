@@ -5,6 +5,6 @@ use test_vm::TestVM;
 #[test]
 fn terminate_sectors() {
     let store = TrackingMemBlockstore::new();
-    let v = TestVM::<TrackingMemBlockstore>::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(&store);
     terminate_sectors_test(&v);
 }

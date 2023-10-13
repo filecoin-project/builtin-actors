@@ -50,12 +50,9 @@ mod messaging;
 pub use messaging::*;
 
 /// An in-memory rust-execution VM for testing builtin-actors that yields sensible stack traces and debug info
-pub struct TestVM<'bs, BS>
-where
-    BS: Blockstore,
-{
+pub struct TestVM<'bs> {
     pub primitives: FakePrimitives,
-    pub store: &'bs BS,
+    pub store: &'bs TrackingMemBlockstore,
     pub state_root: RefCell<Cid>,
     circulating_supply: RefCell<TokenAmount>,
     actors_dirty: RefCell<bool>,
@@ -65,11 +62,8 @@ where
     invocations: RefCell<Vec<InvocationTrace>>,
 }
 
-impl<'bs, BS> TestVM<'bs, BS>
-where
-    BS: Blockstore,
-{
-    pub fn new(store: &'bs TrackingMemBlockstore) -> TestVM<'bs, TrackingMemBlockstore> {
+impl<'bs> TestVM<'bs> {
+    pub fn new(store: &'bs TrackingMemBlockstore) -> TestVM<'bs> {
         let mut actors =
             Hamt::<&'bs TrackingMemBlockstore, ActorState, BytesKey, Sha256>::new_with_config(
                 store,
@@ -88,13 +82,11 @@ where
         }
     }
 
-    pub fn new_with_singletons(
-        store: &'bs TrackingMemBlockstore,
-    ) -> TestVM<'bs, TrackingMemBlockstore> {
+    pub fn new_with_singletons(store: &'bs TrackingMemBlockstore) -> TestVM<'bs> {
         let reward_total = TokenAmount::from_whole(1_100_000_000i64);
         let faucet_total = TokenAmount::from_whole(1_000_000_000i64);
 
-        let v = TestVM::<'_, TrackingMemBlockstore>::new(store);
+        let v = TestVM::<'_>::new(store);
         v.set_circulating_supply(&reward_total + &faucet_total);
 
         // system
@@ -246,12 +238,13 @@ where
 
     pub fn checkpoint(&self) -> Cid {
         // persist cache on top of latest checkpoint and clear
-        let mut actors = Hamt::<&'bs BS, ActorState, BytesKey, Sha256>::load_with_config(
-            &self.state_root.borrow(),
-            self.store,
-            DEFAULT_HAMT_CONFIG,
-        )
-        .unwrap();
+        let mut actors =
+            Hamt::<&'bs TrackingMemBlockstore, ActorState, BytesKey, Sha256>::load_with_config(
+                &self.state_root.borrow(),
+                self.store,
+                DEFAULT_HAMT_CONFIG,
+            )
+            .unwrap();
         for (addr, act) in self.actors_cache.borrow().iter() {
             actors.set(addr.to_bytes().into(), act.clone()).unwrap();
         }
@@ -282,10 +275,7 @@ where
     }
 }
 
-impl<'bs, BS> VM for TestVM<'bs, BS>
-where
-    BS: Blockstore,
-{
+impl<'bs> VM for TestVM<'bs> {
     fn blockstore(&self) -> &dyn Blockstore {
         self.store
     }
@@ -374,7 +364,7 @@ where
     }
     fn resolve_id_address(&self, address: &Address) -> Option<Address> {
         let st: InitState = get_state(self, &INIT_ACTOR_ADDR).unwrap();
-        st.resolve_address::<BS>(self.store, address).unwrap()
+        st.resolve_address(self.store, address).unwrap()
     }
 
     fn set_epoch(&self, epoch: ChainEpoch) {
@@ -396,12 +386,13 @@ where
             return Some(act.clone());
         }
         // go to persisted map
-        let actors = Hamt::<&'bs BS, ActorState, BytesKey, Sha256>::load_with_config(
-            &self.state_root.borrow(),
-            self.store,
-            DEFAULT_HAMT_CONFIG,
-        )
-        .unwrap();
+        let actors =
+            Hamt::<&'bs TrackingMemBlockstore, ActorState, BytesKey, Sha256>::load_with_config(
+                &self.state_root.borrow(),
+                self.store,
+                DEFAULT_HAMT_CONFIG,
+            )
+            .unwrap();
         let actor = actors.get(&address.to_bytes()).unwrap().cloned();
         actor.iter().for_each(|a| {
             self.actors_cache.borrow_mut().insert(*address, a.clone());

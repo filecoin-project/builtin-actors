@@ -10,20 +10,20 @@ use test_vm::TestVM;
 #[test]
 fn verified_claim_scenario() {
     let store = TrackingMemBlockstore::new();
-    let v = TestVM::<TrackingMemBlockstore>::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(&store);
     verified_claim_scenario_test(&v);
 }
 
 #[test]
 fn expired_allocations() {
     let store = TrackingMemBlockstore::new();
-    let v = TestVM::<TrackingMemBlockstore>::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(&store);
     expired_allocations_test(&v);
 }
 
 #[test]
 fn deal_passes_claim_fails() {
     let store = TrackingMemBlockstore::new();
-    let v = TestVM::<TrackingMemBlockstore>::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(&store);
     deal_passes_claim_fails_test(&v);
 }

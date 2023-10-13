@@ -5,6 +5,6 @@ use test_vm::TestVM;
 #[test]
 fn batch_onboarding_deals() {
     let store = TrackingMemBlockstore::new();
-    let v = TestVM::<TrackingMemBlockstore>::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(&store);
     batch_onboarding_deals_test(&v);
 }

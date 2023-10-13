@@ -5,7 +5,6 @@ use fil_actors_runtime::test_blockstores::TrackingMemBlockstore;
 use fil_actors_runtime::test_utils::{
     make_identity_cid, ACCOUNT_ACTOR_CODE_ID, PAYCH_ACTOR_CODE_ID,
 };
-use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -18,7 +17,7 @@ use vm_api::{new_actor, VM};
 #[test]
 fn state_control() {
     let store = TrackingMemBlockstore::new();
-    let v = TestVM::<TrackingMemBlockstore>::new(&store);
+    let v = TestVM::new(&store);
     let addr1 = Address::new_id(1000);
     let addr2 = Address::new_id(2222);
 
@@ -56,11 +55,11 @@ fn state_control() {
     assert!(invariants_check.unwrap_err().to_string().contains("AccountState is empty"));
 }
 
-fn assert_account_actor<BS: Blockstore>(
+fn assert_account_actor(
     exp_call_seq: u64,
     exp_bal: TokenAmount,
     exp_pk_addr: Address,
-    v: &TestVM<BS>,
+    v: &TestVM,
     addr: Address,
 ) {
     let act = v.actor(&addr).unwrap();
@@ -74,7 +73,7 @@ fn assert_account_actor<BS: Blockstore>(
 #[test]
 fn test_sent() {
     let store = TrackingMemBlockstore::new();
-    let v = TestVM::<TrackingMemBlockstore>::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(&store);
 
     // send to uninitialized account actor
     let addr1 = Address::new_bls(&[1; fvm_shared::address::BLS_PUB_LEN]).unwrap();
