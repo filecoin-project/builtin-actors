@@ -6,10 +6,11 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::rc::Rc;
 
+use crate::test_blockstores::MemoryBlockstore;
 use anyhow::anyhow;
 use cid::multihash::{Code, Multihash as OtherMultihash};
 use cid::Cid;
-use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
+use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::de::DeserializeOwned;
 use fvm_ipld_encoding::CborStore;
 use fvm_shared::address::Payload;

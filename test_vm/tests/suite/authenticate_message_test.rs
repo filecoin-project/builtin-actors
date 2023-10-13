@@ -1,5 +1,5 @@
 use fil_actors_integration_tests::tests::account_authenticate_message_test;
-use fvm_ipld_blockstore::MemoryBlockstore;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use test_vm::TestVM;
 
 #[test]

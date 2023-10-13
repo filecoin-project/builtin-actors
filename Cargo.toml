@@ -103,8 +103,8 @@ rlp = { version = "0.5.1", default-features = false }
 substrate-bn = { version = "0.6.0", default-features = false }
 
 # IPLD/Encoding
-cid = { version = "0.10.1", default-features = false, features = ["serde-codec"] }
-multihash = { version = "0.18.1", default-features = false }
+cid = { version = "0.10.1", default-features = false, features = ["serde-codec", "std"] }
+multihash = { version = "0.18.1", default-features = false , features = ["multihash-impl"]}
 libipld-core = { version = "0.13.1", features = ["serde-codec"] }
 integer-encoding = { version = "3.0.3", default-features = false }
 
