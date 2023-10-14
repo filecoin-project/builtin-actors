@@ -14,6 +14,7 @@ use fil_actor_verifreg::State as VerifRegState;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{Policy, Primitives, EMPTY_ARR_CID};
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::DATACAP_TOKEN_ACTOR_ADDR;
 use fil_actors_runtime::{test_utils::*, DEFAULT_HAMT_CONFIG};
 use fil_actors_runtime::{
@@ -23,7 +24,6 @@ use fil_actors_runtime::{
 };
 use fil_builtin_actors_state::check::Tree;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::CborStore;
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};

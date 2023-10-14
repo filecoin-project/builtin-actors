@@ -1,7 +1,7 @@
 use fil_actors_integration_tests::tests::{
     withdraw_balance_fail_test, withdraw_balance_success_test,
 };
-use fvm_ipld_blockstore::MemoryBlockstore;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use test_vm::TestVM;
 
 #[test]

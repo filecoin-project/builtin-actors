@@ -3,7 +3,7 @@ use fil_actors_integration_tests::tests::{
     evm_eth_create_external_test, evm_init_revert_data_test, evm_staticcall_delegatecall_test,
     evm_staticcall_test,
 };
-use fvm_ipld_blockstore::MemoryBlockstore;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use test_vm::TestVM;
 
 #[test]

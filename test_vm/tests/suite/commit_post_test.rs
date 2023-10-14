@@ -4,7 +4,7 @@ use fil_actors_integration_tests::tests::{
     missed_first_post_deadline_test, overdue_precommit_test, skip_sector_test,
     submit_post_succeeds_test,
 };
-use fvm_ipld_blockstore::MemoryBlockstore;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use test_vm::TestVM;
 
 #[test]

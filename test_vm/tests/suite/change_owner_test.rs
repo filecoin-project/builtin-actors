@@ -1,7 +1,7 @@
 use fil_actors_integration_tests::tests::{
     change_owner_fail_test, change_owner_success_test, keep_beneficiary_when_owner_changed_test,
 };
-use fvm_ipld_blockstore::MemoryBlockstore;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use test_vm::TestVM;
 
 #[test]

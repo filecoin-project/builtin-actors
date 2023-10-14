@@ -1,8 +1,8 @@
 use fil_actor_miner::SectorOnChainInfo;
 use fil_actor_miner::Sectors;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::sector::RegisteredSealProof;
 
 mod util;

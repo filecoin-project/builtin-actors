@@ -7,10 +7,11 @@ use std::ops::Neg;
 
 use cid::multihash::MultihashDigest;
 use cid::Cid;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fvm_ipld_amt::Amt;
 use fvm_ipld_bitfield::iter::Ranges;
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
-use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
+use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::de::Deserialize;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::ser::Serialize;
