@@ -332,7 +332,7 @@ fn invalid_update_dropped() {
     sector_updates[0].deadline += 1; // Invalid update
 
     let cfg = ProveReplicaUpdatesConfig { validation_failure: vec![0], ..Default::default() };
-    let (result, _, _) =
+    let (result, claims, notifications) =
         h.prove_replica_updates2_batch(&rt, &sector_updates, false, false, cfg).unwrap();
     assert_update_result(&[ExitCode::USR_ILLEGAL_ARGUMENT, ExitCode::OK], &result);
 
@@ -340,6 +340,10 @@ fn invalid_update_dropped() {
     verify_weights(&rt, &h, snos[0], 0, 0);
     // Sector 1: verified weight.
     verify_weights(&rt, &h, snos[1], 0, piece_size);
+    assert_eq!(1, claims.len());
+    assert_eq!(snos[1], claims[0].sector);
+    assert_eq!(1, notifications.len());
+    assert_eq!(snos[1], notifications[0].sector);
     h.check_state(&rt);
 }
 

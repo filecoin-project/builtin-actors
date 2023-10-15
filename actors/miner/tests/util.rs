@@ -1094,7 +1094,10 @@ impl ActorHarness {
         require_notification_success: bool,
         aggregate: bool,
         cfg: ProveCommitSectors2Config,
-    ) -> Result<ProveCommitSectors2Return, ActorError> {
+    ) -> Result<
+        (ProveCommitSectors2Return, Vec<SectorAllocationClaims>, Vec<SectorChanges>),
+        ActorError,
+    > {
         fn make_proof(i: u8) -> RawBytes {
             RawBytes::new(vec![i, i, i, i])
         }
@@ -1147,25 +1150,30 @@ impl ActorHarness {
         } else {
             let mut svis = vec![];
             let mut result = vec![];
-            sector_activations.iter().zip(precommits).enumerate().for_each(|(i, (sa, pci))| {
-                svis.push(SealVerifyInfo {
-                    registered_proof: self.seal_proof_type,
-                    sector_id: SectorID {
-                        miner: STORAGE_MARKET_ACTOR_ADDR.id().unwrap(),
-                        number: sa.sector_number,
-                    },
-                    deal_ids: vec![],
-                    randomness: Randomness(seal_int_rands.get(i).cloned().unwrap().into()),
-                    interactive_randomness: Randomness(
-                        seal_int_rands.get(i).cloned().unwrap().into(),
-                    ),
-                    proof: make_proof(sa.sector_number as u8).into(),
-                    sealed_cid: pci.info.sealed_cid,
-                    unsealed_cid: comm_ds[i],
+            sector_activations
+                .iter()
+                .zip(precommits)
+                .enumerate()
+                .filter(|(i, _)| !cfg.validation_failure.contains(&i))
+                .for_each(|(i, (sa, pci))| {
+                    svis.push(SealVerifyInfo {
+                        registered_proof: self.seal_proof_type,
+                        sector_id: SectorID {
+                            miner: STORAGE_MARKET_ACTOR_ADDR.id().unwrap(),
+                            number: sa.sector_number,
+                        },
+                        deal_ids: vec![],
+                        randomness: Randomness(seal_int_rands.get(i).cloned().unwrap().into()),
+                        interactive_randomness: Randomness(
+                            seal_int_rands.get(i).cloned().unwrap().into(),
+                        ),
+                        proof: make_proof(sa.sector_number as u8).into(),
+                        sealed_cid: pci.info.sealed_cid,
+                        unsealed_cid: comm_ds[i],
+                    });
+                    let proof_ok = !cfg.proof_failure.contains(&i);
+                    result.push(proof_ok);
                 });
-                let proof_ok = !cfg.proof_failure.contains(&i);
-                result.push(proof_ok);
-            });
             rt.expect_batch_verify_seals(svis, Ok(result))
         }
 
@@ -1175,7 +1183,7 @@ impl ActorHarness {
         let mut expected_qa_power = StoragePower::zero();
         let mut expected_sector_notifications = Vec::new(); // Assuming all to f05
         for (i, sa) in sector_activations.iter().enumerate() {
-            if cfg.validation_failure.contains(&i) {
+            if cfg.validation_failure.contains(&i) || cfg.proof_failure.contains(&i) {
                 continue;
             }
             expect_compute_unsealed_cid_from_pieces(
@@ -1245,7 +1253,7 @@ impl ActorHarness {
                 VERIFIED_REGISTRY_ACTOR_ADDR,
                 CLAIM_ALLOCATIONS_METHOD,
                 IpldBlock::serialize_cbor(&ClaimAllocationsParams {
-                    sectors: sector_allocation_claims,
+                    sectors: sector_allocation_claims.clone(),
                     all_or_nothing: require_activation_success,
                 })
                 .unwrap(),
@@ -1262,6 +1270,21 @@ impl ActorHarness {
         // Expect pledge & power updates.
         self.expect_query_network_info(rt);
         expect_update_pledge(rt, &expected_pledge);
+        // Pay aggregation fee for successful proofs.
+        if aggregate {
+            let proven_count =
+                sector_activations.len() - (cfg.validation_failure.len() + cfg.proof_failure.len());
+            let expected_fee = aggregate_prove_commit_network_fee(proven_count, &self.base_fee);
+            assert!(expected_fee.is_positive());
+            rt.expect_send_simple(
+                BURNT_FUNDS_ACTOR_ADDR,
+                METHOD_SEND,
+                None,
+                expected_fee,
+                None,
+                ExitCode::OK,
+            );
+        }
 
         // Expect SectorContentChanged notification to market.
         let sector_notification_resps: Vec<SectorReturn> = expected_sector_notifications
@@ -1275,7 +1298,7 @@ impl ActorHarness {
                 STORAGE_MARKET_ACTOR_ADDR,
                 SECTOR_CONTENT_CHANGED,
                 IpldBlock::serialize_cbor(&SectorContentChangedParams {
-                    sectors: expected_sector_notifications,
+                    sectors: expected_sector_notifications.clone(),
                 })
                 .unwrap(),
                 TokenAmount::zero(),
@@ -1302,7 +1325,7 @@ impl ActorHarness {
                 Err(e)
             })?;
         rt.verify();
-        Ok(result)
+        Ok((result, sector_allocation_claims, expected_sector_notifications))
     }
 
     // Invokes prove_replica_updates2 with a batch of sector updates, and
