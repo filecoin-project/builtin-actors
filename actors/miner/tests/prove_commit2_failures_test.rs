@@ -111,13 +111,18 @@ fn reject_precommit_deals() {
     // Precommit sectors, one with a deal
     let precommit_epoch = *rt.epoch.borrow();
     let sector_expiry = precommit_epoch + DEFAULT_SECTOR_EXPIRATION_DAYS * EPOCHS_IN_DAY;
-    let mut precommits =
-        make_fake_commd_precommits(&h, FIRST_SECTOR_NUMBER, precommit_epoch - 1, sector_expiry, 2);
+    let piece_size = h.sector_size as u64;
+    let mut precommits = make_fake_precommits(
+        &h,
+        FIRST_SECTOR_NUMBER,
+        precommit_epoch - 1,
+        sector_expiry,
+        &[&[piece_size], &[piece_size]],
+    );
     precommits[0].deal_ids.push(1);
     h.pre_commit_sector_batch_v2(&rt, &precommits, true, &TokenAmount::zero()).unwrap();
     rt.set_epoch(precommit_epoch + rt.policy.pre_commit_challenge_delay + 1);
 
-    let piece_size = h.sector_size as u64;
     let manifests: Vec<SectorActivationManifest> = precommits
         .iter()
         .map(|s| make_activation_manifest(s.sector_number, &[(piece_size, 0, 0, 0)]))
@@ -170,6 +175,20 @@ fn reject_required_proof_failure() {
         h.prove_commit_sectors2(&rt, &activations, true, false, false, cfg),
     );
     h.check_state(&rt);
+}
+
+#[test]
+fn reject_mismatched_commd() {
+    let (h, rt, mut activations) = setup_precommits(&[(0, 0, 0); 2]);
+    // Set wrong CID for first sector.
+    activations[0].pieces[0].cid = activations[1].pieces[0].cid;
+
+    let cfg = ProveCommitSectors2Config::default();
+    expect_abort_contains_message(
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+        "unsealed CID does not match pieces",
+        h.prove_commit_sectors2(&rt, &activations, false, false, false, cfg),
+    );
 }
 
 #[test]
@@ -229,19 +248,21 @@ fn setup_precommits(
     let (h, rt) = setup_basic();
 
     // Precommit sectors
+    let piece_size = h.sector_size as u64; // All sectors have a single full-size piece.
     let precommit_epoch = *rt.epoch.borrow();
     let sector_expiry = *rt.epoch.borrow() + DEFAULT_SECTOR_EXPIRATION_DAYS * EPOCHS_IN_DAY;
-    let precommits = make_fake_commd_precommits(
+    let one_sector_piece_sizes = &[piece_size] as &[u64];
+    let piece_sizes = vec![one_sector_piece_sizes; confs.len()];
+    let precommits = make_fake_precommits(
         &h,
         FIRST_SECTOR_NUMBER,
         precommit_epoch - 1,
         sector_expiry,
-        confs.len(),
+        &piece_sizes,
     );
     h.pre_commit_sector_batch_v2(&rt, &precommits, true, &TokenAmount::zero()).unwrap();
     rt.set_epoch(precommit_epoch + rt.policy.pre_commit_challenge_delay + 1);
 
-    let piece_size = h.sector_size as u64;
     let manifests = precommits
         .iter()
         .zip(confs)
