@@ -422,7 +422,7 @@ impl ActorHarness {
             let pcc = if !has_deals {
                 PreCommitConfig::new(None)
             } else {
-                PreCommitConfig::new(Some(make_piece_cid("1".as_bytes())))
+                PreCommitConfig::new(Some(make_unsealed_cid("1".as_bytes())))
             };
             let precommit = self.pre_commit_sector_and_get(rt, params, pcc, first && i == 0);
             precommits.push(precommit);
@@ -1184,12 +1184,7 @@ impl ActorHarness {
             if cfg.validation_failure.contains(&i) || cfg.proof_failure.contains(&i) {
                 continue;
             }
-            expect_compute_unsealed_cid_from_pieces(
-                rt,
-                sa.sector_number,
-                self.seal_proof_type,
-                &sa.pieces,
-            );
+            expect_compute_unsealed_cid_from_pieces(rt, self.seal_proof_type, &sa.pieces);
             let precommit = self.get_precommit(rt, sa.sector_number);
             sector_allocation_claims.push(SectorAllocationClaims {
                 sector: sa.sector_number,
@@ -1367,12 +1362,8 @@ impl ActorHarness {
         let mut expected_sector_notifications = Vec::new(); // Assuming all to f05
         for (i, sup) in sector_updates.iter().enumerate() {
             let sector = self.get_sector(rt, sup.sector);
-            let unsealed_cid = expect_compute_unsealed_cid_from_pieces(
-                rt,
-                sup.sector,
-                self.seal_proof_type,
-                &sup.pieces,
-            );
+            let unsealed_cid =
+                expect_compute_unsealed_cid_from_pieces(rt, self.seal_proof_type, &sup.pieces);
             if cfg.validation_failure.contains(&i) {
                 continue;
             }
@@ -1382,7 +1373,7 @@ impl ActorHarness {
                     update_proof_type: self.seal_proof_type.registered_update_proof().unwrap(),
                     new_sealed_cid: sup.new_sealed_cid,
                     old_sealed_cid: sector.sealed_cid,
-                    new_unsealed_cid: unsealed_cid,
+                    new_unsealed_cid: unsealed_cid.get_cid(self.seal_proof_type).unwrap(),
                     proof: make_proof(sup.sector as u8).into(),
                 },
                 if proof_ok { Ok(()) } else { Err(anyhow!("invalid replica proof")) },
@@ -1470,26 +1461,31 @@ impl ActorHarness {
 
         // Expect SectorContentChanged notification to market.
         // This expectation is simplified based on assumption that f05 is the only notification target.
-        let sector_notification_resps = expected_sector_notifications
-            .iter()
-            .map(|sn| SectorReturn {
-                added: vec![PieceReturn { accepted: !cfg.notification_rejected }; sn.added.len()],
-            })
-            .collect();
-        rt.expect_send_simple(
-            STORAGE_MARKET_ACTOR_ADDR,
-            SECTOR_CONTENT_CHANGED,
-            IpldBlock::serialize_cbor(&SectorContentChangedParams {
-                sectors: expected_sector_notifications.clone(),
-            })
-            .unwrap(),
-            TokenAmount::zero(),
-            IpldBlock::serialize_cbor(&SectorContentChangedReturn {
-                sectors: sector_notification_resps,
-            })
-            .unwrap(),
-            cfg.notification_result.unwrap_or(ExitCode::OK),
-        );
+        if !expected_sector_notifications.is_empty() {
+            let sector_notification_resps = expected_sector_notifications
+                .iter()
+                .map(|sn| SectorReturn {
+                    added: vec![
+                        PieceReturn { accepted: !cfg.notification_rejected };
+                        sn.added.len()
+                    ],
+                })
+                .collect();
+            rt.expect_send_simple(
+                STORAGE_MARKET_ACTOR_ADDR,
+                SECTOR_CONTENT_CHANGED,
+                IpldBlock::serialize_cbor(&SectorContentChangedParams {
+                    sectors: expected_sector_notifications.clone(),
+                })
+                .unwrap(),
+                TokenAmount::zero(),
+                IpldBlock::serialize_cbor(&SectorContentChangedReturn {
+                    sectors: sector_notification_resps,
+                })
+                .unwrap(),
+                cfg.notification_result.unwrap_or(ExitCode::OK),
+            );
+        }
 
         let result = rt.call::<Actor>(
             MinerMethod::ProveReplicaUpdates2 as u64,
@@ -2877,7 +2873,7 @@ pub fn test_verified_deal(space: u64) -> VerifiedDealInfo {
     VerifiedDealInfo {
         client: 0,
         allocation_id: 0,
-        data: make_piece_cid("test verified deal".as_bytes()),
+        data: make_unsealed_cid("test verified deal".as_bytes()),
         size: PaddedPieceSize(space),
     }
 }
@@ -3109,9 +3105,14 @@ fn make_sealed_cid(input: &[u8]) -> Cid {
     Cid::new_v1(FIL_COMMITMENT_SEALED, h)
 }
 
-fn make_piece_cid(input: &[u8]) -> Cid {
+fn make_unsealed_cid(input: &[u8]) -> Cid {
     let h = MhCode::Sha256TruncPaddedFake.digest(input);
     Cid::new_v1(FIL_COMMITMENT_UNSEALED, h)
+}
+
+// Makes a fake piece CID that is unique for sector number, piece index, and piece size.
+fn make_piece_cid(sector_number: SectorNumber, index: usize, size: u64) -> Cid {
+    make_unsealed_cid(format!("piece-{}-{}-{}", sector_number, index, size).as_bytes())
 }
 
 // Pre-commits and then proves a batch of empty sectors, and submits their first Window PoSt.
@@ -3130,25 +3131,8 @@ pub fn onboard_empty_sectors(
     onboard_sectors(rt, h, &precommits)
 }
 
-// Pre-commits and then proves a batch of non-empty sectors, and submits their first Window PoSt.
-// Each sector has a single piece of data occupying its full capacity.
-// The epoch is advanced to when the first window post is submitted.
-#[allow(dead_code)]
-pub fn onboard_nonempty_sectors(
-    rt: &MockRuntime,
-    h: &ActorHarness,
-    expiration: ChainEpoch,
-    first_sector_number: SectorNumber,
-    count: usize,
-) -> Vec<SectorOnChainInfo> {
-    let challenge = *rt.epoch.borrow();
-    let precommits =
-        make_fake_commd_precommits(h, first_sector_number, challenge - 1, expiration, count);
-    onboard_sectors(rt, h, &precommits)
-}
-
 // Pre-commits and then proves a batch of sectors, and submits their first Window PoSt.
-fn onboard_sectors(
+pub fn onboard_sectors(
     rt: &MockRuntime,
     h: &ActorHarness,
     precommits: &[SectorPreCommitInfo],
@@ -3189,41 +3173,56 @@ pub fn make_empty_precommits(
     expiration: ChainEpoch,
     count: usize,
 ) -> Vec<SectorPreCommitInfo> {
-    (0..count)
-        .map(|i| {
+    let mut piece_sizes = Vec::new();
+    for _ in 0..count {
+        piece_sizes.push(&[] as &[u64]); // No pieces in empty sector.
+    }
+    make_fake_precommits(h, first_sector_number, challenge, expiration, &piece_sizes)
+}
+
+// Creates a batch of fake pre-commits for sectors given a list of per-sector list of piece sizes.
+// Each piece is given a fake CID based on the sector number, piece index, and piece size,
+// and the sector's CommD depends on those.
+#[allow(dead_code)]
+pub fn make_fake_precommits(
+    h: &ActorHarness,
+    first_sector_number: SectorNumber,
+    challenge: ChainEpoch,
+    expiration: ChainEpoch,
+    piece_sizes: &[&[u64]], // List of sizes per sector
+) -> Vec<SectorPreCommitInfo> {
+    piece_sizes
+        .iter()
+        .enumerate()
+        .map(|(i, piece_sizes)| {
             let sector_number = first_sector_number + i as u64;
+            let piece_cids = piece_sizes
+                .iter()
+                .enumerate()
+                .map(|(j, sz)| make_piece_cid(sector_number, j, *sz))
+                .collect::<Vec<_>>();
             h.make_pre_commit_params_v2(
                 sector_number,
                 challenge,
                 expiration,
                 vec![],
-                CompactCommD::empty(),
+                sector_commd_from_pieces(&piece_cids),
             )
         })
         .collect()
 }
 
-// Note this matches the faked commD computation in the testing harness
+// Computes a fake sector CommD that depends on all the piece CIDs (or is zero if there are none).
 #[allow(dead_code)]
-pub fn make_fake_commd_precommits(
-    h: &ActorHarness,
-    first_sector_number: SectorNumber,
-    challenge: ChainEpoch,
-    expiration: ChainEpoch,
-    count: usize,
-) -> Vec<SectorPreCommitInfo> {
-    (0..count)
-        .map(|i| {
-            let sector_number = first_sector_number + i as u64;
-            h.make_pre_commit_params_v2(
-                sector_number,
-                challenge,
-                expiration,
-                vec![],
-                CompactCommD(Some(make_sector_commd(sector_number))),
-            )
-        })
-        .collect()
+pub fn sector_commd_from_pieces(pieces: &[Cid]) -> CompactCommD {
+    if pieces.is_empty() {
+        return CompactCommD::empty();
+    }
+    let mut buf = Vec::new();
+    for piece in pieces {
+        buf.extend_from_slice(piece.to_bytes().as_slice());
+    }
+    CompactCommD::of(make_unsealed_cid(buf.as_slice()))
 }
 
 #[allow(dead_code)]
@@ -3270,7 +3269,7 @@ pub fn make_piece_manifest(
     deal: DealID,
 ) -> PieceActivationManifest {
     PieceActivationManifest {
-        cid: make_piece_cid(format!("piece-{}-{}", sector, seq).as_bytes()),
+        cid: make_piece_cid(sector, seq, size),
         size: PaddedPieceSize(size),
         verified_allocation_key: if alloc_id != NO_ALLOCATION_ID {
             Some(VerifiedAllocationKey { client: alloc_client, id: alloc_id })
@@ -3316,9 +3315,9 @@ pub fn notifications_from_pieces(pieces: &[PieceActivationManifest]) -> Vec<Piec
         .collect()
 }
 
-fn make_sector_commd(sno: SectorNumber) -> Cid {
-    make_piece_cid(format!("unsealed-{}", sno).as_bytes())
-}
+// fn make_sector_commd(sno: SectorNumber) -> Cid {
+//     make_piece_cid(format!("unsealed-{}", sno).as_bytes())
+// }
 
 fn make_sector_commr(sector: SectorNumber) -> Cid {
     make_sealed_cid(format!("sealed-{}", sector).as_bytes())
@@ -3460,22 +3459,25 @@ pub fn sectors_as_map(sectors: &[SectorOnChainInfo]) -> SectorsMap {
 
 fn expect_compute_unsealed_cid_from_pieces(
     rt: &MockRuntime,
-    sno: SectorNumber,
     seal_proof_type: RegisteredSealProof,
     pieces: &[PieceActivationManifest],
-) -> Cid {
-    let expected_unsealed_cid_inputs: Vec<PieceInfo> =
-        pieces.iter().map(|p| PieceInfo { size: p.size, cid: p.cid }).collect();
-    let unsealed_cid = make_sector_commd(sno);
-    if !expected_unsealed_cid_inputs.is_empty() {
+) -> CompactCommD {
+    if !pieces.is_empty() {
+        let expected_inputs: Vec<PieceInfo> =
+            pieces.iter().map(|p| PieceInfo { size: p.size, cid: p.cid }).collect();
+        let unsealed_cid =
+            sector_commd_from_pieces(&pieces.iter().map(|p| p.cid).collect::<Vec<_>>())
+                .get_nonzero_cid();
         rt.expect_compute_unsealed_sector_cid(
             seal_proof_type,
-            expected_unsealed_cid_inputs,
+            expected_inputs,
             unsealed_cid.clone(),
             ExitCode::OK,
         );
+        CompactCommD::of(unsealed_cid)
+    } else {
+        CompactCommD::empty()
     }
-    unsealed_cid
 }
 
 fn expect_validate_precommits(

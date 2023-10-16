@@ -5362,7 +5362,7 @@ fn activate_sectors_pieces(
             if !declared_commd.eq(&computed_commd) {
                 return Err(actor_error!(
                     illegal_argument,
-                    "unsealed CID does not match deals for sector {}, computed {:?} declared {:?}",
+                    "unsealed CID does not match pieces for sector {}, computed {:?} declared {:?}",
                     activation_info.sector_number,
                     computed_commd,
                     declared_commd
