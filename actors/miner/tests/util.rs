@@ -58,23 +58,23 @@ use fil_actor_miner::testing::{
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee, consensus_fault_penalty,
     ext, initial_pledge_for_power, locked_reward_from_reward, max_prove_commit_duration,
-    new_deadline_info_from_offset_and_epoch, pledge_penalty_for_continued_fault, power_for_sectors,
-    qa_power_for_sector, qa_power_for_weight, reward_for_consensus_slash_report, ActiveBeneficiary,
-    Actor, ApplyRewardParams, BeneficiaryTerm, BitFieldQueue, ChangeBeneficiaryParams,
-    ChangeMultiaddrsParams, ChangePeerIDParams, ChangeWorkerAddressParams, CheckSectorProvenParams,
-    CompactCommD, CompactPartitionsParams, CompactSectorNumbersParams, ConfirmSectorProofsParams,
-    CronEventPayload, Deadline, DeadlineInfo, Deadlines, DeclareFaultsParams,
-    DeclareFaultsRecoveredParams, DeferredCronEventParams, DisputeWindowedPoStParams,
-    ExpirationQueue, ExpirationSet, ExtendSectorExpiration2Params, ExtendSectorExpirationParams,
-    FaultDeclaration, GetAvailableBalanceReturn, GetBeneficiaryReturn, GetControlAddressesReturn,
-    GetMultiaddrsReturn, GetPeerIDReturn, Method, MinerConstructorParams as ConstructorParams,
-    MinerInfo, MovePartitionsParams, Partition, PendingBeneficiaryChange, PoStPartition, PowerPair,
-    PreCommitSectorBatchParams, PreCommitSectorBatchParams2, PreCommitSectorParams,
-    ProveCommitSectorParams, RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo,
-    SectorPreCommitInfo, SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams,
-    TerminateSectorsParams, TerminationDeclaration, VestingFunds, WindowedPoSt,
-    WithdrawBalanceParams, WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE, REWARD_VESTING_SPEC,
-    SECTORS_AMT_BITWIDTH,
+    new_deadline_info, new_deadline_info_from_offset_and_epoch, pledge_penalty_for_continued_fault,
+    power_for_sectors, qa_power_for_sector, qa_power_for_weight, reward_for_consensus_slash_report,
+    ActiveBeneficiary, Actor, ApplyRewardParams, BeneficiaryTerm, BitFieldQueue,
+    ChangeBeneficiaryParams, ChangeMultiaddrsParams, ChangePeerIDParams, ChangeWorkerAddressParams,
+    CheckSectorProvenParams, CompactCommD, CompactPartitionsParams, CompactSectorNumbersParams,
+    ConfirmSectorProofsParams, CronEventPayload, Deadline, DeadlineInfo, Deadlines,
+    DeclareFaultsParams, DeclareFaultsRecoveredParams, DeferredCronEventParams,
+    DisputeWindowedPoStParams, ExpirationQueue, ExpirationSet, ExtendSectorExpiration2Params,
+    ExtendSectorExpirationParams, FaultDeclaration, GetAvailableBalanceReturn,
+    GetBeneficiaryReturn, GetControlAddressesReturn, GetMultiaddrsReturn, GetPeerIDReturn, Method,
+    MinerConstructorParams as ConstructorParams, MinerInfo, MovePartitionsParams, Partition,
+    PendingBeneficiaryChange, PoStPartition, PowerPair, PreCommitSectorBatchParams,
+    PreCommitSectorBatchParams2, PreCommitSectorParams, ProveCommitSectorParams,
+    RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo, SectorPreCommitInfo,
+    SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams, TerminateSectorsParams,
+    TerminationDeclaration, VestingFunds, WindowedPoSt, WithdrawBalanceParams,
+    WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE, REWARD_VESTING_SPEC, SECTORS_AMT_BITWIDTH,
 };
 use fil_actor_miner::{Method as MinerMethod, ProveCommitAggregateParams};
 use fil_actor_power::{
@@ -2619,9 +2619,44 @@ impl ActorHarness {
         orig_deadline: u64,
         dest_deadline: u64,
         partitions: BitField,
-        mut f: impl FnMut(),
+        expect_window_post_sectors: &[SectorOnChainInfo], // if not empty, the first item should be "good"
     ) -> Result<(), ActorError> {
-        f();
+        if !expect_window_post_sectors.is_empty() {
+            let current_deadline = self.current_deadline(&rt);
+
+            let from_deadline = new_deadline_info(
+                rt.policy(),
+                if current_deadline.index < orig_deadline {
+                    current_deadline.period_start - rt.policy().wpost_proving_period
+                } else {
+                    current_deadline.period_start
+                },
+                orig_deadline,
+                *rt.epoch.borrow(),
+            );
+
+            let from_ddl = self.get_deadline(&rt, orig_deadline);
+
+            let entropy = RawBytes::serialize(self.receiver).unwrap();
+            rt.expect_get_randomness_from_beacon(
+                DomainSeparationTag::WindowedPoStChallengeSeed,
+                from_deadline.challenge,
+                entropy.to_vec(),
+                TEST_RANDOMNESS_ARRAY_FROM_ONE,
+            );
+
+            let post = self.get_submitted_proof(&rt, &from_ddl, 0);
+
+            let all_ignored = BitField::new();
+            let vi = self.make_window_post_verify_info(
+                &expect_window_post_sectors,
+                &all_ignored,
+                expect_window_post_sectors[0].clone(),
+                Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
+                post.proofs,
+            );
+            rt.expect_verify_post(vi, ExitCode::OK);
+        }
 
         let params = MovePartitionsParams { orig_deadline, dest_deadline, partitions };
 
@@ -2635,6 +2670,7 @@ impl ActorHarness {
         rt.verify();
         Ok(())
     }
+
     pub fn get_info(&self, rt: &MockRuntime) -> MinerInfo {
         let state: State = rt.get_state();
         state.get_info(rt.store()).unwrap()
