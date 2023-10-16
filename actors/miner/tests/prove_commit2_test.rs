@@ -22,12 +22,17 @@ const FIRST_SECTOR_NUMBER: SectorNumber = 100;
 #[test]
 fn commit_batch() {
     let (h, mut rt) = setup_basic();
-    let precommits = precommit_sectors(&mut rt, &h, 4);
+    let piece_size = h.sector_size as u64;
+    let precommits = precommit_sectors(
+        &mut rt,
+        &h,
+        &[&[piece_size], &[piece_size], &[piece_size], &[piece_size]],
+    );
     let snos: Vec<SectorNumber> =
         precommits.iter().map(|pci: &SectorPreCommitInfo| pci.sector_number).collect();
 
     // Prove them in batch, each with a single piece.
-    let piece_size = h.sector_size as u64;
+
     let manifests = vec![
         make_activation_manifest(snos[0], &[(piece_size, 0, 0, 0)]), // No alloc or deal
         make_activation_manifest(snos[1], &[(piece_size, CLIENT_ID, 1000, 0)]), // Just an alloc
@@ -117,12 +122,13 @@ fn commit_batch() {
 #[test]
 fn multiple_pieces_in_sector() {
     let (h, mut rt) = setup_basic();
-    let precommits = precommit_sectors(&mut rt, &h, 2);
+    // Half-size pieces
+    let piece_size = h.sector_size as u64 / 2;
+    let precommits =
+        precommit_sectors(&mut rt, &h, &[&[piece_size, piece_size], &[piece_size, piece_size]]);
     let snos: Vec<SectorNumber> =
         precommits.iter().map(|pci: &SectorPreCommitInfo| pci.sector_number).collect();
 
-    // Half-size pieces
-    let piece_size = h.sector_size as u64 / 2;
     let manifests = vec![
         make_activation_manifest(
             snos[0],
@@ -215,11 +221,11 @@ fn multiple_pieces_in_sector() {
 #[test]
 fn multiple_notifs_for_piece() {
     let (h, mut rt) = setup_basic();
-    let precommits = precommit_sectors(&mut rt, &h, 2);
+    let piece_size = h.sector_size as u64 / 2;
+    let precommits = precommit_sectors(&mut rt, &h, &[&[piece_size, piece_size], &[piece_size]]);
     let snos: Vec<SectorNumber> =
         precommits.iter().map(|pci: &SectorPreCommitInfo| pci.sector_number).collect();
 
-    let piece_size = h.sector_size as u64 / 2;
     let mut manifests = vec![
         make_activation_manifest(
             snos[0],
@@ -298,17 +304,22 @@ fn multiple_notifs_for_piece() {
 #[test]
 fn expired_precommit_dropped_batch() {
     let (h, mut rt) = setup_basic();
-    let precommits1 = precommit_sectors(&mut rt, &h, 1);
+    let piece_size = h.sector_size as u64;
+    let precommits1 = precommit_sectors(&mut rt, &h, &[&[piece_size]]);
     let epoch = *rt.epoch.borrow();
     rt.set_epoch(epoch + 31 * EPOCHS_IN_DAY); // The first precommit expired.
 
-    let precommits2 =
-        precommit_sectors_from(&mut rt, &h, precommits1[0].sector_number + 1, 1, false);
+    let precommits2 = precommit_sectors_from(
+        &mut rt,
+        &h,
+        precommits1[0].sector_number + 1,
+        &[&[piece_size]],
+        false,
+    );
     let precommits = [&precommits1[..], &precommits2[..]].concat();
     let snos: Vec<SectorNumber> =
         precommits.iter().map(|pci: &SectorPreCommitInfo| pci.sector_number).collect();
 
-    let piece_size = h.sector_size as u64;
     let manifests = vec![
         make_activation_manifest(snos[0], &[(piece_size, CLIENT_ID, 1000, 2000)]),
         make_activation_manifest(snos[1], &[(piece_size, CLIENT_ID, 1001, 2001)]),
@@ -335,17 +346,22 @@ fn expired_precommit_dropped_batch() {
 #[test]
 fn expired_precommit_dropped_aggregate() {
     let (h, mut rt) = setup_basic();
-    let precommits1 = precommit_sectors(&mut rt, &h, 1);
+    let piece_size = h.sector_size as u64;
+    let precommits1 = precommit_sectors(&mut rt, &h, &[&[piece_size]]);
     let epoch = *rt.epoch.borrow();
     rt.set_epoch(epoch + 31 * EPOCHS_IN_DAY); // The first precommit expired.
 
-    let precommits2 =
-        precommit_sectors_from(&mut rt, &h, precommits1[0].sector_number + 1, 3, false);
+    let precommits2 = precommit_sectors_from(
+        &mut rt,
+        &h,
+        precommits1[0].sector_number + 1,
+        &[&[piece_size], &[piece_size], &[piece_size]],
+        false,
+    );
     let precommits = [&precommits1[..], &precommits2[..]].concat();
     let snos: Vec<SectorNumber> =
         precommits.iter().map(|pci: &SectorPreCommitInfo| pci.sector_number).collect();
 
-    let piece_size = h.sector_size as u64;
     let manifests = vec![
         make_activation_manifest(snos[0], &[(piece_size, CLIENT_ID, 1000, 2000)]),
         make_activation_manifest(snos[1], &[(piece_size, CLIENT_ID, 1001, 2001)]),
@@ -374,11 +390,11 @@ fn expired_precommit_dropped_aggregate() {
 #[test]
 fn invalid_proof_dropped() {
     let (h, mut rt) = setup_basic();
-    let precommits = precommit_sectors(&mut rt, &h, 2);
+    let piece_size = h.sector_size as u64;
+    let precommits = precommit_sectors(&mut rt, &h, &[&[piece_size], &[piece_size]]);
     let snos: Vec<SectorNumber> =
         precommits.iter().map(|pci: &SectorPreCommitInfo| pci.sector_number).collect();
 
-    let piece_size = h.sector_size as u64;
     let manifests = vec![
         make_activation_manifest(snos[0], &[(piece_size, CLIENT_ID, 1000, 2000)]),
         make_activation_manifest(snos[1], &[(piece_size, CLIENT_ID, 1001, 2001)]),
@@ -400,11 +416,11 @@ fn invalid_proof_dropped() {
 #[test]
 fn invalid_claim_dropped() {
     let (h, mut rt) = setup_basic();
-    let precommits = precommit_sectors(&mut rt, &h, 2);
+    let piece_size = h.sector_size as u64;
+    let precommits = precommit_sectors(&mut rt, &h, &[&[piece_size], &[piece_size]]);
     let snos: Vec<SectorNumber> =
         precommits.iter().map(|pci: &SectorPreCommitInfo| pci.sector_number).collect();
 
-    let piece_size = h.sector_size as u64;
     let manifests = vec![
         make_activation_manifest(snos[0], &[(piece_size, CLIENT_ID, 1000, 2000)]),
         make_activation_manifest(snos[1], &[(piece_size, CLIENT_ID, 1001, 2001)]),
@@ -425,11 +441,11 @@ fn invalid_claim_dropped() {
 #[test]
 fn aborted_notification_dropped() {
     let (h, mut rt) = setup_basic();
-    let precommits = precommit_sectors(&mut rt, &h, 2);
+    let piece_size = h.sector_size as u64;
+    let precommits = precommit_sectors(&mut rt, &h, &[&[piece_size], &[piece_size]]);
     let snos: Vec<SectorNumber> =
         precommits.iter().map(|pci: &SectorPreCommitInfo| pci.sector_number).collect();
 
-    let piece_size = h.sector_size as u64;
     let manifests = vec![
         make_activation_manifest(snos[0], &[(piece_size, CLIENT_ID, 1000, 2000)]),
         make_activation_manifest(snos[1], &[(piece_size, CLIENT_ID, 1001, 2001)]),
@@ -452,11 +468,11 @@ fn aborted_notification_dropped() {
 #[test]
 fn rejected_notification_dropped() {
     let (h, mut rt) = setup_basic();
-    let precommits = precommit_sectors(&mut rt, &h, 2);
+    let piece_size = h.sector_size as u64;
+    let precommits = precommit_sectors(&mut rt, &h, &[&[piece_size], &[piece_size]]);
     let snos: Vec<SectorNumber> =
         precommits.iter().map(|pci: &SectorPreCommitInfo| pci.sector_number).collect();
 
-    let piece_size = h.sector_size as u64;
     let manifests = vec![
         make_activation_manifest(snos[0], &[(piece_size, CLIENT_ID, 1000, 2000)]),
         make_activation_manifest(snos[1], &[(piece_size, CLIENT_ID, 1001, 2001)]),
@@ -484,26 +500,26 @@ fn setup_basic() -> (ActorHarness, MockRuntime) {
 fn precommit_sectors(
     rt: &mut MockRuntime,
     h: &ActorHarness,
-    sector_count: usize,
+    piece_sizes: &[&[u64]],
 ) -> Vec<SectorPreCommitInfo> {
-    precommit_sectors_from(rt, h, FIRST_SECTOR_NUMBER, sector_count, true)
+    precommit_sectors_from(rt, h, FIRST_SECTOR_NUMBER, piece_sizes, true)
 }
 
 fn precommit_sectors_from(
     rt: &mut MockRuntime,
     h: &ActorHarness,
     first_sector_number: SectorNumber,
-    sector_count: usize,
+    piece_sizes: &[&[u64]],
     first_for_miner: bool,
 ) -> Vec<SectorPreCommitInfo> {
     let precommit_epoch = *rt.epoch.borrow();
     let sector_expiry = *rt.epoch.borrow() + DEFAULT_SECTOR_EXPIRATION_DAYS * EPOCHS_IN_DAY;
-    let precommits = make_fake_commd_precommits(
+    let precommits = make_fake_precommits(
         h,
         first_sector_number,
         precommit_epoch - 1,
         sector_expiry,
-        sector_count,
+        piece_sizes,
     );
     h.pre_commit_sector_batch_v2(rt, &precommits, first_for_miner, &TokenAmount::zero()).unwrap();
     rt.set_epoch(precommit_epoch + rt.policy.pre_commit_challenge_delay + 1);
