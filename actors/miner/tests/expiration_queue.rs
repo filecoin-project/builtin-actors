@@ -1,7 +1,7 @@
 use fil_actor_miner::{
     power_for_sectors, ExpirationQueue, ExpirationSet, PowerPair, SectorOnChainInfo,
 };
-use fil_actors_runtime::test_blockstores::TrackingMemBlockstore;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::{
     test_utils::{make_sealed_cid, MockRuntime},
     DealWeight,
@@ -712,13 +712,13 @@ fn test_sector(
 fn empty_expiration_queue_with_quantizing(
     rt: &MockRuntime,
     quant: QuantSpec,
-) -> ExpirationQueue<TrackingMemBlockstore> {
+) -> ExpirationQueue<MemoryBlockstore> {
     let empty_array =
         Amt::<(), _>::new_with_bit_width(&rt.store, TEST_AMT_BITWIDTH).flush().unwrap();
 
     ExpirationQueue::new(&*rt.store, &empty_array, quant).unwrap()
 }
 
-fn empty_expiration_queue(rt: &MockRuntime) -> ExpirationQueue<TrackingMemBlockstore> {
+fn empty_expiration_queue(rt: &MockRuntime) -> ExpirationQueue<MemoryBlockstore> {
     empty_expiration_queue_with_quantizing(rt, NO_QUANTIZATION)
 }

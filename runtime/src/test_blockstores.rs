@@ -8,7 +8,7 @@ use cid::Cid;
 
 use fvm_ipld_blockstore::Blockstore;
 
-/// Stats for a [TrackingMemBlockstore] this indicates the amount of read and written data
+/// Stats for a [MemoryBlockstore] this indicates the amount of read and written data
 /// to the wrapped store.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct BSStats {
@@ -25,18 +25,18 @@ pub struct BSStats {
 /// Wrapper around `Blockstore` to tracking reads and writes for verification.
 /// This struct should only be used for testing.
 #[derive(Debug, Default)]
-pub struct TrackingMemBlockstore {
+pub struct MemoryBlockstore {
     blocks: RefCell<HashMap<Cid, Vec<u8>>>,
     pub stats: RefCell<BSStats>,
 }
 
-impl TrackingMemBlockstore {
+impl MemoryBlockstore {
     pub fn new() -> Self {
         Self { blocks: Default::default(), stats: Default::default() }
     }
 }
 
-impl Blockstore for TrackingMemBlockstore {
+impl Blockstore for MemoryBlockstore {
     fn get(&self, cid: &Cid) -> Result<Option<Vec<u8>>> {
         let mut stats = self.stats.borrow_mut();
         stats.r += 1;
@@ -72,7 +72,7 @@ mod tests {
 
     #[test]
     fn basic_tracking_store() {
-        let tr_store = TrackingMemBlockstore::new();
+        let tr_store = MemoryBlockstore::new();
         assert_eq!(*tr_store.stats.borrow(), BSStats::default());
 
         let block = Block::new(0x55, &b"foobar"[..]);

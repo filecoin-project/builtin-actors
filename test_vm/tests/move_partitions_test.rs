@@ -1,4 +1,4 @@
-use fil_actors_runtime::test_blockstores::TrackingMemBlockstore;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
@@ -32,7 +32,7 @@ use vm_api::VM;
 
 #[test]
 fn move_partitions_success() {
-    let store = TrackingMemBlockstore::new();
+    let store = MemoryBlockstore::new();
     let (v, miner, sector) = setup(&store);
 
     submit_post_succeeds_test(&v, miner.clone(), sector);
@@ -105,10 +105,8 @@ struct MinerInfo {
     miner_robust: Address,
 }
 
-fn setup(
-    store: &'_ TrackingMemBlockstore,
-) -> (TestVM<TrackingMemBlockstore>, MinerInfo, SectorInfo) {
-    let v = TestVM::<TrackingMemBlockstore>::new_with_singletons(store);
+fn setup(store: &'_ MemoryBlockstore) -> (TestVM<MemoryBlockstore>, MinerInfo, SectorInfo) {
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
     let addrs = create_accounts(&v, 1, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);

@@ -1,5 +1,5 @@
 use fil_actor_miner::BitFieldQueue;
-use fil_actors_runtime::test_blockstores::TrackingMemBlockstore;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::test_utils::MockRuntime;
 use fvm_ipld_amt::Amt;
 use fvm_ipld_bitfield::BitField;
@@ -226,12 +226,12 @@ fn empty_bitfield_queue_with_quantizing(
     rt: &MockRuntime,
     quant: QuantSpec,
     bitwidth: u32,
-) -> BitFieldQueue<TrackingMemBlockstore> {
+) -> BitFieldQueue<MemoryBlockstore> {
     let cid = Amt::<(), _>::new_with_bit_width(&rt.store, bitwidth).flush().unwrap();
 
     BitFieldQueue::new(&*rt.store, &cid, quant).unwrap()
 }
 
-fn empty_bitfield_queue(rt: &MockRuntime, bitwidth: u32) -> BitFieldQueue<TrackingMemBlockstore> {
+fn empty_bitfield_queue(rt: &MockRuntime, bitwidth: u32) -> BitFieldQueue<MemoryBlockstore> {
     empty_bitfield_queue_with_quantizing(rt, NO_QUANTIZATION, bitwidth)
 }
