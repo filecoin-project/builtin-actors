@@ -117,7 +117,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use fil_actors_runtime::test_blockstores::TrackingMemBlockstore;
+    use fil_actors_runtime::test_blockstores::MemoryBlockstore;
     use fvm_shared::address::Address;
     use fvm_shared::econ::TokenAmount;
 
@@ -127,7 +127,7 @@ mod tests {
     fn total() {
         let addr1 = Address::new_id(100);
         let addr2 = Address::new_id(101);
-        let store = TrackingMemBlockstore::default();
+        let store = MemoryBlockstore::default();
         let mut bt = BalanceTable::new(&store, "test");
 
         assert!(bt.total().unwrap().is_zero());
@@ -154,7 +154,7 @@ mod tests {
     #[test]
     fn balance_subtracts() {
         let addr = Address::new_id(100);
-        let store = TrackingMemBlockstore::default();
+        let store = MemoryBlockstore::default();
         let mut bt = BalanceTable::new(&store, "test");
 
         bt.add(&addr, &TokenAmount::from_atto(80u8)).unwrap();

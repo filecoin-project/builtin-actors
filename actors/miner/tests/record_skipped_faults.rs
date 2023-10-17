@@ -8,7 +8,7 @@ use fil_actors_runtime::ActorError;
 use fil_actors_runtime::MessageAccumulator;
 use fvm_ipld_bitfield::BitField;
 
-use fil_actors_runtime::test_blockstores::TrackingMemBlockstore;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::clock::QuantSpec;
 use fvm_shared::error::ExitCode;
@@ -33,8 +33,8 @@ const SECTOR_SIZE: SectorSize = SectorSize::_32GiB;
 const QUANT_SPEC: QuantSpec = QuantSpec { unit: 4, offset: 1 };
 const EXP: ChainEpoch = 100;
 
-fn setup() -> (TrackingMemBlockstore, Partition) {
-    let store = TrackingMemBlockstore::default();
+fn setup() -> (MemoryBlockstore, Partition) {
+    let store = MemoryBlockstore::default();
     let mut partition = Partition::new(&store).unwrap();
 
     let power = partition.add_sectors(&store, true, &sectors(), SECTOR_SIZE, QUANT_SPEC).unwrap();
@@ -228,7 +228,7 @@ fn successful_when_skipped_fault_set_is_empty() {
 
 #[allow(clippy::too_many_arguments)]
 fn assert_partition_state(
-    store: &TrackingMemBlockstore,
+    store: &MemoryBlockstore,
     partition: &Partition,
     quant: QuantSpec,
     sector_size: SectorSize,

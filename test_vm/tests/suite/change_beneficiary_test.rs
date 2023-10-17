@@ -2,26 +2,26 @@ use fil_actors_integration_tests::tests::{
     change_beneficiary_back_owner_success_test, change_beneficiary_fail_test,
     change_beneficiary_success_test,
 };
-use fil_actors_runtime::test_blockstores::TrackingMemBlockstore;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use test_vm::TestVM;
 
 #[test]
 fn change_beneficiary_success() {
-    let store = TrackingMemBlockstore::new();
-    let v = TestVM::<TrackingMemBlockstore>::new_with_singletons(&store);
+    let store = MemoryBlockstore::new();
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     change_beneficiary_success_test(&v);
 }
 
 #[test]
 fn change_beneficiary_back_owner_success() {
-    let store = TrackingMemBlockstore::new();
-    let v = TestVM::<TrackingMemBlockstore>::new_with_singletons(&store);
+    let store = MemoryBlockstore::new();
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     change_beneficiary_back_owner_success_test(&v);
 }
 
 #[test]
 fn change_beneficiary_fail() {
-    let store = TrackingMemBlockstore::new();
-    let v = TestVM::<TrackingMemBlockstore>::new_with_singletons(&store);
+    let store = MemoryBlockstore::new();
+    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
     change_beneficiary_fail_test(&v);
 }

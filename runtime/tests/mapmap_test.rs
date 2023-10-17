@@ -1,11 +1,11 @@
 use cid::Cid;
-use fil_actors_runtime::test_blockstores::TrackingMemBlockstore;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::{make_map_with_root_and_bitwidth, Keyer, Map, MapMap};
 use fvm_shared::HAMT_BIT_WIDTH;
 
 #[test]
 fn mapmap_test() {
-    let store = TrackingMemBlockstore::new();
+    let store = MemoryBlockstore::new();
     let mut mm = MapMap::new(&store, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH);
 
     let prev = mm.put("tree", "evergreen", "pine".to_string()).unwrap();
@@ -64,7 +64,7 @@ fn mapmap_test() {
     let root = mm.flush().unwrap();
 
     // load the outermap as a map
-    let outer_map_raw: Map<TrackingMemBlockstore, Cid> =
+    let outer_map_raw: Map<MemoryBlockstore, Cid> =
         make_map_with_root_and_bitwidth(&root, &store, HAMT_BIT_WIDTH).unwrap();
 
     // expect to find a trees key
@@ -73,7 +73,7 @@ fn mapmap_test() {
     assert!(outer_map_raw.get(&"rock".key()).unwrap().is_none());
 
     // load mapmap again and check keys
-    let mut mm_reloaded: MapMap<TrackingMemBlockstore, String, &str, &str> =
+    let mut mm_reloaded: MapMap<MemoryBlockstore, String, &str, &str> =
         MapMap::from_root(&store, &root, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH).unwrap();
     let mut count = 0;
     mm_reloaded

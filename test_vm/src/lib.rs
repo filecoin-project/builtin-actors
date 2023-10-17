@@ -14,7 +14,7 @@ use fil_actor_verifreg::State as VerifRegState;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{Policy, Primitives, EMPTY_ARR_CID};
-use fil_actors_runtime::test_blockstores::TrackingMemBlockstore;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::DATACAP_TOKEN_ACTOR_ADDR;
 use fil_actors_runtime::{test_utils::*, DEFAULT_HAMT_CONFIG};
 use fil_actors_runtime::{
@@ -69,9 +69,9 @@ impl<'bs, BS> TestVM<'bs, BS>
 where
     BS: Blockstore,
 {
-    pub fn new(store: &'bs TrackingMemBlockstore) -> TestVM<'bs, TrackingMemBlockstore> {
+    pub fn new(store: &'bs MemoryBlockstore) -> TestVM<'bs, MemoryBlockstore> {
         let mut actors =
-            Hamt::<&'bs TrackingMemBlockstore, ActorState, BytesKey, Sha256>::new_with_config(
+            Hamt::<&'bs MemoryBlockstore, ActorState, BytesKey, Sha256>::new_with_config(
                 store,
                 DEFAULT_HAMT_CONFIG,
             );
@@ -88,13 +88,11 @@ where
         }
     }
 
-    pub fn new_with_singletons(
-        store: &'bs TrackingMemBlockstore,
-    ) -> TestVM<'bs, TrackingMemBlockstore> {
+    pub fn new_with_singletons(store: &'bs MemoryBlockstore) -> TestVM<'bs, MemoryBlockstore> {
         let reward_total = TokenAmount::from_whole(1_100_000_000i64);
         let faucet_total = TokenAmount::from_whole(1_000_000_000i64);
 
-        let v = TestVM::<'_, TrackingMemBlockstore>::new(store);
+        let v = TestVM::<'_, MemoryBlockstore>::new(store);
         v.set_circulating_supply(&reward_total + &faucet_total);
 
         // system
@@ -269,7 +267,7 @@ where
 
     pub fn get_total_actor_balance(
         &self,
-        store: &TrackingMemBlockstore,
+        store: &MemoryBlockstore,
     ) -> anyhow::Result<TokenAmount, anyhow::Error> {
         let state_tree = Tree::load(store, &self.checkpoint())?;
 

@@ -1,6 +1,6 @@
 use fil_actor_miner::SectorOnChainInfo;
 use fil_actor_miner::Sectors;
-use fil_actors_runtime::test_blockstores::TrackingMemBlockstore;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::sector::RegisteredSealProof;
@@ -17,7 +17,7 @@ fn make_sector(i: u64) -> SectorOnChainInfo {
     }
 }
 
-fn setup_sectors(store: &'_ TrackingMemBlockstore) -> Sectors<TrackingMemBlockstore> {
+fn setup_sectors(store: &'_ MemoryBlockstore) -> Sectors<MemoryBlockstore> {
     sectors_arr_mbs(store, vec![make_sector(0), make_sector(1), make_sector(5)])
 }
 
@@ -31,7 +31,7 @@ fn bf_from_vec(vec: Vec<u64>) -> BitField {
 
 #[test]
 fn loads_sectors() {
-    let store = TrackingMemBlockstore::default();
+    let store = MemoryBlockstore::default();
     let sectors = setup_sectors(&store);
 
     let mut bf = bf_from_vec(vec![0, 5]);
@@ -47,7 +47,7 @@ fn loads_sectors() {
 
 #[test]
 fn stores_sectors() {
-    let store = TrackingMemBlockstore::default();
+    let store = MemoryBlockstore::default();
     let mut sectors = setup_sectors(&store);
 
     let s0 = make_sector(0);
@@ -71,7 +71,7 @@ fn stores_sectors() {
 
 #[test]
 fn loads_and_stores_no_sectors() {
-    let store = TrackingMemBlockstore::default();
+    let store = MemoryBlockstore::default();
     let mut sectors = setup_sectors(&store);
 
     let bf = bf_from_vec(vec![]);
@@ -82,7 +82,7 @@ fn loads_and_stores_no_sectors() {
 
 #[test]
 fn gets_sectors() {
-    let store = TrackingMemBlockstore::default();
+    let store = MemoryBlockstore::default();
     let sectors = setup_sectors(&store);
 
     let s0_option = sectors.get(0).unwrap();
@@ -96,7 +96,7 @@ fn gets_sectors() {
 
 #[test]
 fn must_get() {
-    let store = TrackingMemBlockstore::default();
+    let store = MemoryBlockstore::default();
     let sectors = setup_sectors(&store);
 
     let s0 = sectors.must_get(0).unwrap();
@@ -108,7 +108,7 @@ fn must_get() {
 
 #[test]
 fn loads_for_proof_with_replacement() {
-    let store = TrackingMemBlockstore::default();
+    let store = MemoryBlockstore::default();
     let sectors = setup_sectors(&store);
 
     let s1 = make_sector(1);
@@ -120,7 +120,7 @@ fn loads_for_proof_with_replacement() {
 
 #[test]
 fn loads_for_proof_without_replacement() {
-    let store = TrackingMemBlockstore::default();
+    let store = MemoryBlockstore::default();
     let sectors = setup_sectors(&store);
 
     let s0 = make_sector(0);
@@ -133,7 +133,7 @@ fn loads_for_proof_without_replacement() {
 
 #[test]
 fn empty_proof() {
-    let store = TrackingMemBlockstore::default();
+    let store = MemoryBlockstore::default();
     let sectors = setup_sectors(&store);
 
     let vec_sectors = sectors.load_for_proof(&BitField::new(), &BitField::new()).unwrap();
@@ -142,7 +142,7 @@ fn empty_proof() {
 
 #[test]
 fn no_non_faulty_sectors() {
-    let store = TrackingMemBlockstore::default();
+    let store = MemoryBlockstore::default();
     let sectors = setup_sectors(&store);
 
     let vec_sectors = sectors.load_for_proof(&bf_from_vec(vec![1]), &bf_from_vec(vec![1])).unwrap();

@@ -1,10 +1,10 @@
-use fil_actors_integration_tests::tests::batch_onboarding_deals_test;
+use fil_actors_integration_tests::tests::move_partitions_test;
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use test_vm::TestVM;
 
 #[test]
-fn batch_onboarding_deals() {
+fn move_partitions() {
     let store = MemoryBlockstore::new();
     let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
-    batch_onboarding_deals_test(&v);
+    move_partitions_test(&v);
 }

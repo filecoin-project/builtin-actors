@@ -9,6 +9,7 @@ mod evm_test;
 mod extend_sectors_test;
 mod init_test;
 mod market_miner_withdrawal_test;
+mod move_partitions_test;
 mod multisig_test;
 mod power_scenario_tests;
 mod publish_deals_test;
