@@ -60,7 +60,7 @@ use vm_api::trace::InvocationTrace;
 use vm_api::util::get_state;
 use vm_api::{new_actor, ActorState, VM};
 
-use fil_actors_runtime::test_blockstores::TrackingMemBlockstore;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use std::ops::Add;
 
 use crate::{TestVM, TEST_VM_INVALID_POST, TEST_VM_RAND_ARRAY};
@@ -299,7 +299,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
 }
 
 impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
-    type Blockstore = &'bs TrackingMemBlockstore;
+    type Blockstore = &'bs MemoryBlockstore;
 
     fn create_actor(
         &self,
@@ -341,7 +341,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         Ok(())
     }
 
-    fn store(&self) -> &&'bs TrackingMemBlockstore {
+    fn store(&self) -> &&'bs MemoryBlockstore {
         &self.v.store
     }
 

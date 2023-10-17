@@ -5,6 +5,6 @@ use test_vm::TestVM;
 #[test]
 fn move_partitions() {
     let store = MemoryBlockstore::new();
-    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(&store);
     move_partitions_test(&v);
 }
