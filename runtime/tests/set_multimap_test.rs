@@ -7,7 +7,7 @@ use fvm_shared::clock::ChainEpoch;
 
 #[test]
 fn put_remove() {
-    let store = MemoryBlockstore::default();
+    let store = MemoryBlockstore::new();
     let mut smm = SetMultimap::new(&store);
 
     let epoch: ChainEpoch = 100;
@@ -27,7 +27,7 @@ fn put_remove() {
 
 #[test]
 fn for_each() {
-    let store = MemoryBlockstore::default();
+    let store = MemoryBlockstore::new();
     let mut smm = SetMultimap::new(&store);
 
     let epoch: ChainEpoch = 100;

@@ -5,7 +5,7 @@ use fvm_shared::HAMT_BIT_WIDTH;
 
 #[test]
 fn mapmap_test() {
-    let store = MemoryBlockstore::default();
+    let store = MemoryBlockstore::new();
     let mut mm = MapMap::new(&store, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH);
 
     let prev = mm.put("tree", "evergreen", "pine".to_string()).unwrap();

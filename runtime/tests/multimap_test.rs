@@ -9,7 +9,7 @@ use fvm_shared::HAMT_BIT_WIDTH;
 
 #[test]
 fn basic_add() {
-    let store = MemoryBlockstore::default();
+    let store = MemoryBlockstore::new();
     let mut mm = Multimap::new(&store, HAMT_BIT_WIDTH, 3);
 
     let addr = Address::new_id(100);
@@ -25,7 +25,7 @@ fn basic_add() {
 
 #[test]
 fn for_each() {
-    let store = MemoryBlockstore::default();
+    let store = MemoryBlockstore::new();
     let mut mm = Multimap::new(&store, HAMT_BIT_WIDTH, 3);
 
     let addr = Address::new_id(100);
@@ -48,7 +48,7 @@ fn for_each() {
 
 #[test]
 fn remove_all() {
-    let store = MemoryBlockstore::default();
+    let store = MemoryBlockstore::new();
     let mut mm = Multimap::new(&store, HAMT_BIT_WIDTH, 3);
 
     let addr1 = Address::new_id(100);
