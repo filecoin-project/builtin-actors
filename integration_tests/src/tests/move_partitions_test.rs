@@ -1,4 +1,3 @@
-use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
@@ -13,32 +12,29 @@ use fil_actor_miner::{
     ProveCommitSectorParams, State as MinerState,
 };
 
-use fil_actor_power::{Method as PowerMethod, State as PowerState};
-use fil_actors_integration_tests::expects::Expect;
-use fil_actors_integration_tests::util::{
+use crate::expects::Expect;
+use crate::util::{
     advance_by_deadline_to_epoch, advance_to_proving_deadline, assert_invariants, create_accounts,
     create_miner, cron_tick, get_network_stats, make_bitfield, miner_balance, precommit_sectors,
     submit_windowed_post,
 };
+use fil_actor_power::{Method as PowerMethod, State as PowerState};
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
     CRON_ACTOR_ADDR, CRON_ACTOR_ID, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     STORAGE_POWER_ACTOR_ID, SYSTEM_ACTOR_ADDR,
 };
-use test_vm::TestVM;
+
 use vm_api::trace::ExpectInvocation;
 use vm_api::util::{apply_ok, get_state, DynBlockstore};
 use vm_api::VM;
 
-#[test]
-fn move_partitions_success() {
-    let store = MemoryBlockstore::new();
-    let (v, miner, sector) = setup(&store);
-
-    submit_post_succeeds_test(&v, miner.clone(), sector);
+pub fn move_partitions_test(v: &dyn VM) {
+    let (miner, sector) = setup(v);
+    submit_post_succeeds_test(v, miner.clone(), sector);
 
     let prove_time = v.epoch() + Policy::default().wpost_dispute_window;
-    advance_by_deadline_to_epoch(&v, &miner.miner_id, prove_time);
+    advance_by_deadline_to_epoch(v, &miner.miner_id, prove_time);
 
     let move_params = MovePartitionsParams {
         orig_deadline: 0,
@@ -47,7 +43,7 @@ fn move_partitions_success() {
     };
     let prove_params_ser = IpldBlock::serialize_cbor(&move_params).unwrap();
     apply_ok(
-        &v,
+        v,
         &miner.worker,
         &miner.miner_robust,
         &TokenAmount::zero(),
@@ -64,9 +60,9 @@ fn move_partitions_success() {
     }
     .matches(v.take_invocations().last().unwrap());
 
-    cron_tick(&v);
+    cron_tick(v);
     v.set_epoch(v.epoch() + 1);
-    assert_invariants(&v, &Policy::default());
+    assert_invariants(v, &Policy::default());
 }
 
 fn submit_post_succeeds_test(v: &dyn VM, miner_info: MinerInfo, sector_info: SectorInfo) {
@@ -105,13 +101,12 @@ struct MinerInfo {
     miner_robust: Address,
 }
 
-fn setup(store: &'_ MemoryBlockstore) -> (TestVM<MemoryBlockstore>, MinerInfo, SectorInfo) {
-    let v = TestVM::<MemoryBlockstore>::new_with_singletons(store);
-    let addrs = create_accounts(&v, 1, &TokenAmount::from_whole(10_000));
+fn setup(v: &dyn VM) -> (MinerInfo, SectorInfo) {
+    let addrs = create_accounts(v, 1, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
     let (id_addr, robust_addr) = create_miner(
-        &v,
+        v,
         &owner,
         &worker,
         seal_proof.registered_window_post_proof().unwrap(),
@@ -121,19 +116,19 @@ fn setup(store: &'_ MemoryBlockstore) -> (TestVM<MemoryBlockstore>, MinerInfo, S
 
     // precommit and advance to prove commit time
     let sector_number: SectorNumber = 100;
-    precommit_sectors(&v, 1, 1, &worker, &id_addr, seal_proof, sector_number, true, None);
+    precommit_sectors(v, 1, 1, &worker, &id_addr, seal_proof, sector_number, true, None);
 
-    let balances = miner_balance(&v, &id_addr);
+    let balances = miner_balance(v, &id_addr);
     assert!(balances.pre_commit_deposit.is_positive());
 
     let prove_time = v.epoch() + Policy::default().pre_commit_challenge_delay + 1;
-    advance_by_deadline_to_epoch(&v, &id_addr, prove_time);
+    advance_by_deadline_to_epoch(v, &id_addr, prove_time);
 
     // prove commit, cron, advance to post time
     let prove_params = ProveCommitSectorParams { sector_number, proof: vec![] };
     let prove_params_ser = IpldBlock::serialize_cbor(&prove_params).unwrap();
     apply_ok(
-        &v,
+        v,
         &worker,
         &robust_addr,
         &TokenAmount::zero(),
@@ -194,19 +189,18 @@ fn setup(store: &'_ MemoryBlockstore) -> (TestVM<MemoryBlockstore>, MinerInfo, S
     }
     .matches(v.take_invocations().last().unwrap());
     // pcd is released ip is added
-    let balances = miner_balance(&v, &id_addr);
+    let balances = miner_balance(v, &id_addr);
     assert!(balances.initial_pledge.is_positive());
     assert!(balances.pre_commit_deposit.is_zero());
 
     // power unproven so network stats are the same
 
-    let network_stats = get_network_stats(&v);
+    let network_stats = get_network_stats(v);
     assert!(network_stats.total_bytes_committed.is_zero());
     assert!(network_stats.total_pledge_collateral.is_positive());
 
-    let (deadline_info, partition_index) = advance_to_proving_deadline(&v, &id_addr, sector_number);
+    let (deadline_info, partition_index) = advance_to_proving_deadline(v, &id_addr, sector_number);
     (
-        v,
         MinerInfo { seal_proof, worker, miner_id: id_addr, miner_robust: robust_addr },
         SectorInfo { number: sector_number, deadline_info, partition_index },
     )
