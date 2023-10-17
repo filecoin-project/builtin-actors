@@ -45,7 +45,7 @@ use crate::runtime::{
 use crate::{actor_error, ActorError, SendError};
 use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
 
-use crate::test_blockstores::TrackingMemBlockstore;
+use crate::test_blockstores::MemoryBlockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::chainid::ChainID;
 use fvm_shared::event::ActorEvent;
@@ -165,7 +165,7 @@ pub struct MockRuntime {
 
     // VM Impl
     pub in_call: RefCell<bool>,
-    pub store: Rc<TrackingMemBlockstore>,
+    pub store: Rc<MemoryBlockstore>,
     pub in_transaction: RefCell<bool>,
 
     // Expectations
@@ -819,7 +819,7 @@ impl MessageInfo for MockRuntime {
 }
 
 impl Runtime for MockRuntime {
-    type Blockstore = Rc<TrackingMemBlockstore>;
+    type Blockstore = Rc<MemoryBlockstore>;
 
     fn network_version(&self) -> NetworkVersion {
         self.network_version
@@ -1100,7 +1100,7 @@ impl Runtime for MockRuntime {
         ret
     }
 
-    fn store(&self) -> &Rc<TrackingMemBlockstore> {
+    fn store(&self) -> &Rc<MemoryBlockstore> {
         &self.store
     }
 

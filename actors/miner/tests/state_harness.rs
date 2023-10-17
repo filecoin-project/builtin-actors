@@ -5,7 +5,7 @@ use fil_actor_miner::SectorPreCommitOnChainInfo;
 use fil_actor_miner::VestSpec;
 use fil_actor_miner::VestingFunds;
 use fil_actor_miner::{BitFieldQueue, CollisionPolicy, SectorOnChainInfo, State};
-use fil_actors_runtime::test_blockstores::TrackingMemBlockstore;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::{runtime::Policy, ActorError};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::BytesDe;
@@ -19,7 +19,7 @@ use fil_actors_runtime::test_utils::*;
 
 pub struct StateHarness {
     pub st: State,
-    pub store: TrackingMemBlockstore,
+    pub store: MemoryBlockstore,
 }
 
 impl StateHarness {
@@ -31,7 +31,7 @@ impl StateHarness {
     #[allow(dead_code)]
     pub fn new_with_policy(policy: &Policy, period_boundary: ChainEpoch) -> Self {
         // store init
-        let store = TrackingMemBlockstore::default();
+        let store = MemoryBlockstore::default();
         // state field init
         let owner = 1;
         let worker = 2;
@@ -87,7 +87,7 @@ impl StateHarness {
     pub fn load_pre_commit_clean_ups<'db>(
         &'db self,
         policy: &Policy,
-    ) -> BitFieldQueue<'db, TrackingMemBlockstore> {
+    ) -> BitFieldQueue<'db, MemoryBlockstore> {
         let quant = self.st.quant_spec_every_deadline(policy);
         let queue =
             BitFieldQueue::new(&self.store, &self.st.pre_committed_sectors_cleanup, quant).unwrap();
