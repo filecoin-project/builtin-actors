@@ -21,7 +21,7 @@ mod verifreg_remove_datacap_test;
 mod withdraw_balance_test;
 
 use fil_actors_integration_tests::tests::TEST_REGISTRY;
-use fvm_ipld_blockstore::MemoryBlockstore;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use test_vm::TestVM;
 
 #[test]
