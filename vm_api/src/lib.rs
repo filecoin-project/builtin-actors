@@ -118,18 +118,12 @@ pub struct ActorState {
 
 pub fn new_actor(
     code: Cid,
-    head: Cid,
-    call_seq_num: u64,
+    state: Cid,
+    sequence: u64,
     balance: TokenAmount,
-    predictable_address: Option<Address>,
+    delegated_address: Option<Address>,
 ) -> ActorState {
-    ActorState {
-        code,
-        state: head,
-        sequence: call_seq_num,
-        balance,
-        delegated_address: predictable_address,
-    }
+    ActorState { code, state, sequence, balance, delegated_address }
 }
 
 /// Pure functions implemented as primitives by the runtime.
