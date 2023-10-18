@@ -23,8 +23,9 @@ use fil_actor_miner::{IsControllingAddressParam, PowerPair};
 use fil_actor_power::{UpdateClaimedPowerParams, UpdatePledgeTotalParams};
 use fil_actor_verifreg::GetClaimsParams;
 use fil_actors_runtime::{
-    BURNT_FUNDS_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
-    STORAGE_POWER_ACTOR_ID, VERIFIED_REGISTRY_ACTOR_ADDR,
+    BURNT_FUNDS_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ID, REWARD_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, STORAGE_POWER_ACTOR_ID,
+    VERIFIED_REGISTRY_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ID,
 };
 
 use vm_api::trace::ExpectInvocation;
@@ -205,6 +206,47 @@ impl Expect {
             method: fil_actor_reward::Method::ThisEpochReward as u64,
             value: Some(TokenAmount::zero()),
             subinvocs: Some(vec![]),
+            ..Default::default()
+        }
+    }
+    pub fn datacap_transfer_to_verifreg(
+        from: ActorID,
+        amount: TokenAmount,
+        operator_data: RawBytes,
+        burn: bool,
+    ) -> ExpectInvocation {
+        let payload = IpldBlock::serialize_cbor(&FRC46TokenReceived {
+            from,
+            to: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
+            operator: from,
+            amount: amount.clone(),
+            operator_data,
+            token_data: RawBytes::default(),
+        })
+        .unwrap();
+        let burn_invocs = if burn {
+            vec![Expect::frc46_burn(VERIFIED_REGISTRY_ACTOR_ID, DATACAP_TOKEN_ACTOR_ADDR, amount)]
+        } else {
+            vec![]
+        };
+        ExpectInvocation {
+            from,
+            to: DATACAP_TOKEN_ACTOR_ADDR,
+            method: fil_actor_datacap::Method::TransferExported as u64,
+            subinvocs: Some(vec![ExpectInvocation {
+                from: DATACAP_TOKEN_ACTOR_ID,
+                to: VERIFIED_REGISTRY_ACTOR_ADDR,
+                method: fil_actor_verifreg::Method::UniversalReceiverHook as u64,
+                params: Some(
+                    IpldBlock::serialize_cbor(&UniversalReceiverParams {
+                        type_: FRC46_TOKEN_TYPE,
+                        payload: payload.unwrap().data.into(),
+                    })
+                    .unwrap(),
+                ),
+                subinvocs: Some(burn_invocs),
+                ..Default::default()
+            }]),
             ..Default::default()
         }
     }
