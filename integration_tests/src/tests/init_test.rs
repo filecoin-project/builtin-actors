@@ -4,12 +4,12 @@ use fil_actor_init::Exec4Return;
 use fil_actors_runtime::{
     cbor::serialize,
     runtime::EMPTY_ARR_CID,
-    test_utils::{EAM_ACTOR_CODE_ID, MULTISIG_ACTOR_CODE_ID, PLACEHOLDER_ACTOR_CODE_ID},
+    test_utils::{MULTISIG_ACTOR_CODE_ID, PLACEHOLDER_ACTOR_CODE_ID},
     EAM_ACTOR_ADDR, EAM_ACTOR_ID, INIT_ACTOR_ADDR,
 };
 use fvm_shared::{address::Address, econ::TokenAmount, error::ExitCode, METHOD_SEND};
 use num_traits::Zero;
-use vm_api::{new_actor, util::serialize_ok, VM};
+use vm_api::{util::serialize_ok, VM};
 
 use crate::{FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR};
 
@@ -22,14 +22,7 @@ fn assert_placeholder_actor(exp_bal: TokenAmount, v: &dyn VM, addr: Address) {
 
 #[exported_test]
 pub fn placeholder_deploy_test(v: &dyn VM) {
-    // Create a "fake" eam.
-    v.set_actor(
-        &EAM_ACTOR_ADDR,
-        new_actor(*EAM_ACTOR_CODE_ID, EMPTY_ARR_CID, 0, TokenAmount::zero(), None),
-    );
-
     // Create a placeholder.
-
     let subaddr = b"foobar";
     let addr = Address::new_delegated(EAM_ACTOR_ID, subaddr).unwrap();
     assert!(
