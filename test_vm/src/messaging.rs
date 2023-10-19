@@ -25,9 +25,6 @@ use fil_actors_runtime::runtime::{
 use fil_actors_runtime::{actor_error, SendError};
 use fil_actors_runtime::{test_utils::*, SYSTEM_ACTOR_ID};
 use fil_actors_runtime::{ActorError, INIT_ACTOR_ADDR};
-
-use fvm_ipld_blockstore::Blockstore;
-
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::CborStore;
 
@@ -63,6 +60,7 @@ use vm_api::trace::InvocationTrace;
 use vm_api::util::get_state;
 use vm_api::{new_actor, ActorState, VM};
 
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use std::ops::Add;
 
 use crate::{TestVM, TEST_VM_INVALID_POST, TEST_VM_RAND_ARRAY};
@@ -84,10 +82,7 @@ pub struct InternalMessage {
     pub params: Option<IpldBlock>,
 }
 
-impl<BS> MessageInfo for InvocationCtx<'_, '_, BS>
-where
-    BS: Blockstore,
-{
+impl MessageInfo for InvocationCtx<'_, '_> {
     fn nonce(&self) -> u64 {
         self.top.originator_call_seq
     }
@@ -108,11 +103,8 @@ where
     }
 }
 
-pub struct InvocationCtx<'invocation, 'bs, BS>
-where
-    BS: Blockstore,
-{
-    pub v: &'invocation TestVM<'bs, BS>,
+pub struct InvocationCtx<'invocation, 'bs> {
+    pub v: &'invocation TestVM<'bs>,
     pub top: TopCtx,
     pub msg: InternalMessage,
     pub allow_side_effects: RefCell<bool>,
@@ -122,10 +114,7 @@ where
     pub subinvocations: RefCell<Vec<InvocationTrace>>,
 }
 
-impl<'invocation, 'bs, BS> InvocationCtx<'invocation, 'bs, BS>
-where
-    BS: Blockstore,
-{
+impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
     fn resolve_target(
         &'invocation self,
         target: &Address,
@@ -309,11 +298,8 @@ where
     }
 }
 
-impl<'invocation, 'bs, BS> Runtime for InvocationCtx<'invocation, 'bs, BS>
-where
-    BS: Blockstore,
-{
-    type Blockstore = &'bs BS;
+impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
+    type Blockstore = &'bs MemoryBlockstore;
 
     fn create_actor(
         &self,
@@ -355,7 +341,7 @@ where
         Ok(())
     }
 
-    fn store(&self) -> &&'bs BS {
+    fn store(&self) -> &&'bs MemoryBlockstore {
         &self.v.store
     }
 
@@ -659,10 +645,7 @@ where
     }
 }
 
-impl<BS> Primitives for InvocationCtx<'_, '_, BS>
-where
-    BS: Blockstore,
-{
+impl Primitives for InvocationCtx<'_, '_> {
     fn verify_signature(
         &self,
         signature: &Signature,
@@ -701,10 +684,7 @@ where
     }
 }
 
-impl<BS> Verifier for InvocationCtx<'_, '_, BS>
-where
-    BS: Blockstore,
-{
+impl Verifier for InvocationCtx<'_, '_> {
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), anyhow::Error> {
         for proof in &verify_info.proofs {
             if proof.proof_bytes.eq(&TEST_VM_INVALID_POST.as_bytes().to_vec()) {
@@ -740,10 +720,7 @@ where
     }
 }
 
-impl<BS> RuntimePolicy for InvocationCtx<'_, '_, BS>
-where
-    BS: Blockstore,
-{
+impl RuntimePolicy for InvocationCtx<'_, '_> {
     fn policy(&self) -> &Policy {
         self.policy
     }
