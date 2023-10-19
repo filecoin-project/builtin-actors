@@ -145,16 +145,16 @@ impl Deadlines {
 
             let dest_partition_idx = first_dest_partition_idx + i as u64;
 
-            // sector_count is both total sector count and total live sector count, since no sector is faulty here.
             let sector_count = moving_partition.sectors.len();
+            let live_sector_count = sector_count - moving_partition.terminated.len();
 
             // start updating orig/dest `Deadline` here
 
             orig_deadline.total_sectors -= sector_count;
-            orig_deadline.live_sectors -= sector_count;
+            orig_deadline.live_sectors -= live_sector_count;
 
             dest_deadline.total_sectors += sector_count;
-            dest_deadline.live_sectors += sector_count;
+            dest_deadline.live_sectors += live_sector_count;
 
             orig_partitions.set(orig_partition_idx, Partition::new(store)?)?;
             dest_partitions.set(dest_partition_idx, moving_partition)?;
