@@ -15,15 +15,14 @@ use vm_api::util::apply_ok;
 use vm_api::ActorState;
 use vm_api::VM;
 
-use crate::tests::TEST_REGISTRY;
 use crate::util::{create_accounts, create_miner};
-use export_macro::exported_test;
+use export_macro::vm_test;
 
 pub mod market_tests {
 
     use super::*;
 
-    #[exported_test]
+    #[vm_test]
     pub fn withdraw_all_funds_test(v: &dyn VM) {
         let caller = market_setup(v);
 
@@ -38,7 +37,7 @@ pub mod market_tests {
         );
     }
 
-    #[exported_test]
+    #[vm_test]
     pub fn withdraw_as_much_as_possible_test(v: &dyn VM) {
         let caller = market_setup(v);
 
@@ -55,7 +54,7 @@ pub mod market_tests {
         );
     }
 
-    #[exported_test]
+    #[vm_test]
     pub fn withdraw_0_test(v: &dyn VM) {
         let caller = market_setup(v);
 
@@ -77,7 +76,7 @@ pub mod miner_tests {
 
     use super::*;
 
-    #[exported_test]
+    #[vm_test]
     pub fn withdraw_all_funds_test(v: &dyn VM) {
         let (_, owner, m_addr) = miner_setup(v);
 
@@ -92,7 +91,7 @@ pub mod miner_tests {
         );
     }
 
-    #[exported_test]
+    #[vm_test]
     pub fn withdraw_as_much_as_possible_test(v: &dyn VM) {
         let (_, owner, m_addr) = miner_setup(v);
         let two_fil = TokenAmount::from_whole(2);
@@ -100,7 +99,7 @@ pub mod miner_tests {
         assert_add_collateral_and_withdraw(v, two_fil.clone(), two_fil, three_fil, m_addr, owner);
     }
 
-    #[exported_test]
+    #[vm_test]
     pub fn withdraw_0_test(v: &dyn VM) {
         let (_, owner, m_addr) = miner_setup(v);
         let three_fil = TokenAmount::from_whole(3);
@@ -114,7 +113,7 @@ pub mod miner_tests {
         );
     }
 
-    #[exported_test]
+    #[vm_test]
     pub fn withdraw_from_non_owner_address_fails_test(v: &dyn VM) {
         let (ref worker, _, ref miner) = miner_setup(v);
         let one_fil = TokenAmount::from_whole(1);

@@ -1,5 +1,4 @@
-use crate::tests::TEST_REGISTRY;
-use export_macro::exported_test;
+use export_macro::vm_test;
 use fil_actor_account::types::AuthenticateMessageParams;
 use fil_actor_account::Method::AuthenticateMessageExported;
 use fvm_ipld_encoding::RawBytes;
@@ -14,7 +13,7 @@ use vm_api::VM;
 /// Using a deal proposal as a serialized message, we confirm that:
 /// - calls to Account::authenticate_message with valid signatures succeed
 /// - calls to Account::authenticate_message with invalid signatures fail
-#[exported_test]
+#[vm_test]
 pub fn account_authenticate_message_test(v: &dyn VM) {
     let addr = create_accounts(v, 1, &TokenAmount::from_whole(10_000))[0];
 

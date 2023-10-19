@@ -1,11 +1,10 @@
-use crate::tests::TEST_REGISTRY;
 use ethers::prelude::abigen;
 use ethers::providers::Provider;
 use ethers::{
     core::types::Address as EthAddress, prelude::builders::ContractCall, prelude::EthError,
 };
 
-use export_macro::exported_test;
+use export_macro::vm_test;
 use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::{
     test_utils::ETHACCOUNT_ACTOR_CODE_ID, test_utils::EVM_ACTOR_CODE_ID, EAM_ACTOR_ADDR,
@@ -42,7 +41,7 @@ pub fn id_to_eth(id: ActorID) -> EthAddress {
 #[serde(transparent)]
 pub struct ContractParams(#[serde(with = "strict_bytes")] pub Vec<u8>);
 
-#[exported_test]
+#[vm_test]
 pub fn evm_eth_create_external_test(v: &dyn VM) {
     // create the EthAccount
     let eth_bits = hex_literal::hex!("FEEDFACECAFEBEEF000000000000000000000000");
@@ -99,7 +98,7 @@ pub fn evm_eth_create_external_test(v: &dyn VM) {
     assert!(call_result.code.is_success(), "failed to call the new actor {}", call_result.message);
 }
 
-#[exported_test]
+#[vm_test]
 pub fn evm_call_test(v: &dyn VM) {
     let account = create_accounts(v, 1, &TokenAmount::from_whole(10_000))[0];
     let address = id_to_eth(account.id().unwrap());
@@ -148,7 +147,7 @@ pub fn evm_call_test(v: &dyn VM) {
     assert_eq!(0, evm_ret, "expected contract to return 0 on success");
 }
 
-#[exported_test]
+#[vm_test]
 pub fn evm_create_test(v: &dyn VM) {
     let account = create_accounts(v, 1, &TokenAmount::from_whole(10_000))[0];
 
@@ -320,7 +319,7 @@ pub fn evm_create_test(v: &dyn VM) {
     }
 }
 
-#[exported_test]
+#[vm_test]
 pub fn evm_empty_initcode_test(v: &dyn VM) {
     let account = create_accounts(v, 1, &TokenAmount::from_whole(10_000))[0];
     let create_result = v
@@ -340,7 +339,7 @@ pub fn evm_empty_initcode_test(v: &dyn VM) {
     );
 }
 
-#[exported_test]
+#[vm_test]
 #[allow(non_snake_case)]
 pub fn evm_staticcall_test(v: &dyn VM) {
     // test scenarios:
@@ -491,7 +490,7 @@ pub fn evm_staticcall_test(v: &dyn VM) {
 }
 
 #[allow(non_snake_case)]
-#[exported_test]
+#[vm_test]
 pub fn evm_delegatecall_test(v: &dyn VM) {
     // test scenarios:
     // one hop:
@@ -625,7 +624,7 @@ pub fn evm_delegatecall_test(v: &dyn VM) {
 }
 
 #[allow(non_snake_case)]
-#[exported_test]
+#[vm_test]
 pub fn evm_staticcall_delegatecall_test(v: &dyn VM) {
     // test scenarios:
     // one hop:
@@ -726,7 +725,7 @@ pub fn evm_staticcall_delegatecall_test(v: &dyn VM) {
     }
 }
 
-#[exported_test]
+#[vm_test]
 pub fn evm_init_revert_data_test(v: &dyn VM) {
     let account = create_accounts(v, 1, &TokenAmount::from_whole(10_000))[0];
     let create_result = v

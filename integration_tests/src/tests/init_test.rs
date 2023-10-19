@@ -1,5 +1,4 @@
-use crate::tests::TEST_REGISTRY;
-use export_macro::exported_test;
+use export_macro::vm_test;
 use fil_actor_init::Exec4Return;
 use fil_actors_runtime::{
     cbor::serialize, runtime::EMPTY_ARR_CID, test_utils::MULTISIG_ACTOR_CODE_ID, EAM_ACTOR_ADDR,
@@ -18,7 +17,7 @@ fn assert_placeholder_actor(exp_bal: TokenAmount, v: &dyn VM, addr: Address) {
     assert_eq!(exp_bal, act.balance);
 }
 
-#[exported_test]
+#[vm_test]
 pub fn placeholder_deploy_test(v: &dyn VM) {
     // Create a placeholder.
     let subaddr = b"foobar";

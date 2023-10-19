@@ -26,13 +26,13 @@ use vm_api::VM;
 
 use crate::deals::{DealBatcher, DealOptions};
 use crate::expects::Expect;
-use crate::tests::TEST_REGISTRY;
+
 use crate::util::{
     assert_invariants, bf_all, create_accounts, create_accounts_seeded, create_miner,
     verifreg_add_verifier,
 };
 use crate::TEST_FAUCET_ADDR;
-use export_macro::exported_test;
+use export_macro::vm_test;
 
 struct Addrs {
     worker: Address,
@@ -124,7 +124,7 @@ fn setup(v: &dyn VM) -> (Addrs, ChainEpoch) {
     )
 }
 
-#[exported_test]
+#[vm_test]
 pub fn psd_mismatched_provider_test(v: &dyn VM) {
     let (a, deal_start) = setup(v);
     let opts = DealOptions { deal_start, ..DealOptions::default() };
@@ -144,7 +144,7 @@ pub fn psd_mismatched_provider_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default())
 }
 
-#[exported_test]
+#[vm_test]
 pub fn psd_bad_piece_size_test(v: &dyn VM) {
     let (a, deal_start) = setup(v);
     let opts = DealOptions { deal_start, ..DealOptions::default() };
@@ -166,7 +166,7 @@ pub fn psd_bad_piece_size_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default())
 }
 
-#[exported_test]
+#[vm_test]
 pub fn psd_start_time_in_past_test(v: &dyn VM) {
     let (a, deal_start) = setup(v);
     let opts = DealOptions { deal_start, ..DealOptions::default() };
@@ -183,7 +183,7 @@ pub fn psd_start_time_in_past_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default())
 }
 
-#[exported_test]
+#[vm_test]
 pub fn psd_client_address_cannot_be_resolved_test(v: &dyn VM) {
     let (a, deal_start) = setup(v);
     let opts = DealOptions { deal_start, ..DealOptions::default() };
@@ -199,7 +199,7 @@ pub fn psd_client_address_cannot_be_resolved_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default())
 }
 
-#[exported_test]
+#[vm_test]
 pub fn psd_no_client_lockup_test(v: &dyn VM) {
     let (a, deal_start) = setup(v);
     let opts = DealOptions { deal_start, ..DealOptions::default() };
@@ -214,7 +214,7 @@ pub fn psd_no_client_lockup_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default())
 }
 
-#[exported_test]
+#[vm_test]
 pub fn psd_not_enough_client_lockup_for_batch_test(v: &dyn VM) {
     let (a, deal_start) = setup(v);
     let opts = DealOptions { deal_start, ..DealOptions::default() };
@@ -244,7 +244,7 @@ pub fn psd_not_enough_client_lockup_for_batch_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default())
 }
 
-#[exported_test]
+#[vm_test]
 pub fn psd_not_enough_provider_lockup_for_batch_test(v: &dyn VM) {
     let (a, deal_start) = setup(v);
     // note different seed, different address
@@ -281,7 +281,7 @@ pub fn psd_not_enough_provider_lockup_for_batch_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default())
 }
 
-#[exported_test]
+#[vm_test]
 pub fn psd_duplicate_deal_in_batch_test(v: &dyn VM) {
     let (a, deal_start) = setup(v);
     let opts = DealOptions { deal_start, ..DealOptions::default() };
@@ -308,7 +308,7 @@ pub fn psd_duplicate_deal_in_batch_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default())
 }
 
-#[exported_test]
+#[vm_test]
 pub fn psd_duplicate_deal_in_state_test(v: &dyn VM) {
     let (a, deal_start) = setup(v);
     let opts = DealOptions { deal_start, ..DealOptions::default() };
@@ -333,7 +333,7 @@ pub fn psd_duplicate_deal_in_state_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default())
 }
 
-#[exported_test]
+#[vm_test]
 pub fn psd_verified_deal_fails_getting_datacap_test(v: &dyn VM) {
     let (a, deal_start) = setup(v);
     let opts = DealOptions { deal_start, ..DealOptions::default() };
@@ -360,7 +360,7 @@ pub fn psd_verified_deal_fails_getting_datacap_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default())
 }
 
-#[exported_test]
+#[vm_test]
 pub fn psd_random_assortment_of_failures_test(v: &dyn VM) {
     let (a, deal_start) = setup(v);
     let opts = DealOptions { deal_start, ..DealOptions::default() };
@@ -419,7 +419,7 @@ pub fn psd_random_assortment_of_failures_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default())
 }
 
-#[exported_test]
+#[vm_test]
 pub fn psd_all_deals_are_bad_test(v: &dyn VM) {
     let (a, deal_start) = setup(v);
     let opts = DealOptions { deal_start, ..DealOptions::default() };
@@ -444,7 +444,7 @@ pub fn psd_all_deals_are_bad_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default())
 }
 
-#[exported_test]
+#[vm_test]
 pub fn psd_bad_sig_test(v: &dyn VM) {
     let (a, deal_start) = setup(v);
     let worker_id = a.worker.id().unwrap();
@@ -520,7 +520,7 @@ pub fn psd_bad_sig_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default())
 }
 
-#[exported_test]
+#[vm_test]
 pub fn all_deals_are_good_test(v: &dyn VM) {
     let (a, deal_start) = setup(v);
     let opts = DealOptions { deal_start, ..DealOptions::default() };
@@ -540,7 +540,7 @@ pub fn all_deals_are_good_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default())
 }
 
-#[exported_test]
+#[vm_test]
 pub fn psd_valid_deals_with_ones_longer_than_540_test(v: &dyn VM) {
     let (a, deal_start) = setup(v);
     let opts = DealOptions { deal_start, ..DealOptions::default() };
@@ -566,7 +566,7 @@ pub fn psd_valid_deals_with_ones_longer_than_540_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default())
 }
 
-#[exported_test]
+#[vm_test]
 pub fn psd_deal_duration_too_long_test(v: &dyn VM) {
     let (a, deal_start) = setup(v);
     let opts = DealOptions { deal_start, ..DealOptions::default() };

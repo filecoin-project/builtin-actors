@@ -5,6 +5,10 @@ use fvm_shared::{
     smooth::FilterEstimate,
     ActorID,
 };
+use lazy_static::lazy_static;
+use std::collections::BTreeMap;
+use std::sync::Mutex;
+use vm_api::VM;
 
 pub mod deals;
 pub mod expects;
@@ -55,4 +59,10 @@ pub struct NetworkStats {
     pub total_client_locked_collateral: TokenAmount,
     pub total_provider_locked_collateral: TokenAmount,
     pub total_client_storage_fee: TokenAmount,
+}
+
+type TestFn = fn(&dyn VM) -> ();
+lazy_static! {
+    /// Integration tests that are marked for inclusion by the vm_test macro are inserted here
+    pub static ref TEST_REGISTRY: Mutex<BTreeMap<String, TestFn>> = Mutex::new(BTreeMap::new());
 }

@@ -16,8 +16,7 @@ use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use num_traits::Zero;
 
-use crate::tests::TEST_REGISTRY;
-use export_macro::exported_test;
+use export_macro::vm_test;
 use vm_api::util::{apply_ok, get_state, DynBlockstore};
 use vm_api::VM;
 
@@ -33,7 +32,7 @@ const PRECOMMIT_V2: bool = true;
 const SEAL_PROOF: RegisteredSealProof = RegisteredSealProof::StackedDRG32GiBV1P1;
 
 // Tests batch onboarding of sectors with verified deals.
-#[exported_test]
+#[vm_test]
 pub fn batch_onboarding_deals_test(v: &dyn VM) {
     let deal_duration: ChainEpoch = Policy::default().min_sector_expiration;
     let sector_duration: ChainEpoch =

@@ -1,4 +1,3 @@
-use crate::tests::TEST_REGISTRY;
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
@@ -7,7 +6,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 
-use export_macro::exported_test;
+use export_macro::vm_test;
 use fil_actor_market::{DealMetaArray, State as MarketState};
 use fil_actor_miner::{
     max_prove_commit_duration, power_for_sector, ExpirationExtension, ExpirationExtension2,
@@ -325,17 +324,17 @@ pub fn extend_legacy_sector_with_deals_test(v: &dyn VM, do_extend2: bool) {
     );
 }
 
-#[exported_test]
+#[vm_test]
 pub fn extend_legacy_sector_with_deals_extend2(v: &dyn VM) {
     extend_legacy_sector_with_deals_test(v, true);
 }
 
-#[exported_test]
+#[vm_test]
 pub fn extend_legacy_sector_with_deals(v: &dyn VM) {
     extend_legacy_sector_with_deals_test(v, false);
 }
 
-#[exported_test]
+#[vm_test]
 pub fn commit_sector_with_max_duration_deal_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -426,7 +425,7 @@ pub fn commit_sector_with_max_duration_deal_test(v: &dyn VM) {
     assert_eq!(deal_lifetime, sector_info.expiration - sector_info.activation);
 }
 
-#[exported_test]
+#[vm_test]
 pub fn extend_sector_up_to_max_relative_extension_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -518,7 +517,7 @@ pub fn extend_sector_up_to_max_relative_extension_test(v: &dyn VM) {
     assert_eq!(policy.max_sector_expiration_extension, sector_info.expiration - v.epoch());
 }
 
-#[exported_test]
+#[vm_test]
 pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;

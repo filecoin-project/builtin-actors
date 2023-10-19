@@ -1,5 +1,4 @@
-use crate::tests::TEST_REGISTRY;
-use export_macro::exported_test;
+use export_macro::vm_test;
 use fil_actor_miner::{
     ActiveBeneficiary, ChangeBeneficiaryParams, Method as MinerMethod, PendingBeneficiaryChange,
 };
@@ -15,7 +14,7 @@ use crate::util::{
     withdraw_balance,
 };
 
-#[exported_test]
+#[vm_test]
 pub fn change_beneficiary_success_test(v: &dyn VM) {
     let addrs = create_accounts(v, 4, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -71,7 +70,7 @@ pub fn change_beneficiary_success_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default());
 }
 
-#[exported_test]
+#[vm_test]
 pub fn change_beneficiary_back_owner_success_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
