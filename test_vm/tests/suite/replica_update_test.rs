@@ -1,6 +1,7 @@
 use fil_actors_integration_tests::tests::create_miner_and_upgrade_sector;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
+use std::rc::Rc;
 use test_case::test_case;
 use test_vm::TestVM;
 
@@ -21,8 +22,8 @@ use fil_actors_integration_tests::util::assert_invariants;
 #[test_case(false; "v1")]
 #[test_case(true; "v2")]
 fn replica_update_simple_path_success(v2: bool) {
-    let store = &MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(store);
+    let store = MemoryBlockstore::new();
+    let v = TestVM::new_with_singletons(Rc::new(store));
     create_miner_and_upgrade_sector(&v, v2);
     assert_invariants(&v, &Policy::default());
 }
@@ -31,23 +32,23 @@ fn replica_update_simple_path_success(v2: bool) {
 #[test_case(false; "v1")]
 #[test_case(true; "v2")]
 fn replica_update_full_path_success(v2: bool) {
-    let store = &MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(store);
+    let store = MemoryBlockstore::new();
+    let v = TestVM::new_with_singletons(Rc::new(store));
     replica_update_full_path_success_test(&v, v2);
 }
 
 #[test_case(false; "v1")]
 #[test_case(true; "v2")]
 fn upgrade_and_miss_post(v2: bool) {
-    let store = &MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(store);
+    let store = MemoryBlockstore::new();
+    let v = TestVM::new_with_singletons(Rc::new(store));
     upgrade_and_miss_post_test(&v, v2);
 }
 
 #[test]
 fn prove_replica_update_multi_dline() {
-    let store = &MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(store);
+    let store = MemoryBlockstore::new();
+    let v = TestVM::new_with_singletons(Rc::new(store));
     prove_replica_update_multi_dline_test(&v);
 }
 
@@ -55,101 +56,101 @@ fn prove_replica_update_multi_dline() {
 
 #[test]
 fn immutable_deadline_failure() {
-    let store = &MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(store);
+    let store = MemoryBlockstore::new();
+    let v = TestVM::new_with_singletons(Rc::new(store));
     immutable_deadline_failure_test(&v);
 }
 
 #[test]
 fn unhealthy_sector_failure() {
-    let store = &MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(store);
+    let store = MemoryBlockstore::new();
+    let v = TestVM::new_with_singletons(Rc::new(store));
     unhealthy_sector_failure_test(&v);
 }
 
 #[test]
 fn terminated_sector_failure() {
-    let store = &MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(store);
+    let store = MemoryBlockstore::new();
+    let v = TestVM::new_with_singletons(Rc::new(store));
     terminated_sector_failure_test(&v);
 }
 
 #[test]
 fn bad_batch_size_failure() {
-    let store = &MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(store);
+    let store = MemoryBlockstore::new();
+    let v = TestVM::new_with_singletons(Rc::new(store));
     bad_batch_size_failure_test(&v);
 }
 
 #[test]
 fn no_dispute_after_upgrade() {
-    let store = &MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(store);
+    let store = MemoryBlockstore::new();
+    let v = TestVM::new_with_singletons(Rc::new(store));
     nodispute_after_upgrade_test(&v);
 }
 
 #[test]
 fn upgrade_bad_post_dispute() {
-    let store = &MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(store);
+    let store = MemoryBlockstore::new();
+    let v = TestVM::new_with_singletons(Rc::new(store));
     upgrade_bad_post_dispute_test(&v);
 }
 
 #[test]
 fn bad_post_upgrade_dispute() {
-    let store = &MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(store);
+    let store = MemoryBlockstore::new();
+    let v = TestVM::new_with_singletons(Rc::new(store));
     bad_post_upgrade_dispute_test(&v);
 }
 
 #[test]
 fn terminate_after_upgrade() {
-    let store = &MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(store);
+    let store = MemoryBlockstore::new();
+    let v = TestVM::new_with_singletons(Rc::new(store));
     terminate_after_upgrade_test(&v);
 }
 
 #[test]
 fn extend_after_upgrade() {
-    let store = &MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(store);
+    let store = MemoryBlockstore::new();
+    let v = TestVM::new_with_singletons(Rc::new(store));
     extend_after_upgrade_test(&v);
 }
 
 #[test]
 fn wrong_deadline_index_failure() {
-    let store = &MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(store);
+    let store = MemoryBlockstore::new();
+    let v = TestVM::new_with_singletons(Rc::new(store));
 
     wrong_deadline_index_failure_test(&v);
 }
 
 #[test]
 fn wrong_partition_index_failure() {
-    let store = &MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(store);
+    let store = MemoryBlockstore::new();
+    let v = TestVM::new_with_singletons(Rc::new(store));
 
     wrong_partition_index_failure_test(&v);
 }
 
 #[test]
 fn deal_included_in_multiple_sectors_failure() {
-    let store = &MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(store);
+    let store = MemoryBlockstore::new();
+    let v = TestVM::new_with_singletons(Rc::new(store));
     deal_included_in_multiple_sectors_failure_test(&v);
 }
 
 #[test]
 fn replica_update_verified_deal() {
-    let store = &MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(store);
+    let store = MemoryBlockstore::new();
+    let v = TestVM::new_with_singletons(Rc::new(store));
 
     replica_update_verified_deal_test(&v);
 }
 
 #[test]
 fn replica_update_verified_deal_max_term_violated() {
-    let store = &MemoryBlockstore::new();
+    let store = Rc::new(MemoryBlockstore::new());
     let v = TestVM::new_with_singletons(store);
     replica_update_verified_deal_max_term_violated_test(&v);
 }

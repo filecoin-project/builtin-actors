@@ -38,6 +38,7 @@ use fvm_shared::{MethodNum, METHOD_SEND};
 use serde::ser;
 use std::cell::{RefCell, RefMut};
 use std::collections::{BTreeMap, HashMap};
+use std::rc::Rc;
 use vm_api::trace::InvocationTrace;
 use vm_api::{new_actor, ActorState, MessageResult, VMError, VM};
 
@@ -50,9 +51,9 @@ mod messaging;
 pub use messaging::*;
 
 /// An in-memory rust-execution VM for testing builtin-actors that yields sensible stack traces and debug info
-pub struct TestVM<'bs> {
+pub struct TestVM {
     pub primitives: FakePrimitives,
-    pub store: &'bs MemoryBlockstore,
+    pub store: Rc<MemoryBlockstore>,
     pub state_root: RefCell<Cid>,
     circulating_supply: RefCell<TokenAmount>,
     actors_dirty: RefCell<bool>,
@@ -62,11 +63,11 @@ pub struct TestVM<'bs> {
     invocations: RefCell<Vec<InvocationTrace>>,
 }
 
-impl<'bs> TestVM<'bs> {
-    pub fn new(store: &'bs MemoryBlockstore) -> TestVM<'bs> {
+impl TestVM {
+    pub fn new(store: Rc<MemoryBlockstore>) -> TestVM {
         let mut actors =
-            Hamt::<&'bs MemoryBlockstore, ActorState, BytesKey, Sha256>::new_with_config(
-                store,
+            Hamt::<Rc<MemoryBlockstore>, ActorState, BytesKey, Sha256>::new_with_config(
+                Rc::clone(&store),
                 DEFAULT_HAMT_CONFIG,
             );
         TestVM {
@@ -82,15 +83,15 @@ impl<'bs> TestVM<'bs> {
         }
     }
 
-    pub fn new_with_singletons(store: &'bs MemoryBlockstore) -> TestVM<'bs> {
+    pub fn new_with_singletons(store: Rc<MemoryBlockstore>) -> TestVM {
         let reward_total = TokenAmount::from_whole(1_100_000_000i64);
         let faucet_total = TokenAmount::from_whole(1_000_000_000i64);
 
-        let v = TestVM::<'_>::new(store);
+        let v = TestVM::new(Rc::clone(&store));
         v.set_circulating_supply(&reward_total + &faucet_total);
 
         // system
-        let sys_st = SystemState::new(store).unwrap();
+        let sys_st = SystemState::new(&store).unwrap();
         let sys_head = v.put_store(&sys_st);
         let sys_value = faucet_total.clone(); // delegate faucet funds to system so we can construct faucet by sending to bls addr
         v.set_actor(
@@ -99,7 +100,7 @@ impl<'bs> TestVM<'bs> {
         );
 
         // init
-        let init_st = InitState::new(store, "integration-test".to_string()).unwrap();
+        let init_st = InitState::new(&store, "integration-test".to_string()).unwrap();
         let init_head = v.put_store(&init_st);
         v.set_actor(
             &INIT_ACTOR_ADDR,
@@ -239,9 +240,9 @@ impl<'bs> TestVM<'bs> {
     pub fn checkpoint(&self) -> Cid {
         // persist cache on top of latest checkpoint and clear
         let mut actors =
-            Hamt::<&'bs MemoryBlockstore, ActorState, BytesKey, Sha256>::load_with_config(
+            Hamt::<Rc<MemoryBlockstore>, ActorState, BytesKey, Sha256>::load_with_config(
                 &self.state_root.borrow(),
-                self.store,
+                Rc::clone(&self.store),
                 DEFAULT_HAMT_CONFIG,
             )
             .unwrap();
@@ -275,9 +276,9 @@ impl<'bs> TestVM<'bs> {
     }
 }
 
-impl<'bs> VM for TestVM<'bs> {
+impl VM for TestVM {
     fn blockstore(&self) -> &dyn Blockstore {
-        self.store
+        self.store.as_ref()
     }
 
     fn epoch(&self) -> ChainEpoch {
@@ -364,7 +365,7 @@ impl<'bs> VM for TestVM<'bs> {
     }
     fn resolve_id_address(&self, address: &Address) -> Option<Address> {
         let st: InitState = get_state(self, &INIT_ACTOR_ADDR).unwrap();
-        st.resolve_address(self.store, address).unwrap()
+        st.resolve_address(&self.store, address).unwrap()
     }
 
     fn set_epoch(&self, epoch: ChainEpoch) {
@@ -386,9 +387,9 @@ impl<'bs> VM for TestVM<'bs> {
             return Some(act.clone());
         }
         // go to persisted map
-        let actors = Hamt::<&'bs MemoryBlockstore, ActorState, BytesKey, Sha256>::load_with_config(
+        let actors = Hamt::<Rc<MemoryBlockstore>, ActorState, BytesKey, Sha256>::load_with_config(
             &self.state_root.borrow(),
-            self.store,
+            Rc::clone(&self.store),
             DEFAULT_HAMT_CONFIG,
         )
         .unwrap();

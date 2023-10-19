@@ -62,6 +62,7 @@ use vm_api::{new_actor, ActorState, VM};
 
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use std::ops::Add;
+use std::rc::Rc;
 
 use crate::{TestVM, TEST_VM_INVALID_POST, TEST_VM_RAND_ARRAY};
 
@@ -82,7 +83,7 @@ pub struct InternalMessage {
     pub params: Option<IpldBlock>,
 }
 
-impl MessageInfo for InvocationCtx<'_, '_> {
+impl MessageInfo for InvocationCtx<'_> {
     fn nonce(&self) -> u64 {
         self.top.originator_call_seq
     }
@@ -103,8 +104,8 @@ impl MessageInfo for InvocationCtx<'_, '_> {
     }
 }
 
-pub struct InvocationCtx<'invocation, 'bs> {
-    pub v: &'invocation TestVM<'bs>,
+pub struct InvocationCtx<'invocation> {
+    pub v: &'invocation TestVM,
     pub top: TopCtx,
     pub msg: InternalMessage,
     pub allow_side_effects: RefCell<bool>,
@@ -114,7 +115,7 @@ pub struct InvocationCtx<'invocation, 'bs> {
     pub subinvocations: RefCell<Vec<InvocationTrace>>,
 }
 
-impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
+impl<'invocation> InvocationCtx<'invocation> {
     fn resolve_target(
         &'invocation self,
         target: &Address,
@@ -152,7 +153,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         }
 
         let mut st: InitState = get_state(self.v, &INIT_ACTOR_ADDR).unwrap();
-        let (target_id, existing) = st.map_addresses_to_id(self.v.store, target, None).unwrap();
+        let (target_id, existing) = st.map_addresses_to_id(&self.v.store, target, None).unwrap();
         assert!(!existing, "should never have existing actor when no f4 address is specified");
         let target_id_addr = Address::new_id(target_id);
         let mut init_actor = self.v.actor(&INIT_ACTOR_ADDR).unwrap();
@@ -298,8 +299,8 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
     }
 }
 
-impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
-    type Blockstore = &'bs MemoryBlockstore;
+impl<'invocation> Runtime for InvocationCtx<'invocation> {
+    type Blockstore = Rc<MemoryBlockstore>;
 
     fn create_actor(
         &self,
@@ -341,7 +342,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         Ok(())
     }
 
-    fn store(&self) -> &&'bs MemoryBlockstore {
+    fn store(&self) -> &Rc<MemoryBlockstore> {
         &self.v.store
     }
 
@@ -645,7 +646,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
     }
 }
 
-impl Primitives for InvocationCtx<'_, '_> {
+impl Primitives for InvocationCtx<'_> {
     fn verify_signature(
         &self,
         signature: &Signature,
@@ -684,7 +685,7 @@ impl Primitives for InvocationCtx<'_, '_> {
     }
 }
 
-impl Verifier for InvocationCtx<'_, '_> {
+impl Verifier for InvocationCtx<'_> {
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), anyhow::Error> {
         for proof in &verify_info.proofs {
             if proof.proof_bytes.eq(&TEST_VM_INVALID_POST.as_bytes().to_vec()) {
@@ -720,7 +721,7 @@ impl Verifier for InvocationCtx<'_, '_> {
     }
 }
 
-impl RuntimePolicy for InvocationCtx<'_, '_> {
+impl RuntimePolicy for InvocationCtx<'_> {
     fn policy(&self) -> &Policy {
         self.policy
     }
