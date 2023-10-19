@@ -57,9 +57,7 @@ pub fn proposal_hash_test(v: &dyn VM) {
         params: RawBytes::default(),
     };
 
-
     let wrong_hash = compute_proposal_hash(&wrong_tx, v.primitives()).unwrap();
-
 
     let wrong_approval_params = TxnIDParams { id: TxnID(0), proposal_hash: wrong_hash.to_vec() };
     apply_code(
