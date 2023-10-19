@@ -61,8 +61,14 @@ pub struct NetworkStats {
     pub total_client_storage_fee: TokenAmount,
 }
 
-type TestFn = fn(&dyn VM) -> ();
+pub type TestFn = fn(&dyn VM) -> ();
+
 lazy_static! {
     /// Integration tests that are marked for inclusion by the vm_test macro are inserted here
-    pub static ref TEST_REGISTRY: Mutex<BTreeMap<String, TestFn>> = Mutex::new(BTreeMap::new());
+    /// The tests are keyed by their fully qualified name (module_path::test_name)
+    /// The registry entries are a tuple (u8, TestFn). The u8 represents test speed defaulting to 0 for
+    /// relatively fast tests and increasing in value for slower-executing tests. It can be used by different
+    /// execution environments to determine/filter if a test is suitable for running (e.g. some tests
+    /// may be infeasibly slow to run on a real FVM implementation).
+    pub static ref TEST_REGISTRY: Mutex<BTreeMap<String, (u8, TestFn)>> = Mutex::new(BTreeMap::new());
 }
