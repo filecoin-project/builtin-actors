@@ -32,7 +32,7 @@ const PRECOMMIT_V2: bool = true;
 const SEAL_PROOF: RegisteredSealProof = RegisteredSealProof::StackedDRG32GiBV1P1;
 
 // Tests batch onboarding of sectors with verified deals.
-#[vm_test]
+#[vm_test(1)]
 pub fn batch_onboarding_deals_test(v: &dyn VM) {
     let deal_duration: ChainEpoch = Policy::default().min_sector_expiration;
     let sector_duration: ChainEpoch =
