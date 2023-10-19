@@ -56,7 +56,11 @@ pub fn proposal_hash_test(v: &dyn VM) {
         approved: vec![alice],
         params: RawBytes::default(),
     };
-    let wrong_hash = compute_proposal_hash(&wrong_tx, &MockRuntime::new()).unwrap();
+
+
+    let wrong_hash = compute_proposal_hash(&wrong_tx, v.primitives()).unwrap();
+
+
     let wrong_approval_params = TxnIDParams { id: TxnID(0), proposal_hash: wrong_hash.to_vec() };
     apply_code(
         v,
@@ -75,7 +79,9 @@ pub fn proposal_hash_test(v: &dyn VM) {
         approved: vec![alice],
         params: RawBytes::default(),
     };
-    let correct_hash = compute_proposal_hash(&correct_tx, &MockRuntime::new()).unwrap();
+
+    let correct_hash = compute_proposal_hash(&correct_tx, v.primitives()).unwrap();
+
     let correct_approval_params =
         TxnIDParams { id: TxnID(0), proposal_hash: correct_hash.to_vec() };
     apply_ok(

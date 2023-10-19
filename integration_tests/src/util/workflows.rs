@@ -74,6 +74,7 @@ use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
 use fil_actors_runtime::{DATACAP_TOKEN_ACTOR_ID, VERIFIED_REGISTRY_ACTOR_ID};
 use vm_api::trace::ExpectInvocation;
 use vm_api::util::apply_ok;
+use vm_api::util::apply_ok_implicit;
 use vm_api::util::get_state;
 use vm_api::util::DynBlockstore;
 use vm_api::VM;
@@ -86,7 +87,7 @@ use super::miner_dline_info;
 use super::sector_deadline;
 
 pub fn cron_tick(v: &dyn VM) {
-    apply_ok(
+    apply_ok_implicit(
         v,
         &SYSTEM_ACTOR_ADDR,
         &CRON_ACTOR_ADDR,

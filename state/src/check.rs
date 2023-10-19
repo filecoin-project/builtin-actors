@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::fmt::Debug;
 
+use anyhow::anyhow;
 use anyhow::bail;
 use cid::Cid;
 use fil_actor_account::State as AccountState;
@@ -20,25 +20,19 @@ use fil_actor_power::testing::MinerCronEvent;
 use fil_actor_power::State as PowerState;
 use fil_actor_reward::State as RewardState;
 use fil_actor_verifreg::{DataCap, State as VerifregState};
-
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::DEFAULT_HAMT_CONFIG;
-use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
-
 use fil_actors_runtime::Map;
 use fil_actors_runtime::MessageAccumulator;
+use fil_actors_runtime::DEFAULT_HAMT_CONFIG;
+use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::from_slice;
 use fvm_ipld_encoding::CborStore;
 use fvm_shared::address::Address;
 use fvm_shared::address::Protocol;
-
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use num_traits::Zero;
-
-use anyhow::anyhow;
-use fvm_ipld_encoding::tuple::*;
 
 use fil_actor_account::testing as account;
 use fil_actor_cron::testing as cron;
@@ -52,31 +46,14 @@ use fil_actor_power::testing as power;
 use fil_actor_reward::testing as reward;
 use fil_actor_verifreg::testing as verifreg;
 use fil_actors_runtime::runtime::builtins::Type;
-
-/// Value type of the top level of the state tree.
-/// Represents the on-chain state of a single actor.
-#[derive(Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Eq, Debug)]
-pub struct Actor {
-    /// CID representing the code associated with the actor
-    pub code: Cid,
-    /// CID of the head state object for the actor
-    pub head: Cid,
-    /// `call_seq_num` for the next message to be received by the actor (non-zero for accounts only)
-    pub call_seq_num: u64,
-    /// Token balance of the actor
-    pub balance: TokenAmount,
-    /// The actor's "predictable" address, if assigned.
-    ///
-    /// This field is set on actor creation and never modified.
-    pub address: Option<Address>,
-}
+use vm_api::ActorState;
 
 /// A specialization of a map of ID-addresses to actor heads.
 pub struct Tree<'a, BS>
 where
     BS: Blockstore,
 {
-    pub map: Map<'a, BS, Actor>,
+    pub map: Map<'a, BS, ActorState>,
     pub store: &'a BS,
 }
 
@@ -90,7 +67,7 @@ impl<'a, BS: Blockstore> Tree<'a, BS> {
 
     pub fn for_each<F>(&self, mut f: F) -> anyhow::Result<()>
     where
-        F: FnMut(&Address, &Actor) -> anyhow::Result<()>,
+        F: FnMut(&Address, &ActorState) -> anyhow::Result<()>,
     {
         self.map
             .for_each(|key, val| {
@@ -105,7 +82,7 @@ macro_rules! get_state {
     ($tree:ident, $actor:ident, $state:ty) => {
         $tree
             .store
-            .get_cbor::<$state>(&$actor.head)?
+            .get_cbor::<$state>(&$actor.state)?
             .ok_or_else(|| anyhow!("{} is empty", stringify!($state)))?
     };
 }
