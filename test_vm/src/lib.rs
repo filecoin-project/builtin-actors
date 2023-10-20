@@ -64,15 +64,17 @@ pub struct TestVM {
 }
 
 impl TestVM {
-    pub fn new(store: Rc<MemoryBlockstore>) -> TestVM {
+    pub fn new(store: impl Into<Rc<MemoryBlockstore>>) -> TestVM {
+        let store = store.into();
         let mut actors =
             Hamt::<Rc<MemoryBlockstore>, ActorState, BytesKey, Sha256>::new_with_config(
                 Rc::clone(&store),
                 DEFAULT_HAMT_CONFIG,
             );
+
         TestVM {
             primitives: FakePrimitives {},
-            store,
+            store: store,
             state_root: RefCell::new(actors.flush().unwrap()),
             circulating_supply: RefCell::new(TokenAmount::zero()),
             actors_dirty: RefCell::new(false),
@@ -83,9 +85,11 @@ impl TestVM {
         }
     }
 
-    pub fn new_with_singletons(store: Rc<MemoryBlockstore>) -> TestVM {
+    pub fn new_with_singletons(store: impl Into<Rc<MemoryBlockstore>>) -> TestVM {
         let reward_total = TokenAmount::from_whole(1_100_000_000i64);
         let faucet_total = TokenAmount::from_whole(1_000_000_000i64);
+
+        let store = store.into();
 
         let v = TestVM::new(Rc::clone(&store));
         v.set_circulating_supply(&reward_total + &faucet_total);
