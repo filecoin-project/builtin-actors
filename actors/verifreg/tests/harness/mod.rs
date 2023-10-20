@@ -35,7 +35,7 @@ use fil_actors_runtime::runtime::policy_constants::{
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    make_empty_map, ActorError, AsActorError, BatchReturn, DATACAP_TOKEN_ACTOR_ADDR,
+    make_empty_map, ActorError, AsActorError, BatchReturn, EventBuilder, DATACAP_TOKEN_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 
@@ -138,6 +138,13 @@ impl Harness {
             ExitCode::OK,
             None,
         );
+        rt.expect_emitted_event(
+            EventBuilder::new()
+                .event_type("verifier-balance")
+                .field_indexed("verifier", &verifier_resolved.id().unwrap())
+                .field("balance", &allowance)
+                .build()?,
+        );
 
         let params = AddVerifierParams { address: *verifier, allowance: allowance.clone() };
         let ret = rt.call::<VerifregActor>(
@@ -153,6 +160,13 @@ impl Harness {
 
     pub fn remove_verifier(&self, rt: &MockRuntime, verifier: &Address) -> Result<(), ActorError> {
         rt.expect_validate_caller_addr(vec![self.root]);
+        rt.expect_emitted_event(
+            EventBuilder::new()
+                .event_type("verifier-balance")
+                .field_indexed("verifier", &verifier.id().unwrap())
+                .field("balance", &DataCap::zero())
+                .build()?,
+        );
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.root);
         let ret = rt.call::<VerifregActor>(
             Method::RemoveVerifier as MethodNum,
@@ -192,6 +206,7 @@ impl Harness {
         verifier: &Address,
         client: &Address,
         allowance: &DataCap,
+        verifier_balance: &DataCap,
     ) -> Result<(), ActorError> {
         rt.expect_validate_caller_any();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *verifier);
@@ -213,6 +228,13 @@ impl Harness {
         );
 
         let params = AddVerifiedClientParams { address: *client, allowance: allowance.clone() };
+        rt.expect_emitted_event(
+            EventBuilder::new()
+                .event_type("verifier-balance")
+                .field_indexed("verifier", &verifier.id().unwrap())
+                .field("balance", &(verifier_balance - allowance))
+                .build()?,
+        );
         let ret = rt.call::<VerifregActor>(
             Method::AddVerifiedClient as MethodNum,
             IpldBlock::serialize_cbor(&params).unwrap(),

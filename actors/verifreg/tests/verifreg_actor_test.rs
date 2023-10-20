@@ -140,6 +140,7 @@ mod verifiers {
             h.add_verifier_with_existing_cap(&rt, &VERIFIER, &allowance, &DataCap::from(1)),
         );
         h.check_state(&rt);
+        rt.reset();
     }
 
     #[test]
@@ -211,6 +212,7 @@ mod verifiers {
         let (h, rt) = new_harness();
         expect_abort(ExitCode::USR_ILLEGAL_ARGUMENT, h.remove_verifier(&rt, &VERIFIER));
         h.check_state(&rt);
+        rt.reset();
     }
 
     #[test]
@@ -249,7 +251,7 @@ mod clients {
         ext, Actor as VerifregActor, AddVerifiedClientParams, DataCap, Method,
     };
     use fil_actors_runtime::test_utils::*;
-    use fil_actors_runtime::{DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR};
+    use fil_actors_runtime::{EventBuilder, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR};
     use harness::*;
     use util::*;
 
@@ -264,11 +266,25 @@ mod clients {
         h.add_verifier(&rt, &VERIFIER, &allowance_verifier).unwrap();
         h.add_verifier(&rt, &VERIFIER2, &allowance_verifier).unwrap();
 
-        h.add_client(&rt, &VERIFIER, &CLIENT, &allowance_client).unwrap();
-        h.add_client(&rt, &VERIFIER, &CLIENT2, &allowance_client).unwrap();
+        h.add_client(&rt, &VERIFIER, &CLIENT, &allowance_client, &allowance_verifier).unwrap();
+        h.add_client(
+            &rt,
+            &VERIFIER,
+            &CLIENT2,
+            &allowance_client,
+            &(&allowance_verifier - &allowance_client),
+        )
+        .unwrap();
 
-        h.add_client(&rt, &VERIFIER2, &CLIENT3, &allowance_client).unwrap();
-        h.add_client(&rt, &VERIFIER2, &CLIENT4, &allowance_client).unwrap();
+        h.add_client(&rt, &VERIFIER2, &CLIENT3, &allowance_client, &allowance_verifier).unwrap();
+        h.add_client(
+            &rt,
+            &VERIFIER2,
+            &CLIENT4,
+            &allowance_client,
+            &(&allowance_verifier - &allowance_client),
+        )
+        .unwrap();
 
         // No more allowance left
         h.assert_verifier_allowance(&rt, &VERIFIER, &DataCap::from(0));
@@ -283,10 +299,10 @@ mod clients {
         // Verifier only has allowance for one client.
         h.add_verifier(&rt, &VERIFIER, &allowance).unwrap();
 
-        h.add_client(&rt, &VERIFIER, &CLIENT, &allowance).unwrap();
+        h.add_client(&rt, &VERIFIER, &CLIENT, &allowance, &allowance).unwrap();
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.add_client(&rt, &VERIFIER, &CLIENT2, &allowance),
+            h.add_client(&rt, &VERIFIER, &CLIENT2, &allowance, &DataCap::zero()),
         );
         rt.reset();
         h.assert_verifier_allowance(&rt, &VERIFIER, &DataCap::zero());
@@ -303,12 +319,13 @@ mod clients {
         rt.id_addresses.borrow_mut().insert(client_pubkey, *CLIENT);
 
         h.add_verifier(&rt, &VERIFIER, &allowance_verifier).unwrap();
-        h.add_client(&rt, &VERIFIER, &client_pubkey, &allowance_client).unwrap();
+        h.add_client(&rt, &VERIFIER, &client_pubkey, &allowance_client, &allowance_verifier)
+            .unwrap();
 
         // Adding another client with the same address increments
         // the data cap which has already been granted.
         h.add_verifier(&rt, &VERIFIER, &allowance_verifier).unwrap();
-        h.add_client(&rt, &VERIFIER, &CLIENT, &allowance_client).unwrap();
+        h.add_client(&rt, &VERIFIER, &CLIENT, &allowance_client, &allowance_verifier).unwrap();
         h.check_state(&rt);
     }
 
@@ -319,7 +336,7 @@ mod clients {
         h.add_verifier(&rt, &VERIFIER, &allowance_verifier).unwrap();
 
         let allowance = &rt.policy.minimum_verified_allocation_size;
-        h.add_client(&rt, &VERIFIER, &CLIENT, allowance).unwrap();
+        h.add_client(&rt, &VERIFIER, &CLIENT, allowance, &allowance_verifier).unwrap();
         h.check_state(&rt);
     }
 
@@ -344,7 +361,7 @@ mod clients {
 
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.add_client(&rt, &VERIFIER, &client, &allowance_client),
+            h.add_client(&rt, &VERIFIER, &client, &allowance_client, &allowance_verifier),
         );
         rt.reset();
         h.check_state(&rt);
@@ -359,7 +376,7 @@ mod clients {
         let allowance = rt.policy.minimum_verified_allocation_size.clone() - 1;
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.add_client(&rt, &VERIFIER, &CLIENT, &allowance),
+            h.add_client(&rt, &VERIFIER, &CLIENT, &allowance, &allowance_verifier),
         );
         rt.reset();
         h.check_state(&rt);
@@ -408,8 +425,7 @@ mod clients {
                 IpldBlock::serialize_cbor(&params).unwrap(),
             ),
         );
-
-        rt.verify();
+        rt.reset();
 
         // can call the exported method num
 
@@ -425,6 +441,15 @@ mod clients {
             TokenAmount::zero(),
             None,
             ExitCode::OK,
+        );
+
+        rt.expect_emitted_event(
+            EventBuilder::new()
+                .event_type("verifier-balance")
+                .field_indexed("verifier", &VERIFIER.id().unwrap())
+                .field("balance", &(allowance_verifier - allowance_client))
+                .build()
+                .unwrap(),
         );
 
         rt.expect_validate_caller_any();
@@ -445,10 +470,10 @@ mod clients {
         let allowance_verifier = verifier_allowance(&rt);
         h.add_verifier(&rt, &VERIFIER, &allowance_verifier).unwrap();
 
-        let allowance = allowance_verifier + 1;
+        let allowance = &allowance_verifier + 1;
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.add_client(&rt, &VERIFIER, &h.root, &allowance),
+            h.add_client(&rt, &VERIFIER, &h.root, &allowance, &allowance_verifier),
         );
         rt.reset();
         h.check_state(&rt);
@@ -462,7 +487,7 @@ mod clients {
         h.add_verifier(&rt, &VERIFIER, &allowance_verifier).unwrap();
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.add_client(&rt, &VERIFIER, &h.root, &allowance_client),
+            h.add_client(&rt, &VERIFIER, &h.root, &allowance_client, &allowance_verifier),
         );
         rt.reset();
         h.check_state(&rt);
@@ -476,14 +501,14 @@ mod clients {
         h.add_verifier(&rt, &VERIFIER, &allowance_verifier).unwrap();
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.add_client(&rt, &VERIFIER, &VERIFIER, &allowance_client),
+            h.add_client(&rt, &VERIFIER, &VERIFIER, &allowance_client, &allowance_verifier),
         );
         rt.reset();
 
         h.add_verifier(&rt, &VERIFIER2, &allowance_verifier).unwrap();
         expect_abort(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            h.add_client(&rt, &VERIFIER, &VERIFIER2, &allowance_client),
+            h.add_client(&rt, &VERIFIER, &VERIFIER2, &allowance_client, &allowance_verifier),
         );
         rt.reset();
         h.check_state(&rt);

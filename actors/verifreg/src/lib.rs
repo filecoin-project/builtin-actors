@@ -42,6 +42,7 @@ pub use self::types::*;
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
 
+pub mod emit;
 pub mod expiration;
 pub mod ext;
 pub mod state;
@@ -103,31 +104,33 @@ impl Actor {
         }
 
         let verifier = resolve_to_actor_id(rt, &params.address, true)?;
-        let verifier = Address::new_id(verifier);
+        let verifier_addr = Address::new_id(verifier);
 
         let st: State = rt.state()?;
         rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
 
         // Disallow root as a verifier.
-        if verifier == st.root_key {
+        if verifier_addr == st.root_key {
             return Err(actor_error!(illegal_argument, "Rootkey cannot be added as verifier"));
         }
 
         // Disallow existing clients as verifiers.
-        let token_balance = balance(rt, &verifier)?;
+        let token_balance = balance(rt, &verifier_addr)?;
         if token_balance.is_positive() {
             return Err(actor_error!(
                 illegal_argument,
                 "verified client {} cannot become a verifier",
-                verifier
+                verifier_addr
             ));
         }
 
         // Store the new verifier and allowance (over-writing).
         rt.transaction(|st: &mut State, rt| {
-            st.put_verifier(rt.store(), &verifier, &params.allowance)
+            st.put_verifier(rt.store(), &verifier_addr, &params.allowance)
                 .context("failed to add verifier")
-        })
+        })?;
+
+        emit::verifier_balance(rt, verifier, &params.allowance)
     }
 
     pub fn remove_verifier(
@@ -135,12 +138,14 @@ impl Actor {
         params: RemoveVerifierParams,
     ) -> Result<(), ActorError> {
         let verifier = resolve_to_actor_id(rt, &params.verifier, false)?;
-        let verifier = Address::new_id(verifier);
+        let verifier_addr = Address::new_id(verifier);
 
         rt.transaction(|st: &mut State, rt| {
             rt.validate_immediate_caller_is(std::iter::once(&st.root_key))?;
-            st.remove_verifier(rt.store(), &verifier).context("failed to remove verifier")
-        })
+            st.remove_verifier(rt.store(), &verifier_addr).context("failed to remove verifier")
+        })?;
+
+        emit::verifier_balance(rt, verifier, &DataCap::zero())
     }
 
     pub fn add_verified_client(
@@ -168,10 +173,11 @@ impl Actor {
             }
 
             // Validate caller is one of the verifiers, i.e. has an allowance (even if zero).
-            let verifier = rt.message().caller();
-            let verifier_cap = st
-                .get_verifier_cap(rt.store(), &verifier)?
-                .ok_or_else(|| actor_error!(not_found, "caller {} is not a verifier", verifier))?;
+            let verifier_addr = rt.message().caller();
+            let verifier_cap =
+                st.get_verifier_cap(rt.store(), &verifier_addr)?.ok_or_else(|| {
+                    actor_error!(not_found, "caller {} is not a verifier", verifier_addr)
+                })?;
 
             // Disallow existing verifiers as clients.
             if st.get_verifier_cap(rt.store(), &client)?.is_some() {
@@ -194,8 +200,9 @@ impl Actor {
 
             // Reduce verifier's cap.
             let new_verifier_cap = verifier_cap - &params.allowance;
-            st.put_verifier(rt.store(), &verifier, &new_verifier_cap)
-                .context("failed to update verifier allowance")
+            st.put_verifier(rt.store(), &verifier_addr, &new_verifier_cap)
+                .context("failed to update verifier allowance")?;
+            emit::verifier_balance(rt, verifier_addr.id().unwrap(), &new_verifier_cap)
         })?;
 
         // Credit client token allowance.
