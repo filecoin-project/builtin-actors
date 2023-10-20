@@ -558,11 +558,12 @@ impl Actor {
                     }
 
                     let new_claim = Claim { term_max: term.term_max, ..*claim };
-                    st_claims.put(term.provider, term.claim_id, new_claim).context_code(
+                    st_claims.put(term.provider, term.claim_id, new_claim.clone()).context_code(
                         ExitCode::USR_ILLEGAL_STATE,
                         "HAMT put failure storing new claims",
                     )?;
                     batch_gen.add_success();
+                    emit::claim_updated(rt, term.claim_id, &new_claim)?;
                 } else {
                     batch_gen.add_fail(ExitCode::USR_NOT_FOUND);
                     info!("no claim {} for provider {}", term.claim_id, term.provider);
@@ -606,10 +607,15 @@ impl Actor {
             }
 
             for id in to_remove {
-                claims.remove(params.provider, *id).context_code(
-                    ExitCode::USR_ILLEGAL_STATE,
-                    format!("failed to remove claim {}", id),
-                )?;
+                let removed = claims
+                    .remove(params.provider, *id)
+                    .context_code(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        format!("failed to remove claim {}", id),
+                    )?
+                    .unwrap();
+
+                emit::claim_removed(rt, *id, &removed)?;
             }
 
             st.save_claims(&mut claims)?;
@@ -712,7 +718,12 @@ impl Actor {
                 emit::allocation(rt, *id, alloc)?;
             }
 
-            st.put_claims(rt.store(), updated_claims)?;
+            st.put_claims(rt.store(), updated_claims.clone())?;
+
+            for (id, claim) in updated_claims {
+                emit::claim_updated(rt, id, &claim)?;
+            }
+
             Ok(ids)
         })?;
 

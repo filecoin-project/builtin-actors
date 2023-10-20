@@ -48,6 +48,16 @@ pub fn claim(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<(), ActorE
     rt.emit_event(&EventBuilder::new().event_type("claim").with_claim(id, claim).build()?)
 }
 
+/// Indicates an existing claim has been updated (e.g. with a longer term).
+pub fn claim_updated(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<(), ActorError> {
+    rt.emit_event(&EventBuilder::new().event_type("claim-updated").with_claim(id, claim).build()?)
+}
+
+/// Indicates an expired claim has been removed.
+pub fn claim_removed(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<(), ActorError> {
+    rt.emit_event(&EventBuilder::new().event_type("claim-removed").with_claim(id, claim).build()?)
+}
+
 // Private helpers //
 trait WithAllocation {
     fn with_allocation(self, id: AllocationID, alloc: &Allocation) -> EventBuilder;

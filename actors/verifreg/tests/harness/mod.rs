@@ -387,8 +387,21 @@ impl Harness {
         rt: &MockRuntime,
         provider: ActorID,
         claim_ids: Vec<ClaimID>,
+        expect_removed: Vec<(ClaimID, Claim)>,
     ) -> Result<RemoveExpiredClaimsReturn, ActorError> {
         rt.expect_validate_caller_any();
+
+        for (id, claim) in expect_removed {
+            rt.expect_emitted_event(
+                EventBuilder::new()
+                    .event_type("claim-removed")
+                    .field_indexed("id", &id)
+                    .field_indexed("provider", &claim.provider)
+                    .field_indexed("client", &claim.client)
+                    .field_indexed("data-cid", &claim.data)
+                    .build()?,
+            );
+        }
 
         let params = RemoveExpiredClaimsParams { provider, claim_ids };
         let ret = rt
@@ -451,6 +464,19 @@ impl Harness {
             );
         }
 
+        for ext in allocs_req.extensions {
+            let claim = self.load_claim(rt, ext.provider, ext.claim).unwrap();
+            rt.expect_emitted_event(
+                EventBuilder::new()
+                    .event_type("claim-updated")
+                    .field_indexed("id", &ext.claim)
+                    .field_indexed("provider", &claim.provider)
+                    .field_indexed("client", &claim.client)
+                    .field_indexed("data-cid", &claim.data)
+                    .build()?,
+            );
+        }
+
         rt.expect_validate_caller_addr(vec![DATACAP_TOKEN_ACTOR_ADDR]);
         let ret = rt.call::<VerifregActor>(
             Method::UniversalReceiverHook as MethodNum,
@@ -506,7 +532,20 @@ impl Harness {
         &self,
         rt: &MockRuntime,
         params: &ExtendClaimTermsParams,
+        expected: Vec<(ClaimID, Claim)>,
     ) -> Result<ExtendClaimTermsReturn, ActorError> {
+        for (id, new_claim) in expected.iter() {
+            rt.expect_emitted_event(
+                EventBuilder::new()
+                    .event_type("claim-updated")
+                    .field_indexed("id", &id)
+                    .field_indexed("provider", &new_claim.provider)
+                    .field_indexed("client", &new_claim.client)
+                    .field_indexed("data-cid", &new_claim.data)
+                    .build()?,
+            );
+        }
+
         rt.expect_validate_caller_any();
         let ret = rt
             .call::<VerifregActor>(

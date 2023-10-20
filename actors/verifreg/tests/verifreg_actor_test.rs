@@ -527,8 +527,8 @@ mod allocs_claims {
     use num_traits::Zero;
 
     use fil_actor_verifreg::{
-        Actor, AllocationID, ClaimTerm, DataCap, ExtendClaimTermsParams, GetClaimsParams,
-        GetClaimsReturn, Method, State,
+        Actor, AllocationID, ClaimTerm, DataCap, ExtendClaimTermsParams, GetClaimsParams, Method,
+        State,
     };
     use fil_actor_verifreg::{Claim, ExtendClaimTermsReturn};
     use fil_actors_runtime::runtime::policy_constants::{
@@ -904,8 +904,15 @@ mod allocs_claims {
                 ClaimTerm { provider: PROVIDER2, claim_id: id3, term_max: max_term + 3 },
             ],
         };
+
+        let expected_claims = vec![
+            (id1, Claim { term_max: max_term + 1, ..claim1 }),
+            (id2, Claim { term_max: max_term + 2, ..claim2 }),
+            (id3, Claim { term_max: max_term + 3, ..claim3 }),
+        ];
+
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(CLIENT1));
-        let ret = h.extend_claim_terms(&rt, &params).unwrap();
+        let ret = h.extend_claim_terms(&rt, &params, expected_claims).unwrap();
         assert_eq!(ret.codes(), vec![ExitCode::OK, ExitCode::OK, ExitCode::OK]);
 
         // Verify state directly.
@@ -933,7 +940,7 @@ mod allocs_claims {
                 terms: vec![ClaimTerm { provider: PROVIDER1, claim_id, term_max: max_term }],
             };
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(CLIENT1));
-            let ret = h.extend_claim_terms(&rt, &params).unwrap();
+            let ret = h.extend_claim_terms(&rt, &params, vec![(claim_id, claim.clone())]).unwrap();
             assert_eq!(ret.codes(), vec![ExitCode::OK]);
             rt.verify()
         }
@@ -944,7 +951,7 @@ mod allocs_claims {
                 terms: vec![ClaimTerm { provider: PROVIDER1, claim_id, term_max: max_term }],
             };
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(CLIENT2));
-            let ret = h.extend_claim_terms(&rt, &params).unwrap();
+            let ret = h.extend_claim_terms(&rt, &params, vec![]).unwrap();
             assert_eq!(ret.codes(), vec![ExitCode::USR_FORBIDDEN]);
             rt.verify()
         }
@@ -955,7 +962,7 @@ mod allocs_claims {
                 terms: vec![ClaimTerm { provider: PROVIDER2, claim_id, term_max: max_term }],
             };
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(CLIENT1));
-            let ret = h.extend_claim_terms(&rt, &params).unwrap();
+            let ret = h.extend_claim_terms(&rt, &params, vec![]).unwrap();
             assert_eq!(ret.codes(), vec![ExitCode::USR_NOT_FOUND]);
             rt.verify()
         }
@@ -970,7 +977,7 @@ mod allocs_claims {
                 }],
             };
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(CLIENT1));
-            let ret = h.extend_claim_terms(&rt, &params).unwrap();
+            let ret = h.extend_claim_terms(&rt, &params, vec![]).unwrap();
             assert_eq!(ret.codes(), vec![ExitCode::USR_ILLEGAL_ARGUMENT]);
             rt.verify()
         }
@@ -981,7 +988,7 @@ mod allocs_claims {
                 terms: vec![ClaimTerm { provider: PROVIDER1, claim_id, term_max: max_term - 1 }],
             };
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(CLIENT1));
-            let ret = h.extend_claim_terms(&rt, &params).unwrap();
+            let ret = h.extend_claim_terms(&rt, &params, vec![]).unwrap();
             assert_eq!(ret.codes(), vec![ExitCode::USR_ILLEGAL_ARGUMENT]);
             rt.verify()
         }
@@ -997,7 +1004,13 @@ mod allocs_claims {
             };
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(CLIENT1));
             rt.set_epoch(max_term + 1);
-            let ret = h.extend_claim_terms(&rt, &params).unwrap();
+            let ret = h
+                .extend_claim_terms(
+                    &rt,
+                    &params,
+                    vec![(claim_id, Claim { term_max: MAXIMUM_VERIFIED_ALLOCATION_TERM, ..claim })],
+                )
+                .unwrap();
             assert_eq!(ret.codes(), vec![ExitCode::OK]);
             rt.verify()
         }
@@ -1042,35 +1055,39 @@ mod allocs_claims {
         // The full test suite is not duplicated here,   simple ones to ensure that the expiration
         // is correctly computed.
 
+        let expect_1 = vec![(id1, claim1.clone())];
+        let expect_2 = vec![(id2, claim2.clone())];
+        let expect_both = vec![(id1, claim1), (id2, claim2)];
+
         // None expired yet
         rt.set_epoch(term_start + term_min + 99);
-        let ret = h.remove_expired_claims(&rt, PROVIDER1, vec![id1, id2]).unwrap();
+        let ret = h.remove_expired_claims(&rt, PROVIDER1, vec![id1, id2], vec![]).unwrap();
         assert_eq!(vec![1, 2], ret.considered);
         assert_eq!(vec![ExitCode::USR_FORBIDDEN, ExitCode::USR_FORBIDDEN], ret.results.codes());
 
         // One expired
         rt.set_epoch(term_start + term_min + 100);
-        let ret = h.remove_expired_claims(&rt, PROVIDER1, vec![id1, id2]).unwrap();
+        let ret = h.remove_expired_claims(&rt, PROVIDER1, vec![id1, id2], expect_1).unwrap();
         assert_eq!(vec![1, 2], ret.considered);
         assert_eq!(vec![ExitCode::OK, ExitCode::USR_FORBIDDEN], ret.results.codes());
 
         // Both now expired
         rt.set_epoch(term_start + term_min + 200);
-        let ret = h.remove_expired_claims(&rt, PROVIDER1, vec![id1, id2]).unwrap();
+        let ret = h.remove_expired_claims(&rt, PROVIDER1, vec![id1, id2], expect_2).unwrap();
         assert_eq!(vec![1, 2], ret.considered);
         assert_eq!(vec![ExitCode::USR_NOT_FOUND, ExitCode::OK], ret.results.codes());
 
         // Reset state, and show that specifying none removes only expired allocations
         rt.set_epoch(term_start + term_min);
         rt.replace_state(&state_with_allocs);
-        let ret = h.remove_expired_claims(&rt, PROVIDER1, vec![]).unwrap();
+        let ret = h.remove_expired_claims(&rt, PROVIDER1, vec![], vec![]).unwrap();
         assert_eq!(Vec::<AllocationID>::new(), ret.considered);
         assert_eq!(Vec::<ExitCode>::new(), ret.results.codes());
         assert!(h.load_claim(&rt, PROVIDER1, id1).is_some());
         assert!(h.load_claim(&rt, PROVIDER1, id2).is_some());
 
         rt.set_epoch(term_start + term_min + 200);
-        let ret = h.remove_expired_claims(&rt, PROVIDER1, vec![]).unwrap();
+        let ret = h.remove_expired_claims(&rt, PROVIDER1, vec![], expect_both).unwrap();
         assert_eq!(vec![1, 2], ret.considered);
         assert_eq!(vec![ExitCode::OK, ExitCode::OK], ret.results.codes());
         assert!(h.load_claim(&rt, PROVIDER1, id1).is_none()); // removed
@@ -1081,21 +1098,10 @@ mod allocs_claims {
     #[test]
     fn claims_restricted_correctly() {
         let (h, rt) = new_harness();
-        let size = MINIMUM_VERIFIED_ALLOCATION_SIZE as u64;
-        let sector = 0;
-        let start = 0;
-        let min_term = MINIMUM_VERIFIED_ALLOCATION_TERM;
-        let max_term = min_term + 1000;
-
-        let claim1 = make_claim("1", CLIENT1, PROVIDER1, size, min_term, max_term, start, sector);
-
-        let id1 = h.create_claim(&rt, &claim1).unwrap();
 
         // First, let's extend some claims
-
-        let params = ExtendClaimTermsParams {
-            terms: vec![ClaimTerm { provider: PROVIDER1, claim_id: id1, term_max: max_term + 1 }],
-        };
+        // Empty request to avoid setting expectations for events etc.
+        let params = ExtendClaimTermsParams { terms: vec![] };
 
         // set caller to not-builtin
         rt.set_caller(*EVM_ACTOR_CODE_ID, Address::new_id(CLIENT1));
@@ -1104,8 +1110,9 @@ mod allocs_claims {
         expect_abort_contains_message(
             ExitCode::USR_FORBIDDEN,
             "must be built-in",
-            h.extend_claim_terms(&rt, &params),
+            h.extend_claim_terms(&rt, &params, vec![]),
         );
+        rt.reset();
 
         // can call the exported method num
 
@@ -1122,40 +1129,30 @@ mod allocs_claims {
 
         rt.verify();
 
-        assert_eq!(ret.codes(), vec![ExitCode::OK]);
+        assert_eq!(ret.codes(), vec![]);
 
         // Now let's Get those Claims, and check them
 
-        let params = GetClaimsParams { claim_ids: vec![id1], provider: PROVIDER1 };
-
+        let params = GetClaimsParams { claim_ids: vec![], provider: PROVIDER1 };
         // cannot call the unexported extend method num
         expect_abort_contains_message(
             ExitCode::USR_FORBIDDEN,
             "must be built-in",
-            rt.call::<Actor>(
-                Method::GetClaims as MethodNum,
-                IpldBlock::serialize_cbor(&params).unwrap(),
-            ),
+            h.get_claims(&rt, PROVIDER1, vec![]),
         );
 
-        rt.verify();
+        rt.reset();
 
         // can call the exported method num
         rt.expect_validate_caller_any();
-        let ret: GetClaimsReturn = rt
-            .call::<Actor>(
-                Method::GetClaimsExported as MethodNum,
-                IpldBlock::serialize_cbor(&params).unwrap(),
-            )
-            .unwrap()
-            .unwrap()
-            .deserialize()
-            .expect("failed to deserialize get claims return");
+        rt.call::<Actor>(
+            Method::GetClaimsExported as MethodNum,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )
+        .unwrap()
+        .unwrap();
 
         rt.verify();
-
-        assert_eq!(ret.batch_info.codes(), vec![ExitCode::OK]);
-        assert_eq!(ret.claims, vec![Claim { term_max: max_term + 1, ..claim1 }]);
 
         h.check_state(&rt);
     }
@@ -1517,11 +1514,13 @@ mod datacap {
                 "term_max 5260486 for claim 1 exceeds maximum 5260485 at current epoch 1100",
                 h.receive_tokens(&rt, payload, BATCH_EMPTY, BATCH_EMPTY, vec![], 0),
             );
+            rt.reset();
             // But just on the limit is allowed
             let reqs = vec![make_extension_req(PROVIDER1, cid1, max_allowed_term)];
             let payload = make_receiver_hook_token_payload(CLIENT1, vec![], reqs, SIZE);
             h.receive_tokens(&rt, payload, BATCH_EMPTY, BatchReturn::ok(1), vec![], SIZE).unwrap();
             h.check_state(&rt);
+            rt.reset();
         }
         {
             // Claim already expired
@@ -1536,6 +1535,7 @@ mod datacap {
                 "claim 1 expired at 518600, current epoch 518601",
                 h.receive_tokens(&rt, payload, BATCH_EMPTY, BATCH_EMPTY, vec![], 0),
             );
+            rt.reset();
             // But just at expiration is allowed
             let epoch = term_start + term_max;
             let new_term = epoch - term_start + MAXIMUM_VERIFIED_ALLOCATION_TERM; // Can get full max term now
@@ -1544,6 +1544,7 @@ mod datacap {
             let payload = make_receiver_hook_token_payload(CLIENT1, vec![], reqs, SIZE);
             h.receive_tokens(&rt, payload, BATCH_EMPTY, BatchReturn::ok(1), vec![], SIZE).unwrap();
             h.check_state(&rt);
+            rt.reset();
         }
         {
             // Extension is zero
@@ -1556,6 +1557,7 @@ mod datacap {
                 "term_max 518500 for claim 1 is not larger than existing term max 518500",
                 h.receive_tokens(&rt, payload, BATCH_EMPTY, BATCH_EMPTY, vec![], 0),
             );
+            rt.reset();
             // Extension is negative
             let reqs = vec![make_extension_req(PROVIDER1, cid1, term_max - 1)];
             let payload = make_receiver_hook_token_payload(CLIENT1, vec![], reqs, SIZE);
@@ -1564,11 +1566,13 @@ mod datacap {
                 "term_max 518499 for claim 1 is not larger than existing term max 518500",
                 h.receive_tokens(&rt, payload, BATCH_EMPTY, BATCH_EMPTY, vec![], 0),
             );
+            rt.reset();
             // But extension by just 1 epoch is allowed
             let reqs = vec![make_extension_req(PROVIDER1, cid1, term_max + 1)];
             let payload = make_receiver_hook_token_payload(CLIENT1, vec![], reqs, SIZE);
             h.receive_tokens(&rt, payload, BATCH_EMPTY, BatchReturn::ok(1), vec![], SIZE).unwrap();
             h.check_state(&rt);
+            rt.reset();
         }
     }
 }
