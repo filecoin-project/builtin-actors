@@ -287,9 +287,22 @@ impl Harness {
         claim_allocs: Vec<SectorAllocationClaims>,
         datacap_burnt: u64,
         all_or_nothing: bool,
+        expect_claimed: Vec<(AllocationID, Allocation)>,
     ) -> Result<ClaimAllocationsReturn, ActorError> {
         rt.expect_validate_caller_type(vec![Type::Miner]);
         rt.set_caller(*MINER_ACTOR_CODE_ID, Address::new_id(provider));
+
+        for (id, alloc) in expect_claimed.iter() {
+            rt.expect_emitted_event(
+                EventBuilder::new()
+                    .event_type("claim")
+                    .field_indexed("id", &id)
+                    .field_indexed("provider", &alloc.provider)
+                    .field_indexed("client", &alloc.client)
+                    .field_indexed("data-cid", &alloc.data)
+                    .build()?,
+            );
+        }
 
         if datacap_burnt > 0 {
             rt.expect_send_simple(
@@ -334,6 +347,9 @@ impl Harness {
                 EventBuilder::new()
                     .event_type("allocation-removed")
                     .field_indexed("id", &id)
+                    .field_indexed("client", &alloc.client)
+                    .field_indexed("provider", &alloc.provider)
+                    .field_indexed("data-cid", &alloc.data)
                     .build()?,
             );
         }
@@ -422,9 +438,16 @@ impl Harness {
             );
         }
 
-        for id in expected_alloc_ids.iter() {
+        let allocs_req: AllocationRequests = payload.operator_data.deserialize().unwrap();
+        for (alloc, id) in allocs_req.allocations.iter().zip(expected_alloc_ids.iter()) {
             rt.expect_emitted_event(
-                EventBuilder::new().event_type("allocation").field_indexed("id", &id).build()?,
+                EventBuilder::new()
+                    .event_type("allocation")
+                    .field_indexed("id", &id)
+                    .field_indexed("client", &payload.from)
+                    .field_indexed("provider", &alloc.provider)
+                    .field_indexed("data-cid", &alloc.data)
+                    .build()?,
             );
         }
 

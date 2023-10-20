@@ -343,7 +343,7 @@ impl Actor {
                         )?
                         .unwrap();
 
-                    emit::allocation_removed(rt, *id)?;
+                    emit::allocation_removed(rt, *id, &existing)?;
 
                     // Unwrapping here as both paths to here should ensure the allocation exists.
                     recovered_datacap += existing.size.0;
@@ -445,6 +445,9 @@ impl Actor {
                     if !inserted {
                         return Err(actor_error!(illegal_argument, "claim {} already exists", id));
                     }
+
+                    emit::claim(rt, id, &new_claim)?;
+
                     allocs.remove(new_claim.client, id).context_code(
                         ExitCode::USR_ILLEGAL_STATE,
                         format!("failed to remove allocation {}", id),
@@ -705,8 +708,8 @@ impl Actor {
         let ids = rt.transaction(|st: &mut State, rt| {
             let ids = st.insert_allocations(rt.store(), client, new_allocs.clone())?;
 
-            for id in ids.iter() {
-                emit::allocation(rt, *id)?;
+            for (id, alloc) in ids.iter().zip(new_allocs.iter()) {
+                emit::allocation(rt, *id, alloc)?;
             }
 
             st.put_claims(rt.store(), updated_claims)?;

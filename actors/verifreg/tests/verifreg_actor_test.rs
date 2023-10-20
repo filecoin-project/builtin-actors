@@ -672,7 +672,16 @@ mod allocs_claims {
         {
             // Claim two for PROVIDER1 in one sector
             let reqs = vec![make_claim_reqs(sector, expiry, &[(id1, &alloc1), (id2, &alloc2)])];
-            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, size * 2, false).unwrap();
+            let ret = h
+                .claim_allocations(
+                    &rt,
+                    PROVIDER1,
+                    reqs,
+                    size * 2,
+                    false,
+                    vec![(id1, alloc1.clone()), (id2, alloc2.clone())],
+                )
+                .unwrap();
 
             assert_eq!(ret.sector_results.codes(), vec![ExitCode::OK]);
             assert_eq!(ret.sector_claims[0].claimed_space, BigInt::from(2 * size));
@@ -689,7 +698,9 @@ mod allocs_claims {
                 make_claim_reqs(sector, expiry, &[(id2, &alloc2)]),
             ];
             reqs[1].claims[0].client = CLIENT1;
-            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, size, false).unwrap();
+            let ret = h
+                .claim_allocations(&rt, PROVIDER1, reqs, size, false, vec![(id1, alloc1.clone())])
+                .unwrap();
             assert_eq!(ret.sector_results.codes(), vec![ExitCode::OK, ExitCode::USR_NOT_FOUND]);
             assert_eq!(ret.sector_claims[0].claimed_space, BigInt::from(size));
             assert_alloc_claimed(&rt, CLIENT1, PROVIDER1, id1, &alloc1, 0, sector);
@@ -702,7 +713,7 @@ mod allocs_claims {
             let reqs = vec![
                 make_claim_reqs(sector, expiry, &[(id4, &alloc4)]), // Wrong provider
             ];
-            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
+            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false, vec![]).unwrap();
             assert_eq!(ret.sector_results.codes(), vec![ExitCode::USR_FORBIDDEN]);
             assert_eq!(ret.sector_claims.len(), 0);
             assert_allocation(&rt, CLIENT1, id4, &alloc4);
@@ -714,7 +725,7 @@ mod allocs_claims {
             let reqs = vec![make_claim_reqs(sector, expiry, &[(id1, &alloc1), (id1, &alloc1)])];
             expect_abort(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
-                h.claim_allocations(&rt, PROVIDER1, reqs, size, false),
+                h.claim_allocations(&rt, PROVIDER1, reqs, size, false, vec![(id1, alloc1.clone())]),
             );
             rt.reset();
 
@@ -723,7 +734,9 @@ mod allocs_claims {
                 make_claim_reqs(sector, expiry, &[(id1, &alloc1)]),
                 make_claim_reqs(sector, expiry, &[(id1, &alloc1)]),
             ];
-            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, size, false).unwrap();
+            let ret = h
+                .claim_allocations(&rt, PROVIDER1, reqs, size, false, vec![(id1, alloc1.clone())])
+                .unwrap();
             assert_eq!(ret.sector_results.codes(), vec![ExitCode::OK, ExitCode::USR_NOT_FOUND]);
             assert_eq!(ret.sector_claims[0].claimed_space, BigInt::from(size));
             assert_alloc_claimed(&rt, CLIENT1, PROVIDER1, id1, &alloc1, 0, sector);
@@ -740,7 +753,7 @@ mod allocs_claims {
                 Cid::from_str("bafyreibjo4xmgaevkgud7mbifn3dzp4v4lyaui4yvqp3f2bqwtxcjrdqg4")
                     .unwrap();
             reqs[1].claims[0].size = PaddedPieceSize(size + 1);
-            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
+            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false, vec![]).unwrap();
             assert_eq!(
                 ret.sector_results.codes(),
                 vec![ExitCode::USR_FORBIDDEN, ExitCode::USR_FORBIDDEN]
@@ -753,7 +766,7 @@ mod allocs_claims {
             rt.replace_state(&prior_state);
             let reqs = vec![make_claim_reqs(sector, expiry, &[(id1, &alloc1)])];
             rt.set_epoch(alloc1.expiration + 1);
-            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
+            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false, vec![]).unwrap();
             assert_eq!(ret.sector_results.codes(), vec![ExitCode::USR_FORBIDDEN]);
             assert_eq!(ret.sector_claims.len(), 0);
             h.check_state(&rt);
@@ -763,13 +776,13 @@ mod allocs_claims {
             // Sector expiration too soon
             rt.replace_state(&prior_state);
             let reqs = vec![make_claim_reqs(sector, alloc1.term_min - 1, &[(id1, &alloc1)])];
-            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
+            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false, vec![]).unwrap();
             assert_eq!(ret.sector_results.codes(), vec![ExitCode::USR_FORBIDDEN]);
             assert_eq!(ret.sector_claims.len(), 0);
 
             // Sector expiration too late
             let reqs = vec![make_claim_reqs(sector, alloc1.term_max + 1, &[(id1, &alloc1)])];
-            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
+            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false, vec![]).unwrap();
             assert_eq!(ret.sector_results.codes(), vec![ExitCode::USR_FORBIDDEN]);
             assert_eq!(ret.sector_claims.len(), 0);
             h.check_state(&rt);
@@ -782,7 +795,9 @@ mod allocs_claims {
                 make_claim_reqs(sector, expiry, &[(id3, &alloc3)]),
             ];
             reqs[0].claims[1].size = PaddedPieceSize(0);
-            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, size, false).unwrap();
+            let ret = h
+                .claim_allocations(&rt, PROVIDER1, reqs, size, false, vec![(id3, alloc3.clone())])
+                .unwrap();
             assert_eq!(ret.sector_results.codes(), vec![ExitCode::USR_FORBIDDEN, ExitCode::OK]);
             assert_eq!(ret.sector_claims[0].claimed_space, BigInt::from(size));
             assert_allocation(&rt, CLIENT1, id1, &alloc1);
@@ -798,7 +813,7 @@ mod allocs_claims {
             ];
             reqs[0].claims[1].size = PaddedPieceSize(0);
             reqs[1].claims[0].size = PaddedPieceSize(0);
-            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false).unwrap();
+            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, 0, false, vec![]).unwrap();
             assert_eq!(
                 ret.sector_results.codes(),
                 vec![ExitCode::USR_FORBIDDEN, ExitCode::USR_FORBIDDEN]
@@ -813,9 +828,10 @@ mod allocs_claims {
                 make_claim_reqs(sector, expiry, &[(id3, &alloc3)]),
             ];
             reqs[0].claims[1].size = PaddedPieceSize(0);
+            // TODO Understand why this works for claim3
             expect_abort(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
-                h.claim_allocations(&rt, PROVIDER1, reqs, 0, true),
+                h.claim_allocations(&rt, PROVIDER1, reqs, 0, true, vec![(id3, alloc3)]),
             );
             rt.reset();
         }
