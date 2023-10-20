@@ -563,15 +563,19 @@ mod allocs_claims {
         let id2 = h.create_alloc(&rt, &alloc2).unwrap();
         let state_with_allocs: State = rt.get_state();
 
+        let expect_1 = vec![(id1, alloc1.clone())];
+        let expect_2 = vec![(id2, alloc2.clone())];
+        let expect_both = vec![(id1, alloc1.clone()), (id2, alloc2.clone())];
+
         // Can't remove allocations that aren't expired
-        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![id1, id2], 0).unwrap();
+        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![id1, id2], vec![]).unwrap();
         assert_eq!(vec![1, 2], ret.considered);
         assert_eq!(vec![ExitCode::USR_FORBIDDEN, ExitCode::USR_FORBIDDEN], ret.results.codes());
         assert_eq!(DataCap::zero(), ret.datacap_recovered);
 
         // Can't remove with wrong client ID
         rt.set_epoch(200);
-        let ret = h.remove_expired_allocations(&rt, CLIENT2, vec![id1, id2], 0).unwrap();
+        let ret = h.remove_expired_allocations(&rt, CLIENT2, vec![id1, id2], vec![]).unwrap();
         assert_eq!(vec![1, 2], ret.considered);
         assert_eq!(vec![ExitCode::USR_NOT_FOUND, ExitCode::USR_NOT_FOUND], ret.results.codes());
         assert_eq!(DataCap::zero(), ret.datacap_recovered);
@@ -579,7 +583,7 @@ mod allocs_claims {
         // Remove the first alloc, which expired.
         rt.set_epoch(100);
         let ret =
-            h.remove_expired_allocations(&rt, CLIENT1, vec![id1, id2], alloc1.size.0).unwrap();
+            h.remove_expired_allocations(&rt, CLIENT1, vec![id1, id2], expect_1.clone()).unwrap();
         assert_eq!(vec![1, 2], ret.considered);
         assert_eq!(vec![ExitCode::OK, ExitCode::USR_FORBIDDEN], ret.results.codes());
         assert_eq!(DataCap::from(alloc1.size.0), ret.datacap_recovered);
@@ -587,21 +591,21 @@ mod allocs_claims {
         // Remove the second alloc (the first is no longer found).
         rt.set_epoch(200);
         let ret =
-            h.remove_expired_allocations(&rt, CLIENT1, vec![id1, id2], alloc2.size.0).unwrap();
+            h.remove_expired_allocations(&rt, CLIENT1, vec![id1, id2], expect_2.clone()).unwrap();
         assert_eq!(vec![1, 2], ret.considered);
         assert_eq!(vec![ExitCode::USR_NOT_FOUND, ExitCode::OK], ret.results.codes());
         assert_eq!(DataCap::from(alloc2.size.0), ret.datacap_recovered);
 
         // Reset state and show we can remove two at once.
         rt.replace_state(&state_with_allocs);
-        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![id1, id2], total_size).unwrap();
+        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![id1, id2], expect_both).unwrap();
         assert_eq!(vec![1, 2], ret.considered);
         assert_eq!(vec![ExitCode::OK, ExitCode::OK], ret.results.codes());
         assert_eq!(DataCap::from(total_size), ret.datacap_recovered);
 
         // Reset state and show that only what was asked for is removed.
         rt.replace_state(&state_with_allocs);
-        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![id1], alloc1.size.0).unwrap();
+        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![id1], expect_1.clone()).unwrap();
         assert_eq!(vec![1], ret.considered);
         assert_eq!(vec![ExitCode::OK], ret.results.codes());
         assert_eq!(DataCap::from(alloc1.size.0), ret.datacap_recovered);
@@ -609,7 +613,7 @@ mod allocs_claims {
         // Reset state and show that specifying none removes only expired allocations
         rt.set_epoch(0);
         rt.replace_state(&state_with_allocs);
-        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![], 0).unwrap();
+        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![], vec![]).unwrap();
         assert_eq!(Vec::<AllocationID>::new(), ret.considered);
         assert_eq!(Vec::<ExitCode>::new(), ret.results.codes());
         assert_eq!(DataCap::zero(), ret.datacap_recovered);
@@ -617,7 +621,7 @@ mod allocs_claims {
         assert!(h.load_alloc(&rt, CLIENT1, id2).is_some());
 
         rt.set_epoch(100);
-        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![], alloc1.size.0).unwrap();
+        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![], expect_1).unwrap();
         assert_eq!(vec![1], ret.considered);
         assert_eq!(vec![ExitCode::OK], ret.results.codes());
         assert_eq!(DataCap::from(alloc1.size.0), ret.datacap_recovered);
@@ -625,7 +629,7 @@ mod allocs_claims {
         assert!(h.load_alloc(&rt, CLIENT1, id2).is_some());
 
         rt.set_epoch(200);
-        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![], alloc2.size.0).unwrap();
+        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![], expect_2).unwrap();
         assert_eq!(vec![2], ret.considered);
         assert_eq!(vec![ExitCode::OK], ret.results.codes());
         assert_eq!(DataCap::from(alloc2.size.0), ret.datacap_recovered);
@@ -634,7 +638,9 @@ mod allocs_claims {
 
         // Reset state and show that specifying none removes *all* expired allocations
         rt.replace_state(&state_with_allocs);
-        let ret = h.remove_expired_allocations(&rt, CLIENT1, vec![], total_size).unwrap();
+        let ret = h
+            .remove_expired_allocations(&rt, CLIENT1, vec![], vec![(id1, alloc1), (id2, alloc2)])
+            .unwrap();
         assert_eq!(vec![1, 2], ret.considered);
         assert_eq!(vec![ExitCode::OK, ExitCode::OK], ret.results.codes());
         assert_eq!(DataCap::from(total_size), ret.datacap_recovered);
@@ -1375,6 +1381,7 @@ mod datacap {
                 .as_str(),
             h.receive_tokens(&rt, payload, BatchReturn::ok(1), BATCH_EMPTY, vec![1], 0),
         );
+        rt.reset();
         h.check_state(&rt);
     }
 

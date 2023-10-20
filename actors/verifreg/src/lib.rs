@@ -335,12 +335,18 @@ impl Actor {
                 }
 
                 for id in to_remove {
-                    let existing = allocs.remove(params.client, *id).context_code(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to remove allocation {}", id),
-                    )?;
+                    let existing = allocs
+                        .remove(params.client, *id)
+                        .context_code(
+                            ExitCode::USR_ILLEGAL_STATE,
+                            format!("failed to remove allocation {}", id),
+                        )?
+                        .unwrap();
+
+                    emit::allocation_removed(rt, *id)?;
+
                     // Unwrapping here as both paths to here should ensure the allocation exists.
-                    recovered_datacap += existing.unwrap().size.0;
+                    recovered_datacap += existing.size.0;
                 }
 
                 st.save_allocs(&mut allocs)?;
@@ -697,7 +703,12 @@ impl Actor {
 
         // Save new allocations and updated claims.
         let ids = rt.transaction(|st: &mut State, rt| {
-            let ids = st.insert_allocations(rt.store(), client, new_allocs)?;
+            let ids = st.insert_allocations(rt.store(), client, new_allocs.clone())?;
+
+            for id in ids.iter() {
+                emit::allocation(rt, *id)?;
+            }
+
             st.put_claims(rt.store(), updated_claims)?;
             Ok(ids)
         })?;

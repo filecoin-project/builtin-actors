@@ -1,7 +1,7 @@
 // A namespace for helpers that build and emit verified registry events.
 
-use crate::ActorError;
 use crate::DataCap;
+use crate::{ActorError, AllocationID};
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::EventBuilder;
 use fvm_shared::ActorID;
@@ -20,5 +20,17 @@ pub fn verifier_balance(
             .field_indexed("verifier", &verifier)
             .field("balance", new_balance)
             .build()?,
+    )
+}
+
+/// Indicates a new allocation has been made.
+pub fn allocation(rt: &impl Runtime, id: AllocationID) -> Result<(), ActorError> {
+    rt.emit_event(&EventBuilder::new().event_type("allocation").field_indexed("id", &id).build()?)
+}
+
+/// Indicates an expired allocation has been removed.
+pub fn allocation_removed(rt: &impl Runtime, id: AllocationID) -> Result<(), ActorError> {
+    rt.emit_event(
+        &EventBuilder::new().event_type("allocation-removed").field_indexed("id", &id).build()?,
     )
 }

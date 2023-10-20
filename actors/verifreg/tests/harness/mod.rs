@@ -324,9 +324,19 @@ impl Harness {
         rt: &MockRuntime,
         client: ActorID,
         allocation_ids: Vec<AllocationID>,
-        expected_datacap: u64,
+        expect_removed: Vec<(AllocationID, Allocation)>,
     ) -> Result<RemoveExpiredAllocationsReturn, ActorError> {
         rt.expect_validate_caller_any();
+        let mut expected_datacap = 0u64;
+        for (id, alloc) in expect_removed {
+            expected_datacap += alloc.size.0;
+            rt.expect_emitted_event(
+                EventBuilder::new()
+                    .event_type("allocation-removed")
+                    .field_indexed("id", &id)
+                    .build()?,
+            );
+        }
 
         rt.expect_send_simple(
             DATACAP_TOKEN_ACTOR_ADDR,
@@ -409,6 +419,12 @@ impl Harness {
                 TokenAmount::zero(),
                 IpldBlock::serialize_cbor(&BurnReturn { balance: TokenAmount::zero() }).unwrap(),
                 ExitCode::OK,
+            );
+        }
+
+        for id in expected_alloc_ids.iter() {
+            rt.expect_emitted_event(
+                EventBuilder::new().event_type("allocation").field_indexed("id", &id).build()?,
             );
         }
 
