@@ -1,3 +1,4 @@
+use export_macro::vm_test;
 use fil_actor_datacap::{
     DestroyParams, Method as DataCapMethod, MintParams, State as DataCapState,
 };
@@ -29,9 +30,11 @@ use vm_api::util::{apply_code, apply_ok, get_state, DynBlockstore};
 use vm_api::VM;
 
 use crate::expects::Expect;
+
 use crate::util::{assert_invariants, create_accounts, verifreg_add_verifier};
 use crate::{TEST_VERIFREG_ROOT_ADDR, TEST_VERIFREG_ROOT_ID};
 
+#[vm_test]
 pub fn remove_datacap_simple_successful_path_test(v: &dyn VM) {
     let addrs = create_accounts(v, 4, &TokenAmount::from_whole(10_000));
     let (verifier1, verifier2, verified_client) = (addrs[0], addrs[1], addrs[2]);
@@ -303,6 +306,7 @@ pub fn remove_datacap_simple_successful_path_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default())
 }
 
+#[vm_test]
 pub fn remove_datacap_fails_on_verifreg_test(v: &dyn VM) {
     let addrs = create_accounts(v, 2, &TokenAmount::from_whole(10_000));
     let (verifier1, verifier2) = (addrs[0], addrs[1]);

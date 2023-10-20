@@ -1,3 +1,4 @@
+use export_macro::vm_test;
 use fil_actor_datacap::{Method as DataCapMethod, MintParams};
 use fil_actor_verifreg::{AllocationRequest, AllocationRequests};
 use fil_actors_runtime::cbor::serialize;
@@ -17,6 +18,7 @@ use vm_api::VM;
 
 use crate::util::{create_accounts, create_miner};
 
+#[vm_test]
 pub fn datacap_transfer_test(v: &dyn VM) {
     let policy = Policy::default();
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
@@ -194,6 +196,7 @@ pub fn datacap_transfer_test(v: &dyn VM) {
     );
 }
 
+#[vm_test]
 pub fn call_name_symbol_test(v: &dyn VM) {
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(10_000));
     let sender = addrs[0];

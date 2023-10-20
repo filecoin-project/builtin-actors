@@ -1,3 +1,4 @@
+use export_macro::vm_test;
 use fil_actor_cron::Method as CronMethod;
 use fil_actor_miner::SectorPreCommitOnChainInfo;
 use fil_actor_miner::{power_for_sector, State as MinerState};
@@ -163,4 +164,14 @@ pub fn batch_onboarding_test(v: &dyn VM, v2: bool) {
         &Policy::default(),
         &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
     );
+}
+
+#[vm_test]
+pub fn batch_onboarding_deals_test_v2(v: &dyn VM) {
+    batch_onboarding_test(v, true);
+}
+
+#[vm_test]
+pub fn batch_onboarding_deals_test_v1(v: &dyn VM) {
+    batch_onboarding_test(v, false);
 }

@@ -1,3 +1,4 @@
+use export_macro::vm_test;
 use fil_actor_init::ExecReturn;
 use fil_actor_multisig::{
     compute_proposal_hash, Method as MsigMethod, ProposeParams, RemoveSignerParams,
@@ -23,6 +24,7 @@ use vm_api::VM;
 use crate::expects::Expect;
 use crate::util::{assert_invariants, create_accounts};
 
+#[vm_test]
 pub fn proposal_hash_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let sys_act_start_bal = v.actor(&SYSTEM_ACTOR_ADDR).unwrap().balance;
@@ -169,6 +171,7 @@ pub fn test_delete_self_inner_test(v: &dyn VM, signers: u64, threshold: usize, r
     assert_invariants(v, &Policy::default())
 }
 
+#[vm_test]
 pub fn swap_self_1_of_2_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let (alice, bob, chuck) = (addrs[0], addrs[1], addrs[2]);
@@ -194,6 +197,7 @@ pub fn swap_self_1_of_2_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default());
 }
 
+#[vm_test]
 pub fn swap_self_2_of_3_test(v: &dyn VM) {
     let addrs = create_accounts(v, 4, &TokenAmount::from_whole(10_000));
     let (alice, bob, chuck, dinesh) = (addrs[0], addrs[1], addrs[2], addrs[3]);
