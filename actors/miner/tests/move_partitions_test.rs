@@ -696,3 +696,50 @@ fn dispute_remaining_partition_after_move() {
         h.dispute_window_post(&rt, &orig_deadline, 0, target_sectors, None);
     }
 }
+
+#[test]
+fn move_partition_with_terminated_sector() {
+    let (mut h, rt) = setup();
+
+    // create 2 sectors in partition 0
+    let sectors_info = h.commit_and_prove_sectors(
+        &rt,
+        2,
+        DEFAULT_SECTOR_EXPIRATION,
+        vec![vec![10], vec![20]],
+        true,
+    );
+    h.advance_and_submit_posts(&rt, &sectors_info);
+
+    // terminate 1 sector
+    {
+        // A miner will pay the minimum of termination fee and locked funds. Add some locked funds to ensure
+        // correct fee calculation is used.
+        h.apply_rewards(&rt, BIG_REWARDS.clone(), TokenAmount::zero());
+
+        let expected_fee = calc_expected_fee_for_termination(&h, &rt, sectors_info[1].clone());
+
+        let sectors = bitfield_from_slice(&[sectors_info[1].sector_number]);
+        h.terminate_sectors(&rt, &sectors, expected_fee);
+    }
+
+    let st = h.get_state(&rt);
+    let (orig_deadline_id, partition_id) =
+        st.find_sector(&rt.store, sectors_info[0].sector_number).unwrap();
+
+    h.advance_to_epoch_with_cron(&rt, nearest_safe_epoch(&rt, &h, orig_deadline_id));
+
+    let dest_deadline_id =
+        farthest_possible_to_deadline(&rt, orig_deadline_id, h.current_deadline(&rt));
+
+    let result = h.move_partitions(
+        &rt,
+        orig_deadline_id,
+        dest_deadline_id,
+        bitfield_from_slice(&[partition_id]),
+        &[],
+    );
+    assert!(result.is_ok());
+
+    h.check_state(&rt);
+}
