@@ -92,3 +92,49 @@ jobs:
       uses: codecov/codecov-action@d9f34f8cd5cb3b3eb79b3e4b5dae3a16df499a70 # v3.1.1
       with:
         files: lcov.info
+  # Lint shell scripts
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+    - name: Run shellcheck
+      uses: ludeeus/action-shellcheck@1.1.0
+  # Show WASM bundle size summary as a message in the pull request
+  bundle-size:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checking out
+      uses: actions/checkout@v3
+    - name: Install Rust toolchain
+      uses: ./.github/actions/rust-cargo-run
+      with:
+        command: version
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        save_cache: true
+    - name: Generate bundle delta summary
+      id: bundle-summary
+      run: |
+        echo 'bundle-summary<<EOF' >> $GITHUB_ENV
+        make bundle-size | tail -n3 >> $GITHUB_ENV
+        echo 'EOF' >> $GITHUB_ENV
+    # Find a relevant comment from GH bot to update if there is one
+    - name: Find Comment
+      uses: peter-evans/find-comment@v2
+      id: fc
+      with:
+        issue-number: ${{ github.event.pull_request.number }}
+        comment-author: 'github-actions[bot]'
+        body-regex: "^### WASM bundle summary"
+    - name: Create or update comment
+      uses: peter-evans/create-or-update-comment@v2
+      with:
+        comment-id: ${{ steps.fc.outputs.comment-id }}
+        issue-number: ${{ github.event.pull_request.number }}
+        body: |
+          ### WASM bundle summary 📦
+          ```
+          ${{ env.bundle-summary }}
+          ```
+        edit-mode: replace

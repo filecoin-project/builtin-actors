@@ -35,7 +35,10 @@ set-version: check-clean deps-release check
 publish:
 	cargo workspaces publish --from-git
 
-# Create a bundle in a deterministic location
+# Update the bundle size file, print the summary
+bundle-size: bundle
+	@bash scripts/update-bundle-size.sh $@ output/builtin-actors.car
+
 bundle:
 	cargo run -- -o output/builtin-actors.car
 
@@ -61,7 +64,8 @@ bundle-testing:
 	BUILD_FIL_NETWORK=testing cargo run -- -o output/builtin-actors-testing.car
 	BUILD_FIL_NETWORK=testing-fake-proofs cargo run -- -o output/builtin-actors-testing-fake-proofs.car
 
-.PHONY: all-bundles bundle-mainnet bundle-caterpillarnet bundle-butterflynet bundle-calibrationnet bundle-devnet bundle-testing
+
+.PHONY: all-bundles bundle-mainnet bundle-caterpillarnet bundle-butterflynet bundle-calibrationnet bundle-devnet bundle-testing bundle-size
 
 # Check if the working tree is clean.
 check-clean:
