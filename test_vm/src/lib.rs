@@ -267,10 +267,9 @@ impl<'bs> TestVM<'bs> {
         let state_tree = Tree::load(store, &self.checkpoint())?;
 
         let mut total = TokenAmount::zero();
-        state_tree.for_each(|_, actor| {
-            total += &actor.balance.clone();
-            Ok(())
-        })?;
+        state_tree.for_each(|(_, actor)| {
+            total += &actor.balance;
+        });
         Ok(total)
     }
 }
@@ -422,5 +421,10 @@ impl<'bs> VM for TestVM<'bs> {
 
     fn set_circulating_supply(&self, supply: TokenAmount) {
         self.circulating_supply.replace(supply);
+    }
+
+    fn actor_states(&self) -> Box<dyn Iterator<Item = (Address, ActorState)> + '_> {
+        let state_tree = Tree::load(self.store, &self.state_root.borrow()).unwrap();
+        Box::new(state_tree)
     }
 }

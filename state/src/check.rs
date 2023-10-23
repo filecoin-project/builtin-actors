@@ -1,8 +1,4 @@
-use std::collections::BTreeMap;
-use std::collections::HashMap;
-
 use anyhow::anyhow;
-use anyhow::bail;
 use cid::Cid;
 use fil_actor_account::State as AccountState;
 use fil_actor_cron::State as CronState;
@@ -33,6 +29,8 @@ use fvm_shared::address::Protocol;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use num_traits::Zero;
+use std::collections::BTreeMap;
+use std::collections::HashMap;
 
 use fil_actor_account::testing as account;
 use fil_actor_cron::testing as cron;
@@ -65,25 +63,38 @@ impl<'a, BS: Blockstore> Tree<'a, BS> {
         Ok(Tree { map, store })
     }
 
-    pub fn for_each<F>(&self, mut f: F) -> anyhow::Result<()>
-    where
-        F: FnMut(&Address, &ActorState) -> anyhow::Result<()>,
-    {
-        self.map
-            .for_each(|key, val| {
-                let address = Address::from_bytes(key)?;
-                f(&address, val)
-            })
-            .map_err(|e| anyhow!("Failed iterating map: {}", e))
+    // pub fn for_each<F>(&self, mut f: F) -> anyhow::Result<()>
+    // where
+    //     F: FnMut(&Address, &ActorState) -> anyhow::Result<()>,
+    // {
+    //     self.map
+    //         .for_each(|key, val| {
+    //             let address = Address::from_bytes(key)?;
+    //             f(&address, val)
+    //         })
+    //         .map_err(|e| anyhow!("Failed iterating map: {}", e))
+    // }
+}
+
+impl<'a, BS: Blockstore> Iterator for Tree<'a, BS> {
+    type Item = (Address, ActorState);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let res = self.map.into_iter().next();
+        res.and_then(Result::ok).map(|(key, state)| {
+            let address = Address::from_bytes(key).unwrap();
+            (address, state.clone())
+        })
     }
 }
 
 macro_rules! get_state {
-    ($tree:ident, $actor:ident, $state:ty) => {
-        $tree
-            .store
-            .get_cbor::<$state>(&$actor.state)?
-            .ok_or_else(|| anyhow!("{} is empty", stringify!($state)))?
+    ($store:ident, $actor:ident, $state:ty) => {
+        $store
+            .get_cbor::<$state>(&$actor.state)
+            .unwrap()
+            .ok_or_else(|| anyhow!("{} is empty", stringify!($state)))
+            .unwrap()
     };
 }
 
@@ -91,10 +102,11 @@ macro_rules! get_state {
 // to match the Manifest implementation in the FVM.
 // It could be replaced with a custom mapping trait (while Rust doesn't support
 // abstract collection traits).
-pub fn check_state_invariants<BS: Blockstore>(
+pub fn check_state_invariants<'a, BS: Blockstore>(
+    store: &BS,
     manifest: &BTreeMap<Cid, Type>,
     policy: &Policy,
-    tree: Tree<'_, BS>,
+    tree: Box<dyn Iterator<Item = (Address, ActorState)> + 'a>,
     expected_balance_total: &TokenAmount,
     prior_epoch: ChainEpoch,
 ) -> anyhow::Result<MessageAccumulator> {
@@ -113,7 +125,7 @@ pub fn check_state_invariants<BS: Blockstore>(
     let mut verifreg_summary: Option<verifreg::StateSummary> = None;
     let mut datacap_summary: Option<frc46_token::token::state::StateSummary> = None;
 
-    tree.for_each(|key, actor| {
+    tree.for_each(|(key, actor)| {
         let acc = acc.with_prefix(format!("{key} "));
 
         if key.protocol() != Protocol::ID {
@@ -124,77 +136,71 @@ pub fn check_state_invariants<BS: Blockstore>(
         match manifest.get(&actor.code) {
             Some(Type::System) => (),
             Some(Type::Init) => {
-                let state = get_state!(tree, actor, InitState);
-                let (summary, msgs) = init::check_state_invariants(&state, tree.store);
+                let state = get_state!(store, actor, InitState);
+                let (summary, msgs) = init::check_state_invariants(&state, &store);
                 acc.with_prefix("init: ").add_all(&msgs);
                 init_summary = Some(summary);
             }
             Some(Type::Cron) => {
-                let state = get_state!(tree, actor, CronState);
+                let state = get_state!(store, actor, CronState);
                 let (summary, msgs) = cron::check_state_invariants(&state);
                 acc.with_prefix("cron: ").add_all(&msgs);
                 cron_summary = Some(summary);
             }
             Some(Type::Account) => {
-                let state = get_state!(tree, actor, AccountState);
-                let (summary, msgs) = account::check_state_invariants(&state, key);
+                let state = get_state!(store, actor, AccountState);
+                let (summary, msgs) = account::check_state_invariants(&state, &key);
                 acc.with_prefix("account: ").add_all(&msgs);
                 account_summaries.push(summary);
             }
             Some(Type::Power) => {
-                let state = get_state!(tree, actor, PowerState);
-                let (summary, msgs) = power::check_state_invariants(policy, &state, tree.store);
+                let state = get_state!(store, actor, PowerState);
+                let (summary, msgs) = power::check_state_invariants(policy, &state, store);
                 acc.with_prefix("power: ").add_all(&msgs);
                 power_summary = Some(summary);
             }
             Some(Type::Miner) => {
-                let state = get_state!(tree, actor, MinerState);
+                let state = get_state!(store, actor, MinerState);
                 let (summary, msgs) =
-                    miner::check_state_invariants(policy, &state, tree.store, &actor.balance);
+                    miner::check_state_invariants(policy, &state, store, &actor.balance);
                 acc.with_prefix("miner: ").add_all(&msgs);
-                miner_summaries.insert(*key, summary);
+                miner_summaries.insert(key, summary);
             }
             Some(Type::Market) => {
-                let state = get_state!(tree, actor, MarketState);
-                let (summary, msgs) = market::check_state_invariants(
-                    &state,
-                    tree.store,
-                    &actor.balance,
-                    prior_epoch + 1,
-                );
+                let state = get_state!(store, actor, MarketState);
+                let (summary, msgs) =
+                    market::check_state_invariants(&state, store, &actor.balance, prior_epoch + 1);
                 acc.with_prefix("market: ").add_all(&msgs);
                 market_summary = Some(summary);
             }
             Some(Type::PaymentChannel) => {
-                let state = get_state!(tree, actor, PaychState);
-                let (summary, msgs) =
-                    paych::check_state_invariants(&state, tree.store, &actor.balance);
+                let state = get_state!(store, actor, PaychState);
+                let (summary, msgs) = paych::check_state_invariants(&state, store, &actor.balance);
                 acc.with_prefix("paych: ").add_all(&msgs);
                 paych_summaries.push(summary);
             }
             Some(Type::Multisig) => {
-                let state = get_state!(tree, actor, MultisigState);
-                let (summary, msgs) = multisig::check_state_invariants(&state, tree.store);
+                let state = get_state!(store, actor, MultisigState);
+                let (summary, msgs) = multisig::check_state_invariants(&state, store);
                 acc.with_prefix("multisig: ").add_all(&msgs);
                 multisig_summaries.push(summary);
             }
             Some(Type::Reward) => {
-                let state = get_state!(tree, actor, RewardState);
+                let state = get_state!(store, actor, RewardState);
                 let (summary, msgs) =
                     reward::check_state_invariants(&state, prior_epoch, &actor.balance);
                 acc.with_prefix("reward: ").add_all(&msgs);
                 reward_summary = Some(summary);
             }
             Some(Type::VerifiedRegistry) => {
-                let state = get_state!(tree, actor, VerifregState);
-                let (summary, msgs) =
-                    verifreg::check_state_invariants(&state, tree.store, prior_epoch);
+                let state = get_state!(store, actor, VerifregState);
+                let (summary, msgs) = verifreg::check_state_invariants(&state, store, prior_epoch);
                 acc.with_prefix("verifreg: ").add_all(&msgs);
                 verifreg_summary = Some(summary);
             }
             Some(Type::DataCap) => {
-                let state = get_state!(tree, actor, DataCapState);
-                let (summary, msgs) = datacap::check_state_invariants(&state, tree.store);
+                let state = get_state!(store, actor, DataCapState);
+                let (summary, msgs) = datacap::check_state_invariants(&state, store);
                 acc.with_prefix("datacap: ").add_all(&msgs);
                 datacap_summary = Some(summary);
             }
@@ -203,12 +209,10 @@ pub fn check_state_invariants<BS: Blockstore>(
             Some(Type::EAM) => {}
             Some(Type::EthAccount) => {}
             None => {
-                bail!("unexpected actor code CID {} for address {}", actor.code, key);
+                acc.add(format!("unexpected actor code CID {} for address {}", actor.code, key));
             }
         };
-
-        Ok(())
-    })?;
+    });
 
     // Perform cross-actor checks from state summaries here.
     if let Some(power_summary) = power_summary {
