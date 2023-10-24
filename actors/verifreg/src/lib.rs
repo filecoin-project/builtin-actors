@@ -343,7 +343,7 @@ impl Actor {
                         )?
                         .unwrap();
 
-                    emit::allocation_removed(rt, *id, &existing)?;
+                    emit::allocation_removed(rt, *id)?;
 
                     // Unwrapping here as both paths to here should ensure the allocation exists.
                     recovered_datacap += existing.size.0;
@@ -446,7 +446,7 @@ impl Actor {
                         return Err(actor_error!(illegal_argument, "claim {} already exists", id));
                     }
 
-                    emit::claim(rt, id, &new_claim)?;
+                    emit::claim(rt, id)?;
 
                     allocs.remove(new_claim.client, id).context_code(
                         ExitCode::USR_ILLEGAL_STATE,
@@ -563,7 +563,7 @@ impl Actor {
                         "HAMT put failure storing new claims",
                     )?;
                     batch_gen.add_success();
-                    emit::claim_updated(rt, term.claim_id, &new_claim)?;
+                    emit::claim_updated(rt, term.claim_id)?;
                 } else {
                     batch_gen.add_fail(ExitCode::USR_NOT_FOUND);
                     info!("no claim {} for provider {}", term.claim_id, term.provider);
@@ -607,7 +607,7 @@ impl Actor {
             }
 
             for id in to_remove {
-                let removed = claims
+                claims
                     .remove(params.provider, *id)
                     .context_code(
                         ExitCode::USR_ILLEGAL_STATE,
@@ -615,7 +615,7 @@ impl Actor {
                     )?
                     .unwrap();
 
-                emit::claim_removed(rt, *id, &removed)?;
+                emit::claim_removed(rt, *id)?;
             }
 
             st.save_claims(&mut claims)?;
@@ -714,14 +714,14 @@ impl Actor {
         let ids = rt.transaction(|st: &mut State, rt| {
             let ids = st.insert_allocations(rt.store(), client, new_allocs.clone())?;
 
-            for (id, alloc) in ids.iter().zip(new_allocs.iter()) {
-                emit::allocation(rt, *id, alloc)?;
+            for id in ids.iter() {
+                emit::allocation(rt, *id)?;
             }
 
             st.put_claims(rt.store(), updated_claims.clone())?;
 
-            for (id, claim) in updated_claims {
-                emit::claim_updated(rt, id, &claim)?;
+            for (id, _) in updated_claims {
+                emit::claim_updated(rt, id)?;
             }
 
             Ok(ids)

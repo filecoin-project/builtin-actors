@@ -140,7 +140,7 @@ impl Harness {
         );
         rt.expect_emitted_event(
             EventBuilder::new()
-                .event_type("verifier-balance")
+                .typ("verifier-balance")
                 .field_indexed("verifier", &verifier_resolved.id().unwrap())
                 .field("balance", &allowance)
                 .build()?,
@@ -162,7 +162,7 @@ impl Harness {
         rt.expect_validate_caller_addr(vec![self.root]);
         rt.expect_emitted_event(
             EventBuilder::new()
-                .event_type("verifier-balance")
+                .typ("verifier-balance")
                 .field_indexed("verifier", &verifier.id().unwrap())
                 .field("balance", &DataCap::zero())
                 .build()?,
@@ -230,7 +230,7 @@ impl Harness {
         let params = AddVerifiedClientParams { address: *client, allowance: allowance.clone() };
         rt.expect_emitted_event(
             EventBuilder::new()
-                .event_type("verifier-balance")
+                .typ("verifier-balance")
                 .field_indexed("verifier", &verifier.id().unwrap())
                 .field("balance", &(verifier_balance - allowance))
                 .build()?,
@@ -287,20 +287,14 @@ impl Harness {
         claim_allocs: Vec<SectorAllocationClaims>,
         datacap_burnt: u64,
         all_or_nothing: bool,
-        expect_claimed: Vec<(AllocationID, Allocation)>,
+        expect_claimed: Vec<AllocationID>,
     ) -> Result<ClaimAllocationsReturn, ActorError> {
         rt.expect_validate_caller_type(vec![Type::Miner]);
         rt.set_caller(*MINER_ACTOR_CODE_ID, Address::new_id(provider));
 
-        for (id, alloc) in expect_claimed.iter() {
+        for id in expect_claimed.iter() {
             rt.expect_emitted_event(
-                EventBuilder::new()
-                    .event_type("claim")
-                    .field_indexed("id", &id)
-                    .field_indexed("provider", &alloc.provider)
-                    .field_indexed("client", &alloc.client)
-                    .field_indexed("data-cid", &alloc.data)
-                    .build()?,
+                EventBuilder::new().typ("claim").field_indexed("id", &id).build()?,
             );
         }
 
@@ -344,13 +338,7 @@ impl Harness {
         for (id, alloc) in expect_removed {
             expected_datacap += alloc.size.0;
             rt.expect_emitted_event(
-                EventBuilder::new()
-                    .event_type("allocation-removed")
-                    .field_indexed("id", &id)
-                    .field_indexed("client", &alloc.client)
-                    .field_indexed("provider", &alloc.provider)
-                    .field_indexed("data-cid", &alloc.data)
-                    .build()?,
+                EventBuilder::new().typ("allocation-removed").field_indexed("id", &id).build()?,
             );
         }
 
@@ -387,19 +375,13 @@ impl Harness {
         rt: &MockRuntime,
         provider: ActorID,
         claim_ids: Vec<ClaimID>,
-        expect_removed: Vec<(ClaimID, Claim)>,
+        expect_removed: Vec<ClaimID>,
     ) -> Result<RemoveExpiredClaimsReturn, ActorError> {
         rt.expect_validate_caller_any();
 
-        for (id, claim) in expect_removed {
+        for id in expect_removed {
             rt.expect_emitted_event(
-                EventBuilder::new()
-                    .event_type("claim-removed")
-                    .field_indexed("id", &id)
-                    .field_indexed("provider", &claim.provider)
-                    .field_indexed("client", &claim.client)
-                    .field_indexed("data-cid", &claim.data)
-                    .build()?,
+                EventBuilder::new().typ("claim-removed").field_indexed("id", &id).build()?,
             );
         }
 
@@ -452,28 +434,15 @@ impl Harness {
         }
 
         let allocs_req: AllocationRequests = payload.operator_data.deserialize().unwrap();
-        for (alloc, id) in allocs_req.allocations.iter().zip(expected_alloc_ids.iter()) {
+        for id in expected_alloc_ids.iter() {
             rt.expect_emitted_event(
-                EventBuilder::new()
-                    .event_type("allocation")
-                    .field_indexed("id", &id)
-                    .field_indexed("client", &payload.from)
-                    .field_indexed("provider", &alloc.provider)
-                    .field_indexed("data-cid", &alloc.data)
-                    .build()?,
+                EventBuilder::new().typ("allocation").field_indexed("id", &id).build()?,
             );
         }
 
         for ext in allocs_req.extensions {
-            let claim = self.load_claim(rt, ext.provider, ext.claim).unwrap();
             rt.expect_emitted_event(
-                EventBuilder::new()
-                    .event_type("claim-updated")
-                    .field_indexed("id", &ext.claim)
-                    .field_indexed("provider", &claim.provider)
-                    .field_indexed("client", &claim.client)
-                    .field_indexed("data-cid", &claim.data)
-                    .build()?,
+                EventBuilder::new().typ("claim-updated").field_indexed("id", &ext.claim).build()?,
             );
         }
 
@@ -532,17 +501,11 @@ impl Harness {
         &self,
         rt: &MockRuntime,
         params: &ExtendClaimTermsParams,
-        expected: Vec<(ClaimID, Claim)>,
+        expected: Vec<ClaimID>,
     ) -> Result<ExtendClaimTermsReturn, ActorError> {
-        for (id, new_claim) in expected.iter() {
+        for id in expected.iter() {
             rt.expect_emitted_event(
-                EventBuilder::new()
-                    .event_type("claim-updated")
-                    .field_indexed("id", &id)
-                    .field_indexed("provider", &new_claim.provider)
-                    .field_indexed("client", &new_claim.client)
-                    .field_indexed("data-cid", &new_claim.data)
-                    .build()?,
+                EventBuilder::new().typ("claim-updated").field_indexed("id", &id).build()?,
             );
         }
 

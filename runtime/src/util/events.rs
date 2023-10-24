@@ -20,8 +20,8 @@ impl EventBuilder {
     }
 
     /// Initialise the "type" of the event i.e. Actor event type.
-    pub fn event_type(self, _type: &str) -> Self {
-        self.push_entry(EVENT_TYPE_KEY, _type, Flags::FLAG_INDEXED_KEY)
+    pub fn typ(self, _type: &str) -> Self {
+        self.push_entry(EVENT_TYPE_KEY, _type, Flags::FLAG_INDEXED_ALL)
     }
 
     /// Pushes an entry with an indexed key and an un-indexed, IPLD-CBOR-serialized value.
@@ -75,25 +75,25 @@ mod test {
 
     #[test]
     fn event_type() {
-        let e = EventBuilder::new().event_type("l1").event_type("l2").build().unwrap();
+        let e = EventBuilder::new().typ("l1").field_indexed("v1", "abc").build().unwrap();
 
         let l1_cbor = serialize_vec("l1", "event value").unwrap();
-        let l2_cbor = serialize_vec("l2", "event value").unwrap();
+        let v_cbor = serialize_vec("abc", "event value").unwrap();
 
         assert_eq!(
             ActorEvent {
                 entries: vec![
                     Entry {
-                        flags: Flags::FLAG_INDEXED_KEY,
+                        flags: Flags::FLAG_INDEXED_ALL,
                         key: EVENT_TYPE_KEY.to_string(),
                         codec: IPLD_CBOR,
                         value: l1_cbor, // CBOR for "l1"
                     },
                     Entry {
-                        flags: Flags::FLAG_INDEXED_KEY,
-                        key: EVENT_TYPE_KEY.to_string(),
+                        flags: Flags::FLAG_INDEXED_ALL,
+                        key: "v1".to_string(),
                         codec: IPLD_CBOR,
-                        value: l2_cbor, // CBOR for "l2"
+                        value: v_cbor, // CBOR for "abc"
                     },
                 ]
             },

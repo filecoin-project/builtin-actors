@@ -1,6 +1,6 @@
 // A namespace for helpers that build and emit verified registry events.
 
-use crate::{ActorError, Allocation, AllocationID, Claim};
+use crate::{ActorError, AllocationID};
 use crate::{ClaimID, DataCap};
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::EventBuilder;
@@ -16,7 +16,7 @@ pub fn verifier_balance(
 ) -> Result<(), ActorError> {
     rt.emit_event(
         &EventBuilder::new()
-            .event_type("verifier-balance")
+            .typ("verifier-balance")
             .field_indexed("verifier", &verifier)
             .field("balance", new_balance)
             .build()?,
@@ -24,63 +24,26 @@ pub fn verifier_balance(
 }
 
 /// Indicates a new allocation has been made.
-pub fn allocation(
-    rt: &impl Runtime,
-    id: AllocationID,
-    alloc: &Allocation,
-) -> Result<(), ActorError> {
-    rt.emit_event(&EventBuilder::new().event_type("allocation").with_allocation(id, alloc).build()?)
+pub fn allocation(rt: &impl Runtime, id: AllocationID) -> Result<(), ActorError> {
+    rt.emit_event(&EventBuilder::new().typ("allocation").field_indexed("id", &id).build()?)
 }
 
 /// Indicates an expired allocation has been removed.
-pub fn allocation_removed(
-    rt: &impl Runtime,
-    id: AllocationID,
-    alloc: &Allocation,
-) -> Result<(), ActorError> {
-    rt.emit_event(
-        &EventBuilder::new().event_type("allocation-removed").with_allocation(id, alloc).build()?,
-    )
+pub fn allocation_removed(rt: &impl Runtime, id: AllocationID) -> Result<(), ActorError> {
+    rt.emit_event(&EventBuilder::new().typ("allocation-removed").field_indexed("id", &id).build()?)
 }
 
 /// Indicates an allocation has been claimed.
-pub fn claim(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<(), ActorError> {
-    rt.emit_event(&EventBuilder::new().event_type("claim").with_claim(id, claim).build()?)
+pub fn claim(rt: &impl Runtime, id: ClaimID) -> Result<(), ActorError> {
+    rt.emit_event(&EventBuilder::new().typ("claim").field_indexed("id", &id).build()?)
 }
 
 /// Indicates an existing claim has been updated (e.g. with a longer term).
-pub fn claim_updated(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<(), ActorError> {
-    rt.emit_event(&EventBuilder::new().event_type("claim-updated").with_claim(id, claim).build()?)
+pub fn claim_updated(rt: &impl Runtime, id: ClaimID) -> Result<(), ActorError> {
+    rt.emit_event(&EventBuilder::new().typ("claim-updated").field_indexed("id", &id).build()?)
 }
 
 /// Indicates an expired claim has been removed.
-pub fn claim_removed(rt: &impl Runtime, id: ClaimID, claim: &Claim) -> Result<(), ActorError> {
-    rt.emit_event(&EventBuilder::new().event_type("claim-removed").with_claim(id, claim).build()?)
-}
-
-// Private helpers //
-trait WithAllocation {
-    fn with_allocation(self, id: AllocationID, alloc: &Allocation) -> EventBuilder;
-}
-
-impl WithAllocation for EventBuilder {
-    fn with_allocation(self, id: AllocationID, alloc: &Allocation) -> EventBuilder {
-        self.field_indexed("id", &id)
-            .field_indexed("client", &alloc.client)
-            .field_indexed("provider", &alloc.provider)
-            .field_indexed("data-cid", &alloc.data)
-    }
-}
-
-trait WithClaim {
-    fn with_claim(self, id: ClaimID, claim: &Claim) -> EventBuilder;
-}
-
-impl WithClaim for EventBuilder {
-    fn with_claim(self, id: ClaimID, claim: &Claim) -> EventBuilder {
-        self.field_indexed("id", &id)
-            .field_indexed("provider", &claim.provider)
-            .field_indexed("client", &claim.client)
-            .field_indexed("data-cid", &claim.data)
-    }
+pub fn claim_removed(rt: &impl Runtime, id: ClaimID) -> Result<(), ActorError> {
+    rt.emit_event(&EventBuilder::new().typ("claim-removed").field_indexed("id", &id).build()?)
 }

@@ -445,7 +445,7 @@ mod clients {
 
         rt.expect_emitted_event(
             EventBuilder::new()
-                .event_type("verifier-balance")
+                .typ("verifier-balance")
                 .field_indexed("verifier", &VERIFIER.id().unwrap())
                 .field("balance", &(allowance_verifier - allowance_client))
                 .build()
@@ -672,16 +672,8 @@ mod allocs_claims {
         {
             // Claim two for PROVIDER1 in one sector
             let reqs = vec![make_claim_reqs(sector, expiry, &[(id1, &alloc1), (id2, &alloc2)])];
-            let ret = h
-                .claim_allocations(
-                    &rt,
-                    PROVIDER1,
-                    reqs,
-                    size * 2,
-                    false,
-                    vec![(id1, alloc1.clone()), (id2, alloc2.clone())],
-                )
-                .unwrap();
+            let ret =
+                h.claim_allocations(&rt, PROVIDER1, reqs, size * 2, false, vec![id1, id2]).unwrap();
 
             assert_eq!(ret.sector_results.codes(), vec![ExitCode::OK]);
             assert_eq!(ret.sector_claims[0].claimed_space, BigInt::from(2 * size));
@@ -698,9 +690,7 @@ mod allocs_claims {
                 make_claim_reqs(sector, expiry, &[(id2, &alloc2)]),
             ];
             reqs[1].claims[0].client = CLIENT1;
-            let ret = h
-                .claim_allocations(&rt, PROVIDER1, reqs, size, false, vec![(id1, alloc1.clone())])
-                .unwrap();
+            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, size, false, vec![id1]).unwrap();
             assert_eq!(ret.sector_results.codes(), vec![ExitCode::OK, ExitCode::USR_NOT_FOUND]);
             assert_eq!(ret.sector_claims[0].claimed_space, BigInt::from(size));
             assert_alloc_claimed(&rt, CLIENT1, PROVIDER1, id1, &alloc1, 0, sector);
@@ -725,7 +715,7 @@ mod allocs_claims {
             let reqs = vec![make_claim_reqs(sector, expiry, &[(id1, &alloc1), (id1, &alloc1)])];
             expect_abort(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
-                h.claim_allocations(&rt, PROVIDER1, reqs, size, false, vec![(id1, alloc1.clone())]),
+                h.claim_allocations(&rt, PROVIDER1, reqs, size, false, vec![id1]),
             );
             rt.reset();
 
@@ -734,9 +724,7 @@ mod allocs_claims {
                 make_claim_reqs(sector, expiry, &[(id1, &alloc1)]),
                 make_claim_reqs(sector, expiry, &[(id1, &alloc1)]),
             ];
-            let ret = h
-                .claim_allocations(&rt, PROVIDER1, reqs, size, false, vec![(id1, alloc1.clone())])
-                .unwrap();
+            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, size, false, vec![id1]).unwrap();
             assert_eq!(ret.sector_results.codes(), vec![ExitCode::OK, ExitCode::USR_NOT_FOUND]);
             assert_eq!(ret.sector_claims[0].claimed_space, BigInt::from(size));
             assert_alloc_claimed(&rt, CLIENT1, PROVIDER1, id1, &alloc1, 0, sector);
@@ -795,9 +783,7 @@ mod allocs_claims {
                 make_claim_reqs(sector, expiry, &[(id3, &alloc3)]),
             ];
             reqs[0].claims[1].size = PaddedPieceSize(0);
-            let ret = h
-                .claim_allocations(&rt, PROVIDER1, reqs, size, false, vec![(id3, alloc3.clone())])
-                .unwrap();
+            let ret = h.claim_allocations(&rt, PROVIDER1, reqs, size, false, vec![id3]).unwrap();
             assert_eq!(ret.sector_results.codes(), vec![ExitCode::USR_FORBIDDEN, ExitCode::OK]);
             assert_eq!(ret.sector_claims[0].claimed_space, BigInt::from(size));
             assert_allocation(&rt, CLIENT1, id1, &alloc1);
@@ -828,10 +814,9 @@ mod allocs_claims {
                 make_claim_reqs(sector, expiry, &[(id3, &alloc3)]),
             ];
             reqs[0].claims[1].size = PaddedPieceSize(0);
-            // TODO Understand why this works for claim3
             expect_abort(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
-                h.claim_allocations(&rt, PROVIDER1, reqs, 0, true, vec![(id3, alloc3)]),
+                h.claim_allocations(&rt, PROVIDER1, reqs, 0, true, vec![id3]),
             );
             rt.reset();
         }
@@ -905,11 +890,7 @@ mod allocs_claims {
             ],
         };
 
-        let expected_claims = vec![
-            (id1, Claim { term_max: max_term + 1, ..claim1 }),
-            (id2, Claim { term_max: max_term + 2, ..claim2 }),
-            (id3, Claim { term_max: max_term + 3, ..claim3 }),
-        ];
+        let expected_claims = vec![id1, id2, id3];
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(CLIENT1));
         let ret = h.extend_claim_terms(&rt, &params, expected_claims).unwrap();
@@ -940,7 +921,7 @@ mod allocs_claims {
                 terms: vec![ClaimTerm { provider: PROVIDER1, claim_id, term_max: max_term }],
             };
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(CLIENT1));
-            let ret = h.extend_claim_terms(&rt, &params, vec![(claim_id, claim.clone())]).unwrap();
+            let ret = h.extend_claim_terms(&rt, &params, vec![claim_id]).unwrap();
             assert_eq!(ret.codes(), vec![ExitCode::OK]);
             rt.verify()
         }
@@ -1004,13 +985,7 @@ mod allocs_claims {
             };
             rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, Address::new_id(CLIENT1));
             rt.set_epoch(max_term + 1);
-            let ret = h
-                .extend_claim_terms(
-                    &rt,
-                    &params,
-                    vec![(claim_id, Claim { term_max: MAXIMUM_VERIFIED_ALLOCATION_TERM, ..claim })],
-                )
-                .unwrap();
+            let ret = h.extend_claim_terms(&rt, &params, vec![claim_id]).unwrap();
             assert_eq!(ret.codes(), vec![ExitCode::OK]);
             rt.verify()
         }
@@ -1055,9 +1030,9 @@ mod allocs_claims {
         // The full test suite is not duplicated here,   simple ones to ensure that the expiration
         // is correctly computed.
 
-        let expect_1 = vec![(id1, claim1.clone())];
-        let expect_2 = vec![(id2, claim2.clone())];
-        let expect_both = vec![(id1, claim1), (id2, claim2)];
+        let expect_1 = vec![id1];
+        let expect_2 = vec![id2];
+        let expect_both = vec![id1, id2];
 
         // None expired yet
         rt.set_epoch(term_start + term_min + 99);
