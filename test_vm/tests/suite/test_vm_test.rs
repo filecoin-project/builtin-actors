@@ -17,7 +17,7 @@ use vm_api::{new_actor, VM};
 #[test]
 fn state_control() {
     let store = MemoryBlockstore::new();
-    let v = TestVM::new(&store);
+    let v = TestVM::new(store);
     let addr1 = Address::new_id(1000);
     let addr2 = Address::new_id(2222);
 
@@ -73,7 +73,7 @@ fn assert_account_actor(
 #[test]
 fn test_sent() {
     let store = MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(store);
 
     // send to uninitialized account actor
     let addr1 = Address::new_bls(&[1; fvm_shared::address::BLS_PUB_LEN]).unwrap();

@@ -5,6 +5,6 @@ use test_vm::TestVM;
 #[test]
 fn terminate_sectors() {
     let store = MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(store);
     terminate_sectors_test(&v);
 }

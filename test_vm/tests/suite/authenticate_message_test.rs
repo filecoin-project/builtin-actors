@@ -5,6 +5,6 @@ use test_vm::TestVM;
 #[test]
 fn account_authenticate_message() {
     let store = MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(store);
     account_authenticate_message_test(&v);
 }
