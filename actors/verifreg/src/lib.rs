@@ -341,11 +341,10 @@ impl Actor {
                             ExitCode::USR_ILLEGAL_STATE,
                             format!("failed to remove allocation {}", id),
                         )?
-                        .unwrap();
+                        .unwrap(); // Unwrapping here as both paths to here should ensure the allocation exists.
 
                     emit::allocation_removed(rt, *id)?;
 
-                    // Unwrapping here as both paths to here should ensure the allocation exists.
                     recovered_datacap += existing.size.0;
                 }
 
@@ -558,7 +557,7 @@ impl Actor {
                     }
 
                     let new_claim = Claim { term_max: term.term_max, ..*claim };
-                    st_claims.put(term.provider, term.claim_id, new_claim.clone()).context_code(
+                    st_claims.put(term.provider, term.claim_id, new_claim).context_code(
                         ExitCode::USR_ILLEGAL_STATE,
                         "HAMT put failure storing new claims",
                     )?;
