@@ -1424,16 +1424,6 @@ impl Actor {
         rt: &impl Runtime,
         params: PreCommitSectorBatchParams,
     ) -> Result<(), ActorError> {
-        let miner_actor_id: u64 = if let Payload::ID(i) = rt.message().receiver().payload() {
-            *i
-        } else {
-            return Err(actor_error!(
-                illegal_state,
-                "runtime provided non ID receiver address {}",
-                rt.message().receiver()
-            ));
-        };
-
         let sectors = params
             .sectors
             .into_iter()
@@ -1458,7 +1448,7 @@ impl Actor {
                 }
             })
             .collect::<Result<_, _>>()?;
-        Self::pre_commit_sector_batch_inner(rt, sectors, miner_actor_id)
+        Self::pre_commit_sector_batch_inner(rt, sectors)
     }
 
     /// Pledges the miner to seal and commit some new sectors.
@@ -1471,16 +1461,6 @@ impl Actor {
         rt: &impl Runtime,
         params: PreCommitSectorBatchParams2,
     ) -> Result<(), ActorError> {
-        let miner_actor_id: u64 = if let Payload::ID(i) = rt.message().receiver().payload() {
-            *i
-        } else {
-            return Err(actor_error!(
-                illegal_state,
-                "runtime provided non ID receiver address {}",
-                rt.message().receiver()
-            ));
-        };
-
         Self::pre_commit_sector_batch_inner(
             rt,
             params
@@ -1497,7 +1477,6 @@ impl Actor {
                     unsealed_cid: Some(spci.unsealed_cid),
                 })
                 .collect(),
-            miner_actor_id,
         )
     }
 
@@ -1506,8 +1485,17 @@ impl Actor {
     fn pre_commit_sector_batch_inner(
         rt: &impl Runtime,
         sectors: Vec<SectorPreCommitInfoInner>,
-        miner_actor_id: ActorID,
     ) -> Result<(), ActorError> {
+        let miner_actor_id: u64 = if let Payload::ID(i) = rt.message().receiver().payload() {
+            *i
+        } else {
+            return Err(actor_error!(
+                illegal_state,
+                "runtime provided non ID receiver address {}",
+                rt.message().receiver()
+            ));
+        };
+
         let curr_epoch = rt.curr_epoch();
         {
             let policy = rt.policy();
