@@ -16,7 +16,7 @@ use fil_actor_miner::{
     new_deadline_info_from_offset_and_epoch, Deadline, DeadlineInfo, GetBeneficiaryReturn,
     Method as MinerMethod, MinerInfo, PowerPair, SectorOnChainInfo, State as MinerState,
 };
-use fil_builtin_actors_state::check::{check_state_invariants, Tree};
+use fil_builtin_actors_state::check::check_state_invariants;
 use num_traits::Zero;
 use regex::Regex;
 use vm_api::{
@@ -55,9 +55,10 @@ pub fn create_accounts_seeded(
 
 pub fn check_invariants(vm: &dyn VM, policy: &Policy) -> anyhow::Result<MessageAccumulator> {
     check_state_invariants(
+        &DynBlockstore::wrap(vm.blockstore()),
         &vm.actor_manifest(),
         policy,
-        Tree::load(&DynBlockstore::wrap(vm.blockstore()), &vm.state_root()).unwrap(),
+        &vm.actor_states(),
         &vm.circulating_supply(),
         vm.epoch() - 1,
     )
