@@ -10,7 +10,6 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::METHOD_SEND;
 use num_traits::Zero;
-use std::rc::Rc;
 use test_vm::{TestVM, FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR};
 use vm_api::util::{get_state, pk_addrs_from};
 use vm_api::{new_actor, VM};
@@ -18,7 +17,7 @@ use vm_api::{new_actor, VM};
 #[test]
 fn state_control() {
     let store = MemoryBlockstore::new();
-    let v = TestVM::new(Rc::new(store));
+    let v = TestVM::new(store);
     let addr1 = Address::new_id(1000);
     let addr2 = Address::new_id(2222);
 
@@ -74,7 +73,7 @@ fn assert_account_actor(
 #[test]
 fn test_sent() {
     let store = MemoryBlockstore::new();
-    let v = TestVM::new_with_singletons(Rc::new(store));
+    let v = TestVM::new_with_singletons(store);
 
     // send to uninitialized account actor
     let addr1 = Address::new_bls(&[1; fvm_shared::address::BLS_PUB_LEN]).unwrap();

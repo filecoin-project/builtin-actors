@@ -74,7 +74,7 @@ impl TestVM {
 
         TestVM {
             primitives: FakePrimitives {},
-            store: store,
+            store,
             state_root: RefCell::new(actors.flush().unwrap()),
             circulating_supply: RefCell::new(TokenAmount::zero()),
             actors_dirty: RefCell::new(false),
