@@ -15,8 +15,8 @@ use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{Policy, Primitives, EMPTY_ARR_CID};
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
-use fil_actors_runtime::DATACAP_TOKEN_ACTOR_ADDR;
 use fil_actors_runtime::{test_utils::*, DEFAULT_HAMT_CONFIG};
+use fil_actors_runtime::{Map, DATACAP_TOKEN_ACTOR_ADDR};
 use fil_actors_runtime::{
     BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, EAM_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
@@ -26,6 +26,7 @@ use fil_builtin_actors_state::check::Tree;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::CborStore;
+use fvm_ipld_hamt::Iter;
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
@@ -49,6 +50,55 @@ pub mod fakes;
 mod messaging;
 pub use messaging::*;
 
+pub struct ActorStateAdapter<'a> {
+    map: RefCell<Option<Map<'a, MemoryBlockstore, ActorState>>>,
+    iter: Option<Iter<'a, &'a MemoryBlockstore, ActorState>>,
+    // Add any other necessary state here...
+}
+
+impl<'a> ActorStateAdapter<'a> {
+    // pub fn new(state_root: &Cid, store: &MemoryBlockstore) -> Self {
+    //     let map = Map::<MemoryBlockstore, ActorState>::load_with_config(
+    //         state_root,
+    //         store,
+    //         DEFAULT_HAMT_CONFIG,
+    //     )
+    //     .unwrap();
+
+    //     ActorStateAdapter { map }
+    // }
+
+    // pub fn iter(self) -> Box<dyn Iterator<Item = (Address, ActorState)> + 'a> {
+    //     todo!()
+    //     // Box::new(self.iter.map(|item| {
+    //     //     if item.is_err() {
+    //     //         panic!()
+    //     //     }
+    //     //     let (bytes_key, state) = item.unwrap();
+    //     //     (Address::from_bytes(bytes_key).unwrap(), state.clone())
+    //     // }))
+    // }
+}
+
+impl<'a> Iterator for ActorStateAdapter<'a> {
+    type Item = (Address, ActorState);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.iter.is_none() {
+            let old = self.map.replace(None);
+            self.iter = Some(old.unwrap().into_iter());
+        }
+        let a = self.iter.as_mut().unwrap().next();
+        a.map(|maybe_err| {
+            if maybe_err.is_err() {
+                panic!()
+            }
+            let (bytes_key, state) = maybe_err.unwrap();
+            (Address::from_bytes(bytes_key).unwrap(), state.clone())
+        })
+    }
+}
+
 /// An in-memory rust-execution VM for testing builtin-actors that yields sensible stack traces and debug info
 pub struct TestVM<'bs> {
     pub primitives: FakePrimitives,
@@ -60,6 +110,7 @@ pub struct TestVM<'bs> {
     network_version: NetworkVersion,
     curr_epoch: RefCell<ChainEpoch>,
     invocations: RefCell<Vec<InvocationTrace>>,
+    actor_state_adapter: RefCell<ActorStateAdapter<'bs>>,
 }
 
 impl<'bs> TestVM<'bs> {
@@ -69,6 +120,7 @@ impl<'bs> TestVM<'bs> {
                 store,
                 DEFAULT_HAMT_CONFIG,
             );
+
         TestVM {
             primitives: FakePrimitives {},
             store,
@@ -79,6 +131,10 @@ impl<'bs> TestVM<'bs> {
             network_version: NetworkVersion::V16,
             curr_epoch: RefCell::new(ChainEpoch::zero()),
             invocations: RefCell::new(vec![]),
+            actor_state_adapter: RefCell::new(ActorStateAdapter {
+                map: RefCell::new(Some(actors)),
+                iter: None,
+            }),
         }
     }
 
@@ -86,7 +142,7 @@ impl<'bs> TestVM<'bs> {
         let reward_total = TokenAmount::from_whole(1_100_000_000i64);
         let faucet_total = TokenAmount::from_whole(1_000_000_000i64);
 
-        let v = TestVM::<'_>::new(store);
+        let mut v = TestVM::<'_>::new(store);
         v.set_circulating_supply(&reward_total + &faucet_total);
 
         // system
@@ -225,7 +281,11 @@ impl<'bs> TestVM<'bs> {
         )
         .unwrap();
 
-        v.checkpoint();
+        let cid = v.checkpoint();
+        // let map: Map<MemoryBlockstore, ActorState> =
+        //     Map::load_with_config(&cid, store, DEFAULT_HAMT_CONFIG).unwrap();
+        // v.actor_state_adapter = ActorStateAdapter { map };
+
         v
     }
 
@@ -271,6 +331,16 @@ impl<'bs> TestVM<'bs> {
             total += &actor.balance;
         });
         Ok(total)
+    }
+
+    fn actor_states_concrete(&self) -> Box<&dyn Iterator<Item = (Address, ActorState)>> {
+        let cid = self.state_root.borrow();
+        let map: Map<MemoryBlockstore, ActorState> =
+            Map::load_with_config(&cid, self.store, DEFAULT_HAMT_CONFIG).unwrap();
+        let actor = ActorStateAdapter { map: RefCell::new(Some(map)), iter: None };
+        self.actor_state_adapter.replace(actor);
+        let inner = self.actor_state_adapter.get_mut();
+        Box::new(self.actor_state_adapter.get_mut())
     }
 }
 
@@ -424,7 +494,10 @@ impl<'bs> VM for TestVM<'bs> {
     }
 
     fn actor_states(&self) -> Box<dyn Iterator<Item = (Address, ActorState)> + '_> {
-        let state_tree = Tree::load(self.store, &self.state_root.borrow()).unwrap();
-        Box::new(state_tree)
+        let cid = self.state_root.borrow();
+        let map: Map<MemoryBlockstore, ActorState> =
+            Map::load_with_config(&cid, self.store, DEFAULT_HAMT_CONFIG).unwrap();
+        let actor = ActorStateAdapter { map: RefCell::new(Some(map)), iter: None };
+        Box::new(actor)
     }
 }

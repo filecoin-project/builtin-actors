@@ -31,6 +31,7 @@ use fvm_shared::econ::TokenAmount;
 use num_traits::Zero;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
+use std::fmt::Debug;
 
 use fil_actor_account::testing as account;
 use fil_actor_cron::testing as cron;
@@ -80,7 +81,7 @@ impl<'a, BS: Blockstore> Iterator for Tree<'a, BS> {
     type Item = (Address, ActorState);
 
     fn next(&mut self) -> Option<Self::Item> {
-        let res = self.map.into_iter().next();
+        let res = self.map.iter().next();
         res.and_then(Result::ok).map(|(key, state)| {
             let address = Address::from_bytes(key).unwrap();
             (address, state.clone())
@@ -125,9 +126,12 @@ pub fn check_state_invariants<'a, BS: Blockstore>(
     let mut verifreg_summary: Option<verifreg::StateSummary> = None;
     let mut datacap_summary: Option<frc46_token::token::state::StateSummary> = None;
 
+    println!("here");
+
     tree.for_each(|(key, actor)| {
         let acc = acc.with_prefix(format!("{key} "));
 
+        println!("checking actor {:?}", key);
         if key.protocol() != Protocol::ID {
             acc.add(format!("unexpected address protocol in state tree root: {key}"));
         }

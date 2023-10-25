@@ -88,7 +88,7 @@ pub trait VM {
     /// Return a map of actor code CIDs to their corresponding types
     fn actor_manifest(&self) -> BTreeMap<Cid, Type>;
 
-    // /// Return an iterator over all the actors in the state tree
+    /// Return an iterator over all the actors in the state tree
     fn actor_states(&self) -> Box<dyn Iterator<Item = (Address, ActorState)> + '_>;
 
     /// Return the root of the state tree
