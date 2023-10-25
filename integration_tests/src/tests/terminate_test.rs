@@ -170,7 +170,7 @@ pub fn terminate_sectors_test(v: &dyn VM) {
     apply_ok(
         v,
         &worker,
-        &miner_robust_addr,
+        &miner_id_addr,
         &TokenAmount::zero(),
         MinerMethod::PreCommitSector as u64,
         Some(PreCommitSectorParams {
