@@ -76,11 +76,11 @@ pub trait VM {
     /// Take all the invocations that have been made since the last call to this method
     fn take_invocations(&self) -> Vec<InvocationTrace>;
 
-    /// Set the circulating supply constant for the network
-    fn set_circulating_supply(&self, supply: TokenAmount);
+    /// Set the total supply constant for the network
+    fn set_total_supply(&self, supply: TokenAmount);
 
-    /// Get the circulating supply constant for the network
-    fn circulating_supply(&self) -> TokenAmount;
+    /// Get the
+    fn total_supply(&self) -> TokenAmount;
 
     /// Provides access to VM primitives
     fn primitives(&self) -> &dyn Primitives;

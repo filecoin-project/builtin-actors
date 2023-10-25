@@ -87,7 +87,7 @@ impl<'bs> TestVM<'bs> {
         let faucet_total = TokenAmount::from_whole(1_000_000_000i64);
 
         let v = TestVM::<'_>::new(store);
-        v.set_circulating_supply(&reward_total + &faucet_total);
+        v.set_total_supply(&reward_total + &faucet_total);
 
         // system
         let sys_st = SystemState::new(store).unwrap();
@@ -416,11 +416,11 @@ impl<'bs> VM for TestVM<'bs> {
         *self.state_root.borrow()
     }
 
-    fn circulating_supply(&self) -> TokenAmount {
+    fn total_supply(&self) -> TokenAmount {
         self.circulating_supply.borrow().clone()
     }
 
-    fn set_circulating_supply(&self, supply: TokenAmount) {
+    fn set_total_supply(&self, supply: TokenAmount) {
         self.circulating_supply.replace(supply);
     }
 }

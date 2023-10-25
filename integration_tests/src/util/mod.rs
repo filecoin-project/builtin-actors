@@ -58,7 +58,7 @@ pub fn check_invariants(vm: &dyn VM, policy: &Policy) -> anyhow::Result<MessageA
         &vm.actor_manifest(),
         policy,
         Tree::load(&DynBlockstore::wrap(vm.blockstore()), &vm.state_root()).unwrap(),
-        &vm.circulating_supply(),
+        &vm.total_supply(),
         vm.epoch() - 1,
     )
 }
