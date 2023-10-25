@@ -61,6 +61,7 @@ fn insufficient_funds_for_aggregated_prove_commit_network_fee() {
         precommits,
         make_prove_commit_aggregate(&sector_nos_bf),
         &base_fee,
+        false,
     );
 
     expect_abort(ExitCode::USR_INSUFFICIENT_FUNDS, res);

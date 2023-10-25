@@ -80,6 +80,7 @@ fn prove_single_sector() {
             &precommit,
             h.make_prove_commit_params(sector_no),
             pcc,
+            true,
         )
         .unwrap();
 
@@ -237,6 +238,7 @@ fn prove_sectors_from_batch_pre_commit() {
                 precommit,
                 h.make_prove_commit_params(precommit.info.sector_number),
                 ProveCommitConfig::default(),
+                true,
             )
             .unwrap();
         assert_eq!(*rt.epoch.borrow(), sector.activation);
@@ -264,6 +266,7 @@ fn prove_sectors_from_batch_pre_commit() {
                 precommit,
                 h.make_prove_commit_params(precommit.info.sector_number),
                 pcc,
+                true,
             )
             .unwrap();
         assert_eq!(*rt.epoch.borrow(), sector.activation);
@@ -291,6 +294,7 @@ fn prove_sectors_from_batch_pre_commit() {
                 precommit,
                 h.make_prove_commit_params(precommit.info.sector_number),
                 pcc,
+                true,
             )
             .unwrap();
         assert_eq!(*rt.epoch.borrow(), sector.activation);
@@ -334,6 +338,7 @@ fn invalid_proof_rejected() {
             &precommit,
             h.make_prove_commit_params(sector_no + 1),
             ProveCommitConfig::empty(),
+            false,
         ),
     );
     rt.reset();
@@ -351,6 +356,7 @@ fn invalid_proof_rejected() {
             &precommit,
             h.make_prove_commit_params(sector_no),
             ProveCommitConfig::empty(),
+            false,
         ),
     );
     rt.reset();
@@ -364,6 +370,7 @@ fn invalid_proof_rejected() {
             &precommit,
             h.make_prove_commit_params(sector_no),
             ProveCommitConfig::empty(),
+            false,
         ),
     );
     rt.reset();
@@ -381,6 +388,7 @@ fn invalid_proof_rejected() {
             &precommit,
             h.make_prove_commit_params(sector_no),
             ProveCommitConfig { verify_deals_exit, ..Default::default() },
+            false,
         ),
     );
     rt.reset();
@@ -388,8 +396,14 @@ fn invalid_proof_rejected() {
     rt.balance.replace(TokenAmount::from_whole(1_000));
 
     let prove_commit = h.make_prove_commit_params(sector_no);
-    h.prove_commit_sector_and_confirm(&rt, &precommit, prove_commit, ProveCommitConfig::empty())
-        .unwrap();
+    h.prove_commit_sector_and_confirm(
+        &rt,
+        &precommit,
+        prove_commit,
+        ProveCommitConfig::empty(),
+        true,
+    )
+    .unwrap();
     let st = h.get_state(&rt);
 
     // Verify new sectors
@@ -409,6 +423,7 @@ fn invalid_proof_rejected() {
             &precommit,
             h.make_prove_commit_params(sector_no),
             ProveCommitConfig::empty(),
+            false,
         ),
     );
     rt.reset();
@@ -458,6 +473,7 @@ fn prove_commit_aborts_if_pledge_requirement_not_met() {
             &precommit,
             h.make_prove_commit_params(h.next_sector_no),
             ProveCommitConfig::empty(),
+            false,
         ),
     );
     rt.reset();
@@ -471,6 +487,7 @@ fn prove_commit_aborts_if_pledge_requirement_not_met() {
         &precommit,
         h.make_prove_commit_params(h.next_sector_no),
         ProveCommitConfig::empty(),
+        true,
     )
     .unwrap();
     h.check_state(&rt);
@@ -511,7 +528,8 @@ fn drop_invalid_prove_commit_while_processing_valid_one() {
         verify_deals_exit: HashMap::from([(sector_no_a, ExitCode::USR_ILLEGAL_ARGUMENT)]),
         ..Default::default()
     };
-    h.confirm_sector_proofs_valid(&rt, conf, vec![pre_commit_a, pre_commit_b]).unwrap();
+    h.confirm_sector_proofs_valid(&rt, conf, vec![pre_commit_a, pre_commit_b], vec![sector_no_b])
+        .unwrap();
     let st = h.get_state(&rt);
     assert!(st.get_sector(&rt.store, sector_no_a).unwrap().is_none());
     assert!(st.get_sector(&rt.store, sector_no_b).unwrap().is_some());
@@ -570,7 +588,7 @@ fn sector_with_non_positive_lifetime_fails_in_confirmation() {
     // failure occurs
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
-        h.confirm_sector_proofs_valid(&rt, ProveCommitConfig::empty(), vec![precommit]),
+        h.confirm_sector_proofs_valid(&rt, ProveCommitConfig::empty(), vec![precommit], vec![]),
     );
     h.check_state(&rt);
 }
@@ -615,6 +633,12 @@ fn verify_proof_does_not_vest_funds() {
     let mut prove_commit = h.make_prove_commit_params(sector_no);
     prove_commit.proof.resize(192, 0);
     // The below call expects exactly the pledge delta for the proven sector, zero for any other vesting.
-    h.prove_commit_sector_and_confirm(&rt, &precommit, prove_commit, ProveCommitConfig::empty())
-        .unwrap();
+    h.prove_commit_sector_and_confirm(
+        &rt,
+        &precommit,
+        prove_commit,
+        ProveCommitConfig::empty(),
+        true,
+    )
+    .unwrap();
 }

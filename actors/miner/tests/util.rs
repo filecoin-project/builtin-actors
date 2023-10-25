@@ -431,6 +431,7 @@ impl ActorHarness {
                     &pc,
                     self.make_prove_commit_params(pc.info.sector_number),
                     prove_cfg.clone(),
+                    true,
                 )
                 .unwrap();
             info.push(sector);
@@ -471,6 +472,7 @@ impl ActorHarness {
                 &precommit,
                 self.make_prove_commit_params(pre_commit_params.sector_number),
                 ProveCommitConfig::empty(),
+                true,
             )
             .unwrap();
         rt.reset();
@@ -891,10 +893,17 @@ impl ActorHarness {
         pc: &SectorPreCommitOnChainInfo,
         params: ProveCommitSectorParams,
         cfg: ProveCommitConfig,
+        emit_proven_event: bool,
     ) -> Result<SectorOnChainInfo, ActorError> {
+        let mut proven_sectors = vec![];
+
+        if emit_proven_event {
+            proven_sectors = vec![pc.info.sector_number];
+        }
+
         let sector_number = params.sector_number;
         self.prove_commit_sector(rt, pc, params)?;
-        self.confirm_sector_proofs_valid(rt, cfg, vec![pc.clone()])?;
+        self.confirm_sector_proofs_valid(rt, cfg, vec![pc.clone()], proven_sectors)?;
 
         Ok(self.get_sector(rt, sector_number))
     }
@@ -944,6 +953,7 @@ impl ActorHarness {
             None,
             ExitCode::OK,
         );
+
         rt.expect_validate_caller_any();
         let result = rt.call::<Actor>(
             Method::ProveCommitSector as u64,
@@ -961,6 +971,7 @@ impl ActorHarness {
         precommits: Vec<SectorPreCommitOnChainInfo>,
         params: ProveCommitAggregateParams,
         base_fee: &TokenAmount,
+        emit_event: bool,
     ) -> Result<(), ActorError> {
         let comm_ds: Vec<_> = precommits
             .iter()
@@ -1025,6 +1036,18 @@ impl ActorHarness {
             ExitCode::OK,
         );
 
+        if emit_event {
+            for pc in precommits.iter() {
+                rt.expect_emitted_event(
+                    EventBuilder::new()
+                        .typ("sector-proven")
+                        .field_indexed("miner", &RECEIVER_ID)
+                        .field_indexed("sector", &pc.info.sector_number)
+                        .build()?,
+                );
+            }
+        }
+
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         let addrs = self.caller_addrs().clone();
         rt.expect_validate_caller_addr(addrs);
@@ -1042,6 +1065,7 @@ impl ActorHarness {
         rt: &MockRuntime,
         cfg: ProveCommitConfig,
         pcs: Vec<SectorPreCommitOnChainInfo>,
+        expected_proven_sectors: Vec<SectorNumber>,
     ) -> Result<(), ActorError> {
         self.confirm_sector_proofs_valid_internal(rt, cfg, &pcs);
 
@@ -1054,11 +1078,22 @@ impl ActorHarness {
         rt.expect_validate_caller_addr(vec![STORAGE_POWER_ACTOR_ADDR]);
 
         let params = ConfirmSectorProofsParams {
-            sectors: all_sector_numbers,
+            sectors: all_sector_numbers.clone(),
             reward_smoothed: self.epoch_reward_smooth.clone(),
             reward_baseline_power: self.baseline_power.clone(),
             quality_adj_power_smoothed: self.epoch_qa_power_smooth.clone(),
         };
+
+        for sector in expected_proven_sectors {
+            rt.expect_emitted_event(
+                EventBuilder::new()
+                    .typ("sector-proven")
+                    .field_indexed("miner", &RECEIVER_ID)
+                    .field_indexed("sector", &sector)
+                    .build()?,
+            );
+        }
+
         rt.call::<Actor>(
             Method::ConfirmSectorProofsValid as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),

@@ -854,12 +854,16 @@ impl Actor {
             activate_deals(rt, &data_activations, compute_commd)?;
         let successful_activations = batch_return.successes(&precommits_to_confirm);
 
+        let proven_sector_nums =
+            successful_activations.iter().map(|x| x.info.sector_number).collect_vec();
+
         activate_new_sector_infos(
             rt,
             successful_activations,
             data_activations,
             &pledge_inputs,
             &info,
+            false,
         )?;
 
         // Compute and burn the aggregate network fee. We need to re-load the state as
@@ -880,6 +884,11 @@ impl Actor {
         }
         burn_funds(rt, aggregate_fee)?;
         state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
+
+        for sector in proven_sector_nums {
+            emit::sector_proven(rt, SectorID { miner: miner_actor_id, number: sector })?;
+        }
+
         Ok(())
     }
 
@@ -1879,6 +1888,7 @@ impl Actor {
             data_activations,
             &pledge_inputs,
             &info,
+            true,
         )
     }
 
@@ -4963,7 +4973,17 @@ fn activate_new_sector_infos(
     data_activations: Vec<DataActivationOutput>,
     pledge_inputs: &NetworkPledgeInputs,
     info: &MinerInfo,
+    emit_event: bool,
 ) -> Result<(), ActorError> {
+    let miner_actor_id: u64 = if let Payload::ID(i) = rt.message().receiver().payload() {
+        *i
+    } else {
+        return Err(actor_error!(
+            illegal_state,
+            "runtime provided non-ID receiver address {}",
+            rt.message().receiver()
+        ));
+    };
     let activation_epoch = rt.curr_epoch();
 
     let (total_pledge, newly_vested) = rt.transaction(|state: &mut State, rt| {
@@ -5096,6 +5116,12 @@ fn activate_new_sector_infos(
             .map_err(|e| actor_error!(illegal_state, "failed to add initial pledge: {}", e))?;
 
         state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
+
+        if emit_event {
+            for sector in new_sector_numbers {
+                emit::sector_proven(rt, SectorID { miner: miner_actor_id, number: sector })?;
+            }
+        }
 
         Ok((total_pledge, newly_vested))
     })?;

@@ -129,6 +129,7 @@ fn collateral_getters() {
             &precommit,
             h.make_prove_commit_params(sector_no),
             pcc,
+            true,
         )
         .unwrap();
 

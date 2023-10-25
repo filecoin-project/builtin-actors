@@ -14,3 +14,14 @@ pub fn sector_precommited(rt: &impl Runtime, id: SectorID) -> Result<(), ActorEr
             .build()?,
     )
 }
+
+/// Indicates a sector has been proven.
+pub fn sector_proven(rt: &impl Runtime, id: SectorID) -> Result<(), ActorError> {
+    rt.emit_event(
+        &EventBuilder::new()
+            .typ("sector-proven")
+            .field_indexed("miner", &id.miner)
+            .field_indexed("sector", &id.number)
+            .build()?,
+    )
+}
