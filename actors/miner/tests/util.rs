@@ -83,7 +83,7 @@ use fil_actor_power::{
 use fil_actor_reward::{Method as RewardMethod, ThisEpochRewardReturn};
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::{DomainSeparationTag, Runtime, RuntimePolicy};
-use fil_actors_runtime::{test_utils::*, BatchReturn, BatchReturnGen};
+use fil_actors_runtime::{test_utils::*, BatchReturn, BatchReturnGen, EventBuilder};
 use fil_actors_runtime::{
     ActorDowncast, ActorError, Array, DealWeight, MessageAccumulator, BURNT_FUNDS_ACTOR_ADDR,
     INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
@@ -604,6 +604,7 @@ impl ActorHarness {
         params: PreCommitSectorBatchParams,
         conf: &PreCommitBatchConfig,
         base_fee: &TokenAmount,
+        expect_event: bool,
     ) -> Result<Option<IpldBlock>, ActorError> {
         let v2: Vec<_> = params
             .sectors
@@ -619,6 +620,18 @@ impl ActorHarness {
                 unsealed_cid: CompactCommD::new(*cid),
             })
             .collect();
+
+        if expect_event {
+            for si in v2.iter() {
+                rt.expect_emitted_event(
+                    EventBuilder::new()
+                        .typ("sector-precommited")
+                        .field_indexed("miner", &RECEIVER_ID)
+                        .field_indexed("sector", &si.sector_number)
+                        .build()?,
+                );
+            }
+        }
 
         if self.options.use_v2_pre_commit_and_replica_update {
             return self.pre_commit_sector_batch_inner(
@@ -726,7 +739,8 @@ impl ActorHarness {
         conf: &PreCommitBatchConfig,
         base_fee: &TokenAmount,
     ) -> Vec<SectorPreCommitOnChainInfo> {
-        let result = self.pre_commit_sector_batch(rt, params.clone(), conf, base_fee).unwrap();
+        let result =
+            self.pre_commit_sector_batch(rt, params.clone(), conf, base_fee, true).unwrap();
 
         expect_empty(result);
         rt.verify();
@@ -740,6 +754,7 @@ impl ActorHarness {
         params: PreCommitSectorParams,
         conf: PreCommitConfig,
         first: bool,
+        emits_event: bool,
     ) -> Result<Option<IpldBlock>, ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
@@ -795,6 +810,16 @@ impl ActorHarness {
             );
         }
 
+        if emits_event {
+            rt.expect_emitted_event(
+                EventBuilder::new()
+                    .typ("sector-precommited")
+                    .field_indexed("miner", &RECEIVER_ID)
+                    .field_indexed("sector", &params.sector_number)
+                    .build()?,
+            );
+        }
+
         let result = rt.call::<Actor>(
             Method::PreCommitSector as u64,
             IpldBlock::serialize_cbor(&params.clone()).unwrap(),
@@ -809,7 +834,7 @@ impl ActorHarness {
         conf: PreCommitConfig,
         first: bool,
     ) -> SectorPreCommitOnChainInfo {
-        let result = self.pre_commit_sector(rt, params.clone(), conf, first);
+        let result = self.pre_commit_sector(rt, params.clone(), conf, first, true);
 
         expect_empty(result.unwrap());
         rt.verify();
@@ -3314,7 +3339,7 @@ impl CronControl {
             dlinfo.period_end() + DEFAULT_SECTOR_EXPIRATION as i64 * rt.policy.wpost_proving_period; // something on deadline boundary but > 180 days
         let precommit_params =
             h.make_pre_commit_params(sector_no, pre_commit_epoch - 1, expiration, vec![]);
-        h.pre_commit_sector(rt, precommit_params, PreCommitConfig::default(), true).unwrap();
+        h.pre_commit_sector(rt, precommit_params, PreCommitConfig::default(), true, true).unwrap();
 
         // PCD != 0 so cron must be active
         self.require_cron_active(h, rt);

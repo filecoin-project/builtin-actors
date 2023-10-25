@@ -99,6 +99,7 @@ fn assert_simple_batch(
                 PreCommitSectorBatchParams { sectors },
                 &conf,
                 &base_fee,
+                false,
             ),
         );
         rt.reset();
@@ -306,6 +307,7 @@ mod miner_actor_precommit_batch {
                 PreCommitSectorBatchParams { sectors },
                 &PreCommitBatchConfig { sector_unsealed_cid: vec![], first_for_miner: true },
                 &TokenAmount::zero(),
+                false,
             ),
         );
         rt.reset();
@@ -346,6 +348,7 @@ mod miner_actor_precommit_batch {
                 PreCommitSectorBatchParams { sectors },
                 &PreCommitBatchConfig { sector_unsealed_cid: vec![], first_for_miner: true },
                 &TokenAmount::zero(),
+                false,
             ),
         );
         rt.reset();

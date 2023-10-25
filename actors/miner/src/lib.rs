@@ -86,6 +86,8 @@ pub mod testing;
 mod types;
 mod vesting_state;
 
+pub mod emit;
+
 // The first 1000 actor-specific codes are left open for user error, i.e. things that might
 // actually happen without programming error in the actor code.
 
@@ -1422,6 +1424,16 @@ impl Actor {
         rt: &impl Runtime,
         params: PreCommitSectorBatchParams,
     ) -> Result<(), ActorError> {
+        let miner_actor_id: u64 = if let Payload::ID(i) = rt.message().receiver().payload() {
+            *i
+        } else {
+            return Err(actor_error!(
+                illegal_state,
+                "runtime provided non ID receiver address {}",
+                rt.message().receiver()
+            ));
+        };
+
         let sectors = params
             .sectors
             .into_iter()
@@ -1446,7 +1458,7 @@ impl Actor {
                 }
             })
             .collect::<Result<_, _>>()?;
-        Self::pre_commit_sector_batch_inner(rt, sectors)
+        Self::pre_commit_sector_batch_inner(rt, sectors, miner_actor_id)
     }
 
     /// Pledges the miner to seal and commit some new sectors.
@@ -1459,6 +1471,16 @@ impl Actor {
         rt: &impl Runtime,
         params: PreCommitSectorBatchParams2,
     ) -> Result<(), ActorError> {
+        let miner_actor_id: u64 = if let Payload::ID(i) = rt.message().receiver().payload() {
+            *i
+        } else {
+            return Err(actor_error!(
+                illegal_state,
+                "runtime provided non ID receiver address {}",
+                rt.message().receiver()
+            ));
+        };
+
         Self::pre_commit_sector_batch_inner(
             rt,
             params
@@ -1475,6 +1497,7 @@ impl Actor {
                     unsealed_cid: Some(spci.unsealed_cid),
                 })
                 .collect(),
+            miner_actor_id,
         )
     }
 
@@ -1483,6 +1506,7 @@ impl Actor {
     fn pre_commit_sector_batch_inner(
         rt: &impl Runtime,
         sectors: Vec<SectorPreCommitInfoInner>,
+        miner_actor_id: ActorID,
     ) -> Result<(), ActorError> {
         let curr_epoch = rt.curr_epoch();
         {
@@ -1635,6 +1659,8 @@ impl Actor {
             let sector_weight_for_deposit = qa_power_max(info.sector_size);
             let deposit_req = pre_commit_deposit_for_power(&reward_stats.this_epoch_reward_smoothed, &power_total.quality_adj_power_smoothed, &sector_weight_for_deposit);
 
+            let mut precommited_sectors = vec![];
+
             for (i, precommit) in sectors.into_iter().enumerate() {
                 // Sector must have the same Window PoSt proof type as the miner's recorded seal type.
                 let sector_wpost_proof = precommit.seal_proof
@@ -1696,6 +1722,8 @@ impl Actor {
                 // ConfirmSectorProofsValid would fail to find it.
                 let clean_up_bound = curr_epoch + msd + rt.policy().expired_pre_commit_clean_up_delay;
                 clean_up_events.push((clean_up_bound, precommit.sector_number));
+
+                precommited_sectors.push(precommit.sector_number);
             }
             // Batch update actor state.
             if available_balance < total_deposit_required {
@@ -1720,9 +1748,20 @@ impl Actor {
                 .map_err(|e| {
                     e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to add pre-commit expiry to queue")
                 })?;
+
+
             // Activate miner cron
             needs_cron = !state.deadline_cron_active;
             state.deadline_cron_active = true;
+
+            for sector_num in precommited_sectors.into_iter() {
+                let sector_id = SectorID{
+                    miner: miner_actor_id,
+                    number: sector_num,
+                };
+                emit::sector_precommited(rt, sector_id)?;
+            }
+
             Ok(())
         })?;
         burn_funds(rt, fee_to_burn)?;
@@ -1736,6 +1775,7 @@ impl Actor {
                 CronEventPayload { event_type: CRON_EVENT_PROVING_DEADLINE },
             )?;
         }
+
         Ok(())
     }
 

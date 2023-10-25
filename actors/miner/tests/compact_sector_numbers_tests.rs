@@ -49,7 +49,7 @@ mod compact_sector_numbers_test {
             );
             expect_abort(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
-                h.pre_commit_sector(&rt, precommit, util::PreCommitConfig::default(), false),
+                h.pre_commit_sector(&rt, precommit, util::PreCommitConfig::default(), false, false),
             );
         }
 
@@ -60,7 +60,8 @@ mod compact_sector_numbers_test {
                 expiration,
                 vec![],
             );
-            h.pre_commit_sector(&rt, precommit, util::PreCommitConfig::default(), false).unwrap();
+            h.pre_commit_sector(&rt, precommit, util::PreCommitConfig::default(), false, true)
+                .unwrap();
         }
         check_state_invariants_from_mock_runtime(&rt);
     }
