@@ -112,8 +112,8 @@ pub struct InvocationCtx<'invocation, 'bs> {
     pub read_only: bool,
     pub policy: &'invocation Policy,
     pub subinvocations: RefCell<Vec<InvocationTrace>>,
+    pub events: RefCell<Vec<EmittedEvent>>,
 }
-
 impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
     fn resolve_target(
         &'invocation self,
@@ -176,6 +176,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
                 read_only: false,
                 policy: self.policy,
                 subinvocations: RefCell::new(vec![]),
+                events: RefCell::new(vec![]),
             };
             if is_account {
                 new_ctx.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id, None).unwrap();
@@ -511,6 +512,7 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
             read_only: send_flags.read_only(),
             policy: self.policy,
             subinvocations: RefCell::new(vec![]),
+            events: RefCell::new(vec![]),
         };
         let res = new_ctx.invoke();
         let invoc = new_ctx.gather_trace(res.clone());
@@ -635,14 +637,22 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
         Ok(Cid::new_v1(IPLD_RAW, Multihash::wrap(0, b"faketipset").unwrap()))
     }
 
-    // TODO No support for events yet.
-    fn emit_event(&self, _event: &ActorEvent) -> Result<(), ActorError> {
-        unimplemented!()
+    fn emit_event(&self, event: &ActorEvent) -> Result<(), ActorError> {
+        self.events
+            .borrow_mut()
+            .push(EmittedEvent { emitter: self.msg.to.id().unwrap(), event: event.clone() });
+        Ok(())
     }
 
     fn read_only(&self) -> bool {
         self.read_only
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct EmittedEvent {
+    pub emitter: ActorID,
+    pub event: ActorEvent,
 }
 
 impl Primitives for InvocationCtx<'_, '_> {

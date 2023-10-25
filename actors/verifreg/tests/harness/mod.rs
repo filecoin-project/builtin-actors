@@ -35,7 +35,7 @@ use fil_actors_runtime::runtime::policy_constants::{
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    make_empty_map, ActorError, AsActorError, BatchReturn, DATACAP_TOKEN_ACTOR_ADDR,
+    make_empty_map, ActorError, AsActorError, BatchReturn, EventBuilder, DATACAP_TOKEN_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 
@@ -138,6 +138,13 @@ impl Harness {
             ExitCode::OK,
             None,
         );
+        rt.expect_emitted_event(
+            EventBuilder::new()
+                .typ("verifier-balance")
+                .field_indexed("verifier", &verifier_resolved.id().unwrap())
+                .field("balance", &allowance)
+                .build()?,
+        );
 
         let params = AddVerifierParams { address: *verifier, allowance: allowance.clone() };
         let ret = rt.call::<VerifregActor>(
@@ -153,6 +160,13 @@ impl Harness {
 
     pub fn remove_verifier(&self, rt: &MockRuntime, verifier: &Address) -> Result<(), ActorError> {
         rt.expect_validate_caller_addr(vec![self.root]);
+        rt.expect_emitted_event(
+            EventBuilder::new()
+                .typ("verifier-balance")
+                .field_indexed("verifier", &verifier.id().unwrap())
+                .field("balance", &DataCap::zero())
+                .build()?,
+        );
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.root);
         let ret = rt.call::<VerifregActor>(
             Method::RemoveVerifier as MethodNum,
@@ -192,6 +206,7 @@ impl Harness {
         verifier: &Address,
         client: &Address,
         allowance: &DataCap,
+        verifier_balance: &DataCap,
     ) -> Result<(), ActorError> {
         rt.expect_validate_caller_any();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *verifier);
@@ -213,6 +228,13 @@ impl Harness {
         );
 
         let params = AddVerifiedClientParams { address: *client, allowance: allowance.clone() };
+        rt.expect_emitted_event(
+            EventBuilder::new()
+                .typ("verifier-balance")
+                .field_indexed("verifier", &verifier.id().unwrap())
+                .field("balance", &(verifier_balance - allowance))
+                .build()?,
+        );
         let ret = rt.call::<VerifregActor>(
             Method::AddVerifiedClient as MethodNum,
             IpldBlock::serialize_cbor(&params).unwrap(),
@@ -265,9 +287,16 @@ impl Harness {
         claim_allocs: Vec<SectorAllocationClaims>,
         datacap_burnt: u64,
         all_or_nothing: bool,
+        expect_claimed: Vec<AllocationID>,
     ) -> Result<ClaimAllocationsReturn, ActorError> {
         rt.expect_validate_caller_type(vec![Type::Miner]);
         rt.set_caller(*MINER_ACTOR_CODE_ID, Address::new_id(provider));
+
+        for id in expect_claimed.iter() {
+            rt.expect_emitted_event(
+                EventBuilder::new().typ("claim").field_indexed("id", &id).build()?,
+            );
+        }
 
         if datacap_burnt > 0 {
             rt.expect_send_simple(
@@ -302,9 +331,16 @@ impl Harness {
         rt: &MockRuntime,
         client: ActorID,
         allocation_ids: Vec<AllocationID>,
-        expected_datacap: u64,
+        expect_removed: Vec<(AllocationID, Allocation)>,
     ) -> Result<RemoveExpiredAllocationsReturn, ActorError> {
         rt.expect_validate_caller_any();
+        let mut expected_datacap = 0u64;
+        for (id, alloc) in expect_removed {
+            expected_datacap += alloc.size.0;
+            rt.expect_emitted_event(
+                EventBuilder::new().typ("allocation-removed").field_indexed("id", &id).build()?,
+            );
+        }
 
         rt.expect_send_simple(
             DATACAP_TOKEN_ACTOR_ADDR,
@@ -339,8 +375,15 @@ impl Harness {
         rt: &MockRuntime,
         provider: ActorID,
         claim_ids: Vec<ClaimID>,
+        expect_removed: Vec<ClaimID>,
     ) -> Result<RemoveExpiredClaimsReturn, ActorError> {
         rt.expect_validate_caller_any();
+
+        for id in expect_removed {
+            rt.expect_emitted_event(
+                EventBuilder::new().typ("claim-removed").field_indexed("id", &id).build()?,
+            );
+        }
 
         let params = RemoveExpiredClaimsParams { provider, claim_ids };
         let ret = rt
@@ -387,6 +430,19 @@ impl Harness {
                 TokenAmount::zero(),
                 IpldBlock::serialize_cbor(&BurnReturn { balance: TokenAmount::zero() }).unwrap(),
                 ExitCode::OK,
+            );
+        }
+
+        let allocs_req: AllocationRequests = payload.operator_data.deserialize().unwrap();
+        for id in expected_alloc_ids.iter() {
+            rt.expect_emitted_event(
+                EventBuilder::new().typ("allocation").field_indexed("id", &id).build()?,
+            );
+        }
+
+        for ext in allocs_req.extensions {
+            rt.expect_emitted_event(
+                EventBuilder::new().typ("claim-updated").field_indexed("id", &ext.claim).build()?,
             );
         }
 
@@ -445,7 +501,14 @@ impl Harness {
         &self,
         rt: &MockRuntime,
         params: &ExtendClaimTermsParams,
+        expected: Vec<ClaimID>,
     ) -> Result<ExtendClaimTermsReturn, ActorError> {
+        for id in expected.iter() {
+            rt.expect_emitted_event(
+                EventBuilder::new().typ("claim-updated").field_indexed("id", &id).build()?,
+            );
+        }
+
         rt.expect_validate_caller_any();
         let ret = rt
             .call::<VerifregActor>(
