@@ -21,9 +21,7 @@ use fil_actor_power::State as PowerState;
 use fil_actor_reward::State as RewardState;
 use fil_actor_verifreg::{DataCap, State as VerifregState};
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::Map;
 use fil_actors_runtime::MessageAccumulator;
-use fil_actors_runtime::DEFAULT_HAMT_CONFIG;
 use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::from_slice;
@@ -47,36 +45,6 @@ use fil_actor_reward::testing as reward;
 use fil_actor_verifreg::testing as verifreg;
 use fil_actors_runtime::runtime::builtins::Type;
 use vm_api::ActorState;
-
-/// A specialization of a map of ID-addresses to actor heads.
-pub struct Tree<'a, BS>
-where
-    BS: Blockstore,
-{
-    pub map: Map<'a, BS, ActorState>,
-    pub store: &'a BS,
-}
-
-impl<'a, BS: Blockstore> Tree<'a, BS> {
-    /// Loads a tree from a root CID and store
-    pub fn load(store: &'a BS, root: &Cid) -> anyhow::Result<Self> {
-        let map = Map::load_with_config(root, store, DEFAULT_HAMT_CONFIG)?;
-
-        Ok(Tree { map, store })
-    }
-
-    pub fn for_each<F>(&self, mut f: F) -> anyhow::Result<()>
-    where
-        F: FnMut(&Address, &ActorState) -> anyhow::Result<()>,
-    {
-        self.map
-            .for_each(|key, val| {
-                let address = Address::from_bytes(key)?;
-                f(&address, val)
-            })
-            .map_err(|e| anyhow!("Failed iterating map: {}", e))
-    }
-}
 
 macro_rules! get_state {
     ($store:ident, $actor:ident, $state:ty) => {

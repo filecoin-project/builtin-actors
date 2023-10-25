@@ -22,7 +22,6 @@ use fil_actors_runtime::{
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use fil_builtin_actors_state::check::Tree;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::CborStore;
@@ -265,11 +264,8 @@ impl TestVM {
         self.actors_dirty.replace(false);
     }
 
-    pub fn get_total_actor_balance(
-        &self,
-        store: &MemoryBlockstore,
-    ) -> anyhow::Result<TokenAmount, anyhow::Error> {
-        let state_tree = Tree::load(store, &self.checkpoint())?;
+    pub fn get_total_actor_balance(&self) -> anyhow::Result<TokenAmount, anyhow::Error> {
+        let state_tree = self.actor_map();
 
         let mut total = TokenAmount::zero();
         state_tree.for_each(|_, actor| {
@@ -277,6 +273,10 @@ impl TestVM {
             Ok(())
         })?;
         Ok(total)
+    }
+
+    fn actor_map(&self) -> Map<MemoryBlockstore, ActorState> {
+        Map::load_with_config(&self.checkpoint(), self.store.as_ref(), DEFAULT_HAMT_CONFIG).unwrap()
     }
 }
 
@@ -425,11 +425,8 @@ impl VM for TestVM {
     }
 
     fn actor_states(&self) -> BTreeMap<Address, ActorState> {
+        let map = self.actor_map();
         let mut tree = BTreeMap::new();
-        let map: Map<MemoryBlockstore, ActorState> =
-            Map::load_with_config(&self.state_root.borrow(), self.store, DEFAULT_HAMT_CONFIG)
-                .unwrap();
-
         map.for_each(|k, v| {
             tree.insert(Address::from_bytes(k).unwrap(), v.clone());
             Ok(())
