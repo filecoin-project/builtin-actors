@@ -15,14 +15,13 @@ use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{Policy, Primitives, EMPTY_ARR_CID};
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
-use fil_actors_runtime::DATACAP_TOKEN_ACTOR_ADDR;
 use fil_actors_runtime::{test_utils::*, DEFAULT_HAMT_CONFIG};
+use fil_actors_runtime::{Map, DATACAP_TOKEN_ACTOR_ADDR};
 use fil_actors_runtime::{
     BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, EAM_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use fil_builtin_actors_state::check::Tree;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::CborStore;
@@ -265,11 +264,8 @@ impl TestVM {
         self.actors_dirty.replace(false);
     }
 
-    pub fn get_total_actor_balance(
-        &self,
-        store: &MemoryBlockstore,
-    ) -> anyhow::Result<TokenAmount, anyhow::Error> {
-        let state_tree = Tree::load(store, &self.checkpoint())?;
+    pub fn get_total_actor_balance(&self) -> anyhow::Result<TokenAmount, anyhow::Error> {
+        let state_tree = self.actor_map();
 
         let mut total = TokenAmount::zero();
         state_tree.for_each(|_, actor| {
@@ -277,6 +273,10 @@ impl TestVM {
             Ok(())
         })?;
         Ok(total)
+    }
+
+    fn actor_map(&self) -> Map<MemoryBlockstore, ActorState> {
+        Map::load_with_config(&self.checkpoint(), self.store.as_ref(), DEFAULT_HAMT_CONFIG).unwrap()
     }
 }
 
@@ -416,16 +416,23 @@ impl VM for TestVM {
     fn actor_manifest(&self) -> BTreeMap<Cid, Type> {
         ACTOR_TYPES.clone()
     }
-
-    fn state_root(&self) -> Cid {
-        *self.state_root.borrow()
-    }
-
     fn circulating_supply(&self) -> TokenAmount {
         self.circulating_supply.borrow().clone()
     }
 
     fn set_circulating_supply(&self, supply: TokenAmount) {
         self.circulating_supply.replace(supply);
+    }
+
+    fn actor_states(&self) -> BTreeMap<Address, ActorState> {
+        let map = self.actor_map();
+        let mut tree = BTreeMap::new();
+        map.for_each(|k, v| {
+            tree.insert(Address::from_bytes(k).unwrap(), v.clone());
+            Ok(())
+        })
+        .unwrap();
+
+        tree
     }
 }

@@ -88,8 +88,8 @@ pub trait VM {
     /// Return a map of actor code CIDs to their corresponding types
     fn actor_manifest(&self) -> BTreeMap<Cid, Type>;
 
-    /// Return the root of the state tree
-    fn state_root(&self) -> Cid;
+    /// Returns a map of all actor addresses to their corresponding states
+    fn actor_states(&self) -> BTreeMap<Address, ActorState>;
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
