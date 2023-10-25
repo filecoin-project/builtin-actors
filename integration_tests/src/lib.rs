@@ -5,6 +5,10 @@ use fvm_shared::{
     smooth::FilterEstimate,
     ActorID,
 };
+use lazy_static::lazy_static;
+use std::collections::BTreeMap;
+use std::sync::Mutex;
+use vm_api::VM;
 
 pub mod deals;
 pub mod expects;
@@ -55,4 +59,16 @@ pub struct NetworkStats {
     pub total_client_locked_collateral: TokenAmount,
     pub total_provider_locked_collateral: TokenAmount,
     pub total_client_storage_fee: TokenAmount,
+}
+
+pub type TestFn = fn(&dyn VM) -> ();
+
+lazy_static! {
+    /// Integration tests that are marked for inclusion by the vm_test macro are inserted here
+    /// The tests are keyed by their fully qualified name (module_path::test_name)
+    /// The registry entries are a tuple (u8, TestFn). The u8 represents test speed defaulting to 0 for
+    /// relatively fast tests and increasing in value for slower-executing tests. It can be used by different
+    /// execution environments to determine/filter if a test is suitable for running (e.g. some tests
+    /// may be infeasibly slow to run on a real FVM implementation).
+    pub static ref TEST_REGISTRY: Mutex<BTreeMap<String, (u8, TestFn)>> = Mutex::new(BTreeMap::new());
 }

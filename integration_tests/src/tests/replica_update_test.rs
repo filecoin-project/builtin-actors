@@ -11,6 +11,7 @@ use fvm_shared::sector::SectorSize;
 use fvm_shared::sector::StoragePower;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
 
+use export_macro::vm_test;
 use fil_actor_cron::Method as CronMethod;
 use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
@@ -32,6 +33,7 @@ use vm_api::util::{apply_code, apply_ok, get_state, mutate_state, DynBlockstore}
 use vm_api::VM;
 
 use crate::expects::Expect;
+
 use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline,
     assert_invariants, bf_all, check_sector_active, check_sector_faulty, create_accounts,
@@ -41,7 +43,6 @@ use crate::util::{
     submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
 };
 
-#[allow(clippy::too_many_arguments)]
 pub fn replica_update_full_path_success_test(v: &dyn VM, v2: bool) {
     let policy = Policy::default();
     let (sector_info, worker, miner_id, deadline_index, partition_index, sector_size) =
@@ -94,7 +95,16 @@ pub fn replica_update_full_path_success_test(v: &dyn VM, v2: bool) {
     assert_invariants(v, &Policy::default())
 }
 
-#[allow(clippy::too_many_arguments)]
+#[vm_test]
+pub fn replica_update_full_path_success_v2(v: &dyn VM) {
+    replica_update_full_path_success_test(v, true);
+}
+
+#[vm_test]
+pub fn replica_update_full_path_success(v: &dyn VM) {
+    replica_update_full_path_success_test(v, false);
+}
+
 pub fn upgrade_and_miss_post_test(v: &dyn VM, v2: bool) {
     let (sector_info, worker, miner_id, deadline_index, partition_index, sector_size) =
         create_miner_and_upgrade_sector(v, v2);
@@ -145,6 +155,17 @@ pub fn upgrade_and_miss_post_test(v: &dyn VM, v2: bool) {
     assert_invariants(v, &Policy::default())
 }
 
+#[vm_test]
+pub fn upgrade_and_miss_post_v2(v: &dyn VM) {
+    upgrade_and_miss_post_test(v, true);
+}
+
+#[vm_test]
+pub fn upgrade_and_miss_post(v: &dyn VM) {
+    upgrade_and_miss_post_test(v, false);
+}
+
+#[vm_test]
 pub fn prove_replica_update_multi_dline_test(v: &dyn VM) {
     let policy = Policy::default();
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(1_000_000));
@@ -284,6 +305,7 @@ pub fn prove_replica_update_multi_dline_test(v: &dyn VM) {
 // ---- Failure cases ----
 
 /// Tests that a sector in an immutable deadline cannot be upgraded
+#[vm_test]
 pub fn immutable_deadline_failure_test(v: &dyn VM) {
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
@@ -332,6 +354,7 @@ pub fn immutable_deadline_failure_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default())
 }
 
+#[vm_test]
 pub fn unhealthy_sector_failure_test(v: &dyn VM) {
     let policy = Policy::default();
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
@@ -388,6 +411,7 @@ pub fn unhealthy_sector_failure_test(v: &dyn VM) {
     );
 }
 
+#[vm_test]
 pub fn terminated_sector_failure_test(v: &dyn VM) {
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
     let (worker, owner) = (addrs[0], addrs[0]);
@@ -451,6 +475,7 @@ pub fn terminated_sector_failure_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default())
 }
 
+#[vm_test]
 pub fn bad_batch_size_failure_test(v: &dyn VM) {
     let policy = Policy::default();
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
@@ -502,6 +527,7 @@ pub fn bad_batch_size_failure_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default())
 }
 
+#[vm_test]
 pub fn nodispute_after_upgrade_test(v: &dyn VM) {
     let (_, worker, miner_id, deadline_index, _, _) = create_miner_and_upgrade_sector(v, false);
 
@@ -519,6 +545,7 @@ pub fn nodispute_after_upgrade_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default())
 }
 
+#[vm_test]
 pub fn upgrade_bad_post_dispute_test(v: &dyn VM) {
     let (sector_info, worker, miner_id, deadline_index, partition_index, _) =
         create_miner_and_upgrade_sector(v, false);
@@ -543,6 +570,7 @@ pub fn upgrade_bad_post_dispute_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default())
 }
 
+#[vm_test]
 pub fn bad_post_upgrade_dispute_test(v: &dyn VM) {
     let policy = Policy::default();
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
@@ -619,6 +647,7 @@ pub fn bad_post_upgrade_dispute_test(v: &dyn VM) {
 }
 
 /// Tests that an active CC sector can be correctly upgraded, and then the sector can be terminated
+#[vm_test]
 pub fn terminate_after_upgrade_test(v: &dyn VM) {
     let (sector_info, worker, miner_id, deadline_index, partition_index, _) =
         create_miner_and_upgrade_sector(v, false);
@@ -658,7 +687,7 @@ pub fn terminate_after_upgrade_test(v: &dyn VM) {
 }
 
 /// Tests that an active CC sector can be correctly upgraded, and then the sector can be extended
-#[allow(clippy::too_many_arguments)]
+#[vm_test]
 pub fn extend_after_upgrade_test(v: &dyn VM) {
     let policy = Policy::default();
     let (sector_info, worker, miner_id, deadline_index, partition_index, _) =
@@ -707,6 +736,7 @@ pub fn extend_after_upgrade_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default())
 }
 
+#[vm_test]
 pub fn wrong_deadline_index_failure_test(v: &dyn VM) {
     let policy = Policy::default();
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
@@ -762,6 +792,7 @@ pub fn wrong_deadline_index_failure_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default())
 }
 
+#[vm_test]
 pub fn wrong_partition_index_failure_test(v: &dyn VM) {
     let policy = Policy::default();
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
@@ -817,6 +848,7 @@ pub fn wrong_partition_index_failure_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default())
 }
 
+#[vm_test]
 pub fn deal_included_in_multiple_sectors_failure_test(v: &dyn VM) {
     let policy = Policy::default();
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
@@ -940,6 +972,7 @@ pub fn deal_included_in_multiple_sectors_failure_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default())
 }
 
+#[vm_test]
 pub fn replica_update_verified_deal_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(100_000));
     let (worker, owner, client, verifier) = (addrs[0], addrs[0], addrs[1], addrs[2]);
@@ -1051,6 +1084,7 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
     assert_eq!(new_sealed_cid, new_sector_info.sealed_cid);
 }
 
+#[vm_test]
 pub fn replica_update_verified_deal_max_term_violated_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(100_000));
     let (worker, owner, client, verifier) = (addrs[0], addrs[0], addrs[1], addrs[2]);

@@ -1,3 +1,4 @@
+use export_macro::vm_test;
 use fil_actor_miner::{ChangeBeneficiaryParams, Method as MinerMethod};
 use fil_actors_runtime::runtime::Policy;
 use fvm_shared::bigint::Zero;
@@ -12,6 +13,7 @@ use crate::util::{
     get_beneficiary, miner_info,
 };
 
+#[vm_test]
 pub fn change_owner_success_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -46,6 +48,7 @@ pub fn change_owner_success_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default())
 }
 
+#[vm_test]
 pub fn keep_beneficiary_when_owner_changed_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
