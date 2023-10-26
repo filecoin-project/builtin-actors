@@ -3980,6 +3980,9 @@ fn process_early_terminations(
     reward_smoothed: &FilterEstimate,
     quality_adj_power_smoothed: &FilterEstimate,
 ) -> Result</* more */ bool, ActorError> {
+    let miner_actor_id = rt.message().receiver().id().unwrap();
+    let mut terminated_sector_nums = vec![];
+
     let (result, more, deals_to_terminate, penalty, pledge_delta) =
         rt.transaction(|state: &mut State, rt| {
             let store = rt.store();
@@ -4037,6 +4040,7 @@ fn process_early_terminations(
                 for sector in sectors {
                     deal_ids.extend(sector.deal_ids);
                     total_initial_pledge += sector.initial_pledge;
+                    terminated_sector_nums.push(sector.sector_number);
                 }
 
                 let params = ext::market::OnMinerSectorsTerminateParams { epoch, deal_ids };
@@ -4091,6 +4095,10 @@ fn process_early_terminations(
     // Terminate deals.
     for params in deals_to_terminate {
         request_terminate_deals(rt, params.epoch, params.deal_ids)?;
+    }
+
+    for sector in terminated_sector_nums {
+        emit::sector_terminated(rt, miner_actor_id, sector)?;
     }
 
     // reschedule cron worker, if necessary.

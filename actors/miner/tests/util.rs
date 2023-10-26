@@ -90,7 +90,7 @@ use fil_actors_runtime::{
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 
-const RECEIVER_ID: u64 = 1000;
+pub const RECEIVER_ID: u64 = 1000;
 
 pub const TEST_RANDOMNESS_ARRAY_FROM_ONE: [u8; 32] = [
     1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
@@ -2207,6 +2207,19 @@ impl ActorHarness {
                 deadline,
                 partition,
             });
+        }
+
+        for termination in terminations.iter() {
+            for sector in termination.sectors.iter() {
+                rt.expect_emitted_event(
+                    EventBuilder::new()
+                        .typ("sector-terminated")
+                        .field_indexed("miner", &RECEIVER_ID)
+                        .field_indexed("sector", &sector)
+                        .build()
+                        .unwrap(),
+                );
+            }
         }
 
         let params = TerminateSectorsParams { terminations };
