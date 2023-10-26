@@ -627,7 +627,7 @@ impl ActorHarness {
             for si in v2.iter() {
                 rt.expect_emitted_event(
                     EventBuilder::new()
-                        .typ("sector-precommited")
+                        .typ("sector-precommitted")
                         .field_indexed("miner", &RECEIVER_ID)
                         .field_indexed("sector", &si.sector_number)
                         .build()?,
@@ -815,7 +815,7 @@ impl ActorHarness {
         if emits_event {
             rt.expect_emitted_event(
                 EventBuilder::new()
-                    .typ("sector-precommited")
+                    .typ("sector-precommitted")
                     .field_indexed("miner", &RECEIVER_ID)
                     .field_indexed("sector", &params.sector_number)
                     .build()?,
@@ -1040,7 +1040,7 @@ impl ActorHarness {
             for pc in precommits.iter() {
                 rt.expect_emitted_event(
                     EventBuilder::new()
-                        .typ("sector-proven")
+                        .typ("sector-activated")
                         .field_indexed("miner", &RECEIVER_ID)
                         .field_indexed("sector", &pc.info.sector_number)
                         .build()?,
@@ -1087,7 +1087,7 @@ impl ActorHarness {
         for sector in expected_proven_sectors {
             rt.expect_emitted_event(
                 EventBuilder::new()
-                    .typ("sector-proven")
+                    .typ("sector-activated")
                     .field_indexed("miner", &RECEIVER_ID)
                     .field_indexed("sector", &sector)
                     .build()?,

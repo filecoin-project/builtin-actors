@@ -854,7 +854,7 @@ impl Actor {
             activate_deals(rt, &data_activations, compute_commd)?;
         let successful_activations = batch_return.successes(&precommits_to_confirm);
 
-        let proven_sector_nums =
+        let activated_sector_nums =
             successful_activations.iter().map(|x| x.info.sector_number).collect_vec();
 
         activate_new_sector_infos(
@@ -865,6 +865,10 @@ impl Actor {
             &info,
             false,
         )?;
+
+        for sector in activated_sector_nums {
+            emit::sector_activated(rt, miner_actor_id, sector)?;
+        }
 
         // Compute and burn the aggregate network fee. We need to re-load the state as
         // confirmSectorProofsValid can change it.
@@ -884,10 +888,6 @@ impl Actor {
         }
         burn_funds(rt, aggregate_fee)?;
         state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
-
-        for sector in proven_sector_nums {
-            emit::sector_proven(rt, SectorID { miner: miner_actor_id, number: sector })?;
-        }
 
         Ok(())
     }
@@ -1495,15 +1495,7 @@ impl Actor {
         rt: &impl Runtime,
         sectors: Vec<SectorPreCommitInfoInner>,
     ) -> Result<(), ActorError> {
-        let miner_actor_id: u64 = if let Payload::ID(i) = rt.message().receiver().payload() {
-            *i
-        } else {
-            return Err(actor_error!(
-                illegal_state,
-                "runtime provided non ID receiver address {}",
-                rt.message().receiver()
-            ));
-        };
+        let miner_actor_id: u64 = rt.message().receiver().id().unwrap();
 
         let curr_epoch = rt.curr_epoch();
         {
@@ -1656,8 +1648,6 @@ impl Actor {
             let sector_weight_for_deposit = qa_power_max(info.sector_size);
             let deposit_req = pre_commit_deposit_for_power(&reward_stats.this_epoch_reward_smoothed, &power_total.quality_adj_power_smoothed, &sector_weight_for_deposit);
 
-            let mut precommited_sectors = vec![];
-
             for (i, precommit) in sectors.into_iter().enumerate() {
                 // Sector must have the same Window PoSt proof type as the miner's recorded seal type.
                 let sector_wpost_proof = precommit.seal_proof
@@ -1719,8 +1709,6 @@ impl Actor {
                 // ConfirmSectorProofsValid would fail to find it.
                 let clean_up_bound = curr_epoch + msd + rt.policy().expired_pre_commit_clean_up_delay;
                 clean_up_events.push((clean_up_bound, precommit.sector_number));
-
-                precommited_sectors.push(precommit.sector_number);
             }
             // Batch update actor state.
             if available_balance < total_deposit_required {
@@ -1746,18 +1734,14 @@ impl Actor {
                     e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to add pre-commit expiry to queue")
                 })?;
 
+            for sector_num in sector_numbers.iter() {
+                emit::sector_precommitted(rt, miner_actor_id, sector_num)?;
+            }
 
             // Activate miner cron
             needs_cron = !state.deadline_cron_active;
             state.deadline_cron_active = true;
 
-            for sector_num in precommited_sectors.into_iter() {
-                let sector_id = SectorID{
-                    miner: miner_actor_id,
-                    number: sector_num,
-                };
-                emit::sector_precommited(rt, sector_id)?;
-            }
 
             Ok(())
         })?;
@@ -4975,15 +4959,8 @@ fn activate_new_sector_infos(
     info: &MinerInfo,
     emit_event: bool,
 ) -> Result<(), ActorError> {
-    let miner_actor_id: u64 = if let Payload::ID(i) = rt.message().receiver().payload() {
-        *i
-    } else {
-        return Err(actor_error!(
-            illegal_state,
-            "runtime provided non-ID receiver address {}",
-            rt.message().receiver()
-        ));
-    };
+    let miner_actor_id: u64 = rt.message().receiver().id().unwrap();
+
     let activation_epoch = rt.curr_epoch();
 
     let (total_pledge, newly_vested) = rt.transaction(|state: &mut State, rt| {
@@ -5119,7 +5096,7 @@ fn activate_new_sector_infos(
 
         if emit_event {
             for sector in new_sector_numbers {
-                emit::sector_proven(rt, SectorID { miner: miner_actor_id, number: sector })?;
+                emit::sector_activated(rt, miner_actor_id, sector)?;
             }
         }
 
