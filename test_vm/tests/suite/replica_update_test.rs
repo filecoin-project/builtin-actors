@@ -25,7 +25,7 @@ fn replica_update_simple_path_success(v2: bool) {
     let store = MemoryBlockstore::new();
     let v = TestVM::new_with_singletons(store);
     create_miner_and_upgrade_sector(&v, v2);
-    assert_invariants(&v, &Policy::default());
+    assert_invariants(&v, &Policy::default(), None);
 }
 
 // Tests a successful upgrade, followed by the sector going faulty and recovering

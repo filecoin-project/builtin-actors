@@ -67,7 +67,7 @@ pub fn change_beneficiary_success_test(v: &dyn VM) {
     get_beneficiary_return = get_beneficiary(v, &query_addr, &miner_id);
     assert!(get_beneficiary_return.proposed.is_none());
     assert_active(&change_another_beneificiary_proposal, &get_beneficiary_return.active);
-    assert_invariants(v, &Policy::default());
+    assert_invariants(v, &Policy::default(), None);
 }
 
 #[vm_test]
@@ -218,7 +218,7 @@ pub fn change_beneficiary_fail_test(v: &dyn VM) {
     change_beneficiary(v, &owner, &miner_id, &back_owner_proposal);
     change_beneficiary(v, &beneficiary, &miner_id, &back_owner_proposal);
 
-    assert_invariants(v, &Policy::default())
+    assert_invariants(v, &Policy::default(), None)
 }
 
 fn assert_pending(

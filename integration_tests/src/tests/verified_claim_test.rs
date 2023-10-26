@@ -362,6 +362,7 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
         v,
         &Policy::default(),
         &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+        None,
     );
 }
 
@@ -455,6 +456,7 @@ pub fn expired_allocations_test(v: &dyn VM) {
         v,
         &Policy::default(),
         &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+        None,
     );
 }
 
@@ -584,5 +586,5 @@ pub fn deal_passes_claim_fails_test(v: &dyn VM) {
     assert_eq!(None, sector_info_a);
 
     // run check before last change and confirm that we hit the expected broken state error
-    assert_invariants(v, &Policy::default());
+    assert_invariants(v, &Policy::default(), None);
 }

@@ -50,7 +50,7 @@ fn state_control() {
     assert_eq!(None, v.actor(&addr2));
     assert_eq!(v.actor(&addr1).unwrap(), a1);
 
-    let invariants_check = check_invariants(&v, &Policy::default());
+    let invariants_check = check_invariants(&v, &Policy::default(), Some(TokenAmount::zero()));
     assert!(invariants_check.is_err());
     assert!(invariants_check.unwrap_err().to_string().contains("AccountState is empty"));
 }
@@ -118,7 +118,7 @@ fn test_sent() {
     assert_account_actor(3, TokenAmount::from_atto(42u8), addr1, &v, expect_id_addr1);
     assert_account_actor(2, TokenAmount::zero(), addr2, &v, expect_id_addr2);
 
-    assert_invariants(&v, &Policy::default())
+    assert_invariants(&v, &Policy::default(), None)
 }
 
 #[test]

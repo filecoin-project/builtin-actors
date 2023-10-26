@@ -63,7 +63,7 @@ pub fn check_state_invariants<BS: Blockstore>(
     manifest: &BTreeMap<Cid, Type>,
     policy: &Policy,
     tree: &BTreeMap<Address, ActorState>,
-    expected_balance_total: &TokenAmount,
+    expected_balance_total: Option<TokenAmount>,
     prior_epoch: ChainEpoch,
 ) -> anyhow::Result<MessageAccumulator> {
     let acc = MessageAccumulator::default();
@@ -191,10 +191,12 @@ pub fn check_state_invariants<BS: Blockstore>(
         check_verifreg_against_miners(&acc, &verifreg_summary, &miner_summaries);
     }
 
-    acc.require(
-        &total_fil == expected_balance_total,
-        format!("total token balance is {total_fil}, expected {expected_balance_total}"),
-    );
+    if let Some(expected_balance_total) = expected_balance_total {
+        acc.require(
+            total_fil == expected_balance_total,
+            format!("total token balance is {total_fil}, expected {expected_balance_total}"),
+        );
+    }
 
     Ok(acc)
 }

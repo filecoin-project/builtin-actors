@@ -62,7 +62,7 @@ pub fn move_partitions_test(v: &dyn VM) {
 
     cron_tick(v);
     v.set_epoch(v.epoch() + 1);
-    assert_invariants(v, &Policy::default());
+    assert_invariants(v, &Policy::default(), None);
 }
 
 fn submit_post_succeeds_test(v: &dyn VM, miner_info: MinerInfo, sector_info: SectorInfo) {
@@ -84,7 +84,7 @@ fn submit_post_succeeds_test(v: &dyn VM, miner_info: MinerInfo, sector_info: Sec
     let p_st: PowerState = get_state(v, &STORAGE_POWER_ACTOR_ADDR).unwrap();
     assert_eq!(sector_power.raw, p_st.total_bytes_committed);
 
-    assert_invariants(v, &Policy::default());
+    assert_invariants(v, &Policy::default(), None);
 }
 
 struct SectorInfo {

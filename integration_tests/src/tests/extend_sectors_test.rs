@@ -321,6 +321,7 @@ pub fn extend_legacy_sector_with_deals_test(v: &dyn VM, do_extend2: bool) {
         v,
         &Policy::default(),
         &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+        None,
     );
 }
 
