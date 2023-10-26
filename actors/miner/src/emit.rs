@@ -19,7 +19,7 @@ pub fn sector_precommitted(
     )
 }
 
-/// Indicates a sector has been proven.
+/// Indicates a sector has been activated.
 pub fn sector_activated(
     rt: &impl Runtime,
     miner: ActorID,
