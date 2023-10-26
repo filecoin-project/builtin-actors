@@ -45,7 +45,7 @@ pub fn change_owner_success_test(v: &dyn VM) {
     assert_eq!(new_owner, minfo.owner);
     assert_eq!(new_owner, minfo.beneficiary);
 
-    assert_invariants(v, &Policy::default())
+    assert_invariants(v, &Policy::default(), None)
 }
 
 #[vm_test]
@@ -85,7 +85,7 @@ pub fn keep_beneficiary_when_owner_changed_test(v: &dyn VM) {
     assert_eq!(new_owner, minfo.owner);
     assert_eq!(beneficiary, minfo.beneficiary);
 
-    assert_invariants(v, &Policy::default())
+    assert_invariants(v, &Policy::default(), None)
 }
 
 pub fn change_owner_fail_test(v: &dyn VM) {
@@ -155,5 +155,5 @@ pub fn change_owner_fail_test(v: &dyn VM) {
     assert_eq!(addr, minfo.owner);
     assert_eq!(addr, minfo.beneficiary);
 
-    assert_invariants(v, &Policy::default())
+    assert_invariants(v, &Policy::default(), None)
 }

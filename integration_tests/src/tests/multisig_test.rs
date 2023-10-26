@@ -105,7 +105,7 @@ pub fn proposal_hash_test(v: &dyn VM) {
     expect.matches(v.take_invocations().last().unwrap());
 
     assert_eq!(sys_act_start_bal + fil_delta, v.actor(&SYSTEM_ACTOR_ADDR).unwrap().balance);
-    assert_invariants(v, &Policy::default())
+    assert_invariants(v, &Policy::default(), None)
 }
 
 pub fn test_delete_self_inner_test(v: &dyn VM, signers: u64, threshold: usize, remove_idx: usize) {
@@ -168,7 +168,7 @@ pub fn test_delete_self_inner_test(v: &dyn VM, signers: u64, threshold: usize, r
     let new_signers: HashSet<Address> = HashSet::from_iter(st.signers);
     let diff: Vec<&Address> = old_signers.symmetric_difference(&new_signers).collect();
     assert_eq!(vec![&(addrs[remove_idx])], diff);
-    assert_invariants(v, &Policy::default())
+    assert_invariants(v, &Policy::default(), None)
 }
 
 #[vm_test]
@@ -194,7 +194,7 @@ pub fn swap_self_1_of_2_test(v: &dyn VM) {
     );
     let st: MsigState = get_state(v, &msig_addr).unwrap();
     assert_eq!(vec![bob, chuck], st.signers);
-    assert_invariants(v, &Policy::default());
+    assert_invariants(v, &Policy::default(), None);
 }
 
 #[vm_test]
@@ -266,7 +266,7 @@ pub fn swap_self_2_of_3_test(v: &dyn VM) {
     let st: MsigState = get_state(v, &msig_addr).unwrap();
     assert_eq!(vec![bob, chuck, alice], st.signers);
 
-    assert_invariants(v, &Policy::default())
+    assert_invariants(v, &Policy::default(), None)
 }
 
 fn create_msig(v: &dyn VM, signers: &[Address], threshold: u64) -> Address {

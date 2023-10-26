@@ -163,6 +163,7 @@ pub fn batch_onboarding_test(v: &dyn VM, v2: bool) {
         v,
         &Policy::default(),
         &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+        None,
     );
 }
 

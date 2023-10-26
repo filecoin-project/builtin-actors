@@ -264,17 +264,6 @@ impl TestVM {
         self.actors_dirty.replace(false);
     }
 
-    pub fn get_total_actor_balance(&self) -> anyhow::Result<TokenAmount, anyhow::Error> {
-        let state_tree = self.actor_map();
-
-        let mut total = TokenAmount::zero();
-        state_tree.for_each(|_, actor| {
-            total += &actor.balance.clone();
-            Ok(())
-        })?;
-        Ok(total)
-    }
-
     fn actor_map(&self) -> Map<MemoryBlockstore, ActorState> {
         Map::load_with_config(&self.checkpoint(), self.store.as_ref(), DEFAULT_HAMT_CONFIG).unwrap()
     }
@@ -391,12 +380,7 @@ impl VM for TestVM {
             return Some(act.clone());
         }
         // go to persisted map
-        let actors = Hamt::<Rc<MemoryBlockstore>, ActorState, BytesKey, Sha256>::load_with_config(
-            &self.state_root.borrow(),
-            Rc::clone(&self.store),
-            DEFAULT_HAMT_CONFIG,
-        )
-        .unwrap();
+        let actors = self.actor_map();
         let actor = actors.get(&address.to_bytes()).unwrap().cloned();
         actor.iter().for_each(|a| {
             self.actors_cache.borrow_mut().insert(*address, a.clone());

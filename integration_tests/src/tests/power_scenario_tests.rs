@@ -101,7 +101,7 @@ pub fn power_create_miner_test(v: &dyn VM) {
     };
 
     expect.matches(v.take_invocations().last().unwrap());
-    assert_invariants(v, &Policy::default());
+    assert_invariants(v, &Policy::default(), None);
 }
 
 #[vm_test]
@@ -219,5 +219,6 @@ pub fn cron_tick_test(v: &dyn VM) {
         v,
         &Policy::default(),
         &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+        None,
     );
 }
