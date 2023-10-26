@@ -606,7 +606,6 @@ impl ActorHarness {
         params: PreCommitSectorBatchParams,
         conf: &PreCommitBatchConfig,
         base_fee: &TokenAmount,
-        expect_event: bool,
     ) -> Result<Option<IpldBlock>, ActorError> {
         let v2: Vec<_> = params
             .sectors
@@ -623,7 +622,7 @@ impl ActorHarness {
             })
             .collect();
 
-        if expect_event {
+
             for si in v2.iter() {
                 rt.expect_emitted_event(
                     EventBuilder::new()
@@ -633,7 +632,6 @@ impl ActorHarness {
                         .build()?,
                 );
             }
-        }
 
         if self.options.use_v2_pre_commit_and_replica_update {
             return self.pre_commit_sector_batch_inner(
@@ -742,7 +740,7 @@ impl ActorHarness {
         base_fee: &TokenAmount,
     ) -> Vec<SectorPreCommitOnChainInfo> {
         let result =
-            self.pre_commit_sector_batch(rt, params.clone(), conf, base_fee, true).unwrap();
+            self.pre_commit_sector_batch(rt, params.clone(), conf, base_fee).unwrap();
 
         expect_empty(result);
         rt.verify();
