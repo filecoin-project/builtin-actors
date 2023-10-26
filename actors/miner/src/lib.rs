@@ -854,21 +854,13 @@ impl Actor {
             activate_deals(rt, &data_activations, compute_commd)?;
         let successful_activations = batch_return.successes(&precommits_to_confirm);
 
-        let activated_sector_nums =
-            successful_activations.iter().map(|x| x.info.sector_number).collect_vec();
-
         activate_new_sector_infos(
             rt,
             successful_activations,
             data_activations,
             &pledge_inputs,
             &info,
-            false,
         )?;
-
-        for sector in activated_sector_nums {
-            emit::sector_activated(rt, miner_actor_id, sector)?;
-        }
 
         // Compute and burn the aggregate network fee. We need to re-load the state as
         // confirmSectorProofsValid can change it.
@@ -1872,7 +1864,6 @@ impl Actor {
             data_activations,
             &pledge_inputs,
             &info,
-            true,
         )
     }
 
@@ -4957,7 +4948,6 @@ fn activate_new_sector_infos(
     data_activations: Vec<DataActivationOutput>,
     pledge_inputs: &NetworkPledgeInputs,
     info: &MinerInfo,
-    emit_event: bool,
 ) -> Result<(), ActorError> {
     let miner_actor_id: u64 = rt.message().receiver().id().unwrap();
 
@@ -5094,10 +5084,8 @@ fn activate_new_sector_infos(
 
         state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
 
-        if emit_event {
-            for sector in new_sector_numbers {
-                emit::sector_activated(rt, miner_actor_id, sector)?;
-            }
+        for sector in new_sector_numbers {
+            emit::sector_activated(rt, miner_actor_id, sector)?;
         }
 
         Ok((total_pledge, newly_vested))
