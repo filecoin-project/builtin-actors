@@ -33,3 +33,33 @@ pub fn sector_activated(
             .build()?,
     )
 }
+
+/// Indicates a sector has been updated.
+pub fn sector_updated(
+    rt: &impl Runtime,
+    miner: ActorID,
+    sector: SectorNumber,
+) -> Result<(), ActorError> {
+    rt.emit_event(
+        &EventBuilder::new()
+            .typ("sector-updated")
+            .field_indexed("miner", &miner)
+            .field_indexed("sector", &sector)
+            .build()?,
+    )
+}
+
+/// Indicates a sector has been terminated.
+pub fn sector_terminated(
+    rt: &impl Runtime,
+    miner: ActorID,
+    sector: SectorNumber,
+) -> Result<(), ActorError> {
+    rt.emit_event(
+        &EventBuilder::new()
+            .typ("sector-terminated")
+            .field_indexed("miner", &miner)
+            .field_indexed("sector", &sector)
+            .build()?,
+    )
+}

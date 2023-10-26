@@ -947,6 +947,7 @@ impl Actor {
         RT::Blockstore: Blockstore,
         RT: Runtime,
     {
+        let miner_actor_id: u64 = rt.message().receiver().id().unwrap();
         let state: State = rt.state()?;
         let store = rt.store();
         let info = get_miner_info(store, &state)?;
@@ -1155,6 +1156,9 @@ impl Actor {
                 ));
             }
 
+            let updated_sector_nums =
+                new_sectors.iter().map(|x| x.sector_number).collect::<Vec<SectorNumber>>();
+
             // Overwrite sector infos.
             sectors.store(new_sectors).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to update sector infos")
@@ -1166,6 +1170,10 @@ impl Actor {
             state.save_deadlines(rt.store(), deadlines).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines")
             })?;
+
+            for sector in updated_sector_nums {
+                emit::sector_updated(rt, miner_actor_id, sector)?;
+            }
 
             // Update pledge.
             let current_balance = rt.current_balance();
