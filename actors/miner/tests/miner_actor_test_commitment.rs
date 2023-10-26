@@ -128,12 +128,7 @@ mod miner_actor_test_commitment {
 
         expect_abort(
             ExitCode::USR_INSUFFICIENT_FUNDS,
-            h.pre_commit_sector(
-                &rt,
-                precommit_params,
-                util::PreCommitConfig::default(),
-                true,
-            ),
+            h.pre_commit_sector(&rt, precommit_params, util::PreCommitConfig::default(), true),
         );
         rt.reset();
         h.check_state(&rt);
@@ -163,8 +158,7 @@ mod miner_actor_test_commitment {
 
         let precommit_params = h.make_pre_commit_params(101, challenge_epoch, expiration, vec![1]);
 
-        h.pre_commit_sector(&rt, precommit_params, util::PreCommitConfig::default(), true)
-            .unwrap();
+        h.pre_commit_sector(&rt, precommit_params, util::PreCommitConfig::default(), true).unwrap();
         let st: State = rt.get_state();
         assert_eq!(TokenAmount::zero(), st.fee_debt);
         h.check_state(&rt);
@@ -205,12 +199,8 @@ mod miner_actor_test_commitment {
                 false,
             );
             // Duplicate pre-commit sector ID
-            let ret = h.pre_commit_sector(
-                &rt,
-                precommit_params,
-                util::PreCommitConfig::default(),
-                false,
-            );
+            let ret =
+                h.pre_commit_sector(&rt, precommit_params, util::PreCommitConfig::default(), false);
             expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "already allocated", ret);
             rt.reset();
         }
@@ -223,12 +213,8 @@ mod miner_actor_test_commitment {
                 expiration,
                 vec![],
             );
-            let ret = h.pre_commit_sector(
-                &rt,
-                precommit_params,
-                util::PreCommitConfig::default(),
-                false,
-            );
+            let ret =
+                h.pre_commit_sector(&rt, precommit_params, util::PreCommitConfig::default(), false);
             expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "already allocated", ret);
             rt.reset();
         }
@@ -238,12 +224,8 @@ mod miner_actor_test_commitment {
             let mut precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, deadline.period_end(), vec![]);
             precommit_params.sealed_cid = make_cid_poseidon("Random Data".as_bytes(), 0);
-            let ret = h.pre_commit_sector(
-                &rt,
-                precommit_params,
-                util::PreCommitConfig::default(),
-                false,
-            );
+            let ret =
+                h.pre_commit_sector(&rt, precommit_params, util::PreCommitConfig::default(), false);
             expect_abort_contains_message(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
                 "sealed CID had wrong prefix",
@@ -257,12 +239,8 @@ mod miner_actor_test_commitment {
             let mut precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, deadline.period_end(), vec![]);
             precommit_params.seal_proof = RegisteredSealProof::StackedDRG8MiBV1;
-            let ret = h.pre_commit_sector(
-                &rt,
-                precommit_params,
-                util::PreCommitConfig::default(),
-                false,
-            );
+            let ret =
+                h.pre_commit_sector(&rt, precommit_params, util::PreCommitConfig::default(), false);
             expect_abort_contains_message(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
                 "unsupported seal proof type",
@@ -275,12 +253,8 @@ mod miner_actor_test_commitment {
         {
             let precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, *rt.epoch.borrow(), vec![]);
-            let ret = h.pre_commit_sector(
-                &rt,
-                precommit_params,
-                util::PreCommitConfig::default(),
-                false,
-            );
+            let ret =
+                h.pre_commit_sector(&rt, precommit_params, util::PreCommitConfig::default(), false);
             expect_abort_contains_message(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
                 "must be after activation",
@@ -293,12 +267,8 @@ mod miner_actor_test_commitment {
         {
             let precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, *rt.epoch.borrow() - 1, vec![]);
-            let ret = h.pre_commit_sector(
-                &rt,
-                precommit_params,
-                util::PreCommitConfig::default(),
-                false,
-            );
+            let ret =
+                h.pre_commit_sector(&rt, precommit_params, util::PreCommitConfig::default(), false);
             expect_abort_contains_message(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
                 "must be after activation",
@@ -312,12 +282,8 @@ mod miner_actor_test_commitment {
             let early_expiration = rt.policy.min_sector_expiration - EPOCHS_IN_DAY;
             let precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, early_expiration, vec![]);
-            let ret = h.pre_commit_sector(
-                &rt,
-                precommit_params,
-                util::PreCommitConfig::default(),
-                false,
-            );
+            let ret =
+                h.pre_commit_sector(&rt, precommit_params, util::PreCommitConfig::default(), false);
             expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "must exceed", ret);
             rt.reset();
         }
@@ -330,12 +296,8 @@ mod miner_actor_test_commitment {
                 - 1;
             let precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, expiration, vec![]);
-            let ret = h.pre_commit_sector(
-                &rt,
-                precommit_params,
-                util::PreCommitConfig::default(),
-                false,
-            );
+            let ret =
+                h.pre_commit_sector(&rt, precommit_params, util::PreCommitConfig::default(), false);
             expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "must exceed", ret);
             rt.reset();
         }
@@ -349,12 +311,8 @@ mod miner_actor_test_commitment {
                         + 1);
             let precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, expiration, vec![]);
-            let ret = h.pre_commit_sector(
-                &rt,
-                precommit_params,
-                util::PreCommitConfig::default(),
-                false,
-            );
+            let ret =
+                h.pre_commit_sector(&rt, precommit_params, util::PreCommitConfig::default(), false);
             expect_abort_contains_message(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
                 "invalid expiration",
@@ -369,12 +327,8 @@ mod miner_actor_test_commitment {
             let expiration = *rt.epoch.borrow() + rt.policy.max_sector_expiration_extension + 1;
             let precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, expiration, vec![]);
-            let ret = h.pre_commit_sector(
-                &rt,
-                precommit_params,
-                util::PreCommitConfig::default(),
-                false,
-            );
+            let ret =
+                h.pre_commit_sector(&rt, precommit_params, util::PreCommitConfig::default(), false);
             expect_abort_contains_message(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
                 "invalid expiration",
@@ -391,12 +345,8 @@ mod miner_actor_test_commitment {
                 expiration,
                 vec![],
             );
-            let ret = h.pre_commit_sector(
-                &rt,
-                precommit_params,
-                util::PreCommitConfig::default(),
-                false,
-            );
+            let ret =
+                h.pre_commit_sector(&rt, precommit_params, util::PreCommitConfig::default(), false);
             expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "out of range", ret);
             rt.reset();
         }
@@ -409,12 +359,8 @@ mod miner_actor_test_commitment {
                 - 1;
             let precommit_params =
                 h.make_pre_commit_params(102, too_old_challenge_epoch, expiration, vec![]);
-            let ret = h.pre_commit_sector(
-                &rt,
-                precommit_params,
-                util::PreCommitConfig::default(),
-                false,
-            );
+            let ret =
+                h.pre_commit_sector(&rt, precommit_params, util::PreCommitConfig::default(), false);
             expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "too old", ret);
             rt.reset();
         }
@@ -426,12 +372,8 @@ mod miner_actor_test_commitment {
             rt.replace_state(&st);
             let precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, expiration, vec![]);
-            let ret = h.pre_commit_sector(
-                &rt,
-                precommit_params,
-                util::PreCommitConfig::default(),
-                false,
-            );
+            let ret =
+                h.pre_commit_sector(&rt, precommit_params, util::PreCommitConfig::default(), false);
             expect_abort_contains_message(
                 ExitCode::USR_INSUFFICIENT_FUNDS,
                 "unlocked balance can not repay fee debt",
@@ -455,12 +397,8 @@ mod miner_actor_test_commitment {
             h.report_consensus_fault(&rt, test_addr, Some(fault), ExitCode::OK).unwrap();
             let precommit_params =
                 h.make_pre_commit_params(102, challenge_epoch, expiration, vec![]);
-            let ret = h.pre_commit_sector(
-                &rt,
-                precommit_params,
-                util::PreCommitConfig::default(),
-                false,
-            );
+            let ret =
+                h.pre_commit_sector(&rt, precommit_params, util::PreCommitConfig::default(), false);
             expect_abort_contains_message(ExitCode::USR_FORBIDDEN, "active consensus fault", ret);
             // reset state back to normal
             rt.replace_state(&st);
@@ -509,12 +447,8 @@ mod miner_actor_test_commitment {
                 expiration,
                 make_deal_ids(limit + 1),
             );
-            let ret = h.pre_commit_sector(
-                &rt,
-                precommit_params,
-                util::PreCommitConfig::default(),
-                true,
-            );
+            let ret =
+                h.pre_commit_sector(&rt, precommit_params, util::PreCommitConfig::default(), true);
             expect_abort_contains_message(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
                 "too many deals for sector",

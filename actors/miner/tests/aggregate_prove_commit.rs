@@ -70,7 +70,6 @@ fn valid_precommits_then_aggregate_provecommit() {
             precommits,
             make_prove_commit_aggregate(&sector_nos_bf),
             &TokenAmount::zero(),
-            true,
         )
         .unwrap();
 
