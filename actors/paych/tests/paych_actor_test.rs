@@ -929,14 +929,16 @@ mod actor_collect {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, st.from);
         rt.expect_validate_caller_addr(vec![st.from, st.to]);
         call(&rt, Method::Settle as u64, None);
+        check_state(&rt);
 
         let st: PState = rt.get_state();
         assert_eq!(st.settling_at, SETTLE_DELAY + curr_epoch);
-        rt.expect_validate_caller_addr(vec![st.from, st.to]);
 
         // wait for settlingat epoch
         rt.epoch.replace(st.settling_at + 1);
 
+        // Collect.
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, st.to);
         rt.expect_send_simple(
             st.to,
             METHOD_SEND,
@@ -946,13 +948,19 @@ mod actor_collect {
             ExitCode::OK,
         );
 
-        // Collect.
-        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, st.to);
         rt.expect_validate_caller_addr(vec![st.from, st.to]);
-        rt.expect_delete_actor(st.from);
+        rt.expect_send_simple(
+            st.from,
+            METHOD_SEND,
+            Default::default(),
+            &*rt.balance.borrow() - &st.to_send,
+            Default::default(),
+            ExitCode::OK,
+        );
+        rt.expect_delete_actor();
         let res = call(&rt, Method::Collect as u64, None);
         assert!(res.is_none());
-        check_state(&rt);
+        assert!(rt.is_deleted());
     }
 
     #[test]

@@ -4,6 +4,7 @@ use ethers::{
     core::types::Address as EthAddress, prelude::builders::ContractCall, prelude::EthError,
 };
 
+use export_macro::vm_test;
 use fil_actors_evm_shared::uints::U256;
 use fil_actors_runtime::{
     test_utils::ETHACCOUNT_ACTOR_CODE_ID, test_utils::EVM_ACTOR_CODE_ID, EAM_ACTOR_ADDR,
@@ -40,6 +41,7 @@ pub fn id_to_eth(id: ActorID) -> EthAddress {
 #[serde(transparent)]
 pub struct ContractParams(#[serde(with = "strict_bytes")] pub Vec<u8>);
 
+#[vm_test]
 pub fn evm_eth_create_external_test(v: &dyn VM) {
     // create the EthAccount
     let eth_bits = hex_literal::hex!("FEEDFACECAFEBEEF000000000000000000000000");
@@ -96,6 +98,7 @@ pub fn evm_eth_create_external_test(v: &dyn VM) {
     assert!(call_result.code.is_success(), "failed to call the new actor {}", call_result.message);
 }
 
+#[vm_test]
 pub fn evm_call_test(v: &dyn VM) {
     let account = create_accounts(v, 1, &TokenAmount::from_whole(10_000))[0];
     let address = id_to_eth(account.id().unwrap());
@@ -144,6 +147,7 @@ pub fn evm_call_test(v: &dyn VM) {
     assert_eq!(0, evm_ret, "expected contract to return 0 on success");
 }
 
+#[vm_test]
 pub fn evm_create_test(v: &dyn VM) {
     let account = create_accounts(v, 1, &TokenAmount::from_whole(10_000))[0];
 
@@ -175,7 +179,7 @@ pub fn evm_create_test(v: &dyn VM) {
     let create_return: fil_actor_eam::CreateExternalReturn =
         create_result.ret.unwrap().deserialize().expect("failed to decode results");
 
-    let test_func = |create_func: ContractCall<_, EthAddress>| {
+    let test_func = |create_func: ContractCall<_, EthAddress>, recursive: bool| {
         let child_addr_eth: EthAddress = {
             let call_params = create_func.calldata().expect("should serialize");
             let call_result = v
@@ -229,7 +233,7 @@ pub fn evm_create_test(v: &dyn VM) {
 
         // Kill it.
         {
-            let func = factory_child.die();
+            let func = if recursive { factory_child.die_recursive() } else { factory_child.die() };
             let call_params = func.calldata().expect("should serialize");
             let call_result = v
                 .execute_message(
@@ -273,13 +277,18 @@ pub fn evm_create_test(v: &dyn VM) {
     };
 
     // Test CREATE2 twice because we should be able to deploy over an existing contract.
-    let eth_addr1 = test_func(factory.create_2([0; 32], 42));
-    let eth_addr2 = test_func(factory.create_2([0; 32], 42));
+    let eth_addr1 = test_func(factory.create_2([0; 32], 42), false);
+    let eth_addr2 = test_func(factory.create_2([0; 32], 42), false);
+    assert_eq!(eth_addr1, eth_addr2);
+
+    // Recursive self-destruct should work.
+    let eth_addr1 = test_func(factory.create_2([1; 32], 42), true);
+    let eth_addr2 = test_func(factory.create_2([1; 32], 42), false);
     assert_eq!(eth_addr1, eth_addr2);
 
     // Then test create and expect two different addrs.
-    let eth_addr1 = test_func(factory.create(42));
-    let eth_addr2 = test_func(factory.create(42));
+    let eth_addr1 = test_func(factory.create(42), false);
+    let eth_addr2 = test_func(factory.create(42), false);
     assert_ne!(eth_addr1, eth_addr2);
 
     // Then test a failure
@@ -310,6 +319,7 @@ pub fn evm_create_test(v: &dyn VM) {
     }
 }
 
+#[vm_test]
 pub fn evm_empty_initcode_test(v: &dyn VM) {
     let account = create_accounts(v, 1, &TokenAmount::from_whole(10_000))[0];
     let create_result = v
@@ -329,6 +339,7 @@ pub fn evm_empty_initcode_test(v: &dyn VM) {
     );
 }
 
+#[vm_test]
 #[allow(non_snake_case)]
 pub fn evm_staticcall_test(v: &dyn VM) {
     // test scenarios:
@@ -479,6 +490,7 @@ pub fn evm_staticcall_test(v: &dyn VM) {
 }
 
 #[allow(non_snake_case)]
+#[vm_test]
 pub fn evm_delegatecall_test(v: &dyn VM) {
     // test scenarios:
     // one hop:
@@ -612,6 +624,7 @@ pub fn evm_delegatecall_test(v: &dyn VM) {
 }
 
 #[allow(non_snake_case)]
+#[vm_test]
 pub fn evm_staticcall_delegatecall_test(v: &dyn VM) {
     // test scenarios:
     // one hop:
@@ -712,6 +725,7 @@ pub fn evm_staticcall_delegatecall_test(v: &dyn VM) {
     }
 }
 
+#[vm_test]
 pub fn evm_init_revert_data_test(v: &dyn VM) {
     let account = create_accounts(v, 1, &TokenAmount::from_whole(10_000))[0];
     let create_result = v

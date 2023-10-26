@@ -58,42 +58,6 @@ pub fn can_extend_seal_proof_type(_proof: RegisteredSealProof) -> bool {
     true
 }
 
-/// Convert the v1_1 PoSt Proof type to the older v1 types (used in nv18 and below)
-pub fn convert_window_post_proof_v1p1_to_v1(
-    rpp: RegisteredPoStProof,
-) -> Result<RegisteredPoStProof, String> {
-    match rpp {
-        RegisteredPoStProof::StackedDRGWindow2KiBV1P1 => {
-            Ok(RegisteredPoStProof::StackedDRGWindow2KiBV1)
-        }
-        RegisteredPoStProof::StackedDRGWindow8MiBV1P1 => {
-            Ok(RegisteredPoStProof::StackedDRGWindow8MiBV1)
-        }
-        RegisteredPoStProof::StackedDRGWindow512MiBV1P1 => {
-            Ok(RegisteredPoStProof::StackedDRGWindow512MiBV1)
-        }
-        RegisteredPoStProof::StackedDRGWindow32GiBV1P1 => {
-            Ok(RegisteredPoStProof::StackedDRGWindow32GiBV1)
-        }
-        RegisteredPoStProof::StackedDRGWindow64GiBV1P1 => {
-            Ok(RegisteredPoStProof::StackedDRGWindow64GiBV1)
-        }
-        i => Err(format!("not a v1p1 proof type: {:?}", i)),
-    }
-}
-
-/// Convert the v1_1 PoSt Proof type to the older v1 types (used in nv18 and below)
-pub fn is_window_post_proof_v1p1(rpp: RegisteredPoStProof) -> bool {
-    matches!(
-        rpp,
-        RegisteredPoStProof::StackedDRGWindow2KiBV1P1
-            | RegisteredPoStProof::StackedDRGWindow8MiBV1P1
-            | RegisteredPoStProof::StackedDRGWindow512MiBV1P1
-            | RegisteredPoStProof::StackedDRGWindow32GiBV1P1
-            | RegisteredPoStProof::StackedDRGWindow64GiBV1P1
-    )
-}
-
 /// Maximum duration to allow for the sealing process for seal algorithms.
 /// Dependent on algorithm and sector size
 pub fn max_prove_commit_duration(
@@ -104,8 +68,18 @@ pub fn max_prove_commit_duration(
     match proof {
         StackedDRG32GiBV1 | StackedDRG2KiBV1 | StackedDRG8MiBV1 | StackedDRG512MiBV1
         | StackedDRG64GiBV1 => Some(EPOCHS_IN_DAY + policy.pre_commit_challenge_delay),
-        StackedDRG32GiBV1P1 | StackedDRG64GiBV1P1 | StackedDRG512MiBV1P1 | StackedDRG8MiBV1P1
-        | StackedDRG2KiBV1P1 => Some(30 * EPOCHS_IN_DAY + policy.pre_commit_challenge_delay),
+        StackedDRG32GiBV1P1
+        | StackedDRG64GiBV1P1
+        | StackedDRG512MiBV1P1
+        | StackedDRG8MiBV1P1
+        | StackedDRG2KiBV1P1
+        | StackedDRG32GiBV1P1_Feat_SyntheticPoRep
+        | StackedDRG64GiBV1P1_Feat_SyntheticPoRep
+        | StackedDRG512MiBV1P1_Feat_SyntheticPoRep
+        | StackedDRG8MiBV1P1_Feat_SyntheticPoRep
+        | StackedDRG2KiBV1P1_Feat_SyntheticPoRep => {
+            Some(30 * EPOCHS_IN_DAY + policy.pre_commit_challenge_delay)
+        }
         _ => None,
     }
 }
@@ -117,8 +91,16 @@ pub fn seal_proof_sector_maximum_lifetime(proof: RegisteredSealProof) -> Option<
     match proof {
         StackedDRG32GiBV1 | StackedDRG2KiBV1 | StackedDRG8MiBV1 | StackedDRG512MiBV1
         | StackedDRG64GiBV1 => Some(EPOCHS_IN_DAY * 540),
-        StackedDRG32GiBV1P1 | StackedDRG2KiBV1P1 | StackedDRG8MiBV1P1 | StackedDRG512MiBV1P1
-        | StackedDRG64GiBV1P1 => Some(EPOCHS_IN_YEAR * 5),
+        StackedDRG32GiBV1P1
+        | StackedDRG2KiBV1P1
+        | StackedDRG8MiBV1P1
+        | StackedDRG512MiBV1P1
+        | StackedDRG64GiBV1P1
+        | StackedDRG32GiBV1P1_Feat_SyntheticPoRep
+        | StackedDRG2KiBV1P1_Feat_SyntheticPoRep
+        | StackedDRG8MiBV1P1_Feat_SyntheticPoRep
+        | StackedDRG512MiBV1P1_Feat_SyntheticPoRep
+        | StackedDRG64GiBV1P1_Feat_SyntheticPoRep => Some(EPOCHS_IN_YEAR * 5),
         _ => None,
     }
 }

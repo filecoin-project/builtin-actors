@@ -1,11 +1,11 @@
 use cid::Cid;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::{make_map_with_root_and_bitwidth, Keyer, Map, MapMap};
-use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::HAMT_BIT_WIDTH;
 
 #[test]
 fn mapmap_test() {
-    let store = MemoryBlockstore::default();
+    let store = MemoryBlockstore::new();
     let mut mm = MapMap::new(&store, HAMT_BIT_WIDTH, HAMT_BIT_WIDTH);
 
     let prev = mm.put("tree", "evergreen", "pine".to_string()).unwrap();

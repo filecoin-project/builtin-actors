@@ -1,9 +1,9 @@
 use fil_actor_miner::BitFieldQueue;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::test_utils::MockRuntime;
 use fvm_ipld_amt::Amt;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_bitfield::MaybeBitField;
-use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_shared::clock::{ChainEpoch, QuantSpec, NO_QUANTIZATION};
 use std::iter::FromIterator;
 

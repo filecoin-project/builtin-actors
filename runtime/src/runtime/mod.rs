@@ -206,10 +206,11 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
         predictable_address: Option<Address>,
     ) -> Result<(), ActorError>;
 
-    /// Deletes the executing actor from the state tree, transferring any balance to beneficiary.
-    /// Aborts if the beneficiary does not exist.
+    /// Deletes the executing actor from the state tree. Fails if there is any unspent balance in
+    /// the actor.
+    ///
     /// May only be called by the actor itself.
-    fn delete_actor(&self, beneficiary: &Address) -> Result<(), ActorError>;
+    fn delete_actor(&self) -> Result<(), ActorError>;
 
     /// Returns whether the specified CodeCID belongs to a built-in actor.
     fn resolve_builtin_actor_type(&self, code_id: &Cid) -> Option<Type>;

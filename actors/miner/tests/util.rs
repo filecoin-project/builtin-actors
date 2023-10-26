@@ -7,10 +7,11 @@ use std::ops::Neg;
 
 use cid::multihash::MultihashDigest;
 use cid::Cid;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fvm_ipld_amt::Amt;
 use fvm_ipld_bitfield::iter::Ranges;
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
-use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
+use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::de::Deserialize;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::ser::Serialize;
@@ -57,23 +58,23 @@ use fil_actor_miner::testing::{
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee, consensus_fault_penalty,
     ext, initial_pledge_for_power, locked_reward_from_reward, max_prove_commit_duration,
-    new_deadline_info_from_offset_and_epoch, pledge_penalty_for_continued_fault, power_for_sectors,
-    qa_power_for_sector, qa_power_for_weight, reward_for_consensus_slash_report, ActiveBeneficiary,
-    Actor, ApplyRewardParams, BeneficiaryTerm, BitFieldQueue, ChangeBeneficiaryParams,
-    ChangeMultiaddrsParams, ChangePeerIDParams, ChangeWorkerAddressParams, CheckSectorProvenParams,
-    CompactCommD, CompactPartitionsParams, CompactSectorNumbersParams, ConfirmSectorProofsParams,
-    CronEventPayload, Deadline, DeadlineInfo, Deadlines, DeclareFaultsParams,
-    DeclareFaultsRecoveredParams, DeferredCronEventParams, DisputeWindowedPoStParams,
-    ExpirationQueue, ExpirationSet, ExtendSectorExpiration2Params, ExtendSectorExpirationParams,
-    FaultDeclaration, GetAvailableBalanceReturn, GetBeneficiaryReturn, GetControlAddressesReturn,
-    GetMultiaddrsReturn, GetPeerIDReturn, Method, MinerConstructorParams as ConstructorParams,
-    MinerInfo, Partition, PendingBeneficiaryChange, PoStPartition, PowerPair,
-    PreCommitSectorBatchParams, PreCommitSectorBatchParams2, PreCommitSectorParams,
-    ProveCommitSectorParams, RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo,
-    SectorPreCommitInfo, SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams,
-    TerminateSectorsParams, TerminationDeclaration, VestingFunds, WindowedPoSt,
-    WithdrawBalanceParams, WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE,
-    SECTORS_AMT_BITWIDTH,
+    new_deadline_info, new_deadline_info_from_offset_and_epoch, pledge_penalty_for_continued_fault,
+    power_for_sectors, qa_power_for_sector, qa_power_for_weight, reward_for_consensus_slash_report,
+    ActiveBeneficiary, Actor, ApplyRewardParams, BeneficiaryTerm, BitFieldQueue,
+    ChangeBeneficiaryParams, ChangeMultiaddrsParams, ChangePeerIDParams, ChangeWorkerAddressParams,
+    CheckSectorProvenParams, CompactCommD, CompactPartitionsParams, CompactSectorNumbersParams,
+    ConfirmSectorProofsParams, CronEventPayload, Deadline, DeadlineInfo, Deadlines,
+    DeclareFaultsParams, DeclareFaultsRecoveredParams, DeferredCronEventParams,
+    DisputeWindowedPoStParams, ExpirationQueue, ExpirationSet, ExtendSectorExpiration2Params,
+    ExtendSectorExpirationParams, FaultDeclaration, GetAvailableBalanceReturn,
+    GetBeneficiaryReturn, GetControlAddressesReturn, GetMultiaddrsReturn, GetPeerIDReturn, Method,
+    MinerConstructorParams as ConstructorParams, MinerInfo, MovePartitionsParams, Partition,
+    PendingBeneficiaryChange, PoStPartition, PowerPair, PreCommitSectorBatchParams,
+    PreCommitSectorBatchParams2, PreCommitSectorParams, ProveCommitSectorParams,
+    RecoveryDeclaration, ReportConsensusFaultParams, SectorOnChainInfo, SectorPreCommitInfo,
+    SectorPreCommitOnChainInfo, Sectors, State, SubmitWindowedPoStParams, TerminateSectorsParams,
+    TerminationDeclaration, VestingFunds, WindowedPoSt, WithdrawBalanceParams,
+    WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE, REWARD_VESTING_SPEC, SECTORS_AMT_BITWIDTH,
 };
 use fil_actor_miner::{Method as MinerMethod, ProveCommitAggregateParams};
 use fil_actor_power::{
@@ -1475,7 +1476,7 @@ impl ActorHarness {
         )
     }
 
-    fn make_window_post_verify_info(
+    pub fn make_window_post_verify_info(
         &self,
         infos: &[SectorOnChainInfo],
         all_ignored: &BitField,
@@ -1635,7 +1636,12 @@ impl ActorHarness {
         rt.verify();
     }
 
-    fn get_submitted_proof(&self, rt: &MockRuntime, deadline: &Deadline, idx: u64) -> WindowedPoSt {
+    pub fn get_submitted_proof(
+        &self,
+        rt: &MockRuntime,
+        deadline: &Deadline,
+        idx: u64,
+    ) -> WindowedPoSt {
         amt_get::<WindowedPoSt>(rt, &deadline.optimistic_post_submissions_snapshot, idx)
     }
 
@@ -1952,6 +1958,7 @@ impl ActorHarness {
         rt: &MockRuntime,
         from: Address,
         fault: Option<ConsensusFault>,
+        verify_exit_code: ExitCode,
     ) -> Result<(), ActorError> {
         rt.expect_validate_caller_any();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, from);
@@ -1963,7 +1970,7 @@ impl ActorHarness {
             params.header2.clone(),
             params.header_extra.clone(),
             fault,
-            ExitCode::OK,
+            verify_exit_code,
         );
 
         let current_reward = ThisEpochRewardReturn {
@@ -2052,8 +2059,18 @@ impl ActorHarness {
         let mut deal_ids: Vec<DealID> = Vec::new();
         let mut sector_infos: Vec<SectorOnChainInfo> = Vec::new();
 
+        let mut has_active_sector = false;
         for sector in sectors.iter() {
+            let (_, partition) = self.find_sector(&rt, sector);
+            let non_active = partition.terminated.get(sector)
+                || partition.faults.get(sector)
+                || partition.unproven.get(sector);
+            if !non_active {
+                has_active_sector = true;
+            }
+
             let sector = self.get_sector(rt, sector);
+
             deal_ids.extend(sector.deal_ids.iter());
             sector_infos.push(sector);
         }
@@ -2111,14 +2128,17 @@ impl ActorHarness {
             raw_byte_delta: -sector_power.raw.clone(),
             quality_adjusted_delta: -sector_power.qa.clone(),
         };
-        rt.expect_send_simple(
-            STORAGE_POWER_ACTOR_ADDR,
-            UPDATE_CLAIMED_POWER_METHOD,
-            IpldBlock::serialize_cbor(&params).unwrap(),
-            TokenAmount::zero(),
-            None,
-            ExitCode::OK,
-        );
+
+        if has_active_sector {
+            rt.expect_send_simple(
+                STORAGE_POWER_ACTOR_ADDR,
+                UPDATE_CLAIMED_POWER_METHOD,
+                IpldBlock::serialize_cbor(&params).unwrap(),
+                TokenAmount::zero(),
+                None,
+                ExitCode::OK,
+            );
+        }
 
         // create declarations
         let state: State = rt.get_state();
@@ -2593,6 +2613,64 @@ impl ActorHarness {
         Ok(())
     }
 
+    pub fn move_partitions(
+        &self,
+        rt: &MockRuntime,
+        orig_deadline: u64,
+        dest_deadline: u64,
+        partitions: BitField,
+        expect_window_post_sectors: &[SectorOnChainInfo], // if not empty, the first item should be "good"
+    ) -> Result<(), ActorError> {
+        if !expect_window_post_sectors.is_empty() {
+            let current_deadline = self.current_deadline(&rt);
+
+            let from_deadline = new_deadline_info(
+                rt.policy(),
+                if current_deadline.index < orig_deadline {
+                    current_deadline.period_start - rt.policy().wpost_proving_period
+                } else {
+                    current_deadline.period_start
+                },
+                orig_deadline,
+                *rt.epoch.borrow(),
+            );
+
+            let from_ddl = self.get_deadline(&rt, orig_deadline);
+
+            let entropy = RawBytes::serialize(self.receiver).unwrap();
+            rt.expect_get_randomness_from_beacon(
+                DomainSeparationTag::WindowedPoStChallengeSeed,
+                from_deadline.challenge,
+                entropy.to_vec(),
+                TEST_RANDOMNESS_ARRAY_FROM_ONE,
+            );
+
+            let post = self.get_submitted_proof(&rt, &from_ddl, 0);
+
+            let all_ignored = BitField::new();
+            let vi = self.make_window_post_verify_info(
+                &expect_window_post_sectors,
+                &all_ignored,
+                expect_window_post_sectors[0].clone(),
+                Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
+                post.proofs,
+            );
+            rt.expect_verify_post(vi, ExitCode::OK);
+        }
+
+        let params = MovePartitionsParams { orig_deadline, dest_deadline, partitions };
+
+        rt.expect_validate_caller_addr(self.caller_addrs());
+        rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
+
+        rt.call::<Actor>(
+            Method::MovePartitions as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        )?;
+        rt.verify();
+        Ok(())
+    }
+
     pub fn get_info(&self, rt: &MockRuntime) -> MinerInfo {
         let state: State = rt.get_state();
         state.get_info(rt.store()).unwrap()
@@ -2880,10 +2958,17 @@ enum MhCode {
 }
 
 fn immediately_vesting_funds(rt: &MockRuntime, state: &State) -> TokenAmount {
+    let curr_epoch = *rt.epoch.borrow();
+
+    let q =
+        QuantSpec { unit: REWARD_VESTING_SPEC.quantization, offset: state.proving_period_start };
+    if q.quantize_up(curr_epoch) != curr_epoch {
+        return TokenAmount::zero();
+    }
     let vesting = rt.store.get_cbor::<VestingFunds>(&state.vesting_funds).unwrap().unwrap();
     let mut sum = TokenAmount::zero();
     for vf in vesting.funds {
-        if vf.epoch < *rt.epoch.borrow() {
+        if vf.epoch < curr_epoch {
             sum += vf.amount;
         } else {
             break;

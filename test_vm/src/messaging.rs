@@ -25,9 +25,6 @@ use fil_actors_runtime::runtime::{
 use fil_actors_runtime::{actor_error, SendError};
 use fil_actors_runtime::{test_utils::*, SYSTEM_ACTOR_ID};
 use fil_actors_runtime::{ActorError, INIT_ACTOR_ADDR};
-
-use fvm_ipld_blockstore::Blockstore;
-
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::CborStore;
 
@@ -63,7 +60,9 @@ use vm_api::trace::InvocationTrace;
 use vm_api::util::get_state;
 use vm_api::{new_actor, ActorState, VM};
 
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use std::ops::Add;
+use std::rc::Rc;
 
 use crate::{TestVM, TEST_VM_INVALID_POST, TEST_VM_RAND_ARRAY};
 
@@ -84,10 +83,7 @@ pub struct InternalMessage {
     pub params: Option<IpldBlock>,
 }
 
-impl<BS> MessageInfo for InvocationCtx<'_, '_, BS>
-where
-    BS: Blockstore,
-{
+impl MessageInfo for InvocationCtx<'_> {
     fn nonce(&self) -> u64 {
         self.top.originator_call_seq
     }
@@ -108,11 +104,8 @@ where
     }
 }
 
-pub struct InvocationCtx<'invocation, 'bs, BS>
-where
-    BS: Blockstore,
-{
-    pub v: &'invocation TestVM<'bs, BS>,
+pub struct InvocationCtx<'invocation> {
+    pub v: &'invocation TestVM,
     pub top: TopCtx,
     pub msg: InternalMessage,
     pub allow_side_effects: RefCell<bool>,
@@ -122,10 +115,7 @@ where
     pub subinvocations: RefCell<Vec<InvocationTrace>>,
 }
 
-impl<'invocation, 'bs, BS> InvocationCtx<'invocation, 'bs, BS>
-where
-    BS: Blockstore,
-{
+impl<'invocation> InvocationCtx<'invocation> {
     fn resolve_target(
         &'invocation self,
         target: &Address,
@@ -163,7 +153,7 @@ where
         }
 
         let mut st: InitState = get_state(self.v, &INIT_ACTOR_ADDR).unwrap();
-        let (target_id, existing) = st.map_addresses_to_id(self.v.store, target, None).unwrap();
+        let (target_id, existing) = st.map_addresses_to_id(&self.v.store, target, None).unwrap();
         assert!(!existing, "should never have existing actor when no f4 address is specified");
         let target_id_addr = Address::new_id(target_id);
         let mut init_actor = self.v.actor(&INIT_ACTOR_ADDR).unwrap();
@@ -309,11 +299,8 @@ where
     }
 }
 
-impl<'invocation, 'bs, BS> Runtime for InvocationCtx<'invocation, 'bs, BS>
-where
-    BS: Blockstore,
-{
-    type Blockstore = &'bs BS;
+impl<'invocation> Runtime for InvocationCtx<'invocation> {
+    type Blockstore = Rc<MemoryBlockstore>;
 
     fn create_actor(
         &self,
@@ -355,7 +342,7 @@ where
         Ok(())
     }
 
-    fn store(&self) -> &&'bs BS {
+    fn store(&self) -> &Rc<MemoryBlockstore> {
         &self.v.store
     }
 
@@ -611,7 +598,7 @@ where
         Ok(Address::new_actor(&b))
     }
 
-    fn delete_actor(&self, _beneficiary: &Address) -> Result<(), ActorError> {
+    fn delete_actor(&self) -> Result<(), ActorError> {
         panic!("TODO implement me")
     }
 
@@ -659,10 +646,7 @@ where
     }
 }
 
-impl<BS> Primitives for InvocationCtx<'_, '_, BS>
-where
-    BS: Blockstore,
-{
+impl Primitives for InvocationCtx<'_> {
     fn verify_signature(
         &self,
         signature: &Signature,
@@ -701,10 +685,7 @@ where
     }
 }
 
-impl<BS> Verifier for InvocationCtx<'_, '_, BS>
-where
-    BS: Blockstore,
-{
+impl Verifier for InvocationCtx<'_> {
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), anyhow::Error> {
         for proof in &verify_info.proofs {
             if proof.proof_bytes.eq(&TEST_VM_INVALID_POST.as_bytes().to_vec()) {
@@ -740,10 +721,7 @@ where
     }
 }
 
-impl<BS> RuntimePolicy for InvocationCtx<'_, '_, BS>
-where
-    BS: Blockstore,
-{
+impl RuntimePolicy for InvocationCtx<'_> {
     fn policy(&self) -> &Policy {
         self.policy
     }

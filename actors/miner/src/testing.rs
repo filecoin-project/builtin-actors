@@ -629,9 +629,6 @@ impl ExpirationQueueStateSummary {
         let ret = expiration_queue.amt.for_each(|epoch, expiration_set| {
             let epoch = epoch as i64;
             let acc = acc.with_prefix(format!("expiration epoch {epoch}: "));
-            let quant_up = quant.quantize_up(epoch);
-            acc.require(quant_up == epoch, format!("expiration queue key {epoch} is not quantized, expected {quant_up}"));
-
             expiration_epochs.push(epoch);
 
             let mut on_time_sectors_pledge = TokenAmount::zero();
@@ -643,8 +640,7 @@ impl ExpirationQueueStateSummary {
 
                 // check expiring sectors are still alive
                 if let Some(sector) = live_sectors.get(&sector_number) {
-                    let target = quant.quantize_up(sector.expiration);
-                    acc.require(epoch == target, format!("invalid expiration {epoch} for sector {sector_number}, expected {target}"));
+                    acc.require(epoch >= sector.expiration , format!("invalid expiration {epoch} for sector {sector_number}"));
                     on_time_sectors_pledge += sector.initial_pledge.clone();
                 } else {
                     acc.add(format!("on time expiration sector {sector_number} isn't live"));

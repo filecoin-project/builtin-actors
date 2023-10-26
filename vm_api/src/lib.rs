@@ -88,8 +88,8 @@ pub trait VM {
     /// Return a map of actor code CIDs to their corresponding types
     fn actor_manifest(&self) -> BTreeMap<Cid, Type>;
 
-    /// Return the root of the state tree
-    fn state_root(&self) -> Cid;
+    /// Returns a map of all actor addresses to their corresponding states
+    fn actor_states(&self) -> BTreeMap<Address, ActorState>;
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -118,18 +118,12 @@ pub struct ActorState {
 
 pub fn new_actor(
     code: Cid,
-    head: Cid,
-    call_seq_num: u64,
+    state: Cid,
+    sequence: u64,
     balance: TokenAmount,
-    predictable_address: Option<Address>,
+    delegated_address: Option<Address>,
 ) -> ActorState {
-    ActorState {
-        code,
-        state: head,
-        sequence: call_seq_num,
-        balance,
-        delegated_address: predictable_address,
-    }
+    ActorState { code, state, sequence, balance, delegated_address }
 }
 
 /// Pure functions implemented as primitives by the runtime.

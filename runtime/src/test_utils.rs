@@ -9,7 +9,6 @@ use std::rc::Rc;
 use anyhow::anyhow;
 use cid::multihash::{Code, Multihash as OtherMultihash};
 use cid::Cid;
-use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::de::DeserializeOwned;
 use fvm_ipld_encoding::CborStore;
 use fvm_shared::address::Payload;
@@ -46,6 +45,7 @@ use crate::runtime::{
 use crate::{actor_error, ActorError, SendError};
 use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
 
+use crate::test_blockstores::MemoryBlockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::chainid::ChainID;
 use fvm_shared::event::ActorEvent;
@@ -134,7 +134,7 @@ pub fn init_logging() -> Result<(), log::SetLoggerError> {
     pretty_env_logger::try_init()
 }
 
-pub struct MockRuntime<BS = MemoryBlockstore> {
+pub struct MockRuntime {
     pub epoch: RefCell<ChainEpoch>,
     pub miner: Address,
     pub base_fee: RefCell<TokenAmount>,
@@ -165,7 +165,7 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
 
     // VM Impl
     pub in_call: RefCell<bool>,
-    pub store: Rc<BS>,
+    pub store: Rc<MemoryBlockstore>,
     pub in_transaction: RefCell<bool>,
 
     // Expectations
@@ -191,7 +191,7 @@ pub struct Expectations {
     pub expect_validate_caller_type: Option<Vec<Type>>,
     pub expect_sends: VecDeque<ExpectedMessage>,
     pub expect_create_actor: Option<ExpectCreateActor>,
-    pub expect_delete_actor: Option<Address>,
+    pub expect_delete_actor: bool,
     pub expect_verify_sigs: VecDeque<ExpectedVerifySig>,
     pub expect_verify_post: Option<ExpectVerifyPoSt>,
     pub expect_compute_unsealed_sector_cid: VecDeque<ExpectComputeUnsealedSectorCid>,
@@ -245,11 +245,7 @@ impl Expectations {
             "expected actor to be created, uncreated actor: {:?}",
             this.expect_create_actor
         );
-        assert!(
-            this.expect_delete_actor.is_none(),
-            "expected actor to be deleted: {:?}",
-            this.expect_delete_actor
-        );
+        assert!(!this.expect_delete_actor, "expected actor to be deleted",);
         assert!(
             this.expect_verify_sigs.is_empty(),
             "expect_verify_sigs: {:?}, not received",
@@ -315,12 +311,12 @@ impl Expectations {
 
 impl Default for MockRuntime {
     fn default() -> Self {
-        Self::new(Default::default())
+        Self::new()
     }
 }
 
-impl<BS> MockRuntime<BS> {
-    pub fn new(store: BS) -> Self {
+impl MockRuntime {
+    pub fn new() -> Self {
         Self {
             epoch: Default::default(),
             miner: Address::new_id(0),
@@ -341,7 +337,7 @@ impl<BS> MockRuntime<BS> {
             state: Default::default(),
             balance: Default::default(),
             in_call: Default::default(),
-            store: Rc::new(store),
+            store: Rc::new(Default::default()),
             in_transaction: Default::default(),
             expectations: Default::default(),
             policy: Default::default(),
@@ -470,11 +466,15 @@ pub fn expect_abort<T: fmt::Debug>(exit_code: ExitCode, res: Result<T, ActorErro
     expect_abort_contains_message(exit_code, "", res);
 }
 
-impl<BS: Blockstore> MockRuntime<BS> {
+impl MockRuntime {
     ///// Runtime access for tests /////
 
     pub fn set_policy(&mut self, policy: Policy) {
         self.policy = policy;
+    }
+
+    pub fn is_deleted(&self) -> bool {
+        self.state.borrow().is_none()
     }
 
     pub fn get_state<T: DeserializeOwned>(&self) -> T {
@@ -624,8 +624,8 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 
     #[allow(dead_code)]
-    pub fn expect_delete_actor(&self, beneficiary: Address) {
-        self.expectations.borrow_mut().expect_delete_actor = Some(beneficiary);
+    pub fn expect_delete_actor(&self) {
+        self.expectations.borrow_mut().expect_delete_actor = true;
     }
 
     #[allow(dead_code)]
@@ -796,7 +796,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 }
 
-impl<BS> MessageInfo for MockRuntime<BS> {
+impl MessageInfo for MockRuntime {
     fn nonce(&self) -> u64 {
         0
     }
@@ -818,8 +818,8 @@ impl<BS> MessageInfo for MockRuntime<BS> {
     }
 }
 
-impl<BS: Blockstore> Runtime for MockRuntime<BS> {
-    type Blockstore = Rc<BS>;
+impl Runtime for MockRuntime {
+    type Blockstore = Rc<MemoryBlockstore>;
 
     fn network_version(&self) -> NetworkVersion {
         self.network_version
@@ -1100,7 +1100,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         ret
     }
 
-    fn store(&self) -> &Rc<BS> {
+    fn store(&self) -> &Rc<MemoryBlockstore> {
         &self.store
     }
 
@@ -1185,18 +1185,15 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         Ok(())
     }
 
-    fn delete_actor(&self, addr: &Address) -> Result<(), ActorError> {
+    fn delete_actor(&self) -> Result<(), ActorError> {
         self.require_in_call();
         if *self.in_transaction.borrow() {
             return Err(actor_error!(assertion_failed; "side-effect within transaction"));
         }
-        let exp_act = self.expectations.borrow_mut().expect_delete_actor.take();
-        if exp_act.is_none() {
-            panic!("unexpected call to delete actor: {}", addr);
-        }
-        if exp_act.as_ref().unwrap() != addr {
-            panic!("attempt to delete wrong actor. Expected: {}, got: {}", exp_act.unwrap(), addr);
-        }
+        *self.state.borrow_mut() = None;
+        let mut exp = self.expectations.borrow_mut();
+        assert!(exp.expect_delete_actor, "unexpected call to delete actor");
+        exp.expect_delete_actor = false;
         Ok(())
     }
 
@@ -1275,7 +1272,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
     }
 }
 
-impl<BS> Primitives for MockRuntime<BS> {
+impl Primitives for MockRuntime {
     fn verify_signature(
         &self,
         signature: &Signature,
@@ -1372,7 +1369,7 @@ impl<BS> Primitives for MockRuntime<BS> {
     }
 }
 
-impl<BS> Verifier for MockRuntime<BS> {
+impl Verifier for MockRuntime {
     fn verify_post(&self, post: &WindowPoStVerifyInfo) -> anyhow::Result<()> {
         let exp = self
             .expectations
@@ -1453,11 +1450,21 @@ impl<BS> Verifier for MockRuntime<BS> {
             .take()
             .expect("unexpected call to verify aggregate seals");
         assert_eq!(exp.in_svis.len(), aggregate.infos.len(), "length mismatch");
+
         for (i, exp_svi) in exp.in_svis.iter().enumerate() {
             assert_eq!(exp_svi.sealed_cid, aggregate.infos[i].sealed_cid, "mismatched sealed CID");
             assert_eq!(
                 exp_svi.unsealed_cid, aggregate.infos[i].unsealed_cid,
                 "mismatched unsealed CID"
+            );
+            assert_eq!(
+                exp_svi.sector_number, aggregate.infos[i].sector_number,
+                "mismatched sector number"
+            );
+            assert_eq!(exp_svi.randomness, aggregate.infos[i].randomness, "mismatched randomness");
+            assert_eq!(
+                exp_svi.interactive_randomness, aggregate.infos[i].interactive_randomness,
+                "mismatched interactive randomness"
             );
         }
         assert_eq!(exp.in_proof, aggregate.proof, "proof mismatch");
@@ -1482,7 +1489,7 @@ impl<BS> Verifier for MockRuntime<BS> {
     }
 }
 
-impl<BS> RuntimePolicy for MockRuntime<BS> {
+impl RuntimePolicy for MockRuntime {
     fn policy(&self) -> &Policy {
         &self.policy
     }

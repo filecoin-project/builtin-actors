@@ -711,11 +711,13 @@ fn is_verifier(rt: &impl Runtime, st: &State, address: Address) -> Result<bool, 
 fn balance(rt: &impl Runtime, owner: &Address) -> Result<DataCap, ActorError> {
     let params = IpldBlock::serialize_cbor(owner)?;
     let x: TokenAmount = deserialize_block(
-        extract_send_result(rt.send_simple(
+        extract_send_result(rt.send(
             &DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Balance as u64,
             params,
             TokenAmount::zero(),
+            None,
+            SendFlags::READ_ONLY,
         ))
         .context(format!("failed to query datacap balance of {}", owner))?,
     )?;

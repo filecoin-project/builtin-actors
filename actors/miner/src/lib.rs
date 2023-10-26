@@ -4,8 +4,8 @@
 use std::cmp::max;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet};
-use std::iter;
 use std::ops::Neg;
+use std::{cmp, iter};
 
 use anyhow::{anyhow, Error};
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
@@ -16,7 +16,7 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{from_slice, BytesDe, CborStore};
 use fvm_shared::address::{Address, Payload, Protocol};
 use fvm_shared::bigint::{BigInt, Integer};
-use fvm_shared::clock::ChainEpoch;
+use fvm_shared::clock::{ChainEpoch, QuantSpec};
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::*;
@@ -48,7 +48,6 @@ use fil_actors_runtime::{
     SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_shared::version::NetworkVersion;
 pub use monies::*;
 pub use partition_state::*;
 pub use policy::*;
@@ -128,6 +127,7 @@ pub enum Method {
     ChangeBeneficiary = 30,
     GetBeneficiary = 31,
     ExtendSectorExpiration2 = 32,
+    MovePartitions = 33,
     // Method numbers derived from FRC-0042 standards
     ChangeWorkerAddressExported = frc42_dispatch::method_hash!("ChangeWorkerAddress"),
     ChangePeerIDExported = frc42_dispatch::method_hash!("ChangePeerID"),
@@ -163,14 +163,6 @@ impl Actor {
         check_control_addresses(rt.policy(), &params.control_addresses)?;
         check_peer_info(rt.policy(), &params.peer_id, &params.multi_addresses)?;
         check_valid_post_proof_type(rt.policy(), params.window_post_proof_type)?;
-        // TODO: v12: cleanup https://github.com/filecoin-project/builtin-actors/issues/1260
-        if !is_window_post_proof_v1p1(params.window_post_proof_type) {
-            return Err(actor_error!(
-                illegal_argument,
-                "unsupported window post proof type: {:?}",
-                params.window_post_proof_type
-            ));
-        }
 
         let owner = rt.resolve_address(&params.owner).ok_or_else(|| {
             actor_error!(illegal_argument, "unable to resolve owner address: {}", params.owner)
@@ -550,33 +542,12 @@ impl Actor {
 
             // Make sure the miner is using the correct proof type.
             if params.proofs[0].post_proof != info.window_post_proof_type {
-                // Special for nv19: Allow the v1 version of v1p1 post proof types
-                let nv = rt.network_version();
-                // TODO: v12: cleanup https://github.com/filecoin-project/builtin-actors/issues/1260
-                if nv == NetworkVersion::V19 {
-                    let info_v1_proof_type =
-                        convert_window_post_proof_v1p1_to_v1(info.window_post_proof_type)
-                            .context_code(
-                                ExitCode::USR_ILLEGAL_STATE,
-                                "failed to convert to v1 window post proof",
-                            )?;
-                    if info_v1_proof_type != params.proofs[0].post_proof {
-                        return Err(actor_error!(
-                            illegal_argument,
-                            "expected proof of type {:?} or {:?}, got {:?}",
-                            info_v1_proof_type,
-                            info.window_post_proof_type,
-                            params.proofs[0].post_proof
-                        ));
-                    }
-                } else {
-                    return Err(actor_error!(
-                        illegal_argument,
-                        "expected proof of type {:?}, got {:?}",
-                        info.window_post_proof_type,
-                        params.proofs[0].post_proof
-                    ));
-                }
+                return Err(actor_error!(
+                    illegal_argument,
+                    "expected proof of type {:?}, got {:?}",
+                    info.window_post_proof_type,
+                    params.proofs[0].post_proof
+                ));
             }
 
             // Make sure the proof size doesn't exceed the max. We could probably check for an exact match, but this is safer.
@@ -590,8 +561,11 @@ impl Actor {
             }
 
             // Validate that the miner didn't try to prove too many partitions at once.
-            let submission_partition_limit =
-                load_partitions_sectors_max(rt.policy(), info.window_post_partition_sectors);
+            let submission_partition_limit = cmp::min(
+                load_partitions_sectors_max(rt.policy(), info.window_post_partition_sectors),
+                rt.policy().posted_partitions_max,
+            );
+
             if params.partitions.len() as u64 > submission_partition_limit {
                 return Err(actor_error!(
                     illegal_argument,
@@ -1274,12 +1248,8 @@ impl Actor {
                 // --- check proof ---
 
                 // Find the proving period start for the deadline in question.
-                let mut pp_start = dl_info.period_start;
-                if dl_info.index < params.deadline {
-                    pp_start -= policy.wpost_proving_period
-                }
                 let target_deadline =
-                    new_deadline_info(policy, pp_start, params.deadline, current_epoch);
+                    nearest_occured_deadline_info(policy, &dl_info, params.deadline);
                 // Load the target deadline
                 let mut deadlines_current = st
                     .load_deadlines(rt.store())
@@ -2695,6 +2665,196 @@ impl Actor {
         Ok(())
     }
 
+    /// FYI: https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0070.md
+    fn move_partitions(rt: &impl Runtime, params: MovePartitionsParams) -> Result<(), ActorError> {
+        if params.orig_deadline == params.dest_deadline {
+            return Err(actor_error!(illegal_argument, "orig_deadline == dest_deadline"));
+        }
+        let policy = rt.policy();
+        if params.orig_deadline >= policy.wpost_period_deadlines
+            || params.dest_deadline >= policy.wpost_period_deadlines
+        {
+            return Err(actor_error!(
+                illegal_argument,
+                "invalid param, orig_deadline: {}, dest_deadline: {}",
+                params.orig_deadline,
+                params.dest_deadline
+            ));
+        }
+        if params.partitions.is_empty() {
+            return Err(actor_error!(illegal_argument, "empty partitions not allowed"));
+        }
+
+        rt.transaction(|state: &mut State, rt| {
+            let info = get_miner_info(rt.store(), state)?;
+
+            rt.validate_immediate_caller_is(
+                info.control_addresses.iter().chain(&[info.worker, info.owner]),
+            )?;
+
+            let store = rt.store();
+            let current_deadline = state.deadline_info(policy, rt.curr_epoch());
+            let mut deadlines = state
+                .load_deadlines(store)
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deadlines")?;
+
+            ensure_deadline_available_for_move(
+                policy,
+                params.orig_deadline,
+                params.dest_deadline,
+                &current_deadline,
+            )
+            .context_code(
+                ExitCode::USR_FORBIDDEN,
+                "conditions not satisfied for deadline_available_for_move",
+            )?;
+
+            let mut orig_deadline = deadlines
+                .load_deadline(store, params.orig_deadline)
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to load deadline {}", params.orig_deadline)
+                })?;
+            // only try to do immediate (non-optimistic) Window Post verification if the from deadline is in dispute window
+            // note that as window post is batched, the best we can do is to verify only those that contains at least one partition being moved.
+            // besides, after verification, the corresponding PostProof is deleted, leaving other PostProof intact.
+            // thus it's necessary that for those moved partitions, there's an empty partition left in place to keep the partitions from re-indexing.
+            if deadline_available_for_optimistic_post_dispute(
+                policy,
+                current_deadline.period_start,
+                params.orig_deadline,
+                rt.curr_epoch(),
+            ) {
+                let proofs_snapshot = orig_deadline
+                    .optimistic_proofs_snapshot_amt(store)
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load proofs snapshot")?;
+
+                let partitions_snapshot =
+                    orig_deadline.partitions_snapshot_amt(store).context_code(
+                        ExitCode::USR_ILLEGAL_STATE,
+                        "failed to load partitions snapshot",
+                    )?;
+
+                // Find the proving period start for the deadline in question.
+                let prev_orig_deadline =
+                    nearest_occured_deadline_info(policy, &current_deadline, params.orig_deadline);
+
+                // Load sectors for the dispute.
+                let sectors = Sectors::load(rt.store(), &orig_deadline.sectors_snapshot)
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")?;
+
+                proofs_snapshot
+                    .for_each(|_, window_proof| {
+                        if !params.partitions.contains_any(&window_proof.partitions) {
+                            return Ok(());
+                        }
+
+                        let mut all_sectors =
+                            Vec::<BitField>::with_capacity(params.partitions.len() as usize);
+                        let mut all_ignored =
+                            Vec::<BitField>::with_capacity(params.partitions.len() as usize);
+
+                        for partition_idx in window_proof.partitions.iter() {
+                            let partition = partitions_snapshot
+                                .get(partition_idx)
+                                .context_code(
+                                    ExitCode::USR_ILLEGAL_STATE,
+                                    "failed to load partitions snapshot for proof",
+                                )?
+                                .ok_or_else(|| {
+                                    actor_error!(
+                                        illegal_state,
+                                        "failed to load partitions snapshot for proof"
+                                    )
+                                })?;
+                            if !partition.faults.is_empty() {
+                                return Err(actor_error!(
+                                    forbidden,
+                                    "cannot move partition {}: had faults at last Window PoST",
+                                    partition_idx
+                                ))?;
+                            }
+                            if !partition.unproven.is_empty() {
+                                return Err(actor_error!(
+                                    forbidden,
+                                    "cannot move partition {}: had unproven at last Window PoST",
+                                    partition_idx
+                                ))?;
+                            }
+                            all_sectors.push(partition.sectors.clone());
+                            all_ignored.push(partition.terminated.clone());
+                        }
+
+                        // Load sector infos for proof, substituting a known-good sector for known-faulty sectors.
+                        let sector_infos = sectors
+                            .load_for_proof(
+                                &BitField::union(&all_sectors),
+                                &BitField::union(&all_ignored),
+                            )
+                            .context_code(
+                                ExitCode::USR_ILLEGAL_STATE,
+                                "failed to load sectors for post verification",
+                            )?;
+
+                        if !verify_windowed_post(
+                            rt,
+                            prev_orig_deadline.challenge,
+                            &sector_infos,
+                            window_proof.proofs.clone(),
+                        )
+                        .context_code(ExitCode::USR_ILLEGAL_STATE, "window post failed")?
+                        {
+                            return Err(actor_error!(
+                                illegal_argument,
+                                "invalid post was submitted"
+                            ))?;
+                        }
+
+                        Ok(())
+                    })
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "while removing partitions")?;
+            }
+
+            let mut dest_deadline =
+                deadlines.load_deadline(store, params.dest_deadline).context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    format!("failed to load deadline {}", params.dest_deadline),
+                )?;
+
+            Deadlines::move_partitions(
+                policy,
+                store,
+                &mut orig_deadline,
+                &mut dest_deadline,
+                &params.partitions,
+            )
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to move partitions")?;
+
+            deadlines
+                .update_deadline(policy, store, params.orig_deadline, &orig_deadline)
+                .context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    format!("failed to update deadline {}", params.orig_deadline),
+                )?;
+            deadlines
+                .update_deadline(policy, store, params.dest_deadline, &dest_deadline)
+                .context_code(
+                    ExitCode::USR_ILLEGAL_STATE,
+                    format!("failed to update deadline {}", params.dest_deadline),
+                )?;
+
+            state.save_deadlines(store, deadlines).context_code(
+                ExitCode::USR_ILLEGAL_STATE,
+                format!(
+                    "failed to save deadline when move_partitions from {} to {}",
+                    params.orig_deadline, params.dest_deadline
+                ),
+            )?;
+
+            Ok(())
+        })?;
+
+        Ok(())
+    }
     /// Compacts sector number allocations to reduce the size of the allocated sector
     /// number bitfield.
     ///
@@ -3933,14 +4093,25 @@ fn handle_proving_deadline(
 
     let state: State = rt.transaction(|state: &mut State, rt| {
         let policy = rt.policy();
-        // Vest locked funds.
-        // This happens first so that any subsequent penalties are taken
-        // from locked vesting funds before funds free this epoch.
-        let newly_vested = state
-            .unlock_vested_funds(rt.store(), rt.curr_epoch())
-            .map_err(|e| e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to vest funds"))?;
 
-        pledge_delta_total -= newly_vested;
+        // Vesting rewards for a miner are quantized to every 12 hours and we can determine what those "vesting epochs" are.
+        // So, only do the vesting here if the current epoch is a "vesting epoch"
+        let q = QuantSpec {
+            unit: REWARD_VESTING_SPEC.quantization,
+            offset: state.proving_period_start,
+        };
+
+        if q.quantize_up(curr_epoch) == curr_epoch {
+            // Vest locked funds.
+            // This happens first so that any subsequent penalties are taken
+            // from locked vesting funds before funds free this epoch.
+            let newly_vested =
+                state.unlock_vested_funds(rt.store(), rt.curr_epoch()).map_err(|e| {
+                    e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to vest funds")
+                })?;
+
+            pledge_delta_total -= newly_vested;
+        }
 
         // Process pending worker change if any
         let mut info = get_miner_info(rt.store(), state)?;
@@ -4244,8 +4415,10 @@ struct SectorSealProofInput {
     pub sector_number: SectorNumber,
     pub randomness: SealRandomness,
     pub interactive_randomness: InteractiveSealRandomness,
-    pub sealed_cid: Cid,   // Commr
-    pub unsealed_cid: Cid, // Commd
+    // Commr
+    pub sealed_cid: Cid,
+    // Commd
+    pub unsealed_cid: Cid,
 }
 
 impl SectorSealProofInput {
@@ -5196,6 +5369,7 @@ impl ActorCode for Actor {
         ConfirmSectorProofsValid => confirm_sector_proofs_valid,
         ChangeMultiaddrs|ChangeMultiaddrsExported => change_multiaddresses,
         CompactPartitions => compact_partitions,
+        MovePartitions => move_partitions,
         CompactSectorNumbers => compact_sector_numbers,
         ConfirmChangeWorkerAddress|ConfirmChangeWorkerAddressExported => confirm_change_worker_address,
         RepayDebt|RepayDebtExported => repay_debt,

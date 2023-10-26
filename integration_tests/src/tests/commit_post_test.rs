@@ -1,3 +1,4 @@
+use export_macro::vm_test;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
@@ -158,6 +159,7 @@ fn setup(v: &dyn VM) -> (MinerInfo, SectorInfo) {
     )
 }
 
+#[vm_test]
 pub fn submit_post_succeeds_test(v: &dyn VM) {
     let (miner_info, sector_info) = setup(v);
     // submit post
@@ -178,9 +180,10 @@ pub fn submit_post_succeeds_test(v: &dyn VM) {
     let p_st: PowerState = get_state(v, &STORAGE_POWER_ACTOR_ADDR).unwrap();
     assert_eq!(sector_power.raw, p_st.total_bytes_committed);
 
-    assert_invariants(v, &Policy::default());
+    assert_invariants(v, &Policy::default(), None);
 }
 
+#[vm_test]
 pub fn skip_sector_test(v: &dyn VM) {
     let (miner_info, sector_info) = setup(v);
     // submit post, but skip the only sector in it
@@ -217,9 +220,10 @@ pub fn skip_sector_test(v: &dyn VM) {
     let network_stats = get_network_stats(v);
     assert!(network_stats.total_bytes_committed.is_zero());
     assert!(network_stats.total_pledge_collateral.is_positive());
-    assert_invariants(v, &Policy::default())
+    assert_invariants(v, &Policy::default(), None)
 }
 
+#[vm_test]
 pub fn missed_first_post_deadline_test(v: &dyn VM) {
     let (miner_info, sector_info) = setup(v);
     // move to proving period end
@@ -279,9 +283,11 @@ pub fn missed_first_post_deadline_test(v: &dyn VM) {
         v,
         &Policy::default(),
         &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+        None,
     );
 }
 
+#[vm_test]
 pub fn overdue_precommit_test(v: &dyn VM) {
     let policy = &Policy::default();
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(10_000));
@@ -383,9 +389,11 @@ pub fn overdue_precommit_test(v: &dyn VM) {
         v,
         &Policy::default(),
         &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+        None,
     );
 }
 
+#[vm_test]
 pub fn aggregate_bad_sector_number_test(v: &dyn VM) {
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -453,9 +461,11 @@ pub fn aggregate_bad_sector_number_test(v: &dyn VM) {
         v,
         &Policy::default(),
         &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+        None,
     );
 }
 
+#[vm_test]
 pub fn aggregate_size_limits_test(v: &dyn VM) {
     let oversized_batch = 820;
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(100_000));
@@ -555,9 +565,11 @@ pub fn aggregate_size_limits_test(v: &dyn VM) {
         v,
         &Policy::default(),
         &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+        None,
     );
 }
 
+#[vm_test]
 pub fn aggregate_bad_sender_test(v: &dyn VM) {
     let addrs = create_accounts(v, 2, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -621,9 +633,11 @@ pub fn aggregate_bad_sender_test(v: &dyn VM) {
         v,
         &Policy::default(),
         &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+        None,
     );
 }
 
+#[vm_test]
 pub fn aggregate_one_precommit_expires_test(v: &dyn VM) {
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -739,5 +753,6 @@ pub fn aggregate_one_precommit_expires_test(v: &dyn VM) {
         v,
         &Policy::default(),
         &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+        None,
     );
 }

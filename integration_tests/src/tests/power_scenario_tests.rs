@@ -1,3 +1,4 @@
+use export_macro::vm_test;
 use fil_actor_init::Method as InitMethod;
 use fil_actor_miner::{
     max_prove_commit_duration, Method as MinerMethod, MinerConstructorParams,
@@ -29,6 +30,7 @@ use crate::util::{
 };
 use crate::{FIRST_TEST_USER_ADDR, TEST_FAUCET_ADDR};
 
+#[vm_test]
 pub fn power_create_miner_test(v: &dyn VM) {
     let owner = Address::new_bls(&[1; fvm_shared::address::BLS_PUB_LEN]).unwrap();
     v.execute_message(
@@ -99,9 +101,10 @@ pub fn power_create_miner_test(v: &dyn VM) {
     };
 
     expect.matches(v.take_invocations().last().unwrap());
-    assert_invariants(v, &Policy::default());
+    assert_invariants(v, &Policy::default(), None);
 }
 
+#[vm_test]
 pub fn cron_tick_test(v: &dyn VM) {
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(10_000));
 
@@ -216,5 +219,6 @@ pub fn cron_tick_test(v: &dyn VM) {
         v,
         &Policy::default(),
         &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+        None,
     );
 }

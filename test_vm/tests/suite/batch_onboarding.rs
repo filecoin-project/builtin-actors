@@ -1,5 +1,5 @@
 use fil_actors_integration_tests::tests::batch_onboarding_test;
-use fvm_ipld_blockstore::MemoryBlockstore;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use test_case::test_case;
 use test_vm::TestVM;
 
@@ -8,7 +8,7 @@ use test_vm::TestVM;
 #[test_case(true; "v2")]
 fn batch_onboarding(v2: bool) {
     let store = MemoryBlockstore::new();
-    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(store);
 
     batch_onboarding_test(&v, v2);
 }

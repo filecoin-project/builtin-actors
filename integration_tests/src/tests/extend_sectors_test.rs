@@ -6,6 +6,7 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 
+use export_macro::vm_test;
 use fil_actor_market::{DealMetaArray, State as MarketState};
 use fil_actor_miner::{
     max_prove_commit_duration, power_for_sector, ExpirationExtension, ExpirationExtension2,
@@ -320,9 +321,21 @@ pub fn extend_legacy_sector_with_deals_test(v: &dyn VM, do_extend2: bool) {
         v,
         &Policy::default(),
         &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+        None,
     );
 }
 
+#[vm_test]
+pub fn extend_legacy_sector_with_deals_extend2(v: &dyn VM) {
+    extend_legacy_sector_with_deals_test(v, true);
+}
+
+#[vm_test]
+pub fn extend_legacy_sector_with_deals(v: &dyn VM) {
+    extend_legacy_sector_with_deals_test(v, false);
+}
+
+#[vm_test]
 pub fn commit_sector_with_max_duration_deal_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -413,6 +426,7 @@ pub fn commit_sector_with_max_duration_deal_test(v: &dyn VM) {
     assert_eq!(deal_lifetime, sector_info.expiration - sector_info.activation);
 }
 
+#[vm_test]
 pub fn extend_sector_up_to_max_relative_extension_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -504,6 +518,7 @@ pub fn extend_sector_up_to_max_relative_extension_test(v: &dyn VM) {
     assert_eq!(policy.max_sector_expiration_extension, sector_info.expiration - v.epoch());
 }
 
+#[vm_test]
 pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -672,14 +687,26 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         .get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number)
         .unwrap()
         .unwrap();
-    assert_eq!(StoragePower::zero(), sector_info_after_update.deal_weight);
     // 0 space time
+    assert_eq!(StoragePower::zero(), sector_info_after_update.deal_weight);
 
+    // 32 GiB * the remaining life of the sector
     assert_eq!(
         DealWeight::from((sector_info_after_update.expiration - v.epoch()) * (32i64 << 30)),
         sector_info_after_update.verified_deal_weight
     );
-    // 32 GiB * the remaining life of the sector
+
+    // power base epoch is updated correctly
+    assert_eq!(v.epoch(), sector_info_after_update.power_base_epoch);
+
+    // activation not changed
+    assert_eq!(initial_sector_info.activation, sector_info_after_update.activation);
+
+    // replaced day reward updated
+    assert_eq!(
+        initial_sector_info.expected_day_reward,
+        sector_info_after_update.replaced_day_reward
+    );
 
     // extend the updated sector
 
@@ -720,14 +747,14 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         .get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number)
         .unwrap()
         .unwrap();
-    assert_eq!(StoragePower::zero(), sector_info_after_extension.deal_weight);
     // 0 space time
+    assert_eq!(StoragePower::zero(), sector_info_after_extension.deal_weight);
 
+    // 32 GiB * the remaining life of the sector
     assert_eq!(
         DealWeight::from((sector_info_after_extension.expiration - v.epoch()) * (32i64 << 30)),
         sector_info_after_extension.verified_deal_weight
     );
-    // 32 GiB * the remaining life of the sector
 
     assert_eq!(sector_info_after_extension.power_base_epoch, v.epoch());
     assert_eq!(sector_info_after_update.activation, sector_info_after_extension.activation);

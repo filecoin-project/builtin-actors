@@ -1,3 +1,4 @@
+use export_macro::vm_test;
 use fil_actor_cron::Method as CronMethod;
 use fil_actor_market::{
     DealMetaArray, Method as MarketMethod, State as MarketState, WithdrawBalanceParams,
@@ -33,6 +34,7 @@ use crate::util::{
     submit_windowed_post, verifreg_add_verifier,
 };
 
+#[vm_test]
 pub fn terminate_sectors_test(v: &dyn VM) {
     let addrs = create_accounts(v, 4, &TokenAmount::from_whole(10_000));
     let (owner, verifier, unverified_client, verified_client) =
@@ -353,5 +355,6 @@ pub fn terminate_sectors_test(v: &dyn VM) {
         v,
         &Policy::default(),
         &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+        None,
     );
 }

@@ -14,16 +14,15 @@ use fil_actor_verifreg::State as VerifRegState;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{Policy, Primitives, EMPTY_ARR_CID};
-use fil_actors_runtime::DATACAP_TOKEN_ACTOR_ADDR;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::{test_utils::*, DEFAULT_HAMT_CONFIG};
+use fil_actors_runtime::{Map, DATACAP_TOKEN_ACTOR_ADDR};
 use fil_actors_runtime::{
     BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR, EAM_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR,
     STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use fil_builtin_actors_state::check::Tree;
 use fvm_ipld_blockstore::Blockstore;
-use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::CborStore;
 use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
@@ -38,6 +37,7 @@ use fvm_shared::{MethodNum, METHOD_SEND};
 use serde::ser;
 use std::cell::{RefCell, RefMut};
 use std::collections::{BTreeMap, HashMap};
+use std::rc::Rc;
 use vm_api::trace::InvocationTrace;
 use vm_api::{new_actor, ActorState, MessageResult, VMError, VM};
 
@@ -50,12 +50,9 @@ mod messaging;
 pub use messaging::*;
 
 /// An in-memory rust-execution VM for testing builtin-actors that yields sensible stack traces and debug info
-pub struct TestVM<'bs, BS>
-where
-    BS: Blockstore,
-{
+pub struct TestVM {
     pub primitives: FakePrimitives,
-    pub store: &'bs BS,
+    pub store: Rc<MemoryBlockstore>,
     pub state_root: RefCell<Cid>,
     circulating_supply: RefCell<TokenAmount>,
     actors_dirty: RefCell<bool>,
@@ -65,16 +62,15 @@ where
     invocations: RefCell<Vec<InvocationTrace>>,
 }
 
-impl<'bs, BS> TestVM<'bs, BS>
-where
-    BS: Blockstore,
-{
-    pub fn new(store: &'bs MemoryBlockstore) -> TestVM<'bs, MemoryBlockstore> {
+impl TestVM {
+    pub fn new(store: impl Into<Rc<MemoryBlockstore>>) -> TestVM {
+        let store = store.into();
         let mut actors =
-            Hamt::<&'bs MemoryBlockstore, ActorState, BytesKey, Sha256>::new_with_config(
-                store,
+            Hamt::<Rc<MemoryBlockstore>, ActorState, BytesKey, Sha256>::new_with_config(
+                Rc::clone(&store),
                 DEFAULT_HAMT_CONFIG,
             );
+
         TestVM {
             primitives: FakePrimitives {},
             store,
@@ -88,15 +84,17 @@ where
         }
     }
 
-    pub fn new_with_singletons(store: &'bs MemoryBlockstore) -> TestVM<'bs, MemoryBlockstore> {
+    pub fn new_with_singletons(store: impl Into<Rc<MemoryBlockstore>>) -> TestVM {
         let reward_total = TokenAmount::from_whole(1_100_000_000i64);
         let faucet_total = TokenAmount::from_whole(1_000_000_000i64);
 
-        let v = TestVM::<'_, MemoryBlockstore>::new(store);
+        let store = store.into();
+
+        let v = TestVM::new(Rc::clone(&store));
         v.set_circulating_supply(&reward_total + &faucet_total);
 
         // system
-        let sys_st = SystemState::new(store).unwrap();
+        let sys_st = SystemState::new(&store).unwrap();
         let sys_head = v.put_store(&sys_st);
         let sys_value = faucet_total.clone(); // delegate faucet funds to system so we can construct faucet by sending to bls addr
         v.set_actor(
@@ -105,7 +103,7 @@ where
         );
 
         // init
-        let init_st = InitState::new(store, "integration-test".to_string()).unwrap();
+        let init_st = InitState::new(&store, "integration-test".to_string()).unwrap();
         let init_head = v.put_store(&init_st);
         v.set_actor(
             &INIT_ACTOR_ADDR,
@@ -244,12 +242,13 @@ where
 
     pub fn checkpoint(&self) -> Cid {
         // persist cache on top of latest checkpoint and clear
-        let mut actors = Hamt::<&'bs BS, ActorState, BytesKey, Sha256>::load_with_config(
-            &self.state_root.borrow(),
-            self.store,
-            DEFAULT_HAMT_CONFIG,
-        )
-        .unwrap();
+        let mut actors =
+            Hamt::<Rc<MemoryBlockstore>, ActorState, BytesKey, Sha256>::load_with_config(
+                &self.state_root.borrow(),
+                Rc::clone(&self.store),
+                DEFAULT_HAMT_CONFIG,
+            )
+            .unwrap();
         for (addr, act) in self.actors_cache.borrow().iter() {
             actors.set(addr.to_bytes().into(), act.clone()).unwrap();
         }
@@ -265,27 +264,14 @@ where
         self.actors_dirty.replace(false);
     }
 
-    pub fn get_total_actor_balance(
-        &self,
-        store: &MemoryBlockstore,
-    ) -> anyhow::Result<TokenAmount, anyhow::Error> {
-        let state_tree = Tree::load(store, &self.checkpoint())?;
-
-        let mut total = TokenAmount::zero();
-        state_tree.for_each(|_, actor| {
-            total += &actor.balance.clone();
-            Ok(())
-        })?;
-        Ok(total)
+    fn actor_map(&self) -> Map<MemoryBlockstore, ActorState> {
+        Map::load_with_config(&self.checkpoint(), self.store.as_ref(), DEFAULT_HAMT_CONFIG).unwrap()
     }
 }
 
-impl<'bs, BS> VM for TestVM<'bs, BS>
-where
-    BS: Blockstore,
-{
+impl VM for TestVM {
     fn blockstore(&self) -> &dyn Blockstore {
-        self.store
+        self.store.as_ref()
     }
 
     fn epoch(&self) -> ChainEpoch {
@@ -372,7 +358,7 @@ where
     }
     fn resolve_id_address(&self, address: &Address) -> Option<Address> {
         let st: InitState = get_state(self, &INIT_ACTOR_ADDR).unwrap();
-        st.resolve_address::<BS>(self.store, address).unwrap()
+        st.resolve_address(&self.store, address).unwrap()
     }
 
     fn set_epoch(&self, epoch: ChainEpoch) {
@@ -394,12 +380,7 @@ where
             return Some(act.clone());
         }
         // go to persisted map
-        let actors = Hamt::<&'bs BS, ActorState, BytesKey, Sha256>::load_with_config(
-            &self.state_root.borrow(),
-            self.store,
-            DEFAULT_HAMT_CONFIG,
-        )
-        .unwrap();
+        let actors = self.actor_map();
         let actor = actors.get(&address.to_bytes()).unwrap().cloned();
         actor.iter().for_each(|a| {
             self.actors_cache.borrow_mut().insert(*address, a.clone());
@@ -419,16 +400,23 @@ where
     fn actor_manifest(&self) -> BTreeMap<Cid, Type> {
         ACTOR_TYPES.clone()
     }
-
-    fn state_root(&self) -> Cid {
-        *self.state_root.borrow()
-    }
-
     fn circulating_supply(&self) -> TokenAmount {
         self.circulating_supply.borrow().clone()
     }
 
     fn set_circulating_supply(&self, supply: TokenAmount) {
         self.circulating_supply.replace(supply);
+    }
+
+    fn actor_states(&self) -> BTreeMap<Address, ActorState> {
+        let map = self.actor_map();
+        let mut tree = BTreeMap::new();
+        map.for_each(|k, v| {
+            tree.insert(Address::from_bytes(k).unwrap(), v.clone());
+            Ok(())
+        })
+        .unwrap();
+
+        tree
     }
 }

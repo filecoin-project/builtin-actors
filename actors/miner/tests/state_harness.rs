@@ -5,9 +5,9 @@ use fil_actor_miner::SectorPreCommitOnChainInfo;
 use fil_actor_miner::VestSpec;
 use fil_actor_miner::VestingFunds;
 use fil_actor_miner::{BitFieldQueue, CollisionPolicy, SectorOnChainInfo, State};
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::{runtime::Policy, ActorError};
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_blockstore::MemoryBlockstore;
 use fvm_ipld_encoding::BytesDe;
 use fvm_ipld_encoding::CborStore;
 use fvm_ipld_hamt::Error as HamtError;
@@ -36,7 +36,7 @@ impl StateHarness {
         let owner = 1;
         let worker = 2;
 
-        let test_window_post_proof_type = RegisteredPoStProof::StackedDRGWindow2KiBV1;
+        let test_window_post_proof_type = RegisteredPoStProof::StackedDRGWindow2KiBV1P1;
 
         let info = MinerInfo::new(
             owner,
