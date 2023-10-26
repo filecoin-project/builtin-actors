@@ -754,7 +754,6 @@ impl ActorHarness {
         params: PreCommitSectorParams,
         conf: PreCommitConfig,
         first: bool,
-        emits_event: bool,
     ) -> Result<Option<IpldBlock>, ActorError> {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         rt.expect_validate_caller_addr(self.caller_addrs());
@@ -809,8 +808,6 @@ impl ActorHarness {
                 ExitCode::OK,
             );
         }
-
-        if emits_event {
             rt.expect_emitted_event(
                 EventBuilder::new()
                     .typ("sector-precommitted")
@@ -818,7 +815,6 @@ impl ActorHarness {
                     .field_indexed("sector", &params.sector_number)
                     .build()?,
             );
-        }
 
         let result = rt.call::<Actor>(
             Method::PreCommitSector as u64,
@@ -834,7 +830,7 @@ impl ActorHarness {
         conf: PreCommitConfig,
         first: bool,
     ) -> SectorPreCommitOnChainInfo {
-        let result = self.pre_commit_sector(rt, params.clone(), conf, first, true);
+        let result = self.pre_commit_sector(rt, params.clone(), conf, first);
 
         expect_empty(result.unwrap());
         rt.verify();
@@ -3372,7 +3368,7 @@ impl CronControl {
             dlinfo.period_end() + DEFAULT_SECTOR_EXPIRATION as i64 * rt.policy.wpost_proving_period; // something on deadline boundary but > 180 days
         let precommit_params =
             h.make_pre_commit_params(sector_no, pre_commit_epoch - 1, expiration, vec![]);
-        h.pre_commit_sector(rt, precommit_params, PreCommitConfig::default(), true, true).unwrap();
+        h.pre_commit_sector(rt, precommit_params, PreCommitConfig::default(), true).unwrap();
 
         // PCD != 0 so cron must be active
         self.require_cron_active(h, rt);

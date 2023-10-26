@@ -133,7 +133,6 @@ mod miner_actor_test_commitment {
                 precommit_params,
                 util::PreCommitConfig::default(),
                 true,
-                false,
             ),
         );
         rt.reset();
@@ -164,7 +163,7 @@ mod miner_actor_test_commitment {
 
         let precommit_params = h.make_pre_commit_params(101, challenge_epoch, expiration, vec![1]);
 
-        h.pre_commit_sector(&rt, precommit_params, util::PreCommitConfig::default(), true, true)
+        h.pre_commit_sector(&rt, precommit_params, util::PreCommitConfig::default(), true)
             .unwrap();
         let st: State = rt.get_state();
         assert_eq!(TokenAmount::zero(), st.fee_debt);
@@ -211,7 +210,6 @@ mod miner_actor_test_commitment {
                 precommit_params,
                 util::PreCommitConfig::default(),
                 false,
-                false,
             );
             expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "already allocated", ret);
             rt.reset();
@@ -230,7 +228,6 @@ mod miner_actor_test_commitment {
                 precommit_params,
                 util::PreCommitConfig::default(),
                 false,
-                false,
             );
             expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "already allocated", ret);
             rt.reset();
@@ -245,7 +242,6 @@ mod miner_actor_test_commitment {
                 &rt,
                 precommit_params,
                 util::PreCommitConfig::default(),
-                false,
                 false,
             );
             expect_abort_contains_message(
@@ -266,7 +262,6 @@ mod miner_actor_test_commitment {
                 precommit_params,
                 util::PreCommitConfig::default(),
                 false,
-                false,
             );
             expect_abort_contains_message(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -285,7 +280,6 @@ mod miner_actor_test_commitment {
                 precommit_params,
                 util::PreCommitConfig::default(),
                 false,
-                false,
             );
             expect_abort_contains_message(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -303,7 +297,6 @@ mod miner_actor_test_commitment {
                 &rt,
                 precommit_params,
                 util::PreCommitConfig::default(),
-                false,
                 false,
             );
             expect_abort_contains_message(
@@ -324,7 +317,6 @@ mod miner_actor_test_commitment {
                 precommit_params,
                 util::PreCommitConfig::default(),
                 false,
-                false,
             );
             expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "must exceed", ret);
             rt.reset();
@@ -342,7 +334,6 @@ mod miner_actor_test_commitment {
                 &rt,
                 precommit_params,
                 util::PreCommitConfig::default(),
-                false,
                 false,
             );
             expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "must exceed", ret);
@@ -363,7 +354,6 @@ mod miner_actor_test_commitment {
                 precommit_params,
                 util::PreCommitConfig::default(),
                 false,
-                false,
             );
             expect_abort_contains_message(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -383,7 +373,6 @@ mod miner_actor_test_commitment {
                 &rt,
                 precommit_params,
                 util::PreCommitConfig::default(),
-                false,
                 false,
             );
             expect_abort_contains_message(
@@ -407,7 +396,6 @@ mod miner_actor_test_commitment {
                 precommit_params,
                 util::PreCommitConfig::default(),
                 false,
-                false,
             );
             expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "out of range", ret);
             rt.reset();
@@ -426,7 +414,6 @@ mod miner_actor_test_commitment {
                 precommit_params,
                 util::PreCommitConfig::default(),
                 false,
-                false,
             );
             expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "too old", ret);
             rt.reset();
@@ -443,7 +430,6 @@ mod miner_actor_test_commitment {
                 &rt,
                 precommit_params,
                 util::PreCommitConfig::default(),
-                false,
                 false,
             );
             expect_abort_contains_message(
@@ -473,7 +459,6 @@ mod miner_actor_test_commitment {
                 &rt,
                 precommit_params,
                 util::PreCommitConfig::default(),
-                false,
                 false,
             );
             expect_abort_contains_message(ExitCode::USR_FORBIDDEN, "active consensus fault", ret);
@@ -529,7 +514,6 @@ mod miner_actor_test_commitment {
                 precommit_params,
                 util::PreCommitConfig::default(),
                 true,
-                false,
             );
             expect_abort_contains_message(
                 ExitCode::USR_ILLEGAL_ARGUMENT,
@@ -584,7 +568,6 @@ mod miner_actor_test_commitment {
                     precommit_params.clone(),
                     util::PreCommitConfig::default(),
                     true,
-                    false,
                 ),
             );
             rt.reset();
