@@ -880,7 +880,6 @@ impl Actor {
         }
         burn_funds(rt, aggregate_fee)?;
         state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
-
         Ok(())
     }
 
@@ -1496,7 +1495,6 @@ impl Actor {
         sectors: Vec<SectorPreCommitInfoInner>,
     ) -> Result<(), ActorError> {
         let miner_actor_id: u64 = rt.message().receiver().id().unwrap();
-
         let curr_epoch = rt.curr_epoch();
         {
             let policy = rt.policy();
@@ -1737,12 +1735,9 @@ impl Actor {
             for sector_num in sector_numbers.iter() {
                 emit::sector_precommitted(rt, miner_actor_id, sector_num)?;
             }
-
             // Activate miner cron
             needs_cron = !state.deadline_cron_active;
             state.deadline_cron_active = true;
-
-
             Ok(())
         })?;
         burn_funds(rt, fee_to_burn)?;
@@ -1756,7 +1751,6 @@ impl Actor {
                 CronEventPayload { event_type: CRON_EVENT_PROVING_DEADLINE },
             )?;
         }
-
         Ok(())
     }
 
@@ -4966,7 +4960,6 @@ fn activate_new_sector_infos(
     info: &MinerInfo,
 ) -> Result<(), ActorError> {
     let miner_actor_id: u64 = rt.message().receiver().id().unwrap();
-
     let activation_epoch = rt.curr_epoch();
 
     let (total_pledge, newly_vested) = rt.transaction(|state: &mut State, rt| {

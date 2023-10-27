@@ -35,7 +35,7 @@ use fvm_shared::sector::{
     SectorID, SectorInfo, SectorNumber, SectorSize, StoragePower, WindowPoStVerifyInfo,
 };
 use fvm_shared::smooth::FilterEstimate;
-use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_SEND};
+use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH, METHOD_SEND};
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use multihash::derive::Multihash;
@@ -621,13 +621,7 @@ impl ActorHarness {
             .collect();
 
         for si in v2.iter() {
-            rt.expect_emitted_event(
-                EventBuilder::new()
-                    .typ("sector-precommitted")
-                    .field_indexed("miner", &RECEIVER_ID)
-                    .field_indexed("sector", &si.sector_number)
-                    .build()?,
-            );
+            expect_event(rt, "sector-precommitted", &RECEIVER_ID, &si.sector_number);
         }
 
         if self.options.use_v2_pre_commit_and_replica_update {
@@ -804,13 +798,7 @@ impl ActorHarness {
                 ExitCode::OK,
             );
         }
-        rt.expect_emitted_event(
-            EventBuilder::new()
-                .typ("sector-precommitted")
-                .field_indexed("miner", &RECEIVER_ID)
-                .field_indexed("sector", &params.sector_number)
-                .build()?,
-        );
+        expect_event(rt, "sector-precommitted", &RECEIVER_ID, &params.sector_number);
 
         let result = rt.call::<Actor>(
             Method::PreCommitSector as u64,
@@ -1019,13 +1007,7 @@ impl ActorHarness {
         );
 
         for pc in precommits.iter() {
-            rt.expect_emitted_event(
-                EventBuilder::new()
-                    .typ("sector-activated")
-                    .field_indexed("miner", &RECEIVER_ID)
-                    .field_indexed("sector", &pc.info.sector_number)
-                    .build()?,
-            );
+            expect_event(rt, "sector-activated", &RECEIVER_ID, &pc.info.sector_number);
         }
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
@@ -1065,13 +1047,7 @@ impl ActorHarness {
         };
 
         for sector in valid_sectors {
-            rt.expect_emitted_event(
-                EventBuilder::new()
-                    .typ("sector-activated")
-                    .field_indexed("miner", &RECEIVER_ID)
-                    .field_indexed("sector", &sector)
-                    .build()?,
-            );
+            expect_event(rt, "sector-activated", &RECEIVER_ID, &sector);
         }
 
         rt.call::<Actor>(
@@ -2211,14 +2187,7 @@ impl ActorHarness {
 
         for termination in terminations.iter() {
             for sector in termination.sectors.iter() {
-                rt.expect_emitted_event(
-                    EventBuilder::new()
-                        .typ("sector-terminated")
-                        .field_indexed("miner", &RECEIVER_ID)
-                        .field_indexed("sector", &sector)
-                        .build()
-                        .unwrap(),
-                );
+                expect_event(rt, "sector-terminated", &RECEIVER_ID, &sector);
             }
         }
 
@@ -2782,6 +2751,17 @@ impl ActorHarness {
         rt.verify();
         Ok(available_balance_ret.available_balance)
     }
+}
+
+pub fn expect_event(rt: &MockRuntime, typ: &str, miner: &ActorID, sector: &SectorNumber) {
+    rt.expect_emitted_event(
+        EventBuilder::new()
+            .typ(typ)
+            .field_indexed("miner", miner)
+            .field_indexed("sector", sector)
+            .build()
+            .unwrap(),
+    );
 }
 
 #[allow(dead_code)]

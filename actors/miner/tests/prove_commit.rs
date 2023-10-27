@@ -522,7 +522,6 @@ fn drop_invalid_prove_commit_while_processing_valid_one() {
     assert!(st.get_sector(&rt.store, sector_no_a).unwrap().is_none());
     assert!(st.get_sector(&rt.store, sector_no_b).unwrap().is_some());
     h.check_state(&rt);
-    rt.reset();
 }
 
 #[test]
