@@ -638,7 +638,7 @@ pub fn aggregate_one_precommit_expires_test(v: &dyn VM) {
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker) = (addrs[0], addrs[0]);
     let worker_id = worker.id().unwrap();
-    let (miner_addr, _) = create_miner(
+    let (miner_addr, robust_addr) = create_miner(
         v,
         &owner,
         &worker,
@@ -720,7 +720,7 @@ pub fn aggregate_one_precommit_expires_test(v: &dyn VM) {
     apply_ok(
         v,
         &worker,
-        &miner_addr,
+        &robust_addr,
         &TokenAmount::zero(),
         MinerMethod::ProveCommitAggregate as u64,
         Some(prove_params),

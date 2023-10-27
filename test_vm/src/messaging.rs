@@ -255,17 +255,17 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
         from_actor.balance -= &self.msg.value;
         self.v.set_actor(&Address::new_id(self.msg.from), from_actor);
 
-        let (mut to_actor, ref to_addr) = self.resolve_target(&self.msg.to)?;
+        let (mut to_actor, to_addr) = self.resolve_target(&self.msg.to)?;
         to_actor.balance = to_actor.balance.add(&self.msg.value);
-        self.v.set_actor(to_addr, to_actor);
+        self.v.set_actor(&to_addr, to_actor);
 
         // Exit early on send
         if self.msg.method == METHOD_SEND {
             return Ok(None);
         }
-
+        self.msg.to = to_addr;
         // call target actor
-        let to_actor = self.v.actor(to_addr).unwrap();
+        let to_actor = self.v.actor(&to_addr).unwrap();
         let params = self.msg.params.clone();
         let mut res = match ACTOR_TYPES.get(&to_actor.code).expect("Target actor is not a builtin")
         {

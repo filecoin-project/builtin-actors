@@ -109,7 +109,7 @@ pub fn cron_tick_test(v: &dyn VM) {
     let addrs = create_accounts(v, 1, &TokenAmount::from_whole(10_000));
 
     // create a miner
-    let (id_addr, _) = create_miner(
+    let (id_addr, robust_addr) = create_miner(
         v,
         &addrs[0],
         &addrs[0],
@@ -137,7 +137,7 @@ pub fn cron_tick_test(v: &dyn VM) {
     apply_ok(
         v,
         &addrs[0],
-        &id_addr,
+        &robust_addr,
         &TokenAmount::zero(),
         MinerMethod::PreCommitSector as u64,
         Some(precommit_params),
