@@ -21,9 +21,11 @@ use num_traits::{ToPrimitive, Zero};
 use fil_actor_verifreg::testing::check_state_invariants;
 use fil_actor_verifreg::{
     ext, Actor as VerifregActor, AddVerifiedClientParams, AddVerifierParams, Allocation,
-    AllocationClaim, AllocationID, AllocationRequest, AllocationRequests, AllocationsResponse,
-    Claim, ClaimAllocationsParams, ClaimAllocationsReturn, ClaimExtensionRequest, ClaimID, DataCap,
-    ExtendClaimTermsParams, ExtendClaimTermsReturn, GetClaimsParams, GetClaimsReturn, Method,
+    AllocationClaim, AllocationID, AllocationKey, AllocationRequest, AllocationRequests,
+    AllocationsResponse, Claim, ClaimAllocationsParams, ClaimAllocationsReturn,
+    ClaimExtensionRequest, ClaimID, ClaimKey, DataCap, ExtendClaimTermsParams,
+    ExtendClaimTermsReturn, GetClaimsParams, GetClaimsReturn, ListAllocationsParams,
+    ListAllocationsResponse, ListClaimsParams, ListClaimsResponse, Method,
     RemoveExpiredAllocationsParams, RemoveExpiredAllocationsReturn, RemoveExpiredClaimsParams,
     RemoveExpiredClaimsReturn, SectorAllocationClaims, State,
 };
@@ -257,6 +259,25 @@ impl Harness {
         allocs.get(client, id).unwrap().cloned()
     }
 
+    pub fn list_allocs(
+        &self,
+        rt: &MockRuntime,
+        cursor: &RawBytes,
+        limit: u64,
+    ) -> (Vec<AllocationKey>, Option<RawBytes>) {
+        let params = ListAllocationsParams { cursor: cursor.clone(), limit };
+        let ret: ListAllocationsResponse = rt
+            .call::<VerifregActor>(
+                Method::ListAllocationsExported as MethodNum,
+                IpldBlock::serialize_cbor(&params).unwrap(),
+            )
+            .unwrap()
+            .unwrap()
+            .deserialize()
+            .expect("failed to deserialize list allocations return");
+        (ret.allocations, ret.next_cursor)
+    }
+
     // Invokes the ClaimAllocations actor method
     pub fn claim_allocations(
         &self,
@@ -353,6 +374,25 @@ impl Harness {
             .expect("failed to deserialize remove expired claims return");
         rt.verify();
         Ok(ret)
+    }
+
+    pub fn list_claims(
+        &self,
+        rt: &MockRuntime,
+        cursor: &RawBytes,
+        limit: u64,
+    ) -> (Vec<ClaimKey>, Option<RawBytes>) {
+        let params = ListClaimsParams { cursor: cursor.clone(), limit };
+        let ret: ListClaimsResponse = rt
+            .call::<VerifregActor>(
+                Method::ListClaimsExported as MethodNum,
+                IpldBlock::serialize_cbor(&params).unwrap(),
+            )
+            .unwrap()
+            .unwrap()
+            .deserialize()
+            .expect("failed to deserialize list claims return");
+        (ret.claims, ret.next_cursor)
     }
 
     pub fn load_claim(&self, rt: &MockRuntime, provider: ActorID, id: ClaimID) -> Option<Claim> {

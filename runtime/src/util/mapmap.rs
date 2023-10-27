@@ -110,7 +110,7 @@ where
         self.outer.for_each(f)
     }
 
-    // Runs a function over all values for one outer key.
+    // Runs a function over all entries for one outer key.
     pub fn for_each_in<F>(&mut self, outside_k: K1, f: F) -> Result<(), Error>
     where
         F: FnMut(&BytesKey, &V) -> anyhow::Result<()>,
@@ -121,6 +121,91 @@ where
         }
         in_map.for_each(f)
     }
+
+    // Runs a function over all entries for all outer keys.
+    // Returns (outer, inner) keys with which to resume iteration, if more than
+    // limit entries were available.
+    pub fn for_each_each<F>(
+        &mut self,
+        start_at: Option<&K1>,
+        start_at_inner: Option<&K2>,
+        limit: Option<u64>,
+        mut f: F,
+    ) -> Result<Option<(BytesKey, BytesKey)>, Error>
+    where
+        F: FnMut(&BytesKey, &BytesKey, &V) -> anyhow::Result<()>,
+    {
+        let limit = limit.unwrap_or(u64::MAX);
+        let mut count = 0;
+        let mut first_outer = true;
+        let outeritr = match start_at {
+            Some(k) => self.outer.iter_from(&k.key())?,
+            None => self.outer.iter(),
+        };
+        for item in outeritr {
+            let (k1, inner_root) = item?;
+            let in_map = make_map_with_root_and_bitwidth::<BS, V>(
+                inner_root,
+                *self.outer.store(),
+                self.inner_bitwidth,
+            )?;
+            let inneritr = if first_outer {
+                // Use start-at-inner only for the first outer key.
+                match start_at_inner {
+                    Some(k) => in_map.iter_from(&k.key())?,
+                    None => in_map.iter(),
+                }
+            } else {
+                in_map.iter()
+            };
+            first_outer = false;
+            for inner_item in inneritr {
+                let (k2, v) = inner_item?;
+                // Advance until ready to call f with one-past-the-end so that these
+                // keys can be returned as the cursor to resume with.
+                if count >= limit {
+                    return Ok(Some((k1.clone(), k2.clone())));
+                }
+                f(k1, k2, v)?;
+                count += 1;
+            }
+        }
+        // Exhausted iteration.
+        Ok(None)
+    }
+
+    // pub fn for_each_each2(
+    //     &mut self,
+    //     start_at: Option<&K1>,
+    //     start_at_inner: Option<&K2>,
+    // ) -> Result<impl Iterator<Item=Result<(&BytesKey, &BytesKey, &V), Error>>, Error> {
+    //     let outeritr = match start_at {
+    //         Some(k) => self.outer.iter_from(&k.key())?,
+    //         None => self.outer.iter(),
+    //     };
+    //     Ok(outeritr.flat_map(|r| {
+    //         match r {
+    //             Ok((k1, inner_root)) => {
+    //                 let in_map = make_map_with_root_and_bitwidth::<BS, V>(
+    //                     inner_root,
+    //                     *self.outer.store(),
+    //                     self.inner_bitwidth,
+    //                 )?;
+    //                 let inneritr = match start_at_inner {
+    //                     Some(k) => in_map.iter_from(&k.key())?,
+    //                     None => in_map.iter(),
+    //                 };
+    //                 inneritr.map(|r| {
+    //                     match r {
+    //                         Ok((k2, v)) => {Ok((k1, k2, v))},
+    //                         Err(e) => Err(e)
+    //                     }
+    //                 })
+    //             }
+    //             Err(e) => std::iter::once(Err(e)).map(|x|x)
+    //         }
+    //     }))
+    // }
 
     // Puts a key value pair in the MapMap, overwriting any existing value.
     // Returns the previous value, if any.

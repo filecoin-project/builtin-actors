@@ -8,10 +8,10 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_hamt::Sha256;
 use fvm_ipld_hamt::{BytesKey, Error as HamtError, Hamt};
 use fvm_shared::bigint::BigInt;
+use fvm_shared::error::ExitCode;
 pub use fvm_shared::BLOCKS_PER_EPOCH as EXPECTED_LEADERS_PER_EPOCH;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use unsigned_varint::decode::Error as UVarintError;
 
 use builtin::HAMT_BIT_WIDTH;
 pub use dispatch::{dispatch, dispatch_default, WithCodec};
@@ -102,8 +102,9 @@ pub fn u64_key(k: u64) -> BytesKey {
     slice.into()
 }
 
-pub fn parse_uint_key(s: &[u8]) -> Result<u64, UVarintError> {
-    let (v, _) = unsigned_varint::decode::u64(s)?;
+pub fn parse_uint_key(s: &[u8]) -> Result<u64, ActorError> {
+    let (v, _) = unsigned_varint::decode::u64(s)
+        .context_code(ExitCode::USR_SERIALIZATION, "failed to parse uint key")?;
     Ok(v)
 }
 
