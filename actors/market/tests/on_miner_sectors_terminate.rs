@@ -181,6 +181,7 @@ fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
             .build()
             .unwrap(),
     );
+    
     let new_epoch = end_epoch - 1;
     rt.set_epoch(new_epoch);
     cron_tick(&rt);
