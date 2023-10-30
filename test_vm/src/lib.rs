@@ -54,12 +54,15 @@ pub struct TestVM {
     pub primitives: FakePrimitives,
     pub store: Rc<MemoryBlockstore>,
     pub state_root: RefCell<Cid>,
-    circulating_supply: RefCell<TokenAmount>,
     actors_dirty: RefCell<bool>,
     actors_cache: RefCell<HashMap<Address, ActorState>>,
+    invocations: RefCell<Vec<InvocationTrace>>,
+    // MachineContext equivalents
     network_version: NetworkVersion,
     curr_epoch: RefCell<ChainEpoch>,
-    invocations: RefCell<Vec<InvocationTrace>>,
+    circulating_supply: RefCell<TokenAmount>,
+    base_fee: RefCell<TokenAmount>,
+    timestamp: RefCell<u64>,
 }
 
 impl TestVM {
@@ -81,6 +84,8 @@ impl TestVM {
             network_version: NetworkVersion::V16,
             curr_epoch: RefCell::new(ChainEpoch::zero()),
             invocations: RefCell::new(vec![]),
+            base_fee: RefCell::new(TokenAmount::zero()),
+            timestamp: RefCell::new(0),
         }
     }
 
@@ -274,10 +279,6 @@ impl VM for TestVM {
         self.store.as_ref()
     }
 
-    fn epoch(&self) -> ChainEpoch {
-        *self.curr_epoch.borrow()
-    }
-
     fn execute_message(
         &self,
         from: &Address,
@@ -361,10 +362,6 @@ impl VM for TestVM {
         st.resolve_address(&self.store, address).unwrap()
     }
 
-    fn set_epoch(&self, epoch: ChainEpoch) {
-        self.curr_epoch.replace(epoch);
-    }
-
     fn balance(&self, address: &Address) -> TokenAmount {
         let a = self.actor(address);
         a.map_or(TokenAmount::zero(), |a| a.balance)
@@ -400,13 +397,6 @@ impl VM for TestVM {
     fn actor_manifest(&self) -> BTreeMap<Cid, Type> {
         ACTOR_TYPES.clone()
     }
-    fn circulating_supply(&self) -> TokenAmount {
-        self.circulating_supply.borrow().clone()
-    }
-
-    fn set_circulating_supply(&self, supply: TokenAmount) {
-        self.circulating_supply.replace(supply);
-    }
 
     fn actor_states(&self) -> BTreeMap<Address, ActorState> {
         let map = self.actor_map();
@@ -418,5 +408,36 @@ impl VM for TestVM {
         .unwrap();
 
         tree
+    }
+
+    fn epoch(&self) -> ChainEpoch {
+        *self.curr_epoch.borrow()
+    }
+
+    fn set_epoch(&self, epoch: ChainEpoch) {
+        self.curr_epoch.replace(epoch);
+    }
+    fn circulating_supply(&self) -> TokenAmount {
+        self.circulating_supply.borrow().clone()
+    }
+
+    fn set_circulating_supply(&self, supply: TokenAmount) {
+        self.circulating_supply.replace(supply);
+    }
+
+    fn base_fee(&self) -> TokenAmount {
+        self.base_fee.borrow().clone()
+    }
+
+    fn set_base_fee(&self, amount: TokenAmount) {
+        self.base_fee.replace(amount);
+    }
+
+    fn timestamp(&self) -> u64 {
+        *self.timestamp.borrow()
+    }
+
+    fn set_timestamp(&self, timestamp: u64) {
+        self.timestamp.replace(timestamp);
     }
 }
