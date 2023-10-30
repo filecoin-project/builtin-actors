@@ -524,6 +524,16 @@ pub fn cron_tick_and_assert_balances(
         updated_provider_locked = TokenAmount::zero();
     }
 
+    if is_deal_expired {
+        rt.expect_emitted_event(
+            EventBuilder::new()
+                .typ("deal-completed")
+                .field_indexed("deal_id", &deal_id)
+                .build()
+                .unwrap(),
+        );
+    }
+
     cron_tick(rt);
 
     let client_acct = get_balance(rt, &client_addr);

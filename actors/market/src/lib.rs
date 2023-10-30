@@ -741,7 +741,6 @@ impl Actor {
 
                 deal_states.push((id, state));
                 emit::deal_terminated(rt, id)?;
-                println!("emitted");
             }
 
             st.put_deal_states(rt.store(), &deal_states)?;
@@ -824,7 +823,7 @@ impl Actor {
                         })?;
                     }
 
-                    let (slash_amount, remove_deal) =
+                    let (slash_amount, remove_deal, complete_success) =
                         st.process_deal_update(rt.store(), &state, &deal, curr_epoch)?;
 
                     if slash_amount.is_negative() {
@@ -855,6 +854,10 @@ impl Actor {
                                 illegal_state,
                                 "failed to delete deal proposal: does not exist"
                             ));
+                        }
+
+                        if complete_success {
+                            emit::deal_completed(rt, deal_id)?;
                         }
                     } else {
                         if !slash_amount.is_zero() {

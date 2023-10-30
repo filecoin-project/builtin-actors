@@ -1935,6 +1935,14 @@ fn locked_fund_tracking_states() {
         None,
         ExitCode::OK,
     );
+
+    rt.expect_emitted_event(
+        EventBuilder::new()
+            .typ("deal-completed")
+            .field_indexed("deal_id", &deal_id2)
+            .build()
+            .unwrap(),
+    );
     cron_tick(&rt);
     assert_locked_fund_states(&rt, csf, plc, clc);
     check_state(&rt);

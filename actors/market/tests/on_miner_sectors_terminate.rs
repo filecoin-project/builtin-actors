@@ -7,6 +7,7 @@ use fil_actor_market::{Actor as MarketActor, Method, OnMinerSectorsTerminatePara
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::EventBuilder;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::deal::DealID;
@@ -173,6 +174,13 @@ fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
     assert_eq!(2, deal_ids.len());
     activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, &deal_ids);
 
+    rt.expect_emitted_event(
+        EventBuilder::new()
+            .typ("deal-completed")
+            .field_indexed("deal_id", &deal_ids[1])
+            .build()
+            .unwrap(),
+    );
     let new_epoch = end_epoch - 1;
     rt.set_epoch(new_epoch);
     cron_tick(&rt);

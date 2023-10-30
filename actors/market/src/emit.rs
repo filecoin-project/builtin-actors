@@ -33,3 +33,10 @@ pub fn deal_terminated(rt: &impl Runtime, deal_id: DealID) -> Result<(), ActorEr
         &EventBuilder::new().typ("deal-terminated").field_indexed("deal_id", &deal_id).build()?,
     )
 }
+
+/// Indicates a deal has been completed successfully.
+pub fn deal_completed(rt: &impl Runtime, deal_id: DealID) -> Result<(), ActorError> {
+    rt.emit_event(
+        &EventBuilder::new().typ("deal-completed").field_indexed("deal_id", &deal_id).build()?,
+    )
+}
