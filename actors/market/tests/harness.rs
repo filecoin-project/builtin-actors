@@ -1158,22 +1158,41 @@ pub fn generate_deal_proposal(
     )
 }
 
-pub fn terminate_deals(rt: &MockRuntime, miner_addr: Address, deal_ids: &[DealID]) {
-    let ret = terminate_deals_raw(rt, miner_addr, deal_ids).unwrap();
+pub fn terminate_deals_for(
+    rt: &MockRuntime,
+    miner_addr: Address,
+    deal_ids: &[DealID],
+    expected_terminations: Vec<DealID>,
+) {
+    let ret = terminate_deals_raw(rt, miner_addr, deal_ids, expected_terminations).unwrap();
     assert!(ret.is_none());
     rt.verify();
+}
+
+pub fn terminate_deals(rt: &MockRuntime, miner_addr: Address, deal_ids: &[DealID]) {
+    terminate_deals_for(rt, miner_addr, deal_ids, deal_ids.to_vec())
 }
 
 pub fn terminate_deals_raw(
     rt: &MockRuntime,
     miner_addr: Address,
     deal_ids: &[DealID],
+    terminated_deals: Vec<DealID>,
 ) -> Result<Option<IpldBlock>, ActorError> {
     rt.set_caller(*MINER_ACTOR_CODE_ID, miner_addr);
     rt.expect_validate_caller_type(vec![Type::Miner]);
 
     let params =
         OnMinerSectorsTerminateParams { epoch: *rt.epoch.borrow(), deal_ids: deal_ids.to_vec() };
+
+    for deal_id in terminated_deals {
+        rt.expect_emitted_event(
+            EventBuilder::new()
+                .typ("deal-terminated")
+                .field_indexed("deal_id", &deal_id)
+                .build()?,
+        );
+    }
 
     rt.call::<MarketActor>(
         Method::OnMinerSectorsTerminate as u64,

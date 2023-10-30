@@ -740,6 +740,8 @@ impl Actor {
                 state.slash_epoch = params.epoch;
 
                 deal_states.push((id, state));
+                emit::deal_terminated(rt, id)?;
+                println!("emitted");
             }
 
             st.put_deal_states(rt.store(), &deal_states)?;

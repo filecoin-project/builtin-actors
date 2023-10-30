@@ -26,3 +26,10 @@ pub fn deal_activated(rt: &impl Runtime, deal_id: DealID) -> Result<(), ActorErr
         &EventBuilder::new().typ("deal-activated").field_indexed("deal_id", &deal_id).build()?,
     )
 }
+
+/// Indicates a deal has been terminated.
+pub fn deal_terminated(rt: &impl Runtime, deal_id: DealID) -> Result<(), ActorError> {
+    rt.emit_event(
+        &EventBuilder::new().typ("deal-terminated").field_indexed("deal_id", &deal_id).build()?,
+    )
+}
