@@ -35,7 +35,7 @@ use fvm_shared::sector::{
     SectorID, SectorInfo, SectorNumber, SectorSize, StoragePower, WindowPoStVerifyInfo,
 };
 use fvm_shared::smooth::FilterEstimate;
-use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_SEND};
+use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH, METHOD_SEND};
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use multihash::derive::Multihash;
@@ -83,14 +83,14 @@ use fil_actor_power::{
 use fil_actor_reward::{Method as RewardMethod, ThisEpochRewardReturn};
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::{DomainSeparationTag, Runtime, RuntimePolicy};
-use fil_actors_runtime::{test_utils::*, BatchReturn, BatchReturnGen};
+use fil_actors_runtime::{test_utils::*, BatchReturn, BatchReturnGen, EventBuilder};
 use fil_actors_runtime::{
     ActorDowncast, ActorError, Array, DealWeight, MessageAccumulator, BURNT_FUNDS_ACTOR_ADDR,
     INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 
-const RECEIVER_ID: u64 = 1000;
+pub const RECEIVER_ID: u64 = 1000;
 
 pub const TEST_RANDOMNESS_ARRAY_FROM_ONE: [u8; 32] = [
     1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
@@ -620,6 +620,10 @@ impl ActorHarness {
             })
             .collect();
 
+        for si in v2.iter() {
+            expect_event(rt, "sector-precommitted", &RECEIVER_ID, &si.sector_number);
+        }
+
         if self.options.use_v2_pre_commit_and_replica_update {
             return self.pre_commit_sector_batch_inner(
                 rt,
@@ -794,6 +798,7 @@ impl ActorHarness {
                 ExitCode::OK,
             );
         }
+        expect_event(rt, "sector-precommitted", &RECEIVER_ID, &params.sector_number);
 
         let result = rt.call::<Actor>(
             Method::PreCommitSector as u64,
@@ -919,6 +924,7 @@ impl ActorHarness {
             None,
             ExitCode::OK,
         );
+
         rt.expect_validate_caller_any();
         let result = rt.call::<Actor>(
             Method::ProveCommitSector as u64,
@@ -1000,6 +1006,10 @@ impl ActorHarness {
             ExitCode::OK,
         );
 
+        for pc in precommits.iter() {
+            expect_event(rt, "sector-activated", &RECEIVER_ID, &pc.info.sector_number);
+        }
+
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         let addrs = self.caller_addrs().clone();
         rt.expect_validate_caller_addr(addrs);
@@ -1012,11 +1022,12 @@ impl ActorHarness {
         Ok(())
     }
 
-    pub fn confirm_sector_proofs_valid(
+    pub fn confirm_sector_proofs_valid_for(
         &self,
         rt: &MockRuntime,
         cfg: ProveCommitConfig,
         pcs: Vec<SectorPreCommitOnChainInfo>,
+        valid_sectors: Vec<SectorNumber>,
     ) -> Result<(), ActorError> {
         self.confirm_sector_proofs_valid_internal(rt, cfg, &pcs);
 
@@ -1029,17 +1040,36 @@ impl ActorHarness {
         rt.expect_validate_caller_addr(vec![STORAGE_POWER_ACTOR_ADDR]);
 
         let params = ConfirmSectorProofsParams {
-            sectors: all_sector_numbers,
+            sectors: all_sector_numbers.clone(),
             reward_smoothed: self.epoch_reward_smooth.clone(),
             reward_baseline_power: self.baseline_power.clone(),
             quality_adj_power_smoothed: self.epoch_qa_power_smooth.clone(),
         };
+
+        for sector in valid_sectors {
+            expect_event(rt, "sector-activated", &RECEIVER_ID, &sector);
+        }
+
         rt.call::<Actor>(
             Method::ConfirmSectorProofsValid as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
         rt.verify();
         Ok(())
+    }
+
+    pub fn confirm_sector_proofs_valid(
+        &self,
+        rt: &MockRuntime,
+        cfg: ProveCommitConfig,
+        pcs: Vec<SectorPreCommitOnChainInfo>,
+    ) -> Result<(), ActorError> {
+        self.confirm_sector_proofs_valid_for(
+            rt,
+            cfg,
+            pcs.clone(),
+            pcs.iter().map(|pc| pc.info.sector_number).collect(),
+        )
     }
 
     fn confirm_sector_proofs_valid_internal(
@@ -2155,6 +2185,12 @@ impl ActorHarness {
             });
         }
 
+        for termination in terminations.iter() {
+            for sector in termination.sectors.iter() {
+                expect_event(rt, "sector-terminated", &RECEIVER_ID, &sector);
+            }
+        }
+
         let params = TerminateSectorsParams { terminations };
 
         rt.call::<Actor>(
@@ -2715,6 +2751,17 @@ impl ActorHarness {
         rt.verify();
         Ok(available_balance_ret.available_balance)
     }
+}
+
+pub fn expect_event(rt: &MockRuntime, typ: &str, miner: &ActorID, sector: &SectorNumber) {
+    rt.expect_emitted_event(
+        EventBuilder::new()
+            .typ(typ)
+            .field_indexed("miner", miner)
+            .field_indexed("sector", sector)
+            .build()
+            .unwrap(),
+    );
 }
 
 #[allow(dead_code)]

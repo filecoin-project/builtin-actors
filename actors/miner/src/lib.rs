@@ -86,6 +86,8 @@ pub mod testing;
 mod types;
 mod vesting_state;
 
+pub mod emit;
+
 // The first 1000 actor-specific codes are left open for user error, i.e. things that might
 // actually happen without programming error in the actor code.
 
@@ -944,6 +946,7 @@ impl Actor {
         RT::Blockstore: Blockstore,
         RT: Runtime,
     {
+        let miner_actor_id: u64 = rt.message().receiver().id().unwrap();
         let state: State = rt.state()?;
         let store = rt.store();
         let info = get_miner_info(store, &state)?;
@@ -1152,6 +1155,9 @@ impl Actor {
                 ));
             }
 
+            let updated_sector_nums =
+                new_sectors.iter().map(|x| x.sector_number).collect::<Vec<SectorNumber>>();
+
             // Overwrite sector infos.
             sectors.store(new_sectors).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to update sector infos")
@@ -1163,6 +1169,10 @@ impl Actor {
             state.save_deadlines(rt.store(), deadlines).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines")
             })?;
+
+            for sector in updated_sector_nums {
+                emit::sector_updated(rt, miner_actor_id, sector)?;
+            }
 
             // Update pledge.
             let current_balance = rt.current_balance();
@@ -1484,6 +1494,7 @@ impl Actor {
         rt: &impl Runtime,
         sectors: Vec<SectorPreCommitInfoInner>,
     ) -> Result<(), ActorError> {
+        let miner_actor_id: u64 = rt.message().receiver().id().unwrap();
         let curr_epoch = rt.curr_epoch();
         {
             let policy = rt.policy();
@@ -1720,6 +1731,10 @@ impl Actor {
                 .map_err(|e| {
                     e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to add pre-commit expiry to queue")
                 })?;
+
+            for sector_num in sector_numbers.iter() {
+                emit::sector_precommitted(rt, miner_actor_id, sector_num)?;
+            }
             // Activate miner cron
             needs_cron = !state.deadline_cron_active;
             state.deadline_cron_active = true;
@@ -3959,6 +3974,9 @@ fn process_early_terminations(
     reward_smoothed: &FilterEstimate,
     quality_adj_power_smoothed: &FilterEstimate,
 ) -> Result</* more */ bool, ActorError> {
+    let miner_actor_id = rt.message().receiver().id().unwrap();
+    let mut terminated_sector_nums = vec![];
+
     let (result, more, deals_to_terminate, penalty, pledge_delta) =
         rt.transaction(|state: &mut State, rt| {
             let store = rt.store();
@@ -4016,6 +4034,7 @@ fn process_early_terminations(
                 for sector in sectors {
                     deal_ids.extend(sector.deal_ids);
                     total_initial_pledge += sector.initial_pledge;
+                    terminated_sector_nums.push(sector.sector_number);
                 }
 
                 let params = ext::market::OnMinerSectorsTerminateParams { epoch, deal_ids };
@@ -4070,6 +4089,10 @@ fn process_early_terminations(
     // Terminate deals.
     for params in deals_to_terminate {
         request_terminate_deals(rt, params.epoch, params.deal_ids)?;
+    }
+
+    for sector in terminated_sector_nums {
+        emit::sector_terminated(rt, miner_actor_id, sector)?;
     }
 
     // reschedule cron worker, if necessary.
@@ -4936,6 +4959,7 @@ fn activate_new_sector_infos(
     pledge_inputs: &NetworkPledgeInputs,
     info: &MinerInfo,
 ) -> Result<(), ActorError> {
+    let miner_actor_id: u64 = rt.message().receiver().id().unwrap();
     let activation_epoch = rt.curr_epoch();
 
     let (total_pledge, newly_vested) = rt.transaction(|state: &mut State, rt| {
@@ -5068,6 +5092,10 @@ fn activate_new_sector_infos(
             .map_err(|e| actor_error!(illegal_state, "failed to add initial pledge: {}", e))?;
 
         state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
+
+        for sector in new_sector_numbers {
+            emit::sector_activated(rt, miner_actor_id, sector)?;
+        }
 
         Ok((total_pledge, newly_vested))
     })?;
