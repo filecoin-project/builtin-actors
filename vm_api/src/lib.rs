@@ -35,12 +35,6 @@ pub trait VM {
     /// Returns the underlying blockstore of the VM
     fn blockstore(&self) -> &dyn Blockstore;
 
-    /// Get the current chain epoch
-    fn epoch(&self) -> ChainEpoch;
-
-    /// Sets the epoch to the specified value
-    fn set_epoch(&self, epoch: ChainEpoch);
-
     /// Get information about an actor
     fn actor(&self, address: &Address) -> Option<ActorState>;
 
@@ -76,12 +70,6 @@ pub trait VM {
     /// Take all the invocations that have been made since the last call to this method
     fn take_invocations(&self) -> Vec<InvocationTrace>;
 
-    /// Set the circulating supply constant for the network
-    fn set_circulating_supply(&self, supply: TokenAmount);
-
-    /// Get the circulating supply constant for the network
-    fn circulating_supply(&self) -> TokenAmount;
-
     /// Provides access to VM primitives
     fn primitives(&self) -> &dyn Primitives;
 
@@ -90,6 +78,30 @@ pub trait VM {
 
     /// Returns a map of all actor addresses to their corresponding states
     fn actor_states(&self) -> BTreeMap<Address, ActorState>;
+
+    /// Get the current chain epoch
+    fn epoch(&self) -> ChainEpoch;
+
+    /// Sets the epoch to the specified value
+    fn set_epoch(&self, epoch: ChainEpoch);
+
+    /// Get the circulating supply constant for the network
+    fn circulating_supply(&self) -> TokenAmount;
+
+    /// Set the circulating supply constant for the network
+    fn set_circulating_supply(&self, supply: TokenAmount);
+
+    /// Get the current base fee
+    fn base_fee(&self) -> TokenAmount;
+
+    /// Set the current base fee
+    fn set_base_fee(&self, amount: TokenAmount);
+
+    /// Get the current timestamp
+    fn timestamp(&self) -> u64;
+
+    /// Set the current timestamp
+    fn set_timestamp(&self, timestamp: u64);
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
