@@ -19,3 +19,10 @@ pub fn deal_published(
             .build()?,
     )
 }
+
+/// Indicates a deal has been activated.
+pub fn deal_activated(rt: &impl Runtime, deal_id: DealID) -> Result<(), ActorError> {
+    rt.emit_event(
+        &EventBuilder::new().typ("deal-activated").field_indexed("deal_id", &deal_id).build()?,
+    )
+}

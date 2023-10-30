@@ -665,6 +665,9 @@ impl Actor {
                             unsealed_cid: data_commitment,
                         });
                         batch_gen.add_success();
+                        for d in p.deal_ids {
+                            emit::deal_activated(rt, d)?;
+                        }
                     }
                     Err(e) => {
                         log::warn!("failed to activate deals {:?}: {}", p.deal_ids, e);

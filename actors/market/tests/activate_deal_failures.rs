@@ -38,6 +38,7 @@ fn fail_when_caller_is_not_the_provider_of_the_deal() {
             deal_ids: vec![deal_id],
         }],
         false,
+        vec![],
     )
     .unwrap();
     let res: BatchActivateDealsResult =
@@ -87,6 +88,7 @@ fn fail_when_deal_has_not_been_published_before() {
             deal_ids: vec![DealID::from(42u32)],
         }],
         false,
+        vec![],
     )
     .unwrap();
     let res: BatchActivateDealsResult =
@@ -123,6 +125,7 @@ fn fail_when_deal_has_already_been_activated() {
             deal_ids: vec![deal_id],
         }],
         false,
+        vec![],
     )
     .unwrap();
     let res: BatchActivateDealsResult =
@@ -169,6 +172,6 @@ fn fail_when_deal_has_already_been_expired() {
     let mut st: State = rt.get_state::<State>();
     st.next_id = deal_id + 1;
 
-    let res = activate_deals(&rt, sector_expiry, PROVIDER_ADDR, 0, &[deal_id]);
+    let res = activate_deals_for(&rt, sector_expiry, PROVIDER_ADDR, 0, &[deal_id], vec![]);
     assert_eq!(res.activation_results.codes(), vec![EX_DEAL_EXPIRED])
 }

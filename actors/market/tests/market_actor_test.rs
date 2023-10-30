@@ -1716,6 +1716,7 @@ fn fail_when_current_epoch_greater_than_start_epoch_of_deal() {
             deal_ids: vec![deal_id],
         }],
         false,
+        vec![],
     )
     .unwrap();
 
@@ -1751,6 +1752,7 @@ fn fail_when_end_epoch_of_deal_greater_than_sector_expiry() {
             deal_ids: vec![deal_id],
         }],
         false,
+        vec![],
     )
     .unwrap();
 
@@ -1797,6 +1799,7 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
             deal_ids: vec![deal_id1, deal_id2],
         }],
         false,
+        vec![],
     )
     .unwrap();
     let res: BatchActivateDealsResult =
