@@ -443,6 +443,14 @@ where
         fvm::crypto::recover_secp_public_key(hash, signature)
             .map_err(|e| anyhow!("failed to recover pubkey; exit code: {}", e))
     }
+
+    fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> Result<(), Error> {
+        match fvm::crypto::verify_replica_update(replica) {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(Error::msg("invalid replica")),
+            Err(e) => Err(anyhow!("failed to verify replica: {}", e)),
+        }
+    }
 }
 
 #[cfg(not(feature = "fake-proofs"))]
@@ -485,11 +493,7 @@ where
     }
 
     fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> Result<(), Error> {
-        match fvm::crypto::verify_replica_update(replica) {
-            Ok(true) => Ok(()),
-            Ok(false) => Err(Error::msg("invalid replica")),
-            Err(e) => Err(anyhow!("failed to verify replica: {}", e)),
-        }
+        Primitives::verify_replica_update(self, replica)
     }
 }
 

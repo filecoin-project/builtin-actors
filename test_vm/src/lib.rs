@@ -31,7 +31,7 @@ use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::sector::StoragePower;
+use fvm_shared::sector::{ReplicaUpdateInfo, StoragePower};
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{MethodNum, METHOD_SEND};
 use serde::ser;
@@ -51,7 +51,7 @@ pub use messaging::*;
 
 /// An in-memory rust-execution VM for testing builtin-actors that yields sensible stack traces and debug info
 pub struct TestVM {
-    pub primitives: FakePrimitives,
+    pub primitives: RefCell<FakePrimitives>,
     pub store: Rc<MemoryBlockstore>,
     pub state_root: RefCell<Cid>,
     actors_dirty: RefCell<bool>,
@@ -75,7 +75,7 @@ impl TestVM {
             );
 
         TestVM {
-            primitives: FakePrimitives {},
+            primitives: RefCell::new(FakePrimitives::default()),
             store,
             state_root: RefCell::new(actors.flush().unwrap()),
             circulating_supply: RefCell::new(TokenAmount::zero()),
@@ -390,8 +390,8 @@ impl VM for TestVM {
         self.actors_dirty.replace(true);
     }
 
-    fn primitives(&self) -> &dyn Primitives {
-        &self.primitives
+    fn primitives(&self) -> Box<dyn Primitives> {
+        Box::new(self.primitives.borrow().clone())
     }
 
     fn actor_manifest(&self) -> BTreeMap<Cid, Type> {
@@ -439,5 +439,31 @@ impl VM for TestVM {
 
     fn set_timestamp(&self, timestamp: u64) {
         self.timestamp.replace(timestamp);
+    }
+
+    fn initial_state_root(&self) -> Cid {
+        *self.state_root.borrow()
+    }
+
+    fn set_initial_state_root(&self, state_root: Cid) {
+        self.state_root.replace(state_root);
+    }
+
+    fn override_verify_signature(
+        &self,
+        verify_signature: fn(
+            &fvm_shared::crypto::signature::Signature,
+            &Address,
+            &[u8],
+        ) -> Result<(), anyhow::Error>,
+    ) {
+        self.primitives.borrow_mut().verify_signature_override = Some(verify_signature);
+    }
+
+    fn override_verifiy_replica_update(
+        &self,
+        verify_replica_update: fn(&ReplicaUpdateInfo) -> Result<(), anyhow::Error>,
+    ) {
+        self.primitives.borrow_mut().verify_replica_update = Some(verify_replica_update);
     }
 }

@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use anyhow::Error;
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{
@@ -16,7 +17,7 @@ use fvm_shared::{
     econ::TokenAmount,
     error::ExitCode,
     piece::PieceInfo,
-    sector::RegisteredSealProof,
+    sector::{RegisteredSealProof, ReplicaUpdateInfo},
     MethodNum,
 };
 
@@ -71,13 +72,15 @@ pub trait VM {
     fn take_invocations(&self) -> Vec<InvocationTrace>;
 
     /// Provides access to VM primitives
-    fn primitives(&self) -> &dyn Primitives;
+    fn primitives(&self) -> Box<dyn Primitives>;
 
     /// Return a map of actor code CIDs to their corresponding types
     fn actor_manifest(&self) -> BTreeMap<Cid, Type>;
 
     /// Returns a map of all actor addresses to their corresponding states
     fn actor_states(&self) -> BTreeMap<Address, ActorState>;
+
+    // Overridable constants and extern behaviour
 
     /// Get the current chain epoch
     fn epoch(&self) -> ChainEpoch;
@@ -102,6 +105,23 @@ pub trait VM {
 
     /// Set the current timestamp
     fn set_timestamp(&self, timestamp: u64);
+
+    /// Get the initial state root of the block
+    fn initial_state_root(&self) -> Cid;
+
+    /// Set the initial state root of the block
+    fn set_initial_state_root(&self, state_root: Cid);
+
+    // Override the signature verification behaviour
+    fn override_verify_signature(
+        &self,
+        verify_signature: fn(&Signature, &Address, &[u8]) -> Result<(), Error>,
+    );
+
+    fn override_verifiy_replica_update(
+        &self,
+        verify_replica_update: fn(&ReplicaUpdateInfo) -> Result<(), anyhow::Error>,
+    );
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -154,7 +174,7 @@ pub trait Primitives {
         &self,
         proof_type: RegisteredSealProof,
         pieces: &[PieceInfo],
-    ) -> Result<Cid, anyhow::Error>;
+    ) -> Result<Cid, Error>;
 
     /// Verifies that a signature is valid for an address and plaintext.
     fn verify_signature(
@@ -162,11 +182,13 @@ pub trait Primitives {
         signature: &Signature,
         signer: &Address,
         plaintext: &[u8],
-    ) -> Result<(), anyhow::Error>;
+    ) -> Result<(), Error>;
 
     fn recover_secp_public_key(
         &self,
         hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
         signature: &[u8; SECP_SIG_LEN],
-    ) -> Result<[u8; SECP_PUB_LEN], anyhow::Error>;
+    ) -> Result<[u8; SECP_PUB_LEN], Error>;
+
+    fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> Result<(), Error>;
 }

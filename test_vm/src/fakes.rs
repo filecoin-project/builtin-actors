@@ -1,4 +1,5 @@
 use anyhow::anyhow;
+use anyhow::Error;
 use cid::multihash::Code;
 use cid::multihash::MultihashDigest;
 use cid::Cid;
@@ -7,14 +8,19 @@ use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::crypto::signature::{Signature, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE};
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::sector::RegisteredSealProof;
+use fvm_shared::sector::ReplicaUpdateInfo;
 use integer_encoding::VarInt;
 
 use fil_actors_runtime::runtime::Primitives;
 use fil_actors_runtime::test_utils::{make_piece_cid, recover_secp_public_key};
 
-// Fake implementation of runtime primitives.
-// Struct members can be added here to provide configurable functionality.
-pub struct FakePrimitives {}
+/// Fake implementation of runtime primitives.
+#[derive(Default, Clone)]
+#[allow(clippy::type_complexity)]
+pub struct FakePrimitives {
+    pub verify_signature_override: Option<fn(&Signature, &Address, &[u8]) -> Result<(), Error>>,
+    pub verify_replica_update: Option<fn(&ReplicaUpdateInfo) -> Result<(), Error>>,
+}
 
 impl Primitives for FakePrimitives {
     fn hash_blake2b(&self, data: &[u8]) -> [u8; 32] {
@@ -43,7 +49,7 @@ impl Primitives for FakePrimitives {
         &self,
         proof_type: RegisteredSealProof,
         pieces: &[PieceInfo],
-    ) -> Result<Cid, anyhow::Error> {
+    ) -> Result<Cid, Error> {
         // Construct a buffer that depends on all the input data.
         let mut buf: Vec<u8> = Vec::new();
         let ptv: i64 = proof_type.into();
@@ -60,7 +66,12 @@ impl Primitives for FakePrimitives {
         signature: &Signature,
         _signer: &Address,
         plaintext: &[u8],
-    ) -> Result<(), anyhow::Error> {
+    ) -> Result<(), Error> {
+        if self.verify_signature_override.is_some() {
+            return (self.verify_signature_override.unwrap())(signature, _signer, plaintext);
+        }
+
+        // default behaviour expects signature bytes to be equal to plaintext
         if signature.bytes != plaintext {
             return Err(anyhow::format_err!(
                 "invalid signature (mock sig validation expects siggy bytes to be equal to plaintext)"
@@ -73,7 +84,16 @@ impl Primitives for FakePrimitives {
         &self,
         hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
         signature: &[u8; SECP_SIG_LEN],
-    ) -> Result<[u8; SECP_PUB_LEN], anyhow::Error> {
+    ) -> Result<[u8; SECP_PUB_LEN], Error> {
         recover_secp_public_key(hash, signature).map_err(|_| anyhow!("failed to recover pubkey"))
+    }
+
+    fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> Result<(), Error> {
+        if self.verify_replica_update.is_some() {
+            return (self.verify_replica_update.unwrap())(replica);
+        }
+
+        // default behaviour always succeeds
+        Ok(())
     }
 }
