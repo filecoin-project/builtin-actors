@@ -57,6 +57,8 @@ mod deal;
 mod state;
 mod types;
 
+pub mod emit;
+
 #[cfg(feature = "fil-actor")]
 fil_actors_runtime::wasm_trampoline!(Actor);
 
@@ -478,6 +480,13 @@ impl Actor {
             .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
                 format!("failed to notify deal with proposal cid {}", valid_deal.cid)
             })?;
+
+            emit::deal_published(
+                rt,
+                valid_deal.proposal.client.id().unwrap(),
+                valid_deal.proposal.provider.id().unwrap(),
+                new_deal_ids[i],
+            )?;
         }
 
         Ok(PublishStorageDealsReturn { ids: new_deal_ids, valid_deals: valid_input_bf })

@@ -29,8 +29,8 @@ use fil_actors_runtime::{
     network::EPOCHS_IN_DAY,
     runtime::{builtins::Type, Policy, Runtime},
     test_utils::*,
-    ActorError, BatchReturn, Set, SetMultimap, BURNT_FUNDS_ACTOR_ADDR, CRON_ACTOR_ADDR,
-    DATACAP_TOKEN_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    ActorError, BatchReturn, EventBuilder, Set, SetMultimap, BURNT_FUNDS_ACTOR_ADDR,
+    CRON_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
     STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -687,6 +687,17 @@ pub fn publish_deals(
             None,
             ExitCode::OK,
         );
+
+        rt.expect_emitted_event(
+            EventBuilder::new()
+                .typ("deal-published")
+                .field_indexed("client", &deal.client.id().unwrap())
+                .field_indexed("provider", &deal.provider.id().unwrap())
+                .field_indexed("deal_id", &deal_id)
+                .build()
+                .unwrap(),
+        );
+
         deal_id += 1;
     }
 

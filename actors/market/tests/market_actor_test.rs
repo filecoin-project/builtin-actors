@@ -15,7 +15,7 @@ use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::{Policy, Runtime, RuntimePolicy};
 use fil_actors_runtime::test_utils::*;
 use fil_actors_runtime::{
-    make_empty_map, ActorError, BatchReturn, SetMultimap, BURNT_FUNDS_ACTOR_ADDR,
+    make_empty_map, ActorError, BatchReturn, EventBuilder, SetMultimap, BURNT_FUNDS_ACTOR_ADDR,
     DATACAP_TOKEN_ACTOR_ADDR, EPOCHS_IN_YEAR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
@@ -942,6 +942,16 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
         TokenAmount::zero(),
         None,
         ExitCode::OK,
+    );
+
+    rt.expect_emitted_event(
+        EventBuilder::new()
+            .typ("deal-published")
+            .field_indexed("client", &client_resolved.id().unwrap())
+            .field_indexed("provider", &provider_resolved.id().unwrap())
+            .field_indexed("deal_id", &deal_id)
+            .build()
+            .unwrap(),
     );
 
     let ret: PublishStorageDealsReturn = rt
@@ -2132,6 +2142,15 @@ fn insufficient_client_balance_in_a_batch() {
         None,
         ExitCode::OK,
     );
+    rt.expect_emitted_event(
+        EventBuilder::new()
+            .typ("deal-published")
+            .field_indexed("client", &deal2.client.id().unwrap())
+            .field_indexed("provider", &deal2.provider.id().unwrap())
+            .field_indexed("deal_id", &next_deal_id)
+            .build()
+            .unwrap(),
+    );
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
 
@@ -2271,6 +2290,15 @@ fn insufficient_provider_balance_in_a_batch() {
         TokenAmount::zero(),
         None,
         ExitCode::OK,
+    );
+    rt.expect_emitted_event(
+        EventBuilder::new()
+            .typ("deal-published")
+            .field_indexed("client", &deal2.client.id().unwrap())
+            .field_indexed("provider", &deal2.provider.id().unwrap())
+            .field_indexed("deal_id", &next_deal_id)
+            .build()
+            .unwrap(),
     );
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
@@ -2414,6 +2442,15 @@ fn psd_restricted_correctly() {
         TokenAmount::zero(),
         None,
         ExitCode::OK,
+    );
+    rt.expect_emitted_event(
+        EventBuilder::new()
+            .typ("deal-published")
+            .field_indexed("client", &deal.client.id().unwrap())
+            .field_indexed("provider", &deal.provider.id().unwrap())
+            .field_indexed("deal_id", &next_deal_id)
+            .build()
+            .unwrap(),
     );
 
     let ret: PublishStorageDealsReturn = rt
