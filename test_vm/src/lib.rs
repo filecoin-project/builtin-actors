@@ -1,5 +1,3 @@
-use crate::fakes::FakePrimitives;
-
 use anyhow::Error;
 use cid::multihash::Code;
 use cid::Cid;
@@ -55,7 +53,6 @@ use vm_api::util::{get_state, serialize_ok};
 
 mod constants;
 pub use constants::*;
-pub mod fakes;
 mod messaging;
 pub use messaging::*;
 
