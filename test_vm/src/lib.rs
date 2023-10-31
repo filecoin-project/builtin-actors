@@ -1,5 +1,6 @@
 use crate::fakes::FakePrimitives;
 
+use anyhow::Error;
 use cid::multihash::Code;
 use cid::Cid;
 use fil_actor_account::State as AccountState;
@@ -29,20 +30,24 @@ use fvm_ipld_hamt::{BytesKey, Hamt, Sha256};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
+use fvm_shared::consensus::ConsensusFault;
+use fvm_shared::crypto::hash::SupportedHashes;
+use fvm_shared::crypto::signature::{
+    Signature, SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE,
+};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::sector::{AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo, StoragePower, WindowPoStVerifyInfo};
+use fvm_shared::piece::PieceInfo;
+use fvm_shared::sector::{
+    AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
+    StoragePower, WindowPoStVerifyInfo,
+};
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{MethodNum, METHOD_SEND};
 use serde::ser;
 use std::cell::{RefCell, RefMut};
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
-use anyhow::Error;
-use fvm_shared::consensus::ConsensusFault;
-use fvm_shared::crypto::hash::SupportedHashes;
-use fvm_shared::crypto::signature::{SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE, Signature};
-use fvm_shared::piece::PieceInfo;
 use vm_api::trace::InvocationTrace;
 use vm_api::{new_actor, ActorState, MessageResult, VMError, VM};
 
@@ -446,14 +451,6 @@ impl VM for TestVM {
         self.timestamp.replace(timestamp);
     }
 
-    fn initial_state_root(&self) -> Cid {
-        *self.state_root.borrow()
-    }
-
-    fn set_initial_state_root(&self, state_root: Cid) {
-        self.state_root.replace(state_root);
-    }
-
     fn override_hash_blake2b(&self, f: fn(&[u8]) -> [u8; 32]) {
         self.primitives.borrow_mut().hash_blake2b = Some(f);
     }
@@ -466,11 +463,20 @@ impl VM for TestVM {
         self.primitives.borrow_mut().hash_64 = Some(f);
     }
 
-    fn override_compute_unsealed_sector_cid(&self, f: fn(RegisteredSealProof, &[PieceInfo]) -> Result<Cid, Error>) {
+    fn override_compute_unsealed_sector_cid(
+        &self,
+        f: fn(RegisteredSealProof, &[PieceInfo]) -> Result<Cid, Error>,
+    ) {
         self.primitives.borrow_mut().compute_unsealed_sector_cid = Some(f);
     }
 
-    fn override_recover_secp_public_key(&self, f: fn(&[u8; SECP_SIG_MESSAGE_HASH_SIZE], &[u8; SECP_SIG_LEN]) -> Result<[u8; SECP_PUB_LEN], Error>) {
+    fn override_recover_secp_public_key(
+        &self,
+        f: fn(
+            &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
+            &[u8; SECP_SIG_LEN],
+        ) -> Result<[u8; SECP_PUB_LEN], Error>,
+    ) {
         self.primitives.borrow_mut().recover_secp_public_key = Some(f);
     }
 
@@ -478,7 +484,10 @@ impl VM for TestVM {
         self.primitives.borrow_mut().verify_post = Some(f);
     }
 
-    fn override_verify_consensus_fault(&self, f: fn(&[u8], &[u8], &[u8]) -> Result<Option<ConsensusFault>, Error>) {
+    fn override_verify_consensus_fault(
+        &self,
+        f: fn(&[u8], &[u8], &[u8]) -> Result<Option<ConsensusFault>, Error>,
+    ) {
         self.primitives.borrow_mut().verify_consensus_fault = Some(f);
     }
 
@@ -486,7 +495,10 @@ impl VM for TestVM {
         self.primitives.borrow_mut().batch_verify_seals = Some(f);
     }
 
-    fn override_verify_aggregate_seals(&self, f: fn(&AggregateSealVerifyProofAndInfos) -> Result<(), Error>) {
+    fn override_verify_aggregate_seals(
+        &self,
+        f: fn(&AggregateSealVerifyProofAndInfos) -> Result<(), Error>,
+    ) {
         self.primitives.borrow_mut().verify_aggregate_seals = Some(f);
     }
 

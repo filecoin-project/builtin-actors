@@ -111,12 +111,6 @@ pub trait VM {
     /// Set the current timestamp
     fn set_timestamp(&self, timestamp: u64);
 
-    /// Get the initial state root of the block
-    fn initial_state_root(&self) -> Cid;
-
-    /// Set the initial state root of the block
-    fn set_initial_state_root(&self, state_root: Cid);
-
     /// Override the primitive hash_blake2b function
     fn override_hash_blake2b(&self, f: fn(&[u8]) -> [u8; 32]);
 
