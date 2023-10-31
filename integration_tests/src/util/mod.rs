@@ -1,9 +1,9 @@
-use fil_actor_market::State as MarketState;
+use fil_actor_market::{load_provider_sector_deals, DealProposal, DealState, State as MarketState};
 use fil_actor_power::State as PowerState;
 use fil_actor_reward::State as RewardState;
 use fil_actors_runtime::{
-    runtime::Policy, MessageAccumulator, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
-    STORAGE_POWER_ACTOR_ADDR,
+    parse_uint_key, runtime::Policy, MessageAccumulator, REWARD_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::{CborStore, RawBytes};
@@ -11,13 +11,15 @@ use fvm_shared::address::Address;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::SectorNumber;
-use fvm_shared::METHOD_SEND;
+use fvm_shared::{ActorID, METHOD_SEND};
+use std::collections::HashMap;
 
 use fil_actor_miner::ext::verifreg::AllocationID;
 use fil_actor_miner::{
     new_deadline_info_from_offset_and_epoch, Deadline, DeadlineInfo, GetBeneficiaryReturn,
     Method as MinerMethod, MinerInfo, PowerPair, SectorOnChainInfo, State as MinerState,
 };
+use fil_actor_verifreg::{Claim, ClaimID, State as VerifregState};
 use fil_builtin_actors_state::check::check_state_invariants;
 use num_traits::Zero;
 use regex::Regex;
@@ -164,6 +166,54 @@ pub fn market_pending_deal_allocations(v: &dyn VM, deals: &[DealID]) -> Vec<Allo
     let mut st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
     let bs = &DynBlockstore::wrap(v.blockstore());
     st.get_pending_deal_allocation_ids(bs, deals).unwrap()
+}
+
+pub fn market_list_deals(v: &dyn VM) -> HashMap<DealID, (DealProposal, Option<DealState>)> {
+    let st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
+    let bs = &DynBlockstore::wrap(v.blockstore());
+    let proposals = st.load_proposals(bs).unwrap();
+    let states = st.load_deal_states(bs).unwrap();
+    let mut found: HashMap<DealID, (DealProposal, Option<DealState>)> = HashMap::new();
+    proposals
+        .for_each(|i, p| {
+            let state = states.get(i).unwrap().cloned();
+            found.insert(i, (p.clone(), state));
+            Ok(())
+        })
+        .unwrap();
+    found
+}
+
+pub fn market_list_sectors_deals(
+    v: &dyn VM,
+    provider: &Address,
+) -> HashMap<SectorNumber, Vec<DealID>> {
+    let st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
+    let bs = &DynBlockstore::wrap(v.blockstore());
+    let sectors = st.load_provider_sectors(bs).unwrap();
+    let sector_deals = load_provider_sector_deals(bs, &sectors, provider).unwrap();
+    let mut found: HashMap<SectorNumber, Vec<DealID>> = HashMap::new();
+    sector_deals
+        .for_each(|sno, deal_ids| {
+            found.insert(sno, deal_ids.deals.clone());
+            Ok(())
+        })
+        .unwrap();
+    found
+}
+
+pub fn verifreg_list_claims(v: &dyn VM, provider: ActorID) -> HashMap<ClaimID, Claim> {
+    let st: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
+    let bs = &DynBlockstore::wrap(v.blockstore());
+    let mut claims = st.load_claims(bs).unwrap();
+    let mut found: HashMap<ClaimID, Claim> = HashMap::new();
+    claims
+        .for_each_in(provider, |id, claim| {
+            found.insert(parse_uint_key(id).unwrap(), claim.clone());
+            Ok(())
+        })
+        .unwrap();
+    found
 }
 
 pub fn make_bitfield(bits: &[u64]) -> BitField {

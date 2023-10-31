@@ -2,8 +2,8 @@ use std::cmp::min;
 
 use frc46_token::receiver::FRC46TokenReceived;
 use frc46_token::receiver::FRC46_TOKEN_TYPE;
-use frc46_token::token::types::TransferFromParams;
 use frc46_token::token::types::TransferParams;
+use frc46_token::token::types::{TransferFromParams, TransferReturn};
 use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
@@ -28,6 +28,7 @@ use num_traits::Zero;
 
 use fil_actor_cron::Method as CronMethod;
 use fil_actor_datacap::Method as DataCapMethod;
+use fil_actor_market::ext::verifreg::AllocationsResponse;
 use fil_actor_market::{
     ClientDealProposal, DealProposal, Label, Method as MarketMethod, PublishStorageDealsParams,
     PublishStorageDealsReturn, SectorDeals, State as MarketState, MARKET_NOTIFY_DEAL_METHOD,
@@ -877,6 +878,44 @@ pub fn datacap_get_balance(v: &dyn VM, address: &Address) -> TokenAmount {
     deserialize(&ret, "balance of return value").unwrap()
 }
 
+pub fn datacap_create_allocations(
+    v: &dyn VM,
+    client: &Address,
+    reqs: &[AllocationRequest],
+) -> Vec<AllocationID> {
+    let payload = AllocationRequests { allocations: reqs.to_vec(), extensions: vec![] };
+    let token_amount = TokenAmount::from_whole(reqs.iter().map(|r| r.size.0).sum::<u64>());
+    let operator_data = serialize(&payload, "allocation requests").unwrap();
+    let transfer_params = TransferParams {
+        to: VERIFIED_REGISTRY_ACTOR_ADDR,
+        amount: token_amount.clone(),
+        operator_data: operator_data.clone(),
+    };
+
+    let client_id = v.resolve_id_address(client).unwrap().id().unwrap();
+    let tfer_result: TransferReturn = apply_ok(
+        v,
+        client,
+        &DATACAP_TOKEN_ACTOR_ADDR,
+        &TokenAmount::zero(),
+        DataCapMethod::TransferExported as u64,
+        Some(transfer_params),
+    )
+    .deserialize()
+    .unwrap();
+    let alloc_response: AllocationsResponse = tfer_result.recipient_data.deserialize().unwrap();
+
+    Expect::datacap_transfer_to_verifreg(
+        client_id,
+        token_amount,
+        operator_data,
+        false, // No burn
+    )
+    .matches(v.take_invocations().last().unwrap());
+
+    alloc_response.new_allocations
+}
+
 pub fn datacap_extend_claim(
     v: &dyn VM,
     client: &Address,
@@ -911,41 +950,12 @@ pub fn datacap_extend_claim(
         Some(transfer_params),
     );
 
-    ExpectInvocation {
-        from: client_id,
-        to: DATACAP_TOKEN_ACTOR_ADDR,
-        method: DataCapMethod::TransferExported as u64,
-        subinvocs: Some(vec![ExpectInvocation {
-            from: DATACAP_TOKEN_ACTOR_ID,
-            to: VERIFIED_REGISTRY_ACTOR_ADDR,
-            method: VerifregMethod::UniversalReceiverHook as u64,
-            params: Some(
-                IpldBlock::serialize_cbor(&UniversalReceiverParams {
-                    type_: FRC46_TOKEN_TYPE,
-                    payload: serialize(
-                        &FRC46TokenReceived {
-                            from: client.id().unwrap(),
-                            to: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
-                            operator: client.id().unwrap(),
-                            amount: token_amount.clone(),
-                            operator_data,
-                            token_data: RawBytes::default(),
-                        },
-                        "token received params",
-                    )
-                    .unwrap(),
-                })
-                .unwrap(),
-            ),
-            subinvocs: Some(vec![Expect::frc46_burn(
-                VERIFIED_REGISTRY_ACTOR_ID,
-                DATACAP_TOKEN_ACTOR_ADDR,
-                token_amount,
-            )]),
-            ..Default::default()
-        }]),
-        ..Default::default()
-    }
+    Expect::datacap_transfer_to_verifreg(
+        client_id,
+        token_amount,
+        operator_data,
+        true, // Burn
+    )
     .matches(v.take_invocations().last().unwrap());
 }
 
