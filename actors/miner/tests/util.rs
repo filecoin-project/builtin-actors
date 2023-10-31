@@ -2757,7 +2757,7 @@ pub fn expect_event(rt: &MockRuntime, typ: &str, miner: &ActorID, sector: &Secto
     rt.expect_emitted_event(
         EventBuilder::new()
             .typ(typ)
-            .field_indexed("miner", miner)
+            .field_indexed("provider", miner)
             .field_indexed("sector", sector)
             .build()
             .unwrap(),
