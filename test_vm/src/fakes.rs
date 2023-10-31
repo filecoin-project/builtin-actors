@@ -19,7 +19,8 @@ use integer_encoding::VarInt;
 use fil_actors_runtime::runtime::Primitives;
 use fil_actors_runtime::test_utils::{make_piece_cid, recover_secp_public_key};
 
-/// Fake implementation of runtime primitives.
+/// Fake implementation of runtime primitives. By default, behaviours succeed but can be overridden
+/// by storing the optional override in this struct.
 #[derive(Default, Clone)]
 #[allow(clippy::type_complexity)]
 pub struct FakePrimitives {

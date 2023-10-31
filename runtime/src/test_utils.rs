@@ -1368,23 +1368,6 @@ impl Primitives for MockRuntime {
         (*self.hash_func)(hasher, data)
     }
 
-    fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> Result<(), anyhow::Error> {
-        let exp = self
-            .expectations
-            .borrow_mut()
-            .expect_replica_verify
-            .take()
-            .expect("unexpected call to verify replica update");
-        assert_eq!(exp.input.update_proof_type, replica.update_proof_type, "mismatched proof type");
-        assert_eq!(exp.input.new_sealed_cid, replica.new_sealed_cid, "mismatched new sealed CID");
-        assert_eq!(exp.input.old_sealed_cid, replica.old_sealed_cid, "mismatched old sealed CID");
-        assert_eq!(
-            exp.input.new_unsealed_cid, replica.new_unsealed_cid,
-            "mismatched new unsealed CID"
-        );
-        exp.result
-    }
-
     fn verify_post(&self, post: &WindowPoStVerifyInfo) -> anyhow::Result<()> {
         let exp = self
             .expectations
@@ -1401,6 +1384,23 @@ impl Primitives for MockRuntime {
             )));
         }
         Ok(())
+    }
+
+    fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> Result<(), anyhow::Error> {
+        let exp = self
+            .expectations
+            .borrow_mut()
+            .expect_replica_verify
+            .take()
+            .expect("unexpected call to verify replica update");
+        assert_eq!(exp.input.update_proof_type, replica.update_proof_type, "mismatched proof type");
+        assert_eq!(exp.input.new_sealed_cid, replica.new_sealed_cid, "mismatched new sealed CID");
+        assert_eq!(exp.input.old_sealed_cid, replica.old_sealed_cid, "mismatched old sealed CID");
+        assert_eq!(
+            exp.input.new_unsealed_cid, replica.new_unsealed_cid,
+            "mismatched new unsealed CID"
+        );
+        exp.result
     }
 
     fn verify_consensus_fault(

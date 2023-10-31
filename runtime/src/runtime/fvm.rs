@@ -444,6 +444,8 @@ where
             .map_err(|e| anyhow!("failed to recover pubkey; exit code: {}", e))
     }
 
+    // FVM Verifier methods
+
     #[cfg(not(feature = "fake-proofs"))]
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), Error> {
         match fvm::crypto::verify_post(verify_info) {
@@ -490,6 +492,8 @@ where
             Err(e) => Err(anyhow!("failed to verify replica: {}", e)),
         }
     }
+
+    // Fake Verifier methods
 
     #[cfg(feature = "fake-proofs")]
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), Error> {
