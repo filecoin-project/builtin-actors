@@ -40,7 +40,7 @@ pub use deadlines::*;
 pub use expiration_queue::*;
 use fil_actors_runtime::cbor::{serialize, serialize_vec};
 use fil_actors_runtime::runtime::builtins::Type;
-use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime, Verifier};
+use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
     actor_dispatch, actor_error, deserialize_block, extract_send_result, ActorContext,
     ActorDowncast, ActorError, AsActorError, BatchReturn, BatchReturnGen, BURNT_FUNDS_ACTOR_ADDR,
@@ -1054,7 +1054,7 @@ impl Actor {
                 let quant = state.quant_spec_for_deadline(rt.policy(), dl_idx);
 
                 for update in &decls_by_deadline[&dl_idx] {
-                    Verifier::verify_replica_update(rt, &update.proof_inputs).with_context_code(
+                    rt.verify_replica_update(&update.proof_inputs).with_context_code(
                         ExitCode::USR_ILLEGAL_ARGUMENT,
                         || {
                             format!(

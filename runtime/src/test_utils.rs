@@ -40,7 +40,7 @@ use serde::Serialize;
 use crate::runtime::builtins::Type;
 use crate::runtime::{
     ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
-    Verifier, EMPTY_ARR_CID,
+    EMPTY_ARR_CID,
 };
 use crate::{actor_error, ActorError, SendError};
 use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
@@ -1384,9 +1384,7 @@ impl Primitives for MockRuntime {
         );
         exp.result
     }
-}
 
-impl Verifier for MockRuntime {
     fn verify_post(&self, post: &WindowPoStVerifyInfo) -> anyhow::Result<()> {
         let exp = self
             .expectations
@@ -1486,10 +1484,6 @@ impl Verifier for MockRuntime {
         }
         assert_eq!(exp.in_proof, aggregate.proof, "proof mismatch");
         exp.result
-    }
-
-    fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> anyhow::Result<()> {
-        Primitives::verify_replica_update(self, replica)
     }
 }
 

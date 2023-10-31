@@ -10,6 +10,7 @@ use fvm_ipld_encoding::{
 use fvm_shared::{
     address::Address,
     clock::ChainEpoch,
+    consensus::ConsensusFault,
     crypto::{
         hash::SupportedHashes,
         signature::{Signature, SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE},
@@ -17,7 +18,10 @@ use fvm_shared::{
     econ::TokenAmount,
     error::ExitCode,
     piece::PieceInfo,
-    sector::{RegisteredSealProof, ReplicaUpdateInfo},
+    sector::{
+        AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
+        WindowPoStVerifyInfo,
+    },
     MethodNum,
 };
 
@@ -190,5 +194,32 @@ pub trait Primitives {
         signature: &[u8; SECP_SIG_LEN],
     ) -> Result<[u8; SECP_PUB_LEN], Error>;
 
-    fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> Result<(), Error>;
+    /// Verifies a window proof of spacetime.
+    fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), anyhow::Error>;
+
+    /// Verifies that two block headers provide proof of a consensus fault:
+    /// - both headers mined by the same actor
+    /// - headers are different
+    /// - first header is of the same or lower epoch as the second
+    /// - at least one of the headers appears in the current chain at or after epoch `earliest`
+    /// - the headers provide evidence of a fault (see the spec for the different fault types).
+    /// The parameters are all serialized block headers. The third "extra" parameter is consulted only for
+    /// the "parent grinding fault", in which case it must be the sibling of h1 (same parent tipset) and one of the
+    /// blocks in the parent of h2 (i.e. h2's grandparent).
+    /// Returns nil and an error if the headers don't prove a fault.
+    fn verify_consensus_fault(
+        &self,
+        h1: &[u8],
+        h2: &[u8],
+        extra: &[u8],
+    ) -> Result<Option<ConsensusFault>, anyhow::Error>;
+
+    fn batch_verify_seals(&self, batch: &[SealVerifyInfo]) -> anyhow::Result<Vec<bool>>;
+
+    fn verify_aggregate_seals(
+        &self,
+        aggregate: &AggregateSealVerifyProofAndInfos,
+    ) -> Result<(), anyhow::Error>;
+
+    fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> Result<(), anyhow::Error>;
 }
