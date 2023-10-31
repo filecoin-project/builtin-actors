@@ -154,7 +154,7 @@ impl ExpectInvocation {
         assert_eq!(
             self.method, invoc.method,
             "{} unexpected method: expected: {}, was: {} \n{}",
-            id, self.method, invoc.from, extra_msg
+            id, self.method, invoc.method, extra_msg
         );
     }
 }
