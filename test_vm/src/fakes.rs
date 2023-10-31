@@ -2,6 +2,7 @@ use anyhow::anyhow;
 use cid::multihash::Code;
 use cid::multihash::MultihashDigest;
 use cid::Cid;
+use fil_actor_miner::CompactCommD;
 use fvm_shared::address::{Address, SECP_PUB_LEN};
 use fvm_shared::crypto::hash::SupportedHashes;
 use fvm_shared::crypto::signature::{Signature, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE};
@@ -44,6 +45,9 @@ impl Primitives for FakePrimitives {
         proof_type: RegisteredSealProof,
         pieces: &[PieceInfo],
     ) -> Result<Cid, anyhow::Error> {
+        if pieces.is_empty() {
+            return Ok(CompactCommD::empty().get_cid(proof_type).unwrap());
+        }
         // Construct a buffer that depends on all the input data.
         let mut buf: Vec<u8> = Vec::new();
         let ptv: i64 = proof_type.into();
