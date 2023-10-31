@@ -62,8 +62,10 @@ fil_actors_runtime::wasm_trampoline!(Actor);
 
 pub const NO_ALLOCATION_ID: u64 = 0;
 
-// An exit code indicating that information about a past deal is no longer available.
+// Indicates that information about a past deal is no longer available.
 pub const EX_DEAL_EXPIRED: ExitCode = ExitCode::new(FIRST_ACTOR_SPECIFIC_EXIT_CODE);
+// Indicates that information about a deal's activation is not yet available.
+pub const EX_DEAL_NOT_ACTIVATED: ExitCode = ExitCode::new(FIRST_ACTOR_SPECIFIC_EXIT_CODE + 1);
 
 /// Market actor methods available
 #[derive(FromPrimitive)]
@@ -93,6 +95,7 @@ pub enum Method {
     GetDealProviderCollateralExported = frc42_dispatch::method_hash!("GetDealProviderCollateral"),
     GetDealVerifiedExported = frc42_dispatch::method_hash!("GetDealVerified"),
     GetDealActivationExported = frc42_dispatch::method_hash!("GetDealActivation"),
+    GetDealSectorExported = frc42_dispatch::method_hash!("GetDealSector"),
     SectorContentChangedExported = ext::miner::SECTOR_CONTENT_CHANGED,
 }
 
@@ -1116,27 +1119,55 @@ impl Actor {
                 terminated: state.slash_epoch,
             }),
             None => {
-                let maybe_proposal = st.find_proposal(rt.store(), params.id)?;
-                match maybe_proposal {
-                    Some(_) => Ok(GetDealActivationReturn {
-                        // The proposal has been published, but not activated.
-                        activated: EPOCH_UNDEFINED,
-                        terminated: EPOCH_UNDEFINED,
-                    }),
-                    None => {
-                        if params.id < st.next_id {
-                            // If the deal ID has been used, it must have been cleaned up.
-                            Err(ActorError::unchecked(
-                                EX_DEAL_EXPIRED,
-                                format!("deal {} expired", params.id),
-                            ))
-                        } else {
-                            // We can't distinguish between failing to activate, or having been
-                            // cleaned up after completion/termination.
-                            Err(ActorError::not_found(format!("no such deal {}", params.id)))
-                        }
-                    }
+                // Pass through exit codes if proposal doesn't exist.
+                let _ = st.get_proposal(rt.store(), params.id)?;
+                // Proposal was published but never activated.
+                Ok(GetDealActivationReturn {
+                    activated: EPOCH_UNDEFINED,
+                    terminated: EPOCH_UNDEFINED,
+                })
+            }
+        }
+    }
+
+    /// Fetches the sector in which a deal is stored.
+    /// This is available from after a deal is activated until it is finally settled
+    /// (either normally or by termination).
+    /// Fails with USR_NOT_FOUND if the deal doesn't exist (yet),
+    /// EX_DEAL_NOT_ACTIVATED if the deal is published but has not been activated,
+    /// or EX_DEAL_EXPIRED if the deal has been removed from state.
+    fn get_deal_sector(
+        rt: &impl Runtime,
+        params: GetDealSectorParams,
+    ) -> Result<GetDealSectorReturn, ActorError> {
+        rt.validate_immediate_caller_accept_any()?;
+        let st = rt.state::<State>()?;
+        let found = st.find_deal_state(rt.store(), params.id)?;
+        match found {
+            Some(state) => {
+                // The deal has been activated and not yet finally settled.
+                if state.slash_epoch != EPOCH_UNDEFINED {
+                    // The deal has been terminated but not cleaned up.
+                    // Hide this internal state from caller and fail as if it had been cleaned up.
+                    // This will become an impossible state when deal termination is
+                    // processed immediately.
+                    // Remove with https://github.com/filecoin-project/builtin-actors/issues/1388.
+                    Err(ActorError::unchecked(
+                        EX_DEAL_EXPIRED,
+                        format!("deal {} expired", params.id),
+                    ))
+                } else {
+                    Ok(GetDealSectorReturn { sector: state.sector_number })
                 }
+            }
+            None => {
+                // Pass through exit codes if proposal doesn't exist.
+                let _ = st.get_proposal(rt.store(), params.id)?;
+                // Proposal was published but never activated.
+                Err(ActorError::unchecked(
+                    EX_DEAL_NOT_ACTIVATED,
+                    format!("deal {} not yet activated", params.id),
+                ))
             }
         }
     }
@@ -1603,6 +1634,7 @@ impl ActorCode for Actor {
         GetDealProviderCollateralExported => get_deal_provider_collateral,
         GetDealVerifiedExported => get_deal_verified,
         GetDealActivationExported => get_deal_activation,
+        GetDealSectorExported => get_deal_sector,
         SectorContentChangedExported => sector_content_changed,
     }
 }
