@@ -36,6 +36,7 @@ pub mod trace;
 pub mod util;
 
 /// An abstract VM that is injected into integration tests
+#[allow(clippy::type_complexity)]
 pub trait VM {
     /// Returns the underlying blockstore of the VM
     fn blockstore(&self) -> &dyn Blockstore;
@@ -116,16 +117,52 @@ pub trait VM {
     /// Set the initial state root of the block
     fn set_initial_state_root(&self, state_root: Cid);
 
-    // Override the signature verification behaviour
-    fn override_verify_signature(
+    /// Override the primitive hash_blake2b function
+    fn override_hash_blake2b(&self, f: fn(&[u8]) -> [u8; 32]);
+
+    /// Override the primitive hash function
+    fn override_hash(&self, f: fn(SupportedHashes, &[u8]) -> Vec<u8>);
+
+    /// Override the primitive hash_64 function
+    fn override_hash_64(&self, f: fn(SupportedHashes, &[u8]) -> ([u8; 64], usize));
+
+    ///Override the primitive compute_unsealed_sector_cid function
+    fn override_compute_unsealed_sector_cid(
         &self,
-        verify_signature: fn(&Signature, &Address, &[u8]) -> Result<(), Error>,
+        f: fn(RegisteredSealProof, &[PieceInfo]) -> Result<Cid, Error>,
     );
 
-    fn override_verifiy_replica_update(
+    /// Override the primitive recover_secp_public_key function
+    fn override_recover_secp_public_key(
         &self,
-        verify_replica_update: fn(&ReplicaUpdateInfo) -> Result<(), anyhow::Error>,
+        f: fn(
+            &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
+            &[u8; SECP_SIG_LEN],
+        ) -> Result<[u8; SECP_PUB_LEN], Error>,
     );
+
+    /// Override the primitive verify_post function
+    fn override_verify_post(&self, f: fn(&WindowPoStVerifyInfo) -> Result<(), Error>);
+
+    /// Override the primitive verify_consensus_fault function
+    fn override_verify_consensus_fault(
+        &self,
+        f: fn(&[u8], &[u8], &[u8]) -> Result<Option<ConsensusFault>, Error>,
+    );
+    /// Override the primitive batch_verify_seals function
+    fn override_batch_verify_seals(&self, f: fn(&[SealVerifyInfo]) -> Result<Vec<bool>, Error>);
+
+    /// Override the primitive verify_aggregate_seals function
+    fn override_verify_aggregate_seals(
+        &self,
+        f: fn(&AggregateSealVerifyProofAndInfos) -> Result<(), Error>,
+    );
+
+    /// Override the primitive verify_signature function
+    fn override_verify_signature(&self, f: fn(&Signature, &Address, &[u8]) -> Result<(), Error>);
+
+    /// Override the primitive verify_replica_update function
+    fn override_verify_replica_update(&self, f: fn(&ReplicaUpdateInfo) -> Result<(), Error>);
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]

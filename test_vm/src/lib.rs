@@ -31,13 +31,18 @@ use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::sector::{ReplicaUpdateInfo, StoragePower};
+use fvm_shared::sector::{AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo, StoragePower, WindowPoStVerifyInfo};
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{MethodNum, METHOD_SEND};
 use serde::ser;
 use std::cell::{RefCell, RefMut};
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
+use anyhow::Error;
+use fvm_shared::consensus::ConsensusFault;
+use fvm_shared::crypto::hash::SupportedHashes;
+use fvm_shared::crypto::signature::{SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE, Signature};
+use fvm_shared::piece::PieceInfo;
 use vm_api::trace::InvocationTrace;
 use vm_api::{new_actor, ActorState, MessageResult, VMError, VM};
 
@@ -449,21 +454,47 @@ impl VM for TestVM {
         self.state_root.replace(state_root);
     }
 
-    fn override_verify_signature(
-        &self,
-        verify_signature: fn(
-            &fvm_shared::crypto::signature::Signature,
-            &Address,
-            &[u8],
-        ) -> Result<(), anyhow::Error>,
-    ) {
-        self.primitives.borrow_mut().verify_signature = Some(verify_signature);
+    fn override_hash_blake2b(&self, f: fn(&[u8]) -> [u8; 32]) {
+        self.primitives.borrow_mut().hash_blake2b = Some(f);
     }
 
-    fn override_verifiy_replica_update(
-        &self,
-        verify_replica_update: fn(&ReplicaUpdateInfo) -> Result<(), anyhow::Error>,
-    ) {
-        self.primitives.borrow_mut().verify_replica_update = Some(verify_replica_update);
+    fn override_hash(&self, f: fn(SupportedHashes, &[u8]) -> Vec<u8>) {
+        self.primitives.borrow_mut().hash = Some(f);
+    }
+
+    fn override_hash_64(&self, f: fn(SupportedHashes, &[u8]) -> ([u8; 64], usize)) {
+        self.primitives.borrow_mut().hash_64 = Some(f);
+    }
+
+    fn override_compute_unsealed_sector_cid(&self, f: fn(RegisteredSealProof, &[PieceInfo]) -> Result<Cid, Error>) {
+        self.primitives.borrow_mut().compute_unsealed_sector_cid = Some(f);
+    }
+
+    fn override_recover_secp_public_key(&self, f: fn(&[u8; SECP_SIG_MESSAGE_HASH_SIZE], &[u8; SECP_SIG_LEN]) -> Result<[u8; SECP_PUB_LEN], Error>) {
+        self.primitives.borrow_mut().recover_secp_public_key = Some(f);
+    }
+
+    fn override_verify_post(&self, f: fn(&WindowPoStVerifyInfo) -> Result<(), Error>) {
+        self.primitives.borrow_mut().verify_post = Some(f);
+    }
+
+    fn override_verify_consensus_fault(&self, f: fn(&[u8], &[u8], &[u8]) -> Result<Option<ConsensusFault>, Error>) {
+        self.primitives.borrow_mut().verify_consensus_fault = Some(f);
+    }
+
+    fn override_batch_verify_seals(&self, f: fn(&[SealVerifyInfo]) -> Result<Vec<bool>, Error>) {
+        self.primitives.borrow_mut().batch_verify_seals = Some(f);
+    }
+
+    fn override_verify_aggregate_seals(&self, f: fn(&AggregateSealVerifyProofAndInfos) -> Result<(), Error>) {
+        self.primitives.borrow_mut().verify_aggregate_seals = Some(f);
+    }
+
+    fn override_verify_signature(&self, f: fn(&Signature, &Address, &[u8]) -> Result<(), Error>) {
+        self.primitives.borrow_mut().verify_signature = Some(f);
+    }
+
+    fn override_verify_replica_update(&self, f: fn(&ReplicaUpdateInfo) -> Result<(), Error>) {
+        self.primitives.borrow_mut().verify_replica_update = Some(f);
     }
 }
