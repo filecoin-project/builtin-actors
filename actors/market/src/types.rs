@@ -242,6 +242,15 @@ pub struct GetDealActivationReturn {
     pub terminated: ChainEpoch,
 }
 
+pub type GetDealSectorParams = DealQueryParams;
+
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+#[serde(transparent)]
+pub struct GetDealSectorReturn {
+    /// Sector number with the provider that has committed the deal.
+    pub sector: SectorNumber,
+}
+
 // Interface market clients can implement to receive notifications from builtin market
 pub const MARKET_NOTIFY_DEAL_METHOD: u64 = frc42_dispatch::method_hash!("MarketNotifyDeal");
 
