@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::rc::Rc;
 
 use anyhow::anyhow;
+use anyhow::{Error, Result};
 use cid::multihash::{Code, Multihash as OtherMultihash};
 use cid::Cid;
 use fvm_ipld_encoding::de::DeserializeOwned;
@@ -36,11 +37,12 @@ use multihash::derive::Multihash;
 
 use rand::prelude::*;
 use serde::Serialize;
+use vm_api::MockPrimitives;
 
 use crate::runtime::builtins::Type;
 use crate::runtime::{
     ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
-    Verifier, EMPTY_ARR_CID,
+    EMPTY_ARR_CID,
 };
 use crate::{actor_error, ActorError, SendError};
 use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
@@ -50,6 +52,7 @@ use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::chainid::ChainID;
 use fvm_shared::event::ActorEvent;
 use fvm_shared::sys::SendFlags;
+use integer_encoding::VarInt;
 
 lazy_static::lazy_static! {
     pub static ref SYSTEM_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/system");
@@ -1367,9 +1370,7 @@ impl Primitives for MockRuntime {
     fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
         (*self.hash_func)(hasher, data)
     }
-}
 
-impl Verifier for MockRuntime {
     fn verify_post(&self, post: &WindowPoStVerifyInfo) -> anyhow::Result<()> {
         let exp = self
             .expectations
@@ -1386,6 +1387,23 @@ impl Verifier for MockRuntime {
             )));
         }
         Ok(())
+    }
+
+    fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> Result<(), anyhow::Error> {
+        let exp = self
+            .expectations
+            .borrow_mut()
+            .expect_replica_verify
+            .take()
+            .expect("unexpected call to verify replica update");
+        assert_eq!(exp.input.update_proof_type, replica.update_proof_type, "mismatched proof type");
+        assert_eq!(exp.input.new_sealed_cid, replica.new_sealed_cid, "mismatched new sealed CID");
+        assert_eq!(exp.input.old_sealed_cid, replica.old_sealed_cid, "mismatched old sealed CID");
+        assert_eq!(
+            exp.input.new_unsealed_cid, replica.new_unsealed_cid,
+            "mismatched new unsealed CID"
+        );
+        exp.result
     }
 
     fn verify_consensus_fault(
@@ -1468,23 +1486,6 @@ impl Verifier for MockRuntime {
             );
         }
         assert_eq!(exp.in_proof, aggregate.proof, "proof mismatch");
-        exp.result
-    }
-
-    fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> anyhow::Result<()> {
-        let exp = self
-            .expectations
-            .borrow_mut()
-            .expect_replica_verify
-            .take()
-            .expect("unexpected call to verify replica update");
-        assert_eq!(exp.input.update_proof_type, replica.update_proof_type, "mismatched proof type");
-        assert_eq!(exp.input.new_sealed_cid, replica.new_sealed_cid, "mismatched new sealed CID");
-        assert_eq!(exp.input.old_sealed_cid, replica.old_sealed_cid, "mismatched old sealed CID");
-        assert_eq!(
-            exp.input.new_unsealed_cid, replica.new_unsealed_cid,
-            "mismatched new unsealed CID"
-        );
         exp.result
     }
 }
@@ -1577,4 +1578,241 @@ pub fn new_bls_addr(s: u8) -> Address {
     let mut key = [0u8; 48];
     rng.fill_bytes(&mut key);
     Address::new_bls(&key).unwrap()
+}
+
+/// Fake implementation of runtime primitives. By default, behaviours succeed but can be overridden
+/// by storing the optional override in this struct.
+#[derive(Default, Clone)]
+#[allow(clippy::type_complexity)]
+pub struct FakePrimitives {
+    pub hash_blake2b: RefCell<Option<fn(&[u8]) -> [u8; 32]>>,
+    pub hash: RefCell<Option<fn(SupportedHashes, &[u8]) -> Vec<u8>>>,
+    pub hash_64: RefCell<Option<fn(SupportedHashes, &[u8]) -> ([u8; 64], usize)>>,
+    pub compute_unsealed_sector_cid:
+        RefCell<Option<fn(RegisteredSealProof, &[PieceInfo]) -> Result<Cid, Error>>>,
+    pub recover_secp_public_key: RefCell<
+        Option<
+            fn(
+                &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
+                &[u8; SECP_SIG_LEN],
+            ) -> Result<[u8; SECP_PUB_LEN], Error>,
+        >,
+    >,
+    pub verify_post: RefCell<Option<fn(&WindowPoStVerifyInfo) -> Result<(), Error>>>,
+    pub verify_consensus_fault:
+        RefCell<Option<fn(&[u8], &[u8], &[u8]) -> Result<Option<ConsensusFault>, Error>>>,
+    pub batch_verify_seals: RefCell<Option<fn(&[SealVerifyInfo]) -> Result<Vec<bool>>>>,
+    pub verify_aggregate_seals:
+        RefCell<Option<fn(&AggregateSealVerifyProofAndInfos) -> Result<(), Error>>>,
+    pub verify_signature: RefCell<Option<fn(&Signature, &Address, &[u8]) -> Result<(), Error>>>,
+    pub verify_replica_update: RefCell<Option<fn(&ReplicaUpdateInfo) -> Result<(), Error>>>,
+}
+
+impl Primitives for FakePrimitives {
+    fn hash_blake2b(&self, data: &[u8]) -> [u8; 32] {
+        if let Some(override_fn) = *self.hash_blake2b.borrow() {
+            override_fn(data)
+        } else {
+            blake2b_simd::Params::new()
+                .hash_length(32)
+                .to_state()
+                .update(data)
+                .finalize()
+                .as_bytes()
+                .try_into()
+                .unwrap()
+        }
+    }
+
+    fn hash(&self, hasher: SupportedHashes, data: &[u8]) -> Vec<u8> {
+        if let Some(override_fn) = *self.hash.borrow() {
+            override_fn(hasher, data)
+        } else {
+            let hasher = Code::try_from(hasher as u64).unwrap(); // supported hashes are all implemented in multihash
+            hasher.digest(data).digest().to_owned()
+        }
+    }
+
+    fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
+        if let Some(override_fn) = *self.hash_64.borrow() {
+            override_fn(hasher, data)
+        } else {
+            let hasher = Code::try_from(hasher as u64).unwrap();
+            let (len, buf, ..) = hasher.digest(data).into_inner();
+            (buf, len as usize)
+        }
+    }
+
+    fn compute_unsealed_sector_cid(
+        &self,
+        proof_type: RegisteredSealProof,
+        pieces: &[PieceInfo],
+    ) -> Result<Cid, Error> {
+        if let Some(override_fn) = *self.compute_unsealed_sector_cid.borrow() {
+            override_fn(proof_type, pieces)
+        } else {
+            let mut buf: Vec<u8> = Vec::new();
+            let ptv: i64 = proof_type.into();
+            buf.extend(ptv.encode_var_vec());
+            for p in pieces {
+                buf.extend(&p.cid.to_bytes());
+                buf.extend(p.size.0.encode_var_vec())
+            }
+            Ok(make_piece_cid(&buf))
+        }
+    }
+
+    fn verify_signature(
+        &self,
+        signature: &Signature,
+        signer: &Address,
+        plaintext: &[u8],
+    ) -> Result<(), Error> {
+        if let Some(override_fn) = *self.verify_signature.borrow() {
+            return override_fn(signature, signer, plaintext);
+        }
+
+        // default behaviour expects signature bytes to be equal to plaintext
+        if signature.bytes != plaintext {
+            return Err(anyhow::format_err!(
+                "invalid signature (mock sig validation expects siggy bytes to be equal to plaintext)"
+            ));
+        }
+        Ok(())
+    }
+
+    fn recover_secp_public_key(
+        &self,
+        hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
+        signature: &[u8; SECP_SIG_LEN],
+    ) -> Result<[u8; SECP_PUB_LEN], Error> {
+        if let Some(override_fn) = *self.recover_secp_public_key.borrow() {
+            override_fn(hash, signature)
+        } else {
+            recover_secp_public_key(hash, signature)
+                .map_err(|_| anyhow!("failed to recover pubkey"))
+        }
+    }
+
+    fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> Result<(), Error> {
+        if let Some(override_fn) = *self.verify_replica_update.borrow() {
+            override_fn(replica)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), Error> {
+        if let Some(override_fn) = *self.verify_post.borrow() {
+            override_fn(verify_info)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn verify_consensus_fault(
+        &self,
+        h1: &[u8],
+        h2: &[u8],
+        extra: &[u8],
+    ) -> Result<Option<ConsensusFault>, Error> {
+        if let Some(override_fn) = *self.verify_consensus_fault.borrow() {
+            override_fn(h1, h2, extra)
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn batch_verify_seals(&self, batch: &[SealVerifyInfo]) -> Result<Vec<bool>> {
+        if let Some(override_fn) = *self.batch_verify_seals.borrow() {
+            override_fn(batch)
+        } else {
+            Ok(vec![true; batch.len()])
+        }
+    }
+
+    fn verify_aggregate_seals(
+        &self,
+        aggregate: &AggregateSealVerifyProofAndInfos,
+    ) -> Result<(), Error> {
+        if let Some(override_fn) = *self.verify_aggregate_seals.borrow() {
+            override_fn(aggregate)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl MockPrimitives for FakePrimitives {
+    fn override_hash_blake2b(&self, f: fn(&[u8]) -> [u8; 32]) {
+        self.hash_blake2b.replace(Some(f));
+    }
+
+    fn override_hash(&self, f: fn(SupportedHashes, &[u8]) -> Vec<u8>) {
+        self.hash.replace(Some(f));
+    }
+
+    fn override_hash_64(&self, f: fn(SupportedHashes, &[u8]) -> ([u8; 64], usize)) {
+        self.hash_64.replace(Some(f));
+    }
+
+    fn override_compute_unsealed_sector_cid(
+        &self,
+        f: fn(RegisteredSealProof, &[PieceInfo]) -> std::result::Result<Cid, Error>,
+    ) {
+        self.compute_unsealed_sector_cid.replace(Some(f));
+    }
+
+    fn override_recover_secp_public_key(
+        &self,
+        f: fn(
+            &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
+            &[u8; SECP_SIG_LEN],
+        ) -> std::result::Result<[u8; SECP_PUB_LEN], Error>,
+    ) {
+        self.recover_secp_public_key.replace(Some(f));
+    }
+
+    fn override_verify_post(&self, f: fn(&WindowPoStVerifyInfo) -> std::result::Result<(), Error>) {
+        self.verify_post.replace(Some(f));
+    }
+
+    fn override_verify_consensus_fault(
+        &self,
+        f: fn(&[u8], &[u8], &[u8]) -> std::result::Result<Option<ConsensusFault>, Error>,
+    ) {
+        self.verify_consensus_fault.replace(Some(f));
+    }
+
+    fn override_batch_verify_seals(
+        &self,
+        f: fn(&[SealVerifyInfo]) -> std::result::Result<Vec<bool>, Error>,
+    ) {
+        self.batch_verify_seals.replace(Some(f));
+    }
+
+    fn override_verify_aggregate_seals(
+        &self,
+        f: fn(&AggregateSealVerifyProofAndInfos) -> std::result::Result<(), Error>,
+    ) {
+        self.verify_aggregate_seals.replace(Some(f));
+    }
+
+    fn override_verify_signature(
+        &self,
+        f: fn(&Signature, &Address, &[u8]) -> std::result::Result<(), Error>,
+    ) {
+        self.verify_signature.replace(Some(f));
+    }
+
+    fn override_verify_replica_update(
+        &self,
+        f: fn(&ReplicaUpdateInfo) -> std::result::Result<(), Error>,
+    ) {
+        self.verify_replica_update.replace(Some(f));
+    }
+
+    fn as_primitives(&self) -> &dyn Primitives {
+        self
+    }
 }

@@ -1,5 +1,3 @@
-use crate::fakes::FakePrimitives;
-
 use cid::multihash::Code;
 use cid::Cid;
 use fil_actor_account::State as AccountState;
@@ -39,13 +37,12 @@ use std::cell::{RefCell, RefMut};
 use std::collections::{BTreeMap, HashMap};
 use std::rc::Rc;
 use vm_api::trace::InvocationTrace;
-use vm_api::{new_actor, ActorState, MessageResult, VMError, VM};
+use vm_api::{new_actor, ActorState, MessageResult, MockPrimitives, VMError, VM};
 
 use vm_api::util::{get_state, serialize_ok};
 
 mod constants;
 pub use constants::*;
-pub mod fakes;
 mod messaging;
 pub use messaging::*;
 
@@ -75,7 +72,7 @@ impl TestVM {
             );
 
         TestVM {
-            primitives: FakePrimitives {},
+            primitives: FakePrimitives::default(),
             store,
             state_root: RefCell::new(actors.flush().unwrap()),
             circulating_supply: RefCell::new(TokenAmount::zero()),
@@ -439,5 +436,9 @@ impl VM for TestVM {
 
     fn set_timestamp(&self, timestamp: u64) {
         self.timestamp.replace(timestamp);
+    }
+
+    fn mut_primitives(&self) -> &dyn MockPrimitives {
+        &self.primitives
     }
 }

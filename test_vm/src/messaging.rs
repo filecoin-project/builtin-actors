@@ -20,7 +20,7 @@ use fil_actor_verifreg::Actor as VerifregActor;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{
     ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
-    Verifier, EMPTY_ARR_CID,
+    EMPTY_ARR_CID,
 };
 use fil_actors_runtime::{actor_error, SendError};
 use fil_actors_runtime::{test_utils::*, SYSTEM_ACTOR_ID};
@@ -653,11 +653,11 @@ impl Primitives for InvocationCtx<'_> {
         signer: &Address,
         plaintext: &[u8],
     ) -> Result<(), anyhow::Error> {
-        self.v.primitives.verify_signature(signature, signer, plaintext)
+        self.v.primitives().verify_signature(signature, signer, plaintext)
     }
 
     fn hash_blake2b(&self, data: &[u8]) -> [u8; 32] {
-        self.v.primitives.hash_blake2b(data)
+        self.v.primitives().hash_blake2b(data)
     }
 
     fn compute_unsealed_sector_cid(
@@ -665,15 +665,15 @@ impl Primitives for InvocationCtx<'_> {
         proof_type: RegisteredSealProof,
         pieces: &[PieceInfo],
     ) -> Result<Cid, anyhow::Error> {
-        self.v.primitives.compute_unsealed_sector_cid(proof_type, pieces)
+        self.v.primitives().compute_unsealed_sector_cid(proof_type, pieces)
     }
 
     fn hash(&self, hasher: SupportedHashes, data: &[u8]) -> Vec<u8> {
-        self.v.primitives.hash(hasher, data)
+        self.v.primitives().hash(hasher, data)
     }
 
     fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
-        self.v.primitives.hash_64(hasher, data)
+        self.v.primitives().hash_64(hasher, data)
     }
 
     fn recover_secp_public_key(
@@ -681,11 +681,9 @@ impl Primitives for InvocationCtx<'_> {
         hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
         signature: &[u8; SECP_SIG_LEN],
     ) -> Result<[u8; SECP_PUB_LEN], anyhow::Error> {
-        self.v.primitives.recover_secp_public_key(hash, signature)
+        self.v.primitives().recover_secp_public_key(hash, signature)
     }
-}
 
-impl Verifier for InvocationCtx<'_> {
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), anyhow::Error> {
         for proof in &verify_info.proofs {
             if proof.proof_bytes.eq(&TEST_VM_INVALID_POST.as_bytes().to_vec()) {
@@ -716,8 +714,8 @@ impl Verifier for InvocationCtx<'_> {
         Ok(())
     }
 
-    fn verify_replica_update(&self, _replica: &ReplicaUpdateInfo) -> Result<(), anyhow::Error> {
-        Ok(())
+    fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> Result<(), anyhow::Error> {
+        self.v.primitives().verify_replica_update(replica)
     }
 }
 
