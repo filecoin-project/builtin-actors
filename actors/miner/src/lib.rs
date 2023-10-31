@@ -5358,8 +5358,11 @@ fn activate_sectors_pieces(
                 rt,
                 &activation_info.piece_manifests,
                 activation_info.sector_type,
-            )?;
-            if !declared_commd.eq(&computed_commd) {
+            )?
+            .get_cid(activation_info.sector_type)?;
+            // A declared zero CommD might be compact or fully computed,
+            // so normalize to the computed value before checking.
+            if !declared_commd.get_cid(activation_info.sector_type)?.eq(&computed_commd) {
                 return Err(actor_error!(
                     illegal_argument,
                     "unsealed CID does not match pieces for sector {}, computed {:?} declared {:?}",

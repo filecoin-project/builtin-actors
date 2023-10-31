@@ -35,10 +35,6 @@ use fvm_shared::{ActorID, MethodNum, Response};
 use cid::multihash::MultihashDigest;
 use multihash::derive::Multihash;
 
-use rand::prelude::*;
-use serde::Serialize;
-use vm_api::MockPrimitives;
-
 use crate::runtime::builtins::Type;
 use crate::runtime::{
     ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
@@ -46,6 +42,9 @@ use crate::runtime::{
 };
 use crate::{actor_error, ActorError, SendError};
 use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
+use rand::prelude::*;
+use serde::Serialize;
+use vm_api::MockPrimitives;
 
 use crate::test_blockstores::MemoryBlockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -1678,6 +1677,8 @@ impl Primitives for FakePrimitives {
         if let Some(override_fn) = *self.compute_unsealed_sector_cid.borrow() {
             override_fn(proof_type, pieces)
         } else {
+            // This should be the zero CommD when pieces is empty,
+            // but that code is not currently accessible here.
             let mut buf: Vec<u8> = Vec::new();
             let ptv: i64 = proof_type.into();
             buf.extend(ptv.encode_var_vec());

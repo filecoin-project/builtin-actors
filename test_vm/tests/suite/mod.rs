@@ -11,6 +11,7 @@ mod init_test;
 mod market_miner_withdrawal_test;
 mod multisig_test;
 mod power_scenario_tests;
+mod prove_commit2_test;
 mod publish_deals_test;
 mod replica_update_test;
 mod terminate_test;

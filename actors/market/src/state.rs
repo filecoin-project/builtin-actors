@@ -708,7 +708,7 @@ impl State {
         Ok(())
     }
 
-    fn load_provider_sectors<BS>(&self, store: BS) -> Result<ProviderSectorsMap<BS>, ActorError>
+    pub fn load_provider_sectors<BS>(&self, store: BS) -> Result<ProviderSectorsMap<BS>, ActorError>
     where
         BS: Blockstore,
     {
@@ -1128,7 +1128,7 @@ where
         .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to lookup pending deal")
 }
 
-fn load_provider_sector_deals<BS>(
+pub fn load_provider_sector_deals<BS>(
     store: BS,
     provider_sectors: &ProviderSectorsMap<BS>,
     provider: &Address,
