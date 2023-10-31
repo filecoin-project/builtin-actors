@@ -77,7 +77,10 @@ pub trait VM {
     fn take_invocations(&self) -> Vec<InvocationTrace>;
 
     /// Provides access to VM primitives
-    fn primitives(&self) -> Box<dyn Primitives>;
+    fn primitives(&self) -> &dyn Primitives;
+
+    /// Provides access to VM primitives that can be mocked
+    fn mut_primitives(&self) -> &dyn MockPrimitives;
 
     /// Return a map of actor code CIDs to their corresponding types
     fn actor_manifest(&self) -> BTreeMap<Cid, Type>;
@@ -110,53 +113,6 @@ pub trait VM {
 
     /// Set the current timestamp
     fn set_timestamp(&self, timestamp: u64);
-
-    /// Override the primitive hash_blake2b function
-    fn override_hash_blake2b(&self, f: fn(&[u8]) -> [u8; 32]);
-
-    /// Override the primitive hash function
-    fn override_hash(&self, f: fn(SupportedHashes, &[u8]) -> Vec<u8>);
-
-    /// Override the primitive hash_64 function
-    fn override_hash_64(&self, f: fn(SupportedHashes, &[u8]) -> ([u8; 64], usize));
-
-    ///Override the primitive compute_unsealed_sector_cid function
-    fn override_compute_unsealed_sector_cid(
-        &self,
-        f: fn(RegisteredSealProof, &[PieceInfo]) -> Result<Cid, Error>,
-    );
-
-    /// Override the primitive recover_secp_public_key function
-    fn override_recover_secp_public_key(
-        &self,
-        f: fn(
-            &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
-            &[u8; SECP_SIG_LEN],
-        ) -> Result<[u8; SECP_PUB_LEN], Error>,
-    );
-
-    /// Override the primitive verify_post function
-    fn override_verify_post(&self, f: fn(&WindowPoStVerifyInfo) -> Result<(), Error>);
-
-    /// Override the primitive verify_consensus_fault function
-    fn override_verify_consensus_fault(
-        &self,
-        f: fn(&[u8], &[u8], &[u8]) -> Result<Option<ConsensusFault>, Error>,
-    );
-    /// Override the primitive batch_verify_seals function
-    fn override_batch_verify_seals(&self, f: fn(&[SealVerifyInfo]) -> Result<Vec<bool>, Error>);
-
-    /// Override the primitive verify_aggregate_seals function
-    fn override_verify_aggregate_seals(
-        &self,
-        f: fn(&AggregateSealVerifyProofAndInfos) -> Result<(), Error>,
-    );
-
-    /// Override the primitive verify_signature function
-    fn override_verify_signature(&self, f: fn(&Signature, &Address, &[u8]) -> Result<(), Error>);
-
-    /// Override the primitive verify_replica_update function
-    fn override_verify_replica_update(&self, f: fn(&ReplicaUpdateInfo) -> Result<(), Error>);
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -253,4 +209,56 @@ pub trait Primitives {
     ) -> Result<(), anyhow::Error>;
 
     fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> Result<(), anyhow::Error>;
+}
+
+#[allow(clippy::type_complexity)]
+pub trait MockPrimitives: Primitives {
+    /// Override the primitive hash_blake2b function
+    fn override_hash_blake2b(&self, f: fn(&[u8]) -> [u8; 32]);
+
+    /// Override the primitive hash function
+    fn override_hash(&self, f: fn(SupportedHashes, &[u8]) -> Vec<u8>);
+
+    /// Override the primitive hash_64 function
+    fn override_hash_64(&self, f: fn(SupportedHashes, &[u8]) -> ([u8; 64], usize));
+
+    ///Override the primitive compute_unsealed_sector_cid function
+    fn override_compute_unsealed_sector_cid(
+        &self,
+        f: fn(RegisteredSealProof, &[PieceInfo]) -> Result<Cid, Error>,
+    );
+
+    /// Override the primitive recover_secp_public_key function
+    fn override_recover_secp_public_key(
+        &self,
+        f: fn(
+            &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
+            &[u8; SECP_SIG_LEN],
+        ) -> Result<[u8; SECP_PUB_LEN], Error>,
+    );
+
+    /// Override the primitive verify_post function
+    fn override_verify_post(&self, f: fn(&WindowPoStVerifyInfo) -> Result<(), Error>);
+
+    /// Override the primitive verify_consensus_fault function
+    fn override_verify_consensus_fault(
+        &self,
+        f: fn(&[u8], &[u8], &[u8]) -> Result<Option<ConsensusFault>, Error>,
+    );
+    /// Override the primitive batch_verify_seals function
+    fn override_batch_verify_seals(&self, f: fn(&[SealVerifyInfo]) -> Result<Vec<bool>, Error>);
+
+    /// Override the primitive verify_aggregate_seals function
+    fn override_verify_aggregate_seals(
+        &self,
+        f: fn(&AggregateSealVerifyProofAndInfos) -> Result<(), Error>,
+    );
+
+    /// Override the primitive verify_signature function
+    fn override_verify_signature(&self, f: fn(&Signature, &Address, &[u8]) -> Result<(), Error>);
+
+    /// Override the primitive verify_replica_update function
+    fn override_verify_replica_update(&self, f: fn(&ReplicaUpdateInfo) -> Result<(), Error>);
+
+    fn as_primitives(&self) -> &dyn Primitives;
 }
