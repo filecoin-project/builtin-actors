@@ -13,6 +13,7 @@ mod multisig_test;
 mod power_scenario_tests;
 mod prove_commit2_test;
 mod publish_deals_test;
+mod replica_update2_test;
 mod replica_update_test;
 mod terminate_test;
 mod test_vm_test;
