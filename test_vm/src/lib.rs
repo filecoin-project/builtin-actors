@@ -457,7 +457,7 @@ impl VM for TestVM {
             &[u8],
         ) -> Result<(), anyhow::Error>,
     ) {
-        self.primitives.borrow_mut().verify_signature_override = Some(verify_signature);
+        self.primitives.borrow_mut().verify_signature = Some(verify_signature);
     }
 
     fn override_verifiy_replica_update(

@@ -20,7 +20,7 @@ use fil_actor_verifreg::Actor as VerifregActor;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{
     ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
-    Verifier, EMPTY_ARR_CID,
+    EMPTY_ARR_CID,
 };
 use fil_actors_runtime::{actor_error, SendError};
 use fil_actors_runtime::{test_utils::*, SYSTEM_ACTOR_ID};
@@ -684,12 +684,6 @@ impl Primitives for InvocationCtx<'_> {
         self.v.primitives().recover_secp_public_key(hash, signature)
     }
 
-    fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> Result<(), anyhow::Error> {
-        self.v.primitives().verify_replica_update(replica)
-    }
-}
-
-impl Verifier for InvocationCtx<'_> {
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), anyhow::Error> {
         for proof in &verify_info.proofs {
             if proof.proof_bytes.eq(&TEST_VM_INVALID_POST.as_bytes().to_vec()) {
