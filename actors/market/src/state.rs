@@ -1086,6 +1086,7 @@ pub fn get_proposal<BS: Blockstore>(
             // If the deal ID has been used, it must have been cleaned up.
             ActorError::unchecked(EX_DEAL_EXPIRED, format!("deal {} expired", id))
         } else {
+            // Never been published.
             ActorError::not_found(format!("no such deal {}", id))
         }
     })?;
