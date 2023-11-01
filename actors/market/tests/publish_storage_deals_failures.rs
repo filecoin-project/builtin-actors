@@ -381,7 +381,7 @@ fn fail_when_deals_have_different_providers() {
             .typ("deal-published")
             .field_indexed("client", &deal1.client.id().unwrap())
             .field_indexed("provider", &deal1.provider.id().unwrap())
-            .field_indexed("deal_id", &next_deal_id)
+            .field_indexed("id", &next_deal_id)
             .build()
             .unwrap(),
     );

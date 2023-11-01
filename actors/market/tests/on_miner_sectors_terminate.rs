@@ -177,7 +177,7 @@ fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
     rt.expect_emitted_event(
         EventBuilder::new()
             .typ("deal-completed")
-            .field_indexed("deal_id", &deal_ids[1])
+            .field_indexed("id", &deal_ids[1])
             .build()
             .unwrap(),
     );

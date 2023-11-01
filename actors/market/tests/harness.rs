@@ -404,7 +404,7 @@ pub fn batch_activate_deals_raw(
         rt.expect_emitted_event(
             EventBuilder::new()
                 .typ("deal-activated")
-                .field_indexed("deal_id", &deal_id)
+                .field_indexed("id", &deal_id)
                 .build()
                 .unwrap(),
         );
@@ -528,7 +528,7 @@ pub fn cron_tick_and_assert_balances(
         rt.expect_emitted_event(
             EventBuilder::new()
                 .typ("deal-completed")
-                .field_indexed("deal_id", &deal_id)
+                .field_indexed("id", &deal_id)
                 .build()
                 .unwrap(),
         );
@@ -730,7 +730,7 @@ pub fn publish_deals(
                 .typ("deal-published")
                 .field_indexed("client", &deal.client.id().unwrap())
                 .field_indexed("provider", &deal.provider.id().unwrap())
-                .field_indexed("deal_id", &deal_id)
+                .field_indexed("id", &deal_id)
                 .build()
                 .unwrap(),
         );
@@ -1197,10 +1197,7 @@ pub fn terminate_deals_raw(
 
     for deal_id in terminated_deals {
         rt.expect_emitted_event(
-            EventBuilder::new()
-                .typ("deal-terminated")
-                .field_indexed("deal_id", &deal_id)
-                .build()?,
+            EventBuilder::new().typ("deal-terminated").field_indexed("id", &deal_id).build()?,
         );
     }
 

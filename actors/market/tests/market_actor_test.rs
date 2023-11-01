@@ -949,7 +949,7 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
             .typ("deal-published")
             .field_indexed("client", &client_resolved.id().unwrap())
             .field_indexed("provider", &provider_resolved.id().unwrap())
-            .field_indexed("deal_id", &deal_id)
+            .field_indexed("id", &deal_id)
             .build()
             .unwrap(),
     );
@@ -1937,11 +1937,7 @@ fn locked_fund_tracking_states() {
     );
 
     rt.expect_emitted_event(
-        EventBuilder::new()
-            .typ("deal-completed")
-            .field_indexed("deal_id", &deal_id2)
-            .build()
-            .unwrap(),
+        EventBuilder::new().typ("deal-completed").field_indexed("id", &deal_id2).build().unwrap(),
     );
     cron_tick(&rt);
     assert_locked_fund_states(&rt, csf, plc, clc);
@@ -2158,7 +2154,7 @@ fn insufficient_client_balance_in_a_batch() {
             .typ("deal-published")
             .field_indexed("client", &deal2.client.id().unwrap())
             .field_indexed("provider", &deal2.provider.id().unwrap())
-            .field_indexed("deal_id", &next_deal_id)
+            .field_indexed("id", &next_deal_id)
             .build()
             .unwrap(),
     );
@@ -2307,7 +2303,7 @@ fn insufficient_provider_balance_in_a_batch() {
             .typ("deal-published")
             .field_indexed("client", &deal2.client.id().unwrap())
             .field_indexed("provider", &deal2.provider.id().unwrap())
-            .field_indexed("deal_id", &next_deal_id)
+            .field_indexed("id", &next_deal_id)
             .build()
             .unwrap(),
     );
@@ -2459,7 +2455,7 @@ fn psd_restricted_correctly() {
             .typ("deal-published")
             .field_indexed("client", &deal.client.id().unwrap())
             .field_indexed("provider", &deal.provider.id().unwrap())
-            .field_indexed("deal_id", &next_deal_id)
+            .field_indexed("id", &next_deal_id)
             .build()
             .unwrap(),
     );

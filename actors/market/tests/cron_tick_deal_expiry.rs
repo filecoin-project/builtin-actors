@@ -171,11 +171,7 @@ fn expired_deal_should_unlock_the_remaining_client_and_provider_locked_balance_a
 
     // move the current epoch so that deal is expired
     rt.expect_emitted_event(
-        EventBuilder::new()
-            .typ("deal-completed")
-            .field_indexed("deal_id", &deal_id)
-            .build()
-            .unwrap(),
+        EventBuilder::new().typ("deal-completed").field_indexed("id", &deal_id).build().unwrap(),
     );
     rt.set_epoch(END_EPOCH + 1000);
     cron_tick(&rt);
@@ -213,11 +209,7 @@ fn all_payments_are_made_for_a_deal_client_withdraws_collateral_and_client_accou
     // move the current epoch so that deal is expired
     rt.set_epoch(END_EPOCH + 100);
     rt.expect_emitted_event(
-        EventBuilder::new()
-            .typ("deal-completed")
-            .field_indexed("deal_id", &deal_id)
-            .build()
-            .unwrap(),
+        EventBuilder::new().typ("deal-completed").field_indexed("id", &deal_id).build().unwrap(),
     );
     cron_tick(&rt);
     assert_eq!(deal_proposal.client_collateral, get_balance(&rt, &CLIENT_ADDR).balance);
