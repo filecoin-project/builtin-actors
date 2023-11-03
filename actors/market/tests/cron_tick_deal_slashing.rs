@@ -130,7 +130,7 @@ fn deal_is_slashed_at_the_end_epoch_should_not_be_slashed_and_should_be_consider
     // as deal is considered to be expired.
 
     rt.set_epoch(END_EPOCH);
-    terminate_deals(&rt, PROVIDER_ADDR, &[deal_id]);
+    terminate_deals_for(&rt, PROVIDER_ADDR, &[deal_id], vec![]);
 
     // on the next cron tick, it will be processed as expired
     let current = END_EPOCH + 300;
@@ -352,7 +352,7 @@ fn regular_payments_till_deal_expires_and_then_we_attempt_to_slash_it_but_it_wil
     // as deal is considered to be expired.
     let duration = END_EPOCH - current;
     rt.set_epoch(END_EPOCH);
-    terminate_deals(&rt, PROVIDER_ADDR, &[deal_id]);
+    terminate_deals_for(&rt, PROVIDER_ADDR, &[deal_id], vec![]);
 
     // next epoch for cron schedule is endEpoch + 300 ->
     // setting epoch to higher than that will cause deal to be expired, payment will be made
