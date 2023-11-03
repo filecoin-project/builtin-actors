@@ -343,7 +343,7 @@ impl Actor {
                         )?
                         .unwrap(); // Unwrapping here as both paths to here should ensure the allocation exists.
 
-                    emit::allocation_removed(rt, *id)?;
+                    emit::allocation_removed(rt, *id, existing.client, existing.provider)?;
 
                     recovered_datacap += existing.size.0;
                 }
@@ -445,7 +445,7 @@ impl Actor {
                         return Err(actor_error!(illegal_argument, "claim {} already exists", id));
                     }
 
-                    emit::claim(rt, id)?;
+                    emit::claim(rt, id, new_claim.client, new_claim.provider)?;
 
                     allocs.remove(new_claim.client, id).context_code(
                         ExitCode::USR_ILLEGAL_STATE,
@@ -557,12 +557,12 @@ impl Actor {
                     }
 
                     let new_claim = Claim { term_max: term.term_max, ..*claim };
-                    st_claims.put(term.provider, term.claim_id, new_claim).context_code(
+                    st_claims.put(term.provider, term.claim_id, new_claim.clone()).context_code(
                         ExitCode::USR_ILLEGAL_STATE,
                         "HAMT put failure storing new claims",
                     )?;
                     batch_gen.add_success();
-                    emit::claim_updated(rt, term.claim_id)?;
+                    emit::claim_updated(rt, term.claim_id, new_claim.client, new_claim.provider)?;
                 } else {
                     batch_gen.add_fail(ExitCode::USR_NOT_FOUND);
                     info!("no claim {} for provider {}", term.claim_id, term.provider);
@@ -606,7 +606,7 @@ impl Actor {
             }
 
             for id in to_remove {
-                claims
+                let removed = claims
                     .remove(params.provider, *id)
                     .context_code(
                         ExitCode::USR_ILLEGAL_STATE,
@@ -614,7 +614,7 @@ impl Actor {
                     )?
                     .unwrap();
 
-                emit::claim_removed(rt, *id)?;
+                emit::claim_removed(rt, *id, removed.client, removed.provider)?;
             }
 
             st.save_claims(&mut claims)?;
@@ -713,14 +713,14 @@ impl Actor {
         let ids = rt.transaction(|st: &mut State, rt| {
             let ids = st.insert_allocations(rt.store(), client, new_allocs.clone())?;
 
-            for id in ids.iter() {
-                emit::allocation(rt, *id)?;
+            for (id, alloc) in ids.iter().zip(new_allocs.iter()) {
+                emit::allocation(rt, *id, alloc.client, alloc.provider)?;
             }
 
             st.put_claims(rt.store(), updated_claims.clone())?;
 
-            for (id, _) in updated_claims {
-                emit::claim_updated(rt, id)?;
+            for (id, claim) in updated_claims {
+                emit::claim_updated(rt, id, claim.client, claim.provider)?;
             }
 
             Ok(ids)
