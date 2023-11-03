@@ -25,6 +25,7 @@ use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MES
 
 mod harness;
 
+use fil_actors_runtime::EventBuilder;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::sys::SendFlags;
 use harness::*;
@@ -374,6 +375,15 @@ fn fail_when_deals_have_different_providers() {
         TokenAmount::zero(),
         None,
         ExitCode::OK,
+    );
+    rt.expect_emitted_event(
+        EventBuilder::new()
+            .typ("deal-published")
+            .field_indexed("client", &deal1.client.id().unwrap())
+            .field_indexed("provider", &deal1.provider.id().unwrap())
+            .field_indexed("id", &next_deal_id)
+            .build()
+            .unwrap(),
     );
 
     let psd_ret: PublishStorageDealsReturn = rt

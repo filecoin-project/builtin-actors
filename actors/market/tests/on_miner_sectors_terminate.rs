@@ -7,6 +7,7 @@ use fil_actor_market::{Actor as MarketActor, Method, OnMinerSectorsTerminatePara
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::EventBuilder;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::deal::DealID;
@@ -87,7 +88,7 @@ fn ignore_deal_proposal_that_does_not_exist() {
     );
     activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal1]);
 
-    terminate_deals(&rt, PROVIDER_ADDR, &[deal1, 42]);
+    terminate_deals_for(&rt, PROVIDER_ADDR, &[deal1, 42], vec![deal1]);
 
     let s = get_deal_state(&rt, deal1);
     assert_eq!(s.slash_epoch, current_epoch);
@@ -131,7 +132,7 @@ fn terminate_valid_deals_along_with_just_expired_deal() {
     let new_epoch = end_epoch - 1;
     rt.set_epoch(new_epoch);
 
-    terminate_deals(&rt, PROVIDER_ADDR, &[deal1, deal2, deal3]);
+    terminate_deals_for(&rt, PROVIDER_ADDR, &[deal1, deal2, deal3], vec![deal1, deal2]);
     assert_deals_terminated(&rt, new_epoch, &[deal1, deal2]);
     assert_deals_not_terminated(&rt, &[deal3]);
     check_state(&rt);
@@ -173,11 +174,19 @@ fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
     assert_eq!(2, deal_ids.len());
     activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, &deal_ids);
 
+    rt.expect_emitted_event(
+        EventBuilder::new()
+            .typ("deal-completed")
+            .field_indexed("id", &deal_ids[1])
+            .build()
+            .unwrap(),
+    );
+
     let new_epoch = end_epoch - 1;
     rt.set_epoch(new_epoch);
     cron_tick(&rt);
 
-    terminate_deals(&rt, PROVIDER_ADDR, &deal_ids);
+    terminate_deals_for(&rt, PROVIDER_ADDR, &deal_ids, vec![deal_ids[0]]);
     assert_deals_terminated(&rt, new_epoch, &deal_ids[0..0]);
     assert_deal_deleted(&rt, deal_ids[1], deal2);
     check_state(&rt);
@@ -208,7 +217,7 @@ fn terminating_a_deal_the_second_time_does_not_change_its_slash_epoch() {
 
     // set a new epoch and terminate again -> however slash epoch will still be the old epoch.
     rt.set_epoch(current_epoch + 1);
-    terminate_deals(&rt, PROVIDER_ADDR, &[deal1]);
+    terminate_deals_for(&rt, PROVIDER_ADDR, &[deal1], vec![]);
     let s = get_deal_state(&rt, deal1);
     assert_eq!(s.slash_epoch, current_epoch);
     check_state(&rt);
@@ -247,7 +256,7 @@ fn terminating_new_deals_and_an_already_terminated_deal_only_terminates_the_new_
     // set a new epoch and terminate again -> however slash epoch will still be the old epoch.
     let new_epoch = current_epoch + 1;
     rt.set_epoch(new_epoch);
-    terminate_deals(&rt, PROVIDER_ADDR, &deals);
+    terminate_deals_for(&rt, PROVIDER_ADDR, &deals, vec![deal2, deal3]);
 
     let s1 = get_deal_state(&rt, deal1);
     assert_eq!(s1.slash_epoch, current_epoch);
@@ -282,7 +291,7 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
     );
     activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal1]);
     rt.set_epoch(end_epoch);
-    terminate_deals(&rt, PROVIDER_ADDR, &[deal1]);
+    terminate_deals_for(&rt, PROVIDER_ADDR, &[deal1], vec![]);
     assert_deals_not_terminated(&rt, &[deal1]);
 
     // deal2 has end epoch less than current epoch when terminate is called
@@ -296,7 +305,7 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
     );
     activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal2]);
     rt.set_epoch(end_epoch + 1);
-    terminate_deals(&rt, PROVIDER_ADDR, &[deal2]);
+    terminate_deals_for(&rt, PROVIDER_ADDR, &[deal2], vec![]);
     assert_deals_not_terminated(&rt, &[deal2]);
 
     check_state(&rt);
@@ -347,7 +356,7 @@ fn fail_when_caller_is_not_the_provider_of_the_deal() {
     activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal]);
 
     // XXX: Difference between go messages: 't0501' has turned into 'f0501'.
-    let ret = terminate_deals_raw(&rt, provider2, &[deal]);
+    let ret = terminate_deals_raw(&rt, provider2, &[deal], vec![]);
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_STATE,
         "caller f0501 is not the provider f0102 of deal 0",
@@ -375,7 +384,7 @@ fn fail_when_deal_has_been_published_but_not_activated() {
         end_epoch,
     );
 
-    let ret = terminate_deals_raw(&rt, PROVIDER_ADDR, &[deal]);
+    let ret = terminate_deals_raw(&rt, PROVIDER_ADDR, &[deal], vec![]);
     expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "no state for deal", ret);
     rt.verify();
     check_state(&rt);
@@ -409,7 +418,7 @@ fn termination_of_all_deals_should_fail_when_one_deal_fails() {
         end_epoch + 1,
     );
 
-    let ret = terminate_deals_raw(&rt, PROVIDER_ADDR, &[deal1, deal2]);
+    let ret = terminate_deals_raw(&rt, PROVIDER_ADDR, &[deal1, deal2], vec![deal1]);
     expect_abort_contains_message(ExitCode::USR_ILLEGAL_ARGUMENT, "no state for deal", ret);
     rt.verify();
 
