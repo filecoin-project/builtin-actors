@@ -11,9 +11,9 @@ use fvm_shared::sector::{PoStProof, RegisteredSealProof, SectorNumber, MAX_SECTO
 
 use crate::expects::Expect;
 use crate::util::{
-    advance_by_deadline_to_epoch, advance_to_proving_deadline, assert_invariants, create_accounts,
-    create_miner, expect_invariants, get_network_stats, invariant_failure_patterns, miner_balance,
-    precommit_sectors, submit_windowed_post,
+    advance_by_deadline_to_epoch, advance_to_proving_deadline, assert_invariants,
+    build_miner_event, create_accounts, create_miner, expect_invariants, get_network_stats,
+    invariant_failure_patterns, miner_balance, precommit_sectors, submit_windowed_post,
 };
 use crate::TEST_VM_RAND_ARRAY;
 use fil_actor_cron::Method as CronMethod;
@@ -29,7 +29,7 @@ use fil_actors_runtime::{
     CRON_ACTOR_ADDR, CRON_ACTOR_ID, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     STORAGE_POWER_ACTOR_ID, SYSTEM_ACTOR_ADDR,
 };
-use vm_api::trace::ExpectInvocation;
+use vm_api::trace::{EmittedEvent, ExpectInvocation};
 use vm_api::util::{apply_code, apply_ok, get_state, DynBlockstore};
 use vm_api::VM;
 
@@ -119,6 +119,11 @@ fn setup(v: &dyn VM) -> (MinerInfo, SectorInfo) {
                             id_addr.id().unwrap(),
                             None,
                         )]),
+                        events: vec![build_miner_event(
+                            "sector-activated",
+                            id_addr.id().unwrap(),
+                            sector_number,
+                        )],
                         ..Default::default()
                     },
                     Expect::reward_update_kpi(),
@@ -688,7 +693,7 @@ pub fn aggregate_one_precommit_expires_test(v: &dyn VM) {
         None,
     );
 
-    let all_precommits = [early_precommits, later_precommits].concat();
+    let all_precommits = [early_precommits, later_precommits.clone()].concat();
 
     let sector_nos_bf =
         BitField::try_from_bits(all_precommits.iter().map(|info| info.info.sector_number)).unwrap();
@@ -725,6 +730,12 @@ pub fn aggregate_one_precommit_expires_test(v: &dyn VM) {
         MinerMethod::ProveCommitAggregate as u64,
         Some(prove_params),
     );
+
+    let events: Vec<EmittedEvent> = later_precommits
+        .iter()
+        .map(|info| build_miner_event("sector-activated", miner_id, info.info.sector_number))
+        .collect();
+
     ExpectInvocation {
         from: worker_id,
         to: miner_addr,
@@ -736,6 +747,7 @@ pub fn aggregate_one_precommit_expires_test(v: &dyn VM) {
             Expect::power_update_pledge(miner_id, None),
             Expect::burn(miner_id, None),
         ]),
+        events,
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
