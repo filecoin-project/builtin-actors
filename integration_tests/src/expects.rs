@@ -7,7 +7,7 @@ use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::sector::RegisteredSealProof;
+use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
 use fvm_shared::{ActorID, METHOD_SEND};
 use num_traits::Zero;
 
@@ -22,11 +22,11 @@ use fil_actor_miner::{IsControllingAddressParam, PowerPair};
 use fil_actor_power::{UpdateClaimedPowerParams, UpdatePledgeTotalParams};
 use fil_actor_verifreg::GetClaimsParams;
 use fil_actors_runtime::{
-    BURNT_FUNDS_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ID,
-    STORAGE_POWER_ACTOR_ADDR, STORAGE_POWER_ACTOR_ID, VERIFIED_REGISTRY_ACTOR_ADDR,
+    EventBuilder, BURNT_FUNDS_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ID, STORAGE_POWER_ACTOR_ADDR, STORAGE_POWER_ACTOR_ID,
+    VERIFIED_REGISTRY_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ID,
 };
 
-use crate::util::build_market_event;
 use vm_api::trace::{EmittedEvent, ExpectInvocation};
 
 /// Static helper functions for creating invocation expectations.
@@ -48,9 +48,7 @@ impl Expect {
     ) -> ExpectInvocation {
         let activated_events: Vec<EmittedEvent> = deals
             .iter()
-            .map(|deal_id| {
-                build_market_event("deal-activated", STORAGE_MARKET_ACTOR_ID, deal_id.to_owned())
-            })
+            .map(|deal_id| Expect::build_market_event("deal-activated", deal_id.to_owned()))
             .collect();
 
         let params = IpldBlock::serialize_cbor(&BatchActivateDealsParams {
@@ -76,9 +74,7 @@ impl Expect {
     ) -> ExpectInvocation {
         let events: Vec<EmittedEvent> = deal_ids
             .iter()
-            .map(|deal_id| {
-                build_market_event("deal-terminated", STORAGE_MARKET_ACTOR_ID, deal_id.to_owned())
-            })
+            .map(|deal_id| Expect::build_market_event("deal-terminated", deal_id.to_owned()))
             .collect();
 
         let params =
@@ -307,6 +303,45 @@ impl Expect {
             value: Some(TokenAmount::zero()),
             subinvocs: Some(vec![]),
             ..Default::default()
+        }
+    }
+
+    pub fn build_verifreg_event(
+        typ: &str,
+        id: u64,
+        client: ActorID,
+        provider: ActorID,
+    ) -> EmittedEvent {
+        EmittedEvent {
+            emitter: VERIFIED_REGISTRY_ACTOR_ID,
+            event: EventBuilder::new()
+                .typ(typ)
+                .field_indexed("id", &id)
+                .field_indexed("client", &client)
+                .field_indexed("provider", &provider)
+                .build()
+                .unwrap(),
+        }
+    }
+    pub fn build_market_event(typ: &str, deal_id: DealID) -> EmittedEvent {
+        EmittedEvent {
+            emitter: STORAGE_MARKET_ACTOR_ID,
+            event: EventBuilder::new().typ(typ).field_indexed("id", &deal_id).build().unwrap(),
+        }
+    }
+
+    pub fn build_miner_event(
+        typ: &str,
+        miner_id: ActorID,
+        sector_number: SectorNumber,
+    ) -> EmittedEvent {
+        EmittedEvent {
+            emitter: miner_id,
+            event: EventBuilder::new()
+                .typ(typ)
+                .field_indexed("sector", &sector_number)
+                .build()
+                .unwrap(),
         }
     }
 }

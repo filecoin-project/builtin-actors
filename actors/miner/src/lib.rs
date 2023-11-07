@@ -946,7 +946,6 @@ impl Actor {
         RT::Blockstore: Blockstore,
         RT: Runtime,
     {
-        let miner_actor_id: u64 = rt.message().receiver().id().unwrap();
         let state: State = rt.state()?;
         let store = rt.store();
         let info = get_miner_info(store, &state)?;
@@ -1171,7 +1170,7 @@ impl Actor {
             })?;
 
             for sector in updated_sector_nums {
-                emit::sector_updated(rt, miner_actor_id, sector)?;
+                emit::sector_updated(rt, sector)?;
             }
 
             // Update pledge.
@@ -1494,7 +1493,6 @@ impl Actor {
         rt: &impl Runtime,
         sectors: Vec<SectorPreCommitInfoInner>,
     ) -> Result<(), ActorError> {
-        let miner_actor_id: u64 = rt.message().receiver().id().unwrap();
         let curr_epoch = rt.curr_epoch();
         {
             let policy = rt.policy();
@@ -1733,7 +1731,7 @@ impl Actor {
                 })?;
 
             for sector_num in sector_numbers.iter() {
-                emit::sector_precommitted(rt, miner_actor_id, sector_num)?;
+                emit::sector_precommitted(rt, sector_num)?;
             }
             // Activate miner cron
             needs_cron = !state.deadline_cron_active;
@@ -3974,7 +3972,6 @@ fn process_early_terminations(
     reward_smoothed: &FilterEstimate,
     quality_adj_power_smoothed: &FilterEstimate,
 ) -> Result</* more */ bool, ActorError> {
-    let miner_actor_id = rt.message().receiver().id().unwrap();
     let mut terminated_sector_nums = vec![];
 
     let (result, more, deals_to_terminate, penalty, pledge_delta) =
@@ -4092,7 +4089,7 @@ fn process_early_terminations(
     }
 
     for sector in terminated_sector_nums {
-        emit::sector_terminated(rt, miner_actor_id, sector)?;
+        emit::sector_terminated(rt, sector)?;
     }
 
     // reschedule cron worker, if necessary.
@@ -4959,7 +4956,6 @@ fn activate_new_sector_infos(
     pledge_inputs: &NetworkPledgeInputs,
     info: &MinerInfo,
 ) -> Result<(), ActorError> {
-    let miner_actor_id: u64 = rt.message().receiver().id().unwrap();
     let activation_epoch = rt.curr_epoch();
 
     let (total_pledge, newly_vested) = rt.transaction(|state: &mut State, rt| {
@@ -5094,7 +5090,7 @@ fn activate_new_sector_infos(
         state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
 
         for sector in new_sector_numbers {
-            emit::sector_activated(rt, miner_actor_id, sector)?;
+            emit::sector_activated(rt, sector)?;
         }
 
         Ok((total_pledge, newly_vested))

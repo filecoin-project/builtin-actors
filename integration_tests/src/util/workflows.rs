@@ -51,12 +51,12 @@ use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMetho
 use fil_actor_verifreg::ext::datacap::MintParams;
 use fil_actor_verifreg::AllocationRequests;
 use fil_actor_verifreg::ClaimExtensionRequest;
-use fil_actor_verifreg::{expiration, AllocationRequest, DataCap};
 use fil_actor_verifreg::{
     AddVerifiedClientParams, AllocationID, ClaimID, ClaimTerm, ExtendClaimTermsParams,
     Method as VerifregMethod, RemoveExpiredAllocationsParams, State as VerifregState,
     VerifierParams,
 };
+use fil_actor_verifreg::{AllocationRequest, DataCap};
 use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::policy_constants::{
@@ -210,46 +210,6 @@ pub struct PrecommitMetadata {
     pub commd: CompactCommD,
 }
 
-pub fn build_verifreg_event(
-    typ: &str,
-    id: u64,
-    client: ActorID,
-    provider: ActorID,
-) -> EmittedEvent {
-    EmittedEvent {
-        emitter: VERIFIED_REGISTRY_ACTOR_ID,
-        event: EventBuilder::new()
-            .typ(typ)
-            .field_indexed("id", &id)
-            .field_indexed("client", &client)
-            .field_indexed("provider", &provider)
-            .build()
-            .unwrap(),
-    }
-}
-pub fn build_market_event(typ: &str, provider: ActorID, deal_id: DealID) -> EmittedEvent {
-    EmittedEvent {
-        emitter: provider,
-        event: EventBuilder::new().typ(typ).field_indexed("id", &deal_id).build().unwrap(),
-    }
-}
-
-pub fn build_miner_event(
-    typ: &str,
-    miner_id: ActorID,
-    sector_number: SectorNumber,
-) -> EmittedEvent {
-    EmittedEvent {
-        emitter: miner_id,
-        event: EventBuilder::new()
-            .typ(typ)
-            .field_indexed("provider", &miner_id)
-            .field_indexed("sector", &sector_number)
-            .build()
-            .unwrap(),
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 pub fn precommit_sectors_v2(
     v: &dyn VM,
@@ -335,7 +295,9 @@ pub fn precommit_sectors_v2(
 
             let events: Vec<EmittedEvent> = param_sectors
                 .iter()
-                .map(|ps| build_miner_event("sector-precommitted", miner_id, ps.sector_number))
+                .map(|ps| {
+                    Expect::build_miner_event("sector-precommitted", miner_id, ps.sector_number)
+                })
                 .collect();
 
             let expect = ExpectInvocation {
@@ -405,7 +367,9 @@ pub fn precommit_sectors_v2(
 
             let events: Vec<EmittedEvent> = param_sectors
                 .iter()
-                .map(|ps| build_miner_event("sector-precommitted", miner_id, ps.sector_number))
+                .map(|ps| {
+                    Expect::build_miner_event("sector-precommitted", miner_id, ps.sector_number)
+                })
                 .collect();
 
             let expect = ExpectInvocation {
@@ -502,7 +466,9 @@ pub fn prove_commit_sectors(
 
         let events: Vec<EmittedEvent> = to_prove
             .iter()
-            .map(|ps| build_miner_event("sector-activated", miner_id, ps.info.sector_number))
+            .map(|ps| {
+                Expect::build_miner_event("sector-activated", miner_id, ps.info.sector_number)
+            })
             .collect();
 
         let expected_fee =
@@ -960,35 +926,23 @@ pub fn verifreg_remove_expired_allocations(
     client: &Address,
     ids: Vec<AllocationID>,
     datacap_refund: u64,
+    expected_expirations: Vec<AllocationID>,
 ) {
     let v_st: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
     let store = DynBlockstore::wrap(v.blockstore());
     let mut allocs = v_st.load_allocs(&store).unwrap();
-    let mut expected_events: Vec<EmittedEvent> = ids
+    let expected_events: Vec<EmittedEvent> = expected_expirations
         .iter()
         .map(|id| {
             let alloc = allocs.get(client.id().unwrap(), *id).unwrap().unwrap();
-            build_verifreg_event("allocation-removed", *id, client.id().unwrap(), alloc.provider)
+            Expect::build_verifreg_event(
+                "allocation-removed",
+                *id,
+                client.id().unwrap(),
+                alloc.provider,
+            )
         })
         .collect();
-
-    if ids.is_empty() {
-        let expired =
-            expiration::find_expired(&mut allocs, client.id().unwrap(), v.epoch()).unwrap();
-
-        expected_events = expired
-            .iter()
-            .map(|id| {
-                let alloc = allocs.get(client.id().unwrap(), *id).unwrap().unwrap();
-                build_verifreg_event(
-                    "allocation-removed",
-                    *id,
-                    client.id().unwrap(),
-                    alloc.provider,
-                )
-            })
-            .collect();
-    }
 
     let caller_id = v.resolve_id_address(caller).unwrap().id().unwrap();
 
@@ -1088,7 +1042,7 @@ pub fn datacap_extend_claim(
     let claim_s = claims.get(provider.id().unwrap(), claim).unwrap().unwrap();
 
     let claim_extended_event =
-        build_verifreg_event("claim-updated", claim, claim_s.client, claim_s.provider);
+        Expect::build_verifreg_event("claim-updated", claim, claim_s.client, claim_s.provider);
 
     ExpectInvocation {
         from: client_id,
@@ -1275,7 +1229,7 @@ pub fn market_publish_deal(
                     })
                     .unwrap(),
                 ),
-                events: vec![build_verifreg_event(
+                events: vec![Expect::build_verifreg_event(
                     "allocation",
                     alloc_id,
                     deal_client.id().unwrap(),

@@ -35,7 +35,7 @@ use fvm_shared::sector::{
     SectorID, SectorInfo, SectorNumber, SectorSize, StoragePower, WindowPoStVerifyInfo,
 };
 use fvm_shared::smooth::FilterEstimate;
-use fvm_shared::{ActorID, MethodNum, HAMT_BIT_WIDTH, METHOD_SEND};
+use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_SEND};
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use multihash::derive::Multihash;
@@ -621,7 +621,7 @@ impl ActorHarness {
             .collect();
 
         for si in v2.iter() {
-            expect_event(rt, "sector-precommitted", &RECEIVER_ID, &si.sector_number);
+            expect_event(rt, "sector-precommitted", &si.sector_number);
         }
 
         if self.options.use_v2_pre_commit_and_replica_update {
@@ -798,7 +798,7 @@ impl ActorHarness {
                 ExitCode::OK,
             );
         }
-        expect_event(rt, "sector-precommitted", &RECEIVER_ID, &params.sector_number);
+        expect_event(rt, "sector-precommitted", &params.sector_number);
 
         let result = rt.call::<Actor>(
             Method::PreCommitSector as u64,
@@ -1007,7 +1007,7 @@ impl ActorHarness {
         );
 
         for pc in precommits.iter() {
-            expect_event(rt, "sector-activated", &RECEIVER_ID, &pc.info.sector_number);
+            expect_event(rt, "sector-activated", &pc.info.sector_number);
         }
 
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
@@ -1047,7 +1047,7 @@ impl ActorHarness {
         };
 
         for sector in valid_sectors {
-            expect_event(rt, "sector-activated", &RECEIVER_ID, &sector);
+            expect_event(rt, "sector-activated", &sector);
         }
 
         rt.call::<Actor>(
@@ -2187,7 +2187,7 @@ impl ActorHarness {
 
         for termination in terminations.iter() {
             for sector in termination.sectors.iter() {
-                expect_event(rt, "sector-terminated", &RECEIVER_ID, &sector);
+                expect_event(rt, "sector-terminated", &sector);
             }
         }
 
@@ -2753,14 +2753,9 @@ impl ActorHarness {
     }
 }
 
-pub fn expect_event(rt: &MockRuntime, typ: &str, miner: &ActorID, sector: &SectorNumber) {
+pub fn expect_event(rt: &MockRuntime, typ: &str, sector: &SectorNumber) {
     rt.expect_emitted_event(
-        EventBuilder::new()
-            .typ(typ)
-            .field_indexed("provider", miner)
-            .field_indexed("sector", sector)
-            .build()
-            .unwrap(),
+        EventBuilder::new().typ(typ).field_indexed("sector", sector).build().unwrap(),
     );
 }
 

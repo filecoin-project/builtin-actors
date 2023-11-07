@@ -36,12 +36,11 @@ use crate::expects::Expect;
 
 use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline,
-    assert_invariants, bf_all, build_miner_event, build_verifreg_event, check_sector_active,
-    check_sector_faulty, create_accounts, create_miner, deadline_state, declare_recovery,
-    expect_invariants, get_deal, get_network_stats, invariant_failure_patterns, make_bitfield,
-    market_publish_deal, miner_balance, miner_power, precommit_sectors, prove_commit_sectors,
-    sector_info, submit_invalid_post, submit_windowed_post, verifreg_add_client,
-    verifreg_add_verifier,
+    assert_invariants, bf_all, check_sector_active, check_sector_faulty, create_accounts,
+    create_miner, deadline_state, declare_recovery, expect_invariants, get_deal, get_network_stats,
+    invariant_failure_patterns, make_bitfield, market_publish_deal, miner_balance, miner_power,
+    precommit_sectors, prove_commit_sectors, sector_info, submit_invalid_post,
+    submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
 };
 
 pub fn replica_update_full_path_success_test(v: &dyn VM, v2: bool) {
@@ -1047,7 +1046,7 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
     let old_power = power_for_sector(seal_proof.sector_size().unwrap(), &old_sector_info);
     let claim_id = 1_u64;
     let claim_event =
-        build_verifreg_event("claim", claim_id, client.id().unwrap(), maddr.id().unwrap());
+        Expect::build_verifreg_event("claim", claim_id, client.id().unwrap(), maddr.id().unwrap());
 
     // check for the expected subcalls
     ExpectInvocation {
@@ -1078,7 +1077,7 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
                 PowerPair { raw: StoragePower::zero(), qa: 9 * old_power.qa },
             ),
         ]),
-        events: vec![build_miner_event("sector-updated", miner_id, sector_number)],
+        events: vec![Expect::build_miner_event("sector-updated", miner_id, sector_number)],
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());

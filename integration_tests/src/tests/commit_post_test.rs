@@ -11,9 +11,9 @@ use fvm_shared::sector::{PoStProof, RegisteredSealProof, SectorNumber, MAX_SECTO
 
 use crate::expects::Expect;
 use crate::util::{
-    advance_by_deadline_to_epoch, advance_to_proving_deadline, assert_invariants,
-    build_miner_event, create_accounts, create_miner, expect_invariants, get_network_stats,
-    invariant_failure_patterns, miner_balance, precommit_sectors, submit_windowed_post,
+    advance_by_deadline_to_epoch, advance_to_proving_deadline, assert_invariants, create_accounts,
+    create_miner, expect_invariants, get_network_stats, invariant_failure_patterns, miner_balance,
+    precommit_sectors, submit_windowed_post,
 };
 use crate::TEST_VM_RAND_ARRAY;
 use fil_actor_cron::Method as CronMethod;
@@ -119,7 +119,7 @@ fn setup(v: &dyn VM) -> (MinerInfo, SectorInfo) {
                             id_addr.id().unwrap(),
                             None,
                         )]),
-                        events: vec![build_miner_event(
+                        events: vec![Expect::build_miner_event(
                             "sector-activated",
                             id_addr.id().unwrap(),
                             sector_number,
@@ -733,7 +733,9 @@ pub fn aggregate_one_precommit_expires_test(v: &dyn VM) {
 
     let events: Vec<EmittedEvent> = later_precommits
         .iter()
-        .map(|info| build_miner_event("sector-activated", miner_id, info.info.sector_number))
+        .map(|info| {
+            Expect::build_miner_event("sector-activated", miner_id, info.info.sector_number)
+        })
         .collect();
 
     ExpectInvocation {

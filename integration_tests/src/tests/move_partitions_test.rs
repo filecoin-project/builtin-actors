@@ -14,9 +14,9 @@ use fil_actor_miner::{
 
 use crate::expects::Expect;
 use crate::util::{
-    advance_by_deadline_to_epoch, advance_to_proving_deadline, assert_invariants,
-    build_miner_event, create_accounts, create_miner, cron_tick, get_network_stats, make_bitfield,
-    miner_balance, precommit_sectors, submit_windowed_post,
+    advance_by_deadline_to_epoch, advance_to_proving_deadline, assert_invariants, create_accounts,
+    create_miner, cron_tick, get_network_stats, make_bitfield, miner_balance, precommit_sectors,
+    submit_windowed_post,
 };
 use fil_actor_power::{Method as PowerMethod, State as PowerState};
 use fil_actors_runtime::runtime::Policy;
@@ -172,7 +172,7 @@ fn setup(v: &dyn VM) -> (MinerInfo, SectorInfo) {
                             id_addr.id().unwrap(),
                             None,
                         )]),
-                        events: vec![build_miner_event(
+                        events: vec![Expect::build_miner_event(
                             "sector-activated",
                             id_addr.id().unwrap(),
                             sector_number,

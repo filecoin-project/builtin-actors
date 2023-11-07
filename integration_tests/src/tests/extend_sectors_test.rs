@@ -27,11 +27,10 @@ use vm_api::VM;
 use crate::expects::Expect;
 use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
-    advance_by_deadline_to_index, advance_to_proving_deadline, bf_all, build_miner_event,
-    build_verifreg_event, create_accounts, create_miner, cron_tick, expect_invariants, get_deal,
-    invariant_failure_patterns, market_add_balance, market_publish_deal, miner_precommit_sector,
-    miner_prove_sector, sector_deadline, submit_windowed_post, verifreg_add_client,
-    verifreg_add_verifier,
+    advance_by_deadline_to_index, advance_to_proving_deadline, bf_all, create_accounts,
+    create_miner, cron_tick, expect_invariants, get_deal, invariant_failure_patterns,
+    market_add_balance, market_publish_deal, miner_precommit_sector, miner_prove_sector,
+    sector_deadline, submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -668,7 +667,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
                 from: miner_id,
                 to: VERIFIED_REGISTRY_ACTOR_ADDR,
                 method: VerifregMethod::ClaimAllocations as u64,
-                events: vec![build_verifreg_event(
+                events: vec![Expect::build_verifreg_event(
                     "claim",
                     claim_id,
                     verified_client.id().unwrap(),
@@ -684,7 +683,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
                 PowerPair { raw: StoragePower::zero(), qa: 9 * old_power.qa },
             ),
         ]),
-        events: vec![build_miner_event("sector-updated", miner_id, sector_number)],
+        events: vec![Expect::build_miner_event("sector-updated", miner_id, sector_number)],
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());

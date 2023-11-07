@@ -29,9 +29,9 @@ use vm_api::VM;
 use crate::expects::Expect;
 use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
-    advance_to_proving_deadline, build_miner_event, create_accounts, create_miner,
-    expect_invariants, invariant_failure_patterns, make_bitfield, market_publish_deal,
-    miner_balance, submit_windowed_post, verifreg_add_verifier,
+    advance_to_proving_deadline, create_accounts, create_miner, expect_invariants,
+    invariant_failure_patterns, make_bitfield, market_publish_deal, miner_balance,
+    submit_windowed_post, verifreg_add_verifier,
 };
 
 #[vm_test]
@@ -264,7 +264,7 @@ pub fn terminate_sectors_test(v: &dyn VM) {
         }),
     );
 
-    let expect_event = build_miner_event("sector-terminated", miner_id, sector_number);
+    let expect_event = Expect::build_miner_event("sector-terminated", miner_id, sector_number);
 
     ExpectInvocation {
         from: worker_id,
