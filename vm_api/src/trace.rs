@@ -137,12 +137,6 @@ impl ExpectInvocation {
             assert_eq!(*emitted, *expected);
         }
 
-        for (i, event) in emitted_events.iter().enumerate() {
-            let expect_event = expected_events.get(i).unwrap();
-            // only try to match if required fields match
-            assert_eq!(*event, *expect_event);
-        }
-
         if let Some(expect_subinvocs) = &self.subinvocs {
             let subinvocs = &invoc.subinvocations;
 
