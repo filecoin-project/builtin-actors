@@ -56,7 +56,7 @@ use fvm_shared::{ActorID, MethodNum, Response, IPLD_RAW, METHOD_CONSTRUCTOR, MET
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::cell::{RefCell, RefMut};
-use vm_api::trace::InvocationTrace;
+use vm_api::trace::{EmittedEvent, InvocationTrace};
 use vm_api::util::get_state;
 use vm_api::{new_actor, ActorState, VM};
 
@@ -218,6 +218,7 @@ impl<'invocation, 'bs> InvocationCtx<'invocation, 'bs> {
             return_value: ret,
             exit_code: code,
             subinvocations: self.subinvocations.take(),
+            events: self.events.take(),
         }
     }
 
@@ -647,12 +648,6 @@ impl<'invocation, 'bs> Runtime for InvocationCtx<'invocation, 'bs> {
     fn read_only(&self) -> bool {
         self.read_only
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct EmittedEvent {
-    pub emitter: ActorID,
-    pub event: ActorEvent,
 }
 
 impl Primitives for InvocationCtx<'_, '_> {

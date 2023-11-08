@@ -263,6 +263,9 @@ pub fn terminate_sectors_test(v: &dyn VM) {
             }],
         }),
     );
+
+    let expect_event = Expect::build_miner_event("sector-terminated", miner_id, sector_number);
+
     ExpectInvocation {
         from: worker_id,
         to: miner_id_addr,
@@ -275,6 +278,7 @@ pub fn terminate_sectors_test(v: &dyn VM) {
             Expect::market_sectors_terminate(miner_id, epoch, deal_ids.clone()),
             Expect::power_update_claim(miner_id, sector_power.neg()),
         ]),
+        events: vec![expect_event],
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());

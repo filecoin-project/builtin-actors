@@ -172,6 +172,11 @@ fn setup(v: &dyn VM) -> (MinerInfo, SectorInfo) {
                             id_addr.id().unwrap(),
                             None,
                         )]),
+                        events: vec![Expect::build_miner_event(
+                            "sector-activated",
+                            id_addr.id().unwrap(),
+                            sector_number,
+                        )],
                         ..Default::default()
                     },
                     Expect::reward_update_kpi(),

@@ -1044,6 +1044,10 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
     assert_eq!(vec![100], bf_all(updated_sectors));
 
     let old_power = power_for_sector(seal_proof.sector_size().unwrap(), &old_sector_info);
+    let claim_id = 1_u64;
+    let claim_event =
+        Expect::build_verifreg_event("claim", claim_id, client.id().unwrap(), maddr.id().unwrap());
+
     // check for the expected subcalls
     ExpectInvocation {
         from: worker_id,
@@ -1061,6 +1065,7 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
                 from: miner_id,
                 to: VERIFIED_REGISTRY_ACTOR_ADDR,
                 method: VerifregMethod::ClaimAllocations as u64,
+                events: vec![claim_event],
                 ..Default::default()
             },
             Expect::reward_this_epoch(miner_id),
@@ -1072,6 +1077,7 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
                 PowerPair { raw: StoragePower::zero(), qa: 9 * old_power.qa },
             ),
         ]),
+        events: vec![Expect::build_miner_event("sector-updated", miner_id, sector_number)],
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
