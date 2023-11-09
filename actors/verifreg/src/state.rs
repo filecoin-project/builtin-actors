@@ -167,7 +167,7 @@ impl State {
         limit: Option<u64>,
     ) -> Result<(Vec<AllocationKey>, Option<Cursor>), ActorError> {
         let (start_outer, start_inner) = verify_cursor(&cursor, self.allocations)?;
-        let mut allocs = self.load_allocs(store)?;
+        let allocs = self.load_allocs(store)?;
         let mut found = vec![];
         let next = allocs
             .for_each_each(start_outer, start_inner, limit, |k1, k2, _v| {
@@ -236,7 +236,7 @@ impl State {
         limit: Option<u64>,
     ) -> Result<(Vec<ClaimKey>, Option<Cursor>), ActorError> {
         let (start_outer, start_inner) = verify_cursor(&cursor, self.claims)?;
-        let mut claims = self.load_claims(store)?;
+        let claims = self.load_claims(store)?;
         let mut found = vec![];
         let next = claims
             .for_each_each(start_outer, start_inner, limit, |k1, k2, _v| {
