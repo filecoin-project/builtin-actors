@@ -36,5 +36,3 @@ mod verifreg_remove_datacap_test;
 pub use verifreg_remove_datacap_test::*;
 mod withdraw_balance_test;
 pub use withdraw_balance_test::*;
-mod move_partitions_test;
-pub use move_partitions_test::*;

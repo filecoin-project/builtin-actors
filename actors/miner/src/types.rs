@@ -245,13 +245,6 @@ pub struct CompactPartitionsParams {
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
-pub struct MovePartitionsParams {
-    pub orig_deadline: u64,
-    pub dest_deadline: u64,
-    pub partitions: BitField,
-}
-
-#[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct CompactSectorNumbersParams {
     pub mask_sector_numbers: BitField,
 }
