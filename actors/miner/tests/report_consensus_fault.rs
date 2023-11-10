@@ -43,7 +43,6 @@ fn mistargeted_report_rejected() {
     expect_abort(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         h.report_consensus_fault(
-            
             &rt,
             test_addr,
             Some(ConsensusFault {
