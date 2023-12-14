@@ -5,7 +5,7 @@ use fvm_shared::{clock::ChainEpoch, ActorID};
 
 use fil_actor_miner::ext::verifreg::{AllocationClaim, SectorAllocationClaims};
 use fil_actor_miner::{DataActivationNotification, PieceChange, SectorChanges, State};
-use fil_actor_miner::{ProveReplicaUpdates2Return, SectorOnChainInfo};
+use fil_actor_miner::{ProveReplicaUpdates3Return, SectorOnChainInfo};
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::test_utils::{expect_abort_contains_message, MockRuntime};
 use fil_actors_runtime::{runtime::Runtime, BatchReturn, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR};
@@ -506,6 +506,6 @@ fn setup_empty_sectors(count: usize) -> (ActorHarness, MockRuntime, Vec<SectorOn
     (h, rt, sectors)
 }
 
-fn assert_update_result(expected: &[ExitCode], result: &ProveReplicaUpdates2Return) {
+fn assert_update_result(expected: &[ExitCode], result: &ProveReplicaUpdates3Return) {
     assert_eq!(BatchReturn::of(expected), result.activation_results);
 }

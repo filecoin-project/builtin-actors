@@ -7,7 +7,7 @@ use fvm_shared::{bigint::Zero, clock::ChainEpoch, econ::TokenAmount, ActorID};
 
 use fil_actor_miner::ext::verifreg::AllocationID;
 use fil_actor_miner::{
-    ProveCommitSectors2Params, SectorActivationManifest, ERR_NOTIFICATION_RECEIVER_ABORTED,
+    ProveCommitSectors3Params, SectorActivationManifest, ERR_NOTIFICATION_RECEIVER_ABORTED,
     ERR_NOTIFICATION_REJECTED,
 };
 use fil_actors_runtime::test_utils::{expect_abort_contains_message, MockRuntime};
@@ -41,7 +41,7 @@ fn reject_unauthorized_caller() {
 fn reject_no_proof_types() {
     let (h, rt, activations) = setup_precommits(&[(0, 0, 0)]);
     let cfg = ProveCommitSectors2Config {
-        param_twiddle: Some(Box::new(|p: &mut ProveCommitSectors2Params| {
+        param_twiddle: Some(Box::new(|p: &mut ProveCommitSectors3Params| {
             p.sector_proofs = vec![];
             p.aggregate_proof = RawBytes::default();
         })),
@@ -59,7 +59,7 @@ fn reject_no_proof_types() {
 fn reject_both_proof_types() {
     let (h, rt, activations) = setup_precommits(&[(0, 0, 0)]);
     let cfg = ProveCommitSectors2Config {
-        param_twiddle: Some(Box::new(|p: &mut ProveCommitSectors2Params| {
+        param_twiddle: Some(Box::new(|p: &mut ProveCommitSectors3Params| {
             p.sector_proofs = vec![RawBytes::new(vec![1, 2, 3, 4])];
             p.aggregate_proof = RawBytes::new(vec![1, 2, 3, 4])
         })),
@@ -77,7 +77,7 @@ fn reject_both_proof_types() {
 fn reject_mismatched_proof_len() {
     let (h, rt, activations) = setup_precommits(&[(0, 0, 0)]);
     let cfg = ProveCommitSectors2Config {
-        param_twiddle: Some(Box::new(|p: &mut ProveCommitSectors2Params| {
+        param_twiddle: Some(Box::new(|p: &mut ProveCommitSectors3Params| {
             p.sector_proofs.push(RawBytes::new(vec![1, 2, 3, 4]));
         })),
         ..Default::default()
