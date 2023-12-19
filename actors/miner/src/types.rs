@@ -136,7 +136,7 @@ pub struct ProveCommitSectorParams {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
-pub struct ProveCommitSectors2Params {
+pub struct ProveCommitSectors3Params {
     // Activation manifest for each sector being proven.
     pub sector_activations: Vec<SectorActivationManifest>,
     // Proofs for each sector, parallel to activation manifests.
@@ -194,7 +194,7 @@ pub struct DataActivationNotification {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
 #[serde(transparent)]
-pub struct ProveCommitSectors2Return {
+pub struct ProveCommitSectors3Return {
     pub activation_results: BatchReturn,
 }
 
@@ -478,7 +478,7 @@ pub struct ProveReplicaUpdatesParams {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct ProveReplicaUpdates2Params {
+pub struct ProveReplicaUpdates3Params {
     pub sector_updates: Vec<SectorUpdateManifest>,
     // Proofs for each sector, parallel to activation manifests.
     // Exactly one of sector_proofs or aggregate_proof must be non-empty.
@@ -511,7 +511,7 @@ pub struct SectorUpdateManifest {
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
 #[serde(transparent)]
-pub struct ProveReplicaUpdates2Return {
+pub struct ProveReplicaUpdates3Return {
     pub activation_results: BatchReturn,
 }
 

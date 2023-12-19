@@ -13,7 +13,7 @@ use num_traits::Zero;
 use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
     max_prove_commit_duration, CompactCommD, DataActivationNotification, PieceActivationManifest,
-    PieceChange, ProveCommitSectors2Params, SectorActivationManifest, SectorChanges,
+    PieceChange, ProveCommitSectors3Params, SectorActivationManifest, SectorChanges,
     SectorContentChangedParams, SectorOnChainInfoFlags,
 };
 use fil_actor_miner::{Method as MinerMethod, VerifiedAllocationKey};
@@ -221,7 +221,7 @@ pub fn prove_commit_sectors2_test(v: &dyn VM) {
 
     // Prove-commit
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
-    let params = ProveCommitSectors2Params {
+    let params = ProveCommitSectors3Params {
         sector_activations: manifests.clone(),
         sector_proofs: proofs,
         aggregate_proof: RawBytes::default(),
@@ -233,13 +233,13 @@ pub fn prove_commit_sectors2_test(v: &dyn VM) {
         &worker,
         &maddr,
         &TokenAmount::zero(),
-        MinerMethod::ProveCommitSectors2 as u64,
+        MinerMethod::ProveCommitSectors3 as u64,
         Some(params.clone()),
     );
     ExpectInvocation {
         from: worker_id,
         to: maddr,
-        method: MinerMethod::ProveCommitSectors2 as u64,
+        method: MinerMethod::ProveCommitSectors3 as u64,
         params: Some(IpldBlock::serialize_cbor(&params).unwrap()),
         subinvocs: Some(vec![
             // Verified claims
