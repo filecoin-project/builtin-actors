@@ -127,8 +127,8 @@ pub enum Method {
     GetBeneficiary = 31,
     ExtendSectorExpiration2 = 32,
     // MovePartitions = 33,
-    ProveCommitSectors2 = 34,
-    ProveReplicaUpdates2 = 35,
+    ProveCommitSectors3 = 34,
+    ProveReplicaUpdates3 = 35,
     // Method numbers derived from FRC-0042 standards
     ChangeWorkerAddressExported = frc42_dispatch::method_hash!("ChangeWorkerAddress"),
     ChangePeerIDExported = frc42_dispatch::method_hash!("ChangePeerID"),
@@ -981,10 +981,10 @@ impl Actor {
         Ok(updated_bitfield)
     }
 
-    fn prove_replica_updates2(
+    fn prove_replica_updates3(
         rt: &impl Runtime,
-        params: ProveReplicaUpdates2Params,
-    ) -> Result<ProveReplicaUpdates2Return, ActorError> {
+        params: ProveReplicaUpdates3Params,
+    ) -> Result<ProveReplicaUpdates3Return, ActorError> {
         let state: State = rt.state()?;
         let store = rt.store();
         let info = get_miner_info(store, &state)?;
@@ -1167,7 +1167,7 @@ impl Actor {
         notify_data_consumers(rt, &notifications, params.require_notification_success)?;
 
         let result = util::stack(&[validation_batch, proven_batch, data_batch]);
-        Ok(ProveReplicaUpdates2Return { activation_results: result })
+        Ok(ProveReplicaUpdates3Return { activation_results: result })
     }
 
     fn dispute_windowed_post(
@@ -1676,10 +1676,10 @@ impl Actor {
         Ok(())
     }
 
-    fn prove_commit_sectors2(
+    fn prove_commit_sectors3(
         rt: &impl Runtime,
-        params: ProveCommitSectors2Params,
-    ) -> Result<ProveCommitSectors2Return, ActorError> {
+        params: ProveCommitSectors3Params,
+    ) -> Result<ProveCommitSectors3Return, ActorError> {
         let state: State = rt.state()?;
         let store = rt.store();
         let policy = rt.policy();
@@ -1863,7 +1863,7 @@ impl Actor {
         notify_data_consumers(rt, &notifications, params.require_notification_success)?;
 
         let result = util::stack(&[validation_batch, proven_batch, data_batch]);
-        Ok(ProveCommitSectors2Return { activation_results: result })
+        Ok(ProveCommitSectors3Return { activation_results: result })
     }
 
     /// Checks state of the corresponding sector pre-commitment, then schedules the proof to be verified in bulk
@@ -5631,8 +5631,8 @@ impl ActorCode for Actor {
         GetVestingFundsExported => get_vesting_funds,
         GetPeerIDExported => get_peer_id,
         GetMultiaddrsExported => get_multiaddresses,
-        ProveCommitSectors2 => prove_commit_sectors2,
-        ProveReplicaUpdates2 => prove_replica_updates2,
+        ProveCommitSectors3 => prove_commit_sectors3,
+        ProveReplicaUpdates3 => prove_replica_updates3,
     }
 }
 

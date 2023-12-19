@@ -13,7 +13,7 @@ use num_traits::Zero;
 use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
     max_prove_commit_duration, CompactCommD, DataActivationNotification, PieceActivationManifest,
-    PieceChange, PowerPair, ProveCommitSectors2Params, ProveReplicaUpdates2Params,
+    PieceChange, PowerPair, ProveCommitSectors3Params, ProveReplicaUpdates3Params,
     SectorActivationManifest, SectorChanges, SectorContentChangedParams, SectorOnChainInfoFlags,
     SectorUpdateManifest,
 };
@@ -90,7 +90,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
     let activation_epoch = v.epoch() + policy.pre_commit_challenge_delay + 1;
     advance_by_deadline_to_epoch(v, &maddr, activation_epoch);
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); activations.len()];
-    let params = ProveCommitSectors2Params {
+    let params = ProveCommitSectors3Params {
         sector_activations: activations,
         sector_proofs: proofs,
         aggregate_proof: RawBytes::default(),
@@ -102,7 +102,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
         &worker,
         &maddr,
         &TokenAmount::zero(),
-        MinerMethod::ProveCommitSectors2 as u64,
+        MinerMethod::ProveCommitSectors3 as u64,
         Some(params),
     );
     // Advance to proving period and submit post for the partition
@@ -249,7 +249,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
     // Replica update
     let update_proof = seal_proof.registered_update_proof().unwrap();
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
-    let params = ProveReplicaUpdates2Params {
+    let params = ProveReplicaUpdates3Params {
         sector_updates: manifests.clone(),
         sector_proofs: proofs,
         aggregate_proof: RawBytes::default(),
@@ -263,7 +263,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
         &worker,
         &maddr,
         &TokenAmount::zero(),
-        MinerMethod::ProveReplicaUpdates2 as u64,
+        MinerMethod::ProveReplicaUpdates3 as u64,
         Some(params.clone()),
     );
     let expected_power = StoragePower::from(
@@ -276,7 +276,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
     ExpectInvocation {
         from: worker_id,
         to: maddr,
-        method: MinerMethod::ProveReplicaUpdates2 as u64,
+        method: MinerMethod::ProveReplicaUpdates3 as u64,
         params: Some(IpldBlock::serialize_cbor(&params).unwrap()),
         subinvocs: Some(vec![
             // Verified claims

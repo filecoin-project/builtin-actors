@@ -75,8 +75,8 @@ use fil_actor_miner::{
     MinerConstructorParams as ConstructorParams, MinerInfo, Partition, PendingBeneficiaryChange,
     PieceActivationManifest, PieceChange, PieceReturn, PoStPartition, PowerPair,
     PreCommitSectorBatchParams, PreCommitSectorBatchParams2, PreCommitSectorParams,
-    ProveCommitAggregateParams, ProveCommitSectorParams, ProveCommitSectors2Params,
-    ProveCommitSectors2Return, RecoveryDeclaration, ReportConsensusFaultParams,
+    ProveCommitAggregateParams, ProveCommitSectorParams, ProveCommitSectors3Params,
+    ProveCommitSectors3Return, RecoveryDeclaration, ReportConsensusFaultParams,
     SectorActivationManifest, SectorChanges, SectorContentChangedParams,
     SectorContentChangedReturn, SectorOnChainInfo, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
     SectorReturn, SectorUpdateManifest, Sectors, State, SubmitWindowedPoStParams,
@@ -84,7 +84,7 @@ use fil_actor_miner::{
     WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE,
     REWARD_VESTING_SPEC, SECTORS_AMT_BITWIDTH, SECTOR_CONTENT_CHANGED,
 };
-use fil_actor_miner::{ProveReplicaUpdates2Params, ProveReplicaUpdates2Return};
+use fil_actor_miner::{ProveReplicaUpdates3Params, ProveReplicaUpdates3Return};
 use fil_actor_power::{
     CurrentTotalPowerReturn, EnrollCronEventParams, Method as PowerMethod, UpdateClaimedPowerParams,
 };
@@ -1093,7 +1093,7 @@ impl ActorHarness {
         aggregate: bool,
         cfg: ProveCommitSectors2Config,
     ) -> Result<
-        (ProveCommitSectors2Return, Vec<SectorAllocationClaims>, Vec<SectorChanges>),
+        (ProveCommitSectors3Return, Vec<SectorAllocationClaims>, Vec<SectorChanges>),
         ActorError,
     > {
         fn make_proof(i: u8) -> RawBytes {
@@ -1102,7 +1102,7 @@ impl ActorHarness {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, cfg.caller.unwrap_or(self.worker));
         rt.expect_validate_caller_addr(self.caller_addrs());
 
-        let mut params = ProveCommitSectors2Params {
+        let mut params = ProveCommitSectors3Params {
             sector_activations: sector_activations.into(),
             aggregate_proof: if aggregate { make_proof(0) } else { RawBytes::default() },
             sector_proofs: if !aggregate {
@@ -1304,12 +1304,12 @@ impl ActorHarness {
         }
 
         let result = rt.call::<Actor>(
-            MinerMethod::ProveCommitSectors2 as u64,
+            MinerMethod::ProveCommitSectors3 as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
         );
         let result = result
             .map(|r| {
-                let ret: ProveCommitSectors2Return = r.unwrap().deserialize().unwrap();
+                let ret: ProveCommitSectors3Return = r.unwrap().deserialize().unwrap();
                 assert_eq!(sector_activations.len(), ret.activation_results.size());
                 ret
             })
@@ -1333,7 +1333,7 @@ impl ActorHarness {
         require_notification_success: bool,
         cfg: ProveReplicaUpdatesConfig,
     ) -> Result<
-        (ProveReplicaUpdates2Return, Vec<SectorAllocationClaims>, Vec<SectorChanges>),
+        (ProveReplicaUpdates3Return, Vec<SectorAllocationClaims>, Vec<SectorChanges>),
         ActorError,
     > {
         fn make_proof(i: u8) -> RawBytes {
@@ -1342,7 +1342,7 @@ impl ActorHarness {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, cfg.caller.unwrap_or(self.worker));
         rt.expect_validate_caller_addr(self.caller_addrs());
 
-        let mut params = ProveReplicaUpdates2Params {
+        let mut params = ProveReplicaUpdates3Params {
             sector_updates: sector_updates.into(),
             sector_proofs: sector_updates.iter().map(|su| make_proof(su.sector as u8)).collect(),
             aggregate_proof: RawBytes::default(),
@@ -1488,12 +1488,12 @@ impl ActorHarness {
         }
 
         let result = rt.call::<Actor>(
-            MinerMethod::ProveReplicaUpdates2 as u64,
+            MinerMethod::ProveReplicaUpdates3 as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
         );
         let result = result
             .map(|r| {
-                let ret: ProveReplicaUpdates2Return = r.unwrap().deserialize().unwrap();
+                let ret: ProveReplicaUpdates3Return = r.unwrap().deserialize().unwrap();
                 assert_eq!(sector_updates.len(), ret.activation_results.size());
                 ret
             })
@@ -2918,7 +2918,7 @@ pub struct PreCommitBatchConfig {
 #[derive(Default)]
 pub struct ProveReplicaUpdatesConfig {
     pub caller: Option<Address>,
-    pub param_twiddle: Option<Box<dyn FnOnce(&mut ProveReplicaUpdates2Params)>>,
+    pub param_twiddle: Option<Box<dyn FnOnce(&mut ProveReplicaUpdates3Params)>>,
     pub validation_failure: Vec<usize>, // Expect validation failure for these sector indices.
     pub proof_failure: Vec<usize>,      // Simulate proof failure for these sector indices.
     pub claim_failure: Vec<usize>,      // Simulate verified claim failure for these sector indices.
@@ -2929,7 +2929,7 @@ pub struct ProveReplicaUpdatesConfig {
 #[derive(Default)]
 pub struct ProveCommitSectors2Config {
     pub caller: Option<Address>,
-    pub param_twiddle: Option<Box<dyn FnOnce(&mut ProveCommitSectors2Params)>>,
+    pub param_twiddle: Option<Box<dyn FnOnce(&mut ProveCommitSectors3Params)>>,
     pub validation_failure: Vec<usize>, // Expect validation failure for these sector indices.
     pub proof_failure: Vec<usize>,      // Simulate proof failure for these sector indices.
     pub claim_failure: Vec<usize>,      // Simulate verified claim failure for these sector indices.
