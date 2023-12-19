@@ -5,7 +5,7 @@ use fvm_shared::{bigint::Zero, clock::ChainEpoch, econ::TokenAmount, ActorID};
 
 use fil_actor_miner::ext::verifreg::{AllocationClaim, SectorAllocationClaims};
 use fil_actor_miner::{
-    DataActivationNotification, PieceChange, ProveCommitSectors2Return, SectorChanges,
+    DataActivationNotification, PieceChange, ProveCommitSectors3Return, SectorChanges,
     SectorOnChainInfo, SectorPreCommitInfo,
 };
 use fil_actors_runtime::cbor::serialize;
@@ -526,6 +526,6 @@ fn precommit_sectors_from(
     precommits
 }
 
-fn assert_commit_result(expected: &[ExitCode], result: &ProveCommitSectors2Return) {
+fn assert_commit_result(expected: &[ExitCode], result: &ProveCommitSectors3Return) {
     assert_eq!(BatchReturn::of(expected), result.activation_results);
 }

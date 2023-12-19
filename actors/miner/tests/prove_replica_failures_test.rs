@@ -8,7 +8,7 @@ use fvm_shared::ActorID;
 
 use fil_actor_miner::ext::verifreg::AllocationID;
 use fil_actor_miner::{
-    ProveReplicaUpdates2Params, SectorUpdateManifest, State, ERR_NOTIFICATION_RECEIVER_ABORTED,
+    ProveReplicaUpdates3Params, SectorUpdateManifest, State, ERR_NOTIFICATION_RECEIVER_ABORTED,
     ERR_NOTIFICATION_REJECTED,
 };
 use fil_actors_runtime::runtime::Runtime;
@@ -43,7 +43,7 @@ fn reject_unauthorized_caller() {
 fn reject_no_proof_types() {
     let (h, rt, sector_updates) = setup(1, 0, 0, 0);
     let cfg = ProveReplicaUpdatesConfig {
-        param_twiddle: Some(Box::new(|p: &mut ProveReplicaUpdates2Params| {
+        param_twiddle: Some(Box::new(|p: &mut ProveReplicaUpdates3Params| {
             p.sector_proofs = vec![];
             p.aggregate_proof = RawBytes::default();
         })),
@@ -61,7 +61,7 @@ fn reject_no_proof_types() {
 fn reject_both_proof_types() {
     let (h, rt, sector_updates) = setup(1, 0, 0, 0);
     let cfg = ProveReplicaUpdatesConfig {
-        param_twiddle: Some(Box::new(|p: &mut ProveReplicaUpdates2Params| {
+        param_twiddle: Some(Box::new(|p: &mut ProveReplicaUpdates3Params| {
             p.sector_proofs = vec![RawBytes::new(vec![1, 2, 3, 4])];
             p.aggregate_proof = RawBytes::new(vec![1, 2, 3, 4])
         })),
@@ -79,7 +79,7 @@ fn reject_both_proof_types() {
 fn reject_mismatched_proof_len() {
     let (h, rt, sector_updates) = setup(1, 0, 0, 0);
     let cfg = ProveReplicaUpdatesConfig {
-        param_twiddle: Some(Box::new(|p: &mut ProveReplicaUpdates2Params| {
+        param_twiddle: Some(Box::new(|p: &mut ProveReplicaUpdates3Params| {
             p.sector_proofs.push(RawBytes::new(vec![1, 2, 3, 4]));
         })),
         ..Default::default()
@@ -96,7 +96,7 @@ fn reject_mismatched_proof_len() {
 fn reject_aggregate_proof() {
     let (h, rt, sector_updates) = setup(1, 0, 0, 0);
     let cfg = ProveReplicaUpdatesConfig {
-        param_twiddle: Some(Box::new(|p: &mut ProveReplicaUpdates2Params| {
+        param_twiddle: Some(Box::new(|p: &mut ProveReplicaUpdates3Params| {
             p.sector_proofs = vec![];
             p.aggregate_proof = RawBytes::new(vec![1, 2, 3, 4])
         })),
