@@ -1,3 +1,4 @@
+use export_macro::vm_test;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::BigInt;
@@ -42,6 +43,7 @@ use crate::util::{
     PrecommitMetadata,
 };
 
+#[vm_test]
 pub fn prove_replica_update2_test(v: &dyn VM) {
     let policy = Policy::default();
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
