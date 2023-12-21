@@ -32,6 +32,7 @@ use crate::util::{
 const BATCH_SIZE: usize = 8;
 const SEAL_PROOF: RegisteredSealProof = RegisteredSealProof::StackedDRG32GiBV1P1;
 
+#[vm_test]
 pub fn pre_commit_requires_commd_test(v: &dyn VM) {
     let deal_duration: ChainEpoch = Policy::default().min_sector_expiration;
     let sector_duration: ChainEpoch =

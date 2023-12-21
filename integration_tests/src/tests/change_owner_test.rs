@@ -88,6 +88,7 @@ pub fn keep_beneficiary_when_owner_changed_test(v: &dyn VM) {
     assert_invariants(v, &Policy::default(), None)
 }
 
+#[vm_test]
 pub fn change_owner_fail_test(v: &dyn VM) {
     let addrs = create_accounts(v, 4, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;

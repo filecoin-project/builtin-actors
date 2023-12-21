@@ -42,6 +42,7 @@ use crate::util::{
     submit_invalid_post, submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
 };
 
+#[vm_test]
 pub fn replica_update_full_path_success_test(v: &dyn VM) {
     let policy = Policy::default();
     let (sector_info, worker, miner_id, deadline_index, partition_index, sector_size) =
@@ -99,6 +100,7 @@ pub fn replica_update_full_path_success(v: &dyn VM) {
     replica_update_full_path_success_test(v);
 }
 
+#[vm_test]
 pub fn upgrade_and_miss_post_test(v: &dyn VM) {
     let (sector_info, worker, miner_id, deadline_index, partition_index, sector_size) =
         create_miner_and_upgrade_sector(v);
@@ -147,11 +149,6 @@ pub fn upgrade_and_miss_post_test(v: &dyn VM) {
     assert_eq!(miner_power(v, &miner_id).raw, BigInt::from(sector_size as i64));
 
     assert_invariants(v, &Policy::default(), None)
-}
-
-#[vm_test]
-pub fn upgrade_and_miss_post(v: &dyn VM) {
-    upgrade_and_miss_post_test(v);
 }
 
 #[vm_test]
