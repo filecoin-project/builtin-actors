@@ -1,11 +1,11 @@
 [package]
 name = "fil_actor_cron"
 description = "Builtin cron actor for Filecoin"
-version = "12.0.0"
-license = "MIT OR Apache-2.0"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
 authors = ["ChainSafe Systems <info@chainsafe.io>", "Protocol Labs", "Filecoin Core Devs"]
-edition = "2021"
-repository = "https://github.com/filecoin-project/builtin-actors"
 keywords = ["filecoin", "web3", "wasm"]
 
 [lib]
