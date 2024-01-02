@@ -941,6 +941,14 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
         ExitCode::OK,
     );
 
+    expect_emitted(
+        &rt,
+        "deal-published",
+        deal_id,
+        client_resolved.id().unwrap(),
+        provider_resolved.id().unwrap(),
+    );
+
     let ret: PublishStorageDealsReturn = rt
         .call::<MarketActor>(
             Method::PublishStorageDeals as u64,
@@ -1717,6 +1725,7 @@ fn fail_when_current_epoch_greater_than_start_epoch_of_deal() {
             deal_ids: vec![deal_id],
         }],
         false,
+        vec![],
     )
     .unwrap();
 
@@ -1754,6 +1763,7 @@ fn fail_when_end_epoch_of_deal_greater_than_sector_expiry() {
             deal_ids: vec![deal_id],
         }],
         false,
+        vec![],
     )
     .unwrap();
 
@@ -1807,6 +1817,7 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
             deal_ids: vec![deal_id1, deal_id2],
         }],
         false,
+        vec![],
     )
     .unwrap();
     let res: BatchActivateDealsResult =
@@ -1944,6 +1955,9 @@ fn locked_fund_tracking_states() {
         None,
         ExitCode::OK,
     );
+
+    expect_emitted(&rt, "deal-completed", deal_id2, d2.client.id().unwrap(), p2.id().unwrap());
+
     cron_tick(&rt);
     assert_locked_fund_states(&rt, csf, plc, clc);
     check_state(&rt);
@@ -2155,6 +2169,14 @@ fn insufficient_client_balance_in_a_batch() {
         ExitCode::OK,
     );
 
+    expect_emitted(
+        &rt,
+        "deal-published",
+        next_deal_id,
+        deal2.client.id().unwrap(),
+        deal2.provider.id().unwrap(),
+    );
+
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
 
     let ret: PublishStorageDealsReturn = rt
@@ -2297,6 +2319,14 @@ fn insufficient_provider_balance_in_a_batch() {
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
 
+    expect_emitted(
+        &rt,
+        "deal-published",
+        next_deal_id,
+        deal2.client.id().unwrap(),
+        deal2.provider.id().unwrap(),
+    );
+
     let ret: PublishStorageDealsReturn = rt
         .call::<MarketActor>(
             Method::PublishStorageDeals as u64,
@@ -2436,6 +2466,14 @@ fn psd_restricted_correctly() {
         TokenAmount::zero(),
         None,
         ExitCode::OK,
+    );
+
+    expect_emitted(
+        &rt,
+        "deal-published",
+        next_deal_id,
+        deal.client.id().unwrap(),
+        deal.provider.id().unwrap(),
     );
 
     let ret: PublishStorageDealsReturn = rt

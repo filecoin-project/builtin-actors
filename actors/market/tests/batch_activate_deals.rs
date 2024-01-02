@@ -168,7 +168,8 @@ fn sectors_fail_and_succeed_independently_during_batch_activation() {
         },
     ];
 
-    let res = batch_activate_deals_raw(&rt, PROVIDER_ADDR, sectors_deals, false).unwrap();
+    let res =
+        batch_activate_deals_raw(&rt, PROVIDER_ADDR, sectors_deals, false, vec![id_4]).unwrap();
     let res: BatchActivateDealsResult =
         res.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
 
@@ -227,7 +228,8 @@ fn handles_sectors_empty_of_deals_gracefully() {
         SectorDeals { sector_number: 3, deal_ids: vec![], sector_type, sector_expiry: END_EPOCH },
     ];
 
-    let res = batch_activate_deals_raw(&rt, PROVIDER_ADDR, sectors_deals, false).unwrap();
+    let res =
+        batch_activate_deals_raw(&rt, PROVIDER_ADDR, sectors_deals, false, vec![id_1]).unwrap();
     let res: BatchActivateDealsResult =
         res.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
 
@@ -273,7 +275,7 @@ fn fails_to_activate_single_sector_duplicate_deals() {
             sector_expiry: END_EPOCH,
         },
     ];
-    let res = batch_activate_deals_raw(&rt, PROVIDER_ADDR, sectors_deals, false).unwrap();
+    let res = batch_activate_deals_raw(&rt, PROVIDER_ADDR, sectors_deals, false, vec![]).unwrap();
     let res: BatchActivateDealsResult =
         res.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
 
@@ -328,7 +330,8 @@ fn fails_to_activate_cross_sector_duplicate_deals() {
         },
     ];
 
-    let res = batch_activate_deals_raw(&rt, PROVIDER_ADDR, sectors_deals, false).unwrap();
+    let res = batch_activate_deals_raw(&rt, PROVIDER_ADDR, sectors_deals, false, vec![id_1, id_3])
+        .unwrap();
     let res: BatchActivateDealsResult =
         res.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
 

@@ -54,6 +54,7 @@ pub mod policy;
 pub mod testing;
 
 mod deal;
+pub mod emit;
 mod state;
 mod types;
 
@@ -482,6 +483,13 @@ impl Actor {
             .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
                 format!("failed to notify deal with proposal cid {}", valid_deal.cid)
             })?;
+
+            emit::deal_published(
+                rt,
+                valid_deal.proposal.client.id().unwrap(),
+                valid_deal.proposal.provider.id().unwrap(),
+                new_deal_ids[i],
+            )?;
         }
 
         Ok(PublishStorageDealsReturn { ids: new_deal_ids, valid_deals: valid_input_bf })
@@ -640,6 +648,16 @@ impl Actor {
                     verified_infos,
                     unsealed_cid: data_commitment,
                 });
+
+                for (deal_id, proposal) in sector.deal_ids.iter().zip(&validated_proposals) {
+                    emit::deal_activated(
+                        rt,
+                        *deal_id,
+                        proposal.client.id().unwrap(),
+                        proposal.provider.id().unwrap(),
+                    )?;
+                }
+
                 batch_gen.add_success();
             }
 
@@ -833,6 +851,12 @@ impl Actor {
                 state.slash_epoch = params.epoch;
 
                 deal_states.push((*id, state));
+                emit::deal_terminated(
+                    rt,
+                    *id,
+                    deal.client.id().unwrap(),
+                    deal.provider.id().unwrap(),
+                )?;
             }
 
             st.put_deal_states(rt.store(), &deal_states)?;
@@ -919,7 +943,7 @@ impl Actor {
                         })?;
                     }
 
-                    let (slash_amount, remove_deal) =
+                    let (slash_amount, remove_deal, complete_success) =
                         st.process_deal_update(rt.store(), &state, &deal, curr_epoch)?;
 
                     if slash_amount.is_negative() {
@@ -957,6 +981,15 @@ impl Actor {
                                 illegal_state,
                                 "failed to delete deal proposal: does not exist"
                             ));
+                        }
+
+                        if complete_success {
+                            emit::deal_completed(
+                                rt,
+                                deal_id,
+                                deal.client.id().unwrap(),
+                                deal.provider.id().unwrap(),
+                            )?;
                         }
                     } else {
                         if !slash_amount.is_zero() {

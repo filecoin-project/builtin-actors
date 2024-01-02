@@ -197,7 +197,7 @@ fn terminate_valid_deals_along_with_just_expired_deal() {
     let new_epoch = end_epoch - 1;
     rt.set_epoch(new_epoch);
 
-    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number]);
+    terminate_deals_for(&rt, PROVIDER_ADDR, &[sector_number], vec![deal1, deal2]);
     assert_deals_terminated(&rt, new_epoch, &[deal1, deal2]);
     // Not cleaned up yet.
     assert_deals_not_terminated(&rt, &[deal3]);
@@ -246,6 +246,14 @@ fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
 
     let new_epoch = end_epoch - 1;
     rt.set_epoch(new_epoch);
+    expect_emitted(
+        &rt,
+        "deal-completed",
+        deal_ids[1],
+        CLIENT_ADDR.id().unwrap(),
+        PROVIDER_ADDR.id().unwrap(),
+    );
+
     cron_tick(&rt);
 
     terminate_deals(&rt, PROVIDER_ADDR, &[sector_number]);
@@ -375,7 +383,7 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
         activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, sector_number, &[deal1]);
     assert!(ret.activation_results.all_ok());
     rt.set_epoch(end_epoch);
-    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number]);
+    terminate_deals_for(&rt, PROVIDER_ADDR, &[sector_number], vec![]);
     assert_deals_not_terminated(&rt, &[deal1]);
 
     // deal2 has end epoch less than current epoch when terminate is called
@@ -392,7 +400,7 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
         activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, sector_number, &[deal2]);
     assert!(ret.activation_results.all_ok());
     rt.set_epoch(end_epoch + 1);
-    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number]);
+    terminate_deals_for(&rt, PROVIDER_ADDR, &[sector_number], vec![]);
     assert_deals_not_terminated(&rt, &[deal2]);
 
     check_state(&rt);

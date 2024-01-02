@@ -174,9 +174,10 @@ impl Actor {
 
             // Validate caller is one of the verifiers, i.e. has an allowance (even if zero).
             let verifier_addr = rt.message().caller();
-            let verifier_cap = st
-                .get_verifier_cap(rt.store(), &verifier_addr)?
-                .ok_or_else(|| actor_error!(not_found, "caller {} is not a verifier", verifier_addr))?;
+            let verifier_cap =
+                st.get_verifier_cap(rt.store(), &verifier_addr)?.ok_or_else(|| {
+                    actor_error!(not_found, "caller {} is not a verifier", verifier_addr)
+                })?;
 
             // Disallow existing verifiers as clients.
             if st.get_verifier_cap(rt.store(), &client)?.is_some() {
@@ -335,10 +336,13 @@ impl Actor {
                 }
 
                 for id in to_remove {
-                    let existing = allocs.remove(params.client, *id).context_code(
-                        ExitCode::USR_ILLEGAL_STATE,
-                        format!("failed to remove allocation {}", id),
-                    )?.unwrap(); // Unwrapping here as both paths to here should ensure the allocation exists.
+                    let existing = allocs
+                        .remove(params.client, *id)
+                        .context_code(
+                            ExitCode::USR_ILLEGAL_STATE,
+                            format!("failed to remove allocation {}", id),
+                        )?
+                        .unwrap(); // Unwrapping here as both paths to here should ensure the allocation exists.
 
                     emit::allocation_removed(rt, *id, existing.client, existing.provider)?;
 

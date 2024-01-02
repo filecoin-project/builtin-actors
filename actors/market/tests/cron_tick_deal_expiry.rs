@@ -183,6 +183,13 @@ fn expired_deal_should_unlock_the_remaining_client_and_provider_locked_balance_a
     let p_escrow = get_balance(&rt, &PROVIDER_ADDR).balance;
 
     // move the current epoch so that deal is expired
+    expect_emitted(
+        &rt,
+        "deal-completed",
+        deal_id,
+        CLIENT_ADDR.id().unwrap(),
+        PROVIDER_ADDR.id().unwrap(),
+    );
     rt.set_epoch(END_EPOCH + 1000);
     cron_tick(&rt);
 
@@ -220,6 +227,13 @@ fn all_payments_are_made_for_a_deal_client_withdraws_collateral_and_client_accou
 
     // move the current epoch so that deal is expired
     rt.set_epoch(END_EPOCH + 100);
+    expect_emitted(
+        &rt,
+        "deal-completed",
+        deal_id,
+        CLIENT_ADDR.id().unwrap(),
+        PROVIDER_ADDR.id().unwrap(),
+    );
     cron_tick(&rt);
     assert_eq!(deal_proposal.client_collateral, get_balance(&rt, &CLIENT_ADDR).balance);
 

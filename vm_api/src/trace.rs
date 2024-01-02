@@ -2,8 +2,8 @@ use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::{ErrorNumber, ExitCode};
-use fvm_shared::{ActorID, MethodNum};
 use fvm_shared::event::ActorEvent;
+use fvm_shared::{ActorID, MethodNum};
 
 type ReturnValue = Option<IpldBlock>;
 

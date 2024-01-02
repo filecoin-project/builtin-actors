@@ -740,7 +740,7 @@ impl State {
         state: &DealState,
         deal: &DealProposal,
         epoch: ChainEpoch,
-    ) -> Result<(TokenAmount, bool), ActorError>
+    ) -> Result<(TokenAmount, bool, bool), ActorError>
     where
         BS: Blockstore,
     {
@@ -759,7 +759,7 @@ impl State {
         // This would be the case that the first callback somehow triggers before it is scheduled to
         // This is expected not to be able to happen
         if deal.start_epoch > epoch {
-            return Ok((TokenAmount::zero(), false));
+            return Ok((TokenAmount::zero(), false, false));
         }
 
         let payment_end_epoch = if ever_slashed {
@@ -818,14 +818,14 @@ impl State {
             self.slash_balance(store, &deal.provider, &slashed, Reason::ProviderCollateral)
                 .context("slashing balance")?;
 
-            return Ok((slashed, true));
+            return Ok((slashed, true, false));
         }
 
         if epoch >= deal.end_epoch {
             self.process_deal_expired(store, deal, state)?;
-            return Ok((TokenAmount::zero(), true));
+            return Ok((TokenAmount::zero(), true, true));
         }
-        Ok((TokenAmount::zero(), false))
+        Ok((TokenAmount::zero(), false, false))
     }
 
     /// Deal start deadline elapsed without appearing in a proven sector.

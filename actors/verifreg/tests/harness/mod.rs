@@ -34,7 +34,10 @@ use fil_actors_runtime::runtime::policy_constants::{
 };
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::{make_empty_map, ActorError, AsActorError, BatchReturn, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR, EventBuilder};
+use fil_actors_runtime::{
+    make_empty_map, ActorError, AsActorError, BatchReturn, EventBuilder, DATACAP_TOKEN_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+};
 
 pub const ROOT_ADDR: Address = Address::new_id(101);
 
@@ -135,7 +138,6 @@ impl Harness {
             ExitCode::OK,
             None,
         );
-
 
         rt.expect_emitted_event(
             EventBuilder::new()

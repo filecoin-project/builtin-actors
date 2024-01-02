@@ -152,8 +152,15 @@ fn activation_after_deal_start_epoch_but_before_it_is_processed_fails() {
     let curr_epoch = START_EPOCH + 1;
     rt.set_epoch(curr_epoch);
 
-    let res =
-        activate_deals(&rt, SECTOR_EXPIRY, PROVIDER_ADDR, curr_epoch, SECTOR_NUMBER, &[deal_id]);
+    let res = activate_deals_for(
+        &rt,
+        SECTOR_EXPIRY,
+        PROVIDER_ADDR,
+        curr_epoch,
+        SECTOR_NUMBER,
+        &[deal_id],
+        vec![],
+    );
     assert_eq!(res.activation_results.codes(), vec![EX_DEAL_EXPIRED]);
     check_state(&rt);
 }
