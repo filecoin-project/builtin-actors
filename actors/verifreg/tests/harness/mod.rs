@@ -34,10 +34,7 @@ use fil_actors_runtime::runtime::policy_constants::{
 };
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::{
-    make_empty_map, ActorError, AsActorError, BatchReturn, DATACAP_TOKEN_ACTOR_ADDR,
-    STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
-};
+use fil_actors_runtime::{make_empty_map, ActorError, AsActorError, BatchReturn, DATACAP_TOKEN_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR, EventBuilder};
 
 pub const ROOT_ADDR: Address = Address::new_id(101);
 
@@ -139,6 +136,15 @@ impl Harness {
             None,
         );
 
+
+        rt.expect_emitted_event(
+            EventBuilder::new()
+                .typ("verifier-balance")
+                .field_indexed("verifier", &verifier_resolved.id().unwrap())
+                .field("balance", &allowance)
+                .build()?,
+        );
+
         let params = AddVerifierParams { address: *verifier, allowance: allowance.clone() };
         let ret = rt.call::<VerifregActor>(
             Method::AddVerifier as MethodNum,
@@ -153,6 +159,14 @@ impl Harness {
 
     pub fn remove_verifier(&self, rt: &MockRuntime, verifier: &Address) -> Result<(), ActorError> {
         rt.expect_validate_caller_addr(vec![self.root]);
+
+        rt.expect_emitted_event(
+            EventBuilder::new()
+                .typ("verifier-balance")
+                .field_indexed("verifier", &verifier.id().unwrap())
+                .field("balance", &DataCap::zero())
+                .build()?,
+        );
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.root);
         let ret = rt.call::<VerifregActor>(
             Method::RemoveVerifier as MethodNum,
@@ -192,6 +206,7 @@ impl Harness {
         verifier: &Address,
         client: &Address,
         allowance: &DataCap,
+        verifier_balance: &DataCap,
     ) -> Result<(), ActorError> {
         rt.expect_validate_caller_any();
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, *verifier);
@@ -213,6 +228,13 @@ impl Harness {
         );
 
         let params = AddVerifiedClientParams { address: *client, allowance: allowance.clone() };
+        rt.expect_emitted_event(
+            EventBuilder::new()
+                .typ("verifier-balance")
+                .field_indexed("verifier", &verifier.id().unwrap())
+                .field("balance", &(verifier_balance - allowance))
+                .build()?,
+        );
         let ret = rt.call::<VerifregActor>(
             Method::AddVerifiedClient as MethodNum,
             IpldBlock::serialize_cbor(&params).unwrap(),
@@ -265,9 +287,14 @@ impl Harness {
         claim_allocs: Vec<SectorAllocationClaims>,
         datacap_burnt: u64,
         all_or_nothing: bool,
+        expect_claimed: Vec<(AllocationID, Allocation)>,
     ) -> Result<ClaimAllocationsReturn, ActorError> {
         rt.expect_validate_caller_type(vec![Type::Miner]);
         rt.set_caller(*MINER_ACTOR_CODE_ID, Address::new_id(provider));
+
+        for (id, alloc) in expect_claimed.iter() {
+            expect_emitted(rt, "claim", id, alloc.client, alloc.provider);
+        }
 
         if datacap_burnt > 0 {
             rt.expect_send_simple(
@@ -302,10 +329,16 @@ impl Harness {
         rt: &MockRuntime,
         client: ActorID,
         allocation_ids: Vec<AllocationID>,
-        expected_datacap: u64,
+        expect_removed: Vec<(AllocationID, Allocation)>,
     ) -> Result<RemoveExpiredAllocationsReturn, ActorError> {
         rt.expect_validate_caller_any();
 
+        let mut expected_datacap = 0u64;
+        for (id, alloc) in expect_removed {
+            expected_datacap += alloc.size.0;
+
+            expect_emitted(rt, "allocation-removed", &id, alloc.client, alloc.provider);
+        }
         rt.expect_send_simple(
             DATACAP_TOKEN_ACTOR_ADDR,
             ext::datacap::Method::Transfer as MethodNum,
@@ -339,9 +372,13 @@ impl Harness {
         rt: &MockRuntime,
         provider: ActorID,
         claim_ids: Vec<ClaimID>,
+        expect_removed: Vec<(ClaimID, Claim)>,
     ) -> Result<RemoveExpiredClaimsReturn, ActorError> {
         rt.expect_validate_caller_any();
 
+        for (id, claim) in expect_removed {
+            expect_emitted(rt, "claim-removed", &id, claim.client, claim.provider);
+        }
         let params = RemoveExpiredClaimsParams { provider, claim_ids };
         let ret = rt
             .call::<VerifregActor>(
@@ -388,6 +425,16 @@ impl Harness {
                 IpldBlock::serialize_cbor(&BurnReturn { balance: TokenAmount::zero() }).unwrap(),
                 ExitCode::OK,
             );
+        }
+
+        let allocs_req: AllocationRequests = payload.operator_data.deserialize().unwrap();
+        for (alloc, id) in allocs_req.allocations.iter().zip(expected_alloc_ids.iter()) {
+            expect_emitted(rt, "allocation", id, payload.from, alloc.provider);
+        }
+
+        for ext in allocs_req.extensions {
+            let claim = self.load_claim(rt, ext.provider, ext.claim).unwrap();
+            expect_emitted(rt, "claim-updated", &ext.claim, claim.client, claim.provider);
         }
 
         rt.expect_validate_caller_addr(vec![DATACAP_TOKEN_ACTOR_ADDR]);
@@ -445,7 +492,12 @@ impl Harness {
         &self,
         rt: &MockRuntime,
         params: &ExtendClaimTermsParams,
+        expected: Vec<(ClaimID, Claim)>,
     ) -> Result<ExtendClaimTermsReturn, ActorError> {
+        for (id, new_claim) in expected.iter() {
+            expect_emitted(rt, "claim-updated", id, new_claim.client, new_claim.provider);
+        }
+
         rt.expect_validate_caller_any();
         let ret = rt
             .call::<VerifregActor>(
@@ -482,6 +534,18 @@ pub fn make_alloc_req(rt: &MockRuntime, provider: ActorID, size: u64) -> Allocat
         term_max: MAXIMUM_VERIFIED_ALLOCATION_TERM,
         expiration: *rt.epoch.borrow() + 100,
     }
+}
+
+pub fn expect_emitted(rt: &MockRuntime, typ: &str, id: &u64, client: ActorID, provider: ActorID) {
+    rt.expect_emitted_event(
+        EventBuilder::new()
+            .typ(typ)
+            .field_indexed("id", &id)
+            .field_indexed("client", &client)
+            .field_indexed("provider", &provider)
+            .build()
+            .unwrap(),
+    );
 }
 
 pub fn make_extension_req(

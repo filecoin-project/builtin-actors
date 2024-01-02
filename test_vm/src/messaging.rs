@@ -56,7 +56,7 @@ use fvm_shared::{ActorID, MethodNum, Response, IPLD_RAW, METHOD_CONSTRUCTOR, MET
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::cell::{RefCell, RefMut};
-use vm_api::trace::InvocationTrace;
+use vm_api::trace::{EmittedEvent, InvocationTrace};
 use vm_api::util::get_state;
 use vm_api::{new_actor, ActorState, VM};
 
@@ -113,6 +113,7 @@ pub struct InvocationCtx<'invocation> {
     pub read_only: bool,
     pub policy: &'invocation Policy,
     pub subinvocations: RefCell<Vec<InvocationTrace>>,
+    pub events: RefCell<Vec<EmittedEvent>>,
 }
 
 impl<'invocation> InvocationCtx<'invocation> {
@@ -177,6 +178,7 @@ impl<'invocation> InvocationCtx<'invocation> {
                 read_only: false,
                 policy: self.policy,
                 subinvocations: RefCell::new(vec![]),
+                events: RefCell::new(vec![]),
             };
             if is_account {
                 new_ctx.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id, None).unwrap();
@@ -218,6 +220,7 @@ impl<'invocation> InvocationCtx<'invocation> {
             return_value: ret,
             exit_code: code,
             subinvocations: self.subinvocations.take(),
+            events: self.events.take(),
         }
     }
 
@@ -255,17 +258,18 @@ impl<'invocation> InvocationCtx<'invocation> {
         from_actor.balance -= &self.msg.value;
         self.v.set_actor(&Address::new_id(self.msg.from), from_actor);
 
-        let (mut to_actor, ref to_addr) = self.resolve_target(&self.msg.to)?;
+        let (mut to_actor, to_addr) = self.resolve_target(&self.msg.to)?;
         to_actor.balance = to_actor.balance.add(&self.msg.value);
-        self.v.set_actor(to_addr, to_actor);
+        self.v.set_actor(&to_addr, to_actor);
 
         // Exit early on send
         if self.msg.method == METHOD_SEND {
             return Ok(None);
         }
+        self.msg.to = to_addr;
 
         // call target actor
-        let to_actor = self.v.actor(to_addr).unwrap();
+        let to_actor = self.v.actor(&to_addr).unwrap();
         let params = self.msg.params.clone();
         let mut res = match ACTOR_TYPES.get(&to_actor.code).expect("Target actor is not a builtin")
         {
@@ -512,6 +516,7 @@ impl<'invocation> Runtime for InvocationCtx<'invocation> {
             read_only: send_flags.read_only(),
             policy: self.policy,
             subinvocations: RefCell::new(vec![]),
+            events: RefCell::new(vec![]),
         };
         let res = new_ctx.invoke();
         let invoc = new_ctx.gather_trace(res.clone());
@@ -637,8 +642,11 @@ impl<'invocation> Runtime for InvocationCtx<'invocation> {
     }
 
     // TODO No support for events yet.
-    fn emit_event(&self, _event: &ActorEvent) -> Result<(), ActorError> {
-        unimplemented!()
+    fn emit_event(&self, event: &ActorEvent) -> Result<(), ActorError> {
+        self.events
+            .borrow_mut()
+            .push(EmittedEvent { emitter: self.msg.to.id().unwrap(), event: event.clone() });
+        Ok(())
     }
 
     fn read_only(&self) -> bool {
