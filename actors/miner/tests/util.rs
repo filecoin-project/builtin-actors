@@ -91,14 +91,14 @@ use fil_actor_power::{
 use fil_actor_reward::{Method as RewardMethod, ThisEpochRewardReturn};
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::{DomainSeparationTag, Runtime, RuntimePolicy};
-use fil_actors_runtime::{test_utils::*, BatchReturn, BatchReturnGen};
+use fil_actors_runtime::{test_utils::*, BatchReturn, BatchReturnGen, EventBuilder};
 use fil_actors_runtime::{
     ActorDowncast, ActorError, Array, DealWeight, MessageAccumulator, BURNT_FUNDS_ACTOR_ADDR,
     INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 
-const RECEIVER_ID: u64 = 1000;
+pub const RECEIVER_ID: u64 = 1000;
 
 pub const TEST_RANDOMNESS_ARRAY_FROM_ONE: [u8; 32] = [
     1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
@@ -661,6 +661,10 @@ impl ActorHarness {
             );
         }
 
+        for sn in sectors {
+            expect_event(rt, "sector-precommitted", &sn.sector_number);
+        }
+
         let param = PreCommitSectorBatchParams2 { sectors: sectors.into() };
         let result = rt.call::<Actor>(
             Method::PreCommitSectorBatch2 as u64,
@@ -875,6 +879,10 @@ impl ActorHarness {
             ExitCode::OK,
         );
 
+        for pc in precommits.iter() {
+            expect_event(rt, "sector-activated", &pc.info.sector_number);
+        }
+
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.worker);
         let addrs = self.caller_addrs().clone();
         rt.expect_validate_caller_addr(addrs);
@@ -887,11 +895,12 @@ impl ActorHarness {
         Ok(())
     }
 
-    pub fn confirm_sector_proofs_valid(
+    pub fn confirm_sector_proofs_valid_for(
         &self,
         rt: &MockRuntime,
         cfg: ProveCommitConfig,
         pcs: Vec<SectorPreCommitOnChainInfo>,
+        valid_sectors: Vec<SectorNumber>,
     ) -> Result<(), ActorError> {
         self.confirm_sector_proofs_valid_internal(rt, cfg, &pcs);
 
@@ -904,17 +913,32 @@ impl ActorHarness {
         rt.expect_validate_caller_addr(vec![STORAGE_POWER_ACTOR_ADDR]);
 
         let params = ConfirmSectorProofsParams {
-            sectors: all_sector_numbers,
+            sectors: all_sector_numbers.clone(),
             reward_smoothed: self.epoch_reward_smooth.clone(),
             reward_baseline_power: self.baseline_power.clone(),
             quality_adj_power_smoothed: self.epoch_qa_power_smooth.clone(),
         };
+
+        for s in valid_sectors {
+            expect_event(rt, "sector-activated",&s);
+        }
+
         rt.call::<Actor>(
             Method::ConfirmSectorProofsValid as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
         )?;
         rt.verify();
         Ok(())
+    }
+
+    pub fn confirm_sector_proofs_valid(
+        &self,
+        rt: &MockRuntime,
+        cfg: ProveCommitConfig,
+        pcs: Vec<SectorPreCommitOnChainInfo>,
+    ) -> Result<(), ActorError> {
+        self.confirm_sector_proofs_valid_for(rt, cfg, pcs.clone(),
+                                             pcs.iter().map(|pc| pc.info.sector_number).collect())
     }
 
     fn confirm_sector_proofs_valid_internal(
@@ -1084,7 +1108,7 @@ impl ActorHarness {
         }
     }
 
-    pub fn prove_commit_sectors2(
+    pub fn prove_commit_sectors2_for(
         &self,
         rt: &MockRuntime,
         sector_activations: &[SectorActivationManifest],
@@ -1092,6 +1116,7 @@ impl ActorHarness {
         require_notification_success: bool,
         aggregate: bool,
         cfg: ProveCommitSectors2Config,
+        valid_sectors: Vec<SectorNumber>,
     ) -> Result<
         (ProveCommitSectors3Return, Vec<SectorAllocationClaims>, Vec<SectorChanges>),
         ActorError,
@@ -1249,13 +1274,13 @@ impl ActorHarness {
                     sectors: sector_allocation_claims.clone(),
                     all_or_nothing: require_activation_success,
                 })
-                .unwrap(),
+                    .unwrap(),
                 TokenAmount::zero(),
                 IpldBlock::serialize_cbor(&ClaimAllocationsReturn {
                     sector_results: claim_result.gen(),
                     sector_claims: sector_claimed_space,
                 })
-                .unwrap(),
+                    .unwrap(),
                 claim_code,
             );
         }
@@ -1293,14 +1318,18 @@ impl ActorHarness {
                 IpldBlock::serialize_cbor(&SectorContentChangedParams {
                     sectors: expected_sector_notifications.clone(),
                 })
-                .unwrap(),
+                    .unwrap(),
                 TokenAmount::zero(),
                 IpldBlock::serialize_cbor(&SectorContentChangedReturn {
                     sectors: sector_notification_resps,
                 })
-                .unwrap(),
+                    .unwrap(),
                 cfg.notification_result.unwrap_or(ExitCode::OK),
             );
+        }
+
+        for sa in valid_sectors {
+            expect_event(rt, "sector-activated", &sa);
         }
 
         let result = rt.call::<Actor>(
@@ -1321,17 +1350,37 @@ impl ActorHarness {
         Ok((result, sector_allocation_claims, expected_sector_notifications))
     }
 
-    // Invokes prove_replica_updates2 with a batch of sector updates, and
-    // sets and checks mock expectations for the expected interactions.
-    // Returns the result of the invocation along with the expected sector claims and notifications
-    // (which match the actual, if mock verification succeeded).
-    pub fn prove_replica_updates2_batch(
+    pub fn prove_commit_sectors2(
+        &self,
+        rt: &MockRuntime,
+        sector_activations: &[SectorActivationManifest],
+        require_activation_success: bool,
+        require_notification_success: bool,
+        aggregate: bool,
+        cfg: ProveCommitSectors2Config,
+    ) -> Result<
+        (ProveCommitSectors3Return, Vec<SectorAllocationClaims>, Vec<SectorChanges>),
+        ActorError,
+    > {
+        self.prove_commit_sectors2_for(
+            rt,
+            sector_activations,
+            require_activation_success,
+            require_notification_success,
+            aggregate,
+            cfg,
+            sector_activations.iter().map(|sa| sa.sector_number).collect(),
+        )
+    }
+
+    pub fn prove_replica_updates2_batch_for(
         &self,
         rt: &MockRuntime,
         sector_updates: &[SectorUpdateManifest],
         require_activation_success: bool,
         require_notification_success: bool,
         cfg: ProveReplicaUpdatesConfig,
+        valid_sectors: Vec<SectorNumber>,
     ) -> Result<
         (ProveReplicaUpdates3Return, Vec<SectorAllocationClaims>, Vec<SectorChanges>),
         ActorError,
@@ -1443,13 +1492,13 @@ impl ActorHarness {
                     sectors: expected_sector_claims.clone(),
                     all_or_nothing: require_activation_success,
                 })
-                .unwrap(),
+                    .unwrap(),
                 TokenAmount::zero(),
                 IpldBlock::serialize_cbor(&ClaimAllocationsReturn {
                     sector_results: claim_result.gen(),
                     sector_claims: sector_claimed_space,
                 })
-                .unwrap(),
+                    .unwrap(),
                 claim_code,
             );
         }
@@ -1477,14 +1526,18 @@ impl ActorHarness {
                 IpldBlock::serialize_cbor(&SectorContentChangedParams {
                     sectors: expected_sector_notifications.clone(),
                 })
-                .unwrap(),
+                    .unwrap(),
                 TokenAmount::zero(),
                 IpldBlock::serialize_cbor(&SectorContentChangedReturn {
                     sectors: sector_notification_resps,
                 })
-                .unwrap(),
+                    .unwrap(),
                 cfg.notification_result.unwrap_or(ExitCode::OK),
             );
+        }
+
+        for su in valid_sectors {
+            expect_event(rt, "sector-updated", &su);
         }
 
         let result = rt.call::<Actor>(
@@ -1503,6 +1556,31 @@ impl ActorHarness {
             })?;
         rt.verify();
         Ok((result, expected_sector_claims, expected_sector_notifications))
+    }
+
+    // Invokes prove_replica_updates2 with a batch of sector updates, and
+    // sets and checks mock expectations for the expected interactions.
+    // Returns the result of the invocation along with the expected sector claims and notifications
+    // (which match the actual, if mock verification succeeded).
+    pub fn prove_replica_updates2_batch(
+        &self,
+        rt: &MockRuntime,
+        sector_updates: &[SectorUpdateManifest],
+        require_activation_success: bool,
+        require_notification_success: bool,
+        cfg: ProveReplicaUpdatesConfig,
+    ) -> Result<
+        (ProveReplicaUpdates3Return, Vec<SectorAllocationClaims>, Vec<SectorChanges>),
+        ActorError,
+    > {
+      self.prove_replica_updates2_batch_for(
+                rt,
+                sector_updates,
+                require_activation_success,
+                require_notification_success,
+                cfg,
+                sector_updates.iter().map(|su| su.sector).collect(),
+            )
     }
 
     pub fn get_sector(&self, rt: &MockRuntime, sector_number: SectorNumber) -> SectorOnChainInfo {
@@ -2340,6 +2418,12 @@ impl ActorHarness {
             });
         }
 
+        for termination in terminations.iter() {
+            for sector in termination.sectors.iter() {
+                expect_event(rt, "sector-terminated", &sector);
+            }
+        }
+
         let params = TerminateSectorsParams { terminations };
 
         rt.call::<Actor>(
@@ -2809,6 +2893,12 @@ impl ActorHarness {
         rt.verify();
         Ok(available_balance_ret.available_balance)
     }
+}
+
+pub fn expect_event(rt: &MockRuntime, typ: &str, sector: &SectorNumber) {
+    rt.expect_emitted_event(
+        EventBuilder::new().typ(typ).field_indexed("sector", sector).build().unwrap(),
+    );
 }
 
 #[allow(dead_code)]

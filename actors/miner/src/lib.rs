@@ -90,6 +90,8 @@ pub mod testing;
 mod types;
 mod vesting_state;
 
+pub mod emit;
+
 /// Storage Miner actor methods available
 #[derive(FromPrimitive)]
 #[repr(u64)]
@@ -1657,6 +1659,10 @@ impl Actor {
                 .map_err(|e| {
                     e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to add pre-commit expiry to queue")
                 })?;
+
+            for sector_num in sector_numbers.iter() {
+                emit::sector_precommitted(rt, sector_num)?;
+            }
             // Activate miner cron
             needs_cron = !state.deadline_cron_active;
             state.deadline_cron_active = true;
@@ -3972,6 +3978,8 @@ where
                 expected_count
             ));
         }
+        let updated_sector_nums =
+            new_sectors.iter().map(|x| x.sector_number).collect::<Vec<SectorNumber>>();
 
         // Overwrite sector infos.
         sectors.store(new_sectors).map_err(|e| {
@@ -3984,6 +3992,10 @@ where
         state.save_deadlines(rt.store(), deadlines).map_err(|e| {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines")
         })?;
+
+        for sector in updated_sector_nums {
+            emit::sector_updated(rt, sector)?;
+        }
 
         // Update pledge.
         let current_balance = rt.current_balance();
@@ -4080,6 +4092,7 @@ fn process_early_terminations(
     reward_smoothed: &FilterEstimate,
     quality_adj_power_smoothed: &FilterEstimate,
 ) -> Result</* more */ bool, ActorError> {
+    let mut terminated_sector_nums = vec![];
     let mut sectors_with_data = vec![];
     let (result, more, penalty, pledge_delta) = rt.transaction(|state: &mut State, rt| {
         let store = rt.store();
@@ -4118,6 +4131,7 @@ fn process_early_terminations(
             for sector in &sectors {
                 total_initial_pledge += &sector.initial_pledge;
                 let sector_power = qa_power_for_sector(info.sector_size, sector);
+                terminated_sector_nums.push(sector.sector_number);
                 total_penalty += pledge_penalty_for_termination(
                     &sector.expected_day_reward,
                     epoch - sector.power_base_epoch,
@@ -4183,6 +4197,10 @@ fn process_early_terminations(
     let terminated_data = BitField::try_from_bits(sectors_with_data)
         .context_code(ExitCode::USR_ILLEGAL_STATE, "invalid sector number")?;
     request_terminate_deals(rt, rt.curr_epoch(), &terminated_data)?;
+
+    for sector in terminated_sector_nums {
+        emit::sector_terminated(rt, sector)?;
+    }
 
     // reschedule cron worker, if necessary.
     Ok(more)
@@ -5257,6 +5275,10 @@ fn activate_new_sector_infos(
             .map_err(|e| actor_error!(illegal_state, "failed to add initial pledge: {}", e))?;
 
         state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
+
+        for sector in new_sector_numbers {
+            emit::sector_activated(rt, sector)?;
+        }
 
         Ok((total_pledge, newly_vested))
     })?;

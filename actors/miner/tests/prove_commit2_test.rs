@@ -327,7 +327,8 @@ fn expired_precommit_dropped_batch() {
 
     let cfg = ProveCommitSectors2Config { validation_failure: vec![0], ..Default::default() };
     let (result, claims, notifications) =
-        h.prove_commit_sectors2(&rt, &manifests, false, false, false, cfg).unwrap();
+        h.prove_commit_sectors2_for(&rt, &manifests, false, false, false,
+                                    cfg, vec![snos[1]]).unwrap();
     assert_commit_result(&[ExitCode::USR_ILLEGAL_ARGUMENT, ExitCode::OK], &result);
 
     // Sector 0: not committed
@@ -370,7 +371,9 @@ fn expired_precommit_dropped_aggregate() {
     ];
 
     let cfg = ProveCommitSectors2Config { validation_failure: vec![0], ..Default::default() };
-    let (result, _, _) = h.prove_commit_sectors2(&rt, &manifests, false, false, true, cfg).unwrap();
+    let (result, _, _) = h.prove_commit_sectors2_for(&rt, &manifests, false,
+                                                     false, true, cfg,
+                                                     vec![snos[1], snos[2], snos[3]]).unwrap();
     assert_commit_result(
         &[ExitCode::USR_ILLEGAL_ARGUMENT, ExitCode::OK, ExitCode::OK, ExitCode::OK],
         &result,
@@ -402,7 +405,8 @@ fn invalid_proof_dropped() {
 
     let cfg = ProveCommitSectors2Config { proof_failure: vec![0], ..Default::default() };
     let (result, _, _) =
-        h.prove_commit_sectors2(&rt, &manifests, false, false, false, cfg).unwrap();
+        h.prove_commit_sectors2_for(&rt, &manifests, false, false, false,
+                                    cfg, vec![snos[1]]).unwrap();
     assert_commit_result(&[ExitCode::USR_ILLEGAL_ARGUMENT, ExitCode::OK], &result);
 
     // Sector 0: not committed
@@ -428,7 +432,8 @@ fn invalid_claim_dropped() {
 
     let cfg = ProveCommitSectors2Config { claim_failure: vec![0], ..Default::default() };
     let (result, _, _) =
-        h.prove_commit_sectors2(&rt, &manifests, false, false, false, cfg).unwrap();
+        h.prove_commit_sectors2_for(&rt, &manifests, false, false, false,
+                                    cfg, vec![snos[1]]).unwrap();
     assert_commit_result(&[ExitCode::USR_ILLEGAL_ARGUMENT, ExitCode::OK], &result);
 
     // Sector 0: not committed

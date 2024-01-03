@@ -341,7 +341,8 @@ fn invalid_update_dropped() {
 
     let cfg = ProveReplicaUpdatesConfig { validation_failure: vec![0], ..Default::default() };
     let (result, claims, notifications) =
-        h.prove_replica_updates2_batch(&rt, &sector_updates, false, false, cfg).unwrap();
+        h.prove_replica_updates2_batch_for(&rt, &sector_updates, false, false,
+                                           cfg, vec![snos[1]]).unwrap();
     assert_update_result(&[ExitCode::USR_ILLEGAL_ARGUMENT, ExitCode::OK], &result);
 
     // Sector 0: no change.
@@ -369,7 +370,8 @@ fn invalid_proof_dropped() {
 
     let cfg = ProveReplicaUpdatesConfig { proof_failure: vec![0], ..Default::default() };
     let (result, _, _) =
-        h.prove_replica_updates2_batch(&rt, &sector_updates, false, false, cfg).unwrap();
+        h.prove_replica_updates2_batch_for(&rt, &sector_updates, false, false,
+                                           cfg, vec![snos[1]]).unwrap();
     assert_update_result(&[ExitCode::USR_ILLEGAL_ARGUMENT, ExitCode::OK], &result);
 
     verify_weights(&rt, &h, snos[0], 0, 0);
@@ -391,7 +393,8 @@ fn invalid_claim_dropped() {
 
     let cfg = ProveReplicaUpdatesConfig { claim_failure: vec![0], ..Default::default() };
     let (result, _, _) =
-        h.prove_replica_updates2_batch(&rt, &sector_updates, false, false, cfg).unwrap();
+        h.prove_replica_updates2_batch_for(&rt, &sector_updates, false, false,
+                                           cfg, vec![snos[1]]).unwrap();
     assert_update_result(&[ExitCode::USR_ILLEGAL_ARGUMENT, ExitCode::OK], &result);
 
     verify_weights(&rt, &h, snos[0], 0, 0);
