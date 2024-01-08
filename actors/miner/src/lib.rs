@@ -795,6 +795,7 @@ impl Actor {
             &proof_inputs,
             miner_actor_id,
             precommits[0].info.seal_proof,
+            RegisteredAggregateProof::SnarkPackV2,
             &params.aggregate_proof,
         )?;
 
@@ -1690,6 +1691,9 @@ impl Actor {
         rt.validate_immediate_caller_is(
             info.control_addresses.iter().chain(&[info.worker, info.owner]),
         )?;
+        if params.aggregate_proof_type != RegisteredAggregateProof::SnarkPackV2 {
+            return Err(actor_error!(illegal_argument, "aggregate proof type must be SnarkPackV2"));
+        }
 
         // Load pre-commits, failing if any don't exist.
         let sector_numbers = params.sector_activations.iter().map(|sa| sa.sector_number);
@@ -1786,6 +1790,7 @@ impl Actor {
                 &proof_inputs,
                 miner_id,
                 precommits[0].info.seal_proof,
+                params.aggregate_proof_type,
                 &params.aggregate_proof,
             )?;
 
@@ -4728,6 +4733,7 @@ fn verify_aggregate_seal(
     proof_inputs: &[SectorSealProofInput],
     miner_actor_id: ActorID,
     seal_proof: RegisteredSealProof,
+    aggregate_proof: RegisteredAggregateProof,
     proof_bytes: &RawBytes,
 ) -> Result<(), ActorError> {
     let seal_verify_inputs =
@@ -4736,7 +4742,7 @@ fn verify_aggregate_seal(
     rt.verify_aggregate_seals(&AggregateSealVerifyProofAndInfos {
         miner: miner_actor_id,
         seal_proof,
-        aggregate_proof: RegisteredAggregateProof::SnarkPackV2,
+        aggregate_proof,
         proof: proof_bytes.clone().into(),
         infos: seal_verify_inputs,
     })

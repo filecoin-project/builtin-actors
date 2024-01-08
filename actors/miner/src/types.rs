@@ -145,6 +145,8 @@ pub struct ProveCommitSectors3Params {
     // Aggregate proof for all sectors.
     // Exactly one of sector_proofs or aggregate_proof must be non-empty.
     pub aggregate_proof: RawBytes,
+    // The proof type for the aggregate proof (ignored if no aggregate proof).
+    pub aggregate_proof_type: RegisteredAggregateProof,
     // Whether to abort if any sector activation fails.
     pub require_activation_success: bool,
     // Whether to abort if any notification returns a non-zero exit code.
