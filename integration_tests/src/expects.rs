@@ -6,13 +6,13 @@ use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
+use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
 use fvm_shared::{ActorID, METHOD_SEND};
-use fvm_shared::bigint::BigInt;
-use fvm_shared::piece::PaddedPieceSize;
 use num_traits::Zero;
 
 use fil_actor_account::types::AuthenticateMessageParams;
@@ -25,7 +25,12 @@ use fil_actor_miner::ext::verifreg::ClaimID;
 use fil_actor_miner::{IsControllingAddressParam, PowerPair};
 use fil_actor_power::{UpdateClaimedPowerParams, UpdatePledgeTotalParams};
 use fil_actor_verifreg::GetClaimsParams;
-use fil_actors_runtime::{BURNT_FUNDS_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ID, EventBuilder, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ID, STORAGE_POWER_ACTOR_ADDR, STORAGE_POWER_ACTOR_ID, VERIFIED_REGISTRY_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ID};
+use fil_actors_runtime::{
+    EventBuilder, BURNT_FUNDS_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ID,
+    REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ID,
+    STORAGE_POWER_ACTOR_ADDR, STORAGE_POWER_ACTOR_ID, VERIFIED_REGISTRY_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ID,
+};
 
 use vm_api::trace::{EmittedEvent, ExpectInvocation};
 
@@ -213,6 +218,7 @@ impl Expect {
         amount: TokenAmount,
         operator_data: RawBytes,
         burn: bool,
+        alloc_events: Vec<EmittedEvent>,
     ) -> ExpectInvocation {
         let payload = IpldBlock::serialize_cbor(&FRC46TokenReceived {
             from,
@@ -244,11 +250,13 @@ impl Expect {
                     .unwrap(),
                 ),
                 subinvocs: Some(burn_invocs),
+                events: alloc_events,
                 ..Default::default()
             }]),
             ..Default::default()
         }
     }
+
     pub fn verifreg_get_claims(
         from: ActorID,
         miner: ActorID,
@@ -361,11 +369,21 @@ impl Expect {
         }
     }
 
-    pub fn build_market_event(typ: &str, deal_id: &DealID, client: &ActorID, provider: &ActorID) -> EmittedEvent {
+    pub fn build_market_event(
+        typ: &str,
+        deal_id: &DealID,
+        client: &ActorID,
+        provider: &ActorID,
+    ) -> EmittedEvent {
         EmittedEvent {
             emitter: STORAGE_MARKET_ACTOR_ID,
-            event: EventBuilder::new().typ(typ).field_indexed("id", &deal_id).field_indexed("client", &client).
-                field_indexed("provider", &provider).build().unwrap(),
+            event: EventBuilder::new()
+                .typ(typ)
+                .field_indexed("id", &deal_id)
+                .field_indexed("client", &client)
+                .field_indexed("provider", &provider)
+                .build()
+                .unwrap(),
         }
     }
 
@@ -402,9 +420,6 @@ impl Expect {
                 .field("piece-size", &BigInt::from(piece.1 .0));
         }
 
-        EmittedEvent {
-            emitter: *miner_id,
-            event: base_event.build().unwrap(),
-        }
+        EmittedEvent { emitter: *miner_id, event: base_event.build().unwrap() }
     }
 }

@@ -31,7 +31,9 @@ use vm_api::VM;
 
 use crate::expects::Expect;
 
-use crate::util::{assert_invariants, create_accounts, verifier_balance_event, verifreg_add_verifier};
+use crate::util::{
+    assert_invariants, create_accounts, verifier_balance_event, verifreg_add_verifier,
+};
 use crate::{TEST_VERIFREG_ROOT_ADDR, TEST_VERIFREG_ROOT_ID};
 
 #[vm_test]

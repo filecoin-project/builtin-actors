@@ -1,3 +1,4 @@
+use cid::Cid;
 use export_macro::vm_test;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
@@ -27,7 +28,7 @@ use fil_actors_runtime::test_utils::make_piece_cid;
 use fil_actors_runtime::{
     EPOCHS_IN_DAY, EPOCHS_IN_YEAR, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use vm_api::trace::ExpectInvocation;
+use vm_api::trace::{EmittedEvent, ExpectInvocation};
 use vm_api::util::apply_ok;
 use vm_api::VM;
 
@@ -207,7 +208,7 @@ pub fn prove_commit_sectors2_test(v: &dyn VM) {
         v,
         meta.len(),
         meta.len(),
-        meta,
+        meta.clone(),
         &worker,
         &maddr,
         seal_proof,
@@ -236,6 +237,25 @@ pub fn prove_commit_sectors2_test(v: &dyn VM) {
         MinerMethod::ProveCommitSectors3 as u64,
         Some(params.clone()),
     );
+
+    let events: Vec<EmittedEvent> = manifests
+        .iter()
+        .enumerate()
+        .map(|(i, sa)| {
+            let unsealed_cid = meta.get(i).unwrap().commd.get_cid(seal_proof).unwrap();
+
+            let pieces: Vec<(Cid, PaddedPieceSize)> =
+                sa.pieces.iter().map(|p| (p.cid, p.size)).collect();
+            Expect::build_sector_activation_event(
+                "sector-activated",
+                &miner_id,
+                &sa.sector_number,
+                &unsealed_cid,
+                &pieces,
+            )
+        })
+        .collect();
+
     ExpectInvocation {
         from: worker_id,
         to: maddr,
@@ -286,6 +306,11 @@ pub fn prove_commit_sectors2_test(v: &dyn VM) {
                     })
                     .unwrap(),
                 ),
+                events: vec![
+                    Expect::build_verifreg_event("claim", &alloc_ids_s2[0], &client_id, &miner_id),
+                    Expect::build_verifreg_event("claim", &alloc_ids_s2[1], &client_id, &miner_id),
+                    Expect::build_verifreg_event("claim", &alloc_ids_s4[0], &client_id, &miner_id),
+                ],
                 ..Default::default()
             },
             Expect::reward_this_epoch(miner_id),
@@ -318,6 +343,7 @@ pub fn prove_commit_sectors2_test(v: &dyn VM) {
                 ..Default::default()
             },
         ]),
+        events,
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());

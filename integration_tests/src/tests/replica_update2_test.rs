@@ -1,3 +1,4 @@
+use cid::Cid;
 use export_macro::vm_test;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
@@ -5,10 +6,11 @@ use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
 use fvm_shared::sector::{
     RegisteredAggregateProof, RegisteredSealProof, SectorNumber, StoragePower,
 };
+use integer_encoding::VarInt;
 use num_traits::Zero;
 
 use fil_actor_market::Method as MarketMethod;
@@ -29,7 +31,7 @@ use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
 use fil_actors_runtime::{
     EPOCHS_IN_DAY, EPOCHS_IN_YEAR, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use vm_api::trace::ExpectInvocation;
+use vm_api::trace::{EmittedEvent, ExpectInvocation};
 use vm_api::util::apply_ok;
 use vm_api::VM;
 
@@ -45,6 +47,24 @@ use crate::util::{
 
 #[vm_test]
 pub fn prove_replica_update2_test(v: &dyn VM) {
+    // TODO: move this code somewhere more accessible.
+    // This change was made during a long rebase during which structural change was not practical.
+    v.mut_primitives().override_compute_unsealed_sector_cid(
+        |proof_type: RegisteredSealProof, pis: &[PieceInfo]| {
+            if pis.is_empty() {
+                return Ok(CompactCommD::empty().get_cid(proof_type).unwrap());
+            }
+            let mut buf: Vec<u8> = Vec::new();
+            let ptv: i64 = proof_type.into();
+            buf.extend(ptv.encode_var_vec());
+            for p in pis {
+                buf.extend(&p.cid.to_bytes());
+                buf.extend(p.size.0.encode_var_vec())
+            }
+            Ok(make_piece_cid(&buf))
+        },
+    );
+
     let policy = Policy::default();
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -72,55 +92,10 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
             pieces: vec![],
         })
         .collect();
-    let meta: Vec<PrecommitMetadata> = (0..activations.len())
-        .map(|_| PrecommitMetadata { deals: vec![], commd: CompactCommD::empty() })
-        .collect();
-    let sector_expiry = v.epoch() + claim_term_min + 60 * EPOCHS_IN_DAY;
-    precommit_sectors_v2(
-        v,
-        meta.len(),
-        meta.len(),
-        meta,
-        &worker,
-        &maddr,
-        seal_proof,
-        first_sector_number,
-        true,
-        Some(sector_expiry),
-    );
-
-    let activation_epoch = v.epoch() + policy.pre_commit_challenge_delay + 1;
-    advance_by_deadline_to_epoch(v, &maddr, activation_epoch);
-    let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); activations.len()];
-    let params = ProveCommitSectors3Params {
-        sector_activations: activations,
-        sector_proofs: proofs,
-        aggregate_proof: RawBytes::default(),
-        require_activation_success: true,
-        require_notification_success: true,
-    };
-    apply_ok(
-        v,
-        &worker,
-        &maddr,
-        &TokenAmount::zero(),
-        MinerMethod::ProveCommitSectors3 as u64,
-        Some(params),
-    );
+    let first_sector_number: SectorNumber = 100;
     // Advance to proving period and submit post for the partition
     let (dlinfo, partition) = advance_to_proving_deadline(v, &maddr, first_sector_number);
     let deadline = dlinfo.index;
-    submit_windowed_post(v, &worker, &maddr, dlinfo, partition, None);
-    advance_by_deadline_to_index(v, &maddr, dlinfo.index + 1);
-    let update_epoch = v.epoch();
-
-    // Note: the allocation and claim configuration here are duplicated from the prove_commit2 test.
-    // Register verifier and verified clients
-    let datacap = StoragePower::from(32_u128 << 40);
-    verifreg_add_verifier(v, &verifier, &datacap * 2);
-    verifreg_add_client(v, &verifier, &client, datacap);
-
-    // Publish two verified allocations for half a sector each.
     let full_piece_size = PaddedPieceSize(sector_size as u64);
     let half_piece_size = PaddedPieceSize(sector_size as u64 / 2);
     let allocs = vec![
@@ -141,7 +116,9 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
             expiration: 30 * EPOCHS_IN_DAY,
         },
     ];
+    // Publish two verified allocations for half a sector each.
     let alloc_ids_s2 = datacap_create_allocations(v, &client, &allocs);
+    let alloc_ids_s4 = vec![alloc_ids_s2[alloc_ids_s2.len() - 1] + 1];
 
     // Publish a full-size deal
     let market_collateral = TokenAmount::from_whole(100);
@@ -165,10 +142,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
     let mut batcher = DealBatcher::new(v, opts);
     batcher.stage_with_label(client, maddr, "s4p1".to_string());
     let deal_ids_s4 = batcher.publish_ok(worker).ids;
-    let alloc_ids_s4 = vec![alloc_ids_s2[alloc_ids_s2.len() - 1] + 1];
 
-    // Update all sectors with a mix of data pieces, claims, and deals.
-    let first_sector_number: SectorNumber = 100;
     let manifests = vec![
         // Sector 0: no pieces (CC sector)
         SectorUpdateManifest {
@@ -248,6 +222,59 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
         },
     ];
 
+    let meta: Vec<PrecommitMetadata> = manifests
+        .iter()
+        .map(|sector| {
+            let pis: Vec<PieceInfo> =
+                sector.pieces.iter().map(|p| PieceInfo { size: p.size, cid: p.cid }).collect();
+            let commd = v.primitives().compute_unsealed_sector_cid(seal_proof, &pis).unwrap();
+            PrecommitMetadata { deals: vec![], commd: CompactCommD::of(commd) }
+        })
+        .collect();
+
+    let sector_expiry = v.epoch() + claim_term_min + 60 * EPOCHS_IN_DAY;
+    precommit_sectors_v2(
+        v,
+        meta.len(),
+        meta.len(),
+        meta.clone(),
+        &worker,
+        &maddr,
+        seal_proof,
+        first_sector_number,
+        true,
+        Some(sector_expiry),
+    );
+
+    let activation_epoch = v.epoch() + policy.pre_commit_challenge_delay + 1;
+    advance_by_deadline_to_epoch(v, &maddr, activation_epoch);
+    let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); activations.len()];
+    let params = ProveCommitSectors3Params {
+        sector_activations: activations,
+        sector_proofs: proofs,
+        aggregate_proof: RawBytes::default(),
+        require_activation_success: true,
+        require_notification_success: true,
+    };
+    apply_ok(
+        v,
+        &worker,
+        &maddr,
+        &TokenAmount::zero(),
+        MinerMethod::ProveCommitSectors3 as u64,
+        Some(params),
+    );
+
+    submit_windowed_post(v, &worker, &maddr, dlinfo, partition, None);
+    advance_by_deadline_to_index(v, &maddr, dlinfo.index + 1);
+    let update_epoch = v.epoch();
+
+    // Note: the allocation and claim configuration here are duplicated from the prove_commit2 test.
+    // Register verifier and verified clients
+    let datacap = StoragePower::from(32_u128 << 40);
+    verifreg_add_verifier(v, &verifier, &datacap * 2);
+    verifreg_add_client(v, &verifier, &client, datacap);
+
     // Replica update
     let update_proof = seal_proof.registered_update_proof().unwrap();
     let proofs = vec![RawBytes::new(vec![1, 2, 3, 4]); manifests.len()];
@@ -275,6 +302,26 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
             .map(|p| p.size.0 * 9)
             .sum::<u64>(),
     );
+
+    let events: Vec<EmittedEvent> = manifests
+        .iter()
+        .enumerate()
+        .map(|(i, sa)| {
+            let pieces: Vec<(Cid, PaddedPieceSize)> =
+                sa.pieces.iter().map(|p| (p.cid, p.size)).collect();
+
+            let unsealed_cid = meta.get(i).unwrap().commd.get_cid(seal_proof).unwrap();
+
+            Expect::build_sector_activation_event(
+                "sector-updated",
+                &miner_id,
+                &sa.sector,
+                &unsealed_cid,
+                &pieces,
+            )
+        })
+        .collect();
+
     ExpectInvocation {
         from: worker_id,
         to: maddr,
@@ -325,6 +372,11 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
                     })
                     .unwrap(),
                 ),
+                events: vec![
+                    Expect::build_verifreg_event("claim", &alloc_ids_s2[0], &client_id, &miner_id),
+                    Expect::build_verifreg_event("claim", &alloc_ids_s2[1], &client_id, &miner_id),
+                    Expect::build_verifreg_event("claim", &alloc_ids_s4[0], &client_id, &miner_id),
+                ],
                 ..Default::default()
             },
             Expect::reward_this_epoch(miner_id),
@@ -358,6 +410,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
                 ..Default::default()
             },
         ]),
+        events,
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());

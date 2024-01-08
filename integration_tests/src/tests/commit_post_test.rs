@@ -1,3 +1,4 @@
+use cid::Cid;
 use export_macro::vm_test;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -6,6 +7,7 @@ use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
+use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{PoStProof, RegisteredSealProof, SectorNumber, MAX_SECTOR_NUMBER};
 
@@ -29,7 +31,7 @@ use fil_actors_runtime::{
     CRON_ACTOR_ADDR, CRON_ACTOR_ID, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
     STORAGE_POWER_ACTOR_ID, SYSTEM_ACTOR_ADDR,
 };
-use vm_api::trace::ExpectInvocation;
+use vm_api::trace::{EmittedEvent, ExpectInvocation};
 use vm_api::util::{apply_code, apply_ok, get_state, DynBlockstore};
 use vm_api::VM;
 
@@ -63,7 +65,20 @@ fn setup(v: &dyn VM) -> (MinerInfo, SectorInfo) {
 
     // precommit and advance to prove commit time
     let sector_number: SectorNumber = 100;
-    precommit_sectors_v2(v, 1, 1, vec![], &worker, &id_addr, seal_proof, sector_number, true, None);
+    let infos = precommit_sectors_v2(
+        v,
+        1,
+        1,
+        vec![],
+        &worker,
+        &id_addr,
+        seal_proof,
+        sector_number,
+        true,
+        None,
+    );
+    let pc = &infos[0];
+    let unsealed_cid = pc.info.unsealed_cid.get_cid(pc.info.seal_proof).unwrap();
 
     let balances = miner_balance(v, &id_addr);
     assert!(balances.pre_commit_deposit.is_positive());
@@ -101,6 +116,7 @@ fn setup(v: &dyn VM) -> (MinerInfo, SectorInfo) {
         )
         .unwrap();
     assert_eq!(ExitCode::OK, res.code);
+    let pieces: Vec<(Cid, PaddedPieceSize)> = vec![];
     ExpectInvocation {
         to: CRON_ACTOR_ADDR,
         method: CronMethod::EpochTick as u64,
@@ -119,6 +135,13 @@ fn setup(v: &dyn VM) -> (MinerInfo, SectorInfo) {
                             id_addr.id().unwrap(),
                             None,
                         )]),
+                        events: vec![Expect::build_sector_activation_event(
+                            "sector-activated",
+                            &id_addr.id().unwrap(),
+                            &sector_number,
+                            &unsealed_cid,
+                            &pieces,
+                        )],
                         ..Default::default()
                     },
                     Expect::reward_update_kpi(),
@@ -708,7 +731,7 @@ pub fn aggregate_one_precommit_expires_test(v: &dyn VM) {
         None,
     );
 
-    let all_precommits = [early_precommits, later_precommits].concat();
+    let all_precommits = [early_precommits, later_precommits.clone()].concat();
 
     let sector_nos_bf =
         BitField::try_from_bits(all_precommits.iter().map(|info| info.info.sector_number)).unwrap();
@@ -747,6 +770,22 @@ pub fn aggregate_one_precommit_expires_test(v: &dyn VM) {
         MinerMethod::ProveCommitAggregate as u64,
         Some(prove_params),
     );
+
+    let events: Vec<EmittedEvent> = later_precommits
+        .iter()
+        .map(|info| {
+            let pieces: Vec<(Cid, PaddedPieceSize)> = vec![];
+            let unsealed_cid = &info.info.unsealed_cid.get_cid(info.info.seal_proof).unwrap();
+            Expect::build_sector_activation_event(
+                "sector-activated",
+                &miner_id,
+                &info.info.sector_number,
+                unsealed_cid,
+                &pieces,
+            )
+        })
+        .collect();
+
     ExpectInvocation {
         from: worker_id,
         to: miner_addr,
@@ -758,6 +797,7 @@ pub fn aggregate_one_precommit_expires_test(v: &dyn VM) {
             Expect::power_update_pledge(miner_id, None),
             Expect::burn(miner_id, None),
         ]),
+        events,
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());

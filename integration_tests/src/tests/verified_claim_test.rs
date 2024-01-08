@@ -437,7 +437,14 @@ pub fn expired_allocations_test(v: &dyn VM) {
     let mut allocs = verifreg_state.load_allocs(&store).unwrap();
     assert!(allocs.get(verified_client.id().unwrap(), alloc_id).unwrap().is_some());
 
-    verifreg_remove_expired_allocations(v, &worker, &verified_client, vec![], deal_size, vec![alloc_id]);
+    verifreg_remove_expired_allocations(
+        v,
+        &worker,
+        &verified_client,
+        vec![],
+        deal_size,
+        vec![alloc_id],
+    );
 
     // Allocation is gone
     let verifreg_state: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();

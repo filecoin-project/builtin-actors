@@ -1,5 +1,5 @@
-use std::cmp::min;
 use cid::Cid;
+use std::cmp::min;
 
 use frc46_token::receiver::FRC46TokenReceived;
 use frc46_token::receiver::FRC46_TOKEN_TYPE;
@@ -30,7 +30,10 @@ use num_traits::Zero;
 use fil_actor_cron::Method as CronMethod;
 use fil_actor_datacap::Method as DataCapMethod;
 use fil_actor_market::ext::verifreg::AllocationsResponse;
-use fil_actor_market::{ClientDealProposal, DealProposal, Label, Method as MarketMethod, PublishStorageDealsParams, PublishStorageDealsReturn, SectorDeals, State as MarketState, MARKET_NOTIFY_DEAL_METHOD};
+use fil_actor_market::{
+    ClientDealProposal, DealProposal, Label, Method as MarketMethod, PublishStorageDealsParams,
+    PublishStorageDealsReturn, SectorDeals, State as MarketState, MARKET_NOTIFY_DEAL_METHOD,
+};
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee,
     max_prove_commit_duration, ChangeBeneficiaryParams, CompactCommD, DeadlineInfo,
@@ -44,13 +47,14 @@ use fil_actor_multisig::Method as MultisigMethod;
 use fil_actor_multisig::ProposeParams;
 use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMethod};
 use fil_actor_verifreg::ext::datacap::MintParams;
-use fil_actor_verifreg::{AllocationRequest, DataCap};
 use fil_actor_verifreg::AllocationRequests;
 use fil_actor_verifreg::ClaimExtensionRequest;
 use fil_actor_verifreg::{
     AddVerifiedClientParams, AllocationID, ClaimID, ClaimTerm, ExtendClaimTermsParams,
-    Method as VerifregMethod, RemoveExpiredAllocationsParams, VerifierParams, State as VerifregState,
+    Method as VerifregMethod, RemoveExpiredAllocationsParams, State as VerifregState,
+    VerifierParams,
 };
+use fil_actor_verifreg::{AllocationRequest, DataCap};
 use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::policy_constants::{
@@ -59,7 +63,6 @@ use fil_actors_runtime::runtime::policy_constants::{
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::make_piece_cid;
 use fil_actors_runtime::test_utils::make_sealed_cid;
-use fil_actors_runtime::{DealWeight, EventBuilder};
 use fil_actors_runtime::CRON_ACTOR_ADDR;
 use fil_actors_runtime::DATACAP_TOKEN_ACTOR_ADDR;
 use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
@@ -67,6 +70,7 @@ use fil_actors_runtime::STORAGE_MARKET_ACTOR_ID;
 use fil_actors_runtime::STORAGE_POWER_ACTOR_ADDR;
 use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
+use fil_actors_runtime::{DealWeight, EventBuilder};
 use fil_actors_runtime::{DATACAP_TOKEN_ACTOR_ID, VERIFIED_REGISTRY_ACTOR_ID};
 use vm_api::trace::{EmittedEvent, ExpectInvocation};
 use vm_api::util::get_state;
@@ -185,7 +189,7 @@ pub fn miner_prove_sector(
     .matches(v.take_invocations().last().unwrap());
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct PrecommitMetadata {
     pub deals: Vec<DealID>,
     pub commd: CompactCommD,
@@ -253,9 +257,7 @@ pub fn precommit_sectors_v2_expect_code(
 
         let events: Vec<EmittedEvent> = param_sectors
             .iter()
-            .map(|ps| {
-                Expect::build_miner_event("sector-precommitted", miner_id, ps.sector_number)
-            })
+            .map(|ps| Expect::build_miner_event("sector-precommitted", miner_id, ps.sector_number))
             .collect();
 
         if !sectors_with_deals.is_empty() {
@@ -292,7 +294,7 @@ pub fn precommit_sectors_v2_expect_code(
                     .unwrap(),
                 ),
                 subinvocs: Some(invocs),
-                events: events,
+                events,
                 ..Default::default()
             };
             expect.matches(v.take_invocations().last().unwrap());
@@ -401,16 +403,25 @@ pub fn prove_commit_sectors(
 
         let st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
         let store = DynBlockstore::wrap(v.blockstore());
-        let events:Vec<EmittedEvent> = to_prove.iter().map(|ps| {
-            let mut pieces:Vec<(Cid, PaddedPieceSize)> = vec![];
-            for deal_id in &ps.info.deal_ids {
-                let proposal = st.get_proposal(&store, *deal_id).unwrap();
-                pieces.push((proposal.piece_cid, proposal.piece_size));
-            }
+        let events: Vec<EmittedEvent> = to_prove
+            .iter()
+            .map(|ps| {
+                let mut pieces: Vec<(Cid, PaddedPieceSize)> = vec![];
+                for deal_id in &ps.info.deal_ids {
+                    let proposal = st.get_proposal(&store, *deal_id).unwrap();
+                    pieces.push((proposal.piece_cid, proposal.piece_size));
+                }
 
-           let unsealed_cid = &ps.info.unsealed_cid.get_cid(ps.info.seal_proof).unwrap();
-           Expect::build_sector_activation_event("sector-activated", &miner_id, &ps.info.sector_number, &unsealed_cid, &pieces)
-       }).collect();
+                let unsealed_cid = &ps.info.unsealed_cid.get_cid(ps.info.seal_proof).unwrap();
+                Expect::build_sector_activation_event(
+                    "sector-activated",
+                    &miner_id,
+                    &ps.info.sector_number,
+                    unsealed_cid,
+                    &pieces,
+                )
+            })
+            .collect();
 
         let expected_fee = aggregate_prove_commit_network_fee(to_prove.len(), &TokenAmount::zero());
         ExpectInvocation {
@@ -424,7 +435,7 @@ pub fn prove_commit_sectors(
                 Expect::power_update_pledge(miner_id, None),
                 Expect::burn(miner_id, Some(expected_fee)),
             ]),
-            events: events,
+            events,
             ..Default::default()
         }
         .matches(v.take_invocations().last().unwrap());
@@ -876,7 +887,7 @@ pub fn verifreg_remove_expired_allocations(
             let alloc = allocs.get(client.id().unwrap(), *id).unwrap().unwrap();
             Expect::build_verifreg_event(
                 "allocation-removed",
-                &id,
+                id,
                 &client.id().unwrap(),
                 &alloc.provider,
             )
@@ -966,11 +977,21 @@ pub fn datacap_create_allocations(
     .unwrap();
     let alloc_response: AllocationsResponse = tfer_result.recipient_data.deserialize().unwrap();
 
+    let events: Vec<EmittedEvent> = alloc_response
+        .new_allocations
+        .iter()
+        .enumerate()
+        .map(|(i, alloc_id)| {
+            Expect::build_verifreg_event("allocation", alloc_id, &client_id, &reqs[i].provider)
+        })
+        .collect::<Vec<EmittedEvent>>();
+
     Expect::datacap_transfer_to_verifreg(
         client_id,
         token_amount,
         operator_data,
-        false, // No burn
+        false,
+        events, // No burn
     )
     .matches(v.take_invocations().last().unwrap());
 
@@ -1016,6 +1037,12 @@ pub fn datacap_extend_claim(
         token_amount,
         operator_data,
         true, // Burn
+        vec![Expect::build_verifreg_event(
+            "claim-updated",
+            &claim,
+            &client_id,
+            &provider.id().unwrap(),
+        )],
     )
     .matches(v.take_invocations().last().unwrap());
 }
@@ -1188,7 +1215,12 @@ pub fn market_publish_deal(
         to: STORAGE_MARKET_ACTOR_ADDR,
         method: MarketMethod::PublishStorageDeals as u64,
         subinvocs: Some(expect_publish_invocs),
-        events: vec![Expect::build_market_event("deal-published", &ret.ids[0], &deal_client.id().unwrap(), &miner_id.id().unwrap())],
+        events: vec![Expect::build_market_event(
+            "deal-published",
+            &ret.ids[0],
+            &deal_client.id().unwrap(),
+            &miner_id.id().unwrap(),
+        )],
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
