@@ -1,3 +1,4 @@
+use cid::Cid;
 use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
 use frc46_token::token::types::BurnParams;
 use fvm_actor_utils::receiver::UniversalReceiverParams;
@@ -10,6 +11,8 @@ use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
 use fvm_shared::{ActorID, METHOD_SEND};
+use fvm_shared::bigint::BigInt;
+use fvm_shared::piece::PaddedPieceSize;
 use num_traits::Zero;
 
 use fil_actor_account::types::AuthenticateMessageParams;
@@ -22,13 +25,9 @@ use fil_actor_miner::ext::verifreg::ClaimID;
 use fil_actor_miner::{IsControllingAddressParam, PowerPair};
 use fil_actor_power::{UpdateClaimedPowerParams, UpdatePledgeTotalParams};
 use fil_actor_verifreg::GetClaimsParams;
-use fil_actors_runtime::{
-    BURNT_FUNDS_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ID, REWARD_ACTOR_ADDR,
-    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, STORAGE_POWER_ACTOR_ID,
-    VERIFIED_REGISTRY_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ID,
-};
+use fil_actors_runtime::{BURNT_FUNDS_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ID, EventBuilder, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ID, STORAGE_POWER_ACTOR_ADDR, STORAGE_POWER_ACTOR_ID, VERIFIED_REGISTRY_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ID};
 
-use vm_api::trace::ExpectInvocation;
+use vm_api::trace::{EmittedEvent, ExpectInvocation};
 
 /// Static helper functions for creating invocation expectations.
 pub struct Expect {}
@@ -341,6 +340,71 @@ impl Expect {
             value: Some(TokenAmount::zero()),
             subinvocs: Some(vec![]),
             ..Default::default()
+        }
+    }
+
+    pub fn build_verifreg_event(
+        typ: &str,
+        id: &u64,
+        client: &ActorID,
+        provider: &ActorID,
+    ) -> EmittedEvent {
+        EmittedEvent {
+            emitter: VERIFIED_REGISTRY_ACTOR_ID,
+            event: EventBuilder::new()
+                .typ(typ)
+                .field_indexed("id", &id)
+                .field_indexed("client", &client)
+                .field_indexed("provider", &provider)
+                .build()
+                .unwrap(),
+        }
+    }
+
+    pub fn build_market_event(typ: &str, deal_id: &DealID, client: &ActorID, provider: &ActorID) -> EmittedEvent {
+        EmittedEvent {
+            emitter: STORAGE_MARKET_ACTOR_ID,
+            event: EventBuilder::new().typ(typ).field_indexed("id", &deal_id).field_indexed("client", &client).
+                field_indexed("provider", &provider).build().unwrap(),
+        }
+    }
+
+    pub fn build_miner_event(
+        typ: &str,
+        miner_id: ActorID,
+        sector_number: SectorNumber,
+    ) -> EmittedEvent {
+        EmittedEvent {
+            emitter: miner_id,
+            event: EventBuilder::new()
+                .typ(typ)
+                .field_indexed("sector", &sector_number)
+                .build()
+                .unwrap(),
+        }
+    }
+
+    pub fn build_sector_activation_event(
+        typ: &str,
+        miner_id: &ActorID,
+        sector_number: &SectorNumber,
+        unsealed_cid: &Cid,
+        pieces: &Vec<(Cid, PaddedPieceSize)>,
+    ) -> EmittedEvent {
+        let mut base_event = EventBuilder::new()
+            .typ(typ)
+            .field_indexed("sector", &sector_number)
+            .field_indexed("unsealed-cid", &unsealed_cid);
+
+        for piece in pieces {
+            base_event = base_event
+                .field_indexed("piece-cid", &piece.0)
+                .field("piece-size", &BigInt::from(piece.1 .0));
+        }
+
+        EmittedEvent {
+            emitter: *miner_id,
+            event: base_event.build().unwrap(),
         }
     }
 }
