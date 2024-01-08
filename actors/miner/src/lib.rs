@@ -4,7 +4,7 @@
 use std::cmp;
 use std::cmp::max;
 use std::collections::btree_map::Entry;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::ops::Neg;
 
 use anyhow::{anyhow, Error};
@@ -20,7 +20,7 @@ use fvm_shared::clock::{ChainEpoch, QuantSpec};
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::*;
-use fvm_shared::piece::PieceInfo;
+use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
 use fvm_shared::randomness::*;
 use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::*;
@@ -825,8 +825,19 @@ impl Actor {
             activate_sectors_deals(rt, &data_activation_inputs, compute_commd)?;
         let activated_precommits = batch_return.successes(&valid_precommits);
 
-        activate_new_sector_infos(rt, activated_precommits, activated_data, &pledge_inputs, &info)?;
+        activate_new_sector_infos(
+            rt,
+            activated_precommits.clone(),
+            activated_data,
+            &pledge_inputs,
+            &info,
+        )?;
 
+        for pc in activated_precommits {
+            let unsealed_cid = pc.info.unsealed_cid.get_cid(pc.info.seal_proof)?;
+            let pieces = get_piece_manifest_from_deals(rt, &pc.info.deal_ids)?;
+            emit::sector_activated(rt, pc.info.sector_number, &unsealed_cid, &pieces)?;
+        }
         // The aggregate fee is paid on the sectors successfully proven.
         pay_aggregate_seal_proof_fee(rt, valid_precommits.len())?;
         Ok(())
@@ -965,6 +976,9 @@ impl Actor {
                 sector_info: usi.sector_info,
                 activated_data,
             });
+
+            let pieces = get_piece_manifest_from_deals(rt, &usi.update.deals)?;
+            emit::sector_updated(rt, usi.update.sector_number, &computed_commd, &pieces)?;
         }
 
         let (power_delta, pledge_delta) = update_replica_states(
@@ -1002,6 +1016,7 @@ impl Actor {
             ));
         }
 
+        let mut sector_commds: HashMap<SectorNumber, Cid> = HashMap::new();
         // Load sector infos for validation, failing if any don't exist.
         let mut sectors = Sectors::load(&store, &state.sectors)
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")?;
@@ -1025,6 +1040,8 @@ impl Actor {
                 // Validation needs to accept this empty proof.
                 replica_proof: params.sector_proofs.get(i).unwrap_or(&RawBytes::default()).clone(),
             });
+
+            sector_commds.insert(update.sector, computed_commd);
         }
 
         // Validate inputs.
@@ -1165,6 +1182,17 @@ impl Actor {
                 sector_expiration: sector_info.expiration,
                 pieces: &update.pieces,
             });
+
+            // create a Vec<(Cid, PaddedPieceSize)> from update.pieces and call emit::sector_updated
+            let pieces: Vec<(Cid, PaddedPieceSize)> =
+                update.pieces.iter().map(|x| (x.cid, x.size)).collect();
+
+            emit::sector_updated(
+                rt,
+                update.sector,
+                sector_commds.get(&update.sector).unwrap(),
+                &pieces,
+            )?;
         }
         notify_data_consumers(rt, &notifications, params.require_notification_success)?;
 
@@ -1865,6 +1893,12 @@ impl Actor {
                 sector_expiration: sector.info.expiration,
                 pieces: &activations.pieces,
             });
+
+            let pieces: Vec<(Cid, PaddedPieceSize)> =
+                activations.pieces.iter().map(|p| (p.cid, p.size)).collect();
+            let unsealed_cid = sector.info.unsealed_cid.get_cid(sector.info.seal_proof)?;
+
+            emit::sector_activated(rt, sector.info.sector_number, &unsealed_cid, &pieces)?;
         }
         notify_data_consumers(rt, &notifications, params.require_notification_success)?;
 
@@ -1973,11 +2007,18 @@ impl Actor {
         };
         activate_new_sector_infos(
             rt,
-            successful_activations,
+            successful_activations.clone(),
             data_activations,
             &pledge_inputs,
             &info,
-        )
+        )?;
+
+        for pc in successful_activations.iter() {
+            let pieces = get_piece_manifest_from_deals(rt, &pc.info.deal_ids)?;
+            let unsealed_cid = pc.info.unsealed_cid.get_cid(pc.info.seal_proof)?;
+            emit::sector_activated(rt, pc.info.sector_number, &unsealed_cid, &pieces)?;
+        }
+        Ok(())
     }
 
     fn check_sector_proven(
@@ -3978,8 +4019,6 @@ where
                 expected_count
             ));
         }
-        let updated_sector_nums =
-            new_sectors.iter().map(|x| x.sector_number).collect::<Vec<SectorNumber>>();
 
         // Overwrite sector infos.
         sectors.store(new_sectors).map_err(|e| {
@@ -3992,10 +4031,6 @@ where
         state.save_deadlines(rt.store(), deadlines).map_err(|e| {
             e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to save deadlines")
         })?;
-
-        for sector in updated_sector_nums {
-            emit::sector_updated(rt, sector)?;
-        }
 
         // Update pledge.
         let current_balance = rt.current_balance();
@@ -4807,6 +4842,31 @@ fn verify_deals(
     ))?)
 }
 
+fn get_piece_manifest_from_deals(
+    rt: &impl Runtime,
+    deal_ids: &Vec<DealID>,
+) -> Result<Vec<(Cid, PaddedPieceSize)>, ActorError> {
+    let mut pieces: Vec<(Cid, PaddedPieceSize)> = vec![];
+
+    for deal_id in deal_ids {
+        let ret = get_deal_data_commitment(rt, deal_id)?;
+        pieces.push((ret.data, ret.size));
+    }
+    Ok(pieces)
+}
+
+fn get_deal_data_commitment(
+    rt: &impl Runtime,
+    deal_id: &DealID,
+) -> Result<ext::market::GetDealDataCommitmentReturn, ActorError> {
+    deserialize_block(extract_send_result(rt.send_simple(
+        &STORAGE_MARKET_ACTOR_ADDR,
+        ext::market::GET_DEAL_DATA_COMMITMENT,
+        IpldBlock::serialize_cbor(&ext::market::GetDealDataCommitmentParams { deal_id: *deal_id })?,
+        TokenAmount::zero(),
+    ))?)
+}
+
 /// Requests the current epoch target block reward from the reward actor.
 /// return value includes reward, smoothed estimate of reward, and baseline power
 fn request_current_epoch_block_reward(
@@ -5275,10 +5335,6 @@ fn activate_new_sector_infos(
             .map_err(|e| actor_error!(illegal_state, "failed to add initial pledge: {}", e))?;
 
         state.check_balance_invariants(&rt.current_balance()).map_err(balance_invariants_broken)?;
-
-        for sector in new_sector_numbers {
-            emit::sector_activated(rt, sector)?;
-        }
 
         Ok((total_pledge, newly_vested))
     })?;

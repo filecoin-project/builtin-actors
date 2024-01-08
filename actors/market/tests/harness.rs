@@ -1253,10 +1253,8 @@ pub fn terminate_deals_for(
 }
 
 pub fn terminate_deals(rt: &MockRuntime, miner_addr: Address, sectors: &[SectorNumber]) {
-    let all_deal_ids = sectors
-        .iter()
-        .flat_map(|s| get_sector_deal_ids(rt, &miner_addr, *s))
-        .collect::<Vec<_>>();
+    let all_deal_ids =
+        sectors.iter().flat_map(|s| get_sector_deal_ids(rt, &miner_addr, *s)).collect::<Vec<_>>();
 
     let ret = terminate_deals_raw(rt, miner_addr, sectors, all_deal_ids).unwrap();
     assert!(ret.is_none());
