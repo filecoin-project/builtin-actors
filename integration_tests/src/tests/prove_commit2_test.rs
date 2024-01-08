@@ -6,7 +6,9 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
-use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
+use fvm_shared::sector::{
+    RegisteredAggregateProof, RegisteredSealProof, SectorNumber, StoragePower,
+};
 use integer_encoding::VarInt;
 use num_traits::Zero;
 
@@ -225,6 +227,7 @@ pub fn prove_commit_sectors2_test(v: &dyn VM) {
         sector_activations: manifests.clone(),
         sector_proofs: proofs,
         aggregate_proof: RawBytes::default(),
+        aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
         require_activation_success: true,
         require_notification_success: true,
     };
