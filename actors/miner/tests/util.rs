@@ -1147,6 +1147,7 @@ impl ActorHarness {
             } else {
                 vec![]
             },
+            aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
             require_activation_success,
             require_notification_success,
         };
