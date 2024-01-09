@@ -10,19 +10,23 @@ use fvm_ipld_encoding::{CborStore, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::piece::PieceInfo;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
 use fvm_shared::{ActorID, METHOD_SEND};
-use std::collections::HashMap;
-use fvm_shared::piece::PieceInfo;
 use integer_encoding::VarInt;
+use std::collections::HashMap;
 
 use fil_actor_miner::ext::verifreg::AllocationID;
-use fil_actor_miner::{new_deadline_info_from_offset_and_epoch, Deadline, DeadlineInfo, GetBeneficiaryReturn, Method as MinerMethod, MinerInfo, PowerPair, SectorOnChainInfo, State as MinerState, CompactCommD};
+use fil_actor_miner::{
+    new_deadline_info_from_offset_and_epoch, CompactCommD, Deadline, DeadlineInfo,
+    GetBeneficiaryReturn, Method as MinerMethod, MinerInfo, PowerPair, SectorOnChainInfo,
+    State as MinerState,
+};
 use fil_actor_verifreg::{Claim, ClaimID, State as VerifregState};
+use fil_actors_runtime::test_utils::make_piece_cid;
 use fil_builtin_actors_state::check::check_state_invariants;
 use num_traits::Zero;
 use regex::Regex;
-use fil_actors_runtime::test_utils::make_piece_cid;
 use vm_api::{
     util::{apply_ok, get_state, pk_addrs_from, DynBlockstore},
     VM,

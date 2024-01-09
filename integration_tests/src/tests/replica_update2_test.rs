@@ -1,3 +1,4 @@
+use cid::Cid;
 use export_macro::vm_test;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
@@ -5,7 +6,7 @@ use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
 use fvm_shared::sector::{
     RegisteredAggregateProof, RegisteredSealProof, SectorNumber, StoragePower,
 };
@@ -29,7 +30,7 @@ use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
 use fil_actors_runtime::{
     EPOCHS_IN_DAY, EPOCHS_IN_YEAR, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use vm_api::trace::ExpectInvocation;
+use vm_api::trace::{EmittedEvent, ExpectInvocation};
 use vm_api::util::apply_ok;
 use vm_api::VM;
 
@@ -38,13 +39,15 @@ use crate::expects::Expect;
 use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline,
     create_accounts, create_miner, datacap_create_allocations, market_add_balance,
-    market_list_deals, market_list_sectors_deals, precommit_sectors_v2, sector_info,
-    submit_windowed_post, verifreg_add_client, verifreg_add_verifier, verifreg_list_claims,
-    PrecommitMetadata,
+    market_list_deals, market_list_sectors_deals, override_compute_unsealed_sector_cid,
+    precommit_sectors_v2, sector_info, submit_windowed_post, verifreg_add_client,
+    verifreg_add_verifier, verifreg_list_claims, PrecommitMetadata,
 };
 
 #[vm_test]
 pub fn prove_replica_update2_test(v: &dyn VM) {
+    override_compute_unsealed_sector_cid(v);
+
     let policy = Policy::default();
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -276,6 +279,27 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
             .map(|p| p.size.0 * 9)
             .sum::<u64>(),
     );
+
+    let events: Vec<EmittedEvent> = manifests
+        .iter()
+        .map(|m| {
+            let pieces: Vec<(Cid, PaddedPieceSize)> =
+                m.pieces.iter().map(|p| (p.cid, p.size)).collect();
+
+            let pis: Vec<PieceInfo> =
+                m.pieces.iter().map(|p| PieceInfo { cid: p.cid, size: p.size }).collect();
+            let unsealed_cid =
+                v.primitives().compute_unsealed_sector_cid(seal_proof, &pis).unwrap();
+            Expect::build_sector_activation_event(
+                "sector-updated",
+                &miner_id,
+                &m.sector,
+                &unsealed_cid,
+                &pieces,
+            )
+        })
+        .collect();
+
     ExpectInvocation {
         from: worker_id,
         to: maddr,
@@ -326,6 +350,11 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
                     })
                     .unwrap(),
                 ),
+                events: vec![
+                    Expect::build_verifreg_event("claim", &alloc_ids_s2[0], &client_id, &miner_id),
+                    Expect::build_verifreg_event("claim", &alloc_ids_s2[1], &client_id, &miner_id),
+                    Expect::build_verifreg_event("claim", &alloc_ids_s4[0], &client_id, &miner_id),
+                ],
                 ..Default::default()
             },
             Expect::reward_this_epoch(miner_id),
@@ -359,6 +388,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
                 ..Default::default()
             },
         ]),
+        events,
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());

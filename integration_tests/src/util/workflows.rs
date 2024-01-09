@@ -1005,6 +1005,7 @@ pub fn datacap_extend_claim(
     claim: ClaimID,
     size: u64,
     new_term: ChainEpoch,
+    claim_client: &ActorID,
 ) {
     let payload = AllocationRequests {
         allocations: vec![],
@@ -1040,7 +1041,7 @@ pub fn datacap_extend_claim(
         vec![Expect::build_verifreg_event(
             "claim-updated",
             &claim,
-            &client_id,
+            claim_client,
             &provider.id().unwrap(),
         )],
     )

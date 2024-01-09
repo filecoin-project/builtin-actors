@@ -1,11 +1,4 @@
 use cid::Cid;
-use fvm_ipld_bitfield::BitField;
-use fvm_shared::address::Address;
-use fvm_shared::bigint::Zero;
-use fvm_shared::clock::ChainEpoch;
-use fvm_shared::econ::TokenAmount;
-use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
-use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 use export_macro::vm_test;
 use fil_actor_miner::{
     max_prove_commit_duration, power_for_sector, ExpirationExtension, ExpirationExtension2,
@@ -16,13 +9,30 @@ use fil_actor_miner::{
 use fil_actor_verifreg::Method as VerifregMethod;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
-use fil_actors_runtime::{DealWeight, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR};
+use fil_actors_runtime::{
+    DealWeight, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+};
+use fvm_ipld_bitfield::BitField;
+use fvm_shared::address::Address;
+use fvm_shared::bigint::Zero;
+use fvm_shared::clock::ChainEpoch;
+use fvm_shared::econ::TokenAmount;
+use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
+use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 use vm_api::trace::ExpectInvocation;
 use vm_api::util::{apply_ok, get_state, mutate_state, DynBlockstore};
 use vm_api::VM;
 
 use crate::expects::Expect;
-use crate::util::{advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving, advance_by_deadline_to_index, advance_to_proving_deadline, bf_all, create_accounts, create_miner, cron_tick, expect_invariants, invariant_failure_patterns, market_add_balance, market_pending_deal_allocations, market_publish_deal, miner_precommit_one_sector_v2, miner_prove_sector, precommit_meta_data_from_deals, sector_deadline, submit_windowed_post, verifreg_add_client, verifreg_add_verifier, PrecommitMetadata, override_compute_unsealed_sector_cid};
+use crate::util::{
+    advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
+    advance_by_deadline_to_index, advance_to_proving_deadline, bf_all, create_accounts,
+    create_miner, cron_tick, expect_invariants, invariant_failure_patterns, market_add_balance,
+    market_pending_deal_allocations, market_publish_deal, miner_precommit_one_sector_v2,
+    miner_prove_sector, override_compute_unsealed_sector_cid, precommit_meta_data_from_deals,
+    sector_deadline, submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
+    PrecommitMetadata,
+};
 
 #[allow(clippy::too_many_arguments)]
 pub fn extend(
@@ -523,7 +533,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     let policy = Policy::default();
     let deal_label = "deal1".to_string();
     let piece_cid = make_piece_cid(deal_label.as_bytes());
-    let piece_size =  PaddedPieceSize(32u64 << 30);
+    let piece_size = PaddedPieceSize(32u64 << 30);
 
     // create miner
     let miner_addr = create_miner(
@@ -613,7 +623,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         &verified_client,
         &miner_addr,
         deal_label,
-       piece_size,
+        piece_size,
         true,
         deal_start,
         340 * EPOCHS_IN_DAY,
@@ -694,7 +704,13 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
                 PowerPair { raw: StoragePower::zero(), qa: 9 * old_power.qa },
             ),
         ]),
-        events: vec![Expect::build_sector_activation_event("sector-updated", &miner_id, &sector_number, &unsealed_cid, &pieces)],
+        events: vec![Expect::build_sector_activation_event(
+            "sector-updated",
+            &miner_id,
+            &sector_number,
+            &unsealed_cid,
+            &pieces,
+        )],
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());

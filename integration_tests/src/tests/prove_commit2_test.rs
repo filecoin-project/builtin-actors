@@ -10,7 +10,6 @@ use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
 use fvm_shared::sector::{
     RegisteredAggregateProof, RegisteredSealProof, SectorNumber, StoragePower,
 };
-use integer_encoding::VarInt;
 use num_traits::Zero;
 
 use fil_actor_market::Method as MarketMethod;
@@ -36,7 +35,12 @@ use vm_api::VM;
 
 use crate::deals::{DealBatcher, DealOptions};
 use crate::expects::Expect;
-use crate::util::{advance_by_deadline_to_epoch, create_accounts, create_miner, datacap_create_allocations, market_add_balance, market_list_deals, market_list_sectors_deals, precommit_sectors_v2, sector_info, verifreg_add_client, verifreg_add_verifier, verifreg_list_claims, PrecommitMetadata, override_compute_unsealed_sector_cid};
+use crate::util::{
+    advance_by_deadline_to_epoch, create_accounts, create_miner, datacap_create_allocations,
+    market_add_balance, market_list_deals, market_list_sectors_deals,
+    override_compute_unsealed_sector_cid, precommit_sectors_v2, sector_info, verifreg_add_client,
+    verifreg_add_verifier, verifreg_list_claims, PrecommitMetadata,
+};
 
 #[vm_test]
 pub fn prove_commit_sectors2_test(v: &dyn VM) {

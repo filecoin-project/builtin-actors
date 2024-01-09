@@ -35,7 +35,15 @@ use vm_api::VM;
 
 use crate::expects::Expect;
 
-use crate::util::{advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline, assert_invariants, bf_all, check_sector_active, check_sector_faulty, create_accounts, create_miner, deadline_state, declare_recovery, expect_invariants, get_deal_weights, get_network_stats, invariant_failure_patterns, make_bitfield, market_publish_deal, miner_balance, miner_power, override_compute_unsealed_sector_cid, precommit_sectors_v2, prove_commit_sectors, sector_info, submit_invalid_post, submit_windowed_post, verifreg_add_client, verifreg_add_verifier};
+use crate::util::{
+    advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline,
+    assert_invariants, bf_all, check_sector_active, check_sector_faulty, create_accounts,
+    create_miner, deadline_state, declare_recovery, expect_invariants, get_deal_weights,
+    get_network_stats, invariant_failure_patterns, make_bitfield, market_publish_deal,
+    miner_balance, miner_power, override_compute_unsealed_sector_cid, precommit_sectors_v2,
+    prove_commit_sectors, sector_info, submit_invalid_post, submit_windowed_post,
+    verifreg_add_client, verifreg_add_verifier,
+};
 
 #[vm_test]
 pub fn replica_update_full_path_success_test(v: &dyn VM) {
@@ -1035,12 +1043,17 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
     assert_eq!(vec![100], bf_all(updated_sectors));
 
     let claim_id = 1_u64;
-    let claim_event =
-        Expect::build_verifreg_event("claim", &claim_id, &client.id().unwrap(), &maddr.id().unwrap());
+    let claim_event = Expect::build_verifreg_event(
+        "claim",
+        &claim_id,
+        &client.id().unwrap(),
+        &maddr.id().unwrap(),
+    );
     let old_power = power_for_sector(seal_proof.sector_size().unwrap(), &old_sector_info);
 
     let pieces: Vec<(Cid, PaddedPieceSize)> = vec![(proposal.piece_cid, proposal.piece_size)];
-    let pis: Vec<PieceInfo> = vec![PieceInfo { cid:proposal.piece_cid, size: proposal.piece_size}];
+    let pis: Vec<PieceInfo> =
+        vec![PieceInfo { cid: proposal.piece_cid, size: proposal.piece_size }];
     let unsealed_cid = v.primitives().compute_unsealed_sector_cid(seal_proof, &pis).unwrap();
 
     // check for the expected subcalls
@@ -1062,7 +1075,7 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
                 from: miner_id,
                 to: VERIFIED_REGISTRY_ACTOR_ADDR,
                 method: VerifregMethod::ClaimAllocations as u64,
-                events:vec![claim_event],
+                events: vec![claim_event],
                 ..Default::default()
             },
             ExpectInvocation {
@@ -1080,7 +1093,13 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
                 PowerPair { raw: StoragePower::zero(), qa: 9 * old_power.qa },
             ),
         ]),
-        events: vec![Expect::build_sector_activation_event("sector-updated", &miner_id, &sector_number, &unsealed_cid, &pieces)],
+        events: vec![Expect::build_sector_activation_event(
+            "sector-updated",
+            &miner_id,
+            &sector_number,
+            &unsealed_cid,
+            &pieces,
+        )],
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());

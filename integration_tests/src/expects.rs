@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use cid::Cid;
 use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
 use frc46_token::token::types::BurnParams;
@@ -56,7 +55,7 @@ impl Expect {
     ) -> ExpectInvocation {
         let events: Vec<EmittedEvent> = deals
             .iter()
-            .map(|deal_id| Expect::build_market_event("deal-activated", &deal_id, client_id, &from))
+            .map(|deal_id| Expect::build_market_event("deal-activated", deal_id, client_id, &from))
             .collect();
 
         let params = IpldBlock::serialize_cbor(&BatchActivateDealsParams {
@@ -84,11 +83,13 @@ impl Expect {
         from: ActorID,
         epoch: ChainEpoch,
         sectors: Vec<SectorNumber>,
-       deal_clients: Vec<(DealID, ActorID)>,
+        deal_clients: Vec<(DealID, ActorID)>,
     ) -> ExpectInvocation {
         let events: Vec<EmittedEvent> = deal_clients
             .iter()
-            .map(|(deal_id,client)| Expect::build_market_event("deal-terminated", &deal_id, &client, &from))
+            .map(|(deal_id, client)| {
+                Expect::build_market_event("deal-terminated", deal_id, client, &from)
+            })
             .collect();
 
         let bf = BitField::try_from_bits(sectors).unwrap();
@@ -233,7 +234,7 @@ impl Expect {
         amount: TokenAmount,
         operator_data: RawBytes,
         burn: bool,
-        alloc_events: Vec<EmittedEvent>,
+        claim_events: Vec<EmittedEvent>,
     ) -> ExpectInvocation {
         let payload = IpldBlock::serialize_cbor(&FRC46TokenReceived {
             from,
@@ -265,7 +266,7 @@ impl Expect {
                     .unwrap(),
                 ),
                 subinvocs: Some(burn_invocs),
-                events: alloc_events,
+                events: claim_events,
                 ..Default::default()
             }]),
             ..Default::default()
