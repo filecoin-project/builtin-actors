@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use export_macro::vm_test;
 use fil_actor_cron::Method as CronMethod;
 use fil_actor_market::{
@@ -22,6 +23,8 @@ use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use num_traits::cast::FromPrimitive;
 use std::ops::Neg;
+use fvm_shared::ActorID;
+use fvm_shared::deal::DealID;
 use vm_api::trace::ExpectInvocation;
 use vm_api::util::{apply_ok, get_state, DynBlockstore};
 use vm_api::VM;
@@ -243,6 +246,10 @@ pub fn terminate_sectors_test(v: &dyn VM) {
     }
     let epoch = v.epoch();
 
+    let expect_event = Expect::build_miner_event("sector-terminated", miner_id, sector_number);
+    let mut deal_clients:Vec<(DealID, ActorID)> = vec![(deal_ids[0], verified_client_id), (deal_ids[1], verified_client_id),
+                                                       (deal_ids[2], unverified_client.id().unwrap())];
+
     // Terminate Sector
     apply_ok(
         v,
@@ -267,9 +274,10 @@ pub fn terminate_sectors_test(v: &dyn VM) {
             Expect::power_current_total(miner_id),
             Expect::burn(miner_id, None),
             Expect::power_update_pledge(miner_id, None),
-            Expect::market_sectors_terminate(miner_id, epoch, [sector_number].to_vec()),
+            Expect::market_sectors_terminate(miner_id, epoch, [sector_number].to_vec(), deal_clients),
             Expect::power_update_claim(miner_id, sector_power.neg()),
         ]),
+        events: vec![expect_event],
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());

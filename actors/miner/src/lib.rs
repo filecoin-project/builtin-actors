@@ -4862,7 +4862,7 @@ fn get_deal_data_commitment(
     deserialize_block(extract_send_result(rt.send_simple(
         &STORAGE_MARKET_ACTOR_ADDR,
         ext::market::GET_DEAL_DATA_COMMITMENT,
-        IpldBlock::serialize_cbor(&ext::market::GetDealDataCommitmentParams { deal_id: *deal_id })?,
+        IpldBlock::serialize_cbor(&ext::market::GetDealDataCommitmentParamsRef { id: *deal_id })?,
         TokenAmount::zero(),
     ))?)
 }

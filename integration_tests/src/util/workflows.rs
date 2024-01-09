@@ -1022,7 +1022,6 @@ pub fn datacap_extend_claim(
         operator_data: operator_data.clone(),
     };
 
-    let client_id = v.resolve_id_address(client).unwrap().id().unwrap();
     apply_ok(
         v,
         client,
@@ -1032,6 +1031,7 @@ pub fn datacap_extend_claim(
         Some(transfer_params),
     );
 
+    let client_id = v.resolve_id_address(client).unwrap().id().unwrap();
     Expect::datacap_transfer_to_verifreg(
         client_id,
         token_amount,

@@ -37,33 +37,13 @@ use vm_api::VM;
 
 use crate::deals::{DealBatcher, DealOptions};
 use crate::expects::Expect;
-use crate::util::{
-    advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline,
-    create_accounts, create_miner, datacap_create_allocations, market_add_balance,
-    market_list_deals, market_list_sectors_deals, precommit_sectors_v2, sector_info,
-    submit_windowed_post, verifreg_add_client, verifreg_add_verifier, verifreg_list_claims,
-    PrecommitMetadata,
-};
+use crate::util::{advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline, create_accounts, create_miner, datacap_create_allocations, market_add_balance, market_list_deals, market_list_sectors_deals, precommit_sectors_v2, sector_info, submit_windowed_post, verifreg_add_client, verifreg_add_verifier, verifreg_list_claims, PrecommitMetadata, override_compute_unsealed_sector_cid};
 
 #[vm_test]
 pub fn prove_replica_update2_test(v: &dyn VM) {
     // TODO: move this code somewhere more accessible.
     // This change was made during a long rebase during which structural change was not practical.
-    v.mut_primitives().override_compute_unsealed_sector_cid(
-        |proof_type: RegisteredSealProof, pis: &[PieceInfo]| {
-            if pis.is_empty() {
-                return Ok(CompactCommD::empty().get_cid(proof_type).unwrap());
-            }
-            let mut buf: Vec<u8> = Vec::new();
-            let ptv: i64 = proof_type.into();
-            buf.extend(ptv.encode_var_vec());
-            for p in pis {
-                buf.extend(&p.cid.to_bytes());
-                buf.extend(p.size.0.encode_var_vec())
-            }
-            Ok(make_piece_cid(&buf))
-        },
-    );
+    override_compute_unsealed_sector_cid(v);
 
     let policy = Policy::default();
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));

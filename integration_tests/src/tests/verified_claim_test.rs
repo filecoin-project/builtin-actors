@@ -246,7 +246,7 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
     let new_max_term = new_claim_expiry_epoch - claim.term_start;
     assert!(new_max_term > original_max_term);
 
-    datacap_extend_claim(v, &verified_client2, &miner_id, claim_id, deal_size, new_max_term);
+    datacap_extend_claim(v, &verified_client, &miner_id, claim_id, deal_size, new_max_term);
 
     // The miner extends the sector into the second year.
     let extended_expiration_2 = extended_expiration_1 + 60 * EPOCHS_IN_DAY;

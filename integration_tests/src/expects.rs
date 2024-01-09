@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use cid::Cid;
 use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
 use frc46_token::token::types::BurnParams;
@@ -51,7 +52,13 @@ impl Expect {
         sector_expiry: ChainEpoch,
         sector_type: RegisteredSealProof,
         compute_cid: bool,
+        client_id: &ActorID,
     ) -> ExpectInvocation {
+        let events: Vec<EmittedEvent> = deals
+            .iter()
+            .map(|deal_id| Expect::build_market_event("deal-activated", &deal_id, client_id, &from))
+            .collect();
+
         let params = IpldBlock::serialize_cbor(&BatchActivateDealsParams {
             sectors: vec![SectorDeals {
                 sector_number,
@@ -69,6 +76,7 @@ impl Expect {
             params: Some(params),
             value: Some(TokenAmount::zero()),
             subinvocs: Some(vec![]),
+            events,
             ..Default::default()
         }
     }
@@ -76,7 +84,13 @@ impl Expect {
         from: ActorID,
         epoch: ChainEpoch,
         sectors: Vec<SectorNumber>,
+       deal_clients: Vec<(DealID, ActorID)>,
     ) -> ExpectInvocation {
+        let events: Vec<EmittedEvent> = deal_clients
+            .iter()
+            .map(|(deal_id,client)| Expect::build_market_event("deal-terminated", &deal_id, &client, &from))
+            .collect();
+
         let bf = BitField::try_from_bits(sectors).unwrap();
         let params =
             IpldBlock::serialize_cbor(&OnMinerSectorsTerminateParams { epoch, sectors: bf })
@@ -88,6 +102,7 @@ impl Expect {
             params: Some(params),
             value: Some(TokenAmount::zero()),
             subinvocs: Some(vec![]),
+            events,
             ..Default::default()
         }
     }

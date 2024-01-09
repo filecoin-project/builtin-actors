@@ -95,9 +95,10 @@ pub mod market {
         pub unsealed_cids: Vec<Option<Cid>>,
     }
 
-    #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
-    pub struct GetDealDataCommitmentParams {
-        pub deal_id: DealID,
+    #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+    #[serde(transparent)]
+    pub struct GetDealDataCommitmentParamsRef {
+        pub id: DealID,
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple, Clone)]

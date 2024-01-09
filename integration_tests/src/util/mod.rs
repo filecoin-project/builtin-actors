@@ -10,19 +10,19 @@ use fvm_ipld_encoding::{CborStore, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::sector::SectorNumber;
+use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
 use fvm_shared::{ActorID, METHOD_SEND};
 use std::collections::HashMap;
+use fvm_shared::piece::PieceInfo;
+use integer_encoding::VarInt;
 
 use fil_actor_miner::ext::verifreg::AllocationID;
-use fil_actor_miner::{
-    new_deadline_info_from_offset_and_epoch, Deadline, DeadlineInfo, GetBeneficiaryReturn,
-    Method as MinerMethod, MinerInfo, PowerPair, SectorOnChainInfo, State as MinerState,
-};
+use fil_actor_miner::{new_deadline_info_from_offset_and_epoch, Deadline, DeadlineInfo, GetBeneficiaryReturn, Method as MinerMethod, MinerInfo, PowerPair, SectorOnChainInfo, State as MinerState, CompactCommD};
 use fil_actor_verifreg::{Claim, ClaimID, State as VerifregState};
 use fil_builtin_actors_state::check::check_state_invariants;
 use num_traits::Zero;
 use regex::Regex;
+use fil_actors_runtime::test_utils::make_piece_cid;
 use vm_api::{
     util::{apply_ok, get_state, pk_addrs_from, DynBlockstore},
     VM,
@@ -258,4 +258,22 @@ pub fn get_network_stats(vm: &dyn VM) -> NetworkStats {
         total_provider_locked_collateral: market_state.total_provider_locked_collateral,
         total_client_storage_fee: market_state.total_client_storage_fee,
     }
+}
+
+pub fn override_compute_unsealed_sector_cid(v: &dyn VM) {
+    v.mut_primitives().override_compute_unsealed_sector_cid(
+        |proof_type: RegisteredSealProof, pis: &[PieceInfo]| {
+            if pis.is_empty() {
+                return Ok(CompactCommD::empty().get_cid(proof_type).unwrap());
+            }
+            let mut buf: Vec<u8> = Vec::new();
+            let ptv: i64 = proof_type.into();
+            buf.extend(ptv.encode_var_vec());
+            for p in pis {
+                buf.extend(&p.cid.to_bytes());
+                buf.extend(p.size.0.encode_var_vec())
+            }
+            Ok(make_piece_cid(&buf))
+        },
+    );
 }

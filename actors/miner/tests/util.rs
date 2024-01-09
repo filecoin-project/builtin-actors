@@ -2949,10 +2949,8 @@ pub fn expect_sector_event_with_market_call(
         rt.expect_send_simple(
             STORAGE_MARKET_ACTOR_ADDR,
             MarketMethod::GetDealDataCommitmentExported as u64,
-            IpldBlock::serialize_cbor(&ext::market::GetDealDataCommitmentParams {
-                deal_id: *deal_id,
-            })
-            .unwrap(),
+            IpldBlock::serialize_cbor(&ext::market::GetDealDataCommitmentParams { id: *deal_id })
+                .unwrap(),
             TokenAmount::zero(),
             IpldBlock::serialize_cbor(&ext::market::GetDealDataCommitmentReturn {
                 data: make_unsealed_cid("test verified deal".as_bytes()),
