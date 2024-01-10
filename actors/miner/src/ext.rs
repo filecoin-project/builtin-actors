@@ -20,7 +20,6 @@ pub mod account {
 pub mod market {
     use super::*;
     use fvm_ipld_bitfield::BitField;
-
     pub const VERIFY_DEALS_FOR_ACTIVATION_METHOD: u64 = 5;
     pub const BATCH_ACTIVATE_DEALS_METHOD: u64 = 6;
     pub const ON_MINER_SECTORS_TERMINATE_METHOD: u64 = 7;
@@ -60,10 +59,17 @@ pub mod market {
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
+    pub struct UnVerifiedDealInfo {
+        pub data: Cid,
+        pub size: PaddedPieceSize,
+    }
+
+    #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
     pub struct SectorDealActivation {
         #[serde(with = "bigint_ser")]
         pub nonverified_deal_space: BigInt,
         pub verified_infos: Vec<VerifiedDealInfo>,
+        pub unverified_infos: Vec<UnVerifiedDealInfo>,
         pub unsealed_cid: Option<Cid>,
     }
 
@@ -93,18 +99,6 @@ pub mod market {
     #[derive(Serialize_tuple, Deserialize_tuple, Default, Clone)]
     pub struct VerifyDealsForActivationReturn {
         pub unsealed_cids: Vec<Option<Cid>>,
-    }
-
-    #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
-    #[serde(transparent)]
-    pub struct GetDealDataCommitmentParamsRef {
-        pub id: DealID,
-    }
-
-    #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
-    pub struct GetDealDataCommitmentReturn {
-        pub data: Cid,
-        pub size: PaddedPieceSize,
     }
 }
 

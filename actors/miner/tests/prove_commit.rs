@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use fvm_shared::{
     bigint::{BigInt, Zero},
     clock::ChainEpoch,
@@ -8,6 +6,7 @@ use fvm_shared::{
     sector::{StoragePower, MAX_SECTOR_NUMBER},
     smooth::FilterEstimate,
 };
+use std::collections::HashMap;
 
 use fil_actor_miner::{
     initial_pledge_for_power, max_prove_commit_duration, pre_commit_deposit_for_power,
@@ -508,6 +507,7 @@ fn drop_invalid_prove_commit_while_processing_valid_one() {
 
     let conf = ProveCommitConfig {
         verify_deals_exit: HashMap::from([(sector_no_a, ExitCode::USR_ILLEGAL_ARGUMENT)]),
+        verified_deal_infos: HashMap::from([(sector_no_b, vec![test_verified_deal(100)])]),
         ..Default::default()
     };
     h.confirm_sector_proofs_valid_for(

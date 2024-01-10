@@ -13,6 +13,7 @@ use fil_actors_runtime::{
     EPOCHS_IN_DAY,
 };
 use fvm_ipld_bitfield::BitField;
+use fvm_shared::deal::DealID;
 use fvm_shared::{
     address::Address,
     clock::ChainEpoch,
@@ -899,11 +900,16 @@ fn commit_sector_verified_deals(
     let mut pcc = ProveCommitConfig::empty();
     pcc.add_verified_deals(h.next_sector_no, verified_deals.clone());
 
+    let mut deal_ids: Vec<DealID> = vec![];
+    for i in 0..verified_deals.len() {
+        deal_ids.push(i as u64);
+    }
+
     let sector_info = &h.commit_and_prove_sectors_with_cfgs(
         rt,
         1,
         DEFAULT_SECTOR_EXPIRATION as u64,
-        vec![vec![42]],
+        vec![deal_ids],
         true,
         pcc,
     )[0];

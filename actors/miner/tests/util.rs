@@ -46,8 +46,9 @@ use num_traits::Signed;
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
     BatchActivateDealsParams, BatchActivateDealsResult, Method as MarketMethod,
-    OnMinerSectorsTerminateParams, SectorDealActivation, SectorDeals, VerifiedDealInfo,
-    VerifyDealsForActivationParams, VerifyDealsForActivationReturn, NO_ALLOCATION_ID,
+    OnMinerSectorsTerminateParams, SectorDealActivation, SectorDeals, UnVerifiedDealInfo,
+    VerifiedDealInfo, VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
+    NO_ALLOCATION_ID,
 };
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee, consensus_fault_penalty,
@@ -865,11 +866,16 @@ impl ActorHarness {
         rt.expect_aggregate_verify_seals(svis, params.aggregate_proof.clone().into(), Ok(()));
 
         // confirm sector proofs valid
-        self.confirm_sector_proofs_valid_internal(rt, config, &precommits);
+        let pieces = self.confirm_sector_proofs_valid_internal(rt, config, &precommits);
+
+        println!("{} pieces is {:?}", pieces.len(), pieces);
 
         // sector activated event
         for (i, sc) in precommits.iter().enumerate() {
-            expect_sector_event_with_market_call(rt, "sector-activated", &sc.info, &comm_ds[i]);
+            let num = &sc.info.sector_number;
+            let piece_info = pieces.get(&num).unwrap();
+            println!("{} piece info is {:?}", i, piece_info.len());
+            expect_sector_event(rt, "sector-activated", &num, &comm_ds[i], &piece_info);
         }
 
         // burn network fee
@@ -902,7 +908,7 @@ impl ActorHarness {
         pcs: Vec<SectorPreCommitOnChainInfo>,
         valid_sectors: Vec<SectorNumber>,
     ) -> Result<(), ActorError> {
-        self.confirm_sector_proofs_valid_internal(rt, cfg, &pcs);
+        let pieces = self.confirm_sector_proofs_valid_internal(rt, cfg, &pcs);
 
         let mut all_sector_numbers = Vec::new();
         for pc in pcs.clone() {
@@ -922,11 +928,13 @@ impl ActorHarness {
         for sc in pcs {
             if valid_sectors.contains(&sc.info.sector_number) {
                 let unsealed_cid = sc.info.unsealed_cid.get_cid(sc.info.seal_proof)?;
-                expect_sector_event_with_market_call(
+                let num = &sc.info.sector_number;
+                expect_sector_event(
                     rt,
                     "sector-activated",
-                    &sc.info,
+                    &num,
                     &unsealed_cid,
+                    pieces.get(&num).unwrap(),
                 );
             }
         }
@@ -958,7 +966,7 @@ impl ActorHarness {
         rt: &MockRuntime,
         cfg: ProveCommitConfig,
         pcs: &[SectorPreCommitOnChainInfo],
-    ) {
+    ) -> HashMap<SectorNumber, Vec<(Cid, PaddedPieceSize)>> {
         let mut valid_pcs = Vec::new();
 
         // claim FIL+ allocations
@@ -968,8 +976,10 @@ impl ActorHarness {
         let mut sector_activation_params: Vec<SectorDeals> = Vec::new();
         let mut sector_activations: Vec<SectorDealActivation> = Vec::new();
         let mut sector_activation_results = BatchReturnGen::new(pcs.len());
+        let mut pieces: HashMap<SectorNumber, Vec<(Cid, PaddedPieceSize)>> = HashMap::new();
 
         for pc in pcs {
+            pieces.insert(pc.info.sector_number, Vec::new());
             if !pc.info.deal_ids.is_empty() {
                 let deal_space = cfg.deal_space(pc.info.sector_number);
                 let activate_params = SectorDeals {
@@ -987,8 +997,20 @@ impl ActorHarness {
                         .get(&pc.info.sector_number)
                         .cloned()
                         .unwrap_or_default(),
+                    unverified_infos: cfg
+                        .unverified_deal_infos
+                        .get(&pc.info.sector_number)
+                        .cloned()
+                        .unwrap_or_default(),
                     unsealed_cid: None,
                 };
+
+                for info in &ret.verified_infos {
+                    pieces.get_mut(&pc.info.sector_number).unwrap().push((info.data, info.size));
+                }
+                for info in &ret.unverified_infos {
+                    pieces.get_mut(&pc.info.sector_number).unwrap().push((info.data, info.size));
+                }
 
                 let mut activate_deals_exit = ExitCode::OK;
                 match cfg.verify_deals_exit.get(&pc.info.sector_number) {
@@ -1032,6 +1054,7 @@ impl ActorHarness {
                     nonverified_deal_space: BigInt::zero(),
                     verified_infos: vec![],
                     unsealed_cid: None,
+                    unverified_infos: vec![],
                 });
                 sector_activation_results.add_success();
                 sectors_claims.push(ext::verifreg::SectorAllocationClaims {
@@ -1118,6 +1141,7 @@ impl ActorHarness {
 
             expect_update_pledge(rt, &expected_pledge);
         }
+        pieces
     }
 
     pub fn prove_commit_sectors2_for(
@@ -1357,7 +1381,7 @@ impl ActorHarness {
                     "sector-activated",
                     &sm.sector_number,
                     unsealed_cids.get(&sm.sector_number).unwrap(),
-                    pieces,
+                    &pieces,
                 )
             }
         }
@@ -1579,7 +1603,7 @@ impl ActorHarness {
                     "sector-updated",
                     &sm.sector,
                     unsealed_cids.get(&sm.sector).unwrap(),
-                    pieces,
+                    &pieces,
                 )
             }
         }
@@ -2939,41 +2963,12 @@ impl ActorHarness {
     }
 }
 
-pub fn expect_sector_event_with_market_call(
-    rt: &MockRuntime,
-    typ: &str,
-    sc: &SectorPreCommitInfo,
-    unsealed_cid: &Cid,
-) {
-    let mut pieces: Vec<(Cid, PaddedPieceSize)> = vec![];
-    for deal_id in &sc.deal_ids {
-        rt.expect_send_simple(
-            STORAGE_MARKET_ACTOR_ADDR,
-            MarketMethod::GetDealDataCommitmentExported as u64,
-            IpldBlock::serialize_cbor(&ext::market::GetDealDataCommitmentParamsRef {
-                id: *deal_id,
-            })
-            .unwrap(),
-            TokenAmount::zero(),
-            IpldBlock::serialize_cbor(&ext::market::GetDealDataCommitmentReturn {
-                data: make_unsealed_cid("test verified deal".as_bytes()),
-                size: PaddedPieceSize(100),
-            })
-            .unwrap(),
-            ExitCode::OK,
-        );
-        pieces.push((make_unsealed_cid("test verified deal".as_bytes()), PaddedPieceSize(100)));
-    }
-
-    expect_sector_event(rt, typ, &sc.sector_number, &unsealed_cid, pieces);
-}
-
 pub fn expect_sector_event(
     rt: &MockRuntime,
     typ: &str,
     sector: &SectorNumber,
     unsealed_cid: &Cid,
-    pieces: Vec<(Cid, PaddedPieceSize)>,
+    pieces: &Vec<(Cid, PaddedPieceSize)>,
 ) {
     let mut base_event = EventBuilder::new()
         .typ(typ)
@@ -3049,6 +3044,7 @@ pub struct ProveCommitConfig {
     pub claim_allocs_exit: HashMap<SectorNumber, ExitCode>,
     pub deal_space: HashMap<SectorNumber, BigInt>,
     pub verified_deal_infos: HashMap<SectorNumber, Vec<VerifiedDealInfo>>,
+    pub unverified_deal_infos: HashMap<SectorNumber, Vec<UnVerifiedDealInfo>>,
 }
 
 #[allow(dead_code)]
@@ -3070,6 +3066,7 @@ impl ProveCommitConfig {
             claim_allocs_exit: HashMap::new(),
             deal_space: HashMap::new(),
             verified_deal_infos: HashMap::new(),
+            unverified_deal_infos: HashMap::new(),
         }
     }
 

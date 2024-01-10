@@ -106,6 +106,7 @@ fn removes_sector_with_without_deals() {
                     size: PaddedPieceSize(1024),
                 }],
             )]),
+            unverified_deal_infos: HashMap::new(),
         },
     );
     let snos: Vec<SectorNumber> = sectors.iter().map(|s| s.sector_number).collect();
@@ -184,6 +185,7 @@ fn owner_cannot_terminate_if_market_fails() {
             claim_allocs_exit: Default::default(),
             deal_space: HashMap::from_iter(vec![(0, DealWeight::from(1024))]),
             verified_deal_infos: Default::default(),
+            unverified_deal_infos: Default::default(),
         },
     );
 

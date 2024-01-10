@@ -601,6 +601,7 @@ impl Actor {
                 }
 
                 let mut verified_infos = vec![];
+                let mut unverified_infos: Vec<UnVerifiedDealInfo> = vec![];
                 let mut nonverified_deal_space: BigInt = BigInt::zero();
                 // Given that all deals validated, prepare the state updates for them all.
                 // There's no continue below here to ensure updates are consistent.
@@ -619,6 +620,10 @@ impl Actor {
                             size: proposal.piece_size,
                         })
                     } else {
+                        unverified_infos.push(UnVerifiedDealInfo {
+                            data: proposal.piece_cid,
+                            size: proposal.piece_size,
+                        });
                         nonverified_deal_space += proposal.piece_size.0;
                     }
 
@@ -646,6 +651,7 @@ impl Actor {
                 activations.push(SectorDealActivation {
                     nonverified_deal_space,
                     verified_infos,
+                    unverified_infos,
                     unsealed_cid: data_commitment,
                 });
 

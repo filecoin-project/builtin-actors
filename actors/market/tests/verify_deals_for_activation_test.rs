@@ -11,7 +11,9 @@ use fvm_shared::piece::PieceInfo;
 use fvm_shared::sector::RegisteredSealProof;
 use num_traits::Zero;
 
-use fil_actor_market::{Actor as MarketActor, Method, SectorDeals, VerifyDealsForActivationParams};
+use fil_actor_market::{
+    Actor as MarketActor, Method, SectorDeals, UnVerifiedDealInfo, VerifyDealsForActivationParams,
+};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::test_utils::{
     expect_abort, expect_abort_contains_message, make_piece_cid, ACCOUNT_ACTOR_CODE_ID,
@@ -57,7 +59,14 @@ fn verify_deal_and_activate_to_get_deal_space_for_unverified_deal_proposal() {
     assert_eq!(1, v_response.unsealed_cids.len());
     assert_eq!(Some(make_piece_cid("1".as_bytes())), v_response.unsealed_cids[0]);
     assert!(s_response.verified_infos.is_empty());
+    assert!(!s_response.unverified_infos.is_empty());
     assert_eq!(BigInt::from(deal_proposal.piece_size.0), s_response.nonverified_deal_space);
+
+    let info = s_response.unverified_infos.get(0).unwrap();
+    assert_eq!(
+        UnVerifiedDealInfo { data: deal_proposal.piece_cid, size: deal_proposal.piece_size },
+        *info
+    );
 
     check_state(&rt);
 }
@@ -95,6 +104,7 @@ fn verify_deal_and_activate_to_get_deal_space_for_verified_deal_proposal() {
     assert_eq!(1, response.unsealed_cids.len());
     assert_eq!(Some(make_piece_cid("1".as_bytes())), response.unsealed_cids[0]);
     assert_eq!(1, s_response.verified_infos.len());
+    assert!(s_response.unverified_infos.is_empty());
     assert_eq!(deal_proposal.piece_size, s_response.verified_infos[0].size);
     assert_eq!(deal_proposal.client.id().unwrap(), s_response.verified_infos[0].client);
     assert_eq!(deal_proposal.piece_cid, s_response.verified_infos[0].data);
@@ -161,6 +171,26 @@ fn verification_and_weights_for_verified_and_unverified_deals() {
         s_response.verified_infos.iter().map(|info| BigInt::from(info.size.0)).sum();
     assert_eq!(verified_space, returned_verified_space);
     assert_eq!(unverified_space, s_response.nonverified_deal_space);
+    assert_eq!(2, s_response.unverified_infos.len());
+
+    let resp_unverified_deal_1 = s_response.unverified_infos.get(0).unwrap();
+    let resp_unverified_deal_2 = s_response.unverified_infos.get(1).unwrap();
+
+    assert_eq!(
+        UnVerifiedDealInfo {
+            data: unverified_deal_1.piece_cid,
+            size: unverified_deal_1.piece_size,
+        },
+        *resp_unverified_deal_1
+    );
+
+    assert_eq!(
+        UnVerifiedDealInfo {
+            data: unverified_deal_2.piece_cid,
+            size: unverified_deal_2.piece_size,
+        },
+        *resp_unverified_deal_2
+    );
 
     check_state(&rt);
 }

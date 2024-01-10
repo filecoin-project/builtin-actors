@@ -102,6 +102,13 @@ pub struct BatchActivateDealsParams {
     pub compute_cid: bool,
 }
 
+// Information about a un-verified deal that has been activated.
+#[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
+pub struct UnVerifiedDealInfo {
+    pub data: Cid,
+    pub size: PaddedPieceSize,
+}
+
 // Information about a verified deal that has been activated.
 #[derive(Serialize_tuple, Deserialize_tuple, Debug, Clone, Eq, PartialEq)]
 pub struct VerifiedDealInfo {
@@ -119,6 +126,8 @@ pub struct SectorDealActivation {
     pub nonverified_deal_space: BigInt,
     /// Information about each verified deal activated.
     pub verified_infos: Vec<VerifiedDealInfo>,
+    /// Information about each un-verified deal activated.
+    pub unverified_infos: Vec<UnVerifiedDealInfo>,
     /// Unsealed CID computed from the deals specified for the sector.
     /// A None indicates no deals were specified, or the computation was not requested.
     pub unsealed_cid: Option<Cid>,
