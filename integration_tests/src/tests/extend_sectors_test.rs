@@ -9,9 +9,7 @@ use fil_actor_miner::{
 use fil_actor_verifreg::Method as VerifregMethod;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
-use fil_actors_runtime::{
-    DealWeight, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
-};
+use fil_actors_runtime::{DealWeight, EPOCHS_IN_DAY, VERIFIED_REGISTRY_ACTOR_ADDR};
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
@@ -688,12 +686,6 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
                     &verified_client.id().unwrap(),
                     &miner_id,
                 )],
-                ..Default::default()
-            },
-            ExpectInvocation {
-                from: miner_id,
-                to: STORAGE_MARKET_ACTOR_ADDR,
-                method: fil_actor_market::Method::GetDealDataCommitmentExported as u64,
                 ..Default::default()
             },
             Expect::reward_this_epoch(miner_id),

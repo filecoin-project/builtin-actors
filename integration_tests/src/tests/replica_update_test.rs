@@ -1078,12 +1078,6 @@ pub fn replica_update_verified_deal_test(v: &dyn VM) {
                 events: vec![claim_event],
                 ..Default::default()
             },
-            ExpectInvocation {
-                from: miner_id,
-                to: STORAGE_MARKET_ACTOR_ADDR,
-                method: fil_actor_market::Method::GetDealDataCommitmentExported as u64,
-                ..Default::default()
-            },
             Expect::reward_this_epoch(miner_id),
             Expect::power_current_total(miner_id),
             Expect::power_update_pledge(miner_id, None),
