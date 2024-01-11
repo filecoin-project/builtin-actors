@@ -1,7 +1,7 @@
 # Built-in Filecoin actors
 
 This repo contains the code for the on-chain built-in actors that power the
-Filecoin network starting from network version 16.
+Filecoin network starting from network version 16, epoch 1960320 on 2022-07-06.
 
 These actors are written in Rust and are designed to operate inside the
 [Filecoin Virtual Machine](https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0030.md).
@@ -12,15 +12,17 @@ The build process of this repo compiles every actor into Wasm bytecode and
 generates an aggregate bundle to be imported by all clients. The structure of
 this bundle is standardized. Read below for details.
 
-This codebase is on track to be canonicalized in [FIP-0031](https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0031.md).
-As a result, this actor implementation will be the only one recognized by the network.
+This codebase was canonicalized in [FIP-0031](https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0031.md).
+As a result, this actor implementation is the only one recognized by the network
+from network version 16 onwards.
 
 ## Pre-FVM actors
 
-Actors for the following network versions are provided as well:
+Actors for the following network versions prior to nv16 are implemented here as
+well:
 
-- nv14 actors are provided to facilitate testing.
-- nv15 actors are provided to enable the eventual nv15=>nv16 upgrade.
+- nv14 actors to facilitate testing.
+- nv15 actors to enable the nv15=>nv16 upgrade.
 
 ## Importable bundle
 
@@ -29,102 +31,65 @@ bundling all Wasm bytecode for all actors into a single file, with the following
 characteristics:
 
 - The CARv1 header points to a single root CID.
-- The CID resolves to a Manifest data structure that associates code CIDs with
-  their corresponding built-in actor types.
-- The Manifest payload should be interpreted as an IPLD `Map<Cid, i32>`. Every
-  entry represents a built-in actor.
-- Manifest keys (CID) point to the Wasm bytecode of an actor as a single block.
-- Manifest values (i32) identify the actor type, to be parsed as the
-  `runtime::builtins::Type` enum.
+- The root CID resolves to a [DAG-CBOR](https://ipld.io/specs/codecs/dag-cbor/spec/)
+  encoded block defining a `Manifest` type (defined below) containing a version
+  number for the bundle format (currently always `1`) and a CID for a
+  `ManifestPayload`.
+- The `ManifestPayload` (defined below) is contained within a DAG-CBOR encoded
+  block and defines a type that associates actor type names with their
+  corresponding CIDs.
+- The CIDs for all actors are contained within the same CARv1 archive as
+  compiled Wasm bytecode contained within RAW blocks.
+
+### Manifest [schema](https://ipld.io/docs/schemas/)
+
+```ipldsch
+# Manifest is encoded as: [version, CID]
+type Manifest struct {
+  version Int
+  payload &ManifestPayload
+} representation tuple
+
+# ManifestPayload is encoded as: [ ["actorkey", CID], ["actorkey", CID], ... ]
+#
+# It alternatively may be interpreted as:
+#   type ManifestPayload {String : &ActorBytecode} representation listpairs
+# Or simply as a list of tuples.
+type ManifestPayload struct {
+  system &ActorBytecode
+  init &ActorBytecode
+  cron &ActorBytecode
+  account &ActorBytecode
+  storagepower &ActorBytecode
+  storageminer &ActorBytecode
+  storagemarket &ActorBytecode
+  paymentchannel &ActorBytecode
+  multisig &ActorBytecode
+  reward &ActorBytecode
+  verifiedregistry &ActorBytecode
+  datacap &ActorBytecode
+  placeholder &ActorBytecode
+  evm &ActorBytecode
+  eam &ActorBytecode
+  ethaccount &ActorBytecode
+} representation listpairs
+
+# RAW block
+type ActorBytecode bytes
+```
 
 Precompiled actor bundles are provided as [release binaries][releases] in this repo. The
 [`fil_builtin_actors_bundle`](https://crates.io/crates/fil_builtin_actors_bundle) crate on
 [crates.io](https://crates.io) will not be updated.
 
-[releases]: https://github.com/filecoin-project/builtin-actors/releases
-
 ## Releasing
 
-We usually release all actors, the runtime, and the state abstraction at the same time. That means releasing:
+We release all actors, the runtime, and the state abstraction at the same time by:
 
-- `fil_actors_runtime`
-- `fil_actor_account`
-- `fil_actor_cron`
-- `fil_actor_init`
-- `fil_actor_market`
-- `fil_actor_miner`
-- `fil_actor_multisig`
-- `fil_actor_paych`
-- `fil_actor_power`
-- `fil_actor_reward`
-- `fil_actor_system`
-- `fil_actor_verifreg`
-- `fil_builtin_actors_state`
+1. Changing the `workspace.package.version` in the top-level `Cargo.toml` file.
+2. Creating a [release][releases] in GitHub.
 
-We do not publish the "bundle" _crate_, but instead build it in CI and publish the bundle itself as a [release][releases].
-
-To make this easier, we've added some helper scripts to the Makefile. Instructions follow.
-
-### 1: Install Dependencies
-
-Install:
-
-- `jq` (with your favorite package manager)
-- `cargo-edit` (with `cargo install cargo-edit`).
-
-### 2: Bump Versions (Release)
-
-You can bump the runtime, actors, and bundle versions with the `bump-version` target. See [Versioning](#versioning) to determine the correct version bump.
-
-```bash
-make bump-version
-```
-
-By default, this bumps the patch version. To bump to a different version, append, e.g. `BUMP=major`. Valid options are:
-
-- `patch`
-- `minor`
-- `major`
-- `alpha`
-- `beta`
-- `rc`
-
-You can also _set_ a specific version with the `set-version` target.
-
-```bash
-make set-version VERSION=7.1.1
-```
-
-Commit the version changes:
-
-```bash
-git commit -a -m "Release $(make --quiet version)"
-```
-
-Finally, create a PR to commit your changes, make sure your PR is approved and merged before move to the next step!
-
-### 3: Publish Crates
-
-**NOTE:** If you're a not a member of the core FVM team, you'll need help with this step. Please
-make a PR at this point and ask the core team to publish a release.
-
-Run `make publish` to publish all crates to crates.io. This will likely take a while as it re-builds
-everything from scratch for validation (multiple times).
-
-**NOTE**: To do this, you'll need to:
-
-1. Register an account with `https://crates.io` and confirm your email address (if you haven't already).
-2. Login locally with `cargo login`.
-3. Get yourself added to the [fvm-crate-owners](https://github.com/orgs/filecoin-project/teams/fvm-crate-owners) team.
-
-### 4: Bump Versions (Alpha)
-
-Finally, bump the versions to the next alpha and commit the changes:
-
-```bash
-make bump-version BUMP=alpha
-git commit -a -m "Release $(make --quiet version)"
-```
+This will trigger an automatic bundle-build by GitHub CI, and the generated bundles will be attached to the GitHub release.
 
 ## Instructions for client implementations
 
@@ -222,3 +187,5 @@ Dual-licensed: [MIT](./LICENSE-MIT), [Apache Software License v2](./LICENSE-APAC
 
 Except the EVM precompile [test data](actors/evm/precompile-testdata), which is licensed under the
 LGPL v3 and not included in crates or build artifacts.
+
+[releases]: https://github.com/filecoin-project/builtin-actors/releases
