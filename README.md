@@ -1,7 +1,7 @@
 # Built-in Filecoin actors
 
 This repo contains the code for the on-chain built-in actors that power the
-Filecoin network starting from network version 16.
+Filecoin network starting from network version 16, epoch 1960320 on 2022-07-06.
 
 These actors are written in Rust and are designed to operate inside the
 [Filecoin Virtual Machine](https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0030.md).
@@ -12,15 +12,17 @@ The build process of this repo compiles every actor into Wasm bytecode and
 generates an aggregate bundle to be imported by all clients. The structure of
 this bundle is standardized. Read below for details.
 
-This codebase is on track to be canonicalized in [FIP-0031](https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0031.md).
-As a result, this actor implementation will be the only one recognized by the network.
+This codebase was canonicalized in [FIP-0031](https://github.com/filecoin-project/FIPs/blob/master/FIPS/fip-0031.md).
+As a result, this actor implementation is the only one recognized by the network
+from network version 16 onwards.
 
 ## Pre-FVM actors
 
-Actors for the following network versions are provided as well:
+Actors for the following network versions prior to nv16 are implemented here as
+well:
 
-- nv14 actors are provided to facilitate testing.
-- nv15 actors are provided to enable the eventual nv15=>nv16 upgrade.
+- nv14 actors to facilitate testing.
+- nv15 actors to enable the nv15=>nv16 upgrade.
 
 ## Importable bundle
 
@@ -29,13 +31,52 @@ bundling all Wasm bytecode for all actors into a single file, with the following
 characteristics:
 
 - The CARv1 header points to a single root CID.
-- The CID resolves to a Manifest data structure that associates code CIDs with
-  their corresponding built-in actor types.
-- The Manifest payload should be interpreted as an IPLD `Map<Cid, i32>`. Every
-  entry represents a built-in actor.
-- Manifest keys (CID) point to the Wasm bytecode of an actor as a single block.
-- Manifest values (i32) identify the actor type, to be parsed as the
-  `runtime::builtins::Type` enum.
+- The root CID resolves to a [DAG-CBOR](https://ipld.io/specs/codecs/dag-cbor/spec/)
+  encoded block defining a `Manifest` type (defined below) containing a version
+  number for the bundle format (currently always `1`) and a CID for a
+  `ManifestPayload`.
+- The `ManifestPayload` (defined below) is contained within a DAG-CBOR encoded
+  block and defines a type that associates actor type names with their
+  corresponding CIDs.
+- The CIDs for all actors are contained within the same CARv1 archive as
+  compiled Wasm bytecode contained within RAW blocks.
+
+### Manifest [schema](https://ipld.io/docs/schemas/)
+
+```ipldsch
+# Manifest is encoded as: [version, CID]
+type Manifest struct {
+  version Int
+  payload &ManifestPayload
+} representation tuple
+
+# ManifestPayload is encoded as: [ ["actorkey", CID], ["actorkey", CID], ... ]
+#
+# It alternatively may be interpreted as:
+#   type ManifestPayload {String : &ActorBytecode} representation listpairs
+# Or simply as a list of tuples.
+type ManifestPayload struct {
+  system &ActorBytecode
+  init &ActorBytecode
+  cron &ActorBytecode
+  account &ActorBytecode
+  storagepower &ActorBytecode
+  storageminer &ActorBytecode
+  storagemarket &ActorBytecode
+  paymentchannel &ActorBytecode
+  multisig &ActorBytecode
+  reward &ActorBytecode
+  verifiedregistry &ActorBytecode
+  datacap &ActorBytecode
+  placeholder &ActorBytecode
+  evm &ActorBytecode
+  eam &ActorBytecode
+  ethaccount &ActorBytecode
+} representation listpairs
+
+# RAW block
+type ActorBytecode bytes
+```
 
 Precompiled actor bundles are provided as [release binaries][releases] in this repo. The
 [`fil_builtin_actors_bundle`](https://crates.io/crates/fil_builtin_actors_bundle) crate on
@@ -48,18 +89,25 @@ Precompiled actor bundles are provided as [release binaries][releases] in this r
 We usually release all actors, the runtime, and the state abstraction at the same time. That means releasing:
 
 - `fil_actors_runtime`
+- `fil_actors_evm_shared`
 - `fil_actor_account`
 - `fil_actor_cron`
+- `fil_actor_datacap`
+- `fil_actor_eam`
+- `fil_actor_ethaccount`
+- `fil_actor_evm`
 - `fil_actor_init`
 - `fil_actor_market`
 - `fil_actor_miner`
 - `fil_actor_multisig`
 - `fil_actor_paych`
+- `fil_actor_placeholder`
 - `fil_actor_power`
 - `fil_actor_reward`
 - `fil_actor_system`
 - `fil_actor_verifreg`
 - `fil_builtin_actors_state`
+- `vm_api`
 
 We do not publish the "bundle" _crate_, but instead build it in CI and publish the bundle itself as a [release][releases].
 
