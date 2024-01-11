@@ -82,97 +82,14 @@ Precompiled actor bundles are provided as [release binaries][releases] in this r
 [`fil_builtin_actors_bundle`](https://crates.io/crates/fil_builtin_actors_bundle) crate on
 [crates.io](https://crates.io) will not be updated.
 
-[releases]: https://github.com/filecoin-project/builtin-actors/releases
-
 ## Releasing
 
-We usually release all actors, the runtime, and the state abstraction at the same time. That means releasing:
+We release all actors, the runtime, and the state abstraction at the same time by:
 
-- `fil_actors_runtime`
-- `fil_actors_evm_shared`
-- `fil_actor_account`
-- `fil_actor_cron`
-- `fil_actor_datacap`
-- `fil_actor_eam`
-- `fil_actor_ethaccount`
-- `fil_actor_evm`
-- `fil_actor_init`
-- `fil_actor_market`
-- `fil_actor_miner`
-- `fil_actor_multisig`
-- `fil_actor_paych`
-- `fil_actor_placeholder`
-- `fil_actor_power`
-- `fil_actor_reward`
-- `fil_actor_system`
-- `fil_actor_verifreg`
-- `fil_builtin_actors_state`
-- `vm_api`
+1. Changing the `workspace.package.version` in the top-level `Cargo.toml` file.
+2. Creating a [release][releases] in GitHub.
 
-We do not publish the "bundle" _crate_, but instead build it in CI and publish the bundle itself as a [release][releases].
-
-To make this easier, we've added some helper scripts to the Makefile. Instructions follow.
-
-### 1: Install Dependencies
-
-Install:
-
-- `jq` (with your favorite package manager)
-- `cargo-edit` (with `cargo install cargo-edit`).
-
-### 2: Bump Versions (Release)
-
-You can bump the runtime, actors, and bundle versions with the `bump-version` target. See [Versioning](#versioning) to determine the correct version bump.
-
-```bash
-make bump-version
-```
-
-By default, this bumps the patch version. To bump to a different version, append, e.g. `BUMP=major`. Valid options are:
-
-- `patch`
-- `minor`
-- `major`
-- `alpha`
-- `beta`
-- `rc`
-
-You can also _set_ a specific version with the `set-version` target.
-
-```bash
-make set-version VERSION=7.1.1
-```
-
-Commit the version changes:
-
-```bash
-git commit -a -m "Release $(make --quiet version)"
-```
-
-Finally, create a PR to commit your changes, make sure your PR is approved and merged before move to the next step!
-
-### 3: Publish Crates
-
-**NOTE:** If you're a not a member of the core FVM team, you'll need help with this step. Please
-make a PR at this point and ask the core team to publish a release.
-
-Run `make publish` to publish all crates to crates.io. This will likely take a while as it re-builds
-everything from scratch for validation (multiple times).
-
-**NOTE**: To do this, you'll need to:
-
-1. Register an account with `https://crates.io` and confirm your email address (if you haven't already).
-2. Login locally with `cargo login`.
-3. Get yourself added to the [fvm-crate-owners](https://github.com/orgs/filecoin-project/teams/fvm-crate-owners) team.
-
-### 4: Bump Versions (Alpha)
-
-Finally, bump the versions to the next alpha and commit the changes:
-
-```bash
-make bump-version BUMP=alpha
-git commit -a -m "Release $(make --quiet version)"
-```
+This will trigger an automatic bundle-build by GitHub CI, and the generated bundles will be attached to the GitHub release.
 
 ## Instructions for client implementations
 
@@ -270,3 +187,5 @@ Dual-licensed: [MIT](./LICENSE-MIT), [Apache Software License v2](./LICENSE-APAC
 
 Except the EVM precompile [test data](actors/evm/precompile-testdata), which is licensed under the
 LGPL v3 and not included in crates or build artifacts.
+
+[releases]: https://github.com/filecoin-project/builtin-actors/releases
