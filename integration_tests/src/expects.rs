@@ -65,9 +65,7 @@ impl Expect {
 
         let events: Vec<EmittedEvent> = deals
             .iter()
-            .map(|deal_id| {
-                Expect::build_market_event("deal-activated", deal_id.clone(), client_id, from)
-            })
+            .map(|deal_id| Expect::build_market_event("deal-activated", *deal_id, client_id, from))
             .collect();
 
         ExpectInvocation {
@@ -95,7 +93,7 @@ impl Expect {
         let events: Vec<EmittedEvent> = deals
             .into_iter()
             .map(|(deal_id, client)| {
-                Expect::build_market_event("deal-terminated", deal_id, client, from.clone())
+                Expect::build_market_event("deal-terminated", deal_id, client, from)
             })
             .collect();
 

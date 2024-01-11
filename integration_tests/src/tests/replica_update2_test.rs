@@ -287,13 +287,18 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
 
             let pis: Vec<PieceInfo> =
                 m.pieces.iter().map(|p| PieceInfo { cid: p.cid, size: p.size }).collect();
-            let unsealed_cid =
-                v.primitives().compute_unsealed_sector_cid(seal_proof, &pis).unwrap();
+
+            let unsealed_cid: Option<Cid> = if pis.is_empty() {
+                None
+            } else {
+                Some(v.primitives().compute_unsealed_sector_cid(seal_proof, &pis).unwrap())
+            };
+
             Expect::build_sector_activation_event(
                 "sector-updated",
                 miner_id,
                 m.sector,
-                Some(unsealed_cid),
+                unsealed_cid,
                 &pieces,
             )
         })

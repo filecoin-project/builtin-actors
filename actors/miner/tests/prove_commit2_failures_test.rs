@@ -133,7 +133,7 @@ fn reject_precommit_deals() {
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "invalid pre-commit 0 while requiring activation success",
-        h.prove_commit_sectors2_for(&rt, &manifests, true, false, false, cfg, vec![]),
+        h.prove_commit_sectors2(&rt, &manifests, true, false, false, cfg),
     );
     h.check_state(&rt);
 }
@@ -146,7 +146,7 @@ fn reject_all_proofs_fail() {
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "no valid proofs",
-        h.prove_commit_sectors2_for(&rt, &activations, false, false, false, cfg, vec![]),
+        h.prove_commit_sectors2(&rt, &activations, false, false, false, cfg),
     );
     h.check_state(&rt);
 }
@@ -159,7 +159,7 @@ fn reject_aggregate_proof_fails() {
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "invalid aggregate proof",
-        h.prove_commit_sectors2_for(&rt, &activations, false, false, true, cfg, vec![]),
+        h.prove_commit_sectors2(&rt, &activations, false, false, true, cfg),
     );
     h.check_state(&rt);
 }
@@ -172,7 +172,7 @@ fn reject_required_proof_failure() {
     expect_abort_contains_message(
         ExitCode::USR_ILLEGAL_ARGUMENT,
         "invalid proof for sector 100 while requiring activation success",
-        h.prove_commit_sectors2_for(&rt, &activations, true, false, false, cfg, vec![]),
+        h.prove_commit_sectors2(&rt, &activations, true, false, false, cfg),
     );
     h.check_state(&rt);
 }

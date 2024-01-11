@@ -510,13 +510,7 @@ fn drop_invalid_prove_commit_while_processing_valid_one() {
         verified_deal_infos: HashMap::from([(sector_no_b, vec![test_verified_deal(100)])]),
         ..Default::default()
     };
-    h.confirm_sector_proofs_valid_for(
-        &rt,
-        conf,
-        vec![pre_commit_a, pre_commit_b],
-        vec![sector_no_b],
-    )
-    .unwrap();
+    h.confirm_sector_proofs_valid(&rt, conf, vec![pre_commit_a, pre_commit_b]).unwrap();
     let st = h.get_state(&rt);
     assert!(st.get_sector(&rt.store, sector_no_a).unwrap().is_none());
     assert!(st.get_sector(&rt.store, sector_no_b).unwrap().is_some());

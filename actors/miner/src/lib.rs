@@ -1025,7 +1025,7 @@ impl Actor {
             ));
         }
 
-        let mut sector_commds: HashMap<SectorNumber, Cid> = HashMap::new();
+        let mut sector_commds: HashMap<SectorNumber, Option<Cid>> = HashMap::new();
         // Load sector infos for validation, failing if any don't exist.
         let mut sectors = Sectors::load(&store, &state.sectors)
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors array")?;
@@ -1034,15 +1034,16 @@ impl Actor {
         for (i, update) in params.sector_updates.iter().enumerate() {
             sector_infos.push(sectors.must_get(update.sector)?);
             let sector_type = sector_infos.last().unwrap().seal_proof;
-            let computed_commd =
-                unsealed_cid_from_pieces(rt, &update.pieces, sector_type)?.get_cid(sector_type)?;
+            let computed_commd = unsealed_cid_from_pieces(rt, &update.pieces, sector_type)?;
+
+            let unsealed_cid = computed_commd.get_cid(sector_type)?;
 
             updates.push(ReplicaUpdateInner {
                 sector_number: update.sector,
                 deadline: update.deadline,
                 partition: update.partition,
                 new_sealed_cid: update.new_sealed_cid,
-                new_unsealed_cid: Some(computed_commd),
+                new_unsealed_cid: Some(unsealed_cid),
                 deals: vec![],
                 update_proof_type: params.update_proofs_type,
                 // Replica proof may be empty if an aggregate is being proven.
@@ -1050,7 +1051,7 @@ impl Actor {
                 replica_proof: params.sector_proofs.get(i).unwrap_or(&RawBytes::default()).clone(),
             });
 
-            sector_commds.insert(update.sector, computed_commd);
+            sector_commds.insert(update.sector, computed_commd.0);
         }
 
         // Validate inputs.
@@ -1197,7 +1198,7 @@ impl Actor {
             emit::sector_updated(
                 rt,
                 update.sector,
-                sector_commds.get(&update.sector).copied(),
+                *sector_commds.get(&update.sector).unwrap(),
                 &pieces,
             )?;
         }
