@@ -339,7 +339,7 @@ fn worker_balance_after_withdrawal_must_account_for_slashed_funds() {
 
     // slash the deal
     rt.set_epoch(publish_epoch + 1);
-    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number]);
+    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number], vec![deal_id]);
     let st = get_deal_state(&rt, deal_id);
     assert_eq!(publish_epoch + 1, st.slash_epoch);
 
@@ -1486,7 +1486,7 @@ fn slash_a_deal_and_make_payment_for_another_deal_in_the_same_epoch() {
     // slash deal1
     let slash_epoch = process_epoch(start_epoch, deal_id2) + ChainEpoch::from(100);
     rt.set_epoch(slash_epoch);
-    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number]);
+    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number], vec![deal_id1]);
 
     // cron tick will slash deal1 and make payment for deal2
     rt.expect_send_simple(
@@ -1940,7 +1940,7 @@ fn locked_fund_tracking_states() {
 
     // slash deal1
     rt.set_epoch(curr + 1);
-    terminate_deals(&rt, m1.provider, &[sector_number]);
+    terminate_deals(&rt, m1.provider, &[sector_number], vec![deal_id1]);
 
     // cron tick to slash deal1 and expire deal2
     rt.set_epoch(end_epoch);

@@ -131,7 +131,8 @@ fn activation() {
     // terminate early
     let terminate_epoch = activate_epoch + 100;
     rt.set_epoch(terminate_epoch);
-    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number]);
+
+    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number], vec![id]);
     let activation: GetDealActivationReturn =
         query_deal(&rt, Method::GetDealActivationExported, id);
     assert_eq!(activate_epoch, activation.activated);

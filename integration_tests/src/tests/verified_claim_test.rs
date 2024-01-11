@@ -253,7 +253,7 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
         claim_id,
         deal_size,
         new_max_term,
-        &verified_client.id().unwrap(),
+        verified_client.id().unwrap(),
     );
 
     // The miner extends the sector into the second year.

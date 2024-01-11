@@ -7,7 +7,6 @@ use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{PoStProof, RegisteredSealProof, SectorNumber, MAX_SECTOR_NUMBER};
 
@@ -78,7 +77,6 @@ fn setup(v: &dyn VM) -> (MinerInfo, SectorInfo) {
         None,
     );
     let pc = &infos[0];
-    let unsealed_cid = pc.info.unsealed_cid.get_cid(pc.info.seal_proof).unwrap();
 
     let balances = miner_balance(v, &id_addr);
     assert!(balances.pre_commit_deposit.is_positive());
@@ -86,6 +84,7 @@ fn setup(v: &dyn VM) -> (MinerInfo, SectorInfo) {
     let prove_time = v.epoch() + Policy::default().pre_commit_challenge_delay + 1;
     advance_by_deadline_to_epoch(v, &id_addr, prove_time);
 
+    let unsealed_cid = pc.info.unsealed_cid.0;
     // prove commit, cron, advance to post time
     let prove_params = ProveCommitSectorParams { sector_number, proof: vec![].into() };
     let prove_params_ser = IpldBlock::serialize_cbor(&prove_params).unwrap();
@@ -116,7 +115,7 @@ fn setup(v: &dyn VM) -> (MinerInfo, SectorInfo) {
         )
         .unwrap();
     assert_eq!(ExitCode::OK, res.code);
-    let pieces: Vec<(Cid, PaddedPieceSize)> = vec![];
+    let pieces: Vec<(Cid, u64)> = vec![];
     ExpectInvocation {
         to: CRON_ACTOR_ADDR,
         method: CronMethod::EpochTick as u64,
@@ -137,9 +136,9 @@ fn setup(v: &dyn VM) -> (MinerInfo, SectorInfo) {
                         )]),
                         events: vec![Expect::build_sector_activation_event(
                             "sector-activated",
-                            &id_addr.id().unwrap(),
-                            &sector_number,
-                            &unsealed_cid,
+                            id_addr.id().unwrap(),
+                            sector_number,
+                            unsealed_cid,
                             &pieces,
                         )],
                         ..Default::default()
@@ -774,12 +773,12 @@ pub fn aggregate_one_precommit_expires_test(v: &dyn VM) {
     let events: Vec<EmittedEvent> = later_precommits
         .iter()
         .map(|info| {
-            let pieces: Vec<(Cid, PaddedPieceSize)> = vec![];
-            let unsealed_cid = &info.info.unsealed_cid.get_cid(info.info.seal_proof).unwrap();
+            let pieces: Vec<(Cid, u64)> = vec![];
+            let unsealed_cid = info.info.unsealed_cid.0;
             Expect::build_sector_activation_event(
                 "sector-activated",
-                &miner_id,
-                &info.info.sector_number,
+                miner_id,
+                info.info.sector_number,
                 unsealed_cid,
                 &pieces,
             )

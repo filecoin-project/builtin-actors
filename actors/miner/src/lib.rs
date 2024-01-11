@@ -20,7 +20,7 @@ use fvm_shared::clock::{ChainEpoch, QuantSpec};
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::*;
-use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
+use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::*;
 use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::*;
@@ -835,11 +835,11 @@ impl Actor {
         )?;
 
         for (i, pc) in activated_precommits.iter().enumerate() {
-            let unsealed_cid = pc.info.unsealed_cid.get_cid(pc.info.seal_proof)?;
+            let unsealed_cid = pc.info.unsealed_cid.0;
             emit::sector_activated(
                 rt,
                 pc.info.sector_number,
-                &unsealed_cid,
+                unsealed_cid,
                 pieces.get(i).unwrap(),
             )?;
         }
@@ -985,7 +985,7 @@ impl Actor {
             emit::sector_updated(
                 rt,
                 usi.update.sector_number,
-                &computed_commd,
+                Some(computed_commd),
                 pieces.get(i).unwrap(),
             )?;
         }
@@ -1192,14 +1192,12 @@ impl Actor {
                 pieces: &update.pieces,
             });
 
-            // create a Vec<(Cid, PaddedPieceSize)> from update.pieces and call emit::sector_updated
-            let pieces: Vec<(Cid, PaddedPieceSize)> =
-                update.pieces.iter().map(|x| (x.cid, x.size)).collect();
+            let pieces: Vec<(Cid, u64)> = update.pieces.iter().map(|x| (x.cid, x.size.0)).collect();
 
             emit::sector_updated(
                 rt,
                 update.sector,
-                sector_commds.get(&update.sector).unwrap(),
+                sector_commds.get(&update.sector).copied(),
                 &pieces,
             )?;
         }
@@ -1907,11 +1905,11 @@ impl Actor {
                 pieces: &activations.pieces,
             });
 
-            let pieces: Vec<(Cid, PaddedPieceSize)> =
-                activations.pieces.iter().map(|p| (p.cid, p.size)).collect();
-            let unsealed_cid = sector.info.unsealed_cid.get_cid(sector.info.seal_proof)?;
+            let pieces: Vec<(Cid, u64)> =
+                activations.pieces.iter().map(|p| (p.cid, p.size.0)).collect();
+            let unsealed_cid = sector.info.unsealed_cid.0;
 
-            emit::sector_activated(rt, sector.info.sector_number, &unsealed_cid, &pieces)?;
+            emit::sector_activated(rt, sector.info.sector_number, unsealed_cid, &pieces)?;
         }
         notify_data_consumers(rt, &notifications, params.require_notification_success)?;
 
@@ -2027,11 +2025,11 @@ impl Actor {
         )?;
 
         for (i, pc) in successful_activations.iter().enumerate() {
-            let unsealed_cid = pc.info.unsealed_cid.get_cid(pc.info.seal_proof)?;
+            let unsealed_cid = pc.info.unsealed_cid.0;
             emit::sector_activated(
                 rt,
                 pc.info.sector_number,
-                &unsealed_cid,
+                unsealed_cid,
                 pieces.get(i).unwrap(),
             )?;
         }
@@ -5497,8 +5495,7 @@ fn activate_sectors_deals(
     rt: &impl Runtime,
     activation_infos: &[DealsActivationInput],
     compute_unsealed_cid: bool,
-) -> Result<(BatchReturn, Vec<DataActivationOutput>, Vec<Vec<(Cid, PaddedPieceSize)>>), ActorError>
-{
+) -> Result<(BatchReturn, Vec<DataActivationOutput>, Vec<Vec<(Cid, u64)>>), ActorError> {
     let batch_activation_res = match activation_infos.iter().all(|p| p.deal_ids.is_empty()) {
         true => ext::market::BatchActivateDealsResult {
             // if all sectors are empty of deals, skip calling the market actor
@@ -5541,7 +5538,7 @@ fn activate_sectors_deals(
         return Err(actor_error!(illegal_argument, "all deals failed to activate"));
     }
 
-    let mut piece_infos: Vec<Vec<(Cid, PaddedPieceSize)>> = vec![];
+    let mut piece_infos: Vec<Vec<(Cid, u64)>> = vec![];
 
     // Filter the DealsActivationInfo for successfully activated sectors
     let successful_activation_infos =
@@ -5584,14 +5581,14 @@ fn activate_sectors_deals(
         .iter()
         .zip(claim_res.sector_claims)
         .map(|(sector_deals, sector_claim)| {
-            let mut piece_infos_for_sector: Vec<(Cid, PaddedPieceSize)> = vec![];
+            let mut piece_infos_for_sector: Vec<(Cid, u64)> = vec![];
 
             for verified_info in &sector_deals.verified_infos {
-                piece_infos_for_sector.push((verified_info.data, verified_info.size));
+                piece_infos_for_sector.push((verified_info.data, verified_info.size.0));
             }
 
             for unverified_info in &sector_deals.unverified_infos {
-                piece_infos_for_sector.push((unverified_info.data, unverified_info.size));
+                piece_infos_for_sector.push((unverified_info.data, unverified_info.size.0));
             }
             piece_infos.push(piece_infos_for_sector);
 

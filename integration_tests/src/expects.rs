@@ -6,11 +6,9 @@ use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
 use fvm_shared::{ActorID, METHOD_SEND};
 use num_traits::Zero;
@@ -47,27 +45,31 @@ impl Expect {
     pub fn market_activate_deals(
         from: ActorID,
         deals: Vec<DealID>,
+        // TODO: A more future-proof one would take the deals as a Vec<(DealID, ActorId)>
+        client_id: ActorID,
         sector_number: SectorNumber,
         sector_expiry: ChainEpoch,
         sector_type: RegisteredSealProof,
         compute_cid: bool,
-        client_id: &ActorID,
     ) -> ExpectInvocation {
-        let events: Vec<EmittedEvent> = deals
-            .iter()
-            .map(|deal_id| Expect::build_market_event("deal-activated", deal_id, client_id, &from))
-            .collect();
-
         let params = IpldBlock::serialize_cbor(&BatchActivateDealsParams {
             sectors: vec![SectorDeals {
                 sector_number,
-                deal_ids: deals,
+                deal_ids: deals.clone(),
                 sector_expiry,
                 sector_type,
             }],
             compute_cid,
         })
         .unwrap();
+
+        let events: Vec<EmittedEvent> = deals
+            .iter()
+            .map(|deal_id| {
+                Expect::build_market_event("deal-activated", deal_id.clone(), client_id, from)
+            })
+            .collect();
+
         ExpectInvocation {
             from,
             to: STORAGE_MARKET_ACTOR_ADDR,
@@ -83,19 +85,20 @@ impl Expect {
         from: ActorID,
         epoch: ChainEpoch,
         sectors: Vec<SectorNumber>,
-        deal_clients: Vec<(DealID, ActorID)>,
+        deals: Vec<(DealID, ActorID)>,
     ) -> ExpectInvocation {
-        let events: Vec<EmittedEvent> = deal_clients
-            .iter()
-            .map(|(deal_id, client)| {
-                Expect::build_market_event("deal-terminated", deal_id, client, &from)
-            })
-            .collect();
-
         let bf = BitField::try_from_bits(sectors).unwrap();
         let params =
             IpldBlock::serialize_cbor(&OnMinerSectorsTerminateParams { epoch, sectors: bf })
                 .unwrap();
+
+        let events: Vec<EmittedEvent> = deals
+            .into_iter()
+            .map(|(deal_id, client)| {
+                Expect::build_market_event("deal-terminated", deal_id, client, from.clone())
+            })
+            .collect();
+
         ExpectInvocation {
             from,
             to: STORAGE_MARKET_ACTOR_ADDR,
@@ -369,9 +372,9 @@ impl Expect {
 
     pub fn build_verifreg_event(
         typ: &str,
-        id: &u64,
-        client: &ActorID,
-        provider: &ActorID,
+        id: u64,
+        client: ActorID,
+        provider: ActorID,
     ) -> EmittedEvent {
         EmittedEvent {
             emitter: VERIFIED_REGISTRY_ACTOR_ID,
@@ -387,9 +390,9 @@ impl Expect {
 
     pub fn build_market_event(
         typ: &str,
-        deal_id: &DealID,
-        client: &ActorID,
-        provider: &ActorID,
+        deal_id: DealID,
+        client: ActorID,
+        provider: ActorID,
     ) -> EmittedEvent {
         EmittedEvent {
             emitter: STORAGE_MARKET_ACTOR_ID,
@@ -420,10 +423,10 @@ impl Expect {
 
     pub fn build_sector_activation_event(
         typ: &str,
-        miner_id: &ActorID,
-        sector_number: &SectorNumber,
-        unsealed_cid: &Cid,
-        pieces: &Vec<(Cid, PaddedPieceSize)>,
+        miner_id: ActorID,
+        sector_number: SectorNumber,
+        unsealed_cid: Option<Cid>,
+        pieces: &Vec<(Cid, u64)>,
     ) -> EmittedEvent {
         let mut base_event = EventBuilder::new()
             .typ(typ)
@@ -431,11 +434,10 @@ impl Expect {
             .field_indexed("unsealed-cid", &unsealed_cid);
 
         for piece in pieces {
-            base_event = base_event
-                .field_indexed("piece-cid", &piece.0)
-                .field("piece-size", &BigInt::from(piece.1 .0));
+            base_event =
+                base_event.field_indexed("piece-cid", &piece.0).field("piece-size", &piece.1);
         }
 
-        EmittedEvent { emitter: *miner_id, event: base_event.build().unwrap() }
+        EmittedEvent { emitter: miner_id, event: base_event.build().unwrap() }
     }
 }

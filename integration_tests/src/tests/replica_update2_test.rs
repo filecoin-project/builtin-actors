@@ -283,8 +283,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
     let events: Vec<EmittedEvent> = manifests
         .iter()
         .map(|m| {
-            let pieces: Vec<(Cid, PaddedPieceSize)> =
-                m.pieces.iter().map(|p| (p.cid, p.size)).collect();
+            let pieces: Vec<(Cid, u64)> = m.pieces.iter().map(|p| (p.cid, p.size.0)).collect();
 
             let pis: Vec<PieceInfo> =
                 m.pieces.iter().map(|p| PieceInfo { cid: p.cid, size: p.size }).collect();
@@ -292,9 +291,9 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
                 v.primitives().compute_unsealed_sector_cid(seal_proof, &pis).unwrap();
             Expect::build_sector_activation_event(
                 "sector-updated",
-                &miner_id,
-                &m.sector,
-                &unsealed_cid,
+                miner_id,
+                m.sector,
+                Some(unsealed_cid),
                 &pieces,
             )
         })
@@ -351,9 +350,9 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
                     .unwrap(),
                 ),
                 events: vec![
-                    Expect::build_verifreg_event("claim", &alloc_ids_s2[0], &client_id, &miner_id),
-                    Expect::build_verifreg_event("claim", &alloc_ids_s2[1], &client_id, &miner_id),
-                    Expect::build_verifreg_event("claim", &alloc_ids_s4[0], &client_id, &miner_id),
+                    Expect::build_verifreg_event("claim", alloc_ids_s2[0], client_id, miner_id),
+                    Expect::build_verifreg_event("claim", alloc_ids_s2[1], client_id, miner_id),
+                    Expect::build_verifreg_event("claim", alloc_ids_s4[0], client_id, miner_id),
                 ],
                 ..Default::default()
             },

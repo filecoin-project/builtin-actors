@@ -23,7 +23,6 @@ pub mod market {
     pub const VERIFY_DEALS_FOR_ACTIVATION_METHOD: u64 = 5;
     pub const BATCH_ACTIVATE_DEALS_METHOD: u64 = 6;
     pub const ON_MINER_SECTORS_TERMINATE_METHOD: u64 = 7;
-    pub const GET_DEAL_DATA_COMMITMENT: u64 = frc42_dispatch::method_hash!("GetDealDataCommitment");
 
     #[derive(Serialize_tuple, Deserialize_tuple)]
     pub struct SectorDeals {

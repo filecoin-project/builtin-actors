@@ -657,7 +657,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
 
     let old_power = power_for_sector(seal_proof.sector_size().unwrap(), &initial_sector_info);
 
-    let pieces: Vec<(Cid, PaddedPieceSize)> = vec![(piece_cid, piece_size)];
+    let pieces: Vec<(Cid, u64)> = vec![(piece_cid, piece_size.0)];
     let pis: Vec<PieceInfo> = vec![PieceInfo { cid: piece_cid, size: piece_size }];
     let unsealed_cid = v.primitives().compute_unsealed_sector_cid(seal_proof, &pis).unwrap();
 
@@ -670,11 +670,11 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
             Expect::market_activate_deals(
                 miner_id,
                 deal_ids,
+                verified_client.id().unwrap(),
                 sector_number,
                 initial_sector_info.expiration,
                 initial_sector_info.seal_proof,
                 true,
-                &verified_client.id().unwrap(),
             ),
             ExpectInvocation {
                 from: miner_id,
@@ -682,9 +682,9 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
                 method: VerifregMethod::ClaimAllocations as u64,
                 events: vec![Expect::build_verifreg_event(
                     "claim",
-                    &claim_id,
-                    &verified_client.id().unwrap(),
-                    &miner_id,
+                    claim_id,
+                    verified_client.id().unwrap(),
+                    miner_id,
                 )],
                 ..Default::default()
             },
@@ -698,9 +698,9 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         ]),
         events: vec![Expect::build_sector_activation_event(
             "sector-updated",
-            &miner_id,
-            &sector_number,
-            &unsealed_cid,
+            miner_id,
+            sector_number,
+            Some(unsealed_cid),
             &pieces,
         )],
         ..Default::default()

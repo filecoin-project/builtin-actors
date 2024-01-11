@@ -54,11 +54,11 @@ fn terminate_multiple_deals_from_single_provider() {
         .try_into()
         .unwrap();
 
-    terminate_deals(&rt, PROVIDER_ADDR, &[id1]);
+    terminate_deals(&rt, PROVIDER_ADDR, &[id1], vec![id1]);
     assert_deals_terminated(&rt, current_epoch, &[id1]);
     assert_deals_not_terminated(&rt, &[id2, id3]);
 
-    terminate_deals(&rt, PROVIDER_ADDR, &[id2, id3]);
+    terminate_deals(&rt, PROVIDER_ADDR, &[id2, id3], vec![id2, id3]);
     assert_deals_terminated(&rt, current_epoch, &[id1, id2, id3]);
 }
 
@@ -111,13 +111,13 @@ fn terminate_multiple_deals_from_multiple_providers() {
     );
     assert!(ret.activation_results.all_ok());
 
-    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number]);
+    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number], vec![deal1, deal2, deal3]);
     assert_deals_terminated(&rt, current_epoch, &[deal1, deal2, deal3]);
     assert_eq!(Vec::<DealID>::new(), get_sector_deal_ids(&rt, &PROVIDER_ADDR, sector_number));
     assert_deals_not_terminated(&rt, &[deal4, deal5]);
     assert_eq!(vec![deal4, deal5], get_sector_deal_ids(&rt, &provider2, sector_number));
 
-    terminate_deals(&rt, provider2, &[sector_number]);
+    terminate_deals(&rt, provider2, &[sector_number], vec![deal4, deal5]);
     assert_deals_terminated(&rt, current_epoch, &[deal4, deal5]);
     assert_eq!(Vec::<DealID>::new(), get_sector_deal_ids(&rt, &provider2, sector_number));
     check_state(&rt);
@@ -144,7 +144,7 @@ fn ignore_sector_that_does_not_exist() {
     let ret =
         activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, sector_number, &[deal1]);
     assert!(ret.activation_results.all_ok());
-    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number + 1]);
+    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number + 1], vec![]);
 
     let s = get_deal_state(&rt, deal1);
     assert_eq!(s.slash_epoch, -1);
@@ -197,7 +197,7 @@ fn terminate_valid_deals_along_with_just_expired_deal() {
     let new_epoch = end_epoch - 1;
     rt.set_epoch(new_epoch);
 
-    terminate_deals_for(&rt, PROVIDER_ADDR, &[sector_number], vec![deal1, deal2]);
+    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number], vec![deal1, deal2]);
     assert_deals_terminated(&rt, new_epoch, &[deal1, deal2]);
     // Not cleaned up yet.
     assert_deals_not_terminated(&rt, &[deal3]);
@@ -256,7 +256,7 @@ fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
 
     cron_tick(&rt);
 
-    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number]);
+    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number], vec![deal_ids[0]]);
     assert_deals_terminated(&rt, new_epoch, &deal_ids[0..0]);
     assert_deal_deleted(&rt, deal_ids[1], &deal2, sector_number);
     check_state(&rt);
@@ -285,11 +285,11 @@ fn terminating_a_deal_the_second_time_does_not_change_its_slash_epoch() {
     assert!(ret.activation_results.all_ok());
 
     // terminating the deal so slash epoch is the current epoch
-    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number]);
+    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number], vec![deal1]);
 
     // set a new epoch and terminate again -> however slash epoch will still be the old epoch.
     rt.set_epoch(current_epoch + 1);
-    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number]);
+    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number], vec![]);
     let s = get_deal_state(&rt, deal1);
     assert_eq!(s.slash_epoch, current_epoch);
     check_state(&rt);
@@ -331,7 +331,7 @@ fn terminating_new_deals_and_an_already_terminated_deal_only_terminates_the_new_
     );
     assert!(ret.activation_results.all_ok());
     // Terminate them
-    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number]);
+    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number], vec![deal1]);
 
     // Activate other deals in the same sector
     let ret = activate_deals(
@@ -346,7 +346,7 @@ fn terminating_new_deals_and_an_already_terminated_deal_only_terminates_the_new_
     // set a new epoch and terminate again
     let new_epoch = current_epoch + 1;
     rt.set_epoch(new_epoch);
-    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number]);
+    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number], vec![deal2, deal3]);
 
     let s1 = get_deal_state(&rt, deal1);
     assert_eq!(s1.slash_epoch, current_epoch);
@@ -383,7 +383,7 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
         activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, sector_number, &[deal1]);
     assert!(ret.activation_results.all_ok());
     rt.set_epoch(end_epoch);
-    terminate_deals_for(&rt, PROVIDER_ADDR, &[sector_number], vec![]);
+    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number], vec![]);
     assert_deals_not_terminated(&rt, &[deal1]);
 
     // deal2 has end epoch less than current epoch when terminate is called
@@ -400,7 +400,7 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
         activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, sector_number, &[deal2]);
     assert!(ret.activation_results.all_ok());
     rt.set_epoch(end_epoch + 1);
-    terminate_deals_for(&rt, PROVIDER_ADDR, &[sector_number], vec![]);
+    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number], vec![]);
     assert_deals_not_terminated(&rt, &[deal2]);
 
     check_state(&rt);

@@ -641,7 +641,6 @@ impl<'invocation> Runtime for InvocationCtx<'invocation> {
         Ok(Cid::new_v1(IPLD_RAW, Multihash::wrap(0, b"faketipset").unwrap()))
     }
 
-    // TODO No support for events yet.
     fn emit_event(&self, event: &ActorEvent) -> Result<(), ActorError> {
         self.events
             .borrow_mut()

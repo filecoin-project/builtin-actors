@@ -1,7 +1,4 @@
 use cid::Cid;
-use fvm_shared::bigint::BigInt;
-use fvm_shared::piece::PaddedPieceSize;
-// A namespace for helpers that build and emit provider Actor events.
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::{ActorError, EventBuilder};
 use fvm_shared::sector::SectorNumber;
@@ -17,8 +14,8 @@ pub fn sector_precommitted(rt: &impl Runtime, sector: SectorNumber) -> Result<()
 pub fn sector_activated(
     rt: &impl Runtime,
     sector: SectorNumber,
-    unsealed_cid: &Cid,
-    pieces: &[(Cid, PaddedPieceSize)],
+    unsealed_cid: Option<Cid>,
+    pieces: &[(Cid, u64)],
 ) -> Result<(), ActorError> {
     rt.emit_event(
         &EventBuilder::new()
@@ -32,8 +29,8 @@ pub fn sector_activated(
 pub fn sector_updated(
     rt: &impl Runtime,
     sector: SectorNumber,
-    unsealed_cid: &Cid,
-    pieces: &[(Cid, PaddedPieceSize)],
+    unsealed_cid: Option<Cid>,
+    pieces: &[(Cid, u64)],
 ) -> Result<(), ActorError> {
     rt.emit_event(
         &EventBuilder::new()
@@ -54,8 +51,8 @@ trait WithSectorInfo {
     fn with_sector_info(
         self,
         sector: SectorNumber,
-        unsealed_cid: &Cid,
-        pieces: &[(Cid, PaddedPieceSize)],
+        unsealed_cid: Option<Cid>,
+        pieces: &[(Cid, u64)],
     ) -> EventBuilder;
 }
 
@@ -63,16 +60,14 @@ impl WithSectorInfo for EventBuilder {
     fn with_sector_info(
         self,
         sector: SectorNumber,
-        unsealed_cid: &Cid,
-        pieces: &[(Cid, PaddedPieceSize)],
+        unsealed_cid: Option<Cid>,
+        pieces: &[(Cid, u64)],
     ) -> EventBuilder {
         let mut event =
-            self.field_indexed("sector", &sector).field_indexed("unsealed-cid", unsealed_cid);
+            self.field_indexed("sector", &sector).field_indexed("unsealed-cid", &unsealed_cid);
 
         for piece in pieces {
-            event = event
-                .field_indexed("piece-cid", &piece.0)
-                .field("piece-size", &BigInt::from(piece.1 .0));
+            event = event.field_indexed("piece-cid", &piece.0).field("piece-size", &piece.1);
         }
         event
     }

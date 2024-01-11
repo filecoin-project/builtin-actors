@@ -406,17 +406,17 @@ pub fn prove_commit_sectors(
         let events: Vec<EmittedEvent> = to_prove
             .iter()
             .map(|ps| {
-                let mut pieces: Vec<(Cid, PaddedPieceSize)> = vec![];
+                let mut pieces: Vec<(Cid, u64)> = vec![];
                 for deal_id in &ps.info.deal_ids {
                     let proposal = st.get_proposal(&store, *deal_id).unwrap();
-                    pieces.push((proposal.piece_cid, proposal.piece_size));
+                    pieces.push((proposal.piece_cid, proposal.piece_size.0));
                 }
 
-                let unsealed_cid = &ps.info.unsealed_cid.get_cid(ps.info.seal_proof).unwrap();
+                let unsealed_cid = ps.info.unsealed_cid.0;
                 Expect::build_sector_activation_event(
                     "sector-activated",
-                    &miner_id,
-                    &ps.info.sector_number,
+                    miner_id,
+                    ps.info.sector_number,
                     unsealed_cid,
                     &pieces,
                 )
@@ -887,9 +887,9 @@ pub fn verifreg_remove_expired_allocations(
             let alloc = allocs.get(client.id().unwrap(), *id).unwrap().unwrap();
             Expect::build_verifreg_event(
                 "allocation-removed",
-                id,
-                &client.id().unwrap(),
-                &alloc.provider,
+                *id,
+                client.id().unwrap(),
+                alloc.provider,
             )
         })
         .collect();
@@ -982,7 +982,7 @@ pub fn datacap_create_allocations(
         .iter()
         .enumerate()
         .map(|(i, alloc_id)| {
-            Expect::build_verifreg_event("allocation", alloc_id, &client_id, &reqs[i].provider)
+            Expect::build_verifreg_event("allocation", *alloc_id, client_id, reqs[i].provider)
         })
         .collect::<Vec<EmittedEvent>>();
 
@@ -1005,7 +1005,7 @@ pub fn datacap_extend_claim(
     claim: ClaimID,
     size: u64,
     new_term: ChainEpoch,
-    claim_client: &ActorID,
+    claim_client: ActorID,
 ) {
     let payload = AllocationRequests {
         allocations: vec![],
@@ -1040,9 +1040,9 @@ pub fn datacap_extend_claim(
         true, // Burn
         vec![Expect::build_verifreg_event(
             "claim-updated",
-            &claim,
+            claim,
             claim_client,
-            &provider.id().unwrap(),
+            provider.id().unwrap(),
         )],
     )
     .matches(v.take_invocations().last().unwrap());
@@ -1196,9 +1196,9 @@ pub fn market_publish_deal(
                 ),
                 events: vec![Expect::build_verifreg_event(
                     "allocation",
-                    &alloc_id,
-                    &deal_client.id().unwrap(),
-                    &miner_id.id().unwrap(),
+                    alloc_id,
+                    deal_client.id().unwrap(),
+                    miner_id.id().unwrap(),
                 )],
                 ..Default::default()
             }]),
@@ -1218,9 +1218,9 @@ pub fn market_publish_deal(
         subinvocs: Some(expect_publish_invocs),
         events: vec![Expect::build_market_event(
             "deal-published",
-            &ret.ids[0],
-            &deal_client.id().unwrap(),
-            &miner_id.id().unwrap(),
+            ret.ids[0],
+            deal_client.id().unwrap(),
+            miner_id.id().unwrap(),
         )],
         ..Default::default()
     }

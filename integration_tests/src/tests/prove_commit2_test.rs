@@ -228,15 +228,14 @@ pub fn prove_commit_sectors2_test(v: &dyn VM) {
         .iter()
         .enumerate()
         .map(|(i, sa)| {
-            let unsealed_cid = meta.get(i).unwrap().commd.get_cid(seal_proof).unwrap();
+            let unsealed_cid = meta.get(i).unwrap().commd.0;
 
-            let pieces: Vec<(Cid, PaddedPieceSize)> =
-                sa.pieces.iter().map(|p| (p.cid, p.size)).collect();
+            let pieces: Vec<(Cid, u64)> = sa.pieces.iter().map(|p| (p.cid, p.size.0)).collect();
             Expect::build_sector_activation_event(
                 "sector-activated",
-                &miner_id,
-                &sa.sector_number,
-                &unsealed_cid,
+                miner_id,
+                sa.sector_number,
+                unsealed_cid,
                 &pieces,
             )
         })
@@ -293,9 +292,9 @@ pub fn prove_commit_sectors2_test(v: &dyn VM) {
                     .unwrap(),
                 ),
                 events: vec![
-                    Expect::build_verifreg_event("claim", &alloc_ids_s2[0], &client_id, &miner_id),
-                    Expect::build_verifreg_event("claim", &alloc_ids_s2[1], &client_id, &miner_id),
-                    Expect::build_verifreg_event("claim", &alloc_ids_s4[0], &client_id, &miner_id),
+                    Expect::build_verifreg_event("claim", alloc_ids_s2[0], client_id, miner_id),
+                    Expect::build_verifreg_event("claim", alloc_ids_s2[1], client_id, miner_id),
+                    Expect::build_verifreg_event("claim", alloc_ids_s4[0], client_id, miner_id),
                 ],
                 ..Default::default()
             },

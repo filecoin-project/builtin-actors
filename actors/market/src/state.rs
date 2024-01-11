@@ -734,6 +734,7 @@ impl State {
     ////////////////////////////////////////////////////////////////////////////////
     // Deal state operations
     ////////////////////////////////////////////////////////////////////////////////
+    // Returns (amount slashed, if the deal should be removed, if the deal is past it's end epoch and completed successfully)
     pub fn process_deal_update<BS>(
         &mut self,
         store: &BS,

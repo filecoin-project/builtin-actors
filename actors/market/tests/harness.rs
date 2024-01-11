@@ -418,6 +418,8 @@ pub fn batch_activate_deals_raw(
     rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
     rt.expect_validate_caller_type(vec![Type::Miner]);
 
+    let params = BatchActivateDealsParams { sectors: sectors_deals, compute_cid };
+
     for deal_id in expected_activated_deals {
         let dp = get_deal_proposal(rt, deal_id);
 
@@ -429,9 +431,6 @@ pub fn batch_activate_deals_raw(
             dp.provider.id().unwrap(),
         );
     }
-
-    let params = BatchActivateDealsParams { sectors: sectors_deals, compute_cid };
-
     let ret = rt.call::<MarketActor>(
         Method::BatchActivateDeals as u64,
         IpldBlock::serialize_cbor(&params).unwrap(),
@@ -1241,22 +1240,13 @@ pub fn generate_deal_proposal(
     )
 }
 
-pub fn terminate_deals_for(
+pub fn terminate_deals(
     rt: &MockRuntime,
     miner_addr: Address,
     sectors: &[SectorNumber],
     expected_terminations: Vec<DealID>,
 ) {
     let ret = terminate_deals_raw(rt, miner_addr, sectors, expected_terminations).unwrap();
-    assert!(ret.is_none());
-    rt.verify();
-}
-
-pub fn terminate_deals(rt: &MockRuntime, miner_addr: Address, sectors: &[SectorNumber]) {
-    let all_deal_ids =
-        sectors.iter().flat_map(|s| get_sector_deal_ids(rt, &miner_addr, *s)).collect::<Vec<_>>();
-
-    let ret = terminate_deals_raw(rt, miner_addr, sectors, all_deal_ids).unwrap();
     assert!(ret.is_none());
     rt.verify();
 }
