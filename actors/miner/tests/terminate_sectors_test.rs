@@ -7,8 +7,8 @@ use fil_actor_miner::{
 use fil_actors_runtime::{
     runtime::Runtime,
     test_utils::{expect_abort_contains_message, MockRuntime, ACCOUNT_ACTOR_CODE_ID},
-    DealWeight, BURNT_FUNDS_ACTOR_ADDR, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR,
-    STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
+    BURNT_FUNDS_ACTOR_ADDR, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR,
 };
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::{econ::TokenAmount, error::ExitCode, METHOD_SEND};
@@ -16,7 +16,7 @@ use std::collections::HashMap;
 
 mod util;
 
-use fil_actor_market::VerifiedDealInfo;
+use fil_actor_market::{ActivatedDeal, NO_ALLOCATION_ID};
 use fil_actor_miner::ext::market::{
     OnMinerSectorsTerminateParams, ON_MINER_SECTORS_TERMINATE_METHOD,
 };
@@ -96,17 +96,26 @@ fn removes_sector_with_without_deals() {
         ProveCommitConfig {
             verify_deals_exit: Default::default(),
             claim_allocs_exit: Default::default(),
-            deal_space: HashMap::from_iter(vec![(1, DealWeight::from(1024))]),
-            verified_deal_infos: HashMap::from_iter(vec![(
-                2,
-                vec![VerifiedDealInfo {
-                    client: 0,
-                    allocation_id: 0,
-                    data: Default::default(),
-                    size: PaddedPieceSize(1024),
-                }],
-            )]),
-            unverified_deal_infos: HashMap::new(),
+            activated_deals: HashMap::from_iter(vec![
+                (
+                    1,
+                    vec![ActivatedDeal {
+                        client: 0,
+                        allocation_id: NO_ALLOCATION_ID,
+                        data: Default::default(),
+                        size: PaddedPieceSize(1024),
+                    }],
+                ),
+                (
+                    2,
+                    vec![ActivatedDeal {
+                        client: 0,
+                        allocation_id: 1,
+                        data: Default::default(),
+                        size: PaddedPieceSize(1024),
+                    }],
+                ),
+            ]),
         },
     );
     let snos: Vec<SectorNumber> = sectors.iter().map(|s| s.sector_number).collect();
@@ -183,9 +192,15 @@ fn owner_cannot_terminate_if_market_fails() {
         ProveCommitConfig {
             verify_deals_exit: Default::default(),
             claim_allocs_exit: Default::default(),
-            deal_space: HashMap::from_iter(vec![(0, DealWeight::from(1024))]),
-            verified_deal_infos: Default::default(),
-            unverified_deal_infos: Default::default(),
+            activated_deals: HashMap::from_iter(vec![(
+                0,
+                vec![ActivatedDeal {
+                    client: 0,
+                    allocation_id: NO_ALLOCATION_ID,
+                    data: Default::default(),
+                    size: PaddedPieceSize(1024),
+                }],
+            )]),
         },
     );
 

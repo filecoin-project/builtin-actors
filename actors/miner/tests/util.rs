@@ -45,10 +45,9 @@ use num_traits::Signed;
 
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
-    BatchActivateDealsParams, BatchActivateDealsResult, Method as MarketMethod,
-    OnMinerSectorsTerminateParams, SectorDealActivation, SectorDeals, UnVerifiedDealInfo,
-    VerifiedDealInfo, VerifyDealsForActivationParams, VerifyDealsForActivationReturn,
-    NO_ALLOCATION_ID,
+    ActivatedDeal, BatchActivateDealsParams, BatchActivateDealsResult, Method as MarketMethod,
+    OnMinerSectorsTerminateParams, SectorDealActivation, SectorDeals,
+    VerifyDealsForActivationParams, VerifyDealsForActivationReturn, NO_ALLOCATION_ID,
 };
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee, consensus_fault_penalty,
@@ -969,7 +968,6 @@ impl ActorHarness {
         for pc in pcs {
             pieces.insert(pc.info.sector_number, Vec::new());
             if !pc.info.deal_ids.is_empty() {
-                let deal_space = cfg.deal_space(pc.info.sector_number);
                 let activate_params = SectorDeals {
                     sector_number: pc.info.sector_number,
                     deal_ids: pc.info.deal_ids.clone(),
@@ -979,24 +977,15 @@ impl ActorHarness {
                 sector_activation_params.push(activate_params);
 
                 let ret = SectorDealActivation {
-                    nonverified_deal_space: deal_space,
-                    verified_infos: cfg
-                        .verified_deal_infos
-                        .get(&pc.info.sector_number)
-                        .cloned()
-                        .unwrap_or_default(),
-                    unverified_infos: cfg
-                        .unverified_deal_infos
+                    activated: cfg
+                        .activated_deals
                         .get(&pc.info.sector_number)
                         .cloned()
                         .unwrap_or_default(),
                     unsealed_cid: None,
                 };
 
-                for info in &ret.verified_infos {
-                    pieces.get_mut(&pc.info.sector_number).unwrap().push((info.data, info.size.0));
-                }
-                for info in &ret.unverified_infos {
+                for info in &ret.activated {
                     pieces.get_mut(&pc.info.sector_number).unwrap().push((info.data, info.size.0));
                 }
 
@@ -1015,8 +1004,9 @@ impl ActorHarness {
                 if activate_deals_exit == ExitCode::OK {
                     valid_pcs.push(pc);
                     let sector_claims = ret
-                        .verified_infos
+                        .activated
                         .iter()
+                        .filter(|info| info.allocation_id != NO_ALLOCATION_ID)
                         .map(|info| ext::verifreg::AllocationClaim {
                             client: info.client,
                             allocation_id: info.allocation_id,
@@ -1038,12 +1028,8 @@ impl ActorHarness {
                     sector_expiry: pc.info.expiration,
                     sector_type: RegisteredSealProof::StackedDRG8MiBV1,
                 });
-                sector_activations.push(SectorDealActivation {
-                    nonverified_deal_space: BigInt::zero(),
-                    verified_infos: vec![],
-                    unsealed_cid: None,
-                    unverified_infos: vec![],
-                });
+                sector_activations
+                    .push(SectorDealActivation { activated: vec![], unsealed_cid: None });
                 sector_activation_results.add_success();
                 sectors_claims.push(ext::verifreg::SectorAllocationClaims {
                     sector: pc.info.sector_number,
@@ -2987,18 +2973,16 @@ impl PreCommitConfig {
 pub struct ProveCommitConfig {
     pub verify_deals_exit: HashMap<SectorNumber, ExitCode>,
     pub claim_allocs_exit: HashMap<SectorNumber, ExitCode>,
-    pub deal_space: HashMap<SectorNumber, BigInt>,
-    pub verified_deal_infos: HashMap<SectorNumber, Vec<VerifiedDealInfo>>,
-    pub unverified_deal_infos: HashMap<SectorNumber, Vec<UnVerifiedDealInfo>>,
+    pub activated_deals: HashMap<SectorNumber, Vec<ActivatedDeal>>,
 }
 
 #[allow(dead_code)]
-pub fn test_verified_deal(space: u64) -> VerifiedDealInfo {
+pub fn test_activated_deal(space: u64, alloc: AllocationID) -> ActivatedDeal {
     // only set size for testing and zero out remaining fields
-    VerifiedDealInfo {
+    ActivatedDeal {
         client: 0,
-        allocation_id: 0,
-        data: make_unsealed_cid("test verified deal".as_bytes()),
+        allocation_id: alloc,
+        data: make_unsealed_cid("test activated deal".as_bytes()),
         size: PaddedPieceSize(space),
     }
 }
@@ -3009,25 +2993,32 @@ impl ProveCommitConfig {
         ProveCommitConfig {
             verify_deals_exit: HashMap::new(),
             claim_allocs_exit: HashMap::new(),
-            deal_space: HashMap::new(),
-            verified_deal_infos: HashMap::new(),
-            unverified_deal_infos: HashMap::new(),
+            activated_deals: HashMap::new(),
         }
     }
 
-    pub fn add_verified_deals(&mut self, sector: SectorNumber, deals: Vec<VerifiedDealInfo>) {
-        self.verified_deal_infos.insert(sector, deals);
+    pub fn add_activated_deals(&mut self, sector: SectorNumber, deals: Vec<ActivatedDeal>) {
+        self.activated_deals.insert(sector, deals);
     }
 
     pub fn deal_space(&self, sector: SectorNumber) -> BigInt {
-        self.deal_space.get(&sector).cloned().unwrap_or_default()
-    }
-
-    pub fn verified_deal_space(&self, sector: SectorNumber) -> BigInt {
-        match self.verified_deal_infos.get(&sector) {
+        match self.activated_deals.get(&sector) {
             None => BigInt::zero(),
             Some(infos) => infos
                 .iter()
+                .filter(|info| info.allocation_id == NO_ALLOCATION_ID)
+                .map(|info| BigInt::from(info.size.0))
+                .reduce(|x, a| x + a)
+                .unwrap_or_default(),
+        }
+    }
+
+    pub fn verified_deal_space(&self, sector: SectorNumber) -> BigInt {
+        match self.activated_deals.get(&sector) {
+            None => BigInt::zero(),
+            Some(infos) => infos
+                .iter()
+                .filter(|info| info.allocation_id != NO_ALLOCATION_ID)
                 .map(|info| BigInt::from(info.size.0))
                 .reduce(|x, a| x + a)
                 .unwrap_or_default(),

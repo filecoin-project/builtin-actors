@@ -600,9 +600,7 @@ impl Actor {
                     validated_proposals.push(proposal);
                 }
 
-                let mut verified_infos = vec![];
-                let mut unverified_infos: Vec<UnVerifiedDealInfo> = vec![];
-                let mut nonverified_deal_space: BigInt = BigInt::zero();
+                let mut activated = vec![];
                 // Given that all deals validated, prepare the state updates for them all.
                 // There's no continue below here to ensure updates are consistent.
                 // Any error must abort.
@@ -611,21 +609,12 @@ impl Actor {
                     // Extract and remove any verified allocation ID for the pending deal.
                     let alloc_id =
                         pending_deal_allocation_ids.delete(deal_id)?.unwrap_or(NO_ALLOCATION_ID);
-
-                    if alloc_id != NO_ALLOCATION_ID {
-                        verified_infos.push(VerifiedDealInfo {
-                            client: proposal.client.id().unwrap(),
-                            allocation_id: alloc_id,
-                            data: proposal.piece_cid,
-                            size: proposal.piece_size,
-                        })
-                    } else {
-                        unverified_infos.push(UnVerifiedDealInfo {
-                            data: proposal.piece_cid,
-                            size: proposal.piece_size,
-                        });
-                        nonverified_deal_space += proposal.piece_size.0;
-                    }
+                    activated.push(ActivatedDeal {
+                        client: proposal.client.id().unwrap(),
+                        allocation_id: alloc_id,
+                        data: proposal.piece_cid,
+                        size: proposal.piece_size,
+                    });
 
                     // Prepare initial deal state.
                     deal_states.push((
@@ -648,12 +637,7 @@ impl Actor {
 
                 sectors_deals
                     .push((sector.sector_number, SectorDealIDs { deals: sector.deal_ids.clone() }));
-                activations.push(SectorDealActivation {
-                    nonverified_deal_space,
-                    verified_infos,
-                    unverified_infos,
-                    unsealed_cid: data_commitment,
-                });
+                activations.push(SectorDealActivation { activated, unsealed_cid: data_commitment });
 
                 for (deal_id, proposal) in sector.deal_ids.iter().zip(&validated_proposals) {
                     emit::deal_activated(

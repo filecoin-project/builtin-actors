@@ -332,7 +332,7 @@ pub fn activate_deals(
         current_epoch,
         sector_number,
         deal_ids,
-        deal_ids.into(),
+        deal_ids,
     )
 }
 
@@ -344,7 +344,7 @@ pub fn activate_deals_for(
     current_epoch: ChainEpoch,
     sector_number: SectorNumber,
     deal_ids: &[DealID],
-    expected_deal_activations: Vec<DealID>,
+    expected_deal_activations: &[DealID],
 ) -> BatchActivateDealsResult {
     rt.set_epoch(current_epoch);
     let compute_cid = false;
@@ -397,7 +397,8 @@ pub fn batch_activate_deals(
     let deal_ids =
         sectors.iter().flat_map(|(_, _, deal_ids)| deal_ids).cloned().collect::<Vec<_>>();
 
-    let ret = batch_activate_deals_raw(rt, provider, sectors_deals, compute_cid, deal_ids).unwrap();
+    let ret =
+        batch_activate_deals_raw(rt, provider, sectors_deals, compute_cid, &deal_ids).unwrap();
 
     let ret: BatchActivateDealsResult =
         ret.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
@@ -413,7 +414,7 @@ pub fn batch_activate_deals_raw(
     provider: Address,
     sectors_deals: Vec<SectorDeals>,
     compute_cid: bool,
-    expected_activated_deals: Vec<DealID>,
+    expected_activated_deals: &[DealID],
 ) -> Result<Option<IpldBlock>, ActorError> {
     rt.set_caller(*MINER_ACTOR_CODE_ID, provider);
     rt.expect_validate_caller_type(vec![Type::Miner]);
@@ -421,12 +422,12 @@ pub fn batch_activate_deals_raw(
     let params = BatchActivateDealsParams { sectors: sectors_deals, compute_cid };
 
     for deal_id in expected_activated_deals {
-        let dp = get_deal_proposal(rt, deal_id);
+        let dp = get_deal_proposal(rt, *deal_id);
 
         expect_emitted(
             rt,
             "deal-activated",
-            deal_id,
+            *deal_id,
             dp.client.id().unwrap(),
             dp.provider.id().unwrap(),
         );
@@ -1244,7 +1245,7 @@ pub fn terminate_deals(
     rt: &MockRuntime,
     miner_addr: Address,
     sectors: &[SectorNumber],
-    expected_terminations: Vec<DealID>,
+    expected_terminations: &[DealID],
 ) {
     let ret = terminate_deals_raw(rt, miner_addr, sectors, expected_terminations).unwrap();
     assert!(ret.is_none());
@@ -1255,7 +1256,7 @@ pub fn terminate_deals_raw(
     rt: &MockRuntime,
     miner_addr: Address,
     sector_numbers: &[SectorNumber],
-    terminated_deals: Vec<DealID>,
+    terminated_deals: &[DealID],
 ) -> Result<Option<IpldBlock>, ActorError> {
     rt.set_caller(*MINER_ACTOR_CODE_ID, miner_addr);
     rt.expect_validate_caller_type(vec![Type::Miner]);
@@ -1264,11 +1265,11 @@ pub fn terminate_deals_raw(
     let params = OnMinerSectorsTerminateParams { epoch: *rt.epoch.borrow(), sectors: bf };
 
     for deal_id in terminated_deals {
-        let d = get_deal_proposal(rt, deal_id);
+        let d = get_deal_proposal(rt, *deal_id);
         expect_emitted(
             rt,
             "deal-terminated",
-            deal_id,
+            *deal_id,
             d.client.id().unwrap(),
             d.provider.id().unwrap(),
         )

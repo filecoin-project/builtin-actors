@@ -159,7 +159,7 @@ fn activation_after_deal_start_epoch_but_before_it_is_processed_fails() {
         curr_epoch,
         SECTOR_NUMBER,
         &[deal_id],
-        vec![],
+        &[],
     );
     assert_eq!(res.activation_results.codes(), vec![EX_DEAL_EXPIRED]);
     check_state(&rt);

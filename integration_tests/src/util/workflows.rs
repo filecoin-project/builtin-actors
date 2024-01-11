@@ -990,8 +990,8 @@ pub fn datacap_create_allocations(
         client_id,
         token_amount,
         operator_data,
-        false,
-        events, // No burn
+        false, // No burn
+        events,
     )
     .matches(v.take_invocations().last().unwrap());
 

@@ -24,6 +24,8 @@ pub mod market {
     pub const BATCH_ACTIVATE_DEALS_METHOD: u64 = 6;
     pub const ON_MINER_SECTORS_TERMINATE_METHOD: u64 = 7;
 
+    pub const NO_ALLOCATION_ID: u64 = 0;
+
     #[derive(Serialize_tuple, Deserialize_tuple)]
     pub struct SectorDeals {
         pub sector_number: SectorNumber,
@@ -39,16 +41,16 @@ pub mod market {
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
-    pub struct VerifiedDealInfo {
+    pub struct ActivateDealInfo {
         pub client: ActorID,
         pub allocation_id: u64,
         pub data: Cid,
         pub size: PaddedPieceSize,
     }
 
-    impl Default for VerifiedDealInfo {
-        fn default() -> VerifiedDealInfo {
-            VerifiedDealInfo {
+    impl Default for ActivateDealInfo {
+        fn default() -> ActivateDealInfo {
+            ActivateDealInfo {
                 size: PaddedPieceSize(0),
                 client: 0,
                 allocation_id: 0,
@@ -58,17 +60,8 @@ pub mod market {
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
-    pub struct UnVerifiedDealInfo {
-        pub data: Cid,
-        pub size: PaddedPieceSize,
-    }
-
-    #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
     pub struct SectorDealActivation {
-        #[serde(with = "bigint_ser")]
-        pub nonverified_deal_space: BigInt,
-        pub verified_infos: Vec<VerifiedDealInfo>,
-        pub unverified_infos: Vec<UnVerifiedDealInfo>,
+        pub activated: Vec<ActivateDealInfo>,
         pub unsealed_cid: Option<Cid>,
     }
 

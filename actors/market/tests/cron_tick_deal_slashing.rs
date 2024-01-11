@@ -90,7 +90,7 @@ fn deal_is_slashed() {
 
         // terminate
         rt.set_epoch(tc.termination_epoch);
-        terminate_deals(&rt, PROVIDER_ADDR, &[sector_number], vec![deal_id]);
+        terminate_deals(&rt, PROVIDER_ADDR, &[sector_number], &[deal_id]);
 
         // cron tick
         let cron_tick_epoch = process_epoch(tc.deal_start, deal_id);
@@ -136,7 +136,7 @@ fn deal_is_slashed_at_the_end_epoch_should_not_be_slashed_and_should_be_consider
     // as deal is considered to be expired.
 
     rt.set_epoch(END_EPOCH);
-    terminate_deals(&rt, PROVIDER_ADDR, &[SECTOR_NUMBER], vec![]);
+    terminate_deals(&rt, PROVIDER_ADDR, &[SECTOR_NUMBER], &[]);
 
     // on the next cron tick, it will be processed as expired
     let current = END_EPOCH + 300;
@@ -183,7 +183,7 @@ fn deal_payment_and_slashing_correctly_processed_in_same_crontick() {
     // set slash epoch of deal
     let slash_epoch = current + Policy::default().deal_updates_interval + 1;
     rt.set_epoch(slash_epoch);
-    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number], vec![deal_id]);
+    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number], &[deal_id]);
 
     let duration = slash_epoch - current;
     let current = current + Policy::default().deal_updates_interval + 2;
@@ -241,7 +241,7 @@ fn slash_multiple_deals_in_the_same_epoch() {
 
     // set slash epoch of deal at 100 epochs past last process epoch
     rt.set_epoch(process_epoch(START_EPOCH, deal_id3) + 100);
-    terminate_deals(&rt, PROVIDER_ADDR, &[SECTOR_NUMBER], vec![deal_id1, deal_id2, deal_id3]);
+    terminate_deals(&rt, PROVIDER_ADDR, &[SECTOR_NUMBER], &[deal_id1, deal_id2, deal_id3]);
 
     // process slashing of deals 200 epochs later
     rt.set_epoch(process_epoch(START_EPOCH, deal_id3) + 300);
@@ -310,7 +310,7 @@ fn regular_payments_till_deal_is_slashed_and_then_slashing_is_processed() {
 
     // now terminate the deal 1 epoch later
     rt.set_epoch(process_start + Policy::default().deal_updates_interval + 1);
-    terminate_deals(&rt, PROVIDER_ADDR, &[SECTOR_NUMBER], vec![deal_id]);
+    terminate_deals(&rt, PROVIDER_ADDR, &[SECTOR_NUMBER], &[deal_id]);
 
     // Setting the epoch to anything less than next schedule will not make any change even though the deal is slashed
     rt.set_epoch(process_start + 2 * Policy::default().deal_updates_interval - 1);
@@ -365,7 +365,7 @@ fn regular_payments_till_deal_expires_and_then_we_attempt_to_slash_it_but_it_wil
     // as deal is considered to be expired.
     let duration = END_EPOCH - current;
     rt.set_epoch(END_EPOCH);
-    terminate_deals(&rt, PROVIDER_ADDR, &[SECTOR_NUMBER], vec![]);
+    terminate_deals(&rt, PROVIDER_ADDR, &[SECTOR_NUMBER], &[]);
 
     // next epoch for cron schedule is endEpoch + 300 ->
     // setting epoch to higher than that will cause deal to be expired, payment will be made

@@ -8,6 +8,7 @@ use fvm_shared::{
 };
 use std::collections::HashMap;
 
+use fil_actor_miner::ext::market::NO_ALLOCATION_ID;
 use fil_actor_miner::{
     initial_pledge_for_power, max_prove_commit_duration, pre_commit_deposit_for_power,
     qa_power_for_weight, qa_power_max, PowerPair, PreCommitSectorBatchParams, VestSpec,
@@ -46,7 +47,7 @@ fn prove_single_sector() {
         dl_info.period_end() + DEFAULT_SECTOR_EXPIRATION * rt.policy.wpost_proving_period; // something on deadline boundary but > 180 days
                                                                                            // Fill the sector with verified deals
     let deal_space = BigInt::zero();
-    let verified_deal = test_verified_deal(h.sector_size as u64);
+    let verified_deal = test_activated_deal(h.sector_size as u64, 1);
     let verified_deal_space = BigInt::from(verified_deal.size.0);
 
     // Pre-commit with a deal in order to exercise non-zero deal weights.
@@ -71,7 +72,7 @@ fn prove_single_sector() {
     rt.set_epoch(prove_commit_epoch);
     rt.balance.replace(TokenAmount::from_whole(1000));
     let mut pcc = ProveCommitConfig::empty();
-    pcc.add_verified_deals(sector_no, vec![verified_deal]);
+    pcc.add_activated_deals(sector_no, vec![verified_deal]);
 
     let sector = h
         .prove_commit_sector_and_confirm(
@@ -176,9 +177,9 @@ fn prove_sectors_from_batch_pre_commit() {
     let deal_space: i64 = 32 << 30;
     let prove_commit_epoch = precommit_epoch + rt.policy.pre_commit_challenge_delay + 1;
     let deal_lifespan = sector_expiration - prove_commit_epoch;
-    let verified_deal1 = test_verified_deal(deal_space as u64);
-    let verified_deal2 = test_verified_deal(deal_space as u64 / 2);
-    let verified_deal3 = test_verified_deal(deal_space as u64 / 2);
+    let verified_deal1 = test_activated_deal(deal_space as u64, 1);
+    let verified_deal2 = test_activated_deal(deal_space as u64 / 2, 2);
+    let verified_deal3 = test_activated_deal(deal_space as u64 / 2, 3);
     let deal_weight = DealWeight::zero();
     let verified_deal_weight = deal_space * DealWeight::from(deal_lifespan);
 
@@ -255,7 +256,7 @@ fn prove_sectors_from_batch_pre_commit() {
     {
         let precommit = &precommits[1];
         let mut pcc = ProveCommitConfig::empty();
-        pcc.add_verified_deals(precommit.info.sector_number, vec![verified_deal1]);
+        pcc.add_activated_deals(precommit.info.sector_number, vec![verified_deal1]);
         let sector = h
             .prove_commit_sector_and_confirm(
                 &rt,
@@ -282,7 +283,7 @@ fn prove_sectors_from_batch_pre_commit() {
     {
         let precommit = &precommits[2];
         let mut pcc = ProveCommitConfig::empty();
-        pcc.add_verified_deals(precommit.info.sector_number, vec![verified_deal2, verified_deal3]);
+        pcc.add_activated_deals(precommit.info.sector_number, vec![verified_deal2, verified_deal3]);
         let sector = h
             .prove_commit_sector_and_confirm(
                 &rt,
@@ -507,7 +508,10 @@ fn drop_invalid_prove_commit_while_processing_valid_one() {
 
     let conf = ProveCommitConfig {
         verify_deals_exit: HashMap::from([(sector_no_a, ExitCode::USR_ILLEGAL_ARGUMENT)]),
-        verified_deal_infos: HashMap::from([(sector_no_b, vec![test_verified_deal(100)])]),
+        activated_deals: HashMap::from([(
+            sector_no_b,
+            vec![test_activated_deal(100, NO_ALLOCATION_ID)],
+        )]),
         ..Default::default()
     };
     h.confirm_sector_proofs_valid(&rt, conf, vec![pre_commit_a, pre_commit_b]).unwrap();
