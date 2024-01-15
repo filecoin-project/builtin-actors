@@ -69,7 +69,8 @@ fn terminate_multiple_deals_from_multiple_providers() {
     let sector_expiry = end_epoch + 100;
     let current_epoch = 5;
 
-    let provider2 = Address::new_id(501);
+    let provider2_id = 501;
+    let provider2 = Address::new_id(provider2_id);
 
     let rt = setup();
     rt.set_epoch(current_epoch);
@@ -113,13 +114,13 @@ fn terminate_multiple_deals_from_multiple_providers() {
 
     terminate_deals(&rt, PROVIDER_ADDR, &[sector_number]);
     assert_deals_terminated(&rt, current_epoch, &[deal1, deal2, deal3]);
-    assert_eq!(Vec::<DealID>::new(), get_sector_deal_ids(&rt, &PROVIDER_ADDR, sector_number));
+    assert_eq!(Vec::<DealID>::new(), get_sector_deal_ids(&rt, PROVIDER_ID, sector_number));
     assert_deals_not_terminated(&rt, &[deal4, deal5]);
-    assert_eq!(vec![deal4, deal5], get_sector_deal_ids(&rt, &provider2, sector_number));
+    assert_eq!(vec![deal4, deal5], get_sector_deal_ids(&rt, provider2_id, sector_number));
 
     terminate_deals(&rt, provider2, &[sector_number]);
     assert_deals_terminated(&rt, current_epoch, &[deal4, deal5]);
-    assert_eq!(Vec::<DealID>::new(), get_sector_deal_ids(&rt, &provider2, sector_number));
+    assert_eq!(Vec::<DealID>::new(), get_sector_deal_ids(&rt, provider2_id, sector_number));
     check_state(&rt);
 }
 
@@ -148,7 +149,7 @@ fn ignore_sector_that_does_not_exist() {
 
     let s = get_deal_state(&rt, deal1);
     assert_eq!(s.slash_epoch, -1);
-    assert_eq!(vec![deal1], get_sector_deal_ids(&rt, &PROVIDER_ADDR, sector_number));
+    assert_eq!(vec![deal1], get_sector_deal_ids(&rt, PROVIDER_ID, sector_number));
     check_state(&rt);
 }
 
@@ -202,7 +203,7 @@ fn terminate_valid_deals_along_with_just_expired_deal() {
     // Not cleaned up yet.
     assert_deals_not_terminated(&rt, &[deal3]);
     // All deals are removed from sector deals mapping at once.
-    assert_eq!(Vec::<DealID>::new(), get_sector_deal_ids(&rt, &PROVIDER_ADDR, sector_number));
+    assert_eq!(Vec::<DealID>::new(), get_sector_deal_ids(&rt, PROVIDER_ID, sector_number));
     check_state(&rt);
 }
 
