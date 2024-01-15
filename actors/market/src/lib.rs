@@ -679,7 +679,7 @@ impl Actor {
                 let mut sector_deal_ids: Vec<DealID> = vec![];
                 let mut pieces_ret: Vec<ext::miner::PieceReturn> = vec![];
                 for piece in &sector.added {
-                    let deal_id: DealID = match deserialize(&piece.payload.clone(), "deal id") {
+                    let deal_id: DealID = match deserialize(&piece.payload, "deal id") {
                         Ok(v) => v,
                         Err(e) => {
                             log::warn!("failed to deserialize deal id {:?}: {}", piece.payload, e);
