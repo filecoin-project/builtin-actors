@@ -2,7 +2,7 @@ use fvm_ipld_encoding::tuple::*;
 use fvm_shared::error::ExitCode;
 use std::fmt;
 
-#[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize_tuple, Deserialize_tuple, Copy, Clone, Debug, PartialEq, Eq)]
 pub struct FailCode {
     pub idx: u32,
     pub code: ExitCode,
@@ -101,39 +101,47 @@ impl fmt::Display for BatchReturn {
 /// indexed against only those successful items.
 /// E.g. stack([OK, E1, OK, E2], [OK, E3], [E4]) => [E4, E1, E3, E2]
 pub fn stack(batch_returns: &[BatchReturn]) -> BatchReturn {
-    if batch_returns.is_empty() {
-        return BatchReturn::empty();
-    }
-    let mut base = batch_returns[0].clone();
-    for nxt in &batch_returns[1..] {
-        assert_eq!(
-            base.success_count as usize,
-            nxt.size(),
-            "can't stack batch of {} on batch with {} successes",
-            nxt.size(),
-            base.success_count
-        );
-        let mut nxt_fail = nxt.fail_codes.iter().peekable();
-        let mut base_fail = base.fail_codes.iter().peekable();
-        let mut offset = 0;
-        let mut new_fail_codes = vec![];
-        while nxt_fail.peek().is_some() {
-            let nxt_fail = nxt_fail.next().unwrap();
-            while base_fail.peek().is_some()
-                && base_fail.peek().unwrap().idx <= nxt_fail.idx + offset
-            {
-                base_fail.next();
-                offset += 1;
+    fn merge_layer<'a>(
+        success_count: u32,
+        base_iter: &mut dyn Iterator<Item = FailCode>,
+        mut batches: impl Iterator<Item = &'a BatchReturn>,
+    ) -> BatchReturn {
+        let Some(next) = batches.next() else {
+            return BatchReturn {
+                success_count,
+                fail_codes: base_iter.collect(),
             }
-            new_fail_codes.push(FailCode { idx: nxt_fail.idx + offset, code: nxt_fail.code })
-        }
-        base.fail_codes.extend(new_fail_codes);
-        base.fail_codes.sort_by(|a, b| a.idx.cmp(&b.idx));
-        base.success_count = nxt.success_count;
+        };
+        assert_eq!(
+            success_count as usize,
+            next.size(),
+            "can't stack batch of {} on batch with {} successes",
+            next.size(),
+            success_count
+        );
+        let mut offset = 0;
+        let mut next_iter = next.fail_codes.iter().copied().peekable();
+        let mut base_iter = base_iter.peekable();
+        let mut res_iter = std::iter::from_fn(move || {
+            let take_base = match (base_iter.peek(), next_iter.peek()) {
+                (Some(b), Some(n)) => b.idx <= n.idx + offset,
+                (Some(_), None) => true,
+                (None, Some(_)) => false,
+                (None, None) => return None,
+            };
+            if take_base {
+                offset += 1;
+                base_iter.next()
+            } else {
+                next_iter.next().map(|n| FailCode { idx: n.idx + offset, code: n.code })
+            }
+        });
+        merge_layer(next.success_count, &mut res_iter, batches)
     }
-    assert_eq!(base.size(), batch_returns[0].size());
-    assert_eq!(base.success_count, batch_returns[batch_returns.len() - 1].success_count);
-    base
+    let Some((base, rest)) = batch_returns.split_first() else {
+        return BatchReturn::empty();
+    };
+    merge_layer(base.success_count, &mut base.fail_codes.iter().copied(), rest.iter())
 }
 
 pub struct BatchReturnGen {
