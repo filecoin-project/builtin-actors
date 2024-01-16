@@ -19,7 +19,7 @@ use std::collections::BTreeMap;
 pub struct ActivationNotifications<'a> {
     pub sector_number: SectorNumber,
     pub sector_expiration: ChainEpoch,
-    pub pieces: &'a Vec<PieceActivationManifest>,
+    pub pieces: &'a [PieceActivationManifest],
 }
 
 /// Sends notifications of sector and piece activation to nominated receiving actors.
@@ -38,9 +38,9 @@ pub fn notify_data_consumers(
     let mut activations_by_notifee =
         BTreeMap::<Address, BTreeMap<SectorNumber, Vec<PieceChange>>>::new();
     // Collect each sector's expiration for sending to each receiver of a notification.
-    let mut sector_expirations = BTreeMap::<SectorNumber, ChainEpoch>::new();
+    let sector_expirations: BTreeMap<SectorNumber, ChainEpoch> =
+        activations.iter().map(|a| (a.sector_number, a.sector_expiration)).collect();
     for activation in activations {
-        sector_expirations.insert(activation.sector_number, activation.sector_expiration);
         for piece in activation.pieces {
             for notifee in &piece.notify {
                 activations_by_notifee
