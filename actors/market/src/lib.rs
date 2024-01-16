@@ -681,8 +681,8 @@ impl Actor {
 
             for sector in &params.sectors {
                 let mut sector_deal_ids: Vec<DealID> = vec![];
-                let mut pieces_ret: Vec<ext::miner::PieceReturn> = vec![];
-                for piece in &sector.added {
+                let mut pieces_ret: Vec<_> = vec![ext::miner::PieceReturn { accepted: false }; sector.added.len()];
+                for (piece, ret) in sector.added.iter().zip(&mut pieces_ret) {
                     let deal_id: DealID = match deserialize(&piece.payload, "deal id") {
                         Ok(v) => v,
                         Err(e) => {
