@@ -54,11 +54,11 @@ use fvm_shared::{
 };
 
 // Define common set of actor ids that will be used across all tests.
-const OWNER_ID: u64 = 101;
-const PROVIDER_ID: u64 = 102;
-const WORKER_ID: u64 = 103;
-const CLIENT_ID: u64 = 104;
-const CONTROL_ID: u64 = 200;
+pub const OWNER_ID: u64 = 101;
+pub const PROVIDER_ID: u64 = 102;
+pub const WORKER_ID: u64 = 103;
+pub const CLIENT_ID: u64 = 104;
+pub const CONTROL_ID: u64 = 200;
 
 pub const OWNER_ADDR: Address = Address::new_id(OWNER_ID);
 pub const PROVIDER_ADDR: Address = Address::new_id(PROVIDER_ID);
@@ -448,7 +448,7 @@ pub fn get_deal_state(rt: &MockRuntime, deal_id: DealID) -> DealState {
 // Returns the deal IDs associated with a provider address and sector from state
 pub fn get_sector_deal_ids(
     rt: &MockRuntime,
-    provider: &Address,
+    provider: ActorID,
     sector_number: SectorNumber,
 ) -> Vec<DealID> {
     let st: State = rt.get_state();
@@ -459,7 +459,7 @@ pub fn get_sector_deal_ids(
         "provider sectors",
     )
     .unwrap();
-    let sectors_root: Option<&Cid> = provider_sectors.get(provider).unwrap();
+    let sectors_root: Option<&Cid> = provider_sectors.get(&provider).unwrap();
     if let Some(sectors_root) = sectors_root {
         let sector_deals =
             SectorDealsMap::load(&rt.store, sectors_root, SECTOR_DEALS_CONFIG, "sector deals")
@@ -937,7 +937,7 @@ pub fn assert_deal_deleted(
     assert!(!pending_deals.has(&BytesKey(p_cid.to_bytes())).unwrap());
 
     // Check deal is no longer associated with sector
-    let sector_deals = get_sector_deal_ids(rt, &p.provider, sector_number);
+    let sector_deals = get_sector_deal_ids(rt, p.provider.id().unwrap(), sector_number);
     assert!(!sector_deals.contains(&deal_id));
 }
 

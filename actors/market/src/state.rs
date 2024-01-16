@@ -1,13 +1,9 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use crate::balance_table::BalanceTable;
-use crate::ext::verifreg::AllocationID;
+use std::collections::BTreeMap;
+
 use cid::Cid;
-use fil_actors_runtime::{
-    actor_error, ActorContext, ActorError, Array, AsActorError, Config, Map2, Set, SetMultimap,
-    DEFAULT_HAMT_CONFIG,
-};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_shared::address::Address;
@@ -16,9 +12,16 @@ use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::SectorNumber;
-use fvm_shared::HAMT_BIT_WIDTH;
+use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
 use num_traits::Zero;
-use std::collections::BTreeMap;
+
+use fil_actors_runtime::{
+    actor_error, ActorContext, ActorError, Array, AsActorError, Config, Map2, Set, SetMultimap,
+    DEFAULT_HAMT_CONFIG,
+};
+
+use crate::balance_table::BalanceTable;
+use crate::ext::verifreg::AllocationID;
 
 use super::policy::*;
 use super::types::*;
@@ -85,6 +88,7 @@ pub struct State {
 
 /// IDs of deals associated with a single sector.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
 pub struct SectorDealIDs {
     pub deals: Vec<DealID>,
 }
@@ -93,7 +97,7 @@ pub type PendingDealAllocationsMap<BS> = Map2<BS, DealID, AllocationID>;
 pub const PENDING_ALLOCATIONS_CONFIG: Config =
     Config { bit_width: HAMT_BIT_WIDTH, ..DEFAULT_HAMT_CONFIG };
 
-pub type ProviderSectorsMap<BS> = Map2<BS, Address, Cid>;
+pub type ProviderSectorsMap<BS> = Map2<BS, ActorID, Cid>;
 pub const PROVIDER_SECTORS_CONFIG: Config =
     Config { bit_width: HAMT_BIT_WIDTH, ..DEFAULT_HAMT_CONFIG };
 
@@ -590,15 +594,12 @@ impl State {
     // Stores deal IDs associated with sectors for a provider.
     // Deal IDs are added to any already stored for the provider and sector.
     // Returns the root cid of the sector deals map.
-    pub fn put_sector_deal_ids<BS>(
+    pub fn put_sector_deal_ids(
         &mut self,
-        store: &BS,
-        provider: &Address,
+        store: &impl Blockstore,
+        provider: ActorID,
         sector_deal_ids: &[(SectorNumber, SectorDealIDs)],
-    ) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-    {
+    ) -> Result<(), ActorError> {
         let mut provider_sectors = self.load_provider_sectors(store)?;
         let mut sector_deals = load_provider_sector_deals(store, &provider_sectors, provider)?;
 
@@ -625,34 +626,33 @@ impl State {
     }
 
     // Reads and removes the sector deals mapping for an array of sector numbers,
-    pub fn pop_sector_deal_ids<BS>(
+    pub fn pop_sector_deal_ids(
         &mut self,
-        store: &BS,
-        provider: &Address,
+        store: &impl Blockstore,
+        provider: ActorID,
         sector_numbers: impl Iterator<Item = SectorNumber>,
-    ) -> Result<Vec<(SectorNumber, SectorDealIDs)>, ActorError>
-    where
-        BS: Blockstore,
-    {
+    ) -> Result<Vec<DealID>, ActorError> {
         let mut provider_sectors = self.load_provider_sectors(store)?;
         let mut sector_deals = load_provider_sector_deals(store, &provider_sectors, provider)?;
 
         let mut popped_sector_deals = Vec::new();
+        let mut flush = false;
         for sector_number in sector_numbers {
             let deals: Option<SectorDealIDs> = sector_deals
                 .delete(&sector_number)
                 .with_context(|| format!("provider {}", provider))?;
             if let Some(deals) = deals {
-                popped_sector_deals.push((sector_number, deals.clone()));
+                popped_sector_deals.extend(deals.deals.iter());
+                flush = true;
             }
         }
 
         // Flush if any of the requested sectors were found.
-        if !popped_sector_deals.is_empty() {
+        if flush {
             if sector_deals.is_empty() {
                 // Remove from top-level map
                 provider_sectors
-                    .delete(provider)
+                    .delete(&provider)
                     .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
                         format!("failed to delete sector deals for {}", provider)
                     })?;
@@ -667,17 +667,14 @@ impl State {
 
     // Removes specified deals from the sector deals mapping.
     // Missing deals are ignored.
-    pub fn remove_sector_deal_ids<BS>(
+    pub fn remove_sector_deal_ids(
         &mut self,
-        store: &BS,
-        provider_sector_deal_ids: &BTreeMap<Address, BTreeMap<SectorNumber, Vec<DealID>>>,
-    ) -> Result<(), ActorError>
-    where
-        BS: Blockstore,
-    {
+        store: &impl Blockstore,
+        provider_sector_deal_ids: &BTreeMap<ActorID, BTreeMap<SectorNumber, Vec<DealID>>>,
+    ) -> Result<(), ActorError> {
         let mut provider_sectors = self.load_provider_sectors(store)?;
         for (provider, sector_deal_ids) in provider_sector_deal_ids {
-            let mut sector_deals = load_provider_sector_deals(store, &provider_sectors, provider)?;
+            let mut sector_deals = load_provider_sector_deals(store, &provider_sectors, *provider)?;
             for (sector_number, deals_to_remove) in sector_deal_ids {
                 let existing_deal_ids = sector_deals
                     .get(sector_number)
@@ -702,7 +699,7 @@ impl State {
                         })?;
                 }
             }
-            save_provider_sector_deals(&mut provider_sectors, provider, &mut sector_deals)?;
+            save_provider_sector_deals(&mut provider_sectors, *provider, &mut sector_deals)?;
         }
         self.save_provider_sectors(&mut provider_sectors)?;
         Ok(())
@@ -1131,13 +1128,13 @@ where
 pub fn load_provider_sector_deals<BS>(
     store: BS,
     provider_sectors: &ProviderSectorsMap<BS>,
-    provider: &Address,
+    provider: ActorID,
 ) -> Result<SectorDealsMap<BS>, ActorError>
 where
     BS: Blockstore,
 {
-    let sectors_root: Option<&Cid> = (*provider_sectors).get(provider)?;
-    let sector_deals: SectorDealsMap<BS> = if let Some(sectors_root) = sectors_root {
+    let sectors_root = (*provider_sectors).get(&provider)?;
+    let sector_deals = if let Some(sectors_root) = sectors_root {
         SectorDealsMap::load(store, sectors_root, SECTOR_DEALS_CONFIG, "sector deals")
             .with_context(|| format!("provider {}", provider))?
     } else {
@@ -1148,13 +1145,13 @@ where
 
 fn save_provider_sector_deals<BS>(
     provider_sectors: &mut ProviderSectorsMap<BS>,
-    provider: &Address,
+    provider: ActorID,
     sector_deals: &mut SectorDealsMap<BS>,
 ) -> Result<(), ActorError>
 where
     BS: Blockstore,
 {
     let sectors_root = sector_deals.flush()?;
-    provider_sectors.set(provider, sectors_root)?;
+    provider_sectors.set(&provider, sectors_root)?;
     Ok(())
 }

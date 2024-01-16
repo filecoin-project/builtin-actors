@@ -3468,7 +3468,7 @@ fn expect_compute_unsealed_cid_from_pieces(
             pieces.iter().map(|p| PieceInfo { size: p.size, cid: p.cid }).collect();
         let unsealed_cid =
             sector_commd_from_pieces(&pieces.iter().map(|p| p.cid).collect::<Vec<_>>())
-                .get_nonzero_cid();
+                .unwrap_nonzero_cid();
         rt.expect_compute_unsealed_sector_cid(
             seal_proof_type,
             expected_inputs,
