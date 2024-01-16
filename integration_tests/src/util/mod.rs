@@ -191,7 +191,7 @@ pub fn market_list_sectors_deals(
     let st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
     let bs = &DynBlockstore::wrap(v.blockstore());
     let sectors = st.load_provider_sectors(bs).unwrap();
-    let sector_deals = load_provider_sector_deals(bs, &sectors, provider).unwrap();
+    let sector_deals = load_provider_sector_deals(bs, &sectors, provider.id().unwrap()).unwrap();
     let mut found: HashMap<SectorNumber, Vec<DealID>> = HashMap::new();
     sector_deals
         .for_each(|sno, deal_ids| {

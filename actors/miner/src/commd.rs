@@ -39,7 +39,7 @@ impl CompactCommD {
     }
 
     // Gets the full, non-compact CID, panicking if the CID is zero.
-    pub fn get_nonzero_cid(&self) -> Cid {
+    pub fn unwrap_nonzero_cid(&self) -> Cid {
         match self.0 {
             Some(ref x) => *x,
             None => panic!("zero commd"),
