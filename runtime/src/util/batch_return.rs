@@ -113,20 +113,18 @@ pub fn stack(batch_returns: &[BatchReturn]) -> BatchReturn {
             nxt.size(),
             base.success_count
         );
-        let mut nxt_fail = nxt.fail_codes.iter().peekable();
         let mut base_fail = base.fail_codes.iter().peekable();
         let mut offset = 0;
-        let mut new_fail_codes = vec![];
-        while nxt_fail.peek().is_some() {
-            let nxt_fail = nxt_fail.next().unwrap();
-            while base_fail.peek().is_some()
-                && base_fail.peek().unwrap().idx <= nxt_fail.idx + offset
-            {
-                base_fail.next();
-                offset += 1;
-            }
-            new_fail_codes.push(FailCode { idx: nxt_fail.idx + offset, code: nxt_fail.code })
-        }
+        let new_fail_codes: Vec<_> = nxt
+            .fail_codes
+            .iter()
+            .map(|nxt_fail| {
+                while base_fail.next_if(|f| f.idx <= nxt_fail.idx + offset).is_some() {
+                    offset += 1;
+                }
+                FailCode { idx: nxt_fail.idx + offset, code: nxt_fail.code }
+            })
+            .collect();
         base.fail_codes.extend(new_fail_codes);
         base.fail_codes.sort_by(|a, b| a.idx.cmp(&b.idx));
         base.success_count = nxt.success_count;
