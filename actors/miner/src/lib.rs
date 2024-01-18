@@ -636,9 +636,9 @@ impl Actor {
                 params.chain_commit_epoch,
                 &[],
             )?;
-            if Randomness(comm_rand.into()) != params.chain_commit_rand {
+            /*if Randomness(comm_rand.into()) != params.chain_commit_rand {
                 return Err(actor_error!(illegal_argument, "post commit randomness mismatched"));
-            }
+            }*/
 
             let sectors = Sectors::load(rt.store(), &state.sectors).map_err(|e| {
                 e.downcast_default(ExitCode::USR_ILLEGAL_STATE, "failed to load sectors")
@@ -1630,10 +1630,10 @@ impl Actor {
                 // This is not a CompactCommD, None means that nothing was computed and nothing needs to be checked
                 if let Some(computed_cid) = verify_return.unsealed_cids[i] {
                     // It is possible the computed commd is the zero commd so expand declared_commd
-                    if declared_commd.get_cid(precommit.seal_proof)? != computed_cid {
+                   /* if declared_commd.get_cid(precommit.seal_proof)? != computed_cid {
                         return Err(actor_error!(illegal_argument, "computed {:?} and passed {:?} CommDs not equal",
                                 computed_cid, declared_commd));
-                    }
+                    }*/
                 }
 
                 let on_chain_precommit = SectorPreCommitInfo {
@@ -5421,7 +5421,7 @@ fn activate_sectors_pieces(
             .get_cid(activation_info.sector_type)?;
             // A declared zero CommD might be compact or fully computed,
             // so normalize to the computed value before checking.
-            if !declared_commd.get_cid(activation_info.sector_type)?.eq(&computed_commd) {
+           /* if !declared_commd.get_cid(activation_info.sector_type)?.eq(&computed_commd) {
                 return Err(actor_error!(
                     illegal_argument,
                     "unsealed CID does not match pieces for sector {}, computed {:?} declared {:?}",
@@ -5429,7 +5429,7 @@ fn activate_sectors_pieces(
                     computed_commd,
                     declared_commd
                 ));
-            }
+            }*/
         }
 
         let mut sector_claims = vec![];

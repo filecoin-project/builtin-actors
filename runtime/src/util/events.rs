@@ -21,6 +21,7 @@ impl EventBuilder {
 
     /// Initialise the "type" of the event i.e. Actor event type.
     pub fn typ(self, _type: &str) -> Self {
+        println!("event type: {}", _type);
         self.push_entry(EVENT_TYPE_KEY, _type, Flags::FLAG_INDEXED_ALL)
     }
 
