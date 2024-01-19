@@ -285,11 +285,15 @@ impl VM for TestVM {
         params: Option<IpldBlock>,
     ) -> Result<MessageResult, VMError> {
         let from_id = &self.resolve_id_address(from).unwrap();
+        // TODO: for non-implicit calls validate that from_id is either the
+        // account actor or the ethereum account actor and error otherwise
         let mut a = self.actor(from_id).unwrap();
         let call_seq = a.sequence;
         a.sequence = call_seq + 1;
         // EthAccount abstractions turns Placeholders into EthAccounts
         if a.code == *PLACEHOLDER_ACTOR_CODE_ID {
+            // TODO: for non-implicit calls validate that the actor has a
+            // delegated f4 address in the EAM's namespace
             a.code = *ETHACCOUNT_ACTOR_CODE_ID;
         }
         self.set_actor(from_id, a);

@@ -3,7 +3,6 @@ use export_macro::vm_test;
 use fil_actors_runtime::runtime::policy_constants::MAX_SECTOR_NUMBER;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
@@ -14,8 +13,8 @@ use fvm_shared::sector::{PoStProof, RegisteredSealProof, SectorNumber};
 use crate::expects::Expect;
 use crate::util::{
     advance_by_deadline_to_epoch, advance_to_proving_deadline, assert_invariants, create_accounts,
-    create_miner, expect_invariants, get_network_stats, invariant_failure_patterns, miner_balance,
-    precommit_sectors_v2, submit_windowed_post,
+    create_miner, cron_tick, expect_invariants, get_network_stats, invariant_failure_patterns,
+    miner_balance, precommit_sectors_v2, submit_windowed_post,
 };
 use crate::TEST_VM_RAND_ARRAY;
 use fil_actor_cron::Method as CronMethod;
@@ -29,7 +28,7 @@ use fil_actor_power::{Method as PowerMethod, State as PowerState};
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
     CRON_ACTOR_ADDR, CRON_ACTOR_ID, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
-    STORAGE_POWER_ACTOR_ID, SYSTEM_ACTOR_ADDR,
+    STORAGE_POWER_ACTOR_ID,
 };
 use vm_api::trace::{EmittedEvent, ExpectInvocation};
 use vm_api::util::{apply_code, apply_ok, get_state, DynBlockstore};
@@ -106,16 +105,9 @@ fn setup(v: &dyn VM) -> (MinerInfo, SectorInfo) {
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
-    let res = v
-        .execute_message(
-            &SYSTEM_ACTOR_ADDR,
-            &CRON_ACTOR_ADDR,
-            &TokenAmount::zero(),
-            CronMethod::EpochTick as u64,
-            None,
-        )
-        .unwrap();
-    assert_eq!(ExitCode::OK, res.code);
+
+    cron_tick(v);
+
     let pieces: Vec<(Cid, u64)> = vec![];
     ExpectInvocation {
         to: CRON_ACTOR_ADDR,
@@ -253,14 +245,7 @@ pub fn missed_first_post_deadline_test(v: &dyn VM) {
     v.set_epoch(sector_info.deadline_info.last());
 
     // Run cron to detect missing PoSt
-    apply_ok(
-        v,
-        &SYSTEM_ACTOR_ADDR,
-        &CRON_ACTOR_ADDR,
-        &TokenAmount::zero(),
-        CronMethod::EpochTick as u64,
-        None::<RawBytes>,
-    );
+    cron_tick(v);
 
     ExpectInvocation {
         to: CRON_ACTOR_ADDR,
@@ -362,14 +347,7 @@ pub fn overdue_precommit_test(v: &dyn VM) {
     v.set_epoch(deadline_info.close);
 
     // run cron which should clean up precommit
-    apply_ok(
-        v,
-        &SYSTEM_ACTOR_ADDR,
-        &CRON_ACTOR_ADDR,
-        &TokenAmount::zero(),
-        CronMethod::EpochTick as u64,
-        None::<RawBytes>,
-    );
+    cron_tick(v);
 
     ExpectInvocation {
         to: CRON_ACTOR_ADDR,
