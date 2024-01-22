@@ -779,7 +779,7 @@ impl Actor {
 
         rt.transaction(|st: &mut State, rt| {
             // The sector deals mapping is removed all at once.
-            // Other deal clean-up is deferred to cron.
+            // Other deal clean-up is deferred to per-epoch cron.
             let all_deal_ids = st.pop_sector_deal_ids(
                 rt.store(),
                 miner_addr.id().unwrap(),
