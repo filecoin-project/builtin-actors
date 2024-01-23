@@ -899,10 +899,10 @@ impl Actor {
         )?;
         // Drop invalid inputs.
         let update_sector_infos: Vec<UpdateAndSectorInfo> =
-            batch_return.successes(&update_sector_infos).iter().map(|x| (*x).clone()).collect();
+            batch_return.successes(&update_sector_infos).into_iter().cloned().collect();
 
         let data_activation_inputs: Vec<DealsActivationInput> =
-            update_sector_infos.iter().map(|x| x.into()).collect();
+            update_sector_infos.iter().map_into().collect();
 
         /*
            - no CommD was specified on input so it must be computed for the first time here
@@ -1007,8 +1007,9 @@ impl Actor {
         let mut sector_infos = Vec::with_capacity(params.sector_updates.len());
         let mut updates = Vec::with_capacity(params.sector_updates.len());
         for (i, update) in params.sector_updates.iter().enumerate() {
-            sector_infos.push(sectors.must_get(update.sector)?);
-            let sector_type = sector_infos.last().unwrap().seal_proof;
+            let sector = sectors.must_get(update.sector)?;
+            let sector_type = sector.seal_proof;
+            sector_infos.push(sector);
             let computed_commd =
                 unsealed_cid_from_pieces(rt, &update.pieces, sector_type)?.get_cid(sector_type)?;
 
@@ -1157,14 +1158,14 @@ impl Actor {
         request_update_power(rt, power_delta)?;
 
         // Notify data consumers.
-        let mut notifications: Vec<ActivationNotifications> = vec![];
-        for (update, sector_info) in successful_manifests {
-            notifications.push(ActivationNotifications {
+        let notifications: Vec<ActivationNotifications> = successful_manifests
+            .into_iter()
+            .map(|(update, sector_info)| ActivationNotifications {
                 sector_number: update.sector,
                 sector_expiration: sector_info.expiration,
                 pieces: &update.pieces,
-            });
-        }
+            })
+            .collect();
         notify_data_consumers(rt, &notifications, params.require_notification_success)?;
 
         let result = util::stack(&[validation_batch, proven_batch, data_batch]);
@@ -1479,20 +1480,14 @@ impl Actor {
                 ));
             }
 
-            if let Some(compact_commd) = &precommit.unsealed_cid {
-                if let Some(commd) = compact_commd.0 {
-                    if !is_unsealed_sector(&commd) {
-                        return Err(actor_error!(
-                            illegal_argument,
-                            "unsealed CID had wrong prefix"
-                        ));
-                    }
+            match &precommit.unsealed_cid {
+                Some(CompactCommD(Some(commd))) if !is_unsealed_sector(commd) => {
+                    return Err(actor_error!(illegal_argument, "unsealed CID had wrong prefix"));
                 }
-            } else {
-                return Err(actor_error!(
-                    illegal_argument,
-                    "unspecified CompactCommD not allowed past nv21, need explicit None value for CC or CommD"
-                ));
+                None => return Err(actor_error!(
+                                illegal_argument,
+                                "unspecified CompactCommD not allowed past nv21, need explicit None value for CC or CommD")),
+                _ => {},
             }
 
             // Require sector lifetime meets minimum by assuming activation happens at last epoch permitted for seal proof.
@@ -1596,6 +1591,8 @@ impl Actor {
                 // 1. verify that precommit.unsealed_cid is correct
                 // 2. create a new on_chain_precommit
 
+                // Presence of unsealed CID is checked in the preconditions.
+                // It must always be specified from nv22 onwards.
                 let declared_commd = precommit.unsealed_cid.unwrap();
                 // This is not a CompactCommD, None means that nothing was computed and nothing needs to be checked
                 if let Some(computed_cid) = verify_return.unsealed_cids[i] {
@@ -3929,8 +3926,8 @@ where
                 let (partition_power_delta, partition_pledge_delta) = partition
                     .replace_sectors(
                         rt.store(),
-                        &[update.sector_info.clone()],
-                        &[new_sector_info.clone()],
+                        std::slice::from_ref(update.sector_info),
+                        std::slice::from_ref(&new_sector_info),
                         sector_size,
                         quant,
                     )
