@@ -1591,7 +1591,7 @@ impl Actor {
                 // 1. verify that precommit.unsealed_cid is correct
                 // 2. create a new on_chain_precommit
 
-                // Presence of unsealed CID iis checked in the preconditions.
+                // Presence of unsealed CID is checked in the preconditions.
                 // It must always be specified from nv22 onwards.
                 let declared_commd = precommit.unsealed_cid.unwrap();
                 // This is not a CompactCommD, None means that nothing was computed and nothing needs to be checked
