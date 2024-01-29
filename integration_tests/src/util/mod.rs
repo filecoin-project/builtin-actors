@@ -201,7 +201,7 @@ pub fn market_list_sectors_deals(
     let mut found: HashMap<SectorNumber, Vec<DealID>> = HashMap::new();
     sector_deals
         .for_each(|sno, deal_ids| {
-            found.insert(sno, deal_ids.deals.clone());
+            found.insert(sno, deal_ids.clone());
             Ok(())
         })
         .unwrap();
