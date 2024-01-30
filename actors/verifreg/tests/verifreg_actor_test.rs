@@ -495,6 +495,7 @@ mod allocs_claims {
 
     use cid::Cid;
     use fvm_ipld_encoding::ipld_block::IpldBlock;
+    use fvm_ipld_encoding::RawBytes;
     use fvm_shared::bigint::BigInt;
     use fvm_shared::error::ExitCode;
     use fvm_shared::piece::PaddedPieceSize;
@@ -502,8 +503,8 @@ mod allocs_claims {
     use num_traits::Zero;
 
     use fil_actor_verifreg::{
-        Actor, AllocationID, ClaimTerm, DataCap, ExtendClaimTermsParams, GetClaimsParams,
-        GetClaimsReturn, Method, State,
+        Actor, AllocationID, AllocationKey, ClaimKey, ClaimTerm, DataCap, ExtendClaimTermsParams,
+        GetClaimsParams, GetClaimsReturn, Method, State,
     };
     use fil_actor_verifreg::{Claim, ExtendClaimTermsReturn};
     use fil_actors_runtime::runtime::policy_constants::{
@@ -511,7 +512,8 @@ mod allocs_claims {
         MINIMUM_VERIFIED_ALLOCATION_TERM,
     };
     use fil_actors_runtime::test_utils::{
-        expect_abort, expect_abort_contains_message, ACCOUNT_ACTOR_CODE_ID, EVM_ACTOR_CODE_ID,
+        expect_abort, expect_abort_contains_message, MockRuntime, ACCOUNT_ACTOR_CODE_ID,
+        EVM_ACTOR_CODE_ID,
     };
     use fil_actors_runtime::FailCode;
     use harness::*;
@@ -520,6 +522,7 @@ mod allocs_claims {
 
     const CLIENT1: ActorID = 101;
     const CLIENT2: ActorID = 102;
+    const CLIENT3: ActorID = 103;
     const PROVIDER1: ActorID = 301;
     const PROVIDER2: ActorID = 302;
     const ALLOC_SIZE: u64 = MINIMUM_VERIFIED_ALLOCATION_SIZE as u64;
@@ -1111,6 +1114,149 @@ mod allocs_claims {
         assert_eq!(ret.claims, vec![Claim { term_max: max_term + 1, ..claim1 }]);
 
         h.check_state(&rt);
+    }
+
+    #[test]
+    fn list_allocs_basics() {
+        let (h, rt) = new_harness();
+        let start = &RawBytes::default();
+
+        // Empty.
+        let (allocs, next) = h.list_allocs(&rt, start, 100);
+        assert_allocs(&[], &allocs);
+        assert_eq!(None, next);
+
+        // Singleton
+        let k1 = alloc(&rt, &h, CLIENT1, PROVIDER1, "1");
+        let (allocs, next) = h.list_allocs(&rt, start, 100);
+        assert_allocs(&[k1], &allocs);
+        assert_eq!(None, next);
+
+        // Same client
+        let k2 = alloc(&rt, &h, CLIENT1, PROVIDER2, "2");
+        let (allocs, next) = h.list_allocs(&rt, start, 100);
+        assert_allocs(&[k1, k2], &allocs);
+        assert_eq!(None, next);
+
+        // Different client
+        let k3 = alloc(&rt, &h, CLIENT2, PROVIDER1, "3");
+        let (allocs, next) = h.list_allocs(&rt, start, 100);
+        assert_allocs(&[k1, k2, k3], &allocs);
+        assert_eq!(None, next);
+    }
+
+    #[test]
+    fn list_allocs_pagination() {
+        let (h, rt) = new_harness();
+        let start = &RawBytes::default();
+        let keys = vec![
+            alloc(&rt, &h, CLIENT1, PROVIDER1, "1"),
+            alloc(&rt, &h, CLIENT2, PROVIDER2, "2"),
+            alloc(&rt, &h, CLIENT2, PROVIDER1, "3"),
+            alloc(&rt, &h, CLIENT3, PROVIDER2, "4"),
+            alloc(&rt, &h, CLIENT3, PROVIDER1, "5"),
+            alloc(&rt, &h, CLIENT3, PROVIDER2, "6"),
+        ];
+
+        {
+            // Limit zero from the start returns a usable cursor
+            let (allocs, next) = h.list_allocs(&rt, start, 0);
+            assert_allocs(&[], &allocs);
+            assert!(next.is_some());
+
+            let (allocs, next2) = h.list_allocs(&rt, next.as_ref().unwrap(), 0);
+            assert_allocs(&[], &allocs);
+            assert_eq!(next, next2);
+
+            let (allocs, next3) = h.list_allocs(&rt, next.as_ref().unwrap(), 100);
+            assert_allocs(&keys, &allocs);
+            assert!(next3.is_none());
+        }
+        {
+            // Traverse N at a time.
+            for n in 1..=keys.len() {
+                let mut cursor = Some(start.clone());
+                let mut collected = vec![];
+                while cursor.is_some() {
+                    let (allocs, next) = h.list_allocs(&rt, cursor.as_ref().unwrap(), n as u64);
+                    collected.extend(allocs);
+                    cursor = next
+                }
+                assert_allocs(&keys, &collected);
+            }
+        }
+    }
+
+    #[test]
+    fn list_claims() {
+        // Listing claims and allocations uses the same code over different structures,
+        // so this test is a just a basic check that the right structure is used.
+        let (h, rt) = new_harness();
+        let start = &RawBytes::default();
+        let keys = vec![
+            claim(&rt, &h, CLIENT1, PROVIDER1, "1"),
+            claim(&rt, &h, CLIENT1, PROVIDER2, "1"),
+            claim(&rt, &h, CLIENT2, PROVIDER2, "1"),
+        ];
+
+        // All at once.
+        let (claims, next) = h.list_claims(&rt, start, 100);
+        assert_claims(&keys, &claims);
+        assert_eq!(None, next);
+
+        // One at a time.
+        let mut cursor = Some(start.clone());
+        let mut collected = vec![];
+        while cursor.is_some() {
+            let (allocs, next) = h.list_claims(&rt, cursor.as_ref().unwrap(), 1);
+            collected.extend(allocs);
+            cursor = next
+        }
+        assert_claims(&keys, &collected);
+    }
+
+    fn alloc(
+        rt: &MockRuntime,
+        h: &Harness,
+        client: ActorID,
+        provider: ActorID,
+        data: &str,
+    ) -> AllocationKey {
+        let id = h.create_alloc(rt, &make_alloc(data, client, provider, ALLOC_SIZE)).unwrap();
+        AllocationKey { client, id }
+    }
+
+    fn claim(
+        rt: &MockRuntime,
+        h: &Harness,
+        client: ActorID,
+        provider: ActorID,
+        data: &str,
+    ) -> ClaimKey {
+        let id = h
+            .create_claim(rt, &make_claim(data, client, provider, ALLOC_SIZE, 0, 100, 0, 0))
+            .unwrap();
+        ClaimKey { provider, id }
+    }
+
+    // Asserts that two collections of allocation keys have the same entries, regardless of order.
+    fn assert_allocs(expected: &[AllocationKey], actual: &[AllocationKey]) {
+        assert_eq!(expected.len(), actual.len());
+        let mut expected = expected.to_vec();
+        expected.sort();
+        let mut actual = actual.to_vec();
+        actual.sort();
+        assert_eq!(expected, actual);
+    }
+
+    // Asserts that two collections of claim keys have the same entries, regardless of order.
+    fn assert_claims(expected: &[ClaimKey], actual: &[ClaimKey]) {
+        assert_eq!(expected.len(), actual.len());
+        let mut expected = expected.to_vec();
+        expected.sort();
+        let mut actual = actual.to_vec();
+        actual.sort();
+        assert_eq!(expected, actual);
     }
 }
 

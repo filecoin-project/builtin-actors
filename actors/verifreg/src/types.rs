@@ -4,6 +4,7 @@
 use cid::Cid;
 use fil_actors_runtime::{BatchReturn, MapKey};
 use fvm_ipld_encoding::tuple::*;
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::{bigint_ser, BigInt};
 use fvm_shared::clock::ChainEpoch;
@@ -257,4 +258,44 @@ pub struct RemoveExpiredClaimsReturn {
     pub considered: Vec<AllocationID>,
     // Results for each processed claim.
     pub results: BatchReturn,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct ListAllocationsParams {
+    pub cursor: RawBytes,
+    pub limit: u64,
+}
+
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize_tuple, Deserialize_tuple,
+)]
+pub struct AllocationKey {
+    pub client: ActorID,
+    pub id: AllocationID,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
+pub struct ListAllocationsResponse {
+    pub allocations: Vec<AllocationKey>,
+    pub next_cursor: Option<RawBytes>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct ListClaimsParams {
+    pub cursor: RawBytes,
+    pub limit: u64,
+}
+
+#[derive(
+    Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize_tuple, Deserialize_tuple,
+)]
+pub struct ClaimKey {
+    pub provider: ActorID,
+    pub id: ClaimID,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize_tuple, Deserialize_tuple)]
+pub struct ListClaimsResponse {
+    pub claims: Vec<ClaimKey>,
+    pub next_cursor: Option<RawBytes>,
 }

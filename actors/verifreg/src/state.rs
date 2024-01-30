@@ -4,6 +4,7 @@
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
+use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntDe;
 use fvm_shared::clock::ChainEpoch;
@@ -13,10 +14,11 @@ use fvm_shared::sector::SectorNumber;
 use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
 
 use fil_actors_runtime::{
-    actor_error, ActorError, AsActorError, Config, Map2, MapMap, DEFAULT_HAMT_CONFIG,
+    actor_error, parse_uint_key, ActorError, AsActorError, Config, Map2, MapMap,
+    DEFAULT_HAMT_CONFIG,
 };
 
-use crate::{AddrPairKey, AllocationID, ClaimID};
+use crate::{AddrPairKey, AllocationID, AllocationKey, ClaimID, ClaimKey};
 use crate::{DataCap, RemoveDataCapProposalID};
 
 pub type DataCapMap<BS> = Map2<BS, Address, BigIntDe>;
@@ -156,6 +158,34 @@ impl State {
         Ok(allocated_ids)
     }
 
+    // Lists all allocation clients and IDs, paginated with a cursor.
+    // Returns a new cursor from which to continue listing, if any items remain.
+    pub fn list_allocations<BS: Blockstore>(
+        &self,
+        store: &BS,
+        cursor: Option<Cursor>,
+        limit: Option<u64>,
+    ) -> Result<(Vec<AllocationKey>, Option<Cursor>), ActorError> {
+        let (start_outer, start_inner) = verify_cursor(&cursor, self.allocations)?;
+        let allocs = self.load_allocs(store)?;
+        let mut found = vec![];
+        let next = allocs
+            .for_each_each(start_outer, start_inner, limit, |k1, k2, _v| {
+                let client = parse_uint_key(k1)?;
+                let id = parse_uint_key(k2)?;
+                found.push(AllocationKey { client, id });
+                Ok(())
+            })
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "listing allocations")?;
+        let next_cursor = match next {
+            Some((k1, k2)) => {
+                Some(Cursor::new(self.allocations, parse_uint_key(&k1)?, parse_uint_key(&k2)?))
+            }
+            None => None,
+        };
+        Ok((found, next_cursor))
+    }
+
     pub fn load_claims<'a, BS: Blockstore>(
         &self,
         store: &'a BS,
@@ -196,7 +226,36 @@ impl State {
         self.save_claims(&mut st_claims)?;
         Ok(())
     }
+
+    // Lists all claim providers and IDs, paginated with a cursor.
+    // Returns a new cursor from which to continue listing, if any items remain.
+    pub fn list_claims<BS: Blockstore>(
+        &self,
+        store: &BS,
+        cursor: Option<Cursor>,
+        limit: Option<u64>,
+    ) -> Result<(Vec<ClaimKey>, Option<Cursor>), ActorError> {
+        let (start_outer, start_inner) = verify_cursor(&cursor, self.claims)?;
+        let claims = self.load_claims(store)?;
+        let mut found = vec![];
+        let next = claims
+            .for_each_each(start_outer, start_inner, limit, |k1, k2, _v| {
+                let provider = parse_uint_key(k1)?;
+                let id = parse_uint_key(k2)?;
+                found.push(ClaimKey { provider, id });
+                Ok(())
+            })
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "listing claims")?;
+        let next_cursor = match next {
+            Some((k1, k2)) => {
+                Some(Cursor::new(self.claims, parse_uint_key(&k1)?, parse_uint_key(&k2)?))
+            }
+            None => None,
+        };
+        Ok((found, next_cursor))
+    }
 }
+
 #[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug, PartialEq, Eq)]
 pub struct Claim {
     // The provider storing the data (from allocation).
@@ -261,4 +320,45 @@ where
     claims
         .get(provider, id)
         .context_code(ExitCode::USR_ILLEGAL_STATE, "HAMT lookup failure getting claim")
+}
+
+/// Opaque cursor to iterate over allocations/claims data structures
+#[derive(Serialize_tuple, Deserialize_tuple, Clone, Debug)]
+pub struct Cursor {
+    pub root: Cid,
+    pub outer_key: ActorID,
+    pub inner_key: u64,
+}
+
+impl Cursor {
+    pub fn new(cid: Cid, outer_key: ActorID, inner_key: u64) -> Self {
+        Self { root: cid, inner_key, outer_key }
+    }
+
+    /// Generates a cursor from an opaque representation
+    pub fn from_bytes(bytes: RawBytes) -> Result<Option<Cursor>, ActorError> {
+        if bytes.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(fvm_ipld_encoding::from_slice(&bytes)?))
+        }
+    }
+
+    /// Generates an opaque representation of the cursor that can be used to resume enumeration
+    pub fn to_bytes(&self) -> Result<RawBytes, ActorError> {
+        Ok(RawBytes::from(fvm_ipld_encoding::to_vec(self)?))
+    }
+}
+
+fn verify_cursor(
+    cursor: &Option<Cursor>,
+    expected_root: Cid,
+) -> Result<(Option<&ActorID>, Option<&u64>), ActorError> {
+    if let Some(cursor) = cursor {
+        if cursor.root != expected_root {
+            return Err(ActorError::illegal_argument("invalid cursor".to_string()));
+        }
+        return Ok((Some(&cursor.outer_key), Some(&cursor.inner_key)));
+    }
+    Ok((None, None))
 }

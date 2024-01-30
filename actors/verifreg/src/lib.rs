@@ -31,7 +31,8 @@ use fil_actors_runtime::{ActorContext, AsActorError, BatchReturnGen};
 
 use crate::ext::datacap::{DestroyParams, MintParams};
 use crate::state::{
-    DataCapMap, RemoveDataCapProposalMap, DATACAP_MAP_CONFIG, REMOVE_DATACAP_PROPOSALS_CONFIG,
+    Cursor, DataCapMap, RemoveDataCapProposalMap, DATACAP_MAP_CONFIG,
+    REMOVE_DATACAP_PROPOSALS_CONFIG,
 };
 
 pub use self::state::Allocation;
@@ -70,6 +71,8 @@ pub enum Method {
     GetClaimsExported = frc42_dispatch::method_hash!("GetClaims"),
     ExtendClaimTermsExported = frc42_dispatch::method_hash!("ExtendClaimTerms"),
     RemoveExpiredClaimsExported = frc42_dispatch::method_hash!("RemoveExpiredClaims"),
+    ListAllocationsExported = frc42_dispatch::method_hash!("ListAllocations"),
+    ListClaimsExported = frc42_dispatch::method_hash!("ListClaims"),
     UniversalReceiverHook = frc42_dispatch::method_hash!("Receive"),
 }
 
@@ -604,6 +607,29 @@ impl Actor {
         Ok(RemoveExpiredClaimsReturn { considered, results: batch_ret })
     }
 
+    pub fn list_allocations(
+        rt: &impl Runtime,
+        params: ListAllocationsParams,
+    ) -> Result<ListAllocationsResponse, ActorError> {
+        let cursor = Cursor::from_bytes(params.cursor)?;
+        let st: State = rt.state()?;
+        let (allocations, next_cursor) =
+            st.list_allocations(rt.store(), cursor, Some(params.limit))?;
+        let next_cursor = next_cursor.map(|c| c.to_bytes()).transpose()?;
+        Ok(ListAllocationsResponse { allocations, next_cursor })
+    }
+
+    pub fn list_claims(
+        rt: &impl Runtime,
+        params: ListClaimsParams,
+    ) -> Result<ListClaimsResponse, ActorError> {
+        let cursor = Cursor::from_bytes(params.cursor)?;
+        let st: State = rt.state()?;
+        let (claims, next_cursor) = st.list_claims(rt.store(), cursor, Some(params.limit))?;
+        let next_cursor = next_cursor.map(|c| c.to_bytes()).transpose()?;
+        Ok(ListClaimsResponse { claims, next_cursor })
+    }
+
     // Receives data cap tokens (only) and creates allocations according to one or more
     // allocation requests specified in the transfer's operator data.
     // The token amount received must exactly correspond to the sum of the requested allocation sizes.
@@ -1069,6 +1095,8 @@ impl ActorCode for Actor {
         GetClaims|GetClaimsExported => get_claims,
         ExtendClaimTerms|ExtendClaimTermsExported => extend_claim_terms,
         RemoveExpiredClaims|RemoveExpiredClaimsExported => remove_expired_claims,
+        ListAllocationsExported => list_allocations,
+        ListClaimsExported => list_claims,
         UniversalReceiverHook => universal_receiver_hook,
     }
 }

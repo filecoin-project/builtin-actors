@@ -110,7 +110,7 @@ where
         self.outer.for_each(f)
     }
 
-    // Runs a function over all values for one outer key.
+    // Runs a function over all entries for one outer key.
     pub fn for_each_in<F>(&mut self, outside_k: K1, f: F) -> Result<(), Error>
     where
         F: FnMut(&BytesKey, &V) -> anyhow::Result<()>,
@@ -120,6 +120,52 @@ where
             return Ok(());
         }
         in_map.for_each(f)
+    }
+
+    // Runs a function over all entries for all outer keys.
+    // Returns (outer, inner) keys with which to resume iteration, if more than
+    // limit entries were available.
+    pub fn for_each_each<F>(
+        &self,
+        start_at: Option<&K1>,
+        mut start_at_inner: Option<&K2>,
+        limit: Option<u64>,
+        mut f: F,
+    ) -> Result<Option<(BytesKey, BytesKey)>, Error>
+    where
+        F: FnMut(&BytesKey, &BytesKey, &V) -> anyhow::Result<()>,
+    {
+        let limit = limit.unwrap_or(u64::MAX);
+        let mut count = 0;
+        let outeritr = match start_at {
+            Some(k) => self.outer.iter_from(&k.key())?,
+            None => self.outer.iter(),
+        };
+        for item in outeritr {
+            let (k1, inner_root) = item?;
+            let in_map = make_map_with_root_and_bitwidth::<BS, V>(
+                inner_root,
+                *self.outer.store(),
+                self.inner_bitwidth,
+            )?;
+            // Use start-at-inner only for the first outer key by take()ing it.
+            let inneritr = match start_at_inner.take() {
+                Some(k) => in_map.iter_from(&k.key())?,
+                None => in_map.iter(),
+            };
+            for inner_item in inneritr {
+                let (k2, v) = inner_item?;
+                // Advance until ready to call f with one-past-the-end so that these
+                // keys can be returned as the cursor to resume with.
+                if count >= limit {
+                    return Ok(Some((k1.clone(), k2.clone())));
+                }
+                f(k1, k2, v)?;
+                count += 1;
+            }
+        }
+        // Exhausted iteration.
+        Ok(None)
     }
 
     // Puts a key value pair in the MapMap, overwriting any existing value.

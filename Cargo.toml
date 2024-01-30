@@ -124,7 +124,7 @@ fvm_sdk = "~4.0"
 fvm_shared = "~4.0"
 fvm_ipld_encoding = "0.4.0"
 fvm_ipld_blockstore = "0.2.0"
-fvm_ipld_hamt = "0.8.0"
+fvm_ipld_hamt = "0.9.0"
 fvm_ipld_kamt = "0.3.0"
 fvm_ipld_amt = { version = "0.6.2" }
 fvm_ipld_bitfield = "0.6.0"
