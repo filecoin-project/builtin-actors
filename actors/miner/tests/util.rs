@@ -1147,7 +1147,7 @@ impl ActorHarness {
             } else {
                 vec![]
             },
-            aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
+            aggregate_proof_type: Some(RegisteredAggregateProof::SnarkPackV2),
             require_activation_success,
             require_notification_success,
         };
@@ -1408,7 +1408,7 @@ impl ActorHarness {
             sector_proofs: sector_updates.iter().map(|su| make_proof(su.sector as u8)).collect(),
             aggregate_proof: RawBytes::default(),
             update_proofs_type: self.seal_proof_type.registered_update_proof().unwrap(),
-            aggregate_proof_type: RegisteredAggregateProof::Invalid(0),
+            aggregate_proof_type: None,
             require_activation_success,
             require_notification_success,
         };

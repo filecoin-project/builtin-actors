@@ -13,6 +13,7 @@ use cid::multihash::Code::Blake2b256;
 use cid::Cid;
 use fvm_ipld_bitfield::{BitField, Validate};
 use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{from_slice, BytesDe, CborStore, RawBytes};
 use fvm_shared::address::{Address, Payload, Protocol};
 use fvm_shared::bigint::{BigInt, Integer};
@@ -31,7 +32,6 @@ use log::{error, info, warn};
 use num_derive::FromPrimitive;
 use num_traits::{Signed, Zero};
 
-use crate::notifications::{notify_data_consumers, ActivationNotifications};
 pub use beneficiary::*;
 pub use bitfield_queue::*;
 pub use commd::*;
@@ -49,7 +49,6 @@ use fil_actors_runtime::{
     BURNT_FUNDS_ACTOR_ADDR, INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
     STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use fvm_ipld_encoding::ipld_block::IpldBlock;
 
 use crate::ext::market::NO_ALLOCATION_ID;
 pub use monies::*;
@@ -61,6 +60,8 @@ pub use state::*;
 pub use termination::*;
 pub use types::*;
 pub use vesting_state::*;
+
+use crate::notifications::{notify_data_consumers, ActivationNotifications};
 
 // The following errors are particular cases of illegal state.
 // They're not expected to ever happen, but if they do, distinguished codes can help us
@@ -1725,9 +1726,6 @@ impl Actor {
         rt.validate_immediate_caller_is(
             info.control_addresses.iter().chain(&[info.worker, info.owner]),
         )?;
-        if params.aggregate_proof_type != RegisteredAggregateProof::SnarkPackV2 {
-            return Err(actor_error!(illegal_argument, "aggregate proof type must be SnarkPackV2"));
-        }
 
         // Load pre-commits, failing if any don't exist.
         let sector_numbers = params.sector_activations.iter().map(|sa| sa.sector_number);
@@ -1746,6 +1744,12 @@ impl Actor {
 
         if !params.sector_proofs.is_empty() {
             // Batched proofs, one per sector
+            if params.aggregate_proof_type.is_some() {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "aggregate proof type must be null with batched proofs"
+                ));
+            }
             if params.sector_activations.len() != params.sector_proofs.len() {
                 return Err(actor_error!(
                     illegal_argument,
@@ -1756,6 +1760,12 @@ impl Actor {
             }
             validate_seal_proofs(precommits[0].info.seal_proof, &params.sector_proofs)?;
         } else {
+            if params.aggregate_proof_type != Some(RegisteredAggregateProof::SnarkPackV2) {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "aggregate proof type must be SnarkPackV2"
+                ));
+            }
             validate_seal_aggregate_proof(
                 &params.aggregate_proof,
                 params.sector_activations.len() as u64,
@@ -1824,7 +1834,7 @@ impl Actor {
                 &proof_inputs,
                 miner_id,
                 precommits[0].info.seal_proof,
-                params.aggregate_proof_type,
+                params.aggregate_proof_type.unwrap(),
                 &params.aggregate_proof,
             )?;
 

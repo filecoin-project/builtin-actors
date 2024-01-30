@@ -99,7 +99,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
         sector_activations: activations,
         sector_proofs: proofs,
         aggregate_proof: RawBytes::default(),
-        aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
+        aggregate_proof_type: Some(RegisteredAggregateProof::SnarkPackV2),
         require_activation_success: true,
         require_notification_success: true,
     };
@@ -260,7 +260,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
         sector_proofs: proofs,
         aggregate_proof: RawBytes::default(),
         update_proofs_type: update_proof,
-        aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
+        aggregate_proof_type: None,
         require_activation_success: true,
         require_notification_success: true,
     };
