@@ -45,8 +45,8 @@ use num_traits::Signed;
 
 use fil_actor_account::Method as AccountMethod;
 use fil_actor_market::{
-    BatchActivateDealsParams, BatchActivateDealsResult, Method as MarketMethod,
-    OnMinerSectorsTerminateParams, SectorDealActivation, SectorDeals, VerifiedDealInfo,
+    ActivatedDeal, BatchActivateDealsParams, BatchActivateDealsResult, Method as MarketMethod,
+    OnMinerSectorsTerminateParams, SectorDealActivation, SectorDeals,
     VerifyDealsForActivationParams, VerifyDealsForActivationReturn, NO_ALLOCATION_ID,
 };
 use fil_actor_miner::{
@@ -91,7 +91,7 @@ use fil_actor_power::{
 use fil_actor_reward::{Method as RewardMethod, ThisEpochRewardReturn};
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::{DomainSeparationTag, Runtime, RuntimePolicy};
-use fil_actors_runtime::{test_utils::*, BatchReturn, BatchReturnGen};
+use fil_actors_runtime::{test_utils::*, BatchReturn, BatchReturnGen, EventBuilder};
 use fil_actors_runtime::{
     ActorDowncast, ActorError, Array, DealWeight, MessageAccumulator, BURNT_FUNDS_ACTOR_ADDR,
     INIT_ACTOR_ADDR, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR,
@@ -661,6 +661,10 @@ impl ActorHarness {
             );
         }
 
+        for sn in sectors {
+            expect_event(rt, "sector-precommitted", &sn.sector_number);
+        }
+
         let param = PreCommitSectorBatchParams2 { sectors: sectors.into() };
         let result = rt.call::<Actor>(
             Method::PreCommitSectorBatch2 as u64,
@@ -842,6 +846,9 @@ impl ActorHarness {
             .map(|pc| pc.info.unsealed_cid.get_cid(pc.info.seal_proof).unwrap())
             .collect();
 
+        let unsealed_cids: Vec<Option<Cid>> =
+            precommits.iter().map(|pc| pc.info.unsealed_cid.0.clone()).collect();
+
         self.expect_query_network_info(rt);
 
         // expect randomness queries for provided precommits
@@ -861,7 +868,14 @@ impl ActorHarness {
         rt.expect_aggregate_verify_seals(svis, params.aggregate_proof.clone().into(), Ok(()));
 
         // confirm sector proofs valid
-        self.confirm_sector_proofs_valid_internal(rt, config, &precommits);
+        let pieces = self.confirm_sector_proofs_valid_internal(rt, config, &precommits);
+
+        // sector activated event
+        for (i, sc) in precommits.iter().enumerate() {
+            let num = &sc.info.sector_number;
+            let piece_info = pieces.get(&num).unwrap();
+            expect_sector_event(rt, "sector-activated", &num, unsealed_cids[i], &piece_info);
+        }
 
         // burn network fee
         let expected_fee = aggregate_prove_commit_network_fee(precommits.len(), base_fee);
@@ -893,10 +907,10 @@ impl ActorHarness {
         cfg: ProveCommitConfig,
         pcs: Vec<SectorPreCommitOnChainInfo>,
     ) -> Result<(), ActorError> {
-        self.confirm_sector_proofs_valid_internal(rt, cfg, &pcs);
+        let pieces = self.confirm_sector_proofs_valid_internal(rt, cfg.clone(), &pcs);
 
         let mut all_sector_numbers = Vec::new();
-        for pc in pcs {
+        for pc in pcs.clone() {
             all_sector_numbers.push(pc.info.sector_number);
         }
 
@@ -909,6 +923,24 @@ impl ActorHarness {
             reward_baseline_power: self.baseline_power.clone(),
             quality_adj_power_smoothed: self.epoch_qa_power_smooth.clone(),
         };
+
+        for sc in pcs.iter() {
+            if cfg.verify_deals_exit.contains_key(&sc.info.sector_number)
+                || cfg.claim_allocs_exit.contains_key(&sc.info.sector_number)
+            {
+                continue;
+            }
+            let unsealed_cid = sc.info.unsealed_cid.0;
+            let num = &sc.info.sector_number;
+            expect_sector_event(
+                rt,
+                "sector-activated",
+                &num,
+                unsealed_cid,
+                pieces.get(&num).unwrap(),
+            );
+        }
+
         rt.call::<Actor>(
             Method::ConfirmSectorProofsValid as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
@@ -922,7 +954,7 @@ impl ActorHarness {
         rt: &MockRuntime,
         cfg: ProveCommitConfig,
         pcs: &[SectorPreCommitOnChainInfo],
-    ) {
+    ) -> HashMap<SectorNumber, Vec<(Cid, u64)>> {
         let mut valid_pcs = Vec::new();
 
         // claim FIL+ allocations
@@ -932,10 +964,12 @@ impl ActorHarness {
         let mut sector_activation_params: Vec<SectorDeals> = Vec::new();
         let mut sector_activations: Vec<SectorDealActivation> = Vec::new();
         let mut sector_activation_results = BatchReturnGen::new(pcs.len());
+        let mut pieces: HashMap<SectorNumber, Vec<(Cid, u64)>> = HashMap::new();
 
         for pc in pcs {
+            pieces.insert(pc.info.sector_number, Vec::new());
+
             if !pc.info.deal_ids.is_empty() {
-                let deal_space = cfg.deal_space(pc.info.sector_number);
                 let activate_params = SectorDeals {
                     sector_number: pc.info.sector_number,
                     deal_ids: pc.info.deal_ids.clone(),
@@ -945,14 +979,17 @@ impl ActorHarness {
                 sector_activation_params.push(activate_params);
 
                 let ret = SectorDealActivation {
-                    nonverified_deal_space: deal_space,
-                    verified_infos: cfg
-                        .verified_deal_infos
+                    activated: cfg
+                        .activated_deals
                         .get(&pc.info.sector_number)
                         .cloned()
                         .unwrap_or_default(),
                     unsealed_cid: None,
                 };
+
+                for info in &ret.activated {
+                    pieces.get_mut(&pc.info.sector_number).unwrap().push((info.data, info.size.0));
+                }
 
                 let mut activate_deals_exit = ExitCode::OK;
                 match cfg.verify_deals_exit.get(&pc.info.sector_number) {
@@ -969,8 +1006,9 @@ impl ActorHarness {
                 if activate_deals_exit == ExitCode::OK {
                     valid_pcs.push(pc);
                     let sector_claims = ret
-                        .verified_infos
+                        .activated
                         .iter()
+                        .filter(|info| info.allocation_id != NO_ALLOCATION_ID)
                         .map(|info| ext::verifreg::AllocationClaim {
                             client: info.client,
                             allocation_id: info.allocation_id,
@@ -992,11 +1030,8 @@ impl ActorHarness {
                     sector_expiry: pc.info.expiration,
                     sector_type: RegisteredSealProof::StackedDRG8MiBV1,
                 });
-                sector_activations.push(SectorDealActivation {
-                    nonverified_deal_space: BigInt::zero(),
-                    verified_infos: vec![],
-                    unsealed_cid: None,
-                });
+                sector_activations
+                    .push(SectorDealActivation { activated: vec![], unsealed_cid: None });
                 sector_activation_results.add_success();
                 sectors_claims.push(ext::verifreg::SectorAllocationClaims {
                     sector: pc.info.sector_number,
@@ -1082,6 +1117,8 @@ impl ActorHarness {
 
             expect_update_pledge(rt, &expected_pledge);
         }
+
+        pieces
     }
 
     pub fn prove_commit_sectors2(
@@ -1181,11 +1218,17 @@ impl ActorHarness {
         let mut expected_pledge = TokenAmount::zero();
         let mut expected_qa_power = StoragePower::zero();
         let mut expected_sector_notifications = Vec::new(); // Assuming all to f05
+        let mut unsealed_cids: HashMap<SectorNumber, Option<Cid>> = HashMap::new();
+
         for (i, sa) in sector_activations.iter().enumerate() {
             if cfg.validation_failure.contains(&i) || cfg.proof_failure.contains(&i) {
                 continue;
             }
-            expect_compute_unsealed_cid_from_pieces(rt, self.seal_proof_type, &sa.pieces);
+            let comm_d =
+                expect_compute_unsealed_cid_from_pieces(rt, self.seal_proof_type, &sa.pieces);
+            let unsealed_cid = comm_d.0;
+            unsealed_cids.insert(sa.sector_number, unsealed_cid);
+
             let precommit = self.get_precommit(rt, sa.sector_number);
             sector_allocation_claims.push(SectorAllocationClaims {
                 sector: sa.sector_number,
@@ -1304,6 +1347,23 @@ impl ActorHarness {
             );
         }
 
+        for (i, sm) in sector_activations.iter().enumerate() {
+            if cfg.validation_failure.contains(&i)
+                || cfg.proof_failure.contains(&i)
+                || cfg.claim_failure.contains(&i)
+            {
+                continue;
+            }
+            let pieces = sm.pieces.iter().map(|p| (p.cid, p.size.0)).collect();
+            expect_sector_event(
+                rt,
+                "sector-activated",
+                &sm.sector_number,
+                *unsealed_cids.get(&sm.sector_number).unwrap(),
+                &pieces,
+            )
+        }
+
         let result = rt.call::<Actor>(
             MinerMethod::ProveCommitSectors3 as u64,
             IpldBlock::serialize_cbor(&params).unwrap(),
@@ -1361,10 +1421,14 @@ impl ActorHarness {
         let mut expected_pledge = TokenAmount::zero();
         let mut expected_qa_power = StoragePower::zero();
         let mut expected_sector_notifications = Vec::new(); // Assuming all to f05
+        let mut unsealed_cids: HashMap<SectorNumber, Option<Cid>> = HashMap::new();
+
         for (i, sup) in sector_updates.iter().enumerate() {
             let sector = self.get_sector(rt, sup.sector);
             let unsealed_cid =
                 expect_compute_unsealed_cid_from_pieces(rt, self.seal_proof_type, &sup.pieces);
+            unsealed_cids.insert(sector.sector_number, unsealed_cid.0);
+
             if cfg.validation_failure.contains(&i) {
                 continue;
             }
@@ -1486,6 +1550,24 @@ impl ActorHarness {
                 .unwrap(),
                 cfg.notification_result.unwrap_or(ExitCode::OK),
             );
+        }
+
+        for (i, sm) in params.sector_updates.iter().enumerate() {
+            if cfg.validation_failure.contains(&i)
+                || cfg.proof_failure.contains(&i)
+                || cfg.claim_failure.contains(&i)
+            {
+                continue;
+            }
+            let pieces = sm.pieces.iter().map(|p| (p.cid, p.size.0)).collect();
+
+            expect_sector_event(
+                rt,
+                "sector-updated",
+                &sm.sector,
+                *unsealed_cids.get(&sm.sector).unwrap(),
+                &pieces,
+            )
         }
 
         let result = rt.call::<Actor>(
@@ -2341,6 +2423,12 @@ impl ActorHarness {
             });
         }
 
+        for termination in terminations.iter() {
+            for sector in termination.sectors.iter() {
+                expect_event(rt, "sector-terminated", &sector);
+            }
+        }
+
         let params = TerminateSectorsParams { terminations };
 
         rt.call::<Actor>(
@@ -2812,6 +2900,31 @@ impl ActorHarness {
     }
 }
 
+pub fn expect_sector_event(
+    rt: &MockRuntime,
+    typ: &str,
+    sector: &SectorNumber,
+    unsealed_cid: Option<Cid>,
+    pieces: &Vec<(Cid, u64)>,
+) {
+    let mut base_event = EventBuilder::new()
+        .typ(typ)
+        .field_indexed("sector", &sector)
+        .field_indexed("unsealed-cid", &unsealed_cid);
+
+    for piece in pieces {
+        base_event = base_event.field_indexed("piece-cid", &piece.0).field("piece-size", &piece.1);
+    }
+
+    rt.expect_emitted_event(base_event.build().unwrap());
+}
+
+pub fn expect_event(rt: &MockRuntime, typ: &str, sector: &SectorNumber) {
+    rt.expect_emitted_event(
+        EventBuilder::new().typ(typ).field_indexed("sector", sector).build().unwrap(),
+    );
+}
+
 #[allow(dead_code)]
 pub struct PoStConfig {
     pub chain_randomness: Option<[u8; RANDOMNESS_LENGTH]>,
@@ -2864,17 +2977,16 @@ impl PreCommitConfig {
 pub struct ProveCommitConfig {
     pub verify_deals_exit: HashMap<SectorNumber, ExitCode>,
     pub claim_allocs_exit: HashMap<SectorNumber, ExitCode>,
-    pub deal_space: HashMap<SectorNumber, BigInt>,
-    pub verified_deal_infos: HashMap<SectorNumber, Vec<VerifiedDealInfo>>,
+    pub activated_deals: HashMap<SectorNumber, Vec<ActivatedDeal>>,
 }
 
 #[allow(dead_code)]
-pub fn test_verified_deal(space: u64) -> VerifiedDealInfo {
+pub fn test_activated_deal(space: u64, alloc: AllocationID) -> ActivatedDeal {
     // only set size for testing and zero out remaining fields
-    VerifiedDealInfo {
+    ActivatedDeal {
         client: 0,
-        allocation_id: 0,
-        data: make_unsealed_cid("test verified deal".as_bytes()),
+        allocation_id: alloc,
+        data: make_unsealed_cid("test activated deal".as_bytes()),
         size: PaddedPieceSize(space),
     }
 }
@@ -2885,24 +2997,32 @@ impl ProveCommitConfig {
         ProveCommitConfig {
             verify_deals_exit: HashMap::new(),
             claim_allocs_exit: HashMap::new(),
-            deal_space: HashMap::new(),
-            verified_deal_infos: HashMap::new(),
+            activated_deals: HashMap::new(),
         }
     }
 
-    pub fn add_verified_deals(&mut self, sector: SectorNumber, deals: Vec<VerifiedDealInfo>) {
-        self.verified_deal_infos.insert(sector, deals);
+    pub fn add_activated_deals(&mut self, sector: SectorNumber, deals: Vec<ActivatedDeal>) {
+        self.activated_deals.insert(sector, deals);
     }
 
     pub fn deal_space(&self, sector: SectorNumber) -> BigInt {
-        self.deal_space.get(&sector).cloned().unwrap_or_default()
-    }
-
-    pub fn verified_deal_space(&self, sector: SectorNumber) -> BigInt {
-        match self.verified_deal_infos.get(&sector) {
+        match self.activated_deals.get(&sector) {
             None => BigInt::zero(),
             Some(infos) => infos
                 .iter()
+                .filter(|info| info.allocation_id == NO_ALLOCATION_ID)
+                .map(|info| BigInt::from(info.size.0))
+                .reduce(|x, a| x + a)
+                .unwrap_or_default(),
+        }
+    }
+
+    pub fn verified_deal_space(&self, sector: SectorNumber) -> BigInt {
+        match self.activated_deals.get(&sector) {
+            None => BigInt::zero(),
+            Some(infos) => infos
+                .iter()
+                .filter(|info| info.allocation_id != NO_ALLOCATION_ID)
                 .map(|info| BigInt::from(info.size.0))
                 .reduce(|x, a| x + a)
                 .unwrap_or_default(),

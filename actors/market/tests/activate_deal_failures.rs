@@ -131,6 +131,7 @@ fn assert_activation_failure(
             deal_ids: vec![deal_id],
         }],
         false,
+        &[],
     )
     .unwrap();
     let res: BatchActivateDealsResult =

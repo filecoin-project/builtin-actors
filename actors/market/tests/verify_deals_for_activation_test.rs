@@ -3,15 +3,16 @@
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::address::Address;
-use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::sector::RegisteredSealProof;
-use num_traits::Zero;
 
-use fil_actor_market::{Actor as MarketActor, Method, SectorDeals, VerifyDealsForActivationParams};
+use fil_actor_market::{
+    ActivatedDeal, Actor as MarketActor, Method, SectorDeals, VerifyDealsForActivationParams,
+    NO_ALLOCATION_ID,
+};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::test_utils::{
     expect_abort, expect_abort_contains_message, make_piece_cid, ACCOUNT_ACTOR_CODE_ID,
@@ -21,7 +22,6 @@ use fil_actors_runtime::EPOCHS_IN_DAY;
 use harness::*;
 
 mod harness;
-
 const START_EPOCH: ChainEpoch = 10;
 const CURR_EPOCH: ChainEpoch = START_EPOCH;
 const END_EPOCH: ChainEpoch = 200 * EPOCHS_IN_DAY;
@@ -56,8 +56,16 @@ fn verify_deal_and_activate_to_get_deal_space_for_unverified_deal_proposal() {
     let s_response = a_response.activations.get(0).unwrap();
     assert_eq!(1, v_response.unsealed_cids.len());
     assert_eq!(Some(make_piece_cid("1".as_bytes())), v_response.unsealed_cids[0]);
-    assert!(s_response.verified_infos.is_empty());
-    assert_eq!(BigInt::from(deal_proposal.piece_size.0), s_response.nonverified_deal_space);
+    assert_eq!(1, s_response.activated.len());
+    assert_eq!(
+        ActivatedDeal {
+            client: CLIENT_ADDR.id().unwrap(),
+            allocation_id: NO_ALLOCATION_ID,
+            data: deal_proposal.piece_cid,
+            size: deal_proposal.piece_size
+        },
+        *s_response.activated.get(0).unwrap()
+    );
 
     check_state(&rt);
 }
@@ -94,14 +102,11 @@ fn verify_deal_and_activate_to_get_deal_space_for_verified_deal_proposal() {
 
     assert_eq!(1, response.unsealed_cids.len());
     assert_eq!(Some(make_piece_cid("1".as_bytes())), response.unsealed_cids[0]);
-    assert_eq!(1, s_response.verified_infos.len());
-    assert_eq!(deal_proposal.piece_size, s_response.verified_infos[0].size);
-    assert_eq!(deal_proposal.client.id().unwrap(), s_response.verified_infos[0].client);
-    assert_eq!(deal_proposal.piece_cid, s_response.verified_infos[0].data);
-    assert_eq!(next_allocation_id, s_response.verified_infos[0].allocation_id);
-
-    assert_eq!(BigInt::zero(), s_response.nonverified_deal_space);
-
+    assert_eq!(1, s_response.activated.len());
+    assert_eq!(deal_proposal.piece_size, s_response.activated[0].size);
+    assert_eq!(deal_proposal.client.id().unwrap(), s_response.activated[0].client);
+    assert_eq!(deal_proposal.piece_cid, s_response.activated[0].data);
+    assert_eq!(next_allocation_id, s_response.activated[0].allocation_id);
     check_state(&rt);
 }
 
@@ -129,7 +134,7 @@ fn verification_and_weights_for_verified_and_unverified_deals() {
     assert_eq!(4, deal_ids.len());
 
     let sector_number = 7;
-    let response = verify_deals_for_activation(
+    verify_deals_for_activation(
         &rt,
         PROVIDER_ADDR,
         vec![SectorDeals {
@@ -148,19 +153,46 @@ fn verification_and_weights_for_verified_and_unverified_deals() {
         },
     );
 
-    let verified_space = BigInt::from(verified_deal_1.piece_size.0 + verified_deal_2.piece_size.0);
-    let unverified_space =
-        BigInt::from(unverified_deal_1.piece_size.0 + unverified_deal_2.piece_size.0);
-
     let a_response =
         activate_deals(&rt, SECTOR_EXPIRY, PROVIDER_ADDR, CURR_EPOCH, sector_number, &deal_ids);
     let s_response = a_response.activations.get(0).unwrap();
-
-    assert_eq!(1, response.unsealed_cids.len());
-    let returned_verified_space: BigInt =
-        s_response.verified_infos.iter().map(|info| BigInt::from(info.size.0)).sum();
-    assert_eq!(verified_space, returned_verified_space);
-    assert_eq!(unverified_space, s_response.nonverified_deal_space);
+    assert_eq!(4, s_response.activated.len());
+    assert_eq!(
+        &ActivatedDeal {
+            client: CLIENT_ADDR.id().unwrap(),
+            allocation_id: 1,
+            data: verified_deal_1.piece_cid,
+            size: verified_deal_1.piece_size,
+        },
+        s_response.activated.get(0).unwrap()
+    );
+    assert_eq!(
+        &ActivatedDeal {
+            client: CLIENT_ADDR.id().unwrap(),
+            allocation_id: 2,
+            data: verified_deal_2.piece_cid,
+            size: verified_deal_2.piece_size,
+        },
+        s_response.activated.get(1).unwrap()
+    );
+    assert_eq!(
+        &ActivatedDeal {
+            client: CLIENT_ADDR.id().unwrap(),
+            allocation_id: NO_ALLOCATION_ID,
+            data: unverified_deal_1.piece_cid,
+            size: unverified_deal_1.piece_size,
+        },
+        s_response.activated.get(2).unwrap()
+    );
+    assert_eq!(
+        &ActivatedDeal {
+            client: CLIENT_ADDR.id().unwrap(),
+            allocation_id: NO_ALLOCATION_ID,
+            data: unverified_deal_2.piece_cid,
+            size: unverified_deal_2.piece_size,
+        },
+        s_response.activated.get(3).unwrap()
+    );
 
     check_state(&rt);
 }

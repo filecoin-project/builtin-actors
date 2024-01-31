@@ -95,8 +95,13 @@ fn deal_is_terminated() {
 
         // terminate
         rt.set_epoch(tc.termination_epoch);
-        let (pay, slashed) =
-            terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[sector_number]);
+        let (pay, slashed) = terminate_deals_and_assert_balances(
+            &rt,
+            CLIENT_ADDR,
+            PROVIDER_ADDR,
+            &[sector_number],
+            &[deal_id],
+        );
 
         assert_eq!(tc.termination_payment, pay);
         assert_eq!(deal_proposal.provider_collateral, slashed);
@@ -180,12 +185,18 @@ fn settle_payments_then_terminate_deal_in_the_same_epoch() {
     // settle payments then terminate
     rt.set_epoch(termination_epoch);
     let expected_payment = deal_duration * &proposal.storage_price_per_epoch;
-    let ret = settle_deal_payments(&rt, PROVIDER_ADDR, &[deal_id]);
+    let ret = settle_deal_payments(&rt, PROVIDER_ADDR, &[deal_id], &[], &[]);
     assert_eq!(
         ret.settlements.get(0).unwrap(),
         &DealSettlementSummary { completed: false, payment: expected_payment.clone() }
     );
-    terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[sector_number]);
+    terminate_deals_and_assert_balances(
+        &rt,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        &[sector_number],
+        &[deal_id],
+    );
     assert_deal_deleted(&rt, deal_id, &proposal, sector_number);
 
     // end state should be equivalent to only calling termination
@@ -225,8 +236,14 @@ fn terminate_a_deal_then_settle_it_in_the_same_epoch() {
 
     // terminate then attempt to settle payment
     rt.set_epoch(termination_epoch);
-    terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[sector_number]);
-    let ret = settle_deal_payments(&rt, PROVIDER_ADDR, &[deal_id]);
+    terminate_deals_and_assert_balances(
+        &rt,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        &[sector_number],
+        &[deal_id],
+    );
+    let ret = settle_deal_payments(&rt, PROVIDER_ADDR, &[deal_id], &[], &[]);
     assert_eq!(ret.results.codes(), vec![EX_DEAL_EXPIRED]);
     assert_deal_deleted(&rt, deal_id, &proposal, sector_number);
 
