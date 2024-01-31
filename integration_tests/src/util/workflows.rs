@@ -1,3 +1,4 @@
+use cid::Cid;
 use std::cmp::min;
 
 use fil_actor_market::SettleDealPaymentsParams;
@@ -48,13 +49,14 @@ use fil_actor_multisig::Method as MultisigMethod;
 use fil_actor_multisig::ProposeParams;
 use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMethod};
 use fil_actor_verifreg::ext::datacap::MintParams;
-use fil_actor_verifreg::AllocationRequest;
 use fil_actor_verifreg::AllocationRequests;
 use fil_actor_verifreg::ClaimExtensionRequest;
 use fil_actor_verifreg::{
     AddVerifiedClientParams, AllocationID, ClaimID, ClaimTerm, ExtendClaimTermsParams,
-    Method as VerifregMethod, RemoveExpiredAllocationsParams, VerifierParams,
+    Method as VerifregMethod, RemoveExpiredAllocationsParams, State as VerifregState,
+    VerifierParams,
 };
+use fil_actor_verifreg::{AllocationRequest, DataCap};
 use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::policy_constants::{
@@ -64,6 +66,7 @@ use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::make_piece_cid;
 use fil_actors_runtime::test_utils::make_sealed_cid;
 use fil_actors_runtime::DealWeight;
+use fil_actors_runtime::EventBuilder;
 use fil_actors_runtime::CRON_ACTOR_ADDR;
 use fil_actors_runtime::DATACAP_TOKEN_ACTOR_ADDR;
 use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
@@ -72,7 +75,7 @@ use fil_actors_runtime::STORAGE_POWER_ACTOR_ADDR;
 use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
 use fil_actors_runtime::{DATACAP_TOKEN_ACTOR_ID, VERIFIED_REGISTRY_ACTOR_ID};
-use vm_api::trace::ExpectInvocation;
+use vm_api::trace::{EmittedEvent, ExpectInvocation};
 use vm_api::util::get_state;
 use vm_api::util::DynBlockstore;
 use vm_api::util::{apply_code, apply_ok, apply_ok_implicit};
@@ -189,7 +192,7 @@ pub fn miner_prove_sector(
     .matches(v.take_invocations().last().unwrap());
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct PrecommitMetadata {
     pub deals: Vec<DealID>,
     pub commd: CompactCommD,
@@ -253,6 +256,12 @@ pub fn precommit_sectors_v2_expect_code(
             sector_idx += 1;
             j += 1;
         }
+
+        let events: Vec<EmittedEvent> = param_sectors
+            .iter()
+            .map(|ps| Expect::build_miner_event("sector-precommitted", miner_id, ps.sector_number))
+            .collect();
+
         if !sectors_with_deals.is_empty() {
             invocs.push(Expect::market_verify_deals(miner_id, sectors_with_deals.clone()));
         }
@@ -287,6 +296,7 @@ pub fn precommit_sectors_v2_expect_code(
                     .unwrap(),
                 ),
                 subinvocs: Some(invocs),
+                events,
                 ..Default::default()
             };
             expect.matches(v.take_invocations().last().unwrap());
@@ -392,6 +402,28 @@ pub fn prove_commit_sectors(
             Some(prove_commit_aggregate_params),
         );
 
+        let st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
+        let store = DynBlockstore::wrap(v.blockstore());
+        let events: Vec<EmittedEvent> = to_prove
+            .iter()
+            .map(|ps| {
+                let mut pieces: Vec<(Cid, u64)> = vec![];
+                for deal_id in &ps.info.deal_ids {
+                    let proposal = st.get_proposal(&store, *deal_id).unwrap();
+                    pieces.push((proposal.piece_cid, proposal.piece_size.0));
+                }
+
+                let unsealed_cid = ps.info.unsealed_cid.0;
+                Expect::build_sector_activation_event(
+                    "sector-activated",
+                    miner_id,
+                    ps.info.sector_number,
+                    unsealed_cid,
+                    &pieces,
+                )
+            })
+            .collect();
+
         let expected_fee = aggregate_prove_commit_network_fee(to_prove.len(), &TokenAmount::zero());
         ExpectInvocation {
             from: worker_id,
@@ -404,6 +436,7 @@ pub fn prove_commit_sectors(
                 Expect::power_update_pledge(miner_id, None),
                 Expect::burn(miner_id, Some(expected_fee)),
             ]),
+            events,
             ..Default::default()
         }
         .matches(v.take_invocations().last().unwrap());
@@ -725,8 +758,20 @@ pub fn submit_invalid_post(
     );
 }
 
+pub fn verifier_balance_event(verifier: ActorID, data_cap: DataCap) -> EmittedEvent {
+    EmittedEvent {
+        emitter: VERIFIED_REGISTRY_ACTOR_ID,
+        event: EventBuilder::new()
+            .typ("verifier-balance")
+            .field_indexed("verifier", &verifier)
+            .field("balance", &data_cap)
+            .build()
+            .unwrap(),
+    }
+}
+
 pub fn verifreg_add_verifier(v: &dyn VM, verifier: &Address, data_cap: StoragePower) {
-    let add_verifier_params = VerifierParams { address: *verifier, allowance: data_cap };
+    let add_verifier_params = VerifierParams { address: *verifier, allowance: data_cap.clone() };
     // root address is msig, send proposal from root key
     let proposal = ProposeParams {
         to: VERIFIED_REGISTRY_ACTOR_ADDR,
@@ -757,6 +802,7 @@ pub fn verifreg_add_verifier(v: &dyn VM, verifier: &Address, data_cap: StoragePo
                 DATACAP_TOKEN_ACTOR_ADDR,
                 *verifier,
             )]),
+            events: vec![verifier_balance_event(verifier.id().unwrap(), data_cap)],
             ..Default::default()
         }]),
         ..Default::default()
@@ -770,6 +816,13 @@ pub fn verifreg_add_client(
     client: &Address,
     allowance: StoragePower,
 ) {
+    let v_st: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
+    let store = DynBlockstore::wrap(v.blockstore());
+
+    let verifier_cap = v_st.get_verifier_cap(&store, verifier).unwrap().unwrap();
+
+    let updated_verifier_balance = verifier_cap - allowance.clone();
+
     let verifier_id = v.resolve_id_address(verifier).unwrap().id().unwrap();
     let add_client_params =
         AddVerifiedClientParams { address: *client, allowance: allowance.clone() };
@@ -809,6 +862,7 @@ pub fn verifreg_add_client(
             )]),
             ..Default::default()
         }]),
+        events: vec![verifier_balance_event(verifier.id().unwrap(), updated_verifier_balance)],
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
@@ -844,7 +898,24 @@ pub fn verifreg_remove_expired_allocations(
     client: &Address,
     ids: Vec<AllocationID>,
     datacap_refund: u64,
+    expected_expirations: Vec<AllocationID>,
 ) {
+    let v_st: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
+    let store = DynBlockstore::wrap(v.blockstore());
+    let mut allocs = v_st.load_allocs(&store).unwrap();
+    let expected_events: Vec<EmittedEvent> = expected_expirations
+        .iter()
+        .map(|id| {
+            let alloc = allocs.get(client.id().unwrap(), *id).unwrap().unwrap();
+            Expect::build_verifreg_event(
+                "allocation-removed",
+                *id,
+                client.id().unwrap(),
+                alloc.provider,
+            )
+        })
+        .collect();
+
     let caller_id = v.resolve_id_address(caller).unwrap().id().unwrap();
     let params =
         RemoveExpiredAllocationsParams { client: client.id().unwrap(), allocation_ids: ids };
@@ -883,6 +954,7 @@ pub fn verifreg_remove_expired_allocations(
             )]),
             ..Default::default()
         }]),
+        events: expected_events,
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
@@ -927,11 +999,21 @@ pub fn datacap_create_allocations(
     .unwrap();
     let alloc_response: AllocationsResponse = tfer_result.recipient_data.deserialize().unwrap();
 
+    let events: Vec<EmittedEvent> = alloc_response
+        .new_allocations
+        .iter()
+        .enumerate()
+        .map(|(i, alloc_id)| {
+            Expect::build_verifreg_event("allocation", *alloc_id, client_id, reqs[i].provider)
+        })
+        .collect::<Vec<EmittedEvent>>();
+
     Expect::datacap_transfer_to_verifreg(
         client_id,
         token_amount,
         operator_data,
         false, // No burn
+        events,
     )
     .matches(v.take_invocations().last().unwrap());
 
@@ -945,6 +1027,7 @@ pub fn datacap_extend_claim(
     claim: ClaimID,
     size: u64,
     new_term: ChainEpoch,
+    claim_client: ActorID,
 ) {
     let payload = AllocationRequests {
         allocations: vec![],
@@ -962,7 +1045,6 @@ pub fn datacap_extend_claim(
         operator_data: operator_data.clone(),
     };
 
-    let client_id = v.resolve_id_address(client).unwrap().id().unwrap();
     apply_ok(
         v,
         client,
@@ -972,11 +1054,18 @@ pub fn datacap_extend_claim(
         Some(transfer_params),
     );
 
+    let client_id = v.resolve_id_address(client).unwrap().id().unwrap();
     Expect::datacap_transfer_to_verifreg(
         client_id,
         token_amount,
         operator_data,
         true, // Burn
+        vec![Expect::build_verifreg_event(
+            "claim-updated",
+            claim,
+            claim_client,
+            provider.id().unwrap(),
+        )],
     )
     .matches(v.take_invocations().last().unwrap());
 }
@@ -1088,6 +1177,10 @@ pub fn market_publish_deal(
             }],
             extensions: vec![],
         };
+
+        let v_st: fil_actor_verifreg::State = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
+        let alloc_id = v_st.next_allocation_id - 1;
+
         expect_publish_invocs.push(ExpectInvocation {
             from: STORAGE_MARKET_ACTOR_ID,
             to: DATACAP_TOKEN_ACTOR_ADDR,
@@ -1123,6 +1216,12 @@ pub fn market_publish_deal(
                     })
                     .unwrap(),
                 ),
+                events: vec![Expect::build_verifreg_event(
+                    "allocation",
+                    alloc_id,
+                    deal_client.id().unwrap(),
+                    miner_id.id().unwrap(),
+                )],
                 ..Default::default()
             }]),
             ..Default::default()
@@ -1139,6 +1238,12 @@ pub fn market_publish_deal(
         to: STORAGE_MARKET_ACTOR_ADDR,
         method: MarketMethod::PublishStorageDeals as u64,
         subinvocs: Some(expect_publish_invocs),
+        events: vec![Expect::build_market_event(
+            "deal-published",
+            ret.ids[0],
+            deal_client.id().unwrap(),
+            miner_id.id().unwrap(),
+        )],
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());

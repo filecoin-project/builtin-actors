@@ -1,22 +1,23 @@
+use cid::Cid;
+use export_macro::vm_test;
+use fil_actor_verifreg::Method as VerifregMethod;
+use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
+use fil_actors_runtime::{DealWeight, EPOCHS_IN_DAY, VERIFIED_REGISTRY_ACTOR_ADDR};
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 
-use export_macro::vm_test;
 use fil_actor_miner::{
     max_prove_commit_duration, power_for_sector, ExpirationExtension, ExpirationExtension2,
     ExtendSectorExpiration2Params, ExtendSectorExpirationParams, Method as MinerMethod, PowerPair,
     ProveReplicaUpdatesParams, ReplicaUpdate, SectorClaim, SectorOnChainInfoFlags, Sectors,
     State as MinerState,
 };
-use fil_actor_verifreg::Method as VerifregMethod;
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::test_utils::make_sealed_cid;
-use fil_actors_runtime::{DealWeight, EPOCHS_IN_DAY, VERIFIED_REGISTRY_ACTOR_ADDR};
 use vm_api::trace::ExpectInvocation;
 use vm_api::util::{apply_ok, get_state, mutate_state, DynBlockstore};
 use vm_api::VM;
@@ -27,8 +28,9 @@ use crate::util::{
     advance_by_deadline_to_index, advance_to_proving_deadline, bf_all, create_accounts,
     create_miner, cron_tick, expect_invariants, invariant_failure_patterns, market_add_balance,
     market_pending_deal_allocations, market_publish_deal, miner_precommit_one_sector_v2,
-    miner_prove_sector, precommit_meta_data_from_deals, sector_deadline, submit_windowed_post,
-    verifreg_add_client, verifreg_add_verifier, PrecommitMetadata,
+    miner_prove_sector, override_compute_unsealed_sector_cid, precommit_meta_data_from_deals,
+    sector_deadline, submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
+    PrecommitMetadata,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -520,12 +522,17 @@ pub fn extend_sector_up_to_max_relative_extension_test(v: &dyn VM) {
 
 #[vm_test]
 pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
+    override_compute_unsealed_sector_cid(v);
+
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
     let worker_id = worker.id().unwrap();
     let sector_number: SectorNumber = 100;
     let policy = Policy::default();
+    let deal_label = "deal1".to_string();
+    let piece_cid = make_piece_cid(deal_label.as_bytes());
+    let piece_size = PaddedPieceSize(32u64 << 30);
 
     // create miner
     let miner_addr = create_miner(
@@ -615,8 +622,8 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         &worker,
         &verified_client,
         &miner_addr,
-        "deal1".to_string(),
-        PaddedPieceSize(32u64 << 30),
+        deal_label,
+        piece_size,
         true,
         deal_start,
         340 * EPOCHS_IN_DAY,
@@ -651,6 +658,11 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
     assert_eq!(vec![sector_number], bf_all(updated_sectors));
 
     let old_power = power_for_sector(seal_proof.sector_size().unwrap(), &initial_sector_info);
+
+    let pieces: Vec<(Cid, u64)> = vec![(piece_cid, piece_size.0)];
+    let pis: Vec<PieceInfo> = vec![PieceInfo { cid: piece_cid, size: piece_size }];
+    let unsealed_cid = v.primitives().compute_unsealed_sector_cid(seal_proof, &pis).unwrap();
+
     // check for the expected subcalls
     ExpectInvocation {
         from: worker_id,
@@ -660,6 +672,7 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
             Expect::market_activate_deals(
                 miner_id,
                 deal_ids,
+                verified_client.id().unwrap(),
                 sector_number,
                 initial_sector_info.expiration,
                 initial_sector_info.seal_proof,
@@ -669,6 +682,12 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
                 from: miner_id,
                 to: VERIFIED_REGISTRY_ACTOR_ADDR,
                 method: VerifregMethod::ClaimAllocations as u64,
+                events: vec![Expect::build_verifreg_event(
+                    "claim",
+                    claim_id,
+                    verified_client.id().unwrap(),
+                    miner_id,
+                )],
                 ..Default::default()
             },
             Expect::reward_this_epoch(miner_id),
@@ -679,6 +698,13 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
                 PowerPair { raw: StoragePower::zero(), qa: 9 * old_power.qa },
             ),
         ]),
+        events: vec![Expect::build_sector_activation_event(
+            "sector-updated",
+            miner_id,
+            sector_number,
+            Some(unsealed_cid),
+            &pieces,
+        )],
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());

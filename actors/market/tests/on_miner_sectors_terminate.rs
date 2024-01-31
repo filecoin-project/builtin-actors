@@ -40,11 +40,11 @@ fn terminate_multiple_deals_from_single_provider() {
     activate_deals_legacy(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, id1, &[id1]);
     activate_deals_legacy(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, id2, &[id2]);
 
-    terminate_deals(&rt, PROVIDER_ADDR, &[id0]);
+    terminate_deals(&rt, PROVIDER_ADDR, &[id0], &[id0]);
     assert_deal_deleted(&rt, id0, &deal0, id0);
     assert_deals_not_marked_terminated(&rt, &[id1, id2]);
 
-    terminate_deals(&rt, PROVIDER_ADDR, &[id1, id2]);
+    terminate_deals(&rt, PROVIDER_ADDR, &[id1, id2], &[id1, id2]);
     assert_deal_deleted(&rt, id0, &deal0, id0);
     assert_deal_deleted(&rt, id1, &deal1, id1);
     assert_deal_deleted(&rt, id1, &deal2, id2);
@@ -85,13 +85,19 @@ fn terminate_multiple_deals_from_multiple_providers() {
         generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs2, start_epoch, end_epoch + 1);
     activate_deals_legacy(&rt, sector_expiry, provider2, current_epoch, sector_number, &[id3, id4]);
 
-    terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[sector_number]);
+    terminate_deals_and_assert_balances(
+        &rt,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        &[sector_number],
+        &[id0, id1, id2],
+    );
     assert_deal_deleted(&rt, id0, &deal0, sector_number);
     assert_deal_deleted(&rt, id1, &deal1, sector_number);
     assert_deal_deleted(&rt, id2, &deal2, sector_number);
     assert_deals_not_marked_terminated(&rt, &[id3, id4]);
 
-    terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, provider2, &[sector_number]);
+    terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, provider2, &[sector_number], &[id3, id4]);
     assert_deal_deleted(&rt, id3, &deal3, sector_number);
     assert_deal_deleted(&rt, id4, &deal4, sector_number);
 }
@@ -123,7 +129,7 @@ fn ignore_sector_that_does_not_exist() {
         &[deal1],
     );
     assert!(ret.activation_results.all_ok());
-    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number + 1]);
+    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number + 1], &[]);
 
     let s = get_deal_state(&rt, deal1);
     assert_eq!(s.slash_epoch, -1);
@@ -176,7 +182,13 @@ fn terminate_valid_deals_along_with_just_expired_deal() {
     let new_epoch = end_epoch - 1;
     rt.set_epoch(new_epoch);
 
-    terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[sector_number]);
+    terminate_deals_and_assert_balances(
+        &rt,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        &[sector_number],
+        &[id0, id1],
+    );
     assert_deal_deleted(&rt, id0, &deal0, sector_number);
     assert_deal_deleted(&rt, id1, &deal1, sector_number);
     assert_deal_deleted(&rt, id1, &deal2, sector_number);
@@ -231,12 +243,26 @@ fn terminate_valid_deals_along_with_expired_and_cleaned_up_deal() {
 
     let new_epoch = end_epoch - 1;
     rt.set_epoch(new_epoch);
+    expect_emitted(
+        &rt,
+        "deal-completed",
+        deal_ids[1],
+        CLIENT_ADDR.id().unwrap(),
+        PROVIDER_ADDR.id().unwrap(),
+    );
+
     cron_tick(&rt);
     // expired deal deleted normally
     assert_deal_deleted(&rt, deal_ids[1], &deal2, sector_number);
     assert_deals_not_marked_terminated(&rt, &deal_ids[0..0]);
 
-    terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[sector_number]);
+    terminate_deals_and_assert_balances(
+        &rt,
+        CLIENT_ADDR,
+        PROVIDER_ADDR,
+        &[sector_number],
+        &[deal_ids[0]],
+    );
     // terminated deal deleted
     assert_deal_deleted(&rt, deal_ids[0], &deal1, sector_number);
 
@@ -274,7 +300,7 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
     );
     assert!(ret.activation_results.all_ok());
     rt.set_epoch(end_epoch);
-    terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[sector_number]);
+    terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[sector_number], &[]);
     assert_deals_not_marked_terminated(&rt, &[deal1]);
 
     // deal2 has end epoch less than current epoch when terminate is called
@@ -297,7 +323,7 @@ fn do_not_terminate_deal_if_end_epoch_is_equal_to_or_less_than_current_epoch() {
     );
     assert!(ret.activation_results.all_ok());
     rt.set_epoch(end_epoch + 1);
-    terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[sector_number]);
+    terminate_deals_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, &[sector_number], &[]);
     assert_deals_not_marked_terminated(&rt, &[deal2]);
 
     check_state(&rt);

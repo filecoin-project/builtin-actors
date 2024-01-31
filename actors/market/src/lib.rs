@@ -54,6 +54,7 @@ pub mod policy;
 pub mod testing;
 
 mod deal;
+mod emit;
 mod state;
 mod types;
 
@@ -470,19 +471,26 @@ impl Actor {
         // notify clients, any failures cause the entire publish_storage_deals method to fail
         // it's unsafe to ignore errors here, since that could be used to attack storage contract clients
         // that might be unaware they're making storage deals
-        for (i, valid_deal) in valid_deals.iter().enumerate() {
+        for (valid_deal, &deal_id) in valid_deals.iter().zip(&new_deal_ids) {
             _ = extract_send_result(rt.send_simple(
                 &valid_deal.proposal.client,
                 MARKET_NOTIFY_DEAL_METHOD,
                 IpldBlock::serialize_cbor(&MarketNotifyDealParams {
                     proposal: valid_deal.serialized_proposal.to_vec(),
-                    deal_id: new_deal_ids[i],
+                    deal_id,
                 })?,
                 TokenAmount::zero(),
             ))
             .with_context_code(ExitCode::USR_ILLEGAL_ARGUMENT, || {
                 format!("failed to notify deal with proposal cid {}", valid_deal.cid)
             })?;
+
+            emit::deal_published(
+                rt,
+                valid_deal.proposal.client.id().unwrap(),
+                valid_deal.proposal.provider.id().unwrap(),
+                deal_id,
+            )?;
         }
 
         Ok(PublishStorageDealsReturn { ids: new_deal_ids, valid_deals: valid_input_bf })
@@ -555,7 +563,7 @@ impl Actor {
             let mut deal_states: Vec<(DealID, DealState)> = vec![];
             let mut batch_gen = BatchReturnGen::new(params.sectors.len());
             let mut activations: Vec<SectorDealActivation> = vec![];
-            let mut activated_deals = BTreeSet::<DealID>::new();
+            let mut activated_deals: HashSet<DealID> = HashSet::new();
             let mut sectors_deals: Vec<(SectorNumber, SectorDealIDs)> = vec![];
 
             'sector: for sector in params.sectors {
@@ -598,8 +606,7 @@ impl Actor {
                     validated_proposals.push(proposal);
                 }
 
-                let mut verified_infos = vec![];
-                let mut nonverified_deal_space = BigInt::zero();
+                let mut activated = vec![];
                 // Given that all deals validated, prepare the state updates for them all.
                 // There's no continue below here to ensure updates are consistent.
                 // Any error must abort.
@@ -609,16 +616,12 @@ impl Actor {
                     let alloc_id =
                         pending_deal_allocation_ids.delete(deal_id)?.unwrap_or(NO_ALLOCATION_ID);
 
-                    if alloc_id != NO_ALLOCATION_ID {
-                        verified_infos.push(VerifiedDealInfo {
-                            client: proposal.client.id().unwrap(),
-                            allocation_id: alloc_id,
-                            data: proposal.piece_cid,
-                            size: proposal.piece_size,
-                        })
-                    } else {
-                        nonverified_deal_space += proposal.piece_size.0;
-                    }
+                    activated.push(ActivatedDeal {
+                        client: proposal.client.id().unwrap(),
+                        allocation_id: alloc_id,
+                        data: proposal.piece_cid,
+                        size: proposal.piece_size,
+                    });
 
                     // Prepare initial deal state.
                     deal_states.push((
@@ -640,11 +643,17 @@ impl Actor {
 
                 sectors_deals
                     .push((sector.sector_number, SectorDealIDs { deals: sector.deal_ids.clone() }));
-                activations.push(SectorDealActivation {
-                    nonverified_deal_space,
-                    verified_infos,
-                    unsealed_cid: data_commitment,
-                });
+                activations.push(SectorDealActivation { activated, unsealed_cid: data_commitment });
+
+                for (deal_id, proposal) in sector.deal_ids.iter().zip(&validated_proposals) {
+                    emit::deal_activated(
+                        rt,
+                        *deal_id,
+                        proposal.client.id().unwrap(),
+                        proposal.provider.id().unwrap(),
+                    )?;
+                }
+
                 batch_gen.add_success();
             }
 
@@ -843,6 +852,13 @@ impl Actor {
                     .entry(state.sector_number)
                     .or_default()
                     .push(id);
+
+                emit::deal_terminated(
+                    rt,
+                    id,
+                    deal.client.id().unwrap(),
+                    deal.provider.id().unwrap(),
+                )?;
             }
 
             st.remove_sector_deal_ids(rt.store(), &provider_deals_to_remove)?;
@@ -926,13 +942,14 @@ impl Actor {
                     // https://github.com/filecoin-project/builtin-actors/issues/1389
                     // handling of legacy deals is still done in cron. we handle such deals here and continue to
                     // reschedule them. eventually, all legacy deals will expire and the below code can be removed.
-                    let (slash_amount, _payment_amount, remove_deal) = st.process_deal_update(
-                        rt.store(),
-                        &state,
-                        &deal_proposal,
-                        &dcid,
-                        curr_epoch,
-                    )?;
+                    let (slash_amount, _payment_amount, completed, remove_deal) = st
+                        .process_deal_update(
+                            rt.store(),
+                            &state,
+                            &deal_proposal,
+                            &dcid,
+                            curr_epoch,
+                        )?;
 
                     if remove_deal {
                         // TODO: remove handling for terminated-deal slashing when marked-for-termination deals are all processed
@@ -949,6 +966,15 @@ impl Actor {
                             .entry(state.sector_number)
                             .or_default()
                             .push(deal_id);
+
+                        if !completed {
+                            emit::deal_terminated(
+                                rt,
+                                deal_id,
+                                deal_proposal.client.id().unwrap(),
+                                deal_proposal.provider.id().unwrap(),
+                            )?;
+                        }
                     } else {
                         if !slash_amount.is_zero() {
                             return Err(actor_error!(
@@ -971,6 +997,15 @@ impl Actor {
                             curr_epoch + 1,
                         );
                         new_updates_scheduled.entry(next_epoch).or_default().push(deal_id);
+                    }
+
+                    if completed {
+                        emit::deal_completed(
+                            rt,
+                            deal_id,
+                            deal_proposal.client.id().unwrap(),
+                            deal_proposal.provider.id().unwrap(),
+                        )?;
                     }
                 }
                 epochs_completed.push(i);
@@ -1247,7 +1282,7 @@ impl Actor {
                     ));
                 }
 
-                let (_, payment_amount, remove_deal) = match st.process_deal_update(
+                let (_, payment_amount, completed, remove_deal) = match st.process_deal_update(
                     rt.store(),
                     &deal_state,
                     &deal_proposal,
@@ -1269,6 +1304,15 @@ impl Actor {
                         .entry(deal_state.sector_number)
                         .or_default()
                         .push(deal_id);
+
+                    if !completed {
+                        emit::deal_terminated(
+                            rt,
+                            deal_id,
+                            deal_proposal.client.id().unwrap(),
+                            deal_proposal.provider.id().unwrap(),
+                        )?;
+                    }
                 } else {
                     deal_state.last_updated_epoch = curr_epoch;
                     new_deal_states.push((deal_id, deal_state));
@@ -1279,6 +1323,15 @@ impl Actor {
                     payment: payment_amount,
                 });
                 batch_gen.add_success();
+
+                if completed {
+                    emit::deal_completed(
+                        rt,
+                        deal_id,
+                        deal_proposal.client.id().unwrap(),
+                        deal_proposal.provider.id().unwrap(),
+                    )?;
+                }
             }
 
             st.put_deal_states(rt.store(), &new_deal_states)?;

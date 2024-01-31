@@ -56,7 +56,7 @@ fn slash_a_deal_and_make_payment_for_another_deal_in_the_same_epoch() {
     // slash deal1
     let slash_epoch = process_epoch(start_epoch, deal_id2) + ChainEpoch::from(100);
     rt.set_epoch(slash_epoch);
-    terminate_deals(&rt, PROVIDER_ADDR, &[sector_1]);
+    terminate_deals(&rt, PROVIDER_ADDR, &[sector_1], &[deal_id1]);
     cron_tick(&rt);
 
     assert_deal_deleted(&rt, deal_id1, &d1, sector_1);
@@ -133,7 +133,7 @@ fn settling_deal_fails_when_deal_update_epoch_is_in_the_future() {
     // set current epoch of the deal to the end epoch so it's picked up for "processing" in the next cron tick.
     rt.set_epoch(end_epoch);
     expect_abort(ExitCode::USR_ILLEGAL_STATE, cron_tick_raw(&rt));
-    let ret = settle_deal_payments(&rt, MinerAddresses::default().provider, &[deal_id]);
+    let ret = settle_deal_payments(&rt, MinerAddresses::default().provider, &[deal_id], &[], &[]);
     assert_eq!(ret.results.codes(), &[ExitCode::USR_ILLEGAL_STATE]);
 
     check_state_with_expected(
@@ -379,13 +379,16 @@ fn locked_fund_tracking_states() {
 
     // slash deal1
     rt.set_epoch(curr + 1);
-    terminate_deals(&rt, m1.provider, &[deal_id1]);
+    terminate_deals(&rt, m1.provider, &[sector_number], &[deal_id1]);
 
     // cron tick to slash deal1 and expire deal2
     rt.set_epoch(end_epoch);
     csf = TokenAmount::zero();
     clc = TokenAmount::zero();
     plc = TokenAmount::zero();
+
+    expect_emitted(&rt, "deal-completed", deal_id2, d2.client.id().unwrap(), p2.id().unwrap());
+
     cron_tick(&rt);
     assert_locked_fund_states(&rt, csf, plc, clc);
     check_state(&rt);

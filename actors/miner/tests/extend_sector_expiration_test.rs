@@ -1,4 +1,4 @@
-use fil_actor_market::VerifiedDealInfo;
+use fil_actor_market::ActivatedDeal;
 use fil_actor_miner::ext::verifreg::Claim as FILPlusClaim;
 use fil_actor_miner::{
     power_for_sector, seal_proof_sector_maximum_lifetime, ExpirationExtension,
@@ -13,6 +13,7 @@ use fil_actors_runtime::{
     EPOCHS_IN_DAY,
 };
 use fvm_ipld_bitfield::BitField;
+use fvm_shared::deal::DealID;
 use fvm_shared::{
     address::Address,
     clock::ChainEpoch,
@@ -378,8 +379,8 @@ fn update_expiration2_multiple_claims() {
     let (mut h, rt) = setup();
     // add in verified deal
     let verified_deals = vec![
-        test_verified_deal(h.sector_size as u64 / 2),
-        test_verified_deal(h.sector_size as u64 / 2),
+        test_activated_deal(h.sector_size as u64 / 2, 1),
+        test_activated_deal(h.sector_size as u64 / 2, 2),
     ];
     let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &rt);
     h.advance_and_submit_posts(&rt, &vec![old_sector.clone()]);
@@ -450,8 +451,8 @@ fn update_expiration2_failure_cases() {
     let (mut h, rt) = setup();
     // add in verified deal
     let verified_deals = vec![
-        test_verified_deal(h.sector_size as u64 / 2),
-        test_verified_deal(h.sector_size as u64 / 2),
+        test_activated_deal(h.sector_size as u64 / 2, 1),
+        test_activated_deal(h.sector_size as u64 / 2, 2),
     ];
     let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &rt);
     h.advance_and_submit_posts(&rt, &vec![old_sector.clone()]);
@@ -612,8 +613,8 @@ fn extend_expiration2_drop_claims() {
     let (mut h, rt) = setup();
     // add in verified deal
     let verified_deals = vec![
-        test_verified_deal(h.sector_size as u64 / 2),
-        test_verified_deal(h.sector_size as u64 / 2),
+        test_activated_deal(h.sector_size as u64 / 2, 1),
+        test_activated_deal(h.sector_size as u64 / 2, 2),
     ];
     let policy = Policy::default();
     let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &rt);
@@ -732,8 +733,8 @@ fn update_expiration_legacy_fails_on_new_sector_with_deals() {
     let (mut h, rt) = setup();
     // add in verified deal
     let verified_deals = vec![
-        test_verified_deal(h.sector_size as u64 / 2),
-        test_verified_deal(h.sector_size as u64 / 2),
+        test_activated_deal(h.sector_size as u64 / 2, 1),
+        test_activated_deal(h.sector_size as u64 / 2, 2),
     ];
     let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &rt);
     h.advance_and_submit_posts(&rt, &vec![old_sector.clone()]);
@@ -778,8 +779,8 @@ fn update_expiration2_drop_claims_failure_cases() {
     let policy = Policy::default();
     // add in verified deal
     let verified_deals = vec![
-        test_verified_deal(h.sector_size as u64 / 2),
-        test_verified_deal(h.sector_size as u64 / 2),
+        test_activated_deal(h.sector_size as u64 / 2, 1),
+        test_activated_deal(h.sector_size as u64 / 2, 2),
     ];
     let old_sector = commit_sector_verified_deals(&verified_deals, &mut h, &rt);
     h.advance_and_submit_posts(&rt, &vec![old_sector.clone()]);
@@ -889,7 +890,7 @@ fn update_expiration2_drop_claims_failure_cases() {
 }
 
 fn commit_sector_verified_deals(
-    verified_deals: &Vec<VerifiedDealInfo>,
+    verified_deals: &Vec<ActivatedDeal>,
     h: &mut ActorHarness,
     rt: &MockRuntime,
 ) -> SectorOnChainInfo {
@@ -897,13 +898,18 @@ fn commit_sector_verified_deals(
     assert!(!verified_deals.is_empty());
 
     let mut pcc = ProveCommitConfig::empty();
-    pcc.add_verified_deals(h.next_sector_no, verified_deals.clone());
+    pcc.add_activated_deals(h.next_sector_no, verified_deals.clone());
+
+    let mut deal_ids: Vec<DealID> = vec![];
+    for i in 0..verified_deals.len() {
+        deal_ids.push(i as u64);
+    }
 
     let sector_info = &h.commit_and_prove_sectors_with_cfgs(
         rt,
         1,
         DEFAULT_SECTOR_EXPIRATION as u64,
-        vec![vec![42]],
+        vec![deal_ids],
         true,
         pcc,
     )[0];
@@ -957,7 +963,7 @@ fn make_claim(
     client: ActorID,
     provider: ActorID,
     new_expiration: ChainEpoch,
-    deal: &VerifiedDealInfo,
+    deal: &ActivatedDeal,
     term_min: ChainEpoch,
 ) -> FILPlusClaim {
     FILPlusClaim {

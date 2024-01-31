@@ -57,9 +57,9 @@ fn valid_precommits_then_aggregate_provecommit() {
 
     let mut pcc = ProveCommitConfig::empty();
     for pc in &precommits {
-        pcc.add_verified_deals(
+        pcc.add_activated_deals(
             pc.info.sector_number,
-            vec![test_verified_deal(verified_deal_space)],
+            vec![test_activated_deal(verified_deal_space, 1)],
         );
     }
 

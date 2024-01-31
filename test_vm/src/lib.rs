@@ -320,6 +320,7 @@ impl VM for TestVM {
             read_only: false,
             policy: &Policy::default(),
             subinvocations: RefCell::new(vec![]),
+            events: RefCell::new(vec![]),
         };
         let res = new_ctx.invoke();
 
