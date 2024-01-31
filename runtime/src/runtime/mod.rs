@@ -6,12 +6,8 @@ use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::CborStore;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::randomness::RANDOMNESS_LENGTH;
-use fvm_shared::sector::{
-    AggregateSealVerifyProofAndInfos, ReplicaUpdateInfo, SealVerifyInfo, WindowPoStVerifyInfo,
-};
 use fvm_shared::version::NetworkVersion;
 use fvm_shared::{ActorID, MethodNum, Response};
 use serde::de::DeserializeOwned;
@@ -47,7 +43,7 @@ pub use vm_api::Primitives;
 
 /// Runtime is the VM's internal runtime object.
 /// this is everything that is accessible to actors, beyond parameters.
-pub trait Runtime: Primitives + Verifier + RuntimePolicy {
+pub trait Runtime: Primitives + RuntimePolicy {
     type Blockstore: Blockstore;
 
     /// The network protocol version number at the current epoch.
@@ -206,10 +202,11 @@ pub trait Runtime: Primitives + Verifier + RuntimePolicy {
         predictable_address: Option<Address>,
     ) -> Result<(), ActorError>;
 
-    /// Deletes the executing actor from the state tree, transferring any balance to beneficiary.
-    /// Aborts if the beneficiary does not exist.
+    /// Deletes the executing actor from the state tree. Fails if there is any unspent balance in
+    /// the actor.
+    ///
     /// May only be called by the actor itself.
-    fn delete_actor(&self, beneficiary: &Address) -> Result<(), ActorError>;
+    fn delete_actor(&self) -> Result<(), ActorError>;
 
     /// Returns whether the specified CodeCID belongs to a built-in actor.
     fn resolve_builtin_actor_type(&self, code_id: &Cid) -> Option<Type>;
@@ -273,36 +270,4 @@ pub trait MessageInfo {
 
     /// The message gas premium
     fn gas_premium(&self) -> TokenAmount;
-}
-
-/// filcrypto verification primitives provided by the runtime
-pub trait Verifier {
-    /// Verifies a window proof of spacetime.
-    fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), anyhow::Error>;
-
-    /// Verifies that two block headers provide proof of a consensus fault:
-    /// - both headers mined by the same actor
-    /// - headers are different
-    /// - first header is of the same or lower epoch as the second
-    /// - at least one of the headers appears in the current chain at or after epoch `earliest`
-    /// - the headers provide evidence of a fault (see the spec for the different fault types).
-    /// The parameters are all serialized block headers. The third "extra" parameter is consulted only for
-    /// the "parent grinding fault", in which case it must be the sibling of h1 (same parent tipset) and one of the
-    /// blocks in the parent of h2 (i.e. h2's grandparent).
-    /// Returns nil and an error if the headers don't prove a fault.
-    fn verify_consensus_fault(
-        &self,
-        h1: &[u8],
-        h2: &[u8],
-        extra: &[u8],
-    ) -> Result<Option<ConsensusFault>, anyhow::Error>;
-
-    fn batch_verify_seals(&self, batch: &[SealVerifyInfo]) -> anyhow::Result<Vec<bool>>;
-
-    fn verify_aggregate_seals(
-        &self,
-        aggregate: &AggregateSealVerifyProofAndInfos,
-    ) -> Result<(), anyhow::Error>;
-
-    fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> Result<(), anyhow::Error>;
 }

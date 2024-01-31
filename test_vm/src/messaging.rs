@@ -20,14 +20,11 @@ use fil_actor_verifreg::Actor as VerifregActor;
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::{
     ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
-    Verifier, EMPTY_ARR_CID,
+    EMPTY_ARR_CID,
 };
 use fil_actors_runtime::{actor_error, SendError};
 use fil_actors_runtime::{test_utils::*, SYSTEM_ACTOR_ID};
 use fil_actors_runtime::{ActorError, INIT_ACTOR_ADDR};
-
-use fvm_ipld_blockstore::Blockstore;
-
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::CborStore;
 
@@ -59,11 +56,13 @@ use fvm_shared::{ActorID, MethodNum, Response, IPLD_RAW, METHOD_CONSTRUCTOR, MET
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::cell::{RefCell, RefMut};
-use vm_api::trace::InvocationTrace;
+use vm_api::trace::{EmittedEvent, InvocationTrace};
 use vm_api::util::get_state;
 use vm_api::{new_actor, ActorState, VM};
 
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use std::ops::Add;
+use std::rc::Rc;
 
 use crate::{TestVM, TEST_VM_INVALID_POST, TEST_VM_RAND_ARRAY};
 
@@ -84,10 +83,7 @@ pub struct InternalMessage {
     pub params: Option<IpldBlock>,
 }
 
-impl<BS> MessageInfo for InvocationCtx<'_, '_, BS>
-where
-    BS: Blockstore,
-{
+impl MessageInfo for InvocationCtx<'_> {
     fn nonce(&self) -> u64 {
         self.top.originator_call_seq
     }
@@ -108,11 +104,8 @@ where
     }
 }
 
-pub struct InvocationCtx<'invocation, 'bs, BS>
-where
-    BS: Blockstore,
-{
-    pub v: &'invocation TestVM<'bs, BS>,
+pub struct InvocationCtx<'invocation> {
+    pub v: &'invocation TestVM,
     pub top: TopCtx,
     pub msg: InternalMessage,
     pub allow_side_effects: RefCell<bool>,
@@ -120,12 +113,10 @@ where
     pub read_only: bool,
     pub policy: &'invocation Policy,
     pub subinvocations: RefCell<Vec<InvocationTrace>>,
+    pub events: RefCell<Vec<EmittedEvent>>,
 }
 
-impl<'invocation, 'bs, BS> InvocationCtx<'invocation, 'bs, BS>
-where
-    BS: Blockstore,
-{
+impl<'invocation> InvocationCtx<'invocation> {
     fn resolve_target(
         &'invocation self,
         target: &Address,
@@ -163,7 +154,7 @@ where
         }
 
         let mut st: InitState = get_state(self.v, &INIT_ACTOR_ADDR).unwrap();
-        let (target_id, existing) = st.map_addresses_to_id(self.v.store, target, None).unwrap();
+        let (target_id, existing) = st.map_addresses_to_id(&self.v.store, target, None).unwrap();
         assert!(!existing, "should never have existing actor when no f4 address is specified");
         let target_id_addr = Address::new_id(target_id);
         let mut init_actor = self.v.actor(&INIT_ACTOR_ADDR).unwrap();
@@ -187,6 +178,7 @@ where
                 read_only: false,
                 policy: self.policy,
                 subinvocations: RefCell::new(vec![]),
+                events: RefCell::new(vec![]),
             };
             if is_account {
                 new_ctx.create_actor(*ACCOUNT_ACTOR_CODE_ID, target_id, None).unwrap();
@@ -228,6 +220,7 @@ where
             return_value: ret,
             exit_code: code,
             subinvocations: self.subinvocations.take(),
+            events: self.events.take(),
         }
     }
 
@@ -265,17 +258,18 @@ where
         from_actor.balance -= &self.msg.value;
         self.v.set_actor(&Address::new_id(self.msg.from), from_actor);
 
-        let (mut to_actor, ref to_addr) = self.resolve_target(&self.msg.to)?;
+        let (mut to_actor, to_addr) = self.resolve_target(&self.msg.to)?;
         to_actor.balance = to_actor.balance.add(&self.msg.value);
-        self.v.set_actor(to_addr, to_actor);
+        self.v.set_actor(&to_addr, to_actor);
 
         // Exit early on send
         if self.msg.method == METHOD_SEND {
             return Ok(None);
         }
+        self.msg.to = to_addr;
 
         // call target actor
-        let to_actor = self.v.actor(to_addr).unwrap();
+        let to_actor = self.v.actor(&to_addr).unwrap();
         let params = self.msg.params.clone();
         let mut res = match ACTOR_TYPES.get(&to_actor.code).expect("Target actor is not a builtin")
         {
@@ -309,11 +303,8 @@ where
     }
 }
 
-impl<'invocation, 'bs, BS> Runtime for InvocationCtx<'invocation, 'bs, BS>
-where
-    BS: Blockstore,
-{
-    type Blockstore = &'bs BS;
+impl<'invocation> Runtime for InvocationCtx<'invocation> {
+    type Blockstore = Rc<MemoryBlockstore>;
 
     fn create_actor(
         &self,
@@ -355,7 +346,7 @@ where
         Ok(())
     }
 
-    fn store(&self) -> &&'bs BS {
+    fn store(&self) -> &Rc<MemoryBlockstore> {
         &self.v.store
     }
 
@@ -525,6 +516,7 @@ where
             read_only: send_flags.read_only(),
             policy: self.policy,
             subinvocations: RefCell::new(vec![]),
+            events: RefCell::new(vec![]),
         };
         let res = new_ctx.invoke();
         let invoc = new_ctx.gather_trace(res.clone());
@@ -611,7 +603,7 @@ where
         Ok(Address::new_actor(&b))
     }
 
-    fn delete_actor(&self, _beneficiary: &Address) -> Result<(), ActorError> {
+    fn delete_actor(&self) -> Result<(), ActorError> {
         panic!("TODO implement me")
     }
 
@@ -649,9 +641,11 @@ where
         Ok(Cid::new_v1(IPLD_RAW, Multihash::wrap(0, b"faketipset").unwrap()))
     }
 
-    // TODO No support for events yet.
-    fn emit_event(&self, _event: &ActorEvent) -> Result<(), ActorError> {
-        unimplemented!()
+    fn emit_event(&self, event: &ActorEvent) -> Result<(), ActorError> {
+        self.events
+            .borrow_mut()
+            .push(EmittedEvent { emitter: self.msg.to.id().unwrap(), event: event.clone() });
+        Ok(())
     }
 
     fn read_only(&self) -> bool {
@@ -659,21 +653,18 @@ where
     }
 }
 
-impl<BS> Primitives for InvocationCtx<'_, '_, BS>
-where
-    BS: Blockstore,
-{
+impl Primitives for InvocationCtx<'_> {
     fn verify_signature(
         &self,
         signature: &Signature,
         signer: &Address,
         plaintext: &[u8],
     ) -> Result<(), anyhow::Error> {
-        self.v.primitives.verify_signature(signature, signer, plaintext)
+        self.v.primitives().verify_signature(signature, signer, plaintext)
     }
 
     fn hash_blake2b(&self, data: &[u8]) -> [u8; 32] {
-        self.v.primitives.hash_blake2b(data)
+        self.v.primitives().hash_blake2b(data)
     }
 
     fn compute_unsealed_sector_cid(
@@ -681,15 +672,15 @@ where
         proof_type: RegisteredSealProof,
         pieces: &[PieceInfo],
     ) -> Result<Cid, anyhow::Error> {
-        self.v.primitives.compute_unsealed_sector_cid(proof_type, pieces)
+        self.v.primitives().compute_unsealed_sector_cid(proof_type, pieces)
     }
 
     fn hash(&self, hasher: SupportedHashes, data: &[u8]) -> Vec<u8> {
-        self.v.primitives.hash(hasher, data)
+        self.v.primitives().hash(hasher, data)
     }
 
     fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
-        self.v.primitives.hash_64(hasher, data)
+        self.v.primitives().hash_64(hasher, data)
     }
 
     fn recover_secp_public_key(
@@ -697,14 +688,9 @@ where
         hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
         signature: &[u8; SECP_SIG_LEN],
     ) -> Result<[u8; SECP_PUB_LEN], anyhow::Error> {
-        self.v.primitives.recover_secp_public_key(hash, signature)
+        self.v.primitives().recover_secp_public_key(hash, signature)
     }
-}
 
-impl<BS> Verifier for InvocationCtx<'_, '_, BS>
-where
-    BS: Blockstore,
-{
     fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), anyhow::Error> {
         for proof in &verify_info.proofs {
             if proof.proof_bytes.eq(&TEST_VM_INVALID_POST.as_bytes().to_vec()) {
@@ -735,15 +721,12 @@ where
         Ok(())
     }
 
-    fn verify_replica_update(&self, _replica: &ReplicaUpdateInfo) -> Result<(), anyhow::Error> {
-        Ok(())
+    fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> Result<(), anyhow::Error> {
+        self.v.primitives().verify_replica_update(replica)
     }
 }
 
-impl<BS> RuntimePolicy for InvocationCtx<'_, '_, BS>
-where
-    BS: Blockstore,
-{
+impl RuntimePolicy for InvocationCtx<'_> {
     fn policy(&self) -> &Policy {
         self.policy
     }

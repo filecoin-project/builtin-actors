@@ -1,6 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use std::borrow::Borrow;
 use std::cmp;
 use std::ops::Neg;
 
@@ -10,7 +11,7 @@ use cid::Cid;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
     actor_error, make_empty_map, make_map_with_root_and_bitwidth, u64_key, ActorDowncast,
-    ActorError, Array,
+    ActorError, Array, AsActorError,
 };
 use fvm_ipld_amt::Error as AmtError;
 use fvm_ipld_bitfield::BitField;
@@ -395,8 +396,9 @@ impl State {
         &self,
         store: &BS,
         sector_num: SectorNumber,
-    ) -> anyhow::Result<Option<SectorOnChainInfo>> {
-        let sectors = Sectors::load(store, &self.sectors)?;
+    ) -> Result<Option<SectorOnChainInfo>, ActorError> {
+        let sectors = Sectors::load(store, &self.sectors)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "loading sectors")?;
         sectors.get(sector_num)
     }
 
@@ -638,7 +640,7 @@ impl State {
         partition_idx: u64,
         sector_number: SectorNumber,
         require_proven: bool,
-    ) -> anyhow::Result<bool> {
+    ) -> Result<bool, ActorError> {
         let dls = self.load_deadlines(store)?;
         let dl = dls.load_deadline(store, deadline_idx)?;
         let partition = dl.load_partition(store, partition_idx)?;
@@ -649,8 +651,7 @@ impl State {
                 not_found;
                 "sector {} not a member of partition {}, deadline {}",
                 sector_number, partition_idx, deadline_idx
-            )
-            .into());
+            ));
         }
 
         let faulty = partition.faults.get(sector_number);
@@ -1049,15 +1050,18 @@ impl State {
         }
 
         let mut precommits_to_delete = Vec::new();
+        let precommitted =
+            make_map_with_root_and_bitwidth(&self.pre_committed_sectors, store, HAMT_BIT_WIDTH)?;
 
         for i in sectors.iter() {
             let sector_number = i as SectorNumber;
 
-            let sector = match self.get_precommitted_sector(store, sector_number)? {
-                Some(sector) => sector,
-                // already committed/deleted
-                None => continue,
-            };
+            let sector: SectorPreCommitOnChainInfo =
+                match precommitted.get(&u64_key(sector_number))?.cloned() {
+                    Some(sector) => sector,
+                    // already committed/deleted
+                    None => continue,
+                };
 
             // mark it for deletion
             precommits_to_delete.push(sector_number);
@@ -1166,22 +1170,24 @@ impl State {
         })
     }
 
-    pub fn get_all_precommitted_sectors<BS: Blockstore>(
+    // Loads sectors precommit information from store, requiring it to exist.
+    pub fn get_precommitted_sectors<BS: Blockstore>(
         &self,
         store: &BS,
-        sector_nos: &BitField,
-    ) -> anyhow::Result<Vec<SectorPreCommitOnChainInfo>> {
+        sector_nos: impl IntoIterator<Item = impl Borrow<SectorNumber>>,
+    ) -> Result<Vec<SectorPreCommitOnChainInfo>, ActorError> {
         let mut precommits = Vec::new();
         let precommitted =
-            make_map_with_root_and_bitwidth(&self.pre_committed_sectors, store, HAMT_BIT_WIDTH)?;
-        for sector_no in sector_nos.iter() {
+            make_map_with_root_and_bitwidth(&self.pre_committed_sectors, store, HAMT_BIT_WIDTH)
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load precommitted sectors")?;
+        for sector_no in sector_nos.into_iter() {
+            let sector_no = *sector_no.borrow();
             if sector_no > MAX_SECTOR_NUMBER {
-                return Err(
-                    actor_error!(illegal_argument; "sector number greater than maximum").into()
-                );
+                return Err(actor_error!(illegal_argument; "sector number greater than maximum"));
             }
             let info: &SectorPreCommitOnChainInfo = precommitted
-                .get(&u64_key(sector_no))?
+                .get(&u64_key(sector_no))
+                .exit_code(ExitCode::USR_ILLEGAL_STATE)?
                 .ok_or_else(|| actor_error!(not_found, "sector {} not found", sector_no))?;
             precommits.push(info.clone());
         }

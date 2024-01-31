@@ -22,6 +22,10 @@ contract FactoryChild {
     function die() public {
         selfdestruct(payable(msg.sender));
     }
+    function dieRecursive() public {
+        this.die();
+        value = 1234;
+    }
     function get_value() public view returns (int32) {
         return value;
     }

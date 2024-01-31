@@ -7,9 +7,9 @@ use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::rc::Rc;
 
 use anyhow::anyhow;
+use anyhow::{Error, Result};
 use cid::multihash::{Code, Multihash as OtherMultihash};
 use cid::Cid;
-use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_ipld_encoding::de::DeserializeOwned;
 use fvm_ipld_encoding::CborStore;
 use fvm_shared::address::Payload;
@@ -35,21 +35,23 @@ use fvm_shared::{ActorID, MethodNum, Response};
 use cid::multihash::MultihashDigest;
 use multihash::derive::Multihash;
 
-use rand::prelude::*;
-use serde::Serialize;
-
 use crate::runtime::builtins::Type;
 use crate::runtime::{
     ActorCode, DomainSeparationTag, MessageInfo, Policy, Primitives, Runtime, RuntimePolicy,
-    Verifier, EMPTY_ARR_CID,
+    EMPTY_ARR_CID,
 };
 use crate::{actor_error, ActorError, SendError};
 use libsecp256k1::{recover, Message, RecoveryId, Signature as EcsdaSignature};
+use rand::prelude::*;
+use serde::Serialize;
+use vm_api::MockPrimitives;
 
+use crate::test_blockstores::MemoryBlockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::chainid::ChainID;
 use fvm_shared::event::ActorEvent;
 use fvm_shared::sys::SendFlags;
+use integer_encoding::VarInt;
 
 lazy_static::lazy_static! {
     pub static ref SYSTEM_ACTOR_CODE_ID: Cid = make_identity_cid(b"fil/test/system");
@@ -134,7 +136,7 @@ pub fn init_logging() -> Result<(), log::SetLoggerError> {
     pretty_env_logger::try_init()
 }
 
-pub struct MockRuntime<BS = MemoryBlockstore> {
+pub struct MockRuntime {
     pub epoch: RefCell<ChainEpoch>,
     pub miner: Address,
     pub base_fee: RefCell<TokenAmount>,
@@ -165,7 +167,7 @@ pub struct MockRuntime<BS = MemoryBlockstore> {
 
     // VM Impl
     pub in_call: RefCell<bool>,
-    pub store: Rc<BS>,
+    pub store: Rc<MemoryBlockstore>,
     pub in_transaction: RefCell<bool>,
 
     // Expectations
@@ -191,7 +193,7 @@ pub struct Expectations {
     pub expect_validate_caller_type: Option<Vec<Type>>,
     pub expect_sends: VecDeque<ExpectedMessage>,
     pub expect_create_actor: Option<ExpectCreateActor>,
-    pub expect_delete_actor: Option<Address>,
+    pub expect_delete_actor: bool,
     pub expect_verify_sigs: VecDeque<ExpectedVerifySig>,
     pub expect_verify_post: Option<ExpectVerifyPoSt>,
     pub expect_compute_unsealed_sector_cid: VecDeque<ExpectComputeUnsealedSectorCid>,
@@ -200,7 +202,7 @@ pub struct Expectations {
     pub expect_get_randomness_beacon: VecDeque<ExpectRandomness>,
     pub expect_batch_verify_seals: Option<ExpectBatchVerifySeals>,
     pub expect_aggregate_verify_seals: Option<ExpectAggregateVerifySeals>,
-    pub expect_replica_verify: Option<ExpectReplicaVerify>,
+    pub expect_replica_verify: VecDeque<ExpectReplicaVerify>,
     pub expect_gas_charge: VecDeque<i64>,
     pub expect_gas_available: VecDeque<u64>,
     pub expect_emitted_events: VecDeque<ActorEvent>,
@@ -209,14 +211,21 @@ pub struct Expectations {
 
 impl Expectations {
     fn reset(&mut self) {
+        // Set skip_verification_on_drop to true to avoid verification in the drop handler
+        // for the overwritten value.
         self.skip_verification_on_drop = true;
+        // This resets skip_verifications_on_drop to default false for a subsequent drop.
         *self = Default::default();
     }
 
     fn verify(&mut self) {
-        // If we don't reset them, we'll try to re-verify on drop. If something fails, we'll panic
-        // twice and abort making the tests difficult to debug.
+        // Set skip_verification_on_drop to true to avoid verification in the drop handler
+        // for the overwritten value.
         self.skip_verification_on_drop = true;
+        // Copy expectations into a local and reset self to default values.
+        // This will trigger Drop on self, which will call back into verify() unless
+        // marked as skip_verification_on_drop.
+        // The default values left behind in self will be reset to not skip verification.
         let this = std::mem::take(self);
 
         assert!(!this.expect_validate_caller_any, "expected ValidateCallerAny, not received");
@@ -237,7 +246,7 @@ impl Expectations {
         );
         assert!(
             this.expect_sends.is_empty(),
-            "expected all message to be send, unsent messages {:?}",
+            "expected send {:?}, not received",
             this.expect_sends
         );
         assert!(
@@ -245,11 +254,7 @@ impl Expectations {
             "expected actor to be created, uncreated actor: {:?}",
             this.expect_create_actor
         );
-        assert!(
-            this.expect_delete_actor.is_none(),
-            "expected actor to be deleted: {:?}",
-            this.expect_delete_actor
-        );
+        assert!(!this.expect_delete_actor, "expected actor to be deleted",);
         assert!(
             this.expect_verify_sigs.is_empty(),
             "expect_verify_sigs: {:?}, not received",
@@ -291,7 +296,7 @@ impl Expectations {
             this.expect_aggregate_verify_seals
         );
         assert!(
-            this.expect_replica_verify.is_none(),
+            this.expect_replica_verify.is_empty(),
             "expect_replica_verify {:?}, not received",
             this.expect_replica_verify
         );
@@ -315,12 +320,12 @@ impl Expectations {
 
 impl Default for MockRuntime {
     fn default() -> Self {
-        Self::new(Default::default())
+        Self::new()
     }
 }
 
-impl<BS> MockRuntime<BS> {
-    pub fn new(store: BS) -> Self {
+impl MockRuntime {
+    pub fn new() -> Self {
         Self {
             epoch: Default::default(),
             miner: Address::new_id(0),
@@ -341,7 +346,7 @@ impl<BS> MockRuntime<BS> {
             state: Default::default(),
             balance: Default::default(),
             in_call: Default::default(),
-            store: Rc::new(store),
+            store: Rc::new(Default::default()),
             in_transaction: Default::default(),
             expectations: Default::default(),
             policy: Default::default(),
@@ -470,11 +475,15 @@ pub fn expect_abort<T: fmt::Debug>(exit_code: ExitCode, res: Result<T, ActorErro
     expect_abort_contains_message(exit_code, "", res);
 }
 
-impl<BS: Blockstore> MockRuntime<BS> {
+impl MockRuntime {
     ///// Runtime access for tests /////
 
     pub fn set_policy(&mut self, policy: Policy) {
         self.policy = policy;
+    }
+
+    pub fn is_deleted(&self) -> bool {
+        self.state.borrow().is_none()
     }
 
     pub fn get_state<T: DeserializeOwned>(&self) -> T {
@@ -624,8 +633,8 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 
     #[allow(dead_code)]
-    pub fn expect_delete_actor(&self, beneficiary: Address) {
-        self.expectations.borrow_mut().expect_delete_actor = Some(beneficiary);
+    pub fn expect_delete_actor(&self) {
+        self.expectations.borrow_mut().expect_delete_actor = true;
     }
 
     #[allow(dead_code)]
@@ -763,7 +772,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
     #[allow(dead_code)]
     pub fn expect_replica_verify(&self, input: ReplicaUpdateInfo, result: anyhow::Result<()>) {
         let a = ExpectReplicaVerify { input, result };
-        self.expectations.borrow_mut().expect_replica_verify = Some(a);
+        self.expectations.borrow_mut().expect_replica_verify.push_back(a);
     }
 
     #[allow(dead_code)]
@@ -796,7 +805,7 @@ impl<BS: Blockstore> MockRuntime<BS> {
     }
 }
 
-impl<BS> MessageInfo for MockRuntime<BS> {
+impl MessageInfo for MockRuntime {
     fn nonce(&self) -> u64 {
         0
     }
@@ -818,8 +827,8 @@ impl<BS> MessageInfo for MockRuntime<BS> {
     }
 }
 
-impl<BS: Blockstore> Runtime for MockRuntime<BS> {
-    type Blockstore = Rc<BS>;
+impl Runtime for MockRuntime {
+    type Blockstore = Rc<MemoryBlockstore>;
 
     fn network_version(&self) -> NetworkVersion {
         self.network_version
@@ -1100,7 +1109,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         ret
     }
 
-    fn store(&self) -> &Rc<BS> {
+    fn store(&self) -> &Rc<MemoryBlockstore> {
         &self.store
     }
 
@@ -1129,12 +1138,32 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
 
         let expected_msg = self.expectations.borrow_mut().expect_sends.pop_front().unwrap();
 
-        assert_eq!(expected_msg.to, *to);
-        assert_eq!(expected_msg.method, method);
-        assert_eq!(expected_msg.params, params);
-        assert_eq!(expected_msg.value, value);
-        assert_eq!(expected_msg.gas_limit, gas_limit, "gas limit did not match expectation");
-        assert_eq!(expected_msg.send_flags, send_flags, "send flags did not match expectation");
+        assert_eq!(expected_msg.to, *to, "expected message to {}, was {}", expected_msg.to, to);
+        assert_eq!(
+            expected_msg.method, method,
+            "send to {} expected method {}, was {}",
+            to, expected_msg.method, method
+        );
+        assert_eq!(
+            expected_msg.params, params,
+            "send to {}:{} expected params {:?}, was {:?}",
+            to, method, expected_msg.params, params,
+        );
+        assert_eq!(
+            expected_msg.value, value,
+            "send to {}:{} expected value {:?}, was {:?}",
+            to, method, expected_msg.value, value,
+        );
+        assert_eq!(
+            expected_msg.gas_limit, gas_limit,
+            "send to {}:{} expected gas limit {:?}, was {:?}",
+            to, method, expected_msg.gas_limit, gas_limit
+        );
+        assert_eq!(
+            expected_msg.send_flags, send_flags,
+            "send to {}:{} expected send flags {:?}, was {:?}",
+            to, method, expected_msg.send_flags, send_flags
+        );
 
         if let Some(e) = expected_msg.send_error {
             return Err(SendError(e));
@@ -1185,18 +1214,15 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
         Ok(())
     }
 
-    fn delete_actor(&self, addr: &Address) -> Result<(), ActorError> {
+    fn delete_actor(&self) -> Result<(), ActorError> {
         self.require_in_call();
         if *self.in_transaction.borrow() {
             return Err(actor_error!(assertion_failed; "side-effect within transaction"));
         }
-        let exp_act = self.expectations.borrow_mut().expect_delete_actor.take();
-        if exp_act.is_none() {
-            panic!("unexpected call to delete actor: {}", addr);
-        }
-        if exp_act.as_ref().unwrap() != addr {
-            panic!("attempt to delete wrong actor. Expected: {}, got: {}", exp_act.unwrap(), addr);
-        }
+        *self.state.borrow_mut() = None;
+        let mut exp = self.expectations.borrow_mut();
+        assert!(exp.expect_delete_actor, "unexpected call to delete actor");
+        exp.expect_delete_actor = false;
         Ok(())
     }
 
@@ -1259,7 +1285,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
             .borrow_mut()
             .expect_emitted_events
             .pop_front()
-            .expect("unexpected call to emit_evit");
+            .expect("unexpected call to emit_event");
 
         assert_eq!(*event, expected);
 
@@ -1275,7 +1301,7 @@ impl<BS: Blockstore> Runtime for MockRuntime<BS> {
     }
 }
 
-impl<BS> Primitives for MockRuntime<BS> {
+impl Primitives for MockRuntime {
     fn verify_signature(
         &self,
         signature: &Signature,
@@ -1370,9 +1396,7 @@ impl<BS> Primitives for MockRuntime<BS> {
     fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
         (*self.hash_func)(hasher, data)
     }
-}
 
-impl<BS> Verifier for MockRuntime<BS> {
     fn verify_post(&self, post: &WindowPoStVerifyInfo) -> anyhow::Result<()> {
         let exp = self
             .expectations
@@ -1389,6 +1413,23 @@ impl<BS> Verifier for MockRuntime<BS> {
             )));
         }
         Ok(())
+    }
+
+    fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> Result<(), anyhow::Error> {
+        let exp = self
+            .expectations
+            .borrow_mut()
+            .expect_replica_verify
+            .pop_front()
+            .expect("unexpected call to verify replica update");
+        assert_eq!(exp.input.update_proof_type, replica.update_proof_type, "mismatched proof type");
+        assert_eq!(exp.input.new_sealed_cid, replica.new_sealed_cid, "mismatched new sealed CID");
+        assert_eq!(exp.input.old_sealed_cid, replica.old_sealed_cid, "mismatched old sealed CID");
+        assert_eq!(
+            exp.input.new_unsealed_cid, replica.new_unsealed_cid,
+            "mismatched new unsealed CID"
+        );
+        exp.result
     }
 
     fn verify_consensus_fault(
@@ -1453,36 +1494,29 @@ impl<BS> Verifier for MockRuntime<BS> {
             .take()
             .expect("unexpected call to verify aggregate seals");
         assert_eq!(exp.in_svis.len(), aggregate.infos.len(), "length mismatch");
+
         for (i, exp_svi) in exp.in_svis.iter().enumerate() {
             assert_eq!(exp_svi.sealed_cid, aggregate.infos[i].sealed_cid, "mismatched sealed CID");
             assert_eq!(
                 exp_svi.unsealed_cid, aggregate.infos[i].unsealed_cid,
                 "mismatched unsealed CID"
             );
+            assert_eq!(
+                exp_svi.sector_number, aggregate.infos[i].sector_number,
+                "mismatched sector number"
+            );
+            assert_eq!(exp_svi.randomness, aggregate.infos[i].randomness, "mismatched randomness");
+            assert_eq!(
+                exp_svi.interactive_randomness, aggregate.infos[i].interactive_randomness,
+                "mismatched interactive randomness"
+            );
         }
         assert_eq!(exp.in_proof, aggregate.proof, "proof mismatch");
         exp.result
     }
-
-    fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> anyhow::Result<()> {
-        let exp = self
-            .expectations
-            .borrow_mut()
-            .expect_replica_verify
-            .take()
-            .expect("unexpected call to verify replica update");
-        assert_eq!(exp.input.update_proof_type, replica.update_proof_type, "mismatched proof type");
-        assert_eq!(exp.input.new_sealed_cid, replica.new_sealed_cid, "mismatched new sealed CID");
-        assert_eq!(exp.input.old_sealed_cid, replica.old_sealed_cid, "mismatched old sealed CID");
-        assert_eq!(
-            exp.input.new_unsealed_cid, replica.new_unsealed_cid,
-            "mismatched new unsealed CID"
-        );
-        exp.result
-    }
 }
 
-impl<BS> RuntimePolicy for MockRuntime<BS> {
+impl RuntimePolicy for MockRuntime {
     fn policy(&self) -> &Policy {
         &self.policy
     }
@@ -1570,4 +1604,243 @@ pub fn new_bls_addr(s: u8) -> Address {
     let mut key = [0u8; 48];
     rng.fill_bytes(&mut key);
     Address::new_bls(&key).unwrap()
+}
+
+/// Fake implementation of runtime primitives. By default, behaviours succeed but can be overridden
+/// by storing the optional override in this struct.
+#[derive(Default, Clone)]
+#[allow(clippy::type_complexity)]
+pub struct FakePrimitives {
+    pub hash_blake2b: RefCell<Option<fn(&[u8]) -> [u8; 32]>>,
+    pub hash: RefCell<Option<fn(SupportedHashes, &[u8]) -> Vec<u8>>>,
+    pub hash_64: RefCell<Option<fn(SupportedHashes, &[u8]) -> ([u8; 64], usize)>>,
+    pub compute_unsealed_sector_cid:
+        RefCell<Option<fn(RegisteredSealProof, &[PieceInfo]) -> Result<Cid, Error>>>,
+    pub recover_secp_public_key: RefCell<
+        Option<
+            fn(
+                &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
+                &[u8; SECP_SIG_LEN],
+            ) -> Result<[u8; SECP_PUB_LEN], Error>,
+        >,
+    >,
+    pub verify_post: RefCell<Option<fn(&WindowPoStVerifyInfo) -> Result<(), Error>>>,
+    pub verify_consensus_fault:
+        RefCell<Option<fn(&[u8], &[u8], &[u8]) -> Result<Option<ConsensusFault>, Error>>>,
+    pub batch_verify_seals: RefCell<Option<fn(&[SealVerifyInfo]) -> Result<Vec<bool>>>>,
+    pub verify_aggregate_seals:
+        RefCell<Option<fn(&AggregateSealVerifyProofAndInfos) -> Result<(), Error>>>,
+    pub verify_signature: RefCell<Option<fn(&Signature, &Address, &[u8]) -> Result<(), Error>>>,
+    pub verify_replica_update: RefCell<Option<fn(&ReplicaUpdateInfo) -> Result<(), Error>>>,
+}
+
+impl Primitives for FakePrimitives {
+    fn hash_blake2b(&self, data: &[u8]) -> [u8; 32] {
+        if let Some(override_fn) = *self.hash_blake2b.borrow() {
+            override_fn(data)
+        } else {
+            blake2b_simd::Params::new()
+                .hash_length(32)
+                .to_state()
+                .update(data)
+                .finalize()
+                .as_bytes()
+                .try_into()
+                .unwrap()
+        }
+    }
+
+    fn hash(&self, hasher: SupportedHashes, data: &[u8]) -> Vec<u8> {
+        if let Some(override_fn) = *self.hash.borrow() {
+            override_fn(hasher, data)
+        } else {
+            let hasher = Code::try_from(hasher as u64).unwrap(); // supported hashes are all implemented in multihash
+            hasher.digest(data).digest().to_owned()
+        }
+    }
+
+    fn hash_64(&self, hasher: SupportedHashes, data: &[u8]) -> ([u8; 64], usize) {
+        if let Some(override_fn) = *self.hash_64.borrow() {
+            override_fn(hasher, data)
+        } else {
+            let hasher = Code::try_from(hasher as u64).unwrap();
+            let (len, buf, ..) = hasher.digest(data).into_inner();
+            (buf, len as usize)
+        }
+    }
+
+    fn compute_unsealed_sector_cid(
+        &self,
+        proof_type: RegisteredSealProof,
+        pieces: &[PieceInfo],
+    ) -> Result<Cid, Error> {
+        if let Some(override_fn) = *self.compute_unsealed_sector_cid.borrow() {
+            override_fn(proof_type, pieces)
+        } else {
+            // This should be the zero CommD when pieces is empty,
+            // but that code is not currently accessible here.
+            let mut buf: Vec<u8> = Vec::new();
+            let ptv: i64 = proof_type.into();
+            buf.extend(ptv.encode_var_vec());
+            for p in pieces {
+                buf.extend(&p.cid.to_bytes());
+                buf.extend(p.size.0.encode_var_vec())
+            }
+            Ok(make_piece_cid(&buf))
+        }
+    }
+
+    fn verify_signature(
+        &self,
+        signature: &Signature,
+        signer: &Address,
+        plaintext: &[u8],
+    ) -> Result<(), Error> {
+        if let Some(override_fn) = *self.verify_signature.borrow() {
+            return override_fn(signature, signer, plaintext);
+        }
+
+        // default behaviour expects signature bytes to be equal to plaintext
+        if signature.bytes != plaintext {
+            return Err(anyhow::format_err!(
+                "invalid signature (mock sig validation expects siggy bytes to be equal to plaintext)"
+            ));
+        }
+        Ok(())
+    }
+
+    fn recover_secp_public_key(
+        &self,
+        hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
+        signature: &[u8; SECP_SIG_LEN],
+    ) -> Result<[u8; SECP_PUB_LEN], Error> {
+        if let Some(override_fn) = *self.recover_secp_public_key.borrow() {
+            override_fn(hash, signature)
+        } else {
+            recover_secp_public_key(hash, signature)
+                .map_err(|_| anyhow!("failed to recover pubkey"))
+        }
+    }
+
+    fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> Result<(), Error> {
+        if let Some(override_fn) = *self.verify_replica_update.borrow() {
+            override_fn(replica)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), Error> {
+        if let Some(override_fn) = *self.verify_post.borrow() {
+            override_fn(verify_info)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn verify_consensus_fault(
+        &self,
+        h1: &[u8],
+        h2: &[u8],
+        extra: &[u8],
+    ) -> Result<Option<ConsensusFault>, Error> {
+        if let Some(override_fn) = *self.verify_consensus_fault.borrow() {
+            override_fn(h1, h2, extra)
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn batch_verify_seals(&self, batch: &[SealVerifyInfo]) -> Result<Vec<bool>> {
+        if let Some(override_fn) = *self.batch_verify_seals.borrow() {
+            override_fn(batch)
+        } else {
+            Ok(vec![true; batch.len()])
+        }
+    }
+
+    fn verify_aggregate_seals(
+        &self,
+        aggregate: &AggregateSealVerifyProofAndInfos,
+    ) -> Result<(), Error> {
+        if let Some(override_fn) = *self.verify_aggregate_seals.borrow() {
+            override_fn(aggregate)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl MockPrimitives for FakePrimitives {
+    fn override_hash_blake2b(&self, f: fn(&[u8]) -> [u8; 32]) {
+        self.hash_blake2b.replace(Some(f));
+    }
+
+    fn override_hash(&self, f: fn(SupportedHashes, &[u8]) -> Vec<u8>) {
+        self.hash.replace(Some(f));
+    }
+
+    fn override_hash_64(&self, f: fn(SupportedHashes, &[u8]) -> ([u8; 64], usize)) {
+        self.hash_64.replace(Some(f));
+    }
+
+    fn override_compute_unsealed_sector_cid(
+        &self,
+        f: fn(RegisteredSealProof, &[PieceInfo]) -> std::result::Result<Cid, Error>,
+    ) {
+        self.compute_unsealed_sector_cid.replace(Some(f));
+    }
+
+    fn override_recover_secp_public_key(
+        &self,
+        f: fn(
+            &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
+            &[u8; SECP_SIG_LEN],
+        ) -> std::result::Result<[u8; SECP_PUB_LEN], Error>,
+    ) {
+        self.recover_secp_public_key.replace(Some(f));
+    }
+
+    fn override_verify_post(&self, f: fn(&WindowPoStVerifyInfo) -> std::result::Result<(), Error>) {
+        self.verify_post.replace(Some(f));
+    }
+
+    fn override_verify_consensus_fault(
+        &self,
+        f: fn(&[u8], &[u8], &[u8]) -> std::result::Result<Option<ConsensusFault>, Error>,
+    ) {
+        self.verify_consensus_fault.replace(Some(f));
+    }
+
+    fn override_batch_verify_seals(
+        &self,
+        f: fn(&[SealVerifyInfo]) -> std::result::Result<Vec<bool>, Error>,
+    ) {
+        self.batch_verify_seals.replace(Some(f));
+    }
+
+    fn override_verify_aggregate_seals(
+        &self,
+        f: fn(&AggregateSealVerifyProofAndInfos) -> std::result::Result<(), Error>,
+    ) {
+        self.verify_aggregate_seals.replace(Some(f));
+    }
+
+    fn override_verify_signature(
+        &self,
+        f: fn(&Signature, &Address, &[u8]) -> std::result::Result<(), Error>,
+    ) {
+        self.verify_signature.replace(Some(f));
+    }
+
+    fn override_verify_replica_update(
+        &self,
+        f: fn(&ReplicaUpdateInfo) -> std::result::Result<(), Error>,
+    ) {
+        self.verify_replica_update.replace(Some(f));
+    }
+
+    fn as_primitives(&self) -> &dyn Primitives {
+        self
+    }
 }

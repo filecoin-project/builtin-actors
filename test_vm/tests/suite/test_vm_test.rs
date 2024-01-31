@@ -1,10 +1,10 @@
 use fil_actor_account::State as AccountState;
 use fil_actors_integration_tests::util::{assert_invariants, check_invariants};
 use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::test_utils::{
     make_identity_cid, ACCOUNT_ACTOR_CODE_ID, PAYCH_ACTOR_CODE_ID,
 };
-use fvm_ipld_blockstore::{Blockstore, MemoryBlockstore};
 use fvm_shared::address::Address;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -17,7 +17,7 @@ use vm_api::{new_actor, VM};
 #[test]
 fn state_control() {
     let store = MemoryBlockstore::new();
-    let v = TestVM::<MemoryBlockstore>::new(&store);
+    let v = TestVM::new(store);
     let addr1 = Address::new_id(1000);
     let addr2 = Address::new_id(2222);
 
@@ -50,16 +50,16 @@ fn state_control() {
     assert_eq!(None, v.actor(&addr2));
     assert_eq!(v.actor(&addr1).unwrap(), a1);
 
-    let invariants_check = check_invariants(&v, &Policy::default());
+    let invariants_check = check_invariants(&v, &Policy::default(), Some(TokenAmount::zero()));
     assert!(invariants_check.is_err());
     assert!(invariants_check.unwrap_err().to_string().contains("AccountState is empty"));
 }
 
-fn assert_account_actor<BS: Blockstore>(
+fn assert_account_actor(
     exp_call_seq: u64,
     exp_bal: TokenAmount,
     exp_pk_addr: Address,
-    v: &TestVM<BS>,
+    v: &TestVM,
     addr: Address,
 ) {
     let act = v.actor(&addr).unwrap();
@@ -73,7 +73,7 @@ fn assert_account_actor<BS: Blockstore>(
 #[test]
 fn test_sent() {
     let store = MemoryBlockstore::new();
-    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(store);
 
     // send to uninitialized account actor
     let addr1 = Address::new_bls(&[1; fvm_shared::address::BLS_PUB_LEN]).unwrap();
@@ -118,7 +118,7 @@ fn test_sent() {
     assert_account_actor(3, TokenAmount::from_atto(42u8), addr1, &v, expect_id_addr1);
     assert_account_actor(2, TokenAmount::zero(), addr2, &v, expect_id_addr2);
 
-    assert_invariants(&v, &Policy::default())
+    assert_invariants(&v, &Policy::default(), None)
 }
 
 #[test]

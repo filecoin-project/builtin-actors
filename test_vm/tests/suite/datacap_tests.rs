@@ -1,12 +1,12 @@
 use fil_actors_integration_tests::tests::{call_name_symbol_test, datacap_transfer_test};
-use fvm_ipld_blockstore::MemoryBlockstore;
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use test_vm::TestVM;
 
 /* Mint a token for client and transfer it to a receiver, exercising error cases */
 #[test]
 fn datacap_transfer() {
     let store = MemoryBlockstore::new();
-    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(store);
     datacap_transfer_test(&v);
 }
 
@@ -14,6 +14,6 @@ fn datacap_transfer() {
 #[test]
 fn call_name_symbol() {
     let store = MemoryBlockstore::new();
-    let v = TestVM::<MemoryBlockstore>::new_with_singletons(&store);
+    let v = TestVM::new_with_singletons(store);
     call_name_symbol_test(&v);
 }

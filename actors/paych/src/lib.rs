@@ -293,8 +293,11 @@ impl Actor {
         extract_send_result(rt.send_simple(&st.to, METHOD_SEND, None, st.to_send))
             .map_err(|e| e.wrap("Failed to send funds to `to` address"))?;
 
-        // the remaining balance will be returned to "From" upon deletion.
-        rt.delete_actor(&st.from)?;
+        // return remaining balance back to the "from" address.
+        extract_send_result(rt.send_simple(&st.from, METHOD_SEND, None, rt.current_balance()))
+            .map_err(|e| e.wrap("Failed to send funds to `from` address"))?;
+
+        rt.delete_actor()?;
 
         Ok(())
     }

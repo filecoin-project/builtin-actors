@@ -1,7 +1,7 @@
 #![allow(clippy::all)]
 
 use fil_actor_miner as miner;
-use fil_actor_miner::{PowerPair, SubmitWindowedPoStParams};
+use fil_actor_miner::PowerPair;
 use fil_actors_runtime::runtime::DomainSeparationTag;
 use fil_actors_runtime::test_utils::*;
 use fvm_ipld_bitfield::BitField;
@@ -15,7 +15,6 @@ use fvm_shared::sector::RegisteredSealProof;
 mod util;
 
 use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_shared::version::NetworkVersion;
 use num_traits::Zero;
 use util::*;
 
@@ -270,7 +269,7 @@ fn invalid_submissions() {
         let params = miner::SubmitWindowedPoStParams {
             deadline: dlinfo.index,
             partitions: vec![partition],
-            proofs: make_post_proofs(RegisteredPoStProof::StackedDRGWindow8MiBV1),
+            proofs: make_post_proofs(RegisteredPoStProof::StackedDRGWindow8MiBV1P1),
             chain_commit_epoch: dlinfo.challenge,
             chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
@@ -283,7 +282,7 @@ fn invalid_submissions() {
         );
         expect_abort_contains_message(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            "proof type StackedDRGWindow8MiBV1 not allowed",
+            "proof type StackedDRGWindow8MiBV1P1 not allowed",
             result,
         );
         rt.reset();
@@ -295,7 +294,7 @@ fn invalid_submissions() {
         let params = miner::SubmitWindowedPoStParams {
             deadline: dlinfo.index,
             partitions: vec![partition],
-            proofs: make_post_proofs(RegisteredPoStProof::StackedDRGWindow64GiBV1),
+            proofs: make_post_proofs(RegisteredPoStProof::StackedDRGWindow64GiBV1P1),
             chain_commit_epoch: dlinfo.challenge,
             chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
         };
@@ -308,7 +307,7 @@ fn invalid_submissions() {
         );
         expect_abort_contains_message(
             ExitCode::USR_ILLEGAL_ARGUMENT,
-            "expected proof of type",
+            "expected proof of type StackedDRGWindow32GiBV1P1, got StackedDRGWindow64GiBV1P1",
             result,
         );
         rt.reset();
@@ -1293,118 +1292,4 @@ fn bad_post_fails_when_verified() {
     );
     rt.reset();
     h.check_state(&rt);
-}
-
-#[test]
-fn can_submit_v1_proof_types_nv19() {
-    struct TestCase {
-        desc: &'static str,
-        nv: NetworkVersion,
-        seal_proof_type: RegisteredSealProof,
-        post_proof_type: RegisteredPoStProof,
-        exit_code: ExitCode,
-        error_msg: String,
-    }
-
-    let tests = [
-        TestCase {
-            desc: "can submit v1 proof in nv19",
-            nv: NetworkVersion::V19,
-            seal_proof_type: RegisteredSealProof::StackedDRG32GiBV1P1,
-            post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1,
-            exit_code: ExitCode::OK,
-            error_msg: "".to_string(),
-        },
-        TestCase {
-            desc: "can submit v1p1 proof in nv19",
-            nv: NetworkVersion::V19,
-            seal_proof_type: RegisteredSealProof::StackedDRG32GiBV1P1,
-            post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
-            exit_code: ExitCode::OK,
-            error_msg: "".to_string(),
-        },
-        TestCase {
-            desc: "can submit v1p1 proof in nv20",
-            nv: NetworkVersion::V20,
-            seal_proof_type: RegisteredSealProof::StackedDRG32GiBV1P1,
-            post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1P1,
-            exit_code: ExitCode::OK,
-            error_msg: "".to_string(),
-        },
-        TestCase {
-            desc: "can NOT submit v1 proof in nv20",
-            nv: NetworkVersion::V20,
-            seal_proof_type: RegisteredSealProof::StackedDRG32GiBV1P1,
-            post_proof_type: RegisteredPoStProof::StackedDRGWindow32GiBV1,
-            exit_code: ExitCode::USR_ILLEGAL_ARGUMENT,
-            error_msg:
-                "expected proof of type StackedDRGWindow32GiBV1P1, got StackedDRGWindow32GiBV1"
-                    .to_string(),
-        },
-    ];
-
-    for tc in tests {
-        println!("Testing: {}", tc.desc);
-        let period_offset = ChainEpoch::from(100);
-        let precommit_epoch = ChainEpoch::from(1);
-
-        let mut h = ActorHarness::new(period_offset);
-        h.set_proof_type(tc.seal_proof_type);
-
-        let mut rt = h.new_runtime();
-        rt.network_version = tc.nv;
-        // in nv19 policy, both V1 and V1P1 are "valid" post proof types
-        rt.policy.valid_post_proof_type.insert(RegisteredPoStProof::StackedDRGWindow32GiBV1);
-        rt.policy.valid_post_proof_type.insert(RegisteredPoStProof::StackedDRGWindow32GiBV1P1);
-        rt.epoch.replace(precommit_epoch);
-        rt.balance.replace(BIG_BALANCE.clone());
-
-        h.construct_and_verify(&rt);
-
-        let info = h.get_info(&rt);
-        // No matter what post proof type the test uses, the miner info should be V1P1
-        assert_eq!(info.window_post_proof_type, RegisteredPoStProof::StackedDRGWindow32GiBV1P1);
-
-        let sectors = h.commit_and_prove_sectors(&rt, 1, DEFAULT_SECTOR_EXPIRATION, vec![], true);
-        let sector = sectors[0].clone();
-        let pwr = miner::power_for_sector(h.sector_size, &sector);
-
-        // Skip to the right deadline
-        let state = h.get_state(&rt);
-        let (dlidx, pidx) = state.find_sector(&rt.store, sector.sector_number).unwrap();
-        let dlinfo = h.advance_to_deadline(&rt, dlidx);
-
-        // Submit PoSt
-        let post_partitions =
-            vec![miner::PoStPartition { index: pidx, skipped: make_empty_bitfield() }];
-        let post_sectors = vec![sector.clone()];
-        let params = SubmitWindowedPoStParams {
-            deadline: dlidx,
-            partitions: post_partitions,
-            proofs: make_post_proofs(tc.post_proof_type),
-            chain_commit_epoch: dlinfo.challenge,
-            chain_commit_rand: Randomness(TEST_RANDOMNESS_ARRAY_FROM_ONE.into()),
-        };
-
-        if tc.exit_code.is_success() {
-            h.submit_window_post_raw(
-                &rt,
-                &dlinfo,
-                post_sectors,
-                params,
-                PoStConfig::with_expected_power_delta(&pwr),
-            )
-            .unwrap();
-        } else {
-            rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, h.worker);
-            rt.expect_validate_caller_addr(h.caller_addrs());
-            let result = rt.call::<miner::Actor>(
-                miner::Method::SubmitWindowedPoSt as u64,
-                IpldBlock::serialize_cbor(&params).unwrap(),
-            );
-            expect_abort_contains_message(tc.exit_code, &tc.error_msg, result);
-        }
-
-        rt.verify();
-    }
 }

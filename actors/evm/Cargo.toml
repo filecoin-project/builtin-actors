@@ -1,11 +1,11 @@
 [package]
 name = "fil_actor_evm"
 description = "Builtin EVM actor for Filecoin"
-version = "12.0.0"
-license = "MIT OR Apache-2.0"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
 authors = ["Protocol Labs", "Filecoin Core Devs"]
-edition = "2021"
-repository = "https://github.com/filecoin-project/builtin-actors"
 keywords = ["filecoin", "web3", "wasm", "evm"]
 exclude = ["/precompile-testdata", "/tests/measurements", "/tests/contracts"]
 
@@ -42,6 +42,7 @@ ethers = { workspace = true }
 serde_json = { workspace = true }
 rand = { workspace = true }
 once_cell = { workspace = true }
+
 
 [features]
 fil-actor = ["fil_actors_runtime/fil-actor"]

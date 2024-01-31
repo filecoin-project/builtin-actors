@@ -24,10 +24,18 @@ pub mod account {
 
 pub mod miner {
     use super::*;
+    use cid::Cid;
+    use fvm_ipld_encoding::RawBytes;
+    use fvm_shared::clock::ChainEpoch;
+    use fvm_shared::piece::PaddedPieceSize;
+    use fvm_shared::sector::SectorNumber;
+    use fvm_shared::MethodNum;
 
     pub const CONTROL_ADDRESSES_METHOD: u64 = 2;
     pub const IS_CONTROLLING_ADDRESS_EXPORTED: u64 =
         frc42_dispatch::method_hash!("IsControllingAddress");
+    pub const SECTOR_CONTENT_CHANGED: MethodNum =
+        frc42_dispatch::method_hash!("SectorContentChanged");
 
     #[derive(Serialize_tuple, Deserialize_tuple)]
     pub struct GetControlAddressesReturnParams {
@@ -46,6 +54,44 @@ pub mod miner {
     #[serde(transparent)]
     pub struct IsControllingAddressParam {
         pub address: Address,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+    #[serde(transparent)]
+    pub struct SectorContentChangedParams {
+        pub sectors: Vec<SectorChanges>,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+    pub struct SectorChanges {
+        pub sector: SectorNumber,
+        pub minimum_commitment_epoch: ChainEpoch,
+        pub added: Vec<PieceChange>,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+    pub struct PieceChange {
+        pub data: Cid,
+        pub size: PaddedPieceSize,
+        pub payload: RawBytes,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+    #[serde(transparent)]
+    pub struct SectorContentChangedReturn {
+        pub sectors: Vec<SectorReturn>,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+    #[serde(transparent)]
+    pub struct SectorReturn {
+        pub added: Vec<PieceReturn>,
+    }
+
+    #[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+    #[serde(transparent)]
+    pub struct PieceReturn {
+        pub accepted: bool,
     }
 }
 

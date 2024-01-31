@@ -1,6 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+//! TODO: Revisit tests here and cleanup https://github.com/filecoin-project/builtin-actors/issues/1389
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
 use fvm_shared::clock::ChainEpoch;
@@ -14,17 +15,18 @@ const END_EPOCH: ChainEpoch = START_EPOCH + DURATION_EPOCHS;
 
 #[test]
 fn deal_is_correctly_processed_if_first_cron_after_expiry() {
+    let sector_number = 7;
     let rt = setup();
-    let deal_id = publish_and_activate_deal(
+    let (deal_id, deal_proposal) = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
+        sector_number,
         START_EPOCH,
         END_EPOCH,
         0,
         END_EPOCH,
     );
-    let deal_proposal = get_deal_proposal(&rt, deal_id);
 
     // move the current epoch to startEpoch
     let current = START_EPOCH;
@@ -47,19 +49,22 @@ fn deal_is_correctly_processed_if_first_cron_after_expiry() {
     assert!(slashed.is_zero());
 
     // deal should be deleted as it should have expired
-    assert_deal_deleted(&rt, deal_id, deal_proposal);
+    assert_deal_deleted(&rt, deal_id, &deal_proposal, sector_number);
     check_state(&rt);
 }
 
+// this test needs to have the deal injected into the market actor state to simulate legacy deals
 #[test]
 fn regular_payments_till_deal_expires_and_then_locked_funds_are_unlocked() {
     let start_epoch = Policy::default().deal_updates_interval;
     let end_epoch = start_epoch + DURATION_EPOCHS;
+    let sector_number = 7;
     let rt = setup();
-    let deal_id = publish_and_activate_deal(
+    let (deal_id, deal_proposal) = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
+        sector_number,
         start_epoch,
         end_epoch,
         0,
@@ -68,7 +73,6 @@ fn regular_payments_till_deal_expires_and_then_locked_funds_are_unlocked() {
     // The logic of this test relies on deal ID == 0 so that it's scheduled for
     // updated in the 0th epoch of every interval, and the start epoch being the same.
     assert_eq!(0, deal_id);
-    let deal_proposal = get_deal_proposal(&rt, deal_id);
 
     // move the current epoch to startEpoch + 5 so payment is made
     // this skip of 5 epochs is unrealistic, but later demonstrates that the re-scheduled
@@ -120,7 +124,7 @@ fn regular_payments_till_deal_expires_and_then_locked_funds_are_unlocked() {
     assert!(slashed.is_zero());
 
     // deal should be deleted as it should have expired
-    assert_deal_deleted(&rt, deal_id, deal_proposal);
+    assert_deal_deleted(&rt, deal_id, &deal_proposal, sector_number);
     check_state(&rt);
 }
 
@@ -128,11 +132,19 @@ fn regular_payments_till_deal_expires_and_then_locked_funds_are_unlocked() {
 fn payment_for_a_deal_if_deal_is_already_expired_before_a_cron_tick() {
     let start = 5;
     let end = start + 200 * EPOCHS_IN_DAY;
+    let sector_number = 7;
 
     let rt = setup();
-    let deal_id =
-        publish_and_activate_deal(&rt, CLIENT_ADDR, &MinerAddresses::default(), start, end, 0, end);
-    let deal_proposal = get_deal_proposal(&rt, deal_id);
+    let (deal_id, deal_proposal) = publish_and_activate_deal_legacy(
+        &rt,
+        CLIENT_ADDR,
+        &MinerAddresses::default(),
+        sector_number,
+        start,
+        end,
+        0,
+        end,
+    );
 
     let current = end + 25;
     rt.set_epoch(current);
@@ -142,7 +154,7 @@ fn payment_for_a_deal_if_deal_is_already_expired_before_a_cron_tick() {
     assert_eq!((end - start) * &deal_proposal.storage_price_per_epoch, pay);
     assert!(slashed.is_zero());
 
-    assert_deal_deleted(&rt, deal_id, deal_proposal);
+    assert_deal_deleted(&rt, deal_id, &deal_proposal, sector_number);
 
     // running cron tick again doesn't do anything
     cron_tick_no_change(&rt, CLIENT_ADDR, PROVIDER_ADDR);
@@ -152,22 +164,30 @@ fn payment_for_a_deal_if_deal_is_already_expired_before_a_cron_tick() {
 #[test]
 fn expired_deal_should_unlock_the_remaining_client_and_provider_locked_balance_after_payment_and_deal_should_be_deleted(
 ) {
+    let sector_number = 7;
     let rt = setup();
-    let deal_id = publish_and_activate_deal(
+    let (deal_id, deal_proposal) = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
+        sector_number,
         START_EPOCH,
         END_EPOCH,
         0,
         END_EPOCH,
     );
-    let deal_proposal = get_deal_proposal(&rt, deal_id);
 
     let c_escrow = get_balance(&rt, &CLIENT_ADDR).balance;
     let p_escrow = get_balance(&rt, &PROVIDER_ADDR).balance;
 
     // move the current epoch so that deal is expired
+    expect_emitted(
+        &rt,
+        "deal-completed",
+        deal_id,
+        CLIENT_ADDR.id().unwrap(),
+        PROVIDER_ADDR.id().unwrap(),
+    );
     rt.set_epoch(END_EPOCH + 1000);
     cron_tick(&rt);
 
@@ -183,26 +203,34 @@ fn expired_deal_should_unlock_the_remaining_client_and_provider_locked_balance_a
     assert!(provider_acct.locked.is_zero());
 
     // deal should be deleted
-    assert_deal_deleted(&rt, deal_id, deal_proposal);
+    assert_deal_deleted(&rt, deal_id, &deal_proposal, sector_number);
     check_state(&rt);
 }
 
 #[test]
 fn all_payments_are_made_for_a_deal_client_withdraws_collateral_and_client_account_is_removed() {
+    let sector_number = 7;
     let rt = setup();
-    let deal_id = publish_and_activate_deal(
+    let (_deal_id, deal_proposal) = publish_and_activate_deal_legacy(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
+        sector_number,
         START_EPOCH,
         END_EPOCH,
         0,
         END_EPOCH,
     );
-    let deal_proposal = get_deal_proposal(&rt, deal_id);
 
     // move the current epoch so that deal is expired
     rt.set_epoch(END_EPOCH + 100);
+    expect_emitted(
+        &rt,
+        "deal-completed",
+        _deal_id,
+        CLIENT_ADDR.id().unwrap(),
+        PROVIDER_ADDR.id().unwrap(),
+    );
     cron_tick(&rt);
     assert_eq!(deal_proposal.client_collateral, get_balance(&rt, &CLIENT_ADDR).balance);
 

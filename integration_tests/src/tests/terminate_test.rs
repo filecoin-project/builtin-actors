@@ -1,26 +1,31 @@
-use fil_actor_cron::Method as CronMethod;
-use fil_actor_market::{
-    DealMetaArray, Method as MarketMethod, State as MarketState, WithdrawBalanceParams,
-};
-use fil_actor_miner::{
-    power_for_sector, Method as MinerMethod, PreCommitSectorParams, ProveCommitSectorParams,
-    State as MinerState, TerminateSectorsParams, TerminationDeclaration,
-};
-use fil_actor_power::State as PowerState;
-use fil_actor_verifreg::{Method as VerifregMethod, VerifierParams};
-use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::{
-    test_utils::*, CRON_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ID,
-    STORAGE_POWER_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
-};
+use std::ops::Neg;
+
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use num_traits::cast::FromPrimitive;
-use std::ops::Neg;
+
+use export_macro::vm_test;
+use fil_actor_cron::Method as CronMethod;
+use fil_actor_market::{
+    DealMetaArray, Method as MarketMethod, State as MarketState, WithdrawBalanceParams,
+};
+use fil_actor_miner::{
+    power_for_sector, Method as MinerMethod, ProveCommitSectorParams, State as MinerState,
+    TerminateSectorsParams, TerminationDeclaration,
+};
+use fil_actor_power::State as PowerState;
+use fil_actor_verifreg::{Method as VerifregMethod, VerifierParams};
+use fil_actors_runtime::network::EPOCHS_IN_DAY;
+use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::{
+    CRON_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ID, STORAGE_POWER_ACTOR_ADDR,
+    SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+};
+use fvm_shared::deal::DealID;
+use fvm_shared::ActorID;
 use vm_api::trace::ExpectInvocation;
 use vm_api::util::{apply_ok, get_state, DynBlockstore};
 use vm_api::VM;
@@ -28,11 +33,13 @@ use vm_api::VM;
 use crate::expects::Expect;
 use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
-    advance_to_proving_deadline, create_accounts, create_miner, expect_invariants,
-    invariant_failure_patterns, make_bitfield, market_publish_deal, miner_balance,
-    submit_windowed_post, verifreg_add_verifier,
+    advance_to_proving_deadline, assert_invariants, create_accounts, create_miner,
+    deal_cid_for_testing, make_bitfield, market_publish_deal, miner_balance,
+    miner_precommit_one_sector_v2, precommit_meta_data_from_deals, submit_windowed_post,
+    verifreg_add_verifier,
 };
 
+#[vm_test]
 pub fn terminate_sectors_test(v: &dyn VM) {
     let addrs = create_accounts(v, 4, &TokenAmount::from_whole(10_000));
     let (owner, verifier, unverified_client, verified_client) =
@@ -43,7 +50,6 @@ pub fn terminate_sectors_test(v: &dyn VM) {
 
     let m_balance = TokenAmount::from_whole(1_000);
     let sector_number = 100;
-    let sealed_cid = make_sealed_cid(b"s100");
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
 
     let (miner_id_addr, miner_robust_addr) = create_miner(
@@ -164,28 +170,22 @@ pub fn terminate_sectors_test(v: &dyn VM) {
         let state = deal_states.get(*id).unwrap();
         assert_eq!(None, state);
     }
-    //    precommit_sectors(&v, 1, 1, worker, robust_addr, seal_proof, sector_number, true, None);
-    apply_ok(
+
+    miner_precommit_one_sector_v2(
         v,
         &worker,
         &miner_robust_addr,
-        &TokenAmount::zero(),
-        MinerMethod::PreCommitSector as u64,
-        Some(PreCommitSectorParams {
-            seal_proof,
-            sector_number,
-            sealed_cid,
-            seal_rand_epoch: v.epoch() - 1,
-            deal_ids: deal_ids.clone(),
-            expiration: v.epoch() + 220 * EPOCHS_IN_DAY,
-            ..Default::default()
-        }),
+        seal_proof,
+        sector_number,
+        precommit_meta_data_from_deals(v, &deal_ids, seal_proof),
+        true,
+        v.epoch() + 220 * EPOCHS_IN_DAY,
     );
     let prove_time = v.epoch() + Policy::default().pre_commit_challenge_delay + 1;
     advance_by_deadline_to_epoch(v, &miner_id_addr, prove_time);
 
     // prove commit, cron, advance to post time
-    let prove_params = ProveCommitSectorParams { sector_number, proof: vec![] };
+    let prove_params = ProveCommitSectorParams { sector_number, proof: vec![].into() };
     apply_ok(
         v,
         &worker,
@@ -235,16 +235,22 @@ pub fn terminate_sectors_test(v: &dyn VM) {
         start + Policy::default().deal_updates_interval,
     );
 
-    // market cron updates deal states indication deals are no longer pending
+    // deals are no longer pending, though they've never been processed
     let st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
     let store = DynBlockstore::wrap(v.blockstore());
-    let deal_states = DealMetaArray::load(&st.states, &store).unwrap();
     for id in deal_ids.iter() {
-        let state = deal_states.get(*id).unwrap().unwrap();
-        assert!(state.last_updated_epoch > 0);
-        assert_eq!(-1, state.slash_epoch);
+        let proposal = st.get_proposal(&store, *id).unwrap();
+        let dcid = deal_cid_for_testing(&proposal);
+        assert!(!st.has_pending_deal(&store, &dcid).unwrap());
     }
     let epoch = v.epoch();
+
+    let expect_event = Expect::build_miner_event("sector-terminated", miner_id, sector_number);
+    let deal_clients: Vec<(DealID, ActorID)> = vec![
+        (deal_ids[0], verified_client_id),
+        (deal_ids[1], verified_client_id),
+        (deal_ids[2], unverified_client.id().unwrap()),
+    ];
 
     // Terminate Sector
     apply_ok(
@@ -270,9 +276,15 @@ pub fn terminate_sectors_test(v: &dyn VM) {
             Expect::power_current_total(miner_id),
             Expect::burn(miner_id, None),
             Expect::power_update_pledge(miner_id, None),
-            Expect::market_sectors_terminate(miner_id, epoch, deal_ids.clone()),
+            Expect::market_sectors_terminate(
+                miner_id,
+                epoch,
+                [sector_number].to_vec(),
+                deal_clients,
+            ),
             Expect::power_update_claim(miner_id, sector_power.neg()),
         ]),
+        events: vec![expect_event],
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
@@ -289,23 +301,16 @@ pub fn terminate_sectors_test(v: &dyn VM) {
     assert!(pow_st.total_qa_bytes_committed.is_zero());
     assert!(pow_st.total_pledge_collateral.is_zero());
 
-    // termination slashes deals in market state
-    let termination_epoch = v.epoch();
+    // termination synchronously deletes deal state
     let st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
     let store = DynBlockstore::wrap(v.blockstore());
     let deal_states = DealMetaArray::load(&st.states, &store).unwrap();
-    for id in deal_ids.iter() {
-        let state = deal_states.get(*id).unwrap().unwrap();
-        assert!(state.last_updated_epoch > 0);
-        assert_eq!(termination_epoch, state.slash_epoch);
+    for &id in deal_ids.iter() {
+        let state = deal_states.get(id).unwrap();
+        assert!(state.is_none());
+        assert!(st.find_proposal(&store, id).unwrap().is_none());
     }
 
-    // advance a market cron processing period to process terminations fully
-    advance_by_deadline_to_epoch(
-        v,
-        &miner_id_addr,
-        termination_epoch + Policy::default().deal_updates_interval,
-    );
     // because of rounding error it's annoying to compute exact withdrawable balance which is 2.9999.. FIL
     // withdrawing 2 FIL proves out that the claim to 1 FIL per deal (2 deals for this client) is removed at termination
     let withdrawal = TokenAmount::from_whole(2);
@@ -349,9 +354,5 @@ pub fn terminate_sectors_test(v: &dyn VM) {
     assert!(TokenAmount::from_whole(58) < value_withdrawn);
     assert!(TokenAmount::from_whole(59) > value_withdrawn);
 
-    expect_invariants(
-        v,
-        &Policy::default(),
-        &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
-    );
+    assert_invariants(v, &Policy::default(), None);
 }

@@ -3,12 +3,10 @@ use std::{
     convert::TryFrom,
 };
 
+use cid::multihash::{Code, MultihashDigest};
 use cid::Cid;
-use fil_actors_runtime::builtin::HAMT_BIT_WIDTH;
-use fil_actors_runtime::{
-    make_map_with_root_and_bitwidth, parse_uint_key, MessageAccumulator, SetMultimap,
-};
 use fvm_ipld_blockstore::Blockstore;
+use fvm_ipld_encoding::DAG_CBOR;
 use fvm_shared::{
     address::{Address, Protocol},
     clock::{ChainEpoch, EPOCH_UNDEFINED},
@@ -18,10 +16,17 @@ use fvm_shared::{
 use integer_encoding::VarInt;
 use num_traits::Zero;
 
-use crate::{
-    balance_table::BalanceTable, deal_cid, DealArray, DealMetaArray, State, PROPOSALS_AMT_BITWIDTH,
+use fil_actors_runtime::builtin::HAMT_BIT_WIDTH;
+use fil_actors_runtime::cbor::serialize;
+use fil_actors_runtime::{
+    make_map_with_root_and_bitwidth, parse_uint_key, ActorError, MessageAccumulator, SetMultimap,
 };
-use crate::{ext::verifreg::AllocationID, NO_ALLOCATION_ID};
+
+use crate::ext::verifreg::AllocationID;
+use crate::{
+    balance_table::BalanceTable, DealArray, DealMetaArray, DealProposal, State,
+    PROPOSALS_AMT_BITWIDTH,
+};
 
 #[derive(Clone)]
 pub struct DealSummary {
@@ -50,7 +55,6 @@ impl Default for DealSummary {
 #[derive(Default, Clone)]
 pub struct StateSummary {
     pub deals: BTreeMap<DealID, DealSummary>,
-    pub claim_id_to_deal_id: BTreeMap<u64, DealID>,
     pub alloc_id_to_deal_id: BTreeMap<u64, DealID>,
     pub pending_proposal_count: u64,
     pub deal_state_count: u64,
@@ -169,7 +173,6 @@ pub fn check_state_invariants<BS: Blockstore>(
 
     // deal states
     let mut deal_state_count = 0;
-    let mut claim_id_to_deal_id = BTreeMap::<u64, DealID>::new();
     match DealMetaArray::load(&state.states, store) {
         Ok(deal_states) => {
             let ret = deal_states.for_each(|deal_id, deal_state| {
@@ -205,11 +208,6 @@ pub fn check_state_invariants<BS: Blockstore>(
                 acc.require(!pending_allocations.contains_key(&deal_id), format!("deal {deal_id} has pending allocation"));
 
                 deal_state_count += 1;
-
-                if deal_state.verified_claim != NO_ALLOCATION_ID {
-                    claim_id_to_deal_id.insert(deal_state.verified_claim, deal_id);
-                }
-
                 Ok(())
             });
             acc.require_no_error(ret, "error iterating deal states");
@@ -299,12 +297,15 @@ pub fn check_state_invariants<BS: Blockstore>(
 
                 deal_op_epoch_count += 1;
 
-                deal_ops.for_each(epoch, |deal_id| {
-                    acc.require(proposal_stats.contains_key(&deal_id), format!("deal op found for deal id {deal_id} with missing proposal at epoch {epoch}"));
-                    expected_deal_ops.remove(&deal_id);
-                    deal_op_count += 1;
-                    Ok(())
-                }).map_err(|e| anyhow::anyhow!("error iterating deal ops for epoch {}: {}", epoch, e))
+                deal_ops
+                    .for_each(epoch, |deal_id| {
+                        expected_deal_ops.remove(&deal_id);
+                        deal_op_count += 1;
+                        Ok(())
+                    })
+                    .map_err(|e| {
+                        anyhow::anyhow!("error iterating deal ops for epoch {}: {}", epoch, e)
+                    })
             });
             acc.require_no_error(ret, "error iterating all deal ops");
         }
@@ -324,9 +325,17 @@ pub fn check_state_invariants<BS: Blockstore>(
             lock_table_count,
             deal_op_epoch_count,
             deal_op_count,
-            claim_id_to_deal_id,
             alloc_id_to_deal_id,
         },
         acc,
     )
+}
+
+/// Compute a deal CID directly (the actor code uses a runtime built-in).
+pub(crate) fn deal_cid(proposal: &DealProposal) -> Result<Cid, ActorError> {
+    const DIGEST_SIZE: u32 = 32;
+    let data = serialize(proposal, "deal proposal")?;
+    let hash = Code::Blake2b256.digest(data.bytes());
+    debug_assert_eq!(u32::from(hash.size()), DIGEST_SIZE, "expected 32byte digest");
+    Ok(Cid::new_v1(DAG_CBOR, hash))
 }

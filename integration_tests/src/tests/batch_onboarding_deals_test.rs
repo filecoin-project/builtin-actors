@@ -6,31 +6,106 @@ use fil_actor_miner::{
 use fil_actor_miner::{Method as MinerMethod, ProveCommitAggregateParams};
 use fil_actors_runtime::runtime::policy::policy_constants::PRE_COMMIT_CHALLENGE_DELAY;
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
+use fil_actors_runtime::test_utils::make_piece_cid;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
+use fvm_shared::error::ExitCode;
+use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use num_traits::Zero;
 
+use export_macro::vm_test;
 use vm_api::util::{apply_ok, get_state, DynBlockstore};
 use vm_api::VM;
 
 use crate::deals::{DealBatcher, DealOptions};
 use crate::util::{
     advance_to_proving_deadline, bf_all, create_accounts, create_miner, get_network_stats,
-    make_bitfield, market_add_balance, miner_balance, precommit_sectors_v2, submit_windowed_post,
-    verifreg_add_client, verifreg_add_verifier, PrecommitMetadata,
+    make_bitfield, market_add_balance, market_pending_deal_allocations, miner_balance,
+    precommit_meta_data_from_deals, precommit_sectors_v2, precommit_sectors_v2_expect_code,
+    submit_windowed_post, verifreg_add_client, verifreg_add_verifier, PrecommitMetadata,
 };
 
 const BATCH_SIZE: usize = 8;
-const PRECOMMIT_V2: bool = true;
 const SEAL_PROOF: RegisteredSealProof = RegisteredSealProof::StackedDRG32GiBV1P1;
 
+#[vm_test]
+pub fn pre_commit_requires_commd_test(v: &dyn VM) {
+    let deal_duration: ChainEpoch = Policy::default().min_sector_expiration;
+    let sector_duration: ChainEpoch =
+        deal_duration + Policy::default().market_default_allocation_term_buffer;
+
+    let addrs = create_accounts(v, 2, &TokenAmount::from_whole(10_000));
+    let (owner, client) = (addrs[0], addrs[1]);
+    let worker = owner;
+
+    // Create miner
+    let (miner, _) = create_miner(
+        v,
+        &owner,
+        &worker,
+        SEAL_PROOF.registered_window_post_proof().unwrap(),
+        &TokenAmount::from_whole(1000),
+    );
+
+    // Fund storage market accounts.
+    market_add_balance(v, &owner, &miner, &TokenAmount::from_whole(1000));
+    market_add_balance(v, &client, &client, &TokenAmount::from_whole(1000));
+
+    // Publish a deal for the sector.
+    let deal_opts = DealOptions {
+        piece_size: PaddedPieceSize(32 * (1 << 30)),
+        verified: false,
+        deal_start: v.epoch() + max_prove_commit_duration(&Policy::default(), SEAL_PROOF).unwrap(),
+        deal_lifetime: deal_duration,
+        ..DealOptions::default()
+    };
+    let mut batcher = DealBatcher::new(v, deal_opts);
+    batcher.stage(client, miner);
+    let ret = batcher.publish_ok(worker);
+    let good_inputs = bf_all(ret.valid_deals);
+    assert_eq!(vec![0], good_inputs);
+
+    // precommit without specifying commD fails
+    let sector_number = 100;
+    precommit_sectors_v2_expect_code(
+        v,
+        1,
+        1,
+        vec![PrecommitMetadata { deals: vec![0], commd: CompactCommD(None) }],
+        &worker,
+        &miner,
+        SEAL_PROOF,
+        sector_number,
+        true,
+        Some(sector_duration),
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+    );
+
+    // precommit specifying the wrong commD fails
+    precommit_sectors_v2_expect_code(
+        v,
+        1,
+        1,
+        vec![PrecommitMetadata {
+            deals: vec![0],
+            commd: CompactCommD(Some(make_piece_cid("This is not commP".as_bytes()))),
+        }],
+        &worker,
+        &miner,
+        SEAL_PROOF,
+        sector_number,
+        true,
+        Some(sector_duration),
+        ExitCode::USR_ILLEGAL_ARGUMENT,
+    );
+}
+
 // Tests batch onboarding of sectors with verified deals.
+#[vm_test(1)]
 pub fn batch_onboarding_deals_test(v: &dyn VM) {
     let deal_duration: ChainEpoch = Policy::default().min_sector_expiration;
     let sector_duration: ChainEpoch =
@@ -62,28 +137,14 @@ pub fn batch_onboarding_deals_test(v: &dyn VM) {
     assert_eq!(BATCH_SIZE, deals.len());
 
     // Verify datacap allocations.
-    let mut market_state: fil_actor_market::State =
-        get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
     let deal_keys: Vec<DealID> = deals.iter().map(|(id, _)| *id).collect();
-    let alloc_ids = market_state
-        .get_pending_deal_allocation_ids(&DynBlockstore::wrap(v.blockstore()), &deal_keys)
-        .unwrap();
+    let alloc_ids = market_pending_deal_allocations(v, &deal_keys);
     assert_eq!(BATCH_SIZE, alloc_ids.len());
 
     // Associate deals with sectors.
     let sector_precommit_data = deals
         .into_iter()
-        .map(|(id, deal)| PrecommitMetadata {
-            deals: vec![id],
-            commd: CompactCommD::of(
-                v.primitives()
-                    .compute_unsealed_sector_cid(
-                        SEAL_PROOF,
-                        &[PieceInfo { size: deal.piece_size, cid: deal.piece_cid }],
-                    )
-                    .unwrap(),
-            ),
-        })
+        .map(|(id, _)| precommit_meta_data_from_deals(v, &[id], SEAL_PROOF))
         .collect();
 
     // Pre-commit as single batch.
@@ -98,7 +159,6 @@ pub fn batch_onboarding_deals_test(v: &dyn VM) {
         0,
         true,
         Some(sector_duration),
-        PRECOMMIT_V2,
     );
     let first_sector_no = precommits[0].info.sector_number;
 
@@ -169,7 +229,7 @@ pub fn prove_commit_aggregate(
     let sector_nos: Vec<u64> = precommits.iter().map(|p| p.info.sector_number).collect();
     let prove_commit_aggregate_params = ProveCommitAggregateParams {
         sector_numbers: make_bitfield(sector_nos.as_slice()),
-        aggregate_proof: vec![],
+        aggregate_proof: vec![].into(),
     };
 
     apply_ok(

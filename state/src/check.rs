@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::collections::HashMap;
-use std::fmt::Debug;
 
+use anyhow::anyhow;
 use anyhow::bail;
 use cid::Cid;
 use fil_actor_account::State as AccountState;
@@ -20,25 +20,19 @@ use fil_actor_power::testing::MinerCronEvent;
 use fil_actor_power::State as PowerState;
 use fil_actor_reward::State as RewardState;
 use fil_actor_verifreg::{DataCap, State as VerifregState};
-
 use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::DEFAULT_HAMT_CONFIG;
-use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
-
-use fil_actors_runtime::Map;
+use fil_actors_runtime::DealWeight;
 use fil_actors_runtime::MessageAccumulator;
+use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::from_slice;
 use fvm_ipld_encoding::CborStore;
 use fvm_shared::address::Address;
 use fvm_shared::address::Protocol;
-
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::sector::SectorNumber;
 use num_traits::Zero;
-
-use anyhow::anyhow;
-use fvm_ipld_encoding::tuple::*;
 
 use fil_actor_account::testing as account;
 use fil_actor_cron::testing as cron;
@@ -52,60 +46,12 @@ use fil_actor_power::testing as power;
 use fil_actor_reward::testing as reward;
 use fil_actor_verifreg::testing as verifreg;
 use fil_actors_runtime::runtime::builtins::Type;
-
-/// Value type of the top level of the state tree.
-/// Represents the on-chain state of a single actor.
-#[derive(Serialize_tuple, Deserialize_tuple, Clone, PartialEq, Eq, Debug)]
-pub struct Actor {
-    /// CID representing the code associated with the actor
-    pub code: Cid,
-    /// CID of the head state object for the actor
-    pub head: Cid,
-    /// `call_seq_num` for the next message to be received by the actor (non-zero for accounts only)
-    pub call_seq_num: u64,
-    /// Token balance of the actor
-    pub balance: TokenAmount,
-    /// The actor's "predictable" address, if assigned.
-    ///
-    /// This field is set on actor creation and never modified.
-    pub address: Option<Address>,
-}
-
-/// A specialization of a map of ID-addresses to actor heads.
-pub struct Tree<'a, BS>
-where
-    BS: Blockstore,
-{
-    pub map: Map<'a, BS, Actor>,
-    pub store: &'a BS,
-}
-
-impl<'a, BS: Blockstore> Tree<'a, BS> {
-    /// Loads a tree from a root CID and store
-    pub fn load(store: &'a BS, root: &Cid) -> anyhow::Result<Self> {
-        let map = Map::load_with_config(root, store, DEFAULT_HAMT_CONFIG)?;
-
-        Ok(Tree { map, store })
-    }
-
-    pub fn for_each<F>(&self, mut f: F) -> anyhow::Result<()>
-    where
-        F: FnMut(&Address, &Actor) -> anyhow::Result<()>,
-    {
-        self.map
-            .for_each(|key, val| {
-                let address = Address::from_bytes(key)?;
-                f(&address, val)
-            })
-            .map_err(|e| anyhow!("Failed iterating map: {}", e))
-    }
-}
+use vm_api::ActorState;
 
 macro_rules! get_state {
-    ($tree:ident, $actor:ident, $state:ty) => {
-        $tree
-            .store
-            .get_cbor::<$state>(&$actor.head)?
+    ($store:ident, $actor:ident, $state:ty) => {
+        $store
+            .get_cbor::<$state>(&$actor.state)?
             .ok_or_else(|| anyhow!("{} is empty", stringify!($state)))?
     };
 }
@@ -115,10 +61,11 @@ macro_rules! get_state {
 // It could be replaced with a custom mapping trait (while Rust doesn't support
 // abstract collection traits).
 pub fn check_state_invariants<BS: Blockstore>(
+    store: &BS,
     manifest: &BTreeMap<Cid, Type>,
     policy: &Policy,
-    tree: Tree<'_, BS>,
-    expected_balance_total: &TokenAmount,
+    tree: &BTreeMap<Address, ActorState>,
+    expected_balance_total: Option<TokenAmount>,
     prior_epoch: ChainEpoch,
 ) -> anyhow::Result<MessageAccumulator> {
     let acc = MessageAccumulator::default();
@@ -136,7 +83,7 @@ pub fn check_state_invariants<BS: Blockstore>(
     let mut verifreg_summary: Option<verifreg::StateSummary> = None;
     let mut datacap_summary: Option<frc46_token::token::state::StateSummary> = None;
 
-    tree.for_each(|key, actor| {
+    tree.iter().try_for_each(|(key, actor)| -> anyhow::Result<()> {
         let acc = acc.with_prefix(format!("{key} "));
 
         if key.protocol() != Protocol::ID {
@@ -147,77 +94,71 @@ pub fn check_state_invariants<BS: Blockstore>(
         match manifest.get(&actor.code) {
             Some(Type::System) => (),
             Some(Type::Init) => {
-                let state = get_state!(tree, actor, InitState);
-                let (summary, msgs) = init::check_state_invariants(&state, tree.store);
+                let state = get_state!(store, actor, InitState);
+                let (summary, msgs) = init::check_state_invariants(&state, store);
                 acc.with_prefix("init: ").add_all(&msgs);
                 init_summary = Some(summary);
             }
             Some(Type::Cron) => {
-                let state = get_state!(tree, actor, CronState);
+                let state = get_state!(store, actor, CronState);
                 let (summary, msgs) = cron::check_state_invariants(&state);
                 acc.with_prefix("cron: ").add_all(&msgs);
                 cron_summary = Some(summary);
             }
             Some(Type::Account) => {
-                let state = get_state!(tree, actor, AccountState);
+                let state = get_state!(store, actor, AccountState);
                 let (summary, msgs) = account::check_state_invariants(&state, key);
                 acc.with_prefix("account: ").add_all(&msgs);
                 account_summaries.push(summary);
             }
             Some(Type::Power) => {
-                let state = get_state!(tree, actor, PowerState);
-                let (summary, msgs) = power::check_state_invariants(policy, &state, tree.store);
+                let state = get_state!(store, actor, PowerState);
+                let (summary, msgs) = power::check_state_invariants(policy, &state, store);
                 acc.with_prefix("power: ").add_all(&msgs);
                 power_summary = Some(summary);
             }
             Some(Type::Miner) => {
-                let state = get_state!(tree, actor, MinerState);
+                let state = get_state!(store, actor, MinerState);
                 let (summary, msgs) =
-                    miner::check_state_invariants(policy, &state, tree.store, &actor.balance);
+                    miner::check_state_invariants(policy, &state, store, &actor.balance);
                 acc.with_prefix("miner: ").add_all(&msgs);
                 miner_summaries.insert(*key, summary);
             }
             Some(Type::Market) => {
-                let state = get_state!(tree, actor, MarketState);
-                let (summary, msgs) = market::check_state_invariants(
-                    &state,
-                    tree.store,
-                    &actor.balance,
-                    prior_epoch + 1,
-                );
+                let state = get_state!(store, actor, MarketState);
+                let (summary, msgs) =
+                    market::check_state_invariants(&state, store, &actor.balance, prior_epoch + 1);
                 acc.with_prefix("market: ").add_all(&msgs);
                 market_summary = Some(summary);
             }
             Some(Type::PaymentChannel) => {
-                let state = get_state!(tree, actor, PaychState);
-                let (summary, msgs) =
-                    paych::check_state_invariants(&state, tree.store, &actor.balance);
+                let state = get_state!(store, actor, PaychState);
+                let (summary, msgs) = paych::check_state_invariants(&state, store, &actor.balance);
                 acc.with_prefix("paych: ").add_all(&msgs);
                 paych_summaries.push(summary);
             }
             Some(Type::Multisig) => {
-                let state = get_state!(tree, actor, MultisigState);
-                let (summary, msgs) = multisig::check_state_invariants(&state, tree.store);
+                let state = get_state!(store, actor, MultisigState);
+                let (summary, msgs) = multisig::check_state_invariants(&state, store);
                 acc.with_prefix("multisig: ").add_all(&msgs);
                 multisig_summaries.push(summary);
             }
             Some(Type::Reward) => {
-                let state = get_state!(tree, actor, RewardState);
+                let state = get_state!(store, actor, RewardState);
                 let (summary, msgs) =
                     reward::check_state_invariants(&state, prior_epoch, &actor.balance);
                 acc.with_prefix("reward: ").add_all(&msgs);
                 reward_summary = Some(summary);
             }
             Some(Type::VerifiedRegistry) => {
-                let state = get_state!(tree, actor, VerifregState);
-                let (summary, msgs) =
-                    verifreg::check_state_invariants(&state, tree.store, prior_epoch);
+                let state = get_state!(store, actor, VerifregState);
+                let (summary, msgs) = verifreg::check_state_invariants(&state, store, prior_epoch);
                 acc.with_prefix("verifreg: ").add_all(&msgs);
                 verifreg_summary = Some(summary);
             }
             Some(Type::DataCap) => {
-                let state = get_state!(tree, actor, DataCapState);
-                let (summary, msgs) = datacap::check_state_invariants(&state, tree.store);
+                let state = get_state!(store, actor, DataCapState);
+                let (summary, msgs) = datacap::check_state_invariants(&state, store);
                 acc.with_prefix("datacap: ").add_all(&msgs);
                 datacap_summary = Some(summary);
             }
@@ -252,10 +193,12 @@ pub fn check_state_invariants<BS: Blockstore>(
         check_verifreg_against_miners(&acc, &verifreg_summary, &miner_summaries);
     }
 
-    acc.require(
-        &total_fil == expected_balance_total,
-        format!("total token balance is {total_fil}, expected {expected_balance_total}"),
-    );
+    if let Some(expected_balance_total) = expected_balance_total {
+        acc.require(
+            total_fil == expected_balance_total,
+            format!("total token balance is {total_fil}, expected {expected_balance_total}"),
+        );
+    }
 
     Ok(acc)
 }
@@ -341,7 +284,7 @@ fn check_deal_states_against_sectors(
             continue;
         }
 
-        let miner_summary = if let Some(miner_summary) = miner_summaries.get(&deal.provider) {
+        let _miner_summary = if let Some(miner_summary) = miner_summaries.get(&deal.provider) {
             miner_summary
         } else {
             acc.add(format!(
@@ -350,51 +293,6 @@ fn check_deal_states_against_sectors(
             ));
             continue;
         };
-
-        let sector_deal = if let Some(sector_deal) = miner_summary.deals.get(deal_id) {
-            sector_deal
-        } else {
-            acc.require(
-                deal.slash_epoch >= 0,
-                format!(
-                    "un-slashed deal {deal_id} not referenced in active sectors of miner {}",
-                    deal.provider
-                ),
-            );
-            continue;
-        };
-
-        acc.require(
-            deal.sector_start_epoch >= sector_deal.sector_start,
-            format!(
-                "deal state start {} does not match sector start {} for miner {}",
-                deal.sector_start_epoch, sector_deal.sector_start, deal.provider
-            ),
-        );
-
-        acc.require(
-            deal.sector_start_epoch <= sector_deal.sector_expiration,
-            format!(
-                "deal state start {} activated after sector expiration {} for miner {}",
-                deal.sector_start_epoch, sector_deal.sector_expiration, deal.provider
-            ),
-        );
-
-        acc.require(
-            deal.last_update_epoch <= sector_deal.sector_expiration,
-            format!(
-                "deal state update at {} after sector expiration {} for miner {}",
-                deal.last_update_epoch, sector_deal.sector_expiration, deal.provider
-            ),
-        );
-
-        acc.require(
-            deal.slash_epoch <= sector_deal.sector_expiration,
-            format!(
-                "deal state slashed at {} after sector expiration {} for miner {}",
-                deal.slash_epoch, sector_deal.sector_expiration, deal.provider
-            ),
-        );
     }
 }
 
@@ -434,51 +332,6 @@ fn check_market_against_verifreg(
     market_summary: &market::StateSummary,
     verifreg_summary: &verifreg::StateSummary,
 ) {
-    // all activated verified deals with claim ids reference a claim in verifreg state
-    // note that it is possible for claims to exist with no matching deal if the deal expires
-    for (claim_id, deal_id) in &market_summary.claim_id_to_deal_id {
-        // claim is found
-        let claim = match verifreg_summary.claims.get(claim_id) {
-            None => {
-                acc.add(format!("claim {} not found for activated deal {}", claim_id, deal_id));
-                continue;
-            }
-            Some(claim) => claim,
-        };
-
-        let info = match market_summary.deals.get(deal_id) {
-            None => {
-                acc.add(format!(
-                    "internal invariant error invalid market state referrences missing deal {}",
-                    deal_id
-                ));
-                continue;
-            }
-            Some(info) => info,
-        };
-        // claim and proposal match
-        acc.require(
-            info.provider.id().unwrap() == claim.provider,
-            format!(
-                "mismatched providers {} {} on claim {} and deal {}",
-                claim.provider,
-                info.provider.id().unwrap(),
-                claim_id,
-                deal_id
-            ),
-        );
-        acc.require(
-            info.piece_cid.unwrap() == claim.data,
-            format!(
-                "mismatched piece cid {} {} on claim {} and deal {}",
-                info.piece_cid.unwrap(),
-                claim.data,
-                claim_id,
-                deal_id
-            ),
-        );
-    }
-
     // all pending deal allocation ids have an associated allocation
     // note that it is possible for allocations to exist that don't match any deal
     // if they are created from a direct DataCap transfer
@@ -533,8 +386,12 @@ fn check_verifreg_against_miners(
     verifreg_summary: &verifreg::StateSummary,
     miner_summaries: &HashMap<Address, miner::StateSummary>,
 ) {
-    for claim in verifreg_summary.claims.values() {
-        // all claims are indexed by valid providers
+    // Accumulates the weight of claims for each sector.
+    let mut sector_claim_verified_weights: BTreeMap<(Address, SectorNumber), DealWeight> =
+        BTreeMap::new();
+
+    for (id, claim) in &verifreg_summary.claims {
+        // All claims are indexed by valid providers
         let maddr = Address::new_id(claim.provider);
         let miner_summary = match miner_summaries.get(&maddr) {
             None => {
@@ -544,13 +401,55 @@ fn check_verifreg_against_miners(
             Some(summary) => summary,
         };
 
-        // all claims are linked to a valid sector number
+        // Find sectors associated with claims.
+        // A claim might not have a sector if the sector was terminated and cleaned up.
+        if let Some(sector) = miner_summary.live_data_sectors.get(&claim.sector) {
+            acc.require(
+                sector.sector_start <= claim.term_start,
+                format!(
+                    "claim {} sector start {} is after claim term start {} for miner {}",
+                    id, sector.sector_start, claim.term_start, maddr
+                ),
+            );
+            // Legacy QAP sectors can be extended to expire after the associated claim term,
+            // and verified deal weight depends age prior to extension.
+            if !sector.legacy_qap {
+                acc.require(
+                    sector.sector_expiration >= claim.term_start + claim.term_min,
+                    format!(
+                        "claim {} sector expiration {} is before claim min term {} for miner {}",
+                        id,
+                        sector.sector_start,
+                        claim.term_start + claim.term_min,
+                        maddr
+                    ),
+                );
+                acc.require(
+                    sector.sector_expiration <= claim.term_start + claim.term_max,
+                    format!(
+                        "claim {} sector expiration {} is after claim term max {} for miner {}",
+                        id,
+                        sector.sector_expiration,
+                        claim.term_start + claim.term_max,
+                        maddr
+                    ),
+                );
+                let expected_duration = sector.sector_expiration - claim.term_start;
+                let expected_weight = DealWeight::from(claim.size.0) * expected_duration;
+                *sector_claim_verified_weights.entry((maddr, claim.sector)).or_default() +=
+                    expected_weight;
+            }
+        }
+    }
+    for ((maddr, sector), claim_weight) in &sector_claim_verified_weights {
+        let miner_summary = miner_summaries.get(maddr).unwrap();
+        let sector = miner_summary.live_data_sectors.get(sector).unwrap();
         acc.require(
-            miner_summary.sectors_with_deals.get(&claim.sector).is_some(),
+            sector.verified_deal_weight == *claim_weight,
             format!(
-                "claim sector number {} not recorded as a sector with deals for miner {}",
-                claim.sector, maddr
+                "sector verified weight {} does not match claims of {} for miner {}",
+                sector.verified_deal_weight, claim_weight, maddr
             ),
-        );
+        )
     }
 }

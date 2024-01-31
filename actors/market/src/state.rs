@@ -1,13 +1,10 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use crate::balance_table::BalanceTable;
-use crate::ext::verifreg::AllocationID;
+use std::cmp::{max, min};
+use std::collections::BTreeMap;
+
 use cid::Cid;
-use fil_actors_runtime::{
-    actor_error, ActorContext, ActorError, Array, AsActorError, Config, Map2, Set, SetMultimap,
-    DEFAULT_HAMT_CONFIG,
-};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_shared::address::Address;
@@ -15,9 +12,17 @@ use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::HAMT_BIT_WIDTH;
+use fvm_shared::sector::SectorNumber;
+use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
 use num_traits::Zero;
-use std::collections::BTreeMap;
+
+use fil_actors_runtime::{
+    actor_error, ActorContext, ActorError, Array, AsActorError, Config, Map2, Set, SetMultimap,
+    DEFAULT_HAMT_CONFIG,
+};
+
+use crate::balance_table::BalanceTable;
+use crate::ext::verifreg::AllocationID;
 
 use super::policy::*;
 use super::types::*;
@@ -70,12 +75,35 @@ pub struct State {
     pub total_client_storage_fee: TokenAmount,
 
     /// Verified registry allocation IDs for deals that are not yet activated.
-    pub pending_deal_allocation_ids: Cid, // HAMT[DealID]AllocationID
+    // HAMT[DealID]AllocationID
+    pub pending_deal_allocation_ids: Cid,
+
+    /// Maps providers to their sector IDs to deal IDs.
+    /// This supports finding affected deals when a sector is terminated early
+    /// or has data replaced.
+    /// Grouping by provider limits the cost of operations in the expected use case
+    /// of multiple sectors all belonging to the same provider.
+    /// HAMT[ActorID]HAMT[SectorNumber]SectorDealIDs
+    pub provider_sectors: Cid,
+}
+
+/// IDs of deals associated with a single sector.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct SectorDealIDs {
+    pub deals: Vec<DealID>,
 }
 
 pub type PendingDealAllocationsMap<BS> = Map2<BS, DealID, AllocationID>;
 pub const PENDING_ALLOCATIONS_CONFIG: Config =
     Config { bit_width: HAMT_BIT_WIDTH, ..DEFAULT_HAMT_CONFIG };
+
+pub type ProviderSectorsMap<BS> = Map2<BS, ActorID, Cid>;
+pub const PROVIDER_SECTORS_CONFIG: Config =
+    Config { bit_width: HAMT_BIT_WIDTH, ..DEFAULT_HAMT_CONFIG };
+
+pub type SectorDealsMap<BS> = Map2<BS, SectorNumber, SectorDealIDs>;
+pub const SECTOR_DEALS_CONFIG: Config = Config { bit_width: HAMT_BIT_WIDTH, ..DEFAULT_HAMT_CONFIG };
 
 impl State {
     pub fn new<BS: Blockstore>(store: &BS) -> Result<Self, ActorError> {
@@ -84,30 +112,33 @@ impl State {
                 .flush()
                 .context_code(
                     ExitCode::USR_ILLEGAL_STATE,
-                    "Failed to create empty proposals array",
+                    "failed to create empty proposals array",
                 )?;
 
         let empty_states_array = Array::<(), BS>::new_with_bit_width(store, STATES_AMT_BITWIDTH)
             .flush()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "Failed to create empty states array")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to create empty states array")?;
 
         let empty_pending_proposals_map = Set::new(store).root().context_code(
             ExitCode::USR_ILLEGAL_STATE,
-            "Failed to create empty pending proposals map state",
+            "failed to create empty pending proposals map state",
         )?;
 
         let empty_balance_table = BalanceTable::new(store, "balance table").root()?;
 
         let empty_deal_ops_hamt = SetMultimap::new(store)
             .root()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "Failed to create empty multiset")?;
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to create empty multiset")?;
 
-        let empty_pending_deal_allocation_map = Map2::<&BS, DealID, AllocationID>::empty(
+        let empty_pending_deal_allocation_map = PendingDealAllocationsMap::empty(
             store,
             PENDING_ALLOCATIONS_CONFIG,
             "pending deal allocations",
         )
         .flush()?;
+
+        let empty_sector_deals_hamt =
+            ProviderSectorsMap::empty(store, PROVIDER_SECTORS_CONFIG, "sector deals").flush()?;
 
         Ok(Self {
             proposals: empty_proposals_array,
@@ -123,6 +154,7 @@ impl State {
             total_provider_locked_collateral: TokenAmount::default(),
             total_client_storage_fee: TokenAmount::default(),
             pending_deal_allocation_ids: empty_pending_deal_allocation_map,
+            provider_sectors: empty_sector_deals_hamt,
         })
     }
 
@@ -130,6 +162,27 @@ impl State {
         &self.total_client_locked_collateral
             + &self.total_provider_locked_collateral
             + &self.total_client_storage_fee
+    }
+
+    pub fn load_deal_states<'bs, BS>(
+        &self,
+        store: &'bs BS,
+    ) -> Result<DealMetaArray<'bs, BS>, ActorError>
+    where
+        BS: Blockstore,
+    {
+        DealMetaArray::load(&self.states, store)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal state array")
+    }
+
+    fn save_deal_states<BS>(&mut self, states: &mut DealMetaArray<BS>) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+    {
+        self.states = states
+            .flush()
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush deal states")?;
+        Ok(())
     }
 
     pub fn find_deal_state<BS>(
@@ -140,14 +193,8 @@ impl State {
     where
         BS: Blockstore,
     {
-        let states = DealMetaArray::load(&self.states, store)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal state array")?;
-
-        let found = states.get(deal_id).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-            format!("no such deal state for {}", deal_id)
-        })?;
-
-        Ok(found.cloned())
+        let states = self.load_deal_states(store)?;
+        find_deal_state(&states, deal_id)
     }
 
     pub fn put_deal_states<BS>(
@@ -158,21 +205,14 @@ impl State {
     where
         BS: Blockstore,
     {
-        let mut states = DealMetaArray::load(&self.states, store)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposal array")?;
-
+        let mut states = self.load_deal_states(store)?;
         new_deal_states.iter().try_for_each(|(id, deal_state)| -> Result<(), ActorError> {
             states
                 .set(*id, *deal_state)
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to set deal state")?;
             Ok(())
         })?;
-
-        self.states = states
-            .flush()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush deal states")?;
-
-        Ok(())
+        self.save_deal_states(&mut states)
     }
 
     pub fn remove_deal_state<BS>(
@@ -183,28 +223,20 @@ impl State {
     where
         BS: Blockstore,
     {
-        let mut states = DealMetaArray::load(&self.states, store)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposal array")?;
-
-        let rval_deal_state = states
+        let mut states = self.load_deal_states(store)?;
+        let removed = states
             .delete(deal_id)
             .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to delete deal state")?;
-
-        self.states = states
-            .flush()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush deal states")?;
-
-        Ok(rval_deal_state)
+        self.save_deal_states(&mut states)?;
+        Ok(removed)
     }
 
-    pub fn get_proposal_array<'a, BS>(&'a self, store: &'a BS) -> Result<DealArray<BS>, ActorError>
+    pub fn load_proposals<'bs, BS>(&self, store: &'bs BS) -> Result<DealArray<'bs, BS>, ActorError>
     where
         BS: Blockstore,
     {
-        let deal_proposals = DealArray::load(&self.proposals, store)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposal array")?;
-
-        Ok(deal_proposals)
+        DealArray::load(&self.proposals, store)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load deal proposal array")
     }
 
     pub fn get_proposal<BS: Blockstore>(
@@ -212,15 +244,7 @@ impl State {
         store: &BS,
         id: DealID,
     ) -> Result<DealProposal, ActorError> {
-        let found = self.find_proposal(store, id)?.ok_or_else(|| {
-            if id < self.next_id {
-                // If the deal ID has been used, it must have been cleaned up.
-                ActorError::unchecked(EX_DEAL_EXPIRED, format!("deal {} expired", id))
-            } else {
-                ActorError::not_found(format!("no such deal {}", id))
-            }
-        })?;
-        Ok(found)
+        get_proposal(&self.load_proposals(store)?, id, self.next_id)
     }
 
     pub fn find_proposal<BS>(
@@ -231,14 +255,7 @@ impl State {
     where
         BS: Blockstore,
     {
-        let deal_proposals = self.get_proposal_array(store)?;
-
-        let proposal =
-            deal_proposals.get(deal_id).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                format!("failed to load deal proposal {}", deal_id)
-            })?;
-
-        Ok(proposal.cloned())
+        find_proposal(&self.load_proposals(store)?, deal_id)
     }
 
     pub fn remove_proposal<BS>(
@@ -290,6 +307,32 @@ impl State {
         Ok(())
     }
 
+    pub fn load_pending_deal_allocation_ids<BS>(
+        &mut self,
+        store: BS,
+    ) -> Result<PendingDealAllocationsMap<BS>, ActorError>
+    where
+        BS: Blockstore,
+    {
+        PendingDealAllocationsMap::load(
+            store,
+            &self.pending_deal_allocation_ids,
+            PENDING_ALLOCATIONS_CONFIG,
+            "pending deal allocations",
+        )
+    }
+
+    pub fn save_pending_deal_allocation_ids<BS>(
+        &mut self,
+        pending_deal_allocation_ids: &mut PendingDealAllocationsMap<BS>,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+    {
+        self.pending_deal_allocation_ids = pending_deal_allocation_ids.flush()?;
+        Ok(())
+    }
+
     pub fn put_pending_deal_allocation_ids<BS>(
         &mut self,
         store: &BS,
@@ -298,21 +341,14 @@ impl State {
     where
         BS: Blockstore,
     {
-        let mut pending_deal_allocation_ids = PendingDealAllocationsMap::load(
-            store,
-            &self.pending_deal_allocation_ids,
-            PENDING_ALLOCATIONS_CONFIG,
-            "pending deal allocations",
-        )?;
-
+        let mut pending_deal_allocation_ids = self.load_pending_deal_allocation_ids(store)?;
         new_pending_deal_allocation_ids.iter().try_for_each(
             |(deal_id, allocation_id)| -> Result<(), ActorError> {
                 pending_deal_allocation_ids.set(deal_id, *allocation_id)?;
                 Ok(())
             },
         )?;
-
-        self.pending_deal_allocation_ids = pending_deal_allocation_ids.flush()?;
+        self.save_pending_deal_allocation_ids(&mut pending_deal_allocation_ids)?;
         Ok(())
     }
 
@@ -324,12 +360,7 @@ impl State {
     where
         BS: Blockstore,
     {
-        let pending_deal_allocation_ids = PendingDealAllocationsMap::load(
-            store,
-            &self.pending_deal_allocation_ids,
-            PENDING_ALLOCATIONS_CONFIG,
-            "pending deal allocations",
-        )?;
+        let pending_deal_allocation_ids = self.load_pending_deal_allocation_ids(store)?;
 
         let mut allocation_ids: Vec<AllocationID> = vec![];
         deal_id_keys.iter().try_for_each(|deal_id| -> Result<(), ActorError> {
@@ -346,26 +377,15 @@ impl State {
     pub fn remove_pending_deal_allocation_id<BS>(
         &mut self,
         store: &BS,
-        deal_id_key: DealID,
+        deal_id: DealID,
     ) -> Result<Option<AllocationID>, ActorError>
     where
         BS: Blockstore,
     {
-        let mut pending_deal_allocation_ids = PendingDealAllocationsMap::load(
-            store,
-            &self.pending_deal_allocation_ids,
-            PENDING_ALLOCATIONS_CONFIG,
-            "pending deal allocations",
-        )?;
-
-        let rval_allocation_id = pending_deal_allocation_ids
-            .delete(&deal_id_key)
-            .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
-                format!("no such deal proposal {:#?}", deal_id_key)
-            })?;
-
-        self.pending_deal_allocation_ids = pending_deal_allocation_ids.flush()?;
-        Ok(rval_allocation_id)
+        let mut pending_deal_allocation_ids = self.load_pending_deal_allocation_ids(store)?;
+        let maybe_alloc_id = pending_deal_allocation_ids.delete(&deal_id)?;
+        self.save_pending_deal_allocation_ids(&mut pending_deal_allocation_ids)?;
+        Ok(maybe_alloc_id)
     }
 
     pub fn put_deals_by_epoch<BS>(
@@ -504,18 +524,30 @@ impl State {
         Ok(ex)
     }
 
-    pub fn has_pending_deal<BS>(&self, store: &BS, key: Cid) -> Result<bool, ActorError>
+    pub fn load_pending_deals<'bs, BS>(&self, store: &'bs BS) -> Result<Set<'bs, BS>, ActorError>
     where
         BS: Blockstore,
     {
-        let pending_deals = Set::from_root(store, &self.pending_proposals)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get pending deals")?;
+        Set::from_root(store, &self.pending_proposals)
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get pending deals")
+    }
 
-        let rval = pending_deals
-            .has(&key.to_bytes())
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to get pending deals")?;
+    fn save_pending_deals<BS>(&mut self, pending_deals: &mut Set<BS>) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+    {
+        self.pending_proposals = pending_deals
+            .root()
+            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush pending deals")?;
+        Ok(())
+    }
 
-        Ok(rval)
+    pub fn has_pending_deal<BS>(&self, store: &BS, key: &Cid) -> Result<bool, ActorError>
+    where
+        BS: Blockstore,
+    {
+        let pending_deals = self.load_pending_deals(store)?;
+        has_pending_deal(&pending_deals, key)
     }
 
     pub fn put_pending_deals<BS>(
@@ -526,9 +558,7 @@ impl State {
     where
         BS: Blockstore,
     {
-        let mut pending_deals = Set::from_root(store, &self.pending_proposals)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load pending deals")?;
-
+        let mut pending_deals = self.load_pending_deals(store)?;
         new_pending_deals.iter().try_for_each(|key: &Cid| -> Result<(), ActorError> {
             pending_deals
                 .put(key.to_bytes().into())
@@ -536,11 +566,7 @@ impl State {
             Ok(())
         })?;
 
-        self.pending_proposals = pending_deals
-            .root()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush pending deals")?;
-
-        Ok(())
+        self.save_pending_deals(&mut pending_deals)
     }
 
     pub fn remove_pending_deal<BS>(
@@ -551,37 +577,277 @@ impl State {
     where
         BS: Blockstore,
     {
-        let mut pending_deals = Set::from_root(store, &self.pending_proposals)
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to load pending deals")?;
-
-        let rval_pending_deal = pending_deals
+        let mut pending_deals = self.load_pending_deals(store)?;
+        let removed = pending_deals
             .delete(&pending_deal_key.to_bytes())
             .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
                 format!("failed to delete pending proposal {}", pending_deal_key)
             })?;
 
-        self.pending_proposals = pending_deals
-            .root()
-            .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to flush pending deals")?;
+        self.save_pending_deals(&mut pending_deals)?;
+        Ok(removed)
+    }
 
-        Ok(rval_pending_deal)
+    ////////////////////////////////////////////////////////////////////////////////
+    // Provider sector/deal operations
+    ////////////////////////////////////////////////////////////////////////////////
+
+    // Stores deal IDs associated with sectors for a provider.
+    // Deal IDs are added to any already stored for the provider and sector.
+    // Returns the root cid of the sector deals map.
+    pub fn put_sector_deal_ids(
+        &mut self,
+        store: &impl Blockstore,
+        provider: ActorID,
+        sector_deal_ids: &[(SectorNumber, SectorDealIDs)],
+    ) -> Result<(), ActorError> {
+        let mut provider_sectors = self.load_provider_sectors(store)?;
+        let mut sector_deals = load_provider_sector_deals(store, &provider_sectors, provider)?;
+
+        for (sector_number, deals) in sector_deal_ids {
+            let mut new_deals = deals.clone();
+            let existing_deal_ids = sector_deals
+                .get(sector_number)
+                .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to read sector deals")?;
+            if let Some(existing_deal_ids) = existing_deal_ids {
+                new_deals.deals.extend(existing_deal_ids.deals.iter());
+            }
+            new_deals.deals.sort();
+            new_deals.deals.dedup();
+            sector_deals
+                .set(sector_number, new_deals)
+                .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                    format!("failed to set sector deals for {} {}", provider, sector_number)
+                })?;
+        }
+
+        save_provider_sector_deals(&mut provider_sectors, provider, &mut sector_deals)?;
+        self.save_provider_sectors(&mut provider_sectors)?;
+        Ok(())
+    }
+
+    // Reads and removes the sector deals mapping for an array of sector numbers,
+    pub fn pop_sector_deal_ids(
+        &mut self,
+        store: &impl Blockstore,
+        provider: ActorID,
+        sector_numbers: impl Iterator<Item = SectorNumber>,
+    ) -> Result<Vec<DealID>, ActorError> {
+        let mut provider_sectors = self.load_provider_sectors(store)?;
+        let mut sector_deals = load_provider_sector_deals(store, &provider_sectors, provider)?;
+
+        let mut popped_sector_deals = Vec::new();
+        let mut flush = false;
+        for sector_number in sector_numbers {
+            let deals: Option<SectorDealIDs> = sector_deals
+                .delete(&sector_number)
+                .with_context(|| format!("provider {}", provider))?;
+            if let Some(deals) = deals {
+                popped_sector_deals.extend(deals.deals.iter());
+                flush = true;
+            }
+        }
+
+        // Flush if any of the requested sectors were found.
+        if flush {
+            if sector_deals.is_empty() {
+                // Remove from top-level map
+                provider_sectors
+                    .delete(&provider)
+                    .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                        format!("failed to delete sector deals for {}", provider)
+                    })?;
+            } else {
+                save_provider_sector_deals(&mut provider_sectors, provider, &mut sector_deals)?;
+            }
+            self.save_provider_sectors(&mut provider_sectors)?;
+        }
+
+        Ok(popped_sector_deals)
+    }
+
+    // Removes specified deals from the sector deals mapping.
+    // Missing deals are ignored.
+    pub fn remove_sector_deal_ids(
+        &mut self,
+        store: &impl Blockstore,
+        provider_sector_deal_ids: &BTreeMap<ActorID, BTreeMap<SectorNumber, Vec<DealID>>>,
+    ) -> Result<(), ActorError> {
+        let mut provider_sectors = self.load_provider_sectors(store)?;
+        for (provider, sector_deal_ids) in provider_sector_deal_ids {
+            let mut sector_deals = load_provider_sector_deals(store, &provider_sectors, *provider)?;
+            for (sector_number, deals_to_remove) in sector_deal_ids {
+                let existing_deal_ids = sector_deals
+                    .get(sector_number)
+                    .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to read sector deals")?;
+                if let Some(existing_deal_ids) = existing_deal_ids {
+                    // The filter below is a linear scan of deals_to_remove.
+                    // This is expected to be a small list, often a singleton, so is usually
+                    // pretty fast.
+                    // Loading into a HashSet could be an improvement for large collections of deals
+                    // in a single sector being removed at one time.
+                    let new_deals = existing_deal_ids
+                        .deals
+                        .iter()
+                        .filter(|deal_id| !deals_to_remove.contains(*deal_id))
+                        .cloned()
+                        .collect();
+
+                    sector_deals
+                        .set(sector_number, SectorDealIDs { deals: new_deals })
+                        .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+                            format!("failed to set sector deals for {} {}", provider, sector_number)
+                        })?;
+                }
+            }
+            save_provider_sector_deals(&mut provider_sectors, *provider, &mut sector_deals)?;
+        }
+        self.save_provider_sectors(&mut provider_sectors)?;
+        Ok(())
+    }
+
+    pub fn load_provider_sectors<BS>(&self, store: BS) -> Result<ProviderSectorsMap<BS>, ActorError>
+    where
+        BS: Blockstore,
+    {
+        ProviderSectorsMap::load(
+            store,
+            &self.provider_sectors,
+            PROVIDER_SECTORS_CONFIG,
+            "provider sectors",
+        )
+    }
+
+    fn save_provider_sectors<BS>(
+        &mut self,
+        provider_sectors: &mut ProviderSectorsMap<BS>,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+    {
+        self.provider_sectors = provider_sectors.flush()?;
+        Ok(())
+    }
+
+    /// Delete proposal and state simultaneously.
+    pub fn remove_completed_deal<BS>(
+        &mut self,
+        store: &BS,
+        deal_id: DealID,
+    ) -> Result<(), ActorError>
+    where
+        BS: Blockstore,
+    {
+        let state = self.remove_deal_state(store, deal_id)?;
+        if state.is_none() {
+            return Err(actor_error!(illegal_state, "failed to delete deal state: does not exist"));
+        }
+        let proposal = self.remove_proposal(store, deal_id)?;
+        if proposal.is_none() {
+            return Err(actor_error!(
+                illegal_state,
+                "failed to delete deal proposal: does not exist"
+            ));
+        }
+        Ok(())
+    }
+
+    /// Given a DealProposal, checks that the corresponding deal has activated
+    /// If not, checks that the deal is past its activation epoch and performs cleanup
+    pub fn get_active_deal_or_process_timeout<BS>(
+        &mut self,
+        store: &BS,
+        curr_epoch: ChainEpoch,
+        deal_id: DealID,
+        deal_proposal: &DealProposal,
+        dcid: &Cid,
+    ) -> Result<LoadDealState, ActorError>
+    where
+        BS: Blockstore,
+    {
+        let deal_state = self.find_deal_state(store, deal_id)?;
+
+        match deal_state {
+            Some(deal_state) => Ok(LoadDealState::Loaded(deal_state)),
+            None => {
+                // deal_id called too early
+                if curr_epoch < deal_proposal.start_epoch {
+                    return Ok(LoadDealState::TooEarly);
+                }
+
+                // if not activated, the proposal has timed out
+                let slashed = self.process_deal_init_timed_out(store, deal_proposal)?;
+
+                // delete the proposal (but not state, which doesn't exist)
+                let deleted = self.remove_proposal(store, deal_id)?;
+                if deleted.is_none() {
+                    return Err(actor_error!(
+                        illegal_state,
+                        format!(
+                            "failed to delete deal {} proposal {}: does not exist",
+                            deal_id, dcid
+                        )
+                    ));
+                }
+
+                // delete pending deal cid
+                self.remove_pending_deal(store, *dcid)?.ok_or_else(|| {
+                    actor_error!(
+                        illegal_state,
+                        format!(
+                            "failed to delete pending deal {}: cid {} does not exist",
+                            deal_id, dcid
+                        )
+                    )
+                })?;
+
+                // delete pending deal allocation id (if present)
+                self.remove_pending_deal_allocation_id(store, deal_id)?;
+
+                Ok(LoadDealState::ProposalExpired(slashed))
+            }
+        }
     }
 
     ////////////////////////////////////////////////////////////////////////////////
     // Deal state operations
     ////////////////////////////////////////////////////////////////////////////////
+
+    // TODO: change return value when marked-for-termination sectors are cleared from state
+    // https://github.com/filecoin-project/builtin-actors/issues/1388
+    // drop slash_amount, bool return value indicates a completed deal
     pub fn process_deal_update<BS>(
         &mut self,
         store: &BS,
         state: &DealState,
         deal: &DealProposal,
+        deal_cid: &Cid,
         epoch: ChainEpoch,
-    ) -> Result<(TokenAmount, bool), ActorError>
+    ) -> Result<
+        (
+            /* slash_amount */ TokenAmount,
+            /* payment_amount */ TokenAmount,
+            /* is_deal_completed */ bool,
+            /* remove */ bool,
+        ),
+        ActorError,
+    >
     where
         BS: Blockstore,
     {
         let ever_updated = state.last_updated_epoch != EPOCH_UNDEFINED;
+
+        // seeing a slashed deal here will eventually be an unreachable state
+        // during the transition to synchronous deal termination there may be marked-for-termination
+        // deals that have not been processed in cron yet
+        // https://github.com/filecoin-project/builtin-actors/issues/1388
+        // TODO: remove this and calculations below that assume deals can be slashed
         let ever_slashed = state.slash_epoch != EPOCH_UNDEFINED;
+
+        if !ever_updated {
+            // pending deal might have been removed by manual settlement or cron so we don't care if it's missing
+            self.remove_pending_deal(store, *deal_cid)?;
+        }
 
         // if the deal was ever updated, make sure it didn't happen in the future
         if ever_updated && state.last_updated_epoch > epoch {
@@ -592,10 +858,9 @@ impl State {
             ));
         }
 
-        // This would be the case that the first callback somehow triggers before it is scheduled to
-        // This is expected not to be able to happen
+        // this is a safe no-op but can happen if a storage provider calls settle_deal_payments too early
         if deal.start_epoch > epoch {
-            return Ok((TokenAmount::zero(), false));
+            return Ok((TokenAmount::zero(), TokenAmount::zero(), false, false));
         }
 
         let payment_end_epoch = if ever_slashed {
@@ -627,11 +892,14 @@ impl State {
 
         let num_epochs_elapsed = payment_end_epoch - payment_start_epoch;
 
-        let total_payment = &deal.storage_price_per_epoch * num_epochs_elapsed;
-        if total_payment.is_positive() {
-            self.transfer_balance(store, &deal.client, &deal.provider, &total_payment)?;
+        let elapsed_payment = &deal.storage_price_per_epoch * num_epochs_elapsed;
+        if elapsed_payment.is_positive() {
+            self.transfer_balance(store, &deal.client, &deal.provider, &elapsed_payment)?;
         }
 
+        // TODO: remove handling of terminated deals *after* transition to synchronous deal termination
+        // at that point, this function can be modified to return a bool only, indicating whether the deal is completed
+        // https://github.com/filecoin-project/builtin-actors/issues/1388
         if ever_slashed {
             // unlock client collateral and locked storage fee
             let payment_remaining = deal_get_payment_remaining(deal, state.slash_epoch)?;
@@ -654,14 +922,57 @@ impl State {
             self.slash_balance(store, &deal.provider, &slashed, Reason::ProviderCollateral)
                 .context("slashing balance")?;
 
-            return Ok((slashed, true));
+            return Ok((slashed, payment_remaining + elapsed_payment, false, true));
         }
 
         if epoch >= deal.end_epoch {
             self.process_deal_expired(store, deal, state)?;
-            return Ok((TokenAmount::zero(), true));
+            return Ok((TokenAmount::zero(), elapsed_payment, true, true));
         }
-        Ok((TokenAmount::zero(), false))
+
+        Ok((TokenAmount::zero(), elapsed_payment, false, false))
+    }
+
+    pub fn process_slashed_deal<BS>(
+        &mut self,
+        store: &BS,
+        proposal: &DealProposal,
+        state: &DealState,
+    ) -> Result<TokenAmount, ActorError>
+    where
+        BS: Blockstore,
+    {
+        // make payments for epochs until termination
+        let payment_start_epoch = max(proposal.start_epoch, state.last_updated_epoch);
+        let payment_end_epoch = min(proposal.end_epoch, state.slash_epoch);
+        let num_epochs_elapsed = max(0, payment_end_epoch - payment_start_epoch);
+        let total_payment = &proposal.storage_price_per_epoch * num_epochs_elapsed;
+        if total_payment.is_positive() {
+            self.transfer_balance(store, &proposal.client, &proposal.provider, &total_payment)?;
+        }
+
+        // unlock client collateral and locked storage fee
+        let payment_remaining = deal_get_payment_remaining(proposal, state.slash_epoch)?;
+
+        // Unlock remaining storage fee
+        self.unlock_balance(store, &proposal.client, &payment_remaining, Reason::ClientStorageFee)
+            .context("unlocking client storage fee")?;
+
+        // Unlock client collateral
+        self.unlock_balance(
+            store,
+            &proposal.client,
+            &proposal.client_collateral,
+            Reason::ClientCollateral,
+        )
+        .context("unlocking client collateral")?;
+
+        // slash provider collateral
+        let slashed = proposal.provider_collateral.clone();
+        self.slash_balance(store, &proposal.provider, &slashed, Reason::ProviderCollateral)
+            .context("slashing balance")?;
+
+        Ok(slashed)
     }
 
     /// Deal start deadline elapsed without appearing in a proven sector.
@@ -884,7 +1195,13 @@ impl State {
     }
 }
 
-fn deal_get_payment_remaining(
+pub enum LoadDealState {
+    TooEarly,
+    ProposalExpired(/* slashed_amount */ TokenAmount),
+    Loaded(DealState),
+}
+
+pub fn deal_get_payment_remaining(
     deal: &DealProposal,
     mut slash_epoch: ChainEpoch,
 ) -> Result<TokenAmount, ActorError> {
@@ -910,4 +1227,87 @@ fn deal_get_payment_remaining(
     }
 
     Ok(&deal.storage_price_per_epoch * duration_remaining as u64)
+}
+
+pub fn get_proposal<BS: Blockstore>(
+    proposals: &DealArray<BS>,
+    id: DealID,
+    next_id: DealID,
+) -> Result<DealProposal, ActorError> {
+    let found = find_proposal(proposals, id)?.ok_or_else(|| {
+        if id < next_id {
+            // If the deal ID has been used, it must have been cleaned up.
+            ActorError::unchecked(EX_DEAL_EXPIRED, format!("deal {} expired", id))
+        } else {
+            // Never been published.
+            ActorError::not_found(format!("no such deal {}", id))
+        }
+    })?;
+    Ok(found)
+}
+
+pub fn find_proposal<BS>(
+    proposals: &DealArray<BS>,
+    deal_id: DealID,
+) -> Result<Option<DealProposal>, ActorError>
+where
+    BS: Blockstore,
+{
+    let proposal = proposals.get(deal_id).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+        format!("failed to load deal proposal {}", deal_id)
+    })?;
+    Ok(proposal.cloned())
+}
+
+pub fn find_deal_state<BS>(
+    states: &DealMetaArray<BS>,
+    deal_id: DealID,
+) -> Result<Option<DealState>, ActorError>
+where
+    BS: Blockstore,
+{
+    let state = states.get(deal_id).with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
+        format!("failed to load deal state {}", deal_id)
+    })?;
+    Ok(state.cloned())
+}
+
+pub fn has_pending_deal<BS>(pending: &Set<BS>, key: &Cid) -> Result<bool, ActorError>
+where
+    BS: Blockstore,
+{
+    pending
+        .has(&key.to_bytes())
+        .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to lookup pending deal")
+}
+
+pub fn load_provider_sector_deals<BS>(
+    store: BS,
+    provider_sectors: &ProviderSectorsMap<BS>,
+    provider: ActorID,
+) -> Result<SectorDealsMap<BS>, ActorError>
+where
+    BS: Blockstore,
+{
+    let sectors_root = (*provider_sectors).get(&provider)?;
+    let sector_deals = if let Some(sectors_root) = sectors_root {
+        SectorDealsMap::load(store, sectors_root, SECTOR_DEALS_CONFIG, "sector deals")
+            .with_context(|| format!("provider {}", provider))?
+    } else {
+        SectorDealsMap::empty(store, SECTOR_DEALS_CONFIG, "empty")
+    };
+    Ok(sector_deals)
+}
+
+fn save_provider_sector_deals<BS>(
+    provider_sectors: &mut ProviderSectorsMap<BS>,
+    provider: ActorID,
+    sector_deals: &mut SectorDealsMap<BS>,
+) -> Result<(), ActorError>
+where
+    BS: Blockstore,
+{
+    let sectors_root = sector_deals.flush()?;
+    provider_sectors.set(&provider, sectors_root)?;
+    Ok(())
 }

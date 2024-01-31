@@ -1,10 +1,11 @@
 [package]
 name = "fil_actor_placeholder"
 description = "Builtin placeholder actor for Filecoin"
-version = "12.0.0"
-license = "MIT OR Apache-2.0"
+version.workspace = true
+license.workspace = true
+edition.workspace = true
+repository.workspace = true
 authors = ["Protocol Labs", "Filecoin Core Devs"]
-edition = "2021"
 keywords = ["filecoin", "web3", "wasm"]
 
 [lib]

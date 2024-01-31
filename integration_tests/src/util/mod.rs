@@ -1,33 +1,43 @@
-use fil_actor_market::State as MarketState;
+use cid::multihash::{Code, MultihashDigest};
+use cid::Cid;
+use fil_actor_market::{load_provider_sector_deals, DealProposal, DealState, State as MarketState};
+use fil_actor_miner::ext::verifreg::AllocationID;
+use fil_actor_miner::{
+    new_deadline_info_from_offset_and_epoch, CompactCommD, Deadline, DeadlineInfo,
+    GetBeneficiaryReturn, Method as MinerMethod, MinerInfo, PowerPair, SectorOnChainInfo,
+    State as MinerState,
+};
 use fil_actor_power::State as PowerState;
 use fil_actor_reward::State as RewardState;
+use fil_actor_verifreg::{Claim, ClaimID, State as VerifregState};
+use fil_actors_runtime::cbor::serialize;
+use fil_actors_runtime::test_utils::make_piece_cid;
 use fil_actors_runtime::{
-    runtime::Policy, MessageAccumulator, REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR,
-    STORAGE_POWER_ACTOR_ADDR,
+    parse_uint_key, runtime::Policy, MessageAccumulator, REWARD_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, STORAGE_POWER_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
+use fil_builtin_actors_state::check::check_state_invariants;
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_encoding::{CborStore, RawBytes};
+use fvm_ipld_encoding::{CborStore, RawBytes, DAG_CBOR};
 use fvm_shared::address::Address;
+use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::sector::SectorNumber;
-use fvm_shared::METHOD_SEND;
-
-use fil_actor_miner::{
-    new_deadline_info_from_offset_and_epoch, Deadline, DeadlineInfo, GetBeneficiaryReturn,
-    Method as MinerMethod, MinerInfo, PowerPair, SectorOnChainInfo, State as MinerState,
-};
-use fil_builtin_actors_state::check::{check_state_invariants, Tree};
+use fvm_shared::piece::PieceInfo;
+use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
+use fvm_shared::{ActorID, METHOD_SEND};
+use integer_encoding::VarInt;
 use num_traits::Zero;
 use regex::Regex;
+use std::collections::HashMap;
 use vm_api::{
     util::{apply_ok, get_state, pk_addrs_from, DynBlockstore},
     VM,
 };
-
-mod workflows;
 pub use workflows::*;
 
 use crate::{MinerBalances, NetworkStats, TEST_FAUCET_ADDR};
+
+mod workflows;
 
 const ACCOUNT_SEED: u64 = 93837778;
 
@@ -53,22 +63,32 @@ pub fn create_accounts_seeded(
     pk_addrs.iter().map(|pk_addr| v.resolve_id_address(pk_addr).unwrap()).collect()
 }
 
-pub fn check_invariants(vm: &dyn VM, policy: &Policy) -> anyhow::Result<MessageAccumulator> {
+pub fn check_invariants(
+    vm: &dyn VM,
+    policy: &Policy,
+    expected_balance_total: Option<TokenAmount>,
+) -> anyhow::Result<MessageAccumulator> {
     check_state_invariants(
+        &DynBlockstore::wrap(vm.blockstore()),
         &vm.actor_manifest(),
         policy,
-        Tree::load(&DynBlockstore::wrap(vm.blockstore()), &vm.state_root()).unwrap(),
-        &vm.circulating_supply(),
+        &vm.actor_states(),
+        expected_balance_total,
         vm.epoch() - 1,
     )
 }
 
-pub fn assert_invariants(v: &dyn VM, policy: &Policy) {
-    check_invariants(v, policy).unwrap().assert_empty()
+pub fn assert_invariants(v: &dyn VM, policy: &Policy, expected_balance_total: Option<TokenAmount>) {
+    check_invariants(v, policy, expected_balance_total).unwrap().assert_empty()
 }
 
-pub fn expect_invariants(v: &dyn VM, policy: &Policy, expected_patterns: &[Regex]) {
-    check_invariants(v, policy).unwrap().assert_expected(expected_patterns)
+pub fn expect_invariants(
+    v: &dyn VM,
+    policy: &Policy,
+    expected_patterns: &[Regex],
+    expected_balance_total: Option<TokenAmount>,
+) {
+    check_invariants(v, policy, expected_balance_total).unwrap().assert_expected(expected_patterns)
 }
 
 pub fn miner_balance(v: &dyn VM, m: &Address) -> MinerBalances {
@@ -148,6 +168,60 @@ pub fn get_beneficiary(v: &dyn VM, from: &Address, m_addr: &Address) -> GetBenef
     .unwrap()
 }
 
+pub fn market_pending_deal_allocations(v: &dyn VM, deals: &[DealID]) -> Vec<AllocationID> {
+    let mut st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
+    let bs = &DynBlockstore::wrap(v.blockstore());
+    st.get_pending_deal_allocation_ids(bs, deals).unwrap()
+}
+
+pub fn market_list_deals(v: &dyn VM) -> HashMap<DealID, (DealProposal, Option<DealState>)> {
+    let st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
+    let bs = &DynBlockstore::wrap(v.blockstore());
+    let proposals = st.load_proposals(bs).unwrap();
+    let states = st.load_deal_states(bs).unwrap();
+    let mut found: HashMap<DealID, (DealProposal, Option<DealState>)> = HashMap::new();
+    proposals
+        .for_each(|i, p| {
+            let state = states.get(i).unwrap().cloned();
+            found.insert(i, (p.clone(), state));
+            Ok(())
+        })
+        .unwrap();
+    found
+}
+
+pub fn market_list_sectors_deals(
+    v: &dyn VM,
+    provider: &Address,
+) -> HashMap<SectorNumber, Vec<DealID>> {
+    let st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
+    let bs = &DynBlockstore::wrap(v.blockstore());
+    let sectors = st.load_provider_sectors(bs).unwrap();
+    let sector_deals = load_provider_sector_deals(bs, &sectors, provider.id().unwrap()).unwrap();
+    let mut found: HashMap<SectorNumber, Vec<DealID>> = HashMap::new();
+    sector_deals
+        .for_each(|sno, deal_ids| {
+            found.insert(sno, deal_ids.deals.clone());
+            Ok(())
+        })
+        .unwrap();
+    found
+}
+
+pub fn verifreg_list_claims(v: &dyn VM, provider: ActorID) -> HashMap<ClaimID, Claim> {
+    let st: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
+    let bs = &DynBlockstore::wrap(v.blockstore());
+    let mut claims = st.load_claims(bs).unwrap();
+    let mut found: HashMap<ClaimID, Claim> = HashMap::new();
+    claims
+        .for_each_in(provider, |id, claim| {
+            found.insert(parse_uint_key(id).unwrap(), claim.clone());
+            Ok(())
+        })
+        .unwrap();
+    found
+}
+
 pub fn make_bitfield(bits: &[u64]) -> BitField {
     BitField::try_from_bits(bits.iter().copied()).unwrap()
 }
@@ -190,4 +264,31 @@ pub fn get_network_stats(vm: &dyn VM) -> NetworkStats {
         total_provider_locked_collateral: market_state.total_provider_locked_collateral,
         total_client_storage_fee: market_state.total_client_storage_fee,
     }
+}
+
+pub fn override_compute_unsealed_sector_cid(v: &dyn VM) {
+    v.mut_primitives().override_compute_unsealed_sector_cid(
+        |proof_type: RegisteredSealProof, pis: &[PieceInfo]| {
+            if pis.is_empty() {
+                return Ok(CompactCommD::empty().get_cid(proof_type).unwrap());
+            }
+            let mut buf: Vec<u8> = Vec::new();
+            let ptv: i64 = proof_type.into();
+            buf.extend(ptv.encode_var_vec());
+            for p in pis {
+                buf.extend(&p.cid.to_bytes());
+                buf.extend(p.size.0.encode_var_vec())
+            }
+            Ok(make_piece_cid(&buf))
+        },
+    );
+}
+
+/// Compute a deal CID directly.
+pub fn deal_cid_for_testing(proposal: &DealProposal) -> Cid {
+    const DIGEST_SIZE: u32 = 32;
+    let data = serialize(proposal, "deal proposal").unwrap();
+    let hash = Code::Blake2b256.digest(data.bytes());
+    debug_assert_eq!(u32::from(hash.size()), DIGEST_SIZE, "expected 32byte digest");
+    Cid::new_v1(DAG_CBOR, hash)
 }

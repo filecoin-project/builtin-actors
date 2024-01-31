@@ -1,8 +1,10 @@
 use fil_actor_market::{
-    BatchActivateDealsResult, DealMetaArray, SectorDeals, State, NO_ALLOCATION_ID,
+    BatchActivateDealsParams, BatchActivateDealsResult, DealMetaArray, Method, SectorDeals, State,
 };
-use fil_actors_runtime::test_utils::ACCOUNT_ACTOR_CODE_ID;
+use fil_actors_runtime::runtime::builtins::Type;
+use fil_actors_runtime::test_utils::{expect_abort, ACCOUNT_ACTOR_CODE_ID};
 use fil_actors_runtime::EPOCHS_IN_DAY;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -20,6 +22,39 @@ const MINER_ADDRESSES: MinerAddresses = MinerAddresses {
     provider: PROVIDER_ADDR,
     control: vec![],
 };
+
+#[test]
+fn activate_deals_one_sector() {
+    let rt = setup();
+    let epoch = rt.set_epoch(START_EPOCH);
+    let deals = [
+        create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH, false),
+        create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH + 1, false),
+        create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH + 2, true),
+    ];
+    let next_allocation_id = 1;
+    let datacap_required = TokenAmount::from_whole(deals[2].piece_size.0);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+    let deal_ids =
+        publish_deals(&rt, &MINER_ADDRESSES, &deals, datacap_required, next_allocation_id);
+
+    // Reverse deal IDs to check they are stored sorted in state.
+    let mut deal_ids_reversed = deal_ids.clone();
+    deal_ids_reversed.reverse();
+    let sectors = [(1, END_EPOCH + 10, deal_ids_reversed)];
+    let res = batch_activate_deals(&rt, PROVIDER_ADDR, &sectors, false);
+    assert!(res.activation_results.all_ok());
+
+    // Deal IDs are stored under the sector, in correct order.
+    assert_eq!(deal_ids, get_sector_deal_ids(&rt, PROVIDER_ID, &[1]));
+
+    for id in deal_ids.iter() {
+        let state = get_deal_state(&rt, *id);
+        assert_eq!(1, state.sector_number);
+        assert_eq!(epoch, state.sector_start_epoch);
+    }
+    check_state(&rt);
+}
 
 #[test]
 fn activate_deals_across_multiple_sectors() {
@@ -50,9 +85,9 @@ fn activate_deals_across_multiple_sectors() {
 
     // group into sectors
     let sectors = [
-        (END_EPOCH, vec![verified_deal_1_id, unverified_deal_1_id]), // contains both verified and unverified deals
-        (END_EPOCH + 1, vec![verified_deal_2_id]),                   // contains verified deal only
-        (END_EPOCH + 2, vec![unverified_deal_2_id]), // contains unverified deal only
+        (1, END_EPOCH, vec![verified_deal_1_id, unverified_deal_1_id]), // contains both verified and unverified deals
+        (2, END_EPOCH + 1, vec![verified_deal_2_id]), // contains verified deal only
+        (3, END_EPOCH + 2, vec![unverified_deal_2_id]), // contains unverified deal only
     ];
 
     let res = batch_activate_deals(&rt, PROVIDER_ADDR, &sectors, false);
@@ -66,12 +101,6 @@ fn activate_deals_across_multiple_sectors() {
     let unverified_deal_1 = get_deal_state(&rt, unverified_deal_1_id);
     let verified_deal_2 = get_deal_state(&rt, verified_deal_2_id);
     let unverified_deal_2 = get_deal_state(&rt, unverified_deal_2_id);
-
-    // allocations were claimed successfully
-    assert_eq!(next_allocation_id, verified_deal_1.verified_claim);
-    assert_eq!(next_allocation_id + 1, verified_deal_2.verified_claim);
-    assert_eq!(NO_ALLOCATION_ID, unverified_deal_1.verified_claim);
-    assert_eq!(NO_ALLOCATION_ID, unverified_deal_2.verified_claim);
 
     // all activated during same epoch
     assert_eq!(0, verified_deal_1.sector_start_epoch);
@@ -109,19 +138,37 @@ fn sectors_fail_and_succeed_independently_during_batch_activation() {
     let id_4 = deal_ids[3];
 
     // activate the first deal so it will fail later
-    activate_deals(&rt, END_EPOCH, PROVIDER_ADDR, 0, &[id_1]);
+    activate_deals(&rt, END_EPOCH, PROVIDER_ADDR, 0, 1, &[id_1]);
     // activate the third deal so it will fail later
-    activate_deals(&rt, END_EPOCH + 1, PROVIDER_ADDR, 0, &[id_3]);
+    activate_deals(&rt, END_EPOCH + 1, PROVIDER_ADDR, 0, 3, &[id_3]);
 
     let sector_type = RegisteredSealProof::StackedDRG8MiBV1;
     // group into sectors
     let sectors_deals = vec![
-        SectorDeals { deal_ids: vec![id_1, id_2], sector_type, sector_expiry: END_EPOCH }, // 1 bad deal causes whole sector to fail
-        SectorDeals { deal_ids: vec![id_3], sector_type, sector_expiry: END_EPOCH + 1 }, // bad deal causes whole sector to fail
-        SectorDeals { deal_ids: vec![id_4], sector_type, sector_expiry: END_EPOCH + 2 }, // sector succeeds
+        // 1 bad deal causes whole sector to fail
+        SectorDeals {
+            sector_number: 1,
+            deal_ids: vec![id_1, id_2],
+            sector_type,
+            sector_expiry: END_EPOCH,
+        },
+        // bad deal causes whole sector to fail
+        SectorDeals {
+            sector_number: 3,
+            deal_ids: vec![id_3],
+            sector_type,
+            sector_expiry: END_EPOCH + 1,
+        },
+        // sector succeeds
+        SectorDeals {
+            sector_number: 4,
+            deal_ids: vec![id_4],
+            sector_type,
+            sector_expiry: END_EPOCH + 2,
+        },
     ];
 
-    let res = batch_activate_deals_raw(&rt, PROVIDER_ADDR, sectors_deals, false).unwrap();
+    let res = batch_activate_deals_raw(&rt, PROVIDER_ADDR, sectors_deals, false, &[id_4]).unwrap();
     let res: BatchActivateDealsResult =
         res.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
 
@@ -167,12 +214,20 @@ fn handles_sectors_empty_of_deals_gracefully() {
     let sector_type = RegisteredSealProof::StackedDRG8MiBV1;
     // group into sectors
     let sectors_deals = vec![
-        SectorDeals { deal_ids: vec![], sector_type, sector_expiry: END_EPOCH }, // empty sector
-        SectorDeals { deal_ids: vec![id_1], sector_type, sector_expiry: END_EPOCH + 1 }, // sector with one valid deal
-        SectorDeals { deal_ids: vec![], sector_type, sector_expiry: END_EPOCH + 2 }, // empty sector
+        // empty sector
+        SectorDeals { sector_number: 1, deal_ids: vec![], sector_type, sector_expiry: END_EPOCH },
+        // sector with one valid deal
+        SectorDeals {
+            sector_number: 2,
+            deal_ids: vec![id_1],
+            sector_type,
+            sector_expiry: END_EPOCH,
+        },
+        // empty sector
+        SectorDeals { sector_number: 3, deal_ids: vec![], sector_type, sector_expiry: END_EPOCH },
     ];
 
-    let res = batch_activate_deals_raw(&rt, PROVIDER_ADDR, sectors_deals, false).unwrap();
+    let res = batch_activate_deals_raw(&rt, PROVIDER_ADDR, sectors_deals, false, &[id_1]).unwrap();
     let res: BatchActivateDealsResult =
         res.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
 
@@ -189,7 +244,44 @@ fn handles_sectors_empty_of_deals_gracefully() {
 }
 
 #[test]
-fn fails_to_activate_sectors_containing_duplicate_deals() {
+fn fails_to_activate_single_sector_duplicate_deals() {
+    let rt = setup();
+    let deal_1 = create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH, false);
+    let deal_2 = create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH + 1, END_EPOCH, false);
+
+    let next_allocation_id = 1;
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+    let deal_ids = publish_deals(
+        &rt,
+        &MINER_ADDRESSES,
+        &[deal_1, deal_2],
+        TokenAmount::zero(),
+        next_allocation_id,
+    );
+    assert_eq!(2, deal_ids.len());
+    let id_1 = deal_ids[0];
+    let id_2 = deal_ids[1];
+
+    let sector_type = RegisteredSealProof::StackedDRG8MiBV1;
+    // group into sectors
+    let sectors_deals = vec![
+        // duplicate id_1
+        SectorDeals {
+            sector_number: 0,
+            deal_ids: vec![id_1, id_1, id_2],
+            sector_type,
+            sector_expiry: END_EPOCH,
+        },
+    ];
+    let res = batch_activate_deals_raw(&rt, PROVIDER_ADDR, sectors_deals, false, &[]).unwrap();
+    let res: BatchActivateDealsResult =
+        res.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
+
+    assert_eq!(vec![ExitCode::USR_ILLEGAL_ARGUMENT], res.activation_results.codes());
+}
+
+#[test]
+fn fails_to_activate_cross_sector_duplicate_deals() {
     let rt = setup();
     let deal_1 = create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH, false);
     let deal_2 = create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH + 1, END_EPOCH, false);
@@ -214,18 +306,33 @@ fn fails_to_activate_sectors_containing_duplicate_deals() {
     // group into sectors
     let sectors_deals = vec![
         // activate deal 1
-        SectorDeals { deal_ids: vec![id_1], sector_type, sector_expiry: END_EPOCH },
+        SectorDeals {
+            sector_number: 1,
+            deal_ids: vec![id_1],
+            sector_type,
+            sector_expiry: END_EPOCH,
+        },
         // duplicate id_1 so no deals activated here
-        SectorDeals { deal_ids: vec![id_3, id_1, id_2], sector_type, sector_expiry: END_EPOCH }, // duplicate with sector 1 so all fail
+        SectorDeals {
+            sector_number: 2,
+            deal_ids: vec![id_3, id_1, id_2],
+            sector_type,
+            sector_expiry: END_EPOCH,
+        }, // duplicate with sector 1 so all fail
         // since id_3 wasn't activated earlier this is a valid request
-        SectorDeals { deal_ids: vec![id_3], sector_type, sector_expiry: END_EPOCH },
+        SectorDeals {
+            sector_number: 3,
+            deal_ids: vec![id_3],
+            sector_type,
+            sector_expiry: END_EPOCH,
+        },
     ];
 
-    let res = batch_activate_deals_raw(&rt, PROVIDER_ADDR, sectors_deals, false).unwrap();
+    let res =
+        batch_activate_deals_raw(&rt, PROVIDER_ADDR, sectors_deals, false, &[id_1, id_3]).unwrap();
     let res: BatchActivateDealsResult =
         res.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
 
-    // all sectors should succeed
     assert_eq!(
         vec![ExitCode::OK, ExitCode::USR_ILLEGAL_ARGUMENT, ExitCode::OK],
         res.activation_results.codes()
@@ -246,5 +353,71 @@ fn fails_to_activate_sectors_containing_duplicate_deals() {
     let s = states.get(id_2).unwrap();
     assert!(s.is_none());
 
+    check_state(&rt);
+}
+
+#[test]
+fn activate_new_deals_in_existing_sector() {
+    // At time of writing, the miner actor won't do this.
+    // But future re-snap could allow it.
+    let rt = setup();
+    let deals = vec![
+        create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH, false),
+        create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH + 1, false),
+        create_deal(&rt, CLIENT_ADDR, &MINER_ADDRESSES, START_EPOCH, END_EPOCH + 2, false),
+    ];
+
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
+    let deal_ids = publish_deals(&rt, &MINER_ADDRESSES, &deals, TokenAmount::zero(), 0);
+    assert_eq!(3, deal_ids.len());
+
+    // Activate deals separately, and out of order.
+    let sector_number = 1;
+    batch_activate_deals(
+        &rt,
+        PROVIDER_ADDR,
+        &[(sector_number, END_EPOCH + 10, vec![deal_ids[0], deal_ids[2]])],
+        false,
+    );
+    batch_activate_deals(
+        &rt,
+        PROVIDER_ADDR,
+        &[(sector_number, END_EPOCH + 10, vec![deal_ids[1]])],
+        false,
+    );
+
+    // all deals are activated
+    assert_eq!(0, get_deal_state(&rt, deal_ids[0]).sector_start_epoch);
+    assert_eq!(0, get_deal_state(&rt, deal_ids[1]).sector_start_epoch);
+    assert_eq!(0, get_deal_state(&rt, deal_ids[2]).sector_start_epoch);
+
+    // All deals stored under the sector, in order.
+    assert_eq!(deal_ids, get_sector_deal_ids(&rt, PROVIDER_ID, &[sector_number]));
+    check_state(&rt);
+}
+
+#[test]
+fn require_miner_caller() {
+    let rt = setup();
+
+    let sector_activation = SectorDeals {
+        sector_number: 1,
+        deal_ids: vec![],
+        sector_expiry: 0,
+        sector_type: RegisteredSealProof::StackedDRG8MiBV1,
+    };
+    let params = BatchActivateDealsParams { sectors: vec![sector_activation], compute_cid: false };
+
+    rt.expect_validate_caller_type(vec![Type::Miner]);
+    rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, PROVIDER_ADDR); // Not a miner
+    expect_abort(
+        ExitCode::USR_FORBIDDEN,
+        rt.call::<fil_actor_market::Actor>(
+            Method::BatchActivateDeals as u64,
+            IpldBlock::serialize_cbor(&params).unwrap(),
+        ),
+    );
+
+    rt.verify();
     check_state(&rt);
 }

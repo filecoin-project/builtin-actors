@@ -36,3 +36,7 @@ mod verifreg_remove_datacap_test;
 pub use verifreg_remove_datacap_test::*;
 mod withdraw_balance_test;
 pub use withdraw_balance_test::*;
+mod prove_commit2_test;
+pub use prove_commit2_test::*;
+mod replica_update2_test;
+pub use replica_update2_test::*;

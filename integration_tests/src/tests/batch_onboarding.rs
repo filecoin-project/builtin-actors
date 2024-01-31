@@ -1,3 +1,4 @@
+use export_macro::vm_test;
 use fil_actor_cron::Method as CronMethod;
 use fil_actor_miner::SectorPreCommitOnChainInfo;
 use fil_actor_miner::{power_for_sector, State as MinerState};
@@ -47,7 +48,8 @@ impl Onboarding {
     }
 }
 
-pub fn batch_onboarding_test(v: &dyn VM, v2: bool) {
+#[vm_test]
+pub fn batch_onboarding_test(v: &dyn VM) {
     let seal_proof = &RegisteredSealProof::StackedDRG32GiBV1P1;
 
     let mut proven_count = 0;
@@ -104,7 +106,6 @@ pub fn batch_onboarding_test(v: &dyn VM, v2: bool) {
                 next_sector_no,
                 next_sector_no == 0,
                 None,
-                v2,
             );
             precommmits.append(&mut new_precommits);
             next_sector_no += item.pre_commit_sector_count as u64;
@@ -162,5 +163,6 @@ pub fn batch_onboarding_test(v: &dyn VM, v2: bool) {
         v,
         &Policy::default(),
         &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+        None,
     );
 }

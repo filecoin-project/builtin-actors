@@ -1,9 +1,12 @@
+use cid::Cid;
 use std::cmp::min;
 
+use fil_actor_market::SettleDealPaymentsParams;
+use fil_actor_market::SettleDealPaymentsReturn;
 use frc46_token::receiver::FRC46TokenReceived;
 use frc46_token::receiver::FRC46_TOKEN_TYPE;
-use frc46_token::token::types::TransferFromParams;
 use frc46_token::token::types::TransferParams;
+use frc46_token::token::types::{TransferFromParams, TransferReturn};
 use fvm_actor_utils::receiver::UniversalReceiverParams;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
@@ -16,7 +19,8 @@ use fvm_shared::crypto::signature::Signature;
 use fvm_shared::crypto::signature::SignatureType;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::error::ExitCode;
+use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::PoStProof;
 use fvm_shared::sector::RegisteredPoStProof;
@@ -27,35 +31,32 @@ use num_traits::Zero;
 
 use fil_actor_cron::Method as CronMethod;
 use fil_actor_datacap::Method as DataCapMethod;
-use fil_actor_market::ClientDealProposal;
-use fil_actor_market::DealProposal;
-use fil_actor_market::Label;
-use fil_actor_market::Method as MarketMethod;
-use fil_actor_market::PublishStorageDealsParams;
-use fil_actor_market::PublishStorageDealsReturn;
-use fil_actor_market::SectorDeals;
-use fil_actor_market::MARKET_NOTIFY_DEAL_METHOD;
+use fil_actor_market::ext::verifreg::AllocationsResponse;
+use fil_actor_market::{
+    ClientDealProposal, DealProposal, Label, Method as MarketMethod, PublishStorageDealsParams,
+    PublishStorageDealsReturn, SectorDeals, State as MarketState, MARKET_NOTIFY_DEAL_METHOD,
+};
 use fil_actor_miner::{
     aggregate_pre_commit_network_fee, aggregate_prove_commit_network_fee,
     max_prove_commit_duration, ChangeBeneficiaryParams, CompactCommD, DeadlineInfo,
     DeclareFaultsRecoveredParams, ExpirationExtension2, ExtendSectorExpiration2Params,
-    Method as MinerMethod, PoStPartition, PowerPair, PreCommitSectorBatchParams,
-    PreCommitSectorBatchParams2, PreCommitSectorParams, ProveCommitAggregateParams,
-    ProveCommitSectorParams, RecoveryDeclaration, SectorClaim, SectorPreCommitInfo,
-    SectorPreCommitOnChainInfo, State as MinerState, SubmitWindowedPoStParams,
+    Method as MinerMethod, PoStPartition, PowerPair, PreCommitSectorBatchParams2,
+    ProveCommitAggregateParams, ProveCommitSectorParams, RecoveryDeclaration, SectorClaim,
+    SectorPreCommitInfo, SectorPreCommitOnChainInfo, State as MinerState, SubmitWindowedPoStParams,
     WithdrawBalanceParams, WithdrawBalanceReturn,
 };
 use fil_actor_multisig::Method as MultisigMethod;
 use fil_actor_multisig::ProposeParams;
 use fil_actor_power::{CreateMinerParams, CreateMinerReturn, Method as PowerMethod};
 use fil_actor_verifreg::ext::datacap::MintParams;
-use fil_actor_verifreg::AllocationRequest;
 use fil_actor_verifreg::AllocationRequests;
 use fil_actor_verifreg::ClaimExtensionRequest;
 use fil_actor_verifreg::{
     AddVerifiedClientParams, AllocationID, ClaimID, ClaimTerm, ExtendClaimTermsParams,
-    Method as VerifregMethod, RemoveExpiredAllocationsParams, VerifierParams,
+    Method as VerifregMethod, RemoveExpiredAllocationsParams, State as VerifregState,
+    VerifierParams,
 };
+use fil_actor_verifreg::{AllocationRequest, DataCap};
 use fil_actors_runtime::cbor::deserialize;
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::policy_constants::{
@@ -64,6 +65,8 @@ use fil_actors_runtime::runtime::policy_constants::{
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::make_piece_cid;
 use fil_actors_runtime::test_utils::make_sealed_cid;
+use fil_actors_runtime::DealWeight;
+use fil_actors_runtime::EventBuilder;
 use fil_actors_runtime::CRON_ACTOR_ADDR;
 use fil_actors_runtime::DATACAP_TOKEN_ACTOR_ADDR;
 use fil_actors_runtime::STORAGE_MARKET_ACTOR_ADDR;
@@ -72,10 +75,10 @@ use fil_actors_runtime::STORAGE_POWER_ACTOR_ADDR;
 use fil_actors_runtime::SYSTEM_ACTOR_ADDR;
 use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
 use fil_actors_runtime::{DATACAP_TOKEN_ACTOR_ID, VERIFIED_REGISTRY_ACTOR_ID};
-use vm_api::trace::ExpectInvocation;
-use vm_api::util::apply_ok;
+use vm_api::trace::{EmittedEvent, ExpectInvocation};
 use vm_api::util::get_state;
 use vm_api::util::DynBlockstore;
+use vm_api::util::{apply_code, apply_ok, apply_ok_implicit};
 use vm_api::VM;
 
 use crate::expects::Expect;
@@ -86,7 +89,7 @@ use super::miner_dline_info;
 use super::sector_deadline;
 
 pub fn cron_tick(v: &dyn VM) {
-    apply_ok(
+    apply_ok_implicit(
         v,
         &SYSTEM_ACTOR_ADDR,
         &CRON_ACTOR_ADDR,
@@ -130,44 +133,30 @@ pub fn create_miner(
     (res.id_address, res.robust_address)
 }
 
-pub fn miner_precommit_sector(
+#[allow(clippy::too_many_arguments)]
+pub fn miner_precommit_one_sector_v2(
     v: &dyn VM,
     worker: &Address,
-    miner_id: &Address,
+    maddr: &Address,
     seal_proof: RegisteredSealProof,
     sector_number: SectorNumber,
-    deal_ids: Vec<DealID>,
+    meta_data: PrecommitMetadata,
+    expect_cron_enroll: bool,
     expiration: ChainEpoch,
 ) -> SectorPreCommitOnChainInfo {
-    let sealed_cid = make_sealed_cid(b"s100");
-
-    let params = PreCommitSectorParams {
+    precommit_sectors_v2(
+        v,
+        1,
+        1,
+        vec![meta_data],
+        worker,
+        maddr,
         seal_proof,
         sector_number,
-        sealed_cid,
-        seal_rand_epoch: v.epoch() - 1,
-        deal_ids,
-        expiration,
-        replace_capacity: false,
-        replace_sector_deadline: 0,
-        replace_sector_partition: 0,
-        replace_sector_number: 0,
-    };
-
-    apply_ok(
-        v,
-        worker,
-        miner_id,
-        &TokenAmount::zero(),
-        MinerMethod::PreCommitSector as u64,
-        Some(params),
-    );
-
-    let state: MinerState = get_state(v, miner_id).unwrap();
-    state
-        .get_precommitted_sector(&DynBlockstore::wrap(v.blockstore()), sector_number)
-        .unwrap()
-        .unwrap()
+        expect_cron_enroll,
+        Some(expiration),
+    )[0]
+    .clone()
 }
 
 pub fn miner_prove_sector(
@@ -176,7 +165,7 @@ pub fn miner_prove_sector(
     miner_id: &Address,
     sector_number: SectorNumber,
 ) {
-    let prove_commit_params = ProveCommitSectorParams { sector_number, proof: vec![] };
+    let prove_commit_params = ProveCommitSectorParams { sector_number, proof: vec![].into() };
     apply_ok(
         v,
         worker,
@@ -203,9 +192,116 @@ pub fn miner_prove_sector(
     .matches(v.take_invocations().last().unwrap());
 }
 
+#[derive(Default, Clone)]
 pub struct PrecommitMetadata {
     pub deals: Vec<DealID>,
     pub commd: CompactCommD,
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn precommit_sectors_v2_expect_code(
+    v: &dyn VM,
+    count: usize,
+    batch_size: usize,
+    metadata: Vec<PrecommitMetadata>, // Per-sector deal metadata, or empty vector for no deals.
+    worker: &Address,
+    maddr: &Address,
+    seal_proof: RegisteredSealProof,
+    sector_number_base: SectorNumber,
+    expect_cron_enroll: bool,
+    exp: Option<ChainEpoch>,
+    code: ExitCode,
+) {
+    let miner_id_address = v.resolve_id_address(maddr).unwrap();
+    let miner_id = miner_id_address.id().unwrap();
+    let worker_id = v.resolve_id_address(worker).unwrap().id().unwrap();
+    let expiration = match exp {
+        None => {
+            v.epoch()
+                + Policy::default().min_sector_expiration
+                + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap()
+        }
+        Some(e) => e,
+    };
+
+    let mut sector_idx: usize = 0;
+    let no_deals = PrecommitMetadata::default();
+    let mut sectors_with_deals: Vec<SectorDeals> = vec![];
+    while sector_idx < count {
+        let msg_sector_idx_base = sector_idx;
+        let mut invocs =
+            vec![Expect::reward_this_epoch(miner_id), Expect::power_current_total(miner_id)];
+        let mut param_sectors = Vec::<SectorPreCommitInfo>::new();
+        let mut j = 0;
+        while j < batch_size && sector_idx < count {
+            let sector_number = sector_number_base + sector_idx as u64;
+            let sector_meta = metadata.get(sector_idx).unwrap_or(&no_deals);
+            param_sectors.push(SectorPreCommitInfo {
+                seal_proof,
+                sector_number,
+                sealed_cid: make_sealed_cid(format!("sn: {}", sector_number).as_bytes()),
+                seal_rand_epoch: v.epoch() - 1,
+                deal_ids: sector_meta.deals.clone(),
+                expiration,
+                unsealed_cid: sector_meta.commd.clone(),
+            });
+            if !sector_meta.deals.is_empty() {
+                sectors_with_deals.push(SectorDeals {
+                    sector_number,
+                    sector_type: seal_proof,
+                    sector_expiry: expiration,
+                    deal_ids: sector_meta.deals.clone(),
+                });
+            }
+            sector_idx += 1;
+            j += 1;
+        }
+
+        let events: Vec<EmittedEvent> = param_sectors
+            .iter()
+            .map(|ps| Expect::build_miner_event("sector-precommitted", miner_id, ps.sector_number))
+            .collect();
+
+        if !sectors_with_deals.is_empty() {
+            invocs.push(Expect::market_verify_deals(miner_id, sectors_with_deals.clone()));
+        }
+        if param_sectors.len() > 1 {
+            invocs.push(Expect::burn(
+                miner_id,
+                Some(aggregate_pre_commit_network_fee(param_sectors.len(), &TokenAmount::zero())),
+            ));
+        }
+        if expect_cron_enroll && msg_sector_idx_base == 0 {
+            invocs.push(Expect::power_enrol_cron(miner_id));
+        }
+
+        apply_code(
+            v,
+            worker,
+            maddr,
+            &TokenAmount::zero(),
+            MinerMethod::PreCommitSectorBatch2 as u64,
+            Some(PreCommitSectorBatchParams2 { sectors: param_sectors.clone() }),
+            code,
+        );
+        if code == ExitCode::OK {
+            let expect = ExpectInvocation {
+                from: worker_id,
+                to: miner_id_address,
+                method: MinerMethod::PreCommitSectorBatch2 as u64,
+                params: Some(
+                    IpldBlock::serialize_cbor(&PreCommitSectorBatchParams2 {
+                        sectors: param_sectors,
+                    })
+                    .unwrap(),
+                ),
+                subinvocs: Some(invocs),
+                events,
+                ..Default::default()
+            };
+            expect.matches(v.take_invocations().last().unwrap());
+        }
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -220,158 +316,24 @@ pub fn precommit_sectors_v2(
     sector_number_base: SectorNumber,
     expect_cron_enroll: bool,
     exp: Option<ChainEpoch>,
-    v2: bool,
 ) -> Vec<SectorPreCommitOnChainInfo> {
-    let miner_id_address = v.resolve_id_address(maddr).unwrap();
-    let miner_id = miner_id_address.id().unwrap();
-    let worker_id = v.resolve_id_address(worker).unwrap().id().unwrap();
-    let expiration = match exp {
-        None => {
-            v.epoch()
-                + Policy::default().min_sector_expiration
-                + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap()
-        }
-        Some(e) => e,
-    };
+    let mid = v.resolve_id_address(maddr).unwrap();
+    precommit_sectors_v2_expect_code(
+        v,
+        count,
+        batch_size,
+        metadata,
+        worker,
+        maddr,
+        seal_proof,
+        sector_number_base,
+        expect_cron_enroll,
+        exp,
+        ExitCode::OK,
+    );
 
-    let mut sector_idx: usize = 0;
-    let no_deals = PrecommitMetadata { deals: vec![], commd: CompactCommD::default() };
-    let mut sectors_with_deals: Vec<SectorDeals> = vec![];
-    while sector_idx < count {
-        let msg_sector_idx_base = sector_idx;
-        let mut invocs =
-            vec![Expect::reward_this_epoch(miner_id), Expect::power_current_total(miner_id)];
-        if !v2 {
-            let mut param_sectors = Vec::<PreCommitSectorParams>::new();
-            let mut j = 0;
-            while j < batch_size && sector_idx < count {
-                let sector_number = sector_number_base + sector_idx as u64;
-                let sector_meta = metadata.get(sector_idx).unwrap_or(&no_deals);
-                param_sectors.push(PreCommitSectorParams {
-                    seal_proof,
-                    sector_number,
-                    sealed_cid: make_sealed_cid(format!("sn: {}", sector_number).as_bytes()),
-                    seal_rand_epoch: v.epoch() - 1,
-                    deal_ids: sector_meta.deals.clone().clone(),
-                    expiration,
-                    ..Default::default()
-                });
-                if !sector_meta.deals.is_empty() {
-                    sectors_with_deals.push(SectorDeals {
-                        sector_type: seal_proof,
-                        sector_expiry: expiration,
-                        deal_ids: sector_meta.deals.clone(),
-                    });
-                }
-                sector_idx += 1;
-                j += 1;
-            }
-            if !sectors_with_deals.is_empty() {
-                invocs.push(Expect::market_verify_deals(miner_id, sectors_with_deals.clone()));
-            }
-            if param_sectors.len() > 1 {
-                invocs.push(Expect::burn(
-                    miner_id,
-                    Some(aggregate_pre_commit_network_fee(
-                        param_sectors.len() as i64,
-                        &TokenAmount::zero(),
-                    )),
-                ));
-            }
-            if expect_cron_enroll && msg_sector_idx_base == 0 {
-                invocs.push(Expect::power_enrol_cron(miner_id));
-            }
-
-            apply_ok(
-                v,
-                worker,
-                maddr,
-                &TokenAmount::zero(),
-                MinerMethod::PreCommitSectorBatch as u64,
-                Some(PreCommitSectorBatchParams { sectors: param_sectors.clone() }),
-            );
-            let expect = ExpectInvocation {
-                from: worker_id,
-                to: miner_id_address,
-                method: MinerMethod::PreCommitSectorBatch as u64,
-                params: Some(
-                    IpldBlock::serialize_cbor(&PreCommitSectorBatchParams {
-                        sectors: param_sectors,
-                    })
-                    .unwrap(),
-                ),
-                subinvocs: Some(invocs),
-                ..Default::default()
-            };
-            expect.matches(v.take_invocations().last().unwrap())
-        } else {
-            let mut param_sectors = Vec::<SectorPreCommitInfo>::new();
-            let mut j = 0;
-            while j < batch_size && sector_idx < count {
-                let sector_number = sector_number_base + sector_idx as u64;
-                let sector_meta = metadata.get(sector_idx).unwrap_or(&no_deals);
-                param_sectors.push(SectorPreCommitInfo {
-                    seal_proof,
-                    sector_number,
-                    sealed_cid: make_sealed_cid(format!("sn: {}", sector_number).as_bytes()),
-                    seal_rand_epoch: v.epoch() - 1,
-                    deal_ids: sector_meta.deals.clone(),
-                    expiration,
-                    unsealed_cid: sector_meta.commd.clone(),
-                });
-                if !sector_meta.deals.is_empty() {
-                    sectors_with_deals.push(SectorDeals {
-                        sector_type: seal_proof,
-                        sector_expiry: expiration,
-                        deal_ids: sector_meta.deals.clone(),
-                    });
-                }
-                sector_idx += 1;
-                j += 1;
-            }
-            if !sectors_with_deals.is_empty() {
-                invocs.push(Expect::market_verify_deals(miner_id, sectors_with_deals.clone()));
-            }
-            if param_sectors.len() > 1 {
-                invocs.push(Expect::burn(
-                    miner_id,
-                    Some(aggregate_pre_commit_network_fee(
-                        param_sectors.len() as i64,
-                        &TokenAmount::zero(),
-                    )),
-                ));
-            }
-            if expect_cron_enroll && msg_sector_idx_base == 0 {
-                invocs.push(Expect::power_enrol_cron(miner_id));
-            }
-
-            apply_ok(
-                v,
-                worker,
-                maddr,
-                &TokenAmount::zero(),
-                MinerMethod::PreCommitSectorBatch2 as u64,
-                Some(PreCommitSectorBatchParams2 { sectors: param_sectors.clone() }),
-            );
-
-            let expect = ExpectInvocation {
-                from: worker_id,
-                to: miner_id_address,
-                method: MinerMethod::PreCommitSectorBatch2 as u64,
-                params: Some(
-                    IpldBlock::serialize_cbor(&PreCommitSectorBatchParams2 {
-                        sectors: param_sectors,
-                    })
-                    .unwrap(),
-                ),
-                subinvocs: Some(invocs),
-                ..Default::default()
-            };
-            expect.matches(v.take_invocations().last().unwrap())
-        }
-    }
     // extract chain state
-    let mstate: MinerState = get_state(v, &miner_id_address).unwrap();
+    let mstate: MinerState = get_state(v, &mid).unwrap();
     (0..count)
         .map(|i| {
             mstate
@@ -385,31 +347,26 @@ pub fn precommit_sectors_v2(
         .collect()
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn precommit_sectors(
+pub fn precommit_meta_data_from_deals(
     v: &dyn VM,
-    count: usize,
-    batch_size: usize,
-    worker: &Address,
-    maddr: &Address,
+    deal_ids: &[u64],
     seal_proof: RegisteredSealProof,
-    sector_number_base: SectorNumber,
-    expect_cron_enroll: bool,
-    exp: Option<ChainEpoch>,
-) -> Vec<SectorPreCommitOnChainInfo> {
-    precommit_sectors_v2(
-        v,
-        count,
-        batch_size,
-        vec![], // no deals
-        worker,
-        maddr,
-        seal_proof,
-        sector_number_base,
-        expect_cron_enroll,
-        exp,
-        false,
-    )
+) -> PrecommitMetadata {
+    let state: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
+    let pieces: Vec<PieceInfo> = deal_ids
+        .iter()
+        .map(|id: &u64| {
+            let deal = state.get_proposal(&DynBlockstore::wrap(v.blockstore()), *id).unwrap();
+            PieceInfo { size: deal.piece_size, cid: deal.piece_cid }
+        })
+        .collect();
+
+    PrecommitMetadata {
+        deals: deal_ids.to_vec(),
+        commd: CompactCommD::of(
+            v.primitives().compute_unsealed_sector_cid(seal_proof, &pieces).unwrap(),
+        ),
+    }
 }
 
 pub fn prove_commit_sectors(
@@ -430,7 +387,7 @@ pub fn prove_commit_sectors(
 
         let prove_commit_aggregate_params = ProveCommitAggregateParams {
             sector_numbers: make_bitfield(b.as_slice()),
-            aggregate_proof: vec![],
+            aggregate_proof: vec![].into(),
         };
 
         let prove_commit_aggregate_params_ser =
@@ -445,8 +402,29 @@ pub fn prove_commit_sectors(
             Some(prove_commit_aggregate_params),
         );
 
-        let expected_fee =
-            aggregate_prove_commit_network_fee(to_prove.len() as i64, &TokenAmount::zero());
+        let st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
+        let store = DynBlockstore::wrap(v.blockstore());
+        let events: Vec<EmittedEvent> = to_prove
+            .iter()
+            .map(|ps| {
+                let mut pieces: Vec<(Cid, u64)> = vec![];
+                for deal_id in &ps.info.deal_ids {
+                    let proposal = st.get_proposal(&store, *deal_id).unwrap();
+                    pieces.push((proposal.piece_cid, proposal.piece_size.0));
+                }
+
+                let unsealed_cid = ps.info.unsealed_cid.0;
+                Expect::build_sector_activation_event(
+                    "sector-activated",
+                    miner_id,
+                    ps.info.sector_number,
+                    unsealed_cid,
+                    &pieces,
+                )
+            })
+            .collect();
+
+        let expected_fee = aggregate_prove_commit_network_fee(to_prove.len(), &TokenAmount::zero());
         ExpectInvocation {
             from: worker_id,
             to: *maddr,
@@ -458,6 +436,7 @@ pub fn prove_commit_sectors(
                 Expect::power_update_pledge(miner_id, None),
                 Expect::burn(miner_id, Some(expected_fee)),
             ]),
+            events,
             ..Default::default()
         }
         .matches(v.take_invocations().last().unwrap());
@@ -521,6 +500,27 @@ pub fn miner_extend_sector_expiration2(
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
+}
+
+pub fn provider_settle_deal_payments(
+    v: &dyn VM,
+    provider: &Address,
+    deals: &[DealID],
+) -> SettleDealPaymentsReturn {
+    let mut deal_id_bitfield = BitField::new();
+    for deal_id in deals {
+        deal_id_bitfield.set(*deal_id);
+    }
+    let params = SettleDealPaymentsParams { deal_ids: deal_id_bitfield };
+    let ret = apply_ok(
+        v,
+        provider,
+        &STORAGE_MARKET_ACTOR_ADDR,
+        &TokenAmount::zero(),
+        MarketMethod::SettleDealPaymentsExported as u64,
+        Some(params),
+    );
+    ret.deserialize::<SettleDealPaymentsReturn>().unwrap()
 }
 
 pub fn advance_by_deadline_to_epoch(v: &dyn VM, maddr: &Address, e: ChainEpoch) -> DeadlineInfo {
@@ -758,8 +758,20 @@ pub fn submit_invalid_post(
     );
 }
 
+pub fn verifier_balance_event(verifier: ActorID, data_cap: DataCap) -> EmittedEvent {
+    EmittedEvent {
+        emitter: VERIFIED_REGISTRY_ACTOR_ID,
+        event: EventBuilder::new()
+            .typ("verifier-balance")
+            .field_indexed("verifier", &verifier)
+            .field("balance", &data_cap)
+            .build()
+            .unwrap(),
+    }
+}
+
 pub fn verifreg_add_verifier(v: &dyn VM, verifier: &Address, data_cap: StoragePower) {
-    let add_verifier_params = VerifierParams { address: *verifier, allowance: data_cap };
+    let add_verifier_params = VerifierParams { address: *verifier, allowance: data_cap.clone() };
     // root address is msig, send proposal from root key
     let proposal = ProposeParams {
         to: VERIFIED_REGISTRY_ACTOR_ADDR,
@@ -790,6 +802,7 @@ pub fn verifreg_add_verifier(v: &dyn VM, verifier: &Address, data_cap: StoragePo
                 DATACAP_TOKEN_ACTOR_ADDR,
                 *verifier,
             )]),
+            events: vec![verifier_balance_event(verifier.id().unwrap(), data_cap)],
             ..Default::default()
         }]),
         ..Default::default()
@@ -803,6 +816,13 @@ pub fn verifreg_add_client(
     client: &Address,
     allowance: StoragePower,
 ) {
+    let v_st: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
+    let store = DynBlockstore::wrap(v.blockstore());
+
+    let verifier_cap = v_st.get_verifier_cap(&store, verifier).unwrap().unwrap();
+
+    let updated_verifier_balance = verifier_cap - allowance.clone();
+
     let verifier_id = v.resolve_id_address(verifier).unwrap().id().unwrap();
     let add_client_params =
         AddVerifiedClientParams { address: *client, allowance: allowance.clone() };
@@ -842,6 +862,7 @@ pub fn verifreg_add_client(
             )]),
             ..Default::default()
         }]),
+        events: vec![verifier_balance_event(verifier.id().unwrap(), updated_verifier_balance)],
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
@@ -877,7 +898,24 @@ pub fn verifreg_remove_expired_allocations(
     client: &Address,
     ids: Vec<AllocationID>,
     datacap_refund: u64,
+    expected_expirations: Vec<AllocationID>,
 ) {
+    let v_st: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
+    let store = DynBlockstore::wrap(v.blockstore());
+    let mut allocs = v_st.load_allocs(&store).unwrap();
+    let expected_events: Vec<EmittedEvent> = expected_expirations
+        .iter()
+        .map(|id| {
+            let alloc = allocs.get(client.id().unwrap(), *id).unwrap().unwrap();
+            Expect::build_verifreg_event(
+                "allocation-removed",
+                *id,
+                client.id().unwrap(),
+                alloc.provider,
+            )
+        })
+        .collect();
+
     let caller_id = v.resolve_id_address(caller).unwrap().id().unwrap();
     let params =
         RemoveExpiredAllocationsParams { client: client.id().unwrap(), allocation_ids: ids };
@@ -916,6 +954,7 @@ pub fn verifreg_remove_expired_allocations(
             )]),
             ..Default::default()
         }]),
+        events: expected_events,
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
@@ -933,6 +972,54 @@ pub fn datacap_get_balance(v: &dyn VM, address: &Address) -> TokenAmount {
     deserialize(&ret, "balance of return value").unwrap()
 }
 
+pub fn datacap_create_allocations(
+    v: &dyn VM,
+    client: &Address,
+    reqs: &[AllocationRequest],
+) -> Vec<AllocationID> {
+    let payload = AllocationRequests { allocations: reqs.to_vec(), extensions: vec![] };
+    let token_amount = TokenAmount::from_whole(reqs.iter().map(|r| r.size.0).sum::<u64>());
+    let operator_data = serialize(&payload, "allocation requests").unwrap();
+    let transfer_params = TransferParams {
+        to: VERIFIED_REGISTRY_ACTOR_ADDR,
+        amount: token_amount.clone(),
+        operator_data: operator_data.clone(),
+    };
+
+    let client_id = v.resolve_id_address(client).unwrap().id().unwrap();
+    let tfer_result: TransferReturn = apply_ok(
+        v,
+        client,
+        &DATACAP_TOKEN_ACTOR_ADDR,
+        &TokenAmount::zero(),
+        DataCapMethod::TransferExported as u64,
+        Some(transfer_params),
+    )
+    .deserialize()
+    .unwrap();
+    let alloc_response: AllocationsResponse = tfer_result.recipient_data.deserialize().unwrap();
+
+    let events: Vec<EmittedEvent> = alloc_response
+        .new_allocations
+        .iter()
+        .enumerate()
+        .map(|(i, alloc_id)| {
+            Expect::build_verifreg_event("allocation", *alloc_id, client_id, reqs[i].provider)
+        })
+        .collect::<Vec<EmittedEvent>>();
+
+    Expect::datacap_transfer_to_verifreg(
+        client_id,
+        token_amount,
+        operator_data,
+        false, // No burn
+        events,
+    )
+    .matches(v.take_invocations().last().unwrap());
+
+    alloc_response.new_allocations
+}
+
 pub fn datacap_extend_claim(
     v: &dyn VM,
     client: &Address,
@@ -940,6 +1027,7 @@ pub fn datacap_extend_claim(
     claim: ClaimID,
     size: u64,
     new_term: ChainEpoch,
+    claim_client: ActorID,
 ) {
     let payload = AllocationRequests {
         allocations: vec![],
@@ -957,7 +1045,6 @@ pub fn datacap_extend_claim(
         operator_data: operator_data.clone(),
     };
 
-    let client_id = v.resolve_id_address(client).unwrap().id().unwrap();
     apply_ok(
         v,
         client,
@@ -967,41 +1054,19 @@ pub fn datacap_extend_claim(
         Some(transfer_params),
     );
 
-    ExpectInvocation {
-        from: client_id,
-        to: DATACAP_TOKEN_ACTOR_ADDR,
-        method: DataCapMethod::TransferExported as u64,
-        subinvocs: Some(vec![ExpectInvocation {
-            from: DATACAP_TOKEN_ACTOR_ID,
-            to: VERIFIED_REGISTRY_ACTOR_ADDR,
-            method: VerifregMethod::UniversalReceiverHook as u64,
-            params: Some(
-                IpldBlock::serialize_cbor(&UniversalReceiverParams {
-                    type_: FRC46_TOKEN_TYPE,
-                    payload: serialize(
-                        &FRC46TokenReceived {
-                            from: client.id().unwrap(),
-                            to: VERIFIED_REGISTRY_ACTOR_ADDR.id().unwrap(),
-                            operator: client.id().unwrap(),
-                            amount: token_amount.clone(),
-                            operator_data,
-                            token_data: RawBytes::default(),
-                        },
-                        "token received params",
-                    )
-                    .unwrap(),
-                })
-                .unwrap(),
-            ),
-            subinvocs: Some(vec![Expect::frc46_burn(
-                VERIFIED_REGISTRY_ACTOR_ID,
-                DATACAP_TOKEN_ACTOR_ADDR,
-                token_amount,
-            )]),
-            ..Default::default()
-        }]),
-        ..Default::default()
-    }
+    let client_id = v.resolve_id_address(client).unwrap().id().unwrap();
+    Expect::datacap_transfer_to_verifreg(
+        client_id,
+        token_amount,
+        operator_data,
+        true, // Burn
+        vec![Expect::build_verifreg_event(
+            "claim-updated",
+            claim,
+            claim_client,
+            provider.id().unwrap(),
+        )],
+    )
     .matches(v.take_invocations().last().unwrap());
 }
 
@@ -1112,6 +1177,10 @@ pub fn market_publish_deal(
             }],
             extensions: vec![],
         };
+
+        let v_st: fil_actor_verifreg::State = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();
+        let alloc_id = v_st.next_allocation_id - 1;
+
         expect_publish_invocs.push(ExpectInvocation {
             from: STORAGE_MARKET_ACTOR_ID,
             to: DATACAP_TOKEN_ACTOR_ADDR,
@@ -1147,6 +1216,12 @@ pub fn market_publish_deal(
                     })
                     .unwrap(),
                 ),
+                events: vec![Expect::build_verifreg_event(
+                    "allocation",
+                    alloc_id,
+                    deal_client.id().unwrap(),
+                    miner_id.id().unwrap(),
+                )],
                 ..Default::default()
             }]),
             ..Default::default()
@@ -1163,6 +1238,12 @@ pub fn market_publish_deal(
         to: STORAGE_MARKET_ACTOR_ADDR,
         method: MarketMethod::PublishStorageDeals as u64,
         subinvocs: Some(expect_publish_invocs),
+        events: vec![Expect::build_market_event(
+            "deal-published",
+            ret.ids[0],
+            deal_client.id().unwrap(),
+            miner_id.id().unwrap(),
+        )],
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
@@ -1202,4 +1283,17 @@ pub fn get_deal(v: &dyn VM, deal_id: DealID) -> DealProposal {
     let state: fil_actor_market::State =
         RawBytes::new(bs.get(&actor.state).unwrap().unwrap()).deserialize().unwrap();
     state.get_proposal(&bs, deal_id).unwrap()
+}
+
+// return (deal_weight, verified_deal_weight)
+pub fn get_deal_weights(
+    v: &dyn VM,
+    deal_id: DealID,
+    duration: ChainEpoch,
+) -> (DealWeight, DealWeight) {
+    let deal = get_deal(v, deal_id);
+    if deal.verified_deal {
+        return (DealWeight::zero(), DealWeight::from(deal.piece_size.0 * duration as u64));
+    }
+    (DealWeight::from(deal.piece_size.0 * duration as u64), DealWeight::zero())
 }

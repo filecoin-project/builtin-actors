@@ -1,25 +1,12 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fil_actor_market::balance_table::BalanceTable;
-use fil_actor_market::policy::detail::DEAL_MAX_LABEL_SIZE;
-use fil_actor_market::{
-    ext, next_update_epoch, Actor as MarketActor, BatchActivateDealsResult, ClientDealProposal,
-    DealArray, DealMetaArray, Label, MarketNotifyDealParams, Method, PendingDealAllocationsMap,
-    PublishStorageDealsParams, PublishStorageDealsReturn, SectorDeals, State,
-    WithdrawBalanceParams, EX_DEAL_EXPIRED, MARKET_NOTIFY_DEAL_METHOD, NO_ALLOCATION_ID,
-    PENDING_ALLOCATIONS_CONFIG, PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
-};
-use fil_actors_runtime::cbor::{deserialize, serialize};
-use fil_actors_runtime::network::EPOCHS_IN_DAY;
-use fil_actors_runtime::runtime::{Policy, Runtime, RuntimePolicy};
-use fil_actors_runtime::test_utils::*;
-use fil_actors_runtime::{
-    make_empty_map, ActorError, BatchReturn, SetMultimap, BURNT_FUNDS_ACTOR_ADDR,
-    DATACAP_TOKEN_ACTOR_ADDR, EPOCHS_IN_YEAR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
-};
+use std::cell::RefCell;
+use std::ops::Add;
+
 use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
 use fvm_ipld_amt::Amt;
+use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::{to_vec, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
@@ -29,20 +16,33 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
+use fvm_shared::sys::SendFlags;
 use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR, METHOD_SEND};
+use num_traits::{FromPrimitive, Zero};
 use regex::Regex;
-use std::cell::RefCell;
-use std::ops::Add;
 
+use fil_actor_market::balance_table::BalanceTable;
 use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
 use fil_actor_market::ext::verifreg::{AllocationRequest, AllocationsResponse};
-use fvm_ipld_encoding::ipld_block::IpldBlock;
-use fvm_shared::sys::SendFlags;
-use num_traits::{FromPrimitive, Zero};
+use fil_actor_market::policy::detail::DEAL_MAX_LABEL_SIZE;
+use fil_actor_market::{
+    ext, Actor as MarketActor, BatchActivateDealsResult, ClientDealProposal, DealArray,
+    DealMetaArray, Label, MarketNotifyDealParams, Method, PendingDealAllocationsMap,
+    PublishStorageDealsParams, PublishStorageDealsReturn, SectorDeals, State,
+    WithdrawBalanceParams, EX_DEAL_EXPIRED, MARKET_NOTIFY_DEAL_METHOD, PENDING_ALLOCATIONS_CONFIG,
+    PROPOSALS_AMT_BITWIDTH, STATES_AMT_BITWIDTH,
+};
+use fil_actors_runtime::cbor::{deserialize, serialize};
+use fil_actors_runtime::network::EPOCHS_IN_DAY;
+use fil_actors_runtime::runtime::{Policy, Runtime};
+use fil_actors_runtime::test_utils::*;
+use fil_actors_runtime::{
+    make_empty_map, ActorError, BatchReturn, SetMultimap, BURNT_FUNDS_ACTOR_ADDR,
+    DATACAP_TOKEN_ACTOR_ADDR, SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+};
+use harness::*;
 
 mod harness;
-
-use harness::*;
 
 #[test]
 fn test_remove_all_error() {
@@ -52,7 +52,6 @@ fn test_remove_all_error() {
     SetMultimap::new(&rt.store()).remove_all(42).expect("expected no error");
 }
 
-// TODO add array stuff
 #[test]
 fn simple_construction() {
     let rt = MockRuntime {
@@ -258,14 +257,13 @@ fn balance_after_withdrawal_must_always_be_greater_than_or_equal_to_locked_amoun
 
     // publish the deal so that client AND provider collateral is locked
     rt.set_epoch(publish_epoch);
-    let deal_id = generate_and_publish_deal(
+    let (_, deal) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
-    let deal = get_deal_proposal(&rt, deal_id);
     let provider_acct = get_balance(&rt, &PROVIDER_ADDR);
     assert_eq!(deal.provider_collateral, provider_acct.balance);
     assert_eq!(deal.provider_collateral, provider_acct.locked);
@@ -320,12 +318,12 @@ fn worker_balance_after_withdrawal_must_account_for_slashed_funds() {
     let start_epoch = ChainEpoch::from(10);
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let publish_epoch = ChainEpoch::from(5);
-
+    let sector_number = 7;
     let rt = setup();
 
     // publish deal
     rt.set_epoch(publish_epoch);
-    let deal_id = generate_and_publish_deal(
+    let (deal_id, proposal) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -334,17 +332,16 @@ fn worker_balance_after_withdrawal_must_account_for_slashed_funds() {
     );
 
     // activate the deal
-    activate_deals(&rt, end_epoch + 1, PROVIDER_ADDR, publish_epoch, &[deal_id]);
+    activate_deals(&rt, end_epoch + 1, PROVIDER_ADDR, publish_epoch, sector_number, &[deal_id]);
     let st = get_deal_state(&rt, deal_id);
     assert_eq!(publish_epoch, st.sector_start_epoch);
 
-    // slash the deal
+    // terminate the deal
     rt.set_epoch(publish_epoch + 1);
-    terminate_deals(&rt, PROVIDER_ADDR, &[deal_id]);
-    let st = get_deal_state(&rt, deal_id);
-    assert_eq!(publish_epoch + 1, st.slash_epoch);
+    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number], &[deal_id]);
+    assert_deal_deleted(&rt, deal_id, &proposal, sector_number);
 
-    // provider cannot withdraw any funds since all it's balance is locked
+    // provider cannot withdraw any funds since it's been terminated
     let withdraw_amount = TokenAmount::from_atto(1);
     let actual_withdrawn = TokenAmount::zero();
     withdraw_provider_balance(
@@ -369,6 +366,7 @@ fn worker_balance_after_withdrawal_must_account_for_slashed_funds() {
         OWNER_ADDR,
         WORKER_ADDR,
     );
+
     check_state(&rt);
 }
 
@@ -702,14 +700,12 @@ fn simple_deal() {
     )[0];
 
     // activate the deal
-    activate_deals(&rt, end_epoch + 1, PROVIDER_ADDR, publish_epoch, &[deal1_id, deal2_id]);
+    activate_deals(&rt, end_epoch + 1, PROVIDER_ADDR, publish_epoch, 1, &[deal1_id, deal2_id]);
     let deal1st = get_deal_state(&rt, deal1_id);
     assert_eq!(publish_epoch, deal1st.sector_start_epoch);
-    assert_eq!(NO_ALLOCATION_ID, deal1st.verified_claim);
 
     let deal2st = get_deal_state(&rt, deal2_id);
     assert_eq!(publish_epoch, deal2st.sector_start_epoch);
-    assert_eq!(next_allocation_id, deal2st.verified_claim);
 
     check_state(&rt);
 }
@@ -774,7 +770,6 @@ fn deal_expires() {
     check_state(&rt);
 }
 
-// Converted from: https://github.com/filecoin-project/specs-actors/blob/0afe155bfffa036057af5519afdead845e0780de/actors/builtin/market/market_test.go#L529
 #[test]
 fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_to_verigreg_actor_for_a_verified_deal(
 ) {
@@ -944,6 +939,14 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
         ExitCode::OK,
     );
 
+    expect_emitted(
+        &rt,
+        "deal-published",
+        deal_id,
+        client_resolved.id().unwrap(),
+        provider_resolved.id().unwrap(),
+    );
+
     let ret: PublishStorageDealsReturn = rt
         .call::<MarketActor>(
             Method::PublishStorageDeals as u64,
@@ -1058,28 +1061,28 @@ fn publish_a_deal_after_activating_a_previous_deal_which_has_a_start_epoch_far_i
 
     // publish the deal and activate it
     rt.set_epoch(publish_epoch);
-    let deal1 = generate_and_publish_deal(
+    let (deal1, _) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
-    activate_deals(&rt, end_epoch, PROVIDER_ADDR, publish_epoch, &[deal1]);
+    activate_deals(&rt, end_epoch, PROVIDER_ADDR, publish_epoch, 1, &[deal1]);
     let st = get_deal_state(&rt, deal1);
     assert_eq!(publish_epoch, st.sector_start_epoch);
 
     // now publish a second deal and activate it
     let new_epoch = publish_epoch + 1;
     rt.set_epoch(new_epoch);
-    let deal2 = generate_and_publish_deal(
+    let (deal2, _) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         start_epoch + 1,
         end_epoch + 1,
     );
-    activate_deals(&rt, end_epoch + 1, PROVIDER_ADDR, new_epoch, &[deal2]);
+    activate_deals(&rt, end_epoch + 1, PROVIDER_ADDR, new_epoch, 2, &[deal2]);
     check_state(&rt);
 }
 
@@ -1300,109 +1303,102 @@ fn active_deals_multiple_times_with_different_providers() {
         &MinerAddresses::default(),
         start_epoch,
         end_epoch,
-    );
+    )
+    .0;
     let deal2 = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         start_epoch,
         end_epoch + 1,
-    );
+    )
+    .0;
     let deal3 = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         start_epoch,
         end_epoch + 2,
-    );
+    )
+    .0;
 
     // provider2 publishes deal4 and deal5
     let provider2_addr = Address::new_id(401);
     let addrs = MinerAddresses { provider: provider2_addr, ..MinerAddresses::default() };
-    let deal4 = generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch);
-    let deal5 = generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch + 1);
+    let deal4 = generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch).0;
+    let deal5 = generate_and_publish_deal(&rt, CLIENT_ADDR, &addrs, start_epoch, end_epoch + 1).0;
 
     // provider1 activates deal1 and deal2 but that does not activate deal3 to deal5
-    activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal1, deal2]);
+    activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, 1, &[deal1, deal2]);
     assert_deals_not_activated(&rt, current_epoch, &[deal3, deal4, deal5]);
 
     // provider2 activates deal5 but that does not activate deal3 or deal4
-    activate_deals(&rt, sector_expiry, provider2_addr, current_epoch, &[deal5]);
+    activate_deals(&rt, sector_expiry, provider2_addr, current_epoch, 1, &[deal5]);
     assert_deals_not_activated(&rt, current_epoch, &[deal3, deal4]);
 
     // provider1 activates deal3
-    activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, &[deal3]);
+    activate_deals(&rt, sector_expiry, PROVIDER_ADDR, current_epoch, 2, &[deal3]);
     assert_deals_not_activated(&rt, current_epoch, &[deal4]);
     check_state(&rt);
 }
 
-// Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1519
 #[test]
-fn fail_when_deal_is_activated_but_proposal_is_not_found() {
+fn terminating_a_deal_removes_proposal_synchronously() {
     let start_epoch = 50;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
-
+    let sector_number = 7;
     let rt = setup();
+    let addrs = &MinerAddresses::default();
 
-    let deal_id = publish_and_activate_deal(
+    let (deal_id, proposal) = publish_and_activate_deal(
         &rt,
         CLIENT_ADDR,
-        &MinerAddresses::default(),
+        addrs,
+        sector_number,
         start_epoch,
         end_epoch,
         0,
         sector_expiry,
     );
 
-    // delete the deal proposal (this breaks state invariants)
-    delete_deal_proposal(&rt, deal_id);
+    // terminating the deal deletes proposal, state and pending_proposal but leaves deal op in queue
+    terminate_deals(&rt, addrs.provider, &[sector_number], &[deal_id]);
+    assert_deal_deleted(&rt, deal_id, &proposal, sector_number);
+    check_state(&rt);
 
-    rt.set_epoch(process_epoch(start_epoch, deal_id));
-    expect_abort(EX_DEAL_EXPIRED, cron_tick_raw(&rt));
-
-    check_state_with_expected(
-        &rt,
-        &[
-            Regex::new("no deal proposal for deal state \\d+").unwrap(),
-            Regex::new("pending proposal with cid \\w+ not found within proposals").unwrap(),
-            Regex::new("deal op found for deal id \\d+ with missing proposal at epoch \\d+")
-                .unwrap(),
-        ],
-    );
-}
-
-// Converted from: https://github.com/filecoin-project/specs-actors/blob/master/actors/builtin/market/market_test.go#L1540
-#[test]
-fn fail_when_deal_update_epoch_is_in_the_future() {
-    let start_epoch = 50;
-    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
-    let sector_expiry = end_epoch + 100;
-
-    let rt = setup();
-
-    let deal_id = publish_and_activate_deal(
-        &rt,
-        CLIENT_ADDR,
-        &MinerAddresses::default(),
-        start_epoch,
-        end_epoch,
-        0,
-        sector_expiry,
-    );
-
-    // move the current epoch such that the deal's last updated field is set to the start epoch of the deal
-    // and the next tick for it is scheduled at the endepoch.
+    // the next cron_tick will remove the dangling deal op entry
     rt.set_epoch(process_epoch(start_epoch, deal_id));
     cron_tick(&rt);
+    check_state(&rt);
+}
+
+#[test]
+fn settling_deal_fails_when_deal_update_epoch_is_in_the_future() {
+    let start_epoch = 50;
+    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let sector_expiry = end_epoch + 100;
+    let sector_number = 7;
+    let rt = setup();
+
+    let (deal_id, _) = publish_and_activate_deal(
+        &rt,
+        CLIENT_ADDR,
+        &MinerAddresses::default(),
+        sector_number,
+        start_epoch,
+        end_epoch,
+        0,
+        sector_expiry,
+    );
 
     // update last updated to some time in the future (breaks state invariants)
     update_last_updated(&rt, deal_id, end_epoch + 1000);
 
     // set current epoch of the deal to the end epoch so it's picked up for "processing" in the next cron tick.
     rt.set_epoch(end_epoch);
-
-    expect_abort(ExitCode::USR_ILLEGAL_STATE, cron_tick_raw(&rt));
+    let ret = settle_deal_payments(&rt, MinerAddresses::default().provider, &[deal_id], &[], &[]);
+    assert_eq!(ret.results.codes(), &[ExitCode::USR_ILLEGAL_STATE]);
 
     check_state_with_expected(
         &rt,
@@ -1411,29 +1407,36 @@ fn fail_when_deal_update_epoch_is_in_the_future() {
 }
 
 #[test]
-fn crontick_for_a_deal_at_its_start_epoch_results_in_zero_payment_and_no_slashing() {
+fn settling_payments_for_a_deal_at_its_start_epoch_results_in_zero_payment_and_no_slashing() {
     let start_epoch = ChainEpoch::from(50);
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
+    let sector_number = 7;
 
     // set start epoch to coincide with processing (0 + 0 % 2880 = 0)
     let start_epoch = 0;
     let rt = setup();
-    let deal_id = publish_and_activate_deal(
+    let (deal_id, _) = publish_and_activate_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
+        sector_number,
         start_epoch,
         end_epoch,
         0,
         sector_expiry,
     );
 
-    // move the current epoch to processing epoch
-    let current = process_epoch(start_epoch, deal_id);
-    rt.set_epoch(current);
-    let (pay, slashed) =
-        cron_tick_and_assert_balances(&rt, CLIENT_ADDR, PROVIDER_ADDR, current, deal_id);
+    // move the current epoch to start
+    rt.set_epoch(start_epoch);
+    let (pay, slashed) = settle_deal_payments_and_assert_balances(
+        &rt,
+        CLIENT_ADDR,
+        MinerAddresses::default().provider,
+        start_epoch,
+        deal_id,
+        false,
+    );
     assert_eq!(TokenAmount::zero(), pay);
     assert_eq!(TokenAmount::zero(), slashed);
 
@@ -1441,188 +1444,6 @@ fn crontick_for_a_deal_at_its_start_epoch_results_in_zero_payment_and_no_slashin
     get_deal_proposal(&rt, deal_id);
     get_deal_state(&rt, deal_id);
     check_state(&rt);
-}
-
-#[test]
-fn slash_a_deal_and_make_payment_for_another_deal_in_the_same_epoch() {
-    let start_epoch = ChainEpoch::from(50);
-    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
-    let sector_expiry = end_epoch + 100;
-
-    let rt = setup();
-
-    let deal_id1 = publish_and_activate_deal(
-        &rt,
-        CLIENT_ADDR,
-        &MinerAddresses::default(),
-        start_epoch,
-        end_epoch,
-        0,
-        sector_expiry,
-    );
-    let d1 = get_deal_proposal(&rt, deal_id1);
-
-    let deal_id2 = publish_and_activate_deal(
-        &rt,
-        CLIENT_ADDR,
-        &MinerAddresses::default(),
-        start_epoch + 1,
-        end_epoch + 1,
-        0,
-        sector_expiry,
-    );
-
-    // slash deal1
-    let slash_epoch = process_epoch(start_epoch, deal_id2) + ChainEpoch::from(100);
-    rt.set_epoch(slash_epoch);
-    terminate_deals(&rt, PROVIDER_ADDR, &[deal_id1]);
-
-    // cron tick will slash deal1 and make payment for deal2
-    rt.expect_send_simple(
-        BURNT_FUNDS_ACTOR_ADDR,
-        METHOD_SEND,
-        None,
-        d1.provider_collateral.clone(),
-        None,
-        ExitCode::OK,
-    );
-    cron_tick(&rt);
-
-    assert_deal_deleted(&rt, deal_id1, d1);
-    let s2 = get_deal_state(&rt, deal_id2);
-    assert_eq!(slash_epoch, s2.last_updated_epoch);
-    check_state(&rt);
-}
-
-#[test]
-fn cron_reschedules_update_to_new_period() {
-    let start_epoch = ChainEpoch::from(1);
-    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
-
-    // Publish a deal
-    let rt = setup();
-    let deal_id = publish_and_activate_deal(
-        &rt,
-        CLIENT_ADDR,
-        &MinerAddresses::default(),
-        start_epoch,
-        end_epoch,
-        0,
-        end_epoch,
-    );
-    let update_interval = rt.policy().deal_updates_interval;
-
-    // Hack state to move the scheduled update to some off-policy epoch.
-    // This simulates there having been a prior policy that put it here, but now
-    // the policy has changed.
-    let mut st: State = rt.get_state();
-    let expected_epoch = next_update_epoch(deal_id, update_interval, start_epoch);
-    let misscheduled_epoch = expected_epoch + 42;
-    st.remove_deals_by_epoch(rt.store(), &[expected_epoch]).unwrap();
-    st.put_deals_by_epoch(rt.store(), &[(misscheduled_epoch, deal_id)]).unwrap();
-    rt.replace_state(&st);
-
-    let curr_epoch = rt.set_epoch(misscheduled_epoch);
-    cron_tick(&rt);
-
-    let st: State = rt.get_state();
-    let expected_epoch = next_update_epoch(deal_id, update_interval, curr_epoch + 1);
-    assert_ne!(expected_epoch, curr_epoch);
-    assert_ne!(expected_epoch, misscheduled_epoch + update_interval);
-    let found = st.get_deals_for_epoch(rt.store(), expected_epoch).unwrap();
-    assert_eq!([deal_id][..], found[..]);
-}
-
-#[test]
-fn cron_reschedules_update_to_new_period_boundary() {
-    let start_epoch = ChainEpoch::from(1);
-    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
-
-    // Publish a deal
-    let rt = setup();
-    let deal_id = publish_and_activate_deal(
-        &rt,
-        CLIENT_ADDR,
-        &MinerAddresses::default(),
-        start_epoch,
-        end_epoch,
-        0,
-        end_epoch,
-    );
-    let update_interval = rt.policy().deal_updates_interval;
-
-    // Hack state to move the scheduled update.
-    let mut st: State = rt.get_state();
-    let expected_epoch = next_update_epoch(deal_id, update_interval, start_epoch);
-    // Schedule the update exactly where the current policy would have put it anyway,
-    // next time round (as if an old policy had an interval that was a multiple of the current one).
-    // We can confirm it's rescheduled to the next period rather than left behind.
-    let misscheduled_epoch = expected_epoch + update_interval;
-    st.remove_deals_by_epoch(rt.store(), &[expected_epoch]).unwrap();
-    st.put_deals_by_epoch(rt.store(), &[(misscheduled_epoch, deal_id)]).unwrap();
-    rt.replace_state(&st);
-
-    let curr_epoch = rt.set_epoch(misscheduled_epoch);
-    cron_tick(&rt);
-
-    let st: State = rt.get_state();
-    let expected_epoch = next_update_epoch(deal_id, update_interval, curr_epoch + 1);
-    assert_ne!(expected_epoch, curr_epoch);
-    // For all other mis-schedulings, these would be asserted non-equal, but
-    // for this case we expect a perfect increase of one update interval.
-    assert_eq!(expected_epoch, misscheduled_epoch + update_interval);
-    let found = st.get_deals_for_epoch(rt.store(), expected_epoch).unwrap();
-    assert_eq!([deal_id][..], found[..]);
-}
-
-#[test]
-fn cron_reschedules_many_updates() {
-    let start_epoch = ChainEpoch::from(10);
-    let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
-    let sector_expiry = start_epoch + 5 * EPOCHS_IN_YEAR;
-    // Set a short update interval so we can generate scheduling collisions.
-    let update_interval = 100;
-
-    // Publish a deal
-    let mut rt = setup();
-    rt.policy.deal_updates_interval = update_interval;
-    let deal_count = 2 * update_interval;
-    for i in 0..deal_count {
-        publish_and_activate_deal(
-            &rt,
-            CLIENT_ADDR,
-            &MinerAddresses::default(),
-            start_epoch,
-            end_epoch + i,
-            0,
-            sector_expiry,
-        );
-    }
-
-    let st: State = rt.get_state();
-    // Confirm two deals are scheduled for each epoch from start_epoch.
-    let first_updates = st.get_deals_for_epoch(rt.store(), start_epoch).unwrap();
-    for epoch in start_epoch..(start_epoch + update_interval) {
-        assert_eq!(2, st.get_deals_for_epoch(rt.store(), epoch).unwrap().len());
-    }
-
-    rt.set_epoch(start_epoch);
-    cron_tick(&rt);
-
-    let st: State = rt.get_state();
-    // Two deals removed from start_epoch
-    assert_eq!(0, st.get_deals_for_epoch(rt.store(), start_epoch).unwrap().len());
-
-    // Same two deals scheduled one interval later
-    let rescheduled = st.get_deals_for_epoch(rt.store(), start_epoch + update_interval).unwrap();
-    assert_eq!(first_updates, rescheduled);
-
-    for epoch in (start_epoch + 1)..(start_epoch + update_interval) {
-        rt.set_epoch(epoch);
-        cron_tick(&rt);
-        let st: State = rt.get_state();
-        assert_eq!(2, st.get_deals_for_epoch(rt.store(), epoch + update_interval).unwrap().len());
-    }
 }
 
 #[test]
@@ -1686,9 +1507,10 @@ fn fail_when_current_epoch_greater_than_start_epoch_of_deal() {
     let start_epoch = 10;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
+    let sector_number = 7;
 
     let rt = setup();
-    let deal_id = generate_and_publish_deal(
+    let (deal_id, _) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -1701,18 +1523,20 @@ fn fail_when_current_epoch_greater_than_start_epoch_of_deal() {
         &rt,
         PROVIDER_ADDR,
         vec![SectorDeals {
+            sector_number,
             sector_expiry,
             sector_type: RegisteredSealProof::StackedDRG8MiBV1,
             deal_ids: vec![deal_id],
         }],
         false,
+        &[],
     )
     .unwrap();
 
     let res: BatchActivateDealsResult =
         res.unwrap().deserialize().expect("VerifyDealsForActivation failed!");
 
-    assert_eq!(res.activation_results.codes(), vec![ExitCode::USR_ILLEGAL_ARGUMENT]);
+    assert_eq!(res.activation_results.codes(), vec![EX_DEAL_EXPIRED]);
 
     rt.verify();
     check_state(&rt);
@@ -1722,9 +1546,10 @@ fn fail_when_current_epoch_greater_than_start_epoch_of_deal() {
 fn fail_when_end_epoch_of_deal_greater_than_sector_expiry() {
     let start_epoch = 10;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
+    let sector_number = 7;
 
     let rt = setup();
-    let deal_id = generate_and_publish_deal(
+    let (deal_id, _) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -1736,11 +1561,13 @@ fn fail_when_end_epoch_of_deal_greater_than_sector_expiry() {
         &rt,
         PROVIDER_ADDR,
         vec![SectorDeals {
+            sector_number,
             sector_expiry: end_epoch - 1,
             sector_type: RegisteredSealProof::StackedDRG8MiBV1,
             deal_ids: vec![deal_id],
         }],
         false,
+        &[],
     )
     .unwrap();
 
@@ -1758,19 +1585,25 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
     let start_epoch = 10;
     let end_epoch = start_epoch + 200 * EPOCHS_IN_DAY;
     let sector_expiry = end_epoch + 100;
+    let sector_number = 7;
 
     let rt = setup();
     // activate deal1 so it fails later
-    let deal_id1 = generate_and_publish_deal(
+    let (deal_id1, _) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         start_epoch,
         end_epoch,
     );
-    batch_activate_deals(&rt, PROVIDER_ADDR, &[(sector_expiry, vec![deal_id1])], false);
+    batch_activate_deals(
+        &rt,
+        PROVIDER_ADDR,
+        &[(sector_number, sector_expiry, vec![deal_id1])],
+        false,
+    );
 
-    let deal_id2 = generate_and_publish_deal(
+    let (deal_id2, _) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
@@ -1782,11 +1615,13 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
         &rt,
         PROVIDER_ADDR,
         vec![SectorDeals {
+            sector_number,
             sector_expiry,
             sector_type: RegisteredSealProof::StackedDRG8MiBV1,
             deal_ids: vec![deal_id1, deal_id2],
         }],
         false,
+        &[],
     )
     .unwrap();
     let res: BatchActivateDealsResult =
@@ -1807,8 +1642,6 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
 
 #[test]
 fn locked_fund_tracking_states() {
-    // This test logic depends on fragile assumptions about how deal IDs are scheduled
-    // for periodic updates.
     let p1 = Address::new_id(201);
     let p2 = Address::new_id(202);
     let p3 = Address::new_id(203);
@@ -1851,14 +1684,11 @@ fn locked_fund_tracking_states() {
     assert!(st.total_client_storage_fee.is_zero());
 
     // Publish deal1, deal2, and deal3 with different client and provider
-    let deal_id1 = generate_and_publish_deal(&rt, c1, &m1, start_epoch, end_epoch);
-    let d1 = get_deal_proposal(&rt, deal_id1);
+    let (deal_id1, d1) = generate_and_publish_deal(&rt, c1, &m1, start_epoch, end_epoch);
 
-    let deal_id2 = generate_and_publish_deal(&rt, c2, &m2, start_epoch, end_epoch);
-    let d2 = get_deal_proposal(&rt, deal_id2);
+    let (deal_id2, d2) = generate_and_publish_deal(&rt, c2, &m2, start_epoch, end_epoch);
 
-    let deal_id3 = generate_and_publish_deal(&rt, c3, &m3, start_epoch, end_epoch);
-    let d3 = get_deal_proposal(&rt, deal_id3);
+    let (deal_id3, d3) = generate_and_publish_deal(&rt, c3, &m3, start_epoch, end_epoch);
 
     let csf = d1.total_storage_fee() + d2.total_storage_fee() + d3.total_storage_fee();
     let plc = &d1.provider_collateral + d2.provider_collateral + &d3.provider_collateral;
@@ -1868,13 +1698,15 @@ fn locked_fund_tracking_states() {
 
     // activation doesn't change anything
     let curr = rt.set_epoch(start_epoch - 1);
-    activate_deals(&rt, sector_expiry, p1, curr, &[deal_id1]);
-    activate_deals(&rt, sector_expiry, p2, curr, &[deal_id2]);
+    // Providers happened to use the same sector number.
+    let sector_number = 7;
+    activate_deals(&rt, sector_expiry, p1, curr, sector_number, &[deal_id1]);
+    activate_deals(&rt, sector_expiry, p2, curr, sector_number, &[deal_id2]);
 
     assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
 
     // make payment for p1 and p2, p3 times out as it has not been activated
-    let curr = rt.set_epoch(process_epoch(start_epoch, deal_id3));
+    let curr = rt.set_epoch(curr + 100);
     let last_payment_epoch = curr;
     rt.expect_send_simple(
         BURNT_FUNDS_ACTOR_ADDR,
@@ -1884,7 +1716,7 @@ fn locked_fund_tracking_states() {
         None,
         ExitCode::OK,
     );
-    cron_tick(&rt);
+    settle_deal_payments(&rt, OWNER_ADDR, &[deal_id1, deal_id2, deal_id3], &[], &[]);
     let duration = curr - start_epoch;
     let payment: TokenAmount = 2 * &d1.storage_price_per_epoch * duration;
     let mut csf = (csf - payment) - d3.total_storage_fee();
@@ -1892,37 +1724,24 @@ fn locked_fund_tracking_states() {
     let mut clc = clc - d3.client_collateral;
     assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
 
-    // Advance to just before the process epochs for deal 1 & 2, nothing changes before that.
-    let curr = rt.set_epoch(process_epoch(curr, deal_id1) - 1);
-    cron_tick(&rt);
-    assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
-
     // one more round of payment for deal1 and deal2
-    let curr = rt.set_epoch(process_epoch(curr, deal_id2));
+    let curr = rt.set_epoch(curr + 100);
     let duration = curr - last_payment_epoch;
     let payment = 2 * d1.storage_price_per_epoch * duration;
     csf -= payment;
-    cron_tick(&rt);
+    settle_deal_payments(&rt, OWNER_ADDR, &[deal_id1, deal_id2, deal_id3], &[], &[]);
     assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
 
-    // slash deal1
+    // terminate deal1
     rt.set_epoch(curr + 1);
-    terminate_deals(&rt, m1.provider, &[deal_id1]);
+    terminate_deals(&rt, m1.provider, &[sector_number], &[deal_id1]);
 
-    // cron tick to slash deal1 and expire deal2
+    // attempt to settle payments which terminates deal1 and expires deal2
     rt.set_epoch(end_epoch);
     csf = TokenAmount::zero();
     clc = TokenAmount::zero();
     plc = TokenAmount::zero();
-    rt.expect_send_simple(
-        BURNT_FUNDS_ACTOR_ADDR,
-        METHOD_SEND,
-        None,
-        d1.provider_collateral,
-        None,
-        ExitCode::OK,
-    );
-    cron_tick(&rt);
+    settle_deal_payments(&rt, OWNER_ADDR, &[deal_id1, deal_id2, deal_id3], &[deal_id2], &[]);
     assert_locked_fund_states(&rt, csf, plc, clc);
     check_state(&rt);
 }
@@ -2133,6 +1952,14 @@ fn insufficient_client_balance_in_a_batch() {
         ExitCode::OK,
     );
 
+    expect_emitted(
+        &rt,
+        "deal-published",
+        next_deal_id,
+        deal2.client.id().unwrap(),
+        deal2.provider.id().unwrap(),
+    );
+
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
 
     let ret: PublishStorageDealsReturn = rt
@@ -2275,6 +2102,14 @@ fn insufficient_provider_balance_in_a_batch() {
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
 
+    expect_emitted(
+        &rt,
+        "deal-published",
+        next_deal_id,
+        deal2.client.id().unwrap(),
+        deal2.provider.id().unwrap(),
+    );
+
     let ret: PublishStorageDealsReturn = rt
         .call::<MarketActor>(
             Method::PublishStorageDeals as u64,
@@ -2414,6 +2249,14 @@ fn psd_restricted_correctly() {
         TokenAmount::zero(),
         None,
         ExitCode::OK,
+    );
+
+    expect_emitted(
+        &rt,
+        "deal-published",
+        next_deal_id,
+        deal.client.id().unwrap(),
+        deal.provider.id().unwrap(),
     );
 
     let ret: PublishStorageDealsReturn = rt

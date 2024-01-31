@@ -1,7 +1,6 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use crate::ext::verifreg::AllocationID;
 use cid::{Cid, Version};
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::BytesSer;
@@ -11,6 +10,7 @@ use fvm_shared::commcid::{FIL_COMMITMENT_UNSEALED, SHA2_256_TRUNC254_PADDED};
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PaddedPieceSize;
+use fvm_shared::sector::SectorNumber;
 use libipld_core::ipld::Ipld;
 use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
 use std::convert::{TryFrom, TryInto};
@@ -136,12 +136,12 @@ pub struct ClientDealProposal {
 
 #[derive(Clone, Debug, PartialEq, Eq, Copy, Serialize_tuple, Deserialize_tuple)]
 pub struct DealState {
+    // 0 if not yet included in proven sector (0 is also a valid sector number)
+    pub sector_number: SectorNumber,
     // -1 if not yet included in proven sector
     pub sector_start_epoch: ChainEpoch,
     // -1 if deal state never updated
     pub last_updated_epoch: ChainEpoch,
     // -1 if deal never slashed
     pub slash_epoch: ChainEpoch,
-    // ID of the verified registry allocation/claim for this deal's data (0 if none).
-    pub verified_claim: AllocationID,
 }

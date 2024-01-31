@@ -3,21 +3,24 @@
 
 use cid::Cid;
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{strict_bytes, BytesDe};
+use fvm_ipld_encoding::{tuple::*, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
+use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::randomness::Randomness;
 use fvm_shared::sector::{
-    PoStProof, RegisteredPoStProof, RegisteredSealProof, RegisteredUpdateProof, SectorNumber,
-    SectorSize, StoragePower,
+    PoStProof, RegisteredAggregateProof, RegisteredPoStProof, RegisteredSealProof,
+    RegisteredUpdateProof, SectorNumber, SectorSize, StoragePower,
 };
 use fvm_shared::smooth::FilterEstimate;
+use fvm_shared::ActorID;
 
-use fil_actors_runtime::DealWeight;
+use crate::ext::verifreg::AllocationID;
+use fil_actors_runtime::{BatchReturn, DealWeight};
 use serde::{Deserialize, Serialize};
 
 use crate::commd::CompactCommD;
@@ -129,8 +132,72 @@ pub struct SubmitWindowedPoStParams {
 #[derive(Serialize_tuple, Deserialize_tuple)]
 pub struct ProveCommitSectorParams {
     pub sector_number: SectorNumber,
-    #[serde(with = "strict_bytes")]
-    pub proof: Vec<u8>,
+    pub proof: RawBytes,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
+pub struct ProveCommitSectors3Params {
+    // Activation manifest for each sector being proven.
+    pub sector_activations: Vec<SectorActivationManifest>,
+    // Proofs for each sector, parallel to activation manifests.
+    // Exactly one of sector_proofs or aggregate_proof must be non-empty.
+    pub sector_proofs: Vec<RawBytes>,
+    // Aggregate proof for all sectors.
+    // Exactly one of sector_proofs or aggregate_proof must be non-empty.
+    pub aggregate_proof: RawBytes,
+    // The proof type for the aggregate proof (ignored if no aggregate proof).
+    pub aggregate_proof_type: RegisteredAggregateProof,
+    // Whether to abort if any sector activation fails.
+    pub require_activation_success: bool,
+    // Whether to abort if any notification returns a non-zero exit code.
+    pub require_notification_success: bool,
+}
+
+// Data to activate a commitment to one sector and its data.
+// All pieces of data must be specified, whether or not not claiming a FIL+ activation or being
+// notified to a data consumer.
+// An implicit zero piece fills any remaining sector capacity.
+// Note: we should consider fast tracking the special case where there is only
+//  one piece not claiming or notifying other actors to allow an empty piece vector.
+//  We could interpret this as a single piece, size == sector size, cid == commD, empty allocation empty notify vector
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
+pub struct SectorActivationManifest {
+    // Sector to be activated.
+    pub sector_number: SectorNumber,
+    // Pieces comprising the sector content, in order.
+    pub pieces: Vec<PieceActivationManifest>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
+pub struct PieceActivationManifest {
+    // Piece data commitment.
+    pub cid: Cid,
+    // Piece size.
+    pub size: PaddedPieceSize,
+    // Identifies a verified allocation to be claimed.
+    pub verified_allocation_key: Option<VerifiedAllocationKey>,
+    // Synchronous notifications to be sent to other actors after activation.
+    pub notify: Vec<DataActivationNotification>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
+pub struct VerifiedAllocationKey {
+    pub client: ActorID,
+    pub id: AllocationID,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
+pub struct DataActivationNotification {
+    // Actor to be notified.
+    pub address: Address,
+    // Data to send in the notification.
+    pub payload: RawBytes,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct ProveCommitSectors3Return {
+    pub activation_results: BatchReturn,
 }
 
 #[derive(Serialize_tuple, Deserialize_tuple)]
@@ -335,7 +402,7 @@ pub struct SectorOnChainInfo {
     pub seal_proof: RegisteredSealProof,
     /// CommR
     pub sealed_cid: Cid,
-    pub deal_ids: Vec<DealID>,
+    pub deprecated_deal_ids: Vec<DealID>,
     /// Epoch during which the sector proof was accepted
     pub activation: ChainEpoch,
     /// Epoch during which the sector expires
@@ -393,8 +460,7 @@ pub struct DisputeWindowedPoStParams {
 #[derive(Debug, Clone, Serialize_tuple, Deserialize_tuple)]
 pub struct ProveCommitAggregateParams {
     pub sector_numbers: BitField,
-    #[serde(with = "strict_bytes")]
-    pub aggregate_proof: Vec<u8>,
+    pub aggregate_proof: RawBytes,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
@@ -405,8 +471,7 @@ pub struct ReplicaUpdate {
     pub new_sealed_cid: Cid,
     pub deals: Vec<DealID>,
     pub update_proof_type: RegisteredUpdateProof,
-    #[serde(with = "strict_bytes")]
-    pub replica_proof: Vec<u8>,
+    pub replica_proof: RawBytes,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
@@ -415,21 +480,41 @@ pub struct ProveReplicaUpdatesParams {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct ReplicaUpdate2 {
-    pub sector_number: SectorNumber,
-    pub deadline: u64,
-    pub partition: u64,
-    pub new_sealed_cid: Cid,
-    pub new_unsealed_cid: Cid,
-    pub deals: Vec<DealID>,
-    pub update_proof_type: RegisteredUpdateProof,
-    #[serde(with = "strict_bytes")]
-    pub replica_proof: Vec<u8>,
+pub struct ProveReplicaUpdates3Params {
+    pub sector_updates: Vec<SectorUpdateManifest>,
+    // Proofs for each sector, parallel to activation manifests.
+    // Exactly one of sector_proofs or aggregate_proof must be non-empty.
+    pub sector_proofs: Vec<RawBytes>,
+    // Aggregate proof for all sectors.
+    // Exactly one of sector_proofs or aggregate_proof must be non-empty.
+    pub aggregate_proof: RawBytes,
+    // The proof type for all sector update proofs, individually or before aggregation.
+    pub update_proofs_type: RegisteredUpdateProof,
+    // The proof type for the aggregate proof (ignored if no aggregate proof).
+    pub aggregate_proof_type: RegisteredAggregateProof,
+    // Whether to abort if any sector update activation fails.
+    pub require_activation_success: bool,
+    // Whether to abort if any notification returns a non-zero exit code.
+    pub require_notification_success: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-pub struct ProveReplicaUpdatesParams2 {
-    pub updates: Vec<ReplicaUpdate2>,
+pub struct SectorUpdateManifest {
+    pub sector: SectorNumber,
+    pub deadline: u64,
+    pub partition: u64,
+    pub new_sealed_cid: Cid, // CommR
+    // Declaration of all pieces that make up the new sector data, in order.
+    // Until we support re-snap, pieces must all be new because the sector was previously empty.
+    // Implicit "zero" piece fills any remaining capacity.
+    // These pieces imply the new unsealed sector CID.
+    pub pieces: Vec<PieceActivationManifest>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct ProveReplicaUpdates3Return {
+    pub activation_results: BatchReturn,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
@@ -505,4 +590,64 @@ pub struct GetPeerIDReturn {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
 pub struct GetMultiaddrsReturn {
     pub multi_addrs: Vec<BytesDe>,
+}
+
+// Notification of change committed to one or more sectors.
+// The relevant state must be already committed so the receiver can observe any impacts
+// at the sending miner actor.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct SectorContentChangedParams {
+    // Distinct sectors with changed content.
+    pub sectors: Vec<SectorChanges>,
+}
+
+// Description of changes to one sector's content.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct SectorChanges {
+    // Identifier of sector being updated.
+    pub sector: SectorNumber,
+    // Minimum epoch until which the data is committed to the sector.
+    // Note the sector may later be extended without necessarily another notification.
+    pub minimum_commitment_epoch: ChainEpoch,
+    // Information about some pieces added to (or retained in) the sector.
+    // This may be only a subset of sector content.
+    // Inclusion here does not mean the piece was definitely absent previously.
+    // Exclusion here does not mean a piece has been removed since a prior notification.
+    pub added: Vec<PieceChange>,
+}
+
+// Description of a piece of data committed to a sector.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+pub struct PieceChange {
+    pub data: Cid,
+    pub size: PaddedPieceSize,
+    // A receiver-specific identifier.
+    // E.g. an encoded deal ID which the provider claims this piece satisfies.
+    pub payload: RawBytes,
+}
+
+// For each piece in each sector, the notifee returns an exit code and
+// (possibly-empty) result data.
+// The miner actor will pass through results to its caller.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct SectorContentChangedReturn {
+    // A result for each sector that was notified, in the same order.
+    pub sectors: Vec<SectorReturn>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct SectorReturn {
+    // A result for each piece for the sector that was notified, in the same order.
+    pub added: Vec<PieceReturn>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
+#[serde(transparent)]
+pub struct PieceReturn {
+    // Indicates whether the receiver accepted the notification.
+    // The caller is free to ignore this, but may chose to abort and roll back.
+    pub accepted: bool,
 }

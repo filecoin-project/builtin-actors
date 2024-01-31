@@ -19,13 +19,17 @@ pub mod account {
 
 pub mod market {
     use super::*;
+    use fvm_ipld_bitfield::BitField;
 
     pub const VERIFY_DEALS_FOR_ACTIVATION_METHOD: u64 = 5;
     pub const BATCH_ACTIVATE_DEALS_METHOD: u64 = 6;
     pub const ON_MINER_SECTORS_TERMINATE_METHOD: u64 = 7;
 
+    pub const NO_ALLOCATION_ID: u64 = 0;
+
     #[derive(Serialize_tuple, Deserialize_tuple)]
     pub struct SectorDeals {
+        pub sector_number: SectorNumber,
         pub sector_type: RegisteredSealProof,
         pub sector_expiry: ChainEpoch,
         pub deal_ids: Vec<DealID>,
@@ -38,29 +42,16 @@ pub mod market {
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
-    pub struct VerifiedDealInfo {
+    pub struct ActivateDeal {
         pub client: ActorID,
         pub allocation_id: u64,
         pub data: Cid,
         pub size: PaddedPieceSize,
     }
 
-    impl Default for VerifiedDealInfo {
-        fn default() -> VerifiedDealInfo {
-            VerifiedDealInfo {
-                size: PaddedPieceSize(0),
-                client: 0,
-                allocation_id: 0,
-                data: Default::default(),
-            }
-        }
-    }
-
     #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
     pub struct SectorDealActivation {
-        #[serde(with = "bigint_ser")]
-        pub nonverified_deal_space: BigInt,
-        pub verified_infos: Vec<VerifiedDealInfo>,
+        pub activated: Vec<ActivateDeal>,
         pub unsealed_cid: Option<Cid>,
     }
 
@@ -73,13 +64,7 @@ pub mod market {
     #[derive(Serialize_tuple, Deserialize_tuple)]
     pub struct OnMinerSectorsTerminateParams {
         pub epoch: ChainEpoch,
-        pub deal_ids: Vec<DealID>,
-    }
-
-    #[derive(Serialize_tuple)]
-    pub struct OnMinerSectorsTerminateParamsRef<'a> {
-        pub epoch: ChainEpoch,
-        pub deal_ids: &'a [DealID],
+        pub sectors: BitField,
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple)]

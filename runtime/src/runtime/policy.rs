@@ -66,8 +66,14 @@ pub struct Policy {
     /// Maximum number of unique "declarations" in batch operations.
     pub declarations_max: u64,
 
-    /// The maximum number of sector infos that may be required to be loaded in a single invocation.
+    /// The maximum number of sector numbers addressable in a single invocation
+    /// (which implies also the max infos that may be loaded at once).
+    /// One upper bound on this is the max size of a storage block: 1MiB supports 130k at 8 bytes each,
+    /// though bitfields can compress this.
     pub addressed_sectors_max: u64,
+
+    /// The maximum number of partitions that can be proven in a single PoSt message.
+    pub posted_partitions_max: u64,
 
     pub max_pre_commit_randomness_lookback: ChainEpoch,
 
@@ -173,6 +179,7 @@ impl Default for Policy {
             addressed_partitions_max: policy_constants::ADDRESSED_PARTITIONS_MAX,
             declarations_max: policy_constants::DECLARATIONS_MAX,
             addressed_sectors_max: policy_constants::ADDRESSED_SECTORS_MAX,
+            posted_partitions_max: policy_constants::POSTED_PARTITIONS_MAX,
             max_pre_commit_randomness_lookback:
                 policy_constants::MAX_PRE_COMMIT_RANDOMNESS_LOOKBACK,
             pre_commit_challenge_delay: policy_constants::PRE_COMMIT_CHALLENGE_DELAY,
@@ -271,6 +278,8 @@ pub mod policy_constants {
 
     pub const ADDRESSED_SECTORS_MAX: u64 = 25_000;
 
+    pub const POSTED_PARTITIONS_MAX: u64 = 3;
+
     pub const MAX_PRE_COMMIT_RANDOMNESS_LOOKBACK: ChainEpoch = EPOCHS_IN_DAY + CHAIN_FINALITY;
 
     #[cfg(not(feature = "short-precommit"))]
@@ -358,30 +367,24 @@ impl ProofSet {
     /// Create a `ProofSet` for enabled `RegisteredPoStProof`s
     pub fn default_post_proofs() -> Self {
         let mut proofs = vec![false; REGISTERED_POST_PROOF_VARIANTS];
-        // TODO: v12: cleanup https://github.com/filecoin-project/builtin-actors/issues/1260
         #[cfg(feature = "sector-2k")]
         {
-            proofs[i64::from(RegisteredPoStProof::StackedDRGWindow2KiBV1) as usize] = true;
             proofs[i64::from(RegisteredPoStProof::StackedDRGWindow2KiBV1P1) as usize] = true;
         }
         #[cfg(feature = "sector-8m")]
         {
-            proofs[i64::from(RegisteredPoStProof::StackedDRGWindow8MiBV1) as usize] = true;
             proofs[i64::from(RegisteredPoStProof::StackedDRGWindow8MiBV1P1) as usize] = true;
         }
         #[cfg(feature = "sector-512m")]
         {
-            proofs[i64::from(RegisteredPoStProof::StackedDRGWindow512MiBV1) as usize] = true;
             proofs[i64::from(RegisteredPoStProof::StackedDRGWindow512MiBV1P1) as usize] = true;
         }
         #[cfg(feature = "sector-32g")]
         {
-            proofs[i64::from(RegisteredPoStProof::StackedDRGWindow32GiBV1) as usize] = true;
             proofs[i64::from(RegisteredPoStProof::StackedDRGWindow32GiBV1P1) as usize] = true;
         }
         #[cfg(feature = "sector-64g")]
         {
-            proofs[i64::from(RegisteredPoStProof::StackedDRGWindow64GiBV1) as usize] = true;
             proofs[i64::from(RegisteredPoStProof::StackedDRGWindow64GiBV1P1) as usize] = true;
         }
         ProofSet(proofs)

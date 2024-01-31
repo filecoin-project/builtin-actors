@@ -51,6 +51,7 @@ mod compact_sector_numbers_test {
                 ExitCode::USR_ILLEGAL_ARGUMENT,
                 h.pre_commit_sector(&rt, precommit, util::PreCommitConfig::default(), false),
             );
+            rt.reset();
         }
 
         {

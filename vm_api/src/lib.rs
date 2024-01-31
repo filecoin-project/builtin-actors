@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use anyhow::Error;
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::{
@@ -9,6 +10,7 @@ use fvm_ipld_encoding::{
 use fvm_shared::{
     address::Address,
     clock::ChainEpoch,
+    consensus::ConsensusFault,
     crypto::{
         hash::SupportedHashes,
         signature::{Signature, SECP_PUB_LEN, SECP_SIG_LEN, SECP_SIG_MESSAGE_HASH_SIZE},
@@ -16,7 +18,10 @@ use fvm_shared::{
     econ::TokenAmount,
     error::ExitCode,
     piece::PieceInfo,
-    sector::RegisteredSealProof,
+    sector::{
+        AggregateSealVerifyProofAndInfos, RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo,
+        WindowPoStVerifyInfo,
+    },
     MethodNum,
 };
 
@@ -31,15 +36,10 @@ pub mod trace;
 pub mod util;
 
 /// An abstract VM that is injected into integration tests
+#[allow(clippy::type_complexity)]
 pub trait VM {
     /// Returns the underlying blockstore of the VM
     fn blockstore(&self) -> &dyn Blockstore;
-
-    /// Get the current chain epoch
-    fn epoch(&self) -> ChainEpoch;
-
-    /// Sets the epoch to the specified value
-    fn set_epoch(&self, epoch: ChainEpoch);
 
     /// Get information about an actor
     fn actor(&self, address: &Address) -> Option<ActorState>;
@@ -76,20 +76,43 @@ pub trait VM {
     /// Take all the invocations that have been made since the last call to this method
     fn take_invocations(&self) -> Vec<InvocationTrace>;
 
-    /// Set the circulating supply constant for the network
-    fn set_circulating_supply(&self, supply: TokenAmount);
-
-    /// Get the circulating supply constant for the network
-    fn circulating_supply(&self) -> TokenAmount;
-
     /// Provides access to VM primitives
     fn primitives(&self) -> &dyn Primitives;
+
+    /// Provides access to VM primitives that can be mocked
+    fn mut_primitives(&self) -> &dyn MockPrimitives;
 
     /// Return a map of actor code CIDs to their corresponding types
     fn actor_manifest(&self) -> BTreeMap<Cid, Type>;
 
-    /// Return the root of the state tree
-    fn state_root(&self) -> Cid;
+    /// Returns a map of all actor addresses to their corresponding states
+    fn actor_states(&self) -> BTreeMap<Address, ActorState>;
+
+    // Overridable constants and extern behaviour
+
+    /// Get the current chain epoch
+    fn epoch(&self) -> ChainEpoch;
+
+    /// Sets the epoch to the specified value
+    fn set_epoch(&self, epoch: ChainEpoch);
+
+    /// Get the circulating supply constant for the network
+    fn circulating_supply(&self) -> TokenAmount;
+
+    /// Set the circulating supply constant for the network
+    fn set_circulating_supply(&self, supply: TokenAmount);
+
+    /// Get the current base fee
+    fn base_fee(&self) -> TokenAmount;
+
+    /// Set the current base fee
+    fn set_base_fee(&self, amount: TokenAmount);
+
+    /// Get the current timestamp
+    fn timestamp(&self) -> u64;
+
+    /// Set the current timestamp
+    fn set_timestamp(&self, timestamp: u64);
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -118,18 +141,12 @@ pub struct ActorState {
 
 pub fn new_actor(
     code: Cid,
-    head: Cid,
-    call_seq_num: u64,
+    state: Cid,
+    sequence: u64,
     balance: TokenAmount,
-    predictable_address: Option<Address>,
+    delegated_address: Option<Address>,
 ) -> ActorState {
-    ActorState {
-        code,
-        state: head,
-        sequence: call_seq_num,
-        balance,
-        delegated_address: predictable_address,
-    }
+    ActorState { code, state, sequence, balance, delegated_address }
 }
 
 /// Pure functions implemented as primitives by the runtime.
@@ -148,7 +165,7 @@ pub trait Primitives {
         &self,
         proof_type: RegisteredSealProof,
         pieces: &[PieceInfo],
-    ) -> Result<Cid, anyhow::Error>;
+    ) -> Result<Cid, Error>;
 
     /// Verifies that a signature is valid for an address and plaintext.
     fn verify_signature(
@@ -156,11 +173,92 @@ pub trait Primitives {
         signature: &Signature,
         signer: &Address,
         plaintext: &[u8],
-    ) -> Result<(), anyhow::Error>;
+    ) -> Result<(), Error>;
 
     fn recover_secp_public_key(
         &self,
         hash: &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
         signature: &[u8; SECP_SIG_LEN],
-    ) -> Result<[u8; SECP_PUB_LEN], anyhow::Error>;
+    ) -> Result<[u8; SECP_PUB_LEN], Error>;
+
+    /// Verifies a window proof of spacetime.
+    fn verify_post(&self, verify_info: &WindowPoStVerifyInfo) -> Result<(), anyhow::Error>;
+
+    /// Verifies that two block headers provide proof of a consensus fault:
+    /// - both headers mined by the same actor
+    /// - headers are different
+    /// - first header is of the same or lower epoch as the second
+    /// - at least one of the headers appears in the current chain at or after epoch `earliest`
+    /// - the headers provide evidence of a fault (see the spec for the different fault types).
+    /// The parameters are all serialized block headers. The third "extra" parameter is consulted only for
+    /// the "parent grinding fault", in which case it must be the sibling of h1 (same parent tipset) and one of the
+    /// blocks in the parent of h2 (i.e. h2's grandparent).
+    /// Returns nil and an error if the headers don't prove a fault.
+    fn verify_consensus_fault(
+        &self,
+        h1: &[u8],
+        h2: &[u8],
+        extra: &[u8],
+    ) -> Result<Option<ConsensusFault>, anyhow::Error>;
+
+    fn batch_verify_seals(&self, batch: &[SealVerifyInfo]) -> anyhow::Result<Vec<bool>>;
+
+    fn verify_aggregate_seals(
+        &self,
+        aggregate: &AggregateSealVerifyProofAndInfos,
+    ) -> Result<(), anyhow::Error>;
+
+    fn verify_replica_update(&self, replica: &ReplicaUpdateInfo) -> Result<(), anyhow::Error>;
+}
+
+#[allow(clippy::type_complexity)]
+pub trait MockPrimitives: Primitives {
+    /// Override the primitive hash_blake2b function
+    fn override_hash_blake2b(&self, f: fn(&[u8]) -> [u8; 32]);
+
+    /// Override the primitive hash function
+    fn override_hash(&self, f: fn(SupportedHashes, &[u8]) -> Vec<u8>);
+
+    /// Override the primitive hash_64 function
+    fn override_hash_64(&self, f: fn(SupportedHashes, &[u8]) -> ([u8; 64], usize));
+
+    ///Override the primitive compute_unsealed_sector_cid function
+    fn override_compute_unsealed_sector_cid(
+        &self,
+        f: fn(RegisteredSealProof, &[PieceInfo]) -> Result<Cid, Error>,
+    );
+
+    /// Override the primitive recover_secp_public_key function
+    fn override_recover_secp_public_key(
+        &self,
+        f: fn(
+            &[u8; SECP_SIG_MESSAGE_HASH_SIZE],
+            &[u8; SECP_SIG_LEN],
+        ) -> Result<[u8; SECP_PUB_LEN], Error>,
+    );
+
+    /// Override the primitive verify_post function
+    fn override_verify_post(&self, f: fn(&WindowPoStVerifyInfo) -> Result<(), Error>);
+
+    /// Override the primitive verify_consensus_fault function
+    fn override_verify_consensus_fault(
+        &self,
+        f: fn(&[u8], &[u8], &[u8]) -> Result<Option<ConsensusFault>, Error>,
+    );
+    /// Override the primitive batch_verify_seals function
+    fn override_batch_verify_seals(&self, f: fn(&[SealVerifyInfo]) -> Result<Vec<bool>, Error>);
+
+    /// Override the primitive verify_aggregate_seals function
+    fn override_verify_aggregate_seals(
+        &self,
+        f: fn(&AggregateSealVerifyProofAndInfos) -> Result<(), Error>,
+    );
+
+    /// Override the primitive verify_signature function
+    fn override_verify_signature(&self, f: fn(&Signature, &Address, &[u8]) -> Result<(), Error>);
+
+    /// Override the primitive verify_replica_update function
+    fn override_verify_replica_update(&self, f: fn(&ReplicaUpdateInfo) -> Result<(), Error>);
+
+    fn as_primitives(&self) -> &dyn Primitives;
 }

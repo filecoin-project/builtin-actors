@@ -1,3 +1,9 @@
+use cid::Cid;
+use export_macro::vm_test;
+use fil_actor_verifreg::Method as VerifregMethod;
+use fil_actors_runtime::runtime::Policy;
+use fil_actors_runtime::test_utils::{make_piece_cid, make_sealed_cid};
+use fil_actors_runtime::{DealWeight, EPOCHS_IN_DAY, VERIFIED_REGISTRY_ACTOR_ADDR};
 use fvm_ipld_bitfield::BitField;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::Zero;
@@ -6,18 +12,11 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 
-use fil_actor_market::{DealMetaArray, State as MarketState};
 use fil_actor_miner::{
     max_prove_commit_duration, power_for_sector, ExpirationExtension, ExpirationExtension2,
     ExtendSectorExpiration2Params, ExtendSectorExpirationParams, Method as MinerMethod, PowerPair,
-    ProveReplicaUpdatesParams2, ReplicaUpdate2, SectorClaim, SectorOnChainInfoFlags, Sectors,
+    ProveReplicaUpdatesParams, ReplicaUpdate, SectorClaim, SectorOnChainInfoFlags, Sectors,
     State as MinerState,
-};
-use fil_actor_verifreg::Method as VerifregMethod;
-use fil_actors_runtime::runtime::Policy;
-use fil_actors_runtime::test_utils::make_sealed_cid;
-use fil_actors_runtime::{
-    DealWeight, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use vm_api::trace::ExpectInvocation;
 use vm_api::util::{apply_ok, get_state, mutate_state, DynBlockstore};
@@ -27,9 +26,11 @@ use crate::expects::Expect;
 use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
     advance_by_deadline_to_index, advance_to_proving_deadline, bf_all, create_accounts,
-    create_miner, cron_tick, expect_invariants, get_deal, invariant_failure_patterns,
-    market_add_balance, market_publish_deal, miner_precommit_sector, miner_prove_sector,
+    create_miner, cron_tick, expect_invariants, invariant_failure_patterns, market_add_balance,
+    market_pending_deal_allocations, market_publish_deal, miner_precommit_one_sector_v2,
+    miner_prove_sector, override_compute_unsealed_sector_cid, precommit_meta_data_from_deals,
     sector_deadline, submit_windowed_post, verifreg_add_client, verifreg_add_verifier,
+    PrecommitMetadata,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -158,14 +159,14 @@ pub fn extend_legacy_sector_with_deals_test(v: &dyn VM, do_extend2: bool) {
     //
     // Precommit, prove and PoSt empty sector (more fully tested in TestCommitPoStFlow)
     //
-
-    miner_precommit_sector(
+    miner_precommit_one_sector_v2(
         v,
         &worker,
         &miner_id,
         seal_proof,
         sector_number,
-        deals,
+        precommit_meta_data_from_deals(v, &deals, seal_proof),
+        true,
         deal_start + 180 * EPOCHS_IN_DAY,
     );
 
@@ -320,9 +321,21 @@ pub fn extend_legacy_sector_with_deals_test(v: &dyn VM, do_extend2: bool) {
         v,
         &Policy::default(),
         &[invariant_failure_patterns::REWARD_STATE_EPOCH_MISMATCH.to_owned()],
+        None,
     );
 }
 
+#[vm_test]
+pub fn extend_legacy_sector_with_deals_extend2(v: &dyn VM) {
+    extend_legacy_sector_with_deals_test(v, true);
+}
+
+#[vm_test]
+pub fn extend_legacy_sector_with_deals(v: &dyn VM) {
+    extend_legacy_sector_with_deals_test(v, false);
+}
+
+#[vm_test]
 pub fn commit_sector_with_max_duration_deal_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -374,13 +387,14 @@ pub fn commit_sector_with_max_duration_deal_test(v: &dyn VM) {
     //
     // Precommit, prove and PoSt empty sector (more fully tested in TestCommitPoStFlow)
     //
-    miner_precommit_sector(
+    miner_precommit_one_sector_v2(
         v,
         &worker,
         &miner_id,
         seal_proof,
         sector_number,
-        deals,
+        precommit_meta_data_from_deals(v, &deals, seal_proof),
+        true,
         deal_start + deal_lifetime,
     );
 
@@ -413,6 +427,7 @@ pub fn commit_sector_with_max_duration_deal_test(v: &dyn VM) {
     assert_eq!(deal_lifetime, sector_info.expiration - sector_info.activation);
 }
 
+#[vm_test]
 pub fn extend_sector_up_to_max_relative_extension_test(v: &dyn VM) {
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -437,13 +452,14 @@ pub fn extend_sector_up_to_max_relative_extension_test(v: &dyn VM) {
     let sector_start =
         v.epoch() + max_prove_commit_duration(&Policy::default(), seal_proof).unwrap();
 
-    miner_precommit_sector(
+    miner_precommit_one_sector_v2(
         v,
         &worker,
         &miner_id,
         seal_proof,
         sector_number,
-        vec![],
+        PrecommitMetadata::default(),
+        true,
         sector_start + 180 * EPOCHS_IN_DAY,
     );
 
@@ -504,13 +520,19 @@ pub fn extend_sector_up_to_max_relative_extension_test(v: &dyn VM) {
     assert_eq!(policy.max_sector_expiration_extension, sector_info.expiration - v.epoch());
 }
 
+#[vm_test]
 pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
+    override_compute_unsealed_sector_cid(v);
+
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
     let (owner, worker, verifier, verified_client) = (addrs[0], addrs[0], addrs[1], addrs[2]);
     let worker_id = worker.id().unwrap();
     let sector_number: SectorNumber = 100;
     let policy = Policy::default();
+    let deal_label = "deal1".to_string();
+    let piece_cid = make_piece_cid(deal_label.as_bytes());
+    let piece_size = PaddedPieceSize(32u64 << 30);
 
     // create miner
     let miner_addr = create_miner(
@@ -530,7 +552,16 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
 
     let expiration = v.epoch() + 360 * EPOCHS_IN_DAY;
 
-    miner_precommit_sector(v, &worker, &miner_addr, seal_proof, sector_number, vec![], expiration);
+    miner_precommit_one_sector_v2(
+        v,
+        &worker,
+        &miner_addr,
+        seal_proof,
+        sector_number,
+        PrecommitMetadata::default(),
+        true,
+        expiration,
+    );
 
     // advance time by a day and prove the sector
     let prove_epoch = v.epoch() + EPOCHS_IN_DAY;
@@ -591,58 +622,58 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         &worker,
         &verified_client,
         &miner_addr,
-        "deal1".to_string(),
-        PaddedPieceSize(32u64 << 30),
+        deal_label,
+        piece_size,
         true,
         deal_start,
         340 * EPOCHS_IN_DAY,
     )
     .ids;
 
+    let claim_id = market_pending_deal_allocations(v, &deal_ids)[0];
+
     // replica update
     let new_sealed_cid = make_sealed_cid(b"replica1");
-    let deal = get_deal(v, deal_ids[0]);
-    let new_unsealed_cid = v
-        .primitives()
-        .compute_unsealed_sector_cid(
-            seal_proof,
-            &[PieceInfo { size: deal.piece_size, cid: deal.piece_cid }],
-        )
-        .unwrap();
 
     let (d_idx, p_idx) = sector_deadline(v, &miner_addr, sector_number);
-    let replica_update = ReplicaUpdate2 {
+    let replica_update = ReplicaUpdate {
         sector_number,
         deadline: d_idx,
         partition: p_idx,
         new_sealed_cid,
         deals: deal_ids.clone(),
         update_proof_type: fvm_shared::sector::RegisteredUpdateProof::StackedDRG32GiBV1,
-        replica_proof: vec![],
-        new_unsealed_cid,
+        replica_proof: vec![].into(),
     };
     let updated_sectors: BitField = apply_ok(
         v,
         &worker,
         &miner_addr,
         &TokenAmount::zero(),
-        MinerMethod::ProveReplicaUpdates2 as u64,
-        Some(ProveReplicaUpdatesParams2 { updates: vec![replica_update] }),
+        MinerMethod::ProveReplicaUpdates as u64,
+        Some(ProveReplicaUpdatesParams { updates: vec![replica_update] }),
     )
     .deserialize()
     .unwrap();
     assert_eq!(vec![sector_number], bf_all(updated_sectors));
 
     let old_power = power_for_sector(seal_proof.sector_size().unwrap(), &initial_sector_info);
+
+    let pieces: Vec<(Cid, u64)> = vec![(piece_cid, piece_size.0)];
+    let pis: Vec<PieceInfo> = vec![PieceInfo { cid: piece_cid, size: piece_size }];
+    let unsealed_cid = v.primitives().compute_unsealed_sector_cid(seal_proof, &pis).unwrap();
+
     // check for the expected subcalls
     ExpectInvocation {
         from: worker_id,
         to: miner_addr,
-        method: MinerMethod::ProveReplicaUpdates2 as u64,
+        method: MinerMethod::ProveReplicaUpdates as u64,
         subinvocs: Some(vec![
             Expect::market_activate_deals(
                 miner_id,
-                deal_ids.clone(),
+                deal_ids,
+                verified_client.id().unwrap(),
+                sector_number,
                 initial_sector_info.expiration,
                 initial_sector_info.seal_proof,
                 true,
@@ -651,6 +682,12 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
                 from: miner_id,
                 to: VERIFIED_REGISTRY_ACTOR_ADDR,
                 method: VerifregMethod::ClaimAllocations as u64,
+                events: vec![Expect::build_verifreg_event(
+                    "claim",
+                    claim_id,
+                    verified_client.id().unwrap(),
+                    miner_id,
+                )],
                 ..Default::default()
             },
             Expect::reward_this_epoch(miner_id),
@@ -661,6 +698,13 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
                 PowerPair { raw: StoragePower::zero(), qa: 9 * old_power.qa },
             ),
         ]),
+        events: vec![Expect::build_sector_activation_event(
+            "sector-updated",
+            miner_id,
+            sector_number,
+            Some(unsealed_cid),
+            &pieces,
+        )],
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());
@@ -672,26 +716,32 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         .get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number)
         .unwrap()
         .unwrap();
-    assert_eq!(StoragePower::zero(), sector_info_after_update.deal_weight);
     // 0 space time
+    assert_eq!(StoragePower::zero(), sector_info_after_update.deal_weight);
 
+    // 32 GiB * the remaining life of the sector
     assert_eq!(
         DealWeight::from((sector_info_after_update.expiration - v.epoch()) * (32i64 << 30)),
         sector_info_after_update.verified_deal_weight
     );
-    // 32 GiB * the remaining life of the sector
+
+    // power base epoch is updated correctly
+    assert_eq!(v.epoch(), sector_info_after_update.power_base_epoch);
+
+    // activation not changed
+    assert_eq!(initial_sector_info.activation, sector_info_after_update.activation);
+
+    // replaced day reward updated
+    assert_eq!(
+        initial_sector_info.expected_day_reward,
+        sector_info_after_update.replaced_day_reward
+    );
 
     // extend the updated sector
 
     // For clarity in checking power_base_epoch, we increment epoch by 1
     let curr_epoch = v.epoch();
     v.set_epoch(curr_epoch + 1);
-
-    let market_state: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
-    let blockstore = DynBlockstore::wrap(v.blockstore());
-    let deal_states = DealMetaArray::load(&market_state.states, &blockstore).unwrap();
-    let deal_state = deal_states.get(deal_ids[0]).unwrap().unwrap();
-    let claim_id = deal_state.verified_claim;
 
     let extension_params = ExtendSectorExpiration2Params {
         extensions: vec![ExpirationExtension2 {
@@ -720,14 +770,14 @@ pub fn extend_updated_sector_with_claims_test(v: &dyn VM) {
         .get_sector(&DynBlockstore::wrap(v.blockstore()), sector_number)
         .unwrap()
         .unwrap();
-    assert_eq!(StoragePower::zero(), sector_info_after_extension.deal_weight);
     // 0 space time
+    assert_eq!(StoragePower::zero(), sector_info_after_extension.deal_weight);
 
+    // 32 GiB * the remaining life of the sector
     assert_eq!(
         DealWeight::from((sector_info_after_extension.expiration - v.epoch()) * (32i64 << 30)),
         sector_info_after_extension.verified_deal_weight
     );
-    // 32 GiB * the remaining life of the sector
 
     assert_eq!(sector_info_after_extension.power_base_epoch, v.epoch());
     assert_eq!(sector_info_after_update.activation, sector_info_after_extension.activation);
