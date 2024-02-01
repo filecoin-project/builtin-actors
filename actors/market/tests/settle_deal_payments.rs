@@ -37,7 +37,7 @@ fn timedout_deal_is_slashed_and_deleted() {
     );
 
     // settle deal payments -> should time out and get slashed
-    settle_deal_payments(&rt, CLIENT_ADDR, &[deal_id]);
+    settle_deal_payments(&rt, CLIENT_ADDR, &[deal_id], &[], &[]);
 
     let client_acct = get_balance(&rt, &CLIENT_ADDR);
     assert_eq!(c_escrow, client_acct.balance);
@@ -77,7 +77,7 @@ fn can_manually_settle_deals_in_the_cron_queue() {
     rt.set_epoch(START_EPOCH + 100);
 
     // manually call settle_deal_payments
-    let ret = settle_deal_payments(&rt, addrs.provider, &[deal_id]);
+    let ret = settle_deal_payments(&rt, addrs.provider, &[deal_id], &[], &[]);
     let payment = ret.settlements[0].payment.clone();
     assert_eq!(&payment, &(&deal_proposal.storage_price_per_epoch * 100));
 
@@ -88,6 +88,14 @@ fn can_manually_settle_deals_in_the_cron_queue() {
     let provider_updated = get_balance(&rt, &addrs.provider);
     assert_eq!(&client_updated.balance, &incremental_client_escrow);
     assert_eq!(&provider_updated.balance, &incremental_provider_escrow);
+
+    expect_emitted(
+        &rt,
+        "deal-completed",
+        deal_id,
+        deal_proposal.client.id().unwrap(),
+        deal_proposal.provider.id().unwrap(),
+    );
 
     // advance to deal end epoch and call cron
     rt.set_epoch(END_EPOCH);
@@ -209,6 +217,7 @@ fn batch_settlement_of_deals_allows_partial_success() {
         CLIENT_ADDR,
         addrs.provider,
         &[terminating_sector_number],
+        &[terminated_id],
     );
 
     // attempt to settle all the deals + a random non-existent deal id
@@ -227,6 +236,8 @@ fn batch_settlement_of_deals_allows_partial_success() {
         &rt,
         addrs.provider,
         &[continuing_id, finished_id, terminated_id, unactivated_id, 9999],
+        &[finished_id],
+        &[],
     );
 
     assert_eq!(

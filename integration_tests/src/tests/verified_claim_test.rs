@@ -246,7 +246,15 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
     let new_max_term = new_claim_expiry_epoch - claim.term_start;
     assert!(new_max_term > original_max_term);
 
-    datacap_extend_claim(v, &verified_client2, &miner_id, claim_id, deal_size, new_max_term);
+    datacap_extend_claim(
+        v,
+        &verified_client2,
+        &miner_id,
+        claim_id,
+        deal_size,
+        new_max_term,
+        verified_client.id().unwrap(),
+    );
 
     // The miner extends the sector into the second year.
     let extended_expiration_2 = extended_expiration_1 + 60 * EPOCHS_IN_DAY;
@@ -448,7 +456,14 @@ pub fn expired_allocations_test(v: &dyn VM) {
     let mut allocs = verifreg_state.load_allocs(&store).unwrap();
     assert!(allocs.get(verified_client.id().unwrap(), alloc_id).unwrap().is_some());
 
-    verifreg_remove_expired_allocations(v, &worker, &verified_client, vec![], deal_size);
+    verifreg_remove_expired_allocations(
+        v,
+        &worker,
+        &verified_client,
+        vec![],
+        deal_size,
+        vec![alloc_id],
+    );
 
     // Allocation is gone
     let verifreg_state: VerifregState = get_state(v, &VERIFIED_REGISTRY_ACTOR_ADDR).unwrap();

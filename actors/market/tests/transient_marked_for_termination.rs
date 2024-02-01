@@ -92,6 +92,13 @@ fn deal_scheduled_for_termination_cannot_be_settled_manually() {
         None,
         ExitCode::OK,
     );
+    expect_emitted(
+        &rt,
+        "deal-terminated",
+        slashed_deal,
+        slashed_prop.client.id().unwrap(),
+        slashed_prop.provider.id().unwrap(),
+    );
     cron_tick(&rt);
 
     // assert that the slashed deal was terminated
@@ -99,7 +106,7 @@ fn deal_scheduled_for_termination_cannot_be_settled_manually() {
 
     // attempt to settle payment for both deals again - partially succeeds because not found deals are ignored
     rt.set_epoch(scheduled_epoch + 1);
-    let ret = settle_deal_payments(&rt, PROVIDER_ADDR, &[deal_id_1, slashed_deal]);
+    let ret = settle_deal_payments(&rt, PROVIDER_ADDR, &[deal_id_1, slashed_deal], &[], &[]);
     let expected_payment =
         deal_1_prop.storage_price_per_epoch * (scheduled_epoch + 1 - START_EPOCH);
     assert_eq!(ret.results.codes(), vec![ExitCode::OK, EX_DEAL_EXPIRED]);

@@ -338,7 +338,7 @@ fn worker_balance_after_withdrawal_must_account_for_slashed_funds() {
 
     // terminate the deal
     rt.set_epoch(publish_epoch + 1);
-    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number]);
+    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number], &[deal_id]);
     assert_deal_deleted(&rt, deal_id, &proposal, sector_number);
 
     // provider cannot withdraw any funds since it's been terminated
@@ -939,6 +939,14 @@ fn provider_and_client_addresses_are_resolved_before_persisting_state_and_sent_t
         ExitCode::OK,
     );
 
+    expect_emitted(
+        &rt,
+        "deal-published",
+        deal_id,
+        client_resolved.id().unwrap(),
+        provider_resolved.id().unwrap(),
+    );
+
     let ret: PublishStorageDealsReturn = rt
         .call::<MarketActor>(
             Method::PublishStorageDeals as u64,
@@ -1355,7 +1363,7 @@ fn terminating_a_deal_removes_proposal_synchronously() {
     );
 
     // terminating the deal deletes proposal, state and pending_proposal but leaves deal op in queue
-    terminate_deals(&rt, addrs.provider, &[sector_number]);
+    terminate_deals(&rt, addrs.provider, &[sector_number], &[deal_id]);
     assert_deal_deleted(&rt, deal_id, &proposal, sector_number);
     check_state(&rt);
 
@@ -1389,7 +1397,7 @@ fn settling_deal_fails_when_deal_update_epoch_is_in_the_future() {
 
     // set current epoch of the deal to the end epoch so it's picked up for "processing" in the next cron tick.
     rt.set_epoch(end_epoch);
-    let ret = settle_deal_payments(&rt, MinerAddresses::default().provider, &[deal_id]);
+    let ret = settle_deal_payments(&rt, MinerAddresses::default().provider, &[deal_id], &[], &[]);
     assert_eq!(ret.results.codes(), &[ExitCode::USR_ILLEGAL_STATE]);
 
     check_state_with_expected(
@@ -1427,6 +1435,7 @@ fn settling_payments_for_a_deal_at_its_start_epoch_results_in_zero_payment_and_n
         MinerAddresses::default().provider,
         start_epoch,
         deal_id,
+        false,
     );
     assert_eq!(TokenAmount::zero(), pay);
     assert_eq!(TokenAmount::zero(), slashed);
@@ -1520,6 +1529,7 @@ fn fail_when_current_epoch_greater_than_start_epoch_of_deal() {
             deal_ids: vec![deal_id],
         }],
         false,
+        &[],
     )
     .unwrap();
 
@@ -1557,6 +1567,7 @@ fn fail_when_end_epoch_of_deal_greater_than_sector_expiry() {
             deal_ids: vec![deal_id],
         }],
         false,
+        &[],
     )
     .unwrap();
 
@@ -1610,6 +1621,7 @@ fn fail_to_activate_all_deals_if_one_deal_fails() {
             deal_ids: vec![deal_id1, deal_id2],
         }],
         false,
+        &[],
     )
     .unwrap();
     let res: BatchActivateDealsResult =
@@ -1704,7 +1716,7 @@ fn locked_fund_tracking_states() {
         None,
         ExitCode::OK,
     );
-    settle_deal_payments(&rt, OWNER_ADDR, &[deal_id1, deal_id2, deal_id3]);
+    settle_deal_payments(&rt, OWNER_ADDR, &[deal_id1, deal_id2, deal_id3], &[], &[]);
     let duration = curr - start_epoch;
     let payment: TokenAmount = 2 * &d1.storage_price_per_epoch * duration;
     let mut csf = (csf - payment) - d3.total_storage_fee();
@@ -1717,19 +1729,19 @@ fn locked_fund_tracking_states() {
     let duration = curr - last_payment_epoch;
     let payment = 2 * d1.storage_price_per_epoch * duration;
     csf -= payment;
-    settle_deal_payments(&rt, OWNER_ADDR, &[deal_id1, deal_id2, deal_id3]);
+    settle_deal_payments(&rt, OWNER_ADDR, &[deal_id1, deal_id2, deal_id3], &[], &[]);
     assert_locked_fund_states(&rt, csf.clone(), plc.clone(), clc.clone());
 
     // terminate deal1
     rt.set_epoch(curr + 1);
-    terminate_deals(&rt, m1.provider, &[sector_number]);
+    terminate_deals(&rt, m1.provider, &[sector_number], &[deal_id1]);
 
     // attempt to settle payments which terminates deal1 and expires deal2
     rt.set_epoch(end_epoch);
     csf = TokenAmount::zero();
     clc = TokenAmount::zero();
     plc = TokenAmount::zero();
-    settle_deal_payments(&rt, OWNER_ADDR, &[deal_id1, deal_id2, deal_id3]);
+    settle_deal_payments(&rt, OWNER_ADDR, &[deal_id1, deal_id2, deal_id3], &[deal_id2], &[]);
     assert_locked_fund_states(&rt, csf, plc, clc);
     check_state(&rt);
 }
@@ -1940,6 +1952,14 @@ fn insufficient_client_balance_in_a_batch() {
         ExitCode::OK,
     );
 
+    expect_emitted(
+        &rt,
+        "deal-published",
+        next_deal_id,
+        deal2.client.id().unwrap(),
+        deal2.provider.id().unwrap(),
+    );
+
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
 
     let ret: PublishStorageDealsReturn = rt
@@ -2082,6 +2102,14 @@ fn insufficient_provider_balance_in_a_batch() {
 
     rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, WORKER_ADDR);
 
+    expect_emitted(
+        &rt,
+        "deal-published",
+        next_deal_id,
+        deal2.client.id().unwrap(),
+        deal2.provider.id().unwrap(),
+    );
+
     let ret: PublishStorageDealsReturn = rt
         .call::<MarketActor>(
             Method::PublishStorageDeals as u64,
@@ -2221,6 +2249,14 @@ fn psd_restricted_correctly() {
         TokenAmount::zero(),
         None,
         ExitCode::OK,
+    );
+
+    expect_emitted(
+        &rt,
+        "deal-published",
+        next_deal_id,
+        deal.client.id().unwrap(),
+        deal.provider.id().unwrap(),
     );
 
     let ret: PublishStorageDealsReturn = rt

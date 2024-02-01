@@ -24,7 +24,6 @@ use cid::Cid;
 use fil_actor_market::ext::account::{AuthenticateMessageParams, AUTHENTICATE_MESSAGE_METHOD};
 
 mod harness;
-
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_shared::sys::SendFlags;
 use harness::*;
@@ -374,6 +373,14 @@ fn fail_when_deals_have_different_providers() {
         TokenAmount::zero(),
         None,
         ExitCode::OK,
+    );
+
+    expect_emitted(
+        &rt,
+        "deal-published",
+        next_deal_id,
+        deal1.client.id().unwrap(),
+        deal1.provider.id().unwrap(),
     );
 
     let psd_ret: PublishStorageDealsReturn = rt

@@ -827,6 +827,7 @@ impl State {
         (
             /* slash_amount */ TokenAmount,
             /* payment_amount */ TokenAmount,
+            /* is_deal_completed */ bool,
             /* remove */ bool,
         ),
         ActorError,
@@ -859,7 +860,7 @@ impl State {
 
         // this is a safe no-op but can happen if a storage provider calls settle_deal_payments too early
         if deal.start_epoch > epoch {
-            return Ok((TokenAmount::zero(), TokenAmount::zero(), false));
+            return Ok((TokenAmount::zero(), TokenAmount::zero(), false, false));
         }
 
         let payment_end_epoch = if ever_slashed {
@@ -921,15 +922,15 @@ impl State {
             self.slash_balance(store, &deal.provider, &slashed, Reason::ProviderCollateral)
                 .context("slashing balance")?;
 
-            return Ok((slashed, payment_remaining + elapsed_payment, true));
+            return Ok((slashed, payment_remaining + elapsed_payment, false, true));
         }
 
         if epoch >= deal.end_epoch {
             self.process_deal_expired(store, deal, state)?;
-            return Ok((TokenAmount::zero(), elapsed_payment, true));
+            return Ok((TokenAmount::zero(), elapsed_payment, true, true));
         }
 
-        Ok((TokenAmount::zero(), elapsed_payment, false))
+        Ok((TokenAmount::zero(), elapsed_payment, false, false))
     }
 
     pub fn process_slashed_deal<BS>(

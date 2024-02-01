@@ -1,3 +1,4 @@
+use cid::Cid;
 use export_macro::vm_test;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
@@ -9,7 +10,6 @@ use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
 use fvm_shared::sector::{
     RegisteredAggregateProof, RegisteredSealProof, SectorNumber, StoragePower,
 };
-use integer_encoding::VarInt;
 use num_traits::Zero;
 
 use fil_actor_market::Method as MarketMethod;
@@ -29,7 +29,7 @@ use fil_actors_runtime::test_utils::make_piece_cid;
 use fil_actors_runtime::{
     EPOCHS_IN_DAY, EPOCHS_IN_YEAR, STORAGE_MARKET_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
 };
-use vm_api::trace::ExpectInvocation;
+use vm_api::trace::{EmittedEvent, ExpectInvocation};
 use vm_api::util::apply_ok;
 use vm_api::VM;
 
@@ -37,31 +37,15 @@ use crate::deals::{DealBatcher, DealOptions};
 use crate::expects::Expect;
 use crate::util::{
     advance_by_deadline_to_epoch, create_accounts, create_miner, datacap_create_allocations,
-    market_add_balance, market_list_deals, market_list_sectors_deals, precommit_sectors_v2,
-    sector_info, verifreg_add_client, verifreg_add_verifier, verifreg_list_claims,
-    PrecommitMetadata,
+    market_add_balance, market_list_deals, market_list_sectors_deals,
+    override_compute_unsealed_sector_cid, precommit_sectors_v2, sector_info, verifreg_add_client,
+    verifreg_add_verifier, verifreg_list_claims, PrecommitMetadata,
 };
 
 #[vm_test]
 pub fn prove_commit_sectors2_test(v: &dyn VM) {
     // Expectations depend on the correct unsealed CID for empty sector.
-    // TODO: move this code somewhere more accessible.
-    // This change was made during a long rebase during which structural change was not practical.
-    v.mut_primitives().override_compute_unsealed_sector_cid(
-        |proof_type: RegisteredSealProof, pis: &[PieceInfo]| {
-            if pis.is_empty() {
-                return Ok(CompactCommD::empty().get_cid(proof_type).unwrap());
-            }
-            let mut buf: Vec<u8> = Vec::new();
-            let ptv: i64 = proof_type.into();
-            buf.extend(ptv.encode_var_vec());
-            for p in pis {
-                buf.extend(&p.cid.to_bytes());
-                buf.extend(p.size.0.encode_var_vec())
-            }
-            Ok(make_piece_cid(&buf))
-        },
-    );
+    override_compute_unsealed_sector_cid(v);
     let policy = Policy::default();
     let addrs = create_accounts(v, 3, &TokenAmount::from_whole(10_000));
     let seal_proof = RegisteredSealProof::StackedDRG32GiBV1P1;
@@ -209,7 +193,7 @@ pub fn prove_commit_sectors2_test(v: &dyn VM) {
         v,
         meta.len(),
         meta.len(),
-        meta,
+        meta.clone(),
         &worker,
         &maddr,
         seal_proof,
@@ -239,6 +223,24 @@ pub fn prove_commit_sectors2_test(v: &dyn VM) {
         MinerMethod::ProveCommitSectors3 as u64,
         Some(params.clone()),
     );
+
+    let events: Vec<EmittedEvent> = manifests
+        .iter()
+        .enumerate()
+        .map(|(i, sa)| {
+            let unsealed_cid = meta.get(i).unwrap().commd.0;
+
+            let pieces: Vec<(Cid, u64)> = sa.pieces.iter().map(|p| (p.cid, p.size.0)).collect();
+            Expect::build_sector_activation_event(
+                "sector-activated",
+                miner_id,
+                sa.sector_number,
+                unsealed_cid,
+                &pieces,
+            )
+        })
+        .collect();
+
     ExpectInvocation {
         from: worker_id,
         to: maddr,
@@ -289,6 +291,11 @@ pub fn prove_commit_sectors2_test(v: &dyn VM) {
                     })
                     .unwrap(),
                 ),
+                events: vec![
+                    Expect::build_verifreg_event("claim", alloc_ids_s2[0], client_id, miner_id),
+                    Expect::build_verifreg_event("claim", alloc_ids_s2[1], client_id, miner_id),
+                    Expect::build_verifreg_event("claim", alloc_ids_s4[0], client_id, miner_id),
+                ],
                 ..Default::default()
             },
             Expect::reward_this_epoch(miner_id),
@@ -321,6 +328,7 @@ pub fn prove_commit_sectors2_test(v: &dyn VM) {
                 ..Default::default()
             },
         ]),
+        events,
         ..Default::default()
     }
     .matches(v.take_invocations().last().unwrap());

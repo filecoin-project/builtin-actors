@@ -130,7 +130,7 @@ fn activation() {
     // terminate early
     let terminate_epoch = activate_epoch + 100;
     rt.set_epoch(terminate_epoch);
-    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number]);
+    terminate_deals(&rt, PROVIDER_ADDR, &[sector_number], &[id]);
 
     // terminated deal had it's state cleaned up
     expect_abort_contains_message(

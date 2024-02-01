@@ -1,3 +1,4 @@
+use cid::Cid;
 use frc46_token::receiver::{FRC46TokenReceived, FRC46_TOKEN_TYPE};
 use frc46_token::token::types::BurnParams;
 use fvm_actor_utils::receiver::UniversalReceiverParams;
@@ -23,11 +24,13 @@ use fil_actor_miner::{IsControllingAddressParam, PowerPair};
 use fil_actor_power::{UpdateClaimedPowerParams, UpdatePledgeTotalParams};
 use fil_actor_verifreg::GetClaimsParams;
 use fil_actors_runtime::{
-    BURNT_FUNDS_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ID, REWARD_ACTOR_ADDR,
-    STORAGE_MARKET_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ID, STORAGE_POWER_ACTOR_ADDR,
-    STORAGE_POWER_ACTOR_ID, VERIFIED_REGISTRY_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ID,
+    EventBuilder, BURNT_FUNDS_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ADDR, DATACAP_TOKEN_ACTOR_ID,
+    REWARD_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ID,
+    STORAGE_POWER_ACTOR_ADDR, STORAGE_POWER_ACTOR_ID, VERIFIED_REGISTRY_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ID,
 };
-use vm_api::trace::ExpectInvocation;
+
+use vm_api::trace::{EmittedEvent, ExpectInvocation};
 
 /// Static helper functions for creating invocation expectations.
 pub struct Expect {}
@@ -42,6 +45,7 @@ impl Expect {
     pub fn market_activate_deals(
         from: ActorID,
         deals: Vec<DealID>,
+        client_id: ActorID,
         sector_number: SectorNumber,
         sector_expiry: ChainEpoch,
         sector_type: RegisteredSealProof,
@@ -50,13 +54,19 @@ impl Expect {
         let params = IpldBlock::serialize_cbor(&BatchActivateDealsParams {
             sectors: vec![SectorDeals {
                 sector_number,
-                deal_ids: deals,
+                deal_ids: deals.clone(),
                 sector_expiry,
                 sector_type,
             }],
             compute_cid,
         })
         .unwrap();
+
+        let events: Vec<EmittedEvent> = deals
+            .iter()
+            .map(|deal_id| Expect::build_market_event("deal-activated", *deal_id, client_id, from))
+            .collect();
+
         ExpectInvocation {
             from,
             to: STORAGE_MARKET_ACTOR_ADDR,
@@ -64,6 +74,7 @@ impl Expect {
             params: Some(params),
             value: Some(TokenAmount::zero()),
             subinvocs: Some(vec![]),
+            events,
             ..Default::default()
         }
     }
@@ -71,11 +82,20 @@ impl Expect {
         from: ActorID,
         epoch: ChainEpoch,
         sectors: Vec<SectorNumber>,
+        deals: Vec<(DealID, ActorID)>,
     ) -> ExpectInvocation {
         let bf = BitField::try_from_bits(sectors).unwrap();
         let params =
             IpldBlock::serialize_cbor(&OnMinerSectorsTerminateParams { epoch, sectors: bf })
                 .unwrap();
+
+        let events: Vec<EmittedEvent> = deals
+            .into_iter()
+            .map(|(deal_id, client)| {
+                Expect::build_market_event("deal-terminated", deal_id, client, from)
+            })
+            .collect();
+
         ExpectInvocation {
             from,
             to: STORAGE_MARKET_ACTOR_ADDR,
@@ -83,6 +103,7 @@ impl Expect {
             params: Some(params),
             value: Some(TokenAmount::zero()),
             subinvocs: Some(vec![Expect::burn(STORAGE_MARKET_ACTOR_ID, None)]),
+            events,
             ..Default::default()
         }
     }
@@ -208,11 +229,13 @@ impl Expect {
             ..Default::default()
         }
     }
+
     pub fn datacap_transfer_to_verifreg(
         from: ActorID,
         amount: TokenAmount,
         operator_data: RawBytes,
         burn: bool,
+        claim_events: Vec<EmittedEvent>,
     ) -> ExpectInvocation {
         let payload = IpldBlock::serialize_cbor(&FRC46TokenReceived {
             from,
@@ -244,11 +267,13 @@ impl Expect {
                     .unwrap(),
                 ),
                 subinvocs: Some(burn_invocs),
+                events: claim_events,
                 ..Default::default()
             }]),
             ..Default::default()
         }
     }
+
     pub fn verifreg_get_claims(
         from: ActorID,
         miner: ActorID,
@@ -341,5 +366,76 @@ impl Expect {
             subinvocs: Some(vec![]),
             ..Default::default()
         }
+    }
+
+    pub fn build_verifreg_event(
+        typ: &str,
+        id: u64,
+        client: ActorID,
+        provider: ActorID,
+    ) -> EmittedEvent {
+        EmittedEvent {
+            emitter: VERIFIED_REGISTRY_ACTOR_ID,
+            event: EventBuilder::new()
+                .typ(typ)
+                .field_indexed("id", &id)
+                .field_indexed("client", &client)
+                .field_indexed("provider", &provider)
+                .build()
+                .unwrap(),
+        }
+    }
+
+    pub fn build_market_event(
+        typ: &str,
+        deal_id: DealID,
+        client: ActorID,
+        provider: ActorID,
+    ) -> EmittedEvent {
+        EmittedEvent {
+            emitter: STORAGE_MARKET_ACTOR_ID,
+            event: EventBuilder::new()
+                .typ(typ)
+                .field_indexed("id", &deal_id)
+                .field_indexed("client", &client)
+                .field_indexed("provider", &provider)
+                .build()
+                .unwrap(),
+        }
+    }
+
+    pub fn build_miner_event(
+        typ: &str,
+        miner_id: ActorID,
+        sector_number: SectorNumber,
+    ) -> EmittedEvent {
+        EmittedEvent {
+            emitter: miner_id,
+            event: EventBuilder::new()
+                .typ(typ)
+                .field_indexed("sector", &sector_number)
+                .build()
+                .unwrap(),
+        }
+    }
+
+    pub fn build_sector_activation_event(
+        typ: &str,
+        miner_id: ActorID,
+        sector_number: SectorNumber,
+        unsealed_cid: Option<Cid>,
+        pieces: &Vec<(Cid, u64)>,
+    ) -> EmittedEvent {
+        let mut base_event = EventBuilder::new()
+            .typ(typ)
+            .field_indexed("sector", &sector_number)
+            .field_indexed("unsealed-cid", &unsealed_cid);
+
+        for piece in pieces {
+            base_event =
+                base_event.field_indexed("piece-cid", &piece.0).field("piece-size", &piece.1);
+        }
+
+        EmittedEvent { emitter: miner_id, event: base_event.build().unwrap() }
     }
 }
