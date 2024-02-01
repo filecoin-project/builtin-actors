@@ -1,5 +1,4 @@
 use cid::Cid;
-use export_macro::vm_test;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::bigint::BigInt;
@@ -7,11 +6,10 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::{PaddedPieceSize, PieceInfo};
-use fvm_shared::sector::{
-    RegisteredAggregateProof, RegisteredSealProof, SectorNumber, StoragePower,
-};
+use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
 use num_traits::Zero;
 
+use export_macro::vm_test;
 use fil_actor_market::Method as MarketMethod;
 use fil_actor_miner::{
     max_prove_commit_duration, CompactCommD, DataActivationNotification, PieceActivationManifest,
@@ -99,7 +97,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
         sector_activations: activations,
         sector_proofs: proofs,
         aggregate_proof: RawBytes::default(),
-        aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
+        aggregate_proof_type: None,
         require_activation_success: true,
         require_notification_success: true,
     };
@@ -260,7 +258,7 @@ pub fn prove_replica_update2_test(v: &dyn VM) {
         sector_proofs: proofs,
         aggregate_proof: RawBytes::default(),
         update_proofs_type: update_proof,
-        aggregate_proof_type: RegisteredAggregateProof::SnarkPackV2,
+        aggregate_proof_type: None,
         require_activation_success: true,
         require_notification_success: true,
     };

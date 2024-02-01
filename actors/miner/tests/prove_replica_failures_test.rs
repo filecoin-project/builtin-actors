@@ -3,6 +3,7 @@ use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::deal::DealID;
 use fvm_shared::error::ExitCode;
+use fvm_shared::sector::RegisteredAggregateProof::SnarkPackV2;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::ActorID;
 
@@ -98,7 +99,8 @@ fn reject_aggregate_proof() {
     let cfg = ProveReplicaUpdatesConfig {
         param_twiddle: Some(Box::new(|p: &mut ProveReplicaUpdates3Params| {
             p.sector_proofs = vec![];
-            p.aggregate_proof = RawBytes::new(vec![1, 2, 3, 4])
+            p.aggregate_proof = RawBytes::new(vec![1, 2, 3, 4]);
+            p.aggregate_proof_type = Some(SnarkPackV2);
         })),
         ..Default::default()
     };
