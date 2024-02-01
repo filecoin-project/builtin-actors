@@ -1015,6 +1015,33 @@ impl Actor {
         rt.validate_immediate_caller_is(
             info.control_addresses.iter().chain(&[info.worker, info.owner]),
         )?;
+        if !params.sector_proofs.is_empty() {
+            if !params.aggregate_proof.is_empty() {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "exactly one of sector proofs or aggregate proof must be non-empty"
+                ));
+            }
+            if params.aggregate_proof_type.is_some() {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "aggregate proof type must be empty when sector proofs are specified"
+                ));
+            }
+        } else {
+            if params.aggregate_proof.is_empty() {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "exactly one of sector proofs or aggregate proof must be non-empty"
+                ));
+            }
+            if params.aggregate_proof_type.is_none() {
+                return Err(actor_error!(
+                    illegal_argument,
+                    "aggregate proof type must be specified when aggregate proof is specified"
+                ));
+            }
+        }
         if params.sector_proofs.is_empty() == params.aggregate_proof.is_empty() {
             return Err(actor_error!(
                 illegal_argument,

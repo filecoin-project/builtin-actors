@@ -1,14 +1,13 @@
 #![allow(clippy::all)]
 
-use anyhow::anyhow;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::convert::TryInto;
 use std::iter;
 use std::ops::Neg;
 
+use anyhow::anyhow;
 use cid::multihash::MultihashDigest;
 use cid::Cid;
-use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fvm_ipld_amt::Amt;
 use fvm_ipld_bitfield::iter::Ranges;
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
@@ -91,6 +90,7 @@ use fil_actor_power::{
 use fil_actor_reward::{Method as RewardMethod, ThisEpochRewardReturn};
 use fil_actors_runtime::cbor::serialize;
 use fil_actors_runtime::runtime::{DomainSeparationTag, Runtime, RuntimePolicy};
+use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::{test_utils::*, BatchReturn, BatchReturnGen, EventBuilder};
 use fil_actors_runtime::{
     ActorDowncast, ActorError, Array, DealWeight, MessageAccumulator, BURNT_FUNDS_ACTOR_ADDR,
@@ -1139,17 +1139,27 @@ impl ActorHarness {
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, cfg.caller.unwrap_or(self.worker));
         rt.expect_validate_caller_addr(self.caller_addrs());
 
-        let mut params = ProveCommitSectors3Params {
-            sector_activations: sector_activations.into(),
-            aggregate_proof: if aggregate { make_proof(0) } else { RawBytes::default() },
-            sector_proofs: if !aggregate {
-                sector_activations.iter().map(|sa| make_proof(sa.sector_number as u8)).collect()
-            } else {
-                vec![]
-            },
-            aggregate_proof_type: Some(RegisteredAggregateProof::SnarkPackV2),
-            require_activation_success,
-            require_notification_success,
+        let mut params = if aggregate {
+            ProveCommitSectors3Params {
+                sector_activations: sector_activations.into(),
+                aggregate_proof: make_proof(0),
+                sector_proofs: vec![],
+                aggregate_proof_type: Some(RegisteredAggregateProof::SnarkPackV2),
+                require_activation_success,
+                require_notification_success,
+            }
+        } else {
+            ProveCommitSectors3Params {
+                sector_activations: sector_activations.into(),
+                aggregate_proof: RawBytes::default(),
+                sector_proofs: sector_activations
+                    .iter()
+                    .map(|sa| make_proof(sa.sector_number as u8))
+                    .collect(),
+                aggregate_proof_type: None,
+                require_activation_success,
+                require_notification_success,
+            }
         };
         if let Some(param_twiddle) = cfg.param_twiddle {
             param_twiddle(&mut params);
