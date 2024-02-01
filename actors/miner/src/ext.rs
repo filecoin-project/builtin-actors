@@ -42,7 +42,7 @@ pub mod market {
     }
 
     #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
-    pub struct ActivateDeal {
+    pub struct ActivatedDeal {
         pub client: ActorID,
         pub allocation_id: u64,
         pub data: Cid,
@@ -51,7 +51,7 @@ pub mod market {
 
     #[derive(Serialize_tuple, Deserialize_tuple, Clone)]
     pub struct SectorDealActivation {
-        pub activated: Vec<ActivateDeal>,
+        pub activated: Vec<ActivatedDeal>,
         pub unsealed_cid: Option<Cid>,
     }
 
