@@ -564,7 +564,7 @@ impl Actor {
             let mut batch_gen = BatchReturnGen::new(params.sectors.len());
             let mut activations: Vec<SectorDealActivation> = vec![];
             let mut activated_deals: HashSet<DealID> = HashSet::new();
-            let mut sectors_deals: Vec<(SectorNumber, SectorDealIDs)> = vec![];
+            let mut sectors_deals: Vec<(SectorNumber, Vec<DealID>)> = vec![];
 
             'sector: for sector in params.sectors {
                 let mut sector_deal_ids = sector.deal_ids.clone();
@@ -641,8 +641,7 @@ impl Actor {
                     None
                 };
 
-                sectors_deals
-                    .push((sector.sector_number, SectorDealIDs { deals: sector.deal_ids.clone() }));
+                sectors_deals.push((sector.sector_number, sector.deal_ids.clone()));
                 activations.push(SectorDealActivation { activated, unsealed_cid: data_commitment });
 
                 for (deal_id, proposal) in sector.deal_ids.iter().zip(&validated_proposals) {
@@ -686,7 +685,7 @@ impl Actor {
 
             let mut deal_states: Vec<(DealID, DealState)> = vec![];
             let mut activated_deals: HashSet<DealID> = HashSet::new();
-            let mut sectors_deals: Vec<(SectorNumber, SectorDealIDs)> = vec![];
+            let mut sectors_deals: Vec<(SectorNumber, Vec<DealID>)> = vec![];
             let mut sectors_ret: Vec<ext::miner::SectorReturn> = vec![];
 
             for sector in &params.sectors {
@@ -762,7 +761,7 @@ impl Actor {
                     ret.accepted = true;
                 }
 
-                sectors_deals.push((sector.sector, SectorDealIDs { deals: sector_deal_ids }));
+                sectors_deals.push((sector.sector, sector_deal_ids));
                 assert_eq!(pieces_ret.len(), sector.added.len(), "mismatched piece returns");
                 sectors_ret.push(ext::miner::SectorReturn { added: pieces_ret });
             }

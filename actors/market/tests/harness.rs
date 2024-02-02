@@ -31,9 +31,9 @@ use fil_actor_market::ext::miner::{
 use fil_actor_market::ext::verifreg::{AllocationID, AllocationRequest, AllocationsResponse};
 use fil_actor_market::{
     deal_cid, deal_get_payment_remaining, BatchActivateDealsParams, BatchActivateDealsResult,
-    PendingDealAllocationsMap, ProviderSectorsMap, SectorDealIDs, SectorDealsMap,
-    SettleDealPaymentsParams, SettleDealPaymentsReturn, PENDING_ALLOCATIONS_CONFIG,
-    PROVIDER_SECTORS_CONFIG, SECTOR_DEALS_CONFIG,
+    PendingDealAllocationsMap, ProviderSectorsMap, SectorDealsMap, SettleDealPaymentsParams,
+    SettleDealPaymentsReturn, PENDING_ALLOCATIONS_CONFIG, PROVIDER_SECTORS_CONFIG,
+    SECTOR_DEALS_CONFIG,
 };
 use fil_actor_market::{
     ext, ext::miner::GetControlAddressesReturnParams, next_update_epoch,
@@ -567,9 +567,9 @@ pub fn get_sector_deal_ids(
         sector_numbers
             .iter()
             .flat_map(|sector_number| {
-                let deals: Option<&SectorDealIDs> = sector_deals.get(sector_number).unwrap();
+                let deals: Option<&Vec<DealID>> = sector_deals.get(sector_number).unwrap();
                 match deals {
-                    Some(deals) => deals.deals.clone(),
+                    Some(deals) => deals.clone(),
                     None => vec![],
                 }
             })

@@ -83,15 +83,8 @@ pub struct State {
     /// or has data replaced.
     /// Grouping by provider limits the cost of operations in the expected use case
     /// of multiple sectors all belonging to the same provider.
-    /// HAMT[ActorID]HAMT[SectorNumber]SectorDealIDs
+    /// HAMT[ActorID]HAMT[SectorNumber][]DealID
     pub provider_sectors: Cid,
-}
-
-/// IDs of deals associated with a single sector.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize_tuple, Deserialize_tuple)]
-#[serde(transparent)]
-pub struct SectorDealIDs {
-    pub deals: Vec<DealID>,
 }
 
 pub type PendingDealAllocationsMap<BS> = Map2<BS, DealID, AllocationID>;
@@ -102,7 +95,7 @@ pub type ProviderSectorsMap<BS> = Map2<BS, ActorID, Cid>;
 pub const PROVIDER_SECTORS_CONFIG: Config =
     Config { bit_width: HAMT_BIT_WIDTH, ..DEFAULT_HAMT_CONFIG };
 
-pub type SectorDealsMap<BS> = Map2<BS, SectorNumber, SectorDealIDs>;
+pub type SectorDealsMap<BS> = Map2<BS, SectorNumber, Vec<DealID>>;
 pub const SECTOR_DEALS_CONFIG: Config = Config { bit_width: HAMT_BIT_WIDTH, ..DEFAULT_HAMT_CONFIG };
 
 impl State {
@@ -599,7 +592,7 @@ impl State {
         &mut self,
         store: &impl Blockstore,
         provider: ActorID,
-        sector_deal_ids: &[(SectorNumber, SectorDealIDs)],
+        sector_deal_ids: &[(SectorNumber, Vec<DealID>)],
     ) -> Result<(), ActorError> {
         let mut provider_sectors = self.load_provider_sectors(store)?;
         let mut sector_deals = load_provider_sector_deals(store, &provider_sectors, provider)?;
@@ -610,10 +603,10 @@ impl State {
                 .get(sector_number)
                 .context_code(ExitCode::USR_ILLEGAL_STATE, "failed to read sector deals")?;
             if let Some(existing_deal_ids) = existing_deal_ids {
-                new_deals.deals.extend(existing_deal_ids.deals.iter());
+                new_deals.extend(existing_deal_ids.iter());
             }
-            new_deals.deals.sort();
-            new_deals.deals.dedup();
+            new_deals.sort();
+            new_deals.dedup();
             sector_deals
                 .set(sector_number, new_deals)
                 .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
@@ -639,11 +632,11 @@ impl State {
         let mut popped_sector_deals = Vec::new();
         let mut flush = false;
         for sector_number in sector_numbers {
-            let deals: Option<SectorDealIDs> = sector_deals
+            let deals: Option<Vec<DealID>> = sector_deals
                 .delete(&sector_number)
                 .with_context(|| format!("provider {}", provider))?;
             if let Some(deals) = deals {
-                popped_sector_deals.extend(deals.deals.iter());
+                popped_sector_deals.extend(deals.iter());
                 flush = true;
             }
         }
@@ -687,14 +680,13 @@ impl State {
                     // Loading into a HashSet could be an improvement for large collections of deals
                     // in a single sector being removed at one time.
                     let new_deals = existing_deal_ids
-                        .deals
                         .iter()
                         .filter(|deal_id| !deals_to_remove.contains(*deal_id))
                         .cloned()
                         .collect();
 
                     sector_deals
-                        .set(sector_number, SectorDealIDs { deals: new_deals })
+                        .set(sector_number, new_deals)
                         .with_context_code(ExitCode::USR_ILLEGAL_STATE, || {
                             format!("failed to set sector deals for {} {}", provider, sector_number)
                         })?;
