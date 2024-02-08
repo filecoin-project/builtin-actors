@@ -1,4 +1,5 @@
 use fvm_shared::address::Address;
+use fvm_shared::bigint::bigint_ser::BigIntSer;
 use lazy_static::lazy_static;
 
 mod harness;
@@ -447,7 +448,7 @@ mod clients {
             EventBuilder::new()
                 .typ("verifier-balance")
                 .field_indexed("verifier", &VERIFIER.id().unwrap())
-                .field("balance", &(allowance_verifier - allowance_client))
+                .field("balance", &BigIntSer(&(allowance_verifier - allowance_client)))
                 .build()
                 .unwrap(),
         );

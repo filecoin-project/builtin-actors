@@ -143,7 +143,7 @@ impl Harness {
             EventBuilder::new()
                 .typ("verifier-balance")
                 .field_indexed("verifier", &verifier_resolved.id().unwrap())
-                .field("balance", &allowance)
+                .field("balance", &BigIntSer(allowance))
                 .build()?,
         );
 
@@ -166,7 +166,7 @@ impl Harness {
             EventBuilder::new()
                 .typ("verifier-balance")
                 .field_indexed("verifier", &verifier.id().unwrap())
-                .field("balance", &DataCap::zero())
+                .field("balance", &BigIntSer(&DataCap::zero()))
                 .build()?,
         );
         rt.set_caller(*ACCOUNT_ACTOR_CODE_ID, self.root);
@@ -234,7 +234,7 @@ impl Harness {
             EventBuilder::new()
                 .typ("verifier-balance")
                 .field_indexed("verifier", &verifier.id().unwrap())
-                .field("balance", &(verifier_balance - allowance))
+                .field("balance", &BigIntSer(&(verifier_balance - allowance)))
                 .build()?,
         );
         let ret = rt.call::<VerifregActor>(

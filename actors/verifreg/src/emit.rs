@@ -4,6 +4,7 @@ use crate::{ActorError, AllocationID};
 use crate::{ClaimID, DataCap};
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::EventBuilder;
+use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::ActorID;
 
 /// Indicates a new value for a verifier's datacap balance.
@@ -18,7 +19,7 @@ pub fn verifier_balance(
         &EventBuilder::new()
             .typ("verifier-balance")
             .field_indexed("verifier", &verifier)
-            .field("balance", new_balance)
+            .field("balance", &BigIntSer(new_balance))
             .build()?,
     )
 }
