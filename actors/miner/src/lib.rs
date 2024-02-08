@@ -11,6 +11,7 @@ use anyhow::{anyhow, Error};
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
 use cid::multihash::Code::Blake2b256;
 use cid::Cid;
+use fil_actors_runtime::runtime::policy_constants::MAX_SECTOR_NUMBER;
 use fvm_ipld_bitfield::{BitField, Validate};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -24,7 +25,12 @@ use fvm_shared::error::*;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::*;
 use fvm_shared::reward::ThisEpochRewardReturn;
-use fvm_shared::sector::*;
+use fvm_shared::sector::{
+    AggregateSealVerifyInfo, AggregateSealVerifyProofAndInfos, InteractiveSealRandomness,
+    PoStProof, RegisteredAggregateProof, RegisteredPoStProof, RegisteredSealProof,
+    RegisteredUpdateProof, ReplicaUpdateInfo, SealRandomness, SealVerifyInfo, SectorID, SectorInfo,
+    SectorNumber, SectorSize, StoragePower, WindowPoStVerifyInfo,
+};
 use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use itertools::Itertools;

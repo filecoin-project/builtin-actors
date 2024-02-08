@@ -221,9 +221,13 @@ impl Default for Policy {
 
 pub mod policy_constants {
     use fvm_shared::clock::ChainEpoch;
-    use fvm_shared::clock::EPOCH_DURATION_SECONDS;
+    use fvm_shared::sector::SectorNumber;
 
     use crate::builtin::*;
+
+    /// The maximum assignable sector number.
+    /// Raising this would require modifying our AMT implementation.
+    pub const MAX_SECTOR_NUMBER: SectorNumber = i64::MAX as u64;
 
     // See comments on Policy struct.
     pub const MAX_AGGREGATED_SECTORS: u64 = 819;
