@@ -31,6 +31,7 @@ log = { workspace = true }
 num-derive = { workspace = true }
 num-traits = { workspace = true }
 serde = { workspace = true }
+lazy_static = { workspace = true }
 
 [dev-dependencies]
 fil_actors_runtime = { workspace = true, features = ["test_utils", "sector-default"] }
@@ -41,7 +42,6 @@ fvm_ipld_amt = { workspace = true }
 multihash = { workspace = true }
 regex = { workspace = true }
 itertools = { workspace = true }
-lazy_static = { workspace = true }
 
 [features]
 fil-actor = ["fil_actors_runtime/fil-actor"]
