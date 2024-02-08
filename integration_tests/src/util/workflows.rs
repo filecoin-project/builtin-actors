@@ -14,6 +14,7 @@ use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::BytesDe;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
+use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::crypto::signature::SignatureType;
@@ -764,7 +765,7 @@ pub fn verifier_balance_event(verifier: ActorID, data_cap: DataCap) -> EmittedEv
         event: EventBuilder::new()
             .typ("verifier-balance")
             .field_indexed("verifier", &verifier)
-            .field("balance", &data_cap)
+            .field("balance", &BigIntSer(&data_cap))
             .build()
             .unwrap(),
     }
