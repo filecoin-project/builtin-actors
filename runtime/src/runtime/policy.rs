@@ -221,7 +221,6 @@ impl Default for Policy {
 
 pub mod policy_constants {
     use fvm_shared::clock::ChainEpoch;
-    use fvm_shared::clock::EPOCH_DURATION_SECONDS;
     use fvm_shared::sector::SectorNumber;
 
     use crate::builtin::*;
