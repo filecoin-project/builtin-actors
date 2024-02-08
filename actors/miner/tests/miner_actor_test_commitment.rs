@@ -3,6 +3,7 @@ use fil_actor_miner::{
     VestSpec,
 };
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
+use fil_actors_runtime::runtime::policy_constants::MAX_SECTOR_NUMBER;
 use fil_actors_runtime::test_utils::*;
 use fvm_shared::address::Address;
 use fvm_shared::clock::ChainEpoch;
@@ -10,7 +11,7 @@ use fvm_shared::consensus::{ConsensusFault, ConsensusFaultType};
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::sector::{RegisteredSealProof, SectorNumber, MAX_SECTOR_NUMBER};
+use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
 
 use num_traits::Zero;
 

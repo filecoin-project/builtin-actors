@@ -1,5 +1,6 @@
 use cid::Cid;
 use export_macro::vm_test;
+use fil_actors_runtime::runtime::policy_constants::MAX_SECTOR_NUMBER;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
@@ -8,7 +9,7 @@ use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::randomness::Randomness;
-use fvm_shared::sector::{PoStProof, RegisteredSealProof, SectorNumber, MAX_SECTOR_NUMBER};
+use fvm_shared::sector::{PoStProof, RegisteredSealProof, SectorNumber};
 
 use crate::expects::Expect;
 use crate::util::{

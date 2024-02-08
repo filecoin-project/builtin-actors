@@ -8,6 +8,7 @@ use std::ops::Neg;
 use anyhow::{anyhow, Error};
 use cid::multihash::Code;
 use cid::Cid;
+use fil_actors_runtime::runtime::policy_constants::MAX_SECTOR_NUMBER;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
     actor_error, make_empty_map, make_map_with_root_and_bitwidth, u64_key, ActorDowncast,
@@ -24,7 +25,7 @@ use fvm_shared::address::Address;
 use fvm_shared::clock::{ChainEpoch, QuantSpec, EPOCH_UNDEFINED};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, SectorSize, MAX_SECTOR_NUMBER};
+use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, SectorSize};
 use fvm_shared::{ActorID, HAMT_BIT_WIDTH};
 use itertools::Itertools;
 use num_traits::Zero;

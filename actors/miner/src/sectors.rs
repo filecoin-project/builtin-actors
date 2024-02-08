@@ -5,12 +5,13 @@ use std::collections::BTreeSet;
 
 use anyhow::anyhow;
 use cid::Cid;
+use fil_actors_runtime::runtime::policy_constants::MAX_SECTOR_NUMBER;
 use fil_actors_runtime::{actor_error, ActorDowncast, ActorError, Array, AsActorError};
 use fvm_ipld_amt::Error as AmtError;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::error::ExitCode;
-use fvm_shared::sector::{SectorNumber, MAX_SECTOR_NUMBER};
+use fvm_shared::sector::SectorNumber;
 
 use super::SectorOnChainInfo;
 
