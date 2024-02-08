@@ -11,9 +11,7 @@ use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, POSEIDON_BLS12_381_A1_FC1};
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::sector::{
-    RegisteredPoStProof, RegisteredSealProof, SectorQuality, SectorSize, StoragePower,
-};
+use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof, SectorSize, StoragePower};
 use lazy_static::lazy_static;
 
 use super::types::SectorOnChainInfo;
@@ -110,16 +108,16 @@ pub const MIN_SECTOR_EXPIRATION: i64 = 180 * EPOCHS_IN_DAY;
 
 /// DealWeight and VerifiedDealWeight are spacetime occupied by regular deals and verified deals in a sector.
 /// Sum of DealWeight and VerifiedDealWeight should be less than or equal to total SpaceTime of a sector.
-/// Sectors full of VerifiedDeals will have a SectorQuality of VerifiedDealWeightMultiplier/QualityBaseMultiplier.
-/// Sectors full of Deals will have a SectorQuality of DealWeightMultiplier/QualityBaseMultiplier.
-/// Sectors with neither will have a SectorQuality of QualityBaseMultiplier/QualityBaseMultiplier.
-/// SectorQuality of a sector is a weighted average of multipliers based on their proportions.
+/// Sectors full of VerifiedDeals will have a BigInt of VerifiedDealWeightMultiplier/QualityBaseMultiplier.
+/// Sectors full of Deals will have a BigInt of DealWeightMultiplier/QualityBaseMultiplier.
+/// Sectors with neither will have a BigInt of QualityBaseMultiplier/QualityBaseMultiplier.
+/// BigInt of a sector is a weighted average of multipliers based on their proportions.
 pub fn quality_for_weight(
     size: SectorSize,
     duration: ChainEpoch,
     deal_weight: &DealWeight,
     verified_weight: &DealWeight,
-) -> SectorQuality {
+) -> BigInt {
     let sector_space_time = BigInt::from(size as u64) * BigInt::from(duration);
     let total_deal_space_time = deal_weight + verified_weight;
 
@@ -129,7 +127,7 @@ pub fn quality_for_weight(
     let weighted_verified_space_time = verified_weight * &*VERIFIED_DEAL_WEIGHT_MULTIPLIER;
     let weighted_sum_space_time =
         weighted_base_space_time + weighted_deal_space_time + weighted_verified_space_time;
-    let scaled_up_weighted_sum_space_time: SectorQuality =
+    let scaled_up_weighted_sum_space_time: BigInt =
         weighted_sum_space_time << SECTOR_QUALITY_PRECISION;
 
     scaled_up_weighted_sum_space_time
