@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 use std::{cell::RefCell, collections::HashMap, collections::HashSet};
 
 use cid::Cid;
+use fil_actors_runtime::reward::{FilterEstimate, ThisEpochRewardReturn};
 use frc46_token::token::types::{TransferFromParams, TransferFromReturn};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -14,9 +15,7 @@ use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::crypto::signature::Signature;
 use fvm_shared::deal::DealID;
 use fvm_shared::piece::PaddedPieceSize;
-use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber, StoragePower};
-use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::sys::SendFlags;
 use fvm_shared::{
     address::Address, econ::TokenAmount, error::ExitCode, ActorID, METHOD_CONSTRUCTOR, METHOD_SEND,

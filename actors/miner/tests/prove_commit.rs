@@ -4,7 +4,6 @@ use fvm_shared::{
     econ::TokenAmount,
     error::ExitCode,
     sector::StoragePower,
-    smooth::FilterEstimate,
 };
 use std::collections::HashMap;
 
@@ -14,7 +13,8 @@ use fil_actor_miner::{
     qa_power_for_weight, qa_power_max, PowerPair, PreCommitSectorBatchParams, VestSpec,
 };
 use fil_actors_runtime::{
-    runtime::policy_constants::MAX_SECTOR_NUMBER, test_utils::make_piece_cid,
+    reward::FilterEstimate, runtime::policy_constants::MAX_SECTOR_NUMBER,
+    test_utils::make_piece_cid,
 };
 use fil_actors_runtime::{runtime::Runtime, test_utils::expect_abort, DealWeight};
 use util::*;

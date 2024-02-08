@@ -16,14 +16,14 @@ use fvm_shared::sector::{
     PoStProof, RegisteredAggregateProof, RegisteredPoStProof, RegisteredSealProof,
     RegisteredUpdateProof, SectorNumber, SectorSize, StoragePower,
 };
-use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::ActorID;
-
-use crate::ext::verifreg::AllocationID;
-use fil_actors_runtime::{BatchReturn, DealWeight};
 use serde::{Deserialize, Serialize};
 
+use fil_actors_runtime::reward::FilterEstimate;
+use fil_actors_runtime::{BatchReturn, DealWeight};
+
 use crate::commd::CompactCommD;
+use crate::ext::verifreg::AllocationID;
 use crate::ext::verifreg::ClaimID;
 
 use super::beneficiary::*;

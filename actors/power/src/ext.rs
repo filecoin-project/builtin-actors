@@ -5,9 +5,10 @@ use fvm_ipld_encoding::{strict_bytes, BytesDe};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser;
 use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, StoragePower};
-use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::METHOD_CONSTRUCTOR;
 use num_derive::FromPrimitive;
+
+use fil_actors_runtime::reward::FilterEstimate;
 
 pub mod init {
     use super::*;

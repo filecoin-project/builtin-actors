@@ -8,9 +8,9 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
-use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::ActorID;
 
+use fil_actors_runtime::reward::FilterEstimate;
 use fil_actors_runtime::BatchReturn;
 
 pub mod account {

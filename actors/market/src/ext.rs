@@ -5,7 +5,6 @@ use fvm_shared::bigint::bigint_ser;
 use fvm_shared::econ::TokenAmount;
 
 use fvm_shared::sector::StoragePower;
-use fvm_shared::smooth::FilterEstimate;
 
 pub mod account {
     use super::*;
@@ -150,6 +149,8 @@ pub mod reward {
 }
 
 pub mod power {
+    use fil_actors_runtime::reward::FilterEstimate;
+
     use super::*;
 
     pub const CURRENT_TOTAL_POWER_METHOD: u64 = 9;

@@ -4,13 +4,13 @@
 use std::cmp::{self, max};
 
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
+use fil_actors_runtime::reward::math::PRECISION;
+use fil_actors_runtime::reward::{smooth, FilterEstimate};
 use fil_actors_runtime::EXPECTED_LEADERS_PER_EPOCH;
 use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::math::PRECISION;
 use fvm_shared::sector::StoragePower;
-use fvm_shared::smooth::{self, FilterEstimate};
 use lazy_static::lazy_static;
 use num_traits::Zero;
 
