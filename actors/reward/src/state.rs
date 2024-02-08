@@ -4,13 +4,17 @@
 use fvm_ipld_encoding::repr::*;
 use fvm_ipld_encoding::tuple::*;
 use fvm_shared::bigint::bigint_ser;
+use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::econ::TokenAmount;
 
-use fvm_shared::sector::{Spacetime, StoragePower};
+use fvm_shared::sector::StoragePower;
 use fvm_shared::smooth::{AlphaBetaFilter, FilterEstimate, DEFAULT_ALPHA, DEFAULT_BETA};
 use lazy_static::lazy_static;
 use num_derive::FromPrimitive;
+
+/// The unit of spacetime committed to the network
+pub type Spacetime = BigInt;
 
 use super::logic::*;
 
