@@ -240,7 +240,7 @@ pub fn check_state_invariants<BS: Blockstore>(
                         let ret = sectors_deals.for_each(|sector, deal_ids| {
                             for deal_id in deal_ids {
                                 provider_sector_deals.entry(provider).or_default().entry(sector).or_default().push(*deal_id);
-                                if let Some(stats) = proposal_stats.get(&deal_id) {
+                                if let Some(stats) = proposal_stats.get(deal_id) {
                                     acc.require(
                                         stats.provider == Address::new_id(provider),
                                         format!(
@@ -284,7 +284,7 @@ pub fn check_state_invariants<BS: Blockstore>(
                 .get(&stats.provider.id().unwrap())
                 .and_then(|p| p.get(&stats.sector_number));
             acc.require(
-                sector_deals.map(|v| v.contains(&id)).unwrap_or(false),
+                sector_deals.map(|v| v.contains(id)).unwrap_or(false),
                 format!("active deal {id} not found in provider sector deals"),
             );
         }
