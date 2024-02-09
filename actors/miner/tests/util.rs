@@ -8,6 +8,7 @@ use std::ops::Neg;
 use anyhow::anyhow;
 use cid::multihash::MultihashDigest;
 use cid::Cid;
+use fil_actors_runtime::reward::FilterEstimate;
 use fvm_ipld_amt::Amt;
 use fvm_ipld_bitfield::iter::Ranges;
 use fvm_ipld_bitfield::{BitField, UnvalidatedBitField, Validate};
@@ -35,7 +36,6 @@ use fvm_shared::sector::{
     RegisteredSealProof, ReplicaUpdateInfo, SealVerifyInfo, SectorID, SectorInfo, SectorNumber,
     SectorSize, StoragePower, WindowPoStVerifyInfo,
 };
-use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::{ActorID, HAMT_BIT_WIDTH, METHOD_SEND};
 use itertools::Itertools;
 use lazy_static::lazy_static;

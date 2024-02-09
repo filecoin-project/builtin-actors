@@ -3,11 +3,11 @@ use fil_actor_miner::{
     INITIAL_PLEDGE_FACTOR, TERMINATION_LIFETIME_CAP, TERMINATION_REWARD_FACTOR_DENOM,
     TERMINATION_REWARD_FACTOR_NUM,
 };
+use fil_actors_runtime::reward::FilterEstimate;
 use fil_actors_runtime::EPOCHS_IN_DAY;
 use fvm_shared::bigint::{BigInt, Zero};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::StoragePower;
-use fvm_shared::smooth::FilterEstimate;
 
 fn epoch_target_reward() -> TokenAmount {
     TokenAmount::from_atto(1_u128 << 50)

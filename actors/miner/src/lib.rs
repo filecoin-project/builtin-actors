@@ -11,7 +11,6 @@ use anyhow::{anyhow, Error};
 use byteorder::{BigEndian, ByteOrder, WriteBytesExt};
 use cid::multihash::Code::Blake2b256;
 use cid::Cid;
-use fil_actors_runtime::runtime::policy_constants::MAX_SECTOR_NUMBER;
 use fvm_ipld_bitfield::{BitField, Validate};
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
@@ -24,14 +23,12 @@ use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::*;
 use fvm_shared::piece::PieceInfo;
 use fvm_shared::randomness::*;
-use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::{
     AggregateSealVerifyInfo, AggregateSealVerifyProofAndInfos, InteractiveSealRandomness,
     PoStProof, RegisteredAggregateProof, RegisteredPoStProof, RegisteredSealProof,
     RegisteredUpdateProof, ReplicaUpdateInfo, SealRandomness, SealVerifyInfo, SectorID, SectorInfo,
     SectorNumber, SectorSize, StoragePower, WindowPoStVerifyInfo,
 };
-use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::{ActorID, MethodNum, METHOD_CONSTRUCTOR, METHOD_SEND};
 use itertools::Itertools;
 use log::{error, info, warn};
@@ -47,7 +44,9 @@ pub use deadline_state::*;
 pub use deadlines::*;
 pub use expiration_queue::*;
 use fil_actors_runtime::cbor::{serialize, serialize_vec};
+use fil_actors_runtime::reward::{FilterEstimate, ThisEpochRewardReturn};
 use fil_actors_runtime::runtime::builtins::Type;
+use fil_actors_runtime::runtime::policy_constants::MAX_SECTOR_NUMBER;
 use fil_actors_runtime::runtime::{ActorCode, DomainSeparationTag, Policy, Runtime};
 use fil_actors_runtime::{
     actor_dispatch, actor_error, deserialize_block, extract_send_result, util, ActorContext,

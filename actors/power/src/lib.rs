@@ -5,13 +5,13 @@ use std::collections::BTreeSet;
 use std::convert::TryInto;
 
 use anyhow::anyhow;
+use fil_actors_runtime::reward::ThisEpochRewardReturn;
 use fvm_ipld_encoding::ipld_block::IpldBlock;
 use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::bigint_ser::BigIntSer;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::SealVerifyInfo;
 use fvm_shared::{MethodNum, HAMT_BIT_WIDTH, METHOD_CONSTRUCTOR};
 use log::{debug, error};

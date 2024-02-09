@@ -1,7 +1,7 @@
 use fil_actor_miner::{initial_pledge_for_power, pre_commit_deposit_for_power};
+use fil_actors_runtime::reward::FilterEstimate;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::StoragePower;
-use fvm_shared::smooth::FilterEstimate;
 use num_traits::zero;
 
 macro_rules! my_const {

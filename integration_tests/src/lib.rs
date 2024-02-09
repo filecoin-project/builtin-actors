@@ -1,8 +1,8 @@
+use fil_actors_runtime::reward::FilterEstimate;
 use fvm_shared::{
     address::{Address, FIRST_NON_SINGLETON_ADDR},
     econ::TokenAmount,
     sector::StoragePower,
-    smooth::FilterEstimate,
     ActorID,
 };
 use lazy_static::lazy_static;

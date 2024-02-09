@@ -10,11 +10,9 @@ use fvm_shared::bigint::BigInt;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
-use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::SealVerifyInfo;
 use fvm_shared::sector::SectorNumber;
 use fvm_shared::sector::{RegisteredPoStProof, RegisteredSealProof, StoragePower};
-use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::MethodNum;
 use lazy_static::lazy_static;
 use num_traits::Zero;
@@ -38,6 +36,7 @@ use fil_actor_power::{
     UpdateClaimedPowerParams,
 };
 use fil_actor_power::{CronEvent, MinerConsensusCountReturn};
+use fil_actors_runtime::builtin::reward::{FilterEstimate, ThisEpochRewardReturn};
 use fil_actors_runtime::runtime::builtins::Type;
 use fil_actors_runtime::runtime::Runtime;
 use fil_actors_runtime::runtime::RuntimePolicy;

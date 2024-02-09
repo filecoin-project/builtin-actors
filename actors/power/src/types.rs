@@ -1,6 +1,7 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
+use fil_actors_runtime::reward::FilterEstimate;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::{strict_bytes, BytesDe, RawBytes};
 use fvm_shared::address::Address;
@@ -8,7 +9,6 @@ use fvm_shared::bigint::bigint_ser;
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredPoStProof, SealVerifyInfo, StoragePower};
-use fvm_shared::smooth::FilterEstimate;
 use fvm_shared::ActorID;
 
 use serde::{Deserialize, Serialize};

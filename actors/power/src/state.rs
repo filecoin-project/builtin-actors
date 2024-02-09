@@ -15,12 +15,14 @@ use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredPoStProof, StoragePower};
-use fvm_shared::smooth::{AlphaBetaFilter, FilterEstimate, DEFAULT_ALPHA, DEFAULT_BETA};
 use fvm_shared::ActorID;
 use integer_encoding::VarInt;
 use lazy_static::lazy_static;
 use num_traits::Signed;
 
+use fil_actors_runtime::builtin::reward::smooth::{
+    AlphaBetaFilter, FilterEstimate, DEFAULT_ALPHA, DEFAULT_BETA,
+};
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
     actor_error, ActorContext, ActorDowncast, ActorError, AsActorError, Config, Map2, Multimap,

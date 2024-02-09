@@ -6,11 +6,11 @@ use std::str::FromStr;
 use fvm_shared::bigint::{BigInt, Integer};
 use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::math::PRECISION;
 use fvm_shared::sector::StoragePower;
 use lazy_static::lazy_static;
 
 use super::expneg::expneg;
+use fil_actors_runtime::builtin::reward::math::PRECISION;
 
 lazy_static! {
     /// Floor(e^(ln[1 + 100%] / epochsInYear) * 2^128

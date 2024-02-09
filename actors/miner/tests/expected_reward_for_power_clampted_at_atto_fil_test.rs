@@ -1,10 +1,10 @@
 use std::ops::Neg;
 
 use fil_actor_miner::detail::expected_reward_for_power_clamped_at_atto_fil;
+use fil_actors_runtime::reward::FilterEstimate;
 use fvm_shared::bigint::{BigInt, Zero};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::StoragePower;
-use fvm_shared::smooth::FilterEstimate;
 
 #[test]
 fn expected_zero_valued_br_clamped_at_1_attofil() {

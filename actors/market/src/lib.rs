@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use cid::multihash::{Code, MultihashGeneric};
 use cid::Cid;
+use fil_actors_runtime::reward::ThisEpochRewardReturn;
 use frc46_token::token::types::{BalanceReturn, TransferFromParams, TransferFromReturn};
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
@@ -19,7 +20,6 @@ use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PieceInfo;
-use fvm_shared::reward::ThisEpochRewardReturn;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber, SectorSize, StoragePower};
 use fvm_shared::sys::SendFlags;
 use fvm_shared::{ActorID, METHOD_CONSTRUCTOR, METHOD_SEND};
