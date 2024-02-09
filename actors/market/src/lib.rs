@@ -14,7 +14,7 @@ use fvm_ipld_encoding::{RawBytes, DAG_CBOR};
 use fvm_ipld_hamt::BytesKey;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
-use fvm_shared::clock::{ChainEpoch, QuantSpec, EPOCH_UNDEFINED};
+use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::deal::DealID;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
@@ -1550,8 +1550,19 @@ fn balance_of(rt: &impl Runtime, owner: &Address) -> Result<TokenAmount, ActorEr
 // Calculates the first update epoch for a deal ID that is no sooner than `earliest`.
 // An ID is processed as a fixed offset within each `interval` of epochs.
 pub fn next_update_epoch(id: DealID, interval: i64, earliest: ChainEpoch) -> ChainEpoch {
-    let q = QuantSpec { unit: interval, offset: id as i64 % interval };
-    q.quantize_up(earliest)
+    // Same logic as QuantSpec from the miner actor, but duplicated here to avoid unnecessary
+    // dependencies.
+    let offset = id as i64 % interval;
+    let remainder = (earliest - offset) % interval;
+    let quotient = (earliest - offset) / interval;
+
+    // Don't round if epoch falls on a quantization epoch or when negative (negative truncating
+    // division rounds up).
+    if remainder == 0 || earliest - offset < 0 {
+        interval * quotient + offset
+    } else {
+        interval * (quotient + 1) + offset
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -22,7 +22,7 @@ use fvm_ipld_encoding::{strict_bytes, BytesDe, CborStore};
 use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::address::Address;
 
-use fvm_shared::clock::{ChainEpoch, QuantSpec, EPOCH_UNDEFINED};
+use fvm_shared::clock::{ChainEpoch, EPOCH_UNDEFINED};
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, SectorSize};
@@ -37,7 +37,7 @@ use super::types::*;
 use super::{
     assign_deadlines, deadline_is_mutable, new_deadline_info_from_offset_and_epoch,
     quant_spec_for_deadline, BitFieldQueue, Deadline, DeadlineInfo, DeadlineSectorMap, Deadlines,
-    PowerPair, Sectors, TerminationResult, VestingFunds,
+    PowerPair, QuantSpec, Sectors, TerminationResult, VestingFunds,
 };
 
 const PRECOMMIT_EXPIRY_AMT_BITWIDTH: u32 = 6;

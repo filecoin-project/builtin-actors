@@ -19,8 +19,7 @@ use fvm_ipld_encoding::{BytesDe, CborStore, RawBytes};
 use fvm_shared::address::Address;
 use fvm_shared::bigint::BigInt;
 use fvm_shared::bigint::Zero;
-use fvm_shared::clock::QuantSpec;
-use fvm_shared::clock::{ChainEpoch, NO_QUANTIZATION};
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::commcid::{FIL_COMMITMENT_SEALED, FIL_COMMITMENT_UNSEALED};
 use fvm_shared::consensus::ConsensusFault;
 use fvm_shared::crypto::hash::SupportedHashes;
@@ -75,13 +74,13 @@ use fil_actor_miner::{
     PieceActivationManifest, PieceChange, PieceReturn, PoStPartition, PowerPair,
     PreCommitSectorBatchParams, PreCommitSectorBatchParams2, PreCommitSectorParams,
     ProveCommitAggregateParams, ProveCommitSectorParams, ProveCommitSectors3Params,
-    ProveCommitSectors3Return, RecoveryDeclaration, ReportConsensusFaultParams,
+    ProveCommitSectors3Return, QuantSpec, RecoveryDeclaration, ReportConsensusFaultParams,
     SectorActivationManifest, SectorChanges, SectorContentChangedParams,
     SectorContentChangedReturn, SectorOnChainInfo, SectorPreCommitInfo, SectorPreCommitOnChainInfo,
     SectorReturn, SectorUpdateManifest, Sectors, State, SubmitWindowedPoStParams,
     TerminateSectorsParams, TerminationDeclaration, VerifiedAllocationKey, VestingFunds,
     WindowedPoSt, WithdrawBalanceParams, WithdrawBalanceReturn, CRON_EVENT_PROVING_DEADLINE,
-    REWARD_VESTING_SPEC, SECTORS_AMT_BITWIDTH, SECTOR_CONTENT_CHANGED,
+    NO_QUANTIZATION, REWARD_VESTING_SPEC, SECTORS_AMT_BITWIDTH, SECTOR_CONTENT_CHANGED,
 };
 use fil_actor_miner::{ProveReplicaUpdates3Params, ProveReplicaUpdates3Return};
 use fil_actor_power::{

@@ -1,10 +1,9 @@
 #![allow(dead_code)]
 use cid::multihash::Code::Blake2b256;
-use fil_actor_miner::MinerInfo;
-use fil_actor_miner::SectorPreCommitOnChainInfo;
-use fil_actor_miner::VestSpec;
-use fil_actor_miner::VestingFunds;
-use fil_actor_miner::{BitFieldQueue, CollisionPolicy, SectorOnChainInfo, State};
+use fil_actor_miner::{
+    BitFieldQueue, CollisionPolicy, MinerInfo, QuantSpec, SectorOnChainInfo,
+    SectorPreCommitOnChainInfo, State, VestSpec, VestingFunds,
+};
 use fil_actors_runtime::test_blockstores::MemoryBlockstore;
 use fil_actors_runtime::{runtime::Policy, ActorError};
 use fvm_ipld_bitfield::BitField;
@@ -13,7 +12,7 @@ use fvm_ipld_encoding::CborStore;
 use fvm_ipld_hamt::Error as HamtError;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{SectorNumber, SectorSize};
-use fvm_shared::{clock::ChainEpoch, clock::QuantSpec, sector::RegisteredPoStProof};
+use fvm_shared::{clock::ChainEpoch, sector::RegisteredPoStProof};
 
 use fil_actors_runtime::test_utils::*;
 

@@ -4,12 +4,12 @@
 use std::{iter, mem};
 
 use fvm_ipld_encoding::tuple::*;
-use fvm_shared::clock::{ChainEpoch, QuantSpec};
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use itertools::{EitherOrBoth, Itertools};
 use num_traits::Zero;
 
-use super::VestSpec;
+use super::{QuantSpec, VestSpec};
 
 // Represents miner funds that will vest at the given epoch.
 #[derive(Debug, Serialize_tuple, Deserialize_tuple)]

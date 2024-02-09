@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use fil_actor_miner::testing::{check_deadline_state_invariants, DeadlineStateSummary};
 use fil_actor_miner::{
-    power_for_sectors, Deadline, PartitionSectorMap, PoStPartition, PowerPair, SectorOnChainInfo,
-    TerminationResult,
+    power_for_sectors, Deadline, PartitionSectorMap, PoStPartition, PowerPair, QuantSpec,
+    SectorOnChainInfo, TerminationResult,
 };
 use fil_actors_runtime::runtime::{Policy, Runtime};
 use fil_actors_runtime::test_utils::MockRuntime;
@@ -12,7 +12,7 @@ use fil_actors_runtime::MessageAccumulator;
 use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_shared::clock::ChainEpoch;
-use fvm_shared::{clock::QuantSpec, error::ExitCode, sector::SectorSize};
+use fvm_shared::{error::ExitCode, sector::SectorSize};
 
 mod util;
 use crate::util::*;

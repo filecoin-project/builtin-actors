@@ -13,7 +13,7 @@ use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 use fvm_ipld_encoding::CborStore;
-use fvm_shared::clock::{ChainEpoch, QuantSpec};
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::error::ExitCode;
 use fvm_shared::sector::{PoStProof, SectorSize};
@@ -21,7 +21,7 @@ use num_traits::{Signed, Zero};
 
 use super::{
     BitFieldQueue, ExpirationSet, Partition, PartitionSectorMap, PoStPartition, PowerPair,
-    SectorOnChainInfo, Sectors, TerminationResult,
+    QuantSpec, SectorOnChainInfo, Sectors, TerminationResult,
 };
 use crate::SECTORS_AMT_BITWIDTH;
 
