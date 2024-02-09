@@ -5,10 +5,10 @@ use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::Array;
 
 use fvm_ipld_blockstore::Blockstore;
-use fvm_shared::clock::{ChainEpoch, QuantSpec};
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::sector::SectorNumber;
 
-use super::{DeadlineInfo, Deadlines, Partition};
+use super::{DeadlineInfo, Deadlines, Partition, QuantSpec};
 
 pub fn new_deadline_info(
     policy: &Policy,

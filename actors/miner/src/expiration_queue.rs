@@ -13,12 +13,12 @@ use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::tuple::*;
 
-use fvm_shared::clock::{ChainEpoch, QuantSpec};
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{SectorNumber, SectorSize};
 use num_traits::{Signed, Zero};
 
-use super::{power_for_sector, PowerPair, SectorOnChainInfo};
+use super::{power_for_sector, PowerPair, QuantSpec, SectorOnChainInfo};
 
 /// An internal limit on the cardinality of a bitfield in a queue entry.
 /// This must be at least large enough to support the maximum number of sectors in a partition.

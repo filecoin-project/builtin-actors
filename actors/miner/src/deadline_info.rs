@@ -1,8 +1,10 @@
 // Copyright 2019-2022 ChainSafe Systems
 // SPDX-License-Identifier: Apache-2.0, MIT
 
-use fvm_shared::clock::{ChainEpoch, QuantSpec};
+use fvm_shared::clock::ChainEpoch;
 use serde::{Deserialize, Serialize};
+
+use crate::QuantSpec;
 
 /// Deadline calculations with respect to a current epoch.
 /// "Deadline" refers to the window during which proofs may be submitted.

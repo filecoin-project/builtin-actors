@@ -1,6 +1,7 @@
 use crate::{
     power_for_sectors, BitFieldQueue, Deadline, ExpirationQueue, MinerInfo, Partition, PowerPair,
-    SectorOnChainInfo, SectorOnChainInfoFlags, SectorPreCommitOnChainInfo, Sectors, State,
+    QuantSpec, SectorOnChainInfo, SectorOnChainInfoFlags, SectorPreCommitOnChainInfo, Sectors,
+    State, NO_QUANTIZATION,
 };
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
@@ -10,7 +11,7 @@ use fvm_ipld_bitfield::BitField;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::CborStore;
 use fvm_shared::address::Protocol;
-use fvm_shared::clock::{ChainEpoch, QuantSpec, NO_QUANTIZATION};
+use fvm_shared::clock::ChainEpoch;
 use fvm_shared::econ::TokenAmount;
 use fvm_shared::sector::{RegisteredPoStProof, SectorNumber, SectorSize};
 use num_traits::Zero;
