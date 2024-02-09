@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::{
     collections::{BTreeMap, BTreeSet},
     convert::TryFrom,
@@ -7,11 +8,13 @@ use cid::multihash::{Code, MultihashDigest};
 use cid::Cid;
 use fvm_ipld_blockstore::Blockstore;
 use fvm_ipld_encoding::DAG_CBOR;
+use fvm_shared::sector::SectorNumber;
 use fvm_shared::{
     address::{Address, Protocol},
     clock::{ChainEpoch, EPOCH_UNDEFINED},
     deal::DealID,
     econ::TokenAmount,
+    ActorID,
 };
 use integer_encoding::VarInt;
 use num_traits::Zero;
@@ -24,8 +27,8 @@ use fil_actors_runtime::{
 
 use crate::ext::verifreg::AllocationID;
 use crate::{
-    balance_table::BalanceTable, DealArray, DealMetaArray, DealProposal, State,
-    PROPOSALS_AMT_BITWIDTH,
+    balance_table::BalanceTable, DealArray, DealMetaArray, DealProposal, ProviderSectorsMap,
+    SectorDealsMap, State, PROPOSALS_AMT_BITWIDTH, PROVIDER_SECTORS_CONFIG, SECTOR_DEALS_CONFIG,
 };
 
 #[derive(Clone)]
@@ -33,6 +36,7 @@ pub struct DealSummary {
     pub provider: Address,
     pub start_epoch: ChainEpoch,
     pub end_epoch: ChainEpoch,
+    pub sector_number: SectorNumber,
     pub sector_start_epoch: ChainEpoch,
     pub last_update_epoch: ChainEpoch,
     pub slash_epoch: ChainEpoch,
@@ -45,6 +49,7 @@ impl Default for DealSummary {
             provider: Address::new_id(0),
             start_epoch: 0,
             end_epoch: 0,
+            sector_number: 0,
             sector_start_epoch: -1,
             last_update_epoch: -1,
             slash_epoch: -1,
@@ -52,9 +57,11 @@ impl Default for DealSummary {
         }
     }
 }
+
 #[derive(Default, Clone)]
 pub struct StateSummary {
     pub deals: BTreeMap<DealID, DealSummary>,
+    pub provider_sector_deals: HashMap<ActorID, HashMap<SectorNumber, Vec<DealID>>>,
     pub alloc_id_to_deal_id: BTreeMap<u64, DealID>,
     pub pending_proposal_count: u64,
     pub deal_state_count: u64,
@@ -199,6 +206,7 @@ pub fn check_state_invariants<BS: Blockstore>(
                 acc.require(deal_state.slash_epoch == EPOCH_UNDEFINED || deal_state.slash_epoch <= current_epoch, format!("deal {deal_id} state slashed after current epoch {current_epoch}: {deal_state:?}"));
 
                 if let Some(stats) = proposal_stats.get_mut(&deal_id) {
+                    stats.sector_number = deal_state.sector_number;
                     stats.sector_start_epoch = deal_state.sector_start_epoch;
                     stats.last_update_epoch = deal_state.last_updated_epoch;
                     stats.slash_epoch = deal_state.slash_epoch;
@@ -214,6 +222,73 @@ pub fn check_state_invariants<BS: Blockstore>(
         }
         Err(e) => acc.add(format!("error loading deal states: {e}")),
     };
+
+    // Provider->sector->deal mapping
+    // Each entry corresponds to non-terminated deal state.
+    // A deal may have expired but remain in the mapping until settlement.
+    let mut provider_sector_deals = HashMap::<ActorID, HashMap<SectorNumber, Vec<DealID>>>::new();
+    match ProviderSectorsMap::load(
+        store,
+        &state.provider_sectors,
+        PROVIDER_SECTORS_CONFIG,
+        "provider sectors",
+    ) {
+        Ok(provider_sectors) => {
+            let ret = provider_sectors.for_each(|provider, sectors_root| {
+                match SectorDealsMap::load(store, sectors_root, SECTOR_DEALS_CONFIG, "sector deals") {
+                    Ok(sectors_deals) => {
+                        let ret = sectors_deals.for_each(|sector, deal_ids| {
+                            for deal_id in deal_ids {
+                                provider_sector_deals.entry(provider).or_default().entry(sector).or_default().push(*deal_id);
+                                if let Some(stats) = proposal_stats.get(&deal_id) {
+                                    acc.require(
+                                        stats.provider == Address::new_id(provider),
+                                        format!(
+                                            "provider sector deal {deal_id} provider {provider} does not match proposal provider {}", stats.provider
+                                        ),
+                                    );
+                                    acc.require(
+                                        stats.sector_number == sector,
+                                        format!(
+                                            "provider sector deal {deal_id} sector {sector} does not match proposal sector {}", stats.sector_number
+                                        ),
+                                    );
+                                    acc.require(stats.slash_epoch == EPOCH_UNDEFINED, format!("provider sector deal {deal_id} is slashed"));
+                                } else {
+                                    acc.add(format!("provider sector deal {deal_id} not found in proposals"));
+                                }
+                            }
+                            Ok(())
+                        });
+                        acc.require_no_error(ret, "error iterating provider sector deals");
+                    }
+                    Err(e) => acc.add(format!("error loading provider sector deals: {e}")),
+                }
+                Ok(())
+            });
+            acc.require_no_error(ret, "error iterating provider sector deals");
+        }
+        Err(e) => acc.add(format!("error loading provider sector deals: {e}")),
+    };
+    // Check the reverse direction, which is almost the same.
+    // Every non-terminated, *non-expired* deal state should be in provider sector deals.
+    // Terminated deals are removed synchronously.
+    // Expired deals are be removed from the mapping at settlement (which may not have happened).
+    // Note expired deals from terminated sectors are removed from the mapping even before settlement.
+    for (id, stats) in &proposal_stats {
+        if stats.sector_start_epoch >= 0
+            && stats.slash_epoch == EPOCH_UNDEFINED
+            && stats.end_epoch > current_epoch
+        {
+            let sector_deals = provider_sector_deals
+                .get(&stats.provider.id().unwrap())
+                .and_then(|p| p.get(&stats.sector_number));
+            acc.require(
+                sector_deals.map(|v| v.contains(&id)).unwrap_or(false),
+                format!("active deal {id} not found in provider sector deals"),
+            );
+        }
+    }
 
     // pending proposals
     let mut pending_proposal_count = 0;
@@ -320,6 +395,7 @@ pub fn check_state_invariants<BS: Blockstore>(
     (
         StateSummary {
             deals: proposal_stats,
+            provider_sector_deals,
             pending_proposal_count,
             deal_state_count,
             lock_table_count,

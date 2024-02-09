@@ -161,12 +161,12 @@ fn terminate_valid_deals_along_with_just_expired_deal() {
         start_epoch,
         end_epoch + 1,
     );
-    let (id2, deal2) = generate_and_publish_deal(
+    let (id2, _deal2) = generate_and_publish_deal(
         &rt,
         CLIENT_ADDR,
         &MinerAddresses::default(),
         start_epoch,
-        end_epoch - 1,
+        end_epoch - 1, // Ends before termination.
     );
     let sector_number = 7;
     let ret = activate_deals_legacy(
@@ -187,11 +187,13 @@ fn terminate_valid_deals_along_with_just_expired_deal() {
         CLIENT_ADDR,
         PROVIDER_ADDR,
         &[sector_number],
+        // Deal2 isn't terminated (or cleaned up) because it expired and is waiting for settlement.
         &[id0, id1],
     );
     assert_deal_deleted(&rt, id0, &deal0, sector_number);
     assert_deal_deleted(&rt, id1, &deal1, sector_number);
-    assert_deal_deleted(&rt, id1, &deal2, sector_number);
+    // Deal2 state still exists, and isn't terminated.
+    assert_deals_not_marked_terminated(&rt, &[id2]);
     // All deals are removed from sector deals mapping at once.
     assert_eq!(Vec::<DealID>::new(), get_sector_deal_ids(&rt, PROVIDER_ID, &[sector_number]));
     check_state(&rt);
