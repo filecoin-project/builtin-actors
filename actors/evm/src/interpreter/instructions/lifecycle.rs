@@ -216,7 +216,7 @@ mod tests {
                 let create_ret = eam::CreateReturn {
                     actor_id: 12345,
                     eth_address: ret_addr,
-                    robust_address: Some((&ret_addr).try_into().unwrap()),
+                    robust_address: Some(ret_addr.into()),
                 };
 
                 rt.expect_gas_available(10_000_000_000);
@@ -270,7 +270,7 @@ mod tests {
                 let create_ret = eam::CreateReturn {
                     actor_id: 12345,
                     eth_address: ret_addr,
-                    robust_address: Some((&ret_addr).try_into().unwrap()),
+                    robust_address: Some(ret_addr.into()),
                 };
 
                 rt.expect_gas_available(10_000_000_000);

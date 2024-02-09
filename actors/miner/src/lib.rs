@@ -2271,7 +2271,7 @@ impl Actor {
                     let not_exists = matches!(prev_epoch_partitions, Entry::Vacant(_));
 
                     // Add declaration partition
-                    prev_epoch_partitions.or_insert_with(Vec::new).push(decl.partition);
+                    prev_epoch_partitions.or_default().push(decl.partition);
                     if not_exists {
                         // reschedule epoch if the partition for new epoch didn't already exist
                         epochs_to_reschedule.push(decl.new_expiration);
@@ -4982,11 +4982,11 @@ fn notify_pledge_changed(rt: &impl Runtime, pledge_delta: &TokenAmount) -> Resul
 
 fn get_claims(
     rt: &impl Runtime,
-    ids: &Vec<ext::verifreg::ClaimID>,
+    ids: &[ext::verifreg::ClaimID],
 ) -> Result<Vec<ext::verifreg::Claim>, ActorError> {
     let params = ext::verifreg::GetClaimsParams {
         provider: rt.message().receiver().id().unwrap(),
-        claim_ids: ids.clone(),
+        claim_ids: ids.to_owned(),
     };
     let claims_ret: ext::verifreg::GetClaimsReturn =
         deserialize_block(extract_send_result(rt.send_simple(

@@ -124,7 +124,7 @@ fn test_native_lookup_delegated_address() {
 
     // f0 10101 is an EVM actor
     let evm_target = FILAddress::new_id(10101);
-    let evm_del = EthAddress(util::CONTRACT_ADDRESS).try_into().unwrap();
+    let evm_del = EthAddress(util::CONTRACT_ADDRESS).into();
     rt.set_delegated_address(evm_target.id().unwrap(), evm_del);
 
     // f0 10111 is an actor with a non-evm delegate address
@@ -158,7 +158,7 @@ fn test_resolve_delegated() {
 
     // EVM actor
     let evm_target = FILAddress::new_id(10101);
-    let evm_del = EthAddress(util::CONTRACT_ADDRESS).try_into().unwrap();
+    let evm_del = EthAddress(util::CONTRACT_ADDRESS).into();
     rt.set_delegated_address(evm_target.id().unwrap(), evm_del);
 
     // Actor with a non-evm delegate address

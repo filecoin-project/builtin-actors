@@ -255,8 +255,8 @@ fn batch_settlement_of_deals_allows_partial_success() {
         * (settlement_epoch - continuing_proposal.start_epoch);
     let finished_payment = &finished_proposal.storage_price_per_epoch
         * (settlement_epoch - finished_proposal.start_epoch);
-    let continuing_summary = ret.settlements.get(0).cloned().unwrap();
-    let finished_summary = ret.settlements.get(1).cloned().unwrap();
+    let continuing_summary = ret.settlements[0].clone();
+    let finished_summary = ret.settlements[1].clone();
 
     // check that the correct payments are reported and that relevant deals are cleaned up
     assert_eq!(

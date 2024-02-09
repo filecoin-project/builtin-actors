@@ -369,7 +369,7 @@ pub fn verified_claim_scenario_test(v: &dyn VM) {
     // provider must process the deals to receive payment and cleanup state
     let ret = provider_settle_deal_payments(v, &miner_id, &deals);
     assert_eq!(
-        ret.settlements.get(0).unwrap(),
+        ret.settlements.first().unwrap(),
         &DealSettlementSummary { payment: proposal.total_storage_fee(), completed: true }
     );
 

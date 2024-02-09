@@ -67,7 +67,7 @@ fn test_delegate_call_caller() {
     let target_id = 0x100;
     let target = FILAddress::new_id(target_id);
     let evm_target = EthAddress(hex_literal::hex!("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"));
-    let f4_target: FILAddress = evm_target.try_into().unwrap();
+    let f4_target: FILAddress = evm_target.into();
     rt.actor_code_cids.borrow_mut().insert(target, *EVM_ACTOR_CODE_ID);
     rt.set_delegated_address(target.id().unwrap(), f4_target);
     rt.receiver = target;
@@ -75,7 +75,7 @@ fn test_delegate_call_caller() {
     // set caller that is expected to persist through to subcall
     let caller = FILAddress::new_id(0x111);
     let evm_caller = EthAddress(util::CONTRACT_ADDRESS);
-    let f4_caller = evm_caller.try_into().unwrap();
+    let f4_caller = evm_caller.into();
     rt.set_delegated_address(caller.id().unwrap(), f4_caller);
     rt.caller.replace(caller);
 

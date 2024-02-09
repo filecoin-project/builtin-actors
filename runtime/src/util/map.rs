@@ -153,25 +153,24 @@ where
         // wrapped in a hamt::Error::Dynamic.
         F: FnMut(K, &V) -> Result<(), ActorError>,
     {
-        match self.hamt.for_each(|k, v| {
-            let key = K::from_bytes(k).context_code(ExitCode::USR_ILLEGAL_STATE, "invalid key")?;
-            f(key, v).map_err(|e| anyhow!(e))
-        }) {
-            Ok(_) => Ok(()),
-            Err(hamt_err) => match hamt_err {
+        self.hamt
+            .for_each(|k, v| {
+                let key =
+                    K::from_bytes(k).context_code(ExitCode::USR_ILLEGAL_STATE, "invalid key")?;
+                f(key, v).map_err(|e| anyhow!(e))
+            })
+            .map_err(|hamt_err| match hamt_err {
                 hamt::Error::Dynamic(e) => match e.downcast::<ActorError>() {
-                    Ok(ae) => Err(ae),
-                    Err(e) => Err(ActorError::illegal_state(format!(
+                    Ok(ae) => ae,
+                    Err(e) => ActorError::illegal_state(format!(
                         "error in callback traversing HAMT {}: {}",
                         self.name, e
-                    ))),
+                    )),
                 },
-                e => Err(ActorError::illegal_state(format!(
-                    "error traversing HAMT {}: {}",
-                    self.name, e
-                ))),
-            },
-        }
+                e => {
+                    ActorError::illegal_state(format!("error traversing HAMT {}: {}", self.name, e))
+                }
+            })
     }
 }
 

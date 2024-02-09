@@ -175,7 +175,7 @@ fn test_call() {
     let target_id = 0x100;
     let target = FILAddress::new_id(target_id);
     let evm_target = EthAddress(hex_literal::hex!("deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"));
-    let f4_target: FILAddress = evm_target.try_into().unwrap();
+    let f4_target: FILAddress = evm_target.into();
     rt.actor_code_cids.borrow_mut().insert(target, *EVM_ACTOR_CODE_ID);
     rt.set_delegated_address(target.id().unwrap(), f4_target);
 
@@ -339,7 +339,7 @@ return
     let cases = [(32, 64), (64, 64), (1024, 1025)];
     for (output_size, return_size) in cases {
         rt.expect_send(
-            (&address).try_into().unwrap(),
+            address.into(),
             Method::InvokeContract as u64,
             None,
             TokenAmount::zero(),
@@ -1071,7 +1071,7 @@ fn call_actor_solidity() {
         log::warn!("new test");
         // EVM actor
         let evm_target = 10101;
-        let evm_del = EthAddress(util::CONTRACT_ADDRESS).try_into().unwrap();
+        let evm_del = EthAddress(util::CONTRACT_ADDRESS).into();
         tester.rt.set_delegated_address(evm_target, evm_del);
 
         let to_address = {
@@ -1168,7 +1168,7 @@ impl ContractTester {
             creator: EthAddress::from_id(EAM_ACTOR_ID),
             initcode: hex::decode(contract_hex).unwrap().into(),
         };
-        rt.add_id_address(addr.try_into().unwrap(), FILAddress::new_id(id));
+        rt.add_id_address(addr.into(), FILAddress::new_id(id));
 
         // invoke constructor
         rt.expect_validate_caller_addr(vec![INIT_ACTOR_ADDR]);
