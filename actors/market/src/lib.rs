@@ -788,15 +788,15 @@ impl Actor {
 
         let burn_amount = rt.transaction(|st: &mut State, rt| {
             // The sector deals mapping is removed all at once.
-            // Other deal clean-up is deferred to per-epoch cron.
+            // Note there may be some deal states that are not removed here,
+            // despite deletion of this mapping, e.g. for expired but not-yet-settled deals.
+            // The sector->deal mapping is no longer needed (the deal state has sector number too).
             let all_deal_ids = st.pop_sector_deal_ids(
                 rt.store(),
                 miner_addr.id().unwrap(),
                 params.sectors.iter(),
             )?;
 
-            let mut provider_deals_to_remove =
-                BTreeMap::<ActorID, BTreeMap<SectorNumber, Vec<DealID>>>::new();
             let mut total_slashed = TokenAmount::zero();
             for id in all_deal_ids {
                 let deal = st.find_proposal(rt.store(), id)?;
@@ -845,12 +845,6 @@ impl Actor {
                 state.slash_epoch = params.epoch;
                 total_slashed += st.process_slashed_deal(rt.store(), &deal, &state)?;
                 st.remove_completed_deal(rt.store(), id)?;
-                provider_deals_to_remove
-                    .entry(deal.provider.id().unwrap())
-                    .or_default()
-                    .entry(state.sector_number)
-                    .or_default()
-                    .push(id);
 
                 emit::deal_terminated(
                     rt,
@@ -860,7 +854,6 @@ impl Actor {
                 )?;
             }
 
-            st.remove_sector_deal_ids(rt.store(), &provider_deals_to_remove)?;
             Ok(total_slashed)
         })?;
 
@@ -872,7 +865,6 @@ impl Actor {
                 burn_amount,
             ))?;
         }
-
         Ok(())
     }
 
