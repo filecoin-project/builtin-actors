@@ -1,6 +1,5 @@
 use cid::Cid;
 use fvm_ipld_bitfield::BitField;
-use fvm_ipld_encoding::RawBytes;
 use fvm_shared::address::Address;
 use fvm_shared::bigint::{BigInt, Zero};
 use fvm_shared::clock::ChainEpoch;
@@ -13,7 +12,6 @@ use fvm_shared::sector::StoragePower;
 use fvm_shared::sector::{RegisteredSealProof, SectorNumber};
 
 use export_macro::vm_test;
-use fil_actor_cron::Method as CronMethod;
 use fil_actor_market::Method as MarketMethod;
 use fil_actor_market::State as MarketState;
 use fil_actor_miner::{
@@ -26,9 +24,7 @@ use fil_actor_verifreg::Method as VerifregMethod;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::test_utils::make_sealed_cid;
 use fil_actors_runtime::VERIFIED_REGISTRY_ACTOR_ADDR;
-use fil_actors_runtime::{
-    Array, CRON_ACTOR_ADDR, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR, SYSTEM_ACTOR_ADDR,
-};
+use fil_actors_runtime::{Array, EPOCHS_IN_DAY, STORAGE_MARKET_ACTOR_ADDR};
 use vm_api::trace::ExpectInvocation;
 use vm_api::util::{apply_code, apply_ok, get_state, mutate_state, DynBlockstore};
 use vm_api::VM;
@@ -38,7 +34,7 @@ use crate::expects::Expect;
 use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_index, advance_to_proving_deadline,
     assert_invariants, bf_all, check_sector_active, check_sector_faulty, create_accounts,
-    create_miner, deadline_state, declare_recovery, expect_invariants, get_deal_weights,
+    create_miner, cron_tick, deadline_state, declare_recovery, expect_invariants, get_deal_weights,
     get_network_stats, invariant_failure_patterns, make_bitfield, market_publish_deal,
     miner_balance, miner_power, override_compute_unsealed_sector_cid, precommit_sectors_v2,
     prove_commit_sectors, sector_info, submit_invalid_post, submit_windowed_post,
@@ -887,14 +883,7 @@ pub fn deal_included_in_multiple_sectors_failure_test(v: &dyn VM) {
     prove_commit_sectors(v, &worker, &maddr, precommits, 100);
 
     // In the same epoch, trigger cron to validate prove commit
-    apply_ok(
-        v,
-        &SYSTEM_ACTOR_ADDR,
-        &CRON_ACTOR_ADDR,
-        &TokenAmount::zero(),
-        CronMethod::EpochTick as u64,
-        None::<RawBytes>,
-    );
+    cron_tick(v);
 
     // advance to proving period and submit post
     let (deadline_info, partition_index) =
@@ -1207,16 +1196,9 @@ pub fn create_sector(
         MinerMethod::ProveCommitSector as u64,
         Some(prove_commit_params),
     );
-    let res = v
-        .execute_message(
-            &SYSTEM_ACTOR_ADDR,
-            &CRON_ACTOR_ADDR,
-            &TokenAmount::zero(),
-            CronMethod::EpochTick as u64,
-            None,
-        )
-        .unwrap();
-    assert_eq!(ExitCode::OK, res.code);
+
+    cron_tick(v);
+
     let (dline_info, p_idx) = advance_to_proving_deadline(v, &maddr, sector_number);
     let d_idx = dline_info.index;
     // not active until post

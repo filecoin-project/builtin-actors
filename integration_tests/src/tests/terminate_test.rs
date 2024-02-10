@@ -2,13 +2,11 @@ use std::ops::Neg;
 
 use fvm_shared::bigint::Zero;
 use fvm_shared::econ::TokenAmount;
-use fvm_shared::error::ExitCode;
 use fvm_shared::piece::PaddedPieceSize;
 use fvm_shared::sector::{RegisteredSealProof, StoragePower};
 use num_traits::cast::FromPrimitive;
 
 use export_macro::vm_test;
-use fil_actor_cron::Method as CronMethod;
 use fil_actor_market::{
     DealMetaArray, Method as MarketMethod, State as MarketState, WithdrawBalanceParams,
 };
@@ -21,8 +19,8 @@ use fil_actor_verifreg::{Method as VerifregMethod, VerifierParams};
 use fil_actors_runtime::network::EPOCHS_IN_DAY;
 use fil_actors_runtime::runtime::Policy;
 use fil_actors_runtime::{
-    CRON_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ID, STORAGE_POWER_ACTOR_ADDR,
-    SYSTEM_ACTOR_ADDR, VERIFIED_REGISTRY_ACTOR_ADDR,
+    STORAGE_MARKET_ACTOR_ADDR, STORAGE_MARKET_ACTOR_ID, STORAGE_POWER_ACTOR_ADDR,
+    VERIFIED_REGISTRY_ACTOR_ADDR,
 };
 use fvm_shared::deal::DealID;
 use fvm_shared::ActorID;
@@ -33,7 +31,7 @@ use vm_api::VM;
 use crate::expects::Expect;
 use crate::util::{
     advance_by_deadline_to_epoch, advance_by_deadline_to_epoch_while_proving,
-    advance_to_proving_deadline, assert_invariants, create_accounts, create_miner,
+    advance_to_proving_deadline, assert_invariants, create_accounts, create_miner, cron_tick,
     deal_cid_for_testing, make_bitfield, market_publish_deal, miner_balance,
     miner_precommit_one_sector_v2, precommit_meta_data_from_deals, submit_windowed_post,
     verifreg_add_verifier,
@@ -152,16 +150,8 @@ pub fn terminate_sectors_test(v: &dyn VM) {
         deal_ids.push(*id);
     }
 
-    let res = v
-        .execute_message(
-            &SYSTEM_ACTOR_ADDR,
-            &CRON_ACTOR_ADDR,
-            &TokenAmount::zero(),
-            CronMethod::EpochTick as u64,
-            None,
-        )
-        .unwrap();
-    assert_eq!(ExitCode::OK, res.code);
+    cron_tick(v);
+
     let st: MarketState = get_state(v, &STORAGE_MARKET_ACTOR_ADDR).unwrap();
     let store = DynBlockstore::wrap(v.blockstore());
     let deal_states = DealMetaArray::load(&st.states, &store).unwrap();
@@ -194,16 +184,9 @@ pub fn terminate_sectors_test(v: &dyn VM) {
         MinerMethod::ProveCommitSector as u64,
         Some(prove_params),
     );
-    let res = v
-        .execute_message(
-            &SYSTEM_ACTOR_ADDR,
-            &CRON_ACTOR_ADDR,
-            &TokenAmount::zero(),
-            CronMethod::EpochTick as u64,
-            None,
-        )
-        .unwrap();
-    assert_eq!(ExitCode::OK, res.code);
+
+    cron_tick(v);
+
     let (dline_info, p_idx) = advance_to_proving_deadline(v, &miner_id_addr, sector_number);
     let d_idx = dline_info.index;
     let st: MinerState = get_state(v, &miner_id_addr).unwrap();
@@ -213,15 +196,7 @@ pub fn terminate_sectors_test(v: &dyn VM) {
     submit_windowed_post(v, &worker, &miner_id_addr, dline_info, p_idx, Some(sector_power.clone()));
     v.set_epoch(dline_info.last());
 
-    v.execute_message(
-        &SYSTEM_ACTOR_ADDR,
-        &CRON_ACTOR_ADDR,
-        &TokenAmount::zero(),
-        CronMethod::EpochTick as u64,
-        None,
-    )
-    .unwrap();
-    assert_eq!(ExitCode::OK, res.code);
+    cron_tick(v);
 
     // advance cron delay epochs so deals are active
     let start = dline_info.close;
